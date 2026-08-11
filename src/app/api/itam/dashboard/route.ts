@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
+    const includeExtra = searchParams.get('extra') === '1'
     const t0 = Date.now()
 
     // 1) Device counts by status (parallel)
@@ -28,18 +29,33 @@ export async function GET(req: NextRequest) {
       .slice(0, 8)
       .map(([name, value]) => ({ name, value }))
 
-    // 3) Devices by site
+    // 3) Devices by site (with activeCount + paper sheets per site)
     const sites = await db.siteAttribute.findMany()
+    const now = new Date()
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     const bySite = await Promise.all(
       sites.map(async (s) => {
-        const count = await db.device.count({ where: { site: s.siteName || '' } })
-        return { siteCode: s.siteCode, siteName: s.siteName, deviceCount: count }
-      })
+        const siteName = s.siteName || ''
+        const [deviceCount, activeCount, monthReadings] = await Promise.all([
+          db.device.count({ where: { site: siteName } }),
+          db.device.count({ where: { site: siteName, status: 'Active' } }),
+          db.meterReading.aggregate({
+            _sum: { pagesBw: true, pagesColor: true },
+            where: { readingMonth: currentMonth, device: { site: siteName } },
+          }),
+        ])
+        const paperSheets = (monthReadings._sum.pagesBw ?? 0) + (monthReadings._sum.pagesColor ?? 0)
+        return {
+          siteCode: s.siteCode,
+          siteName,
+          deviceCount,
+          activeCount,
+          paperSheets,
+        }
+      }),
     )
 
     // 4) Paper usage this month
-    const now = new Date()
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     const monthReadings = await db.meterReading.findMany({
       where: { readingMonth: currentMonth },
       select: { pagesBw: true, pagesColor: true },
@@ -69,6 +85,47 @@ export async function GET(req: NextRequest) {
       where: { meterRequired: true, status: 'Active' },
     })
 
+    let heatmap: Array<{ assetNo: string; deviceName: string; months: Array<{ month: string; pages: number }> }> = []
+    let heatmapMonths: string[] = []
+    if (includeExtra) {
+      // Build last 6 months list
+      const months: string[] = []
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+        months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+      }
+      heatmapMonths = months
+
+      // Top 12 meter-required devices by recent activity
+      const topDevices = await db.device.findMany({
+        where: { meterRequired: true },
+        take: 12,
+        orderBy: { assetNo: 'asc' },
+        select: { assetNo: true, brand: true, model: true },
+      })
+
+      const readings = await db.meterReading.findMany({
+        where: {
+          readingMonth: { in: months },
+          assetNo: { in: topDevices.map(d => d.assetNo) },
+        },
+        select: { assetNo: true, readingMonth: true, pagesBw: true, pagesColor: true },
+      })
+
+      const byDeviceMonth: Record<string, Record<string, number>> = {}
+      readings.forEach(r => {
+        if (!byDeviceMonth[r.assetNo]) byDeviceMonth[r.assetNo] = {}
+        const key = r.readingMonth || ''
+        byDeviceMonth[r.assetNo][key] = (byDeviceMonth[r.assetNo][key] || 0) + r.pagesBw + r.pagesColor
+      })
+
+      heatmap = topDevices.map(d => ({
+        assetNo: d.assetNo,
+        deviceName: `${d.brand || ''} ${d.model || ''}`.trim() || d.assetNo,
+        months: months.map(m => ({ month: m, pages: byDeviceMonth[d.assetNo]?.[m] || 0 })),
+      }))
+    }
+
     const t1 = Date.now()
 
     return NextResponse.json({
@@ -78,6 +135,8 @@ export async function GET(req: NextRequest) {
       paperThisMonth,
       meterRequiredCount,
       recentActivity,
+      heatmap,
+      heatmapMonths,
       queryTimeMs: t1 - t0,
     })
   } catch (err) {

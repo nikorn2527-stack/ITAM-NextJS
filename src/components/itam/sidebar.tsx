@@ -20,6 +20,7 @@ const NAV_ITEMS: NavItemDef[] = [
   { page: 'itam-devices', icon: '💻', label: 'ITAM อุปกรณ์' },
   { page: 'itam-meter', icon: '📈', label: 'ITAM มิเตอร์' },
   { page: 'itam-settings', icon: '⚙️', label: 'ITAM ตั้งค่า' },
+  { page: 'itam-audit', icon: '📜', label: 'ITAM ประวัติ' },
   { page: 'devices', icon: '💻', label: 'จัดการอุปกรณ์' },
   { page: 'meter', icon: '📈', label: 'จดมิเตอร์' },
   { page: 'paper-analytics', icon: '📊', label: 'การใช้กระดาษ' },
