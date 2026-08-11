@@ -1049,3 +1049,44 @@ Stage Summary:
 - Timeline ตอนนี้แสดงประวัติครบ 4 ประเภทในจุดเดียว: การย้ายตำแหน่ง + จดมิเตอร์ + มอบหมาย/คืน + ซ่อมบำรุง
 - แต่ละ event มี dot สีต่างกัน + badge + รายละเอียดครบ + sort ตามวันที่
 - รวม Task 18-22 = 5 commits ใหม่บน refactor/master-columns
+
+---
+Task ID: 23
+Agent: orchestrator (main) — user-directed Settings reorganization + 4 features
+Task: จัดระเบียบหน้าตั้งค่าแอป (9 tabs → 6 tabs) + เพิ่ม 4 ฟีเจอร์ (Dashboard PDF, Multi-site Comparison, Utilization Heatmap, Cycle Report)
+
+Work Log:
+1) Settings Reorganization (9 tabs → 6 tabs):
+   - เดิม: app, analytics, users, sites, sticker, document, master, audit, cycle (9 tabs กระจัดกระจาย)
+   - ใหม่: ⚙️ ทั่วไป | 🔔 การแจ้งเตือน | 📊 ข้อมูลมาตรฐาน | 🏢 สาขา + อัตรา | 🔄 รอบจดมิเตอร์ | 👥 ผู้ใช้ + ประวัติ
+   - แยก "การแจ้งเตือน" ออกจาก "ทั่วไป" → สร้าง settings-panel-notify แบบ dynamic (createNotifyPanel ย้าย bento cards จาก app panel)
+   - รวม "ผู้ใช้" + "ประวัติ" เป็น tab เดียว (audit panel แสดง stacked ใต้ users panel)
+   - ลบ tabs: analytics, sticker, document (panels ยังอยู่ใน DOM แต่ไม่มี tab เรียก)
+
+2) Dashboard PDF Export:
+   - exportDashboardPDF() — เปิด print window + A4 CSS + KPI grid (4 ใบ) + status/type tables + monthly trend + footer
+   - ปุ่ม 📄 PDF ใน dashboard toolbar
+
+3) Multi-site Comparison:
+   - AnalyticsV5Service.gs: getSiteComparison() — per-site deviceCount/activeCount/totalSheets
+   - openSiteComparisonModal() — ตารางเปรียบเทียบ + progress bar + 🥇🥈🥉 medals
+   - ปุ่ม 🏗️ สาขา ใน dashboard toolbar
+
+4) Device Utilization Heatmap:
+   - AnalyticsV5Service.gs: getDeviceUtilization() — per-device monthly readings (6 months)
+   - openUtilizationHeatmapModal() — heatmap grid (devices × months) — สี teal เข้ม=สูง/อ่อน=ต่ำ + legend
+   - ปุ่ม 📈 Heatmap ใน dashboard toolbar
+
+5) Cycle-based Report:
+   - openCycleReportModal() — เรียก getCycleHistory() → เลือกรอบ → loadCycleReportDetail()
+   - renderCycleReportDetail() — 4 KPI (ทั้งหมด/จดแล้ว/ยังไม่จด/%) + progress bar
+   - ปุ่ม 📊 รอบ ใน dashboard toolbar
+
+Files: AnalyticsV5Service.gs (ใหม่ ~120 บรรทัด) + index.html (6 tabs + 4 ปุ่ม) + javascript.html (+354 บรรทัด)
+Commit a25f779 — 3 files changed, +469 -15
+Push ขึ้น origin/refactor/master-columns สำเร็จ (050a684..a25f779)
+
+Stage Summary:
+- หน้าตั้งค่าจัดระเบียบแล้ว (6 tabs ชัดเจน แทน 9 tabs กระจัดกระจาย)
+- Dashboard มีปุ่มเครื่องมือ 4 อันใหม่: 🏗️ สาขา | 📈 Heatmap | 📊 รอบ | 📄 PDF
+- รวม Task 18-23 = 6 commits ใหม่บน refactor/master-columns
