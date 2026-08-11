@@ -39,6 +39,7 @@ model Device {
   meterReadings MeterReading[]
   transfers    DeviceTransfer[]
   assignments  Assignment[]
+  maintenanceLogs MaintenanceLog[]
 }
 
 model Assignment {
@@ -163,4 +164,21 @@ model Report {
   data      String   // JSON string of the report data (snapshot)
   format    String   @default("json") // json|csv|pdf
   createdAt DateTime @default(now())
+}
+
+model MaintenanceLog {
+  id           String   @id @default(cuid())
+  deviceId     String
+  type         String   // repair | maintenance | inspection | upgrade
+  status       String   // open | in_progress | completed | cancelled
+  startDate    String   // ISO date
+  endDate      String?
+  cost         Float?
+  vendor       String?  // repair shop / service provider
+  description  String
+  resolvedNote String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 }
