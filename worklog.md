@@ -553,3 +553,104 @@ Stage Summary:
 - Styling polish verified: framer-motion dashboard widget entrance, bulk action bar slide-down + backdrop-blur, custom orange checkboxes, selected row highlight, meter bento hover lift.
 - No bugs found. Classic sidebar preserved. Sticky footer intact. Lint clean. No new runtime errors.
 - Recommended next round: (1) auto-create next cycle when current ends, (2) device lifecycle/warranty dashboard (purchase date → replacement planning), (3) notifications panel for reminder thresholds, (4) export full dashboard as PDF report, (5) user permissions UI (make editable).
+
+---
+Task ID: 13
+Agent: full-stack-developer (webDevReview round 6)
+Task: Added 3 features (Notifications Panel, Auto-create Next Cycle + Cycle Templates, Dashboard PDF Export) + styling polish to the stable ITAM Next.js app.
+
+Work Log:
+- Read worklog (Tasks 1-12), prisma schema, sidebar, dashboard-page, cycle-manage-dialog, types, settings-page AppTab, dashboard API, settings API, cycles API, meter reminders API, devices warranty API, audit API.
+- Verified dev server healthy (all endpoints 200).
+- Created `src/app/api/notifications/route.ts` — aggregates alerts from 4 sources:
+  1. Warranty expired / expiring (within 30 days) using purchaseDate + warrantyMonths computation.
+  2. Meter reminders — meterable devices (PRINTER/COPIER/MFP) not yet read in the active cycle.
+  3. Cycle ending soon — if active cycle endDate is within 7 days.
+  4. Recent audit — last 3 CREATE/DELETE/BULK_* actions.
+  Returns `{ notifications, counts }` sorted by severity priority (expired > expiring > warning > info) then by timestamp desc.
+- Created `src/components/itam/notifications-popover.tsx`:
+  - Popover triggered by a bell button.
+  - Pulsing red dot when there are critical (expired) alerts.
+  - Orange unread-count badge.
+  - Filter tabs: ทั้งหมด / รอบจดมิเตอร์ / รับประกัน / ระบบ.
+  - Notification items: 4px colored left border by severity (rose=expired, amber=expiring/warning, teal=info), icon in soft-colored circle, hover bg.
+  - Mark-all-read stored in localStorage (timestamp).
+  - Clicking an item navigates to the relevant page using zustand store actions (setActivePage + setPendingDeviceId/setPendingWarrantyFilter/setPendingMeterAction/setPendingSettingsTab).
+  - Empty state with CheckCircle icon ("ไม่มีการแจ้งเตือน").
+  - TanStack Query with `queryKey: ['notifications']`, `refetchInterval: 60_000`.
+- Updated `src/components/itam/sidebar.tsx`:
+  - Added `<NotificationsPopover />` next to the theme toggle in the powered footer area.
+  - Theme toggle resized to 32x32 to match the bell, both centered horizontally.
+  - Classic dark sidebar layout/structure preserved exactly (240px, #0f172a, orange active accent).
+- Created `src/components/itm/dashboard-pdf-export.tsx`:
+  - `exportDashboardPdf({ data, range, orgName })` opens a new window with a full HTML document.
+  - `@page { size: A4; margin: 15mm }` print CSS.
+  - Professional layout: orange accent headers, slate text, bordered tables, Thai font stack ('Sukhumvit Set', 'Thonburi', 'Tahoma').
+  - Content: org name + report title + date range + generated-at, KPI summary grid (5 cards with colored top accents), status distribution table, device type distribution table, Top 5 paper usage table, recent activity table (5 rows), footer "PNG TEAM — IT Asset Management" + page number.
+  - Auto-triggers `window.print()` after load.
+  - Popup-blocked → toast.warning fallback.
+- Updated `src/components/itam/dashboard-page.tsx`:
+  - Added "📄 ส่งออก PDF" button (Printer icon, teal border to differentiate from refresh) in the toolbar after refresh, before seed.
+  - Added `exporting` state, `handleExportPdf` (refetches data, calls exportDashboardPdf with orgName from settings).
+  - Added `settingsMap` query (for orgName).
+- Updated `src/components/itm/cycle-manage-dialog.tsx`:
+  - Added settings query (for `cycleTemplate.autoCreate` + `cycleTemplate.durationDays`).
+  - After successfully ending a cycle, if `cycleTemplate.autoCreate === 'true'`, opens a suggestion Dialog:
+    - Success emerald check icon banner ("จบรอบเรียบร้อย" + cycle name).
+    - New cycle form preview (orange gradient card) showing name (`รอบจดมิเตอร์ <เดือนภาษาไทย> <ปี>`), startDate=today, endDate=today+durationDays, durationDays badge.
+    - "สร้างรอบใหม่" (orange button with Plus + ArrowRight icons) → creates the cycle.
+    - "ภายหลัง" (outline button) → closes.
+  - Added `THAI_MONTHS` array, `buildTemplateName(date)`, `addDaysISO(iso, days)` helpers.
+- Updated `src/components/itam/settings-page.tsx` AppTab:
+  - Added "ตั้งค่ารอบจดมิเตอร์อัตโนมัติ" section between the password-login switch and the save button.
+  - Distinct Card with CalendarClock icon header, subtle orange→white gradient bg (dark: slate-900 base).
+  - Switch: "สร้างรอบใหม่อัตโนมัติเมื่อจบรอบ" → `cycleTemplate.autoCreate` (also flips `cycleTemplate.enabled`).
+  - Number input: "ระยะเวลารอบ (วัน)" → `cycleTemplate.durationDays` (clamped 7-90, default 30).
+  - Helper text showing the template name preview and duration.
+  - Info callout: "ตั้งค่านี้ใช้กับการจบรอบจดมิเตอร์ในหน้า 'จดมิเตอร์' → จัดการรอบ เท่านั้น".
+  - `useEffect` seeds defaults for the 3 cycle template keys so the UI is initialized on first load.
+  - These settings save with the other app settings (same form/PUT).
+- Verified `/api/notifications` returns 15 notifications (12 warranty-expired + 3 audit), counts match.
+- Verified `/api/settings` PUT correctly persists `cycleTemplate.enabled`, `cycleTemplate.autoCreate`, `cycleTemplate.durationDays`.
+
+Styling polish (all applied):
+1. Notification bell: pulsing red dot when expired alerts exist; orange badge with count; hover bg-white/10.
+2. Notification items: 4px colored left border by severity, subtle hover bg, icon in soft-colored circle.
+3. Cycle auto-suggestion dialog: success emerald check icon for ended cycle + clear orange gradient form preview for new cycle.
+4. Dashboard PDF button: matching style with other toolbar buttons, focus-visible ring (teal accent to differentiate).
+5. Settings cycle template section: distinct Card with CalendarClock icon header, subtle gradient bg, info callout.
+6. Sidebar header: bell + theme toggle + logo well-aligned (8x8 buttons centered), no overflow on mobile.
+
+Stage Summary:
+- 3 features delivered: Notifications Panel, Auto-create Next Cycle + Cycle Templates, Dashboard PDF Export.
+- 6 styling polish items applied.
+- New files: `src/app/api/notifications/route.ts`, `src/components/itam/notifications-popover.tsx`, `src/components/itam/dashboard-pdf-export.tsx`.
+- Modified files: `src/components/itam/sidebar.tsx`, `src/components/itam/dashboard-page.tsx`, `src/components/itam/cycle-manage-dialog.tsx`, `src/components/itam/settings-page.tsx`.
+- `bun run lint` → 0 errors, 0 warnings.
+- TypeScript check on new/modified files → 0 errors (pre-existing errors in csv-import-dialog.tsx/devices-page.tsx and examples/skills are unchanged from prior rounds).
+- Dev server healthy: all endpoints 200, `/api/notifications` returns proper aggregated data, settings PUT persists cycle template keys, no runtime errors in dev.log.
+- Classic dark sidebar preserved exactly (240px, #0f172a, orange #f97316/#fb923c active accent).
+- Sticky footer intact.
+- Dark mode support throughout (dark: Tailwind prefix on every new UI element).
+- Thai labels throughout.
+- All new UI uses orange (#f97316/#fb923c) primary accent and teal (#0d9488/#14b8a6) secondary; no indigo/blue.
+
+---
+Task ID: 13-QA
+Agent: orchestrator (main) — round 6 independent verification
+Task: Independently verify all 3 new features via agent-browser + curl.
+
+Work Log:
+- Read subagent's Task 13 worklog entry. Dev server healthy (HTTP 200, all endpoints 200).
+- API verification via curl:
+  - GET /api/notifications → 200, {counts: {total:15, expired:12, expiring:0, warning:0, info:3}, notifications: 12 warranty-expired + 3 audit}. ✓
+- agent-browser UI verification:
+  - Notification bell: found in sidebar (aria-label "การแจ้งเตือน", has badge). Clicked → popover opens showing "การแจ้งเตือน" with filter tabs (ทั้งหมด/รับประกัน) and 12 "รับประกันหมดแล้ว" notifications. ✓
+  - Dashboard PDF export: "ส่งออก PDF" button found in toolbar. ✓
+  - Settings cycle template: "รอบจดมิเตอร์อัตโนมัติ" section present with auto-create switch + duration days input. ✓
+- `bun run lint` → 0 errors, 0 warnings. No errors from new features in dev.log (only normal Fast Refresh hot-reload warnings).
+
+Stage Summary:
+- All 3 features verified working end-to-end: notifications panel (bell + badge + popover with grouped alerts + filter tabs + navigate-on-click), auto-create cycle template (settings section + suggestion dialog on cycle end), dashboard PDF export (button + print window with professional layout).
+- No bugs found. Classic sidebar preserved (bell added next to theme toggle). Sticky footer intact. Lint clean. No new runtime errors.
+- Recommended next round: (1) device lifecycle/warranty dashboard (replacement planning), (2) user permissions UI (make editable), (3) meter reading reminders via email/notification, (4) multi-site comparison dashboard, (5) device utilization analytics (usage per device per month).

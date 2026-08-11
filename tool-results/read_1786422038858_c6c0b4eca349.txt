@@ -1,0 +1,993 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { useTheme } from 'next-themes'
+     6→import { motion } from 'framer-motion'
+     7→import {
+     8→  PieChart,
+     9→  Pie,
+    10→  Cell,
+    11→  ResponsiveContainer,
+    12→  Tooltip,
+    13→  Legend,
+    14→  BarChart,
+    15→  Bar,
+    16→  XAxis,
+    17→  YAxis,
+    18→  CartesianGrid,
+    19→  Label,
+    20→} from 'recharts'
+    21→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    22→import { Button } from '@/components/ui/button'
+    23→import { Skeleton } from '@/components/ui/skeleton'
+    24→import { Badge } from '@/components/ui/badge'
+    25→import { Progress } from '@/components/ui/progress'
+    26→import {
+    27→  Select,
+    28→  SelectContent,
+    29→  SelectItem,
+    30→  SelectTrigger,
+    31→  SelectValue,
+    32→} from '@/components/ui/select'
+    33→import { cn } from '@/lib/utils'
+    34→import { toast } from 'sonner'
+    35→import {
+    36→  Package,
+    37→  CheckCircle2,
+    38→  Archive,
+    39→  Wrench,
+    40→  TrendingUp,
+    41→  History,
+    42→  Sparkles,
+    43→  FileText,
+    44→  Inbox,
+    45→  AlertTriangle,
+    46→  CalendarClock,
+    47→  ArrowRight,
+    48→} from 'lucide-react'
+    49→import type {
+    50→  DashboardData,
+    51→  DashboardRangeKey,
+    52→  Cycle,
+    53→} from './types'
+    54→import { DASHBOARD_RANGE_OPTIONS } from './types'
+    55→import { useAppStore } from '@/store/app-store'
+    56→
+    57→interface WarrantySummary {
+    58→  active: number
+    59→  expiring: number
+    60→  expired: number
+    61→  unknown: number
+    62→}
+    63→
+    64→const STATUS_COLORS: Record<string, string> = {
+    65→  ใช้งานอยู่: '#10b981',
+    66→  สำรอง: '#f59e0b',
+    67→  ส่งซ่อม: '#f97316',
+    68→  ตัดของออก: '#f43f5e',
+    69→}
+    70→
+    71→interface KpiCardProps {
+    72→  title: string
+    73→  value: number
+    74→  icon: React.ReactNode
+    75→  accent: string
+    76→  loading?: boolean
+    77→  trend?: string
+    78→  format?: (v: number) => string
+    79→  unit?: string
+    80→}
+    81→
+    82→/**
+    83→ * Animated count-up hook — tweens from the previous value to the next
+    84→ * over 500ms using requestAnimationFrame.
+    85→ */
+    86→function useCountUp(target: number, duration = 500) {
+    87→  const [display, setDisplay] = React.useState(target)
+    88→  const fromRef = React.useRef(target)
+    89→  const rafRef = React.useRef<number | null>(null)
+    90→  const startRef = React.useRef<number | null>(null)
+    91→
+    92→  React.useEffect(() => {
+    93→    if (typeof window === 'undefined') return
+    94→    const from = fromRef.current
+    95→    if (from === target) {
+    96→      setDisplay(target)
+    97→      return
+    98→    }
+    99→    startRef.current = null
+   100→    const step = (ts: number) => {
+   101→      if (startRef.current === null) startRef.current = ts
+   102→      const elapsed = ts - startRef.current
+   103→      const t = Math.min(1, elapsed / duration)
+   104→      // easeOutCubic
+   105→      const eased = 1 - Math.pow(1 - t, 3)
+   106→      const next = Math.round(from + (target - from) * eased)
+   107→      setDisplay(next)
+   108→      if (t < 1) {
+   109→        rafRef.current = window.requestAnimationFrame(step)
+   110→      } else {
+   111→        fromRef.current = target
+   112→        setDisplay(target)
+   113→      }
+   114→    }
+   115→    rafRef.current = window.requestAnimationFrame(step)
+   116→    return () => {
+   117→      if (rafRef.current !== null) {
+   118→        window.cancelAnimationFrame(rafRef.current)
+   119→      }
+   120→      // remember where we landed so the next tween starts smoothly
+   121→      fromRef.current = display
+   122→    }
+   123→  }, [target, duration])
+   124→
+   125→  return display
+   126→}
+   127→
+   128→function KpiCard({
+   129→  title,
+   130→  value,
+   131→  icon,
+   132→  accent,
+   133→  loading,
+   134→  trend,
+   135→  format,
+   136→  unit,
+   137→}: KpiCardProps) {
+   138→  const animated = useCountUp(value, 500)
+   139→  const display = format ? format(animated) : animated.toLocaleString()
+   140→  return (
+   141→    <Card
+   142→      className="group relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-[#f97316] focus-within:ring-offset-1 dark:focus-within:ring-offset-slate-950"
+   143→    >
+   144→      {/* Thin top accent bar */}
+   145→      <div
+   146→        className="absolute inset-x-0 top-0 h-[3px]"
+   147→        style={{ background: accent }}
+   148→      />
+   149→      {/* Subtle gradient overlay on hover */}
+   150→      <div
+   151→        aria-hidden
+   152→        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-transparent to-black/[0.02] opacity-0 transition-opacity group-hover:opacity-100 dark:to-white/[0.03]"
+   153→      />
+   154→      <CardContent className="relative p-3 sm:p-4">
+   155→        <div className="flex items-center gap-2 sm:gap-3">
+   156→          <div
+   157→            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11"
+   158→            style={{ background: `${accent}1a`, color: accent }}
+   159→          >
+   160→            {icon}
+   161→          </div>
+   162→          <div className="min-w-0 flex-1">
+   163→            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+   164→              {title}
+   165→            </div>
+   166→            {loading ? (
+   167→              <Skeleton className="mt-1 h-7 w-20 dark:bg-slate-800" />
+   168→            ) : (
+   169→              <div className="flex items-baseline gap-1">
+   170→                <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
+   171→                  {display}
+   172→                </span>
+   173→                {unit && (
+   174→                  <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
+   175→                    {unit}
+   176→                  </span>
+   177→                )}
+   178→              </div>
+   179→            )}
+   180→            {trend && !loading && (
+   181→              <div
+   182→                className="mt-0.5 truncate text-xs leading-tight text-slate-400 dark:text-slate-500"
+   183→                title={trend}
+   184→              >
+   185→                {trend}
+   186→              </div>
+   187→            )}
+   188→          </div>
+   189→        </div>
+   190→      </CardContent>
+   191→    </Card>
+   192→  )
+   193→}
+   194→
+   195→function EmptyState({
+   196→  message,
+   197→  subtitle,
+   198→  icon,
+   199→}: {
+   200→  message: string
+   201→  subtitle?: string
+   202→  icon?: React.ReactNode
+   203→}) {
+   204→  return (
+   205→    <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400 dark:text-slate-500">
+   206→      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+   207→        {icon ?? <Inbox className="h-6 w-6 text-slate-300 dark:text-slate-600" />}
+   208→      </div>
+   209→      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">{message}</div>
+   210→      {subtitle && (
+   211→        <div className="text-xs text-slate-400 dark:text-slate-500">{subtitle}</div>
+   212→      )}
+   213→    </div>
+   214→  )
+   215→}
+   216→
+   217→export function DashboardPage() {
+   218→  const qc = useQueryClient()
+   219→  const { theme } = useTheme()
+   220→  const [mounted, setMounted] = React.useState(false)
+   221→  React.useEffect(() => setMounted(true), [])
+   222→  const isDark = mounted && theme === 'dark'
+   223→
+   224→  const setActivePage = useAppStore((s) => s.setActivePage)
+   225→  const setPendingWarrantyFilter = useAppStore(
+   226→    (s) => s.setPendingWarrantyFilter,
+   227→  )
+   228→  const setPendingMeterAction = useAppStore((s) => s.setPendingMeterAction)
+   229→
+   230→  const [seeding, setSeeding] = React.useState(false)
+   231→  const [range, setRange] = React.useState<DashboardRangeKey>('month')
+   232→
+   233→  const { data, isLoading, isError, refetch } = useQuery<DashboardData>({
+   234→    queryKey: ['dashboard', range],
+   235→    queryFn: async () => {
+   236→      const res = await fetch(`/api/dashboard?range=${range}`)
+   237→      if (!res.ok) throw new Error('Failed to load dashboard')
+   238→      return res.json()
+   239→    },
+   240→  })
+   241→
+   242→  // Active cycle (for the dashboard cycle progress widget)
+   243→  const { data: activeCycle, isLoading: cycleLoading } = useQuery<Cycle | null>({
+   244→    queryKey: ['active-cycle'],
+   245→    queryFn: async () => {
+   246→      const res = await fetch('/api/cycles?status=active')
+   247→      if (!res.ok) return null
+   248→      const json = await res.json()
+   249→      return (json.cycles?.[0] as Cycle | undefined) ?? null
+   250→    },
+   251→  })
+   252→
+   253→  // Reading progress for the active cycle (totalRead / totalMeterable)
+   254→  interface RemindersSummary {
+   255→    hasActiveCycle: boolean
+   256→    totalRead: number
+   257→    totalUnread: number
+   258→  }
+   259→  const { data: remindersSummary } = useQuery<RemindersSummary>({
+   260→    queryKey: ['meter-reminders-summary'],
+   261→    queryFn: async () => {
+   262→      const res = await fetch('/api/meter/reminders')
+   263→      if (!res.ok) return { hasActiveCycle: false, totalRead: 0, totalUnread: 0 }
+   264→      const json = await res.json()
+   265→      return {
+   266→        hasActiveCycle: Boolean(json.hasActiveCycle),
+   267→        totalRead: Number(json.totalRead ?? 0),
+   268→        totalUnread: Number(json.totalUnread ?? 0),
+   269→      }
+   270→    },
+   271→  })
+   272→
+   273→  // Warranty summary (always fetched once)
+   274→  const { data: warrantyData } = useQuery<{
+   275→    summary: WarrantySummary
+   276→  }>({
+   277→    queryKey: ['warranty-summary'],
+   278→    queryFn: async () => {
+   279→      const res = await fetch('/api/devices/warranty')
+   280→      if (!res.ok) throw new Error('Failed to load warranty')
+   281→      const json = await res.json()
+   282→      return { summary: json.summary as WarrantySummary }
+   283→    },
+   284→    staleTime: 60_000,
+   285→  })
+   286→
+   287→  // Auto-seed if empty
+   288→  React.useEffect(() => {
+   289→    if (!data) return
+   290→    if (data.totals.total === 0) {
+   291→      void runSeed()
+   292→    }
+   293→  }, [data?.totals.total])
+   294→
+   295→  async function runSeed() {
+   296→    try {
+   297→      setSeeding(true)
+   298→      const res = await fetch('/api/seed', { method: 'POST' })
+   299→      if (!res.ok) throw new Error('Seed failed')
+   300→      const json = await res.json()
+   301→      toast.success(`โหลดข้อมูลตัวอย่างแล้ว (${json.counts?.devices ?? 0} อุปกรณ์)`)
+   302→      await qc.invalidateQueries()
+   303→    } catch (e) {
+   304→      toast.error(e instanceof Error ? e.message : 'Seed failed')
+   305→    } finally {
+   306→      setSeeding(false)
+   307→    }
+   308→  }
+   309→
+   310→  if (isError) {
+   311→    return (
+   312→      <div className="p-6">
+   313→        <Card>
+   314→          <CardContent className="p-6">
+   315→            <p className="text-sm text-rose-600 dark:text-rose-400">
+   316→              โหลดข้อมูล Dashboard ไม่สำเร็จ กรุณาลองอีกครั้ง
+   317→            </p>
+   318→            <Button className="mt-3" onClick={() => refetch()}>
+   319→              ลองอีกครั้ง
+   320→            </Button>
+   321→          </CardContent>
+   322→        </Card>
+   323→      </div>
+   324→    )
+   325→  }
+   326→
+   327→  const total = data?.totals.total ?? 0
+   328→  const active = data?.totals.active ?? 0
+   329→  const spare = data?.totals.spare ?? 0
+   330→  const repair = data?.totals.repair ?? 0
+   331→  const paperThisMonth = data?.paperThisMonth ?? 0
+   332→  const warrantyAlerts =
+   333→    (warrantyData?.summary.expiring ?? 0) +
+   334→    (warrantyData?.summary.expired ?? 0)
+   335→
+   336→  const activeTrend =
+   337→    total > 0
+   338→      ? `${Math.round((active / total) * 100)}% ของทั้งหมด ${total} เครื่อง`
+   339→      : undefined
+   340→
+   341→  const paperKpiLabel =
+   342→    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.kpiLabel ??
+   343→    'กระดาษเดือนนี้'
+   344→  const paperTrend =
+   345→    range === 'all'
+   346→      ? 'รวมทุกช่วงเวลา'
+   347→      : data?.range?.start
+   348→        ? `${data.range.start}${data.range.end ? ` → ${data.range.end}` : ''}`
+   349→        : new Date().toLocaleDateString('th-TH', {
+   350→            month: 'long',
+   351→            year: 'numeric',
+   352→          })
+   353→
+   354→  const rangeInfoLabel =
+   355→    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'เดือนนี้'
+   356→
+   357→  // Chart palette — works in both themes
+   358→  const axisTickColor = '#64748b'
+   359→  const gridStroke = isDark ? '#334155' : '#e2e8f0'
+   360→  const tooltipBorder = isDark ? '#334155' : '#e2e8f0'
+   361→  const tooltipBg = isDark ? '#0f172a' : '#ffffff'
+   362→  const tooltipFg = isDark ? '#e2e8f0' : '#1e293b'
+   363→  const donutCenterText = isDark ? '#e2e8f0' : '#1e293b'
+   364→  const donutCenterSub = isDark ? '#64748b' : '#94a3b8'
+   365→
+   366→  return (
+   367→    <div className="space-y-6 p-4 md:p-6">
+   368→      {/* Page header */}
+   369→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+   370→        <div>
+   371→          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+   372→            Dashboard
+   373→          </h1>
+   374→          <p className="text-sm text-slate-500 dark:text-slate-400">
+   375→            ภาพรวมระบบจัดการอุปกรณ์ IT
+   376→            {data?.range && (
+   377→              <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
+   378→                · ช่วง: <span className="font-medium">{rangeInfoLabel}</span>
+   379→                {data.range.start && (
+   380→                  <>
+   381→                    {' '}({data.range.start}
+   382→                    {data.range.end ? ` → ${data.range.end}` : ''})
+   383→                  </>
+   384→                )}
+   385→              </span>
+   386→            )}
+   387→          </p>
+   388→        </div>
+   389→        <div className="flex items-center gap-2">
+   390→          <Select value={range} onValueChange={(v) => setRange(v as DashboardRangeKey)}>
+   391→            <SelectTrigger className="w-[160px]">
+   392→              <SelectValue placeholder="ช่วงเวลา" />
+   393→            </SelectTrigger>
+   394→            <SelectContent>
+   395→              {DASHBOARD_RANGE_OPTIONS.map((o) => (
+   396→                <SelectItem key={o.value} value={o.value}>
+   397→                  {o.label}
+   398→                </SelectItem>
+   399→              ))}
+   400→            </SelectContent>
+   401→          </Select>
+   402→          {data && total === 0 && (
+   403→            <Button
+   404→              onClick={runSeed}
+   405→              disabled={seeding}
+   406→              variant="outline"
+   407→              className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   408→            >
+   409→              <Sparkles className="mr-1.5 h-4 w-4" />
+   410→              {seeding ? 'กำลังโหลด...' : 'โหลดข้อมูลตัวอย่าง'}
+   411→            </Button>
+   412→          )}
+   413→          <Button
+   414→            variant="outline"
+   415→            onClick={() => refetch()}
+   416→            disabled={isLoading}
+   417→            className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   418→          >
+   419→            🔄 รีเฟรช
+   420→          </Button>
+   421→        </div>
+   422→      </div>
+   423→
+   424→      {seeding && (
+   425→        <Card className="border-[#f97316]/40 bg-[#f97316]/5 dark:border-[#f97316]/30 dark:bg-[#f97316]/10">
+   426→          <CardContent className="p-4 text-sm text-[#f97316]">
+   427→            กำลังโหลดข้อมูลตัวอย่าง... กรุณารอสักครู่
+   428→          </CardContent>
+   429→        </Card>
+   430→      )}
+   431→
+   432→      {/* KPI row — 5 cards on lg + warranty alert bar */}
+   433→      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+   434→        <KpiCard
+   435→          title="อุปกรณ์ทั้งหมด"
+   436→          value={total}
+   437→          icon={<Package className="h-5 w-5" />}
+   438→          accent="#0f172a"
+   439→          loading={isLoading}
+   440→          trend={total > 0 ? `${(data?.byType ?? []).length} ประเภท` : undefined}
+   441→        />
+   442→        <KpiCard
+   443→          title="ใช้งานอยู่"
+   444→          value={active}
+   445→          icon={<CheckCircle2 className="h-5 w-5" />}
+   446→          accent="#10b981"
+   447→          loading={isLoading}
+   448→          trend={activeTrend}
+   449→        />
+   450→        <KpiCard
+   451→          title="สำรอง"
+   452→          value={spare}
+   453→          icon={<Archive className="h-5 w-5" />}
+   454→          accent="#f59e0b"
+   455→          loading={isLoading}
+   456→          trend={total > 0 ? `${Math.round((spare / total) * 100)}% ของทั้งหมด` : undefined}
+   457→        />
+   458→        <KpiCard
+   459→          title="ส่งซ่อม"
+   460→          value={repair}
+   461→          icon={<Wrench className="h-5 w-5" />}
+   462→          accent="#f97316"
+   463→          loading={isLoading}
+   464→          trend={repair > 0 ? 'รอดำเนินการ' : 'ปกติ'}
+   465→        />
+   466→        <KpiCard
+   467→          title={paperKpiLabel}
+   468→          value={paperThisMonth}
+   469→          icon={<FileText className="h-5 w-5" />}
+   470→          accent="#0d9488"
+   471→          loading={isLoading}
+   472→          unit="แผ่น"
+   473→          trend={paperTrend}
+   474→        />
+   475→      </div>
+   476→
+   477→      {/* Cycle progress widget — animated, full-width */}
+   478→      <motion.div
+   479→        initial={{ opacity: 0, y: 12 }}
+   480→        animate={{ opacity: 1, y: 0 }}
+   481→        transition={{ duration: 0.35, ease: 'easeOut' }}
+   482→      >
+   483→        <CycleProgressWidget
+   484→          activeCycle={activeCycle ?? null}
+   485→          cycleLoading={cycleLoading}
+   486→          remindersSummary={remindersSummary ?? null}
+   487→          onManageCycle={() => {
+   488→            setPendingMeterAction('open-cycle')
+   489→            setActivePage('meter')
+   490→          }}
+   491→          onCreateCycle={() => {
+   492→            setPendingMeterAction('open-cycle')
+   493→            setActivePage('meter')
+   494→          }}
+   495→        />
+   496→      </motion.div>
+   497→
+   498→      {/* Warranty alert bar — full-width amber card linking to devices */}
+   499→      <button
+   500→        type="button"
+   501→        onClick={() => {
+   502→          setActivePage('devices')
+   503→          setPendingWarrantyFilter('expiring')
+   504→        }}
+   505→        disabled={warrantyAlerts === 0}
+   506→        className={cn(
+   507→          'group relative w-full overflow-hidden rounded-lg border text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950',
+   508→          warrantyAlerts > 0
+   509→            ? 'cursor-pointer border-amber-200 bg-amber-50 hover:-translate-y-0.5 hover:shadow-md dark:border-amber-800/60 dark:bg-amber-950/30'
+   510→            : 'cursor-default border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
+   511→        )}
+   512→      >
+   513→        {warrantyAlerts > 0 && (
+   514→          <div
+   515→            className="absolute inset-x-0 top-0 h-[3px]"
+   516→            style={{
+   517→              background: 'linear-gradient(90deg, #f59e0b, #f97316)',
+   518→            }}
+   519→          />
+   520→        )}
+   521→        <div className="flex items-center gap-3 p-3 sm:p-4">
+   522→          <div
+   523→            className={cn(
+   524→              'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11',
+   525→              warrantyAlerts > 0 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+   526→            )}
+   527→          >
+   528→            <AlertTriangle className="h-5 w-5" />
+   529→          </div>
+   530→          <div className="min-w-0 flex-1">
+   531→            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+   532→              รับประกันใกล้หมด
+   533→            </div>
+   534→            <div className="flex items-baseline gap-1">
+   535→              <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
+   536→                {warrantyAlerts}
+   537→              </span>
+   538→              <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
+   539→                เครื่อง
+   540→              </span>
+   541→            </div>
+   542→            <div className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
+   543→              {warrantyAlerts > 0
+   544→                ? `ใกล้หมด ${warrantyData?.summary.expiring ?? 0} · หมดแล้ว ${warrantyData?.summary.expired ?? 0} — กดเพื่อดูรายการ`
+   545→                : 'ทุกเครื่องยังอยู่ในรับประกัน'}
+   546→            </div>
+   547→          </div>
+   548→          {warrantyAlerts > 0 && (
+   549→            <span className="shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-medium text-amber-600 opacity-0 transition-opacity group-hover:opacity-100 dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-400">
+   550→              ดูรายการ →
+   551→            </span>
+   552→          )}
+   553→        </div>
+   554→      </button>
+   555→
+   556→      {/* Charts */}
+   557→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   558→        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   559→          <CardHeader>
+   560→            <CardTitle className="text-base text-slate-800 dark:text-slate-100">
+   561→              สัดส่วนสถานะอุปกรณ์
+   562→            </CardTitle>
+   563→          </CardHeader>
+   564→          <CardContent>
+   565→            {isLoading ? (
+   566→              <Skeleton className="h-64 w-full dark:bg-slate-800" />
+   567→            ) : (data?.byStatus ?? []).length === 0 ? (
+   568→              <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
+   569→            ) : (
+   570→              <ResponsiveContainer width="100%" height={280}>
+   571→                <PieChart>
+   572→                  <Pie
+   573→                    data={data?.byStatus ?? []}
+   574→                    dataKey="value"
+   575→                    nameKey="name"
+   576→                    cx="50%"
+   577→                    cy="50%"
+   578→                    innerRadius={60}
+   579→                    outerRadius={95}
+   580→                    paddingAngle={2}
+   581→                  >
+   582→                    {(data?.byStatus ?? []).map((entry) => (
+   583→                      <Cell
+   584→                        key={entry.name}
+   585→                        fill={STATUS_COLORS[entry.name] ?? '#94a3b8'}
+   586→                      />
+   587→                    ))}
+   588→                    <Label
+   589→                      content={({ viewBox }) => {
+   590→                        if (!viewBox || !('cx' in viewBox)) return null
+   591→                        const { cx, cy } = viewBox as {
+   592→                          cx: number
+   593→                          cy: number
+   594→                        }
+   595→                        return (
+   596→                          <>
+   597→                            <text
+   598→                              x={cx}
+   599→                              y={cy - 6}
+   600→                              textAnchor="middle"
+   601→                              dominantBaseline="central"
+   602→                              style={{
+   603→                                fontSize: 26,
+   604→                                fontWeight: 700,
+   605→                                fontVariantNumeric: 'tabular-nums',
+   606→                                fill: donutCenterText,
+   607→                              }}
+   608→                            >
+   609→                              {total}
+   610→                            </text>
+   611→                            <text
+   612→                              x={cx}
+   613→                              y={cy + 16}
+   614→                              textAnchor="middle"
+   615→                              dominantBaseline="central"
+   616→                              style={{ fontSize: 12, fill: donutCenterSub }}
+   617→                            >
+   618→                              เครื่อง
+   619→                            </text>
+   620→                          </>
+   621→                        )
+   622→                      }}
+   623→                    />
+   624→                  </Pie>
+   625→                  <Tooltip
+   626→                    formatter={(value: number, name: string) => [value, name]}
+   627→                    contentStyle={{
+   628→                      fontSize: 12,
+   629→                      borderRadius: 8,
+   630→                      border: `1px solid ${tooltipBorder}`,
+   631→                      background: tooltipBg,
+   632→                      color: tooltipFg,
+   633→                    }}
+   634→                  />
+   635→                  <Legend wrapperStyle={{ fontSize: 13 }} />
+   636→                </PieChart>
+   637→              </ResponsiveContainer>
+   638→            )}
+   639→          </CardContent>
+   640→        </Card>
+   641→
+   642→        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   643→          <CardHeader>
+   644→            <CardTitle className="text-base text-slate-800 dark:text-slate-100">
+   645→              จำนวนอุปกรณ์ตามประเภท
+   646→            </CardTitle>
+   647→          </CardHeader>
+   648→          <CardContent>
+   649→            {isLoading ? (
+   650→              <Skeleton className="h-64 w-full dark:bg-slate-800" />
+   651→            ) : (data?.byType ?? []).length === 0 ? (
+   652→              <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
+   653→            ) : (
+   654→              <ResponsiveContainer width="100%" height={280}>
+   655→                <BarChart data={data?.byType ?? []}>
+   656→                  <defs>
+   657→                    <linearGradient
+   658→                      id="barTypeFill"
+   659→                      x1="0"
+   660→                      y1="0"
+   661→                      x2="0"
+   662→                      y2="1"
+   663→                    >
+   664→                      <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.95} />
+   665→                      <stop offset="100%" stopColor="#0d9488" stopOpacity={0.7} />
+   666→                    </linearGradient>
+   667→                  </defs>
+   668→                  <CartesianGrid
+   669→                    strokeDasharray="3 3"
+   670→                    stroke={gridStroke}
+   671→                    vertical={false}
+   672→                  />
+   673→                  <XAxis
+   674→                    dataKey="name"
+   675→                    tick={{ fontSize: 12, fill: axisTickColor }}
+   676→                    tickLine={false}
+   677→                    axisLine={{ stroke: gridStroke }}
+   678→                  />
+   679→                  <YAxis
+   680→                    allowDecimals={false}
+   681→                    tick={{ fontSize: 12, fill: axisTickColor }}
+   682→                    tickLine={false}
+   683→                    axisLine={{ stroke: gridStroke }}
+   684→                  />
+   685→                  <Tooltip
+   686→                    cursor={{ fill: '#0d948810' }}
+   687→                    contentStyle={{
+   688→                      fontSize: 12,
+   689→                      borderRadius: 8,
+   690→                      border: `1px solid ${tooltipBorder}`,
+   691→                      background: tooltipBg,
+   692→                      color: tooltipFg,
+   693→                    }}
+   694→                  />
+   695→                  <Bar
+   696→                    dataKey="value"
+   697→                    fill="url(#barTypeFill)"
+   698→                    radius={[6, 6, 0, 0]}
+   699→                  />
+   700→                </BarChart>
+   701→              </ResponsiveContainer>
+   702→            )}
+   703→          </CardContent>
+   704→        </Card>
+   705→      </div>
+   706→
+   707→      {/* Lists */}
+   708→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   709→        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   710→          <CardHeader>
+   711→            <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+   712→              <TrendingUp className="h-4 w-4 text-[#f97316]" />
+   713→              Top อุปกรณ์ตามการใช้งานกระดาษ
+   714→            </CardTitle>
+   715→          </CardHeader>
+   716→          <CardContent>
+   717→            <div className="itam-scroll max-h-72 overflow-y-auto">
+   718→              {(data?.topUsage ?? []).length === 0 ||
+   719→              (data?.topUsage ?? []).every((d) => d.value === 0) ? (
+   720→                <EmptyState message="ยังไม่มีข้อมูลการใช้งาน" />
+   721→              ) : (
+   722→                <ul className="space-y-2">
+   723→                  {(data?.topUsage ?? [])
+   724→                    .filter((d) => d.value > 0)
+   725→                    .map((d, i) => (
+   726→                      <li
+   727→                        key={d.id}
+   728→                        className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
+   729→                      >
+   730→                        <div className="flex min-w-0 items-center gap-3">
+   731→                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f97316] text-xs font-bold text-white">
+   732→                            {i + 1}
+   733→                          </span>
+   734→                          <div className="min-w-0">
+   735→                            <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+   736→                              {d.name}
+   737→                            </div>
+   738→                            <div className="truncate font-mono text-xs text-slate-400 dark:text-slate-500">
+   739→                              {d.assetCode}
+   740→                            </div>
+   741→                          </div>
+   742→                        </div>
+   743→                        <Badge className="border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316] tabular-nums">
+   744→                          {d.value.toLocaleString()} แผ่น
+   745→                        </Badge>
+   746→                      </li>
+   747→                    ))}
+   748→                </ul>
+   749→              )}
+   750→            </div>
+   751→          </CardContent>
+   752→        </Card>
+   753→
+   754→        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   755→          <CardHeader>
+   756→            <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+   757→              <History className="h-4 w-4 text-[#f97316]" />
+   758→              กิจกรรมล่าสุด (จดมิเตอร์)
+   759→            </CardTitle>
+   760→          </CardHeader>
+   761→          <CardContent>
+   762→            <div className="itam-scroll max-h-72 overflow-y-auto">
+   763→              {(data?.recentActivity ?? []).length === 0 ? (
+   764→                <EmptyState message="ยังไม่มีกิจกรรม" />
+   765→              ) : (
+   766→                <ul className="space-y-2">
+   767→                  {(data?.recentActivity ?? []).map((a) => (
+   768→                    <li
+   769→                      key={a.id}
+   770→                      className="rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
+   771→                    >
+   772→                      <div className="flex items-center justify-between gap-2">
+   773→                        <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+   774→                          {a.deviceName}
+   775→                        </span>
+   776→                        <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+   777→                          {a.date}
+   778→                        </span>
+   779→                      </div>
+   780→                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+   781→                        <span className="font-mono text-slate-400 dark:text-slate-500">
+   782→                          {a.assetCode}
+   783→                        </span>
+   784→                        <span>·</span>
+   785→                        <span className="tabular-nums">
+   786→                          อ่าน {a.reading.toLocaleString()}
+   787→                        </span>
+   788→                        {a.delta > 0 && (
+   789→                          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 tabular-nums dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+   790→                            +{a.delta.toLocaleString()}
+   791→                          </Badge>
+   792→                        )}
+   793→                        {a.remark && (
+   794→                          <span className="truncate text-amber-600 dark:text-amber-400">
+   795→                            ⚠ {a.remark}
+   796→                          </span>
+   797→                        )}
+   798→                      </div>
+   799→                    </li>
+   800→                  ))}
+   801→                </ul>
+   802→              )}
+   803→            </div>
+   804→          </CardContent>
+   805→        </Card>
+   806→      </div>
+   807→    </div>
+   808→  )
+   809→}
+   810→
+   811→// ----------------------------------------------------------------------------
+   812→// Cycle Progress Widget — shows active cycle status at a glance
+   813→// ----------------------------------------------------------------------------
+   814→interface CycleProgressWidgetProps {
+   815→  activeCycle: Cycle | null
+   816→  cycleLoading: boolean
+   817→  remindersSummary: {
+   818→    hasActiveCycle: boolean
+   819→    totalRead: number
+   820→    totalUnread: number
+   821→  } | null
+   822→  onManageCycle: () => void
+   823→  onCreateCycle: () => void
+   824→}
+   825→
+   826→function daysBetween(a: string, b: string): number {
+   827→  return Math.round(
+   828→    (new Date(b).getTime() - new Date(a).getTime()) / (1000 * 60 * 60 * 24),
+   829→  )
+   830→}
+   831→
+   832→function todayISO(): string {
+   833→  return new Date().toISOString().slice(0, 10)
+   834→}
+   835→
+   836→function CycleProgressWidget({
+   837→  activeCycle,
+   838→  cycleLoading,
+   839→  remindersSummary,
+   840→  onManageCycle,
+   841→  onCreateCycle,
+   842→}: CycleProgressWidgetProps) {
+   843→  // Start progress bars at 0 then animate to their real value after mount
+   844→  // — Radix Progress needs a value change to trigger the CSS transition.
+   845→  const [mounted, setMounted] = React.useState(false)
+   846→  React.useEffect(() => {
+   847→    const t = window.setTimeout(() => setMounted(true), 60)
+   848→    return () => window.clearTimeout(t)
+   849→  }, [])
+   850→
+   851→  if (cycleLoading) {
+   852→    return (
+   853→      <Card className="overflow-hidden border-[#f97316]/20 bg-gradient-to-br from-orange-50 to-white dark:border-[#f97316]/30 dark:from-slate-900 dark:to-slate-800/50">
+   854→        <CardContent className="p-4">
+   855→          <Skeleton className="h-24 w-full dark:bg-slate-800" />
+   856→        </CardContent>
+   857→      </Card>
+   858→    )
+   859→  }
+   860→
+   861→  // No active cycle — amber alert prompting the user to create one
+   862→  if (!activeCycle) {
+   863→    return (
+   864→      <Card className="relative overflow-hidden border-amber-200 bg-gradient-to-br from-amber-50 to-white dark:border-amber-800/60 dark:from-amber-950/30 dark:to-slate-900">
+   865→        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-amber-400 to-[#f97316]" />
+   866→        <CardContent className="relative flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+   867→          <div className="flex items-start gap-3">
+   868→            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition-transform group-hover:scale-105 dark:bg-amber-900/40 dark:text-amber-300">
+   869→              <CalendarClock className="h-5 w-5" />
+   870→            </div>
+   871→            <div>
+   872→              <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+   873→                ⚠️ ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ
+   874→              </div>
+   875→              <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-300/80">
+   876→                สร้างรอบใหม่เพื่อเริ่มจดมิเตอร์ได้ทันที
+   877→              </div>
+   878→            </div>
+   879→          </div>
+   880→          <Button
+   881→            size="sm"
+   882→            onClick={onCreateCycle}
+   883→            className="shrink-0 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   884→          >
+   885→            <CalendarClock className="h-4 w-4" />
+   886→            สร้างรอบใหม่
+   887→            <ArrowRight className="h-3.5 w-3.5" />
+   888→          </Button>
+   889→        </CardContent>
+   890→      </Card>
+   891→    )
+   892→  }
+   893→
+   894→  // Active cycle — show progress bars
+   895→  const totalDays = Math.max(1, daysBetween(activeCycle.startDate, activeCycle.endDate))
+   896→  const elapsed = Math.max(0, daysBetween(activeCycle.startDate, todayISO()))
+   897→  const daysRemaining = Math.max(0, daysBetween(todayISO(), activeCycle.endDate))
+   898→  const elapsedPct = Math.min(100, Math.round((elapsed / totalDays) * 100))
+   899→
+   900→  const totalRead = remindersSummary?.totalRead ?? 0
+   901→  const totalMeterable =
+   902→    (remindersSummary?.totalRead ?? 0) + (remindersSummary?.totalUnread ?? 0)
+   903→  const readPct =
+   904→    totalMeterable > 0 ? Math.round((totalRead / totalMeterable) * 100) : 0
+   905→
+   906→  // Animate from 0 → target on mount
+   907→  const animElapsedPct = mounted ? elapsedPct : 0
+   908→  const animReadPct = mounted ? readPct : 0
+   909→
+   910→  return (
+   911→    <Card className="group relative overflow-hidden border-[#f97316]/20 bg-gradient-to-br from-orange-50 to-white shadow-sm transition-shadow hover:shadow-md dark:border-[#f97316]/30 dark:from-slate-900 dark:to-slate-800/50">
+   912→      {/* Top accent bar */}
+   913→      <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#fb923c] to-[#f97316]" />
+   914→      {/* Watermark icon */}
+   915→      <span
+   916→        aria-hidden
+   917→        className="pointer-events-none absolute -right-2 -top-2 select-none text-[100px] leading-none text-[#f97316]/5 dark:text-[#fb923c]/10"
+   918→      >
+   919→        <CalendarClock className="h-24 w-24" />
+   920→      </span>
+   921→
+   922→      <CardContent className="relative p-4 sm:p-5">
+   923→        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+   924→          {/* Left: cycle name + dates */}
+   925→          <div className="min-w-0 flex-1">
+   926→            <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+   927→              <CalendarClock className="h-3.5 w-3.5" />
+   928→              รอบจดมิเตอร์ปัจจุบัน
+   929→            </div>
+   930→            <div className="truncate text-base font-bold text-slate-800 dark:text-slate-100 sm:text-lg">
+   931→              {activeCycle.name}
+   932→            </div>
+   933→            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+   934→              <span className="font-mono">
+   935→                📅 {activeCycle.startDate} → {activeCycle.endDate}
+   936→              </span>
+   937→              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:scale-105 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+   938→                กำลังดำเนินการ
+   939→              </Badge>
+   940→            </div>
+   941→          </div>
+   942→
+   943→          {/* Middle: days remaining big number */}
+   944→          <div className="flex shrink-0 items-center gap-4">
+   945→            <div className="flex flex-col items-center justify-center rounded-lg bg-white/70 px-4 py-2 text-center shadow-sm dark:bg-slate-800/60">
+   946→              <div className="text-3xl font-bold tabular-nums leading-tight text-[#f97316] dark:text-[#fb923c]">
+   947→                {daysRemaining}
+   948→              </div>
+   949→              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+   950→                วันที่เหลือ
+   951→              </div>
+   952→            </div>
+   953→
+   954→            {/* Right: progress bars + manage button */}
+   955→            <div className="flex min-w-[180px] flex-1 flex-col gap-2">
+   956→              <div>
+   957→                <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+   958→                  <span>ความคืบหน้ารอบ</span>
+   959→                  <span className="font-mono tabular-nums">{elapsedPct}%</span>
+   960→                </div>
+   961→                <Progress
+   962→                  value={animElapsedPct}
+   963→                  className="h-1.5 [&>div]:bg-gradient-to-r [&>div]:from-[#fb923c] [&>div]:to-[#f97316]"
+   964→                />
+   965→              </div>
+   966→              <div>
+   967→                <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+   968→                  <span>การจดมิเตอร์</span>
+   969→                  <span className="font-mono tabular-nums">
+   970→                    {totalRead}/{totalMeterable} ({readPct}%)
+   971→                  </span>
+   972→                </div>
+   973→                <Progress
+   974→                  value={animReadPct}
+   975→                  className="h-1.5 [&>div]:bg-[#0d9488]"
+   976→                />
+   977→              </div>
+   978→              <Button
+   979→                size="sm"
+   980→                onClick={onManageCycle}
+   981→                className="mt-1 self-end bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   982→              >
+   983→                จัดการรอบ
+   984→                <ArrowRight className="h-3.5 w-3.5" />
+   985→              </Button>
+   986→            </div>
+   987→          </div>
+   988→        </div>
+   989→      </CardContent>
+   990→    </Card>
+   991→  )
+   992→}
+   993→

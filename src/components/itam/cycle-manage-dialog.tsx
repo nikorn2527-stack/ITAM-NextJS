@@ -36,21 +36,48 @@ import {
   ChevronRight,
   Gauge,
   BarChart3,
+  Sparkles,
+  ArrowRight,
 } from 'lucide-react'
 import type { Cycle } from './types'
 import { CycleReportDialog } from './cycle-report-dialog'
 
-interface CycleWithStats extends Cycle {
-  readingCount?: number
-  totalSheets?: number
-}
+const THAI_MONTHS = [
+  'มกราคม',
+  'กุมภาพันธ์',
+  'มีนาคม',
+  'เมษายน',
+  'พฤษภาคม',
+  'มิถุนายน',
+  'กรกฎาคม',
+  'สิงหาคม',
+  'กันยายน',
+  'ตุลาคม',
+  'พฤศจิกายน',
+  'ธันวาคม',
+]
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+function addDaysISO(iso: string, days: number): string {
+  const d = new Date(iso + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+function buildTemplateName(date = new Date()): string {
+  return `รอบจดมิเตอร์ ${THAI_MONTHS[date.getMonth()]} ${date.getFullYear()}`
+}
+
 function daysBetween(a: string, b: string): number {
   return Math.round((new Date(b).getTime() - new Date(a).getTime()) / (1000 * 60 * 60 * 24))
+}
+
+interface CycleWithStats extends Cycle {
+  readingCount?: number
+  totalSheets?: number
 }
 
 function statusBadge(status: string): { className: string; label: string; icon: React.ReactNode } {
@@ -98,6 +125,26 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
   const [actionTarget, setActionTarget] = React.useState<{ cycle: Cycle; action: 'end' | 'cancel' | 'reopen' | 'delete' } | null>(null)
   const [acting, setActing] = React.useState(false)
   const [reportCycleId, setReportCycleId] = React.useState<string | null>(null)
+  // Auto-create next cycle suggestion state
+  const [suggestNext, setSuggestNext] = React.useState<{ endedCycleName: string; nextName: string; nextStart: string; nextEnd: string; durationDays: number } | null>(null)
+  const [creatingNext, setCreatingNext] = React.useState(false)
+
+  // Fetch app settings (for cycleTemplate.autoCreate + durationDays)
+  const { data: settingsMap } = useQuery<Record<string, string>>({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings')
+      if (!res.ok) return {}
+      const json = await res.json()
+      return (json.settings as Record<string, string>) ?? {}
+    },
+    staleTime: 30_000,
+  })
+  const cycleTemplateAutoCreate = settingsMap?.['cycleTemplate.autoCreate'] === 'true'
+  const cycleTemplateDurationDays = Math.min(
+    90,
+    Math.max(7, Number(settingsMap?.['cycleTemplate.durationDays'] ?? '30') || 30),
+  )
 
   // Fetch ALL cycles (with stats) for the history list
   const { data: allCycles, isLoading } = useQuery<CycleWithStats[]>({
@@ -180,6 +227,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
   async function performAction() {
     if (!actionTarget) return
     const { cycle, action } = actionTarget
+    let endedCycleName: string | null = null
     try {
       setActing(true)
       if (action === 'delete') {
@@ -202,16 +250,63 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
         }
         const msgMap = { end: 'จบรอบ', cancel: 'ยกเลิกรอบ', reopen: 'เปิดใช้งานรอบ' }
         toast.success(`${msgMap[action]} "${cycle.name}" แล้ว`)
+        if (action === 'end') endedCycleName = cycle.name
       }
       setActionTarget(null)
       await qc.invalidateQueries({ queryKey: ['active-cycle'] })
       await qc.invalidateQueries({ queryKey: ['all-cycles'] })
       await qc.invalidateQueries({ queryKey: ['meter-reminders'] })
       await qc.invalidateQueries({ queryKey: ['cycle-stats'] })
+      await qc.invalidateQueries({ queryKey: ['notifications'] })
+
+      // If we just ended a cycle and auto-create is enabled, suggest the next cycle.
+      if (endedCycleName && cycleTemplateAutoCreate) {
+        const today = todayISO()
+        const nextName = buildTemplateName()
+        const nextEnd = addDaysISO(today, cycleTemplateDurationDays)
+        setSuggestNext({
+          endedCycleName,
+          nextName,
+          nextStart: today,
+          nextEnd,
+          durationDays: cycleTemplateDurationDays,
+        })
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'ดำเนินการไม่สำเร็จ')
     } finally {
       setActing(false)
+    }
+  }
+
+  async function createNextCycleFromTemplate() {
+    if (!suggestNext) return
+    try {
+      setCreatingNext(true)
+      const res = await fetch('/api/cycles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: suggestNext.nextName,
+          startDate: suggestNext.nextStart,
+          endDate: suggestNext.nextEnd,
+          status: 'active',
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'สร้างรอบไม่สำเร็จ')
+      }
+      toast.success(`สร้างรอบใหม่ "${suggestNext.nextName}" แล้ว`)
+      setSuggestNext(null)
+      await qc.invalidateQueries({ queryKey: ['active-cycle'] })
+      await qc.invalidateQueries({ queryKey: ['all-cycles'] })
+      await qc.invalidateQueries({ queryKey: ['meter-reminders'] })
+      await qc.invalidateQueries({ queryKey: ['notifications'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'สร้างรอบไม่สำเร็จ')
+    } finally {
+      setCreatingNext(false)
     }
   }
 
@@ -519,6 +614,96 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
         onOpenChange={(o) => !o && setReportCycleId(null)}
         cycleId={reportCycleId}
       />
+
+      {/* Auto-create next cycle suggestion dialog */}
+      <Dialog open={!!suggestNext} onOpenChange={(o) => !o && setSuggestNext(null)}>
+        <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+              <Sparkles className="h-5 w-5 text-[#f97316]" />
+              สร้างรอบใหม่อัตโนมัติ
+            </DialogTitle>
+            <DialogDescription className="text-slate-500 dark:text-slate-400">
+              ระบบพร้อมสร้างรอบจดมิเตอร์ใหม่ให้คุณตามเทมเพลตที่ตั้งไว้
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Ended cycle success banner */}
+          <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3 dark:border-emerald-800 dark:from-emerald-950/40 dark:to-slate-900">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                จบรอบเรียบร้อย
+              </div>
+              <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                {suggestNext?.endedCycleName}
+              </div>
+            </div>
+          </div>
+
+          {/* Next cycle preview */}
+          <div className="rounded-lg border border-[#f97316]/30 bg-gradient-to-br from-orange-50 to-white p-4 dark:border-[#f97316]/40 dark:from-slate-900 dark:to-slate-800/60">
+            <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+              <CalendarClock className="h-3.5 w-3.5" />
+              รอบใหม่ที่จะสร้าง
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500 dark:text-slate-400">ชื่อรอบ</span>
+                <span className="font-medium text-slate-800 dark:text-slate-100">
+                  {suggestNext?.nextName}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500 dark:text-slate-400">วันเริ่ม</span>
+                <span className="font-mono font-medium text-slate-800 dark:text-slate-100">
+                  {suggestNext?.nextStart}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-slate-500 dark:text-slate-400">วันสิ้นสุด</span>
+                <span className="font-mono font-medium text-slate-800 dark:text-slate-100">
+                  {suggestNext?.nextEnd}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2 border-t border-[#f97316]/20 pt-2 dark:border-[#f97316]/30">
+                <span className="text-slate-500 dark:text-slate-400">ระยะเวลารอบ</span>
+                <Badge className="border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316] dark:border-[#fb923c]/30 dark:bg-[#fb923c]/10 dark:text-[#fb923c]">
+                  {suggestNext?.durationDays} วัน
+                </Badge>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setSuggestNext(null)}
+              disabled={creatingNext}
+              className="flex-1 focus-visible:ring-2 focus-visible:ring-slate-400"
+            >
+              ภายหลัง
+            </Button>
+            <Button
+              onClick={createNextCycleFromTemplate}
+              disabled={creatingNext}
+              className="flex-1 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+            >
+              {creatingNext ? (
+                'กำลังสร้าง...'
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  สร้างรอบใหม่
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

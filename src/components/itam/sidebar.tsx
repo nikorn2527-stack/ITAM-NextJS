@@ -6,6 +6,7 @@ import { useTheme } from 'next-themes'
 import { Sun, Moon, Search } from 'lucide-react'
 import { useAppStore, type ActivePage } from '@/store/app-store'
 import { cn } from '@/lib/utils'
+import { NotificationsPopover } from './notifications-popover'
 
 interface NavItemDef {
   page: ActivePage
@@ -249,24 +250,28 @@ export function Sidebar() {
             <span className="inline-block h-2 w-2 rounded-full bg-[#f97316]" />
             <span>Powered by PNG TEAM</span>
           </div>
-          {/* Theme toggle — keeps the sidebar dark in both themes, only swaps main content */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
-            title={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
-            className="mx-auto flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-200 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]"
-          >
-            {mounted ? (
-              isDark ? (
-                <Sun className="h-3.5 w-3.5" />
+          {/* Controls row — notifications + theme toggle */}
+          <div className="flex items-center justify-center gap-1.5">
+            <NotificationsPopover />
+            {/* Theme toggle — keeps the sidebar dark in both themes, only swaps main content */}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
+              title={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
+              className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-200 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]"
+            >
+              {mounted ? (
+                isDark ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )
               ) : (
-                <Moon className="h-3.5 w-3.5" />
-              )
-            ) : (
-              <span className="block h-3.5 w-3.5" />
-            )}
-          </button>
+                <span className="block h-4 w-4" />
+              )}
+            </button>
+          </div>
         </div>
       </aside>
     </>

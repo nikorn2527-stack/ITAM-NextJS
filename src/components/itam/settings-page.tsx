@@ -184,7 +184,17 @@ function AppTab() {
   const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
-    if (settings) setForm({ ...settings })
+    if (settings) {
+      // Provide defaults for cycle template keys so the UI is initialized
+      // even on first load (before the user saves anything).
+      const merged: Record<string, string> = {
+        'cycleTemplate.enabled': settings['cycleTemplate.enabled'] ?? 'true',
+        'cycleTemplate.autoCreate': settings['cycleTemplate.autoCreate'] ?? 'true',
+        'cycleTemplate.durationDays': settings['cycleTemplate.durationDays'] ?? '30',
+        ...settings,
+      }
+      setForm(merged)
+    }
   }, [settings])
 
   async function save() {
@@ -273,6 +283,84 @@ function AppTab() {
               setForm({ ...form, enablePasswordLogin: c ? 'true' : 'false' })
             }
           />
+        </div>
+
+        {/* Cycle template section — distinct Card with subtle gradient bg */}
+        <div className="overflow-hidden rounded-lg border border-[#f97316]/30 bg-gradient-to-br from-orange-50 via-white to-white shadow-sm dark:border-[#f97316]/40 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900">
+          <div className="flex items-center gap-2 border-b border-[#f97316]/20 bg-gradient-to-r from-orange-50/80 to-transparent px-4 py-3 dark:border-[#f97316]/30 dark:from-slate-800/60 dark:to-transparent">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#f97316]/15 text-[#f97316] dark:bg-[#fb923c]/15 dark:text-[#fb923c]">
+              <CalendarClock className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                ตั้งค่ารอบจดมิเตอร์อัตโนมัติ
+              </div>
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                กำหนดเทมเพลตสำหรับสร้างรอบใหม่เมื่อจบรอบปัจจุบัน
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4 p-4">
+            <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
+              <div className="pr-3">
+                <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  สร้างรอบใหม่อัตโนมัติเมื่อจบรอบ
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  เมื่อจบรอบปัจจุบัน ระบบจะแนะนำการสร้างรอบใหม่โดยอัตโนมัติ
+                </div>
+              </div>
+              <Switch
+                checked={form['cycleTemplate.autoCreate'] === 'true'}
+                onCheckedChange={(c) =>
+                  setForm({
+                    ...form,
+                    'cycleTemplate.autoCreate': c ? 'true' : 'false',
+                    'cycleTemplate.enabled': c ? 'true' : 'false',
+                  })
+                }
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  ระยะเวลารอบ (วัน)
+                </Label>
+                <Input
+                  type="number"
+                  min={7}
+                  max={90}
+                  value={form['cycleTemplate.durationDays'] ?? '30'}
+                  onChange={(e) => {
+                    const v = Math.min(
+                      90,
+                      Math.max(7, Number(e.target.value) || 30),
+                    )
+                    setForm({
+                      ...form,
+                      'cycleTemplate.durationDays': String(v),
+                    })
+                  }}
+                  className="dark:bg-slate-800 dark:border-slate-700"
+                />
+              </div>
+              <div className="flex items-end">
+                <p className="rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                  ชื่อรอบใหม่จะเป็น "<span className="font-medium">รอบจดมิเตอร์ &lt;เดือน&gt; &lt;ปี&gt;</span>"
+                  เริ่มวันนี้ และสิ้นสุดในอีก {form['cycleTemplate.durationDays'] ?? '30'} วัน
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-md bg-[#f97316]/5 px-3 py-2 text-xs text-[#f97316] dark:bg-[#fb923c]/10 dark:text-[#fb923c]">
+              <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                ตั้งค่านี้ใช้กับการจบรอบจดมิเตอร์ในหน้า "จดมิเตอร์" → จัดการรอบ เท่านั้น
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="flex justify-end">
