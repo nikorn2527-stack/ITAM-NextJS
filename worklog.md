@@ -702,3 +702,96 @@ Stage Summary:
 - All 3 features verified working end-to-end: multi-site comparison (API + table + grouped bar chart + leaderboard with medals), device utilization analytics (API + heatmap + top/low lists + trend badges), user permissions UI (CRUD + role badges + inline active toggle + last-admin guard).
 - No bugs found. Classic sidebar preserved. Sticky footer intact. Lint clean. No new runtime errors.
 - Recommended next round: (1) device lifecycle/warranty dashboard (replacement planning timeline), (2) meter reading email reminders, (3) export full audit log as PDF/CSV, (4) dashboard customizable widgets, (5) device assignment/checkout system (who has which device).
+
+---
+Task ID: 15
+Agent: full-stack-developer (webDevReview round 8)
+Task: Device Assignment/Checkout system + Audit Log CSV/PDF export + Device Lifecycle (replacement planning) dashboard + styling polish.
+
+Work Log:
+- Prisma schema (`prisma/schema.prisma`):
+  - Added new `Assignment` model: id, deviceId, assignee, assigneeRole?, department?, checkoutDate, expectedReturnDate?, actualReturnDate?, status (active|returned), notes?, createdAt, updatedAt, with `device Device @relation(... onDelete: Cascade)`.
+  - Added `currentAssignee String?` denormalized field on Device for quick table/card display.
+  - Added `assignments Assignment[]` back-relation on Device.
+  - Ran `bun run db:push` — schema synced, Prisma Client regenerated (v6.19.2).
+  - Updated `src/lib/db.ts` staleness probe to include `(globalForPrisma.prisma as ...).assignment` check + touched `next.config.ts` to force re-eval.
+- Shared types (`src/components/itam/types.ts`):
+  - Added `Assignment` interface + `currentAssignee` field on `Device`.
+  - Added `LifecycleDevice`, `LifecycleSummary`, `LifecycleData`, `LifecycleRecommendation` types for the new lifecycle feature.
+- Assignment API:
+  - `src/app/api/devices/[id]/assign/route.ts` — GET returns assignments ordered by checkoutDate DESC; POST creates a new active assignment (validates assignee present, refuses 409 if an active assignment already exists), sets `device.currentAssignee`, logs audit `ASSIGN` with Thai summary "มอบหมายอุปกรณ์ <assetCode> ให้ <assignee>".
+  - `src/app/api/devices/[id]/return/route.ts` — POST finds active assignment, sets `status='returned'` + `actualReturnDate`, appends return notes to existing notes (newline-separated), clears `device.currentAssignee`, logs audit `RETURN` "คืนอุปกรณ์ <assetCode> จาก <assignee>".
+- Device detail sheet (`src/components/itam/device-detail-sheet.tsx`):
+  - New "ผู้ใช้งานปัจจุบัน" section (above the info grid): distinct teal-bordered card with User icon in a soft teal circle, bold assignee name, role/department in slate-500, checkout date with ClipboardList icon, expected return date if present, notes panel; a rose "คืนอุปกรณ์" button on the right. Empty state has dashed teal border + User icon + "มอบหมาย" button (teal).
+  - New "ประวัติการมอบหมาย" timeline section below transfer history: vertical timeline with teal dots + connector line (mirrors transfer-history style), each entry shows checkoutDate, assignee + role, status badge (active=emerald "กำลังใช้งาน", returned=slate "คืนแล้ว"), expectedReturnDate, actualReturnDate (green), notes panel.
+  - Assign dialog (sm:max-w-md): assignee (Input, required), assigneeRole (Input), department (Input, prefilled from device.department), checkoutDate (date, default today), expectedReturnDate (date, optional), notes (Textarea). Confirm button is teal.
+  - Return dialog (sm:max-w-md): actualReturnDate (date, default today), notes (Textarea). Confirm button is rose.
+  - Invalidation pattern: after assign/return, invalidate `device-detail`, `device-assignments`, `devices`, and `audit` queries.
+- Devices page (`src/components/itam/devices-page.tsx`):
+  - New "ผู้ใช้งาน" column in the devices table (between Site and Department). Each cell shows either an avatar (first letter in a colored circle, palette deterministic per first char) + name, or a muted "—" with UserMinus icon if unassigned. Clicking the assignee name stops propagation and opens the device detail sheet.
+  - Updated empty-state "ไม่พบอุปกรณ์" condition to include `assigneeFilter` check; "ล้างตัวกรอง" button now also resets `assigneeFilter`. Updated table `colSpan` from 12 → 13 (skeleton + empty states).
+  - New assignee filter Select in the toolbar: ทั้งหมด / มอบหมายแล้ว / ยังไม่มอบหมาย. Filter applied client-side via `useMemo`.
+  - Added `currentAssignee` to the CSV export headers (`ผู้ใช้งาน` column).
+  - Added `AVATAR_COLORS` palette + `avatarColor(name)` helper.
+- Audit export (`src/components/itam/settings-page.tsx`):
+  - Added `Download` + `FileText` + `UserCheck` + `Undo2` icon imports, plus `downloadCsv` + `dateStamp` from `@/lib/csv`.
+  - Added `ASSIGN` and `RETURN` to `AUDIT_ACTION_OPTIONS` + corresponding badge classes (teal/rose) in `actionBadgeClass`. Added `Assignment` case to `entityIcon` (UserCheck icon).
+  - Added settings query inside `AuditTab` for org name in PDF header, plus `escapeHtml` helper.
+  - `exportCsv()`: fetches ALL filtered entries (limit=500) — not just the visible page — and downloads via `downloadCsv` with headers [วันที่เวลา, การกระทำ, รายการ, รายละเอียด, ผู้กระทำ]. Toast on success/error.
+  - `exportPdf()`: opens new window, writes a print-ready HTML doc with `@page { size: A4; margin: 15mm }`, professional layout — header (📋 ประวัติการใช้งานระบบ + org name in teal + generated date + count), filter summary panel, full audit table (zebra striping, color-coded action badges matching the in-app palette — emerald/amber/rose/orange/teal/violet), footer "PNG TEAM — IT Asset Management · Audit Log Report". Calls `window.print()` after 250ms.
+  - Both export buttons live in the Audit tab toolbar next to refresh: CSV button = teal outline, PDF button = orange outline, both with icons (Download / FileText). Both disabled while exporting.
+- Lifecycle API (`src/app/api/devices/lifecycle/route.ts`):
+  - GET returns `{ devices: [...], summary: { total, replace, monitor, ok, avgAge } }`.
+  - Per-device: id, assetCode, name, brand, model, site, status, purchaseDate, ageInMonths, warrantyStatus (active|expiring|expired|unknown), warrantyExpiry, replacementScore (0-100), recommendation ('replace'|'monitor'|'ok').
+  - Score formula: age-based ramp (+1.0/mo up to 60 months → +0.4/mo beyond), +20 if warranty expired, +10 if expiring, +15 if status=repair. Clamped 0-100.
+  - Recommendation thresholds: ≥70 replace, 40-69 monitor, <40 ok.
+  - Sorted by replacementScore DESC (most urgent first). avgAge rounded mean across all devices.
+- Lifecycle component (`src/components/itam/lifecycle-dashboard.tsx`):
+  - Self-contained, embeddable Card with rose/amber/emerald gradient top accent bar.
+  - Header: 🔄 วงจรชีวิตอุปกรณ์ + subtitle "วางแผนการเปลี่ยนทดแทน". Top-right shows avgAge + refresh button.
+  - 3 SummaryMiniCards with count-up animation (useCountUp hook mirroring dashboard-page): ควรเปลี่ยนทดแทน (rose, AlertTriangle) / ติดตาม (amber, Eye) / ปกติ (emerald, CheckCircle2).
+  - Top 5 "เร่งเปลี่ยนทดแทน" list with framer-motion stagger entrance (each card slides in with 0.04s delay). Each card shows device name + assetCode, age badge (amber if > 36 months), warranty status badge, site, and a rose gradient score bar (0-100). Clicking opens device detail sheet via `setPendingDeviceId`.
+  - Empty state: dashed emerald border + CheckCircle2 icon + "ทุกเครื่องอยู่ในสถานะปกติ".
+  - "ดูทั้งหมด" button → opens Dialog (sm:max-w-4xl) with the full lifecycle table: all devices sorted by score, columns รหัส/ชื่อ/สาขา/อายุ/รับประกัน/คะแนน/สถานะ. Score bar in each row uses rose gradient for replace, amber for monitor, emerald for ok. Footer shows breakdown counts + close button.
+- Dashboard integration (`src/components/itam/dashboard-page.tsx`):
+  - Imported `LifecycleDashboard` from `./lifecycle-dashboard`.
+  - Embedded `<LifecycleDashboard />` between the Cycle Progress Widget and the Warranty alert bar.
+
+Stage Summary:
+- 3 features shipped end-to-end: Assignment/Checkout (with full lifecycle — checkout/return/history), Audit Log CSV+PDF export (filter-respecting, all matching entries), Device Lifecycle dashboard (replacement score + recommendations).
+- `bun run db:push` ✓ success (Assignment model + currentAssignee field). Updated `db.ts` staleness probe for the new `assignment` model + touched `next.config.ts`.
+- `bun run lint` ✓ 0 errors, 0 warnings.
+- Dev log clean — all API routes returning 200/201, no 500s, no PrismaClient staleness errors. Verified via curl:
+  - GET `/api/devices/[id]/assign` returns assignments history.
+  - POST `/api/devices/[id]/assign` creates active assignment, sets currentAssignee on Device.
+  - POST `/api/devices/[id]/assign` again while active → 409 conflict with Thai error.
+  - POST `/api/devices/[id]/return` updates status='returned', sets actualReturnDate, concatenates notes, clears currentAssignee.
+  - Both endpoints log proper `ASSIGN`/`RETURN` audit entries — verified via `/api/audit?action=ASSIGN` and `/api/audit?action=RETURN`.
+  - GET `/api/devices/lifecycle` returns `{total:12, replace:3, monitor:9, ok:0, avgAge:46}` with sorted devices (top scores 95, 88, 71).
+  - GET `/api/audit?limit=500` returns 34 entries spanning 14 distinct actions (incl. new ASSIGN/RETURN).
+- Sidebar preserved exactly (no edits to sidebar/layout). Footer sticky preserved. All Thai labels. Orange (#f97316/#fb923c) primary, teal (#0d9488/#14b8a6) secondary, rose accents for "needs replacement" / "return device" / RETURN audit. All new UI has full dark-mode support (`dark:` variants throughout).
+- Polished styling: avatar circles with deterministic palette, distinct teal-bordered current-assignee card with gradient, rose gradient progress bars for replacement scores, amber age badges (>36 months), framer-motion staggered list entrance, count-up animated summary cards.
+
+---
+Task ID: 15-QA
+Agent: orchestrator (main) — round 8 independent verification
+Task: Independently verify all 3 new features via agent-browser + curl.
+
+Work Log:
+- Read subagent's Task 15 worklog entry. Dev server healthy (HTTP 200, all endpoints 200).
+- API verification via curl:
+  - GET /api/devices/lifecycle → 200, {summary: {total:12, replace:3, monitor:9, ok:0, avgAge:46}}, top scores 95/88/71. ✓
+  - POST /api/devices/<id>/assign → 201, assignment created with status=active, device.currentAssignee set. ✓
+  - POST /api/devices/<id>/assign (duplicate) → 409 (conflict guard works). ✓
+  - POST /api/devices/<id>/return → 200, assignment status=returned, device.currentAssignee cleared. ✓
+  - GET /api/devices/<id>/assign → returns assignment history. ✓
+- agent-browser UI verification:
+  - Dashboard: lifecycle section present ("วงจรชีวิตอุปกรณ์" + "ควรเปลี่ยนทดแทน" count). ✓
+  - Devices table: "ผู้ใช้งาน" column present (between สาขา and แผนก). ✓
+  - Settings audit tab: CSV + PDF export buttons present. ✓
+- `bun run lint` → 0 errors, 0 warnings. No errors from new features in dev.log.
+
+Stage Summary:
+- All 3 features verified working end-to-end: device assignment/checkout (checkout/return + currentAssignee + history timeline + assignee column + filter), audit log export (CSV + PDF with filters), device lifecycle dashboard (API + summary cards + replacement list + full table dialog).
+- No bugs found. Classic sidebar preserved. Sticky footer intact. Lint clean. No new runtime errors.
+- Recommended next round: (1) meter reading email reminders, (2) dashboard customizable widgets (drag-reorder), (3) device depreciation tracking, (4) scheduled report generation, (5) mobile PWA improvements.

@@ -18,6 +18,22 @@ export interface Device {
   purchaseDate: string | null
   warrantyMonths: number
   lastMeterReading: number
+  currentAssignee: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Assignment {
+  id: string
+  deviceId: string
+  assignee: string
+  assigneeRole: string | null
+  department: string | null
+  checkoutDate: string
+  expectedReturnDate: string | null
+  actualReturnDate: string | null
+  status: string // 'active' | 'returned'
+  notes: string | null
   createdAt: string
   updatedAt: string
 }
@@ -310,6 +326,38 @@ export interface DeviceTransfer {
   reason: string | null
   transferDate: string
   createdAt: string
+}
+
+// ---- Lifecycle / Replacement planning ----
+export type LifecycleRecommendation = 'replace' | 'monitor' | 'ok'
+
+export interface LifecycleDevice {
+  id: string
+  assetCode: string
+  name: string
+  brand: string
+  model: string
+  site: string
+  status: string
+  purchaseDate: string | null
+  ageInMonths: number
+  warrantyStatus: WarrantyStatus
+  warrantyExpiry: string | null
+  replacementScore: number // 0-100
+  recommendation: LifecycleRecommendation
+}
+
+export interface LifecycleSummary {
+  total: number
+  replace: number
+  monitor: number
+  ok: number
+  avgAge: number
+}
+
+export interface LifecycleData {
+  devices: LifecycleDevice[]
+  summary: LifecycleSummary
 }
 
 export const DEVICE_STATUS_OPTIONS = [

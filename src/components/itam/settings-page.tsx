@@ -68,6 +68,10 @@ import {
   CalendarClock,
   Server,
   Coins,
+  Download,
+  FileText,
+  UserCheck,
+  Undo2,
 } from 'lucide-react'
 import {
   type MasterItem,
@@ -78,6 +82,7 @@ import {
 } from './types'
 import { MasterDataModal } from './master-data-modal'
 import { useAppStore, type SettingsTab } from '@/store/app-store'
+import { downloadCsv, dateStamp } from '@/lib/csv'
 
 /* ---------- User types & helpers ---------- */
 interface AppUser {
@@ -1622,6 +1627,8 @@ const AUDIT_ACTION_OPTIONS = [
   'IMPORT',
   'TRANSFER',
   'PRINT',
+  'ASSIGN',
+  'RETURN',
   'CYCLE_START',
   'CYCLE_END',
   'CYCLE_CANCEL',
@@ -1660,6 +1667,10 @@ function actionBadgeClass(action: string): string {
       return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
     case 'PRINT':
       return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
+    case 'ASSIGN':
+      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
+    case 'RETURN':
+      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
     case 'BULK_UPDATE':
       return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
     case 'BULK_TRANSFER':
@@ -1688,6 +1699,8 @@ function entityIcon(entity: string) {
       return <SettingsIcon className={cls} />
     case 'User':
       return <Users className={cls} />
+    case 'Assignment':
+      return <UserCheck className={cls} />
     default:
       return <Server className={cls} />
   }
@@ -1735,6 +1748,213 @@ function AuditTab() {
       return (json.logs ?? []) as AuditLog[]
     },
   })
+
+  // Org name shown in the PDF report header.
+  const { data: settings } = useQuery<Record<string, string>>({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings')
+      if (!res.ok) return {}
+      const json = await res.json()
+      return (json.settings as Record<string, string>) ?? {}
+    },
+    staleTime: 60_000,
+  })
+
+  const [exporting, setExporting] = React.useState<'csv' | 'pdf' | null>(null)
+
+  async function fetchAllFiltered(): Promise<AuditLog[]> {
+    // Always request a high limit so exports include every matching entry,
+    // not just the visible page (limit 100 on the table query).
+    const params = new URLSearchParams()
+    params.set('limit', '500')
+    if (entity !== 'all') params.set('entity', entity)
+    if (action !== 'all') params.set('action', action)
+    if (debouncedQ) params.set('q', debouncedQ)
+    const res = await fetch(`/api/audit?${params.toString()}`)
+    if (!res.ok) throw new Error('Failed to fetch audit logs')
+    const json = await res.json()
+    return (json.logs ?? []) as AuditLog[]
+  }
+
+  function describeFilters(): string {
+    const parts: string[] = []
+    parts.push(
+      'รายการ: ' + (entity === 'all' ? 'ทั้งหมด' : entity),
+    )
+    parts.push(
+      'การกระทำ: ' + (action === 'all' ? 'ทั้งหมด' : action),
+    )
+    if (debouncedQ) parts.push('คำค้น: "' + debouncedQ + '"')
+    return parts.join(' · ')
+  }
+
+  function escapeHtml(s: string): string {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  }
+
+  async function exportCsv() {
+    try {
+      setExporting('csv')
+      const all = await fetchAllFiltered()
+      if (all.length === 0) {
+        toast.error('ไม่มีรายการให้ส่งออก')
+        return
+      }
+      const headers = [
+        { key: 'createdAt', label: 'วันที่เวลา' },
+        { key: 'action', label: 'การกระทำ' },
+        { key: 'entity', label: 'รายการ' },
+        { key: 'summary', label: 'รายละเอียด' },
+        { key: 'actor', label: 'ผู้กระทำ' },
+      ]
+      const rows = all.map((l) => ({
+        createdAt: formatThaiDateTime(l.createdAt),
+        action: l.action,
+        entity: l.entity + (l.entityId ? ' · ' + l.entityId.slice(-8) : ''),
+        summary: l.summary,
+        actor: l.actor,
+      }))
+      downloadCsv(`audit-log-${dateStamp()}.csv`, rows, headers)
+      toast.success(`ส่งออก ${all.length} รายการแล้ว`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'CSV export failed')
+    } finally {
+      setExporting(null)
+    }
+  }
+
+  async function exportPdf() {
+    try {
+      setExporting('pdf')
+      const all = await fetchAllFiltered()
+      if (all.length === 0) {
+        toast.error('ไม่มีรายการให้ส่งออก')
+        return
+      }
+      const printWindow = window.open('', '_blank', 'width=900,height=700')
+      if (!printWindow) {
+        toast.error('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ — กรุณาอนุญาต popup')
+        return
+      }
+      const org = settings?.orgName ?? '—'
+      const generatedDate = new Date().toLocaleString('th-TH', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      const filters = describeFilters()
+      const rows = all
+        .map(
+          (l, i) => `
+          <tr class="${i % 2 === 0 ? 'even' : 'odd'}">
+            <td>${escapeHtml(formatThaiDateTime(l.createdAt))}</td>
+            <td><span class="badge badge-${escapeHtml(l.action.toLowerCase())}">${escapeHtml(l.action)}</span></td>
+            <td>${escapeHtml(l.entity)}${l.entityId ? ' <span class="muted">·' + escapeHtml(l.entityId.slice(-8)) + '</span>' : ''}</td>
+            <td>${escapeHtml(l.summary)}</td>
+            <td>${escapeHtml(l.actor)}</td>
+          </tr>`,
+        )
+        .join('')
+      const html = `<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<title>ประวัติการใช้งานระบบ — Audit Log</title>
+<style>
+  @page { size: A4; margin: 15mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Sukhumvit Set","Noto Sans Thai","Tahoma","Segoe UI",sans-serif;
+    color: #1e293b; margin: 0; padding: 0; font-size: 11px;
+  }
+  .header { border-bottom: 3px solid #f97316; padding-bottom: 8px; margin-bottom: 10px; }
+  .header h1 { font-size: 18px; margin: 0 0 4px 0; color: #0f172a; }
+  .header .meta { font-size: 10px; color: #64748b; line-height: 1.5; }
+  .header .org { font-weight: 600; color: #0d9488; }
+  .filters {
+    background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 4px; padding: 6px 8px; margin-bottom: 10px;
+    font-size: 10px; color: #475569;
+  }
+  table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  thead th {
+    background: #0f172a; color: #fff; padding: 6px 8px; text-align: left;
+    font-size: 10px; font-weight: 600; border: 1px solid #0f172a;
+  }
+  tbody td { padding: 5px 8px; border: 1px solid #e2e8f0; vertical-align: top; }
+  tr.odd td { background: #fafbfc; }
+  tr.even td { background: #ffffff; }
+  .badge {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 9px; font-weight: 600; color: #fff;
+    background: #64748b; min-width: 28px; text-align: center;
+  }
+  .badge-create, .badge-cycle_reopen { background: #10b981; }
+  .badge-update, .badge-transfer, .badge-bulk_transfer { background: #f59e0b; color: #1e293b; }
+  .badge-delete, .badge-cycle_cancel, .badge-bulk_delete { background: #f43f5e; }
+  .badge-meter_reading, .badge-print, .badge-bulk_update { background: #f97316; }
+  .badge-sync, .badge-import { background: #14b8a6; }
+  .badge-assign { background: #14b8a6; }
+  .badge-return { background: #f43f5e; }
+  .badge-cycle_start, .badge-cycle_end { background: #8b5cf6; }
+  .badge-seed { background: #64748b; }
+  .muted { color: #94a3b8; }
+  .footer {
+    margin-top: 12px; padding-top: 8px; border-top: 1px solid #e2e8f0;
+    font-size: 9px; color: #94a3b8; text-align: center;
+  }
+  .footer strong { color: #f97316; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>📋 ประวัติการใช้งานระบบ</h1>
+    <div class="meta">
+      <div class="org">${escapeHtml(org)}</div>
+      <div>สร้างเมื่อ: ${escapeHtml(generatedDate)} · จำนวนรายการ: ${all.length}</div>
+    </div>
+  </div>
+  <div class="filters">🔎 ตัวกรอง — ${escapeHtml(filters)}</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 110px">วันที่เวลา</th>
+        <th style="width: 90px">การกระทำ</th>
+        <th style="width: 100px">รายการ</th>
+        <th>รายละเอียด</th>
+        <th style="width: 100px">ผู้กระทำ</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+  </table>
+  <div class="footer">
+    <strong>PNG TEAM</strong> — IT Asset Management · Audit Log Report
+  </div>
+  <script>
+    window.onload = function () { setTimeout(function () { window.print(); }, 250); };
+  </script>
+</body>
+</html>`
+      printWindow.document.open()
+      printWindow.document.write(html)
+      printWindow.document.close()
+      toast.success(`กำลังเปิดหน้าพิมพ์ (${all.length} รายการ)`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'PDF export failed')
+    } finally {
+      setExporting(null)
+    }
+  }
 
   return (
     <Card className="dark:border-slate-800 dark:bg-slate-900">
@@ -1789,6 +2009,28 @@ function AuditTab() {
             aria-label="รีเฟรช"
           >
             <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            onClick={exportCsv}
+            disabled={exporting !== null}
+            aria-label="ส่งออก CSV"
+            title="ส่งออก CSV (ทั้งหมดตามตัวกรอง)"
+            className="border-[#0d9488] text-[#0d9488] hover:bg-[#0d9488]/10 focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6] dark:text-[#14b8a6] dark:hover:bg-[#14b8a6]/10 dark:focus-visible:ring-offset-slate-950"
+          >
+            <Download className="h-4 w-4" />
+            <span className="hidden sm:inline">CSV</span>
+          </Button>
+          <Button
+            variant="outline"
+            onClick={exportPdf}
+            disabled={exporting !== null}
+            aria-label="ส่งออก PDF"
+            title="ส่งออก PDF (ทั้งหมดตามตัวกรอง)"
+            className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:border-[#fb923c] dark:text-[#fb923c] dark:hover:bg-[#fb923c]/10 dark:focus-visible:ring-offset-slate-950"
+          >
+            <FileText className="h-4 w-4" />
+            <span className="hidden sm:inline">PDF</span>
           </Button>
         </div>
 

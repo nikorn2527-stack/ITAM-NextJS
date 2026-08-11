@@ -28,11 +28,30 @@ model Device {
   purchaseDate    String? // ISO date string
   warrantyMonths  Int     @default(12)
   lastMeterReading Int    @default(0)
+  currentAssignee String? // denormalized for quick display in tables/cards
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   meterReadings MeterReading[]
   transfers    DeviceTransfer[]
+  assignments  Assignment[]
+}
+
+model Assignment {
+  id                 String   @id @default(cuid())
+  deviceId           String
+  assignee           String   // user email or name
+  assigneeRole       String?  // job title / role (optional)
+  department         String?
+  checkoutDate       String   // ISO date
+  expectedReturnDate String?
+  actualReturnDate   String?
+  status             String   // active | returned
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 }
 
 model SiteRate {
