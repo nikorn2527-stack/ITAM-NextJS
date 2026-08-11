@@ -94,7 +94,6 @@ model MeterReading {
 // ============================================================
 // TODO: Models ถัดไป (รอ headers จากผู้ใช้)
 //
-// 4) Master_Category     — หมวดหมู่ master
 // 5) Location_History    — ประวัติการย้าย
 // 6) Cycles              — รอบจดมิเตอร์
 // 7) Audit_Log           — ประวัติการใช้งาน
@@ -104,6 +103,22 @@ model MeterReading {
 // 11) Assignments        — การมอบหมาย
 // 12) MaintenanceLog     — ซ่อมบำรุง
 // ============================================================
+
+// ============================================================
+// 4) Master_Category — หมวดหมู่ของ Master Items
+//    Source: sheet "Master_Category" (4 columns)
+// ============================================================
+model MasterCategory {
+  id           String   @id @default(cuid())
+  categoryKey  String   @unique @map("CategoryKey") // DeviceType | Brand | Model | Department | Status | DeviceGroup
+  displayName  String?  @map("DisplayName") // เช่น "ประเภทอุปกรณ์"
+  sortOrder    Int      @default(0) @map("SortOrder") // ลำดับการแสดง
+  active       Boolean  @default(true) @map("Active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("master_categories")
+}
 
 // ============================================================
 // 3) Master_Items — ข้อมูลมาตรฐาน (Brand/Type/Model/Department/Status/DeviceGroup)
