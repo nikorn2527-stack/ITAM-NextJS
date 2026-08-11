@@ -10,6 +10,9 @@ import { MeterPage } from '@/components/itam/meter-page'
 import { PaperAnalyticsPage } from '@/components/itam/paper-analytics-page'
 import { SettingsPage } from '@/components/itam/settings-page'
 import { ItamDashboard } from '@/components/itam/itam-dashboard'
+import { ItamDevices } from '@/components/itam/itam-devices'
+import { ItamMeter } from '@/components/itam/itam-meter'
+import { ItamSettings } from '@/components/itam/itam-settings'
 import { useAppStore } from '@/store/app-store'
 
 export default function Home() {
@@ -28,6 +31,9 @@ export default function Home() {
           >
             {activePage === 'dashboard' && <DashboardPage />}
             {activePage === 'itam' && <ItamDashboard />}
+            {activePage === 'itam-devices' && <ItamDevices />}
+            {activePage === 'itam-meter' && <ItamMeter />}
+            {activePage === 'itam-settings' && <ItamSettings />}
             {activePage === 'devices' && <DevicesPage />}
             {activePage === 'meter' && <MeterPage />}
             {activePage === 'paper-analytics' && <PaperAnalyticsPage />}

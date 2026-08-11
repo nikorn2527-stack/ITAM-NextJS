@@ -1161,3 +1161,44 @@ Stage Summary:
 - API ครบ: 11 routes (devices CRUD, meter-readings, master-items CRUD, assignments CRUD, maintenance CRUD, audit, license-records, search, dashboard, sites)
 - UI: ITAM Dashboard แสดงข้อมูลจริง 2,378 อุปกรณ์ query 19ms
 - พร้อม deploy ขึ้น Vercel
+
+---
+Task ID: 26
+Agent: orchestrator (main) — ITAM UI pages with real database
+Task: สร้าง UI หน้า Devices/Meter/Settings ที่ใช้ /api/itam/* API ใหม่
+
+Work Log:
+1. ItamDashboard (itam-dashboard.tsx):
+   - 5 KPI cards (อุปกรณ์/ใช้งาน/สำรอง/ส่งซ่อม/ต้องจดมิเตอร์)
+   - Bar chart อุปกรณ์ตามประเภท (teal gradient)
+   - สาขา cards with device count
+   - มิเตอร์ล่าสุด list
+   - แสดง query time (⚡ 42ms)
+
+2. ItamDevices (itam-devices.tsx):
+   - Search (assetNo, deviceType, brand, model, serial, department)
+   - Status filter (Active/In Stock/Pending Repair/Inactive/Retired)
+   - Pagination (20/page)
+   - Table: รหัส | ประเภท | แบรนด์/รุ่น | สถานะ | สาขา | แผนก | มิเตอร์
+   - ทดสอบ: แสดง 20 แถวจริง (ZEBRA, EPSON, BARCODE SCANNERS)
+
+3. ItamMeter (itam-meter.tsx):
+   - List meter readings (14,269 total, pagination 20/page)
+   - Table: วันที่ | รหัส | อุปกรณ์ | ค่ามิเตอร์ | ใช้ไป | หมายเหตุ
+   - Dialog จดมิเตอร์ (assetNo + meterBw + remark → POST)
+   - ทดสอบ: แสดง 20 แถวจริง (856 OKI 9,302 → 143 แผ่น)
+   - แก้ bug: GET handler ถูก Write ทับ → เพิ่มกลับ
+
+4. ItamSettings (itam-settings.tsx):
+   - Tabs: ข้อมูลมาตรฐาน | สาขา
+   - Master items: filter by category + CRUD (add/edit/delete)
+   - Sites: cards with device count + paper rates
+   - ทดสอบ: แสดง 306 master items + 6 สาขา
+
+Sidebar: เพิ่ม 4 nav items (ITAM Dashboard, ITAM อุปกรณ์, ITAM มิเตอร์, ITAM ตั้งค่า)
+Store: เพิ่ม ActivePage types (itam, itam-devices, itam-meter, itam-settings)
+Lint: 0 errors
+
+Stage Summary:
+- 4 ITAM UI pages ทำงานครบ แสดงข้อมูลจริงจาก database (2,378 devices, 14,269 readings, 306 master items, 6 sites)
+- พร้อมขั้นตอนถัดไป: ทดสอบใช้งานจริง + เปลี่ยนเป็น Supabase + Deploy Vercel
