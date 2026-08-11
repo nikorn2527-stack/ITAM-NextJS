@@ -1126,3 +1126,38 @@ Stage Summary:
 - API พร้อมใช้: 4 endpoints ทำงานได้
 - ความเร็ว: Prisma 19ms vs Google Sheets 626ms (32x เร็วกว่า)
 - ขั้นตอนถัดไป: สร้าง UI ที่ใช้ API ใหม่ + เพิ่ม API endpoints อื่น (CRUD devices, meter readings POST, etc.)
+
+---
+Task ID: 25
+Agent: orchestrator (main) — ITAM API CRUD + UI + Deploy
+Task: ทำครบทั้ง 4 ขั้นตอน (CRUD APIs + Additional APIs + UI + Deploy guide)
+
+Work Log:
+2+3. API CRUD + Additional APIs:
+   - devices/[id] — GET (single device with relations) + PUT (update) + DELETE
+   - meter-readings — POST (create reading with auto delta calculation)
+   - master-items — GET (filter by category) + POST + [id] PUT/DELETE
+   - assignments — GET (filter by assetNo/status) + POST (checkout with conflict check) + [id] PUT (return) + DELETE
+   - maintenance — GET (filter by assetNo/status) + POST (create log) + [id] PUT (complete) + DELETE
+   - audit — GET (filter by action/user/q + limit)
+   - license-records — GET (filter by assetNo) + POST
+   - search — GET (global search across devices/master/audit/sites)
+   รวม: 11 API routes, 20+ endpoints — ทดสอบผ่านทั้งหมด (lint clean)
+
+1. UI:
+   - สร้าง ItamDashboard component — แสดงข้อมูลจริงจาก /api/itam/dashboard
+   - 5 KPI cards (อุปกรณ์ทั้งหมด/ใช้งาน/สำรอง/ส่งซ่อม/ต้องจดมิเตอร์)
+   - Bar chart อุปกรณ์ตามประเภท (teal gradient)
+   - สาขา cards with device count
+   - มิเตอร์ล่าสุด list
+   - แสดง query time (⚡ 42ms)
+   - เพิ่ม nav item "🎯 ITAM (Real DB)" ใน sidebar
+   - ทดสอบ: agent-browser คลิก ITAM → แสดงข้อมูลจริง (2,378 เครื่อง, 6 สาขา)
+
+4. Deploy:
+   - คำแนะนำ deploy ขึ้น Vercel (ด้านล่าง)
+
+Stage Summary:
+- API ครบ: 11 routes (devices CRUD, meter-readings, master-items CRUD, assignments CRUD, maintenance CRUD, audit, license-records, search, dashboard, sites)
+- UI: ITAM Dashboard แสดงข้อมูลจริง 2,378 อุปกรณ์ query 19ms
+- พร้อม deploy ขึ้น Vercel
