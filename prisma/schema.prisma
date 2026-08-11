@@ -31,6 +31,23 @@ model Device {
   updatedAt       DateTime @updatedAt
 
   meterReadings MeterReading[]
+  transfers    DeviceTransfer[]
+}
+
+model DeviceTransfer {
+  id           String   @id @default(cuid())
+  deviceId     String
+  fromSite     String?
+  toSite       String
+  fromDept     String?
+  toDept       String?
+  fromDeptCode String?
+  toDeptCode   String?
+  reason       String?  // Thai reason note
+  transferDate String   // ISO date
+  createdAt    DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 }
 
 model MasterItem {

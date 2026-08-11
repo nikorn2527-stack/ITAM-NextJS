@@ -421,7 +421,7 @@ function MasterTab() {
         {/* Table */}
         <div className="itam-scroll max-h-[55vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
               <TableRow>
                 <TableHead className="text-slate-600 dark:text-slate-300">หมวดหมู่</TableHead>
                 <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
@@ -443,11 +443,20 @@ function MasterTab() {
                 ))
               ) : (items ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={7}
-                    className="py-8 text-center text-sm text-slate-400 dark:text-slate-500"
-                  >
-                    ไม่พบรายการ
+                  <TableCell colSpan={7} className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                        <Database className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+                      </div>
+                      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                        ไม่พบรายการมาตรฐาน
+                      </div>
+                      <div className="text-xs text-slate-400 dark:text-slate-500">
+                        {categoryFilter !== 'all'
+                          ? 'ไม่มีรายการในหมวดหมู่ที่เลือก — ลองเปลี่ยนหมวดหมู่ หรือเพิ่มรายการใหม่'
+                          : 'เริ่มต้นด้วยการเพิ่มรายการมาตรฐาน (แบรนด์/ประเภท/รุ่น/แผนก ฯลฯ)'}
+                      </div>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -635,11 +644,18 @@ function SitesTab() {
                 </TableRow>
               ) : (sites ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell
-                    colSpan={3}
-                    className="py-8 text-center text-sm text-slate-400 dark:text-slate-500"
-                  >
-                    ยังไม่มีสาขา
+                  <TableCell colSpan={3} className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                        <Building2 className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+                      </div>
+                      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                        ยังไม่มีสาขา
+                      </div>
+                      <div className="text-xs text-slate-400 dark:text-slate-500">
+                        เพิ่มสาขาแรกโดยกรอกรหัสและชื่อด้านบน แล้วกดปุ่ม &quot;เพิ่ม&quot;
+                      </div>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -732,32 +748,39 @@ const AUDIT_ACTION_OPTIONS = [
   'SYNC',
   'SEED',
   'IMPORT',
+  'TRANSFER',
+  'PRINT',
   'CYCLE_START',
   'CYCLE_END',
 ] as const
 
 function actionBadgeClass(action: string): string {
+  const base = ' transition-colors hover:scale-105'
   switch (action) {
     case 'CREATE':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' + base
     case 'UPDATE':
-      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
     case 'DELETE':
-      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
+      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
     case 'METER_READING':
-      return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]'
+      return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
     case 'SYNC':
-      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300'
+      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
     case 'SEED':
-      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300' + base
     case 'CYCLE_START':
-      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300'
+      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300' + base
     case 'CYCLE_END':
-      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300'
+      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300' + base
     case 'IMPORT':
-      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300'
+      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
+    case 'TRANSFER':
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
+    case 'PRINT':
+      return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
     default:
-      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300' + base
   }
 }
 
@@ -883,7 +906,7 @@ function AuditTab() {
         {/* Table */}
         <div className="itam-scroll max-h-[60vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
               <TableRow>
                 <TableHead className="w-44 text-slate-600 dark:text-slate-300">วันที่เวลา</TableHead>
                 <TableHead className="w-36 text-slate-600 dark:text-slate-300">การกระทำ</TableHead>
@@ -902,10 +925,17 @@ function AuditTab() {
                 ))
               ) : (logs ?? []).length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4}>
-                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-slate-400 dark:text-slate-500">
-                      <Inbox className="h-8 w-8 text-slate-300 dark:text-slate-600" />
-                      <span className="text-sm">ยังไม่มีประวัติการใช้งาน</span>
+                  <TableCell colSpan={4} className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                        <Inbox className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+                      </div>
+                      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                        ยังไม่มีประวัติการใช้งาน
+                      </div>
+                      <div className="text-xs text-slate-400 dark:text-slate-500">
+                        ระบบจะบันทึกการกระทำต่าง ๆ (เพิ่ม/แก้ไข/ลบ/จดมิเตอร์/ซิงค์/นำเข้า/ย้าย/พิมพ์) ที่นี่
+                      </div>
                     </div>
                   </TableCell>
                 </TableRow>

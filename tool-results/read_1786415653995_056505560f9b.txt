@@ -1,0 +1,752 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import { Card, CardContent } from '@/components/ui/card'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Input } from '@/components/ui/input'
+     9→import { Label } from '@/components/ui/label'
+    10→import { Badge } from '@/components/ui/badge'
+    11→import { Skeleton } from '@/components/ui/skeleton'
+    12→import {
+    13→  Select,
+    14→  SelectContent,
+    15→  SelectItem,
+    16→  SelectTrigger,
+    17→  SelectValue,
+    18→} from '@/components/ui/select'
+    19→import {
+    20→  Table,
+    21→  TableBody,
+    22→  TableCell,
+    23→  TableHead,
+    24→  TableHeader,
+    25→  TableRow,
+    26→} from '@/components/ui/table'
+    27→import {
+    28→  Dialog,
+    29→  DialogContent,
+    30→  DialogDescription,
+    31→  DialogFooter,
+    32→  DialogHeader,
+    33→  DialogTitle,
+    34→} from '@/components/ui/dialog'
+    35→import {
+    36→  AlertDialog,
+    37→  AlertDialogAction,
+    38→  AlertDialogCancel,
+    39→  AlertDialogContent,
+    40→  AlertDialogDescription,
+    41→  AlertDialogFooter,
+    42→  AlertDialogHeader,
+    43→  AlertDialogTitle,
+    44→} from '@/components/ui/alert-dialog'
+    45→import { Plus, RefreshCw, Pencil, Trash2, Search, Eye, Download, Upload } from 'lucide-react'
+    46→import {
+    47→  type Device,
+    48→  type Site,
+    49→  DEVICE_STATUS_OPTIONS,
+    50→  statusBadgeClass,
+    51→  statusLabel,
+    52→} from './types'
+    53→import { DeviceDetailSheet } from './device-detail-sheet'
+    54→import { CsvImportDialog } from './csv-import-dialog'
+    55→import { downloadCsv, dateStamp } from '@/lib/csv'
+    56→
+    57→const DEVICE_CSV_HEADERS = [
+    58→  { key: 'assetCode', label: 'รหัสอุปกรณ์' },
+    59→  { key: 'name', label: 'ชื่อ' },
+    60→  { key: 'brand', label: 'แบรนด์' },
+    61→  { key: 'model', label: 'รุ่น' },
+    62→  { key: 'type', label: 'ประเภท' },
+    63→  { key: 'serialNumber', label: 'หมายเลข SN' },
+    64→  { key: 'status', label: 'สถานะ' },
+    65→  { key: 'site', label: 'สาขา' },
+    66→  { key: 'department', label: 'แผนก' },
+    67→  { key: 'departmentCode', label: 'รหัสแผนก' },
+    68→  { key: 'parentRef', label: 'ParentRef' },
+    69→  { key: 'displayLabel', label: 'DisplayLabel' },
+    70→  { key: 'location', label: 'ที่ตั้ง' },
+    71→  { key: 'purchaseDate', label: 'วันที่ซื้อ' },
+    72→  { key: 'lastMeterReading', label: 'มิเตอร์ล่าสุด' },
+    73→]
+    74→
+    75→interface FormState {
+    76→  id?: string
+    77→  assetCode: string
+    78→  name: string
+    79→  brand: string
+    80→  model: string
+    81→  type: string
+    82→  serialNumber: string
+    83→  status: string
+    84→  site: string
+    85→  department: string
+    86→  departmentCode: string
+    87→  parentRef: string
+    88→  displayLabel: string
+    89→  location: string
+    90→  purchaseDate: string
+    91→}
+    92→
+    93→const EMPTY_FORM: FormState = {
+    94→  assetCode: '',
+    95→  name: '',
+    96→  brand: '',
+    97→  model: '',
+    98→  type: '',
+    99→  serialNumber: '',
+   100→  status: 'active',
+   101→  site: 'HQ',
+   102→  department: '',
+   103→  departmentCode: '',
+   104→  parentRef: '',
+   105→  displayLabel: '',
+   106→  location: '',
+   107→  purchaseDate: '',
+   108→}
+   109→
+   110→export function DevicesPage() {
+   111→  const qc = useQueryClient()
+   112→  const [search, setSearch] = React.useState('')
+   113→  const [statusFilter, setStatusFilter] = React.useState('all')
+   114→  const [siteFilter, setSiteFilter] = React.useState('all')
+   115→  const [dialogOpen, setDialogOpen] = React.useState(false)
+   116→  const [form, setForm] = React.useState<FormState>(EMPTY_FORM)
+   117→  const [saving, setSaving] = React.useState(false)
+   118→  const [deleteTarget, setDeleteTarget] = React.useState<Device | null>(null)
+   119→  const [deleting, setDeleting] = React.useState(false)
+   120→  const [detailDeviceId, setDetailDeviceId] = React.useState<string | null>(
+   121→    null,
+   122→  )
+   123→  const [exporting, setExporting] = React.useState(false)
+   124→  const [importOpen, setImportOpen] = React.useState(false)
+   125→
+   126→  const { data: devices, isLoading } = useQuery<Device[]>({
+   127→    queryKey: ['devices', search, statusFilter, siteFilter],
+   128→    queryFn: async () => {
+   129→      const params = new URLSearchParams()
+   130→      if (search) params.set('search', search)
+   131→      if (statusFilter !== 'all') params.set('status', statusFilter)
+   132→      if (siteFilter !== 'all') params.set('site', siteFilter)
+   133→      const res = await fetch(`/api/devices?${params.toString()}`)
+   134→      if (!res.ok) throw new Error('Failed to load devices')
+   135→      const json = await res.json()
+   136→      return json.devices as Device[]
+   137→    },
+   138→  })
+   139→
+   140→  const { data: sites } = useQuery<Site[]>({
+   141→    queryKey: ['sites'],
+   142→    queryFn: async () => {
+   143→      const res = await fetch('/api/sites')
+   144→      if (!res.ok) return []
+   145→      const json = await res.json()
+   146→      return json.sites as Site[]
+   147→    },
+   148→  })
+   149→
+   150→  const { data: masterItems } = useQuery<{
+   151→    category: string
+   152→    code: string
+   153→    label: string
+   154→  }[]>({
+   155→    queryKey: ['master-all'],
+   156→    queryFn: async () => {
+   157→      const res = await fetch('/api/master')
+   158→      if (!res.ok) return []
+   159→      const json = await res.json()
+   160→      return (json.items ?? []) as {
+   161→        category: string
+   162→        code: string
+   163→        label: string
+   164→      }[]
+   165→    },
+   166→  })
+   167→
+   168→  const brands = (masterItems ?? []).filter((m) => m.category === 'Brand')
+   169→  const types = (masterItems ?? []).filter((m) => m.category === 'Type')
+   170→  const departments = (masterItems ?? []).filter(
+   171→    (m) => m.category === 'Department',
+   172→  )
+   173→
+   174→  function openAdd() {
+   175→    setForm({ ...EMPTY_FORM })
+   176→    setDialogOpen(true)
+   177→  }
+   178→
+   179→  function openEdit(d: Device) {
+   180→    setForm({
+   181→      id: d.id,
+   182→      assetCode: d.assetCode,
+   183→      name: d.name,
+   184→      brand: d.brand,
+   185→      model: d.model,
+   186→      type: d.type,
+   187→      serialNumber: d.serialNumber ?? '',
+   188→      status: d.status,
+   189→      site: d.site,
+   190→      department: d.department ?? '',
+   191→      departmentCode: d.departmentCode ?? '',
+   192→      parentRef: d.parentRef ?? '',
+   193→      displayLabel: d.displayLabel ?? '',
+   194→      location: d.location ?? '',
+   195→      purchaseDate: d.purchaseDate ?? '',
+   196→    })
+   197→    setDialogOpen(true)
+   198→  }
+   199→
+   200→  async function save() {
+   201→    if (!form.assetCode || !form.name || !form.brand || !form.model || !form.type) {
+   202→      toast.error('กรุณากรอกข้อมูลที่จำเป็น (รหัส, ชื่อ, แบรนด์, รุ่น, ประเภท)')
+   203→      return
+   204→    }
+   205→    try {
+   206→      setSaving(true)
+   207→      const payload = {
+   208→        ...form,
+   209→        serialNumber: form.serialNumber || null,
+   210→        department: form.department || null,
+   211→        departmentCode: form.departmentCode || null,
+   212→        parentRef: form.parentRef || null,
+   213→        displayLabel: form.displayLabel || null,
+   214→        location: form.location || null,
+   215→        purchaseDate: form.purchaseDate || null,
+   216→      }
+   217→      const isEdit = Boolean(form.id)
+   218→      const url = isEdit ? `/api/devices/${form.id}` : '/api/devices'
+   219→      const method = isEdit ? 'PUT' : 'POST'
+   220→      const res = await fetch(url, {
+   221→        method,
+   222→        headers: { 'Content-Type': 'application/json' },
+   223→        body: JSON.stringify(payload),
+   224→      })
+   225→      if (!res.ok) {
+   226→        const j = await res.json().catch(() => ({}))
+   227→        throw new Error(j.error ?? 'Save failed')
+   228→      }
+   229→      toast.success(isEdit ? 'แก้ไขอุปกรณ์แล้ว' : 'เพิ่มอุปกรณ์ใหม่แล้ว')
+   230→      setDialogOpen(false)
+   231→      await qc.invalidateQueries({ queryKey: ['devices'] })
+   232→      await qc.invalidateQueries({ queryKey: ['dashboard'] })
+   233→    } catch (e) {
+   234→      toast.error(e instanceof Error ? e.message : 'Save failed')
+   235→    } finally {
+   236→      setSaving(false)
+   237→    }
+   238→  }
+   239→
+   240→  async function confirmDelete() {
+   241→    if (!deleteTarget) return
+   242→    try {
+   243→      setDeleting(true)
+   244→      const res = await fetch(`/api/devices/${deleteTarget.id}`, {
+   245→        method: 'DELETE',
+   246→      })
+   247→      if (!res.ok) {
+   248→        const j = await res.json().catch(() => ({}))
+   249→        throw new Error(j.error ?? 'Delete failed')
+   250→      }
+   251→      toast.success('ลบอุปกรณ์แล้ว')
+   252→      setDeleteTarget(null)
+   253→      await qc.invalidateQueries({ queryKey: ['devices'] })
+   254→      await qc.invalidateQueries({ queryKey: ['dashboard'] })
+   255→    } catch (e) {
+   256→      toast.error(e instanceof Error ? e.message : 'Delete failed')
+   257→    } finally {
+   258→      setDeleting(false)
+   259→    }
+   260→  }
+   261→
+   262→  async function exportCsv() {
+   263→    try {
+   264→      setExporting(true)
+   265→      const params = new URLSearchParams()
+   266→      if (search) params.set('search', search)
+   267→      if (statusFilter !== 'all') params.set('status', statusFilter)
+   268→      if (siteFilter !== 'all') params.set('site', siteFilter)
+   269→      const res = await fetch(`/api/devices?${params.toString()}`)
+   270→      if (!res.ok) throw new Error('Failed to export')
+   271→      const json = await res.json()
+   272→      const rows = (json.devices ?? []) as Device[]
+   273→      downloadCsv(`devices-${dateStamp()}.csv`, rows, DEVICE_CSV_HEADERS)
+   274→      toast.success(`ส่งออก ${rows.length} รายการแล้ว`)
+   275→    } catch (e) {
+   276→      toast.error(e instanceof Error ? e.message : 'Export failed')
+   277→    } finally {
+   278→      setExporting(false)
+   279→    }
+   280→  }
+   281→
+   282→  return (
+   283→    <div className="space-y-4 p-4 md:p-6">
+   284→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+   285→        <div>
+   286→          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จัดการอุปกรณ์</h1>
+   287→          <p className="text-sm text-slate-500 dark:text-slate-400">
+   288→            เพิ่ม / แก้ไข / ลบ อุปกรณ์ IT ในระบบ
+   289→          </p>
+   290→        </div>
+   291→      </div>
+   292→
+   293→      <Card className="dark:border-slate-800 dark:bg-slate-900">
+   294→        <CardContent className="p-4">
+   295→          {/* Toolbar */}
+   296→          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+   297→            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+   298→              <div className="relative flex-1">
+   299→                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+   300→                <Input
+   301→                  placeholder="ค้นหารหัส / ชื่อ / SN / แบรนด์..."
+   302→                  value={search}
+   303→                  onChange={(e) => setSearch(e.target.value)}
+   304→                  className="pl-9"
+   305→                />
+   306→              </div>
+   307→              <Select value={statusFilter} onValueChange={setStatusFilter}>
+   308→                <SelectTrigger className="w-full sm:w-40">
+   309→                  <SelectValue placeholder="สถานะ" />
+   310→                </SelectTrigger>
+   311→                <SelectContent>
+   312→                  <SelectItem value="all">สถานะทั้งหมด</SelectItem>
+   313→                  {DEVICE_STATUS_OPTIONS.map((o) => (
+   314→                    <SelectItem key={o.value} value={o.value}>
+   315→                      {o.label}
+   316→                    </SelectItem>
+   317→                  ))}
+   318→                </SelectContent>
+   319→              </Select>
+   320→              <Select value={siteFilter} onValueChange={setSiteFilter}>
+   321→                <SelectTrigger className="w-full sm:w-40">
+   322→                  <SelectValue placeholder="สาขา" />
+   323→                </SelectTrigger>
+   324→                <SelectContent>
+   325→                  <SelectItem value="all">สาขาทั้งหมด</SelectItem>
+   326→                  {(sites ?? []).map((s) => (
+   327→                    <SelectItem key={s.code} value={s.code}>
+   328→                      {s.name}
+   329→                    </SelectItem>
+   330→                  ))}
+   331→                </SelectContent>
+   332→              </Select>
+   333→            </div>
+   334→            <div className="flex items-center gap-2">
+   335→              <Button
+   336→                onClick={openAdd}
+   337→                className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   338→              >
+   339→                <Plus className="h-4 w-4" />
+   340→                เพิ่มอุปกรณ์
+   341→              </Button>
+   342→              <Button
+   343→                variant="outline"
+   344→                onClick={() => setImportOpen(true)}
+   345→                className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   346→              >
+   347→                <Upload className="h-4 w-4" />
+   348→                นำเข้า CSV
+   349→              </Button>
+   350→              <Button
+   351→                variant="outline"
+   352→                onClick={exportCsv}
+   353→                disabled={exporting}
+   354→                className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   355→              >
+   356→                <Download className="h-4 w-4" />
+   357→                {exporting ? 'กำลังส่งออก...' : 'ส่งออก CSV'}
+   358→              </Button>
+   359→              <Button
+   360→                variant="outline"
+   361→                onClick={() => qc.invalidateQueries({ queryKey: ['devices'] })}
+   362→                className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   363→              >
+   364→                <RefreshCw className="h-4 w-4" />
+   365→                รีเฟรช
+   366→              </Button>
+   367→            </div>
+   368→          </div>
+   369→
+   370→          {/* Table */}
+   371→          <div className="itam-scroll mt-4 max-h-[60vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
+   372→            <Table>
+   373→              <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
+   374→                <TableRow>
+   375→                  <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
+   376→                  <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
+   377→                  <TableHead className="text-slate-600 dark:text-slate-300">แบรนด์</TableHead>
+   378→                  <TableHead className="text-slate-600 dark:text-slate-300">รุ่น</TableHead>
+   379→                  <TableHead className="text-slate-600 dark:text-slate-300">ประเภท</TableHead>
+   380→                  <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>
+   381→                  <TableHead className="text-slate-600 dark:text-slate-300">สาขา</TableHead>
+   382→                  <TableHead className="text-slate-600 dark:text-slate-300">แผนก</TableHead>
+   383→                  <TableHead className="text-slate-600 dark:text-slate-300">รหัสแผนก</TableHead>
+   384→                  <TableHead className="text-right text-slate-600 dark:text-slate-300">การจัดการ</TableHead>
+   385→                </TableRow>
+   386→              </TableHeader>
+   387→              <TableBody>
+   388→                {isLoading ? (
+   389→                  Array.from({ length: 6 }).map((_, i) => (
+   390→                    <TableRow key={`sk-${i}`}>
+   391→                      <TableCell colSpan={10}>
+   392→                        <Skeleton className="h-6 w-full dark:bg-slate-800" />
+   393→                      </TableCell>
+   394→                    </TableRow>
+   395→                  ))
+   396→                ) : (devices ?? []).length === 0 ? (
+   397→                  <TableRow>
+   398→                    <TableCell
+   399→                      colSpan={10}
+   400→                      className="py-8 text-center text-sm text-slate-400 dark:text-slate-500"
+   401→                    >
+   402→                      ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข
+   403→                    </TableCell>
+   404→                  </TableRow>
+   405→                ) : (
+   406→                  (devices ?? []).map((d) => (
+   407→                    <TableRow
+   408→                      key={d.id}
+   409→                      className="cursor-pointer transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/50"
+   410→                      onClick={() => setDetailDeviceId(d.id)}
+   411→                    >
+   412→                      <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">
+   413→                        {d.assetCode}
+   414→                      </TableCell>
+   415→                      <TableCell className="max-w-[200px] truncate text-slate-700 dark:text-slate-200">
+   416→                        {d.name}
+   417→                      </TableCell>
+   418→                      <TableCell className="text-slate-700 dark:text-slate-200">{d.brand}</TableCell>
+   419→                      <TableCell className="max-w-[160px] truncate text-slate-700 dark:text-slate-200">
+   420→                        {d.model}
+   421→                      </TableCell>
+   422→                      <TableCell className="text-slate-700 dark:text-slate-200">{d.type}</TableCell>
+   423→                      <TableCell>
+   424→                        <Badge className={statusBadgeClass(d.status)}>
+   425→                          {statusLabel(d.status)}
+   426→                        </Badge>
+   427→                      </TableCell>
+   428→                      <TableCell className="text-slate-700 dark:text-slate-200">{d.site}</TableCell>
+   429→                      <TableCell className="max-w-[160px] truncate text-slate-600 dark:text-slate-300">
+   430→                        {d.department ?? '-'}
+   431→                      </TableCell>
+   432→                      <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">
+   433→                        {d.departmentCode ?? '-'}
+   434→                      </TableCell>
+   435→                      <TableCell
+   436→                        className="text-right"
+   437→                        onClick={(e) => e.stopPropagation()}
+   438→                      >
+   439→                        <div className="flex justify-end gap-1">
+   440→                          <Button
+   441→                            size="icon"
+   442→                            variant="ghost"
+   443→                            onClick={() => setDetailDeviceId(d.id)}
+   444→                            aria-label="ดูรายละเอียด"
+   445→                            title="ดูรายละเอียด"
+   446→                          >
+   447→                            <Eye className="h-4 w-4" />
+   448→                          </Button>
+   449→                          <Button
+   450→                            size="icon"
+   451→                            variant="ghost"
+   452→                            onClick={() => openEdit(d)}
+   453→                            aria-label="แก้ไข"
+   454→                          >
+   455→                            <Pencil className="h-4 w-4" />
+   456→                          </Button>
+   457→                          <Button
+   458→                            size="icon"
+   459→                            variant="ghost"
+   460→                            onClick={() => setDeleteTarget(d)}
+   461→                            aria-label="ลบ"
+   462→                            className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
+   463→                          >
+   464→                            <Trash2 className="h-4 w-4" />
+   465→                          </Button>
+   466→                        </div>
+   467→                      </TableCell>
+   468→                    </TableRow>
+   469→                  ))
+   470→                )}
+   471→              </TableBody>
+   472→            </Table>
+   473→          </div>
+   474→
+   475→          <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+   476→            ทั้งหมด {(devices ?? []).length} รายการ
+   477→          </div>
+   478→        </CardContent>
+   479→      </Card>
+   480→
+   481→      {/* Add/Edit Dialog */}
+   482→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   483→        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl dark:border-slate-800 dark:bg-slate-900">
+   484→          <DialogHeader>
+   485→            <DialogTitle className="text-slate-800 dark:text-slate-100">
+   486→              {form.id ? '✏️ แก้ไขอุปกรณ์' : '➕ เพิ่มอุปกรณ์ใหม่'}
+   487→            </DialogTitle>
+   488→            <DialogDescription>
+   489→              กรอกข้อมูลอุปกรณ์ให้ครบถ้วน ฟิลด์ที่มีเครื่องหมาย * เป็นข้อมูลที่จำเป็น
+   490→            </DialogDescription>
+   491→          </DialogHeader>
+   492→
+   493→          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+   494→            <Field label="รหัสอุปกรณ์ *">
+   495→              <Input
+   496→                value={form.assetCode}
+   497→                onChange={(e) =>
+   498→                  setForm({ ...form, assetCode: e.target.value })
+   499→                }
+   500→                placeholder="IT-PRT-001"
+   501→              />
+   502→            </Field>
+   503→            <Field label="ชื่ออุปกรณ์ *">
+   504→              <Input
+   505→                value={form.name}
+   506→                onChange={(e) => setForm({ ...form, name: e.target.value })}
+   507→              />
+   508→            </Field>
+   509→            <Field label="แบรนด์ *">
+   510→              <SelectValueInput
+   511→                value={form.brand}
+   512→                onChange={(v) => setForm({ ...form, brand: v })}
+   513→                options={brands.map((b) => ({ value: b.code, label: b.label }))}
+   514→                placeholder="เลือกหรือพิมพ์แบรนด์"
+   515→              />
+   516→            </Field>
+   517→            <Field label="รุ่น *">
+   518→              <Input
+   519→                value={form.model}
+   520→                onChange={(e) => setForm({ ...form, model: e.target.value })}
+   521→              />
+   522→            </Field>
+   523→            <Field label="ประเภท *">
+   524→              <SelectValueInput
+   525→                value={form.type}
+   526→                onChange={(v) => setForm({ ...form, type: v })}
+   527→                options={types.map((t) => ({ value: t.code, label: t.label }))}
+   528→                placeholder="เลือกหรือพิมพ์ประเภท"
+   529→              />
+   530→            </Field>
+   531→            <Field label="Serial Number">
+   532→              <Input
+   533→                value={form.serialNumber}
+   534→                onChange={(e) =>
+   535→                  setForm({ ...form, serialNumber: e.target.value })
+   536→                }
+   537→              />
+   538→            </Field>
+   539→            <Field label="สถานะ *">
+   540→              <Select
+   541→                value={form.status}
+   542→                onValueChange={(v) => setForm({ ...form, status: v })}
+   543→              >
+   544→                <SelectTrigger className="w-full">
+   545→                  <SelectValue />
+   546→                </SelectTrigger>
+   547→                <SelectContent>
+   548→                  {DEVICE_STATUS_OPTIONS.map((o) => (
+   549→                    <SelectItem key={o.value} value={o.value}>
+   550→                      {o.label}
+   551→                    </SelectItem>
+   552→                  ))}
+   553→                </SelectContent>
+   554→              </Select>
+   555→            </Field>
+   556→            <Field label="สาขา *">
+   557→              <Select
+   558→                value={form.site}
+   559→                onValueChange={(v) => setForm({ ...form, site: v })}
+   560→              >
+   561→                <SelectTrigger className="w-full">
+   562→                  <SelectValue />
+   563→                </SelectTrigger>
+   564→                <SelectContent>
+   565→                  {(sites ?? []).map((s) => (
+   566→                    <SelectItem key={s.code} value={s.code}>
+   567→                      {s.name}
+   568→                    </SelectItem>
+   569→                  ))}
+   570→                </SelectContent>
+   571→              </Select>
+   572→            </Field>
+   573→            <Field label="แผนก">
+   574→              <SelectValueInput
+   575→                value={form.department}
+   576→                onChange={(v) => setForm({ ...form, department: v })}
+   577→                options={departments.map((d) => ({
+   578→                  value: d.label,
+   579→                  label: d.label,
+   580→                }))}
+   581→                placeholder="เลือกหรือพิมพ์แผนก"
+   582→              />
+   583→            </Field>
+   584→            <Field label="รหัสแผนก (DepartmentCode)">
+   585→              <Input
+   586→                value={form.departmentCode}
+   587→                onChange={(e) =>
+   588→                  setForm({ ...form, departmentCode: e.target.value })
+   589→                }
+   590→              />
+   591→            </Field>
+   592→            <Field label="ParentRef">
+   593→              <Input
+   594→                value={form.parentRef}
+   595→                onChange={(e) =>
+   596→                  setForm({ ...form, parentRef: e.target.value })
+   597→                }
+   598→                placeholder="เช่น HP|PRINTER"
+   599→              />
+   600→            </Field>
+   601→            <Field label="DisplayLabel">
+   602→              <Input
+   603→                value={form.displayLabel}
+   604→                onChange={(e) =>
+   605→                  setForm({ ...form, displayLabel: e.target.value })
+   606→                }
+   607→              />
+   608→            </Field>
+   609→            <Field label="สถานที่ตั้ง">
+   610→              <Input
+   611→                value={form.location}
+   612→                onChange={(e) => setForm({ ...form, location: e.target.value })}
+   613→              />
+   614→            </Field>
+   615→            <Field label="วันที่ซื้อ">
+   616→              <Input
+   617→                type="date"
+   618→                value={form.purchaseDate}
+   619→                onChange={(e) =>
+   620→                  setForm({ ...form, purchaseDate: e.target.value })
+   621→                }
+   622→              />
+   623→            </Field>
+   624→          </div>
+   625→
+   626→          <DialogFooter>
+   627→            <Button
+   628→              variant="outline"
+   629→              onClick={() => setDialogOpen(false)}
+   630→              disabled={saving}
+   631→            >
+   632→              ยกเลิก
+   633→            </Button>
+   634→            <Button
+   635→              onClick={save}
+   636→              disabled={saving}
+   637→              className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   638→            >
+   639→              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+   640→            </Button>
+   641→          </DialogFooter>
+   642→        </DialogContent>
+   643→      </Dialog>
+   644→
+   645→      {/* Delete confirm */}
+   646→      <AlertDialog
+   647→        open={Boolean(deleteTarget)}
+   648→        onOpenChange={(o) => !o && setDeleteTarget(null)}
+   649→      >
+   650→        <AlertDialogContent>
+   651→          <AlertDialogHeader>
+   652→            <AlertDialogTitle>ยืนยันการลบอุปกรณ์</AlertDialogTitle>
+   653→            <AlertDialogDescription>
+   654→              คุณกำลังจะลบ{' '}
+   655→              <span className="font-semibold text-slate-700">
+   656→                {deleteTarget?.name} ({deleteTarget?.assetCode})
+   657→              </span>
+   658→              {' '}การกระทำนี้ไม่สามารถย้อนกลับได้ และจะลบประวัติการจดมิเตอร์ของอุปกรณ์นี้ด้วย
+   659→            </AlertDialogDescription>
+   660→          </AlertDialogHeader>
+   661→          <AlertDialogFooter>
+   662→            <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
+   663→            <AlertDialogAction
+   664→              onClick={confirmDelete}
+   665→              disabled={deleting}
+   666→              className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   667→            >
+   668→              {deleting ? 'กำลังลบ...' : 'ลบอุปกรณ์'}
+   669→            </AlertDialogAction>
+   670→          </AlertDialogFooter>
+   671→        </AlertDialogContent>
+   672→      </AlertDialog>
+   673→
+   674→      {/* Detail sheet */}
+   675→      <DeviceDetailSheet
+   676→        deviceId={detailDeviceId}
+   677→        onClose={() => setDetailDeviceId(null)}
+   678→        onEdit={(d) => {
+   679→          setDetailDeviceId(null)
+   680→          openEdit(d)
+   681→        }}
+   682→      />
+   683→
+   684→      {/* CSV Import */}
+   685→      <CsvImportDialog open={importOpen} onOpenChange={setImportOpen} />
+   686→    </div>
+   687→  )
+   688→}
+   689→
+   690→function Field({
+   691→  label,
+   692→  children,
+   693→}: {
+   694→  label: string
+   695→  children: React.ReactNode
+   696→}) {
+   697→  return (
+   698→    <div className="space-y-1.5">
+   699→      <Label className="text-xs font-medium text-slate-600">{label}</Label>
+   700→      {children}
+   701→    </div>
+   702→  )
+   703→}
+   704→
+   705→// A combobox-like input: lets the user either type or pick from a dropdown list
+   706→function SelectValueInput({
+   707→  value,
+   708→  onChange,
+   709→  options,
+   710→  placeholder,
+   711→}: {
+   712→  value: string
+   713→  onChange: (v: string) => void
+   714→  options: { value: string; label: string }[]
+   715→  placeholder?: string
+   716→}) {
+   717→  const [open, setOpen] = React.useState(false)
+   718→  const inputRef = React.useRef<HTMLInputElement>(null)
+   719→  return (
+   720→    <div className="relative">
+   721→      <Input
+   722→        ref={inputRef}
+   723→        value={value}
+   724→        onChange={(e) => onChange(e.target.value)}
+   725→        onFocus={() => setOpen(true)}
+   726→        onBlur={() => setTimeout(() => setOpen(false), 150)}
+   727→        placeholder={placeholder}
+   728→      />
+   729→      {open && options.length > 0 && (
+   730→        <div className="itam-scroll absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-white shadow-lg">
+   731→          {options.map((o) => (
+   732→            <button
+   733→              key={o.value}
+   734→              type="button"
+   735→              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-100"
+   736→              onMouseDown={(e) => {
+   737→                e.preventDefault()
+   738→                onChange(o.value)
+   739→                setOpen(false)
+   740→              }}
+   741→            >
+   742→              {o.label}
+   743→            </button>
+   744→          ))}
+   745→        </div>
+   746→      )}
+   747→    </div>
+   748→  )
+   749→}
+   750→
+   751→// (no extra exports)
+   752→

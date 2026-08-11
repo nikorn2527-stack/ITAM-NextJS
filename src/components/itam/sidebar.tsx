@@ -135,7 +135,7 @@ export function Sidebar() {
                 onClick={() => handleNav(item.page)}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex w-full cursor-pointer items-center border-l-[3px] px-5 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]',
+                  'group relative flex w-full cursor-pointer items-center border-l-[3px] px-5 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]',
                   active
                     ? 'border-[#f97316] bg-[rgba(234,88,12,0.12)] text-[#fb923c]'
                     : 'border-transparent text-slate-300 hover:bg-[rgba(255,255,255,0.05)] hover:text-white',
@@ -148,6 +148,16 @@ export function Sidebar() {
                   {item.icon}
                 </span>
                 <span className="flex-1 text-left">{item.label}</span>
+                {/* Active/hover indicator dot at the right edge */}
+                <span
+                  aria-hidden
+                  className={cn(
+                    'pointer-events-none absolute right-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-[#f97316] transition-all duration-200',
+                    active
+                      ? 'scale-100 opacity-100 shadow-[0_0_8px_rgba(249,115,22,0.7)]'
+                      : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-60',
+                  )}
+                />
               </button>
             )
           })}

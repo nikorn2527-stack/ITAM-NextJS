@@ -42,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Plus, RefreshCw, Pencil, Trash2, Search, Eye, Download, Upload } from 'lucide-react'
+import { Plus, RefreshCw, Pencil, Trash2, Search, Eye, Download, Upload, Tag, PackageOpen } from 'lucide-react'
 import {
   type Device,
   type Site,
@@ -52,6 +52,7 @@ import {
 } from './types'
 import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
+import { StickerPrintDialog } from './sticker-print-dialog'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 
 const DEVICE_CSV_HEADERS = [
@@ -122,6 +123,18 @@ export function DevicesPage() {
   )
   const [exporting, setExporting] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
+  const [stickerOpen, setStickerOpen] = React.useState(false)
+
+  // Settings query for org name (used in sticker header)
+  const { data: settings } = useQuery<Record<string, string>>({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings')
+      if (!res.ok) return {}
+      const json = await res.json()
+      return (json.settings ?? {}) as Record<string, string>
+    },
+  })
 
   const { data: devices, isLoading } = useQuery<Device[]>({
     queryKey: ['devices', search, statusFilter, siteFilter],
@@ -358,6 +371,15 @@ export function DevicesPage() {
               </Button>
               <Button
                 variant="outline"
+                onClick={() => setStickerOpen(true)}
+                disabled={(devices ?? []).length === 0}
+                className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+              >
+                <Tag className="h-4 w-4" />
+                พิมพ์สติกเกอร์
+              </Button>
+              <Button
+                variant="outline"
                 onClick={() => qc.invalidateQueries({ queryKey: ['devices'] })}
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
@@ -370,7 +392,7 @@ export function DevicesPage() {
           {/* Table */}
           <div className="itam-scroll mt-4 max-h-[60vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
+              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
                 <TableRow>
                   <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
@@ -395,11 +417,45 @@ export function DevicesPage() {
                   ))
                 ) : (devices ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={10}
-                      className="py-8 text-center text-sm text-slate-400 dark:text-slate-500"
-                    >
-                      ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข
+                    <TableCell colSpan={10} className="py-12">
+                      <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                          <PackageOpen className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+                        </div>
+                        <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                          {search || statusFilter !== 'all' || siteFilter !== 'all'
+                            ? 'ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข'
+                            : 'ยังไม่มีอุปกรณ์ในระบบ'}
+                        </div>
+                        <div className="text-xs text-slate-400 dark:text-slate-500">
+                          {search || statusFilter !== 'all' || siteFilter !== 'all'
+                            ? 'ลองปรับตัวกรองหรือคำค้นหา หรือล้างตัวกรองเพื่อดูทั้งหมด'
+                            : 'เริ่มต้นโดยการเพิ่มอุปกรณ์เครื่องแรกของคุณ'}
+                        </div>
+                        {(search || statusFilter !== 'all' || siteFilter !== 'all') ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSearch('')
+                              setStatusFilter('all')
+                              setSiteFilter('all')
+                            }}
+                            className="mt-2 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+                          >
+                            ล้างตัวกรอง
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={openAdd}
+                            className="mt-2 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+                          >
+                            <Plus className="h-4 w-4" />
+                            เพิ่มอุปกรณ์
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -683,6 +739,14 @@ export function DevicesPage() {
 
       {/* CSV Import */}
       <CsvImportDialog open={importOpen} onOpenChange={setImportOpen} />
+
+      {/* Sticker print */}
+      <StickerPrintDialog
+        open={stickerOpen}
+        onOpenChange={setStickerOpen}
+        devices={devices ?? []}
+        orgName={settings?.orgName ?? null}
+      />
     </div>
   )
 }
