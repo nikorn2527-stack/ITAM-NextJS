@@ -52,10 +52,18 @@ import {
   Save,
   Settings as SettingsIcon,
   Database,
+  History,
+  Inbox,
+  Package,
+  FileBarChart,
+  Repeat,
+  CalendarClock,
+  Server,
 } from 'lucide-react'
 import {
   type MasterItem,
   type Site,
+  type AuditLog,
   MASTER_CATEGORIES,
 } from './types'
 import { MasterDataModal } from './master-data-modal'
@@ -95,6 +103,10 @@ export function SettingsPage() {
             <Users className="h-4 w-4" />
             สิทธิ์ผู้ใช้
           </TabsTrigger>
+          <TabsTrigger value="audit" className="gap-1.5" data-permission="ADMIN">
+            <History className="h-4 w-4" />
+            ประวัติการใช้งาน
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="app" className="mt-4">
@@ -108,6 +120,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="users" className="mt-4">
           <UsersTab />
+        </TabsContent>
+        <TabsContent value="audit" className="mt-4">
+          <AuditTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -694,6 +709,246 @@ function UsersTab() {
         <p className="mt-3 text-xs text-slate-400">
           หมายเหตุ: ระบบจัดการสิทธิ์ผู้ใช้เต็มรูปแบบอยู่ในเวอร์ชัน Apps Script — หน้านี้แสดงผลข้อมูลตัวอย่างเท่านั้น
         </p>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ---------- Audit tab ---------- */
+const AUDIT_ENTITY_OPTIONS = [
+  'Device',
+  'MasterItem',
+  'MeterReading',
+  'Cycle',
+  'Site',
+  'Setting',
+] as const
+
+const AUDIT_ACTION_OPTIONS = [
+  'CREATE',
+  'UPDATE',
+  'DELETE',
+  'METER_READING',
+  'SYNC',
+  'SEED',
+  'CYCLE_START',
+  'CYCLE_END',
+] as const
+
+function actionBadgeClass(action: string): string {
+  switch (action) {
+    case 'CREATE':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    case 'UPDATE':
+      return 'border-amber-200 bg-amber-50 text-amber-700'
+    case 'DELETE':
+      return 'border-rose-200 bg-rose-50 text-rose-700'
+    case 'METER_READING':
+      return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]'
+    case 'SYNC':
+      return 'border-teal-200 bg-teal-50 text-teal-700'
+    case 'SEED':
+      return 'border-slate-200 bg-slate-100 text-slate-700'
+    case 'CYCLE_START':
+      return 'border-violet-200 bg-violet-50 text-violet-700'
+    case 'CYCLE_END':
+      return 'border-violet-200 bg-violet-50 text-violet-700'
+    default:
+      return 'border-slate-200 bg-slate-100 text-slate-700'
+  }
+}
+
+function entityIcon(entity: string) {
+  const cls = 'h-3.5 w-3.5'
+  switch (entity) {
+    case 'Device':
+      return <Package className={cls} />
+    case 'MasterItem':
+      return <Database className={cls} />
+    case 'MeterReading':
+      return <FileBarChart className={cls} />
+    case 'Cycle':
+      return <CalendarClock className={cls} />
+    case 'Site':
+      return <Building2 className={cls} />
+    case 'Setting':
+      return <SettingsIcon className={cls} />
+    default:
+      return <Server className={cls} />
+  }
+}
+
+function formatThaiDateTime(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleString('th-TH', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
+
+function AuditTab() {
+  const qc = useQueryClient()
+  const [entity, setEntity] = React.useState('all')
+  const [action, setAction] = React.useState('all')
+  const [q, setQ] = React.useState('')
+  const [debouncedQ, setDebouncedQ] = React.useState('')
+
+  // Debounce search input
+  React.useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q.trim()), 350)
+    return () => clearTimeout(t)
+  }, [q])
+
+  const { data: logs, isLoading } = useQuery<AuditLog[]>({
+    queryKey: ['audit', entity, action, debouncedQ],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.set('limit', '100')
+      if (entity !== 'all') params.set('entity', entity)
+      if (action !== 'all') params.set('action', action)
+      if (debouncedQ) params.set('q', debouncedQ)
+      const res = await fetch(`/api/audit?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to load audit logs')
+      const json = await res.json()
+      return (json.logs ?? []) as AuditLog[]
+    },
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <History className="h-4 w-4 text-[#f97316]" />
+          ประวัติการใช้งาน (Audit Log)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Filter bar */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Select value={entity} onValueChange={setEntity}>
+            <SelectTrigger className="w-full sm:w-44">
+              <SelectValue placeholder="รายการ" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">รายการทั้งหมด</SelectItem>
+              {AUDIT_ENTITY_OPTIONS.map((v) => (
+                <SelectItem key={v} value={v}>
+                  {v}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={action} onValueChange={setAction}>
+            <SelectTrigger className="w-full sm:w-44">
+              <SelectValue placeholder="การกระทำ" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">การกระทำทั้งหมด</SelectItem>
+              {AUDIT_ACTION_OPTIONS.map((v) => (
+                <SelectItem key={v} value={v}>
+                  {v}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="relative flex-1">
+            <RefreshCw className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 rotate-45 text-slate-400" />
+            <Input
+              placeholder="ค้นหาจากคำอธิบาย..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => qc.invalidateQueries({ queryKey: ['audit'] })}
+            aria-label="รีเฟรช"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Table */}
+        <div className="itam-scroll max-h-[60vh] overflow-auto rounded-md border">
+          <Table>
+            <TableHeader className="sticky top-0 z-10 bg-slate-50">
+              <TableRow>
+                <TableHead className="w-44">วันที่เวลา</TableHead>
+                <TableHead className="w-36">การกระทำ</TableHead>
+                <TableHead>รายการ</TableHead>
+                <TableHead className="w-44">ผู้กระทำ</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <TableRow key={`sk-${i}`}>
+                    <TableCell colSpan={4}>
+                      <Skeleton className="h-6 w-full" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (logs ?? []).length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4}>
+                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
+                      <Inbox className="h-8 w-8 text-slate-300" />
+                      <span className="text-sm">ยังไม่มีประวัติการใช้งาน</span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                (logs ?? []).map((log) => (
+                  <TableRow key={log.id}>
+                    <TableCell className="whitespace-nowrap text-xs text-slate-500">
+                      {formatThaiDateTime(log.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={actionBadgeClass(log.action)}
+                      >
+                        {log.action}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-start gap-2">
+                        <span className="mt-0.5 shrink-0 text-slate-400">
+                          {entityIcon(log.entity)}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-sm text-slate-700">
+                            {log.summary}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {log.entity}
+                            {log.entityId ? ` · ${log.entityId.slice(-8)}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="truncate text-xs text-slate-500">
+                      {log.actor}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-400">
+          <Repeat className="h-3 w-3" />
+          แสดง {(logs ?? []).length} รายการล่าสุด · กรองได้ตามรายการ / การกระทำ / คำค้น
+        </div>
       </CardContent>
     </Card>
   )

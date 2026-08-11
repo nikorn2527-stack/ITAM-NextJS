@@ -77,6 +77,18 @@ export interface DashboardData {
     date: string
     remark: string | null
   }>
+  paperThisMonth?: number
+}
+
+export interface AuditLog {
+  id: string
+  action: string
+  entity: string
+  entityId: string | null
+  summary: string
+  detail: string | null
+  actor: string
+  createdAt: string
 }
 
 export const DEVICE_STATUS_OPTIONS = [

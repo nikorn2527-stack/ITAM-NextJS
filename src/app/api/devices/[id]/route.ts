@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(
   _req: NextRequest,
@@ -18,6 +19,24 @@ export async function GET(
   }
 }
 
+const EDITABLE_FIELDS = [
+  'assetCode',
+  'name',
+  'brand',
+  'model',
+  'type',
+  'serialNumber',
+  'status',
+  'site',
+  'department',
+  'departmentCode',
+  'parentRef',
+  'displayLabel',
+  'location',
+  'purchaseDate',
+  'lastMeterReading',
+] as const
+
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -25,6 +44,10 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await req.json()
+    const before = await db.device.findUnique({ where: { id } })
+    if (!before) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
     const updated = await db.device.update({
       where: { id },
       data: {
@@ -83,6 +106,23 @@ export async function PUT(
             : undefined,
       },
     })
+    const changes: Record<string, { from: unknown; to: unknown }> = {}
+    for (const k of EDITABLE_FIELDS) {
+      if (body[k] !== undefined) {
+        const from = before[k as keyof typeof before]
+        const to = updated[k as keyof typeof updated]
+        if (String(from ?? '') !== String(to ?? '')) {
+          changes[k] = { from, to }
+        }
+      }
+    }
+    await logAudit(
+      'UPDATE',
+      'Device',
+      id,
+      `แก้ไขอุปกรณ์ ${updated.assetCode}`,
+      { changes },
+    )
     return NextResponse.json({ device: updated })
   } catch (err) {
     console.error('PUT /api/devices/[id]', err)
@@ -97,7 +137,17 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    const device = await db.device.findUnique({ where: { id } })
+    if (!device) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
     await db.device.delete({ where: { id } })
+    await logAudit(
+      'DELETE',
+      'Device',
+      id,
+      `ลบอุปกรณ์ ${device.assetCode} (${device.name})`,
+    )
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/devices/[id]', err)

@@ -42,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Plus, RefreshCw, Pencil, Trash2, Search } from 'lucide-react'
+import { Plus, RefreshCw, Pencil, Trash2, Search, Eye, Download } from 'lucide-react'
 import {
   type Device,
   type Site,
@@ -50,6 +50,26 @@ import {
   statusBadgeClass,
   statusLabel,
 } from './types'
+import { DeviceDetailSheet } from './device-detail-sheet'
+import { downloadCsv, dateStamp } from '@/lib/csv'
+
+const DEVICE_CSV_HEADERS = [
+  { key: 'assetCode', label: 'รหัสอุปกรณ์' },
+  { key: 'name', label: 'ชื่อ' },
+  { key: 'brand', label: 'แบรนด์' },
+  { key: 'model', label: 'รุ่น' },
+  { key: 'type', label: 'ประเภท' },
+  { key: 'serialNumber', label: 'หมายเลข SN' },
+  { key: 'status', label: 'สถานะ' },
+  { key: 'site', label: 'สาขา' },
+  { key: 'department', label: 'แผนก' },
+  { key: 'departmentCode', label: 'รหัสแผนก' },
+  { key: 'parentRef', label: 'ParentRef' },
+  { key: 'displayLabel', label: 'DisplayLabel' },
+  { key: 'location', label: 'ที่ตั้ง' },
+  { key: 'purchaseDate', label: 'วันที่ซื้อ' },
+  { key: 'lastMeterReading', label: 'มิเตอร์ล่าสุด' },
+]
 
 interface FormState {
   id?: string
@@ -96,6 +116,10 @@ export function DevicesPage() {
   const [saving, setSaving] = React.useState(false)
   const [deleteTarget, setDeleteTarget] = React.useState<Device | null>(null)
   const [deleting, setDeleting] = React.useState(false)
+  const [detailDeviceId, setDetailDeviceId] = React.useState<string | null>(
+    null,
+  )
+  const [exporting, setExporting] = React.useState(false)
 
   const { data: devices, isLoading } = useQuery<Device[]>({
     queryKey: ['devices', search, statusFilter, siteFilter],
@@ -233,6 +257,26 @@ export function DevicesPage() {
     }
   }
 
+  async function exportCsv() {
+    try {
+      setExporting(true)
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      if (statusFilter !== 'all') params.set('status', statusFilter)
+      if (siteFilter !== 'all') params.set('site', siteFilter)
+      const res = await fetch(`/api/devices?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to export')
+      const json = await res.json()
+      const rows = (json.devices ?? []) as Device[]
+      downloadCsv(`devices-${dateStamp()}.csv`, rows, DEVICE_CSV_HEADERS)
+      toast.success(`ส่งออก ${rows.length} รายการแล้ว`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -295,6 +339,14 @@ export function DevicesPage() {
               </Button>
               <Button
                 variant="outline"
+                onClick={exportCsv}
+                disabled={exporting}
+              >
+                <Download className="h-4 w-4" />
+                {exporting ? 'กำลังส่งออก...' : 'ส่งออก CSV'}
+              </Button>
+              <Button
+                variant="outline"
                 onClick={() => qc.invalidateQueries({ queryKey: ['devices'] })}
               >
                 <RefreshCw className="h-4 w-4" />
@@ -340,7 +392,11 @@ export function DevicesPage() {
                   </TableRow>
                 ) : (
                   (devices ?? []).map((d) => (
-                    <TableRow key={d.id}>
+                    <TableRow
+                      key={d.id}
+                      className="cursor-pointer hover:bg-slate-50/70"
+                      onClick={() => setDetailDeviceId(d.id)}
+                    >
                       <TableCell className="font-mono text-xs font-medium text-slate-700">
                         {d.assetCode}
                       </TableCell>
@@ -364,8 +420,20 @@ export function DevicesPage() {
                       <TableCell className="font-mono text-xs text-slate-500">
                         {d.departmentCode ?? '-'}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell
+                        className="text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <div className="flex justify-end gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setDetailDeviceId(d.id)}
+                            aria-label="ดูรายละเอียด"
+                            title="ดูรายละเอียด"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
                           <Button
                             size="icon"
                             variant="ghost"
@@ -590,6 +658,16 @@ export function DevicesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Detail sheet */}
+      <DeviceDetailSheet
+        deviceId={detailDeviceId}
+        onClose={() => setDetailDeviceId(null)}
+        onEdit={(d) => {
+          setDetailDeviceId(null)
+          openEdit(d)
+        }}
+      />
     </div>
   )
 }

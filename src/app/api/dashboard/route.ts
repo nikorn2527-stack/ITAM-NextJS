@@ -77,12 +77,25 @@ export async function GET() {
       remark: r.remark,
     }))
 
+    // Paper usage this month (sum of positive deltas where date starts with YYYY-MM)
+    const now = new Date()
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const monthReadings = await db.meterReading.findMany({
+      where: { date: { startsWith: currentMonth } },
+      select: { delta: true },
+    })
+    const paperThisMonth = monthReadings.reduce(
+      (sum, r) => sum + (r.delta > 0 ? r.delta : 0),
+      0,
+    )
+
     return NextResponse.json({
       totals: { total, active, spare, repair },
       byStatus,
       byType,
       topUsage,
       recentActivity,
+      paperThisMonth,
     })
   } catch (err) {
     console.error('GET /api/dashboard', err)

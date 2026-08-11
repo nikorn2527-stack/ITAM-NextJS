@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 
 function isoDaysFromNow(days: number): string {
   const d = new Date()
@@ -180,16 +181,26 @@ export async function POST() {
       ],
     })
 
+    const counts = {
+      sites: sites.count,
+      masterItems: masterSeed.length,
+      devices: deviceSeeds.length,
+      readings: readingsToCreate.length,
+      cycle: 1,
+      settings: 5,
+    }
+
+    await logAudit(
+      'SEED',
+      'Setting',
+      null,
+      `โหลดข้อมูลตัวอย่าง (${counts.devices} อุปกรณ์, ${counts.masterItems} รายการมาตรฐาน, ${counts.readings} มิเตอร์)`,
+      { counts },
+    )
+
     return NextResponse.json({
       ok: true,
-      counts: {
-        sites: sites.count,
-        masterItems: masterSeed.length,
-        devices: deviceSeeds.length,
-        readings: readingsToCreate.length,
-        cycle: 1,
-        settings: 5,
-      },
+      counts,
     })
   } catch (err) {
     console.error('POST /api/seed', err)

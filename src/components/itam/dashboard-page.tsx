@@ -14,6 +14,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
+  Label,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,8 @@ import {
   TrendingUp,
   History,
   Sparkles,
+  FileText,
+  Inbox,
 } from 'lucide-react'
 import type { DashboardData } from './types'
 
@@ -44,32 +47,75 @@ interface KpiCardProps {
   icon: React.ReactNode
   accent: string
   loading?: boolean
+  trend?: string
+  format?: (v: number) => string
+  unit?: string
 }
 
-function KpiCard({ title, value, icon, accent, loading }: KpiCardProps) {
+function KpiCard({
+  title,
+  value,
+  icon,
+  accent,
+  loading,
+  trend,
+  format,
+  unit,
+}: KpiCardProps) {
+  const display = format ? format(value) : value.toLocaleString()
   return (
-    <Card className="overflow-hidden">
-      <CardContent className="flex items-center gap-4 p-4">
-        <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg"
-          style={{ background: `${accent}1a`, color: accent }}
-        >
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-xs font-medium text-slate-500">
-            {title}
+    <Card
+      className="group relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+    >
+      {/* Thin top accent bar */}
+      <div
+        className="absolute inset-x-0 top-0 h-[3px]"
+        style={{ background: accent }}
+      />
+      <CardContent className="p-3 sm:p-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11"
+            style={{ background: `${accent}1a`, color: accent }}
+          >
+            {icon}
           </div>
-          {loading ? (
-            <Skeleton className="mt-1 h-7 w-16" />
-          ) : (
-            <div className="text-2xl font-bold text-slate-800">
-              {value.toLocaleString()}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs font-medium text-slate-500">
+              {title}
             </div>
-          )}
+            {loading ? (
+              <Skeleton className="mt-1 h-7 w-20" />
+            ) : (
+              <div className="flex items-baseline gap-1">
+                <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 sm:text-2xl">
+                  {display}
+                </span>
+                {unit && (
+                  <span className="shrink-0 text-xs font-medium text-slate-400">
+                    {unit}
+                  </span>
+                )}
+              </div>
+            )}
+            {trend && !loading && (
+              <div className="mt-0.5 truncate text-xs leading-tight text-slate-400" title={trend}>
+                {trend}
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400">
+      <Inbox className="h-8 w-8 text-slate-300" />
+      <span className="text-sm">{message}</span>
+    </div>
   )
 }
 
@@ -126,6 +172,17 @@ export function DashboardPage() {
     )
   }
 
+  const total = data?.totals.total ?? 0
+  const active = data?.totals.active ?? 0
+  const spare = data?.totals.spare ?? 0
+  const repair = data?.totals.repair ?? 0
+  const paperThisMonth = data?.paperThisMonth ?? 0
+
+  const activeTrend =
+    total > 0
+      ? `${Math.round((active / total) * 100)}% ของทั้งหมด ${total} เครื่อง`
+      : undefined
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Page header */}
@@ -135,7 +192,7 @@ export function DashboardPage() {
           <p className="text-sm text-slate-500">ภาพรวมระบบจัดการอุปกรณ์ IT</p>
         </div>
         <div className="flex items-center gap-2">
-          {data && data.totals.total === 0 && (
+          {data && total === 0 && (
             <Button
               onClick={runSeed}
               disabled={seeding}
@@ -164,49 +221,69 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* KPI row */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      {/* KPI row — 5 cards on lg */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         <KpiCard
           title="อุปกรณ์ทั้งหมด"
-          value={data?.totals.total ?? 0}
-          icon={<Package className="h-6 w-6" />}
+          value={total}
+          icon={<Package className="h-5 w-5" />}
           accent="#0f172a"
           loading={isLoading}
+          trend={total > 0 ? `${(data?.byType ?? []).length} ประเภท` : undefined}
         />
         <KpiCard
           title="ใช้งานอยู่"
-          value={data?.totals.active ?? 0}
-          icon={<CheckCircle2 className="h-6 w-6" />}
+          value={active}
+          icon={<CheckCircle2 className="h-5 w-5" />}
           accent="#10b981"
           loading={isLoading}
+          trend={activeTrend}
         />
         <KpiCard
           title="สำรอง"
-          value={data?.totals.spare ?? 0}
-          icon={<Archive className="h-6 w-6" />}
+          value={spare}
+          icon={<Archive className="h-5 w-5" />}
           accent="#f59e0b"
           loading={isLoading}
+          trend={total > 0 ? `${Math.round((spare / total) * 100)}% ของทั้งหมด` : undefined}
         />
         <KpiCard
           title="ส่งซ่อม"
-          value={data?.totals.repair ?? 0}
-          icon={<Wrench className="h-6 w-6" />}
+          value={repair}
+          icon={<Wrench className="h-5 w-5" />}
           accent="#f97316"
           loading={isLoading}
+          trend={repair > 0 ? 'รอดำเนินการ' : 'ปกติ'}
+        />
+        <KpiCard
+          title="กระดาษเดือนนี้"
+          value={paperThisMonth}
+          icon={<FileText className="h-5 w-5" />}
+          accent="#0d9488"
+          loading={isLoading}
+          unit="แผ่น"
+          trend={
+            new Date().toLocaleDateString('th-TH', {
+              month: 'long',
+              year: 'numeric',
+            })
+          }
         />
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="shadow-sm transition-shadow hover:shadow-md">
           <CardHeader>
             <CardTitle className="text-base">สัดส่วนสถานะอุปกรณ์</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-64 w-full" />
+            ) : (data?.byStatus ?? []).length === 0 ? (
+              <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
+              <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie
                     data={data?.byStatus ?? []}
@@ -214,8 +291,8 @@ export function DashboardPage() {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    innerRadius={55}
-                    outerRadius={90}
+                    innerRadius={60}
+                    outerRadius={95}
                     paddingAngle={2}
                   >
                     {(data?.byStatus ?? []).map((entry) => (
@@ -224,32 +301,108 @@ export function DashboardPage() {
                         fill={STATUS_COLORS[entry.name] ?? '#94a3b8'}
                       />
                     ))}
+                    <Label
+                      content={({ viewBox }) => {
+                        if (!viewBox || !('cx' in viewBox)) return null
+                        const { cx, cy } = viewBox as {
+                          cx: number
+                          cy: number
+                        }
+                        return (
+                          <>
+                            <text
+                              x={cx}
+                              y={cy - 6}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              className="fill-slate-800"
+                              style={{
+                                fontSize: 26,
+                                fontWeight: 700,
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
+                            >
+                              {total}
+                            </text>
+                            <text
+                              x={cx}
+                              y={cy + 16}
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              className="fill-slate-400"
+                              style={{ fontSize: 12 }}
+                            >
+                              เครื่อง
+                            </text>
+                          </>
+                        )
+                      }}
+                    />
                   </Pie>
                   <Tooltip
                     formatter={(value: number, name: string) => [value, name]}
                   />
-                  <Legend />
+                  <Legend wrapperStyle={{ fontSize: 13 }} />
                 </PieChart>
               </ResponsiveContainer>
             )}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="shadow-sm transition-shadow hover:shadow-md">
           <CardHeader>
             <CardTitle className="text-base">จำนวนอุปกรณ์ตามประเภท</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-64 w-full" />
+            ) : (data?.byType ?? []).length === 0 ? (
+              <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
+              <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={data?.byType ?? []}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#f97316" radius={[6, 6, 0, 0]} />
+                  <defs>
+                    <linearGradient
+                      id="barTypeFill"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.95} />
+                      <stop offset="100%" stopColor="#0d9488" stopOpacity={0.7} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#e2e8f0"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 12, fill: '#64748b' }}
+                    tickLine={false}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    tick={{ fontSize: 12, fill: '#64748b' }}
+                    tickLine={false}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                  />
+                  <Tooltip
+                    cursor={{ fill: '#0d948810' }}
+                    contentStyle={{
+                      fontSize: 12,
+                      borderRadius: 8,
+                      border: '1px solid #e2e8f0',
+                    }}
+                  />
+                  <Bar
+                    dataKey="value"
+                    fill="url(#barTypeFill)"
+                    radius={[6, 6, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -259,7 +412,7 @@ export function DashboardPage() {
 
       {/* Lists */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
+        <Card className="shadow-sm transition-shadow hover:shadow-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <TrendingUp className="h-4 w-4 text-[#f97316]" />
@@ -268,42 +421,43 @@ export function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="itam-scroll max-h-72 overflow-y-auto">
-              {(data?.topUsage ?? []).length === 0 ? (
-                <p className="py-6 text-center text-sm text-slate-400">
-                  ยังไม่มีข้อมูลการใช้งาน
-                </p>
+              {(data?.topUsage ?? []).length === 0 ||
+              (data?.topUsage ?? []).every((d) => d.value === 0) ? (
+                <EmptyState message="ยังไม่มีข้อมูลการใช้งาน" />
               ) : (
                 <ul className="space-y-2">
-                  {(data?.topUsage ?? []).map((d, i) => (
-                    <li
-                      key={d.id}
-                      className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2"
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f97316] text-xs font-bold text-white">
-                          {i + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-slate-700">
-                            {d.name}
-                          </div>
-                          <div className="truncate text-xs text-slate-400">
-                            {d.assetCode}
+                  {(data?.topUsage ?? [])
+                    .filter((d) => d.value > 0)
+                    .map((d, i) => (
+                      <li
+                        key={d.id}
+                        className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f97316] text-xs font-bold text-white">
+                            {i + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium text-slate-700">
+                              {d.name}
+                            </div>
+                            <div className="truncate font-mono text-xs text-slate-400">
+                              {d.assetCode}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <Badge className="border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]">
-                        {d.value.toLocaleString()} แผ่น
-                      </Badge>
-                    </li>
-                  ))}
+                        <Badge className="border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316] tabular-nums">
+                          {d.value.toLocaleString()} แผ่น
+                        </Badge>
+                      </li>
+                    ))}
                 </ul>
               )}
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="shadow-sm transition-shadow hover:shadow-md">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <History className="h-4 w-4 text-[#f97316]" />
@@ -313,9 +467,7 @@ export function DashboardPage() {
           <CardContent>
             <div className="itam-scroll max-h-72 overflow-y-auto">
               {(data?.recentActivity ?? []).length === 0 ? (
-                <p className="py-6 text-center text-sm text-slate-400">
-                  ยังไม่มีกิจกรรม
-                </p>
+                <EmptyState message="ยังไม่มีกิจกรรม" />
               ) : (
                 <ul className="space-y-2">
                   {(data?.recentActivity ?? []).map((a) => (
@@ -332,11 +484,15 @@ export function DashboardPage() {
                         </span>
                       </div>
                       <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                        <span className="text-slate-400">{a.assetCode}</span>
+                        <span className="font-mono text-slate-400">
+                          {a.assetCode}
+                        </span>
                         <span>·</span>
-                        <span>อ่าน {a.reading.toLocaleString()}</span>
+                        <span className="tabular-nums">
+                          อ่าน {a.reading.toLocaleString()}
+                        </span>
                         {a.delta > 0 && (
-                          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 tabular-nums">
                             +{a.delta.toLocaleString()}
                           </Badge>
                         )}

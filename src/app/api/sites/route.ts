@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 
 export async function GET() {
   try {
@@ -26,6 +27,13 @@ export async function POST(req: NextRequest) {
         name: String(body.name).trim(),
       },
     })
+    await logAudit(
+      'CREATE',
+      'Site',
+      created.id,
+      `เพิ่มสาขา ${created.code} (${created.name})`,
+      { code: created.code, name: created.name },
+    )
     return NextResponse.json({ site: created }, { status: 201 })
   } catch (err) {
     console.error('POST /api/sites', err)

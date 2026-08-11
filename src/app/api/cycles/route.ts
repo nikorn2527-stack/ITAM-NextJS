@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(req: NextRequest) {
   try {
@@ -54,6 +55,13 @@ export async function POST(req: NextRequest) {
         status: finalStatus,
       },
     })
+    await logAudit(
+      'CYCLE_START',
+      'Cycle',
+      created.id,
+      `สร้างรอบจดมิเตอร์ ${created.name} (${created.startDate} → ${created.endDate})`,
+      { name: created.name, startDate: created.startDate, endDate: created.endDate },
+    )
     return NextResponse.json({ cycle: created }, { status: 201 })
   } catch (err) {
     console.error('POST /api/cycles', err)
