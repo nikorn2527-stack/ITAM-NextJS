@@ -9,17 +9,24 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2 } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send } from 'lucide-react'
 
 interface MasterItem { id: string; itemId: string | null; categoryKey: string; value: string; displayLabel: string | null; active: boolean; departmentCode: string | null }
 interface Site { id: string; siteCode: string; siteName: string | null; lineOa: string | null; hotline: string | null; paperRateBw: number | null; paperRateColor: number | null; deviceCount?: number; activeCount?: number }
 
+interface NotifySettings {
+  channels: { email: boolean; telegram: boolean; lineNotify: boolean; lineOA: boolean }
+  events: { deviceAdded: boolean; deviceUpdated: boolean; transfer: boolean; lifecycle: boolean; meter: boolean }
+  credentials: Record<string, string>
+}
+
 export function ItamSettings() {
   const qc = useQueryClient()
-  const [tab, setTab] = React.useState<'master' | 'sites'>('master')
+  const [tab, setTab] = React.useState<'master' | 'sites' | 'notifications'>('master')
   const [category, setCategory] = React.useState('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
@@ -35,6 +42,61 @@ export function ItamSettings() {
       return res.json() as Promise<{ items: MasterItem[] }>
     },
   })
+
+  // Notification settings (only fetched when tab === 'notifications')
+  const { data: notifyData, isLoading: notifyLoading } = useQuery<NotifySettings>({
+    queryKey: ['itam-notify-settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/itam/notifications/settings')
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+    enabled: tab === 'notifications',
+  })
+  const [notifyDraft, setNotifyDraft] = React.useState<NotifySettings | null>(null)
+  React.useEffect(() => {
+    if (notifyData) setNotifyDraft(JSON.parse(JSON.stringify(notifyData)) as NotifySettings)
+  }, [notifyData])
+
+  async function saveNotify() {
+    if (!notifyDraft) return
+    try {
+      const res = await fetch('/api/itam/notifications/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channels: notifyDraft.channels,
+          events: notifyDraft.events,
+          notifyEmails: notifyDraft.credentials.notifyEmails,
+          telegramBotToken: notifyDraft.credentials.telegramBotToken,
+          telegramChatId: notifyDraft.credentials.telegramChatId,
+          lineNotifyToken: notifyDraft.credentials.lineNotifyToken,
+          lineOaChannelAccessToken: notifyDraft.credentials.lineOaChannelAccessToken,
+          lineOaToUserId: notifyDraft.credentials.lineOaToUserId,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      toast.success('บันทึกการตั้งค่าการแจ้งเตือนแล้ว')
+      await qc.invalidateQueries({ queryKey: ['itam-notify-settings'] })
+    } catch {
+      toast.error('บันทึกไม่สำเร็จ')
+    }
+  }
+
+  async function sendTestNotify() {
+    try {
+      const res = await fetch('/api/itam/notifications/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: '🔔 ทดสอบการแจ้งเตือนจาก ITAM' }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Failed')
+      toast.success('ส่งการแจ้งเตือนทดสอบแล้ว — ตรวจสอบ logs / ช่องทางที่เปิดใช้')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ส่งไม่สำเร็จ')
+    }
+  }
 
   // Sites
   const { data: sitesData, isLoading: sitesLoading } = useQuery({
@@ -107,6 +169,9 @@ export function ItamSettings() {
         </button>
         <button onClick={() => setTab('sites')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'sites' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <Building2 className="mr-1 inline h-4 w-4" /> สาขา
+        </button>
+        <button onClick={() => setTab('notifications')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'notifications' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <Bell className="mr-1 inline h-4 w-4" /> การแจ้งเตือน
         </button>
       </div>
 
@@ -249,6 +314,161 @@ export function ItamSettings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Notifications tab */}
+      {tab === 'notifications' && (
+        <div className="space-y-4">
+          {notifyLoading || !notifyDraft ? (
+            <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <CardContent className="p-6">
+                <Skeleton className="h-64 w-full rounded" />
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Bell className="h-4 w-4 text-[#f97316]" /> ช่องทางการแจ้งเตือน (Channels)
+                  </CardTitle>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    เลือกช่องทางที่ต้องการส่ง — Email (log), Telegram (Bot API), LINE Notify, LINE OA
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                    <div>
+                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">📧 Email</div>
+                      <div className="text-xs text-slate-400">บันทึกใน server log (sandbox ไม่ส่งจริง)</div>
+                    </div>
+                    <Switch checked={notifyDraft.channels.email} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, email: v } })} />
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                    <div>
+                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">✈️ Telegram</div>
+                      <div className="text-xs text-slate-400">ส่งผ่าน Telegram Bot API</div>
+                    </div>
+                    <Switch checked={notifyDraft.channels.telegram} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, telegram: v } })} />
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                    <div>
+                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">💬 LINE Notify</div>
+                      <div className="text-xs text-slate-400">ส่งผ่าน LINE Notify API</div>
+                    </div>
+                    <Switch checked={notifyDraft.channels.lineNotify} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, lineNotify: v } })} />
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                    <div>
+                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">🎯 LINE OA</div>
+                      <div className="text-xs text-slate-400">ส่งผ่าน LINE Messaging API</div>
+                    </div>
+                    <Switch checked={notifyDraft.channels.lineOA} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, lineOA: v } })} />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <CardHeader>
+                  <CardTitle className="text-base">เหตุการณ์ที่แจ้งเตือน (Events)</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {[
+                    { key: 'deviceAdded' as const, label: '➕ เพิ่มอุปกรณ์ใหม่' },
+                    { key: 'deviceUpdated' as const, label: '✏️ แก้ไขอุปกรณ์' },
+                    { key: 'transfer' as const, label: '🔄 ย้ายตำแหน่งอุปกรณ์' },
+                    { key: 'lifecycle' as const, label: '🔁 เปลี่ยนสถานะ' },
+                    { key: 'meter' as const, label: '📈 จดมิเตอร์' },
+                  ].map((ev) => (
+                    <div key={ev.key} className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{ev.label}</div>
+                      <Switch checked={notifyDraft.events[ev.key]} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, events: { ...notifyDraft.events, [ev.key]: v } })} />
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <CardHeader>
+                  <CardTitle className="text-base">ข้อมูลประจำตัว (Credentials)</CardTitle>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Token จะถูก mask หลังบันทึก — พิมพ์ค่าใหม่เพื่อเขียนทับ
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">อีเมลผู้รับ (คั่นด้วยจุลภาค)</Label>
+                    <Input
+                      value={notifyDraft.credentials.notifyEmails || ''}
+                      onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, notifyEmails: e.target.value } })}
+                      placeholder="admin@example.com, ops@example.com"
+                      className="dark:bg-slate-800 dark:border-slate-700"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Telegram Bot Token</Label>
+                      <Input
+                        value={notifyDraft.credentials.telegramBotToken || ''}
+                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, telegramBotToken: e.target.value } })}
+                        placeholder="123456:ABC-DEF..."
+                        className="dark:bg-slate-800 dark:border-slate-700 font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Telegram Chat ID</Label>
+                      <Input
+                        value={notifyDraft.credentials.telegramChatId || ''}
+                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, telegramChatId: e.target.value } })}
+                        placeholder="-1001234567890"
+                        className="dark:bg-slate-800 dark:border-slate-700 font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">LINE Notify Token</Label>
+                      <Input
+                        value={notifyDraft.credentials.lineNotifyToken || ''}
+                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, lineNotifyToken: e.target.value } })}
+                        placeholder="abcXYZ..."
+                        className="dark:bg-slate-800 dark:border-slate-700 font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">LINE OA Channel Access Token</Label>
+                      <Input
+                        value={notifyDraft.credentials.lineOaChannelAccessToken || ''}
+                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, lineOaChannelAccessToken: e.target.value } })}
+                        placeholder="abcXYZ..."
+                        className="dark:bg-slate-800 dark:border-slate-700 font-mono text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label className="text-xs">LINE OA Target User ID</Label>
+                      <Input
+                        value={notifyDraft.credentials.lineOaToUserId || ''}
+                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, lineOaToUserId: e.target.value } })}
+                        placeholder="U1234567890abcdef..."
+                        className="dark:bg-slate-800 dark:border-slate-700 font-mono text-xs"
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={saveNotify} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+                  บันทึกการตั้งค่า
+                </Button>
+                <Button variant="outline" onClick={sendTestNotify} className="dark:bg-slate-800 dark:border-slate-700">
+                  <Send className="h-4 w-4" /> ส่งทดสอบ
+                </Button>
+                <Button variant="outline" onClick={() => qc.invalidateQueries({ queryKey: ['itam-notify-settings'] })} className="dark:bg-slate-800 dark:border-slate-700">
+                  <RefreshCw className="h-4 w-4" /> รีเฟรช
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   )
 }

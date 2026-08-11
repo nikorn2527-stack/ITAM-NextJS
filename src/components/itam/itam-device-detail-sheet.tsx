@@ -12,9 +12,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Pencil, Wrench, Package, History, Gauge } from 'lucide-react'
+import { Pencil, Wrench, Package, History, Gauge, ArrowLeftRight, AlertTriangle, Loader2 } from 'lucide-react'
 
 interface DeviceDetail {
   id: string
@@ -46,7 +46,12 @@ interface DeviceDetail {
   updatedAt: string | null
   meterReadings?: Array<{
     id: string; readingDate: string | null; readingMonth: string | null
-    meterBw: number; pagesBw: number; pagesColor: number; remark: string | null
+    meterBw: number; meterColor: number; pagesBw: number; pagesColor: number; remark: string | null
+  }>
+  locationHistories?: Array<{
+    id: string; logId: string | null; moveDate: string | null; action: string | null
+    fromSite: string | null; toSite: string | null; fromAssetSiteCode: string | null; toAssetSiteCode: string | null
+    movedBy: string | null; remark: string | null
   }>
   assignments?: Array<{
     id: string; assignee: string; assigneeRole: string | null
@@ -92,6 +97,21 @@ function fmtDate(s: string | null): string {
   }
 }
 
+interface Site {
+  id: string
+  siteCode: string
+  siteName: string | null
+  deviceCount?: number
+  activeCount?: number
+}
+
+interface DeviceForCascading {
+  site: string | null
+  building: string | null
+  floor: string | null
+  department: string | null
+}
+
 export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: Props) {
   const qc = useQueryClient()
 
@@ -116,6 +136,9 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
   const [mntOpen, setMntOpen] = React.useState(false)
   const [mntForm, setMntForm] = React.useState({ type: 'repair', status: 'open', startDate: '', cost: '', vendor: '', description: '' })
   const [mntSaving, setMntSaving] = React.useState(false)
+
+  // Transfer dialog
+  const [transferOpen, setTransferOpen] = React.useState(false)
 
   React.useEffect(() => {
     if (open && assetNo) {
@@ -206,7 +229,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
             )}
           </SheetTitle>
           <SheetDescription className="text-slate-500 dark:text-slate-400">
-            รายละเอียดอุปกรณ์ · มิเตอร์ · การมอบหมาย · การซ่อมบำรุง
+            รายละเอียดอุปกรณ์ · มิเตอร์ · การมอบหมาย · การซ่อมบำรุง · ประวัติการย้าย
           </SheetDescription>
         </SheetHeader>
 
@@ -220,12 +243,15 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
         ) : (
           <div className="space-y-4 px-4 pb-8">
             {/* Action bar */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {onEdit && (
                 <Button size="sm" variant="outline" onClick={() => onEdit(device.assetNo)} className="dark:bg-slate-800 dark:border-slate-700">
                   <Pencil className="h-3.5 w-3.5" /> แก้ไข
                 </Button>
               )}
+              <Button size="sm" variant="outline" onClick={() => setTransferOpen(true)} className="dark:bg-slate-800 dark:border-slate-700">
+                <ArrowLeftRight className="h-3.5 w-3.5" /> ย้ายตำแหน่ง
+              </Button>
               <Button size="sm" variant="outline" onClick={() => refetch()} className="dark:bg-slate-800 dark:border-slate-700">
                 <History className="h-3.5 w-3.5" /> รีเฟรช
               </Button>
@@ -263,13 +289,16 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
             <Tabs defaultValue="meter" className="w-full">
               <TabsList className="w-full">
                 <TabsTrigger value="meter" className="flex-1">
-                  <Gauge className="mr-1 h-3.5 w-3.5" /> ประวัติมิเตอร์
+                  <Gauge className="mr-1 h-3.5 w-3.5" /> มิเตอร์
                 </TabsTrigger>
                 <TabsTrigger value="assign" className="flex-1">
-                  <Package className="mr-1 h-3.5 w-3.5" /> การมอบหมาย
+                  <Package className="mr-1 h-3.5 w-3.5" /> มอบหมาย
                 </TabsTrigger>
                 <TabsTrigger value="mnt" className="flex-1">
-                  <Wrench className="mr-1 h-3.5 w-3.5" /> การซ่อมบำรุง
+                  <Wrench className="mr-1 h-3.5 w-3.5" /> ซ่อมบำรุง
+                </TabsTrigger>
+                <TabsTrigger value="history" className="flex-1">
+                  <History className="mr-1 h-3.5 w-3.5" /> ประวัติย้าย
                 </TabsTrigger>
               </TabsList>
 
@@ -295,7 +324,12 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
                           (device.meterReadings ?? []).map(r => (
                             <TableRow key={r.id}>
                               <TableCell className="font-mono text-xs">{r.readingDate?.substring(0, 10) || '—'}</TableCell>
-                              <TableCell className="text-right font-mono text-xs tabular-nums">{r.meterBw.toLocaleString()}</TableCell>
+                              <TableCell className="text-right font-mono text-xs tabular-nums">
+                                {r.meterBw.toLocaleString()}
+                                {r.meterColor > 0 && (
+                                  <span className="ml-1 text-[10px] text-slate-400">/ {r.meterColor.toLocaleString()}</span>
+                                )}
+                              </TableCell>
                               <TableCell className="text-right">
                                 <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                                   {(r.pagesBw + r.pagesColor).toLocaleString()}
@@ -412,6 +446,60 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
                   </div>
                 </div>
               </TabsContent>
+
+              {/* Location history tab */}
+              <TabsContent value="history" className="mt-3">
+                <div className="rounded-md border border-slate-200 dark:border-slate-800">
+                  <div className="itam-scroll max-h-72 overflow-y-auto">
+                    <Table>
+                      <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+                        <TableRow>
+                          <TableHead className="text-xs">วันที่</TableHead>
+                          <TableHead className="text-xs">การกระทำ</TableHead>
+                          <TableHead className="text-xs">จาก</TableHead>
+                          <TableHead className="text-xs">ไป</TableHead>
+                          <TableHead className="text-xs">AssetSiteCode</TableHead>
+                          <TableHead className="text-xs">โดย</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {(device.locationHistories ?? []).length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="py-6 text-center text-xs text-slate-400">ยังไม่มีประวัติการย้าย</TableCell>
+                          </TableRow>
+                        ) : (
+                          (device.locationHistories ?? []).map(h => (
+                            <TableRow key={h.id}>
+                              <TableCell className="font-mono text-xs">{h.moveDate?.substring(0, 16) || '—'}</TableCell>
+                              <TableCell>
+                                <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800">
+                                  {h.action || 'TRANSFER'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-xs text-slate-600 dark:text-slate-300">
+                                {h.fromSite || '—'}
+                                {h.fromAssetSiteCode && <span className="ml-1 text-[10px] text-slate-400">({h.fromAssetSiteCode})</span>}
+                              </TableCell>
+                              <TableCell className="text-xs text-slate-600 dark:text-slate-300">
+                                {h.toSite || '—'}
+                                {h.toAssetSiteCode && <span className="ml-1 text-[10px] text-slate-400">({h.toAssetSiteCode})</span>}
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">
+                                {h.fromAssetSiteCode && h.toAssetSiteCode && h.fromAssetSiteCode !== h.toAssetSiteCode ? (
+                                  <span className="text-[#f97316]">{h.fromAssetSiteCode} → {h.toAssetSiteCode}</span>
+                                ) : (
+                                  <span className="text-slate-400">{h.toAssetSiteCode || '—'}</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-xs text-slate-400">{h.movedBy || '—'}</TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              </TabsContent>
             </Tabs>
           </div>
         )}
@@ -514,6 +602,500 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Transfer dialog */}
+      {device && (
+        <TransferDialog
+          open={transferOpen}
+          onOpenChange={setTransferOpen}
+          device={device}
+          onTransferred={async () => {
+            await refetch()
+            await qc.invalidateQueries({ queryKey: ['itam-devices'] })
+            await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+          }}
+        />
+      )}
     </Sheet>
+  )
+}
+
+// =============== Transfer Dialog (Phase 2) =================
+
+interface TransferDialogProps {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  device: DeviceDetail
+  onTransferred: () => void | Promise<void>
+}
+
+interface TransferFormState {
+  toSite: string
+  toBuilding: string
+  toFloor: string
+  toDepartment: string
+  toDepartmentCode: string
+  toLocation: string
+  toAssetSiteCode: string
+  meterBw: string
+  meterColor: string
+  meterRemark: string
+  skipMeterReason: string
+}
+
+function emptyTransferForm(): TransferFormState {
+  return {
+    toSite: '',
+    toBuilding: '',
+    toFloor: '',
+    toDepartment: '',
+    toDepartmentCode: '',
+    toLocation: '',
+    toAssetSiteCode: '',
+    meterBw: '',
+    meterColor: '',
+    meterRemark: '',
+    skipMeterReason: '',
+  }
+}
+
+function TransferDialog({ open, onOpenChange, device, onTransferred }: TransferDialogProps) {
+  const qc = useQueryClient()
+  const [form, setForm] = React.useState<TransferFormState>(emptyTransferForm())
+  const [saving, setSaving] = React.useState(false)
+  const [meterPath, setMeterPath] = React.useState<'none' | 'meter' | 'skip'>('none')
+  const [meterReadingId, setMeterReadingId] = React.useState<string | null>(null)
+
+  // Sites list + cascading devices (for building/floor/department suggestions).
+  const { data: sitesData } = useQuery<{ sites: Site[] }>({
+    queryKey: ['itam-sites'],
+    queryFn: async () => {
+      const res = await fetch('/api/itam/sites')
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+  })
+  const { data: cascadeData } = useQuery<{ devices: DeviceForCascading[] }>({
+    queryKey: ['itam-devices-cascade', 'transfer'],
+    queryFn: async () => {
+      // Pull 100 devices to seed cascading dropdowns. We accept this cost once
+      // per open; users with a small allowedSites set get an even smaller fetch.
+      const res = await fetch('/api/itam/devices?limit=100')
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+    enabled: open,
+  })
+
+  const sites = sitesData?.sites ?? []
+
+  // Reset form when dialog opens.
+  React.useEffect(() => {
+    if (open) {
+      setForm(emptyTransferForm())
+      setMeterPath('none')
+      setMeterReadingId(null)
+    }
+  }, [open, device.assetNo])
+
+  // Compute cascading suggestions for the currently-chosen target site.
+  const buildingsForSite = React.useMemo(() => {
+    if (!cascadeData?.devices || !form.toSite) return []
+    const set = new Set<string>()
+    for (const d of cascadeData.devices) {
+      if (d.site === form.toSite && d.building) set.add(d.building)
+    }
+    return Array.from(set).sort()
+  }, [cascadeData, form.toSite])
+
+  const floorsForBuilding = React.useMemo(() => {
+    if (!cascadeData?.devices || !form.toSite || !form.toBuilding) return []
+    const set = new Set<string>()
+    for (const d of cascadeData.devices) {
+      if (d.site === form.toSite && d.building === form.toBuilding && d.floor) set.add(d.floor)
+    }
+    return Array.from(set).sort()
+  }, [cascadeData, form.toSite, form.toBuilding])
+
+  const departmentsForFloor = React.useMemo(() => {
+    if (!cascadeData?.devices || !form.toSite || !form.toBuilding || !form.toFloor) return []
+    const set = new Set<string>()
+    for (const d of cascadeData.devices) {
+      if (
+        d.site === form.toSite &&
+        d.building === form.toBuilding &&
+        d.floor === form.toFloor &&
+        d.department
+      ) {
+        set.add(d.department)
+      }
+    }
+    return Array.from(set).sort()
+  }, [cascadeData, form.toSite, form.toBuilding, form.toFloor])
+
+  // Pre-fill the new location fields when target site = current site (i.e.
+  // user is just relocating within the same site). We prefill with the
+  // device's existing values so they can edit just the bits that change.
+  React.useEffect(() => {
+    if (open && form.toSite === device.site) {
+      setForm((prev) => ({
+        ...prev,
+        toBuilding: prev.toBuilding || device.building || '',
+        toFloor: prev.toFloor || device.floor || '',
+        toDepartment: prev.toDepartment || device.department || '',
+        toDepartmentCode: prev.toDepartmentCode || device.departmentCode || '',
+        toLocation: prev.toLocation || device.location || '',
+        toAssetSiteCode: prev.toAssetSiteCode || device.assetSiteCode || '',
+      }))
+    }
+  }, [open, form.toSite, device])
+
+  // Quick meter path: save the meter reading first (so the transfer endpoint
+  // can reference it via meterReadingId), then perform the transfer.
+  async function preSaveMeterReading(): Promise<string | null> {
+    if (!form.meterBw) {
+      toast.error('กรุณากรอกค่ามิเตอร์')
+      return null
+    }
+    try {
+      const res = await fetch('/api/itam/meter-readings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assetNo: device.assetNo,
+          meterBw: Number(form.meterBw),
+          meterColor: form.meterColor ? Number(form.meterColor) : 0,
+          remark: form.meterRemark || 'จดมิเตอร์ก่อนย้าย',
+          readingType: 'CHECKOUT',
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Save meter failed')
+      }
+      const j = await res.json()
+      return j.reading?.id as string | null
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed')
+      return null
+    }
+  }
+
+  async function doTransfer() {
+    if (!form.toSite) {
+      toast.error('กรุณาระบุสาขาปลายทาง')
+      return
+    }
+    if (form.toSite === device.site && !form.toBuilding && !form.toFloor && !form.toDepartment && !form.toLocation) {
+      toast.error('ต้องเปลี่ยนอย่างน้อยหนึ่งฟิลด์ (อาคาร/ชั้น/แผนก/ที่ตั้ง) เมื่อย้ายในสาขาเดิม')
+      return
+    }
+
+    let finalMeterReadingId: string | null = meterReadingId
+    if (device.meterRequired && meterPath === 'meter' && !finalMeterReadingId) {
+      setSaving(true)
+      finalMeterReadingId = await preSaveMeterReading()
+      setSaving(false)
+      if (!finalMeterReadingId) return
+      setMeterReadingId(finalMeterReadingId)
+    }
+
+    if (device.meterRequired && meterPath === 'none' && !finalMeterReadingId && !form.skipMeterReason.trim()) {
+      toast.error('อุปกรณ์นี้ต้องจดมิเตอร์ก่อนย้าย — เลือก “จดมิเตอร์เลย” หรือ “ระบุเหตุผลที่จดไม่ได้”')
+      return
+    }
+
+    try {
+      setSaving(true)
+      const res = await fetch(`/api/itam/devices/${device.assetNo}/transfer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toSite: form.toSite,
+          toBuilding: form.toBuilding || null,
+          toFloor: form.toFloor || null,
+          toDepartment: form.toDepartment || null,
+          toDepartmentCode: form.toDepartmentCode || null,
+          toLocation: form.toLocation || null,
+          toAssetSiteCode: form.toAssetSiteCode || null,
+          meterReadingId: finalMeterReadingId,
+          skipMeterReason: form.skipMeterReason.trim() || null,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Transfer failed')
+      }
+      const j = await res.json()
+      toast.success(
+        j.reusedAssetSiteCode
+          ? 'ย้ายอุปกรณ์แล้ว (กลับสู่ AssetSiteCode เดิม)'
+          : `ย้ายอุปกรณ์แล้ว${j.locationHistory?.toAssetSiteCode ? ` · ${j.locationHistory.toAssetSiteCode}` : ''}`,
+        { description: `${j.locationHistory?.fromSite || '—'} → ${j.locationHistory?.toSite || '—'}` },
+      )
+      onOpenChange(false)
+      await qc.invalidateQueries({ queryKey: ['itam-readings'] })
+      await onTransferred()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const meterModeIsColor = (device.meterMode || 'TOTAL').toUpperCase() === 'BW_COLOR'
+  const crossSite = form.toSite !== '' && form.toSite !== device.site
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg dark:border-slate-800 dark:bg-slate-900">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+            <ArrowLeftRight className="h-5 w-5 text-[#f97316]" />
+            🔄 ย้ายตำแหน่งอุปกรณ์
+          </DialogTitle>
+          <DialogDescription>
+            รหัส {device.assetNo} · {device.brand || ''} {device.model || ''}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          {/* From (read-only) */}
+          <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 text-xs dark:border-slate-800 dark:bg-slate-800/40">
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              ตำแหน่งปัจจุบัน
+            </div>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-slate-700 dark:text-slate-200">
+              <div><span className="text-slate-400">สาขา:</span> {device.site || '—'}</div>
+              <div><span className="text-slate-400">AssetSiteCode:</span> <span className="font-mono">{device.assetSiteCode || '—'}</span></div>
+              <div><span className="text-slate-400">อาคาร:</span> {device.building || '—'}</div>
+              <div><span className="text-slate-400">ชั้น:</span> {device.floor || '—'}</div>
+              <div><span className="text-slate-400">แผนก:</span> {device.department || '—'}</div>
+              <div><span className="text-slate-400">ที่ตั้ง:</span> {device.location || '—'}</div>
+            </div>
+          </div>
+
+          {/* To (editable) */}
+          <div className="space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              ตำแหน่งใหม่
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">สาขาปลายทาง *</Label>
+              <Select
+                value={form.toSite}
+                onValueChange={(v) => {
+                  setForm({
+                    ...emptyTransferForm(),
+                    toSite: v,
+                    toAssetSiteCode: '',
+                  })
+                  setMeterPath('none')
+                  setMeterReadingId(null)
+                }}
+              >
+                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700">
+                  <SelectValue placeholder="เลือกสาขา" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sites.map((s) => (
+                    <SelectItem key={s.id} value={s.siteName || s.siteCode}>
+                      {s.siteName || s.siteCode} <span className="ml-1 text-[10px] text-slate-400">({s.siteCode})</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {form.toSite && (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">อาคาร</Label>
+                    <Input
+                      list="transfer-buildings"
+                      value={form.toBuilding}
+                      onChange={(e) => setForm({ ...form, toBuilding: e.target.value, toFloor: '', toDepartment: '' })}
+                      placeholder="เช่น อาคารผู้ป่วยนอก"
+                      className="dark:bg-slate-800 dark:border-slate-700"
+                    />
+                    <datalist id="transfer-buildings">
+                      {buildingsForSite.map((b) => <option key={b} value={b} />)}
+                    </datalist>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">ชั้น</Label>
+                    <Input
+                      list="transfer-floors"
+                      value={form.toFloor}
+                      onChange={(e) => setForm({ ...form, toFloor: e.target.value, toDepartment: '' })}
+                      placeholder="เช่น 1"
+                      className="dark:bg-slate-800 dark:border-slate-700"
+                    />
+                    <datalist id="transfer-floors">
+                      {floorsForBuilding.map((f) => <option key={f} value={f} />)}
+                    </datalist>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">แผนก</Label>
+                    <Input
+                      list="transfer-depts"
+                      value={form.toDepartment}
+                      onChange={(e) => setForm({ ...form, toDepartment: e.target.value })}
+                      placeholder="เช่น ไอที"
+                      className="dark:bg-slate-800 dark:border-slate-700"
+                    />
+                    <datalist id="transfer-depts">
+                      {departmentsForFloor.map((d) => <option key={d} value={d} />)}
+                    </datalist>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">รหัสแผนก</Label>
+                    <Input
+                      value={form.toDepartmentCode}
+                      onChange={(e) => setForm({ ...form, toDepartmentCode: e.target.value })}
+                      placeholder="เช่น IT-001"
+                      className="dark:bg-slate-800 dark:border-slate-700"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">ที่ตั้ง</Label>
+                    <Input
+                      value={form.toLocation}
+                      onChange={(e) => setForm({ ...form, toLocation: e.target.value })}
+                      placeholder="ห้อง/จุดวาง"
+                      className="dark:bg-slate-800 dark:border-slate-700"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">AssetSiteCode</Label>
+                    <Input
+                      value={form.toAssetSiteCode}
+                      onChange={(e) => setForm({ ...form, toAssetSiteCode: e.target.value })}
+                      placeholder={crossSite ? 'อัตโนมัติ' : 'ปล่อยว่าง = เดิม'}
+                      className="font-mono dark:bg-slate-800 dark:border-slate-700"
+                    />
+                    {crossSite && (
+                      <div className="text-[10px] text-slate-400">
+                        ปล่อยว่าง = ระบบออกรหัสให้อัตโนมัติ (ใช้รหัสเดิมถ้าเคยอยู่สาขานี้)
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Meter-required enforcement block */}
+            {device.meterRequired && form.toSite && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/40">
+                <div className="mb-1.5 flex items-start gap-2 text-xs text-amber-800 dark:text-amber-200">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="font-semibold">⚠️ ต้องจดมิเตอร์ก่อนย้าย</span>
+                </div>
+
+                <div className="mb-2 flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={meterPath === 'meter' ? 'default' : 'outline'}
+                    onClick={() => setMeterPath('meter')}
+                    className={
+                      meterPath === 'meter'
+                        ? 'bg-[#f97316] text-white hover:bg-[#ea580c]'
+                        : 'dark:bg-slate-800 dark:border-slate-700'
+                    }
+                  >
+                    <Gauge className="h-3.5 w-3.5" /> จดมิเตอร์เลย
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={meterPath === 'skip' ? 'default' : 'outline'}
+                    onClick={() => setMeterPath('skip')}
+                    className={
+                      meterPath === 'skip'
+                        ? 'bg-amber-500 text-white hover:bg-amber-600'
+                        : 'dark:bg-slate-800 dark:border-slate-700'
+                    }
+                  >
+                    ระบุเหตุผลที่จดไม่ได้
+                  </Button>
+                </div>
+
+                {meterPath === 'meter' && (
+                  <div className="space-y-2 rounded-md border border-amber-200 bg-white p-2 dark:border-amber-800 dark:bg-slate-900">
+                    {meterReadingId && (
+                      <div className="rounded bg-emerald-50 px-2 py-1 text-[10px] text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                        ✓ บันทึกมิเตอร์แล้ว (ID: {meterReadingId.slice(0, 8)}…) — พร้อมย้าย
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">ค่ามิเตอร์{meterModeIsColor ? ' ขาวดำ' : ''} *</Label>
+                        <Input
+                          type="number"
+                          value={form.meterBw}
+                          onChange={(e) => setForm({ ...form, meterBw: e.target.value })}
+                          disabled={!!meterReadingId}
+                          placeholder="เช่น 5000"
+                          className="h-8 text-xs dark:bg-slate-800 dark:border-slate-700"
+                        />
+                      </div>
+                      {meterModeIsColor && (
+                        <div className="space-y-1">
+                          <Label className="text-[10px]">ค่ามิเตอร์ สี</Label>
+                          <Input
+                            type="number"
+                            value={form.meterColor}
+                            onChange={(e) => setForm({ ...form, meterColor: e.target.value })}
+                            disabled={!!meterReadingId}
+                            placeholder="เช่น 1200"
+                            className="h-8 text-xs dark:bg-slate-800 dark:border-slate-700"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    <Input
+                      value={form.meterRemark}
+                      onChange={(e) => setForm({ ...form, meterRemark: e.target.value })}
+                      disabled={!!meterReadingId}
+                      placeholder="หมายเหตุ (ถ้ามี)"
+                      className="h-8 text-xs dark:bg-slate-800 dark:border-slate-700"
+                    />
+                  </div>
+                )}
+
+                {meterPath === 'skip' && (
+                  <Textarea
+                    value={form.skipMeterReason}
+                    onChange={(e) => setForm({ ...form, skipMeterReason: e.target.value })}
+                    rows={2}
+                    placeholder="เหตุผลที่จดมิเตอร์ไม่ได้ * (เช่น เครื่องดับ เครื่องพัง ไม่สามารถเข้าถึงได้)"
+                    className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                  />
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>ยกเลิก</Button>
+          <Button onClick={doTransfer} disabled={saving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+            {saving ? (
+              <>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                กำลังย้าย...
+              </>
+            ) : 'ยืนยันการย้าย'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

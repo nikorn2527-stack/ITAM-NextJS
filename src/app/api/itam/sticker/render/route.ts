@@ -1,0 +1,103 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-middleware'
+import { canAccessSite } from '@/lib/auth'
+import {
+  getStickerTemplates,
+  getActiveTemplateId,
+  getStickerSettings,
+} from '@/lib/sticker-settings-store'
+import {
+  renderStickerFromTemplate,
+  normalizeTemplate,
+  type StickerDeviceData,
+  type StickerTemplate,
+} from '@/lib/sticker-template'
+import { logAudit } from '@/lib/audit'
+
+// POST /api/itam/sticker/render
+//   Body: { assetNo: string, templateId?: string }
+//   Returns: { html, qrDataUrls, template }
+export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'PRINT')
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+  try {
+    const body = await req.json().catch(() => ({})) as { assetNo?: string; templateId?: string }
+    const assetNo = String(body.assetNo ?? '').trim()
+    if (!assetNo) {
+      return NextResponse.json({ error: 'assetNo is required' }, { status: 400 })
+    }
+
+    const device = await db.device.findUnique({ where: { assetNo } })
+    if (!device) {
+      return NextResponse.json({ error: `ไม่พบอุปกรณ์ ${assetNo}` }, { status: 404 })
+    }
+    if (!canAccessSite(auth.row, device.site)) {
+      return NextResponse.json(
+        { error: 'ไม่มีสิทธิ์เข้าถึงอุปกรณ์ในสาขานี้' },
+        { status: 403 },
+      )
+    }
+
+    // Resolve template: explicit id → active → first available
+    const [templates, activeId, settings] = await Promise.all([
+      getStickerTemplates(),
+      getActiveTemplateId(),
+      getStickerSettings(),
+    ])
+    let template: StickerTemplate | undefined
+    if (body.templateId) {
+      const found = templates.find((t) => t.id === body.templateId)
+      if (found) template = found
+    }
+    if (!template && activeId) {
+      template = templates.find((t) => t.id === activeId)
+    }
+    if (!template) {
+      template = templates[0]
+    }
+    if (!template) {
+      return NextResponse.json({ error: 'ไม่มีเทมเพลตสติกเกอร์ในระบบ' }, { status: 500 })
+    }
+
+    const deviceData: StickerDeviceData = {
+      assetNo: device.assetNo,
+      assetSiteCode: device.assetSiteCode,
+      serial: device.serial,
+      deviceType: device.deviceType,
+      brand: device.brand,
+      model: device.model,
+      building: device.building,
+      floor: device.floor,
+      department: device.department,
+      departmentCode: device.departmentCode,
+      location: device.location,
+      site: device.site,
+      contractNo: device.contractNo,
+      vendor: device.vendor,
+    }
+
+    const { html, qrDataUrls } = await renderStickerFromTemplate(deviceData, template, settings)
+
+    await logAudit(
+      'STICKER_RENDER',
+      'Device',
+      device.assetNo,
+      `เรนเดอร์สติกเกอร์สำหรับ ${device.assetNo} ด้วยเทมเพลต "${template.name}"`,
+      { assetNo, templateId: template.id, templateName: template.name },
+      auth.user.email,
+    )
+
+    return NextResponse.json({
+      html,
+      qrDataUrls,
+      template: normalizeTemplate(template),
+      paperWidth: template.canvas.width,
+      paperHeight: template.canvas.height,
+    })
+  } catch (err) {
+    console.error('POST /api/itam/sticker/render', err)
+    return NextResponse.json({ error: 'Failed to render sticker' }, { status: 500 })
+  }
+}

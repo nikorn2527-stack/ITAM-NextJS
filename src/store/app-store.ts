@@ -9,6 +9,9 @@ export type ActivePage =
   | 'itam'
   | 'itam-devices'
   | 'itam-meter'
+  | 'itam-meter-keyboard'
+  | 'itam-sticker-editor'
+  | 'itam-paper-analytics'
   | 'itam-settings'
   | 'itam-audit'
 
@@ -31,6 +34,8 @@ interface AppState {
   pendingDeviceStatus: string | null
   /** Set true to open the global search palette from anywhere. */
   searchOpen: boolean
+  /** Set true to open the QR scanner dialog from anywhere. */
+  qrScannerOpen: boolean
   setActivePage: (page: ActivePage) => void
   toggleSidebar: () => void
   closeSidebar: () => void
@@ -47,6 +52,7 @@ interface AppState {
   setPendingDeviceStatus: (s: string | null) => void
   clearPendingDeviceStatus: () => void
   setSearchOpen: (open: boolean) => void
+  setQrScannerOpen: (open: boolean) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -59,6 +65,7 @@ export const useAppStore = create<AppState>((set) => ({
   pendingDeviceType: null,
   pendingDeviceStatus: null,
   searchOpen: false,
+  qrScannerOpen: false,
   setActivePage: (page) => set({ activePage: page }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   closeSidebar: () => set({ sidebarOpen: false }),
@@ -75,4 +82,5 @@ export const useAppStore = create<AppState>((set) => ({
   setPendingDeviceStatus: (s) => set({ pendingDeviceStatus: s }),
   clearPendingDeviceStatus: () => set({ pendingDeviceStatus: null }),
   setSearchOpen: (open) => set({ searchOpen: open }),
+  setQrScannerOpen: (open) => set({ qrScannerOpen: open }),
 }))
