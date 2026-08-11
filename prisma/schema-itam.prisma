@@ -49,7 +49,8 @@ model Device {
   createdAt       DateTime @default(now()) @map("created_at")
 
   // Relations
-  meterReadings   MeterReading[]
+  meterReadings     MeterReading[]
+  locationHistories LocationHistory[]
 
   @@map("devices")
 }
@@ -94,7 +95,6 @@ model MeterReading {
 // ============================================================
 // TODO: Models ถัดไป (รอ headers จากผู้ใช้)
 //
-// 5) Location_History    — ประวัติการย้าย
 // 6) Cycles              — รอบจดมิเตอร์
 // 7) Audit_Log           — ประวัติการใช้งาน
 // 8) User_Permissions    — สิทธิ์ผู้ใช้
@@ -103,6 +103,43 @@ model MeterReading {
 // 11) Assignments        — การมอบหมาย
 // 12) MaintenanceLog     — ซ่อมบำรุง
 // ============================================================
+
+// ============================================================
+// 5) Location_History — ประวัติการย้ายตำแหน่ง/เปลี่ยนสถานะ
+//    Source: sheet "Location_History" (20 columns)
+// ============================================================
+model LocationHistory {
+  id                  String   @id @default(cuid())
+  logId               String?  @map("Log_ID") // เช่น MV-20260518114325-01325
+  assetNo             String   @map("Asset_No")
+  moveDate            String?  @map("Move_Date") // ISO datetime string
+  action              String?  @map("Action") // TRANSFER | TRANSFER_SITE | STATUS_CHANGE | STATUS_AND_TRANSFER | TRANSFER_BY_LIFECYCLE
+  fromStatus          String?  @map("From_Status")
+  toStatus            String?  @map("To_Status")
+  fromSite            String?  @map("From_Site")
+  fromAssetSiteCode   String?  @map("From_AssetSiteCode")
+  fromBuilding        String?  @map("From_Building")
+  fromFloor           String?  @map("From_Floor")
+  fromDepartment      String?  @map("From_Department")
+  fromLocation        String?  @map("From_Location")
+  toSite              String?  @map("To_Site")
+  toAssetSiteCode     String?  @map("To_AssetSiteCode")
+  toBuilding          String?  @map("To_Building")
+  toFloor             String?  @map("To_Floor")
+  toDepartment        String?  @map("To_Department")
+  toLocation          String?  @map("To_Location")
+  meterReadingId      String?  @map("Meter_Reading_ID") // เชื่อมกับ MeterReading (ถ้าจดมิเตอร์พร้อมย้าย)
+  movedBy             String?  @map("Moved_By") // อีเมลผู้ทำรายการ
+  remark              String?  @map("Remark")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  // Relation
+  device              Device   @relation(fields: [assetNo], references: [assetNo], onDelete: Cascade)
+
+  @@index([assetNo])
+  @@index([moveDate])
+  @@map("location_history")
+}
 
 // ============================================================
 // 4) Master_Category — หมวดหมู่ของ Master Items
