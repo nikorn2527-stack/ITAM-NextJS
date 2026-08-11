@@ -1,0 +1,84 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Device {
+  id              String   @id @default(cuid())
+  assetCode       String   @unique
+  name            String
+  brand           String
+  model           String
+  type            String
+  serialNumber    String?
+  status          String // active | spare | repair | disposed
+  site            String
+  department      String?
+  departmentCode  String?
+  parentRef       String?
+  displayLabel    String?
+  location        String?
+  purchaseDate    String? // ISO date string
+  lastMeterReading Int    @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  meterReadings MeterReading[]
+}
+
+model MasterItem {
+  id           String   @id @default(cuid())
+  category     String // Brand | Type | Model | Department | Status | DeviceGroup
+  code         String
+  label        String
+  parentRef    String?
+  displayLabel String?
+  siteCode     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model MeterReading {
+  id        String   @id @default(cuid())
+  deviceId  String
+  reading   Int
+  prevReading Int
+  date      String // ISO date string
+  remark    String?
+  delta     Int
+  cycleId   String?
+  createdAt DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}
+
+model Cycle {
+  id        String   @id @default(cuid())
+  name      String
+  startDate String // ISO date string
+  endDate   String // ISO date string
+  status    String // active | ended | cancelled
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Site {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
