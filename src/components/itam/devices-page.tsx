@@ -57,6 +57,7 @@ import {
   PackageOpen,
   X,
   ArrowRight,
+  UserMinus,
 } from 'lucide-react'
 import {
   type Device,
@@ -83,6 +84,7 @@ const DEVICE_CSV_HEADERS = [
   { key: 'serialNumber', label: 'หมายเลข SN' },
   { key: 'status', label: 'สถานะ' },
   { key: 'site', label: 'สาขา' },
+  { key: 'currentAssignee', label: 'ผู้ใช้งาน' },
   { key: 'department', label: 'แผนก' },
   { key: 'departmentCode', label: 'รหัสแผนก' },
   { key: 'parentRef', label: 'ParentRef' },
@@ -135,12 +137,34 @@ const WARRANTY_FILTER_OPTIONS = [
   { value: 'expired', label: 'หมดแล้ว' },
 ] as const
 
+const ASSIGNEE_FILTER_OPTIONS = [
+  { value: 'all', label: 'ผู้ใช้งานทั้งหมด' },
+  { value: 'assigned', label: 'มอบหมายแล้ว' },
+  { value: 'unassigned', label: 'ยังไม่มอบหมาย' },
+] as const
+
+// Palette used for assignee avatars — deterministic per first character.
+const AVATAR_COLORS = [
+  'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
+  'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
+  'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+  'bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300',
+  'bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300',
+  'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
+]
+function avatarColor(name: string): string {
+  if (!name) return AVATAR_COLORS[AVATAR_COLORS.length - 1]
+  const code = name.charCodeAt(0)
+  return AVATAR_COLORS[code % AVATAR_COLORS.length]
+}
+
 export function DevicesPage() {
   const qc = useQueryClient()
   const [search, setSearch] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState('all')
   const [siteFilter, setSiteFilter] = React.useState('all')
   const [warrantyFilter, setWarrantyFilter] = React.useState<string>('all')
+  const [assigneeFilter, setAssigneeFilter] = React.useState<string>('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM)
   const [saving, setSaving] = React.useState(false)
@@ -210,12 +234,20 @@ export function DevicesPage() {
   // Apply warranty filter client-side (computed from purchaseDate + warrantyMonths)
   const devices = React.useMemo<Device[] | undefined>(() => {
     if (!devicesRaw) return undefined
-    if (warrantyFilter === 'all') return devicesRaw
-    return devicesRaw.filter((d) => {
-      const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
-      return w.status === warrantyFilter
-    })
-  }, [devicesRaw, warrantyFilter])
+    let list = devicesRaw
+    if (warrantyFilter !== 'all') {
+      list = list.filter((d) => {
+        const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
+        return w.status === warrantyFilter
+      })
+    }
+    if (assigneeFilter === 'assigned') {
+      list = list.filter((d) => Boolean(d.currentAssignee))
+    } else if (assigneeFilter === 'unassigned') {
+      list = list.filter((d) => !d.currentAssignee)
+    }
+    return list
+  }, [devicesRaw, warrantyFilter, assigneeFilter])
 
   const { data: sites } = useQuery<Site[]>({
     queryKey: ['sites'],
@@ -566,6 +598,18 @@ export function DevicesPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="ผู้ใช้งาน" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ASSIGNEE_FILTER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -734,6 +778,7 @@ export function DevicesPage() {
                   <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">รับประกัน</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">สาขา</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">ผู้ใช้งาน</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">แผนก</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">รหัสแผนก</TableHead>
                   <TableHead className="text-right text-slate-600 dark:text-slate-300">การจัดการ</TableHead>
@@ -743,29 +788,29 @@ export function DevicesPage() {
                 {isLoading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={`sk-${i}`}>
-                      <TableCell colSpan={12}>
+                      <TableCell colSpan={13}>
                         <Skeleton className="h-6 w-full dark:bg-slate-800" />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (devices ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="py-12">
+                    <TableCell colSpan={13} className="py-12">
                       <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
                         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
                           <PackageOpen className="h-7 w-7 text-slate-300 dark:text-slate-600" />
                         </div>
                         <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                          {search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all'
+                          {search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all' || assigneeFilter !== 'all'
                             ? 'ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข'
                             : 'ยังไม่มีอุปกรณ์ในระบบ'}
                         </div>
                         <div className="text-xs text-slate-400 dark:text-slate-500">
-                          {search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all'
+                          {search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all' || assigneeFilter !== 'all'
                             ? 'ลองปรับตัวกรองหรือคำค้นหา หรือล้างตัวกรองเพื่อดูทั้งหมด'
                             : 'เริ่มต้นโดยการเพิ่มอุปกรณ์เครื่องแรกของคุณ'}
                         </div>
-                        {(search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all') ? (
+                        {(search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all' || assigneeFilter !== 'all') ? (
                           <Button
                             variant="outline"
                             size="sm"
@@ -774,6 +819,7 @@ export function DevicesPage() {
                               setStatusFilter('all')
                               setSiteFilter('all')
                               setWarrantyFilter('all')
+                              setAssigneeFilter('all')
                             }}
                             className="mt-2 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
                           >
@@ -840,6 +886,39 @@ export function DevicesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-slate-700 dark:text-slate-200">{d.site}</TableCell>
+                      <TableCell
+                        className="max-w-[180px] truncate"
+                        onClick={(e) => {
+                          // clicking the assignee opens the detail sheet — but allow
+                          // row click to also fire.
+                          if (d.currentAssignee) {
+                            e.stopPropagation()
+                            setDetailDeviceId(d.id)
+                          }
+                        }}
+                      >
+                        {d.currentAssignee ? (
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={
+                                'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ' +
+                                avatarColor(d.currentAssignee)
+                              }
+                              title={d.currentAssignee}
+                            >
+                              {(d.currentAssignee.charAt(0) || '?').toUpperCase()}
+                            </span>
+                            <span className="truncate text-sm text-slate-700 dark:text-slate-200" title={d.currentAssignee}>
+                              {d.currentAssignee}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
+                            <UserMinus className="h-3.5 w-3.5" />
+                            —
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="max-w-[160px] truncate text-slate-600 dark:text-slate-300">
                         {d.department ?? '-'}
                       </TableCell>

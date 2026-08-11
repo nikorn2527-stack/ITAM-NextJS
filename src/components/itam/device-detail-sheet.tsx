@@ -52,8 +52,12 @@ import {
   Loader2,
   MapPin,
   ShieldAlert,
+  User,
+  UserPlus,
+  Undo2,
+  ClipboardList,
 } from 'lucide-react'
-import type { Device, MeterReading, DeviceTransfer, Site } from './types'
+import type { Device, MeterReading, DeviceTransfer, Site, Assignment } from './types'
 import {
   statusBadgeClass,
   statusLabel,
@@ -123,6 +127,22 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const [tDate, setTDate] = React.useState(todayISO())
   const [transferring, setTransferring] = React.useState(false)
 
+  // Assign dialog state
+  const [assignOpen, setAssignOpen] = React.useState(false)
+  const [aAssignee, setAAssignee] = React.useState('')
+  const [aRole, setARole] = React.useState('')
+  const [aDept, setADept] = React.useState('')
+  const [aCheckout, setACheckout] = React.useState(todayISO())
+  const [aExpectedReturn, setAExpectedReturn] = React.useState('')
+  const [aNotes, setANotes] = React.useState('')
+  const [assigning, setAssigning] = React.useState(false)
+
+  // Return dialog state
+  const [returnOpen, setReturnOpen] = React.useState(false)
+  const [rReturnDate, setRReturnDate] = React.useState(todayISO())
+  const [rNotes, setRNotes] = React.useState('')
+  const [returning, setReturning] = React.useState(false)
+
   const { data: deviceData, isLoading: deviceLoading } = useQuery<{
     device: Device
   } | null>({
@@ -165,6 +185,25 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     enabled: Boolean(deviceId),
   })
 
+  const { data: assignments, isLoading: assignmentsLoading } = useQuery<
+    Assignment[]
+  >({
+    queryKey: ['device-assignments', deviceId],
+    queryFn: async () => {
+      if (!deviceId) return []
+      const res = await fetch(`/api/devices/${deviceId}/assign`)
+      if (!res.ok) return []
+      const json = await res.json()
+      return (json.assignments ?? []) as Assignment[]
+    },
+    enabled: Boolean(deviceId),
+  })
+
+  const activeAssignment = React.useMemo(
+    () => (assignments ?? []).find((a) => a.status === 'active') ?? null,
+    [assignments],
+  )
+
   const { data: sites } = useQuery<Site[]>({
     queryKey: ['sites'],
     queryFn: async () => {
@@ -203,6 +242,94 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     setTReason('')
     setTDate(todayISO())
     setTransferOpen(true)
+  }
+
+  function openAssignDialog() {
+    if (!device) return
+    setAAssignee('')
+    setARole('')
+    setADept(device.department ?? '')
+    setACheckout(todayISO())
+    setAExpectedReturn('')
+    setANotes('')
+    setAssignOpen(true)
+  }
+
+  function openReturnDialog() {
+    if (!activeAssignment) return
+    setRReturnDate(todayISO())
+    setRNotes('')
+    setReturnOpen(true)
+  }
+
+  async function confirmAssign() {
+    if (!device) return
+    if (!aAssignee.trim()) {
+      toast.error('กรุณากรอกชื่อผู้รับมอบหมาย')
+      return
+    }
+    try {
+      setAssigning(true)
+      const res = await fetch(`/api/devices/${device.id}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignee: aAssignee.trim(),
+          assigneeRole: aRole.trim() || null,
+          department: aDept.trim() || null,
+          checkoutDate: aCheckout,
+          expectedReturnDate: aExpectedReturn || null,
+          notes: aNotes.trim() || null,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Assign failed')
+      }
+      toast.success(`มอบหมายอุปกรณ์ให้ ${aAssignee.trim()} แล้ว`)
+      setAssignOpen(false)
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['device-detail', deviceId] }),
+        qc.invalidateQueries({ queryKey: ['device-assignments', deviceId] }),
+        qc.invalidateQueries({ queryKey: ['devices'] }),
+        qc.invalidateQueries({ queryKey: ['audit'] }),
+      ])
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Assign failed')
+    } finally {
+      setAssigning(false)
+    }
+  }
+
+  async function confirmReturn() {
+    if (!device || !activeAssignment) return
+    try {
+      setReturning(true)
+      const res = await fetch(`/api/devices/${device.id}/return`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          actualReturnDate: rReturnDate,
+          notes: rNotes.trim() || null,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Return failed')
+      }
+      toast.success(`คืนอุปกรณ์จาก ${activeAssignment.assignee} แล้ว`)
+      setReturnOpen(false)
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['device-detail', deviceId] }),
+        qc.invalidateQueries({ queryKey: ['device-assignments', deviceId] }),
+        qc.invalidateQueries({ queryKey: ['devices'] }),
+        qc.invalidateQueries({ queryKey: ['audit'] }),
+      ])
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Return failed')
+    } finally {
+      setReturning(false)
+    }
   }
 
   async function confirmTransfer() {
@@ -318,6 +445,91 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
             }
             return null
           })()}
+
+          {/* Current assignee card */}
+          {device && (
+            <section>
+              {assignmentsLoading ? (
+                <Skeleton className="h-24 w-full dark:bg-slate-800" />
+              ) : activeAssignment ? (
+                <div className="relative overflow-hidden rounded-lg border border-teal-200 bg-gradient-to-br from-teal-50 to-white p-4 dark:border-teal-800/60 dark:from-teal-950/30 dark:to-slate-900">
+                  <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#14b8a6] to-[#0d9488]" />
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300">
+                      <User className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-300">
+                          ผู้ใช้งานปัจจุบัน
+                        </h3>
+                        <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                          active
+                        </Badge>
+                      </div>
+                      <div className="mt-1 text-base font-bold text-slate-800 dark:text-slate-100">
+                        {activeAssignment.assignee}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        {activeAssignment.assigneeRole && (
+                          <span>{activeAssignment.assigneeRole}</span>
+                        )}
+                        {activeAssignment.department && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {activeAssignment.department}
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1">
+                          <ClipboardList className="h-3 w-3" />
+                          มอบเมื่อ {formatThaiDate(activeAssignment.checkoutDate)}
+                        </span>
+                        {activeAssignment.expectedReturnDate && (
+                          <span>
+                            กำหนดคืน {formatThaiDate(activeAssignment.expectedReturnDate)}
+                          </span>
+                        )}
+                      </div>
+                      {activeAssignment.notes && (
+                        <div className="mt-1.5 rounded bg-teal-50 px-2 py-1 text-xs text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
+                          📝 {activeAssignment.notes}
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={openReturnDialog}
+                      disabled={returning}
+                      className="shrink-0 border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:border-rose-700 dark:bg-rose-950/40 dark:text-rose-300 dark:hover:bg-rose-950/60 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+                    >
+                      <Undo2 className="h-4 w-4" />
+                      คืนอุปกรณ์
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-teal-300 bg-teal-50/40 py-6 text-center dark:border-teal-700 dark:bg-teal-950/20">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-100 text-teal-600 dark:bg-teal-900/40 dark:text-teal-300">
+                    <User className="h-5 w-5" />
+                  </div>
+                  <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                    ยังไม่มีผู้ใช้งานปัจจุบัน
+                  </div>
+                  <div className="text-xs text-slate-400 dark:text-slate-500">
+                    มอบหมายอุปกรณ์นี้ให้ผู้ใช้งานเพื่อติดตามการใช้งาน
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={openAssignDialog}
+                    className="mt-1 border border-[#0d9488] bg-[#0d9488] text-white hover:bg-[#0f766e] focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6] dark:bg-[#14b8a6] dark:hover:bg-[#0d9488] dark:focus-visible:ring-offset-slate-950"
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    มอบหมาย
+                  </Button>
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Info grid */}
           <section>
@@ -586,6 +798,79 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
               </ol>
             )}
           </section>
+
+          {/* Assignment history timeline */}
+          <section>
+            <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <User className="h-3.5 w-3.5 text-[#0d9488]" />
+              ประวัติการมอบหมาย ({assignments?.length ?? 0})
+            </h3>
+            {assignmentsLoading ? (
+              <Skeleton className="h-24 w-full dark:bg-slate-800" />
+            ) : !assignments || assignments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 py-8 text-slate-400 dark:border-slate-700 dark:text-slate-500">
+                <User className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">ยังไม่มีประวัติการมอบหมาย</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500">กดปุ่ม &quot;มอบหมาย&quot; ด้านบนเพื่อบันทึกการมอบหมาย</span>
+              </div>
+            ) : (
+              <ol className="relative space-y-4 border-l-2 border-[#0d9488]/30 pl-5">
+                {assignments.map((a) => (
+                  <li key={a.id} className="relative">
+                    <span className="absolute -left-[26px] top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 border-[#0d9488] bg-white dark:bg-slate-900">
+                      <span className="h-1.5 w-1.5 rounded-full bg-[#0d9488]" />
+                    </span>
+                    <div className="rounded-md border border-slate-100 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-800/40">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                          {a.checkoutDate}
+                        </div>
+                        <Badge
+                          className={
+                            a.status === 'active'
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          }
+                        >
+                          {a.status === 'active' ? 'กำลังใช้งาน' : 'คืนแล้ว'}
+                        </Badge>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                        <User className="h-3.5 w-3.5 text-[#0d9488]" />
+                        <span>{a.assignee}</span>
+                        {a.assigneeRole && (
+                          <span className="text-xs font-normal text-slate-500 dark:text-slate-400">
+                            · {a.assigneeRole}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        {a.department && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {a.department}
+                          </span>
+                        )}
+                        {a.expectedReturnDate && (
+                          <span>กำหนดคืน {formatThaiDate(a.expectedReturnDate)}</span>
+                        )}
+                        {a.actualReturnDate && (
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            คืนจริง {formatThaiDate(a.actualReturnDate)}
+                          </span>
+                        )}
+                      </div>
+                      {a.notes && (
+                        <div className="mt-1.5 rounded bg-teal-50 px-2 py-1 text-xs text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
+                          📝 {a.notes}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
         </div>
 
         <SheetFooter className="flex-row gap-2 border-t border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -715,6 +1000,175 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                 </>
               ) : (
                 'ยืนยันการย้าย'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign sub-dialog */}
+      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+        <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+              <UserPlus className="h-4 w-4 text-[#0d9488]" />
+              👤 มอบหมายอุปกรณ์
+            </DialogTitle>
+            <DialogDescription>
+              {device?.name} ({device?.assetCode}) — ระบุผู้รับมอบหมายเพื่อติดตามการใช้งาน
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                ผู้รับมอบหมาย *
+              </Label>
+              <Input
+                value={aAssignee}
+                onChange={(e) => setAAssignee(e.target.value)}
+                placeholder="ชื่อ-นามสกุล หรือ email"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  ตำแหน่ง/บทบาท
+                </Label>
+                <Input
+                  value={aRole}
+                  onChange={(e) => setARole(e.target.value)}
+                  placeholder="เช่น พนักงาน IT"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  แผนก
+                </Label>
+                <Input
+                  value={aDept}
+                  onChange={(e) => setADept(e.target.value)}
+                  placeholder="เช่น IT"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  วันที่มอบ *
+                </Label>
+                <Input
+                  type="date"
+                  value={aCheckout}
+                  onChange={(e) => setACheckout(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  กำหนดคืน
+                </Label>
+                <Input
+                  type="date"
+                  value={aExpectedReturn}
+                  onChange={(e) => setAExpectedReturn(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                หมายเหตุ
+              </Label>
+              <Textarea
+                value={aNotes}
+                onChange={(e) => setANotes(e.target.value)}
+                placeholder="หมายเหตุการมอบหมาย (ถ้ามี)"
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setAssignOpen(false)}
+              disabled={assigning}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={confirmAssign}
+              disabled={assigning || !aAssignee.trim()}
+              className="border border-[#0d9488] bg-[#0d9488] text-white hover:bg-[#0f766e] focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6] dark:bg-[#14b8a6] dark:hover:bg-[#0d9488] dark:focus-visible:ring-offset-slate-950"
+            >
+              {assigning ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  กำลังมอบหมาย...
+                </>
+              ) : (
+                'ยืนยันการมอบหมาย'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Return sub-dialog */}
+      <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
+        <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+              <Undo2 className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+              📥 คืนอุปกรณ์
+            </DialogTitle>
+            <DialogDescription>
+              {device?.name} ({device?.assetCode}) — คืนจาก{' '}
+              <span className="font-medium text-slate-600 dark:text-slate-300">
+                {activeAssignment?.assignee}
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                วันที่คืนจริง *
+              </Label>
+              <Input
+                type="date"
+                value={rReturnDate}
+                onChange={(e) => setRReturnDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                หมายเหตุการคืน
+              </Label>
+              <Textarea
+                value={rNotes}
+                onChange={(e) => setRNotes(e.target.value)}
+                placeholder="สภาพอุปกรณ์ / อุปกรณ์เสริมที่คืน / หมายเหตุอื่น ๆ"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setReturnOpen(false)}
+              disabled={returning}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={confirmReturn}
+              disabled={returning}
+              className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+            >
+              {returning ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  กำลังคืน...
+                </>
+              ) : (
+                'ยืนยันการคืน'
               )}
             </Button>
           </DialogFooter>

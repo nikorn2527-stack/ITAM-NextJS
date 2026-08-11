@@ -55,6 +55,7 @@ import type {
 import { DASHBOARD_RANGE_OPTIONS } from './types'
 import { useAppStore } from '@/store/app-store'
 import { exportDashboardPdf } from './dashboard-pdf-export'
+import { LifecycleDashboard } from './lifecycle-dashboard'
 
 interface WarrantySummary {
   active: number
@@ -541,6 +542,9 @@ export function DashboardPage() {
           }}
         />
       </motion.div>
+
+      {/* Lifecycle / replacement planning widget */}
+      <LifecycleDashboard />
 
       {/* Warranty alert bar — full-width amber card linking to devices */}
       <button
