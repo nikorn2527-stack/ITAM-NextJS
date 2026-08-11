@@ -45,6 +45,7 @@ import {
   AlertTriangle,
   CalendarClock,
   ArrowRight,
+  Printer,
 } from 'lucide-react'
 import type {
   DashboardData,
@@ -53,6 +54,7 @@ import type {
 } from './types'
 import { DASHBOARD_RANGE_OPTIONS } from './types'
 import { useAppStore } from '@/store/app-store'
+import { exportDashboardPdf } from './dashboard-pdf-export'
 
 interface WarrantySummary {
   active: number
@@ -229,6 +231,7 @@ export function DashboardPage() {
 
   const [seeding, setSeeding] = React.useState(false)
   const [range, setRange] = React.useState<DashboardRangeKey>('month')
+  const [exporting, setExporting] = React.useState(false)
 
   const { data, isLoading, isError, refetch } = useQuery<DashboardData>({
     queryKey: ['dashboard', range],
@@ -284,6 +287,18 @@ export function DashboardPage() {
     staleTime: 60_000,
   })
 
+  // App settings (for org name used in PDF export)
+  const { data: settingsMap } = useQuery<Record<string, string>>({
+    queryKey: ['settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings')
+      if (!res.ok) return {}
+      const json = await res.json()
+      return (json.settings as Record<string, string>) ?? {}
+    },
+    staleTime: 60_000,
+  })
+
   // Auto-seed if empty
   React.useEffect(() => {
     if (!data) return
@@ -304,6 +319,28 @@ export function DashboardPage() {
       toast.error(e instanceof Error ? e.message : 'Seed failed')
     } finally {
       setSeeding(false)
+    }
+  }
+
+  async function handleExportPdf() {
+    try {
+      setExporting(true)
+      // Use the freshest data we have (refetch to be safe).
+      const latest = await refetch()
+      const payload = latest.data ?? data
+      if (!payload) {
+        toast.error('ยังไม่มีข้อมูลให้ส่งออก')
+        return
+      }
+      exportDashboardPdf({
+        data: payload,
+        range,
+        orgName: settingsMap?.orgName,
+      })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ส่งออก PDF ไม่สำเร็จ')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -417,6 +454,16 @@ export function DashboardPage() {
             className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
             🔄 รีเฟรช
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleExportPdf}
+            disabled={exporting || isLoading || total === 0}
+            className="border-[#0d9488] text-[#0d9488] hover:bg-[#0d9488]/10 focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6] dark:text-[#14b8a6] dark:hover:bg-[#14b8a6]/10 dark:focus-visible:ring-offset-slate-950"
+            title="ส่งออก PDF รายงานภาพรวม"
+          >
+            <Printer className="mr-1.5 h-4 w-4" />
+            {exporting ? 'กำลังเตรียม...' : 'ส่งออก PDF'}
           </Button>
         </div>
       </div>
