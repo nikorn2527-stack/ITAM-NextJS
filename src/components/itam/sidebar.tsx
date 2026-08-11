@@ -16,6 +16,7 @@ interface NavItemDef {
 
 const NAV_ITEMS: NavItemDef[] = [
   { page: 'dashboard', icon: '📊', label: 'Dashboard' },
+  { page: 'itam', icon: '🎯', label: 'ITAM (Real DB)' },
   { page: 'devices', icon: '💻', label: 'จัดการอุปกรณ์' },
   { page: 'meter', icon: '📈', label: 'จดมิเตอร์' },
   { page: 'paper-analytics', icon: '📊', label: 'การใช้กระดาษ' },
