@@ -1,0 +1,819 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { useTheme } from 'next-themes'
+     6→import { motion, AnimatePresence } from 'framer-motion'
+     7→import { toast } from 'sonner'
+     8→import {
+     9→  PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip,
+    10→  BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area, LabelList,
+    11→} from 'recharts'
+    12→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    13→import { Skeleton } from '@/components/ui/skeleton'
+    14→import { Badge } from '@/components/ui/badge'
+    15→import { Button } from '@/components/ui/button'
+    16→import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+    17→import {
+    18→  Package, CheckCircle2, Wrench, FileText, TrendingUp, Building2,
+    19→  FileDown, Flame, BarChart3, Trophy, RefreshCw, Loader2,
+    20→} from 'lucide-react'
+    21→import { useAppStore } from '@/store/app-store'
+    22→
+    23→interface SiteRow { siteCode: string; siteName: string | null; deviceCount: number; activeCount: number; paperSheets: number }
+    24→interface DashboardData {
+    25→  totals: { total: number; active: number; inactive: number; spare: number; repair: number }
+    26→  byType: Array<{ name: string; value: number }>
+    27→  bySite: SiteRow[]
+    28→  paperThisMonth: number
+    29→  paperTrend: Array<{ month: string; sheets: number }>
+    30→  meterRequiredCount: number
+    31→  recentActivity: Array<{
+    32→    id: string; assetNo: string; deviceName: string
+    33→    readingDate: string; pagesBw: number; pagesColor: number; remark: string | null
+    34→  }>
+    35→  heatmap: Array<{ assetNo: string; deviceName: string; months: Array<{ month: string; pages: number }> }>
+    36→  heatmapMonths: string[]
+    37→  queryTimeMs: number
+    38→}
+    39→
+    40→// ============== Count-up hook ==============
+    41→function useCountUp(value: number, durationMs = 600): number {
+    42→  const [display, setDisplay] = React.useState(value)
+    43→  const fromRef = React.useRef(value)
+    44→  const rafRef = React.useRef<number | null>(null)
+    45→  React.useEffect(() => {
+    46→    const from = fromRef.current
+    47→    const to = value
+    48→    if (from === to) return
+    49→    const start = performance.now()
+    50→    const tick = (now: number) => {
+    51→      const t = Math.min(1, (now - start) / durationMs)
+    52→      const eased = 1 - Math.pow(1 - t, 3)
+    53→      setDisplay(Math.round(from + (to - from) * eased))
+    54→      if (t < 1) rafRef.current = requestAnimationFrame(tick)
+    55→      else fromRef.current = to
+    56→    }
+    57→    rafRef.current = requestAnimationFrame(tick)
+    58→    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+    59→  }, [value, durationMs])
+    60→  return display
+    61→}
+    62→
+    63→// ============== KPI Card with count-up + glow ==============
+    64→function KpiCard({
+    65→  title, value, icon, accent, loading, glow,
+    66→}: {
+    67→  title: string; value: number; icon: React.ReactNode
+    68→  accent: string; loading?: boolean; glow?: boolean
+    69→}) {
+    70→  const animated = useCountUp(value)
+    71→  return (
+    72→    <Card
+    73→      className={[
+    74→        'relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md',
+    75→        'dark:border-slate-800 dark:bg-slate-900',
+    76→        glow ? 'itam-glow' : '',
+    77→      ].join(' ')}
+    78→    >
+    79→      <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: accent }} />
+    80→      <CardContent className="p-3 sm:p-4">
+    81→        <div className="flex items-center gap-3">
+    82→          <div
+    83→            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:h-11 sm:w-11"
+    84→            style={{ background: `${accent}1a`, color: accent }}
+    85→          >
+    86→            {icon}
+    87→          </div>
+    88→          <div className="min-w-0 flex-1">
+    89→            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{title}</div>
+    90→            {loading ? (
+    91→              <Skeleton className="mt-1 h-7 w-20" />
+    92→            ) : (
+    93→              <div className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-2xl">
+    94→                {animated.toLocaleString()}
+    95→              </div>
+    96→            )}
+    97→          </div>
+    98→        </div>
+    99→      </CardContent>
+   100→    </Card>
+   101→  )
+   102→}
+   103→
+   104→const MEDALS = ['🥇', '🥈', '🥉']
+   105→
+   106→function heatColor(intensity: number): string {
+   107→  const i = Math.max(0, Math.min(1, intensity))
+   108→  const alpha = 0.08 + i * 0.85
+   109→  return `rgba(13, 148, 136, ${alpha.toFixed(2)})`
+   110→}
+   111→
+   112→// Status palette for donut — orange, teal, amber, rose, slate
+   113→const STATUS_COLORS = ['#f97316', '#0d9488', '#f59e0b', '#ef4444', '#94a3b8']
+   114→
+   115→export function ItamDashboard() {
+   116→  const { theme } = useTheme()
+   117→  const isDark = theme === 'dark'
+   118→  const qc = useQueryClient()
+   119→  const setActivePage = useAppStore((s) => s.setActivePage)
+   120→  const setPendingDeviceType = useAppStore((s) => s.setPendingDeviceType)
+   121→  const setPendingDeviceStatus = useAppStore((s) => s.setPendingDeviceStatus)
+   122→
+   123→  const [sitesOpen, setSitesOpen] = React.useState(false)
+   124→  const [heatOpen, setHeatOpen] = React.useState(false)
+   125→  const [cycleOpen, setCycleOpen] = React.useState(false)
+   126→  const [lastUpdated, setLastUpdated] = React.useState<Date | null>(null)
+   127→  const [glowKey, setGlowKey] = React.useState<string | null>(null)
+   128→
+   129→  // Track previous totals to know which KPI changed
+   130→  const prevTotalsRef = React.useRef<{ total: number; active: number; spare: number; repair: number; meter: number } | null>(null)
+   131→
+   132→  const { data, isLoading, isFetching, dataUpdatedAt } = useQuery<DashboardData>({
+   133→    queryKey: ['itam-dashboard'],
+   134→    queryFn: async () => {
+   135→      const res = await fetch('/api/itam/dashboard')
+   136→      if (!res.ok) throw new Error('Failed')
+   137→      return res.json()
+   138→    },
+   139→    refetchInterval: 30_000,
+   140→  })
+   141→
+   142→  // Update "last updated" + glow flash when data changes
+   143→  const firstLoadRef = React.useRef(true)
+   144→  React.useEffect(() => {
+   145→    if (!data) return
+   146→    setLastUpdated(new Date(dataUpdatedAt))
+   147→    if (firstLoadRef.current) {
+   148→      firstLoadRef.current = false
+   149→      prevTotalsRef.current = {
+   150→        total: data.totals.total,
+   151→        active: data.totals.active,
+   152→        spare: data.totals.spare,
+   153→        repair: data.totals.repair,
+   154→        meter: data.meterRequiredCount,
+   155→      }
+   156→      return
+   157→    }
+   158→    const prev = prevTotalsRef.current
+   159→    if (prev) {
+   160→      const changes: { key: string; val: number }[] = [
+   161→        { key: 'total', val: data.totals.total },
+   162→        { key: 'active', val: data.totals.active },
+   163→        { key: 'spare', val: data.totals.spare },
+   164→        { key: 'repair', val: data.totals.repair },
+   165→        { key: 'meter', val: data.meterRequiredCount },
+   166→      ]
+   167→      const changed = changes.find(c => c.val !== prev[c.key as keyof typeof prev])
+   168→      if (changed) {
+   169→        setGlowKey(changed.key)
+   170→        const tid = setTimeout(() => setGlowKey(null), 1000)
+   171→        prevTotalsRef.current = {
+   172→          total: data.totals.total,
+   173→          active: data.totals.active,
+   174→          spare: data.totals.spare,
+   175→          repair: data.totals.repair,
+   176→          meter: data.meterRequiredCount,
+   177→        }
+   178→        return () => clearTimeout(tid)
+   179→      }
+   180→    }
+   181→  }, [data, dataUpdatedAt])
+   182→
+   183→  const { data: heatData, isLoading: heatLoading } = useQuery<DashboardData>({
+   184→    queryKey: ['itam-dashboard-extra'],
+   185→    queryFn: async () => {
+   186→      const res = await fetch('/api/itam/dashboard?extra=1')
+   187→      if (!res.ok) throw new Error('Failed')
+   188→      return res.json()
+   189→    },
+   190→    enabled: heatOpen,
+   191→  })
+   192→
+   193→  function exportPdf() {
+   194→    const win = window.open('', '_blank', 'width=900,height=1200')
+   195→    if (!win) {
+   196→      toast.warning('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัปแล้วลองอีกครั้ง')
+   197→      return
+   198→    }
+   199→    const totals = data?.totals
+   200→    const total = totals?.total ?? 0
+   201→    const active = totals?.active ?? 0
+   202→    const spare = totals?.spare ?? 0
+   203→    const repair = totals?.repair ?? 0
+   204→    const paper = data?.paperThisMonth ?? 0
+   205→    const meterReq = data?.meterRequiredCount ?? 0
+   206→    const byType = data?.byType ?? []
+   207→    const bySite = data?.bySite ?? []
+   208→    const generatedAt = new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
+   209→
+   210→    const esc = (s: string) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+   211→
+   212→    const kpiHtml = `
+   213→      <div class="kpi-grid">
+   214→        <div class="kpi"><div class="label">อุปกรณ์ทั้งหมด</div><div class="value">${total.toLocaleString()}<span class="unit">เครื่อง</span></div></div>
+   215→        <div class="kpi t-active"><div class="label">ใช้งานอยู่</div><div class="value">${active.toLocaleString()}<span class="unit">เครื่อง</span></div></div>
+   216→        <div class="kpi t-spare"><div class="label">สำรอง</div><div class="value">${spare.toLocaleString()}<span class="unit">เครื่อง</span></div></div>
+   217→        <div class="kpi t-repair"><div class="label">ส่งซ่อม</div><div class="value">${repair.toLocaleString()}<span class="unit">เครื่อง</span></div></div>
+   218→        <div class="kpi t-paper"><div class="label">กระดาษเดือนนี้</div><div class="value">${paper.toLocaleString()}<span class="unit">แผ่น</span></div></div>
+   219→      </div>
+   220→      <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);margin-top:8px">
+   221→        <div class="kpi"><div class="label">ต้องจดมิเตอร์</div><div class="value">${meterReq.toLocaleString()}<span class="unit">เครื่อง</span></div></div>
+   222→        <div class="kpi"><div class="label">จำนวนสาขา</div><div class="value">${bySite.length}<span class="unit">สาขา</span></div></div>
+   223→      </div>`
+   224→
+   225→    const typeRows = byType.map(t => `<tr><td>${esc(t.name)}</td><td class="num">${t.value.toLocaleString()}</td><td class="num">${total > 0 ? Math.round((t.value / total) * 100) : 0}%</td></tr>`).join('')
+   226→    const siteRows = bySite.map(s => `<tr><td>${esc(s.siteCode)}</td><td>${esc(s.siteName || '')}</td><td class="num">${(s.deviceCount ?? 0).toLocaleString()}</td><td class="num">${(s.activeCount ?? 0).toLocaleString()}</td><td class="num">${(s.paperSheets ?? 0).toLocaleString()}</td></tr>`).join('')
+   227→
+   228→    const html = `<!doctype html><html lang="th"><head><meta charset="utf-8" />
+   229→<meta name="viewport" content="width=device-width, initial-scale=1" />
+   230→<title>ITAM Dashboard Report</title>
+   231→<style>
+   232→@page { size: A4; margin: 15mm; }
+   233→* { box-sizing: border-box; }
+   234→html, body { margin: 0; padding: 0; font-family: 'Sukhumvit Set', 'Thonburi', 'Tahoma', sans-serif; color: #1e293b; font-size: 12px; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+   235→.header { border-bottom: 3px solid #f97316; padding-bottom: 10px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: flex-start; }
+   236→.header .org { font-size: 18px; font-weight: 700; color: #0f172a; }
+   237→.header .subtitle { font-size: 13px; color: #475569; margin-top: 2px; }
+   238→.header .meta { text-align: right; font-size: 11px; color: #64748b; }
+   239→h2.section { font-size: 13px; font-weight: 700; color: #0f172a; margin: 22px 0 8px; padding: 6px 10px; background: linear-gradient(90deg, #fff7ed 0%, #ffffff 100%); border-left: 4px solid #f97316; border-radius: 3px; }
+   240→table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+   241→th, td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; font-size: 11px; vertical-align: top; }
+   242→th { background: #f8fafc; color: #475569; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.04em; }
+   243→td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+   244→tr:nth-child(even) td { background: #fafbfc; }
+   245→.kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 6px 0 4px; }
+   246→.kpi { border: 1px solid #e2e8f0; border-top: 3px solid #f97316; border-radius: 4px; padding: 10px; background: #ffffff; }
+   247→.kpi .label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+   248→.kpi .value { font-size: 22px; font-weight: 700; color: #0f172a; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+   249→.kpi .unit { font-size: 11px; color: #94a3b8; margin-left: 3px; font-weight: 500; }
+   250→.kpi.t-active { border-top-color: #10b981; } .kpi.t-active .value { color: #10b981; }
+   251→.kpi.t-spare { border-top-color: #f59e0b; } .kpi.t-spare .value { color: #d97706; }
+   252→.kpi.t-repair { border-top-color: #f97316; } .kpi.t-repair .value { color: #ea580c; }
+   253→.kpi.t-paper { border-top-color: #0d9488; } .kpi.t-paper .value { color: #0d9488; }
+   254→.footer { margin-top: 28px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; display: flex; justify-content: space-between; }
+   255→.footer .brand { color: #f97316; font-weight: 700; letter-spacing: 0.04em; }
+   256→.print-btn { position: fixed; top: 12px; right: 12px; background: #f97316; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+   257→.print-btn:hover { background: #ea580c; }
+   258→@media print { .no-print { display: none; } .header { page-break-after: avoid; } h2.section { page-break-after: avoid; } table { page-break-inside: avoid; } }
+   259→</style></head><body>
+   260→<button class="print-btn no-print" onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button>
+   261→<div class="header">
+   262→  <div><div class="org">PNG TEAM</div><div class="subtitle">ITAM Dashboard Report <span style="color:#f97316;font-weight:600">⚡ ${data?.queryTimeMs ?? 0}ms</span></div></div>
+   263→  <div class="meta"><div>วันที่ออกรายงาน: ${esc(generatedAt)}</div><div>ออกโดย: admin@example.com</div></div>
+   264→</div>
+   265→<h2 class="section">📊 สรุปตัวชี้วัดหลัก (KPI)</h2>
+   266→${kpiHtml}
+   267→<h2 class="section">💻 จำนวนอุปกรณ์ตามประเภท</h2>
+   268→<table><thead><tr><th>ประเภท</th><th class="num">จำนวน</th><th class="num">สัดส่วน</th></tr></thead><tbody>${typeRows || '<tr><td colspan="3" class="num">—</td></tr>'}</tbody></table>
+   269→<h2 class="section">🏢 อุปกรณ์ตามสาขา</h2>
+   270→<table><thead><tr><th>รหัสสาขา</th><th>ชื่อสาขา</th><th class="num">ทั้งหมด</th><th class="num">ใช้งาน</th><th class="num">กระดาษ (แผ่น)</th></tr></thead><tbody>${siteRows || '<tr><td colspan="5" class="num">—</td></tr>'}</tbody></table>
+   271→<div class="footer"><div><span class="brand">PNG TEAM</span> — IT Asset Management</div><div>หน้า 1 · ${esc(generatedAt)}</div></div>
+   272→<script>window.addEventListener('load', function () { setTimeout(function () { try { window.print(); } catch (e) {} }, 250); });</script>
+   273→</body></html>`
+   274→    win.document.open()
+   275→    win.document.write(html)
+   276→    win.document.close()
+   277→    toast.success('กำลังเปิดหน้าพิมพ์รายงาน PDF...')
+   278→  }
+   279→
+   280→  // Site comparison sorted by devices
+   281→  const sortedSites = React.useMemo(() => {
+   282→    return [...(data?.bySite ?? [])].sort((a, b) => b.deviceCount - a.deviceCount)
+   283→  }, [data?.bySite])
+   284→  const maxDevices = sortedSites[0]?.deviceCount ?? 1
+   285→
+   286→  // Heatmap
+   287→  const heat = heatData?.heatmap ?? []
+   288→  const heatMonths = heatData?.heatmapMonths ?? []
+   289→  const maxPages = React.useMemo(() => {
+   290→    let m = 0
+   291→    for (const r of heat) for (const c of r.months) if (c.pages > m) m = c.pages
+   292→    return m || 1
+   293→  }, [heat])
+   294→
+   295→  // Donut chart data: status distribution
+   296→  const donutData = React.useMemo(() => {
+   297→    if (!data) return []
+   298→    const t = data.totals
+   299→    return [
+   300→      { name: 'ใช้งานอยู่', value: t.active, color: STATUS_COLORS[0], statusKey: 'Active' },
+   301→      { name: 'สำรอง', value: t.spare, color: STATUS_COLORS[1], statusKey: 'In Stock' },
+   302→      { name: 'ส่งซ่อม', value: t.repair, color: STATUS_COLORS[2], statusKey: 'Pending Repair' },
+   303→      { name: 'ไม่ใช้งาน', value: t.inactive, color: STATUS_COLORS[3], statusKey: 'Inactive' },
+   304→    ].filter(d => d.value > 0)
+   305→  }, [data])
+   306→
+   307→  const donutTotal = donutData.reduce((sum, d) => sum + d.value, 0)
+   308→
+   309→  // Bar chart: by type (top 8)
+   310→  const barData = React.useMemo(() => (data?.byType ?? []).slice(0, 8), [data])
+   311→
+   312→  // Area chart: paper trend
+   313→  const areaData = React.useMemo(() => data?.paperTrend ?? [], [data])
+   314→
+   315→  // Drill-down handlers
+   316→  function drillDownStatus(statusKey: string) {
+   317→    setPendingDeviceStatus(statusKey)
+   318→    setPendingDeviceType(null)
+   319→    setActivePage('itam-devices')
+   320→    toast.info(`กรองอุปกรณ์สถานะ "${statusKey}"`)
+   321→  }
+   322→  function drillDownType(typeName: string) {
+   323→    setPendingDeviceType(typeName)
+   324→    setPendingDeviceStatus(null)
+   325→    setActivePage('itam-devices')
+   326→    toast.info(`กรองอุปกรณ์ประเภท "${typeName}"`)
+   327→  }
+   328→
+   329→  // Recharts tooltip styles
+   330→  const tooltipStyle: React.CSSProperties = {
+   331→    background: isDark ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.98)',
+   332→    border: `1px solid ${isDark ? '#334155' : '#e2e8f0'}`,
+   333→    borderRadius: '8px',
+   334→    fontSize: '12px',
+   335→    color: isDark ? '#f1f5f9' : '#1e293b',
+   336→    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+   337→    padding: '8px 12px',
+   338→  }
+   339→
+   340→  const gridColor = isDark ? '#1e293b' : '#e2e8f0'
+   341→  const axisColor = isDark ? '#64748b' : '#64748b'
+   342→
+   343→  function formatLastUpdated(): string {
+   344→    if (!lastUpdated) return '—'
+   345→    return lastUpdated.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+   346→  }
+   347→
+   348→  return (
+   349→    <div className="space-y-6 p-4 md:p-6">
+   350→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+   351→        <div>
+   352→          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ITAM Dashboard</h1>
+   353→          <p className="text-sm text-slate-500 dark:text-slate-400">
+   354→            ข้อมูลจริงจาก Database
+   355→            {data && <span className="ml-2 text-xs text-emerald-600">⚡ {data.queryTimeMs}ms</span>}
+   356→          </p>
+   357→          <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+   358→            <span className="relative flex h-2 w-2">
+   359→              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+   360→              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+   361→            </span>
+   362→            <span>อัปเดตอัตโนมัติ • ครั้งล่าสุด: <span className="font-mono tabular-nums">{formatLastUpdated()}</span></span>
+   363→            {isFetching && (
+   364→              <span className="ml-1 inline-flex items-center gap-1 text-orange-500">
+   365→                <Loader2 className="h-3 w-3 animate-spin" /> กำลังซิงค์…
+   366→              </span>
+   367→            )}
+   368→          </div>
+   369→        </div>
+   370→        <div className="flex flex-wrap gap-2">
+   371→          <Button
+   372→            variant="outline"
+   373→            size="sm"
+   374→            onClick={() => qc.invalidateQueries({ queryKey: ['itam-dashboard'] })}
+   375→            disabled={isFetching}
+   376→            className="dark:bg-slate-800 dark:border-slate-700"
+   377→          >
+   378→            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> รีเฟรช
+   379→          </Button>
+   380→          <Button variant="outline" size="sm" onClick={exportPdf} className="dark:bg-slate-800 dark:border-slate-700">
+   381→            <FileDown className="h-4 w-4" /> PDF
+   382→          </Button>
+   383→          <Button variant="outline" size="sm" onClick={() => setSitesOpen(true)} className="dark:bg-slate-800 dark:border-slate-700">
+   384→            <Building2 className="h-4 w-4" /> สาขา
+   385→          </Button>
+   386→          <Button variant="outline" size="sm" onClick={() => setHeatOpen(true)} className="dark:bg-slate-800 dark:border-slate-700">
+   387→            <Flame className="h-4 w-4" /> Heatmap
+   388→          </Button>
+   389→          <Button variant="outline" size="sm" onClick={() => setCycleOpen(true)} className="dark:bg-slate-800 dark:border-slate-700">
+   390→            <BarChart3 className="h-4 w-4" /> รอบ
+   391→          </Button>
+   392→        </div>
+   393→      </div>
+   394→
+   395→      {/* KPI row — 2 cols on mobile, 5 on desktop */}
+   396→      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+   397→        <KpiCard title="อุปกรณ์ทั้งหมด" value={data?.totals.total ?? 0} icon={<Package className="h-5 w-5" />} accent="#0f172a" loading={isLoading} glow={glowKey === 'total'} />
+   398→        <KpiCard title="ใช้งานอยู่" value={data?.totals.active ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} accent="#10b981" loading={isLoading} glow={glowKey === 'active'} />
+   399→        <KpiCard title="สำรอง" value={data?.totals.spare ?? 0} icon={<Package className="h-5 w-5" />} accent="#f59e0b" loading={isLoading} glow={glowKey === 'spare'} />
+   400→        <KpiCard title="ส่งซ่อม" value={data?.totals.repair ?? 0} icon={<Wrench className="h-5 w-5" />} accent="#f97316" loading={isLoading} glow={glowKey === 'repair'} />
+   401→        <KpiCard title="ต้องจดมิเตอร์" value={data?.meterRequiredCount ?? 0} icon={<FileText className="h-5 w-5" />} accent="#0d9488" loading={isLoading} glow={glowKey === 'meter'} />
+   402→      </div>
+   403→
+   404→      {/* Interactive Charts row — donut + bar */}
+   405→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   406→        {/* Donut chart — status distribution */}
+   407→        <motion.div
+   408→          initial={{ opacity: 0, y: 12 }}
+   409→          animate={{ opacity: 1, y: 0 }}
+   410→          transition={{ duration: 0.35, ease: 'easeOut' }}
+   411→        >
+   412→          <Card className="h-full shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   413→            <CardHeader>
+   414→              <CardTitle className="text-base">สัดส่วนสถานะอุปกรณ์</CardTitle>
+   415→              <p className="text-xs text-slate-500 dark:text-slate-400">คลิกเซกเตอร์เพื่อดูรายการ</p>
+   416→            </CardHeader>
+   417→            <CardContent>
+   418→              {isLoading ? (
+   419→                <Skeleton className="h-56 w-full rounded-md" />
+   420→              ) : donutData.length === 0 ? (
+   421→                <div className="py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
+   422→              ) : (
+   423→                <div className="relative h-56 w-full">
+   424→                  <ResponsiveContainer width="100%" height="100%">
+   425→                    <PieChart>
+   426→                      <Pie
+   427→                        data={donutData}
+   428→                        dataKey="value"
+   429→                        nameKey="name"
+   430→                        cx="50%"
+   431→                        cy="50%"
+   432→                        innerRadius={56}
+   433→                        outerRadius={84}
+   434→                        paddingAngle={2}
+   435→                        isAnimationActive
+   436→                        animationDuration={700}
+   437→                        stroke={isDark ? '#0f172a' : '#ffffff'}
+   438→                        strokeWidth={2}
+   439→                        onClick={(payload: { statusKey?: string }) => {
+   440→                          if (payload?.statusKey) drillDownStatus(payload.statusKey)
+   441→                        }}
+   442→                        cursor="pointer"
+   443→                      >
+   444→                        {donutData.map((entry, idx) => (
+   445→                          <Cell key={idx} fill={entry.color} />
+   446→                        ))}
+   447→                      </Pie>
+   448→                      <ReTooltip
+   449→                        contentStyle={tooltipStyle}
+   450→                        formatter={(v: number, n: string) => {
+   451→                          const pct = donutTotal > 0 ? ((v / donutTotal) * 100).toFixed(1) : '0'
+   452→                          return [`${v.toLocaleString()} เครื่อง (${pct}%)`, n]
+   453→                        }}
+   454→                      />
+   455→                    </PieChart>
+   456→                  </ResponsiveContainer>
+   457→                  {/* Center label */}
+   458→                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+   459→                    <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+   460→                      {donutTotal.toLocaleString()}
+   461→                    </div>
+   462→                    <div className="text-xs text-slate-500 dark:text-slate-400">เครื่องทั้งหมด</div>
+   463→                  </div>
+   464→                </div>
+   465→              )}
+   466→              {donutData.length > 0 && !isLoading && (
+   467→                <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
+   468→                  {donutData.map((d, i) => (
+   469→                    <button
+   470→                      key={i}
+   471→                      onClick={() => drillDownStatus(d.statusKey)}
+   472→                      className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:underline dark:text-slate-300"
+   473→                    >
+   474→                      <span className="h-2.5 w-2.5 rounded-sm" style={{ background: d.color }} />
+   475→                      {d.name} <span className="font-semibold tabular-nums">{d.value.toLocaleString()}</span>
+   476→                    </button>
+   477→                  ))}
+   478→                </div>
+   479→              )}
+   480→            </CardContent>
+   481→          </Card>
+   482→        </motion.div>
+   483→
+   484→        {/* Bar chart — by type top 8 */}
+   485→        <motion.div
+   486→          initial={{ opacity: 0, y: 12 }}
+   487→          animate={{ opacity: 1, y: 0 }}
+   488→          transition={{ duration: 0.35, ease: 'easeOut', delay: 0.05 }}
+   489→        >
+   490→          <Card className="h-full shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   491→            <CardHeader>
+   492→              <CardTitle className="text-base">จำนวนอุปกรณ์ตามประเภท (Top 8)</CardTitle>
+   493→              <p className="text-xs text-slate-500 dark:text-slate-400">คลิกแท่งเพื่อกรองหน้าอุปกรณ์</p>
+   494→            </CardHeader>
+   495→            <CardContent>
+   496→              {isLoading ? (
+   497→                <Skeleton className="h-56 w-full rounded-md" />
+   498→              ) : barData.length === 0 ? (
+   499→                <div className="py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
+   500→              ) : (
+   501→                <div className="h-56 w-full">
+   502→                  <ResponsiveContainer width="100%" height="100%">
+   503→                    <BarChart data={barData} margin={{ top: 12, right: 8, left: -10, bottom: 4 }}>
+   504→                      <defs>
+   505→                        <linearGradient id="barTealGrad" x1="0" y1="0" x2="0" y2="1">
+   506→                          <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.95} />
+   507→                          <stop offset="100%" stopColor="#0d9488" stopOpacity={0.85} />
+   508→                        </linearGradient>
+   509→                      </defs>
+   510→                      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+   511→                      <XAxis
+   512→                        dataKey="name"
+   513→                        tick={{ fill: axisColor, fontSize: 10 }}
+   514→                        interval={0}
+   515→                        angle={-25}
+   516→                        textAnchor="end"
+   517→                        height={50}
+   518→                      />
+   519→                      <YAxis tick={{ fill: axisColor, fontSize: 11 }} allowDecimals={false} />
+   520→                      <ReTooltip
+   521→                        contentStyle={tooltipStyle}
+   522→                        cursor={{ fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
+   523→                        formatter={(v: number) => [`${v.toLocaleString()} เครื่อง`, 'จำนวน']}
+   524→                      />
+   525→                      <Bar
+   526→                        dataKey="value"
+   527→                        radius={[6, 6, 0, 0]}
+   528→                        fill="url(#barTealGrad)"
+   529→                        isAnimationActive
+   530→                        animationDuration={700}
+   531→                        onClick={(payload: { name?: string }) => {
+   532→                          if (payload?.name) drillDownType(payload.name)
+   533→                        }}
+   534→                        cursor="pointer"
+   535→                      >
+   536→                        <LabelList
+   537→                          dataKey="value"
+   538→                          position="top"
+   539→                          style={{ fill: isDark ? '#cbd5e1' : '#475569', fontSize: 10, fontWeight: 600 }}
+   540→                        />
+   541→                      </Bar>
+   542→                    </BarChart>
+   543→                  </ResponsiveContainer>
+   544→                </div>
+   545→              )}
+   546→            </CardContent>
+   547→          </Card>
+   548→        </motion.div>
+   549→      </div>
+   550→
+   551→      {/* Area chart — paper trend full width */}
+   552→      <motion.div
+   553→        initial={{ opacity: 0, y: 12 }}
+   554→        animate={{ opacity: 1, y: 0 }}
+   555→        transition={{ duration: 0.35, ease: 'easeOut', delay: 0.1 }}
+   556→      >
+   557→        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   558→          <CardHeader>
+   559→            <CardTitle className="text-base">แนวโน้มการใช้กระดาษ (6 เดือนล่าสุด)</CardTitle>
+   560→            <p className="text-xs text-slate-500 dark:text-slate-400">รวมขาวดำ + สี · หน่วย: แผ่น</p>
+   561→          </CardHeader>
+   562→          <CardContent>
+   563→            {isLoading ? (
+   564→              <Skeleton className="h-56 w-full rounded-md" />
+   565→            ) : areaData.length === 0 ? (
+   566→              <div className="py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
+   567→            ) : (
+   568→              <div className="h-56 w-full">
+   569→                <ResponsiveContainer width="100%" height="100%">
+   570→                  <AreaChart data={areaData} margin={{ top: 10, right: 12, left: -8, bottom: 0 }}>
+   571→                    <defs>
+   572→                      <linearGradient id="areaTealGrad" x1="0" y1="0" x2="0" y2="1">
+   573→                        <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4} />
+   574→                        <stop offset="100%" stopColor="#0d9488" stopOpacity={0.02} />
+   575→                      </linearGradient>
+   576→                    </defs>
+   577→                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+   578→                    <XAxis dataKey="month" tick={{ fill: axisColor, fontSize: 11 }} />
+   579→                    <YAxis tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`} />
+   580→                    <ReTooltip
+   581→                      contentStyle={tooltipStyle}
+   582→                      formatter={(v: number, _n: string, p: { payload?: { month?: string } }) => [
+   583→                        `${v.toLocaleString()} แผ่น`,
+   584→                        `${p?.payload?.month ?? ''}`,
+   585→                      ]}
+   586→                      labelFormatter={() => ''}
+   587→                    />
+   588→                    <Area
+   589→                      type="monotone"
+   590→                      dataKey="sheets"
+   591→                      stroke="#0d9488"
+   592→                      strokeWidth={2.5}
+   593→                      fill="url(#areaTealGrad)"
+   594→                      isAnimationActive
+   595→                      animationDuration={800}
+   596→                      dot={{ r: 3, fill: '#0d9488', strokeWidth: 0 }}
+   597→                      activeDot={{ r: 5, fill: '#0d9488', stroke: isDark ? '#0f172a' : '#fff', strokeWidth: 2 }}
+   598→                    />
+   599→                  </AreaChart>
+   600→                </ResponsiveContainer>
+   601→              </div>
+   602→            )}
+   603→          </CardContent>
+   604→        </Card>
+   605→      </motion.div>
+   606→
+   607→      {/* By Site + Recent Activity — stacked on mobile */}
+   608→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   609→        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   610→          <CardHeader>
+   611→            <CardTitle className="flex items-center gap-2 text-base">
+   612→              <Building2 className="h-4 w-4 text-[#f97316]" /> อุปกรณ์ตามสาขา
+   613→            </CardTitle>
+   614→          </CardHeader>
+   615→          <CardContent>
+   616→            {isLoading ? (
+   617→              <div className="space-y-2">
+   618→                {Array.from({ length: 5 }).map((_, i) => (
+   619→                  <Skeleton key={i} className="h-12 w-full rounded-md" />
+   620→                ))}
+   621→              </div>
+   622→            ) : (
+   623→              <div className="itam-scroll max-h-72 space-y-2 overflow-y-auto pr-1">
+   624→                {(data?.bySite ?? []).map((s) => (
+   625→                  <div
+   626→                    key={s.siteCode}
+   627→                    className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2 dark:border-slate-800"
+   628→                  >
+   629→                    <div className="min-w-0">
+   630→                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{s.siteCode}</span>
+   631→                      <span className="ml-2 text-xs text-slate-400">{s.siteName}</span>
+   632→                    </div>
+   633→                    <Badge className="border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
+   634→                      {s.deviceCount} เครื่อง
+   635→                    </Badge>
+   636→                  </div>
+   637→                ))}
+   638→              </div>
+   639→            )}
+   640→          </CardContent>
+   641→        </Card>
+   642→
+   643→        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   644→          <CardHeader>
+   645→            <CardTitle className="flex items-center gap-2 text-base">
+   646→              <TrendingUp className="h-4 w-4 text-[#f97316]" /> มิเตอร์ล่าสุด
+   647→            </CardTitle>
+   648→          </CardHeader>
+   649→          <CardContent>
+   650→            {isLoading ? (
+   651→              <div className="space-y-2">
+   652→                {Array.from({ length: 5 }).map((_, i) => (
+   653→                  <Skeleton key={i} className="h-12 w-full rounded-md" />
+   654→                ))}
+   655→              </div>
+   656→            ) : (
+   657→              <div className="space-y-2">
+   658→                <AnimatePresence initial={false}>
+   659→                  {(data?.recentActivity ?? []).map((a) => (
+   660→                    <motion.div
+   661→                      key={a.id}
+   662→                      layout
+   663→                      initial={{ opacity: 0, y: -8 }}
+   664→                      animate={{ opacity: 1, y: 0 }}
+   665→                      exit={{ opacity: 0, y: 8 }}
+   666→                      transition={{ duration: 0.2 }}
+   667→                      className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
+   668→                    >
+   669→                      <div className="min-w-0">
+   670→                        <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{a.deviceName}</div>
+   671→                        <div className="text-xs text-slate-400">{a.assetNo} · {a.readingDate}</div>
+   672→                      </div>
+   673→                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+   674→                        {(a.pagesBw + a.pagesColor).toLocaleString()} แผ่น
+   675→                      </Badge>
+   676→                    </motion.div>
+   677→                  ))}
+   678→                </AnimatePresence>
+   679→              </div>
+   680→            )}
+   681→          </CardContent>
+   682→        </Card>
+   683→      </div>
+   684→
+   685→      {/* Site comparison modal */}
+   686→      <Dialog open={sitesOpen} onOpenChange={setSitesOpen}>
+   687→        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
+   688→          <DialogHeader>
+   689→            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+   690→              <Trophy className="h-5 w-5 text-[#f97316]" /> เปรียบเทียบสาขา
+   691→            </DialogTitle>
+   692→          </DialogHeader>
+   693→          <div className="space-y-2">
+   694→            {isLoading ? (
+   695→              <div className="space-y-2">
+   696→                {Array.from({ length: 6 }).map((_, i) => (
+   697→                  <Skeleton key={i} className="h-20 w-full rounded-md" />
+   698→                ))}
+   699→              </div>
+   700→            ) : sortedSites.length === 0 ? (
+   701→              <div className="py-8 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
+   702→            ) : (
+   703→              sortedSites.map((s, i) => {
+   704→                const pct = Math.max(2, (s.deviceCount / maxDevices) * 100)
+   705→                return (
+   706→                  <div key={s.siteCode} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+   707→                    <div className="mb-1.5 flex items-center justify-between">
+   708→                      <div className="flex items-center gap-2">
+   709→                        {i < 3 ? <span className="text-lg">{MEDALS[i]}</span> : <span className="inline-block w-4 text-center text-xs font-bold text-slate-400">{i + 1}</span>}
+   710→                        <span className="font-semibold text-slate-700 dark:text-slate-200">{s.siteCode}</span>
+   711→                        <span className="text-xs text-slate-400">{s.siteName}</span>
+   712→                      </div>
+   713→                      <Badge className="border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
+   714→                        {s.deviceCount} เครื่อง
+   715→                      </Badge>
+   716→                    </div>
+   717→                    <div className="h-2 w-full overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
+   718→                      <motion.div
+   719→                        className="h-full rounded bg-gradient-to-r from-orange-400 to-orange-600"
+   720→                        initial={{ width: 0 }}
+   721→                        animate={{ width: `${pct}%` }}
+   722→                        transition={{ duration: 0.6, ease: 'easeOut' }}
+   723→                      />
+   724→                    </div>
+   725→                    <div className="mt-1.5 flex justify-between text-xs text-slate-500 dark:text-slate-400">
+   726→                      <span>✅ ใช้งาน {s.activeCount ?? 0}</span>
+   727→                      <span>📄 กระดาษเดือนนี้ {(s.paperSheets ?? 0).toLocaleString()} แผ่น</span>
+   728→                    </div>
+   729→                  </div>
+   730→                )
+   731→              })
+   732→            )}
+   733→          </div>
+   734→        </DialogContent>
+   735→      </Dialog>
+   736→
+   737→      {/* Heatmap modal */}
+   738→      <Dialog open={heatOpen} onOpenChange={setHeatOpen}>
+   739→        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl dark:border-slate-800 dark:bg-slate-900">
+   740→          <DialogHeader>
+   741→            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+   742→              <Flame className="h-5 w-5 text-[#0d9488]" /> Heatmap การใช้งานกระดาษ
+   743→            </DialogTitle>
+   744→          </DialogHeader>
+   745→          {heatLoading ? (
+   746→            <div className="space-y-2">
+   747→              {Array.from({ length: 6 }).map((_, i) => (
+   748→                <Skeleton key={i} className="h-8 w-full rounded" />
+   749→              ))}
+   750→            </div>
+   751→          ) : heat.length === 0 ? (
+   752→            <div className="py-8 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
+   753→          ) : (
+   754→            <div className="overflow-x-auto">
+   755→              <table className="w-full border-collapse text-xs">
+   756→                <thead>
+   757→                  <tr>
+   758→                    <th className="sticky left-0 z-10 bg-slate-50/80 px-2 py-1.5 text-left text-slate-600 dark:bg-slate-900/80 dark:text-slate-300">อุปกรณ์</th>
+   759→                    {heatMonths.map(m => (
+   760→                      <th key={m} className="px-2 py-1.5 text-center font-mono text-slate-500">{m}</th>
+   761→                    ))}
+   762→                  </tr>
+   763→                </thead>
+   764→                <tbody>
+   765→                  {heat.map(row => (
+   766→                    <tr key={row.assetNo}>
+   767→                      <td className="sticky left-0 z-10 max-w-[180px] truncate bg-slate-50/80 px-2 py-1 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200" title={row.deviceName}>
+   768→                        <span className="font-mono text-[10px] text-slate-400">{row.assetNo}</span>
+   769→                        <div className="truncate">{row.deviceName}</div>
+   770→                      </td>
+   771→                      {row.months.map(c => {
+   772→                        const intensity = c.pages / maxPages
+   773→                        const txtColor = intensity > 0.55 ? 'text-white' : 'text-slate-700 dark:text-slate-200'
+   774→                        return (
+   775→                          <td
+   776→                            key={c.month}
+   777→                            className={`px-2 py-1.5 text-center font-mono tabular-nums ${txtColor}`}
+   778→                            style={{ background: heatColor(intensity) }}
+   779→                            title={`${row.assetNo} · ${c.month}: ${c.pages.toLocaleString()} แผ่น`}
+   780→                          >
+   781→                            {c.pages > 0 ? c.pages.toLocaleString() : '·'}
+   782→                          </td>
+   783→                        )
+   784→                      })}
+   785→                    </tr>
+   786→                  ))}
+   787→                </tbody>
+   788→              </table>
+   789→              <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+   790→                <span>น้อย</span>
+   791→                {[0.1, 0.3, 0.5, 0.7, 0.9].map(i => (
+   792→                  <span key={i} className="h-3 w-8 rounded-sm" style={{ background: heatColor(i) }} />
+   793→                ))}
+   794→                <span>มาก</span>
+   795→              </div>
+   796→            </div>
+   797→          )}
+   798→        </DialogContent>
+   799→      </Dialog>
+   800→
+   801→      {/* Cycle placeholder modal */}
+   802→      <Dialog open={cycleOpen} onOpenChange={setCycleOpen}>
+   803→        <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
+   804→          <DialogHeader>
+   805→            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+   806→              <BarChart3 className="h-5 w-5 text-[#f97316]" /> รายงานตามรอบ
+   807→            </DialogTitle>
+   808→          </DialogHeader>
+   809→          <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center dark:border-slate-700 dark:bg-slate-800/40">
+   810→            <BarChart3 className="mx-auto h-10 w-10 text-slate-400" />
+   811→            <p className="mt-3 text-sm font-medium text-slate-600 dark:text-slate-300">ยังไม่มีข้อมูลรอบ</p>
+   812→            <p className="mt-1 text-xs text-slate-400">ระบบยังไม่มีตาราง Cycles — เพิ่มได้ในขั้นตอนถัดไป</p>
+   813→          </div>
+   814→        </DialogContent>
+   815→      </Dialog>
+   816→    </div>
+   817→  )
+   818→}
+   819→

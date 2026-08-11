@@ -10,25 +10,35 @@ import { logAudit } from '@/lib/audit'
  * Non-fatal — any DB error is swallowed so the calling mutation still
  * succeeds. All summaries should be in Thai.
  *
+ * NOTE: The AuditLog table only has columns {action, user, details, timestamp}.
+ * The legacy `entity`/`summary` parameters are merged into the `details` JSON.
+ *
  * @param action  Audit action key, e.g. 'BULK_UPDATE', 'BULK_TRANSFER', 'BULK_DELETE'
  * @param entity  Affected entity, e.g. 'Device'
  * @param summary One-line Thai summary
  * @param detail  Optional structured detail (counts, ids, from→to, etc.)
+ * @param user    Optional user email (defaults to null)
  */
 export async function logBulkAudit(
   action: string,
   entity: string,
   summary: string,
   detail?: Record<string, unknown>,
+  user?: string | null,
 ): Promise<void> {
   try {
+    const combined: Record<string, unknown> = {
+      ...(detail ?? {}),
+      entity,
+      entityId: null,
+      summary,
+    }
     await db.auditLog.create({
       data: {
+        timestamp: new Date().toISOString(),
         action,
-        entity,
-        entityId: null,
-        summary,
-        detail: detail ? JSON.stringify(detail) : null,
+        user: user ?? null,
+        details: JSON.stringify(combined),
       },
     })
   } catch (err) {

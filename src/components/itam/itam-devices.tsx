@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
@@ -13,13 +14,17 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Search, RefreshCw, ChevronLeft, ChevronRight, Package, Plus, Pencil, Trash2, Download, Eye, X, History, CheckCheck } from 'lucide-react'
-import { downloadCsv, dateStamp } from '@/lib/csv'
+import { Search, RefreshCw, ChevronLeft, ChevronRight, Package, Plus, Pencil, Trash2, Download, Eye, X, History, CheckCheck, Printer, Tag, Upload, FileSpreadsheet, FileText, Edit3, QrCode, Zap, List } from 'lucide-react'
+import { downloadCsv, dateStamp, parseCsv } from '@/lib/csv'
 import { ItamDeviceDetailSheet } from './itam-device-detail-sheet'
+import { printSingleSticker, printBulkStickers } from './sticker-print-helpers'
+import { SavedFilters, type FilterCombo } from './saved-filters'
 import { useAppStore } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
 
 interface Device {
   id: string; assetNo: string; deviceType: string | null; brand: string | null
@@ -44,6 +49,45 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 const STATUS_OPTIONS = ['Active', 'In Stock', 'Pending Repair', 'Inactive', 'Retired']
+
+// ============ Cascading dropdown hook ============
+// Fetches distinct values for a location field, filtered by previous selections.
+function useCascadingOptions(
+  field: 'building' | 'floor' | 'department' | 'location',
+  parents: { site?: string; building?: string; floor?: string; department?: string },
+): string[] {
+  const [values, setValues] = React.useState<string[]>([])
+  const { site, building, floor, department } = parents
+  React.useEffect(() => {
+    let cancelled = false
+    const params = new URLSearchParams({ field })
+    if (site) params.set('site', site)
+    if (building) params.set('building', building)
+    if (floor) params.set('floor', floor)
+    if (department) params.set('department', department)
+    fetch(`/api/itam/devices/cascading?${params}`)
+      .then((r) => r.ok ? r.json() : Promise.reject(r))
+      .then((j: { values: string[] }) => { if (!cancelled) setValues(j.values ?? []) })
+      .catch(() => { if (!cancelled) setValues([]) })
+    return () => { cancelled = true }
+  }, [field, site, building, floor, department])
+  return values
+}
+
+// ============ Sites list hook ============
+function useSitesList(): string[] {
+  const [sites, setSites] = React.useState<string[]>([])
+  React.useEffect(() => {
+    fetch('/api/itam/sites')
+      .then((r) => r.ok ? r.json() : Promise.reject(r))
+      .then((j: { sites: Array<{ siteName: string | null }> }) => {
+        const names = j.sites.map((s) => s.siteName).filter((s): s is string => !!s)
+        setSites(names)
+      })
+      .catch(() => setSites([]))
+  }, [])
+  return sites
+}
 
 type DeviceForm = {
   assetNo: string; deviceType: string; brand: string; model: string; serial: string
@@ -151,7 +195,23 @@ export function ItamDevices() {
   const [status, setStatus] = React.useState('all')
   const [deviceType, setDeviceType] = React.useState('all')
   const [page, setPage] = React.useState(1)
-  const [limit] = React.useState(20)
+  // Virtual scroll toggle — when ON, fetch 500 rows in one shot and virtualize
+  // (so 2,378+ devices scroll smoothly). Persisted in localStorage.
+  const [virtualScroll, setVirtualScroll] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try { return window.localStorage.getItem('itam.virtual-scroll') === '1' } catch { return false }
+  })
+  React.useEffect(() => {
+    try { window.localStorage.setItem('itam.virtual-scroll', virtualScroll ? '1' : '0') } catch { /* ignore */ }
+  }, [virtualScroll])
+  // Adaptive limit: virtual mode → 2000 rows in one shot (handles the full
+  // 2,378-device dataset); standard mode → 20 with pagination.
+  const limit = React.useMemo(() => virtualScroll ? 2000 : 20, [virtualScroll])
+  // Reset page when toggling virtual mode (different page sizes)
+  React.useEffect(() => { setPage(1) }, [virtualScroll])
+
+  // QR scanner trigger (singleton dialog mounted at the app shell)
+  const setQrScannerOpen = useAppStore((s) => s.setQrScannerOpen)
 
   // Search metrics (Yms)
   const [searchStartedAt, setSearchStartedAt] = React.useState<number | null>(null)
@@ -218,6 +278,101 @@ export function ItamDevices() {
 
   // CSV export
   const [exporting, setExporting] = React.useState(false)
+
+  // Sticker selection state (for bulk print)
+  const [selectedAssetNos, setSelectedAssetNos] = React.useState<Set<string>>(new Set())
+  const [stickerPrinting, setStickerPrinting] = React.useState(false)
+
+  // Import dialog state
+  const [importOpen, setImportOpen] = React.useState(false)
+  const [importText, setImportText] = React.useState('')
+  const [importMode, setImportMode] = React.useState<'upsert' | 'create_only' | 'update_only'>('upsert')
+  const [importing, setImporting] = React.useState(false)
+  const [importResult, setImportResult] = React.useState<{
+    inserted: number; updated: number; errors: Array<{ row: number; assetNo: string; error: string }>; total: number
+  } | null>(null)
+
+  // Bulk-edit dialog state
+  const [bulkEditOpen, setBulkEditOpen] = React.useState(false)
+  const [bulkEditForm, setBulkEditForm] = React.useState<{
+    status: string; site: string; building: string; floor: string; department: string
+  }>({ status: '', site: '', building: '', floor: '', department: '' })
+  const [bulkSaving, setBulkSaving] = React.useState(false)
+  const [bulkProgress, setBulkProgress] = React.useState<{ done: number; total: number } | null>(null)
+
+  // Excel/PDF export status
+  const [excelExporting, setExcelExporting] = React.useState(false)
+  const [pdfExporting, setPdfExporting] = React.useState(false)
+
+  // Auth-driven permissions
+  const authUser = useAuthStore((s) => s.user)
+  const canEdit = !!authUser && ['DEVICE_EDIT', 'DEVICE_DELETE', 'DEVICE_TRANSFER'].some((p) => authUser.permissions.includes(p as never))
+
+  // Cascading dropdown options — re-fetch when parent selections change
+  const sites = useSitesList()
+  const buildingOptions = useCascadingOptions('building', { site: form.site })
+  const floorOptions = useCascadingOptions('floor', { site: form.site, building: form.building })
+  const departmentOptions = useCascadingOptions('department', { site: form.site, building: form.building, floor: form.floor })
+  const locationOptions = useCascadingOptions('location', { site: form.site, building: form.building, floor: form.floor, department: form.department })
+  // Bulk-edit dialog also uses cascading dropdowns
+  const bulkBuildingOptions = useCascadingOptions('building', { site: bulkEditForm.site })
+  const bulkFloorOptions = useCascadingOptions('floor', { site: bulkEditForm.site, building: bulkEditForm.building })
+  const bulkDepartmentOptions = useCascadingOptions('department', { site: bulkEditForm.site, building: bulkEditForm.building, floor: bulkEditForm.floor })
+
+  function toggleSelectAssetNo(assetNo: string) {
+    setSelectedAssetNos((prev) => {
+      const next = new Set(prev)
+      if (next.has(assetNo)) next.delete(assetNo)
+      else next.add(assetNo)
+      return next
+    })
+  }
+
+  function toggleSelectAllOnPage(checked: boolean) {
+    setSelectedAssetNos((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        for (const d of devices) next.add(d.assetNo)
+      } else {
+        for (const d of devices) next.delete(d.assetNo)
+      }
+      return next
+    })
+  }
+
+  // Reset selection when search/filter changes
+  React.useEffect(() => {
+    setSelectedAssetNos(new Set())
+  }, [debouncedSearch, status, deviceType, page])
+
+  async function handleSingleStickerPrint(assetNo: string) {
+    setStickerPrinting(true)
+    try {
+      await printSingleSticker(assetNo)
+      toast.success(`เตรียมสติกเกอร์สำหรับ ${assetNo} แล้ว`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'พิมพ์สติกเกอร์ไม่สำเร็จ')
+    } finally {
+      setStickerPrinting(false)
+    }
+  }
+
+  async function handleBulkStickerPrint() {
+    if (selectedAssetNos.size === 0) {
+      toast.error('กรุณาเลือกอุปกรณ์อย่างน้อย 1 เครื่อง')
+      return
+    }
+    setStickerPrinting(true)
+    try {
+      const assetNos = Array.from(selectedAssetNos)
+      const n = await printBulkStickers(assetNos)
+      toast.success(`เตรียมสติกเกอร์ ${n} ใบแล้ว`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'พิมพ์สติกเกอร์ไม่สำเร็จ')
+    } finally {
+      setStickerPrinting(false)
+    }
+  }
 
   // Unique types from current page data (for filter dropdown)
   const queryKey = React.useMemo(
@@ -505,6 +660,223 @@ export function ItamDevices() {
     }
   }
 
+  // ── Excel export: builds an HTML table and exports as .xls (Excel opens it natively)
+  async function exportExcel() {
+    try {
+      setExcelExporting(true)
+      toast.info('กำลังดึงข้อมูลทั้งหมด...')
+      const res = await fetch('/api/itam/devices?limit=100')
+      if (!res.ok) throw new Error('Failed')
+      const j: DevicesResponse = await res.json()
+      const rows = j.devices
+      const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+      const headerHtml = CSV_HEADERS.map((h) => `<th style="background:#f97316;color:#fff;padding:6px;border:1px solid #ddd;font-weight:600">${esc(h.label)}</th>`).join('')
+      const bodyHtml = rows.map((d) => {
+        const cells = CSV_HEADERS.map((h) => {
+          const v = (d as Record<string, unknown>)[h.key]
+          const text = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
+          return `<td style="padding:5px;border:1px solid #e2e8f0;mso-number-format:'\\@'">${esc(text)}</td>`
+        }).join('')
+        return `<tr>${cells}</tr>`
+      }).join('')
+      const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body><table style="border-collapse:collapse;font-family:'Tahoma',sans-serif;font-size:11px"><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></body></html>`
+      const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `devices-${dateStamp()}.xls`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success(`ส่งออก Excel ${rows.length} เครื่อง`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ส่งออก Excel ไม่สำเร็จ')
+    } finally {
+      setExcelExporting(false)
+    }
+  }
+
+  // ── PDF export: opens a print window with a professional table layout
+  async function exportPdf() {
+    try {
+      setPdfExporting(true)
+      toast.info('กำลังดึงข้อมูลทั้งหมด...')
+      const res = await fetch('/api/itam/devices?limit=100')
+      if (!res.ok) throw new Error('Failed')
+      const j: DevicesResponse = await res.json()
+      const rows = j.devices
+      const win = window.open('', '_blank', 'width=1000,height=1200')
+      if (!win) {
+        toast.warning('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัปแล้วลองอีกครั้ง')
+        return
+      }
+      const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+      const generatedAt = new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
+      const headCells = ['รหัส', 'ประเภท', 'แบรนด์/รุ่น', 'Serial', 'สถานะ', 'สาขา', 'อาคาร', 'ชั้น', 'แผนก', 'ที่ตั้ง', 'มิเตอร์']
+        .map((h) => `<th>${esc(h)}</th>`).join('')
+      const bodyRows = rows.map((d) => {
+        return `<tr>
+          <td class="mono">${esc(d.assetNo)}</td>
+          <td>${esc(d.deviceType || '')}</td>
+          <td>${esc(d.brand || '')} ${esc(d.model || '')}</td>
+          <td class="mono">${esc(d.serial || '')}</td>
+          <td>${esc(d.status)}</td>
+          <td>${esc(d.site || '')}</td>
+          <td>${esc(d.building || '')}</td>
+          <td>${esc(d.floor || '')}</td>
+          <td>${esc(d.department || '')}</td>
+          <td>${esc(d.location || '')}</td>
+          <td class="ctr">${d.meterRequired ? '✓' : '—'}</td>
+        </tr>`
+      }).join('')
+      const html = `<!doctype html><html lang="th"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ITAM Devices Report</title>
+<style>
+@page { size: A4 landscape; margin: 12mm; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; font-family: 'Sukhumvit Set', 'Thonburi', 'Tahoma', sans-serif; color: #1e293b; font-size: 11px; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.header { border-bottom: 3px solid #f97316; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-start; }
+.header .org { font-size: 18px; font-weight: 700; color: #0f172a; }
+.header .subtitle { font-size: 12px; color: #475569; margin-top: 2px; }
+.header .meta { text-align: right; font-size: 11px; color: #64748b; }
+table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+th, td { border: 1px solid #e2e8f0; padding: 5px 6px; text-align: left; vertical-align: top; }
+th { background: #f97316; color: white; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+td.mono, th.mono { font-family: monospace; font-size: 10px; }
+td.ctr, th.ctr { text-align: center; }
+tr:nth-child(even) td { background: #fafbfc; }
+.print-btn { position: fixed; top: 12px; right: 12px; background: #f97316; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+.print-btn:hover { background: #ea580c; }
+.footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; display: flex; justify-content: space-between; }
+.footer .brand { color: #f97316; font-weight: 700; letter-spacing: 0.04em; }
+@media print { .no-print { display: none; } table { page-break-inside: auto; } tr { page-break-inside: avoid; } thead { display: table-header-group; } }
+</style></head><body>
+<button class="print-btn no-print" onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button>
+<div class="header">
+  <div><div class="org">PNG TEAM</div><div class="subtitle">ITAM Devices Report — ${rows.length} เครื่อง</div></div>
+  <div class="meta"><div>วันที่ออกรายงาน: ${esc(generatedAt)}</div></div>
+</div>
+<table><thead><tr>${headCells}</tr></thead><tbody>${bodyRows}</tbody></table>
+<div class="footer"><div><span class="brand">PNG TEAM</span> — IT Asset Management</div><div>หน้า 1 · ${esc(generatedAt)}</div></div>
+<script>window.addEventListener('load', function () { setTimeout(function () { try { window.print(); } catch (e) {} }, 250); });</script>
+</body></html>`
+      win.document.open()
+      win.document.write(html)
+      win.document.close()
+      toast.success('กำลังเปิดหน้าพิมพ์รายงาน PDF...')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ส่งออก PDF ไม่สำเร็จ')
+    } finally {
+      setPdfExporting(false)
+    }
+  }
+
+  // ── Import CSV
+  function openImport() {
+    setImportText('')
+    setImportMode('upsert')
+    setImportResult(null)
+    setImportOpen(true)
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const text = String(reader.result ?? '')
+      setImportText(text)
+    }
+    reader.onerror = () => toast.error('อ่านไฟล์ไม่สำเร็จ')
+    reader.readAsText(file, 'utf-8')
+    // Reset input so the same file can be uploaded again later
+    e.target.value = ''
+  }
+
+  // Preview: first 5 data rows of the pasted/loaded CSV
+  const importPreview = React.useMemo(() => {
+    if (!importText.trim()) return null
+    try {
+      const rows = parseCsv(importText)
+      if (rows.length === 0) return null
+      return { header: rows[0], rows: rows.slice(1, 6) }
+    } catch {
+      return null
+    }
+  }, [importText])
+
+  async function runImport() {
+    if (!importText.trim()) {
+      toast.error('กรุณาวาง CSV หรืออัปโหลดไฟล์')
+      return
+    }
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const res = await fetch('/api/itam/devices/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csv: importText, mode: importMode }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Failed')
+      setImportResult(j)
+      toast.success(`นำเข้าสำเร็จ — เพิ่ม ${j.inserted} · อัปเดต ${j.updated}${j.errors.length ? ` · ข้าม ${j.errors.length}` : ''}`)
+      await qc.invalidateQueries({ queryKey: ['itam-devices'] })
+      await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'นำเข้าไม่สำเร็จ')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  // ── Bulk edit
+  function openBulkEdit() {
+    if (selectedAssetNos.size === 0) {
+      toast.error('กรุณาเลือกอุปกรณ์อย่างน้อย 1 เครื่อง')
+      return
+    }
+    setBulkEditForm({ status: '', site: '', building: '', floor: '', department: '' })
+    setBulkProgress(null)
+    setBulkEditOpen(true)
+  }
+
+  async function saveBulkEdit() {
+    const patch: Record<string, unknown> = {}
+    if (bulkEditForm.status) patch.status = bulkEditForm.status
+    if (bulkEditForm.site) patch.site = bulkEditForm.site
+    if (bulkEditForm.building) patch.building = bulkEditForm.building
+    if (bulkEditForm.floor) patch.floor = bulkEditForm.floor
+    if (bulkEditForm.department) patch.department = bulkEditForm.department
+    if (Object.keys(patch).length === 0) {
+      toast.error('กรุณาเลือกฟิลด์อย่างน้อย 1 ฟิลด์เพื่ออัปเดต')
+      return
+    }
+    const assetNos = Array.from(selectedAssetNos)
+    setBulkSaving(true)
+    setBulkProgress({ done: 0, total: assetNos.length })
+    try {
+      const res = await fetch('/api/itam/devices/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetNos, patch }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Failed')
+      toast.success(`อัปเดต ${j.updated} เครื่องสำเร็จ${j.skipped ? ` · ข้าม ${j.skipped}` : ''}`)
+      setBulkEditOpen(false)
+      setSelectedAssetNos(new Set())
+      await qc.invalidateQueries({ queryKey: ['itam-devices'] })
+      await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+    } finally {
+      setBulkSaving(false)
+      setBulkProgress(null)
+    }
+  }
+
   const devices = data?.devices ?? []
   const total = data?.pagination.total ?? 0
   const totalPages = data?.pagination.totalPages ?? 0
@@ -527,8 +899,42 @@ export function ItamDevices() {
           <p className="text-sm text-slate-500 dark:text-slate-400">ข้อมูลจริง {total.toLocaleString()} เครื่อง</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setQrScannerOpen(true)}
+            className="border-[#f97316]/50 text-[#f97316] hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/30"
+            title="สแกน QR Code เพื่อค้นหาอุปกรณ์"
+          >
+            <QrCode className="h-4 w-4" /> สแกน
+          </Button>
           <Button variant="outline" onClick={exportCsv} disabled={exporting} className="dark:bg-slate-800 dark:border-slate-700">
-            <Download className="h-4 w-4" /> ส่งออก CSV
+            <Download className="h-4 w-4" /> CSV
+          </Button>
+          <Button variant="outline" onClick={exportExcel} disabled={excelExporting} className="dark:bg-slate-800 dark:border-slate-700">
+            {excelExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />} Excel
+          </Button>
+          <Button variant="outline" onClick={exportPdf} disabled={pdfExporting} className="dark:bg-slate-800 dark:border-slate-700">
+            {pdfExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} PDF
+          </Button>
+          {canEdit && (
+            <Button variant="outline" onClick={openImport} className="dark:bg-slate-800 dark:border-slate-700">
+              <Upload className="h-4 w-4" /> นำเข้า CSV
+            </Button>
+          )}
+          {canEdit && selectedAssetNos.size > 0 && (
+            <Button variant="outline" onClick={openBulkEdit} className="border-[#f97316] text-[#f97316] dark:bg-orange-950/30">
+              <Edit3 className="h-4 w-4" /> แก้ไขหลายรายการ ({selectedAssetNos.size})
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={handleBulkStickerPrint}
+            disabled={stickerPrinting || selectedAssetNos.size === 0}
+            className="dark:border-slate-700 dark:bg-slate-800"
+            title={selectedAssetNos.size === 0 ? 'เลือกอุปกรณ์ด้วย checkbox ก่อน' : `พิมพ์สติกเกอร์ ${selectedAssetNos.size} ใบ`}
+          >
+            {stickerPrinting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+            พิมพ์สติกเกอร์ {selectedAssetNos.size > 0 ? `(${selectedAssetNos.size})` : ''}
           </Button>
           <Button
             variant="outline"
@@ -594,7 +1000,40 @@ export function ItamDevices() {
             </button>
           </Badge>
         )}
+        {/* Virtual scroll toggle */}
+        <Button
+          type="button"
+          variant={virtualScroll ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setVirtualScroll((v) => !v)}
+          title={virtualScroll ? 'โหมดเลื่อนเสมือน — โหลด 500 รายการต่อหน้า, เลื่อนลื่น' : 'โหมดมาตรฐาน — 20 รายการต่อหน้า, มี pagination'}
+          className={
+            virtualScroll
+              ? 'h-9 bg-[#f97316] text-white hover:bg-[#ea580c]'
+              : 'h-9 dark:bg-slate-800 dark:border-slate-700'
+          }
+        >
+          {virtualScroll ? <Zap className="h-3.5 w-3.5" /> : <List className="h-3.5 w-3.5" />}
+          <span className="hidden sm:inline">{virtualScroll ? 'เลื่อนเสมือน' : 'มาตรฐาน'}</span>
+        </Button>
       </div>
+
+      {/* Saved filters — named presets + last-used auto-restore */}
+      <SavedFilters
+        current={{ search, status, type: deviceType }}
+        onApply={(f) => {
+          setSearch(f.search || '')
+          setStatus(f.status || 'all')
+          setDeviceType(f.type || 'all')
+          setPage(1)
+        }}
+        onReset={() => {
+          setSearch('')
+          setStatus('all')
+          setDeviceType('all')
+          setPage(1)
+        }}
+      />
 
       {/* Search metrics + recent searches */}
       <div className="flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -621,13 +1060,37 @@ export function ItamDevices() {
         )}
       </div>
 
-      {/* Table */}
+      {/* Table — standard OR virtualized based on the toggle */}
       <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-0">
+          {virtualScroll && !showSkeletons && devices.length > 0 ? (
+            <VirtualDevicesTable
+              devices={devices}
+              query={debouncedSearch}
+              selectedAssetNos={selectedAssetNos}
+              savedAssetNos={savedAssetNos}
+              stickerPrinting={stickerPrinting}
+              canEdit={canEdit}
+              onRowClick={(assetNo) => { setDetailAssetNo(assetNo); setDetailOpen(true) }}
+              onToggle={(assetNo) => toggleSelectAssetNo(assetNo)}
+              onSelectAll={(checked) => toggleSelectAllOnPage(checked)}
+              onView={(assetNo) => { setDetailAssetNo(assetNo); setDetailOpen(true) }}
+              onPrintSticker={(assetNo) => handleSingleStickerPrint(assetNo)}
+              onEdit={(assetNo) => openEdit(assetNo)}
+              onDelete={(assetNo) => setDeleteAssetNo(assetNo)}
+            />
+          ) : (
           <div className="itam-scroll max-h-[60vh] overflow-auto">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={devices.length > 0 && devices.every((d) => selectedAssetNos.has(d.assetNo))}
+                      onCheckedChange={(c) => toggleSelectAllOnPage(!!c)}
+                      aria-label="เลือกทั้งหน้า"
+                    />
+                  </TableHead>
                   <TableHead className="w-20">รหัส</TableHead>
                   <TableHead className="w-28">ประเภท</TableHead>
                   <TableHead>แบรนด์/รุ่น</TableHead>
@@ -635,7 +1098,7 @@ export function ItamDevices() {
                   <TableHead className="w-32">สาขา</TableHead>
                   <TableHead className="w-32">แผนก</TableHead>
                   <TableHead className="w-16 text-center">มิเตอร์</TableHead>
-                  <TableHead className="w-40 text-right">จัดการ</TableHead>
+                  <TableHead className="w-48 text-right">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -643,6 +1106,7 @@ export function ItamDevices() {
                   // Skeleton rows matching column widths
                   Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={`sk-${i}`}>
+                      <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
@@ -655,7 +1119,7 @@ export function ItamDevices() {
                   ))
                 ) : devices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-12">
+                    <TableCell colSpan={9} className="py-12">
                       <div className="flex flex-col items-center gap-3 text-slate-400">
                         <Package className="h-12 w-12 text-slate-300 dark:text-slate-700" />
                         <div className="text-sm">
@@ -696,6 +1160,13 @@ export function ItamDevices() {
                           ].join(' ')}
                           onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}
                         >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedAssetNos.has(d.assetNo)}
+                              onCheckedChange={() => toggleSelectAssetNo(d.assetNo)}
+                              aria-label={`เลือก ${d.assetNo}`}
+                            />
+                          </TableCell>
                           <TableCell className="whitespace-nowrap font-mono text-xs font-medium text-slate-700 dark:text-slate-300">
                             <Highlight text={d.assetNo} query={debouncedSearch} />
                           </TableCell>
@@ -735,6 +1206,16 @@ export function ItamDevices() {
                               <Button size="sm" variant="ghost" title="ดู" onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}>
                                 <Eye className="h-3.5 w-3.5" />
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                title="พิมพ์สติกเกอร์"
+                                className="text-[#f97316] hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                                onClick={() => handleSingleStickerPrint(d.assetNo)}
+                                disabled={stickerPrinting}
+                              >
+                                <Tag className="h-3.5 w-3.5" />
+                              </Button>
                               <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => openEdit(d.assetNo)} disabled={isSaving}>
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
@@ -758,8 +1239,22 @@ export function ItamDevices() {
               </TableBody>
             </Table>
           </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Virtual scroll hint */}
+      {virtualScroll && !showSkeletons && devices.length > 0 && (
+        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+          <span className="flex items-center gap-1">
+            <Zap className="h-3 w-3 text-[#f97316]" />
+            โหมดเลื่อนเสมือน — แสดง {devices.length.toLocaleString()} รายการในหน้านี้ (render เฉพาะแถวที่มองเห็น)
+          </span>
+          {total > devices.length && (
+            <span>ทั้งหมด {total.toLocaleString()} — ใช้ pagination เพื่อดูหน้าถัดไป</span>
+          )}
+        </div>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -834,7 +1329,12 @@ export function ItamDevices() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">สาขา</Label>
-              <Input value={form.site} onChange={(e) => setForm({ ...form, site: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+              <Select value={form.site} onValueChange={(v) => setForm({ ...form, site: v, building: '', floor: '', department: '', location: '' })}>
+                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="เลือกสาขา" /></SelectTrigger>
+                <SelectContent>
+                  {sites.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Asset Site Code</Label>
@@ -842,15 +1342,42 @@ export function ItamDevices() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">อาคาร</Label>
-              <Input value={form.building} onChange={(e) => setForm({ ...form, building: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input
+                value={form.building}
+                onChange={(e) => setForm({ ...form, building: e.target.value, floor: '', department: '', location: '' })}
+                list="dl-building"
+                placeholder="เลือกหรือพิมพ์"
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+              <datalist id="dl-building">
+                {buildingOptions.map((v) => <option key={v} value={v} />)}
+              </datalist>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">ชั้น</Label>
-              <Input value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input
+                value={form.floor}
+                onChange={(e) => setForm({ ...form, floor: e.target.value, department: '', location: '' })}
+                list="dl-floor"
+                placeholder="เลือกหรือพิมพ์"
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+              <datalist id="dl-floor">
+                {floorOptions.map((v) => <option key={v} value={v} />)}
+              </datalist>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">แผนก</Label>
-              <Input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input
+                value={form.department}
+                onChange={(e) => setForm({ ...form, department: e.target.value, location: '' })}
+                list="dl-department"
+                placeholder="เลือกหรือพิมพ์"
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+              <datalist id="dl-department">
+                {departmentOptions.map((v) => <option key={v} value={v} />)}
+              </datalist>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">รหัสแผนก</Label>
@@ -858,7 +1385,16 @@ export function ItamDevices() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">ที่ตั้ง</Label>
-              <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                list="dl-location"
+                placeholder="เลือกหรือพิมพ์"
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+              <datalist id="dl-location">
+                {locationOptions.map((v) => <option key={v} value={v} />)}
+              </datalist>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Cost Center</Label>
@@ -945,6 +1481,404 @@ export function ItamDevices() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Import CSV dialog */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900 p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+              <Upload className="h-5 w-5 text-[#f97316]" /> นำเข้า CSV
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/60 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300">
+              รูปแบบ CSV: แถวแรกเป็น header ที่มีคอลัมน์ <code className="rounded bg-orange-100 px-1 text-orange-700 dark:bg-orange-950 dark:text-orange-300">assetNo</code> (จำเป็น)
+              คอลัมน์อื่น ๆ ที่รองรับ: <code>deviceType, brand, model, serial, status, site, building, floor, department, departmentCode, location, deviceGroup, costCenter, contractNo, vendor, ip, mac, remoteId, installDate, warrantyEnd, meterRequired, meterMode, assetSiteCode, remark</code>
+              <br />การจับคู่: ถ้ามี <code>assetNo</code> อยู่แล้ว → อัปเดต ถ้าไม่มี → สร้างใหม่
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-orange-950/30">
+                <Upload className="h-3.5 w-3.5" /> เลือกไฟล์ CSV
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+              </label>
+              <Select value={importMode} onValueChange={(v) => setImportMode(v as typeof importMode)}>
+                <SelectTrigger className="h-8 w-44 dark:bg-slate-800 dark:border-slate-700 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="upsert">เพิ่ม + อัปเดต</SelectItem>
+                  <SelectItem value="create_only">เพิ่มใหม่เท่านั้น</SelectItem>
+                  <SelectItem value="update_only">อัปเดตเท่านั้น</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">หรือวาง CSV text ที่นี่</Label>
+              <Textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                rows={6}
+                placeholder={'assetNo,deviceType,brand,model,site,building,floor,department\n1,PRINTER,KYOCERA,FS-1041,โรงพยาบาล...,ตึก A,1,ธุรการ\n2,MONITOR,DELL,P2419H,...'}
+                className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
+              />
+            </div>
+
+            {/* Preview */}
+            {importPreview && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">ตัวอย่าง 5 แถวแรก</Label>
+                <div className="itam-scroll max-h-56 overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
+                  <Table>
+                    <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+                      <TableRow>
+                        {importPreview.header.map((h, i) => (
+                          <TableHead key={i} className="text-[10px] whitespace-nowrap">{h}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {importPreview.rows.map((r, i) => (
+                        <TableRow key={i}>
+                          {importPreview.header.map((_, j) => (
+                            <TableCell key={j} className="text-[10px] whitespace-nowrap text-slate-600 dark:text-slate-300">{r[j] ?? ''}</TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+
+            {/* Result */}
+            {importResult && (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs dark:border-emerald-800 dark:bg-emerald-950/30">
+                <div className="font-semibold text-emerald-700 dark:text-emerald-300">นำเข้าเสร็จสิ้น</div>
+                <div className="mt-1 text-slate-700 dark:text-slate-300">
+                  เพิ่มใหม่ <span className="font-semibold">{importResult.inserted}</span> ·
+                  อัปเดต <span className="font-semibold">{importResult.updated}</span> ·
+                  ข้าม/ผิดพลาด <span className="font-semibold">{importResult.errors.length}</span> ·
+                  ทั้งหมด <span className="font-semibold">{importResult.total}</span>
+                </div>
+                {importResult.errors.length > 0 && (
+                  <div className="mt-2 max-h-32 overflow-y-auto">
+                    <div className="font-medium text-rose-700 dark:text-rose-300">รายการที่ข้าม:</div>
+                    {importResult.errors.slice(0, 10).map((e, i) => (
+                      <div key={i} className="text-[10px] text-slate-600 dark:text-slate-400">
+                        แถว {e.row} ({e.assetNo || '-'}): {e.error}
+                      </div>
+                    ))}
+                    {importResult.errors.length > 10 && <div className="text-[10px] text-slate-400">…และอีก {importResult.errors.length - 10} รายการ</div>}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportOpen(false)}>ปิด</Button>
+            <Button onClick={runImport} disabled={importing || !importText.trim()} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+              {importing ? 'กำลังนำเข้า...' : 'นำเข้า'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Edit dialog */}
+      <Dialog open={bulkEditOpen} onOpenChange={setBulkEditOpen}>
+        <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900 p-4 sm:p-6">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+              <Edit3 className="h-5 w-5 text-[#f97316]" /> แก้ไขหลายรายการ ({selectedAssetNos.size} เครื่อง)
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              ปล่อยว่าง = ไม่เปลี่ยนแปลงฟิลด์นั้น ๆ เฉพาะฟิลด์ที่กรอกจะถูกอัปเดตให้ทุกเครื่องที่เลือก
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs">สถานะ</Label>
+              <Select value={bulkEditForm.status} onValueChange={(v) => setBulkEditForm({ ...bulkEditForm, status: v === '__none' ? '' : v })}>
+                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="ไม่เปลี่ยนแปลง" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">ไม่เปลี่ยนแปลง</SelectItem>
+                  {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">สาขา</Label>
+              <Select value={bulkEditForm.site} onValueChange={(v) => setBulkEditForm({ ...bulkEditForm, site: v === '__none' ? '' : v, building: '', floor: '', department: '' })}>
+                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="ไม่เปลี่ยนแปลง" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">ไม่เปลี่ยนแปลง</SelectItem>
+                  {sites.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">อาคาร</Label>
+              <Input
+                value={bulkEditForm.building}
+                onChange={(e) => setBulkEditForm({ ...bulkEditForm, building: e.target.value, floor: '', department: '' })}
+                list="dl-bulk-building"
+                placeholder="ไม่เปลี่ยนแปลง"
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+              <datalist id="dl-bulk-building">
+                {bulkBuildingOptions.map((v) => <option key={v} value={v} />)}
+              </datalist>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">ชั้น</Label>
+              <Input
+                value={bulkEditForm.floor}
+                onChange={(e) => setBulkEditForm({ ...bulkEditForm, floor: e.target.value, department: '' })}
+                list="dl-bulk-floor"
+                placeholder="ไม่เปลี่ยนแปลง"
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+              <datalist id="dl-bulk-floor">
+                {bulkFloorOptions.map((v) => <option key={v} value={v} />)}
+              </datalist>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">แผนก</Label>
+              <Input
+                value={bulkEditForm.department}
+                onChange={(e) => setBulkEditForm({ ...bulkEditForm, department: e.target.value })}
+                list="dl-bulk-department"
+                placeholder="ไม่เปลี่ยนแปลง"
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+              <datalist id="dl-bulk-department">
+                {bulkDepartmentOptions.map((v) => <option key={v} value={v} />)}
+              </datalist>
+            </div>
+            {bulkProgress && (
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                กำลังประมวลผล: {bulkProgress.done}/{bulkProgress.total}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkEditOpen(false)} disabled={bulkSaving}>ยกเลิก</Button>
+            <Button onClick={saveBulkEdit} disabled={bulkSaving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+              {bulkSaving ? 'กำลังบันทึก...' : 'บันทึก'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VirtualDevicesTable — virtualized rendering of device rows.
+//
+// Why this exists:
+//   Google Apps Script renders every row via innerHTML — fine for 100 rows
+//   but janky at 2,378+. Next.js can use @tanstack/react-virtual to render
+//   ONLY the ~20 rows visible in the viewport + a small overscan buffer,
+//   while keeping the full scroll height. Result: 60fps scrolling through
+//   thousands of rows.
+//
+// Implementation notes:
+//   • Uses CSS Grid (not <table>) so each row is a div that can be absolutely
+//     positioned by the virtualizer.
+//   • Header is sticky on top via `position: sticky; top: 0`.
+//   • Column widths mirror the standard <Table> variant so the two views
+//     look identical.
+//   • Overscan = 8 rows — smooth scrolling without too many offscreen DOM
+//     nodes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VIRTUAL_ROW_HEIGHT = 44 // px — must match the row's actual rendered height
+const VIRTUAL_OVERSCAN = 8
+
+// Grid template columns — kept in sync with the standard table column widths
+// (w-10, w-20, w-28, 1fr, w-32, w-32, w-32, w-16, w-48)
+const GRID_COLS = 'grid-cols-[40px_80px_112px_minmax(140px,1fr)_128px_128px_128px_64px_192px]'
+
+interface VirtualDevicesTableProps {
+  devices: Device[]
+  query: string
+  selectedAssetNos: Set<string>
+  savedAssetNos: Set<string>
+  stickerPrinting: boolean
+  canEdit: boolean
+  onRowClick: (assetNo: string) => void
+  onToggle: (assetNo: string) => void
+  onSelectAll: (checked: boolean) => void
+  onView: (assetNo: string) => void
+  onPrintSticker: (assetNo: string) => void
+  onEdit: (assetNo: string) => void
+  onDelete: (assetNo: string) => void
+}
+
+function VirtualDevicesTable({
+  devices,
+  query,
+  selectedAssetNos,
+  savedAssetNos,
+  stickerPrinting,
+  onRowClick,
+  onToggle,
+  onSelectAll,
+  onView,
+  onPrintSticker,
+  onEdit,
+  onDelete,
+}: VirtualDevicesTableProps) {
+  const parentRef = React.useRef<HTMLDivElement | null>(null)
+
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual returns functions that React Compiler can't auto-memoize; this is by design.
+  const rowVirtualizer = useVirtualizer({
+    count: devices.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => VIRTUAL_ROW_HEIGHT,
+    overscan: VIRTUAL_OVERSCAN,
+  })
+
+  const totalSize = rowVirtualizer.getTotalSize()
+  const virtualRows = rowVirtualizer.getVirtualItems()
+  const allSelected = devices.length > 0 && devices.every((d) => selectedAssetNos.has(d.assetNo))
+
+  return (
+    <div
+      ref={parentRef}
+      className="itam-scroll max-h-[60vh] overflow-auto"
+      role="table"
+      aria-label="ตารางอุปกรณ์ (โหมดเลื่อนเสมือน)"
+    >
+      {/* Sticky header — same grid as the rows */}
+      <div
+        className={`sticky top-0 z-10 grid ${GRID_COLS} gap-2 border-b border-slate-200 bg-slate-50/95 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-300`}
+        role="row"
+      >
+        <div className="flex items-center" role="columnheader">
+          <Checkbox
+            checked={allSelected}
+            onCheckedChange={(c) => onSelectAll(!!c)}
+            aria-label="เลือกทั้งหน้า"
+          />
+        </div>
+        <div role="columnheader">รหัส</div>
+        <div role="columnheader">ประเภท</div>
+        <div role="columnheader">แบรนด์/รุ่น</div>
+        <div role="columnheader">สถานะ</div>
+        <div role="columnheader">สาขา</div>
+        <div role="columnheader">แผนก</div>
+        <div role="columnheader" className="text-center">มิเตอร์</div>
+        <div role="columnheader" className="text-right">จัดการ</div>
+      </div>
+
+      {/* Virtualized body — spacer div sized to total height, rows positioned absolutely */}
+      <div style={{ height: totalSize, position: 'relative' }} role="rowgroup">
+        {virtualRows.map((virtualRow) => {
+          const d = devices[virtualRow.index]
+          if (!d) return null
+          const isSaving = d.__optimistic === 'add' || d.__optimistic === 'edit'
+          const justSaved = savedAssetNos.has(d.assetNo)
+          const isSelected = selectedAssetNos.has(d.assetNo)
+          return (
+            <div
+              key={d.id}
+              role="row"
+              data-index={virtualRow.index}
+              ref={rowVirtualizer.measureElement}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+              onClick={() => onRowClick(d.assetNo)}
+              className={[
+                `grid ${GRID_COLS} cursor-pointer items-center gap-2 border-b border-slate-100 px-3 text-xs transition-colors dark:border-slate-800`,
+                'hover:bg-slate-50 dark:hover:bg-slate-800/50',
+                isSelected ? 'bg-orange-50 dark:bg-orange-950/20' : '',
+                isSaving ? 'itam-saving-row' : '',
+                justSaved ? 'bg-emerald-50 dark:bg-emerald-950/20' : '',
+              ].join(' ')}
+            >
+              <div onClick={(e) => e.stopPropagation()} className="flex items-center" role="cell">
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => onToggle(d.assetNo)}
+                  aria-label={`เลือก ${d.assetNo}`}
+                />
+              </div>
+              <div role="cell" className="whitespace-nowrap font-mono font-medium text-slate-700 dark:text-slate-300">
+                <Highlight text={d.assetNo} query={query} />
+              </div>
+              <div role="cell" className="whitespace-nowrap text-slate-600 dark:text-slate-400">
+                <Highlight text={d.deviceType || ''} query={query} />
+              </div>
+              <div role="cell" className="truncate text-slate-700 dark:text-slate-200">
+                <Highlight text={d.brand || ''} query={query} />{' '}
+                <Highlight text={d.model || ''} query={query} />
+              </div>
+              <div role="cell">
+                <Badge className={STATUS_BADGE[d.status] || 'bg-slate-100 text-slate-600'}>{d.status}</Badge>
+              </div>
+              <div role="cell" className="truncate text-slate-600 dark:text-slate-400">
+                <Highlight text={(d.site || '').substring(0, 20)} query={query} />
+              </div>
+              <div role="cell" className="truncate text-slate-600 dark:text-slate-400">
+                <Highlight text={(d.department || '').substring(0, 20)} query={query} />
+              </div>
+              <div role="cell" className="text-center">
+                {d.meterRequired ? (
+                  <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300">✓</Badge>
+                ) : (
+                  <span className="text-slate-400">—</span>
+                )}
+              </div>
+              <div role="cell" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-end gap-1">
+                  {justSaved && (
+                    <span className="mr-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                      <CheckCheck className="h-3 w-3" /> บันทึกแล้ว
+                    </span>
+                  )}
+                  <Button size="sm" variant="ghost" title="ดู" onClick={() => onView(d.assetNo)} className="h-7 w-7 p-0">
+                    <Eye className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title="พิมพ์สติกเกอร์"
+                    className="h-7 w-7 p-0 text-[#f97316] hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                    onClick={() => onPrintSticker(d.assetNo)}
+                    disabled={stickerPrinting}
+                  >
+                    <Tag className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => onEdit(d.assetNo)} disabled={isSaving} className="h-7 w-7 p-0">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    title="ลบ"
+                    className="h-7 w-7 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                    onClick={() => onDelete(d.assetNo)}
+                    disabled={isSaving}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import {
   Package, CheckCircle2, Wrench, FileText, TrendingUp, Building2,
   FileDown, Flame, BarChart3, Trophy, RefreshCw, Loader2,
+  AlertTriangle, Palette, ArrowUpRight, ArrowDownRight, CircleAlert,
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
 
@@ -189,6 +190,23 @@ export function ItamDashboard() {
     },
     enabled: heatOpen,
   })
+
+  // Smart insights
+  interface InsightItem {
+    type: string
+    message: string
+    [k: string]: unknown
+  }
+  const { data: insightsData, isLoading: insightsLoading } = useQuery<{ insights: InsightItem[] }>({
+    queryKey: ['itam-dashboard-insights'],
+    queryFn: async () => {
+      const res = await fetch('/api/itam/dashboard/insights')
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+    refetchInterval: 60_000,
+  })
+  const insights = insightsData?.insights ?? []
 
   function exportPdf() {
     const win = window.open('', '_blank', 'width=900,height=1200')
@@ -400,6 +418,74 @@ ${kpiHtml}
         <KpiCard title="ส่งซ่อม" value={data?.totals.repair ?? 0} icon={<Wrench className="h-5 w-5" />} accent="#f97316" loading={isLoading} glow={glowKey === 'repair'} />
         <KpiCard title="ต้องจดมิเตอร์" value={data?.meterRequiredCount ?? 0} icon={<FileText className="h-5 w-5" />} accent="#0d9488" loading={isLoading} glow={glowKey === 'meter'} />
       </div>
+
+      {/* Smart Insights row */}
+      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CircleAlert className="h-4 w-4 text-[#f97316]" /> Smart Insights
+            {insightsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
+          </CardTitle>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            ระบบตรวจพบสิ่งผิดปกติอัตโนมัติ — ใช้กระดาษสูง / สีเยอะ / ยังไม่จดมิเตอร์ / เปลี่ยนแปลงรายเดือน
+          </p>
+        </CardHeader>
+        <CardContent>
+          {insightsLoading ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 w-full rounded-md" />
+              ))}
+            </div>
+          ) : insights.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-8 text-sm text-slate-400">
+              <CheckCircle2 className="h-10 w-10 text-emerald-400" />
+              <div>ไม่พบสิ่งผิดปกติในเดือนนี้</div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {insights.slice(0, 6).map((ins, idx) => {
+                const palette = (() => {
+                  switch (ins.type) {
+                    case 'high_usage':
+                      return { bg: 'bg-rose-50 dark:bg-rose-950/30', border: 'border-rose-200 dark:border-rose-800', text: 'text-rose-700 dark:text-rose-300', icon: <AlertTriangle className="h-4 w-4" /> }
+                    case 'color_heavy':
+                      return { bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200 dark:border-amber-800', text: 'text-amber-700 dark:text-amber-300', icon: <Palette className="h-4 w-4" /> }
+                    case 'not_read':
+                      return { bg: 'bg-orange-50 dark:bg-orange-950/30', border: 'border-orange-200 dark:border-orange-800', text: 'text-orange-700 dark:text-orange-300', icon: <FileText className="h-4 w-4" /> }
+                    case 'mom_change':
+                      return ins.percent && Number(ins.percent) > 0
+                        ? { bg: 'bg-rose-50 dark:bg-rose-950/30', border: 'border-rose-200 dark:border-rose-800', text: 'text-rose-700 dark:text-rose-300', icon: <ArrowUpRight className="h-4 w-4" /> }
+                        : { bg: 'bg-teal-50 dark:bg-teal-950/30', border: 'border-teal-200 dark:border-teal-800', text: 'text-teal-700 dark:text-teal-300', icon: <ArrowDownRight className="h-4 w-4" /> }
+                    default:
+                      return { bg: 'bg-slate-50 dark:bg-slate-800/40', border: 'border-slate-200 dark:border-slate-700', text: 'text-slate-700 dark:text-slate-300', icon: <CircleAlert className="h-4 w-4" /> }
+                  }
+                })()
+                return (
+                  <motion.div
+                    key={`${ins.type}-${idx}`}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, delay: idx * 0.04 }}
+                    className={`rounded-md border ${palette.border} ${palette.bg} p-3`}
+                  >
+                    <div className={`mb-1 flex items-center gap-1.5 text-xs font-semibold ${palette.text}`}>
+                      {palette.icon}
+                      <span className="uppercase tracking-wide">
+                        {ins.type === 'high_usage' && 'ใช้กระดาษสูง'}
+                        {ins.type === 'color_heavy' && 'ใช้สีเยอะ'}
+                        {ins.type === 'not_read' && 'ยังไม่ได้จดมิเตอร์'}
+                        {ins.type === 'mom_change' && 'เปรียบเทียบรายเดือน'}
+                      </span>
+                    </div>
+                    <div className="text-sm text-slate-700 dark:text-slate-200">{ins.message}</div>
+                  </motion.div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Interactive Charts row — donut + bar */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
