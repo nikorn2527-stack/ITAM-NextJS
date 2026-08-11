@@ -64,6 +64,52 @@ interface KpiCardProps {
   unit?: string
 }
 
+/**
+ * Animated count-up hook — tweens from the previous value to the next
+ * over 500ms using requestAnimationFrame.
+ */
+function useCountUp(target: number, duration = 500) {
+  const [display, setDisplay] = React.useState(target)
+  const fromRef = React.useRef(target)
+  const rafRef = React.useRef<number | null>(null)
+  const startRef = React.useRef<number | null>(null)
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const from = fromRef.current
+    if (from === target) {
+      setDisplay(target)
+      return
+    }
+    startRef.current = null
+    const step = (ts: number) => {
+      if (startRef.current === null) startRef.current = ts
+      const elapsed = ts - startRef.current
+      const t = Math.min(1, elapsed / duration)
+      // easeOutCubic
+      const eased = 1 - Math.pow(1 - t, 3)
+      const next = Math.round(from + (target - from) * eased)
+      setDisplay(next)
+      if (t < 1) {
+        rafRef.current = window.requestAnimationFrame(step)
+      } else {
+        fromRef.current = target
+        setDisplay(target)
+      }
+    }
+    rafRef.current = window.requestAnimationFrame(step)
+    return () => {
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current)
+      }
+      // remember where we landed so the next tween starts smoothly
+      fromRef.current = display
+    }
+  }, [target, duration])
+
+  return display
+}
+
 function KpiCard({
   title,
   value,
@@ -74,7 +120,8 @@ function KpiCard({
   format,
   unit,
 }: KpiCardProps) {
-  const display = format ? format(value) : value.toLocaleString()
+  const animated = useCountUp(value, 500)
+  const display = format ? format(animated) : animated.toLocaleString()
   return (
     <Card
       className="group relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-[#f97316] focus-within:ring-offset-1 dark:focus-within:ring-offset-slate-950"
@@ -130,11 +177,24 @@ function KpiCard({
   )
 }
 
-function EmptyState({ message }: { message: string }) {
+function EmptyState({
+  message,
+  subtitle,
+  icon,
+}: {
+  message: string
+  subtitle?: string
+  icon?: React.ReactNode
+}) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400 dark:text-slate-500">
-      <Inbox className="h-8 w-8 text-slate-300 dark:text-slate-600" />
-      <span className="text-sm">{message}</span>
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+        {icon ?? <Inbox className="h-6 w-6 text-slate-300 dark:text-slate-600" />}
+      </div>
+      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">{message}</div>
+      {subtitle && (
+        <div className="text-xs text-slate-400 dark:text-slate-500">{subtitle}</div>
+      )}
     </div>
   )
 }

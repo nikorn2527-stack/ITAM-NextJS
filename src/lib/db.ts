@@ -6,11 +6,15 @@ const globalForPrisma = globalThis as unknown as {
 
 // In development the cached PrismaClient may become stale after a schema
 // change (e.g. `bun run db:push` adding a new model). Detect this by probing
-// for a known model and recreate the client if it's missing.
+// for known models and recreate the client if any are missing.
 if (
   process.env.NODE_ENV !== 'production' &&
   globalForPrisma.prisma &&
-  !(globalForPrisma.prisma as unknown as { auditLog?: unknown }).auditLog
+  !(
+    (globalForPrisma.prisma as unknown as { auditLog?: unknown }).auditLog &&
+    (globalForPrisma.prisma as unknown as { deviceTransfer?: unknown })
+      .deviceTransfer
+  )
 ) {
   void globalForPrisma.prisma.$disconnect().catch(() => {})
   globalForPrisma.prisma = undefined

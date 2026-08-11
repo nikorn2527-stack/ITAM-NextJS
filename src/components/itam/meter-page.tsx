@@ -40,6 +40,7 @@ import {
 import type { Device, Cycle, MeterReading } from './types'
 import { statusBadgeClass, statusLabel } from './types'
 import { downloadCsv, dateStamp } from '@/lib/csv'
+import { BulkMeterDialog } from './bulk-meter-dialog'
 
 const METER_CSV_HEADERS = [
   { key: 'date', label: 'วันที่' },
@@ -99,6 +100,7 @@ export function MeterPage() {
   const [cycleEnd, setCycleEnd] = React.useState(todayISO())
   const [creatingCycle, setCreatingCycle] = React.useState(false)
   const [exporting, setExporting] = React.useState(false)
+  const [bulkOpen, setBulkOpen] = React.useState(false)
 
   const { data: activeCycle } = useQuery<Cycle | null>({
     queryKey: ['active-cycle'],
@@ -284,6 +286,15 @@ export function MeterPage() {
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
+            onClick={() => setBulkOpen(true)}
+            disabled={meterableDevices.length === 0}
+            className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+          >
+            <ClipboardList className="h-4 w-4" />
+            จดมิเตอร์หลายเครื่อง
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => setCycleDialogOpen(true)}
             className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
@@ -315,14 +326,20 @@ export function MeterPage() {
 
       {/* Cycle bento cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="lg:col-span-2 dark:border-slate-800 dark:bg-slate-900">
-          <CardHeader>
+        <Card className="relative overflow-hidden bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800/50 lg:col-span-2 dark:border-slate-800">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-2 -top-2 text-[100px] leading-none text-slate-100 dark:text-slate-800/40 select-none"
+          >
+            <CalendarClock className="h-24 w-24" />
+          </span>
+          <CardHeader className="relative">
             <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
               <CalendarClock className="h-4 w-4 text-[#f97316]" />
               รอบจดมิเตอร์ปัจจุบัน
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="relative">
             {activeCycle ? (
               <div className="space-y-2">
                 <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">
@@ -330,28 +347,35 @@ export function MeterPage() {
                 </div>
                 <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
                   <span>📅 {activeCycle.startDate} → {activeCycle.endDate}</span>
-                  <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:scale-105 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                     {activeCycle.status === 'active' ? 'กำลังดำเนินการ' : activeCycle.status}
                   </Badge>
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-slate-400 dark:text-slate-500">
-                ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ
-              </p>
+              <div className="flex flex-col items-start gap-1 text-sm text-slate-400 dark:text-slate-500">
+                <span className="font-medium">ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ</span>
+                <span className="text-xs">กดปุ่ม &quot;จัดการรอบ&quot; เพื่อสร้างรอบใหม่</span>
+              </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="dark:border-slate-800 dark:bg-slate-900">
-          <CardContent className="flex h-full flex-col items-center justify-center p-6 text-center">
+        <Card className="relative overflow-hidden bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800/50 dark:border-slate-800">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-1 -top-1 text-[80px] leading-none text-slate-100 dark:text-slate-800/40 select-none"
+          >
+            <Gauge className="h-20 w-20" />
+          </span>
+          <CardContent className="relative flex h-full flex-col items-center justify-center p-6 text-center">
             <Gauge className="mb-2 h-8 w-8 text-[#f97316]" />
             <div className="text-xs font-medium text-slate-500 dark:text-slate-400">เหลือเวลา</div>
             {remainingDays === null ? (
               <div className="text-sm text-slate-400 dark:text-slate-500">—</div>
             ) : (
               <>
-                <div className="text-3xl font-bold text-slate-800 dark:text-slate-100">
+                <div className="text-3xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
                   {remainingDays}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">วัน</div>
@@ -361,8 +385,14 @@ export function MeterPage() {
         </Card>
 
         {/* Progress card — จดแล้ว X/Y */}
-        <Card className="dark:border-slate-800 dark:bg-slate-900">
-          <CardContent className="flex h-full flex-col justify-center p-5">
+        <Card className="relative overflow-hidden bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800/50 dark:border-slate-800">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-1 -top-1 text-[80px] leading-none text-slate-100 dark:text-slate-800/40 select-none"
+          >
+            <ClipboardList className="h-20 w-20" />
+          </span>
+          <CardContent className="relative flex h-full flex-col justify-center p-5">
             <div className="mb-2 flex items-center gap-2">
               <ClipboardList className="h-4 w-4 text-[#0d9488]" />
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -453,7 +483,7 @@ export function MeterPage() {
             className="itam-scroll max-h-[55vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800"
           >
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
+              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
                 <TableRow>
                   <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
@@ -477,11 +507,18 @@ export function MeterPage() {
                   ))
                 ) : meterableDevices.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={9}
-                      className="py-8 text-center text-sm text-slate-400 dark:text-slate-500"
-                    >
-                      ไม่พบอุปกรณ์ที่ต้องจดมิเตอร์
+                    <TableCell colSpan={9} className="py-12">
+                      <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                          <Gauge className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+                        </div>
+                        <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                          ไม่พบอุปกรณ์ที่ต้องจดมิเตอร์
+                        </div>
+                        <div className="text-xs text-slate-400 dark:text-slate-500">
+                          ระบบจะแสดงเฉพาะเครื่องพิมพ์/ถ่ายเอกสาร/MFP ที่ยังไม่ตัดของออก — เพิ่มอุปกรณ์ได้ที่หน้าจัดการอุปกรณ์
+                        </div>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -730,6 +767,14 @@ export function MeterPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk meter dialog */}
+      <BulkMeterDialog
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        devices={meterableDevices}
+        activeCycle={activeCycle ?? null}
+      />
     </div>
   )
 }

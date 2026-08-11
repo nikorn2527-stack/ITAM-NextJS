@@ -110,6 +110,20 @@ export interface AuditLog {
   createdAt: string
 }
 
+export interface DeviceTransfer {
+  id: string
+  deviceId: string
+  fromSite: string | null
+  toSite: string
+  fromDept: string | null
+  toDept: string | null
+  fromDeptCode: string | null
+  toDeptCode: string | null
+  reason: string | null
+  transferDate: string
+  createdAt: string
+}
+
 export const DEVICE_STATUS_OPTIONS = [
   { value: 'active', label: 'ใช้งานอยู่' },
   { value: 'spare', label: 'สำรอง' },
@@ -129,15 +143,15 @@ export const MASTER_CATEGORIES = [
 export function statusBadgeClass(status: string): string {
   switch (status) {
     case 'active':
-      return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800 transition-colors hover:scale-105'
     case 'spare':
-      return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
+      return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800 transition-colors hover:scale-105'
     case 'repair':
-      return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800'
+      return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800 transition-colors hover:scale-105'
     case 'disposed':
-      return 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
+      return 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800 transition-colors hover:scale-105'
     default:
-      return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+      return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700 transition-colors hover:scale-105'
   }
 }
 
