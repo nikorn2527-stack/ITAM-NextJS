@@ -96,12 +96,35 @@ model MeterReading {
 // TODO: Models ถัดไป (รอ headers จากผู้ใช้)
 //
 // 6) Cycles              — รอบจดมิเตอร์ (ยังไม่มี sheet — ข้ามไปก่อน)
-// 8) User_Permissions    — สิทธิ์ผู้ใช้
 // 9) Site_Attributes     — ข้อมูลสาขา
 // 10) App_Settings       — ตั้งค่าแอป
 // 11) Assignments        — การมอบหมาย
 // 12) MaintenanceLog     — ซ่อมบำรุง
 // ============================================================
+
+// ============================================================
+// 8) User_Permissions — สิทธิ์ผู้ใช้
+//    Source: sheet "User_Permissions" (10 columns)
+// ============================================================
+model UserPermission {
+  id            String   @id @default(cuid())
+  email         String   @unique @map("Email")
+  role          String   @map("Role") // Super Admin | Admin | Editor | Viewer
+  active        Boolean  @default(true) @map("Active")
+  name          String?  @map("Name")
+  username      String?  @map("Username")
+  passwordHash  String?  @map("PasswordHash")
+  passwordSalt  String?  @map("PasswordSalt")
+  remark        String?  @map("Remark")
+  updatedAt     DateTime @updatedAt @map("UpdatedAt")
+  lastLoginAt   String?  @map("LastLoginAt") // ISO datetime string
+  allowedSites  String?  @map("Allowed_Sites") // ALL หรือ comma-separated
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([role])
+  @@index([active])
+  @@map("user_permissions")
+}
 
 // ============================================================
 // 7) Audit_Log — ประวัติการใช้งานระบบ
