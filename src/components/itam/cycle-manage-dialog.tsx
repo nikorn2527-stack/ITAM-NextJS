@@ -35,8 +35,10 @@ import {
   ChevronDown,
   ChevronRight,
   Gauge,
+  BarChart3,
 } from 'lucide-react'
 import type { Cycle } from './types'
+import { CycleReportDialog } from './cycle-report-dialog'
 
 interface CycleWithStats extends Cycle {
   readingCount?: number
@@ -95,6 +97,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
   const [creating, setCreating] = React.useState(false)
   const [actionTarget, setActionTarget] = React.useState<{ cycle: Cycle; action: 'end' | 'cancel' | 'reopen' | 'delete' } | null>(null)
   const [acting, setActing] = React.useState(false)
+  const [reportCycleId, setReportCycleId] = React.useState<string | null>(null)
 
   // Fetch ALL cycles (with stats) for the history list
   const { data: allCycles, isLoading } = useQuery<CycleWithStats[]>({
@@ -409,6 +412,15 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
                             )}
                           </div>
                           <div className="flex shrink-0 gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setReportCycleId(c.id)}
+                              className="h-7 px-2 text-xs text-[#f97316] hover:bg-[#f97316]/10 dark:text-[#fb923c] dark:hover:bg-[#f97316]/20"
+                              title="ดูรายงานรอบ"
+                            >
+                              <BarChart3 className="h-3 w-3" />
+                            </Button>
                             {!isActive && c.status !== 'active' && (
                               <Button
                                 size="sm"
@@ -500,6 +512,13 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Cycle report dialog */}
+      <CycleReportDialog
+        open={!!reportCycleId}
+        onOpenChange={(o) => !o && setReportCycleId(null)}
+        cycleId={reportCycleId}
+      />
     </>
   )
 }

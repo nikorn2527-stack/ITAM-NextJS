@@ -1148,6 +1148,11 @@ const AUDIT_ACTION_OPTIONS = [
   'PRINT',
   'CYCLE_START',
   'CYCLE_END',
+  'CYCLE_CANCEL',
+  'CYCLE_REOPEN',
+  'BULK_UPDATE',
+  'BULK_TRANSFER',
+  'BULK_DELETE',
 ] as const
 
 function actionBadgeClass(action: string): string {
@@ -1169,12 +1174,22 @@ function actionBadgeClass(action: string): string {
       return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300' + base
     case 'CYCLE_END':
       return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300' + base
+    case 'CYCLE_CANCEL':
+      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
+    case 'CYCLE_REOPEN':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' + base
     case 'IMPORT':
       return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
     case 'TRANSFER':
       return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
     case 'PRINT':
       return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
+    case 'BULK_UPDATE':
+      return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
+    case 'BULK_TRANSFER':
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
+    case 'BULK_DELETE':
+      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
     default:
       return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300' + base
   }
