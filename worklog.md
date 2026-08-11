@@ -903,3 +903,33 @@ Stage Summary:
 - ไม่ตัดทอนฟีเจอร์เดิม — donut charts, site progress, meter band, tabs ครบ.
 - Push ขึ้น GitHub แล้ว ผู้ใช้ deploy Apps Script ใหม่ก็จะเห็นหน้าตาใหม่ได้เลย.
 - หมายเหตุ: ฟีเจอร์นี้ทำใน Apps Script repo (Google Sheets backend) ไม่ใช่ Next.js preview — แยกจาก 29 ฟีเจอร์ Next.js ก่อนหน้านี้.
+
+---
+Task ID: 19
+Agent: orchestrator (main) — user-directed Apps Script V5 global styling
+Task: ปรับทุกหน้าใน Apps Script ให้คล้าย Next.js mockup มากที่สุดเท่าที่ Caja จะทำได้
+
+Work Log:
+- ถ่ายภาพ mockup ทุกหน้า (Devices/Meter/Paper/Settings) จาก Next.js preview + VLM อธิบายรายละเอียด
+- ตรวจสอบ Apps Script ปัจจุบัน: พบว่ามีฟีเจอร์ครบกว่า mockup ด้วยซ้ำ (multiselect, quick filter chips, bulk toolbar, cycle admin bar) — งานคือปรับสไตล์ ไม่ใช่เพิ่มฟีเจอร์
+- เพิ่ม V5 GLOBAL OVERRIDES block ที่ท้าย css.html (~280 บรรทัด) override สไตล์ทุกองค์ประกอบ:
+  - Page header: h1 22px/800, subtitle 13px, border-bottom
+  - Cards: border 1px + shadow เบา + hover lift
+  - Buttons: radius 8px, btn-primary ส้ม #f97316 + hover shadow, btn-danger rose
+  - Tables: header bg #f8fafc + uppercase 11px, hover row #fafafa, radius 8px
+  - Badges: pill shape (radius 999px) + hover scale 1.05
+  - Tabs: underline active (border-bottom 2px ส้ม) + hover bg
+  - Form controls: radius 8px + focus ring orange
+  - Switch/toggle: pill 36x20 + orange checked + translateX
+  - Quick filter chips: pill + hover orange tint
+  - Modal/Dialog: radius 12px + shadow
+  - Scrollbar: slim 8px + slate thumb
+  - Page content: padding responsive
+- Commit 9a1ead7 "feat(ui): V5 global style overrides" — 1 file, +279 บรรทัด
+- Push ขึ้น origin/refactor/master-columns สำเร็จ (a5c60db..9a1lead7)
+
+Stage Summary:
+- ทุกหน้า (Dashboard/Devices/Meter/Paper/Settings) ใน Apps Script ตอนนี้มีหน้าตาคล้าย Next.js mockup ผ่าน CSS override block เดียว
+- ไม่ตัดทอนฟีเจอร์เดิม — แค่ปรับสไตล์
+- รวม Task 18 (Dashboard V5) + Task 19 (global overrides) = 2 commits ใหม่บน refactor/master-columns
+- ผู้ใช้ deploy Apps Script ใหม่ก็จะเห็นหน้าตาใหม่ครบทุกหน้า
