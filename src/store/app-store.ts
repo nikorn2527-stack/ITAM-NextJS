@@ -10,6 +10,7 @@ export type ActivePage =
   | 'itam-devices'
   | 'itam-meter'
   | 'itam-settings'
+  | 'itam-audit'
 
 export type SettingsTab = 'app' | 'master' | 'sites' | 'rates' | 'users' | 'audit'
 
