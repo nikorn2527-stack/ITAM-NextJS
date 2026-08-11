@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 
+/** Clamp warrantyMonths to 1..120, default 12. */
+function clampWarrantyMonths(v: unknown): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return 12
+  return Math.max(1, Math.min(120, Math.round(n)))
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -34,6 +41,7 @@ const EDITABLE_FIELDS = [
   'displayLabel',
   'location',
   'purchaseDate',
+  'warrantyMonths',
   'lastMeterReading',
 ] as const
 
@@ -99,6 +107,10 @@ export async function PUT(
             ? body.purchaseDate
               ? String(body.purchaseDate).trim()
               : null
+            : undefined,
+        warrantyMonths:
+          body.warrantyMonths !== undefined
+            ? clampWarrantyMonths(body.warrantyMonths)
             : undefined,
         lastMeterReading:
           typeof body.lastMeterReading === 'number'

@@ -51,9 +51,17 @@ import {
   ArrowRight,
   Loader2,
   MapPin,
+  ShieldAlert,
 } from 'lucide-react'
 import type { Device, MeterReading, DeviceTransfer, Site } from './types'
-import { statusBadgeClass, statusLabel } from './types'
+import {
+  statusBadgeClass,
+  statusLabel,
+  computeWarranty,
+  warrantyBadgeClass,
+  warrantyLabel,
+  formatThaiDate,
+} from './types'
 
 interface Props {
   deviceId: string | null
@@ -273,6 +281,44 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
         </SheetHeader>
 
         <div className="flex-1 space-y-5 p-5">
+          {/* Warranty alert banner */}
+          {device && (() => {
+            const w = computeWarranty(device.purchaseDate, device.warrantyMonths ?? 12)
+            if (w.status === 'expired' && w.expiry) {
+              return (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+                >
+                  <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    <span className="font-semibold">⚠️ รับประกันหมดแล้วเมื่อ {formatThaiDate(w.expiry)}</span>
+                    <span className="mt-0.5 block text-xs text-rose-600 dark:text-rose-400">
+                      อุปกรณ์นี้อาจไม่ได้รับการคุ้มครองจากผู้ผลิต — พิจารณาต่ออายุรับประกันหรือวางแผนส่งซ่อม
+                    </span>
+                  </span>
+                </div>
+              )
+            }
+            if (w.status === 'expiring' && w.expiry && w.daysUntilExpiry !== null) {
+              return (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                >
+                  <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    <span className="font-semibold">⏰ รับประกันจะหมดในอีก {w.daysUntilExpiry} วัน ({formatThaiDate(w.expiry)})</span>
+                    <span className="mt-0.5 block text-xs text-amber-600 dark:text-amber-400">
+                      วางแผนต่ออายุรับประกันหรือเตรียมอุปกรณ์สำรองก่อนวันหมดรับประกัน
+                    </span>
+                  </span>
+                </div>
+              )
+            }
+            return null
+          })()}
+
           {/* Info grid */}
           <section>
             <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
@@ -317,7 +363,46 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                 />
                 <InfoRow label="DisplayLabel" value={device.displayLabel} />
                 <InfoRow label="ที่ตั้ง" value={device.location} />
-                <InfoRow label="วันที่ซื้อ" value={device.purchaseDate} />
+                <InfoRow label="วันที่ซื้อ" value={formatThaiDate(device.purchaseDate)} />
+                <InfoRow
+                  label="รับประกัน (เดือน)"
+                  value={
+                    <span className="tabular-nums">
+                      {device.warrantyMonths ?? 12}
+                    </span>
+                  }
+                />
+                {(() => {
+                  const w = computeWarranty(
+                    device.purchaseDate,
+                    device.warrantyMonths ?? 12,
+                  )
+                  return (
+                    <InfoRow
+                      label="วันหมดรับประกัน"
+                      value={
+                        w.expiry ? (
+                          <span
+                            className={
+                              'font-medium ' +
+                              (w.status === 'expired'
+                                ? 'text-rose-600 dark:text-rose-400'
+                                : w.status === 'expiring'
+                                  ? 'text-amber-600 dark:text-amber-400'
+                                  : 'text-emerald-600 dark:text-emerald-400')
+                            }
+                          >
+                            {formatThaiDate(w.expiry)}
+                          </span>
+                        ) : (
+                          <Badge className={warrantyBadgeClass(w.status)}>
+                            {warrantyLabel(w.status)}
+                          </Badge>
+                        )
+                      }
+                    />
+                  )
+                })()}
                 <InfoRow
                   label="มิเตอร์ล่าสุด"
                   value={

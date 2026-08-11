@@ -49,11 +49,15 @@ import {
   DEVICE_STATUS_OPTIONS,
   statusBadgeClass,
   statusLabel,
+  computeWarranty,
+  warrantyBadgeClass,
+  warrantyLabel,
 } from './types'
 import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
 import { downloadCsv, dateStamp } from '@/lib/csv'
+import { useAppStore } from '@/store/app-store'
 
 const DEVICE_CSV_HEADERS = [
   { key: 'assetCode', label: 'รหัสอุปกรณ์' },
@@ -89,6 +93,7 @@ interface FormState {
   displayLabel: string
   location: string
   purchaseDate: string
+  warrantyMonths: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -106,13 +111,21 @@ const EMPTY_FORM: FormState = {
   displayLabel: '',
   location: '',
   purchaseDate: '',
+  warrantyMonths: '12',
 }
+
+const WARRANTY_FILTER_OPTIONS = [
+  { value: 'all', label: 'รับประกันทั้งหมด' },
+  { value: 'expiring', label: 'ใกล้หมด' },
+  { value: 'expired', label: 'หมดแล้ว' },
+] as const
 
 export function DevicesPage() {
   const qc = useQueryClient()
   const [search, setSearch] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState('all')
   const [siteFilter, setSiteFilter] = React.useState('all')
+  const [warrantyFilter, setWarrantyFilter] = React.useState<string>('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM)
   const [saving, setSaving] = React.useState(false)
@@ -125,6 +138,28 @@ export function DevicesPage() {
   const [importOpen, setImportOpen] = React.useState(false)
   const [stickerOpen, setStickerOpen] = React.useState(false)
 
+  // Read pendingDeviceId / pendingWarrantyFilter from store on mount
+  const pendingDeviceId = useAppStore((s) => s.pendingDeviceId)
+  const clearPendingDeviceId = useAppStore((s) => s.clearPendingDeviceId)
+  const pendingWarrantyFilter = useAppStore((s) => s.pendingWarrantyFilter)
+  const clearPendingWarrantyFilter = useAppStore(
+    (s) => s.clearPendingWarrantyFilter,
+  )
+
+  React.useEffect(() => {
+    if (pendingDeviceId) {
+      setDetailDeviceId(pendingDeviceId)
+      clearPendingDeviceId()
+    }
+  }, [pendingDeviceId, clearPendingDeviceId])
+
+  React.useEffect(() => {
+    if (pendingWarrantyFilter) {
+      setWarrantyFilter(pendingWarrantyFilter)
+      clearPendingWarrantyFilter()
+    }
+  }, [pendingWarrantyFilter, clearPendingWarrantyFilter])
+
   // Settings query for org name (used in sticker header)
   const { data: settings } = useQuery<Record<string, string>>({
     queryKey: ['settings'],
@@ -136,7 +171,7 @@ export function DevicesPage() {
     },
   })
 
-  const { data: devices, isLoading } = useQuery<Device[]>({
+  const { data: devicesRaw, isLoading } = useQuery<Device[]>({
     queryKey: ['devices', search, statusFilter, siteFilter],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -149,6 +184,16 @@ export function DevicesPage() {
       return json.devices as Device[]
     },
   })
+
+  // Apply warranty filter client-side (computed from purchaseDate + warrantyMonths)
+  const devices = React.useMemo<Device[] | undefined>(() => {
+    if (!devicesRaw) return undefined
+    if (warrantyFilter === 'all') return devicesRaw
+    return devicesRaw.filter((d) => {
+      const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
+      return w.status === warrantyFilter
+    })
+  }, [devicesRaw, warrantyFilter])
 
   const { data: sites } = useQuery<Site[]>({
     queryKey: ['sites'],
@@ -206,6 +251,7 @@ export function DevicesPage() {
       displayLabel: d.displayLabel ?? '',
       location: d.location ?? '',
       purchaseDate: d.purchaseDate ?? '',
+      warrantyMonths: String(d.warrantyMonths ?? 12),
     })
     setDialogOpen(true)
   }
@@ -226,6 +272,7 @@ export function DevicesPage() {
         displayLabel: form.displayLabel || null,
         location: form.location || null,
         purchaseDate: form.purchaseDate || null,
+        warrantyMonths: Number(form.warrantyMonths) || 12,
       }
       const isEdit = Boolean(form.id)
       const url = isEdit ? `/api/devices/${form.id}` : '/api/devices'
@@ -343,6 +390,18 @@ export function DevicesPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={warrantyFilter} onValueChange={setWarrantyFilter}>
+                <SelectTrigger className="w-full sm:w-40">
+                  <SelectValue placeholder="รับประกัน" />
+                </SelectTrigger>
+                <SelectContent>
+                  {WARRANTY_FILTER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -400,6 +459,7 @@ export function DevicesPage() {
                   <TableHead className="text-slate-600 dark:text-slate-300">รุ่น</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">ประเภท</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">รับประกัน</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">สาขา</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">แผนก</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">รหัสแผนก</TableHead>
@@ -410,29 +470,29 @@ export function DevicesPage() {
                 {isLoading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={`sk-${i}`}>
-                      <TableCell colSpan={10}>
+                      <TableCell colSpan={11}>
                         <Skeleton className="h-6 w-full dark:bg-slate-800" />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (devices ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="py-12">
+                    <TableCell colSpan={11} className="py-12">
                       <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
                         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
                           <PackageOpen className="h-7 w-7 text-slate-300 dark:text-slate-600" />
                         </div>
                         <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-                          {search || statusFilter !== 'all' || siteFilter !== 'all'
+                          {search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all'
                             ? 'ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข'
                             : 'ยังไม่มีอุปกรณ์ในระบบ'}
                         </div>
                         <div className="text-xs text-slate-400 dark:text-slate-500">
-                          {search || statusFilter !== 'all' || siteFilter !== 'all'
+                          {search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all'
                             ? 'ลองปรับตัวกรองหรือคำค้นหา หรือล้างตัวกรองเพื่อดูทั้งหมด'
                             : 'เริ่มต้นโดยการเพิ่มอุปกรณ์เครื่องแรกของคุณ'}
                         </div>
-                        {(search || statusFilter !== 'all' || siteFilter !== 'all') ? (
+                        {(search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all') ? (
                           <Button
                             variant="outline"
                             size="sm"
@@ -440,6 +500,7 @@ export function DevicesPage() {
                               setSearch('')
                               setStatusFilter('all')
                               setSiteFilter('all')
+                              setWarrantyFilter('all')
                             }}
                             className="mt-2 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
                           >
@@ -459,7 +520,9 @@ export function DevicesPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  (devices ?? []).map((d) => (
+                  (devices ?? []).map((d) => {
+                    const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
+                    return (
                     <TableRow
                       key={d.id}
                       className="cursor-pointer transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/50"
@@ -479,6 +542,11 @@ export function DevicesPage() {
                       <TableCell>
                         <Badge className={statusBadgeClass(d.status)}>
                           {statusLabel(d.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={warrantyBadgeClass(w.status)} title={w.expiry ?? undefined}>
+                          {warrantyLabel(w.status)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-slate-700 dark:text-slate-200">{d.site}</TableCell>
@@ -522,7 +590,8 @@ export function DevicesPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
@@ -674,6 +743,18 @@ export function DevicesPage() {
                 value={form.purchaseDate}
                 onChange={(e) =>
                   setForm({ ...form, purchaseDate: e.target.value })
+                }
+              />
+            </Field>
+            <Field label="รับประกัน (เดือน)">
+              <Input
+                type="number"
+                min={1}
+                max={120}
+                step={1}
+                value={form.warrantyMonths}
+                onChange={(e) =>
+                  setForm({ ...form, warrantyMonths: e.target.value })
                 }
               />
             </Field>

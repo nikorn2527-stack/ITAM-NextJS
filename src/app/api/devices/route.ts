@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 
+/** Clamp warrantyMonths to 1..120, default 12. */
+function clampWarrantyMonths(v: unknown): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return 12
+  return Math.max(1, Math.min(120, Math.round(n)))
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -66,6 +73,7 @@ export async function POST(req: NextRequest) {
         displayLabel: body.displayLabel ? String(body.displayLabel).trim() : null,
         location: body.location ? String(body.location).trim() : null,
         purchaseDate: body.purchaseDate ? String(body.purchaseDate).trim() : null,
+        warrantyMonths: clampWarrantyMonths(body.warrantyMonths),
         lastMeterReading:
           typeof body.lastMeterReading === 'number'
             ? body.lastMeterReading

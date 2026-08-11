@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import { Sidebar } from '@/components/itam/sidebar'
 import { Footer } from '@/components/itam/footer'
+import { GlobalSearch } from '@/components/itam/global-search'
 import { DashboardPage } from '@/components/itam/dashboard-page'
 import { DevicesPage } from '@/components/itam/devices-page'
 import { MeterPage } from '@/components/itam/meter-page'
@@ -33,6 +34,7 @@ export default function Home() {
         </main>
         <Footer />
       </div>
+      <GlobalSearch />
     </div>
   )
 }
