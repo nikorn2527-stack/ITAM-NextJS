@@ -95,14 +95,31 @@ model MeterReading {
 // ============================================================
 // TODO: Models ถัดไป (รอ headers จากผู้ใช้)
 //
-// 6) Cycles              — รอบจดมิเตอร์
-// 7) Audit_Log           — ประวัติการใช้งาน
+// 6) Cycles              — รอบจดมิเตอร์ (ยังไม่มี sheet — ข้ามไปก่อน)
 // 8) User_Permissions    — สิทธิ์ผู้ใช้
 // 9) Site_Attributes     — ข้อมูลสาขา
 // 10) App_Settings       — ตั้งค่าแอป
 // 11) Assignments        — การมอบหมาย
 // 12) MaintenanceLog     — ซ่อมบำรุง
 // ============================================================
+
+// ============================================================
+// 7) Audit_Log — ประวัติการใช้งานระบบ
+//    Source: sheet "Audit_Log" (4 columns)
+// ============================================================
+model AuditLog {
+  id         String   @id @default(cuid())
+  timestamp  String?  @map("Timestamp") // ISO datetime string
+  action     String   @map("Action") // UPDATE_DEVICE | CREATE | DELETE | ASSIGN | RETURN | MAINTENANCE | SYNC | etc.
+  user       String?  @map("User") // อีเมลผู้ทำรายการ
+  details    String?  @map("Details") // JSON string ของรายละเอียด
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([action])
+  @@index([user])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
 
 // ============================================================
 // 5) Location_History — ประวัติการย้ายตำแหน่ง/เปลี่ยนสถานะ
