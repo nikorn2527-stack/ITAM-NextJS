@@ -82,3 +82,14 @@ model AppSetting {
   value     String
   updatedAt DateTime @updatedAt
 }
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // CREATE | UPDATE | DELETE | METER_READING | SYNC | SEED | CYCLE_START | CYCLE_END
+  entity    String   // Device | MasterItem | MeterReading | Cycle | Site | Setting
+  entityId  String?
+  summary   String   // human-readable Thai summary, e.g. "เพิ่มอุปกรณ์ IT-PRT-001 (เครื่องพิมพ์ห้อง IT)"
+  detail    String?  // JSON string of before/after or key fields
+  actor     String   @default("admin@example.com")
+  createdAt DateTime @default(now())
+}

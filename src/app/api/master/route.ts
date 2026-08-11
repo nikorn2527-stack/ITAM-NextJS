@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(req: NextRequest) {
   try {
@@ -40,6 +41,13 @@ export async function POST(req: NextRequest) {
         siteCode: body.siteCode ? String(body.siteCode).trim() : null,
       },
     })
+    await logAudit(
+      'CREATE',
+      'MasterItem',
+      created.id,
+      `เพิ่มข้อมูลมาตรฐาน ${created.category}: ${created.code} (${created.label})`,
+      { category: created.category, code: created.code, label: created.label },
+    )
     return NextResponse.json({ item: created }, { status: 201 })
   } catch (err) {
     console.error('POST /api/master', err)

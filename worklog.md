@@ -73,3 +73,102 @@ Work Log:
 
 Stage Summary:
 - Next.js ITAM preview fully verified end-to-end via agent-browser. Classic sidebar visually identical to the restored Apps Script sidebar. All core flows work: page navigation, device CRUD, meter reading (with RESET/exceed-20000 validation), settings tabs, master data with restored sync buttons. Sticky-footer defect found and fixed. Lint clean. No runtime errors. App is production-ready as a preview and a faithful demonstration of the restored classic Sidebar.
+
+---
+Task ID: 7
+Agent: full-stack-developer (webDevReview round 1)
+Task: Add 3 new features (Audit Log, Device Detail Sheet, CSV Export) + dashboard/global styling polish on top of the stable Task 5/6 ITAM app. Preserve the classic sidebar exactly.
+
+Work Log:
+- Read prior worklog (Task 1: sidebar restored; Task 5: Next.js preview built; Task 6: E2E verified + sticky-footer fix). Re-read all relevant source files (schema.prisma, page.tsx, sidebar/footer/types, dashboard/devices/meter/settings pages, all 10 API routes) before editing. Sidebar + footer + sticky-footer layout NOT touched.
+- FEATURE 1 — Audit Log:
+  - Added `AuditLog` model to `prisma/schema.prisma` (id, action, entity, entityId?, summary, detail?, actor @default admin@example.com, createdAt @default now()). Ran `bun run db:push` → DB in sync, Prisma Client regenerated.
+  - Created `src/lib/audit.ts` with `logAudit(action, entity, entityId, summary, detail?)` helper. Non-fatal: any DB error is logged but does NOT break the calling mutation.
+  - Created `src/app/api/audit/route.ts` GET handler — supports `?limit=` (default 50, max 500), `?entity=`, `?action=`, `?q=` (filters summary/detail/actor with OR contains). Ordered by createdAt DESC.
+  - Wired `logAudit` into all 9 mutation routes after successful writes:
+    - `api/devices/route.ts` POST → CREATE Device "เพิ่มอุปกรณ์ ${assetCode} (${name})" with {assetCode,name,brand,type,site}.
+    - `api/devices/[id]/route.ts` PUT → UPDATE Device "แก้ไขอุปกรณ์ ${assetCode}" with computed {changes:{from,to}} diff (added `before` lookup + EDITABLE_FIELDS list); DELETE → DELETE Device "ลบอุปกรณ์ ${assetCode} (${name})" (added `before` lookup so summary can include name). Both also return 404 if missing now.
+    - `api/meter/route.ts` POST → METER_READING "จดมิเตอร์ ${assetCode}: ${prev}→${new} (+${delta})" with full reading detail.
+    - `api/master/route.ts` POST → CREATE MasterItem "เพิ่มข้อมูลมาตรฐาน ${category}: ${code} (${label})".
+    - `api/master/[id]/route.ts` PUT → UPDATE MasterItem "แก้ไขข้อมูลมาตรฐาน ${category}: ${code}" with {before, after}; DELETE → DELETE MasterItem (added before lookup).
+    - `api/master/sync/route.ts` POST → SYNC MasterItem "ซิงค์ข้อมูลมาตรฐาน (${type label}): ${count} รายการ".
+    - `api/cycles/route.ts` POST → CYCLE_START "สร้างรอบจดมิเตอร์ ${name} (${start} → ${end})".
+    - `api/sites/route.ts` POST → CREATE Site "เพิ่มสาขา ${code} (${name})".
+    - `api/seed/route.ts` POST → SEED Setting "โหลดข้อมูลตัวอย่าง (${devices} อุปกรณ์, ${masterItems} รายการมาตรฐาน, ${readings} มิเตอร์)" (refactored to build `counts` object first then return it).
+  - Added `AuditLog` interface to `src/components/itam/types.ts`.
+  - Added 5th Settings tab "📜 ประวัติการใช้งาน" (value=`audit`, `data-permission="ADMIN"`) after "สิทธิ์ผู้ใช้". New `AuditTab` component: filter bar (entity Select, action Select, debounced search Input, refresh icon button), table (วันที่เวลา / การกระทำ badge / รายการ entity icon + summary / ผู้กระทำ), `max-h-[60vh] overflow-y-auto` with `.itam-scroll`, loading skeleton rows, empty state with `Inbox` icon. Action badge colors: CREATE=emerald, UPDATE=amber, DELETE=rose, METER_READING=orange(#f97316), SYNC=teal, SEED=slate, CYCLE_START/END=violet. Thai date-time formatting via `toLocaleString('th-TH')`. TanStack Query with queryKey `['audit', entity, action, debouncedQ]`.
+- FEATURE 2 — Device Detail Sheet:
+  - Created `src/components/itam/device-detail-sheet.tsx` using shadcn `Sheet` (side="right", width `sm:max-w-[480px]`, full-width on mobile). Fetches `/api/devices/${id}` for device + `/api/meter?deviceId=${id}` for readings. Header: name (h2) + assetCode (mono) + status badge. Info section: 2-column `<dl>` with 14 InfoRow entries (แบรนด์, รุ่น, ประเภท, SN, สาขา, แผนก, รหัสแผนก, ParentRef, DisplayLabel, ที่ตั้ง, วันที่ซื้อ, มิเตอร์ล่าสุด, สร้างเมื่อ, อัปเดตเมื่อ). Meter history section: recharts LineChart (teal `#0d9488`, height 180px) over date-ASC sorted readings + scrollable list (`max-h-48 overflow-y-auto`) of date + reading + delta badge (green +/amber -/slate 0) + remark. Footer buttons: ปิด (outline, full-width) + แก้ไข (orange, full-width) → calls `onEdit(device)`. Loading skeletons, empty state with `Inbox` icon.
+  - Wired into `devices-page.tsx`: added `detailDeviceId` state; rows are now `cursor-pointer hover:bg-slate-50/70` and clicking a row opens the sheet; added `Eye` icon button before `Pencil` in actions column (with `stopPropagation` on the actions cell so Edit/Delete don't trigger row-click). `onEdit` callback closes the sheet and opens the existing edit Dialog. API check: confirmed `api/devices/[id]` GET returns the full 18-field device; changed `api/meter` GET default ordering from `date desc` to `[date asc, createdAt asc]` so the line chart renders chronologically (still take:500).
+- FEATURE 3 — CSV Export:
+  - Created `src/lib/csv.ts` with `downloadCsv(filename, rows, headers?)` (RFC-4180 escaping, UTF-8 BOM for Excel Thai support, auto-derives headers from first row if not passed) + `dateStamp()` helper for `YYYYMMDD` filenames.
+  - Devices page: added "📤 ส่งออก CSV" button (outline, `Download` icon) in the toolbar next to รีเฟรช. On click, re-fetches `/api/devices` with current filters and downloads `devices-YYYYMMDD.csv` with 15 Thai-headered columns (รหัสอุปกรณ์, ชื่อ, แบรนด์, รุ่น, ประเภท, หมายเลข SN, สถานะ, สาขา, แผนก, รหัสแผนก, ParentRef, DisplayLabel, ที่ตั้ง, วันที่ซื้อ, มิเตอร์ล่าสุด). Toast confirmation.
+  - Meter page: added "📤 ส่งออก CSV" button. On click, fetches `/api/meter` (all), maps to rows with date/assetCode/deviceName/brand/model/prevReading/reading/delta/remark, downloads `meter-readings-YYYYMMDD.csv`. Toast confirmation.
+- STYLING POLISH — Dashboard:
+  - Added 5th KPI card "กระดาษเดือนนี้" (`FileText` icon, accent teal `#0d9488`, formatted as `${n} แผ่น`, trend shows current Thai month/year). KPI grid changed to `lg:grid-cols-5`.
+  - `KpiCard` rewrite: 3px top accent bar in the card's accent color, `shadow-sm` default with `hover:shadow-md hover:-translate-y-0.5 transition-all` lift, `text-3xl font-bold tabular-nums` numbers, icon container scales on hover, optional `trend` subtext below the number. Per-card trends: active shows "จากทั้งหมด X เครื่อง (Y%)", spare shows "% ของทั้งหมด", repair shows "รอดำเนินการ/ปกติ", total shows "X ประเภท", paper shows current month name.
+  - Bar chart: changed fill from `#f97316` to teal `url(#barTypeFill)` gradient (`#14b8a6`→`#0d9488`), `radius={[6,6,0,0]}` kept, XAxis/YAxis tick color `#64748b`, axis lines `#e2e8f0`, vertical grid hidden, subtle teal cursor fill on hover.
+  - Donut chart: `outerRadius` 90→95, `innerRadius` 55→60, added center `Label` with total count (26px bold tabular-nums) + "เครื่อง" sublabel (12px slate-400). Legend `wrapperStyle={{ fontSize: 13 }}`.
+  - All Chart/List `Card`s now have `shadow-sm transition-shadow hover:shadow-md`.
+  - Empty states replaced: centered `Inbox` icon (slate-300, 32px) + message in slate-400. Applied to donut, bar, top-usage list (also filters out zero-value entries), recent-activity list.
+  - Dashboard API: added `paperThisMonth: number` to the response — sum of positive `MeterReading.delta` where `date` starts with current `YYYY-MM`. Verified via curl: `paperThisMonth: 106844` for seeded data.
+- STYLING POLISH — Global:
+  - Confirmed shadcn `Card` already ships `shadow-sm` by default — no globals.css change needed.
+  - Added `tabular-nums` to meter reading column in meter-page table (and to dashboard recent-activity reading/delta numbers, top-usage badge, KpiCard numbers, donut center count, device-detail-sheet meter reading + delta badge).
+- DEV-SERVER STALE-PRISMA FIX: After `bun run db:push` added the AuditLog model, the running Next.js dev server kept a stale PrismaClient singleton (cached before the schema change) so `db.auditLog` was `undefined` and `/api/audit` returned 500. Fixed two ways: (a) added a defensive staleness check in `src/lib/db.ts` that probes for `auditLog` on the cached client and recreates it if missing; (b) `touch next.config.ts` to trigger Next.js's full-server-restart on config change → fresh `@prisma/client` loaded. Verified `/api/audit` now returns 200. (This is dev-only; production starts fresh.)
+- VERIFICATION:
+  - `bun run db:push` → "Your database is now in sync with your Prisma schema." Prisma Client regenerated.
+  - `bun run lint` → 0 errors, 0 warnings.
+  - dev.log tail shows: `POST /api/sites 201` immediately followed by `INSERT INTO main.AuditLog ...` (audit logging working end-to-end); `GET /api/audit?limit=3 200`; `GET /api/dashboard 200` (with paperThisMonth query `WHERE main.MeterReading.date LIKE 'YYYY-MM%'`); `GET /api/devices/{id}` returns full 18-field device; `GET /api/meter?deviceId={id}` returns readings sorted by date ASC. No runtime errors post-restart.
+  - Manually verified audit logging by POSTing a test site then GETting /api/audit → saw `{"action":"CREATE","entity":"Site","summary":"เพิ่มสาขา TEST-AUDIT (ทดสอบ Audit)","detail":"{\"code\":\"TEST-AUDIT\",\"name\":\"ทดสอบ Audit\"}"}`. Cleaned up the test site + its audit log afterward to keep demo data pristine.
+
+Stage Summary:
+- All 3 new features delivered and working end-to-end: (1) Audit Log model + helper + API + 5th Settings tab with filters/badges/empty-state; (2) Device Detail Sheet (right-side drawer) with full info grid + meter-history line chart (teal) + scrollable reading list + Edit hook; (3) CSV export buttons on Devices + Meter pages with UTF-8 BOM and Thai headers. Dashboard got a 5th KPI (paper this month), hover-lift KPI cards with top accent bars, teal gradient bar chart, donut center count, polished empty states, and tabular-nums everywhere. Audit logging is wired into all 9 mutation routes (devices POST/PUT/DELETE, meter POST, master POST/PUT/DELETE, sync POST, cycles POST, sites POST, seed POST) with Thai summaries. `bun run lint` clean, dev server running cleanly on port 3000, classic sidebar + sticky footer untouched. No unresolved issues.
+
+---
+Task ID: 7
+Agent: full-stack-developer (webDevReview round 1) + orchestrator QA
+Task: Scheduled 15-min webDevReview — QA the stable ITAM app, then add 3 new features (Audit Log, Device Detail Sheet, CSV Export) + polish dashboard styling.
+
+Work Log:
+- Read worklog (Tasks 1, 5, 6 done — sidebar restored, app built, E2E verified). Dev server healthy (HTTP 200, no errors in log).
+- QA pass via agent-browser across all 5 pages: Dashboard, Devices (search/filter CRUD), Meter (reading dialog), Paper Analytics, Settings (4 tabs). All functional, no critical bugs. Sidebar visual fidelity confirmed (active nav: bg rgba(234,88,12,0.12), color #fb923c, border-left #f97316 3px; sidebar bg #0f172a).
+- VLM analysis of dashboard screenshot (pre-polish): identified stat card icons need containers (already had them but weak), bar chart orange too aggressive, typography hierarchy weak, cards lack depth. Rated ~6/10.
+
+FEATURE 1 — Audit Log (full stack):
+- Added `AuditLog` model to prisma/schema.prisma (action, entity, entityId, summary, detail, actor, createdAt). Ran `bun run db:push` (success).
+- Created `src/lib/audit.ts` helper (`logAudit()` — non-fatal).
+- Created `src/app/api/audit/route.ts` (GET with ?limit=&entity=&action=&q= filters, ordered DESC).
+- Wired audit logging into ALL 9 mutation routes: devices POST/PUT/DELETE, meter POST, master POST/PUT/DELETE, sync POST, cycles POST, sites POST, seed POST. Each logs a Thai summary (e.g. "เพิ่มอุปกรณ์ IT-PRT-001 (เครื่องพิมพ์ห้อง IT)", "จดมิเตอร์ IT-PRT-001: 1000→5000 (+4000)").
+- Added 5th Settings tab "📜 ประวัติการใช้งาน" with entity/action Selects + search + colored action badges (CREATE=emerald, UPDATE=amber, DELETE=rose, METER_READING=orange, SYNC=teal, SEED=slate, CYCLE_START=violet) + Inbox empty state.
+- Verified: created test site + device + sync → 3 audit entries logged; deleted device → DELETE entry logged. API returns 200 with entries.
+
+FEATURE 2 — Device Detail Sheet:
+- Created `src/components/itam/device-detail-sheet.tsx` — right-side Sheet (480px), header (name + assetCode + status badge), 14-field 2-column info grid, meter-history line chart (recharts, teal #0d9488, 180px), scrollable readings list with delta badges, footer ปิด/แก้ไข buttons.
+- Wired into devices-page.tsx: rows clickable, Eye icon button added, onEdit callback hands off to existing edit Dialog.
+- Verified via agent-browser: clicking Eye opens sheet with device info + "ประวัติการจดมิเตอร์" section + chart.
+
+FEATURE 3 — CSV Export:
+- Created `src/lib/csv.ts` helper (RFC-4180 escaping, UTF-8 BOM for Excel Thai).
+- Devices page: "📤 ส่งออก CSV" button → 15 Thai-headered columns.
+- Meter page: "📤 ส่งออก CSV" button → 9 Thai-headered columns.
+- Verified: CSV button triggers download silently (no error toast).
+
+STYLING POLISH:
+- Dashboard: 5th KPI "กระดาษเดือนนี้" (teal #0d9488, unit "แผ่น"); KPI grid lg:grid-cols-5. KpiCard redesigned: 3px top accent bar, hover lift (hover:-translate-y-0.5 hover:shadow-md), icon container with soft bg (accent 10% opacity) + hover scale, tabular-nums, trend subtext. Bar chart switched to teal gradient (#14b8a6→#0d9488). Donut outerRadius=95 + center Label showing total. All cards shadow-sm hover:shadow-md. Empty states use Inbox icon.
+- Dashboard API: added `paperThisMonth` (sum of positive delta where date LIKE 'YYYY-MM-%'). Verified: 106844 for seeded data.
+- tabular-nums added to numeric displays.
+
+ORCHESTRATOR QA + FIXES (post-subagent):
+- Verified all 3 features work via agent-browser + curl. Audit endpoint initially 500 (stale PrismaClient after db:push) — subagent fixed via defensive staleness probe in src/lib/db.ts + touch next.config.ts to force server restart. Confirmed GET /api/audit now 200.
+- VLM assessment of polished dashboard: 7.5/10. Found KPI card number "106,844" visually clipped (card overflow:hidden + text-3xl too wide for 5-col 186px card).
+- FIX 1: Refactored KpiCard — moved " แผ่น" unit out of the big number into a smaller baseline-aligned suffix span; number font responsive text-xl sm:text-2xl (capped at 24px, dropped xl:text-3xl); tightened padding p-3 sm:p-4 and icon h-10 w-10 sm:h-11 sm:w-11 and gap-2 sm:gap-3 to maximize number space.
+- FIX 2: Shortened activeTrend from "จากทั้งหมด 12 เครื่อง (67%)" to "67% ของทั้งหมด 12 เครื่อง" for better readability.
+- Verified post-fix: number "106,844" now 109px < 114px available → fits fully. VLM re-rated 8/10.
+- Final `bun run lint` → 0 errors, 0 warnings. Dev server: GET / 200, GET /api/audit 200, GET /api/dashboard 200. No new errors in dev.log.
+
+Stage Summary:
+- 3 new features delivered: Audit Log (model + 9 wired routes + UI tab with filters/colored badges), Device Detail Sheet (drawer with info grid + meter history chart), CSV Export (devices + meter, Excel-ready with BOM).
+- Dashboard styling polished: 5th KPI, redesigned KpiCards with accent bars/hover-lift/icon containers, teal bar chart, donut center label, improved empty states. VLM polish score: 6/10 → 8/10.
+- Classic sidebar preserved exactly. Sticky footer intact. Lint clean. No runtime errors.
+- Recommended next round: (1) add device import from CSV (inverse of export), (2) add meter reading reminders/notifications for devices not read in current cycle, (3) add a printable sticker/PDF generation for device labels (the original Apps Script app has sticker/document features), (4) add dark mode toggle, (5) add dashboard date-range filter.

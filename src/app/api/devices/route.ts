@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(req: NextRequest) {
   try {
@@ -71,6 +72,19 @@ export async function POST(req: NextRequest) {
             : 0,
       },
     })
+    await logAudit(
+      'CREATE',
+      'Device',
+      created.id,
+      `เพิ่มอุปกรณ์ ${created.assetCode} (${created.name})`,
+      {
+        assetCode: created.assetCode,
+        name: created.name,
+        brand: created.brand,
+        type: created.type,
+        site: created.site,
+      },
+    )
     return NextResponse.json({ device: created }, { status: 201 })
   } catch (err) {
     console.error('POST /api/devices', err)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 
 // POST /api/master/sync?type=model|dept|labels
 // Backfills parentRef / departmentCode / displayLabel on existing devices & master items.
@@ -92,6 +93,19 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
+
+    const typeLabels: Record<string, string> = {
+      model: 'Model (ParentRef)',
+      dept: 'Department (DepartmentCode)',
+      labels: 'DisplayLabel',
+    }
+    await logAudit(
+      'SYNC',
+      'MasterItem',
+      null,
+      `ซิงค์ข้อมูลมาตรฐาน (${typeLabels[type] ?? type}): ${count} รายการ`,
+      { type, updated: count },
+    )
 
     return NextResponse.json({ ok: true, type, updated: count })
   } catch (err) {

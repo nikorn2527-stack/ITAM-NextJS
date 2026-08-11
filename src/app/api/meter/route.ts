@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 
 export async function GET(req: NextRequest) {
   try {
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
 
     const readings = await db.meterReading.findMany({
       where,
-      orderBy: { date: 'desc' },
+      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
       include: { device: { select: { id: true, name: true, assetCode: true, brand: true, model: true } } },
       take: 500,
     })
@@ -125,6 +126,22 @@ export async function POST(req: NextRequest) {
       where: { id: deviceId },
       data: { lastMeterReading: newReading },
     })
+
+    await logAudit(
+      'METER_READING',
+      'MeterReading',
+      created.id,
+      `จดมิเตอร์ ${device.assetCode}: ${prevReading.toLocaleString()}→${newReading.toLocaleString()} (${delta >= 0 ? '+' : ''}${delta.toLocaleString()})`,
+      {
+        deviceId,
+        assetCode: device.assetCode,
+        reading: newReading,
+        prevReading,
+        delta,
+        date,
+        remark: remark || null,
+      },
+    )
 
     // Warn if delta > 20000
     const warning =

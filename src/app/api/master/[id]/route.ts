@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 
 export async function PUT(
   req: NextRequest,
@@ -8,6 +9,10 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await req.json()
+    const before = await db.masterItem.findUnique({ where: { id } })
+    if (!before) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
     const updated = await db.masterItem.update({
       where: { id },
       data: {
@@ -34,6 +39,13 @@ export async function PUT(
             : undefined,
       },
     })
+    await logAudit(
+      'UPDATE',
+      'MasterItem',
+      id,
+      `แก้ไขข้อมูลมาตรฐาน ${updated.category}: ${updated.code}`,
+      { before, after: updated },
+    )
     return NextResponse.json({ item: updated })
   } catch (err) {
     console.error('PUT /api/master/[id]', err)
@@ -48,7 +60,17 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
+    const item = await db.masterItem.findUnique({ where: { id } })
+    if (!item) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
     await db.masterItem.delete({ where: { id } })
+    await logAudit(
+      'DELETE',
+      'MasterItem',
+      id,
+      `ลบข้อมูลมาตรฐาน ${item.category}: ${item.code} (${item.label})`,
+    )
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/master/[id]', err)

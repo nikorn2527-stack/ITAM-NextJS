@@ -26,9 +26,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Gauge, CalendarClock, Plus, RefreshCw, AlertTriangle } from 'lucide-react'
-import type { Device, Cycle } from './types'
+import { Gauge, CalendarClock, Plus, RefreshCw, AlertTriangle, Download } from 'lucide-react'
+import type { Device, Cycle, MeterReading } from './types'
 import { statusBadgeClass, statusLabel } from './types'
+import { downloadCsv, dateStamp } from '@/lib/csv'
+
+const METER_CSV_HEADERS = [
+  { key: 'date', label: 'วันที่' },
+  { key: 'assetCode', label: 'รหัสอุปกรณ์' },
+  { key: 'deviceName', label: 'ชื่ออุปกรณ์' },
+  { key: 'brand', label: 'แบรนด์' },
+  { key: 'model', label: 'รุ่น' },
+  { key: 'prevReading', label: 'ค่าก่อนหน้า' },
+  { key: 'reading', label: 'ค่ามิเตอร์' },
+  { key: 'delta', label: 'ส่วนต่าง' },
+  { key: 'remark', label: 'หมายเหตุ' },
+]
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
@@ -51,6 +64,7 @@ export function MeterPage() {
   const [cycleStart, setCycleStart] = React.useState(todayISO())
   const [cycleEnd, setCycleEnd] = React.useState(todayISO())
   const [creatingCycle, setCreatingCycle] = React.useState(false)
+  const [exporting, setExporting] = React.useState(false)
 
   const { data: activeCycle } = useQuery<Cycle | null>({
     queryKey: ['active-cycle'],
@@ -170,6 +184,32 @@ export function MeterPage() {
     ? daysBetween(todayISO(), activeCycle.endDate)
     : null
 
+  async function exportCsv() {
+    try {
+      setExporting(true)
+      const res = await fetch('/api/meter')
+      if (!res.ok) throw new Error('Failed to export')
+      const json = await res.json()
+      const rows = ((json.readings ?? []) as MeterReading[]).map((r) => ({
+        date: r.date,
+        assetCode: r.device?.assetCode ?? '',
+        deviceName: r.device?.name ?? '',
+        brand: r.device?.brand ?? '',
+        model: r.device?.model ?? '',
+        prevReading: r.prevReading,
+        reading: r.reading,
+        delta: r.delta,
+        remark: r.remark ?? '',
+      }))
+      downloadCsv(`meter-readings-${dateStamp()}.csv`, rows, METER_CSV_HEADERS)
+      toast.success(`ส่งออก ${rows.length} รายการแล้ว`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -186,6 +226,14 @@ export function MeterPage() {
           >
             <Plus className="h-4 w-4" />
             จัดการรอบ
+          </Button>
+          <Button
+            variant="outline"
+            onClick={exportCsv}
+            disabled={exporting}
+          >
+            <Download className="h-4 w-4" />
+            {exporting ? 'กำลังส่งออก...' : 'ส่งออก CSV'}
           </Button>
           <Button
             variant="outline"
@@ -302,7 +350,7 @@ export function MeterPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>{d.site}</TableCell>
-                      <TableCell className="text-right font-mono">
+                      <TableCell className="text-right font-mono tabular-nums">
                         {d.lastMeterReading.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
