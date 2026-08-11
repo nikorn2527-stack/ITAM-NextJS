@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
   Package,
@@ -39,12 +40,21 @@ import {
   Sparkles,
   FileText,
   Inbox,
+  AlertTriangle,
 } from 'lucide-react'
 import type {
   DashboardData,
   DashboardRangeKey,
 } from './types'
 import { DASHBOARD_RANGE_OPTIONS } from './types'
+import { useAppStore } from '@/store/app-store'
+
+interface WarrantySummary {
+  active: number
+  expiring: number
+  expired: number
+  unknown: number
+}
 
 const STATUS_COLORS: Record<string, string> = {
   ใช้งานอยู่: '#10b981',
@@ -206,6 +216,11 @@ export function DashboardPage() {
   React.useEffect(() => setMounted(true), [])
   const isDark = mounted && theme === 'dark'
 
+  const setActivePage = useAppStore((s) => s.setActivePage)
+  const setPendingWarrantyFilter = useAppStore(
+    (s) => s.setPendingWarrantyFilter,
+  )
+
   const [seeding, setSeeding] = React.useState(false)
   const [range, setRange] = React.useState<DashboardRangeKey>('month')
 
@@ -216,6 +231,20 @@ export function DashboardPage() {
       if (!res.ok) throw new Error('Failed to load dashboard')
       return res.json()
     },
+  })
+
+  // Warranty summary (always fetched once)
+  const { data: warrantyData } = useQuery<{
+    summary: WarrantySummary
+  }>({
+    queryKey: ['warranty-summary'],
+    queryFn: async () => {
+      const res = await fetch('/api/devices/warranty')
+      if (!res.ok) throw new Error('Failed to load warranty')
+      const json = await res.json()
+      return { summary: json.summary as WarrantySummary }
+    },
+    staleTime: 60_000,
   })
 
   // Auto-seed if empty
@@ -263,6 +292,9 @@ export function DashboardPage() {
   const spare = data?.totals.spare ?? 0
   const repair = data?.totals.repair ?? 0
   const paperThisMonth = data?.paperThisMonth ?? 0
+  const warrantyAlerts =
+    (warrantyData?.summary.expiring ?? 0) +
+    (warrantyData?.summary.expired ?? 0)
 
   const activeTrend =
     total > 0
@@ -360,7 +392,7 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* KPI row — 5 cards on lg */}
+      {/* KPI row — 5 cards on lg + warranty alert bar */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         <KpiCard
           title="อุปกรณ์ทั้งหมด"
@@ -404,6 +436,64 @@ export function DashboardPage() {
           trend={paperTrend}
         />
       </div>
+
+      {/* Warranty alert bar — full-width amber card linking to devices */}
+      <button
+        type="button"
+        onClick={() => {
+          setActivePage('devices')
+          setPendingWarrantyFilter('expiring')
+        }}
+        disabled={warrantyAlerts === 0}
+        className={cn(
+          'group relative w-full overflow-hidden rounded-lg border text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950',
+          warrantyAlerts > 0
+            ? 'cursor-pointer border-amber-200 bg-amber-50 hover:-translate-y-0.5 hover:shadow-md dark:border-amber-800/60 dark:bg-amber-950/30'
+            : 'cursor-default border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
+        )}
+      >
+        {warrantyAlerts > 0 && (
+          <div
+            className="absolute inset-x-0 top-0 h-[3px]"
+            style={{
+              background: 'linear-gradient(90deg, #f59e0b, #f97316)',
+            }}
+          />
+        )}
+        <div className="flex items-center gap-3 p-3 sm:p-4">
+          <div
+            className={cn(
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11',
+              warrantyAlerts > 0 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+            )}
+          >
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+              รับประกันใกล้หมด
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
+                {warrantyAlerts}
+              </span>
+              <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
+                เครื่อง
+              </span>
+            </div>
+            <div className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
+              {warrantyAlerts > 0
+                ? `ใกล้หมด ${warrantyData?.summary.expiring ?? 0} · หมดแล้ว ${warrantyData?.summary.expired ?? 0} — กดเพื่อดูรายการ`
+                : 'ทุกเครื่องยังอยู่ในรับประกัน'}
+            </div>
+          </div>
+          {warrantyAlerts > 0 && (
+            <span className="shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-medium text-amber-600 opacity-0 transition-opacity group-hover:opacity-100 dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-400">
+              ดูรายการ →
+            </span>
+          )}
+        </div>
+      </button>
 
       {/* Charts */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

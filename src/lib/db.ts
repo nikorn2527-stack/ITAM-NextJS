@@ -13,7 +13,8 @@ if (
   !(
     (globalForPrisma.prisma as unknown as { auditLog?: unknown }).auditLog &&
     (globalForPrisma.prisma as unknown as { deviceTransfer?: unknown })
-      .deviceTransfer
+      .deviceTransfer &&
+    (globalForPrisma.prisma as unknown as { siteRate?: unknown }).siteRate
   )
 ) {
   void globalForPrisma.prisma.$disconnect().catch(() => {})

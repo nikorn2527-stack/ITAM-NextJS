@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import type { Device } from '@prisma/client'
 
 function isoDaysFromNow(days: number): string {
   const d = new Date()
@@ -25,6 +26,15 @@ export async function POST() {
         { code: 'HQ', name: 'สำนักงานใหญ่' },
         { code: 'BKK-1', name: 'สาขากรุงเทพ 1' },
         { code: 'CNX', name: 'สาขาเชียงใหม่' },
+      ],
+    })
+
+    // Default site rates (0.5 ฿/sheet BW, 2.0 ฿/sheet color)
+    const siteRates = await db.siteRate.createMany({
+      data: [
+        { siteCode: 'HQ', bwRate: 0.5, colorRate: 2.0 },
+        { siteCode: 'BKK-1', bwRate: 0.5, colorRate: 2.0 },
+        { siteCode: 'CNX', bwRate: 0.5, colorRate: 2.0 },
       ],
     })
 
@@ -105,7 +115,7 @@ export async function POST() {
       { assetCode: 'IT-COP-012', name: 'เครื่องถ่ายเอกสารเก่า', brand: 'Ricoh', model: 'IM C2500', type: 'COPIER', serialNumber: 'SN-RC-012', status: 'disposed', site: 'HQ', department: 'ฝ่ายเทคโนโลยีสารสนเทศ', location: 'คลังรอตัดของ', purchaseDate: '2019-12-01', lastMeterReading: 999999 },
     ]
 
-    const createdDevices = []
+    const createdDevices: Device[] = []
     for (const seed of deviceSeeds) {
       const d = await db.device.create({ data: seed })
       createdDevices.push(d)
@@ -183,6 +193,7 @@ export async function POST() {
 
     const counts = {
       sites: sites.count,
+      siteRates: siteRates.count,
       masterItems: masterSeed.length,
       devices: deviceSeeds.length,
       readings: readingsToCreate.length,

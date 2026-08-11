@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
-import { Sun, Moon } from 'lucide-react'
+import { Sun, Moon, Search } from 'lucide-react'
 import { useAppStore, type ActivePage } from '@/store/app-store'
 import { cn } from '@/lib/utils'
 
@@ -47,8 +47,15 @@ function useCountdown(endDate?: string) {
 }
 
 export function Sidebar() {
-  const { activePage, setActivePage, sidebarOpen, closeSidebar, toggleSidebar } =
-    useAppStore()
+  const {
+    activePage,
+    setActivePage,
+    sidebarOpen,
+    closeSidebar,
+    toggleSidebar,
+    searchOpen,
+    setSearchOpen,
+  } = useAppStore()
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
@@ -57,6 +64,19 @@ export function Sidebar() {
   function toggleTheme() {
     setTheme(isDark ? 'light' : 'dark')
   }
+
+  // Global keyboard shortcut: Ctrl+K / Cmd+K — toggles the search palette
+  React.useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        e.stopPropagation()
+        setSearchOpen(!searchOpen)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [searchOpen, setSearchOpen])
 
   const { data: activeCycle } = useQuery<CycleInfo | null>({
     queryKey: ['active-cycle'],
@@ -161,6 +181,28 @@ export function Sidebar() {
               </button>
             )
           })}
+
+          {/* Global search button */}
+          <div className="px-3 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                closeSidebar()
+                setSearchOpen(true)
+              }}
+              aria-label="ค้นหาทั่วระบบ"
+              className="group flex w-full items-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300 transition-colors hover:border-white/20 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]"
+            >
+              <Search className="h-3.5 w-3.5 text-slate-400 transition-colors group-hover:text-white" />
+              <span className="flex-1 text-left text-xs">ค้นหา...</span>
+              <kbd
+                className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-mono text-slate-400"
+                aria-hidden
+              >
+                ⌘K
+              </kbd>
+            </button>
+          </div>
         </nav>
 
         {/* Cycle countdown bar */}

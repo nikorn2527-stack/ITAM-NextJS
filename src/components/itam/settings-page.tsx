@@ -42,6 +42,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Plus,
   RefreshCw,
   Pencil,
@@ -59,14 +67,17 @@ import {
   Repeat,
   CalendarClock,
   Server,
+  Coins,
 } from 'lucide-react'
 import {
   type MasterItem,
   type Site,
+  type SiteRate,
   type AuditLog,
   MASTER_CATEGORIES,
 } from './types'
 import { MasterDataModal } from './master-data-modal'
+import { useAppStore, type SettingsTab } from '@/store/app-store'
 
 const DEMO_USERS = [
   { email: 'admin@example.com', role: 'admin', roleLabel: 'ผู้ดูแลระบบ' },
@@ -76,34 +87,49 @@ const DEMO_USERS = [
 ]
 
 export function SettingsPage() {
+  const pendingTab = useAppStore((s) => s.pendingSettingsTab)
+  const clearPendingTab = useAppStore((s) => s.clearPendingSettingsTab)
+  const [activeTab, setActiveTab] = React.useState<string>('app')
+
+  React.useEffect(() => {
+    if (pendingTab) {
+      setActiveTab(pendingTab)
+      clearPendingTab()
+    }
+  }, [pendingTab, clearPendingTab])
+
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ตั้งค่าแอป</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          ตั้งค่าทั่วไป · ข้อมูลมาตรฐาน · สาขา · สิทธิ์ผู้ใช้
+          ตั้งค่าทั่วไป · ข้อมูลมาตรฐาน · สาขา · อัตราค่ากระดาษ · สิทธิ์ผู้ใช้
         </p>
       </div>
 
-      <Tabs defaultValue="app" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="h-auto flex-wrap dark:bg-slate-900 dark:border dark:border-slate-800">
-          <TabsTrigger value="app" className="gap-1.5">
+          <TabsTrigger value="app" className="gap-1.5 px-3">
             <SettingsIcon className="h-4 w-4" />
             ตั้งค่าทั่วไป
           </TabsTrigger>
-          <TabsTrigger value="master" className="gap-1.5">
+          <TabsTrigger value="master" className="gap-1.5 px-3">
             <Database className="h-4 w-4" />
             ข้อมูลมาตรฐาน
           </TabsTrigger>
-          <TabsTrigger value="sites" className="gap-1.5">
+          <TabsTrigger value="sites" className="gap-1.5 px-3">
             <Building2 className="h-4 w-4" />
             สาขา
           </TabsTrigger>
-          <TabsTrigger value="users" className="gap-1.5">
+          <TabsTrigger value="rates" className="gap-1.5 px-3">
+            <Coins className="h-4 w-4" />
+            อัตราค่ากระดาษ
+          </TabsTrigger>
+          <TabsTrigger value="users" className="gap-1.5 px-3">
             <Users className="h-4 w-4" />
             สิทธิ์ผู้ใช้
           </TabsTrigger>
-          <TabsTrigger value="audit" className="gap-1.5" data-permission="ADMIN">
+          <TabsTrigger value="audit" className="gap-1.5 px-3" data-permission="ADMIN">
             <History className="h-4 w-4" />
             ประวัติการใช้งาน
           </TabsTrigger>
@@ -117,6 +143,9 @@ export function SettingsPage() {
         </TabsContent>
         <TabsContent value="sites" className="mt-4">
           <SitesTab />
+        </TabsContent>
+        <TabsContent value="rates" className="mt-4">
+          <RatesTab />
         </TabsContent>
         <TabsContent value="users" className="mt-4">
           <UsersTab />
@@ -676,6 +705,380 @@ function SitesTab() {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+/* ---------- Rates tab (site paper rates) ---------- */
+function RatesTab() {
+  const qc = useQueryClient()
+  const { data: rates, isLoading } = useQuery<SiteRate[]>({
+    queryKey: ['site-rates'],
+    queryFn: async () => {
+      const res = await fetch('/api/site-rates')
+      if (!res.ok) throw new Error('Failed to load site rates')
+      const json = await res.json()
+      return (json.rates ?? []) as SiteRate[]
+    },
+  })
+
+  const { data: sites } = useQuery<Site[]>({
+    queryKey: ['sites'],
+    queryFn: async () => {
+      const res = await fetch('/api/sites')
+      if (!res.ok) return []
+      const json = await res.json()
+      return json.sites as Site[]
+    },
+  })
+
+  const [editTarget, setEditTarget] = React.useState<SiteRate | null>(null)
+  const [addOpen, setAddOpen] = React.useState(false)
+  const [deleteTarget, setDeleteTarget] = React.useState<SiteRate | null>(null)
+  const [deleting, setDeleting] = React.useState(false)
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    try {
+      setDeleting(true)
+      const res = await fetch(`/api/site-rates/${deleteTarget.id}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Delete failed')
+      }
+      toast.success('ลบอัตราค่ากระดาษแล้ว')
+      setDeleteTarget(null)
+      await qc.invalidateQueries({ queryKey: ['site-rates'] })
+      await qc.invalidateQueries({ queryKey: ['cost-analytics'] })
+      await qc.invalidateQueries({ queryKey: ['audit'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <Card className="dark:border-slate-800 dark:bg-slate-900">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+          <Coins className="h-4 w-4 text-[#f97316]" />
+          💰 อัตราค่ากระดาษรายสาขา
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            กำหนดอัตราค่ากระดาษขาวดำ / สี (บาท/แผ่น) สำหรับแต่ละสาขา — ใช้คำนวณต้นทุนในหน้าการใช้กระดาษ
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => qc.invalidateQueries({ queryKey: ['site-rates'] })}
+              aria-label="รีเฟรช"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              onClick={() => {
+                setEditTarget(null)
+                setAddOpen(true)
+              }}
+              size="sm"
+              disabled={(sites ?? []).length === 0}
+              className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              เพิ่มอัตรา
+            </Button>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-slate-200 dark:border-slate-800">
+          <Table>
+            <TableHeader className="sticky top-0 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableRow>
+                <TableHead className="text-slate-600 dark:text-slate-300">สาขา</TableHead>
+                <TableHead className="text-right text-slate-600 dark:text-slate-300">อัตราขาวดำ (฿/แผ่น)</TableHead>
+                <TableHead className="text-right text-slate-600 dark:text-slate-300">อัตราสี (฿/แผ่น)</TableHead>
+                <TableHead className="text-right text-slate-600 dark:text-slate-300">การจัดการ</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <TableRow key={`sk-${i}`}>
+                    <TableCell colSpan={4}>
+                      <Skeleton className="h-6 w-full dark:bg-slate-800" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (rates ?? []).length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="py-12">
+                    <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+                        <Coins className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+                      </div>
+                      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                        ยังไม่มีอัตราค่ากระดาษ
+                      </div>
+                      <div className="text-xs text-slate-400 dark:text-slate-500">
+                        เพิ่มอัตราสาขาแรกโดยกดปุ่ม &quot;เพิ่มอัตรา&quot; ด้านขวาบน
+                      </div>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                (rates ?? []).map((r) => (
+                  <TableRow key={r.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <TableCell>
+                      <div className="font-medium text-slate-700 dark:text-slate-200">{r.siteName}</div>
+                      <div className="font-mono text-xs text-slate-400 dark:text-slate-500">{r.siteCode}</div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-slate-700 dark:text-slate-200">
+                      ฿{r.bwRate.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-slate-700 dark:text-slate-200">
+                      ฿{r.colorRate.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditTarget(r)
+                            setAddOpen(true)
+                          }}
+                          aria-label="แก้ไข"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(r)}
+                          aria-label="ลบ"
+                          className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        <div className="text-xs text-slate-400 dark:text-slate-500">
+          ทั้งหมด {(rates ?? []).length} รายการ · ค่าเริ่มต้น ขาวดำ 0.50 ฿/แผ่น · สี 2.00 ฿/แผ่น
+        </div>
+      </CardContent>
+
+      <SiteRateDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        initial={editTarget}
+        sites={sites ?? []}
+        existingRates={rates ?? []}
+      />
+
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+      >
+        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-slate-800 dark:text-slate-100">ยืนยันการลบอัตราค่ากระดาษ</AlertDialogTitle>
+            <AlertDialogDescription>
+              ลบอัตราค่ากระดาษของสาขา{' '}
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {deleteTarget?.siteName} ({deleteTarget?.siteCode})
+              </span>{' '}
+              ออกจากระบบ? การคำนวณต้นทุนของสาขานี้จะกลับไปใช้อัตราเริ่มต้น (0.50 ฿/แผ่น)
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              disabled={deleting}
+              className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+            >
+              {deleting ? 'กำลังลบ...' : 'ลบ'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
+  )
+}
+
+/* ---------- Site rate add/edit dialog ---------- */
+function SiteRateDialog({
+  open,
+  onOpenChange,
+  initial,
+  sites,
+  existingRates,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  initial: SiteRate | null
+  sites: Site[]
+  existingRates: SiteRate[]
+}) {
+  const qc = useQueryClient()
+  const [siteCode, setSiteCode] = React.useState('')
+  const [bwRate, setBwRate] = React.useState('0.50')
+  const [colorRate, setColorRate] = React.useState('2.00')
+  const [saving, setSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    if (open) {
+      if (initial) {
+        setSiteCode(initial.siteCode)
+        setBwRate(String(initial.bwRate))
+        setColorRate(String(initial.colorRate))
+      } else {
+        setSiteCode('')
+        setBwRate('0.50')
+        setColorRate('2.00')
+      }
+    }
+  }, [open, initial])
+
+  const isEdit = Boolean(initial)
+  const availableSites = sites.filter(
+    (s) => !existingRates.some((r) => r.siteCode === s.code) || s.code === siteCode,
+  )
+
+  async function save() {
+    if (!siteCode) {
+      toast.error('กรุณาเลือกสาขา')
+      return
+    }
+    const bw = parseFloat(bwRate)
+    const color = parseFloat(colorRate)
+    if (!Number.isFinite(bw) || bw < 0) {
+      toast.error('อัตราขาวดำต้องเป็นตัวเลขที่ไม่ติดลบ')
+      return
+    }
+    if (!Number.isFinite(color) || color < 0) {
+      toast.error('อัตราสีต้องเป็นตัวเลขที่ไม่ติดลบ')
+      return
+    }
+    try {
+      setSaving(true)
+      const res = await fetch('/api/site-rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteCode, bwRate: bw, colorRate: color }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Save failed')
+      }
+      toast.success(isEdit ? 'แก้ไขอัตราค่ากระดาษแล้ว' : 'เพิ่มอัตราค่ากระดาษแล้ว')
+      onOpenChange(false)
+      await qc.invalidateQueries({ queryKey: ['site-rates'] })
+      await qc.invalidateQueries({ queryKey: ['cost-analytics'] })
+      await qc.invalidateQueries({ queryKey: ['audit'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+            <Coins className="h-4 w-4 text-[#f97316]" />
+            {isEdit ? '✏️ แก้ไขอัตราค่ากระดาษ' : '➕ เพิ่มอัตราค่ากระดาษ'}
+          </DialogTitle>
+          <DialogDescription>
+            กำหนดอัตราค่ากระดาษขาวดำ/สี (บาท/แผ่น) สำหรับสาขานี้
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+              สาขา *
+            </Label>
+            <Select
+              value={siteCode}
+              onValueChange={setSiteCode}
+              disabled={isEdit}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="เลือกสาขา" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableSites.map((s) => (
+                  <SelectItem key={s.code} value={s.code}>
+                    {s.name} ({s.code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {isEdit && (
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                ไม่สามารถเปลี่ยนสาขาได้ในการแก้ไข — ลบแล้วเพิ่มใหม่หากต้องการย้าย
+              </p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                อัตราขาวดำ (฿/แผ่น)
+              </Label>
+              <Input
+                type="number"
+                step="0.1"
+                min={0}
+                value={bwRate}
+                onChange={(e) => setBwRate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                อัตราสี (฿/แผ่น)
+              </Label>
+              <Input
+                type="number"
+                step="0.1"
+                min={0}
+                value={colorRate}
+                onChange={(e) => setColorRate(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            ยกเลิก
+          </Button>
+          <Button
+            onClick={save}
+            disabled={saving || (!isEdit && !siteCode)}
+            className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+          >
+            {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
