@@ -877,3 +877,29 @@ Stage Summary:
 - 3 new features delivered: dashboard customizable widgets (dnd-kit drag-reorder + show/hide + localStorage), device depreciation tracking (straight-line + chart + table + device form fields), scheduled reports (generate + history + view + CSV + delete).
 - Classic sidebar preserved. Sticky footer intact. Lint clean. No runtime errors.
 - Recommended next round: (1) meter reading email reminders, (2) mobile PWA improvements, (3) device QR code scanning for quick lookup, (4) multi-language support (Thai/English toggle), (5) API rate limiting + security hardening.
+
+---
+Task ID: 18
+Agent: orchestrator (main) — user-directed Apps Script dashboard V5
+Task: เอาหน้าตา Dashboard แบบ Next.js mockup ไปใส่ใน Apps Script repo ของคุณจริง (css.html + index.html + javascript.html) แล้ว push ขึ้น GitHub
+
+Work Log:
+- Sync repo /tmp/itam-repo กับ origin/refactor/master-columns (HEAD = 1ab4706 sidebar revert).
+- ตรวจสอบโครงสร้างเดิม: renderDashboard() ใน javascript.html:2738, renderDashboardOverviewDonuts() ใน javascript.html:2831, stat cards 4 ใบใน index.html:131-160, .dash-stat-card CSS ใน css.html:4610. getDashboardStats() ใน AnalyticsService.gs:79 ส่งกลับ {total, active, inactive, byType, byStatus, bySite, paperUsage}.
+- CSS (css.html): เพิ่ม 3 บล็อกใหม่ (~183 บรรทัด):
+  - .dash-kpi-card — top accent bar 3px (var(--kpi-accent)) + icon container 44x44 (var(--kpi-soft)) + hover lift (-translate-y-2px + shadow) + tabular-nums + value-unit + trend subtext
+  - .dash-cycle-widget — gradient orange bg (linear-gradient #fff7ed→#fff) + progress bar (orange gradient fill) + วันที่เหลือเลขใหญ่ 32px + empty state variant
+  - .dash-lifecycle-alert — rose bg (#fff1f2) + border-left 4px #f43f5e + hover + clickable
+- HTML (index.html): แทนที่ stat cards 4 ใบเดิม → 5 KPI cards ใหม่ (อุปกรณ์ทั้งหมด/ใช้งาน/สำรอง/ส่งซ่อม/กระดาษเดือนนี้) แต่ละการ์ดมี --kpi-accent + --kpi-soft CSS variables. เพิ่ม #dash-cycle-widget-container + #dash-lifecycle-alert-container (render โดย JS). คง donut charts + site progress + meter band ไว้.
+- JS (javascript.html): แก้ renderDashboardOverviewDonuts() — เปลี่ยนจาก populate .dash-stat-* → populate .dash-kpi-* ผ่าน setKpiValue() helper. เพิ่ม paperThisMonth KPI (จาก stats.paperUsage.latestMonthPages) + trend เดือนไทย. ลบ legacy stat card code. เพิ่ม 2 ฟังก์ชันใหม่:
+  - renderDashboardCycleWidget() — อ่าน state.cycleStatus.cycle, คำนวณ elapsedPct + daysRemaining, render widget card พร้อม progress bar + ปุ่มจัดการรอบ
+  - renderDashboardLifecycleAlert() — นับอุปกรณ์รับประกันหมด/ใกล้หมด จาก state.devices (PurchaseDate + WarrantyMonths), render rose alert card แบบ clickable ไปหน้าอุปกรณ์
+- ไม่ต้องแก้ .gs — paperUsage.latestMonthPages มีอยู่แล้ว, cycle มีใน state.cycleStatus, devices มีใน state.devices
+- Commit a5c60db "feat(dashboard): V5 redesign — KPI cards + cycle widget + lifecycle alert (mockup style)" — 3 files changed, +329 -47.
+- Push ขึ้น origin/refactor/master-columns สำเร็จ (1ab4706..a5c60db).
+
+Stage Summary:
+- Dashboard ของ Apps Script ตอนนี้มีหน้าตาเหมือน Next.js mockup: 5 KPI cards (top accent bar + icon container + hover lift + trend subtext) + cycle widget (orange gradient + progress + วันเหลือ) + lifecycle alert (rose + clickable).
+- ไม่ตัดทอนฟีเจอร์เดิม — donut charts, site progress, meter band, tabs ครบ.
+- Push ขึ้น GitHub แล้ว ผู้ใช้ deploy Apps Script ใหม่ก็จะเห็นหน้าตาใหม่ได้เลย.
+- หมายเหตุ: ฟีเจอร์นี้ทำใน Apps Script repo (Google Sheets backend) ไม่ใช่ Next.js preview — แยกจาก 29 ฟีเจอร์ Next.js ก่อนหน้านี้.
