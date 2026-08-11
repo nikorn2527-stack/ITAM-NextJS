@@ -1322,3 +1322,108 @@ Stage Summary:
   ✅ Bulk meter entry
   ✅ CSV export devices
 - พร้อมขั้นตอนถัดไป: เปลี่ยน Supabase + Deploy Vercel
+
+---
+Task ID: 28
+Agent: orchestrator (main)
+Task: Make Next.js ITAM app CLEARLY better than the Apps Script version via 6 targeted improvements — interactive recharts, optimistic UI, 30s auto-refresh with count-up, instant search with highlighting, skeleton loaders matching content shape, and mobile-responsive slide-from-right page transitions.
+
+Work Log:
+1. **Backend** (`src/app/api/itam/dashboard/route.ts`): Added `paperTrend` to the dashboard payload — aggregates `pagesBw + pagesColor` for the last 6 months from `meter_readings`, returning `{ month: "MM/YY", sheets: number }[]`. Existing routes unchanged.
+
+2. **Shared state** (`src/store/app-store.ts`): Added `pendingDeviceType` and `pendingDeviceStatus` so the dashboard charts can drill-down into the devices page (sets the filter on mount, then clears itself).
+
+3. **Global CSS** (`src/app/globals.css`): Added keyframes/utilities — `.itam-glow` (orange glow flash on KPI cards), `.itam-saving-row` (pulse for optimistic rows), `.itam-saved-badge` (saved-badge fade), `.itam-fade-out` (delete fade), and `scroll-behavior: smooth` on `.itam-scroll`.
+
+4. **Dashboard rewrite** (`src/components/itam/itam-dashboard.tsx`):
+   - **Donut chart** (status distribution) with `recharts` `PieChart` + `Pie` — animated entrance, hover tooltips showing count + percentage, click to drill down to devices filtered by that status, center label showing total, dark-mode-aware tooltip styling via `useTheme()`. Legend buttons below also drill-down.
+   - **Bar chart** (top 8 device types) — vertical bars with teal gradient fill (`url(#barTealGrad)`), rounded top corners, animated entrance, hover tooltips, click to drill down to devices filtered by that type. X-axis labels rotated -25°.
+   - **Area chart** (paper trend, last 6 months) — monotone smooth curve with teal gradient area fill, hover tooltips showing month + sheets, dots + active dots.
+   - **Auto-refresh**: `refetchInterval: 30_000` on the dashboard query. Header shows `อัปเดตอัตโนมัติ • ครั้งล่าสุด: HH:MM:SS` with a live "ping" dot. When refresh is in-flight, a spinner + "กำลังซิงค์…" indicator shows. Manual "🔄 รีเฟรช" button still works.
+   - **Count-up animation**: `useCountUp` hook animates KPI numbers from old → new value using `requestAnimationFrame` with cubic ease-out over 600ms.
+   - **Glow flash on change**: tracks previous totals in a ref; when a KPI value changes between refreshes, the affected card gets the `.itam-glow` class for 1 second.
+   - All chart cards wrapped in `framer-motion` `motion.div` with `initial={{opacity:0, y:12}} animate={{opacity:1, y:0}}` staggered entrance.
+   - Recent-activity list uses `AnimatePresence` + `layout` for smooth row reordering when new readings arrive.
+
+5. **Devices rewrite** (`src/components/itam/itam-devices.tsx`):
+   - **Optimistic UI** via three `useMutation` hooks (add/edit/delete) using TanStack Query's `onMutate`/`onError`/`onSettled` pattern:
+     - **Add**: `onMutate` cancels in-flight queries, snapshots all `['itam-devices']` cache entries, prepends an optimistic device row (with `__optimistic: 'add'` and a temp id) and bumps pagination total. Row gets `.itam-saving-row` pulse. On error → restores snapshots + toast. On settle → invalidate + flash "✓ บันทึกแล้ว" badge for 2s.
+     - **Edit**: `onMutate` snapshots then updates the matching row in-place (applies form values + `__optimistic: 'edit'`). On error → rollback + toast. On settle → invalidate + flash badge.
+     - **Delete**: `onMutate` snapshots then removes the row from cache (so pagination total drops). Row also animates out via `AnimatePresence` exit (`opacity:0, x:-16`). On error → rollback + toast. On settle → invalidate.
+   - **"✓ บันทึกแล้ว" badge**: 2-second timed Set tracks recently-saved asset numbers; a small emerald badge with `CheckCheck` icon appears on the row.
+   - **200ms-debounced search**: `useDebounced(value, 200)` hook — while pending, a small spinning `RefreshCw` shows on the right side of the input. Uses `keepPreviousData` so the table doesn't flash empty between keystrokes.
+   - **Highlighting**: `Highlight` component splits text on the search term (regex-escaped, case-insensitive) and wraps matches in `<mark className="bg-orange-200 …">`. Applied to assetNo, deviceType, brand, model, site, department columns.
+   - **"พบ X ผลใน Yms"**: a `searchStartedAt` timestamp is recorded when the search input changes; when fresh data arrives, `Date.now() - searchStartedAt` is displayed next to the result count.
+   - **Empty state**: when no results AND any filter is active, shows a Package icon, "ไม่พบผลลัพธ์ที่ตรง", and a "ลองค้นหาด้วยคำอื่น / ล้างตัวกรอง" button that clears search + status + type + resets page.
+   - **Recent searches** in localStorage (`itam-recent-searches` key) — committed on Enter or blur. Rendered as rounded chips below the search input when the input is empty, with a History icon. Clicking a chip re-applies that search.
+   - **Skeleton loaders**: 8 rows × 8 cells with `Skeleton` widths matching each column (w-16, w-20, w-32, h-5 w-20 rounded-full for status, etc.) — gives an accurate preview of the table shape.
+   - **Mobile responsive**: toolbar stacks vertically (`flex-col sm:flex-row`); table cell widths reduced on small screens; pagination row stacks on mobile; dialog uses `max-h-[100vh] p-4 sm:p-6 sm:max-h-[92vh]` so it's full-screen on mobile.
+   - **Drill-down consumption**: on mount, reads `pendingDeviceType`/`pendingDeviceStatus` from the store, applies them as the `deviceType`/`status` filter, then clears the pending state.
+
+6. **Meter page** (`src/components/itam/itam-meter.tsx`): Replaced `colSpan` skeleton bars with per-cell skeletons matching column widths (w-24, w-16, w-32, w-16, h-5 w-16 rounded-full for badge, w-20). Pagination shows skeleton label + 2 skeleton buttons during initial load.
+
+7. **Settings page** (`src/components/itam/itam-settings.tsx`):
+   - Master table: 6 rows × 6 cells with proper Skeleton widths per column (badge, value, label, code, status, actions).
+   - Sites grid: 6 skeleton Cards (with header + 3 inner lines) instead of plain `h-32` blocks.
+   - Empty state for sites when none exist.
+   - Filter row stacks on mobile (`flex-col sm:flex-row sm:flex-wrap`), select is full-width on mobile, action buttons group on the right.
+
+8. **Page transitions** (`src/app/page.tsx`): Wrapped the routed content in `<AnimatePresence mode="wait">` with `initial={{opacity:0, x:10}} animate={{opacity:1, x:0}} exit={{opacity:0, x:-10}} transition={{duration:0.22}}` — slide-from-right effect when switching ITAM pages.
+
+9. **Lint & runtime verification**:
+   - `bun run lint` → clean (0 errors, 0 warnings).
+   - Manually verified all 4 ITAM endpoints return HTTP 200:
+     - `GET /api/itam/dashboard` → 200, payload includes new `paperTrend` array.
+     - `GET /api/itam/devices?type=PRINTER%20LASER&page=1&limit=5` → 200, correctly filters by device type (drill-down works).
+     - `GET /api/itam/meter-readings?page=1&limit=5` → 200.
+     - `GET /api/itam/sites` → 200.
+     - `GET /api/itam/dashboard?extra=1` → 200, includes heatmap + paperTrend.
+   - The errors visible in `dev.log` for `/api/dashboard`, `/api/devices/warranty`, `/api/notifications`, `/api/reports`, `/api/meter/reminders` are pre-existing issues in non-ITAM routes (they reference old Prisma schema fields like `assetCode`, `name`, `date`, `delta`, `deviceId`, `purchaseDate`) and are NOT related to this task — none of these routes were touched.
+
+Confirmations against the task spec:
+- ✅ Interactive charts: hover tooltips with count+%, animated entrance, click drill-down (donut→status, bar→type). Area chart has smooth curve + tooltips + dots.
+- ✅ Optimistic UI: add/edit/delete all show changes immediately via `onMutate`; error → rollback + toast; success → "✓ บันทึกแล้ว" badge for 2s.
+- ✅ Auto-refresh: 30s `refetchInterval`, "อัปเดตอัตโนมัติ • ครั้งล่าสุด: HH:MM:SS" header text with ping dot, count-up KPI animation, orange glow flash on changed KPI cards (1s), manual refresh button still works.
+- ✅ Instant search: 200ms debounce, spinner inside input, orange highlight of matches, "พบ X ผลใน Yms" text, empty state with "ลองค้นหาด้วยคำอื่น" + clear button, recent searches as localStorage chips.
+- ✅ Skeleton loaders: dashboard (KPI cards, chart areas, list rows), devices (per-column-width table rows), meter (per-column-width rows + pagination), settings (per-column master rows + card-shaped site skeletons).
+- ✅ Mobile responsive: KPI 2 cols on mobile, table horizontal scroll with smooth-scroll, search+filter stacked, charts full-width stacked, dialog full-screen on mobile, page transitions slide from right with AnimatePresence.
+- ✅ Lint clean.
+
+---
+Task ID: 28-QA
+Agent: orchestrator (main) — verify Next.js is clearly better than Apps Script
+Task: ตรวจสอบ 6 การปรับปรุงที่ทำให้ Next.js ดีกว่า Apps Script อย่างชัดเจน
+
+Work Log:
+- Lint: 0 errors ✅
+- Dashboard: hasRecharts=true, hasAutoRefresh=true, hasDonut=true (interactive charts with hover/click)
+- Devices: instant search + 20 rows + optimistic UI (add/edit/delete shows immediately)
+- API speed: Dashboard 57ms, Devices 12ms, Meter 18ms (vs Apps Script 626ms)
+- VLM: 7.5/10 "modern, professional, significantly better than typical legacy enterprise apps"
+
+COMPARISON — Next.js ITAM vs Apps Script:
+
+| ด้าน | Apps Script | Next.js ITAM | ดีกว่า? |
+|------|-------------|-------------|--------|
+| ความเร็ว query | 626ms | 57ms | Next.js **11x** |
+| Charts | Static SVG (3) | Interactive recharts (donut+bar+area) | Next.js (hover/click/animate) |
+| Search | 250ms debounce, no highlight | 200ms debounce + highlight + recent | Next.js (faster + smarter) |
+| Loading | Global spinner (203 calls) | Per-component skeleton | Next.js (no layout shift) |
+| CRUD UX | Wait for API → reload | Optimistic (show immediately) | Next.js (instant feel) |
+| Dashboard refresh | Manual | Auto 30s + count-up + glow | Next.js (real-time feel) |
+| XSS protection | Manual escapeHtml (380) | React automatic | Next.js (safer) |
+| DOM updates | innerHTML (238 re-renders) | React virtual DOM | Next.js (efficient) |
+| Async | google.script.run callback (106) | async/await + TanStack Query | Next.js (modern) |
+| Mobile | Basic responsive | Full responsive + smooth scroll | Next.js (better UX) |
+| Transitions | None | framer-motion slide | Next.js (polished) |
+
+Stage Summary:
+- Next.js ITAM ตอนนี้ **ชัดว่าดีกว่า Apps Script** ในทุกด้าน:
+  - เร็ว 11x (57ms vs 626ms)
+  - Charts interactive (hover/click/animate) แทน static SVG
+  - Optimistic UI (แสดงผลทันที) แทนรอ API
+  - Auto-refresh 30s แทนกด manual
+  - Instant search 200ms + highlight + recent
+  - Skeleton loaders แทน global spinner
+  - Mobile responsive + smooth transitions
+- พร้อมขั้นถัดไป: Supabase + Deploy Vercel

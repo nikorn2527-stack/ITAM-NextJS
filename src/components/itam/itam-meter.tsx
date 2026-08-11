@@ -119,8 +119,16 @@ export function ItamMeter() {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  Array.from({ length: 10 }).map((_, i) => (
-                    <TableRow key={`sk-${i}`}><TableCell colSpan={6}><Skeleton className="h-6 w-full" /></TableCell></TableRow>
+                  // Skeleton rows matching column widths
+                  Array.from({ length: 8 }).map((_, i) => (
+                    <TableRow key={`sk-${i}`}>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-16 rounded-full ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                    </TableRow>
                   ))
                 ) : readings.length === 0 ? (
                   <TableRow><TableCell colSpan={6} className="py-12 text-center text-slate-400 text-sm">ยังไม่มีข้อมูล</TableCell></TableRow>
@@ -146,12 +154,26 @@ export function ItamMeter() {
         </CardContent>
       </Card>
 
+      {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500">หน้า {page} / {totalPages}</span>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {isLoading ? (
+            <Skeleton className="h-4 w-32" />
+          ) : (
+            <span className="text-xs text-slate-500">หน้า {page} / {totalPages}</span>
+          )}
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
-            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+            {isLoading ? (
+              <>
+                <Skeleton className="h-8 w-9" />
+                <Skeleton className="h-8 w-9" />
+              </>
+            ) : (
+              <>
+                <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
+                <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
+              </>
+            )}
           </div>
         </div>
       )}

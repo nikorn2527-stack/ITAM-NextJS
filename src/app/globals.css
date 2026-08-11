@@ -161,3 +161,47 @@ html,
 body {
   min-height: 100%;
 }
+
+/* Smooth scroll for table/scroll containers */
+.itam-scroll {
+  scroll-behavior: smooth;
+}
+
+/* Orange glow flash for auto-refreshed KPI cards */
+@keyframes itam-glow {
+  0%   { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
+  20%  { box-shadow: 0 0 0 6px rgba(249, 115, 22, 0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0); }
+}
+.itam-glow {
+  animation: itam-glow 1s ease-out;
+}
+
+/* Pulse for optimistic "saving" rows */
+@keyframes itam-pulse-row {
+  0%, 100% { background-color: rgba(249, 115, 22, 0.05); }
+  50%      { background-color: rgba(249, 115, 22, 0.18); }
+}
+.itam-saving-row {
+  animation: itam-pulse-row 1.1s ease-in-out infinite;
+}
+
+/* Saved badge fade */
+@keyframes itam-saved {
+  0%   { opacity: 0; transform: translateY(-2px); }
+  15%  { opacity: 1; transform: translateY(0); }
+  85%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-2px); }
+}
+.itam-saved-badge {
+  animation: itam-saved 2s ease-in-out forwards;
+}
+
+/* Removed-row fade out (delete optimistic) */
+@keyframes itam-fade-out {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-12px); }
+}
+.itam-fade-out {
+  animation: itam-fade-out 0.25s ease-out forwards;
+}

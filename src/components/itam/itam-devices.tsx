@@ -1,8 +1,9 @@
 'use client'
 
 import * as React from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,15 +16,20 @@ import { Switch } from '@/components/ui/switch'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
-import { Search, RefreshCw, ChevronLeft, ChevronRight, Package, Plus, Pencil, Trash2, Download, Eye } from 'lucide-react'
+import { Search, RefreshCw, ChevronLeft, ChevronRight, Package, Plus, Pencil, Trash2, Download, Eye, X, History, CheckCheck } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { ItamDeviceDetailSheet } from './itam-device-detail-sheet'
+import { useAppStore } from '@/store/app-store'
 
 interface Device {
   id: string; assetNo: string; deviceType: string | null; brand: string | null
   model: string | null; serial: string | null; status: string; site: string | null
   department: string | null; building: string | null; floor: string | null
   location: string | null; meterRequired: boolean; _count?: { meterReadings: number; locationHistories: number; assignments: number; maintenanceLogs: number }
+  /** client-only flag: optimistic row in flight */
+  __optimistic?: 'add' | 'edit' | 'delete' | null
+  /** client-only: timestamp when this row was last successfully saved */
+  __savedAt?: number
 }
 interface DevicesResponse {
   devices: Device[]; pagination: { page: number; limit: number; total: number; totalPages: number }
@@ -83,12 +89,103 @@ const CSV_HEADERS = [
   { key: 'remark', label: 'หมายเหตุ' },
 ]
 
+// ============ Search debounce hook (200ms) ============
+function useDebounced<T>(value: T, delayMs = 200): [T, boolean] {
+  const [debounced, setDebounced] = React.useState<T>(value)
+  const [isPending, setIsPending] = React.useState(false)
+  React.useEffect(() => {
+    setIsPending(true)
+    const t = setTimeout(() => {
+      setDebounced(value)
+      setIsPending(false)
+    }, delayMs)
+    return () => clearTimeout(t)
+  }, [value, delayMs])
+  return [debounced, isPending]
+}
+
+// ============ Highlight matched text ============
+function Highlight({ text, query }: { text: string; query: string }) {
+  if (!query.trim()) return <>{text || '—'}</>
+  const q = query.trim()
+  // Escape regex special chars
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const parts = (text || '').split(new RegExp(`(${esc})`, 'ig'))
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.toLowerCase() === q.toLowerCase()
+          ? <mark key={i} className="rounded bg-orange-200 px-0.5 text-slate-900 dark:bg-orange-500/60 dark:text-white">{p}</mark>
+          : <React.Fragment key={i}>{p}</React.Fragment>,
+      )}
+    </>
+  )
+}
+
+// ============ Recent searches (localStorage) ============
+const RECENT_KEY = 'itam-recent-searches'
+function loadRecent(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(RECENT_KEY)
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string').slice(0, 6) : []
+  } catch {
+    return []
+  }
+}
+function saveRecent(q: string) {
+  if (typeof window === 'undefined' || !q.trim()) return
+  try {
+    const cur = loadRecent()
+    const next = [q.trim(), ...cur.filter((x) => x !== q.trim())].slice(0, 6)
+    window.localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+  } catch { /* ignore */ }
+}
+
 export function ItamDevices() {
   const qc = useQueryClient()
   const [search, setSearch] = React.useState('')
+  const [debouncedSearch, searchPending] = useDebounced(search, 200)
   const [status, setStatus] = React.useState('all')
+  const [deviceType, setDeviceType] = React.useState('all')
   const [page, setPage] = React.useState(1)
   const [limit] = React.useState(20)
+
+  // Search metrics (Yms)
+  const [searchStartedAt, setSearchStartedAt] = React.useState<number | null>(null)
+  const [searchMs, setSearchMs] = React.useState<number | null>(null)
+  React.useEffect(() => {
+    if (search) setSearchStartedAt(Date.now())
+    else { setSearchStartedAt(null); setSearchMs(null) }
+  }, [search])
+
+  // Recent searches
+  const [recent, setRecent] = React.useState<string[]>([])
+  React.useEffect(() => { setRecent(loadRecent()) }, [])
+  function commitRecent(q: string) {
+    saveRecent(q)
+    setRecent(loadRecent())
+  }
+
+  // Drill-down from dashboard
+  const pendingDeviceType = useAppStore((s) => s.pendingDeviceType)
+  const pendingDeviceStatus = useAppStore((s) => s.pendingDeviceStatus)
+  const clearPendingDeviceType = useAppStore((s) => s.clearPendingDeviceType)
+  const clearPendingDeviceStatus = useAppStore((s) => s.clearPendingDeviceStatus)
+  React.useEffect(() => {
+    if (pendingDeviceType) {
+      setDeviceType(pendingDeviceType)
+      setPage(1)
+      clearPendingDeviceType()
+    }
+    if (pendingDeviceStatus) {
+      setStatus(pendingDeviceStatus)
+      setPage(1)
+      clearPendingDeviceStatus()
+    }
+  }, [pendingDeviceType, pendingDeviceStatus, clearPendingDeviceType, clearPendingDeviceStatus])
 
   // Detail sheet
   const [detailAssetNo, setDetailAssetNo] = React.useState<string | null>(null)
@@ -98,28 +195,61 @@ export function ItamDevices() {
   const [crudOpen, setCrudOpen] = React.useState(false)
   const [editAssetNo, setEditAssetNo] = React.useState<string | null>(null)
   const [form, setForm] = React.useState<DeviceForm>(EMPTY_FORM)
-  const [saving, setSaving] = React.useState(false)
 
   // Delete confirm
   const [deleteAssetNo, setDeleteAssetNo] = React.useState<string | null>(null)
-  const [deleting, setDeleting] = React.useState(false)
+
+  // Track rows that just saved (for the "✓ บันทึกแล้ว" badge)
+  const [savedAssetNos, setSavedAssetNos] = React.useState<Set<string>>(new Set())
+  function flashSaved(assetNo: string) {
+    setSavedAssetNos((prev) => {
+      const next = new Set(prev)
+      next.add(assetNo)
+      return next
+    })
+    setTimeout(() => {
+      setSavedAssetNos((prev) => {
+        const next = new Set(prev)
+        next.delete(assetNo)
+        return next
+      })
+    }, 2000)
+  }
 
   // CSV export
   const [exporting, setExporting] = React.useState(false)
 
-  const queryKey = React.useMemo(() => ['itam-devices', search, status, page, limit], [search, status, page, limit])
+  // Unique types from current page data (for filter dropdown)
+  const queryKey = React.useMemo(
+    () => ['itam-devices', debouncedSearch, status, deviceType, page, limit] as const,
+    [debouncedSearch, status, deviceType, page, limit],
+  )
 
-  const { data, isLoading } = useQuery<DevicesResponse>({
+  const { data, isLoading, isFetching } = useQuery<DevicesResponse>({
     queryKey,
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) })
-      if (search) params.set('search', search)
+      if (debouncedSearch) params.set('search', debouncedSearch)
       if (status !== 'all') params.set('status', status)
+      if (deviceType !== 'all') params.set('type', deviceType)
       const res = await fetch(`/api/itam/devices?${params}`)
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
+    placeholderData: keepPreviousData,
   })
+
+  // Compute search duration when data arrives
+  React.useEffect(() => {
+    if (searchStartedAt !== null && data) {
+      setSearchMs(Date.now() - searchStartedAt)
+    }
+  }, [data, searchStartedAt])
+
+  // ===== Mutations with optimistic UI =====
+
+  // Helper: cast query data for cache manipulation
+  type DevicesQueryData = DevicesResponse
 
   function onSearch(val: string) {
     setSearch(val)
@@ -134,7 +264,6 @@ export function ItamDevices() {
 
   function openEdit(assetNo: string) {
     setEditAssetNo(assetNo)
-    // Fetch current device fields then open dialog
     fetch(`/api/itam/devices/${assetNo}`)
       .then(r => r.ok ? r.json() : Promise.reject(r))
       .then((j: { device: Device & Record<string, unknown> }) => {
@@ -160,66 +289,194 @@ export function ItamDevices() {
       .catch(() => toast.error('โหลดข้อมูลไม่สำเร็จ'))
   }
 
+  // === ADD mutation (optimistic) ===
+  const addMutation = useMutation({
+    mutationFn: async (payload: DeviceForm) => {
+      const res = await fetch('/api/itam/devices', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed')
+      }
+      return res.json() as Promise<{ device: Device }>
+    },
+    onMutate: async (payload) => {
+      await qc.cancelQueries({ queryKey: ['itam-devices'] })
+      const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const optimisticDevice: Device = {
+        id: tempId,
+        assetNo: payload.assetNo,
+        deviceType: payload.deviceType || null,
+        brand: payload.brand || null,
+        model: payload.model || null,
+        serial: payload.serial || null,
+        status: payload.status || 'Active',
+        site: payload.site || null,
+        department: payload.department || null,
+        building: payload.building || null,
+        floor: payload.floor || null,
+        location: payload.location || null,
+        meterRequired: payload.meterRequired,
+        _count: { meterReadings: 0, locationHistories: 0, assignments: 0, maintenanceLogs: 0 },
+        __optimistic: 'add',
+      }
+      // Snapshot for rollback
+      const snapshots = qc.getQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] })
+      qc.setQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] }, (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          devices: [optimisticDevice, ...old.devices],
+          pagination: { ...old.pagination, total: old.pagination.total + 1 },
+        }
+      })
+      return { snapshots }
+    },
+    onError: (err, _payload, ctx) => {
+      // Rollback
+      if (ctx?.snapshots) {
+        for (const [key, val] of ctx.snapshots) {
+          qc.setQueryData(key, val)
+        }
+      }
+      toast.error(err instanceof Error ? err.message : 'เพิ่มไม่สำเร็จ')
+    },
+    onSettled: (_d, _e, payload) => {
+      qc.invalidateQueries({ queryKey: ['itam-devices'] })
+      qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+      flashSaved(payload.assetNo)
+      toast.success('เพิ่มอุปกรณ์แล้ว')
+    },
+  })
+
+  // === EDIT mutation (optimistic, in-place update) ===
+  const editMutation = useMutation({
+    mutationFn: async ({ assetNo, payload }: { assetNo: string; payload: DeviceForm }) => {
+      const res = await fetch(`/api/itam/devices/${assetNo}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed')
+      }
+      return res.json() as Promise<{ device: Device }>
+    },
+    onMutate: async ({ assetNo, payload }) => {
+      await qc.cancelQueries({ queryKey: ['itam-devices'] })
+      const snapshots = qc.getQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] })
+      qc.setQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] }, (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          devices: old.devices.map((d) =>
+            d.assetNo === assetNo
+              ? {
+                  ...d,
+                  deviceType: payload.deviceType || d.deviceType,
+                  brand: payload.brand || d.brand,
+                  model: payload.model || d.model,
+                  status: payload.status || d.status,
+                  site: payload.site || d.site,
+                  department: payload.department || d.department,
+                  meterRequired: payload.meterRequired,
+                  __optimistic: 'edit',
+                }
+              : d,
+          ),
+        }
+      })
+      return { snapshots }
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.snapshots) {
+        for (const [key, val] of ctx.snapshots) {
+          qc.setQueryData(key, val)
+        }
+      }
+      toast.error(err instanceof Error ? err.message : 'แก้ไขไม่สำเร็จ')
+    },
+    onSettled: (_d, _e, { assetNo }) => {
+      qc.invalidateQueries({ queryKey: ['itam-devices'] })
+      qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+      flashSaved(assetNo)
+      toast.success('แก้ไขอุปกรณ์แล้ว')
+    },
+  })
+
+  // === DELETE mutation (optimistic, fade out + remove) ===
+  const deleteMutation = useMutation({
+    mutationFn: async (assetNo: string) => {
+      const res = await fetch(`/api/itam/devices/${assetNo}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed')
+      }
+      return { assetNo }
+    },
+    onMutate: async (assetNo) => {
+      await qc.cancelQueries({ queryKey: ['itam-devices'] })
+      const snapshots = qc.getQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] })
+      qc.setQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] }, (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          devices: old.devices.filter((d) => d.assetNo !== assetNo),
+          pagination: { ...old.pagination, total: Math.max(0, old.pagination.total - 1) },
+        }
+      })
+      return { snapshots }
+    },
+    onError: (err, _v, ctx) => {
+      if (ctx?.snapshots) {
+        for (const [key, val] of ctx.snapshots) {
+          qc.setQueryData(key, val)
+        }
+      }
+      toast.error(err instanceof Error ? err.message : 'ลบไม่สำเร็จ')
+    },
+    onSettled: (_d, _e, assetNo) => {
+      qc.invalidateQueries({ queryKey: ['itam-devices'] })
+      qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+      toast.success(`ลบ ${assetNo} แล้ว`)
+    },
+  })
+
   async function saveDevice() {
     if (!form.assetNo.trim()) {
       toast.error('กรุณากรอกรหัสสินทรัพย์')
       return
     }
+    const payload = { ...form }
+    setCrudOpen(false)
     try {
-      setSaving(true)
-      const payload = {
-        ...form,
-        meterRequired: form.meterRequired,
-      }
       if (editAssetNo) {
-        const res = await fetch(`/api/itam/devices/${editAssetNo}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          throw new Error(j.error || 'Failed')
-        }
-        toast.success('แก้ไขอุปกรณ์แล้ว')
+        editMutation.mutate({ assetNo: editAssetNo, payload })
       } else {
-        const res = await fetch('/api/itam/devices', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          throw new Error(j.error || 'Failed')
-        }
-        toast.success('เพิ่มอุปกรณ์แล้ว')
+        addMutation.mutate(payload)
       }
-      setCrudOpen(false)
-      await qc.invalidateQueries({ queryKey: ['itam-devices'] })
-      await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
-    } finally {
-      setSaving(false)
     }
   }
 
-  async function confirmDelete() {
+  function confirmDelete() {
     if (!deleteAssetNo) return
-    try {
-      setDeleting(true)
-      const res = await fetch(`/api/itam/devices/${deleteAssetNo}`, { method: 'DELETE' })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        throw new Error(j.error || 'Failed')
-      }
-      toast.success(`ลบ ${deleteAssetNo} แล้ว`)
-      setDeleteAssetNo(null)
-      await qc.invalidateQueries({ queryKey: ['itam-devices'] })
-      await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ลบไม่สำเร็จ')
-    } finally {
-      setDeleting(false)
+    const an = deleteAssetNo
+    setDeleteAssetNo(null)
+    deleteMutation.mutate(an)
+  }
+
+  // Commit recent search when search is non-empty AND user blurs / presses Enter
+  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' && search.trim()) {
+      commitRecent(search.trim())
     }
+  }
+  function onSearchBlur() {
+    if (search.trim()) commitRecent(search.trim())
   }
 
   async function exportCsv() {
@@ -252,6 +509,16 @@ export function ItamDevices() {
   const total = data?.pagination.total ?? 0
   const totalPages = data?.pagination.totalPages ?? 0
 
+  // Build a unique-type list for the type filter from current data
+  const typeOptions = React.useMemo(() => {
+    const s = new Set<string>()
+    for (const d of devices) if (d.deviceType) s.add(d.deviceType)
+    return Array.from(s).sort()
+  }, [devices])
+
+  // Show skeleton rows when first loading (no cached data)
+  const showSkeletons = isLoading
+
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -263,8 +530,13 @@ export function ItamDevices() {
           <Button variant="outline" onClick={exportCsv} disabled={exporting} className="dark:bg-slate-800 dark:border-slate-700">
             <Download className="h-4 w-4" /> ส่งออก CSV
           </Button>
-          <Button variant="outline" onClick={() => qc.invalidateQueries({ queryKey })} className="dark:bg-slate-800 dark:border-slate-700">
-            <RefreshCw className="h-4 w-4" /> รีเฟรช
+          <Button
+            variant="outline"
+            onClick={() => qc.invalidateQueries({ queryKey: ['itam-devices'] })}
+            disabled={isFetching}
+            className="dark:bg-slate-800 dark:border-slate-700"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> รีเฟรช
           </Button>
           <Button className="bg-[#f97316] text-white hover:bg-[#ea580c]" onClick={openAdd}>
             <Plus className="h-4 w-4" /> เพิ่มอุปกรณ์
@@ -272,16 +544,32 @@ export function ItamDevices() {
         </div>
       </div>
 
-      {/* Toolbar */}
+      {/* Toolbar — stacked on mobile */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <Input
-            placeholder="ค้นหารหัส, แบรนด์, รุ่น, SN..."
+            placeholder="ค้นหารหัส, แบรนด์, รุ่น, SN... (Enter เพื่อบันทึกคำค้น)"
             value={search}
             onChange={(e) => onSearch(e.target.value)}
-            className="pl-9 dark:bg-slate-800 dark:border-slate-700"
+            onKeyDown={onSearchKeyDown}
+            onBlur={onSearchBlur}
+            className="pl-9 pr-9 dark:bg-slate-800 dark:border-slate-700"
           />
+          {searchPending && (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin text-orange-500" />
+            </div>
+          )}
+          {!searchPending && search && (
+            <button
+              onClick={() => { setSearch(''); setPage(1) }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              aria-label="ล้างคำค้นหา"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
           <SelectTrigger className="w-full sm:w-48 dark:bg-slate-800 dark:border-slate-700">
@@ -296,6 +584,41 @@ export function ItamDevices() {
             <SelectItem value="Retired">ตัดของออก</SelectItem>
           </SelectContent>
         </Select>
+        {deviceType !== 'all' && (
+          <Badge
+            className="inline-flex items-center gap-1 border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-300"
+          >
+            ประเภท: {deviceType}
+            <button onClick={() => { setDeviceType('all'); setPage(1) }} aria-label="ล้างตัวกรองประเภท">
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        )}
+      </div>
+
+      {/* Search metrics + recent searches */}
+      <div className="flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
+        {search && !showSkeletons && (
+          <div>
+            พบ <span className="font-semibold text-slate-700 dark:text-slate-200">{total.toLocaleString()}</span> ผล
+            {searchMs !== null && <span> ใน <span className="font-semibold text-emerald-600">{searchMs}ms</span></span>}
+          </div>
+        )}
+        {!search && recent.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <History className="h-3.5 w-3.5 text-slate-400" />
+            <span className="text-slate-400">ค้นหาล่าสุด:</span>
+            {recent.map((q) => (
+              <button
+                key={q}
+                onClick={() => { setSearch(q); setPage(1) }}
+                className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs text-slate-600 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-orange-700 dark:hover:bg-orange-950 dark:hover:text-orange-300"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -305,65 +628,132 @@ export function ItamDevices() {
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
                 <TableRow>
-                  <TableHead className="w-16">รหัส</TableHead>
-                  <TableHead>ประเภท</TableHead>
+                  <TableHead className="w-20">รหัส</TableHead>
+                  <TableHead className="w-28">ประเภท</TableHead>
                   <TableHead>แบรนด์/รุ่น</TableHead>
-                  <TableHead>สถานะ</TableHead>
-                  <TableHead>สาขา</TableHead>
-                  <TableHead>แผนก</TableHead>
-                  <TableHead className="text-center">มิเตอร์</TableHead>
-                  <TableHead className="text-right w-32">จัดการ</TableHead>
+                  <TableHead className="w-32">สถานะ</TableHead>
+                  <TableHead className="w-32">สาขา</TableHead>
+                  <TableHead className="w-32">แผนก</TableHead>
+                  <TableHead className="w-16 text-center">มิเตอร์</TableHead>
+                  <TableHead className="w-40 text-right">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading ? (
-                  Array.from({ length: 10 }).map((_, i) => (
+                {showSkeletons ? (
+                  // Skeleton rows matching column widths
+                  Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={`sk-${i}`}>
-                      <TableCell colSpan={8}><Skeleton className="h-6 w-full" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-6 mx-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-6 w-24 ml-auto" /></TableCell>
                     </TableRow>
                   ))
                 ) : devices.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="py-12">
-                      <div className="flex flex-col items-center gap-2 text-slate-400">
-                        <Package className="h-10 w-10" />
-                        <span className="text-sm">ไม่พบอุปกรณ์</span>
+                      <div className="flex flex-col items-center gap-3 text-slate-400">
+                        <Package className="h-12 w-12 text-slate-300 dark:text-slate-700" />
+                        <div className="text-sm">
+                          {search || status !== 'all' || deviceType !== 'all'
+                            ? 'ไม่พบผลลัพธ์ที่ตรง'
+                            : 'ยังไม่มีอุปกรณ์ในระบบ'}
+                        </div>
+                        {(search || status !== 'all' || deviceType !== 'all') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setSearch(''); setStatus('all'); setDeviceType('all'); setPage(1) }}
+                            className="dark:bg-slate-800 dark:border-slate-700"
+                          >
+                            <X className="h-3.5 w-3.5" /> ลองค้นหาด้วยคำอื่น / ล้างตัวกรอง
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  devices.map((d) => (
-                    <TableRow
-                      key={d.id}
-                      className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                      onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}
-                    >
-                      <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-300">{d.assetNo}</TableCell>
-                      <TableCell className="text-xs text-slate-600 dark:text-slate-400">{d.deviceType || '—'}</TableCell>
-                      <TableCell className="text-sm">{d.brand} {d.model}</TableCell>
-                      <TableCell>
-                        <Badge className={STATUS_BADGE[d.status] || 'bg-slate-100 text-slate-600'}>{d.status}</Badge>
-                      </TableCell>
-                      <TableCell className="text-xs">{(d.site || '').substring(0, 20)}</TableCell>
-                      <TableCell className="text-xs">{(d.department || '').substring(0, 20) || '—'}</TableCell>
-                      <TableCell className="text-center">
-                        {d.meterRequired ? <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300">✓</Badge> : '—'}
-                      </TableCell>
-                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex justify-end gap-1">
-                          <Button size="sm" variant="ghost" title="ดู" onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}>
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => openEdit(d.assetNo)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="sm" variant="ghost" title="ลบ" className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30" onClick={() => setDeleteAssetNo(d.assetNo)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  <AnimatePresence initial={false}>
+                    {devices.map((d) => {
+                      const isSaving = d.__optimistic === 'add' || d.__optimistic === 'edit'
+                      const isDeleting = d.__optimistic === 'delete'
+                      const justSaved = savedAssetNos.has(d.assetNo)
+                      return (
+                        <motion.tr
+                          key={d.id}
+                          layout
+                          initial={d.__optimistic === 'add' ? { opacity: 0, y: -10, backgroundColor: 'rgba(249, 115, 22, 0.15)' } : false}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, x: -16, transition: { duration: 0.2 } }}
+                          transition={{ duration: 0.25 }}
+                          className={[
+                            'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50',
+                            isSaving ? 'itam-saving-row' : '',
+                          ].join(' ')}
+                          onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}
+                        >
+                          <TableCell className="whitespace-nowrap font-mono text-xs font-medium text-slate-700 dark:text-slate-300">
+                            <Highlight text={d.assetNo} query={debouncedSearch} />
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs text-slate-600 dark:text-slate-400">
+                            <Highlight text={d.deviceType || ''} query={debouncedSearch} />
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <span className="text-slate-700 dark:text-slate-200">
+                              <Highlight text={d.brand || ''} query={debouncedSearch} />{' '}
+                              <Highlight text={d.model || ''} query={debouncedSearch} />
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={STATUS_BADGE[d.status] || 'bg-slate-100 text-slate-600'}>{d.status}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <Highlight text={(d.site || '').substring(0, 20)} query={debouncedSearch} />
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <Highlight text={(d.department || '').substring(0, 20)} query={debouncedSearch} />
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {d.meterRequired ? <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300">✓</Badge> : '—'}
+                          </TableCell>
+                          <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
+                              {justSaved && (
+                                <motion.span
+                                  initial={{ opacity: 0, scale: 0.85 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0 }}
+                                  className="mr-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                >
+                                  <CheckCheck className="h-3 w-3" /> บันทึกแล้ว
+                                </motion.span>
+                              )}
+                              <Button size="sm" variant="ghost" title="ดู" onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}>
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => openEdit(d.assetNo)} disabled={isSaving}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                title="ลบ"
+                                className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                onClick={() => setDeleteAssetNo(d.assetNo)}
+                                disabled={isSaving || isDeleting}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </motion.tr>
+                      )
+                    })}
+                  </AnimatePresence>
                 )}
               </TableBody>
             </Table>
@@ -373,13 +763,15 @@ export function ItamDevices() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500">หน้า {page} / {totalPages} ({total.toLocaleString()} รายการ)</span>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-xs text-slate-500">
+            หน้า {page} / {totalPages} ({total.toLocaleString()} รายการ)
+          </span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="dark:bg-slate-800 dark:border-slate-700">
               <ChevronLeft className="h-4 w-4" /> ก่อนหน้า
             </Button>
-            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
+            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="dark:bg-slate-800 dark:border-slate-700">
               ถัดไป <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -397,9 +789,9 @@ export function ItamDevices() {
         }}
       />
 
-      {/* CRUD Dialog */}
+      {/* CRUD Dialog — full screen on mobile */}
       <Dialog open={crudOpen} onOpenChange={setCrudOpen}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
+        <DialogContent className="max-h-[100vh] overflow-y-auto sm:max-h-[92vh] sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900 p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <Package className="h-5 w-5 text-[#f97316]" />
@@ -521,8 +913,12 @@ export function ItamDevices() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCrudOpen(false)}>ยกเลิก</Button>
-            <Button onClick={saveDevice} disabled={saving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
-              {saving ? 'กำลังบันทึก...' : editAssetNo ? 'บันทึกการแก้ไข' : 'เพิ่มอุปกรณ์'}
+            <Button
+              onClick={saveDevice}
+              disabled={addMutation.isPending || editMutation.isPending}
+              className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+            >
+              {(addMutation.isPending || editMutation.isPending) ? 'กำลังบันทึก...' : editAssetNo ? 'บันทึกการแก้ไข' : 'เพิ่มอุปกรณ์'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -538,13 +934,13 @@ export function ItamDevices() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDelete}
-              disabled={deleting}
+              disabled={deleteMutation.isPending}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
-              {deleting ? 'กำลังลบ...' : 'ลบ'}
+              {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบ'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
