@@ -191,6 +191,20 @@ export async function POST() {
       ],
     })
 
+    // Demo users (3) — only if no users exist yet
+    const existingUsers = await db.user.count()
+    let userCount = 0
+    if (existingUsers === 0) {
+      const created = await db.user.createMany({
+        data: [
+          { email: 'admin@example.com', name: 'ผู้ดูแลระบบ', role: 'admin', active: true },
+          { email: 'editor@example.com', name: 'ผู้แก้ไข', role: 'editor', active: true },
+          { email: 'viewer@example.com', name: 'ผู้ดู', role: 'viewer', active: true },
+        ],
+      })
+      userCount = created.count
+    }
+
     const counts = {
       sites: sites.count,
       siteRates: siteRates.count,
@@ -199,6 +213,7 @@ export async function POST() {
       readings: readingsToCreate.length,
       cycle: 1,
       settings: 5,
+      users: userCount,
     }
 
     await logAudit(
