@@ -1026,3 +1026,26 @@ Stage Summary:
 - ไม่ต้องสร้าง sheet ใหม่ — ดึงข้อมูลจากแหล่งที่มีอยู่
 - ไม่ตัดทอนฟีเจอร์เดิม — เพิ่มเข้าไป
 - รวม Task 18-21 = 4 commits ใหม่บน refactor/master-columns (Dashboard V5 + global overrides + assignment/maintenance/bulk-meter + notifications/search)
+
+---
+Task ID: 22
+Agent: orchestrator (main) — user-directed Transfer History timeline
+Task: อัปเกรด Device Transfer History timeline ให้รวม assignment + maintenance events (ก่อนมีแค่ location + meter)
+
+Work Log:
+- ตรวจสอบพบว่า Apps Script มี timeline อยู่แล้ว (buildHistoryTimeline + renderTimelineItem) แต่รวมเฉพาะ location + meter history
+- แก้ openDeviceHistory() — เพิ่มการดึง assignment + maintenance history แบบ parallel (4 google.script.run พร้อมกัน) ถ้า sheet ยังไม่มี → non-fatal
+- แก้ renderDeviceHistoryContent() — รับ assignmentHistory + maintenanceHistory + เพิ่ม tabs '📋 ประวัติมอบหมาย' + '🔧 ประวัติซ่อมบำรุง' (แสดงเฉพาะเมื่อมีข้อมูล)
+- แก้ buildHistoryTimeline() — รวม events ทั้ง 4 ประเภท (location + meter + assignment + maintenance) sort by date desc
+- แก้ renderTimelineItem() — เพิ่ม 2 event types:
+  * assignment: '📋 มอบหมายอุปกรณ์' (active) / '↩️ คืนอุปกรณ์' (returned) — แสดง ผู้รับ/ตำแหน่ง/แผนก/วันมอบ/กำหนดคืน/วันคืนจริง/หมายเหตุ
+  * maintenance: '🔧 ซ่อม/บำรุงรักษา/ตรวจสอบ/อัปเกรด' — แสดง ประเภท/สถานะ/วันเริ่ม-สิ้นสุด/ค่าใช้จ่าย ฿/ผู้ซ่อม/รายละเอียด/ผลการซ่อม
+- CSS: เพิ่ม .timeline-action-assignment (teal dot) + .timeline-action-maintenance (ส้ม dot) + badge classes
+
+Commit 050a684 — 2 files changed, +113 -20
+Push ขึ้น origin/refactor/master-columns สำเร็จ (e3e2a90..050a684)
+
+Stage Summary:
+- Timeline ตอนนี้แสดงประวัติครบ 4 ประเภทในจุดเดียว: การย้ายตำแหน่ง + จดมิเตอร์ + มอบหมาย/คืน + ซ่อมบำรุง
+- แต่ละ event มี dot สีต่างกัน + badge + รายละเอียดครบ + sort ตามวันที่
+- รวม Task 18-22 = 5 commits ใหม่บน refactor/master-columns
