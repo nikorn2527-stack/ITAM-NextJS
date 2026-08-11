@@ -933,3 +933,50 @@ Stage Summary:
 - ไม่ตัดทอนฟีเจอร์เดิม — แค่ปรับสไตล์
 - รวม Task 18 (Dashboard V5) + Task 19 (global overrides) = 2 commits ใหม่บน refactor/master-columns
 - ผู้ใช้ deploy Apps Script ใหม่ก็จะเห็นหน้าตาใหม่ครบทุกหน้า
+
+---
+Task ID: 20
+Agent: orchestrator (main) — user-directed Apps Script V5 features
+Task: เอาฟีเจอร์จาก Next.js mockup ไปทำใน Apps Script เพิ่ม — Device Assignment + Maintenance Log + Bulk Meter Entry
+
+Work Log:
+- เทียบฟีเจอร์ Next.js mockup กับ Apps Script ปัจจุบัน พบว่า Apps Script มี Cycle lifecycle ครบแล้ว (start/queue/cancel/end/extend/unlock ใน CycleService.gs) + Audit log + Master sync + Sticker/PDF
+- ฟีเจอร์ที่ยังไม่มีใน Apps Script: Device Assignment, Maintenance Log, Bulk Meter Entry, Depreciation, Notifications Panel, QR Scanner
+- เลือก 3 ฟีเจอร์ที่ทำได้ใน Apps Script (ไม่ต้องการ lib นอก) และมีประโยชน์สูงสุด:
+  1. Device Assignment/Checkout
+  2. Maintenance Log
+  3. Bulk Meter Entry (ใช้ saveMeterReading ที่มีอยู่แล้ว — รองรับ batch)
+
+1) Device Assignment (AssignmentService.gs - ไฟล์ใหม่ 168 บรรทัด):
+   - Sheet 'Assignments' (11 คอลัมน์: Assignment_ID, Asset_No, Assignee, Assignee_Role, Department, Checkout_Date, Expected_Return_Date, Actual_Return_Date, Status, Notes, Created_At)
+   - checkoutDevice() — มอบหมาย + ตรวจ conflict (409 ถ้า active อยู่แล้ว) + audit log ASSIGN
+   - returnDevice() — คืนอุปกรณ์ + audit log RETURN
+   - getAssignments() + getActiveAssignments()
+   - JS: openAssignmentModal() + loadAssignmentHistory() + returnDeviceAction() — timeline แบบ teal border + status badge
+
+2) Maintenance Log (MaintenanceService.gs - ไฟล์ใหม่ 162 บรรทัด):
+   - Sheet 'MaintenanceLog' (11 คอลัมน์: Log_ID, Asset_No, Type, Status, Start_Date, End_Date, Cost, Vendor, Description, Resolved_Note, Created_At)
+   - createMaintenanceLog() — type (repair/maintenance/inspection/upgrade) + status (open/in_progress/completed/cancelled) + audit log MAINTENANCE
+   - completeMaintenanceLog() — ปิดงาน + audit log MAINTENANCE_COMPLETE
+   - getMaintenanceLogs() + getOpenMaintenanceLogs()
+   - JS: openMaintenanceModal() + loadMaintenanceHistory() — timeline แบบ colored border (repair=ส้ม/maintenance=teal/inspection=เหลือง/upgrade=ม่วง) + cost (฿) + vendor
+
+3) Bulk Meter Entry (ใช้ saveMeterReading ที่มีอยู่แล้ว):
+   - JS: openBulkMeterModal() — table แสดงอุปกรณ์ Active ทั้งหมด + ช่องกรอกค่ามิเตอร์ใหม่
+   - กรอกเฉพาะเครื่องที่จด, นับจำนวน real-time
+   - submitBulkMeter() — ส่ง readings array ไป saveMeterReading ทีเดียว
+   - ปุ่ม "📝 จดหลายเครื่อง" เพิ่มใน meter toolbar
+
+Code.gs: เพิ่ม CONFIG.ASSIGNMENTS_SHEET + MAINTENANCE_LOG_SHEET + DEFAULT_SHEET_HEADERS
+index.html: เพิ่มปุ่ม "📝 จดหลายเครื่อง" ใน meter toolbar
+javascript.html: +296 บรรทัด (Assignment + Maintenance + Bulk Meter + openCustomModal helper)
+
+Commit 2a72d70 — 5 files changed, +624 -1 (2 new .gs files + 3 modified)
+Push ขึ้น origin/refactor/master-columns สำเร็จ (9a1lead7..2a72d70)
+
+Stage Summary:
+- 3 ฟีเจอร์ใหม่ใน Apps Script: Device Assignment/Checkout (มอบหมาย + คืน + ประวัติ), Maintenance Log (ซ่อมบำรุง + ปิดงาน + ประวัติ), Bulk Meter Entry (จดมิเตอร์หลายเครื่องพร้อมกัน)
+- ใช้ Google Sheets เป็น backend (สร้างอัตโนมัติด้วย ensureSheet)
+- ไม่ตัดทอนฟีเจอร์เดิม — เพิ่มเข้าไป
+- รวม Task 18 (Dashboard V5) + 19 (global overrides) + 20 (V5 features) = 3 commits ใหม่
+- ผู้ใช้ deploy Apps Script ใหม่ก็จะมีฟีเจอร์ครบ
