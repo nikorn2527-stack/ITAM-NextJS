@@ -16,7 +16,10 @@ interface NavItemDef {
 
 const NAV_ITEMS: NavItemDef[] = [
   { page: 'dashboard', icon: '📊', label: 'Dashboard' },
-  { page: 'itam', icon: '🎯', label: 'ITAM (Real DB)' },
+  { page: 'itam', icon: '🎯', label: 'ITAM Dashboard' },
+  { page: 'itam-devices', icon: '💻', label: 'ITAM อุปกรณ์' },
+  { page: 'itam-meter', icon: '📈', label: 'ITAM มิเตอร์' },
+  { page: 'itam-settings', icon: '⚙️', label: 'ITAM ตั้งค่า' },
   { page: 'devices', icon: '💻', label: 'จัดการอุปกรณ์' },
   { page: 'meter', icon: '📈', label: 'จดมิเตอร์' },
   { page: 'paper-analytics', icon: '📊', label: 'การใช้กระดาษ' },

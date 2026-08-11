@@ -7,6 +7,9 @@ export type ActivePage =
   | 'paper-analytics'
   | 'settings'
   | 'itam'
+  | 'itam-devices'
+  | 'itam-meter'
+  | 'itam-settings'
 
 export type SettingsTab = 'app' | 'master' | 'sites' | 'rates' | 'users' | 'audit'
 
