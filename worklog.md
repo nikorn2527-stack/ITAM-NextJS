@@ -980,3 +980,49 @@ Stage Summary:
 - ไม่ตัดทอนฟีเจอร์เดิม — เพิ่มเข้าไป
 - รวม Task 18 (Dashboard V5) + 19 (global overrides) + 20 (V5 features) = 3 commits ใหม่
 - ผู้ใช้ deploy Apps Script ใหม่ก็จะมีฟีเจอร์ครบ
+
+---
+Task ID: 21
+Agent: orchestrator (main) — user-directed Apps Script V5 notifications + search
+Task: เพิ่ม Notifications Panel + Global Search (Ctrl+K) ใน Apps Script
+
+Work Log:
+1) Notifications Panel (NotificationService.gs - ไฟล์ใหม่ ~230 บรรทัด):
+   - getNotifications() รวมการแจ้งเตือนจาก 5 แหล่ง:
+     * buildWarrantyNotifications() — รับประกันหมด/ใกล้หมด (30 วัน)
+     * buildMeterReminders() — อุปกรณ์ที่ยังไม่จดในรอบ active (อ่าน cycle + meter readings)
+     * buildCycleNotifications() — รอบใกล้สิ้นสุด (7 วัน)
+     * buildMaintenanceNotifications() — งานซ่อม open/in_progress (ใช้ getOpenMaintenanceLogs)
+     * buildAuditNotifications() — 3 รายการล่าสุด (CREATE/DELETE/BULK/ASSIGN/RETURN/MAINTENANCE)
+   - Sort by severity priority (critical > warning > info)
+   - counts: {total, critical, warning, info}
+   - JS: 🔔 bell button ใน sidebar header + badge (แดง critical / ส้ม warning)
+   - Polling ทุก 60 วินาที (auto-start 2 วินาทีหลังโหลด)
+   - Popover panel 340px: grouped notifications + colored left border (rose/amber/teal)
+   - Click → navigate ไปหน้าที่เกี่ยวข้อง (devices→openDeviceHistory, meter, settings→audit/master/sites)
+
+2) Global Search (SearchService.gs - ไฟล์ใหม่ ~170 บรรทัด):
+   - globalSearch(query) ค้นข้าม 5 entities:
+     * Devices — assetCode, name, serial, brand, model, site, department (top 8)
+     * Master Items — code, label, description (top 5)
+     * Meter Readings — remark (top 5, latest first)
+     * Audit Logs — action, user, details (top 5, latest first)
+     * Sites — code, name (top 3)
+   - ส่งกลับ {results: {devices, master, meter, audit, sites}, total}
+   - ไม่สร้าง sheet ใหม่ — ดึงจากแหล่งที่มีอยู่ (ใช้ getAllDevicesCached, getAllSitesCached helper)
+   - JS: 🔍 search button ใน sidebar + Ctrl+K/Cmd+K keyboard shortcut
+   - Command palette UI: overlay (backdrop blur) + input + grouped results with icons
+   - Debounced search (300ms) + loading/empty/error states
+   - Click result → navigate ไปหน้าที่เกี่ยวข้อง (handleSearchClick → handleNotifClick logic)
+
+index.html: เพิ่ม 🔍 + 🔔 buttons ใน sidebar header (ขวาบน, inline กับ title)
+javascript.html (+233 บรรทัด): notifications + search + keyboard shortcuts + auto-init
+
+Commit e3e2a90 — 4 files changed (2 new .gs + 2 modified), +681 -2
+Push ขึ้น origin/refactor/master-columns สำเร็จ (2a72d70..e3e2a90)
+
+Stage Summary:
+- 2 ฟีเจอร์ใหม่ใน Apps Script: Notifications Panel (bell + badge + popover รวม 5 แหล่ง), Global Search (Ctrl+K command palette ค้นข้าม 5 entities)
+- ไม่ต้องสร้าง sheet ใหม่ — ดึงข้อมูลจากแหล่งที่มีอยู่
+- ไม่ตัดทอนฟีเจอร์เดิม — เพิ่มเข้าไป
+- รวม Task 18-21 = 4 commits ใหม่บน refactor/master-columns (Dashboard V5 + global overrides + assignment/maintenance/bulk-meter + notifications/search)
