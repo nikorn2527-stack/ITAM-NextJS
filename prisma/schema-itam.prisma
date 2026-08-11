@@ -48,13 +48,47 @@ model Device {
   updatedBy       String?  @default("System") @map("updated_by")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  // Relations (จะเพิ่มเมื่อสร้าง models อื่น)
-  // meterReadings   MeterReading[]
-  // assignments     Assignment[]
-  // maintenanceLogs MaintenanceLog[]
-  // transfers       DeviceTransfer[]
+  // Relations
+  meterReadings   MeterReading[]
 
   @@map("devices")
+}
+
+// ============================================================
+// 2) Meter_Readings — การจดมิเตอร์รายเดือน
+//    Source: sheet "Meter_Readings" (20 columns)
+// ============================================================
+model MeterReading {
+  id                        String   @id @default(cuid())
+  readingId                 String?  @map("reading_id") // เช่น HIST-11-2025-01
+  assetNo                   String   @map("asset_no")
+  readingDate               String?  @map("reading_date") // ISO datetime string
+  readingMonth              String?  @map("reading_month") // เช่น 2025-01
+  meterBw                   Int      @default(0) @map("meter_bw")
+  meterColor                Int      @default(0) @map("meter_color")
+  pagesBw                   Int      @default(0) @map("pages_bw") // แผ่นที่ใช้ (delta BW)
+  pagesColor                Int      @default(0) @map("pages_color") // แผ่นที่ใช้ (delta Color)
+  locationAtReading         String?  @map("location_at_reading")
+  readBy                    String?  @map("read_by")
+  remark                    String?
+  prevMeterBw               Int      @default(0) @map("prev_meter_bw")
+  prevMeterColor            Int      @default(0) @map("prev_meter_color")
+  readingType               String?  @map("reading_type") // MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN
+  eventType                 String?  @map("event_type") // เชื่อมกับ Location_History (ถ้ามี)
+  eventId                   String?  @map("event_id")
+  siteAtReading             String?  @map("site_at_reading")
+  buildingAtReading         String?  @map("building_at_reading")
+  floorAtReading            String?  @map("floor_at_reading")
+  departmentAtReading       String?  @map("department_at_reading")
+  departmentCodeAtReading   String?  @map("department_code_at_reading")
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  // Relation
+  device                    Device   @relation(fields: [assetNo], references: [assetNo], onDelete: Cascade)
+
+  @@index([assetNo])
+  @@index([readingMonth])
+  @@map("meter_readings")
 }
 
 // ============================================================
