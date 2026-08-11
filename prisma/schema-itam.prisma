@@ -51,6 +51,8 @@ model Device {
   // Relations
   meterReadings     MeterReading[]
   locationHistories LocationHistory[]
+  assignments       Assignment[]
+  maintenanceLogs   MaintenanceLog[]
 
   @@map("devices")
 }
@@ -96,9 +98,60 @@ model MeterReading {
 // TODO: Models ถัดไป (รอ headers จากผู้ใช้)
 //
 // 6) Cycles              — รอบจดมิเตอร์ (ยังไม่มี sheet — ข้ามไปก่อน)
-// 11) Assignments        — การมอบหมาย
-// 12) MaintenanceLog     — ซ่อมบำรุง
 // ============================================================
+
+// ============================================================
+// 11) Assignments — การมอบหมายอุปกรณ์ (เพิ่มจาก Next.js)
+//    ไม่มีใน Google Sheets เดิม — สร้างใหม่
+// ============================================================
+model Assignment {
+  id                String   @id @default(cuid())
+  assignmentId      String?  @unique @map("Assignment_ID") // เช่น ASG-XXXXX
+  assetNo           String   @map("Asset_No")
+  assignee          String   @map("Assignee") // ชื่อ-นามสกุล หรือ อีเมล
+  assigneeRole      String?  @map("Assignee_Role") // ตำแหน่ง
+  department        String?  @map("Department")
+  checkoutDate      String?  @map("Checkout_Date") // ISO date
+  expectedReturnDate String? @map("Expected_Return_Date")
+  actualReturnDate  String?  @map("Actual_Return_Date")
+  status            String   @default("active") @map("Status") // active | returned
+  notes             String?  @map("Notes")
+  createdAt         DateTime @default(now()) @map("Created_At")
+
+  // Relation
+  device            Device   @relation(fields: [assetNo], references: [assetNo], onDelete: Cascade)
+
+  @@index([assetNo])
+  @@index([status])
+  @@map("assignments")
+}
+
+// ============================================================
+// 12) MaintenanceLog — ประวัติการซ่อมบำรุง (เพิ่มจาก Next.js)
+//    ไม่มีใน Google Sheets เดิม — สร้างใหม่
+// ============================================================
+model MaintenanceLog {
+  id            String   @id @default(cuid())
+  logId         String?  @unique @map("Log_ID") // เช่น MNT-XXXXX
+  assetNo       String   @map("Asset_No")
+  type          String   @map("Type") // repair | maintenance | inspection | upgrade
+  status        String   @default("open") @map("Status") // open | in_progress | completed | cancelled
+  startDate     String?  @map("Start_Date") // ISO date
+  endDate       String?  @map("End_Date")
+  cost          Float?   @map("Cost") // ค่าใช้จ่าย (฿)
+  vendor        String?  @map("Vendor") // ร้านซ่อม/ผู้ให้บริการ
+  description   String?  @map("Description") // อาการ/งานที่ทำ
+  resolvedNote  String?  @map("Resolved_Note") // ผลการซ่อม
+  createdAt     DateTime @default(now()) @map("Created_At")
+
+  // Relation
+  device        Device   @relation(fields: [assetNo], references: [assetNo], onDelete: Cascade)
+
+  @@index([assetNo])
+  @@index([status])
+  @@index([type])
+  @@map("maintenance_logs")
+}
 
 // ============================================================
 // 10) App_Settings — ตั้งค่าแอป (key-value)
