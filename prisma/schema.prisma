@@ -29,6 +29,10 @@ model Device {
   warrantyMonths  Int     @default(12)
   lastMeterReading Int    @default(0)
   currentAssignee String? // denormalized for quick display in tables/cards
+  // ---- Depreciation tracking (straight-line) ----
+  purchasePrice   Float?  // acquisition cost in THB
+  salvageValue    Float?  @default(0) // residual / scrap value
+  usefulLife      Int?    // useful life in months (default 60 = 5 years)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -147,5 +151,16 @@ model AuditLog {
   summary   String   // human-readable Thai summary, e.g. "เพิ่มอุปกรณ์ IT-PRT-001 (เครื่องพิมพ์ห้อง IT)"
   detail    String?  // JSON string of before/after or key fields
   actor     String   @default("admin@example.com")
+  createdAt DateTime @default(now())
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  type      String   // dashboard_summary | cycle | audit | utilization
+  title     String
+  rangeKey  String?  // month|30d|quarter|all
+  filters   String?  // JSON string of applied filters
+  data      String   // JSON string of the report data (snapshot)
+  format    String   @default("json") // json|csv|pdf
   createdAt DateTime @default(now())
 }

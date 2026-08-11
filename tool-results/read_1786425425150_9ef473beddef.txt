@@ -1,0 +1,1044 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { useTheme } from 'next-themes'
+     6→import { motion } from 'framer-motion'
+     7→import {
+     8→  PieChart,
+     9→  Pie,
+    10→  Cell,
+    11→  ResponsiveContainer,
+    12→  Tooltip,
+    13→  Legend,
+    14→  BarChart,
+    15→  Bar,
+    16→  XAxis,
+    17→  YAxis,
+    18→  CartesianGrid,
+    19→  Label,
+    20→} from 'recharts'
+    21→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    22→import { Button } from '@/components/ui/button'
+    23→import { Skeleton } from '@/components/ui/skeleton'
+    24→import { Badge } from '@/components/ui/badge'
+    25→import { Progress } from '@/components/ui/progress'
+    26→import {
+    27→  Select,
+    28→  SelectContent,
+    29→  SelectItem,
+    30→  SelectTrigger,
+    31→  SelectValue,
+    32→} from '@/components/ui/select'
+    33→import { cn } from '@/lib/utils'
+    34→import { toast } from 'sonner'
+    35→import {
+    36→  Package,
+    37→  CheckCircle2,
+    38→  Archive,
+    39→  Wrench,
+    40→  TrendingUp,
+    41→  History,
+    42→  Sparkles,
+    43→  FileText,
+    44→  Inbox,
+    45→  AlertTriangle,
+    46→  CalendarClock,
+    47→  ArrowRight,
+    48→  Printer,
+    49→} from 'lucide-react'
+    50→import type {
+    51→  DashboardData,
+    52→  DashboardRangeKey,
+    53→  Cycle,
+    54→} from './types'
+    55→import { DASHBOARD_RANGE_OPTIONS } from './types'
+    56→import { useAppStore } from '@/store/app-store'
+    57→import { exportDashboardPdf } from './dashboard-pdf-export'
+    58→import { LifecycleDashboard } from './lifecycle-dashboard'
+    59→
+    60→interface WarrantySummary {
+    61→  active: number
+    62→  expiring: number
+    63→  expired: number
+    64→  unknown: number
+    65→}
+    66→
+    67→const STATUS_COLORS: Record<string, string> = {
+    68→  ใช้งานอยู่: '#10b981',
+    69→  สำรอง: '#f59e0b',
+    70→  ส่งซ่อม: '#f97316',
+    71→  ตัดของออก: '#f43f5e',
+    72→}
+    73→
+    74→interface KpiCardProps {
+    75→  title: string
+    76→  value: number
+    77→  icon: React.ReactNode
+    78→  accent: string
+    79→  loading?: boolean
+    80→  trend?: string
+    81→  format?: (v: number) => string
+    82→  unit?: string
+    83→}
+    84→
+    85→/**
+    86→ * Animated count-up hook — tweens from the previous value to the next
+    87→ * over 500ms using requestAnimationFrame.
+    88→ */
+    89→function useCountUp(target: number, duration = 500) {
+    90→  const [display, setDisplay] = React.useState(target)
+    91→  const fromRef = React.useRef(target)
+    92→  const rafRef = React.useRef<number | null>(null)
+    93→  const startRef = React.useRef<number | null>(null)
+    94→
+    95→  React.useEffect(() => {
+    96→    if (typeof window === 'undefined') return
+    97→    const from = fromRef.current
+    98→    if (from === target) {
+    99→      setDisplay(target)
+   100→      return
+   101→    }
+   102→    startRef.current = null
+   103→    const step = (ts: number) => {
+   104→      if (startRef.current === null) startRef.current = ts
+   105→      const elapsed = ts - startRef.current
+   106→      const t = Math.min(1, elapsed / duration)
+   107→      // easeOutCubic
+   108→      const eased = 1 - Math.pow(1 - t, 3)
+   109→      const next = Math.round(from + (target - from) * eased)
+   110→      setDisplay(next)
+   111→      if (t < 1) {
+   112→        rafRef.current = window.requestAnimationFrame(step)
+   113→      } else {
+   114→        fromRef.current = target
+   115→        setDisplay(target)
+   116→      }
+   117→    }
+   118→    rafRef.current = window.requestAnimationFrame(step)
+   119→    return () => {
+   120→      if (rafRef.current !== null) {
+   121→        window.cancelAnimationFrame(rafRef.current)
+   122→      }
+   123→      // remember where we landed so the next tween starts smoothly
+   124→      fromRef.current = display
+   125→    }
+   126→  }, [target, duration])
+   127→
+   128→  return display
+   129→}
+   130→
+   131→function KpiCard({
+   132→  title,
+   133→  value,
+   134→  icon,
+   135→  accent,
+   136→  loading,
+   137→  trend,
+   138→  format,
+   139→  unit,
+   140→}: KpiCardProps) {
+   141→  const animated = useCountUp(value, 500)
+   142→  const display = format ? format(animated) : animated.toLocaleString()
+   143→  return (
+   144→    <Card
+   145→      className="group relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-[#f97316] focus-within:ring-offset-1 dark:focus-within:ring-offset-slate-950"
+   146→    >
+   147→      {/* Thin top accent bar */}
+   148→      <div
+   149→        className="absolute inset-x-0 top-0 h-[3px]"
+   150→        style={{ background: accent }}
+   151→      />
+   152→      {/* Subtle gradient overlay on hover */}
+   153→      <div
+   154→        aria-hidden
+   155→        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-transparent to-black/[0.02] opacity-0 transition-opacity group-hover:opacity-100 dark:to-white/[0.03]"
+   156→      />
+   157→      <CardContent className="relative p-3 sm:p-4">
+   158→        <div className="flex items-center gap-2 sm:gap-3">
+   159→          <div
+   160→            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11"
+   161→            style={{ background: `${accent}1a`, color: accent }}
+   162→          >
+   163→            {icon}
+   164→          </div>
+   165→          <div className="min-w-0 flex-1">
+   166→            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+   167→              {title}
+   168→            </div>
+   169→            {loading ? (
+   170→              <Skeleton className="mt-1 h-7 w-20 dark:bg-slate-800" />
+   171→            ) : (
+   172→              <div className="flex items-baseline gap-1">
+   173→                <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
+   174→                  {display}
+   175→                </span>
+   176→                {unit && (
+   177→                  <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
+   178→                    {unit}
+   179→                  </span>
+   180→                )}
+   181→              </div>
+   182→            )}
+   183→            {trend && !loading && (
+   184→              <div
+   185→                className="mt-0.5 truncate text-xs leading-tight text-slate-400 dark:text-slate-500"
+   186→                title={trend}
+   187→              >
+   188→                {trend}
+   189→              </div>
+   190→            )}
+   191→          </div>
+   192→        </div>
+   193→      </CardContent>
+   194→    </Card>
+   195→  )
+   196→}
+   197→
+   198→function EmptyState({
+   199→  message,
+   200→  subtitle,
+   201→  icon,
+   202→}: {
+   203→  message: string
+   204→  subtitle?: string
+   205→  icon?: React.ReactNode
+   206→}) {
+   207→  return (
+   208→    <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400 dark:text-slate-500">
+   209→      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+   210→        {icon ?? <Inbox className="h-6 w-6 text-slate-300 dark:text-slate-600" />}
+   211→      </div>
+   212→      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">{message}</div>
+   213→      {subtitle && (
+   214→        <div className="text-xs text-slate-400 dark:text-slate-500">{subtitle}</div>
+   215→      )}
+   216→    </div>
+   217→  )
+   218→}
+   219→
+   220→export function DashboardPage() {
+   221→  const qc = useQueryClient()
+   222→  const { theme } = useTheme()
+   223→  const [mounted, setMounted] = React.useState(false)
+   224→  React.useEffect(() => setMounted(true), [])
+   225→  const isDark = mounted && theme === 'dark'
+   226→
+   227→  const setActivePage = useAppStore((s) => s.setActivePage)
+   228→  const setPendingWarrantyFilter = useAppStore(
+   229→    (s) => s.setPendingWarrantyFilter,
+   230→  )
+   231→  const setPendingMeterAction = useAppStore((s) => s.setPendingMeterAction)
+   232→
+   233→  const [seeding, setSeeding] = React.useState(false)
+   234→  const [range, setRange] = React.useState<DashboardRangeKey>('month')
+   235→  const [exporting, setExporting] = React.useState(false)
+   236→
+   237→  const { data, isLoading, isError, refetch } = useQuery<DashboardData>({
+   238→    queryKey: ['dashboard', range],
+   239→    queryFn: async () => {
+   240→      const res = await fetch(`/api/dashboard?range=${range}`)
+   241→      if (!res.ok) throw new Error('Failed to load dashboard')
+   242→      return res.json()
+   243→    },
+   244→  })
+   245→
+   246→  // Active cycle (for the dashboard cycle progress widget)
+   247→  const { data: activeCycle, isLoading: cycleLoading } = useQuery<Cycle | null>({
+   248→    queryKey: ['active-cycle'],
+   249→    queryFn: async () => {
+   250→      const res = await fetch('/api/cycles?status=active')
+   251→      if (!res.ok) return null
+   252→      const json = await res.json()
+   253→      return (json.cycles?.[0] as Cycle | undefined) ?? null
+   254→    },
+   255→  })
+   256→
+   257→  // Reading progress for the active cycle (totalRead / totalMeterable)
+   258→  interface RemindersSummary {
+   259→    hasActiveCycle: boolean
+   260→    totalRead: number
+   261→    totalUnread: number
+   262→  }
+   263→  const { data: remindersSummary } = useQuery<RemindersSummary>({
+   264→    queryKey: ['meter-reminders-summary'],
+   265→    queryFn: async () => {
+   266→      const res = await fetch('/api/meter/reminders')
+   267→      if (!res.ok) return { hasActiveCycle: false, totalRead: 0, totalUnread: 0 }
+   268→      const json = await res.json()
+   269→      return {
+   270→        hasActiveCycle: Boolean(json.hasActiveCycle),
+   271→        totalRead: Number(json.totalRead ?? 0),
+   272→        totalUnread: Number(json.totalUnread ?? 0),
+   273→      }
+   274→    },
+   275→  })
+   276→
+   277→  // Warranty summary (always fetched once)
+   278→  const { data: warrantyData } = useQuery<{
+   279→    summary: WarrantySummary
+   280→  }>({
+   281→    queryKey: ['warranty-summary'],
+   282→    queryFn: async () => {
+   283→      const res = await fetch('/api/devices/warranty')
+   284→      if (!res.ok) throw new Error('Failed to load warranty')
+   285→      const json = await res.json()
+   286→      return { summary: json.summary as WarrantySummary }
+   287→    },
+   288→    staleTime: 60_000,
+   289→  })
+   290→
+   291→  // App settings (for org name used in PDF export)
+   292→  const { data: settingsMap } = useQuery<Record<string, string>>({
+   293→    queryKey: ['settings'],
+   294→    queryFn: async () => {
+   295→      const res = await fetch('/api/settings')
+   296→      if (!res.ok) return {}
+   297→      const json = await res.json()
+   298→      return (json.settings as Record<string, string>) ?? {}
+   299→    },
+   300→    staleTime: 60_000,
+   301→  })
+   302→
+   303→  // Auto-seed if empty
+   304→  React.useEffect(() => {
+   305→    if (!data) return
+   306→    if (data.totals.total === 0) {
+   307→      void runSeed()
+   308→    }
+   309→  }, [data?.totals.total])
+   310→
+   311→  async function runSeed() {
+   312→    try {
+   313→      setSeeding(true)
+   314→      const res = await fetch('/api/seed', { method: 'POST' })
+   315→      if (!res.ok) throw new Error('Seed failed')
+   316→      const json = await res.json()
+   317→      toast.success(`โหลดข้อมูลตัวอย่างแล้ว (${json.counts?.devices ?? 0} อุปกรณ์)`)
+   318→      await qc.invalidateQueries()
+   319→    } catch (e) {
+   320→      toast.error(e instanceof Error ? e.message : 'Seed failed')
+   321→    } finally {
+   322→      setSeeding(false)
+   323→    }
+   324→  }
+   325→
+   326→  async function handleExportPdf() {
+   327→    try {
+   328→      setExporting(true)
+   329→      // Use the freshest data we have (refetch to be safe).
+   330→      const latest = await refetch()
+   331→      const payload = latest.data ?? data
+   332→      if (!payload) {
+   333→        toast.error('ยังไม่มีข้อมูลให้ส่งออก')
+   334→        return
+   335→      }
+   336→      exportDashboardPdf({
+   337→        data: payload,
+   338→        range,
+   339→        orgName: settingsMap?.orgName,
+   340→      })
+   341→    } catch (e) {
+   342→      toast.error(e instanceof Error ? e.message : 'ส่งออก PDF ไม่สำเร็จ')
+   343→    } finally {
+   344→      setExporting(false)
+   345→    }
+   346→  }
+   347→
+   348→  if (isError) {
+   349→    return (
+   350→      <div className="p-6">
+   351→        <Card>
+   352→          <CardContent className="p-6">
+   353→            <p className="text-sm text-rose-600 dark:text-rose-400">
+   354→              โหลดข้อมูล Dashboard ไม่สำเร็จ กรุณาลองอีกครั้ง
+   355→            </p>
+   356→            <Button className="mt-3" onClick={() => refetch()}>
+   357→              ลองอีกครั้ง
+   358→            </Button>
+   359→          </CardContent>
+   360→        </Card>
+   361→      </div>
+   362→    )
+   363→  }
+   364→
+   365→  const total = data?.totals.total ?? 0
+   366→  const active = data?.totals.active ?? 0
+   367→  const spare = data?.totals.spare ?? 0
+   368→  const repair = data?.totals.repair ?? 0
+   369→  const paperThisMonth = data?.paperThisMonth ?? 0
+   370→  const warrantyAlerts =
+   371→    (warrantyData?.summary.expiring ?? 0) +
+   372→    (warrantyData?.summary.expired ?? 0)
+   373→
+   374→  const activeTrend =
+   375→    total > 0
+   376→      ? `${Math.round((active / total) * 100)}% ของทั้งหมด ${total} เครื่อง`
+   377→      : undefined
+   378→
+   379→  const paperKpiLabel =
+   380→    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.kpiLabel ??
+   381→    'กระดาษเดือนนี้'
+   382→  const paperTrend =
+   383→    range === 'all'
+   384→      ? 'รวมทุกช่วงเวลา'
+   385→      : data?.range?.start
+   386→        ? `${data.range.start}${data.range.end ? ` → ${data.range.end}` : ''}`
+   387→        : new Date().toLocaleDateString('th-TH', {
+   388→            month: 'long',
+   389→            year: 'numeric',
+   390→          })
+   391→
+   392→  const rangeInfoLabel =
+   393→    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'เดือนนี้'
+   394→
+   395→  // Chart palette — works in both themes
+   396→  const axisTickColor = '#64748b'
+   397→  const gridStroke = isDark ? '#334155' : '#e2e8f0'
+   398→  const tooltipBorder = isDark ? '#334155' : '#e2e8f0'
+   399→  const tooltipBg = isDark ? '#0f172a' : '#ffffff'
+   400→  const tooltipFg = isDark ? '#e2e8f0' : '#1e293b'
+   401→  const donutCenterText = isDark ? '#e2e8f0' : '#1e293b'
+   402→  const donutCenterSub = isDark ? '#64748b' : '#94a3b8'
+   403→
+   404→  return (
+   405→    <div className="space-y-6 p-4 md:p-6">
+   406→      {/* Page header */}
+   407→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+   408→        <div>
+   409→          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+   410→            Dashboard
+   411→          </h1>
+   412→          <p className="text-sm text-slate-500 dark:text-slate-400">
+   413→            ภาพรวมระบบจัดการอุปกรณ์ IT
+   414→            {data?.range && (
+   415→              <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
+   416→                · ช่วง: <span className="font-medium">{rangeInfoLabel}</span>
+   417→                {data.range.start && (
+   418→                  <>
+   419→                    {' '}({data.range.start}
+   420→                    {data.range.end ? ` → ${data.range.end}` : ''})
+   421→                  </>
+   422→                )}
+   423→              </span>
+   424→            )}
+   425→          </p>
+   426→        </div>
+   427→        <div className="flex items-center gap-2">
+   428→          <Select value={range} onValueChange={(v) => setRange(v as DashboardRangeKey)}>
+   429→            <SelectTrigger className="w-[160px]">
+   430→              <SelectValue placeholder="ช่วงเวลา" />
+   431→            </SelectTrigger>
+   432→            <SelectContent>
+   433→              {DASHBOARD_RANGE_OPTIONS.map((o) => (
+   434→                <SelectItem key={o.value} value={o.value}>
+   435→                  {o.label}
+   436→                </SelectItem>
+   437→              ))}
+   438→            </SelectContent>
+   439→          </Select>
+   440→          {data && total === 0 && (
+   441→            <Button
+   442→              onClick={runSeed}
+   443→              disabled={seeding}
+   444→              variant="outline"
+   445→              className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   446→            >
+   447→              <Sparkles className="mr-1.5 h-4 w-4" />
+   448→              {seeding ? 'กำลังโหลด...' : 'โหลดข้อมูลตัวอย่าง'}
+   449→            </Button>
+   450→          )}
+   451→          <Button
+   452→            variant="outline"
+   453→            onClick={() => refetch()}
+   454→            disabled={isLoading}
+   455→            className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   456→          >
+   457→            🔄 รีเฟรช
+   458→          </Button>
+   459→          <Button
+   460→            variant="outline"
+   461→            onClick={handleExportPdf}
+   462→            disabled={exporting || isLoading || total === 0}
+   463→            className="border-[#0d9488] text-[#0d9488] hover:bg-[#0d9488]/10 focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6] dark:text-[#14b8a6] dark:hover:bg-[#14b8a6]/10 dark:focus-visible:ring-offset-slate-950"
+   464→            title="ส่งออก PDF รายงานภาพรวม"
+   465→          >
+   466→            <Printer className="mr-1.5 h-4 w-4" />
+   467→            {exporting ? 'กำลังเตรียม...' : 'ส่งออก PDF'}
+   468→          </Button>
+   469→        </div>
+   470→      </div>
+   471→
+   472→      {seeding && (
+   473→        <Card className="border-[#f97316]/40 bg-[#f97316]/5 dark:border-[#f97316]/30 dark:bg-[#f97316]/10">
+   474→          <CardContent className="p-4 text-sm text-[#f97316]">
+   475→            กำลังโหลดข้อมูลตัวอย่าง... กรุณารอสักครู่
+   476→          </CardContent>
+   477→        </Card>
+   478→      )}
+   479→
+   480→      {/* KPI row — 5 cards on lg + warranty alert bar */}
+   481→      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+   482→        <KpiCard
+   483→          title="อุปกรณ์ทั้งหมด"
+   484→          value={total}
+   485→          icon={<Package className="h-5 w-5" />}
+   486→          accent="#0f172a"
+   487→          loading={isLoading}
+   488→          trend={total > 0 ? `${(data?.byType ?? []).length} ประเภท` : undefined}
+   489→        />
+   490→        <KpiCard
+   491→          title="ใช้งานอยู่"
+   492→          value={active}
+   493→          icon={<CheckCircle2 className="h-5 w-5" />}
+   494→          accent="#10b981"
+   495→          loading={isLoading}
+   496→          trend={activeTrend}
+   497→        />
+   498→        <KpiCard
+   499→          title="สำรอง"
+   500→          value={spare}
+   501→          icon={<Archive className="h-5 w-5" />}
+   502→          accent="#f59e0b"
+   503→          loading={isLoading}
+   504→          trend={total > 0 ? `${Math.round((spare / total) * 100)}% ของทั้งหมด` : undefined}
+   505→        />
+   506→        <KpiCard
+   507→          title="ส่งซ่อม"
+   508→          value={repair}
+   509→          icon={<Wrench className="h-5 w-5" />}
+   510→          accent="#f97316"
+   511→          loading={isLoading}
+   512→          trend={repair > 0 ? 'รอดำเนินการ' : 'ปกติ'}
+   513→        />
+   514→        <KpiCard
+   515→          title={paperKpiLabel}
+   516→          value={paperThisMonth}
+   517→          icon={<FileText className="h-5 w-5" />}
+   518→          accent="#0d9488"
+   519→          loading={isLoading}
+   520→          unit="แผ่น"
+   521→          trend={paperTrend}
+   522→        />
+   523→      </div>
+   524→
+   525→      {/* Cycle progress widget — animated, full-width */}
+   526→      <motion.div
+   527→        initial={{ opacity: 0, y: 12 }}
+   528→        animate={{ opacity: 1, y: 0 }}
+   529→        transition={{ duration: 0.35, ease: 'easeOut' }}
+   530→      >
+   531→        <CycleProgressWidget
+   532→          activeCycle={activeCycle ?? null}
+   533→          cycleLoading={cycleLoading}
+   534→          remindersSummary={remindersSummary ?? null}
+   535→          onManageCycle={() => {
+   536→            setPendingMeterAction('open-cycle')
+   537→            setActivePage('meter')
+   538→          }}
+   539→          onCreateCycle={() => {
+   540→            setPendingMeterAction('open-cycle')
+   541→            setActivePage('meter')
+   542→          }}
+   543→        />
+   544→      </motion.div>
+   545→
+   546→      {/* Lifecycle / replacement planning widget */}
+   547→      <LifecycleDashboard />
+   548→
+   549→      {/* Warranty alert bar — full-width amber card linking to devices */}
+   550→      <button
+   551→        type="button"
+   552→        onClick={() => {
+   553→          setActivePage('devices')
+   554→          setPendingWarrantyFilter('expiring')
+   555→        }}
+   556→        disabled={warrantyAlerts === 0}
+   557→        className={cn(
+   558→          'group relative w-full overflow-hidden rounded-lg border text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950',
+   559→          warrantyAlerts > 0
+   560→            ? 'cursor-pointer border-amber-200 bg-amber-50 hover:-translate-y-0.5 hover:shadow-md dark:border-amber-800/60 dark:bg-amber-950/30'
+   561→            : 'cursor-default border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
+   562→        )}
+   563→      >
+   564→        {warrantyAlerts > 0 && (
+   565→          <div
+   566→            className="absolute inset-x-0 top-0 h-[3px]"
+   567→            style={{
+   568→              background: 'linear-gradient(90deg, #f59e0b, #f97316)',
+   569→            }}
+   570→          />
+   571→        )}
+   572→        <div className="flex items-center gap-3 p-3 sm:p-4">
+   573→          <div
+   574→            className={cn(
+   575→              'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11',
+   576→              warrantyAlerts > 0 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+   577→            )}
+   578→          >
+   579→            <AlertTriangle className="h-5 w-5" />
+   580→          </div>
+   581→          <div className="min-w-0 flex-1">
+   582→            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+   583→              รับประกันใกล้หมด
+   584→            </div>
+   585→            <div className="flex items-baseline gap-1">
+   586→              <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
+   587→                {warrantyAlerts}
+   588→              </span>
+   589→              <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
+   590→                เครื่อง
+   591→              </span>
+   592→            </div>
+   593→            <div className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
+   594→              {warrantyAlerts > 0
+   595→                ? `ใกล้หมด ${warrantyData?.summary.expiring ?? 0} · หมดแล้ว ${warrantyData?.summary.expired ?? 0} — กดเพื่อดูรายการ`
+   596→                : 'ทุกเครื่องยังอยู่ในรับประกัน'}
+   597→            </div>
+   598→          </div>
+   599→          {warrantyAlerts > 0 && (
+   600→            <span className="shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-medium text-amber-600 opacity-0 transition-opacity group-hover:opacity-100 dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-400">
+   601→              ดูรายการ →
+   602→            </span>
+   603→          )}
+   604→        </div>
+   605→      </button>
+   606→
+   607→      {/* Charts */}
+   608→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   609→        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   610→          <CardHeader>
+   611→            <CardTitle className="text-base text-slate-800 dark:text-slate-100">
+   612→              สัดส่วนสถานะอุปกรณ์
+   613→            </CardTitle>
+   614→          </CardHeader>
+   615→          <CardContent>
+   616→            {isLoading ? (
+   617→              <Skeleton className="h-64 w-full dark:bg-slate-800" />
+   618→            ) : (data?.byStatus ?? []).length === 0 ? (
+   619→              <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
+   620→            ) : (
+   621→              <ResponsiveContainer width="100%" height={280}>
+   622→                <PieChart>
+   623→                  <Pie
+   624→                    data={data?.byStatus ?? []}
+   625→                    dataKey="value"
+   626→                    nameKey="name"
+   627→                    cx="50%"
+   628→                    cy="50%"
+   629→                    innerRadius={60}
+   630→                    outerRadius={95}
+   631→                    paddingAngle={2}
+   632→                  >
+   633→                    {(data?.byStatus ?? []).map((entry) => (
+   634→                      <Cell
+   635→                        key={entry.name}
+   636→                        fill={STATUS_COLORS[entry.name] ?? '#94a3b8'}
+   637→                      />
+   638→                    ))}
+   639→                    <Label
+   640→                      content={({ viewBox }) => {
+   641→                        if (!viewBox || !('cx' in viewBox)) return null
+   642→                        const { cx, cy } = viewBox as {
+   643→                          cx: number
+   644→                          cy: number
+   645→                        }
+   646→                        return (
+   647→                          <>
+   648→                            <text
+   649→                              x={cx}
+   650→                              y={cy - 6}
+   651→                              textAnchor="middle"
+   652→                              dominantBaseline="central"
+   653→                              style={{
+   654→                                fontSize: 26,
+   655→                                fontWeight: 700,
+   656→                                fontVariantNumeric: 'tabular-nums',
+   657→                                fill: donutCenterText,
+   658→                              }}
+   659→                            >
+   660→                              {total}
+   661→                            </text>
+   662→                            <text
+   663→                              x={cx}
+   664→                              y={cy + 16}
+   665→                              textAnchor="middle"
+   666→                              dominantBaseline="central"
+   667→                              style={{ fontSize: 12, fill: donutCenterSub }}
+   668→                            >
+   669→                              เครื่อง
+   670→                            </text>
+   671→                          </>
+   672→                        )
+   673→                      }}
+   674→                    />
+   675→                  </Pie>
+   676→                  <Tooltip
+   677→                    formatter={(value: number, name: string) => [value, name]}
+   678→                    contentStyle={{
+   679→                      fontSize: 12,
+   680→                      borderRadius: 8,
+   681→                      border: `1px solid ${tooltipBorder}`,
+   682→                      background: tooltipBg,
+   683→                      color: tooltipFg,
+   684→                    }}
+   685→                  />
+   686→                  <Legend wrapperStyle={{ fontSize: 13 }} />
+   687→                </PieChart>
+   688→              </ResponsiveContainer>
+   689→            )}
+   690→          </CardContent>
+   691→        </Card>
+   692→
+   693→        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   694→          <CardHeader>
+   695→            <CardTitle className="text-base text-slate-800 dark:text-slate-100">
+   696→              จำนวนอุปกรณ์ตามประเภท
+   697→            </CardTitle>
+   698→          </CardHeader>
+   699→          <CardContent>
+   700→            {isLoading ? (
+   701→              <Skeleton className="h-64 w-full dark:bg-slate-800" />
+   702→            ) : (data?.byType ?? []).length === 0 ? (
+   703→              <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
+   704→            ) : (
+   705→              <ResponsiveContainer width="100%" height={280}>
+   706→                <BarChart data={data?.byType ?? []}>
+   707→                  <defs>
+   708→                    <linearGradient
+   709→                      id="barTypeFill"
+   710→                      x1="0"
+   711→                      y1="0"
+   712→                      x2="0"
+   713→                      y2="1"
+   714→                    >
+   715→                      <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.95} />
+   716→                      <stop offset="100%" stopColor="#0d9488" stopOpacity={0.7} />
+   717→                    </linearGradient>
+   718→                  </defs>
+   719→                  <CartesianGrid
+   720→                    strokeDasharray="3 3"
+   721→                    stroke={gridStroke}
+   722→                    vertical={false}
+   723→                  />
+   724→                  <XAxis
+   725→                    dataKey="name"
+   726→                    tick={{ fontSize: 12, fill: axisTickColor }}
+   727→                    tickLine={false}
+   728→                    axisLine={{ stroke: gridStroke }}
+   729→                  />
+   730→                  <YAxis
+   731→                    allowDecimals={false}
+   732→                    tick={{ fontSize: 12, fill: axisTickColor }}
+   733→                    tickLine={false}
+   734→                    axisLine={{ stroke: gridStroke }}
+   735→                  />
+   736→                  <Tooltip
+   737→                    cursor={{ fill: '#0d948810' }}
+   738→                    contentStyle={{
+   739→                      fontSize: 12,
+   740→                      borderRadius: 8,
+   741→                      border: `1px solid ${tooltipBorder}`,
+   742→                      background: tooltipBg,
+   743→                      color: tooltipFg,
+   744→                    }}
+   745→                  />
+   746→                  <Bar
+   747→                    dataKey="value"
+   748→                    fill="url(#barTypeFill)"
+   749→                    radius={[6, 6, 0, 0]}
+   750→                  />
+   751→                </BarChart>
+   752→              </ResponsiveContainer>
+   753→            )}
+   754→          </CardContent>
+   755→        </Card>
+   756→      </div>
+   757→
+   758→      {/* Lists */}
+   759→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   760→        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   761→          <CardHeader>
+   762→            <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+   763→              <TrendingUp className="h-4 w-4 text-[#f97316]" />
+   764→              Top อุปกรณ์ตามการใช้งานกระดาษ
+   765→            </CardTitle>
+   766→          </CardHeader>
+   767→          <CardContent>
+   768→            <div className="itam-scroll max-h-72 overflow-y-auto">
+   769→              {(data?.topUsage ?? []).length === 0 ||
+   770→              (data?.topUsage ?? []).every((d) => d.value === 0) ? (
+   771→                <EmptyState message="ยังไม่มีข้อมูลการใช้งาน" />
+   772→              ) : (
+   773→                <ul className="space-y-2">
+   774→                  {(data?.topUsage ?? [])
+   775→                    .filter((d) => d.value > 0)
+   776→                    .map((d, i) => (
+   777→                      <li
+   778→                        key={d.id}
+   779→                        className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
+   780→                      >
+   781→                        <div className="flex min-w-0 items-center gap-3">
+   782→                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f97316] text-xs font-bold text-white">
+   783→                            {i + 1}
+   784→                          </span>
+   785→                          <div className="min-w-0">
+   786→                            <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+   787→                              {d.name}
+   788→                            </div>
+   789→                            <div className="truncate font-mono text-xs text-slate-400 dark:text-slate-500">
+   790→                              {d.assetCode}
+   791→                            </div>
+   792→                          </div>
+   793→                        </div>
+   794→                        <Badge className="border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316] tabular-nums">
+   795→                          {d.value.toLocaleString()} แผ่น
+   796→                        </Badge>
+   797→                      </li>
+   798→                    ))}
+   799→                </ul>
+   800→              )}
+   801→            </div>
+   802→          </CardContent>
+   803→        </Card>
+   804→
+   805→        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   806→          <CardHeader>
+   807→            <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+   808→              <History className="h-4 w-4 text-[#f97316]" />
+   809→              กิจกรรมล่าสุด (จดมิเตอร์)
+   810→            </CardTitle>
+   811→          </CardHeader>
+   812→          <CardContent>
+   813→            <div className="itam-scroll max-h-72 overflow-y-auto">
+   814→              {(data?.recentActivity ?? []).length === 0 ? (
+   815→                <EmptyState message="ยังไม่มีกิจกรรม" />
+   816→              ) : (
+   817→                <ul className="space-y-2">
+   818→                  {(data?.recentActivity ?? []).map((a) => (
+   819→                    <li
+   820→                      key={a.id}
+   821→                      className="rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
+   822→                    >
+   823→                      <div className="flex items-center justify-between gap-2">
+   824→                        <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+   825→                          {a.deviceName}
+   826→                        </span>
+   827→                        <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+   828→                          {a.date}
+   829→                        </span>
+   830→                      </div>
+   831→                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+   832→                        <span className="font-mono text-slate-400 dark:text-slate-500">
+   833→                          {a.assetCode}
+   834→                        </span>
+   835→                        <span>·</span>
+   836→                        <span className="tabular-nums">
+   837→                          อ่าน {a.reading.toLocaleString()}
+   838→                        </span>
+   839→                        {a.delta > 0 && (
+   840→                          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 tabular-nums dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+   841→                            +{a.delta.toLocaleString()}
+   842→                          </Badge>
+   843→                        )}
+   844→                        {a.remark && (
+   845→                          <span className="truncate text-amber-600 dark:text-amber-400">
+   846→                            ⚠ {a.remark}
+   847→                          </span>
+   848→                        )}
+   849→                      </div>
+   850→                    </li>
+   851→                  ))}
+   852→                </ul>
+   853→              )}
+   854→            </div>
+   855→          </CardContent>
+   856→        </Card>
+   857→      </div>
+   858→    </div>
+   859→  )
+   860→}
+   861→
+   862→// ----------------------------------------------------------------------------
+   863→// Cycle Progress Widget — shows active cycle status at a glance
+   864→// ----------------------------------------------------------------------------
+   865→interface CycleProgressWidgetProps {
+   866→  activeCycle: Cycle | null
+   867→  cycleLoading: boolean
+   868→  remindersSummary: {
+   869→    hasActiveCycle: boolean
+   870→    totalRead: number
+   871→    totalUnread: number
+   872→  } | null
+   873→  onManageCycle: () => void
+   874→  onCreateCycle: () => void
+   875→}
+   876→
+   877→function daysBetween(a: string, b: string): number {
+   878→  return Math.round(
+   879→    (new Date(b).getTime() - new Date(a).getTime()) / (1000 * 60 * 60 * 24),
+   880→  )
+   881→}
+   882→
+   883→function todayISO(): string {
+   884→  return new Date().toISOString().slice(0, 10)
+   885→}
+   886→
+   887→function CycleProgressWidget({
+   888→  activeCycle,
+   889→  cycleLoading,
+   890→  remindersSummary,
+   891→  onManageCycle,
+   892→  onCreateCycle,
+   893→}: CycleProgressWidgetProps) {
+   894→  // Start progress bars at 0 then animate to their real value after mount
+   895→  // — Radix Progress needs a value change to trigger the CSS transition.
+   896→  const [mounted, setMounted] = React.useState(false)
+   897→  React.useEffect(() => {
+   898→    const t = window.setTimeout(() => setMounted(true), 60)
+   899→    return () => window.clearTimeout(t)
+   900→  }, [])
+   901→
+   902→  if (cycleLoading) {
+   903→    return (
+   904→      <Card className="overflow-hidden border-[#f97316]/20 bg-gradient-to-br from-orange-50 to-white dark:border-[#f97316]/30 dark:from-slate-900 dark:to-slate-800/50">
+   905→        <CardContent className="p-4">
+   906→          <Skeleton className="h-24 w-full dark:bg-slate-800" />
+   907→        </CardContent>
+   908→      </Card>
+   909→    )
+   910→  }
+   911→
+   912→  // No active cycle — amber alert prompting the user to create one
+   913→  if (!activeCycle) {
+   914→    return (
+   915→      <Card className="relative overflow-hidden border-amber-200 bg-gradient-to-br from-amber-50 to-white dark:border-amber-800/60 dark:from-amber-950/30 dark:to-slate-900">
+   916→        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-amber-400 to-[#f97316]" />
+   917→        <CardContent className="relative flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+   918→          <div className="flex items-start gap-3">
+   919→            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition-transform group-hover:scale-105 dark:bg-amber-900/40 dark:text-amber-300">
+   920→              <CalendarClock className="h-5 w-5" />
+   921→            </div>
+   922→            <div>
+   923→              <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+   924→                ⚠️ ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ
+   925→              </div>
+   926→              <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-300/80">
+   927→                สร้างรอบใหม่เพื่อเริ่มจดมิเตอร์ได้ทันที
+   928→              </div>
+   929→            </div>
+   930→          </div>
+   931→          <Button
+   932→            size="sm"
+   933→            onClick={onCreateCycle}
+   934→            className="shrink-0 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   935→          >
+   936→            <CalendarClock className="h-4 w-4" />
+   937→            สร้างรอบใหม่
+   938→            <ArrowRight className="h-3.5 w-3.5" />
+   939→          </Button>
+   940→        </CardContent>
+   941→      </Card>
+   942→    )
+   943→  }
+   944→
+   945→  // Active cycle — show progress bars
+   946→  const totalDays = Math.max(1, daysBetween(activeCycle.startDate, activeCycle.endDate))
+   947→  const elapsed = Math.max(0, daysBetween(activeCycle.startDate, todayISO()))
+   948→  const daysRemaining = Math.max(0, daysBetween(todayISO(), activeCycle.endDate))
+   949→  const elapsedPct = Math.min(100, Math.round((elapsed / totalDays) * 100))
+   950→
+   951→  const totalRead = remindersSummary?.totalRead ?? 0
+   952→  const totalMeterable =
+   953→    (remindersSummary?.totalRead ?? 0) + (remindersSummary?.totalUnread ?? 0)
+   954→  const readPct =
+   955→    totalMeterable > 0 ? Math.round((totalRead / totalMeterable) * 100) : 0
+   956→
+   957→  // Animate from 0 → target on mount
+   958→  const animElapsedPct = mounted ? elapsedPct : 0
+   959→  const animReadPct = mounted ? readPct : 0
+   960→
+   961→  return (
+   962→    <Card className="group relative overflow-hidden border-[#f97316]/20 bg-gradient-to-br from-orange-50 to-white shadow-sm transition-shadow hover:shadow-md dark:border-[#f97316]/30 dark:from-slate-900 dark:to-slate-800/50">
+   963→      {/* Top accent bar */}
+   964→      <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#fb923c] to-[#f97316]" />
+   965→      {/* Watermark icon */}
+   966→      <span
+   967→        aria-hidden
+   968→        className="pointer-events-none absolute -right-2 -top-2 select-none text-[100px] leading-none text-[#f97316]/5 dark:text-[#fb923c]/10"
+   969→      >
+   970→        <CalendarClock className="h-24 w-24" />
+   971→      </span>
+   972→
+   973→      <CardContent className="relative p-4 sm:p-5">
+   974→        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+   975→          {/* Left: cycle name + dates */}
+   976→          <div className="min-w-0 flex-1">
+   977→            <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+   978→              <CalendarClock className="h-3.5 w-3.5" />
+   979→              รอบจดมิเตอร์ปัจจุบัน
+   980→            </div>
+   981→            <div className="truncate text-base font-bold text-slate-800 dark:text-slate-100 sm:text-lg">
+   982→              {activeCycle.name}
+   983→            </div>
+   984→            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+   985→              <span className="font-mono">
+   986→                📅 {activeCycle.startDate} → {activeCycle.endDate}
+   987→              </span>
+   988→              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:scale-105 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+   989→                กำลังดำเนินการ
+   990→              </Badge>
+   991→            </div>
+   992→          </div>
+   993→
+   994→          {/* Middle: days remaining big number */}
+   995→          <div className="flex shrink-0 items-center gap-4">
+   996→            <div className="flex flex-col items-center justify-center rounded-lg bg-white/70 px-4 py-2 text-center shadow-sm dark:bg-slate-800/60">
+   997→              <div className="text-3xl font-bold tabular-nums leading-tight text-[#f97316] dark:text-[#fb923c]">
+   998→                {daysRemaining}
+   999→              </div>
+  1000→              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+  1001→                วันที่เหลือ
+  1002→              </div>
+  1003→            </div>
+  1004→
+  1005→            {/* Right: progress bars + manage button */}
+  1006→            <div className="flex min-w-[180px] flex-1 flex-col gap-2">
+  1007→              <div>
+  1008→                <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+  1009→                  <span>ความคืบหน้ารอบ</span>
+  1010→                  <span className="font-mono tabular-nums">{elapsedPct}%</span>
+  1011→                </div>
+  1012→                <Progress
+  1013→                  value={animElapsedPct}
+  1014→                  className="h-1.5 [&>div]:bg-gradient-to-r [&>div]:from-[#fb923c] [&>div]:to-[#f97316]"
+  1015→                />
+  1016→              </div>
+  1017→              <div>
+  1018→                <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+  1019→                  <span>การจดมิเตอร์</span>
+  1020→                  <span className="font-mono tabular-nums">
+  1021→                    {totalRead}/{totalMeterable} ({readPct}%)
+  1022→                  </span>
+  1023→                </div>
+  1024→                <Progress
+  1025→                  value={animReadPct}
+  1026→                  className="h-1.5 [&>div]:bg-[#0d9488]"
+  1027→                />
+  1028→              </div>
+  1029→              <Button
+  1030→                size="sm"
+  1031→                onClick={onManageCycle}
+  1032→                className="mt-1 self-end bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+  1033→              >
+  1034→                จัดการรอบ
+  1035→                <ArrowRight className="h-3.5 w-3.5" />
+  1036→              </Button>
+  1037→            </div>
+  1038→          </div>
+  1039→        </div>
+  1040→      </CardContent>
+  1041→    </Card>
+  1042→  )
+  1043→}
+  1044→

@@ -65,6 +65,7 @@ import {
   warrantyBadgeClass,
   warrantyLabel,
   formatThaiDate,
+  formatBaht,
 } from './types'
 
 interface Props {
@@ -623,6 +624,88 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                     </span>
                   }
                 />
+                {(() => {
+                  // Compute straight-line depreciation inline using device fields.
+                  const price = device.purchasePrice
+                  const salvage =
+                    device.salvageValue !== null &&
+                    device.salvageValue !== undefined
+                      ? device.salvageValue
+                      : 0
+                  const usefulLife =
+                    device.usefulLife && device.usefulLife > 0
+                      ? device.usefulLife
+                      : 60
+                  if (price === null || price === undefined || price <= 0) {
+                    return null
+                  }
+                  // Age in months
+                  let ageInMonths = 0
+                  if (
+                    device.purchaseDate &&
+                    /^\d{4}-\d{2}-\d{2}/.test(device.purchaseDate)
+                  ) {
+                    const start = new Date(
+                      device.purchaseDate.slice(0, 10) + 'T00:00:00',
+                    )
+                    if (!Number.isNaN(start.getTime())) {
+                      const now = new Date()
+                      let m =
+                        (now.getFullYear() - start.getFullYear()) * 12 +
+                        (now.getMonth() - start.getMonth())
+                      if (now.getDate() < start.getDate()) m -= 1
+                      ageInMonths = Math.max(0, m)
+                    }
+                  }
+                  const clampedSalvage = Math.min(salvage, price)
+                  const monthlyDepreciation =
+                    (price - clampedSalvage) / usefulLife
+                  const accumulatedDepreciation = Math.min(
+                    Math.max(0, monthlyDepreciation * ageInMonths),
+                    Math.max(0, price - clampedSalvage),
+                  )
+                  const currentValue = Math.max(
+                    clampedSalvage,
+                    price - accumulatedDepreciation,
+                  )
+                  const pct =
+                    price > 0
+                      ? Math.round((accumulatedDepreciation / price) * 100)
+                      : 0
+                  const status =
+                    currentValue <= clampedSalvage
+                      ? 'หมดอายุการใช้งาน'
+                      : ageInMonths < 1
+                        ? 'ใหม่'
+                        : 'กำลังเสื่อม'
+                  const statusColor =
+                    currentValue <= clampedSalvage
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : ageInMonths < 1
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-amber-600 dark:text-amber-400'
+                  return (
+                    <InfoRow
+                      label="มูลค่าปัจจุบัน"
+                      value={
+                        <div className="space-y-1">
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-semibold tabular-nums text-[#0d9488] dark:text-[#14b8a6]">
+                              {formatBaht(currentValue)}
+                            </span>
+                            <span className="text-xs text-slate-400 dark:text-slate-500">
+                              · เสื่อม {pct}%
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 dark:text-slate-500">
+                            ราคาซื้อ {formatBaht(price)} ·{' '}
+                            <span className={statusColor}>{status}</span>
+                          </div>
+                        </div>
+                      }
+                    />
+                  )
+                })()}
                 <InfoRow
                   label="สร้างเมื่อ"
                   value={formatThaiDateTime(device.createdAt)}
