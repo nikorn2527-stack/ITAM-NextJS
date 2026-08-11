@@ -1,8 +1,72 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-export async function GET() {
+type RangeKey = 'month' | '30d' | 'quarter' | 'all'
+
+interface RangeInfo {
+  key: RangeKey
+  label: string
+  start: string | null
+  end: string | null
+}
+
+function computeRange(key: RangeKey): RangeInfo {
+  const now = new Date()
+  const todayISO = now.toISOString().slice(0, 10)
+
+  if (key === '30d') {
+    const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10)
+    return { key, label: '30 วันล่าสุด', start, end: todayISO }
+  }
+
+  if (key === 'quarter') {
+    const month = now.getMonth() // 0-11
+    const qStartMonth = Math.floor(month / 3) * 3 // 0,3,6,9
+    const startY = now.getFullYear()
+    const start = `${startY}-${String(qStartMonth + 1).padStart(2, '0')}-01`
+    const endMonth = qStartMonth + 2
+    const endY = endMonth > 11 ? startY + 1 : startY
+    const endMonthIdx = endMonth > 11 ? endMonth - 12 : endMonth
+    const daysInEnd = new Date(endY, endMonthIdx + 1, 0).getDate()
+    const end = `${endY}-${String(endMonthIdx + 1).padStart(2, '0')}-${String(daysInEnd).padStart(2, '0')}`
+    return { key, label: 'ไตรมาสนี้', start, end }
+  }
+
+  if (key === 'all') {
+    return { key, label: 'ทั้งหมด', start: null, end: null }
+  }
+
+  // Default: this month
+  const startY = now.getFullYear()
+  const startMonth = now.getMonth()
+  const start = `${startY}-${String(startMonth + 1).padStart(2, '0')}-01`
+  const daysInMonth = new Date(startY, startMonth + 1, 0).getDate()
+  const end = `${startY}-${String(startMonth + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`
+  return { key, label: 'เดือนนี้', start, end }
+}
+
+/** Build a Prisma `where` clause on MeterReading.date for the given range. */
+function readingDateWhere(range: RangeInfo): Record<string, unknown> {
+  if (range.start === null && range.end === null) return {} // all
+  // Inclusive on both ends (date is stored as YYYY-MM-DD string)
+  if (range.start && range.end) {
+    return { date: { gte: range.start, lte: range.end } }
+  }
+  if (range.start) return { date: { gte: range.start } }
+  if (range.end) return { date: { lte: range.end } }
+  return {}
+}
+
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url)
+    const rawRange = (searchParams.get('range')?.trim() ?? 'month') as RangeKey
+    const range: RangeInfo = ['month', '30d', 'quarter', 'all'].includes(rawRange)
+      ? computeRange(rawRange)
+      : computeRange('month')
+
     const devices = await db.device.findMany({
       orderBy: { createdAt: 'desc' },
     })
@@ -39,12 +103,13 @@ export async function GET() {
       value,
     }))
 
-    // Top usage (by sum of delta per device)
-    const readings = await db.meterReading.findMany({
+    // Top usage — filtered by selected range
+    const rangeReadings = await db.meterReading.findMany({
+      where: readingDateWhere(range),
       select: { deviceId: true, delta: true },
     })
     const usageMap = new Map<string, number>()
-    for (const r of readings) {
+    for (const r of rangeReadings) {
       usageMap.set(r.deviceId, (usageMap.get(r.deviceId) ?? 0) + r.delta)
     }
     const topUsage = devices
@@ -57,8 +122,10 @@ export async function GET() {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5)
 
-    // Recent activity: latest meter readings
+    // Recent activity — latest meter readings within range
+    const recentWhere = readingDateWhere(range)
     const recent = await db.meterReading.findMany({
+      where: recentWhere,
       orderBy: { createdAt: 'desc' },
       take: 8,
       include: {
@@ -77,14 +144,8 @@ export async function GET() {
       remark: r.remark,
     }))
 
-    // Paper usage this month (sum of positive deltas where date starts with YYYY-MM)
-    const now = new Date()
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const monthReadings = await db.meterReading.findMany({
-      where: { date: { startsWith: currentMonth } },
-      select: { delta: true },
-    })
-    const paperThisMonth = monthReadings.reduce(
+    // Paper usage for the selected range (sum of positive deltas)
+    const paperUsage = rangeReadings.reduce(
       (sum, r) => sum + (r.delta > 0 ? r.delta : 0),
       0,
     )
@@ -95,7 +156,8 @@ export async function GET() {
       byType,
       topUsage,
       recentActivity,
-      paperThisMonth,
+      paperThisMonth: paperUsage,
+      range,
     })
   } catch (err) {
     console.error('GET /api/dashboard', err)

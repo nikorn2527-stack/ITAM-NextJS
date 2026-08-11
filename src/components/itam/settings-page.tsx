@@ -79,14 +79,14 @@ export function SettingsPage() {
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">ตั้งค่าแอป</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ตั้งค่าแอป</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           ตั้งค่าทั่วไป · ข้อมูลมาตรฐาน · สาขา · สิทธิ์ผู้ใช้
         </p>
       </div>
 
       <Tabs defaultValue="app" className="w-full">
-        <TabsList className="h-auto flex-wrap">
+        <TabsList className="h-auto flex-wrap dark:bg-slate-900 dark:border dark:border-slate-800">
           <TabsTrigger value="app" className="gap-1.5">
             <SettingsIcon className="h-4 w-4" />
             ตั้งค่าทั่วไป
@@ -169,18 +169,18 @@ function AppTab() {
 
   if (isLoading) {
     return (
-      <Card>
+      <Card className="dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-6">
-          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-64 w-full dark:bg-slate-800" />
         </CardContent>
       </Card>
     )
   }
 
   return (
-    <Card>
+    <Card className="dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <SettingsIcon className="h-4 w-4 text-[#f97316]" />
           ตั้งค่าทั่วไป
         </CardTitle>
@@ -209,12 +209,12 @@ function AppTab() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+        <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
           <div>
-            <div className="text-sm font-medium text-slate-700">
+            <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
               เปิดใช้งานการล็อกอินด้วยรหัสผ่าน
             </div>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-slate-500 dark:text-slate-400">
               อนุญาตให้ผู้ใช้ล็อกอินด้วยรหัสผ่าน (นอกเหนือจาก SSO)
             </div>
           </div>
@@ -257,7 +257,7 @@ function AppTab() {
           <Button
             onClick={save}
             disabled={saving}
-            className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+            className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
             <Save className="h-4 w-4" />
             {saving ? 'กำลังบันทึก...' : 'บันทึก'}
@@ -344,9 +344,9 @@ function MasterTab() {
   }
 
   return (
-    <Card>
+    <Card className="dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <Database className="h-4 w-4 text-[#f97316]" />
           ข้อมูลมาตรฐาน (Master Data)
         </CardTitle>
@@ -402,7 +402,7 @@ function MasterTab() {
             </Button>
             <Button
               onClick={openAdd}
-              className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+              className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               size="sm"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -419,17 +419,17 @@ function MasterTab() {
         </div>
 
         {/* Table */}
-        <div className="itam-scroll max-h-[55vh] overflow-auto rounded-md border">
+        <div className="itam-scroll max-h-[55vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-slate-50">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
               <TableRow>
-                <TableHead>หมวดหมู่</TableHead>
-                <TableHead>รหัส</TableHead>
-                <TableHead>ชื่อ</TableHead>
-                <TableHead>ParentRef</TableHead>
-                <TableHead>DisplayLabel</TableHead>
-                <TableHead>SiteCode</TableHead>
-                <TableHead className="text-right">การจัดการ</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">หมวดหมู่</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">ParentRef</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">DisplayLabel</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">SiteCode</TableHead>
+                <TableHead className="text-right text-slate-600 dark:text-slate-300">การจัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -437,7 +437,7 @@ function MasterTab() {
                 Array.from({ length: 6 }).map((_, i) => (
                   <TableRow key={`sk-${i}`}>
                     <TableCell colSpan={7}>
-                      <Skeleton className="h-6 w-full" />
+                      <Skeleton className="h-6 w-full dark:bg-slate-800" />
                     </TableCell>
                   </TableRow>
                 ))
@@ -445,30 +445,30 @@ function MasterTab() {
                 <TableRow>
                   <TableCell
                     colSpan={7}
-                    className="py-8 text-center text-sm text-slate-400"
+                    className="py-8 text-center text-sm text-slate-400 dark:text-slate-500"
                   >
                     ไม่พบรายการ
                   </TableCell>
                 </TableRow>
               ) : (
                 (items ?? []).map((it) => (
-                  <TableRow key={it.id}>
+                  <TableRow key={it.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <TableCell>
-                      <Badge className="border-slate-200 bg-slate-100 text-slate-700">
+                      <Badge className="border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                         {it.category}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-mono text-xs font-medium text-slate-700">
+                    <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">
                       {it.code}
                     </TableCell>
-                    <TableCell>{it.label}</TableCell>
-                    <TableCell className="font-mono text-xs text-slate-500">
+                    <TableCell className="text-slate-700 dark:text-slate-200">{it.label}</TableCell>
+                    <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">
                       {it.parentRef ?? '-'}
                     </TableCell>
-                    <TableCell className="text-slate-600">
+                    <TableCell className="text-slate-600 dark:text-slate-300">
                       {it.displayLabel ?? '-'}
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-slate-500">
+                    <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">
                       {it.siteCode ?? '-'}
                     </TableCell>
                     <TableCell className="text-right">
@@ -486,7 +486,7 @@ function MasterTab() {
                           variant="ghost"
                           onClick={() => setDeleteTarget(it)}
                           aria-label="ลบ"
-                          className="text-rose-600 hover:bg-rose-50"
+                          className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -498,7 +498,7 @@ function MasterTab() {
             </TableBody>
           </Table>
         </div>
-        <div className="text-xs text-slate-400">
+        <div className="text-xs text-slate-400 dark:text-slate-500">
           ทั้งหมด {(items ?? []).length} รายการ · ปุ่มซิงค์ (Model/Dept/Labels) ใช้สำหรับ backfill ฟิลด์ ParentRef / DepartmentCode / DisplayLabel
         </div>
       </CardContent>
@@ -516,12 +516,12 @@ function MasterTab() {
         open={Boolean(deleteTarget)}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการลบรายการ</AlertDialogTitle>
+            <AlertDialogTitle className="text-slate-800 dark:text-slate-100">ยืนยันการลบรายการ</AlertDialogTitle>
             <AlertDialogDescription>
               ลบ{' '}
-              <span className="font-semibold text-slate-700">
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
                 {deleteTarget?.label} ({deleteTarget?.code})
               </span>{' '}
               ออกจากข้อมูลมาตรฐาน?
@@ -532,7 +532,7 @@ function MasterTab() {
             <AlertDialogAction
               onClick={confirmDelete}
               disabled={deleting}
-              className="bg-rose-600 text-white hover:bg-rose-700"
+              className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
               {deleting ? 'กำลังลบ...' : 'ลบ'}
             </AlertDialogAction>
@@ -588,9 +588,9 @@ function SitesTab() {
   }
 
   return (
-    <Card>
+    <Card className="dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <Building2 className="h-4 w-4 text-[#f97316]" />
           สาขา
         </CardTitle>
@@ -610,46 +610,46 @@ function SitesTab() {
           <Button
             onClick={addSite}
             disabled={saving}
-            className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+            className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
             <Plus className="h-4 w-4" />
             เพิ่ม
           </Button>
         </div>
 
-        <div className="rounded-md border">
+        <div className="rounded-md border border-slate-200 dark:border-slate-800">
           <Table>
-            <TableHeader className="bg-slate-50">
+            <TableHeader className="bg-slate-50 dark:bg-slate-900">
               <TableRow>
-                <TableHead>รหัส</TableHead>
-                <TableHead>ชื่อ</TableHead>
-                <TableHead>วันที่สร้าง</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">วันที่สร้าง</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
                   <TableCell colSpan={3}>
-                    <Skeleton className="h-6 w-full" />
+                    <Skeleton className="h-6 w-full dark:bg-slate-800" />
                   </TableCell>
                 </TableRow>
               ) : (sites ?? []).length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={3}
-                    className="py-8 text-center text-sm text-slate-400"
+                    className="py-8 text-center text-sm text-slate-400 dark:text-slate-500"
                   >
                     ยังไม่มีสาขา
                   </TableCell>
                 </TableRow>
               ) : (
                 (sites ?? []).map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="font-mono text-xs font-medium text-slate-700">
+                  <TableRow key={s.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">
                       {s.code}
                     </TableCell>
-                    <TableCell>{s.name}</TableCell>
-                    <TableCell className="text-xs text-slate-400">
+                    <TableCell className="text-slate-700 dark:text-slate-200">{s.name}</TableCell>
+                    <TableCell className="text-xs text-slate-400 dark:text-slate-500">
                       {new Date(s.createdAt).toLocaleDateString('th-TH')}
                     </TableCell>
                   </TableRow>
@@ -666,27 +666,27 @@ function SitesTab() {
 /* ---------- Users tab (read-only) ---------- */
 function UsersTab() {
   return (
-    <Card>
+    <Card className="dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <Users className="h-4 w-4 text-[#f97316]" />
           สิทธิ์ผู้ใช้ (แสดงผลเท่านั้น)
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="rounded-md border">
+        <div className="rounded-md border border-slate-200 dark:border-slate-800">
           <Table>
-            <TableHeader className="bg-slate-50">
+            <TableHeader className="bg-slate-50 dark:bg-slate-900">
               <TableRow>
-                <TableHead>อีเมล</TableHead>
-                <TableHead>บทบาท</TableHead>
-                <TableHead>ป้ายกำกับ</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">อีเมล</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">บทบาท</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">ป้ายกำกับ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {DEMO_USERS.map((u) => (
-                <TableRow key={u.email}>
-                  <TableCell className="font-medium text-slate-700">
+                <TableRow key={u.email} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                  <TableCell className="font-medium text-slate-700 dark:text-slate-200">
                     {u.email}
                   </TableCell>
                   <TableCell>
@@ -694,19 +694,19 @@ function UsersTab() {
                       className={
                         u.role === 'admin'
                           ? 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]'
-                          : 'border-slate-200 bg-slate-100 text-slate-700'
+                          : 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                       }
                     >
                       {u.role}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-slate-600">{u.roleLabel}</TableCell>
+                  <TableCell className="text-slate-600 dark:text-slate-300">{u.roleLabel}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </div>
-        <p className="mt-3 text-xs text-slate-400">
+        <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
           หมายเหตุ: ระบบจัดการสิทธิ์ผู้ใช้เต็มรูปแบบอยู่ในเวอร์ชัน Apps Script — หน้านี้แสดงผลข้อมูลตัวอย่างเท่านั้น
         </p>
       </CardContent>
@@ -731,6 +731,7 @@ const AUDIT_ACTION_OPTIONS = [
   'METER_READING',
   'SYNC',
   'SEED',
+  'IMPORT',
   'CYCLE_START',
   'CYCLE_END',
 ] as const
@@ -738,23 +739,25 @@ const AUDIT_ACTION_OPTIONS = [
 function actionBadgeClass(action: string): string {
   switch (action) {
     case 'CREATE':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
     case 'UPDATE':
-      return 'border-amber-200 bg-amber-50 text-amber-700'
+      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
     case 'DELETE':
-      return 'border-rose-200 bg-rose-50 text-rose-700'
+      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
     case 'METER_READING':
       return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]'
     case 'SYNC':
-      return 'border-teal-200 bg-teal-50 text-teal-700'
+      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300'
     case 'SEED':
-      return 'border-slate-200 bg-slate-100 text-slate-700'
+      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
     case 'CYCLE_START':
-      return 'border-violet-200 bg-violet-50 text-violet-700'
+      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300'
     case 'CYCLE_END':
-      return 'border-violet-200 bg-violet-50 text-violet-700'
+      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300'
+    case 'IMPORT':
+      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300'
     default:
-      return 'border-slate-200 bg-slate-100 text-slate-700'
+      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
   }
 }
 
@@ -822,9 +825,9 @@ function AuditTab() {
   })
 
   return (
-    <Card>
+    <Card className="dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
+        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <History className="h-4 w-4 text-[#f97316]" />
           ประวัติการใช้งาน (Audit Log)
         </CardTitle>
@@ -878,14 +881,14 @@ function AuditTab() {
         </div>
 
         {/* Table */}
-        <div className="itam-scroll max-h-[60vh] overflow-auto rounded-md border">
+        <div className="itam-scroll max-h-[60vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-slate-50">
+            <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
               <TableRow>
-                <TableHead className="w-44">วันที่เวลา</TableHead>
-                <TableHead className="w-36">การกระทำ</TableHead>
-                <TableHead>รายการ</TableHead>
-                <TableHead className="w-44">ผู้กระทำ</TableHead>
+                <TableHead className="w-44 text-slate-600 dark:text-slate-300">วันที่เวลา</TableHead>
+                <TableHead className="w-36 text-slate-600 dark:text-slate-300">การกระทำ</TableHead>
+                <TableHead className="text-slate-600 dark:text-slate-300">รายการ</TableHead>
+                <TableHead className="w-44 text-slate-600 dark:text-slate-300">ผู้กระทำ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -893,23 +896,23 @@ function AuditTab() {
                 Array.from({ length: 6 }).map((_, i) => (
                   <TableRow key={`sk-${i}`}>
                     <TableCell colSpan={4}>
-                      <Skeleton className="h-6 w-full" />
+                      <Skeleton className="h-6 w-full dark:bg-slate-800" />
                     </TableCell>
                   </TableRow>
                 ))
               ) : (logs ?? []).length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={4}>
-                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
-                      <Inbox className="h-8 w-8 text-slate-300" />
+                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-slate-400 dark:text-slate-500">
+                      <Inbox className="h-8 w-8 text-slate-300 dark:text-slate-600" />
                       <span className="text-sm">ยังไม่มีประวัติการใช้งาน</span>
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
                 (logs ?? []).map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell className="whitespace-nowrap text-xs text-slate-500">
+                  <TableRow key={log.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <TableCell className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
                       {formatThaiDateTime(log.createdAt)}
                     </TableCell>
                     <TableCell>
@@ -922,21 +925,21 @@ function AuditTab() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-start gap-2">
-                        <span className="mt-0.5 shrink-0 text-slate-400">
+                        <span className="mt-0.5 shrink-0 text-slate-400 dark:text-slate-500">
                           {entityIcon(log.entity)}
                         </span>
                         <div className="min-w-0">
-                          <div className="text-sm text-slate-700">
+                          <div className="text-sm text-slate-700 dark:text-slate-200">
                             {log.summary}
                           </div>
-                          <div className="text-xs text-slate-400">
+                          <div className="text-xs text-slate-400 dark:text-slate-500">
                             {log.entity}
                             {log.entityId ? ` · ${log.entityId.slice(-8)}` : ''}
                           </div>
                         </div>
                       </div>
                     </TableCell>
-                    <TableCell className="truncate text-xs text-slate-500">
+                    <TableCell className="truncate text-xs text-slate-500 dark:text-slate-400">
                       {log.actor}
                     </TableCell>
                   </TableRow>
@@ -945,7 +948,7 @@ function AuditTab() {
             </TableBody>
           </Table>
         </div>
-        <div className="flex items-center gap-2 text-xs text-slate-400">
+        <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
           <Repeat className="h-3 w-3" />
           แสดง {(logs ?? []).length} รายการล่าสุด · กรองได้ตามรายการ / การกระทำ / คำค้น
         </div>

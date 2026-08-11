@@ -2,6 +2,8 @@
 
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTheme } from 'next-themes'
+import { Sun, Moon } from 'lucide-react'
 import { useAppStore, type ActivePage } from '@/store/app-store'
 import { cn } from '@/lib/utils'
 
@@ -47,6 +49,14 @@ function useCountdown(endDate?: string) {
 export function Sidebar() {
   const { activePage, setActivePage, sidebarOpen, closeSidebar, toggleSidebar } =
     useAppStore()
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => setMounted(true), [])
+
+  const isDark = mounted && theme === 'dark'
+  function toggleTheme() {
+    setTheme(isDark ? 'light' : 'dark')
+  }
 
   const { data: activeCycle } = useQuery<CycleInfo | null>({
     queryKey: ['active-cycle'],
@@ -125,7 +135,7 @@ export function Sidebar() {
                 onClick={() => handleNav(item.page)}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex w-full cursor-pointer items-center border-l-[3px] px-5 py-3 text-sm transition-colors',
+                  'flex w-full cursor-pointer items-center border-l-[3px] px-5 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]',
                   active
                     ? 'border-[#f97316] bg-[rgba(234,88,12,0.12)] text-[#fb923c]'
                     : 'border-transparent text-slate-300 hover:bg-[rgba(255,255,255,0.05)] hover:text-white',
@@ -183,10 +193,28 @@ export function Sidebar() {
           className="px-5 pb-[18px] pt-[14px] text-center text-[11px] font-semibold tracking-[0.04em] text-slate-400"
           style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}
         >
-          <div className="mb-1 flex items-center justify-center gap-1.5">
+          <div className="mb-2 flex items-center justify-center gap-1.5">
             <span className="inline-block h-2 w-2 rounded-full bg-[#f97316]" />
             <span>Powered by PNG TEAM</span>
           </div>
+          {/* Theme toggle — keeps the sidebar dark in both themes, only swaps main content */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
+            title={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
+            className="mx-auto flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-200 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]"
+          >
+            {mounted ? (
+              isDark ? (
+                <Sun className="h-3.5 w-3.5" />
+              ) : (
+                <Moon className="h-3.5 w-3.5" />
+              )
+            ) : (
+              <span className="block h-3.5 w-3.5" />
+            )}
+          </button>
         </div>
       </aside>
     </>

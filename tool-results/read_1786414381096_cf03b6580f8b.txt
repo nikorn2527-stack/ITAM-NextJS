@@ -1,0 +1,957 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Input } from '@/components/ui/input'
+     9→import { Label } from '@/components/ui/label'
+    10→import { Switch } from '@/components/ui/switch'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Skeleton } from '@/components/ui/skeleton'
+    13→import {
+    14→  Tabs,
+    15→  TabsContent,
+    16→  TabsList,
+    17→  TabsTrigger,
+    18→} from '@/components/ui/tabs'
+    19→import {
+    20→  Select,
+    21→  SelectContent,
+    22→  SelectItem,
+    23→  SelectTrigger,
+    24→  SelectValue,
+    25→} from '@/components/ui/select'
+    26→import {
+    27→  Table,
+    28→  TableBody,
+    29→  TableCell,
+    30→  TableHead,
+    31→  TableHeader,
+    32→  TableRow,
+    33→} from '@/components/ui/table'
+    34→import {
+    35→  AlertDialog,
+    36→  AlertDialogAction,
+    37→  AlertDialogCancel,
+    38→  AlertDialogContent,
+    39→  AlertDialogDescription,
+    40→  AlertDialogFooter,
+    41→  AlertDialogHeader,
+    42→  AlertDialogTitle,
+    43→} from '@/components/ui/alert-dialog'
+    44→import {
+    45→  Plus,
+    46→  RefreshCw,
+    47→  Pencil,
+    48→  Trash2,
+    49→  Link2,
+    50→  Building2,
+    51→  Users,
+    52→  Save,
+    53→  Settings as SettingsIcon,
+    54→  Database,
+    55→  History,
+    56→  Inbox,
+    57→  Package,
+    58→  FileBarChart,
+    59→  Repeat,
+    60→  CalendarClock,
+    61→  Server,
+    62→} from 'lucide-react'
+    63→import {
+    64→  type MasterItem,
+    65→  type Site,
+    66→  type AuditLog,
+    67→  MASTER_CATEGORIES,
+    68→} from './types'
+    69→import { MasterDataModal } from './master-data-modal'
+    70→
+    71→const DEMO_USERS = [
+    72→  { email: 'admin@example.com', role: 'admin', roleLabel: 'ผู้ดูแลระบบ' },
+    73→  { email: 'manager@example.com', role: 'manager', roleLabel: 'ผู้จัดการ' },
+    74→  { email: 'staff@example.com', role: 'staff', roleLabel: 'เจ้าหน้าที่' },
+    75→  { email: 'viewer@example.com', role: 'viewer', roleLabel: 'ผู้ดู' },
+    76→]
+    77→
+    78→export function SettingsPage() {
+    79→  return (
+    80→    <div className="space-y-4 p-4 md:p-6">
+    81→      <div>
+    82→        <h1 className="text-2xl font-bold text-slate-800">ตั้งค่าแอป</h1>
+    83→        <p className="text-sm text-slate-500">
+    84→          ตั้งค่าทั่วไป · ข้อมูลมาตรฐาน · สาขา · สิทธิ์ผู้ใช้
+    85→        </p>
+    86→      </div>
+    87→
+    88→      <Tabs defaultValue="app" className="w-full">
+    89→        <TabsList className="h-auto flex-wrap">
+    90→          <TabsTrigger value="app" className="gap-1.5">
+    91→            <SettingsIcon className="h-4 w-4" />
+    92→            ตั้งค่าทั่วไป
+    93→          </TabsTrigger>
+    94→          <TabsTrigger value="master" className="gap-1.5">
+    95→            <Database className="h-4 w-4" />
+    96→            ข้อมูลมาตรฐาน
+    97→          </TabsTrigger>
+    98→          <TabsTrigger value="sites" className="gap-1.5">
+    99→            <Building2 className="h-4 w-4" />
+   100→            สาขา
+   101→          </TabsTrigger>
+   102→          <TabsTrigger value="users" className="gap-1.5">
+   103→            <Users className="h-4 w-4" />
+   104→            สิทธิ์ผู้ใช้
+   105→          </TabsTrigger>
+   106→          <TabsTrigger value="audit" className="gap-1.5" data-permission="ADMIN">
+   107→            <History className="h-4 w-4" />
+   108→            ประวัติการใช้งาน
+   109→          </TabsTrigger>
+   110→        </TabsList>
+   111→
+   112→        <TabsContent value="app" className="mt-4">
+   113→          <AppTab />
+   114→        </TabsContent>
+   115→        <TabsContent value="master" className="mt-4">
+   116→          <MasterTab />
+   117→        </TabsContent>
+   118→        <TabsContent value="sites" className="mt-4">
+   119→          <SitesTab />
+   120→        </TabsContent>
+   121→        <TabsContent value="users" className="mt-4">
+   122→          <UsersTab />
+   123→        </TabsContent>
+   124→        <TabsContent value="audit" className="mt-4">
+   125→          <AuditTab />
+   126→        </TabsContent>
+   127→      </Tabs>
+   128→    </div>
+   129→  )
+   130→}
+   131→
+   132→/* ---------- App tab ---------- */
+   133→function AppTab() {
+   134→  const qc = useQueryClient()
+   135→  const { data: settings, isLoading } = useQuery<Record<string, string>>({
+   136→    queryKey: ['settings'],
+   137→    queryFn: async () => {
+   138→      const res = await fetch('/api/settings')
+   139→      if (!res.ok) throw new Error('Failed to load settings')
+   140→      const json = await res.json()
+   141→      return json.settings as Record<string, string>
+   142→    },
+   143→  })
+   144→
+   145→  const [form, setForm] = React.useState<Record<string, string>>({})
+   146→  const [saving, setSaving] = React.useState(false)
+   147→
+   148→  React.useEffect(() => {
+   149→    if (settings) setForm({ ...settings })
+   150→  }, [settings])
+   151→
+   152→  async function save() {
+   153→    try {
+   154→      setSaving(true)
+   155→      const res = await fetch('/api/settings', {
+   156→        method: 'PUT',
+   157→        headers: { 'Content-Type': 'application/json' },
+   158→        body: JSON.stringify(form),
+   159→      })
+   160→      if (!res.ok) throw new Error('Save failed')
+   161→      toast.success('บันทึกการตั้งค่าแล้ว')
+   162→      await qc.invalidateQueries({ queryKey: ['settings'] })
+   163→    } catch (e) {
+   164→      toast.error(e instanceof Error ? e.message : 'Save failed')
+   165→    } finally {
+   166→      setSaving(false)
+   167→    }
+   168→  }
+   169→
+   170→  if (isLoading) {
+   171→    return (
+   172→      <Card>
+   173→        <CardContent className="p-6">
+   174→          <Skeleton className="h-64 w-full" />
+   175→        </CardContent>
+   176→      </Card>
+   177→    )
+   178→  }
+   179→
+   180→  return (
+   181→    <Card>
+   182→      <CardHeader>
+   183→        <CardTitle className="flex items-center gap-2 text-base">
+   184→          <SettingsIcon className="h-4 w-4 text-[#f97316]" />
+   185→          ตั้งค่าทั่วไป
+   186→        </CardTitle>
+   187→      </CardHeader>
+   188→      <CardContent className="space-y-4">
+   189→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   190→          <div className="space-y-1.5">
+   191→            <Label className="text-xs font-medium text-slate-600">
+   192→              ชื่อองค์กร
+   193→            </Label>
+   194→            <Input
+   195→              value={form.orgName ?? ''}
+   196→              onChange={(e) => setForm({ ...form, orgName: e.target.value })}
+   197→            />
+   198→          </div>
+   199→          <div className="space-y-1.5">
+   200→            <Label className="text-xs font-medium text-slate-600">
+   201→              สาขาเริ่มต้น
+   202→            </Label>
+   203→            <Input
+   204→              value={form.defaultSite ?? ''}
+   205→              onChange={(e) =>
+   206→                setForm({ ...form, defaultSite: e.target.value })
+   207→              }
+   208→            />
+   209→          </div>
+   210→        </div>
+   211→
+   212→        <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+   213→          <div>
+   214→            <div className="text-sm font-medium text-slate-700">
+   215→              เปิดใช้งานการล็อกอินด้วยรหัสผ่าน
+   216→            </div>
+   217→            <div className="text-xs text-slate-500">
+   218→              อนุญาตให้ผู้ใช้ล็อกอินด้วยรหัสผ่าน (นอกเหนือจาก SSO)
+   219→            </div>
+   220→          </div>
+   221→          <Switch
+   222→            checked={form.enablePasswordLogin === 'true'}
+   223→            onCheckedChange={(c) =>
+   224→              setForm({ ...form, enablePasswordLogin: c ? 'true' : 'false' })
+   225→            }
+   226→          />
+   227→        </div>
+   228→
+   229→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   230→          <div className="space-y-1.5">
+   231→            <Label className="text-xs font-medium text-slate-600">
+   232→              แม่แบบสติกเกอร์
+   233→            </Label>
+   234→            <Input
+   235→              value={form.stickerTemplate ?? ''}
+   236→              onChange={(e) =>
+   237→                setForm({ ...form, stickerTemplate: e.target.value })
+   238→              }
+   239→              placeholder="template-1"
+   240→            />
+   241→          </div>
+   242→          <div className="space-y-1.5">
+   243→            <Label className="text-xs font-medium text-slate-600">
+   244→              แม่แบบเอกสาร
+   245→            </Label>
+   246→            <Input
+   247→              value={form.docTemplate ?? ''}
+   248→              onChange={(e) =>
+   249→                setForm({ ...form, docTemplate: e.target.value })
+   250→              }
+   251→              placeholder="doc-1"
+   252→            />
+   253→          </div>
+   254→        </div>
+   255→
+   256→        <div className="flex justify-end">
+   257→          <Button
+   258→            onClick={save}
+   259→            disabled={saving}
+   260→            className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+   261→          >
+   262→            <Save className="h-4 w-4" />
+   263→            {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+   264→          </Button>
+   265→        </div>
+   266→      </CardContent>
+   267→    </Card>
+   268→  )
+   269→}
+   270→
+   271→/* ---------- Master tab ---------- */
+   272→function MasterTab() {
+   273→  const qc = useQueryClient()
+   274→  const [categoryFilter, setCategoryFilter] = React.useState<string>('all')
+   275→  const [modalOpen, setModalOpen] = React.useState(false)
+   276→  const [editTarget, setEditTarget] = React.useState<MasterItem | null>(null)
+   277→  const [deleteTarget, setDeleteTarget] = React.useState<MasterItem | null>(null)
+   278→  const [deleting, setDeleting] = React.useState(false)
+   279→  const [syncing, setSyncing] = React.useState<string | null>(null)
+   280→
+   281→  const { data: items, isLoading } = useQuery<MasterItem[]>({
+   282→    queryKey: ['master', categoryFilter],
+   283→    queryFn: async () => {
+   284→      const params = new URLSearchParams()
+   285→      if (categoryFilter !== 'all') params.set('category', categoryFilter)
+   286→      const res = await fetch(`/api/master?${params.toString()}`)
+   287→      if (!res.ok) throw new Error('Failed to load master')
+   288→      const json = await res.json()
+   289→      return json.items as MasterItem[]
+   290→    },
+   291→  })
+   292→
+   293→  function openAdd() {
+   294→    setEditTarget(null)
+   295→    setModalOpen(true)
+   296→  }
+   297→  function openEdit(item: MasterItem) {
+   298→    setEditTarget(item)
+   299→    setModalOpen(true)
+   300→  }
+   301→
+   302→  async function runSync(type: 'model' | 'dept' | 'labels') {
+   303→    try {
+   304→      setSyncing(type)
+   305→      const res = await fetch(`/api/master/sync?type=${type}`, {
+   306→        method: 'POST',
+   307→      })
+   308→      if (!res.ok) {
+   309→        const j = await res.json().catch(() => ({}))
+   310→        throw new Error(j.error ?? 'Sync failed')
+   311→      }
+   312→      const json = await res.json()
+   313→      toast.success(
+   314→        `ซิงค์ข้อมูลสำเร็จ (${type}) — อัปเดต ${json.updated ?? 0} รายการ`,
+   315→      )
+   316→      await qc.invalidateQueries({ queryKey: ['master'] })
+   317→      await qc.invalidateQueries({ queryKey: ['devices'] })
+   318→    } catch (e) {
+   319→      toast.error(e instanceof Error ? e.message : 'Sync failed')
+   320→    } finally {
+   321→      setSyncing(null)
+   322→    }
+   323→  }
+   324→
+   325→  async function confirmDelete() {
+   326→    if (!deleteTarget) return
+   327→    try {
+   328→      setDeleting(true)
+   329→      const res = await fetch(`/api/master/${deleteTarget.id}`, {
+   330→        method: 'DELETE',
+   331→      })
+   332→      if (!res.ok) {
+   333→        const j = await res.json().catch(() => ({}))
+   334→        throw new Error(j.error ?? 'Delete failed')
+   335→      }
+   336→      toast.success('ลบรายการแล้ว')
+   337→      setDeleteTarget(null)
+   338→      await qc.invalidateQueries({ queryKey: ['master'] })
+   339→    } catch (e) {
+   340→      toast.error(e instanceof Error ? e.message : 'Delete failed')
+   341→    } finally {
+   342→      setDeleting(false)
+   343→    }
+   344→  }
+   345→
+   346→  return (
+   347→    <Card>
+   348→      <CardHeader>
+   349→        <CardTitle className="flex items-center gap-2 text-base">
+   350→          <Database className="h-4 w-4 text-[#f97316]" />
+   351→          ข้อมูลมาตรฐาน (Master Data)
+   352→        </CardTitle>
+   353→      </CardHeader>
+   354→      <CardContent className="space-y-4">
+   355→        {/* Toolbar */}
+   356→        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+   357→          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+   358→            <Select
+   359→              value={categoryFilter}
+   360→              onValueChange={setCategoryFilter}
+   361→            >
+   362→              <SelectTrigger className="w-full sm:w-44">
+   363→                <SelectValue placeholder="หมวดหมู่" />
+   364→              </SelectTrigger>
+   365→              <SelectContent>
+   366→                <SelectItem value="all">หมวดหมู่ทั้งหมด</SelectItem>
+   367→                {MASTER_CATEGORIES.map((c) => (
+   368→                  <SelectItem key={c} value={c}>
+   369→                    {c}
+   370→                  </SelectItem>
+   371→                ))}
+   372→              </SelectContent>
+   373→            </Select>
+   374→          </div>
+   375→          <div className="flex flex-wrap items-center gap-2">
+   376→            <Button
+   377→              variant="outline"
+   378→              size="sm"
+   379→              onClick={() => runSync('model')}
+   380→              disabled={syncing !== null}
+   381→            >
+   382→              <Link2 className="h-3.5 w-3.5" />
+   383→              {syncing === 'model' ? '...' : 'Model'}
+   384→            </Button>
+   385→            <Button
+   386→              variant="outline"
+   387→              size="sm"
+   388→              onClick={() => runSync('dept')}
+   389→              disabled={syncing !== null}
+   390→            >
+   391→              <Link2 className="h-3.5 w-3.5" />
+   392→              {syncing === 'dept' ? '...' : 'Dept'}
+   393→            </Button>
+   394→            <Button
+   395→              variant="outline"
+   396→              size="sm"
+   397→              onClick={() => runSync('labels')}
+   398→              disabled={syncing !== null}
+   399→            >
+   400→              <Link2 className="h-3.5 w-3.5" />
+   401→              {syncing === 'labels' ? '...' : 'Labels'}
+   402→            </Button>
+   403→            <Button
+   404→              onClick={openAdd}
+   405→              className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+   406→              size="sm"
+   407→            >
+   408→              <Plus className="h-3.5 w-3.5" />
+   409→              เพิ่มรายการ
+   410→            </Button>
+   411→            <Button
+   412→              variant="outline"
+   413→              size="sm"
+   414→              onClick={() => qc.invalidateQueries({ queryKey: ['master'] })}
+   415→            >
+   416→              <RefreshCw className="h-3.5 w-3.5" />
+   417→            </Button>
+   418→          </div>
+   419→        </div>
+   420→
+   421→        {/* Table */}
+   422→        <div className="itam-scroll max-h-[55vh] overflow-auto rounded-md border">
+   423→          <Table>
+   424→            <TableHeader className="sticky top-0 z-10 bg-slate-50">
+   425→              <TableRow>
+   426→                <TableHead>หมวดหมู่</TableHead>
+   427→                <TableHead>รหัส</TableHead>
+   428→                <TableHead>ชื่อ</TableHead>
+   429→                <TableHead>ParentRef</TableHead>
+   430→                <TableHead>DisplayLabel</TableHead>
+   431→                <TableHead>SiteCode</TableHead>
+   432→                <TableHead className="text-right">การจัดการ</TableHead>
+   433→              </TableRow>
+   434→            </TableHeader>
+   435→            <TableBody>
+   436→              {isLoading ? (
+   437→                Array.from({ length: 6 }).map((_, i) => (
+   438→                  <TableRow key={`sk-${i}`}>
+   439→                    <TableCell colSpan={7}>
+   440→                      <Skeleton className="h-6 w-full" />
+   441→                    </TableCell>
+   442→                  </TableRow>
+   443→                ))
+   444→              ) : (items ?? []).length === 0 ? (
+   445→                <TableRow>
+   446→                  <TableCell
+   447→                    colSpan={7}
+   448→                    className="py-8 text-center text-sm text-slate-400"
+   449→                  >
+   450→                    ไม่พบรายการ
+   451→                  </TableCell>
+   452→                </TableRow>
+   453→              ) : (
+   454→                (items ?? []).map((it) => (
+   455→                  <TableRow key={it.id}>
+   456→                    <TableCell>
+   457→                      <Badge className="border-slate-200 bg-slate-100 text-slate-700">
+   458→                        {it.category}
+   459→                      </Badge>
+   460→                    </TableCell>
+   461→                    <TableCell className="font-mono text-xs font-medium text-slate-700">
+   462→                      {it.code}
+   463→                    </TableCell>
+   464→                    <TableCell>{it.label}</TableCell>
+   465→                    <TableCell className="font-mono text-xs text-slate-500">
+   466→                      {it.parentRef ?? '-'}
+   467→                    </TableCell>
+   468→                    <TableCell className="text-slate-600">
+   469→                      {it.displayLabel ?? '-'}
+   470→                    </TableCell>
+   471→                    <TableCell className="font-mono text-xs text-slate-500">
+   472→                      {it.siteCode ?? '-'}
+   473→                    </TableCell>
+   474→                    <TableCell className="text-right">
+   475→                      <div className="flex justify-end gap-1">
+   476→                        <Button
+   477→                          size="icon"
+   478→                          variant="ghost"
+   479→                          onClick={() => openEdit(it)}
+   480→                          aria-label="แก้ไข"
+   481→                        >
+   482→                          <Pencil className="h-4 w-4" />
+   483→                        </Button>
+   484→                        <Button
+   485→                          size="icon"
+   486→                          variant="ghost"
+   487→                          onClick={() => setDeleteTarget(it)}
+   488→                          aria-label="ลบ"
+   489→                          className="text-rose-600 hover:bg-rose-50"
+   490→                        >
+   491→                          <Trash2 className="h-4 w-4" />
+   492→                        </Button>
+   493→                      </div>
+   494→                    </TableCell>
+   495→                  </TableRow>
+   496→                ))
+   497→              )}
+   498→            </TableBody>
+   499→          </Table>
+   500→        </div>
+   501→        <div className="text-xs text-slate-400">
+   502→          ทั้งหมด {(items ?? []).length} รายการ · ปุ่มซิงค์ (Model/Dept/Labels) ใช้สำหรับ backfill ฟิลด์ ParentRef / DepartmentCode / DisplayLabel
+   503→        </div>
+   504→      </CardContent>
+   505→
+   506→      <MasterDataModal
+   507→        open={modalOpen}
+   508→        onOpenChange={setModalOpen}
+   509→        initial={editTarget}
+   510→        fixedCategory={
+   511→          categoryFilter !== 'all' ? categoryFilter : undefined
+   512→        }
+   513→      />
+   514→
+   515→      <AlertDialog
+   516→        open={Boolean(deleteTarget)}
+   517→        onOpenChange={(o) => !o && setDeleteTarget(null)}
+   518→      >
+   519→        <AlertDialogContent>
+   520→          <AlertDialogHeader>
+   521→            <AlertDialogTitle>ยืนยันการลบรายการ</AlertDialogTitle>
+   522→            <AlertDialogDescription>
+   523→              ลบ{' '}
+   524→              <span className="font-semibold text-slate-700">
+   525→                {deleteTarget?.label} ({deleteTarget?.code})
+   526→              </span>{' '}
+   527→              ออกจากข้อมูลมาตรฐาน?
+   528→            </AlertDialogDescription>
+   529→          </AlertDialogHeader>
+   530→          <AlertDialogFooter>
+   531→            <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
+   532→            <AlertDialogAction
+   533→              onClick={confirmDelete}
+   534→              disabled={deleting}
+   535→              className="bg-rose-600 text-white hover:bg-rose-700"
+   536→            >
+   537→              {deleting ? 'กำลังลบ...' : 'ลบ'}
+   538→            </AlertDialogAction>
+   539→          </AlertDialogFooter>
+   540→        </AlertDialogContent>
+   541→      </AlertDialog>
+   542→    </Card>
+   543→  )
+   544→}
+   545→
+   546→/* ---------- Sites tab ---------- */
+   547→function SitesTab() {
+   548→  const qc = useQueryClient()
+   549→  const { data: sites, isLoading } = useQuery<Site[]>({
+   550→    queryKey: ['sites'],
+   551→    queryFn: async () => {
+   552→      const res = await fetch('/api/sites')
+   553→      if (!res.ok) throw new Error('Failed to load sites')
+   554→      const json = await res.json()
+   555→      return json.sites as Site[]
+   556→    },
+   557→  })
+   558→
+   559→  const [code, setCode] = React.useState('')
+   560→  const [name, setName] = React.useState('')
+   561→  const [saving, setSaving] = React.useState(false)
+   562→
+   563→  async function addSite() {
+   564→    if (!code || !name) {
+   565→      toast.error('กรุณากรอกรหัสและชื่อสาขา')
+   566→      return
+   567→    }
+   568→    try {
+   569→      setSaving(true)
+   570→      const res = await fetch('/api/sites', {
+   571→        method: 'POST',
+   572→        headers: { 'Content-Type': 'application/json' },
+   573→        body: JSON.stringify({ code, name }),
+   574→      })
+   575→      if (!res.ok) {
+   576→        const j = await res.json().catch(() => ({}))
+   577→        throw new Error(j.error ?? 'Add failed')
+   578→      }
+   579→      toast.success('เพิ่มสาขาแล้ว')
+   580→      setCode('')
+   581→      setName('')
+   582→      await qc.invalidateQueries({ queryKey: ['sites'] })
+   583→    } catch (e) {
+   584→      toast.error(e instanceof Error ? e.message : 'Add failed')
+   585→    } finally {
+   586→      setSaving(false)
+   587→    }
+   588→  }
+   589→
+   590→  return (
+   591→    <Card>
+   592→      <CardHeader>
+   593→        <CardTitle className="flex items-center gap-2 text-base">
+   594→          <Building2 className="h-4 w-4 text-[#f97316]" />
+   595→          สาขา
+   596→        </CardTitle>
+   597→      </CardHeader>
+   598→      <CardContent className="space-y-4">
+   599→        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_2fr_auto]">
+   600→          <Input
+   601→            placeholder="รหัสสาขา"
+   602→            value={code}
+   603→            onChange={(e) => setCode(e.target.value)}
+   604→          />
+   605→          <Input
+   606→            placeholder="ชื่อสาขา"
+   607→            value={name}
+   608→            onChange={(e) => setName(e.target.value)}
+   609→          />
+   610→          <Button
+   611→            onClick={addSite}
+   612→            disabled={saving}
+   613→            className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+   614→          >
+   615→            <Plus className="h-4 w-4" />
+   616→            เพิ่ม
+   617→          </Button>
+   618→        </div>
+   619→
+   620→        <div className="rounded-md border">
+   621→          <Table>
+   622→            <TableHeader className="bg-slate-50">
+   623→              <TableRow>
+   624→                <TableHead>รหัส</TableHead>
+   625→                <TableHead>ชื่อ</TableHead>
+   626→                <TableHead>วันที่สร้าง</TableHead>
+   627→              </TableRow>
+   628→            </TableHeader>
+   629→            <TableBody>
+   630→              {isLoading ? (
+   631→                <TableRow>
+   632→                  <TableCell colSpan={3}>
+   633→                    <Skeleton className="h-6 w-full" />
+   634→                  </TableCell>
+   635→                </TableRow>
+   636→              ) : (sites ?? []).length === 0 ? (
+   637→                <TableRow>
+   638→                  <TableCell
+   639→                    colSpan={3}
+   640→                    className="py-8 text-center text-sm text-slate-400"
+   641→                  >
+   642→                    ยังไม่มีสาขา
+   643→                  </TableCell>
+   644→                </TableRow>
+   645→              ) : (
+   646→                (sites ?? []).map((s) => (
+   647→                  <TableRow key={s.id}>
+   648→                    <TableCell className="font-mono text-xs font-medium text-slate-700">
+   649→                      {s.code}
+   650→                    </TableCell>
+   651→                    <TableCell>{s.name}</TableCell>
+   652→                    <TableCell className="text-xs text-slate-400">
+   653→                      {new Date(s.createdAt).toLocaleDateString('th-TH')}
+   654→                    </TableCell>
+   655→                  </TableRow>
+   656→                ))
+   657→              )}
+   658→            </TableBody>
+   659→          </Table>
+   660→        </div>
+   661→      </CardContent>
+   662→    </Card>
+   663→  )
+   664→}
+   665→
+   666→/* ---------- Users tab (read-only) ---------- */
+   667→function UsersTab() {
+   668→  return (
+   669→    <Card>
+   670→      <CardHeader>
+   671→        <CardTitle className="flex items-center gap-2 text-base">
+   672→          <Users className="h-4 w-4 text-[#f97316]" />
+   673→          สิทธิ์ผู้ใช้ (แสดงผลเท่านั้น)
+   674→        </CardTitle>
+   675→      </CardHeader>
+   676→      <CardContent>
+   677→        <div className="rounded-md border">
+   678→          <Table>
+   679→            <TableHeader className="bg-slate-50">
+   680→              <TableRow>
+   681→                <TableHead>อีเมล</TableHead>
+   682→                <TableHead>บทบาท</TableHead>
+   683→                <TableHead>ป้ายกำกับ</TableHead>
+   684→              </TableRow>
+   685→            </TableHeader>
+   686→            <TableBody>
+   687→              {DEMO_USERS.map((u) => (
+   688→                <TableRow key={u.email}>
+   689→                  <TableCell className="font-medium text-slate-700">
+   690→                    {u.email}
+   691→                  </TableCell>
+   692→                  <TableCell>
+   693→                    <Badge
+   694→                      className={
+   695→                        u.role === 'admin'
+   696→                          ? 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]'
+   697→                          : 'border-slate-200 bg-slate-100 text-slate-700'
+   698→                      }
+   699→                    >
+   700→                      {u.role}
+   701→                    </Badge>
+   702→                  </TableCell>
+   703→                  <TableCell className="text-slate-600">{u.roleLabel}</TableCell>
+   704→                </TableRow>
+   705→              ))}
+   706→            </TableBody>
+   707→          </Table>
+   708→        </div>
+   709→        <p className="mt-3 text-xs text-slate-400">
+   710→          หมายเหตุ: ระบบจัดการสิทธิ์ผู้ใช้เต็มรูปแบบอยู่ในเวอร์ชัน Apps Script — หน้านี้แสดงผลข้อมูลตัวอย่างเท่านั้น
+   711→        </p>
+   712→      </CardContent>
+   713→    </Card>
+   714→  )
+   715→}
+   716→
+   717→/* ---------- Audit tab ---------- */
+   718→const AUDIT_ENTITY_OPTIONS = [
+   719→  'Device',
+   720→  'MasterItem',
+   721→  'MeterReading',
+   722→  'Cycle',
+   723→  'Site',
+   724→  'Setting',
+   725→] as const
+   726→
+   727→const AUDIT_ACTION_OPTIONS = [
+   728→  'CREATE',
+   729→  'UPDATE',
+   730→  'DELETE',
+   731→  'METER_READING',
+   732→  'SYNC',
+   733→  'SEED',
+   734→  'CYCLE_START',
+   735→  'CYCLE_END',
+   736→] as const
+   737→
+   738→function actionBadgeClass(action: string): string {
+   739→  switch (action) {
+   740→    case 'CREATE':
+   741→      return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+   742→    case 'UPDATE':
+   743→      return 'border-amber-200 bg-amber-50 text-amber-700'
+   744→    case 'DELETE':
+   745→      return 'border-rose-200 bg-rose-50 text-rose-700'
+   746→    case 'METER_READING':
+   747→      return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]'
+   748→    case 'SYNC':
+   749→      return 'border-teal-200 bg-teal-50 text-teal-700'
+   750→    case 'SEED':
+   751→      return 'border-slate-200 bg-slate-100 text-slate-700'
+   752→    case 'CYCLE_START':
+   753→      return 'border-violet-200 bg-violet-50 text-violet-700'
+   754→    case 'CYCLE_END':
+   755→      return 'border-violet-200 bg-violet-50 text-violet-700'
+   756→    default:
+   757→      return 'border-slate-200 bg-slate-100 text-slate-700'
+   758→  }
+   759→}
+   760→
+   761→function entityIcon(entity: string) {
+   762→  const cls = 'h-3.5 w-3.5'
+   763→  switch (entity) {
+   764→    case 'Device':
+   765→      return <Package className={cls} />
+   766→    case 'MasterItem':
+   767→      return <Database className={cls} />
+   768→    case 'MeterReading':
+   769→      return <FileBarChart className={cls} />
+   770→    case 'Cycle':
+   771→      return <CalendarClock className={cls} />
+   772→    case 'Site':
+   773→      return <Building2 className={cls} />
+   774→    case 'Setting':
+   775→      return <SettingsIcon className={cls} />
+   776→    default:
+   777→      return <Server className={cls} />
+   778→  }
+   779→}
+   780→
+   781→function formatThaiDateTime(iso: string): string {
+   782→  try {
+   783→    const d = new Date(iso)
+   784→    return d.toLocaleString('th-TH', {
+   785→      day: '2-digit',
+   786→      month: '2-digit',
+   787→      year: 'numeric',
+   788→      hour: '2-digit',
+   789→      minute: '2-digit',
+   790→    })
+   791→  } catch {
+   792→    return iso
+   793→  }
+   794→}
+   795→
+   796→function AuditTab() {
+   797→  const qc = useQueryClient()
+   798→  const [entity, setEntity] = React.useState('all')
+   799→  const [action, setAction] = React.useState('all')
+   800→  const [q, setQ] = React.useState('')
+   801→  const [debouncedQ, setDebouncedQ] = React.useState('')
+   802→
+   803→  // Debounce search input
+   804→  React.useEffect(() => {
+   805→    const t = setTimeout(() => setDebouncedQ(q.trim()), 350)
+   806→    return () => clearTimeout(t)
+   807→  }, [q])
+   808→
+   809→  const { data: logs, isLoading } = useQuery<AuditLog[]>({
+   810→    queryKey: ['audit', entity, action, debouncedQ],
+   811→    queryFn: async () => {
+   812→      const params = new URLSearchParams()
+   813→      params.set('limit', '100')
+   814→      if (entity !== 'all') params.set('entity', entity)
+   815→      if (action !== 'all') params.set('action', action)
+   816→      if (debouncedQ) params.set('q', debouncedQ)
+   817→      const res = await fetch(`/api/audit?${params.toString()}`)
+   818→      if (!res.ok) throw new Error('Failed to load audit logs')
+   819→      const json = await res.json()
+   820→      return (json.logs ?? []) as AuditLog[]
+   821→    },
+   822→  })
+   823→
+   824→  return (
+   825→    <Card>
+   826→      <CardHeader>
+   827→        <CardTitle className="flex items-center gap-2 text-base">
+   828→          <History className="h-4 w-4 text-[#f97316]" />
+   829→          ประวัติการใช้งาน (Audit Log)
+   830→        </CardTitle>
+   831→      </CardHeader>
+   832→      <CardContent className="space-y-4">
+   833→        {/* Filter bar */}
+   834→        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+   835→          <Select value={entity} onValueChange={setEntity}>
+   836→            <SelectTrigger className="w-full sm:w-44">
+   837→              <SelectValue placeholder="รายการ" />
+   838→            </SelectTrigger>
+   839→            <SelectContent>
+   840→              <SelectItem value="all">รายการทั้งหมด</SelectItem>
+   841→              {AUDIT_ENTITY_OPTIONS.map((v) => (
+   842→                <SelectItem key={v} value={v}>
+   843→                  {v}
+   844→                </SelectItem>
+   845→              ))}
+   846→            </SelectContent>
+   847→          </Select>
+   848→          <Select value={action} onValueChange={setAction}>
+   849→            <SelectTrigger className="w-full sm:w-44">
+   850→              <SelectValue placeholder="การกระทำ" />
+   851→            </SelectTrigger>
+   852→            <SelectContent>
+   853→              <SelectItem value="all">การกระทำทั้งหมด</SelectItem>
+   854→              {AUDIT_ACTION_OPTIONS.map((v) => (
+   855→                <SelectItem key={v} value={v}>
+   856→                  {v}
+   857→                </SelectItem>
+   858→              ))}
+   859→            </SelectContent>
+   860→          </Select>
+   861→          <div className="relative flex-1">
+   862→            <RefreshCw className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 rotate-45 text-slate-400" />
+   863→            <Input
+   864→              placeholder="ค้นหาจากคำอธิบาย..."
+   865→              value={q}
+   866→              onChange={(e) => setQ(e.target.value)}
+   867→              className="pl-9"
+   868→            />
+   869→          </div>
+   870→          <Button
+   871→            variant="outline"
+   872→            size="icon"
+   873→            onClick={() => qc.invalidateQueries({ queryKey: ['audit'] })}
+   874→            aria-label="รีเฟรช"
+   875→          >
+   876→            <RefreshCw className="h-4 w-4" />
+   877→          </Button>
+   878→        </div>
+   879→
+   880→        {/* Table */}
+   881→        <div className="itam-scroll max-h-[60vh] overflow-auto rounded-md border">
+   882→          <Table>
+   883→            <TableHeader className="sticky top-0 z-10 bg-slate-50">
+   884→              <TableRow>
+   885→                <TableHead className="w-44">วันที่เวลา</TableHead>
+   886→                <TableHead className="w-36">การกระทำ</TableHead>
+   887→                <TableHead>รายการ</TableHead>
+   888→                <TableHead className="w-44">ผู้กระทำ</TableHead>
+   889→              </TableRow>
+   890→            </TableHeader>
+   891→            <TableBody>
+   892→              {isLoading ? (
+   893→                Array.from({ length: 6 }).map((_, i) => (
+   894→                  <TableRow key={`sk-${i}`}>
+   895→                    <TableCell colSpan={4}>
+   896→                      <Skeleton className="h-6 w-full" />
+   897→                    </TableCell>
+   898→                  </TableRow>
+   899→                ))
+   900→              ) : (logs ?? []).length === 0 ? (
+   901→                <TableRow>
+   902→                  <TableCell colSpan={4}>
+   903→                    <div className="flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
+   904→                      <Inbox className="h-8 w-8 text-slate-300" />
+   905→                      <span className="text-sm">ยังไม่มีประวัติการใช้งาน</span>
+   906→                    </div>
+   907→                  </TableCell>
+   908→                </TableRow>
+   909→              ) : (
+   910→                (logs ?? []).map((log) => (
+   911→                  <TableRow key={log.id}>
+   912→                    <TableCell className="whitespace-nowrap text-xs text-slate-500">
+   913→                      {formatThaiDateTime(log.createdAt)}
+   914→                    </TableCell>
+   915→                    <TableCell>
+   916→                      <Badge
+   917→                        variant="outline"
+   918→                        className={actionBadgeClass(log.action)}
+   919→                      >
+   920→                        {log.action}
+   921→                      </Badge>
+   922→                    </TableCell>
+   923→                    <TableCell>
+   924→                      <div className="flex items-start gap-2">
+   925→                        <span className="mt-0.5 shrink-0 text-slate-400">
+   926→                          {entityIcon(log.entity)}
+   927→                        </span>
+   928→                        <div className="min-w-0">
+   929→                          <div className="text-sm text-slate-700">
+   930→                            {log.summary}
+   931→                          </div>
+   932→                          <div className="text-xs text-slate-400">
+   933→                            {log.entity}
+   934→                            {log.entityId ? ` · ${log.entityId.slice(-8)}` : ''}
+   935→                          </div>
+   936→                        </div>
+   937→                      </div>
+   938→                    </TableCell>
+   939→                    <TableCell className="truncate text-xs text-slate-500">
+   940→                      {log.actor}
+   941→                    </TableCell>
+   942→                  </TableRow>
+   943→                ))
+   944→              )}
+   945→            </TableBody>
+   946→          </Table>
+   947→        </div>
+   948→        <div className="flex items-center gap-2 text-xs text-slate-400">
+   949→          <Repeat className="h-3 w-3" />
+   950→          แสดง {(logs ?? []).length} รายการล่าสุด · กรองได้ตามรายการ / การกระทำ / คำค้น
+   951→        </div>
+   952→      </CardContent>
+   953→    </Card>
+   954→  )
+   955→}
+   956→
+   957→// (no extra exports)

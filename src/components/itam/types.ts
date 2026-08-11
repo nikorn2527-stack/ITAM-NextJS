@@ -78,7 +78,26 @@ export interface DashboardData {
     remark: string | null
   }>
   paperThisMonth?: number
+  range?: {
+    key: string
+    label: string
+    start: string | null
+    end: string | null
+  }
 }
+
+export type DashboardRangeKey = 'month' | '30d' | 'quarter' | 'all'
+
+export const DASHBOARD_RANGE_OPTIONS: {
+  value: DashboardRangeKey
+  label: string
+  kpiLabel: string
+}[] = [
+  { value: 'month', label: 'เดือนนี้', kpiLabel: 'กระดาษเดือนนี้' },
+  { value: '30d', label: '30 วันล่าสุด', kpiLabel: 'กระดาษ 30 วัน' },
+  { value: 'quarter', label: 'ไตรมาสนี้', kpiLabel: 'กระดาษไตรมาสนี้' },
+  { value: 'all', label: 'ทั้งหมด', kpiLabel: 'กระดาษทั้งหมด' },
+]
 
 export interface AuditLog {
   id: string
@@ -110,15 +129,15 @@ export const MASTER_CATEGORIES = [
 export function statusBadgeClass(status: string): string {
   switch (status) {
     case 'active':
-      return 'bg-emerald-100 text-emerald-700 border-emerald-200'
+      return 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800'
     case 'spare':
-      return 'bg-amber-100 text-amber-700 border-amber-200'
+      return 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800'
     case 'repair':
-      return 'bg-orange-100 text-orange-700 border-orange-200'
+      return 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800'
     case 'disposed':
-      return 'bg-rose-100 text-rose-700 border-rose-200'
+      return 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800'
     default:
-      return 'bg-slate-100 text-slate-700 border-slate-200'
+      return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
   }
 }
 
