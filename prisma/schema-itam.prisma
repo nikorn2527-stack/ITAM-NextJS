@@ -96,11 +96,28 @@ model MeterReading {
 // TODO: Models ถัดไป (รอ headers จากผู้ใช้)
 //
 // 6) Cycles              — รอบจดมิเตอร์ (ยังไม่มี sheet — ข้ามไปก่อน)
-// 9) Site_Attributes     — ข้อมูลสาขา
 // 10) App_Settings       — ตั้งค่าแอป
 // 11) Assignments        — การมอบหมาย
 // 12) MaintenanceLog     — ซ่อมบำรุง
 // ============================================================
+
+// ============================================================
+// 9) Site_Attributes — ข้อมูลสาขา + อัตราค่ากระดาษ
+//    Source: sheet "Site_Attributes" (6 columns)
+// ============================================================
+model SiteAttribute {
+  id            String   @id @default(cuid())
+  siteCode      String   @unique @map("SiteCode") // เช่น MECUD
+  siteName      String?  @map("SiteName") // เช่น ศูนย์แพทย์โรงพยาบาลศูนย์อุดรธานี
+  lineOa        String?  @map("LineOA") // LINE OA ID/Token
+  hotline       String?  @map("Hotline") // เบอร์ติดต่อ
+  paperRateBw   Float?   @default(0.5) @map("PaperRateBW") // ฿/แผ่น ขาวดำ
+  paperRateColor Float?  @default(2.0) @map("PaperRateColor") // ฿/แผ่น สี
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("site_attributes")
+}
 
 // ============================================================
 // 8) User_Permissions — สิทธิ์ผู้ใช้
