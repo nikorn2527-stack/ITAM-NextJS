@@ -62,6 +62,28 @@ export async function GET(req: NextRequest) {
     })
     const paperThisMonth = monthReadings.reduce((sum, r) => sum + r.pagesBw + r.pagesColor, 0)
 
+    // 4b) Paper usage trend (last 6 months)
+    const trendMonths: { key: string; label: string }[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const label = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`
+      trendMonths.push({ key, label })
+    }
+    const trendReadings = await db.meterReading.findMany({
+      where: { readingMonth: { in: trendMonths.map(m => m.key) } },
+      select: { readingMonth: true, pagesBw: true, pagesColor: true },
+    })
+    const trendMap: Record<string, number> = {}
+    trendReadings.forEach(r => {
+      const k = r.readingMonth || ''
+      trendMap[k] = (trendMap[k] || 0) + r.pagesBw + r.pagesColor
+    })
+    const paperTrend = trendMonths.map(m => ({
+      month: m.label,
+      sheets: trendMap[m.key] || 0,
+    }))
+
     // 5) Recent meter readings (5)
     const recentReadings = await db.meterReading.findMany({
       take: 5,
@@ -133,6 +155,7 @@ export async function GET(req: NextRequest) {
       byType,
       bySite,
       paperThisMonth,
+      paperTrend,
       meterRequiredCount,
       recentActivity,
       heatmap,

@@ -1,14 +1,24 @@
 'use client'
 
 import * as React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTheme } from 'next-themes'
+import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+import {
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area, LabelList,
+} from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Package, CheckCircle2, Wrench, FileText, TrendingUp, Building2, FileDown, Flame, BarChart3, Trophy } from 'lucide-react'
+import {
+  Package, CheckCircle2, Wrench, FileText, TrendingUp, Building2,
+  FileDown, Flame, BarChart3, Trophy, RefreshCw, Loader2,
+} from 'lucide-react'
+import { useAppStore } from '@/store/app-store'
 
 interface SiteRow { siteCode: string; siteName: string | null; deviceCount: number; activeCount: number; paperSheets: number }
 interface DashboardData {
@@ -16,6 +26,7 @@ interface DashboardData {
   byType: Array<{ name: string; value: number }>
   bySite: SiteRow[]
   paperThisMonth: number
+  paperTrend: Array<{ month: string; sheets: number }>
   meterRequiredCount: number
   recentActivity: Array<{
     id: string; assetNo: string; deviceName: string
@@ -26,15 +37,52 @@ interface DashboardData {
   queryTimeMs: number
 }
 
-function KpiCard({ title, value, icon, accent, loading }: {
-  title: string; value: number; icon: React.ReactNode; accent: string; loading?: boolean
+// ============== Count-up hook ==============
+function useCountUp(value: number, durationMs = 600): number {
+  const [display, setDisplay] = React.useState(value)
+  const fromRef = React.useRef(value)
+  const rafRef = React.useRef<number | null>(null)
+  React.useEffect(() => {
+    const from = fromRef.current
+    const to = value
+    if (from === to) return
+    const start = performance.now()
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / durationMs)
+      const eased = 1 - Math.pow(1 - t, 3)
+      setDisplay(Math.round(from + (to - from) * eased))
+      if (t < 1) rafRef.current = requestAnimationFrame(tick)
+      else fromRef.current = to
+    }
+    rafRef.current = requestAnimationFrame(tick)
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
+  }, [value, durationMs])
+  return display
+}
+
+// ============== KPI Card with count-up + glow ==============
+function KpiCard({
+  title, value, icon, accent, loading, glow,
+}: {
+  title: string; value: number; icon: React.ReactNode
+  accent: string; loading?: boolean; glow?: boolean
 }) {
+  const animated = useCountUp(value)
   return (
-    <Card className="relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+    <Card
+      className={[
+        'relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md',
+        'dark:border-slate-800 dark:bg-slate-900',
+        glow ? 'itam-glow' : '',
+      ].join(' ')}
+    >
       <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: accent }} />
       <CardContent className="p-3 sm:p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:h-11 sm:w-11" style={{ background: `${accent}1a`, color: accent }}>
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:h-11 sm:w-11"
+            style={{ background: `${accent}1a`, color: accent }}
+          >
             {icon}
           </div>
           <div className="min-w-0 flex-1">
@@ -43,7 +91,7 @@ function KpiCard({ title, value, icon, accent, loading }: {
               <Skeleton className="mt-1 h-7 w-20" />
             ) : (
               <div className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-2xl">
-                {value.toLocaleString()}
+                {animated.toLocaleString()}
               </div>
             )}
           </div>
@@ -56,26 +104,81 @@ function KpiCard({ title, value, icon, accent, loading }: {
 const MEDALS = ['🥇', '🥈', '🥉']
 
 function heatColor(intensity: number): string {
-  // 0..1 → teal intensity, low→light, high→dark
   const i = Math.max(0, Math.min(1, intensity))
-  // rgba teal (#0d9488) with variable alpha
   const alpha = 0.08 + i * 0.85
   return `rgba(13, 148, 136, ${alpha.toFixed(2)})`
 }
 
+// Status palette for donut — orange, teal, amber, rose, slate
+const STATUS_COLORS = ['#f97316', '#0d9488', '#f59e0b', '#ef4444', '#94a3b8']
+
 export function ItamDashboard() {
+  const { theme } = useTheme()
+  const isDark = theme === 'dark'
+  const qc = useQueryClient()
+  const setActivePage = useAppStore((s) => s.setActivePage)
+  const setPendingDeviceType = useAppStore((s) => s.setPendingDeviceType)
+  const setPendingDeviceStatus = useAppStore((s) => s.setPendingDeviceStatus)
+
   const [sitesOpen, setSitesOpen] = React.useState(false)
   const [heatOpen, setHeatOpen] = React.useState(false)
   const [cycleOpen, setCycleOpen] = React.useState(false)
+  const [lastUpdated, setLastUpdated] = React.useState<Date | null>(null)
+  const [glowKey, setGlowKey] = React.useState<string | null>(null)
 
-  const { data, isLoading } = useQuery<DashboardData>({
+  // Track previous totals to know which KPI changed
+  const prevTotalsRef = React.useRef<{ total: number; active: number; spare: number; repair: number; meter: number } | null>(null)
+
+  const { data, isLoading, isFetching, dataUpdatedAt } = useQuery<DashboardData>({
     queryKey: ['itam-dashboard'],
     queryFn: async () => {
       const res = await fetch('/api/itam/dashboard')
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
+    refetchInterval: 30_000,
   })
+
+  // Update "last updated" + glow flash when data changes
+  const firstLoadRef = React.useRef(true)
+  React.useEffect(() => {
+    if (!data) return
+    setLastUpdated(new Date(dataUpdatedAt))
+    if (firstLoadRef.current) {
+      firstLoadRef.current = false
+      prevTotalsRef.current = {
+        total: data.totals.total,
+        active: data.totals.active,
+        spare: data.totals.spare,
+        repair: data.totals.repair,
+        meter: data.meterRequiredCount,
+      }
+      return
+    }
+    const prev = prevTotalsRef.current
+    if (prev) {
+      const changes: { key: string; val: number }[] = [
+        { key: 'total', val: data.totals.total },
+        { key: 'active', val: data.totals.active },
+        { key: 'spare', val: data.totals.spare },
+        { key: 'repair', val: data.totals.repair },
+        { key: 'meter', val: data.meterRequiredCount },
+      ]
+      const changed = changes.find(c => c.val !== prev[c.key as keyof typeof prev])
+      if (changed) {
+        setGlowKey(changed.key)
+        const tid = setTimeout(() => setGlowKey(null), 1000)
+        prevTotalsRef.current = {
+          total: data.totals.total,
+          active: data.totals.active,
+          spare: data.totals.spare,
+          repair: data.totals.repair,
+          meter: data.meterRequiredCount,
+        }
+        return () => clearTimeout(tid)
+      }
+    }
+  }, [data, dataUpdatedAt])
 
   const { data: heatData, isLoading: heatLoading } = useQuery<DashboardData>({
     queryKey: ['itam-dashboard-extra'],
@@ -180,7 +283,7 @@ ${kpiHtml}
   }, [data?.bySite])
   const maxDevices = sortedSites[0]?.deviceCount ?? 1
 
-  // Heatmap data
+  // Heatmap
   const heat = heatData?.heatmap ?? []
   const heatMonths = heatData?.heatmapMonths ?? []
   const maxPages = React.useMemo(() => {
@@ -188,6 +291,59 @@ ${kpiHtml}
     for (const r of heat) for (const c of r.months) if (c.pages > m) m = c.pages
     return m || 1
   }, [heat])
+
+  // Donut chart data: status distribution
+  const donutData = React.useMemo(() => {
+    if (!data) return []
+    const t = data.totals
+    return [
+      { name: 'ใช้งานอยู่', value: t.active, color: STATUS_COLORS[0], statusKey: 'Active' },
+      { name: 'สำรอง', value: t.spare, color: STATUS_COLORS[1], statusKey: 'In Stock' },
+      { name: 'ส่งซ่อม', value: t.repair, color: STATUS_COLORS[2], statusKey: 'Pending Repair' },
+      { name: 'ไม่ใช้งาน', value: t.inactive, color: STATUS_COLORS[3], statusKey: 'Inactive' },
+    ].filter(d => d.value > 0)
+  }, [data])
+
+  const donutTotal = donutData.reduce((sum, d) => sum + d.value, 0)
+
+  // Bar chart: by type (top 8)
+  const barData = React.useMemo(() => (data?.byType ?? []).slice(0, 8), [data])
+
+  // Area chart: paper trend
+  const areaData = React.useMemo(() => data?.paperTrend ?? [], [data])
+
+  // Drill-down handlers
+  function drillDownStatus(statusKey: string) {
+    setPendingDeviceStatus(statusKey)
+    setPendingDeviceType(null)
+    setActivePage('itam-devices')
+    toast.info(`กรองอุปกรณ์สถานะ "${statusKey}"`)
+  }
+  function drillDownType(typeName: string) {
+    setPendingDeviceType(typeName)
+    setPendingDeviceStatus(null)
+    setActivePage('itam-devices')
+    toast.info(`กรองอุปกรณ์ประเภท "${typeName}"`)
+  }
+
+  // Recharts tooltip styles
+  const tooltipStyle: React.CSSProperties = {
+    background: isDark ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.98)',
+    border: `1px solid ${isDark ? '#334155' : '#e2e8f0'}`,
+    borderRadius: '8px',
+    fontSize: '12px',
+    color: isDark ? '#f1f5f9' : '#1e293b',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+    padding: '8px 12px',
+  }
+
+  const gridColor = isDark ? '#1e293b' : '#e2e8f0'
+  const axisColor = isDark ? '#64748b' : '#64748b'
+
+  function formatLastUpdated(): string {
+    if (!lastUpdated) return '—'
+    return lastUpdated.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -198,8 +354,29 @@ ${kpiHtml}
             ข้อมูลจริงจาก Database
             {data && <span className="ml-2 text-xs text-emerald-600">⚡ {data.queryTimeMs}ms</span>}
           </p>
+          <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            <span>อัปเดตอัตโนมัติ • ครั้งล่าสุด: <span className="font-mono tabular-nums">{formatLastUpdated()}</span></span>
+            {isFetching && (
+              <span className="ml-1 inline-flex items-center gap-1 text-orange-500">
+                <Loader2 className="h-3 w-3 animate-spin" /> กำลังซิงค์…
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => qc.invalidateQueries({ queryKey: ['itam-dashboard'] })}
+            disabled={isFetching}
+            className="dark:bg-slate-800 dark:border-slate-700"
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> รีเฟรช
+          </Button>
           <Button variant="outline" size="sm" onClick={exportPdf} className="dark:bg-slate-800 dark:border-slate-700">
             <FileDown className="h-4 w-4" /> PDF
           </Button>
@@ -215,53 +392,241 @@ ${kpiHtml}
         </div>
       </div>
 
-      {/* KPI row */}
+      {/* KPI row — 2 cols on mobile, 5 on desktop */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
-        <KpiCard title="อุปกรณ์ทั้งหมด" value={data?.totals.total ?? 0} icon={<Package className="h-5 w-5" />} accent="#0f172a" loading={isLoading} />
-        <KpiCard title="ใช้งานอยู่" value={data?.totals.active ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} accent="#10b981" loading={isLoading} />
-        <KpiCard title="สำรอง" value={data?.totals.spare ?? 0} icon={<Package className="h-5 w-5" />} accent="#f59e0b" loading={isLoading} />
-        <KpiCard title="ส่งซ่อม" value={data?.totals.repair ?? 0} icon={<Wrench className="h-5 w-5" />} accent="#f97316" loading={isLoading} />
-        <KpiCard title="ต้องจดมิเตอร์" value={data?.meterRequiredCount ?? 0} icon={<FileText className="h-5 w-5" />} accent="#0d9488" loading={isLoading} />
+        <KpiCard title="อุปกรณ์ทั้งหมด" value={data?.totals.total ?? 0} icon={<Package className="h-5 w-5" />} accent="#0f172a" loading={isLoading} glow={glowKey === 'total'} />
+        <KpiCard title="ใช้งานอยู่" value={data?.totals.active ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} accent="#10b981" loading={isLoading} glow={glowKey === 'active'} />
+        <KpiCard title="สำรอง" value={data?.totals.spare ?? 0} icon={<Package className="h-5 w-5" />} accent="#f59e0b" loading={isLoading} glow={glowKey === 'spare'} />
+        <KpiCard title="ส่งซ่อม" value={data?.totals.repair ?? 0} icon={<Wrench className="h-5 w-5" />} accent="#f97316" loading={isLoading} glow={glowKey === 'repair'} />
+        <KpiCard title="ต้องจดมิเตอร์" value={data?.meterRequiredCount ?? 0} icon={<FileText className="h-5 w-5" />} accent="#0d9488" loading={isLoading} glow={glowKey === 'meter'} />
       </div>
 
-      {/* By Type + By Site */}
+      {/* Interactive Charts row — donut + bar */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* Donut chart — status distribution */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: 'easeOut' }}
+        >
+          <Card className="h-full shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <CardHeader>
+              <CardTitle className="text-base">สัดส่วนสถานะอุปกรณ์</CardTitle>
+              <p className="text-xs text-slate-500 dark:text-slate-400">คลิกเซกเตอร์เพื่อดูรายการ</p>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-56 w-full rounded-md" />
+              ) : donutData.length === 0 ? (
+                <div className="py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
+              ) : (
+                <div className="relative h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={donutData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={56}
+                        outerRadius={84}
+                        paddingAngle={2}
+                        isAnimationActive
+                        animationDuration={700}
+                        stroke={isDark ? '#0f172a' : '#ffffff'}
+                        strokeWidth={2}
+                        onClick={(payload: { statusKey?: string }) => {
+                          if (payload?.statusKey) drillDownStatus(payload.statusKey)
+                        }}
+                        cursor="pointer"
+                      >
+                        {donutData.map((entry, idx) => (
+                          <Cell key={idx} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <ReTooltip
+                        contentStyle={tooltipStyle}
+                        formatter={(v: number, n: string) => {
+                          const pct = donutTotal > 0 ? ((v / donutTotal) * 100).toFixed(1) : '0'
+                          return [`${v.toLocaleString()} เครื่อง (${pct}%)`, n]
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Center label */}
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+                      {donutTotal.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">เครื่องทั้งหมด</div>
+                  </div>
+                </div>
+              )}
+              {donutData.length > 0 && !isLoading && (
+                <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
+                  {donutData.map((d, i) => (
+                    <button
+                      key={i}
+                      onClick={() => drillDownStatus(d.statusKey)}
+                      className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:underline dark:text-slate-300"
+                    >
+                      <span className="h-2.5 w-2.5 rounded-sm" style={{ background: d.color }} />
+                      {d.name} <span className="font-semibold tabular-nums">{d.value.toLocaleString()}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Bar chart — by type top 8 */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, ease: 'easeOut', delay: 0.05 }}
+        >
+          <Card className="h-full shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <CardHeader>
+              <CardTitle className="text-base">จำนวนอุปกรณ์ตามประเภท (Top 8)</CardTitle>
+              <p className="text-xs text-slate-500 dark:text-slate-400">คลิกแท่งเพื่อกรองหน้าอุปกรณ์</p>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <Skeleton className="h-56 w-full rounded-md" />
+              ) : barData.length === 0 ? (
+                <div className="py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
+              ) : (
+                <div className="h-56 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={barData} margin={{ top: 12, right: 8, left: -10, bottom: 4 }}>
+                      <defs>
+                        <linearGradient id="barTealGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.95} />
+                          <stop offset="100%" stopColor="#0d9488" stopOpacity={0.85} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fill: axisColor, fontSize: 10 }}
+                        interval={0}
+                        angle={-25}
+                        textAnchor="end"
+                        height={50}
+                      />
+                      <YAxis tick={{ fill: axisColor, fontSize: 11 }} allowDecimals={false} />
+                      <ReTooltip
+                        contentStyle={tooltipStyle}
+                        cursor={{ fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
+                        formatter={(v: number) => [`${v.toLocaleString()} เครื่อง`, 'จำนวน']}
+                      />
+                      <Bar
+                        dataKey="value"
+                        radius={[6, 6, 0, 0]}
+                        fill="url(#barTealGrad)"
+                        isAnimationActive
+                        animationDuration={700}
+                        onClick={(payload: { name?: string }) => {
+                          if (payload?.name) drillDownType(payload.name)
+                        }}
+                        cursor="pointer"
+                      >
+                        <LabelList
+                          dataKey="value"
+                          position="top"
+                          style={{ fill: isDark ? '#cbd5e1' : '#475569', fontSize: 10, fontWeight: 600 }}
+                        />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Area chart — paper trend full width */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: 'easeOut', delay: 0.1 }}
+      >
         <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <CardHeader><CardTitle className="text-base">จำนวนอุปกรณ์ตามประเภท</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">แนวโน้มการใช้กระดาษ (6 เดือนล่าสุด)</CardTitle>
+            <p className="text-xs text-slate-500 dark:text-slate-400">รวมขาวดำ + สี · หน่วย: แผ่น</p>
+          </CardHeader>
           <CardContent>
             {isLoading ? (
-              <Skeleton className="h-48 w-full" />
+              <Skeleton className="h-56 w-full rounded-md" />
+            ) : areaData.length === 0 ? (
+              <div className="py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
             ) : (
-              <div className="space-y-2">
-                {(data?.byType ?? []).map((t) => {
-                  const max = Math.max(...(data?.byType ?? []).map(x => x.value), 1)
-                  const pct = (t.value / max) * 100
-                  return (
-                    <div key={t.name} className="flex items-center gap-3">
-                      <span className="w-40 truncate text-sm text-slate-600 dark:text-slate-300">{t.name}</span>
-                      <div className="h-6 flex-1 overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
-                        <div className="flex h-full items-center justify-end rounded bg-gradient-to-r from-teal-400 to-teal-600 px-2 text-xs font-bold text-white" style={{ width: `${pct}%` }}>
-                          {t.value}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={areaData} margin={{ top: 10, right: 12, left: -8, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="areaTealGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#0d9488" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                    <XAxis dataKey="month" tick={{ fill: axisColor, fontSize: 11 }} />
+                    <YAxis tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`} />
+                    <ReTooltip
+                      contentStyle={tooltipStyle}
+                      formatter={(v: number, _n: string, p: { payload?: { month?: string } }) => [
+                        `${v.toLocaleString()} แผ่น`,
+                        `${p?.payload?.month ?? ''}`,
+                      ]}
+                      labelFormatter={() => ''}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="sheets"
+                      stroke="#0d9488"
+                      strokeWidth={2.5}
+                      fill="url(#areaTealGrad)"
+                      isAnimationActive
+                      animationDuration={800}
+                      dot={{ r: 3, fill: '#0d9488', strokeWidth: 0 }}
+                      activeDot={{ r: 5, fill: '#0d9488', stroke: isDark ? '#0f172a' : '#fff', strokeWidth: 2 }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             )}
           </CardContent>
         </Card>
+      </motion.div>
 
+      {/* By Site + Recent Activity — stacked on mobile */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4 text-[#f97316]" /> อุปกรณ์ตามสาขา</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Building2 className="h-4 w-4 text-[#f97316]" /> อุปกรณ์ตามสาขา
+            </CardTitle>
+          </CardHeader>
           <CardContent>
             {isLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : (
               <div className="space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full rounded-md" />
+                ))}
+              </div>
+            ) : (
+              <div className="itam-scroll max-h-72 space-y-2 overflow-y-auto pr-1">
                 {(data?.bySite ?? []).map((s) => (
-                  <div key={s.siteCode} className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2 dark:border-slate-800">
-                    <div>
+                  <div
+                    key={s.siteCode}
+                    className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2 dark:border-slate-800"
+                  >
+                    <div className="min-w-0">
                       <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{s.siteCode}</span>
                       <span className="ml-2 text-xs text-slate-400">{s.siteName}</span>
                     </div>
@@ -274,31 +639,48 @@ ${kpiHtml}
             )}
           </CardContent>
         </Card>
-      </div>
 
-      {/* Recent Activity */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <CardHeader><CardTitle className="flex items-center gap-2 text-base"><TrendingUp className="h-4 w-4 text-[#f97316]" /> มิเตอร์ล่าสุด</CardTitle></CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-32 w-full" />
-          ) : (
-            <div className="space-y-2">
-              {(data?.recentActivity ?? []).map((a) => (
-                <div key={a.id} className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{a.deviceName}</div>
-                    <div className="text-xs text-slate-400">{a.assetNo} · {a.readingDate}</div>
-                  </div>
-                  <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                    {(a.pagesBw + a.pagesColor).toLocaleString()} แผ่น
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="h-4 w-4 text-[#f97316]" /> มิเตอร์ล่าสุด
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full rounded-md" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <AnimatePresence initial={false}>
+                  {(data?.recentActivity ?? []).map((a) => (
+                    <motion.div
+                      key={a.id}
+                      layout
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 8 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{a.deviceName}</div>
+                        <div className="text-xs text-slate-400">{a.assetNo} · {a.readingDate}</div>
+                      </div>
+                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        {(a.pagesBw + a.pagesColor).toLocaleString()} แผ่น
+                      </Badge>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Site comparison modal */}
       <Dialog open={sitesOpen} onOpenChange={setSitesOpen}>
@@ -310,7 +692,11 @@ ${kpiHtml}
           </DialogHeader>
           <div className="space-y-2">
             {isLoading ? (
-              <Skeleton className="h-64 w-full" />
+              <div className="space-y-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-20 w-full rounded-md" />
+                ))}
+              </div>
             ) : sortedSites.length === 0 ? (
               <div className="py-8 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
             ) : (
@@ -329,7 +715,12 @@ ${kpiHtml}
                       </Badge>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
-                      <div className="h-full rounded bg-gradient-to-r from-orange-400 to-orange-600" style={{ width: `${pct}%` }} />
+                      <motion.div
+                        className="h-full rounded bg-gradient-to-r from-orange-400 to-orange-600"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.6, ease: 'easeOut' }}
+                      />
                     </div>
                     <div className="mt-1.5 flex justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span>✅ ใช้งาน {s.activeCount ?? 0}</span>
@@ -352,7 +743,11 @@ ${kpiHtml}
             </DialogTitle>
           </DialogHeader>
           {heatLoading ? (
-            <Skeleton className="h-72 w-full" />
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-8 w-full rounded" />
+              ))}
+            </div>
           ) : heat.length === 0 ? (
             <div className="py-8 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
           ) : (

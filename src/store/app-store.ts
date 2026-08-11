@@ -25,6 +25,10 @@ interface AppState {
   pendingWarrantyFilter: 'expiring' | 'expired' | null
   /** A meter-page action to auto-run on mount (e.g. 'open-cycle' opens the cycle dialog). */
   pendingMeterAction: string | null
+  /** A device-type filter applied to the ITAM devices page on mount (set by dashboard chart click). */
+  pendingDeviceType: string | null
+  /** A status filter applied to the ITAM devices page on mount (set by dashboard donut click). */
+  pendingDeviceStatus: string | null
   /** Set true to open the global search palette from anywhere. */
   searchOpen: boolean
   setActivePage: (page: ActivePage) => void
@@ -38,6 +42,10 @@ interface AppState {
   clearPendingWarrantyFilter: () => void
   setPendingMeterAction: (action: string | null) => void
   clearPendingMeterAction: () => void
+  setPendingDeviceType: (t: string | null) => void
+  clearPendingDeviceType: () => void
+  setPendingDeviceStatus: (s: string | null) => void
+  clearPendingDeviceStatus: () => void
   setSearchOpen: (open: boolean) => void
 }
 
@@ -48,6 +56,8 @@ export const useAppStore = create<AppState>((set) => ({
   pendingSettingsTab: null,
   pendingWarrantyFilter: null,
   pendingMeterAction: null,
+  pendingDeviceType: null,
+  pendingDeviceStatus: null,
   searchOpen: false,
   setActivePage: (page) => set({ activePage: page }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -60,5 +70,9 @@ export const useAppStore = create<AppState>((set) => ({
   clearPendingWarrantyFilter: () => set({ pendingWarrantyFilter: null }),
   setPendingMeterAction: (action) => set({ pendingMeterAction: action }),
   clearPendingMeterAction: () => set({ pendingMeterAction: null }),
+  setPendingDeviceType: (t) => set({ pendingDeviceType: t }),
+  clearPendingDeviceType: () => set({ pendingDeviceType: null }),
+  setPendingDeviceStatus: (s) => set({ pendingDeviceStatus: s }),
+  clearPendingDeviceStatus: () => set({ pendingDeviceStatus: null }),
   setSearchOpen: (open) => set({ searchOpen: open }),
 }))

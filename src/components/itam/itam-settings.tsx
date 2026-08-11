@@ -112,9 +112,9 @@ export function ItamSettings() {
 
       {tab === 'master' && (
         <>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
             <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="w-48 dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-48 dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">หมวดทั้งหมด</SelectItem>
                 <SelectItem value="Brand">Brand</SelectItem>
@@ -125,8 +125,10 @@ export function ItamSettings() {
                 <SelectItem value="DeviceGroup">กลุ่มอุปกรณ์</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" onClick={openAdd} className="ml-auto"><Plus className="h-4 w-4" /> เพิ่ม</Button>
-            <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ['itam-master'] })}><RefreshCw className="h-4 w-4" /></Button>
+            <div className="flex gap-2 sm:ml-auto">
+              <Button variant="outline" size="sm" onClick={openAdd} className="flex-1 sm:flex-none"><Plus className="h-4 w-4" /> เพิ่ม</Button>
+              <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ['itam-master'] })}><RefreshCw className="h-4 w-4" /></Button>
+            </div>
           </div>
 
           <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -145,7 +147,17 @@ export function ItamSettings() {
                   </TableHeader>
                   <TableBody>
                     {masterLoading ? (
-                      Array.from({ length: 8 }).map((_, i) => <TableRow key={i}><TableCell colSpan={6}><Skeleton className="h-6 w-full" /></TableCell></TableRow>)
+                      // Skeleton rows matching column widths
+                      Array.from({ length: 6 }).map((_, i) => (
+                        <TableRow key={`sk-${i}`}>
+                          <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-5 w-8 rounded-full mx-auto" /></TableCell>
+                          <TableCell><Skeleton className="h-6 w-20 ml-auto" /></TableCell>
+                        </TableRow>
+                      ))
                     ) : items.length === 0 ? (
                       <TableRow><TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">ไม่มีข้อมูล</TableCell></TableRow>
                     ) : (
@@ -174,24 +186,37 @@ export function ItamSettings() {
       {tab === 'sites' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sitesLoading ? (
-            Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32" />)
-          ) : sites.map((s) => (
-            <Card key={s.id} className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4 text-[#f97316]" /> {s.siteCode}</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{s.siteName}</div>
-                <div className="flex gap-4 text-xs text-slate-500">
-                  <span>📦 {s.deviceCount ?? 0} เครื่อง</span>
-                  <span>✅ {s.activeCount ?? 0} ใช้งาน</span>
-                </div>
-                <div className="flex gap-4 text-xs text-slate-400">
-                  <span>📄 ขาวดำ: ฿{s.paperRateBw ?? 0.5}/แผ่น</span>
-                  <span>🎨 สี: ฿{s.paperRateColor ?? 2}/แผ่น</span>
-                </div>
-                {s.hotline && <div className="text-xs text-slate-400">📞 {s.hotline}</div>}
-              </CardContent>
-            </Card>
-          ))}
+            Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <CardHeader><Skeleton className="h-5 w-20" /></CardHeader>
+                <CardContent className="space-y-2">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-3 w-32" />
+                  <Skeleton className="h-3 w-32" />
+                </CardContent>
+              </Card>
+            ))
+          ) : sites.length === 0 ? (
+            <div className="col-span-full py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูลสาขา</div>
+          ) : (
+            sites.map((s) => (
+              <Card key={s.id} className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4 text-[#f97316]" /> {s.siteCode}</CardTitle></CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{s.siteName}</div>
+                  <div className="flex gap-4 text-xs text-slate-500">
+                    <span>📦 {s.deviceCount ?? 0} เครื่อง</span>
+                    <span>✅ {s.activeCount ?? 0} ใช้งาน</span>
+                  </div>
+                  <div className="flex gap-4 text-xs text-slate-400">
+                    <span>📄 ขาวดำ: ฿{s.paperRateBw ?? 0.5}/แผ่น</span>
+                    <span>🎨 สี: ฿{s.paperRateColor ?? 2}/แผ่น</span>
+                  </div>
+                  {s.hotline && <div className="text-xs text-slate-400">📞 {s.hotline}</div>}
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
       )}
 
