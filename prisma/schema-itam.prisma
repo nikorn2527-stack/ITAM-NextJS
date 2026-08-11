@@ -101,6 +101,29 @@ model MeterReading {
 // ============================================================
 
 // ============================================================
+// 13) License_Records — ลิขสิทธิ์ซอฟต์แวร์
+//    Source: sheet "License_Records" (9 columns)
+// ============================================================
+model LicenseRecord {
+  id          String   @id @default(cuid())
+  licenseId   String?  @map("License_ID")
+  assetNo     String?  @map("Asset_No") // เชื่อมกับ Device (nullable เพราะบาง license ไม่ได้ผูกเครื่อง)
+  software    String   @map("Software")
+  licenseType String?  @map("LicenseType") // OEM | Volume | Retail | Subscription | Open License
+  licenseKey  String?  @map("License_Key") // product key
+  quantity    Int      @default(1) @map("Quantity")
+  expiryDate  String?  @map("Expiry_Date") // ISO date
+  remark      String?  @map("Remark")
+  updatedAt   DateTime @updatedAt @map("UpdatedAt")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([assetNo])
+  @@index([software])
+  @@index([expiryDate])
+  @@map("license_records")
+}
+
+// ============================================================
 // 11) Assignments — การมอบหมายอุปกรณ์ (เพิ่มจาก Next.js)
 //    ไม่มีใน Google Sheets เดิม — สร้างใหม่
 // ============================================================
