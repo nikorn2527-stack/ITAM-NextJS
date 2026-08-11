@@ -1,0 +1,74 @@
+// ============================================================
+// ITAM Database Schema — ตรงกับ Google Sheets จริง
+// ทยอยสร้างทีละ model เมื่อได้ headers ของแต่ละ sheet
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 1) Devices — อุปกรณ์ IT หลัก
+//    Source: sheet "Devices" (28 columns)
+// ============================================================
+model Device {
+  id              String   @id @default(cuid())
+  assetNo         String   @unique @map("asset_no")
+  deviceType      String?  @map("device_type")
+  brand           String?
+  model           String?
+  serial          String?
+  building        String?
+  floor           String?
+  department      String?
+  location        String?
+  departmentCode  String?  @map("department_code")
+  status          String   @default("Active")
+  site            String?
+  contractNo      String?  @map("contract_no")
+  ip              String?
+  mac             String?
+  remoteId        String?  @map("remote_id")
+  remark          String?
+  vendor          String?
+  installDate     String?  @map("install_date") // ISO date string
+  uninstallDate   String?  @map("uninstall_date")
+  warrantyEnd     String?  @map("warranty_end")
+  deviceGroup     String?  @map("device_group")
+  costCenter      String?  @map("cost_center")
+  meterRequired   Boolean  @default(false) @map("meter_required")
+  meterMode       String?  @map("meter_mode") // TOTAL | BW_COLOR
+  assetSiteCode   String?  @map("asset_site_code")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  updatedBy       String?  @default("System") @map("updated_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations (จะเพิ่มเมื่อสร้าง models อื่น)
+  // meterReadings   MeterReading[]
+  // assignments     Assignment[]
+  // maintenanceLogs MaintenanceLog[]
+  // transfers       DeviceTransfer[]
+
+  @@map("devices")
+}
+
+// ============================================================
+// TODO: Models ถัดไป (รอ headers จากผู้ใช้)
+//
+// 2) Meter_Readings      — การจดมิเตอร์
+// 3) Master_Items        — ข้อมูลมาตรฐาน
+// 4) Master_Category     — หมวดหมู่ master
+// 5) Location_History    — ประวัติการย้าย
+// 6) Cycles              — รอบจดมิเตอร์
+// 7) Audit_Log           — ประวัติการใช้งาน
+// 8) User_Permissions    — สิทธิ์ผู้ใช้
+// 9) Site_Attributes     — ข้อมูลสาขา
+// 10) App_Settings       — ตั้งค่าแอป
+// 11) Assignments        — การมอบหมาย
+// 12) MaintenanceLog     — ซ่อมบำรุง
+// ============================================================
