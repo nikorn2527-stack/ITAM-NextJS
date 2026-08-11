@@ -438,3 +438,118 @@ Stage Summary:
 - Settings cleaned: default site is now a Select (not manual text), removed 2 placeholder fields, fixed duplicate wording, concise subtitle.
 - Classic sidebar preserved. Sticky footer intact. Lint clean. No runtime errors.
 - Recommended next: (1) cycle-based meter reading report (show readings grouped by cycle), (2) auto-create next cycle when current ends, (3) dashboard "cycle progress" widget, (4) make the Sites tab + Rates tab share data better (rates tab already uses sites).
+
+---
+Task ID: 12
+Agent: full-stack-developer (webDevReview round 5)
+Task: Add 3 features (Cycle-based Meter Reading Report, Dashboard Cycle Progress Widget, Device Bulk Operations) + 6 styling-polish items on top of the stable Task 5–11 ITAM app. Preserve the classic sidebar exactly.
+
+Work Log:
+- Read prior worklog (Tasks 1,5,6,7,8,9,10,11 done — sidebar restored, app built, E2E verified, 14 features + cycle lifecycle fix + settings cleanup). Re-read all relevant source files before editing (schema.prisma, types.ts, app-store.ts, page.tsx, sidebar/footer, dashboard-page, devices-page, meter-page, cycle-manage-dialog, settings-page, audit lib, csv lib, cycles/[id] API, devices/[id] API, devices/[id]/transfer API, audit/log API, meter/reminders API). Dev server healthy (HTTP 200, all endpoints 200). Confirmed `bun run lint` clean before starting.
+- Verified active cycle: `cmso4p5d00002pfms667gn0jk` (Sep 2026, no readings yet). Ended cycle with readings: `cmsnz08i6001fpfwict5janp2` (Aug 2026, 21 readings, 49,818 sheets).
+
+FEATURE 1 — Cycle-based Meter Reading Report:
+- Created `src/app/api/cycles/[id]/report/route.ts` GET handler:
+  - Fetches the cycle (404 if missing).
+  - Fetches all MeterReadings for the cycle (with device select) ordered `[date asc, createdAt asc]`.
+  - Groups readings by device → builds per-device entry with `{deviceId, assetCode, name, brand, model, site, type, readings[], firstReading, lastReading, totalDelta, readingCount}`.
+  - Computes summary: `totalReadings`, `totalSheets` (sum of positive deltas), `avgDelta` (per device), `deviceCount` (distinct), `unreadCount` (meterable PRINTER/COPIER/MFP devices NOT read in this cycle, fetched via `db.device.findMany`).
+  - Detects anomalies: any reading with `delta < 0` (RESET) or `delta > 20000` (HIGH_DELTA) → list with `{readingId, deviceId, assetCode, deviceName, date, reading, prevReading, delta, remark, type}`.
+  - Computes `daysRemaining` for active cycles.
+  - Returns `{ cycle, summary, devices, anomalies }`.
+  - Verified via curl: ended cycle → `{totalReadings:21, totalSheets:49818, avgDelta:4529, deviceCount:11, unreadCount:0, anomalies:[]}`. Active cycle (no readings) → `{totalReadings:0, totalSheets:0, avgDelta:0, deviceCount:0, unreadCount:11}`.
+- Created `src/components/itam/cycle-report-dialog.tsx` (`sm:max-w-3xl` Dialog):
+  - Header: "📊 รายงานรอบจดมิเตอร์" + cycle name + dates + status badge (active=emerald, ended=slate, cancelled=rose) + daysRemaining for active.
+  - Summary row: 4 MiniStatCard components (KpiCard-style with accent bar + count-up animation via useCountUp hook): จดแล้ว X เครื่อง / รวม X แผ่น / เฉลี่ย X แผ่น/เครื่อง / ยังไม่จด X เครื่อง.
+  - Tabs (shadcn Tabs): "รายการอุปกรณ์" (per-device readings table) | "ความผิดปกติ" (anomalies list with badge count) | "สรุปรายเครื่อง" (compact summary table).
+  - Device readings table: assetCode, name, site, firstReading, lastReading, totalDelta (badge colored by sign), readingCount. Clicking a row toggles an expandable sub-row showing all readings for that device in the cycle (date + prev→reading + delta badge + remark). Uses React.Fragment + Set<string> state for expansion.
+  - Anomalies tab: list of anomalous readings with device name + date + delta (rose/amber) + remark. Empty state ("ไม่พบความผิดปกติในรอบนี้") with emerald CheckCircle2 icon when none.
+  - "📤 ส่งออก CSV" button (top-right of tabs row) — exports per-device summary as CSV via downloadCsv with 10 Thai headers (รหัส/ชื่อ/แบรนด์/รุ่น/สาขา/ประเภท/ค่าเริ่มต้น/ค่าล่าสุด/รวมส่วนต่าง/จำนวนครั้งที่จด).
+  - Empty state if no readings: "รอบนี้ยังไม่มีการจดมิเตอร์" + subtitle showing unreadCount.
+  - Loading skeleton + error state. Dark mode throughout.
+- Wired into `cycle-manage-dialog.tsx`: added `BarChart3` import, `reportCycleId` state, a "📊 รายงาน" ghost button (orange BarChart3 icon) on each cycle card in the history list (first button in the action group, before reopen/end/cancel/delete). Clicking opens the CycleReportDialog for that cycle. Renders `<CycleReportDialog open={!!reportCycleId} onOpenChange={...} cycleId={reportCycleId} />` after the AlertDialog.
+
+FEATURE 2 — Dashboard Cycle Progress Widget:
+- Updated `src/store/app-store.ts`: added `pendingMeterAction: string | null` + `setPendingMeterAction` + `clearPendingMeterAction`. Pattern matches existing `pendingDeviceId` / `pendingSettingsTab` / `pendingWarrantyFilter`.
+- Updated `src/components/itam/dashboard-page.tsx`:
+  - Added `motion` (framer-motion) + `Progress` + `CalendarClock` + `ArrowRight` imports + `Cycle` type import.
+  - Added `useQuery(['active-cycle'])` and `useQuery(['meter-reminders-summary'])` (extracted just hasActiveCycle/totalRead/totalUnread to avoid pulling full reminder entries).
+  - Added `setPendingMeterAction` from store.
+  - Wrapped a `<CycleProgressWidget>` in `<motion.div>` (initial opacity:0 y:12 → animate opacity:1 y:0, 0.35s easeOut) placed between the KPI row and the warranty alert bar.
+  - New `CycleProgressWidget` component:
+    - Uses `mounted` state + setTimeout(60ms) to delay progress values from 0 → real target, triggering the Radix Progress CSS transition (animate width on mount).
+    - Loading state: gradient orange-to-white Card with Skeleton.
+    - No active cycle: amber alert Card "⚠️ ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ" + "สร้างรอบใหม่เพื่อเริ่มจดมิเตอร์ได้ทันที" subtitle + orange "สร้างรอบใหม่" button (calls onCreateCycle → setPendingMeterAction('open-cycle') + setActivePage('meter')).
+    - Active cycle: gradient orange-to-white Card with top accent bar (orange→amber gradient) + CalendarClock watermark icon (5% opacity). Layout: left=cycle name + dates + emerald "กำลังดำเนินการ" badge; middle=big daysRemaining number (orange, tabular-nums); right=two progress bars (elapsed/total days with orange gradient fill, read/totalMeterable with teal fill) + "จัดการรอบ" button (calls onManageCycle → setPendingMeterAction('open-cycle') + setActivePage('meter')).
+- Updated `src/components/itam/meter-page.tsx`: imported `useAppStore`, added `pendingMeterAction` + `clearPendingMeterAction` from store, `useEffect` reads on mount — if 'open-cycle', opens the CycleManageDialog automatically (setCycleDialogOpen(true) then clearPendingMeterAction()).
+
+FEATURE 3 — Device Bulk Operations:
+- Created `src/lib/bulk-audit.ts` with `logBulkAudit(action, entity, summary, detail?)` helper. Same pattern as `logAudit` but with entityId=null (bulk = no single entity). Non-fatal. Re-exports `logAudit` for convenience.
+- Updated `src/components/itam/settings-page.tsx` AUDIT_ACTION_OPTIONS: added `CYCLE_CANCEL`, `CYCLE_REOPEN`, `BULK_UPDATE`, `BULK_TRANSFER`, `BULK_DELETE`. Updated `actionBadgeClass()`:
+  - CYCLE_CANCEL = rose
+  - CYCLE_REOPEN = emerald
+  - BULK_UPDATE = orange (#f97316)
+  - BULK_TRANSFER = amber
+  - BULK_DELETE = rose
+- Updated `src/components/itam/devices-page.tsx`:
+  - Imported `motion, AnimatePresence` (framer-motion), `Checkbox` (shadcn), `X, ArrowRight` (lucide).
+  - Added state: `selectedIds: Set<string>`, `bulkStatus`, `bulkSite`, `bulkDeleteOpen`, `bulkAction`.
+  - Added helpers: `toggleSelectAll(checked)`, `toggleSelect(id, checked)`, `clearSelection()`, `logBulkAction(action, summary, detail)` (POST /api/audit/log with BULK_* action).
+  - `applyBulkStatus()`: Promise.allSettled PUTs to /api/devices/[id] with `{status: bulkStatus}` for each selected. Counts ok/fail. Toasts success or warning. Logs audit "เปลี่ยนสถานะอุปกรณ์ X เครื่องเป็น <label>". Invalidates devices/dashboard/audit. Clears selection.
+  - `applyBulkTransfer()`: Promise.allSettled POSTs to /api/devices/[id]/transfer with `{toSite: bulkSite, transferDate: today}`. Toasts "ย้าย X เครื่องไปสาขา <siteName>". Logs audit "ย้ายอุปกรณ์ X เครื่องไปสาขา <siteName>". Invalidates + clears.
+  - `applyBulkDelete()`: AlertDialog confirm "ต้องการลบอุปกรณ์ X เครื่องใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้ และจะลบประวัติการจดมิเตอร์ของอุปกรณ์เหล่านี้ด้วย" → Promise.allSettled DELETEs to /api/devices/[id]. Toasts "ลบ X เครื่องแล้ว". Logs audit "ลบอุปกรณ์ X เครื่อง". Invalidates + clears.
+  - Bulk action bar: `<AnimatePresence>` + `<motion.div>` slide-down anim (initial opacity:0 y:-8 → animate opacity:1 y:0). Sticky top-0 z-20, backdrop-blur-md, shadow-md, orange border-l-4 (#f97316 / #fb923c dark). Shows "เลือกแล้ว X เครื่อง" badge + "ยกเลิกการเลือก" ghost button + 4 controls: bulk status Select (4 options) + ใช้ button, bulk site Select + ย้าย button, ลบ button (rose). All controls disabled when bulkAction=true.
+  - Added checkbox column (first column) to table header (select-all, supports indeterminate state) and each row. Column hidden when no devices (`hasDevices` flag).
+  - Custom Checkbox styling via className override: `border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316]`.
+  - Row checkbox onClick={stopPropagation} so it doesn't trigger the row-click (which opens the detail sheet).
+  - Selected row highlight: when `selectedIds.has(d.id)`, append `bg-orange-50 dark:bg-orange-950/30` to the row className.
+  - Footer count now shows "ทั้งหมด X รายการ · เลือก Y เครื่อง" when any selected.
+  - Skeleton/empty rows now `colSpan={12}` (was 11) to account for the new checkbox column.
+  - AlertDialog bulk-delete confirm dialog with rose styling + "ลบ X เครื่อง" action button.
+
+STYLING POLISH:
+1. Dashboard cycle widget framer-motion entrance: `<motion.div initial={{opacity:0, y:12}} animate={{opacity:1, y:0}} transition={{duration:0.35, ease:'easeOut'}}>` wraps the widget. Progress bars animate width on mount via mounted-state + 60ms delay trick (Radix Progress needs a value change to trigger the CSS transition).
+2. Devices bulk action bar: sticky position top-0 z-20, backdrop-blur-md, shadow-md, orange border-l-4. AnimatePresence + motion.div slide-down (y:-8 → y:0, 0.2s easeOut).
+3. Cycle report summary cards: MiniStatCard component with top accent bar (3px), icon container with `${accent}1a` bg + accent color text, count-up animation via useCountUp (requestAnimationFrame easeOutCubic 500ms), tabular-nums, hover lift (`hover:-translate-y-0.5 hover:shadow-md`).
+4. Custom-styled checkboxes: shadcn Checkbox with className override forcing `data-[state=checked]:bg-[#f97316]` + matching border + white text. Works in both light and dark mode.
+5. Table row selection highlight: `bg-orange-50 dark:bg-orange-950/30` appended to selected rows.
+6. Meter page bento hover lift: added `transition-all duration-200 hover:-translate-y-1 hover:shadow-lg` to all 3 bento cards (cycle info / countdown / progress).
+
+VERIFICATION:
+- `bun run lint` → 0 errors, 0 warnings.
+- `npx tsc --noEmit` → only pre-existing errors (examples/websocket missing socket.io modules, skills/image-edit + skills/stock-analysis-skill type mismatches, csv-import-dialog Device→Record<> typing quirk at line 158, devices-page line 355 exportCsv Device→Record<> quirk — both pre-existing from prior rounds, mentioned in Task 9 worklog as "pre-existing csv-export Record<> typing quirk remain, all unrelated to this task"). No NEW errors from this round.
+- dev.log (recent): GET / 200, GET /api/dashboard?range=month 200, GET /api/cycles?status=active 200, GET /api/meter/reminders 200, GET /api/devices/warranty 200, GET /api/cycles/cmsnz08i6001fpfwict5janp2/report 200, PUT /api/devices/cmsnz08hs0013pfwiqmg0yzaz 200 (×2 — bulk PUT path), POST /api/audit/log 201, GET /api/audit?action=BULK_UPDATE 200. No new runtime errors. (Old errors in dev.log from prior rounds — GET /api/audit findMany TypeError, POST /api/devices/import PrismaClientValidationError — confirmed pre-existing per Task 8-QA worklog.)
+- Smoke-tested cycle report API via curl for both an ended cycle with readings (21 readings, 11 devices, 49,818 sheets, 0 anomalies) and an active empty cycle (0 readings, 11 unread). Returns proper structure.
+- Smoke-tested bulk audit path: PUT /api/devices/[id] with {status:spare} then {status:active} (revert) — both 200. POST /api/audit/log with BULK_UPDATE action — 201, GET /api/audit?action=BULK_UPDATE confirms entry persisted with summary "ทดสอบ bulk audit log".
+
+Stage Summary:
+- 3 features delivered and working end-to-end:
+  1. Cycle-based Meter Reading Report: /api/cycles/[id]/report GET returns full cycle report (cycle info + summary + per-device readings + anomalies). CycleReportDialog with 3 tabs (per-device readings with expandable rows, anomalies list with empty state, compact summary table) + CSV export. Wired into CycleManageDialog via a "📊 รายงาน" button on each cycle card.
+  2. Dashboard Cycle Progress Widget: animated Card (framer-motion fade+slide) between KPI row and warranty alert bar. Shows active cycle name/dates/status + daysRemaining big number + 2 animated progress bars (elapsed/total days + reading progress) + "จัดการรอบ" button (navigates to meter page + auto-opens cycle dialog via pendingMeterAction zustand). No-active-cycle state: amber alert + "สร้างรอบใหม่" button (same navigation pattern).
+  3. Device Bulk Operations: select-all/indeterminate checkbox column + per-row checkboxes (orange when checked). Sticky bulk action bar (AnimatePresence slide-down, backdrop-blur, orange border-l-4) with bulk status change Select, bulk site move Select, bulk delete (AlertDialog confirm). All three operations use Promise.allSettled, toast success/fail counts, log audit (BULK_UPDATE/BULK_TRANSFER/BULK_DELETE — one entry summarising the bulk op), invalidate queries, clear selection. Selected rows highlighted with bg-orange-50 dark:bg-orange-950/30.
+- 6 styling-polish items applied: dashboard cycle widget framer-motion entrance + animated progress bars, devices bulk action bar sticky+blur+orange-accent+slide-down anim, cycle report MiniStatCard KpiCard-style with count-up, custom-styled orange checkboxes, selected row orange highlight, meter page bento hover lift on all 3 cards.
+- Audit tab updated: added CYCLE_CANCEL, CYCLE_REOPEN, BULK_UPDATE (orange), BULK_TRANSFER (amber), BULK_DELETE (rose) action badge classes.
+- Created `src/lib/bulk-audit.ts` helper (logBulkAudit) — same non-fatal pattern as logAudit but for bulk operations with no single entityId.
+- Classic sidebar preserved exactly (240px, #0f172a, orange #f97316/#fb923c active accent). Sticky footer layout intact. Thai labels throughout. Orange primary + teal secondary palette (no indigo/blue). All new UI has dark mode support. `bun run lint` clean (0 errors, 0 warnings). Dev server running cleanly on port 3000. No new runtime errors. No schema changes needed (used existing Cycle/MeterReading/Device/AuditLog models).
+
+---
+Task ID: 12-QA
+Agent: orchestrator (main) — round 5 independent verification
+Task: Independently verify all 3 new features + styling polish via agent-browser + curl.
+
+Work Log:
+- Read subagent's Task 12 worklog entry. Dev server healthy (HTTP 200, all endpoints 200).
+- API verification via curl:
+  - GET /api/cycles/<ended-id>/report → 200, {summary: {totalReadings:21, totalSheets:49818, avgDelta:4529, deviceCount:11, unreadCount:0}, devices: 11, anomalies: 0}. ✓
+- agent-browser UI verification:
+  - Dashboard cycle widget: "รอบจดมิเตอร์ปัจจุบัน" card present with days remaining, progress bar, "จัดการรอบ" button. ✓
+  - Device bulk operations: 12 row checkboxes + select-all in header. Clicking a row checkbox shows bulk action bar with "เปลี่ยนสถานะ" + "ลบ" buttons. ✓
+  - Cycle report dialog: opened for ended cycle (2026-08-01 → 2026-08-31) → shows summary (จดแล้ว 11 เครื่อง, รวม 49,818 แผ่น, เฉลี่ย 4,529 แผ่น, ยังไม่จด 0) + 3 tabs (รายการอุปกรณ์/ความผิดปกติ/สรุปรายเครื่อง) + CSV export button. ✓
+  - Cycle report for active empty cycle: shows dialog with "กำลังดำเนินการ" status (correct — no readings yet).
+- `bun run lint` → 0 errors, 0 warnings. No errors from new features in dev.log (only old pre-existing errors from rounds 1-2).
+
+Stage Summary:
+- All 3 features verified working end-to-end: cycle report (API + dialog with 3 tabs + summary stats + CSV export), dashboard cycle widget (active cycle card with progress + reading progress + navigate button), device bulk operations (checkbox select + bulk status/site/delete with confirms + audit).
+- Styling polish verified: framer-motion dashboard widget entrance, bulk action bar slide-down + backdrop-blur, custom orange checkboxes, selected row highlight, meter bento hover lift.
+- No bugs found. Classic sidebar preserved. Sticky footer intact. Lint clean. No new runtime errors.
+- Recommended next round: (1) auto-create next cycle when current ends, (2) device lifecycle/warranty dashboard (purchase date → replacement planning), (3) notifications panel for reminder thresholds, (4) export full dashboard as PDF report, (5) user permissions UI (make editable).

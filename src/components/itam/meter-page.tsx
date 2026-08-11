@@ -41,6 +41,7 @@ import { statusBadgeClass, statusLabel } from './types'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { BulkMeterDialog } from './bulk-meter-dialog'
 import { CycleManageDialog } from './cycle-manage-dialog'
+import { useAppStore } from '@/store/app-store'
 
 const METER_CSV_HEADERS = [
   { key: 'date', label: 'วันที่' },
@@ -97,6 +98,16 @@ export function MeterPage() {
   const [cycleDialogOpen, setCycleDialogOpen] = React.useState(false)
   const [exporting, setExporting] = React.useState(false)
   const [bulkOpen, setBulkOpen] = React.useState(false)
+
+  // Read pendingMeterAction from store on mount (e.g. 'open-cycle' from dashboard)
+  const pendingMeterAction = useAppStore((s) => s.pendingMeterAction)
+  const clearPendingMeterAction = useAppStore((s) => s.clearPendingMeterAction)
+  React.useEffect(() => {
+    if (pendingMeterAction === 'open-cycle') {
+      setCycleDialogOpen(true)
+      clearPendingMeterAction()
+    }
+  }, [pendingMeterAction, clearPendingMeterAction])
 
   const { data: activeCycle } = useQuery<Cycle | null>({
     queryKey: ['active-cycle'],
@@ -289,7 +300,7 @@ export function MeterPage() {
 
       {/* Cycle bento cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="relative overflow-hidden bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800/50 lg:col-span-2 dark:border-slate-800">
+        <Card className="relative overflow-hidden bg-gradient-to-br from-white to-slate-50 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg dark:from-slate-900 dark:to-slate-800/50 lg:col-span-2 dark:border-slate-800">
           <span
             aria-hidden
             className="pointer-events-none absolute -right-2 -top-2 text-[100px] leading-none text-slate-100 dark:text-slate-800/40 select-none"
@@ -324,7 +335,7 @@ export function MeterPage() {
           </CardContent>
         </Card>
 
-        <Card className="relative overflow-hidden bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800/50 dark:border-slate-800">
+        <Card className="relative overflow-hidden bg-gradient-to-br from-white to-slate-50 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg dark:from-slate-900 dark:to-slate-800/50 dark:border-slate-800">
           <span
             aria-hidden
             className="pointer-events-none absolute -right-1 -top-1 text-[80px] leading-none text-slate-100 dark:text-slate-800/40 select-none"
@@ -348,7 +359,7 @@ export function MeterPage() {
         </Card>
 
         {/* Progress card — จดแล้ว X/Y */}
-        <Card className="relative overflow-hidden bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800/50 dark:border-slate-800">
+        <Card className="relative overflow-hidden bg-gradient-to-br from-white to-slate-50 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg dark:from-slate-900 dark:to-slate-800/50 dark:border-slate-800">
           <span
             aria-hidden
             className="pointer-events-none absolute -right-1 -top-1 text-[80px] leading-none text-slate-100 dark:text-slate-800/40 select-none"

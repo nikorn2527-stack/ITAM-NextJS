@@ -3,12 +3,14 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -42,7 +44,20 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Plus, RefreshCw, Pencil, Trash2, Search, Eye, Download, Upload, Tag, PackageOpen } from 'lucide-react'
+import {
+  Plus,
+  RefreshCw,
+  Pencil,
+  Trash2,
+  Search,
+  Eye,
+  Download,
+  Upload,
+  Tag,
+  PackageOpen,
+  X,
+  ArrowRight,
+} from 'lucide-react'
 import {
   type Device,
   type Site,
@@ -137,6 +152,13 @@ export function DevicesPage() {
   const [exporting, setExporting] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [stickerOpen, setStickerOpen] = React.useState(false)
+
+  // Bulk operations state
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
+  const [bulkStatus, setBulkStatus] = React.useState<string>('')
+  const [bulkSite, setBulkSite] = React.useState<string>('')
+  const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false)
+  const [bulkAction, setBulkAction] = React.useState(false)
 
   // Read pendingDeviceId / pendingWarrantyFilter from store on mount
   const pendingDeviceId = useAppStore((s) => s.pendingDeviceId)
@@ -339,6 +361,148 @@ export function DevicesPage() {
     }
   }
 
+  // ---- Bulk operations ----
+  function toggleSelectAll(checked: boolean) {
+    if (checked) {
+      setSelectedIds(new Set((devices ?? []).map((d) => d.id)))
+    } else {
+      setSelectedIds(new Set())
+    }
+  }
+  function toggleSelect(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+  function clearSelection() {
+    setSelectedIds(new Set())
+    setBulkStatus('')
+    setBulkSite('')
+  }
+
+  async function logBulkAction(
+    action: 'BULK_UPDATE' | 'BULK_TRANSFER' | 'BULK_DELETE',
+    summary: string,
+    detail: Record<string, unknown>,
+  ) {
+    try {
+      await fetch('/api/audit/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, entity: 'Device', summary, detail }),
+      })
+    } catch {
+      // non-fatal
+    }
+  }
+
+  async function applyBulkStatus() {
+    if (!bulkStatus || selectedIds.size === 0) return
+    setBulkAction(true)
+    const ids = Array.from(selectedIds)
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        fetch(`/api/devices/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: bulkStatus }),
+        }),
+      ),
+    )
+    const ok = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - ok
+    const label = statusLabel(bulkStatus)
+    if (fail === 0) {
+      toast.success(`อัปเดต ${ok} เครื่องเป็น "${label}" แล้ว`)
+    } else {
+      toast.warning(`อัปเดตสำเร็จ ${ok} เครื่อง, ล้มเหลว ${fail} เครื่อง`)
+    }
+    await logBulkAction('BULK_UPDATE', `เปลี่ยนสถานะอุปกรณ์ ${ok} เครื่องเป็น ${label}`, {
+      status: bulkStatus,
+      count: ok,
+      failed: fail,
+      deviceIds: ids,
+    })
+    setBulkStatus('')
+    clearSelection()
+    await qc.invalidateQueries({ queryKey: ['devices'] })
+    await qc.invalidateQueries({ queryKey: ['dashboard'] })
+    await qc.invalidateQueries({ queryKey: ['audit'] })
+    setBulkAction(false)
+  }
+
+  async function applyBulkTransfer() {
+    if (!bulkSite || selectedIds.size === 0) return
+    setBulkAction(true)
+    const ids = Array.from(selectedIds)
+    const today = new Date().toISOString().slice(0, 10)
+    const results = await Promise.allSettled(
+      ids.map((id) =>
+        fetch(`/api/devices/${id}/transfer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ toSite: bulkSite, transferDate: today }),
+        }),
+      ),
+    )
+    const ok = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - ok
+    const siteName =
+      (sites ?? []).find((s) => s.code === bulkSite)?.name ?? bulkSite
+    if (fail === 0) {
+      toast.success(`ย้าย ${ok} เครื่องไปสาขา ${siteName} แล้ว`)
+    } else {
+      toast.warning(`ย้ายสำเร็จ ${ok} เครื่อง, ล้มเหลว ${fail} เครื่อง`)
+    }
+    await logBulkAction('BULK_TRANSFER', `ย้ายอุปกรณ์ ${ok} เครื่องไปสาขา ${siteName}`, {
+      toSite: bulkSite,
+      count: ok,
+      failed: fail,
+      deviceIds: ids,
+    })
+    setBulkSite('')
+    clearSelection()
+    await qc.invalidateQueries({ queryKey: ['devices'] })
+    await qc.invalidateQueries({ queryKey: ['dashboard'] })
+    await qc.invalidateQueries({ queryKey: ['audit'] })
+    setBulkAction(false)
+  }
+
+  async function applyBulkDelete() {
+    if (selectedIds.size === 0) return
+    setBulkAction(true)
+    const ids = Array.from(selectedIds)
+    const results = await Promise.allSettled(
+      ids.map((id) => fetch(`/api/devices/${id}`, { method: 'DELETE' })),
+    )
+    const ok = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - ok
+    if (fail === 0) {
+      toast.success(`ลบ ${ok} เครื่องแล้ว`)
+    } else {
+      toast.warning(`ลบสำเร็จ ${ok} เครื่อง, ล้มเหลว ${fail} เครื่อง`)
+    }
+    await logBulkAction('BULK_DELETE', `ลบอุปกรณ์ ${ok} เครื่อง`, {
+      count: ok,
+      failed: fail,
+      deviceIds: ids,
+    })
+    setBulkDeleteOpen(false)
+    clearSelection()
+    await qc.invalidateQueries({ queryKey: ['devices'] })
+    await qc.invalidateQueries({ queryKey: ['dashboard'] })
+    await qc.invalidateQueries({ queryKey: ['audit'] })
+    setBulkAction(false)
+  }
+
+  const hasDevices = (devices ?? []).length > 0
+  const allSelected =
+    hasDevices && selectedIds.size === (devices ?? []).length
+  const someSelected = selectedIds.size > 0 && !allSelected
+
   return (
     <div className="space-y-4 p-4 md:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -448,11 +612,120 @@ export function DevicesPage() {
             </div>
           </div>
 
+          {/* Bulk action bar — slides in when any rows are selected */}
+          <AnimatePresence>
+            {selectedIds.size > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="sticky top-0 z-20 -mt-2 mb-2 flex flex-col gap-3 rounded-lg border-l-4 border-[#f97316] border-y border-r border-slate-200 bg-white/90 p-3 shadow-md backdrop-blur-md dark:border-[#fb923c] dark:border-y-slate-800 dark:border-r-slate-800 dark:bg-slate-900/90 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-7 items-center rounded-md bg-[#f97316]/10 px-2.5 text-sm font-semibold text-[#f97316] dark:bg-[#fb923c]/10 dark:text-[#fb923c]">
+                    เลือกแล้ว {selectedIds.size} เครื่อง
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={clearSelection}
+                    className="h-7 px-2 text-xs text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    ยกเลิกการเลือก
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Bulk status */}
+                  <Select
+                    value={bulkStatus}
+                    onValueChange={(v) => {
+                      setBulkStatus(v)
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-[140px]">
+                      <SelectValue placeholder="เปลี่ยนสถานะ" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DEVICE_STATUS_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!bulkStatus || bulkAction}
+                    onClick={applyBulkStatus}
+                    className="h-8 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+                  >
+                    ใช้
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+
+                  {/* Bulk site move */}
+                  <Select
+                    value={bulkSite}
+                    onValueChange={(v) => {
+                      setBulkSite(v)
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-[140px]">
+                      <SelectValue placeholder="ย้ายสาขา" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(sites ?? []).map((s) => (
+                        <SelectItem key={s.code} value={s.code}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!bulkSite || bulkAction}
+                    onClick={applyBulkTransfer}
+                    className="h-8 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+                  >
+                    ย้าย
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+
+                  {/* Bulk delete */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={bulkAction}
+                    onClick={() => setBulkDeleteOpen(true)}
+                    className="h-8 border-rose-300 text-rose-600 hover:bg-rose-50 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 dark:border-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40 dark:focus-visible:ring-offset-slate-950"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    ลบ
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Table */}
           <div className="itam-scroll mt-4 max-h-[60vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
                 <TableRow>
+                  {hasDevices && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+                        onCheckedChange={(v) => toggleSelectAll(v === true)}
+                        aria-label="เลือกทั้งหมด"
+                        className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
+                      />
+                    </TableHead>
+                  )}
                   <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">แบรนด์</TableHead>
@@ -470,14 +743,14 @@ export function DevicesPage() {
                 {isLoading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={`sk-${i}`}>
-                      <TableCell colSpan={11}>
+                      <TableCell colSpan={12}>
                         <Skeleton className="h-6 w-full dark:bg-slate-800" />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (devices ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="py-12">
+                    <TableCell colSpan={12} className="py-12">
                       <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
                         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
                           <PackageOpen className="h-7 w-7 text-slate-300 dark:text-slate-600" />
@@ -522,12 +795,29 @@ export function DevicesPage() {
                 ) : (
                   (devices ?? []).map((d) => {
                     const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
+                    const isSelected = selectedIds.has(d.id)
                     return (
                     <TableRow
                       key={d.id}
-                      className="cursor-pointer transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/50"
+                      className={
+                        'cursor-pointer transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/50' +
+                        (isSelected
+                          ? ' bg-orange-50 dark:bg-orange-950/30'
+                          : '')
+                      }
                       onClick={() => setDetailDeviceId(d.id)}
                     >
+                      <TableCell
+                        className="w-10"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={(v) => toggleSelect(d.id, v === true)}
+                          aria-label={`เลือก ${d.assetCode}`}
+                          className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
+                        />
+                      </TableCell>
                       <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">
                         {d.assetCode}
                       </TableCell>
@@ -599,9 +889,45 @@ export function DevicesPage() {
 
           <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
             ทั้งหมด {(devices ?? []).length} รายการ
+            {selectedIds.size > 0 && (
+              <span className="ml-2 text-[#f97316] dark:text-[#fb923c]">
+                · เลือก {selectedIds.size} เครื่อง
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>
+
+      {/* Bulk delete confirm */}
+      <AlertDialog
+        open={bulkDeleteOpen}
+        onOpenChange={(o) => !o && setBulkDeleteOpen(false)}
+      >
+        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-slate-800 dark:text-slate-100">
+              ยืนยันการลบอุปกรณ์หลายเครื่อง
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบอุปกรณ์{' '}
+              <span className="font-semibold text-rose-700 dark:text-rose-400">
+                {selectedIds.size} เครื่อง
+              </span>{' '}
+              ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้ และจะลบประวัติการจดมิเตอร์ของอุปกรณ์เหล่านี้ด้วย
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkAction}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={applyBulkDelete}
+              disabled={bulkAction}
+              className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+            >
+              {bulkAction ? 'กำลังลบ...' : `ลบ ${selectedIds.size} เครื่อง`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

@@ -18,6 +18,8 @@ interface AppState {
   pendingSettingsTab: SettingsTab | null
   /** A warranty status filter to apply on devices page on mount. */
   pendingWarrantyFilter: 'expiring' | 'expired' | null
+  /** A meter-page action to auto-run on mount (e.g. 'open-cycle' opens the cycle dialog). */
+  pendingMeterAction: string | null
   /** Set true to open the global search palette from anywhere. */
   searchOpen: boolean
   setActivePage: (page: ActivePage) => void
@@ -29,6 +31,8 @@ interface AppState {
   clearPendingSettingsTab: () => void
   setPendingWarrantyFilter: (f: 'expiring' | 'expired' | null) => void
   clearPendingWarrantyFilter: () => void
+  setPendingMeterAction: (action: string | null) => void
+  clearPendingMeterAction: () => void
   setSearchOpen: (open: boolean) => void
 }
 
@@ -38,6 +42,7 @@ export const useAppStore = create<AppState>((set) => ({
   pendingDeviceId: null,
   pendingSettingsTab: null,
   pendingWarrantyFilter: null,
+  pendingMeterAction: null,
   searchOpen: false,
   setActivePage: (page) => set({ activePage: page }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -48,5 +53,7 @@ export const useAppStore = create<AppState>((set) => ({
   clearPendingSettingsTab: () => set({ pendingSettingsTab: null }),
   setPendingWarrantyFilter: (f) => set({ pendingWarrantyFilter: f }),
   clearPendingWarrantyFilter: () => set({ pendingWarrantyFilter: null }),
+  setPendingMeterAction: (action) => set({ pendingMeterAction: action }),
+  clearPendingMeterAction: () => set({ pendingMeterAction: null }),
   setSearchOpen: (open) => set({ searchOpen: open }),
 }))

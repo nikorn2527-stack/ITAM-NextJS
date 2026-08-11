@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
+import { motion } from 'framer-motion'
 import {
   PieChart,
   Pie,
@@ -21,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
 import {
   Select,
   SelectContent,
@@ -41,10 +43,13 @@ import {
   FileText,
   Inbox,
   AlertTriangle,
+  CalendarClock,
+  ArrowRight,
 } from 'lucide-react'
 import type {
   DashboardData,
   DashboardRangeKey,
+  Cycle,
 } from './types'
 import { DASHBOARD_RANGE_OPTIONS } from './types'
 import { useAppStore } from '@/store/app-store'
@@ -220,6 +225,7 @@ export function DashboardPage() {
   const setPendingWarrantyFilter = useAppStore(
     (s) => s.setPendingWarrantyFilter,
   )
+  const setPendingMeterAction = useAppStore((s) => s.setPendingMeterAction)
 
   const [seeding, setSeeding] = React.useState(false)
   const [range, setRange] = React.useState<DashboardRangeKey>('month')
@@ -230,6 +236,37 @@ export function DashboardPage() {
       const res = await fetch(`/api/dashboard?range=${range}`)
       if (!res.ok) throw new Error('Failed to load dashboard')
       return res.json()
+    },
+  })
+
+  // Active cycle (for the dashboard cycle progress widget)
+  const { data: activeCycle, isLoading: cycleLoading } = useQuery<Cycle | null>({
+    queryKey: ['active-cycle'],
+    queryFn: async () => {
+      const res = await fetch('/api/cycles?status=active')
+      if (!res.ok) return null
+      const json = await res.json()
+      return (json.cycles?.[0] as Cycle | undefined) ?? null
+    },
+  })
+
+  // Reading progress for the active cycle (totalRead / totalMeterable)
+  interface RemindersSummary {
+    hasActiveCycle: boolean
+    totalRead: number
+    totalUnread: number
+  }
+  const { data: remindersSummary } = useQuery<RemindersSummary>({
+    queryKey: ['meter-reminders-summary'],
+    queryFn: async () => {
+      const res = await fetch('/api/meter/reminders')
+      if (!res.ok) return { hasActiveCycle: false, totalRead: 0, totalUnread: 0 }
+      const json = await res.json()
+      return {
+        hasActiveCycle: Boolean(json.hasActiveCycle),
+        totalRead: Number(json.totalRead ?? 0),
+        totalUnread: Number(json.totalUnread ?? 0),
+      }
     },
   })
 
@@ -436,6 +473,27 @@ export function DashboardPage() {
           trend={paperTrend}
         />
       </div>
+
+      {/* Cycle progress widget — animated, full-width */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+      >
+        <CycleProgressWidget
+          activeCycle={activeCycle ?? null}
+          cycleLoading={cycleLoading}
+          remindersSummary={remindersSummary ?? null}
+          onManageCycle={() => {
+            setPendingMeterAction('open-cycle')
+            setActivePage('meter')
+          }}
+          onCreateCycle={() => {
+            setPendingMeterAction('open-cycle')
+            setActivePage('meter')
+          }}
+        />
+      </motion.div>
 
       {/* Warranty alert bar — full-width amber card linking to devices */}
       <button
@@ -747,5 +805,188 @@ export function DashboardPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+// ----------------------------------------------------------------------------
+// Cycle Progress Widget — shows active cycle status at a glance
+// ----------------------------------------------------------------------------
+interface CycleProgressWidgetProps {
+  activeCycle: Cycle | null
+  cycleLoading: boolean
+  remindersSummary: {
+    hasActiveCycle: boolean
+    totalRead: number
+    totalUnread: number
+  } | null
+  onManageCycle: () => void
+  onCreateCycle: () => void
+}
+
+function daysBetween(a: string, b: string): number {
+  return Math.round(
+    (new Date(b).getTime() - new Date(a).getTime()) / (1000 * 60 * 60 * 24),
+  )
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function CycleProgressWidget({
+  activeCycle,
+  cycleLoading,
+  remindersSummary,
+  onManageCycle,
+  onCreateCycle,
+}: CycleProgressWidgetProps) {
+  // Start progress bars at 0 then animate to their real value after mount
+  // — Radix Progress needs a value change to trigger the CSS transition.
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => {
+    const t = window.setTimeout(() => setMounted(true), 60)
+    return () => window.clearTimeout(t)
+  }, [])
+
+  if (cycleLoading) {
+    return (
+      <Card className="overflow-hidden border-[#f97316]/20 bg-gradient-to-br from-orange-50 to-white dark:border-[#f97316]/30 dark:from-slate-900 dark:to-slate-800/50">
+        <CardContent className="p-4">
+          <Skeleton className="h-24 w-full dark:bg-slate-800" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // No active cycle — amber alert prompting the user to create one
+  if (!activeCycle) {
+    return (
+      <Card className="relative overflow-hidden border-amber-200 bg-gradient-to-br from-amber-50 to-white dark:border-amber-800/60 dark:from-amber-950/30 dark:to-slate-900">
+        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-amber-400 to-[#f97316]" />
+        <CardContent className="relative flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition-transform group-hover:scale-105 dark:bg-amber-900/40 dark:text-amber-300">
+              <CalendarClock className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                ⚠️ ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ
+              </div>
+              <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-300/80">
+                สร้างรอบใหม่เพื่อเริ่มจดมิเตอร์ได้ทันที
+              </div>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={onCreateCycle}
+            className="shrink-0 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+          >
+            <CalendarClock className="h-4 w-4" />
+            สร้างรอบใหม่
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Active cycle — show progress bars
+  const totalDays = Math.max(1, daysBetween(activeCycle.startDate, activeCycle.endDate))
+  const elapsed = Math.max(0, daysBetween(activeCycle.startDate, todayISO()))
+  const daysRemaining = Math.max(0, daysBetween(todayISO(), activeCycle.endDate))
+  const elapsedPct = Math.min(100, Math.round((elapsed / totalDays) * 100))
+
+  const totalRead = remindersSummary?.totalRead ?? 0
+  const totalMeterable =
+    (remindersSummary?.totalRead ?? 0) + (remindersSummary?.totalUnread ?? 0)
+  const readPct =
+    totalMeterable > 0 ? Math.round((totalRead / totalMeterable) * 100) : 0
+
+  // Animate from 0 → target on mount
+  const animElapsedPct = mounted ? elapsedPct : 0
+  const animReadPct = mounted ? readPct : 0
+
+  return (
+    <Card className="group relative overflow-hidden border-[#f97316]/20 bg-gradient-to-br from-orange-50 to-white shadow-sm transition-shadow hover:shadow-md dark:border-[#f97316]/30 dark:from-slate-900 dark:to-slate-800/50">
+      {/* Top accent bar */}
+      <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#fb923c] to-[#f97316]" />
+      {/* Watermark icon */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-2 -top-2 select-none text-[100px] leading-none text-[#f97316]/5 dark:text-[#fb923c]/10"
+      >
+        <CalendarClock className="h-24 w-24" />
+      </span>
+
+      <CardContent className="relative p-4 sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          {/* Left: cycle name + dates */}
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+              <CalendarClock className="h-3.5 w-3.5" />
+              รอบจดมิเตอร์ปัจจุบัน
+            </div>
+            <div className="truncate text-base font-bold text-slate-800 dark:text-slate-100 sm:text-lg">
+              {activeCycle.name}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-mono">
+                📅 {activeCycle.startDate} → {activeCycle.endDate}
+              </span>
+              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:scale-105 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                กำลังดำเนินการ
+              </Badge>
+            </div>
+          </div>
+
+          {/* Middle: days remaining big number */}
+          <div className="flex shrink-0 items-center gap-4">
+            <div className="flex flex-col items-center justify-center rounded-lg bg-white/70 px-4 py-2 text-center shadow-sm dark:bg-slate-800/60">
+              <div className="text-3xl font-bold tabular-nums leading-tight text-[#f97316] dark:text-[#fb923c]">
+                {daysRemaining}
+              </div>
+              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                วันที่เหลือ
+              </div>
+            </div>
+
+            {/* Right: progress bars + manage button */}
+            <div className="flex min-w-[180px] flex-1 flex-col gap-2">
+              <div>
+                <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                  <span>ความคืบหน้ารอบ</span>
+                  <span className="font-mono tabular-nums">{elapsedPct}%</span>
+                </div>
+                <Progress
+                  value={animElapsedPct}
+                  className="h-1.5 [&>div]:bg-gradient-to-r [&>div]:from-[#fb923c] [&>div]:to-[#f97316]"
+                />
+              </div>
+              <div>
+                <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                  <span>การจดมิเตอร์</span>
+                  <span className="font-mono tabular-nums">
+                    {totalRead}/{totalMeterable} ({readPct}%)
+                  </span>
+                </div>
+                <Progress
+                  value={animReadPct}
+                  className="h-1.5 [&>div]:bg-[#0d9488]"
+                />
+              </div>
+              <Button
+                size="sm"
+                onClick={onManageCycle}
+                className="mt-1 self-end bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+              >
+                จัดการรอบ
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
