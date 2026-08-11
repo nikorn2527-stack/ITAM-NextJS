@@ -1,0 +1,1489 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Input } from '@/components/ui/input'
+     9→import { Label } from '@/components/ui/label'
+    10→import { Switch } from '@/components/ui/switch'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Skeleton } from '@/components/ui/skeleton'
+    13→import {
+    14→  Tabs,
+    15→  TabsContent,
+    16→  TabsList,
+    17→  TabsTrigger,
+    18→} from '@/components/ui/tabs'
+    19→import {
+    20→  Select,
+    21→  SelectContent,
+    22→  SelectItem,
+    23→  SelectTrigger,
+    24→  SelectValue,
+    25→} from '@/components/ui/select'
+    26→import {
+    27→  Table,
+    28→  TableBody,
+    29→  TableCell,
+    30→  TableHead,
+    31→  TableHeader,
+    32→  TableRow,
+    33→} from '@/components/ui/table'
+    34→import {
+    35→  AlertDialog,
+    36→  AlertDialogAction,
+    37→  AlertDialogCancel,
+    38→  AlertDialogContent,
+    39→  AlertDialogDescription,
+    40→  AlertDialogFooter,
+    41→  AlertDialogHeader,
+    42→  AlertDialogTitle,
+    43→} from '@/components/ui/alert-dialog'
+    44→import {
+    45→  Dialog,
+    46→  DialogContent,
+    47→  DialogDescription,
+    48→  DialogFooter,
+    49→  DialogHeader,
+    50→  DialogTitle,
+    51→} from '@/components/ui/dialog'
+    52→import {
+    53→  Plus,
+    54→  RefreshCw,
+    55→  Pencil,
+    56→  Trash2,
+    57→  Link2,
+    58→  Building2,
+    59→  Users,
+    60→  Save,
+    61→  Settings as SettingsIcon,
+    62→  Database,
+    63→  History,
+    64→  Inbox,
+    65→  Package,
+    66→  FileBarChart,
+    67→  Repeat,
+    68→  CalendarClock,
+    69→  Server,
+    70→  Coins,
+    71→} from 'lucide-react'
+    72→import {
+    73→  type MasterItem,
+    74→  type Site,
+    75→  type SiteRate,
+    76→  type AuditLog,
+    77→  MASTER_CATEGORIES,
+    78→} from './types'
+    79→import { MasterDataModal } from './master-data-modal'
+    80→import { useAppStore, type SettingsTab } from '@/store/app-store'
+    81→
+    82→const DEMO_USERS = [
+    83→  { email: 'admin@example.com', role: 'admin', roleLabel: 'ผู้ดูแลระบบ' },
+    84→  { email: 'manager@example.com', role: 'manager', roleLabel: 'ผู้จัดการ' },
+    85→  { email: 'staff@example.com', role: 'staff', roleLabel: 'เจ้าหน้าที่' },
+    86→  { email: 'viewer@example.com', role: 'viewer', roleLabel: 'ผู้ดู' },
+    87→]
+    88→
+    89→export function SettingsPage() {
+    90→  const pendingTab = useAppStore((s) => s.pendingSettingsTab)
+    91→  const clearPendingTab = useAppStore((s) => s.clearPendingSettingsTab)
+    92→  const [activeTab, setActiveTab] = React.useState<string>('app')
+    93→
+    94→  React.useEffect(() => {
+    95→    if (pendingTab) {
+    96→      setActiveTab(pendingTab)
+    97→      clearPendingTab()
+    98→    }
+    99→  }, [pendingTab, clearPendingTab])
+   100→
+   101→  return (
+   102→    <div className="space-y-4 p-4 md:p-6">
+   103→      <div>
+   104→        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ตั้งค่าแอป</h1>
+   105→        <p className="text-sm text-slate-500 dark:text-slate-400">
+   106→          กำหนดค่าระบบ ข้อมูลมาตรฐาน สาขา อัตราค่ากระดาษ และสิทธิ์ผู้ใช้
+   107→        </p>
+   108→      </div>
+   109→
+   110→      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+   111→        <TabsList className="h-auto flex-wrap dark:bg-slate-900 dark:border dark:border-slate-800">
+   112→          <TabsTrigger value="app" className="gap-1.5 px-3">
+   113→            <SettingsIcon className="h-4 w-4" />
+   114→            ตั้งค่าทั่วไป
+   115→          </TabsTrigger>
+   116→          <TabsTrigger value="master" className="gap-1.5 px-3">
+   117→            <Database className="h-4 w-4" />
+   118→            ข้อมูลมาตรฐาน
+   119→          </TabsTrigger>
+   120→          <TabsTrigger value="sites" className="gap-1.5 px-3">
+   121→            <Building2 className="h-4 w-4" />
+   122→            สาขา
+   123→          </TabsTrigger>
+   124→          <TabsTrigger value="rates" className="gap-1.5 px-3">
+   125→            <Coins className="h-4 w-4" />
+   126→            อัตราค่ากระดาษ
+   127→          </TabsTrigger>
+   128→          <TabsTrigger value="users" className="gap-1.5 px-3">
+   129→            <Users className="h-4 w-4" />
+   130→            สิทธิ์ผู้ใช้
+   131→          </TabsTrigger>
+   132→          <TabsTrigger value="audit" className="gap-1.5 px-3" data-permission="ADMIN">
+   133→            <History className="h-4 w-4" />
+   134→            ประวัติการใช้งาน
+   135→          </TabsTrigger>
+   136→        </TabsList>
+   137→
+   138→        <TabsContent value="app" className="mt-4">
+   139→          <AppTab />
+   140→        </TabsContent>
+   141→        <TabsContent value="master" className="mt-4">
+   142→          <MasterTab />
+   143→        </TabsContent>
+   144→        <TabsContent value="sites" className="mt-4">
+   145→          <SitesTab />
+   146→        </TabsContent>
+   147→        <TabsContent value="rates" className="mt-4">
+   148→          <RatesTab />
+   149→        </TabsContent>
+   150→        <TabsContent value="users" className="mt-4">
+   151→          <UsersTab />
+   152→        </TabsContent>
+   153→        <TabsContent value="audit" className="mt-4">
+   154→          <AuditTab />
+   155→        </TabsContent>
+   156→      </Tabs>
+   157→    </div>
+   158→  )
+   159→}
+   160→
+   161→/* ---------- App tab ---------- */
+   162→function AppTab() {
+   163→  const qc = useQueryClient()
+   164→  const { data: settings, isLoading } = useQuery<Record<string, string>>({
+   165→    queryKey: ['settings'],
+   166→    queryFn: async () => {
+   167→      const res = await fetch('/api/settings')
+   168→      if (!res.ok) throw new Error('Failed to load settings')
+   169→      const json = await res.json()
+   170→      return json.settings as Record<string, string>
+   171→    },
+   172→  })
+   173→  const { data: sites } = useQuery<Site[]>({
+   174→    queryKey: ['sites'],
+   175→    queryFn: async () => {
+   176→      const res = await fetch('/api/sites')
+   177→      if (!res.ok) throw new Error('Failed to load sites')
+   178→      const json = await res.json()
+   179→      return json.sites as Site[]
+   180→    },
+   181→  })
+   182→
+   183→  const [form, setForm] = React.useState<Record<string, string>>({})
+   184→  const [saving, setSaving] = React.useState(false)
+   185→
+   186→  React.useEffect(() => {
+   187→    if (settings) {
+   188→      // Provide defaults for cycle template keys so the UI is initialized
+   189→      // even on first load (before the user saves anything).
+   190→      const merged: Record<string, string> = {
+   191→        'cycleTemplate.enabled': settings['cycleTemplate.enabled'] ?? 'true',
+   192→        'cycleTemplate.autoCreate': settings['cycleTemplate.autoCreate'] ?? 'true',
+   193→        'cycleTemplate.durationDays': settings['cycleTemplate.durationDays'] ?? '30',
+   194→        ...settings,
+   195→      }
+   196→      setForm(merged)
+   197→    }
+   198→  }, [settings])
+   199→
+   200→  async function save() {
+   201→    try {
+   202→      setSaving(true)
+   203→      const res = await fetch('/api/settings', {
+   204→        method: 'PUT',
+   205→        headers: { 'Content-Type': 'application/json' },
+   206→        body: JSON.stringify(form),
+   207→      })
+   208→      if (!res.ok) throw new Error('Save failed')
+   209→      toast.success('บันทึกการตั้งค่าแล้ว')
+   210→      await qc.invalidateQueries({ queryKey: ['settings'] })
+   211→    } catch (e) {
+   212→      toast.error(e instanceof Error ? e.message : 'Save failed')
+   213→    } finally {
+   214→      setSaving(false)
+   215→    }
+   216→  }
+   217→
+   218→  if (isLoading) {
+   219→    return (
+   220→      <Card className="dark:border-slate-800 dark:bg-slate-900">
+   221→        <CardContent className="p-6">
+   222→          <Skeleton className="h-64 w-full dark:bg-slate-800" />
+   223→        </CardContent>
+   224→      </Card>
+   225→    )
+   226→  }
+   227→
+   228→  return (
+   229→    <Card className="dark:border-slate-800 dark:bg-slate-900">
+   230→      <CardHeader>
+   231→        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+   232→          <SettingsIcon className="h-4 w-4 text-[#f97316]" />
+   233→          ตั้งค่าทั่วไป
+   234→        </CardTitle>
+   235→      </CardHeader>
+   236→      <CardContent className="space-y-4">
+   237→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   238→          <div className="space-y-1.5">
+   239→            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+   240→              ชื่อองค์กร
+   241→            </Label>
+   242→            <Input
+   243→              value={form.orgName ?? ''}
+   244→              onChange={(e) => setForm({ ...form, orgName: e.target.value })}
+   245→              placeholder="PNG TEAM"
+   246→              className="dark:bg-slate-800 dark:border-slate-700"
+   247→            />
+   248→          </div>
+   249→          <div className="space-y-1.5">
+   250→            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+   251→              สาขาเริ่มต้น
+   252→            </Label>
+   253→            <Select
+   254→              value={form.defaultSite ?? ''}
+   255→              onValueChange={(v) => setForm({ ...form, defaultSite: v })}
+   256→            >
+   257→              <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700">
+   258→                <SelectValue placeholder="เลือกสาขา" />
+   259→              </SelectTrigger>
+   260→              <SelectContent>
+   261→                {(sites ?? []).map((s) => (
+   262→                  <SelectItem key={s.id} value={s.code}>
+   263→                    {s.code} — {s.name}
+   264→                  </SelectItem>
+   265→                ))}
+   266→              </SelectContent>
+   267→            </Select>
+   268→          </div>
+   269→        </div>
+   270→
+   271→        <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
+   272→          <div>
+   273→            <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
+   274→              ล็อกอินด้วยรหัสผ่าน
+   275→            </div>
+   276→            <div className="text-xs text-slate-500 dark:text-slate-400">
+   277→              อนุญาตนอกเหนือจาก SSO (Google)
+   278→            </div>
+   279→          </div>
+   280→          <Switch
+   281→            checked={form.enablePasswordLogin === 'true'}
+   282→            onCheckedChange={(c) =>
+   283→              setForm({ ...form, enablePasswordLogin: c ? 'true' : 'false' })
+   284→            }
+   285→          />
+   286→        </div>
+   287→
+   288→        {/* Cycle template section — distinct Card with subtle gradient bg */}
+   289→        <div className="overflow-hidden rounded-lg border border-[#f97316]/30 bg-gradient-to-br from-orange-50 via-white to-white shadow-sm dark:border-[#f97316]/40 dark:from-slate-900 dark:via-slate-900 dark:to-slate-900">
+   290→          <div className="flex items-center gap-2 border-b border-[#f97316]/20 bg-gradient-to-r from-orange-50/80 to-transparent px-4 py-3 dark:border-[#f97316]/30 dark:from-slate-800/60 dark:to-transparent">
+   291→            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#f97316]/15 text-[#f97316] dark:bg-[#fb923c]/15 dark:text-[#fb923c]">
+   292→              <CalendarClock className="h-4 w-4" />
+   293→            </div>
+   294→            <div>
+   295→              <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+   296→                ตั้งค่ารอบจดมิเตอร์อัตโนมัติ
+   297→              </div>
+   298→              <div className="text-xs text-slate-500 dark:text-slate-400">
+   299→                กำหนดเทมเพลตสำหรับสร้างรอบใหม่เมื่อจบรอบปัจจุบัน
+   300→              </div>
+   301→            </div>
+   302→          </div>
+   303→
+   304→          <div className="space-y-4 p-4">
+   305→            <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white/70 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/40">
+   306→              <div className="pr-3">
+   307→                <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
+   308→                  สร้างรอบใหม่อัตโนมัติเมื่อจบรอบ
+   309→                </div>
+   310→                <div className="text-xs text-slate-500 dark:text-slate-400">
+   311→                  เมื่อจบรอบปัจจุบัน ระบบจะแนะนำการสร้างรอบใหม่โดยอัตโนมัติ
+   312→                </div>
+   313→              </div>
+   314→              <Switch
+   315→                checked={form['cycleTemplate.autoCreate'] === 'true'}
+   316→                onCheckedChange={(c) =>
+   317→                  setForm({
+   318→                    ...form,
+   319→                    'cycleTemplate.autoCreate': c ? 'true' : 'false',
+   320→                    'cycleTemplate.enabled': c ? 'true' : 'false',
+   321→                  })
+   322→                }
+   323→              />
+   324→            </div>
+   325→
+   326→            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   327→              <div className="space-y-1.5">
+   328→                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+   329→                  ระยะเวลารอบ (วัน)
+   330→                </Label>
+   331→                <Input
+   332→                  type="number"
+   333→                  min={7}
+   334→                  max={90}
+   335→                  value={form['cycleTemplate.durationDays'] ?? '30'}
+   336→                  onChange={(e) => {
+   337→                    const v = Math.min(
+   338→                      90,
+   339→                      Math.max(7, Number(e.target.value) || 30),
+   340→                    )
+   341→                    setForm({
+   342→                      ...form,
+   343→                      'cycleTemplate.durationDays': String(v),
+   344→                    })
+   345→                  }}
+   346→                  className="dark:bg-slate-800 dark:border-slate-700"
+   347→                />
+   348→              </div>
+   349→              <div className="flex items-end">
+   350→                <p className="rounded-md bg-slate-100 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+   351→                  ชื่อรอบใหม่จะเป็น "<span className="font-medium">รอบจดมิเตอร์ &lt;เดือน&gt; &lt;ปี&gt;</span>"
+   352→                  เริ่มวันนี้ และสิ้นสุดในอีก {form['cycleTemplate.durationDays'] ?? '30'} วัน
+   353→                </p>
+   354→              </div>
+   355→            </div>
+   356→
+   357→            <div className="flex items-start gap-2 rounded-md bg-[#f97316]/5 px-3 py-2 text-xs text-[#f97316] dark:bg-[#fb923c]/10 dark:text-[#fb923c]">
+   358→              <CalendarClock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+   359→              <span>
+   360→                ตั้งค่านี้ใช้กับการจบรอบจดมิเตอร์ในหน้า "จดมิเตอร์" → จัดการรอบ เท่านั้น
+   361→              </span>
+   362→            </div>
+   363→          </div>
+   364→        </div>
+   365→
+   366→        <div className="flex justify-end">
+   367→          <Button
+   368→            onClick={save}
+   369→            disabled={saving}
+   370→            className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   371→          >
+   372→            <Save className="h-4 w-4" />
+   373→            {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+   374→          </Button>
+   375→        </div>
+   376→      </CardContent>
+   377→    </Card>
+   378→  )
+   379→}
+   380→
+   381→/* ---------- Master tab ---------- */
+   382→function MasterTab() {
+   383→  const qc = useQueryClient()
+   384→  const [categoryFilter, setCategoryFilter] = React.useState<string>('all')
+   385→  const [modalOpen, setModalOpen] = React.useState(false)
+   386→  const [editTarget, setEditTarget] = React.useState<MasterItem | null>(null)
+   387→  const [deleteTarget, setDeleteTarget] = React.useState<MasterItem | null>(null)
+   388→  const [deleting, setDeleting] = React.useState(false)
+   389→  const [syncing, setSyncing] = React.useState<string | null>(null)
+   390→
+   391→  const { data: items, isLoading } = useQuery<MasterItem[]>({
+   392→    queryKey: ['master', categoryFilter],
+   393→    queryFn: async () => {
+   394→      const params = new URLSearchParams()
+   395→      if (categoryFilter !== 'all') params.set('category', categoryFilter)
+   396→      const res = await fetch(`/api/master?${params.toString()}`)
+   397→      if (!res.ok) throw new Error('Failed to load master')
+   398→      const json = await res.json()
+   399→      return json.items as MasterItem[]
+   400→    },
+   401→  })
+   402→
+   403→  function openAdd() {
+   404→    setEditTarget(null)
+   405→    setModalOpen(true)
+   406→  }
+   407→  function openEdit(item: MasterItem) {
+   408→    setEditTarget(item)
+   409→    setModalOpen(true)
+   410→  }
+   411→
+   412→  async function runSync(type: 'model' | 'dept' | 'labels') {
+   413→    try {
+   414→      setSyncing(type)
+   415→      const res = await fetch(`/api/master/sync?type=${type}`, {
+   416→        method: 'POST',
+   417→      })
+   418→      if (!res.ok) {
+   419→        const j = await res.json().catch(() => ({}))
+   420→        throw new Error(j.error ?? 'Sync failed')
+   421→      }
+   422→      const json = await res.json()
+   423→      toast.success(
+   424→        `ซิงค์ข้อมูลสำเร็จ (${type}) — อัปเดต ${json.updated ?? 0} รายการ`,
+   425→      )
+   426→      await qc.invalidateQueries({ queryKey: ['master'] })
+   427→      await qc.invalidateQueries({ queryKey: ['devices'] })
+   428→    } catch (e) {
+   429→      toast.error(e instanceof Error ? e.message : 'Sync failed')
+   430→    } finally {
+   431→      setSyncing(null)
+   432→    }
+   433→  }
+   434→
+   435→  async function confirmDelete() {
+   436→    if (!deleteTarget) return
+   437→    try {
+   438→      setDeleting(true)
+   439→      const res = await fetch(`/api/master/${deleteTarget.id}`, {
+   440→        method: 'DELETE',
+   441→      })
+   442→      if (!res.ok) {
+   443→        const j = await res.json().catch(() => ({}))
+   444→        throw new Error(j.error ?? 'Delete failed')
+   445→      }
+   446→      toast.success('ลบรายการแล้ว')
+   447→      setDeleteTarget(null)
+   448→      await qc.invalidateQueries({ queryKey: ['master'] })
+   449→    } catch (e) {
+   450→      toast.error(e instanceof Error ? e.message : 'Delete failed')
+   451→    } finally {
+   452→      setDeleting(false)
+   453→    }
+   454→  }
+   455→
+   456→  return (
+   457→    <Card className="dark:border-slate-800 dark:bg-slate-900">
+   458→      <CardHeader>
+   459→        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+   460→          <Database className="h-4 w-4 text-[#f97316]" />
+   461→          ข้อมูลมาตรฐาน (Master Data)
+   462→        </CardTitle>
+   463→      </CardHeader>
+   464→      <CardContent className="space-y-4">
+   465→        {/* Toolbar */}
+   466→        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+   467→          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+   468→            <Select
+   469→              value={categoryFilter}
+   470→              onValueChange={setCategoryFilter}
+   471→            >
+   472→              <SelectTrigger className="w-full sm:w-44">
+   473→                <SelectValue placeholder="หมวดหมู่" />
+   474→              </SelectTrigger>
+   475→              <SelectContent>
+   476→                <SelectItem value="all">หมวดหมู่ทั้งหมด</SelectItem>
+   477→                {MASTER_CATEGORIES.map((c) => (
+   478→                  <SelectItem key={c} value={c}>
+   479→                    {c}
+   480→                  </SelectItem>
+   481→                ))}
+   482→              </SelectContent>
+   483→            </Select>
+   484→          </div>
+   485→          <div className="flex flex-wrap items-center gap-2">
+   486→            <Button
+   487→              variant="outline"
+   488→              size="sm"
+   489→              onClick={() => runSync('model')}
+   490→              disabled={syncing !== null}
+   491→            >
+   492→              <Link2 className="h-3.5 w-3.5" />
+   493→              {syncing === 'model' ? '...' : 'Model'}
+   494→            </Button>
+   495→            <Button
+   496→              variant="outline"
+   497→              size="sm"
+   498→              onClick={() => runSync('dept')}
+   499→              disabled={syncing !== null}
+   500→            >
+   501→              <Link2 className="h-3.5 w-3.5" />
+   502→              {syncing === 'dept' ? '...' : 'Dept'}
+   503→            </Button>
+   504→            <Button
+   505→              variant="outline"
+   506→              size="sm"
+   507→              onClick={() => runSync('labels')}
+   508→              disabled={syncing !== null}
+   509→            >
+   510→              <Link2 className="h-3.5 w-3.5" />
+   511→              {syncing === 'labels' ? '...' : 'Labels'}
+   512→            </Button>
+   513→            <Button
+   514→              onClick={openAdd}
+   515→              className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   516→              size="sm"
+   517→            >
+   518→              <Plus className="h-3.5 w-3.5" />
+   519→              เพิ่มรายการ
+   520→            </Button>
+   521→            <Button
+   522→              variant="outline"
+   523→              size="sm"
+   524→              onClick={() => qc.invalidateQueries({ queryKey: ['master'] })}
+   525→            >
+   526→              <RefreshCw className="h-3.5 w-3.5" />
+   527→            </Button>
+   528→          </div>
+   529→        </div>
+   530→
+   531→        {/* Table */}
+   532→        <div className="itam-scroll max-h-[55vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
+   533→          <Table>
+   534→            <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+   535→              <TableRow>
+   536→                <TableHead className="text-slate-600 dark:text-slate-300">หมวดหมู่</TableHead>
+   537→                <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
+   538→                <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
+   539→                <TableHead className="text-slate-600 dark:text-slate-300">ParentRef</TableHead>
+   540→                <TableHead className="text-slate-600 dark:text-slate-300">DisplayLabel</TableHead>
+   541→                <TableHead className="text-slate-600 dark:text-slate-300">SiteCode</TableHead>
+   542→                <TableHead className="text-right text-slate-600 dark:text-slate-300">การจัดการ</TableHead>
+   543→              </TableRow>
+   544→            </TableHeader>
+   545→            <TableBody>
+   546→              {isLoading ? (
+   547→                Array.from({ length: 6 }).map((_, i) => (
+   548→                  <TableRow key={`sk-${i}`}>
+   549→                    <TableCell colSpan={7}>
+   550→                      <Skeleton className="h-6 w-full dark:bg-slate-800" />
+   551→                    </TableCell>
+   552→                  </TableRow>
+   553→                ))
+   554→              ) : (items ?? []).length === 0 ? (
+   555→                <TableRow>
+   556→                  <TableCell colSpan={7} className="py-12">
+   557→                    <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
+   558→                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+   559→                        <Database className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+   560→                      </div>
+   561→                      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+   562→                        ไม่พบรายการมาตรฐาน
+   563→                      </div>
+   564→                      <div className="text-xs text-slate-400 dark:text-slate-500">
+   565→                        {categoryFilter !== 'all'
+   566→                          ? 'ไม่มีรายการในหมวดหมู่ที่เลือก — ลองเปลี่ยนหมวดหมู่ หรือเพิ่มรายการใหม่'
+   567→                          : 'เริ่มต้นด้วยการเพิ่มรายการมาตรฐาน (แบรนด์/ประเภท/รุ่น/แผนก ฯลฯ)'}
+   568→                      </div>
+   569→                    </div>
+   570→                  </TableCell>
+   571→                </TableRow>
+   572→              ) : (
+   573→                (items ?? []).map((it) => (
+   574→                  <TableRow key={it.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+   575→                    <TableCell>
+   576→                      <Badge className="border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+   577→                        {it.category}
+   578→                      </Badge>
+   579→                    </TableCell>
+   580→                    <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">
+   581→                      {it.code}
+   582→                    </TableCell>
+   583→                    <TableCell className="text-slate-700 dark:text-slate-200">{it.label}</TableCell>
+   584→                    <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">
+   585→                      {it.parentRef ?? '-'}
+   586→                    </TableCell>
+   587→                    <TableCell className="text-slate-600 dark:text-slate-300">
+   588→                      {it.displayLabel ?? '-'}
+   589→                    </TableCell>
+   590→                    <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">
+   591→                      {it.siteCode ?? '-'}
+   592→                    </TableCell>
+   593→                    <TableCell className="text-right">
+   594→                      <div className="flex justify-end gap-1">
+   595→                        <Button
+   596→                          size="icon"
+   597→                          variant="ghost"
+   598→                          onClick={() => openEdit(it)}
+   599→                          aria-label="แก้ไข"
+   600→                        >
+   601→                          <Pencil className="h-4 w-4" />
+   602→                        </Button>
+   603→                        <Button
+   604→                          size="icon"
+   605→                          variant="ghost"
+   606→                          onClick={() => setDeleteTarget(it)}
+   607→                          aria-label="ลบ"
+   608→                          className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
+   609→                        >
+   610→                          <Trash2 className="h-4 w-4" />
+   611→                        </Button>
+   612→                      </div>
+   613→                    </TableCell>
+   614→                  </TableRow>
+   615→                ))
+   616→              )}
+   617→            </TableBody>
+   618→          </Table>
+   619→        </div>
+   620→        <div className="text-xs text-slate-400 dark:text-slate-500">
+   621→          ทั้งหมด {(items ?? []).length} รายการ · ปุ่มซิงค์ (Model/Dept/Labels) ใช้สำหรับ backfill ฟิลด์ ParentRef / DepartmentCode / DisplayLabel
+   622→        </div>
+   623→      </CardContent>
+   624→
+   625→      <MasterDataModal
+   626→        open={modalOpen}
+   627→        onOpenChange={setModalOpen}
+   628→        initial={editTarget}
+   629→        fixedCategory={
+   630→          categoryFilter !== 'all' ? categoryFilter : undefined
+   631→        }
+   632→      />
+   633→
+   634→      <AlertDialog
+   635→        open={Boolean(deleteTarget)}
+   636→        onOpenChange={(o) => !o && setDeleteTarget(null)}
+   637→      >
+   638→        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+   639→          <AlertDialogHeader>
+   640→            <AlertDialogTitle className="text-slate-800 dark:text-slate-100">ยืนยันการลบรายการ</AlertDialogTitle>
+   641→            <AlertDialogDescription>
+   642→              ลบ{' '}
+   643→              <span className="font-semibold text-slate-700 dark:text-slate-200">
+   644→                {deleteTarget?.label} ({deleteTarget?.code})
+   645→              </span>{' '}
+   646→              ออกจากข้อมูลมาตรฐาน?
+   647→            </AlertDialogDescription>
+   648→          </AlertDialogHeader>
+   649→          <AlertDialogFooter>
+   650→            <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
+   651→            <AlertDialogAction
+   652→              onClick={confirmDelete}
+   653→              disabled={deleting}
+   654→              className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   655→            >
+   656→              {deleting ? 'กำลังลบ...' : 'ลบ'}
+   657→            </AlertDialogAction>
+   658→          </AlertDialogFooter>
+   659→        </AlertDialogContent>
+   660→      </AlertDialog>
+   661→    </Card>
+   662→  )
+   663→}
+   664→
+   665→/* ---------- Sites tab ---------- */
+   666→function SitesTab() {
+   667→  const qc = useQueryClient()
+   668→  const { data: sites, isLoading } = useQuery<Site[]>({
+   669→    queryKey: ['sites'],
+   670→    queryFn: async () => {
+   671→      const res = await fetch('/api/sites')
+   672→      if (!res.ok) throw new Error('Failed to load sites')
+   673→      const json = await res.json()
+   674→      return json.sites as Site[]
+   675→    },
+   676→  })
+   677→
+   678→  const [code, setCode] = React.useState('')
+   679→  const [name, setName] = React.useState('')
+   680→  const [saving, setSaving] = React.useState(false)
+   681→
+   682→  async function addSite() {
+   683→    if (!code || !name) {
+   684→      toast.error('กรุณากรอกรหัสและชื่อสาขา')
+   685→      return
+   686→    }
+   687→    try {
+   688→      setSaving(true)
+   689→      const res = await fetch('/api/sites', {
+   690→        method: 'POST',
+   691→        headers: { 'Content-Type': 'application/json' },
+   692→        body: JSON.stringify({ code, name }),
+   693→      })
+   694→      if (!res.ok) {
+   695→        const j = await res.json().catch(() => ({}))
+   696→        throw new Error(j.error ?? 'Add failed')
+   697→      }
+   698→      toast.success('เพิ่มสาขาแล้ว')
+   699→      setCode('')
+   700→      setName('')
+   701→      await qc.invalidateQueries({ queryKey: ['sites'] })
+   702→    } catch (e) {
+   703→      toast.error(e instanceof Error ? e.message : 'Add failed')
+   704→    } finally {
+   705→      setSaving(false)
+   706→    }
+   707→  }
+   708→
+   709→  return (
+   710→    <Card className="dark:border-slate-800 dark:bg-slate-900">
+   711→      <CardHeader>
+   712→        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+   713→          <Building2 className="h-4 w-4 text-[#f97316]" />
+   714→          สาขา
+   715→        </CardTitle>
+   716→      </CardHeader>
+   717→      <CardContent className="space-y-4">
+   718→        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_2fr_auto]">
+   719→          <Input
+   720→            placeholder="รหัสสาขา"
+   721→            value={code}
+   722→            onChange={(e) => setCode(e.target.value)}
+   723→          />
+   724→          <Input
+   725→            placeholder="ชื่อสาขา"
+   726→            value={name}
+   727→            onChange={(e) => setName(e.target.value)}
+   728→          />
+   729→          <Button
+   730→            onClick={addSite}
+   731→            disabled={saving}
+   732→            className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   733→          >
+   734→            <Plus className="h-4 w-4" />
+   735→            เพิ่ม
+   736→          </Button>
+   737→        </div>
+   738→
+   739→        <div className="rounded-md border border-slate-200 dark:border-slate-800">
+   740→          <Table>
+   741→            <TableHeader className="bg-slate-50 dark:bg-slate-900">
+   742→              <TableRow>
+   743→                <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
+   744→                <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
+   745→                <TableHead className="text-slate-600 dark:text-slate-300">วันที่สร้าง</TableHead>
+   746→              </TableRow>
+   747→            </TableHeader>
+   748→            <TableBody>
+   749→              {isLoading ? (
+   750→                <TableRow>
+   751→                  <TableCell colSpan={3}>
+   752→                    <Skeleton className="h-6 w-full dark:bg-slate-800" />
+   753→                  </TableCell>
+   754→                </TableRow>
+   755→              ) : (sites ?? []).length === 0 ? (
+   756→                <TableRow>
+   757→                  <TableCell colSpan={3} className="py-12">
+   758→                    <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
+   759→                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+   760→                        <Building2 className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+   761→                      </div>
+   762→                      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+   763→                        ยังไม่มีสาขา
+   764→                      </div>
+   765→                      <div className="text-xs text-slate-400 dark:text-slate-500">
+   766→                        เพิ่มสาขาแรกโดยกรอกรหัสและชื่อด้านบน แล้วกดปุ่ม &quot;เพิ่ม&quot;
+   767→                      </div>
+   768→                    </div>
+   769→                  </TableCell>
+   770→                </TableRow>
+   771→              ) : (
+   772→                (sites ?? []).map((s) => (
+   773→                  <TableRow key={s.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+   774→                    <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">
+   775→                      {s.code}
+   776→                    </TableCell>
+   777→                    <TableCell className="text-slate-700 dark:text-slate-200">{s.name}</TableCell>
+   778→                    <TableCell className="text-xs text-slate-400 dark:text-slate-500">
+   779→                      {new Date(s.createdAt).toLocaleDateString('th-TH')}
+   780→                    </TableCell>
+   781→                  </TableRow>
+   782→                ))
+   783→              )}
+   784→            </TableBody>
+   785→          </Table>
+   786→        </div>
+   787→      </CardContent>
+   788→    </Card>
+   789→  )
+   790→}
+   791→
+   792→/* ---------- Rates tab (site paper rates) ---------- */
+   793→function RatesTab() {
+   794→  const qc = useQueryClient()
+   795→  const { data: rates, isLoading } = useQuery<SiteRate[]>({
+   796→    queryKey: ['site-rates'],
+   797→    queryFn: async () => {
+   798→      const res = await fetch('/api/site-rates')
+   799→      if (!res.ok) throw new Error('Failed to load site rates')
+   800→      const json = await res.json()
+   801→      return (json.rates ?? []) as SiteRate[]
+   802→    },
+   803→  })
+   804→
+   805→  const { data: sites } = useQuery<Site[]>({
+   806→    queryKey: ['sites'],
+   807→    queryFn: async () => {
+   808→      const res = await fetch('/api/sites')
+   809→      if (!res.ok) return []
+   810→      const json = await res.json()
+   811→      return json.sites as Site[]
+   812→    },
+   813→  })
+   814→
+   815→  const [editTarget, setEditTarget] = React.useState<SiteRate | null>(null)
+   816→  const [addOpen, setAddOpen] = React.useState(false)
+   817→  const [deleteTarget, setDeleteTarget] = React.useState<SiteRate | null>(null)
+   818→  const [deleting, setDeleting] = React.useState(false)
+   819→
+   820→  async function confirmDelete() {
+   821→    if (!deleteTarget) return
+   822→    try {
+   823→      setDeleting(true)
+   824→      const res = await fetch(`/api/site-rates/${deleteTarget.id}`, {
+   825→        method: 'DELETE',
+   826→      })
+   827→      if (!res.ok) {
+   828→        const j = await res.json().catch(() => ({}))
+   829→        throw new Error(j.error ?? 'Delete failed')
+   830→      }
+   831→      toast.success('ลบอัตราค่ากระดาษแล้ว')
+   832→      setDeleteTarget(null)
+   833→      await qc.invalidateQueries({ queryKey: ['site-rates'] })
+   834→      await qc.invalidateQueries({ queryKey: ['cost-analytics'] })
+   835→      await qc.invalidateQueries({ queryKey: ['audit'] })
+   836→    } catch (e) {
+   837→      toast.error(e instanceof Error ? e.message : 'Delete failed')
+   838→    } finally {
+   839→      setDeleting(false)
+   840→    }
+   841→  }
+   842→
+   843→  return (
+   844→    <Card className="dark:border-slate-800 dark:bg-slate-900">
+   845→      <CardHeader>
+   846→        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+   847→          <Coins className="h-4 w-4 text-[#f97316]" />
+   848→          💰 อัตราค่ากระดาษรายสาขา
+   849→        </CardTitle>
+   850→      </CardHeader>
+   851→      <CardContent className="space-y-4">
+   852→        <div className="flex items-center justify-between">
+   853→          <p className="text-xs text-slate-500 dark:text-slate-400">
+   854→            กำหนดอัตราค่ากระดาษขาวดำ / สี (บาท/แผ่น) สำหรับแต่ละสาขา — ใช้คำนวณต้นทุนในหน้าการใช้กระดาษ
+   855→          </p>
+   856→          <div className="flex items-center gap-2">
+   857→            <Button
+   858→              variant="outline"
+   859→              size="sm"
+   860→              onClick={() => qc.invalidateQueries({ queryKey: ['site-rates'] })}
+   861→              aria-label="รีเฟรช"
+   862→            >
+   863→              <RefreshCw className="h-3.5 w-3.5" />
+   864→            </Button>
+   865→            <Button
+   866→              onClick={() => {
+   867→                setEditTarget(null)
+   868→                setAddOpen(true)
+   869→              }}
+   870→              size="sm"
+   871→              disabled={(sites ?? []).length === 0}
+   872→              className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   873→            >
+   874→              <Plus className="h-3.5 w-3.5" />
+   875→              เพิ่มอัตรา
+   876→            </Button>
+   877→          </div>
+   878→        </div>
+   879→
+   880→        <div className="rounded-md border border-slate-200 dark:border-slate-800">
+   881→          <Table>
+   882→            <TableHeader className="sticky top-0 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+   883→              <TableRow>
+   884→                <TableHead className="text-slate-600 dark:text-slate-300">สาขา</TableHead>
+   885→                <TableHead className="text-right text-slate-600 dark:text-slate-300">อัตราขาวดำ (฿/แผ่น)</TableHead>
+   886→                <TableHead className="text-right text-slate-600 dark:text-slate-300">อัตราสี (฿/แผ่น)</TableHead>
+   887→                <TableHead className="text-right text-slate-600 dark:text-slate-300">การจัดการ</TableHead>
+   888→              </TableRow>
+   889→            </TableHeader>
+   890→            <TableBody>
+   891→              {isLoading ? (
+   892→                Array.from({ length: 3 }).map((_, i) => (
+   893→                  <TableRow key={`sk-${i}`}>
+   894→                    <TableCell colSpan={4}>
+   895→                      <Skeleton className="h-6 w-full dark:bg-slate-800" />
+   896→                    </TableCell>
+   897→                  </TableRow>
+   898→                ))
+   899→              ) : (rates ?? []).length === 0 ? (
+   900→                <TableRow>
+   901→                  <TableCell colSpan={4} className="py-12">
+   902→                    <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
+   903→                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+   904→                        <Coins className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+   905→                      </div>
+   906→                      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+   907→                        ยังไม่มีอัตราค่ากระดาษ
+   908→                      </div>
+   909→                      <div className="text-xs text-slate-400 dark:text-slate-500">
+   910→                        เพิ่มอัตราสาขาแรกโดยกดปุ่ม &quot;เพิ่มอัตรา&quot; ด้านขวาบน
+   911→                      </div>
+   912→                    </div>
+   913→                  </TableCell>
+   914→                </TableRow>
+   915→              ) : (
+   916→                (rates ?? []).map((r) => (
+   917→                  <TableRow key={r.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+   918→                    <TableCell>
+   919→                      <div className="font-medium text-slate-700 dark:text-slate-200">{r.siteName}</div>
+   920→                      <div className="font-mono text-xs text-slate-400 dark:text-slate-500">{r.siteCode}</div>
+   921→                    </TableCell>
+   922→                    <TableCell className="text-right tabular-nums text-slate-700 dark:text-slate-200">
+   923→                      ฿{r.bwRate.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+   924→                    </TableCell>
+   925→                    <TableCell className="text-right tabular-nums text-slate-700 dark:text-slate-200">
+   926→                      ฿{r.colorRate.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+   927→                    </TableCell>
+   928→                    <TableCell className="text-right">
+   929→                      <div className="flex justify-end gap-1">
+   930→                        <Button
+   931→                          size="icon"
+   932→                          variant="ghost"
+   933→                          onClick={() => {
+   934→                            setEditTarget(r)
+   935→                            setAddOpen(true)
+   936→                          }}
+   937→                          aria-label="แก้ไข"
+   938→                        >
+   939→                          <Pencil className="h-4 w-4" />
+   940→                        </Button>
+   941→                        <Button
+   942→                          size="icon"
+   943→                          variant="ghost"
+   944→                          onClick={() => setDeleteTarget(r)}
+   945→                          aria-label="ลบ"
+   946→                          className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
+   947→                        >
+   948→                          <Trash2 className="h-4 w-4" />
+   949→                        </Button>
+   950→                      </div>
+   951→                    </TableCell>
+   952→                  </TableRow>
+   953→                ))
+   954→              )}
+   955→            </TableBody>
+   956→          </Table>
+   957→        </div>
+   958→        <div className="text-xs text-slate-400 dark:text-slate-500">
+   959→          ทั้งหมด {(rates ?? []).length} รายการ · ค่าเริ่มต้น ขาวดำ 0.50 ฿/แผ่น · สี 2.00 ฿/แผ่น
+   960→        </div>
+   961→      </CardContent>
+   962→
+   963→      <SiteRateDialog
+   964→        open={addOpen}
+   965→        onOpenChange={setAddOpen}
+   966→        initial={editTarget}
+   967→        sites={sites ?? []}
+   968→        existingRates={rates ?? []}
+   969→      />
+   970→
+   971→      <AlertDialog
+   972→        open={Boolean(deleteTarget)}
+   973→        onOpenChange={(o) => !o && setDeleteTarget(null)}
+   974→      >
+   975→        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+   976→          <AlertDialogHeader>
+   977→            <AlertDialogTitle className="text-slate-800 dark:text-slate-100">ยืนยันการลบอัตราค่ากระดาษ</AlertDialogTitle>
+   978→            <AlertDialogDescription>
+   979→              ลบอัตราค่ากระดาษของสาขา{' '}
+   980→              <span className="font-semibold text-slate-700 dark:text-slate-200">
+   981→                {deleteTarget?.siteName} ({deleteTarget?.siteCode})
+   982→              </span>{' '}
+   983→              ออกจากระบบ? การคำนวณต้นทุนของสาขานี้จะกลับไปใช้อัตราเริ่มต้น (0.50 ฿/แผ่น)
+   984→            </AlertDialogDescription>
+   985→          </AlertDialogHeader>
+   986→          <AlertDialogFooter>
+   987→            <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
+   988→            <AlertDialogAction
+   989→              onClick={confirmDelete}
+   990→              disabled={deleting}
+   991→              className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   992→            >
+   993→              {deleting ? 'กำลังลบ...' : 'ลบ'}
+   994→            </AlertDialogAction>
+   995→          </AlertDialogFooter>
+   996→        </AlertDialogContent>
+   997→      </AlertDialog>
+   998→    </Card>
+   999→  )
+  1000→}
+  1001→
+  1002→/* ---------- Site rate add/edit dialog ---------- */
+  1003→function SiteRateDialog({
+  1004→  open,
+  1005→  onOpenChange,
+  1006→  initial,
+  1007→  sites,
+  1008→  existingRates,
+  1009→}: {
+  1010→  open: boolean
+  1011→  onOpenChange: (o: boolean) => void
+  1012→  initial: SiteRate | null
+  1013→  sites: Site[]
+  1014→  existingRates: SiteRate[]
+  1015→}) {
+  1016→  const qc = useQueryClient()
+  1017→  const [siteCode, setSiteCode] = React.useState('')
+  1018→  const [bwRate, setBwRate] = React.useState('0.50')
+  1019→  const [colorRate, setColorRate] = React.useState('2.00')
+  1020→  const [saving, setSaving] = React.useState(false)
+  1021→
+  1022→  React.useEffect(() => {
+  1023→    if (open) {
+  1024→      if (initial) {
+  1025→        setSiteCode(initial.siteCode)
+  1026→        setBwRate(String(initial.bwRate))
+  1027→        setColorRate(String(initial.colorRate))
+  1028→      } else {
+  1029→        setSiteCode('')
+  1030→        setBwRate('0.50')
+  1031→        setColorRate('2.00')
+  1032→      }
+  1033→    }
+  1034→  }, [open, initial])
+  1035→
+  1036→  const isEdit = Boolean(initial)
+  1037→  const availableSites = sites.filter(
+  1038→    (s) => !existingRates.some((r) => r.siteCode === s.code) || s.code === siteCode,
+  1039→  )
+  1040→
+  1041→  async function save() {
+  1042→    if (!siteCode) {
+  1043→      toast.error('กรุณาเลือกสาขา')
+  1044→      return
+  1045→    }
+  1046→    const bw = parseFloat(bwRate)
+  1047→    const color = parseFloat(colorRate)
+  1048→    if (!Number.isFinite(bw) || bw < 0) {
+  1049→      toast.error('อัตราขาวดำต้องเป็นตัวเลขที่ไม่ติดลบ')
+  1050→      return
+  1051→    }
+  1052→    if (!Number.isFinite(color) || color < 0) {
+  1053→      toast.error('อัตราสีต้องเป็นตัวเลขที่ไม่ติดลบ')
+  1054→      return
+  1055→    }
+  1056→    try {
+  1057→      setSaving(true)
+  1058→      const res = await fetch('/api/site-rates', {
+  1059→        method: 'POST',
+  1060→        headers: { 'Content-Type': 'application/json' },
+  1061→        body: JSON.stringify({ siteCode, bwRate: bw, colorRate: color }),
+  1062→      })
+  1063→      if (!res.ok) {
+  1064→        const j = await res.json().catch(() => ({}))
+  1065→        throw new Error(j.error ?? 'Save failed')
+  1066→      }
+  1067→      toast.success(isEdit ? 'แก้ไขอัตราค่ากระดาษแล้ว' : 'เพิ่มอัตราค่ากระดาษแล้ว')
+  1068→      onOpenChange(false)
+  1069→      await qc.invalidateQueries({ queryKey: ['site-rates'] })
+  1070→      await qc.invalidateQueries({ queryKey: ['cost-analytics'] })
+  1071→      await qc.invalidateQueries({ queryKey: ['audit'] })
+  1072→    } catch (e) {
+  1073→      toast.error(e instanceof Error ? e.message : 'Save failed')
+  1074→    } finally {
+  1075→      setSaving(false)
+  1076→    }
+  1077→  }
+  1078→
+  1079→  return (
+  1080→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1081→      <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
+  1082→        <DialogHeader>
+  1083→          <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+  1084→            <Coins className="h-4 w-4 text-[#f97316]" />
+  1085→            {isEdit ? '✏️ แก้ไขอัตราค่ากระดาษ' : '➕ เพิ่มอัตราค่ากระดาษ'}
+  1086→          </DialogTitle>
+  1087→          <DialogDescription>
+  1088→            กำหนดอัตราค่ากระดาษขาวดำ/สี (บาท/แผ่น) สำหรับสาขานี้
+  1089→          </DialogDescription>
+  1090→        </DialogHeader>
+  1091→        <div className="space-y-3">
+  1092→          <div className="space-y-1.5">
+  1093→            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+  1094→              สาขา *
+  1095→            </Label>
+  1096→            <Select
+  1097→              value={siteCode}
+  1098→              onValueChange={setSiteCode}
+  1099→              disabled={isEdit}
+  1100→            >
+  1101→              <SelectTrigger className="w-full">
+  1102→                <SelectValue placeholder="เลือกสาขา" />
+  1103→              </SelectTrigger>
+  1104→              <SelectContent>
+  1105→                {availableSites.map((s) => (
+  1106→                  <SelectItem key={s.code} value={s.code}>
+  1107→                    {s.name} ({s.code})
+  1108→                  </SelectItem>
+  1109→                ))}
+  1110→              </SelectContent>
+  1111→            </Select>
+  1112→            {isEdit && (
+  1113→              <p className="text-xs text-slate-400 dark:text-slate-500">
+  1114→                ไม่สามารถเปลี่ยนสาขาได้ในการแก้ไข — ลบแล้วเพิ่มใหม่หากต้องการย้าย
+  1115→              </p>
+  1116→            )}
+  1117→          </div>
+  1118→          <div className="grid grid-cols-2 gap-3">
+  1119→            <div className="space-y-1.5">
+  1120→              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+  1121→                อัตราขาวดำ (฿/แผ่น)
+  1122→              </Label>
+  1123→              <Input
+  1124→                type="number"
+  1125→                step="0.1"
+  1126→                min={0}
+  1127→                value={bwRate}
+  1128→                onChange={(e) => setBwRate(e.target.value)}
+  1129→              />
+  1130→            </div>
+  1131→            <div className="space-y-1.5">
+  1132→              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+  1133→                อัตราสี (฿/แผ่น)
+  1134→              </Label>
+  1135→              <Input
+  1136→                type="number"
+  1137→                step="0.1"
+  1138→                min={0}
+  1139→                value={colorRate}
+  1140→                onChange={(e) => setColorRate(e.target.value)}
+  1141→              />
+  1142→            </div>
+  1143→          </div>
+  1144→        </div>
+  1145→        <DialogFooter>
+  1146→          <Button
+  1147→            variant="outline"
+  1148→            onClick={() => onOpenChange(false)}
+  1149→            disabled={saving}
+  1150→          >
+  1151→            ยกเลิก
+  1152→          </Button>
+  1153→          <Button
+  1154→            onClick={save}
+  1155→            disabled={saving || (!isEdit && !siteCode)}
+  1156→            className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+  1157→          >
+  1158→            {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+  1159→          </Button>
+  1160→        </DialogFooter>
+  1161→      </DialogContent>
+  1162→    </Dialog>
+  1163→  )
+  1164→}
+  1165→
+  1166→/* ---------- Users tab (read-only) ---------- */
+  1167→function UsersTab() {
+  1168→  return (
+  1169→    <Card className="dark:border-slate-800 dark:bg-slate-900">
+  1170→      <CardHeader>
+  1171→        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+  1172→          <Users className="h-4 w-4 text-[#f97316]" />
+  1173→          สิทธิ์ผู้ใช้ (แสดงผลเท่านั้น)
+  1174→        </CardTitle>
+  1175→      </CardHeader>
+  1176→      <CardContent>
+  1177→        <div className="rounded-md border border-slate-200 dark:border-slate-800">
+  1178→          <Table>
+  1179→            <TableHeader className="bg-slate-50 dark:bg-slate-900">
+  1180→              <TableRow>
+  1181→                <TableHead className="text-slate-600 dark:text-slate-300">อีเมล</TableHead>
+  1182→                <TableHead className="text-slate-600 dark:text-slate-300">บทบาท</TableHead>
+  1183→                <TableHead className="text-slate-600 dark:text-slate-300">ป้ายกำกับ</TableHead>
+  1184→              </TableRow>
+  1185→            </TableHeader>
+  1186→            <TableBody>
+  1187→              {DEMO_USERS.map((u) => (
+  1188→                <TableRow key={u.email} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+  1189→                  <TableCell className="font-medium text-slate-700 dark:text-slate-200">
+  1190→                    {u.email}
+  1191→                  </TableCell>
+  1192→                  <TableCell>
+  1193→                    <Badge
+  1194→                      className={
+  1195→                        u.role === 'admin'
+  1196→                          ? 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]'
+  1197→                          : 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+  1198→                      }
+  1199→                    >
+  1200→                      {u.role}
+  1201→                    </Badge>
+  1202→                  </TableCell>
+  1203→                  <TableCell className="text-slate-600 dark:text-slate-300">{u.roleLabel}</TableCell>
+  1204→                </TableRow>
+  1205→              ))}
+  1206→            </TableBody>
+  1207→          </Table>
+  1208→        </div>
+  1209→        <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+  1210→          หมายเหตุ: ระบบจัดการสิทธิ์ผู้ใช้เต็มรูปแบบอยู่ในเวอร์ชัน Apps Script — หน้านี้แสดงผลข้อมูลตัวอย่างเท่านั้น
+  1211→        </p>
+  1212→      </CardContent>
+  1213→    </Card>
+  1214→  )
+  1215→}
+  1216→
+  1217→/* ---------- Audit tab ---------- */
+  1218→const AUDIT_ENTITY_OPTIONS = [
+  1219→  'Device',
+  1220→  'MasterItem',
+  1221→  'MeterReading',
+  1222→  'Cycle',
+  1223→  'Site',
+  1224→  'Setting',
+  1225→] as const
+  1226→
+  1227→const AUDIT_ACTION_OPTIONS = [
+  1228→  'CREATE',
+  1229→  'UPDATE',
+  1230→  'DELETE',
+  1231→  'METER_READING',
+  1232→  'SYNC',
+  1233→  'SEED',
+  1234→  'IMPORT',
+  1235→  'TRANSFER',
+  1236→  'PRINT',
+  1237→  'CYCLE_START',
+  1238→  'CYCLE_END',
+  1239→  'CYCLE_CANCEL',
+  1240→  'CYCLE_REOPEN',
+  1241→  'BULK_UPDATE',
+  1242→  'BULK_TRANSFER',
+  1243→  'BULK_DELETE',
+  1244→] as const
+  1245→
+  1246→function actionBadgeClass(action: string): string {
+  1247→  const base = ' transition-colors hover:scale-105'
+  1248→  switch (action) {
+  1249→    case 'CREATE':
+  1250→      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' + base
+  1251→    case 'UPDATE':
+  1252→      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
+  1253→    case 'DELETE':
+  1254→      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
+  1255→    case 'METER_READING':
+  1256→      return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
+  1257→    case 'SYNC':
+  1258→      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
+  1259→    case 'SEED':
+  1260→      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300' + base
+  1261→    case 'CYCLE_START':
+  1262→      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300' + base
+  1263→    case 'CYCLE_END':
+  1264→      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300' + base
+  1265→    case 'CYCLE_CANCEL':
+  1266→      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
+  1267→    case 'CYCLE_REOPEN':
+  1268→      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' + base
+  1269→    case 'IMPORT':
+  1270→      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
+  1271→    case 'TRANSFER':
+  1272→      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
+  1273→    case 'PRINT':
+  1274→      return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
+  1275→    case 'BULK_UPDATE':
+  1276→      return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
+  1277→    case 'BULK_TRANSFER':
+  1278→      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
+  1279→    case 'BULK_DELETE':
+  1280→      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
+  1281→    default:
+  1282→      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300' + base
+  1283→  }
+  1284→}
+  1285→
+  1286→function entityIcon(entity: string) {
+  1287→  const cls = 'h-3.5 w-3.5'
+  1288→  switch (entity) {
+  1289→    case 'Device':
+  1290→      return <Package className={cls} />
+  1291→    case 'MasterItem':
+  1292→      return <Database className={cls} />
+  1293→    case 'MeterReading':
+  1294→      return <FileBarChart className={cls} />
+  1295→    case 'Cycle':
+  1296→      return <CalendarClock className={cls} />
+  1297→    case 'Site':
+  1298→      return <Building2 className={cls} />
+  1299→    case 'Setting':
+  1300→      return <SettingsIcon className={cls} />
+  1301→    default:
+  1302→      return <Server className={cls} />
+  1303→  }
+  1304→}
+  1305→
+  1306→function formatThaiDateTime(iso: string): string {
+  1307→  try {
+  1308→    const d = new Date(iso)
+  1309→    return d.toLocaleString('th-TH', {
+  1310→      day: '2-digit',
+  1311→      month: '2-digit',
+  1312→      year: 'numeric',
+  1313→      hour: '2-digit',
+  1314→      minute: '2-digit',
+  1315→    })
+  1316→  } catch {
+  1317→    return iso
+  1318→  }
+  1319→}
+  1320→
+  1321→function AuditTab() {
+  1322→  const qc = useQueryClient()
+  1323→  const [entity, setEntity] = React.useState('all')
+  1324→  const [action, setAction] = React.useState('all')
+  1325→  const [q, setQ] = React.useState('')
+  1326→  const [debouncedQ, setDebouncedQ] = React.useState('')
+  1327→
+  1328→  // Debounce search input
+  1329→  React.useEffect(() => {
+  1330→    const t = setTimeout(() => setDebouncedQ(q.trim()), 350)
+  1331→    return () => clearTimeout(t)
+  1332→  }, [q])
+  1333→
+  1334→  const { data: logs, isLoading } = useQuery<AuditLog[]>({
+  1335→    queryKey: ['audit', entity, action, debouncedQ],
+  1336→    queryFn: async () => {
+  1337→      const params = new URLSearchParams()
+  1338→      params.set('limit', '100')
+  1339→      if (entity !== 'all') params.set('entity', entity)
+  1340→      if (action !== 'all') params.set('action', action)
+  1341→      if (debouncedQ) params.set('q', debouncedQ)
+  1342→      const res = await fetch(`/api/audit?${params.toString()}`)
+  1343→      if (!res.ok) throw new Error('Failed to load audit logs')
+  1344→      const json = await res.json()
+  1345→      return (json.logs ?? []) as AuditLog[]
+  1346→    },
+  1347→  })
+  1348→
+  1349→  return (
+  1350→    <Card className="dark:border-slate-800 dark:bg-slate-900">
+  1351→      <CardHeader>
+  1352→        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+  1353→          <History className="h-4 w-4 text-[#f97316]" />
+  1354→          ประวัติการใช้งาน (Audit Log)
+  1355→        </CardTitle>
+  1356→      </CardHeader>
+  1357→      <CardContent className="space-y-4">
+  1358→        {/* Filter bar */}
+  1359→        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+  1360→          <Select value={entity} onValueChange={setEntity}>
+  1361→            <SelectTrigger className="w-full sm:w-44">
+  1362→              <SelectValue placeholder="รายการ" />
+  1363→            </SelectTrigger>
+  1364→            <SelectContent>
+  1365→              <SelectItem value="all">รายการทั้งหมด</SelectItem>
+  1366→              {AUDIT_ENTITY_OPTIONS.map((v) => (
+  1367→                <SelectItem key={v} value={v}>
+  1368→                  {v}
+  1369→                </SelectItem>
+  1370→              ))}
+  1371→            </SelectContent>
+  1372→          </Select>
+  1373→          <Select value={action} onValueChange={setAction}>
+  1374→            <SelectTrigger className="w-full sm:w-44">
+  1375→              <SelectValue placeholder="การกระทำ" />
+  1376→            </SelectTrigger>
+  1377→            <SelectContent>
+  1378→              <SelectItem value="all">การกระทำทั้งหมด</SelectItem>
+  1379→              {AUDIT_ACTION_OPTIONS.map((v) => (
+  1380→                <SelectItem key={v} value={v}>
+  1381→                  {v}
+  1382→                </SelectItem>
+  1383→              ))}
+  1384→            </SelectContent>
+  1385→          </Select>
+  1386→          <div className="relative flex-1">
+  1387→            <RefreshCw className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 rotate-45 text-slate-400" />
+  1388→            <Input
+  1389→              placeholder="ค้นหาจากคำอธิบาย..."
+  1390→              value={q}
+  1391→              onChange={(e) => setQ(e.target.value)}
+  1392→              className="pl-9"
+  1393→            />
+  1394→          </div>
+  1395→          <Button
+  1396→            variant="outline"
+  1397→            size="icon"
+  1398→            onClick={() => qc.invalidateQueries({ queryKey: ['audit'] })}
+  1399→            aria-label="รีเฟรช"
+  1400→          >
+  1401→            <RefreshCw className="h-4 w-4" />
+  1402→          </Button>
+  1403→        </div>
+  1404→
+  1405→        {/* Table */}
+  1406→        <div className="itam-scroll max-h-[60vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
+  1407→          <Table>
+  1408→            <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+  1409→              <TableRow>
+  1410→                <TableHead className="w-44 text-slate-600 dark:text-slate-300">วันที่เวลา</TableHead>
+  1411→                <TableHead className="w-36 text-slate-600 dark:text-slate-300">การกระทำ</TableHead>
+  1412→                <TableHead className="text-slate-600 dark:text-slate-300">รายการ</TableHead>
+  1413→                <TableHead className="w-44 text-slate-600 dark:text-slate-300">ผู้กระทำ</TableHead>
+  1414→              </TableRow>
+  1415→            </TableHeader>
+  1416→            <TableBody>
+  1417→              {isLoading ? (
+  1418→                Array.from({ length: 6 }).map((_, i) => (
+  1419→                  <TableRow key={`sk-${i}`}>
+  1420→                    <TableCell colSpan={4}>
+  1421→                      <Skeleton className="h-6 w-full dark:bg-slate-800" />
+  1422→                    </TableCell>
+  1423→                  </TableRow>
+  1424→                ))
+  1425→              ) : (logs ?? []).length === 0 ? (
+  1426→                <TableRow>
+  1427→                  <TableCell colSpan={4} className="py-12">
+  1428→                    <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
+  1429→                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+  1430→                        <Inbox className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+  1431→                      </div>
+  1432→                      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+  1433→                        ยังไม่มีประวัติการใช้งาน
+  1434→                      </div>
+  1435→                      <div className="text-xs text-slate-400 dark:text-slate-500">
+  1436→                        ระบบจะบันทึกการกระทำต่าง ๆ (เพิ่ม/แก้ไข/ลบ/จดมิเตอร์/ซิงค์/นำเข้า/ย้าย/พิมพ์) ที่นี่
+  1437→                      </div>
+  1438→                    </div>
+  1439→                  </TableCell>
+  1440→                </TableRow>
+  1441→              ) : (
+  1442→                (logs ?? []).map((log) => (
+  1443→                  <TableRow key={log.id} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
+  1444→                    <TableCell className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
+  1445→                      {formatThaiDateTime(log.createdAt)}
+  1446→                    </TableCell>
+  1447→                    <TableCell>
+  1448→                      <Badge
+  1449→                        variant="outline"
+  1450→                        className={actionBadgeClass(log.action)}
+  1451→                      >
+  1452→                        {log.action}
+  1453→                      </Badge>
+  1454→                    </TableCell>
+  1455→                    <TableCell>
+  1456→                      <div className="flex items-start gap-2">
+  1457→                        <span className="mt-0.5 shrink-0 text-slate-400 dark:text-slate-500">
+  1458→                          {entityIcon(log.entity)}
+  1459→                        </span>
+  1460→                        <div className="min-w-0">
+  1461→                          <div className="text-sm text-slate-700 dark:text-slate-200">
+  1462→                            {log.summary}
+  1463→                          </div>
+  1464→                          <div className="text-xs text-slate-400 dark:text-slate-500">
+  1465→                            {log.entity}
+  1466→                            {log.entityId ? ` · ${log.entityId.slice(-8)}` : ''}
+  1467→                          </div>
+  1468→                        </div>
+  1469→                      </div>
+  1470→                    </TableCell>
+  1471→                    <TableCell className="truncate text-xs text-slate-500 dark:text-slate-400">
+  1472→                      {log.actor}
+  1473→                    </TableCell>
+  1474→                  </TableRow>
+  1475→                ))
+  1476→              )}
+  1477→            </TableBody>
+  1478→          </Table>
+  1479→        </div>
+  1480→        <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+  1481→          <Repeat className="h-3 w-3" />
+  1482→          แสดง {(logs ?? []).length} รายการล่าสุด · กรองได้ตามรายการ / การกระทำ / คำค้น
+  1483→        </div>
+  1484→      </CardContent>
+  1485→    </Card>
+  1486→  )
+  1487→}
+  1488→
+  1489→// (no extra exports)

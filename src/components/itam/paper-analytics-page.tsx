@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
+import { motion } from 'framer-motion'
 import {
   LineChart,
   Line,
@@ -14,6 +15,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  Legend,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -24,9 +26,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { FileText, TrendingUp, Gauge, CalendarDays, Inbox, Coins, Building2 } from 'lucide-react'
+import {
+  FileText,
+  TrendingUp,
+  Gauge,
+  CalendarDays,
+  Inbox,
+  Coins,
+  Building2,
+  Trophy,
+  Medal,
+} from 'lucide-react'
 import type { CostAnalyticsData, DashboardRangeKey } from './types'
 import { DASHBOARD_RANGE_OPTIONS, formatBaht } from './types'
+import { UtilizationSection } from './utilization-section'
 
 interface KpiProps {
   title: string
@@ -90,13 +103,44 @@ function EmptyState({ message }: { message: string }) {
   )
 }
 
+/* ---------- Site comparison types ---------- */
+interface SiteRow {
+  siteCode: string
+  siteName: string
+  deviceCount: number
+  activeCount: number
+  spareCount: number
+  repairCount: number
+  totalSheets: number
+  totalCost: number
+  avgSheetsPerDevice: number
+  lastReadingDate: string | null
+  unreadInCycle: number
+}
+interface SiteComparisonData {
+  sites: SiteRow[]
+  ranked: SiteRow[]
+  totalDevices: number
+  totalSheets: number
+  totalCost: number
+  range: { key: string; start: string | null; end: string | null }
+}
+
+const MEDAL_EMOJIS = ['🥇', '🥈', '🥉']
+const MEDAL_BG = [
+  'from-amber-100 to-amber-50 dark:from-amber-950/40 dark:to-amber-900/20 border-amber-200 dark:border-amber-800',
+  'from-slate-100 to-slate-50 dark:from-slate-800/60 dark:to-slate-800/30 border-slate-200 dark:border-slate-700',
+  'from-orange-100 to-orange-50 dark:from-orange-950/40 dark:to-orange-900/20 border-orange-200 dark:border-orange-800',
+]
+
 export function PaperAnalyticsPage() {
   const { theme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
   const isDark = mounted && theme === 'dark'
 
-  const [costRange, setCostRange] = React.useState<DashboardRangeKey>('month')
+  // Unified range state shared by Site Comparison, Utilization, and Cost.
+  const [range, setRange] = React.useState<DashboardRangeKey>('month')
 
   const axisTickColor = '#64748b'
   const gridStroke = isDark ? '#334155' : '#e2e8f0'
@@ -134,13 +178,23 @@ export function PaperAnalyticsPage() {
   })
 
   const { data: costData, isLoading: costLoading } = useQuery<CostAnalyticsData>({
-    queryKey: ['cost-analytics', costRange],
+    queryKey: ['cost-analytics', range],
     queryFn: async () => {
-      const res = await fetch(`/api/cost-analytics?range=${costRange}`)
+      const res = await fetch(`/api/cost-analytics?range=${range}`)
       if (!res.ok) throw new Error('Failed to load cost analytics')
       return res.json()
     },
   })
+
+  const { data: comparisonData, isLoading: comparisonLoading } =
+    useQuery<SiteComparisonData>({
+      queryKey: ['sites-comparison', range],
+      queryFn: async () => {
+        const res = await fetch(`/api/sites/comparison?range=${range}`)
+        if (!res.ok) throw new Error('Failed to load site comparison')
+        return res.json()
+      },
+    })
 
   const monthlyData = React.useMemo(
     () =>
@@ -200,10 +254,31 @@ export function PaperAnalyticsPage() {
     ? Math.round((totalCost / costActiveCount) * 100) / 100
     : 0
 
-  const costRangeLabel =
-    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === costRange)?.label ?? 'เดือนนี้'
+  const rangeLabel =
+    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'เดือนนี้'
 
   const costTooltipFormatter = (v: number) => [formatBaht(v), 'ต้นทุนกระดาษ']
+
+  // Site comparison chart data: one entry per site with sheets + cost
+  const comparisonChart = React.useMemo(
+    () =>
+      (comparisonData?.sites ?? [])
+        .filter((s) => s.totalSheets > 0 || s.totalCost > 0)
+        .map((s) => ({
+          name: s.siteCode,
+          full: s.siteName,
+          sheets: s.totalSheets,
+          cost: Math.round(s.totalCost),
+        })),
+    [comparisonData],
+  )
+
+  const rankedTop3 = (comparisonData?.ranked ?? [])
+    .filter((s) => s.totalSheets > 0)
+    .slice(0, 3)
+  const topSiteCode = (comparisonData?.ranked ?? []).find(
+    (s) => s.totalSheets > 0,
+  )?.siteCode
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -331,7 +406,287 @@ export function PaperAnalyticsPage() {
         </CardContent>
       </Card>
 
-      {/* Cost analytics section */}
+      {/* ===== Site Comparison ===== */}
+      <Card className="border-teal-200/60 dark:border-teal-800/40 dark:bg-slate-900">
+        <CardHeader className="flex flex-row items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+            <Building2 className="h-4 w-4 text-[#0d9488]" />
+            🏗️ เปรียบเทียบสาขา
+            <span className="ml-1 text-xs font-normal text-slate-400 dark:text-slate-500">
+              เปรียบเทียบปริมาณกระดาษ · ต้นทุน · สถานะอุปกรณ์ · ยังไม่จดในรอบ
+            </span>
+          </CardTitle>
+          <Select value={range} onValueChange={(v) => setRange(v as DashboardRangeKey)}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="ช่วงเวลา" />
+            </SelectTrigger>
+            <SelectContent>
+              {DASHBOARD_RANGE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Comparison KPIs */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            <KpiCard
+              title="อุปกรณ์ทั้งหมด"
+              value={`${comparisonData?.totalDevices ?? 0} เครื่อง`}
+              icon={<Building2 className="h-6 w-6" />}
+              accent="#0d9488"
+              loading={comparisonLoading}
+              hint={`ช่วง: ${rangeLabel}`}
+            />
+            <KpiCard
+              title="กระดาษรวม (ช่วง)"
+              value={`${(comparisonData?.totalSheets ?? 0).toLocaleString()} แผ่น`}
+              icon={<FileText className="h-6 w-6" />}
+              accent="#14b8a6"
+              loading={comparisonLoading}
+              hint={`ช่วง: ${rangeLabel}`}
+            />
+            <KpiCard
+              title="ต้นทุนรวม (ช่วง)"
+              value={formatBaht(comparisonData?.totalCost ?? 0)}
+              icon={<Coins className="h-6 w-6" />}
+              accent="#f97316"
+              loading={comparisonLoading}
+              hint={`ช่วง: ${rangeLabel}`}
+            />
+            <KpiCard
+              title="จำนวนสาขา"
+              value={`${comparisonData?.sites.length ?? 0} สาขา`}
+              icon={<Trophy className="h-6 w-6" />}
+              accent="#f59e0b"
+              loading={comparisonLoading}
+            />
+          </div>
+
+          {/* Comparison table */}
+          {comparisonLoading ? (
+            <Skeleton className="h-64 w-full dark:bg-slate-800" />
+          ) : (comparisonData?.sites ?? []).length === 0 ? (
+            <EmptyState message="ยังไม่มีข้อมูลสาขา" />
+          ) : (
+            <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
+              <div className="itam-scroll overflow-x-auto">
+                <table className="w-full min-w-[760px] text-sm">
+                  <thead className="bg-slate-50 dark:bg-slate-900">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">สาขา</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">อุปกรณ์</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">ใช้งาน</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">กระดาษ ({rangeLabel})</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">ต้นทุน (฿)</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">เฉลี่ย/เครื่อง</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">ยังไม่จด</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(comparisonData?.sites ?? []).map((s) => {
+                      const isTop = s.siteCode === topSiteCode
+                      return (
+                        <tr
+                          key={s.siteCode}
+                          className={`border-t border-slate-100 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50 ${
+                            isTop
+                              ? 'bg-orange-50 dark:bg-orange-950/30'
+                              : ''
+                          }`}
+                        >
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1.5">
+                              {isTop ? (
+                                <span className="text-base" aria-label="อันดับ 1">
+                                  🥇
+                                </span>
+                              ) : null}
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                                  {s.siteName}
+                                </div>
+                                <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                                  {s.siteCode}
+                                  {s.lastReadingDate ? ` · ล่าสุด ${s.lastReadingDate}` : ''}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-700 dark:text-slate-200">
+                            {s.deviceCount}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-emerald-600 dark:text-emerald-400">
+                            {s.activeCount}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-teal-600 dark:text-teal-400">
+                            {s.totalSheets.toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-[#f97316] dark:text-[#fb923c]">
+                            {formatBaht(s.totalCost)}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-slate-700 dark:text-slate-200">
+                            {s.avgSheetsPerDevice.toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            {s.unreadInCycle > 0 ? (
+                              <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                {s.unreadInCycle} เครื่อง
+                              </span>
+                            ) : (
+                              <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ ครบ</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Grouped comparison chart + leaderboard */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <div className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+                กระดาษ vs ต้นทุน รายสาขา
+              </div>
+              {comparisonLoading ? (
+                <Skeleton className="h-64 w-full dark:bg-slate-800" />
+              ) : comparisonChart.length === 0 ? (
+                <EmptyState message="ยังไม่มีข้อมูลในช่วงนี้" />
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={comparisonChart}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 11, fill: axisTickColor }}
+                    />
+                    <YAxis
+                      yAxisId="left"
+                      tick={{ fontSize: 11, fill: axisTickColor }}
+                      tickFormatter={(v) =>
+                        Number(v).toLocaleString('th-TH', { notation: 'compact' })
+                      }
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      tick={{ fontSize: 11, fill: axisTickColor }}
+                      tickFormatter={(v) =>
+                        Number(v).toLocaleString('th-TH', { notation: 'compact' })
+                      }
+                    />
+                    <Tooltip
+                      formatter={(v: number, name: string) =>
+                        name === 'ต้นทุน'
+                          ? [formatBaht(v), 'ต้นทุน']
+                          : [`${v.toLocaleString()} แผ่น`, 'กระดาษ']
+                      }
+                      labelFormatter={(_, payload) => {
+                        const p = payload?.[0]?.payload as { full?: string } | undefined
+                        return p?.full ?? ''
+                      }}
+                      contentStyle={{
+                        fontSize: 12,
+                        borderRadius: 8,
+                        border: `1px solid ${tooltipBorder}`,
+                        background: tooltipBg,
+                        color: tooltipFg,
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar
+                      yAxisId="left"
+                      dataKey="sheets"
+                      name="กระดาษ"
+                      fill="#14b8a6"
+                      radius={[6, 6, 0, 0]}
+                      isAnimationActive
+                    />
+                    <Bar
+                      yAxisId="right"
+                      dataKey="cost"
+                      name="ต้นทุน"
+                      fill="#f97316"
+                      radius={[6, 6, 0, 0]}
+                      isAnimationActive
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Leaderboard */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">
+                <Medal className="h-4 w-4 text-[#f59e0b]" />
+                TOP สาขา
+              </div>
+              {comparisonLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <Skeleton key={`lb-${i}`} className="h-16 w-full dark:bg-slate-800" />
+                  ))}
+                </div>
+              ) : rankedTop3.length === 0 ? (
+                <EmptyState message="ยังไม่มีข้อมูล" />
+              ) : (
+                <motion.ol
+                  initial="hidden"
+                  animate="show"
+                  variants={{
+                    hidden: {},
+                    show: { transition: { staggerChildren: 0.08 } },
+                  }}
+                  className="space-y-2"
+                >
+                  {rankedTop3.map((s, i) => (
+                    <motion.li
+                      key={s.siteCode}
+                      variants={{
+                        hidden: { opacity: 0, y: 8 },
+                        show: { opacity: 1, y: 0 },
+                      }}
+                      className={`flex items-center gap-3 rounded-lg border bg-gradient-to-br p-3 ${MEDAL_BG[i] ?? MEDAL_BG[2]}`}
+                    >
+                      <div className="text-2xl">{MEDAL_EMOJIS[i] ?? '🏆'}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                            #{i + 1}
+                          </span>
+                          <span className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                            {s.siteName}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="font-semibold tabular-nums text-teal-600 dark:text-teal-400">
+                            {s.totalSheets.toLocaleString()}
+                          </span>{' '}
+                          แผ่น ·{' '}
+                          <span className="tabular-nums text-[#f97316]">
+                            {formatBaht(s.totalCost)}
+                          </span>
+                        </div>
+                      </div>
+                    </motion.li>
+                  ))}
+                </motion.ol>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ===== Utilization section ===== */}
+      <UtilizationSection range={range} onRangeChange={setRange} />
+
+      {/* ===== Cost analytics section ===== */}
       <Card className="border-amber-200/60 dark:border-amber-800/40 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
@@ -343,9 +698,9 @@ export function PaperAnalyticsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Range selector */}
+          {/* Range selector — same `range` as comparison/utilization */}
           <div className="flex items-center justify-end">
-            <Select value={costRange} onValueChange={(v) => setCostRange(v as DashboardRangeKey)}>
+            <Select value={range} onValueChange={(v) => setRange(v as DashboardRangeKey)}>
               <SelectTrigger className="w-[160px]">
                 <SelectValue placeholder="ช่วงเวลา" />
               </SelectTrigger>
@@ -367,7 +722,7 @@ export function PaperAnalyticsPage() {
               icon={<Coins className="h-6 w-6" />}
               accent="#f97316"
               loading={costLoading}
-              hint={`ช่วง: ${costRangeLabel}`}
+              hint={`ช่วง: ${rangeLabel}`}
             />
             <KpiCard
               title="ต้นทุนเฉลี่ย/เครื่อง"
@@ -383,7 +738,7 @@ export function PaperAnalyticsPage() {
               icon={<FileText className="h-6 w-6" />}
               accent="#0d9488"
               loading={costLoading}
-              hint={`ช่วง: ${costRangeLabel}`}
+              hint={`ช่วง: ${rangeLabel}`}
             />
           </div>
 

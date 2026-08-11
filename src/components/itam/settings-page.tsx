@@ -79,12 +79,41 @@ import {
 import { MasterDataModal } from './master-data-modal'
 import { useAppStore, type SettingsTab } from '@/store/app-store'
 
-const DEMO_USERS = [
-  { email: 'admin@example.com', role: 'admin', roleLabel: 'ผู้ดูแลระบบ' },
-  { email: 'manager@example.com', role: 'manager', roleLabel: 'ผู้จัดการ' },
-  { email: 'staff@example.com', role: 'staff', roleLabel: 'เจ้าหน้าที่' },
-  { email: 'viewer@example.com', role: 'viewer', roleLabel: 'ผู้ดู' },
-]
+/* ---------- User types & helpers ---------- */
+interface AppUser {
+  id: string
+  email: string
+  name: string | null
+  role: string // admin | editor | viewer
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+const USER_ROLE_OPTIONS = [
+  { value: 'admin', label: 'ผู้ดูแลระบบ', short: 'admin' },
+  { value: 'editor', label: 'ผู้แก้ไข', short: 'editor' },
+  { value: 'viewer', label: 'ผู้ดู', short: 'viewer' },
+] as const
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function roleBadgeClass(role: string): string {
+  switch (role) {
+    case 'admin':
+      return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316] dark:border-[#fb923c]/40 dark:bg-[#fb923c]/15 dark:text-[#fb923c]'
+    case 'editor':
+      return 'border-teal-200 bg-teal-100 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300'
+    case 'viewer':
+    default:
+      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+  }
+}
+
+function roleLabel(role: string): string {
+  return USER_ROLE_OPTIONS.find((o) => o.value === role)?.label ?? role
+}
+
 
 export function SettingsPage() {
   const pendingTab = useAppStore((s) => s.pendingSettingsTab)
@@ -1165,50 +1194,408 @@ function SiteRateDialog({
 
 /* ---------- Users tab (read-only) ---------- */
 function UsersTab() {
+  const qc = useQueryClient()
+  const { data: users, isLoading } = useQuery<AppUser[]>({
+    queryKey: ['users'],
+    queryFn: async () => {
+      const res = await fetch('/api/users')
+      if (!res.ok) throw new Error('Failed to load users')
+      const json = await res.json()
+      return json.users as AppUser[]
+    },
+  })
+
+  const [dialogOpen, setDialogOpen] = React.useState(false)
+  const [editTarget, setEditTarget] = React.useState<AppUser | null>(null)
+  const [deleteTarget, setDeleteTarget] = React.useState<AppUser | null>(null)
+  const [deleting, setDeleting] = React.useState(false)
+
+  // Form fields
+  const [email, setEmail] = React.useState('')
+  const [name, setName] = React.useState('')
+  const [role, setRole] = React.useState<string>('viewer')
+  const [active, setActive] = React.useState(true)
+  const [saving, setSaving] = React.useState(false)
+  const [touched, setTouched] = React.useState(false)
+
+  const emailValid = EMAIL_RE.test(email.trim())
+  const emailError =
+    touched && email.length > 0 && !emailValid
+      ? 'รูปแบบอีเมลไม่ถูกต้อง'
+      : null
+
+  // Active-admin count — used to disable delete / deactivation for the last admin
+  const activeAdminCount = (users ?? []).filter(
+    (u) => u.role === 'admin' && u.active,
+  ).length
+
+  function openAdd() {
+    setEditTarget(null)
+    setEmail('')
+    setName('')
+    setRole('viewer')
+    setActive(true)
+    setTouched(false)
+    setDialogOpen(true)
+  }
+
+  function openEdit(u: AppUser) {
+    setEditTarget(u)
+    setEmail(u.email)
+    setName(u.name ?? '')
+    setRole(u.role)
+    setActive(u.active)
+    setTouched(false)
+    setDialogOpen(true)
+  }
+
+  async function save() {
+    setTouched(true)
+    if (!emailValid) return
+    try {
+      setSaving(true)
+      const payload = {
+        email: email.trim().toLowerCase(),
+        name: name.trim() || null,
+        role,
+        active,
+      }
+      const res = editTarget
+        ? await fetch(`/api/users/${editTarget.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+        : await fetch('/api/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Save failed')
+      }
+      toast.success(editTarget ? 'แก้ไขผู้ใช้แล้ว' : 'เพิ่มผู้ใช้แล้ว')
+      setDialogOpen(false)
+      await qc.invalidateQueries({ queryKey: ['users'] })
+      await qc.invalidateQueries({ queryKey: ['audit'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function toggleActive(u: AppUser, next: boolean) {
+    // If turning off an active admin, check last-admin guard on client too
+    if (
+      u.role === 'admin' &&
+      u.active === true &&
+      next === false &&
+      activeAdminCount <= 1
+    ) {
+      toast.error('ไม่สามารถปิดการใช้งานผู้ดูแลคนสุดท้ายได้')
+      return
+    }
+    try {
+      const res = await fetch(`/api/users/${u.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: next }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Update failed')
+      }
+      toast.success(next ? 'เปิดใช้งานแล้ว' : 'ปิดใช้งานแล้ว')
+      await qc.invalidateQueries({ queryKey: ['users'] })
+      await qc.invalidateQueries({ queryKey: ['audit'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Update failed')
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    try {
+      setDeleting(true)
+      const res = await fetch(`/api/users/${deleteTarget.id}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Delete failed')
+      }
+      toast.success('ลบผู้ใช้แล้ว')
+      setDeleteTarget(null)
+      await qc.invalidateQueries({ queryKey: ['users'] })
+      await qc.invalidateQueries({ queryKey: ['audit'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const isLastAdmin = (u: AppUser): boolean =>
+    u.role === 'admin' && u.active && activeAdminCount <= 1
+
   return (
     <Card className="dark:border-slate-800 dark:bg-slate-900">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <Users className="h-4 w-4 text-[#f97316]" />
-          สิทธิ์ผู้ใช้ (แสดงผลเท่านั้น)
+          สิทธิ์ผู้ใช้
         </CardTitle>
+        <Button
+          size="sm"
+          onClick={openAdd}
+          className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+        >
+          <Plus className="h-4 w-4" />
+          เพิ่มผู้ใช้
+        </Button>
       </CardHeader>
-      <CardContent>
-        <div className="rounded-md border border-slate-200 dark:border-slate-800">
-          <Table>
-            <TableHeader className="bg-slate-50 dark:bg-slate-900">
-              <TableRow>
-                <TableHead className="text-slate-600 dark:text-slate-300">อีเมล</TableHead>
-                <TableHead className="text-slate-600 dark:text-slate-300">บทบาท</TableHead>
-                <TableHead className="text-slate-600 dark:text-slate-300">ป้ายกำกับ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {DEMO_USERS.map((u) => (
-                <TableRow key={u.email} className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                  <TableCell className="font-medium text-slate-700 dark:text-slate-200">
-                    {u.email}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={
-                        u.role === 'admin'
-                          ? 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]'
-                          : 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                      }
-                    >
-                      {u.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-slate-600 dark:text-slate-300">{u.roleLabel}</TableCell>
+      <CardContent className="space-y-3">
+        <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
+          <div className="itam-scroll overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-slate-50 dark:bg-slate-900">
+                <TableRow>
+                  <TableHead className="text-slate-600 dark:text-slate-300">อีเมล</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">บทบาท</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>
+                  <TableHead className="text-right text-slate-600 dark:text-slate-300">การจัดการ</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={`us-${i}`}>
+                      <TableCell colSpan={5}>
+                        <Skeleton className="h-8 w-full dark:bg-slate-800" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (users ?? []).length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+                      ยังไม่มีผู้ใช้ — กด "เพิ่มผู้ใช้" เพื่อเริ่ม
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  (users ?? []).map((u) => {
+                    const last = isLastAdmin(u)
+                    return (
+                      <TableRow
+                        key={u.id}
+                        className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                      >
+                        <TableCell className="font-medium text-slate-700 dark:text-slate-200">
+                          {u.email}
+                        </TableCell>
+                        <TableCell className="text-slate-600 dark:text-slate-300">
+                          {u.name || <span className="text-slate-400">—</span>}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={roleBadgeClass(u.role)}>
+                            {roleLabel(u.role)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              checked={u.active}
+                              disabled={last}
+                              onCheckedChange={(c) => toggleActive(u, c)}
+                              aria-label="สถานะผู้ใช้"
+                            />
+                            <span
+                              className={`text-xs ${
+                                u.active
+                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  : 'text-slate-400 dark:text-slate-500'
+                              }`}
+                            >
+                              {u.active ? 'ใช้งาน' : 'ปิด'}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => openEdit(u)}
+                              aria-label="แก้ไข"
+                              className="h-8 w-8 text-slate-500 hover:text-[#f97316] dark:text-slate-400 dark:hover:text-[#fb923c]"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => setDeleteTarget(u)}
+                              aria-label="ลบ"
+                              disabled={last}
+                              className="h-8 w-8 text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:bg-rose-950/40 dark:hover:text-rose-400"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
-        <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
-          หมายเหตุ: ระบบจัดการสิทธิ์ผู้ใช้เต็มรูปแบบอยู่ในเวอร์ชัน Apps Script — หน้านี้แสดงผลข้อมูลตัวอย่างเท่านั้น
+
+        <p className="text-xs text-slate-400 dark:text-slate-500">
+          บทบาท: <span className="font-medium text-[#f97316]">admin</span> = จัดการได้ทุกอย่าง ·{' '}
+          <span className="font-medium text-teal-600 dark:text-teal-400">editor</span> = แก้ไขข้อมูลได้ ·{' '}
+          <span className="font-medium text-slate-500 dark:text-slate-400">viewer</span> = ดูได้อย่างเดียว
         </p>
+
+        {/* Add / Edit dialog */}
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-slate-800 dark:text-slate-100">
+                {editTarget ? 'แก้ไขผู้ใช้' : 'เพิ่มผู้ใช้'}
+              </DialogTitle>
+              <DialogDescription>
+                กรอกข้อมูลผู้ใช้และกำหนดบทบาท
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="user-email" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  อีเมล *
+                </Label>
+                <Input
+                  id="user-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => setTouched(true)}
+                  placeholder="name@example.com"
+                  className={
+                    emailError
+                      ? 'border-rose-400 focus-visible:ring-rose-300 dark:border-rose-700'
+                      : 'dark:bg-slate-800 dark:border-slate-700'
+                  }
+                />
+                {emailError ? (
+                  <div className="text-xs text-rose-600 dark:text-rose-400">{emailError}</div>
+                ) : (
+                  <div className="text-xs text-slate-400 dark:text-slate-500">
+                    ใช้สำหรับล็อกอิน ต้องเป็นอีเมลที่ถูกต้อง
+                  </div>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="user-name" className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  ชื่อ
+                </Label>
+                <Input
+                  id="user-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="ชื่อ นามสกุล"
+                  className="dark:bg-slate-800 dark:border-slate-700"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">บทบาท</Label>
+                <Select value={role} onValueChange={setRole}>
+                  <SelectTrigger className="w-full dark:bg-slate-800 dark:border-slate-700">
+                    <SelectValue placeholder="เลือกบทบาท" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {USER_ROLE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className={roleBadgeClass(o.value)}>
+                            {o.short}
+                          </Badge>
+                          <span>{o.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/40">
+                <div>
+                  <div className="text-sm font-medium text-slate-700 dark:text-slate-200">เปิดใช้งาน</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                    ปิดเพื่อระงับการเข้าถึงชั่วคราว
+                  </div>
+                </div>
+                <Switch checked={active} onCheckedChange={setActive} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+                disabled={saving}
+              >
+                ยกเลิก
+              </Button>
+              <Button
+                onClick={save}
+                disabled={saving || !emailValid}
+                className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+              >
+                <Save className="h-4 w-4" />
+                {saving ? 'กำลังบันทึก...' : editTarget ? 'บันทึก' : 'เพิ่ม'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete confirmation */}
+        <AlertDialog
+          open={!!deleteTarget}
+          onOpenChange={(o) => {
+            if (!o) setDeleteTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>ยืนยันการลบผู้ใช้</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div>
+                  จะลบผู้ใช้{' '}
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {deleteTarget?.email}
+                  </span>{' '}
+                  ({deleteTarget ? roleLabel(deleteTarget.role) : ''}) ออกจากระบบ
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {deleteTarget && isLastAdmin(deleteTarget) ? (
+              <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                ⚠️ ไม่สามารถลบผู้ดูแลคนสุดท้ายได้ — กรุณาเพิ่มผู้ดูแลคนอื่นก่อน
+              </div>
+            ) : null}
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmDelete}
+                disabled={deleting || (deleteTarget ? isLastAdmin(deleteTarget) : false)}
+                className="bg-rose-600 text-white hover:bg-rose-700"
+              >
+                {deleting ? 'กำลังลบ...' : 'ลบ'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   )
@@ -1222,6 +1609,7 @@ const AUDIT_ENTITY_OPTIONS = [
   'Cycle',
   'Site',
   'Setting',
+  'User',
 ] as const
 
 const AUDIT_ACTION_OPTIONS = [
@@ -1298,6 +1686,8 @@ function entityIcon(entity: string) {
       return <Building2 className={cls} />
     case 'Setting':
       return <SettingsIcon className={cls} />
+    case 'User':
+      return <Users className={cls} />
     default:
       return <Server className={cls} />
   }

@@ -654,3 +654,51 @@ Stage Summary:
 - All 3 features verified working end-to-end: notifications panel (bell + badge + popover with grouped alerts + filter tabs + navigate-on-click), auto-create cycle template (settings section + suggestion dialog on cycle end), dashboard PDF export (button + print window with professional layout).
 - No bugs found. Classic sidebar preserved (bell added next to theme toggle). Sticky footer intact. Lint clean. No new runtime errors.
 - Recommended next round: (1) device lifecycle/warranty dashboard (replacement planning), (2) user permissions UI (make editable), (3) meter reading reminders via email/notification, (4) multi-site comparison dashboard, (5) device utilization analytics (usage per device per month).
+
+---
+Task ID: 14
+Agent: full-stack-developer (webDevReview round 7)
+Task: Add (1) Multi-site Comparison Dashboard, (2) Device Utilization Analytics (heatmap + trend + top/low), and (3) editable User Permissions UI (CRUD with role badges + last-admin guard). Plus styling polish for the new sections.
+
+Work Log:
+- Prisma: added `User` model (id/email-unique/name?/role/active/createdAt/updatedAt) to `prisma/schema.prisma`; ran `bun run db:push` successfully (Prisma Client regenerated v6.19.2). Updated `src/lib/db.ts` staleness probe to also check for `user` model so a stale client is rebuilt after the schema change. Touched `next.config.ts` to trigger HMR pickup.
+- API `POST /api/seed`: extended to also seed 3 demo users (admin@example.com/admin, editor@example.com/editor, viewer@example.com/viewer) when no users exist; added `users: count` to the seed response. Lazy-seed fallback lives in `/api/users` GET so the UsersTab never appears empty.
+- API `/api/users/route.ts`: GET (list ordered by createdAt, lazy-seeds demo users if none) + POST (validates email regex, role in [admin, editor, viewer], checks email uniqueness, logs audit `CREATE / User`).
+- API `/api/users/[id]/route.ts`: PUT (validates email, role, enforces last-active-admin guards for both demotion and deactivation) + DELETE (prevents deleting the last active admin, logs audit `DELETE / User`). Both Thai error messages surface to the UI.
+- Settings `UsersTab` (`src/components/itam/settings-page.tsx`): replaced the read-only demo table with a full TanStack-Query-backed editable table — columns อีเมล | ชื่อ | บทบาท (role badge: admin=orange #f97316, editor=teal, viewer=slate) | สถานะ (inline Switch that toggles via PUT) | การจัดการ (edit/delete icon buttons). "➕ เพิ่มผู้ใช้" button opens a Dialog (email validation feedback, role Select with badge preview, active Switch); Edit reuses the same dialog pre-filled. Delete uses AlertDialog confirm with last-admin warning banner; delete button is disabled + red-on-hover when the row is the last admin. Also added 'User' to AUDIT_ENTITY_OPTIONS + Users icon to entityIcon. Removed the old DEMO_USERS reference.
+- API `/api/sites/comparison/route.ts`: GET `?range=month|30d|quarter|all` returns per-site comparison — {siteCode, siteName, deviceCount, activeCount, spareCount, repairCount, totalSheets (sum of positive deltas in range), totalCost (sheets × site bwRate), avgSheetsPerDevice, lastReadingDate, unreadInCycle (meterable devices lacking a reading in the active cycle)} — plus `ranked` sorted by totalSheets DESC, plus totals. Tested live: 4 sites (incl. one with 0 devices) returned correctly with HQ on top.
+- API `/api/devices/utilization/route.ts`: GET `?range=...` returns per-device utilization for PRINTER/COPIER/MFP — monthlyReadings (3/3/6/12 months depending on range), totalSheets, avgPerMonth, maxMonth, minMonth, utilizationScore (0-100 normalized vs. max totalSheets), trend (up/down/stable comparing last two non-zero months with >10% threshold) — plus `summary { avgUtilization, topDevice, lowDevice }` and `months[]`. Tested live: 11 devices, top=IT-PRT-001, low=IT-COP-005, avgUtilization=13.
+- Component `src/components/itam/utilization-section.tsx` (new): header "📈 การใช้งานอุปกรณ์ (Utilization)" with shared range Select, summary KPIs (avg/top/low), a responsive heatmap (CSS grid: 1 label column + N month columns + total column; each cell colored by intensity rgba(20,184,166, 0.12→0.9) with hover title showing exact sheet count; horizontally scrollable on mobile with min-w-[640px] and `.itam-scroll` styling), a legend (light→dark = low→high), a "TOP 5 การใช้งานสูง" list with teal-gradient progress bars + rank number, a "5 การใช้งานต่ำ (แคนดิเดตย้ายเครื่อง)" list with amber→orange gradient progress bars, and TrendBadge (emerald ↑/rose ↓/slate →). Subtle framer-motion entrance on the heatmap.
+- Component `src/components/itm/paper-analytics-page.tsx` (rebuilt, single PaperAnalyticsPage export): unified the range state (renamed `costRange` → `range`, shared by Site Comparison + Utilization + Cost). Order on page: Header → Usage KPIs → Line chart → Top devices bar → 🏗️ Site Comparison (4 comparison KPIs + horizontal-scroll table with top row highlighted `bg-orange-50 dark:bg-orange-950/30` + 🥇 medal + hover; grouped BarChart with 2 bars per site using dual Y-axis — teal sheets left, orange cost right, Legend, isAnimationActive; leaderboard with 🥇🥈🥉 medals in gold/silver/bronze gradient cards with framer-motion staggered entrance) → 📈 Utilization section (embedded via `<UtilizationSection range onRangeChange />`) → 💰 Cost analytics section (preserved).
+- Styling polish: top-row highlight + medal on comparison table; grouped bars with rounded corners + animation; leaderboard cards with gold/silver/bronze gradient backgrounds; heatmap with `transition-colors` on cells, dark teal gradient legend, horizontal scroll on mobile; top/low lists with gradient progress bars + icon trend badges; users table with colored role badges, inline active Switch, hover row, red-on-hover delete button (disabled for last admin); user dialog with role Select showing badge preview + email validation feedback.
+- All new UI uses Tailwind `dark:` variants (orange #f97316/#fb923c primary, teal #14b8a6/#0d9488 secondary, slate neutrals). Sidebar untouched (still #0f172a with orange active accent).
+- Ran `bun run db:push` (success — User table created). Ran `bun run lint` → 0 errors. Manually exercised each new endpoint via curl: `/api/users` GET/POST, `/api/users/[id]` PUT/DELETE (including last-admin guard returns 400 with Thai message), `/api/sites/comparison?range=...` all 4 ranges return 200, `/api/devices/utilization?range=...` all 4 ranges return 200. Dev log shows clean compile + no runtime errors after the changes; Prisma `User` queries fire correctly (no stale-client errors). Did NOT run `bun run build`.
+
+Stage Summary:
+- 3 features delivered: Multi-site Comparison Dashboard (API + table + grouped chart + leaderboard), Device Utilization Analytics (API + heatmap + top/low lists + trends), editable User Permissions UI (CRUD + role badges + last-admin guard on delete/demote/deactivate).
+- 1 Prisma model added (User), 4 new API routes created (`/api/users`, `/api/users/[id]`, `/api/sites/comparison`, `/api/devices/utilization`), 1 new component (`utilization-section.tsx`), 2 components rewritten (`paper-analytics-page.tsx` unified range + 2 new sections, `settings-page.tsx` UsersTab fully editable).
+- All endpoints return 200 (verified live), last-admin guard returns 400 with Thai message, lazy-seed ensures demo users exist on first GET.
+- `bun run lint` clean (0 errors). `bun run db:push` succeeded. Sidebar preserved. Dark mode supported throughout. Thai labels throughout. No `bun run build` performed.
+- Classic dark sidebar (240px, #0f172a, orange active accent #f97316/#fb923c) preserved exactly. Footer sticky behavior untouched.
+
+---
+Task ID: 14-QA
+Agent: orchestrator (main) — round 7 independent verification
+Task: Independently verify all 3 new features via agent-browser + curl.
+
+Work Log:
+- Read subagent's Task 14 worklog entry. Dev server healthy (HTTP 200, all endpoints 200).
+- API verification via curl:
+  - GET /api/sites/comparison?range=month → 200, 4 sites (HQ:7 dev/101,941 sheets, CNX:2/3,098, BKK-1:3/1,805). ✓
+  - GET /api/devices/utilization?range=month → 200, 11 devices, top=IT-PRT-001 (105,500 sheets, score 100, trend up), low=IT-COP-005 (1,969 sheets, score 2). ✓
+  - GET /api/users → 200, 3 users (admin/editor/viewer, all active). ✓
+  - DELETE /api/users/<last-admin-id> → 400 with Thai error "ไม่สามารถลบผู้ดูแลคนสุดท้ายได้" (last-admin guard works). ✓
+- agent-browser UI verification:
+  - Paper Analytics: site comparison section present (เปรียบเทียบสาขา + TOP สาขา leaderboard with 🥇), utilization section present (การใช้งานอุปกรณ์ + heatmap + การใช้งานสูง list). ✓
+  - Settings Users tab: 3 user rows, "เพิ่มผู้ใช้" button, admin/editor users with role badges. ✓
+- `bun run lint` → 0 errors, 0 warnings. No errors from new features in dev.log.
+
+Stage Summary:
+- All 3 features verified working end-to-end: multi-site comparison (API + table + grouped bar chart + leaderboard with medals), device utilization analytics (API + heatmap + top/low lists + trend badges), user permissions UI (CRUD + role badges + inline active toggle + last-admin guard).
+- No bugs found. Classic sidebar preserved. Sticky footer intact. Lint clean. No new runtime errors.
+- Recommended next round: (1) device lifecycle/warranty dashboard (replacement planning timeline), (2) meter reading email reminders, (3) export full audit log as PDF/CSV, (4) dashboard customizable widgets, (5) device assignment/checkout system (who has which device).

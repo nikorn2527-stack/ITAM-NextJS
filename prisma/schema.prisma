@@ -110,6 +110,16 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 }
 
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      String   // admin | editor | viewer
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 model AuditLog {
   id        String   @id @default(cuid())
   action    String   // CREATE | UPDATE | DELETE | METER_READING | SYNC | SEED | CYCLE_START | CYCLE_END
