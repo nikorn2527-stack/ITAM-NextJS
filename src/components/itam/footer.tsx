@@ -14,10 +14,10 @@ export function Footer() {
   const activePage = useAppStore((s) => s.activePage)
   const year = new Date().getFullYear()
   return (
-    <footer className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-100 px-4 py-3 text-xs text-slate-500">
+    <footer className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
       <div>
         © {year} PNG TEAM — IT Asset Management ·{' '}
-        <span className="font-medium text-slate-700">
+        <span className="font-medium text-slate-700 dark:text-slate-200">
           {PAGE_LABELS[activePage] ?? ''}
         </span>
       </div>

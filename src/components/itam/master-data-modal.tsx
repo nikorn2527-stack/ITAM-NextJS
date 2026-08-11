@@ -120,9 +120,9 @@ export function MasterDataModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
         <DialogHeader>
-          <DialogTitle>
+          <DialogTitle className="text-slate-800 dark:text-slate-100">
             {form.id ? '✏️ แก้ไขข้อมูลมาตรฐาน' : '➕ เพิ่มข้อมูลมาตรฐาน'}
           </DialogTitle>
           <DialogDescription>
@@ -132,7 +132,7 @@ export function MasterDataModal({
 
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-600">หมวดหมู่ *</Label>
+            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">หมวดหมู่ *</Label>
             {fixedCategory ? (
               <Input value={fixedCategory} disabled />
             ) : (
@@ -154,7 +154,7 @@ export function MasterDataModal({
             )}
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-600">รหัส *</Label>
+            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">รหัส *</Label>
             <Input
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
@@ -162,7 +162,7 @@ export function MasterDataModal({
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-600">ชื่อ *</Label>
+            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">ชื่อ *</Label>
             <Input
               value={form.label}
               onChange={(e) => setForm({ ...form, label: e.target.value })}
@@ -170,7 +170,7 @@ export function MasterDataModal({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-slate-600">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
                 ParentRef
               </Label>
               <Input
@@ -182,7 +182,7 @@ export function MasterDataModal({
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-slate-600">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
                 SiteCode
               </Label>
               <Input
@@ -193,7 +193,7 @@ export function MasterDataModal({
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-600">
+            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
               DisplayLabel
             </Label>
             <Input
@@ -217,7 +217,7 @@ export function MasterDataModal({
           <Button
             onClick={save}
             disabled={saving}
-            className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+            className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
             {saving ? 'กำลังบันทึก...' : 'บันทึก'}
           </Button>

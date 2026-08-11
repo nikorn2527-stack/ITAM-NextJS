@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useTheme } from 'next-themes'
 import {
   LineChart,
   Line,
@@ -15,7 +16,7 @@ import {
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { FileText, TrendingUp, Gauge, CalendarDays } from 'lucide-react'
+import { FileText, TrendingUp, Gauge, CalendarDays, Inbox } from 'lucide-react'
 
 interface KpiProps {
   title: string
@@ -28,24 +29,28 @@ interface KpiProps {
 
 function KpiCard({ title, value, icon, accent, loading, hint }: KpiProps) {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-4 p-4">
+    <Card className="group relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-transparent to-black/[0.02] opacity-0 transition-opacity group-hover:opacity-100 dark:to-white/[0.03]"
+      />
+      <CardContent className="relative flex items-center gap-4 p-4">
         <div
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg"
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105"
           style={{ background: `${accent}1a`, color: accent }}
         >
           {icon}
         </div>
         <div className="min-w-0">
-          <div className="truncate text-xs font-medium text-slate-500">
+          <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
             {title}
           </div>
           {loading ? (
-            <Skeleton className="mt-1 h-6 w-20" />
+            <Skeleton className="mt-1 h-6 w-20 dark:bg-slate-800" />
           ) : (
-            <div className="text-xl font-bold text-slate-800">{value}</div>
+            <div className="text-xl font-bold text-slate-800 dark:text-slate-100">{value}</div>
           )}
-          {hint && <div className="truncate text-xs text-slate-400">{hint}</div>}
+          {hint && <div className="truncate text-xs text-slate-400 dark:text-slate-500">{hint}</div>}
         </div>
       </CardContent>
     </Card>
@@ -64,7 +69,27 @@ function formatMonthLabel(yyyymm: string): string {
   return `${THAI_MONTHS_SHORT[idx]} ${y}`
 }
 
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400 dark:text-slate-500">
+      <Inbox className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+      <span className="text-sm">{message}</span>
+    </div>
+  )
+}
+
 export function PaperAnalyticsPage() {
+  const { theme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => setMounted(true), [])
+  const isDark = mounted && theme === 'dark'
+
+  const axisTickColor = '#64748b'
+  const gridStroke = isDark ? '#334155' : '#e2e8f0'
+  const tooltipBorder = isDark ? '#334155' : '#e2e8f0'
+  const tooltipBg = isDark ? '#0f172a' : '#ffffff'
+  const tooltipFg = isDark ? '#e2e8f0' : '#1e293b'
+
   const { data: monthly, isLoading: monthlyLoading } = useQuery<
     Array<{ month: string; value: number }>
   >({
@@ -135,8 +160,8 @@ export function PaperAnalyticsPage() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">การใช้กระดาษ</h1>
-        <p className="text-sm text-slate-500">
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">การใช้กระดาษ</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           วิเคราะห์การใช้งานกระดาษจากการจดมิเตอร์รายเดือน
         </p>
       </div>
@@ -163,7 +188,7 @@ export function PaperAnalyticsPage() {
           title="คาดการณ์สิ้นเดือน"
           value={`${projected.toLocaleString()} แผ่น`}
           icon={<TrendingUp className="h-6 w-6" />}
-          accent="#0ea5e9"
+          accent="#0d9488"
           loading={monthlyLoading}
           hint={`วันที่ ${dayOfMonth}/${daysInMonth}`}
         />
@@ -177,25 +202,30 @@ export function PaperAnalyticsPage() {
       </div>
 
       {/* Line chart */}
-      <Card>
+      <Card className="dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
-          <CardTitle className="text-base">แนวโน้มการใช้กระดาษรายเดือน</CardTitle>
+          <CardTitle className="text-base text-slate-800 dark:text-slate-100">แนวโน้มการใช้กระดาษรายเดือน</CardTitle>
         </CardHeader>
         <CardContent>
           {monthlyLoading ? (
-            <Skeleton className="h-72 w-full" />
+            <Skeleton className="h-72 w-full dark:bg-slate-800" />
           ) : lineData.length === 0 ? (
-            <p className="py-12 text-center text-sm text-slate-400">
-              ยังไม่มีข้อมูลการจดมิเตอร์
-            </p>
+            <EmptyState message="ยังไม่มีข้อมูลการจดมิเตอร์" />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={lineData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                <XAxis dataKey="name" tick={{ fontSize: 12, fill: axisTickColor }} />
+                <YAxis tick={{ fontSize: 12, fill: axisTickColor }} />
                 <Tooltip
                   formatter={(v: number) => [`${v.toLocaleString()} แผ่น`, 'ใช้กระดาษ']}
+                  contentStyle={{
+                    fontSize: 12,
+                    borderRadius: 8,
+                    border: `1px solid ${tooltipBorder}`,
+                    background: tooltipBg,
+                    color: tooltipFg,
+                  }}
                 />
                 <Line
                   type="monotone"
@@ -212,33 +242,38 @@ export function PaperAnalyticsPage() {
       </Card>
 
       {/* Bar chart - top devices */}
-      <Card>
+      <Card className="dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
-          <CardTitle className="text-base">อุปกรณ์ที่ใช้กระดาษมากที่สุด</CardTitle>
+          <CardTitle className="text-base text-slate-800 dark:text-slate-100">อุปกรณ์ที่ใช้กระดาษมากที่สุด</CardTitle>
         </CardHeader>
         <CardContent>
           {deviceLoading ? (
-            <Skeleton className="h-72 w-full" />
+            <Skeleton className="h-72 w-full dark:bg-slate-800" />
           ) : barData.length === 0 ? (
-            <p className="py-12 text-center text-sm text-slate-400">
-              ยังไม่มีข้อมูลการใช้งาน
-            </p>
+            <EmptyState message="ยังไม่มีข้อมูลการใช้งาน" />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={barData} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis type="number" tick={{ fontSize: 12 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                <XAxis type="number" tick={{ fontSize: 12, fill: axisTickColor }} />
                 <YAxis
                   type="category"
                   dataKey="name"
                   width={100}
-                  tick={{ fontSize: 11 }}
+                  tick={{ fontSize: 11, fill: axisTickColor }}
                 />
                 <Tooltip
                   formatter={(v: number) => [`${v.toLocaleString()} แผ่น`, 'ใช้กระดาษ']}
                   labelFormatter={(_, payload) => {
                     const p = payload?.[0]?.payload as { full?: string } | undefined
                     return p?.full ?? ''
+                  }}
+                  contentStyle={{
+                    fontSize: 12,
+                    borderRadius: 8,
+                    border: `1px solid ${tooltipBorder}`,
+                    background: tooltipBg,
+                    color: tooltipFg,
                   }}
                 />
                 <Bar dataKey="value" fill="#14b8a6" radius={[0, 6, 6, 0]} />

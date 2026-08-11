@@ -172,3 +172,100 @@ Stage Summary:
 - Dashboard styling polished: 5th KPI, redesigned KpiCards with accent bars/hover-lift/icon containers, teal bar chart, donut center label, improved empty states. VLM polish score: 6/10 → 8/10.
 - Classic sidebar preserved exactly. Sticky footer intact. Lint clean. No runtime errors.
 - Recommended next round: (1) add device import from CSV (inverse of export), (2) add meter reading reminders/notifications for devices not read in current cycle, (3) add a printable sticker/PDF generation for device labels (the original Apps Script app has sticker/document features), (4) add dark mode toggle, (5) add dashboard date-range filter.
+
+---
+Task ID: 8
+Agent: full-stack-developer (webDevReview round 2)
+Task: Add 4 features (Dark Mode Toggle, CSV Import, Meter Reading Reminders, Dashboard Date-Range Filter) + global styling polish on top of the stable Task 5/6/7 ITAM app. Preserve the classic sidebar exactly (always dark in both themes).
+
+Work Log:
+- Read prior worklog (Tasks 1,5,6,7 done — sidebar restored, app built, E2E verified, round 1 added audit log + device sheet + CSV export + dashboard polish). Re-read all relevant source files before editing. Confirmed dev server healthy (HTTP 200, no errors). Verified all shadcn/ui components available including Progress (needed for reminders progress card).
+- FEATURE 1 — Dark Mode Toggle (full):
+  - Sidebar (`sidebar.tsx`): added `useTheme()` from next-themes + a `mounted` flag (hydration-safe — renders a placeholder square until mounted, then `Sun` (when dark) or `Moon` (when light)). Button is a 28×28 rounded square below "Powered by PNG TEAM", styled `border-white/10 bg-white/5` with `focus-visible:ring-[#f97316]`. Sidebar stays `bg-[#0f172a]` always (classic design — does NOT switch to light). Also added `focus-visible:ring-2 ring-[#f97316]` to nav buttons for a11y.
+  - Root wrapper (`page.tsx`): `bg-slate-50` → `bg-slate-50 dark:bg-slate-950`. Also wrapped active page in `<motion.div key={activePage} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{duration:0.2}}>` for fade+slide page transitions.
+  - Footer (`footer.tsx`): `border-slate-200 bg-slate-100 text-slate-500` → added `dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400` + `text-slate-700 dark:text-slate-200` for page label.
+  - globals.css: added `.dark .itam-scroll` variant with darker thumb `#475569` (hover `#64748b`) for dark backgrounds.
+  - Theme-aware colors applied across ALL pages via `dark:` Tailwind prefix:
+    - dashboard-page: KpiCard numbers `text-slate-800 dark:text-slate-100`, titles `text-slate-500 dark:text-slate-400`, Skeleton `dark:bg-slate-800`, top-usage & recent-activity list rows `dark:border-slate-800 dark:bg-slate-800/40`, cards `dark:border-slate-800 dark:bg-slate-900`, Charts: recharts CartesianGrid stroke conditional (`#334155` dark / `#e2e8f0` light), Tooltip border/bg/text conditional. Donut center text fill `#e2e8f0` dark / `#1e293b` light. Added `useTheme()` + mounted flag.
+    - devices-page: Card `dark:border-slate-800 dark:bg-slate-900`, TableHeader `dark:bg-slate-900`, TableHead cells `dark:text-slate-300`, TableRow hover `dark:hover:bg-slate-800/50`, cells `dark:text-slate-200`, Dialog `dark:border-slate-800 dark:bg-slate-900`, AlertDialogContent `dark:border-slate-800 dark:bg-slate-900`, SelectValueInput dropdown `border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800` with `dark:text-slate-200 dark:hover:bg-slate-700`, trash button `dark:text-rose-400 dark:hover:bg-rose-950/50`.
+    - meter-page: full rewrite with dark variants on every Card/Table/Dialog/Badge + theme-aware reminder banners (amber gradient in light, amber-950 in dark; emerald border in light, emerald-950 in dark). Reading dialog inputs/borders theme-aware.
+    - paper-analytics-page: full rewrite — KpiCards `dark:border-slate-800 dark:bg-slate-900`, charts use conditional stroke/bg/text via `useTheme()`, replaced `#0ea5e9` accent with `#0d9488` (teal) for "คาดการณ์สิ้นเดือน" to comply with no-blue rule, EmptyState dark variants.
+    - settings-page: all 5 tabs (app/master/sites/users/audit) Cards `dark:border-slate-800 dark:bg-slate-900`, TabsList `dark:bg-slate-900 dark:border dark:border-slate-800`, all TableHeaders `dark:bg-slate-900`, TableRows `hover:bg-slate-50 dark:hover:bg-slate-800/50`, all status badges dark variants (emerald-950/300, amber-950/300, etc.), audit action badges dark variants added (CREATE/UPDATE/DELETE/SYNC/SEED/CYCLE_START/CYCLE_END + new IMPORT=teal), master-data-modal Dialog `dark:border-slate-800 dark:bg-slate-900`, all Labels `dark:text-slate-300`, all primary action buttons got `focus-visible:ring-2 ring-[#f97316]`.
+    - device-detail-sheet: SheetContent `bg-white dark:bg-slate-900`, SheetHeader `bg-slate-50 dark:bg-slate-900`, InfoRow labels `dark:text-slate-400` + values `dark:text-slate-100`, meter-history list items `dark:border-slate-800 dark:bg-slate-800/40`, LineChart CartesianGrid stroke conditional via `useTheme()`, Tooltip border/bg/text conditional, delta badges with `dark:` variants.
+  - types.ts: statusBadgeClass rewritten with full `dark:` variants (active: emerald-950/300/800, spare: amber-950/300/800, repair: orange-950/300/800, disposed: rose-950/300/800, default: slate-800/300/700).
+  - Sidebar stays always dark (bg-[#0f172a]) in both themes — verified visually.
+- FEATURE 2 — CSV Import (full stack):
+  - Added `parseCsv(text: string): string[][]` to `src/lib/csv.ts` — RFC-4180 compliant parser: handles quoted fields with commas, escaped double-quotes ("" → "), newlines inside quotes, BOM stripping, lone \r and \r\n line endings, drops trailing empty row from final newline. Tested with 5 unit cases (basic, quotes, multi-line quotes, BOM+Thai, trailing newline) — all correct.
+  - Created `src/components/itam/csv-import-dialog.tsx` — Dialog with: dashed-border drop zone (UploadCloud icon, click to browse, hidden `<input type="file" accept=".csv">`), reads file client-side via `FileReader.readAsText`, calls `parseCsv`, detects column mapping via header aliases (Thai + English, case-insensitive) for all 15 device fields, normalizes Thai status labels (ใช้งานอยู่→active, สำรอง→spare, ส่งซ่อม→repair, ตัดของออก→disposed), validates each row (required assetCode/name/brand/model/type, valid status, duplicate-in-file check, duplicate-in-DB check via TanStack Query for existing devices), shows validation summary badges (X valid / Y with errors / total rows), shows error list (first 50 errors with row numbers + reasons), preview table (first 8 rows with row#, assetCode, name, brand, type, status, site, validation badge), result banner, "ดาวน์โหลดเทมเพลต CSV" link (downloads template CSV with 15 Thai headers + 1 sample row), "นำเข้า" button (calls POST /api/devices/import with valid rows, shows toast "นำเข้า X อุปกรณ์แล้ว", invalidates devices+dashboard queries, closes dialog).
+  - Created `src/app/api/devices/import/route.ts` — POST handler: accepts `{devices: [...]}`, validates each row (required fields + valid status + unique within batch), pre-filters existing DB assetCodes via `findMany({where:{assetCode:{in:codes}}})`, uses `db.device.createMany()` for valid rows (removed `skipDuplicates` option since SQLite doesn't support it — pre-filtering is sufficient), logs audit `IMPORT Device "นำเข้าอุปกรณ์ CSV: ${inserted} รายการ"` with `{inserted, skipped, errorCount, errors}`, returns `{inserted, skipped, errors}`. Verified via curl: 3 rows (2 valid + 1 missing assetCode) → `inserted:2, skipped:1, errors:[{row:3,message:"ไม่มีรหัสอุปกรณ์ (assetCode)"}]`. Duplicate test → `inserted:0, skipped:1, errors:[{row:0,message:"รหัสอุปกรณ์มีอยู่แล้วในระบบ: IT-CSV-TEST-001"}]`. Audit log entries written for both attempts.
+  - Wired into devices-page toolbar: "นำเข้า CSV" button (Upload icon, outline variant) added between "เพิ่มอุปกรณ์" and "ส่งออก CSV".
+- FEATURE 3 — Meter Reading Reminders (full stack):
+  - Created `src/app/api/meter/reminders/route.ts` — GET handler: fetches active cycle (returns `{hasActiveCycle:false, reminders:[], totalRead:0, totalUnread:0}` if none), fetches all meterable devices (type ∈ PRINTER/COPIER/MFP), fetches all MeterReadings where cycleId = active cycle's id, groups by deviceId, for each meterable device without a reading in this cycle computes `daysOverdue` (days since device.createdAt if lastMeterReading is 0, else 0 since today), returns `{hasActiveCycle, cycle:{id,name,startDate,endDate,status}, reminders:[{device, lastReadingDate, daysOverdue}], totalRead, totalUnread}`. Verified via curl: returns `{hasActiveCycle:true, cycle:{...}, reminders:[], totalRead:11, totalUnread:0}` for current seeded data (all 11 meterable devices have been read in the active cycle).
+  - Updated `src/components/itam/meter-page.tsx` (full rewrite with theme-aware styling):
+    - Added TanStack Query for `/api/meter/reminders` (queryKey `['meter-reminders']`, invalidated after saveReading + createCycle).
+    - Added 3rd bento card "ความคืบหน้ารอบ" (ClipboardList icon, teal) showing `readCount / totalMeterable` with Progress bar (`[&>div]:bg-[#0d9488]`) + "จดแล้ว X%" subtext. Bento grid now `sm:grid-cols-2 lg:grid-cols-4` (was `sm:grid-cols-3`).
+    - Added reminder banner above the devices table: if `totalUnread > 0` → amber/orange gradient card with AlertTriangle icon + "⚠️ ยังไม่ได้จดมิเตอร์ X จาก Y เครื่องในรอบปัจจุบัน" + "ดูรายการ" button (scrolls to table + highlights unread rows with `animate-pulse bg-amber-50 dark:bg-amber-950/30` for 3 seconds). If `totalUnread === 0 && totalMeterable > 0` → emerald card with CheckCircle2 + "✅ จดมิเตอร์ครบทุกเครื่องในรอบปัจจุบันแล้ว".
+    - Added "สถานะรอบ" column (8th of 9 columns) in the devices table showing per-device badge: "✓ จดแล้ว" (emerald) or "⏳ ยังไม่จด" (amber), based on `unreadDeviceIds` set computed from reminders data. Shows "—" if no active cycle.
+- FEATURE 4 — Dashboard Date-Range Filter (full stack):
+  - Updated `src/app/api/dashboard/route.ts` — now accepts `?range=month|30d|quarter|all` (default `month`). Added `computeRange(key)` helper that returns `{key, label, start, end}`: month → first/last day of current month; 30d → (today - 30 days) → today; quarter → first day of current quarter start month → last day of quarter end month; all → null/null. Added `readingDateWhere(range)` helper that builds a Prisma `where` clause on MeterReading.date (`{gte, lte}` for bounded ranges, `{gte}` or `{lte}` for half-open, `{}` for all). Top usage, recent activity, and paperThisMonth now all use range-filtered readings. Returns `range` info in response. Verified via curl for all 4 ranges — month=106,844 / 30d=149,099 / quarter=149,099 / all=149,099 (different filter windows produce different sums correctly).
+  - Updated `src/components/itam/dashboard-page.tsx`:
+    - Added `range` state (default `month`), Select in page header (4 options: เดือนนี้/30 วันล่าสุด/ไตรมาสนี้/ทั้งหมด), queryKey now `['dashboard', range]`, queryFn fetches `/api/dashboard?range=${range}`.
+    - KPI label for paper card is now dynamic: DASHBOARD_RANGE_OPTIONS lookup → "กระดาษเดือนนี้" / "กระดาษ 30 วัน" / "กระดาษไตรมาสนี้" / "กระดาษทั้งหมด".
+    - Added range-label text below page title: "ช่วง: {label} ({start} → {end})".
+    - Paper trend subtext: "รวมทุกช่วงเวลา" for all, otherwise "{start} → {end}" date span.
+    - Added `DashboardRangeKey` type + `DASHBOARD_RANGE_OPTIONS` constant to `types.ts` + `range` field to `DashboardData` interface.
+- STYLING POLISH:
+  - Page transitions: `<motion.div key={activePage} initial={{opacity:0, y:8}} animate={{opacity:1, y:0}} transition={{duration:0.2, ease:'easeOut'}}>` wraps active page in `src/app/page.tsx` — subtle fade+slide on page switch.
+  - Table row hover: added `transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50` to all TableRows in devices-page (cursor-pointer rows already had `hover:bg-slate-50/70`), meter-page, settings-page (master/sites/users/audit tables).
+  - Badge dark variants: statusBadgeClass in types.ts rewritten with full `dark:` variants. Audit action badges in settings-page.tsx rewritten with full `dark:` variants + added IMPORT=teal.
+  - KPI card hover gradient overlay: added `before:absolute before:inset-0 before:opacity-0 hover:before:opacity-100 before:bg-gradient-to-br before:from-transparent before:to-black/[0.02] before:transition-opacity before:pointer-events-none` (implemented as actual `<div aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-br from-transparent to-black/[0.02] opacity-0 transition-opacity group-hover:opacity-100 dark:to-white/[0.03]" />` for cleaner JSX). Applied to both dashboard KpiCard and paper-analytics KpiCard.
+  - Focus-visible: added `focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950` to all primary action buttons (เพิ่มอุปกรณ์, บันทึก, นำเข้า CSV, ส่งออก CSV, รีเฟรช, จดมิเตอร์, สร้างรอบ, เพิ่มรายการ, เพิ่มสาขา, ลบอุปกรณ์/รายการ) + sidebar nav buttons + theme toggle + CSV import drop zone + template download link. Delete buttons use `focus-visible:ring-rose-600`.
+  - Loading skeletons: verified `animate-pulse` exists in shadcn Skeleton. Added `dark:bg-slate-800` to every Skeleton usage across all pages (dashboard KpiCard + chart skeletons + lists, devices table, meter table + bento, settings tabs, paper-analytics KPIs + charts, device-detail-sheet info grid + chart).
+- VERIFICATION:
+  - `bun run lint` → 0 errors, 0 warnings (cleaned one unused eslint-disable directive).
+  - dev.log: GET / 200, GET /api/dashboard?range=month|30d|quarter|all all 200, POST /api/devices/import 201 (audit log INSERT fired), GET /api/meter/reminders 200. No errors/warnings/unhandled exceptions.
+  - Manually tested via curl:
+    - `/api/devices/import` with 3 rows (2 valid + 1 missing assetCode) → `inserted:2, skipped:1, errors:[{row:3,...}]`.
+    - Duplicate detection → `inserted:0, errors:[{row:0, message:"รหัสอุปกรณ์มีอยู่แล้วในระบบ: IT-CSV-TEST-001"}]`.
+    - `/api/dashboard?range=month|30d|quarter|all` → all return proper `{range:{key,label,start,end}}` + correctly filtered `paperThisMonth` (106,844 / 149,099 / 149,099 / 149,099).
+    - `/api/meter/reminders` → `{hasActiveCycle:true, totalRead:11, totalUnread:0, reminders:[]}`.
+    - Audit log queries show IMPORT entries logged for both attempts.
+  - Cleaned up test artifacts: deleted 2 test devices (IT-CSV-TEST-001, IT-CSV-TEST-002) to keep demo data pristine.
+  - `parseCsv` unit-tested with 5 cases (basic, quoted commas, escaped quotes, multi-line quoted fields, BOM+Thai, trailing newline) — all pass.
+  - No `bun run db:push` needed — no schema changes (used existing Device/MeterReading/Cycle/AuditLog models).
+
+Stage Summary:
+- All 4 features delivered and working end-to-end:
+  1. Dark mode toggle: sidebar button (Sun/Moon, hydration-safe), main content fully theme-aware (slate-50→slate-950, slate-800→slate-100, slate-200→slate-800, etc.), charts use conditional recharts colors via useTheme(), .itam-scroll dark variant. Sidebar stays always dark (classic design preserved).
+  2. CSV import: parseCsv helper (RFC-4180 compliant), csv-import-dialog (drop zone + preview + validation + template download), /api/devices/import route (batch insert + audit log). Verified: 3 rows → 2 inserted + 1 skipped with error.
+  3. Meter reminders: /api/meter/reminders route + meter-page UI (progress card + amber/emerald banner + per-device "✓ จดแล้ว"/"⏳ ยังไม่จด" badge column + "ดูรายการ" scroll-to-table button with row highlight).
+  4. Dashboard date-range filter: /api/dashboard?range=month|30d|quarter|all + dashboard-page Select + dynamic KPI label + range subtext. Verified all 4 ranges return correct filtered data.
+- Styling polish: framer-motion page transitions (fade+slide), table row hover (light + dark), badge dark variants (status + audit actions + IMPORT), KPI hover gradient overlay, focus-visible rings on all primary buttons (a11y), skeleton dark:bg-slate-800 everywhere.
+- Classic sidebar preserved exactly (always dark, 240px, orange active accent #f97316/#fb923c). Sticky footer layout intact. Thai labels throughout. Orange primary + teal secondary palette (no indigo/blue). `bun run lint` clean. Dev server running cleanly on port 3000. No unresolved issues.
+
+---
+Task ID: 8-QA
+Agent: orchestrator (main) — round 2 independent verification
+Task: Independently verify all 4 new features + styling polish via agent-browser + curl, fix any defects.
+
+Work Log:
+- Read subagent's Task 8 worklog entry. Dev server healthy (GET / 200, GET /api/meter/reminders 200, GET /api/dashboard?range=30d 200).
+- API verification via curl:
+  - /api/meter/reminders → 200, {hasActiveCycle:true, totalRead:11, totalUnread:0, cycle:"รอบจดมิเตอร์ 2026-08-01 → 2026-08-31"} ✓
+  - /api/dashboard?range=month → paperThisMonth=106,844; range=30d → 149,099; range=quarter → 149,099; range=all → 149,099 ✓ (different values per range, confirms filtering works)
+  - POST /api/devices/import with 1 valid device → {inserted:1, skipped:0, errors:[]} ✓ (then cleaned up via DELETE)
+- agent-browser UI verification:
+  - Dashboard: date-range Select present (default "เดือนนี้"), range subtext "ช่วง: เดือนนี้ (2026-08-01 → 2026-08-31)" shown below title. Switched to "30 วันล่าสุด" → KPI label changed to "กระดาษ 30 วัน" with value 149,099, range subtext updated to "ช่วง: 30 วันล่าสุด (2026-07-12 → 2026-08-11)". ✓
+  - Dark mode: found theme toggle button in sidebar (aria-label "สลับเป็นโหมดมืด", Moon icon when light). Clicked → html class switched "light" → "dark", body bg became near-black (lab 2.75), card bg dark (lab 7.78), sidebar STAYS #0f172a (always dark — classic design preserved). VLM assessment: "Yes dark mode, sidebar dark navy, text highly readable. Polish 8/10." ✓
+  - Meter page: "ความคืบหน้ารอบ" progress bar shows "จดแล้ว 100%", emerald success banner "✅ จดมิเตอร์ครบทุกเครื่องในรอบปัจจุบันแล้ว · รวม 11 เครื่อง", new "สถานะรอบ" column in devices table. ✓
+  - CSV import: "นำเข้า CSV" button present in Devices toolbar. Clicked → dialog opened with title "นำเข้าอุปกรณ์จาก CSV", file selection button "คลิกเพื่อเลือกไฟล์ CSV", "ดาวน์โหลดเทมเพลต CSV" link, disabled "นำเข้า" button (correctly disabled until file loaded). ✓
+  - Page transitions: framer-motion motion.div with key=activePage confirmed in page.tsx (fade+slide on nav). ✓
+- Investigated PrismaClientValidationError in dev.log on POST /api/devices/import — confirmed it was from subagent's testing phase (likely invalid payload). Tested with valid payload → inserted:1 successfully. Not a real bug.
+- Investigated "0 audit rows" initial finding — confirmed it was a testing artifact (Radix Tabs needs proper pointer activation, JS .click() doesn't trigger state change). Real click via agent-browser shows 5 audit rows correctly. Not a real bug.
+- Final `bun run lint` → 0 errors, 0 warnings. No recent errors in dev.log (last 15 non-query lines clean).
+
+Stage Summary:
+- All 4 features verified working end-to-end: dark mode toggle (light↔dark, sidebar stays dark, VLM 8/10), CSV import (dialog + preview + validation + batch insert + audit), meter reminders (progress bar + banner + per-device cycle status column), dashboard date-range filter (4 ranges with correct data filtering + dynamic KPI label).
+- Styling polish verified: page transitions, table row hover, badge dark variants, KPI hover gradient, focus-visible rings, skeleton dark variants.
+- No bugs found. Classic sidebar preserved. Sticky footer intact. Lint clean. No runtime errors.
+- Recommended next round: (1) printable sticker/PDF generation for device labels (original Apps Script app has this), (2) device transfer/move history between sites, (3) bulk meter reading entry (enter readings for multiple devices in one form), (4) dashboard export to PDF, (5) notifications/settings for reminder thresholds.

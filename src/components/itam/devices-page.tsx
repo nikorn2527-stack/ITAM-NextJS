@@ -42,7 +42,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Plus, RefreshCw, Pencil, Trash2, Search, Eye, Download } from 'lucide-react'
+import { Plus, RefreshCw, Pencil, Trash2, Search, Eye, Download, Upload } from 'lucide-react'
 import {
   type Device,
   type Site,
@@ -51,6 +51,7 @@ import {
   statusLabel,
 } from './types'
 import { DeviceDetailSheet } from './device-detail-sheet'
+import { CsvImportDialog } from './csv-import-dialog'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 
 const DEVICE_CSV_HEADERS = [
@@ -120,6 +121,7 @@ export function DevicesPage() {
     null,
   )
   const [exporting, setExporting] = React.useState(false)
+  const [importOpen, setImportOpen] = React.useState(false)
 
   const { data: devices, isLoading } = useQuery<Device[]>({
     queryKey: ['devices', search, statusFilter, siteFilter],
@@ -281,14 +283,14 @@ export function DevicesPage() {
     <div className="space-y-4 p-4 md:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">จัดการอุปกรณ์</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จัดการอุปกรณ์</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
             เพิ่ม / แก้ไข / ลบ อุปกรณ์ IT ในระบบ
           </p>
         </div>
       </div>
 
-      <Card>
+      <Card className="dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-4">
           {/* Toolbar */}
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -332,15 +334,24 @@ export function DevicesPage() {
             <div className="flex items-center gap-2">
               <Button
                 onClick={openAdd}
-                className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+                className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Plus className="h-4 w-4" />
                 เพิ่มอุปกรณ์
               </Button>
               <Button
                 variant="outline"
+                onClick={() => setImportOpen(true)}
+                className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+              >
+                <Upload className="h-4 w-4" />
+                นำเข้า CSV
+              </Button>
+              <Button
+                variant="outline"
                 onClick={exportCsv}
                 disabled={exporting}
+                className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Download className="h-4 w-4" />
                 {exporting ? 'กำลังส่งออก...' : 'ส่งออก CSV'}
@@ -348,6 +359,7 @@ export function DevicesPage() {
               <Button
                 variant="outline"
                 onClick={() => qc.invalidateQueries({ queryKey: ['devices'] })}
+                className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <RefreshCw className="h-4 w-4" />
                 รีเฟรช
@@ -356,20 +368,20 @@ export function DevicesPage() {
           </div>
 
           {/* Table */}
-          <div className="itam-scroll mt-4 max-h-[60vh] overflow-auto rounded-md border">
+          <div className="itam-scroll mt-4 max-h-[60vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50">
+              <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
                 <TableRow>
-                  <TableHead>รหัส</TableHead>
-                  <TableHead>ชื่อ</TableHead>
-                  <TableHead>แบรนด์</TableHead>
-                  <TableHead>รุ่น</TableHead>
-                  <TableHead>ประเภท</TableHead>
-                  <TableHead>สถานะ</TableHead>
-                  <TableHead>สาขา</TableHead>
-                  <TableHead>แผนก</TableHead>
-                  <TableHead>รหัสแผนก</TableHead>
-                  <TableHead className="text-right">การจัดการ</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">แบรนด์</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">รุ่น</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">ประเภท</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">สาขา</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">แผนก</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">รหัสแผนก</TableHead>
+                  <TableHead className="text-right text-slate-600 dark:text-slate-300">การจัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -377,7 +389,7 @@ export function DevicesPage() {
                   Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={`sk-${i}`}>
                       <TableCell colSpan={10}>
-                        <Skeleton className="h-6 w-full" />
+                        <Skeleton className="h-6 w-full dark:bg-slate-800" />
                       </TableCell>
                     </TableRow>
                   ))
@@ -385,7 +397,7 @@ export function DevicesPage() {
                   <TableRow>
                     <TableCell
                       colSpan={10}
-                      className="py-8 text-center text-sm text-slate-400"
+                      className="py-8 text-center text-sm text-slate-400 dark:text-slate-500"
                     >
                       ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข
                     </TableCell>
@@ -394,30 +406,30 @@ export function DevicesPage() {
                   (devices ?? []).map((d) => (
                     <TableRow
                       key={d.id}
-                      className="cursor-pointer hover:bg-slate-50/70"
+                      className="cursor-pointer transition-colors hover:bg-slate-50/70 dark:hover:bg-slate-800/50"
                       onClick={() => setDetailDeviceId(d.id)}
                     >
-                      <TableCell className="font-mono text-xs font-medium text-slate-700">
+                      <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">
                         {d.assetCode}
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
+                      <TableCell className="max-w-[200px] truncate text-slate-700 dark:text-slate-200">
                         {d.name}
                       </TableCell>
-                      <TableCell>{d.brand}</TableCell>
-                      <TableCell className="max-w-[160px] truncate">
+                      <TableCell className="text-slate-700 dark:text-slate-200">{d.brand}</TableCell>
+                      <TableCell className="max-w-[160px] truncate text-slate-700 dark:text-slate-200">
                         {d.model}
                       </TableCell>
-                      <TableCell>{d.type}</TableCell>
+                      <TableCell className="text-slate-700 dark:text-slate-200">{d.type}</TableCell>
                       <TableCell>
                         <Badge className={statusBadgeClass(d.status)}>
                           {statusLabel(d.status)}
                         </Badge>
                       </TableCell>
-                      <TableCell>{d.site}</TableCell>
-                      <TableCell className="max-w-[160px] truncate text-slate-600">
+                      <TableCell className="text-slate-700 dark:text-slate-200">{d.site}</TableCell>
+                      <TableCell className="max-w-[160px] truncate text-slate-600 dark:text-slate-300">
                         {d.department ?? '-'}
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-slate-500">
+                      <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">
                         {d.departmentCode ?? '-'}
                       </TableCell>
                       <TableCell
@@ -447,7 +459,7 @@ export function DevicesPage() {
                             variant="ghost"
                             onClick={() => setDeleteTarget(d)}
                             aria-label="ลบ"
-                            className="text-rose-600 hover:bg-rose-50"
+                            className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -460,7 +472,7 @@ export function DevicesPage() {
             </Table>
           </div>
 
-          <div className="mt-2 text-xs text-slate-400">
+          <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
             ทั้งหมด {(devices ?? []).length} รายการ
           </div>
         </CardContent>
@@ -468,9 +480,9 @@ export function DevicesPage() {
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-slate-800 dark:text-slate-100">
               {form.id ? '✏️ แก้ไขอุปกรณ์' : '➕ เพิ่มอุปกรณ์ใหม่'}
             </DialogTitle>
             <DialogDescription>
@@ -622,7 +634,7 @@ export function DevicesPage() {
             <Button
               onClick={save}
               disabled={saving}
-              className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+              className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
               {saving ? 'กำลังบันทึก...' : 'บันทึก'}
             </Button>
@@ -651,7 +663,7 @@ export function DevicesPage() {
             <AlertDialogAction
               onClick={confirmDelete}
               disabled={deleting}
-              className="bg-rose-600 text-white hover:bg-rose-700"
+              className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
               {deleting ? 'กำลังลบ...' : 'ลบอุปกรณ์'}
             </AlertDialogAction>
@@ -668,6 +680,9 @@ export function DevicesPage() {
           openEdit(d)
         }}
       />
+
+      {/* CSV Import */}
+      <CsvImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   )
 }

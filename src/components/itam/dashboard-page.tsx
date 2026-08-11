@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTheme } from 'next-themes'
 import {
   PieChart,
   Pie,
@@ -20,6 +21,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { toast } from 'sonner'
 import {
   Package,
@@ -32,7 +40,11 @@ import {
   FileText,
   Inbox,
 } from 'lucide-react'
-import type { DashboardData } from './types'
+import type {
+  DashboardData,
+  DashboardRangeKey,
+} from './types'
+import { DASHBOARD_RANGE_OPTIONS } from './types'
 
 const STATUS_COLORS: Record<string, string> = {
   ใช้งานอยู่: '#10b981',
@@ -65,14 +77,19 @@ function KpiCard({
   const display = format ? format(value) : value.toLocaleString()
   return (
     <Card
-      className="group relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+      className="group relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-[#f97316] focus-within:ring-offset-1 dark:focus-within:ring-offset-slate-950"
     >
       {/* Thin top accent bar */}
       <div
         className="absolute inset-x-0 top-0 h-[3px]"
         style={{ background: accent }}
       />
-      <CardContent className="p-3 sm:p-4">
+      {/* Subtle gradient overlay on hover */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-transparent to-black/[0.02] opacity-0 transition-opacity group-hover:opacity-100 dark:to-white/[0.03]"
+      />
+      <CardContent className="relative p-3 sm:p-4">
         <div className="flex items-center gap-2 sm:gap-3">
           <div
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11"
@@ -81,25 +98,28 @@ function KpiCard({
             {icon}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-medium text-slate-500">
+            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
               {title}
             </div>
             {loading ? (
-              <Skeleton className="mt-1 h-7 w-20" />
+              <Skeleton className="mt-1 h-7 w-20 dark:bg-slate-800" />
             ) : (
               <div className="flex items-baseline gap-1">
-                <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 sm:text-2xl">
+                <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
                   {display}
                 </span>
                 {unit && (
-                  <span className="shrink-0 text-xs font-medium text-slate-400">
+                  <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
                     {unit}
                   </span>
                 )}
               </div>
             )}
             {trend && !loading && (
-              <div className="mt-0.5 truncate text-xs leading-tight text-slate-400" title={trend}>
+              <div
+                className="mt-0.5 truncate text-xs leading-tight text-slate-400 dark:text-slate-500"
+                title={trend}
+              >
                 {trend}
               </div>
             )}
@@ -112,8 +132,8 @@ function KpiCard({
 
 function EmptyState({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400">
-      <Inbox className="h-8 w-8 text-slate-300" />
+    <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400 dark:text-slate-500">
+      <Inbox className="h-8 w-8 text-slate-300 dark:text-slate-600" />
       <span className="text-sm">{message}</span>
     </div>
   )
@@ -121,12 +141,18 @@ function EmptyState({ message }: { message: string }) {
 
 export function DashboardPage() {
   const qc = useQueryClient()
+  const { theme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => setMounted(true), [])
+  const isDark = mounted && theme === 'dark'
+
   const [seeding, setSeeding] = React.useState(false)
+  const [range, setRange] = React.useState<DashboardRangeKey>('month')
 
   const { data, isLoading, isError, refetch } = useQuery<DashboardData>({
-    queryKey: ['dashboard'],
+    queryKey: ['dashboard', range],
     queryFn: async () => {
-      const res = await fetch('/api/dashboard')
+      const res = await fetch(`/api/dashboard?range=${range}`)
       if (!res.ok) throw new Error('Failed to load dashboard')
       return res.json()
     },
@@ -160,7 +186,7 @@ export function DashboardPage() {
       <div className="p-6">
         <Card>
           <CardContent className="p-6">
-            <p className="text-sm text-rose-600">
+            <p className="text-sm text-rose-600 dark:text-rose-400">
               โหลดข้อมูล Dashboard ไม่สำเร็จ กรุณาลองอีกครั้ง
             </p>
             <Button className="mt-3" onClick={() => refetch()}>
@@ -183,21 +209,73 @@ export function DashboardPage() {
       ? `${Math.round((active / total) * 100)}% ของทั้งหมด ${total} เครื่อง`
       : undefined
 
+  const paperKpiLabel =
+    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.kpiLabel ??
+    'กระดาษเดือนนี้'
+  const paperTrend =
+    range === 'all'
+      ? 'รวมทุกช่วงเวลา'
+      : data?.range?.start
+        ? `${data.range.start}${data.range.end ? ` → ${data.range.end}` : ''}`
+        : new Date().toLocaleDateString('th-TH', {
+            month: 'long',
+            year: 'numeric',
+          })
+
+  const rangeInfoLabel =
+    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'เดือนนี้'
+
+  // Chart palette — works in both themes
+  const axisTickColor = '#64748b'
+  const gridStroke = isDark ? '#334155' : '#e2e8f0'
+  const tooltipBorder = isDark ? '#334155' : '#e2e8f0'
+  const tooltipBg = isDark ? '#0f172a' : '#ffffff'
+  const tooltipFg = isDark ? '#e2e8f0' : '#1e293b'
+  const donutCenterText = isDark ? '#e2e8f0' : '#1e293b'
+  const donutCenterSub = isDark ? '#64748b' : '#94a3b8'
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Page header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
-          <p className="text-sm text-slate-500">ภาพรวมระบบจัดการอุปกรณ์ IT</p>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+            Dashboard
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            ภาพรวมระบบจัดการอุปกรณ์ IT
+            {data?.range && (
+              <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
+                · ช่วง: <span className="font-medium">{rangeInfoLabel}</span>
+                {data.range.start && (
+                  <>
+                    {' '}({data.range.start}
+                    {data.range.end ? ` → ${data.range.end}` : ''})
+                  </>
+                )}
+              </span>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-2">
+          <Select value={range} onValueChange={(v) => setRange(v as DashboardRangeKey)}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="ช่วงเวลา" />
+            </SelectTrigger>
+            <SelectContent>
+              {DASHBOARD_RANGE_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {data && total === 0 && (
             <Button
               onClick={runSeed}
               disabled={seeding}
               variant="outline"
-              className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10"
+              className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
               <Sparkles className="mr-1.5 h-4 w-4" />
               {seeding ? 'กำลังโหลด...' : 'โหลดข้อมูลตัวอย่าง'}
@@ -207,6 +285,7 @@ export function DashboardPage() {
             variant="outline"
             onClick={() => refetch()}
             disabled={isLoading}
+            className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
             🔄 รีเฟรช
           </Button>
@@ -214,7 +293,7 @@ export function DashboardPage() {
       </div>
 
       {seeding && (
-        <Card className="border-[#f97316]/40 bg-[#f97316]/5">
+        <Card className="border-[#f97316]/40 bg-[#f97316]/5 dark:border-[#f97316]/30 dark:bg-[#f97316]/10">
           <CardContent className="p-4 text-sm text-[#f97316]">
             กำลังโหลดข้อมูลตัวอย่าง... กรุณารอสักครู่
           </CardContent>
@@ -256,30 +335,27 @@ export function DashboardPage() {
           trend={repair > 0 ? 'รอดำเนินการ' : 'ปกติ'}
         />
         <KpiCard
-          title="กระดาษเดือนนี้"
+          title={paperKpiLabel}
           value={paperThisMonth}
           icon={<FileText className="h-5 w-5" />}
           accent="#0d9488"
           loading={isLoading}
           unit="แผ่น"
-          trend={
-            new Date().toLocaleDateString('th-TH', {
-              month: 'long',
-              year: 'numeric',
-            })
-          }
+          trend={paperTrend}
         />
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="shadow-sm transition-shadow hover:shadow-md">
+        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
           <CardHeader>
-            <CardTitle className="text-base">สัดส่วนสถานะอุปกรณ์</CardTitle>
+            <CardTitle className="text-base text-slate-800 dark:text-slate-100">
+              สัดส่วนสถานะอุปกรณ์
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-64 w-full dark:bg-slate-800" />
             ) : (data?.byStatus ?? []).length === 0 ? (
               <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
             ) : (
@@ -315,11 +391,11 @@ export function DashboardPage() {
                               y={cy - 6}
                               textAnchor="middle"
                               dominantBaseline="central"
-                              className="fill-slate-800"
                               style={{
                                 fontSize: 26,
                                 fontWeight: 700,
                                 fontVariantNumeric: 'tabular-nums',
+                                fill: donutCenterText,
                               }}
                             >
                               {total}
@@ -329,8 +405,7 @@ export function DashboardPage() {
                               y={cy + 16}
                               textAnchor="middle"
                               dominantBaseline="central"
-                              className="fill-slate-400"
-                              style={{ fontSize: 12 }}
+                              style={{ fontSize: 12, fill: donutCenterSub }}
                             >
                               เครื่อง
                             </text>
@@ -341,6 +416,13 @@ export function DashboardPage() {
                   </Pie>
                   <Tooltip
                     formatter={(value: number, name: string) => [value, name]}
+                    contentStyle={{
+                      fontSize: 12,
+                      borderRadius: 8,
+                      border: `1px solid ${tooltipBorder}`,
+                      background: tooltipBg,
+                      color: tooltipFg,
+                    }}
                   />
                   <Legend wrapperStyle={{ fontSize: 13 }} />
                 </PieChart>
@@ -349,13 +431,15 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm transition-shadow hover:shadow-md">
+        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
           <CardHeader>
-            <CardTitle className="text-base">จำนวนอุปกรณ์ตามประเภท</CardTitle>
+            <CardTitle className="text-base text-slate-800 dark:text-slate-100">
+              จำนวนอุปกรณ์ตามประเภท
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-64 w-full dark:bg-slate-800" />
             ) : (data?.byType ?? []).length === 0 ? (
               <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
             ) : (
@@ -375,27 +459,29 @@ export function DashboardPage() {
                   </defs>
                   <CartesianGrid
                     strokeDasharray="3 3"
-                    stroke="#e2e8f0"
+                    stroke={gridStroke}
                     vertical={false}
                   />
                   <XAxis
                     dataKey="name"
-                    tick={{ fontSize: 12, fill: '#64748b' }}
+                    tick={{ fontSize: 12, fill: axisTickColor }}
                     tickLine={false}
-                    axisLine={{ stroke: '#e2e8f0' }}
+                    axisLine={{ stroke: gridStroke }}
                   />
                   <YAxis
                     allowDecimals={false}
-                    tick={{ fontSize: 12, fill: '#64748b' }}
+                    tick={{ fontSize: 12, fill: axisTickColor }}
                     tickLine={false}
-                    axisLine={{ stroke: '#e2e8f0' }}
+                    axisLine={{ stroke: gridStroke }}
                   />
                   <Tooltip
                     cursor={{ fill: '#0d948810' }}
                     contentStyle={{
                       fontSize: 12,
                       borderRadius: 8,
-                      border: '1px solid #e2e8f0',
+                      border: `1px solid ${tooltipBorder}`,
+                      background: tooltipBg,
+                      color: tooltipFg,
                     }}
                   />
                   <Bar
@@ -412,9 +498,9 @@ export function DashboardPage() {
 
       {/* Lists */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="shadow-sm transition-shadow hover:shadow-md">
+        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
               <TrendingUp className="h-4 w-4 text-[#f97316]" />
               Top อุปกรณ์ตามการใช้งานกระดาษ
             </CardTitle>
@@ -431,17 +517,17 @@ export function DashboardPage() {
                     .map((d, i) => (
                       <li
                         key={d.id}
-                        className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2"
+                        className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
                       >
                         <div className="flex min-w-0 items-center gap-3">
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f97316] text-xs font-bold text-white">
                             {i + 1}
                           </span>
                           <div className="min-w-0">
-                            <div className="truncate text-sm font-medium text-slate-700">
+                            <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
                               {d.name}
                             </div>
-                            <div className="truncate font-mono text-xs text-slate-400">
+                            <div className="truncate font-mono text-xs text-slate-400 dark:text-slate-500">
                               {d.assetCode}
                             </div>
                           </div>
@@ -457,9 +543,9 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm transition-shadow hover:shadow-md">
+        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
               <History className="h-4 w-4 text-[#f97316]" />
               กิจกรรมล่าสุด (จดมิเตอร์)
             </CardTitle>
@@ -473,18 +559,18 @@ export function DashboardPage() {
                   {(data?.recentActivity ?? []).map((a) => (
                     <li
                       key={a.id}
-                      className="rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2"
+                      className="rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-slate-700">
+                        <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
                           {a.deviceName}
                         </span>
-                        <span className="shrink-0 text-xs text-slate-400">
+                        <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
                           {a.date}
                         </span>
                       </div>
-                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                        <span className="font-mono text-slate-400">
+                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                        <span className="font-mono text-slate-400 dark:text-slate-500">
                           {a.assetCode}
                         </span>
                         <span>·</span>
@@ -492,12 +578,12 @@ export function DashboardPage() {
                           อ่าน {a.reading.toLocaleString()}
                         </span>
                         {a.delta > 0 && (
-                          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 tabular-nums">
+                          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 tabular-nums dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                             +{a.delta.toLocaleString()}
                           </Badge>
                         )}
                         {a.remark && (
-                          <span className="truncate text-amber-600">
+                          <span className="truncate text-amber-600 dark:text-amber-400">
                             ⚠ {a.remark}
                           </span>
                         )}
