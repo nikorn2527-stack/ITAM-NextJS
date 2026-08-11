@@ -9,6 +9,22 @@ function clampWarrantyMonths(v: unknown): number {
   return Math.max(1, Math.min(120, Math.round(n)))
 }
 
+/** Parse a Float; returns null when missing/invalid. */
+function optFloat(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return null
+  return Math.max(0, n)
+}
+
+/** Parse an Int; returns null when missing/invalid. */
+function optInt(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return null
+  return Math.max(1, Math.round(n))
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -43,6 +59,9 @@ const EDITABLE_FIELDS = [
   'purchaseDate',
   'warrantyMonths',
   'lastMeterReading',
+  'purchasePrice',
+  'salvageValue',
+  'usefulLife',
 ] as const
 
 export async function PUT(
@@ -116,6 +135,16 @@ export async function PUT(
           typeof body.lastMeterReading === 'number'
             ? body.lastMeterReading
             : undefined,
+        purchasePrice:
+          body.purchasePrice !== undefined
+            ? optFloat(body.purchasePrice)
+            : undefined,
+        salvageValue:
+          body.salvageValue !== undefined
+            ? optFloat(body.salvageValue) ?? 0
+            : undefined,
+        usefulLife:
+          body.usefulLife !== undefined ? optInt(body.usefulLife) : undefined,
       },
     })
     const changes: Record<string, { from: unknown; to: unknown }> = {}

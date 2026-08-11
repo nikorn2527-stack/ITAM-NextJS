@@ -111,6 +111,9 @@ interface FormState {
   location: string
   purchaseDate: string
   warrantyMonths: string
+  purchasePrice: string
+  salvageValue: string
+  usefulLife: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -129,6 +132,9 @@ const EMPTY_FORM: FormState = {
   location: '',
   purchaseDate: '',
   warrantyMonths: '12',
+  purchasePrice: '',
+  salvageValue: '0',
+  usefulLife: '60',
 }
 
 const WARRANTY_FILTER_OPTIONS = [
@@ -306,6 +312,18 @@ export function DevicesPage() {
       location: d.location ?? '',
       purchaseDate: d.purchaseDate ?? '',
       warrantyMonths: String(d.warrantyMonths ?? 12),
+      purchasePrice:
+        d.purchasePrice !== null && d.purchasePrice !== undefined
+          ? String(d.purchasePrice)
+          : '',
+      salvageValue:
+        d.salvageValue !== null && d.salvageValue !== undefined
+          ? String(d.salvageValue)
+          : '0',
+      usefulLife:
+        d.usefulLife !== null && d.usefulLife !== undefined
+          ? String(d.usefulLife)
+          : '60',
     })
     setDialogOpen(true)
   }
@@ -327,6 +345,12 @@ export function DevicesPage() {
         location: form.location || null,
         purchaseDate: form.purchaseDate || null,
         warrantyMonths: Number(form.warrantyMonths) || 12,
+        purchasePrice:
+          form.purchasePrice === '' ? null : Number(form.purchasePrice),
+        salvageValue:
+          form.salvageValue === '' ? 0 : Number(form.salvageValue),
+        usefulLife:
+          form.usefulLife === '' ? null : Number(form.usefulLife),
       }
       const isEdit = Boolean(form.id)
       const url = isEdit ? `/api/devices/${form.id}` : '/api/devices'
@@ -1163,6 +1187,55 @@ export function DevicesPage() {
                 }
               />
             </Field>
+          </div>
+
+          {/* Financial section — depreciation tracking */}
+          <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/30">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+              💰 การเงิน (สำหรับคำนวณค่าเสื่อมราคา)
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="ราคาซื้อ (฿)">
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.purchasePrice}
+                  onChange={(e) =>
+                    setForm({ ...form, purchasePrice: e.target.value })
+                  }
+                  placeholder="0.00"
+                />
+              </Field>
+              <Field label="มูลค่าซาลเวจ (฿)">
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.salvageValue}
+                  onChange={(e) =>
+                    setForm({ ...form, salvageValue: e.target.value })
+                  }
+                  placeholder="0.00"
+                />
+              </Field>
+              <Field label="อายุการใช้งาน (เดือน)">
+                <Input
+                  type="number"
+                  min={1}
+                  max={240}
+                  step={1}
+                  value={form.usefulLife}
+                  onChange={(e) =>
+                    setForm({ ...form, usefulLife: e.target.value })
+                  }
+                  placeholder="60"
+                />
+              </Field>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+              ค่าเสื่อมราคาคำนวณแบบเส้นตรง: (ราคาซื้อ − มูลค่าซาลเวจ) ÷ อายุการใช้งาน
+            </div>
           </div>
 
           <DialogFooter>

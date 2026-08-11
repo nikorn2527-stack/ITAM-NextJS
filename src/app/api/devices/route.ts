@@ -9,6 +9,22 @@ function clampWarrantyMonths(v: unknown): number {
   return Math.max(1, Math.min(120, Math.round(n)))
 }
 
+/** Parse a Float; returns null when missing/invalid. */
+function optFloat(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return null
+  return Math.max(0, n)
+}
+
+/** Parse an Int; returns null when missing/invalid. */
+function optInt(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return null
+  return Math.max(1, Math.round(n))
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -78,6 +94,9 @@ export async function POST(req: NextRequest) {
           typeof body.lastMeterReading === 'number'
             ? body.lastMeterReading
             : 0,
+        purchasePrice: optFloat(body.purchasePrice),
+        salvageValue: optFloat(body.salvageValue) ?? 0,
+        usefulLife: optInt(body.usefulLife),
       },
     })
     await logAudit(

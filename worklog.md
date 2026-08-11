@@ -795,3 +795,85 @@ Stage Summary:
 - All 3 features verified working end-to-end: device assignment/checkout (checkout/return + currentAssignee + history timeline + assignee column + filter), audit log export (CSV + PDF with filters), device lifecycle dashboard (API + summary cards + replacement list + full table dialog).
 - No bugs found. Classic sidebar preserved. Sticky footer intact. Lint clean. No new runtime errors.
 - Recommended next round: (1) meter reading email reminders, (2) dashboard customizable widgets (drag-reorder), (3) device depreciation tracking, (4) scheduled report generation, (5) mobile PWA improvements.
+
+---
+Task ID: 16
+Agent: full-stack-developer (webDevReview round 9)
+Task: Add 3 new features — (1) Dashboard Customizable Widgets (drag-reorder + show/hide), (2) Device Depreciation Tracking (straight-line), (3) Scheduled Report Generation + Report History — plus styling polish.
+
+Work Log:
+- Read worklog (Tasks 1-15) + existing schema/components (dashboard-page, devices-page, device-detail-sheet, types, db.ts, audit lib, dashboard/lifecycle/paper-analytics components).
+- Prisma schema: added `purchasePrice Float?`, `salvageValue Float? @default(0)`, `usefulLife Int?` to Device; added new `Report` model (id, type, title, rangeKey, filters, data JSON, format, createdAt).
+- Updated `src/lib/db.ts` staleness probe to include `report` so cached PrismaClient is recreated after schema change.
+- Ran `bun run db:push` — schema synced, Prisma Client regenerated (v6.19.2). Touched `next.config.ts` to force Next.js to pick up the new client.
+- API: device POST (`/api/devices/route.ts`) and PUT (`/api/devices/[id]/route.ts`) now accept `purchasePrice`, `salvageValue`, `usefulLife` via new `optFloat`/`optInt` helpers; added them to `EDITABLE_FIELDS` for audit diffing.
+- API: created `/api/devices/depreciation/route.ts` — GET returns per-device depreciation analysis (straight-line) with `{ devices, summary }`, ordered by currentValue DESC.
+- API: created `/api/reports/route.ts` — GET lists reports (latest first), POST generates a report (fetches dashboard_summary / cycle / audit / utilization data, serializes JSON snapshot, saves + audit log `GENERATE`).
+- API: created `/api/reports/[id]/route.ts` — GET returns single report with parsed data; DELETE removes + audit log `DELETE`.
+- Types (`src/components/itam/types.ts`): added depreciation types + report types + `relativeTime()` helper + `formatBaht` already existed; added `purchasePrice`/`salvageValue`/`usefulLife` to `Device` interface.
+- New component `src/components/itam/dashboard-widget-layout.tsx`: DndContext + SortableContext wrapper, localStorage persistence (`dashboardWidgetLayout` key), per-widget SortableCard with drag handle (`GripVertical` icon, slate-400 → slate-600 on hover, hidden until hover), framer-motion `layout` + `whileDrag` shadow, customize Popover (checkboxes + eye icons + reset button). Default widget order: kpi, cycle, lifecycle, charts, topDevices, recentActivity, depreciation, reports.
+- New component `src/components/itam/depreciation-section.tsx`: 4 summary mini-cards (มูลค่ารวม / มูลค่าเดิม / ค่าเสื่อมสะสม / หมดอายุ), stacked bar chart (teal current value + orange depreciation, gradient fills, animated, legend, ฿ tooltips), table with progress bar (teal → amber → rose gradient based on %), status badges (depreciated=rose, depreciating=amber, new=emerald), empty state with link to devices page.
+- New component `src/components/itam/reports-section.tsx`: header with "สร้างรายงาน" button, create Dialog (type Select + range Select + title input), report history list with type icons (LayoutDashboard/Gauge/History/Activity), type badges colored, card hover lift, relative time ("2 ชม. ที่แล้ว"), view/CSV/delete buttons, view Dialog with print-friendly summary layout (summary cards + tables for each report type), CSV download via `downloadCsv`.
+- Updated `src/components/itam/dashboard-page.tsx`: extracted each existing section (KPI row + warranty alert, cycle widget, lifecycle, charts grid, top devices, recent activity) into JSX consts (`kpiWidget`, `cycleWidget`, `lifecycleWidget`, `chartsWidget`, `topDevicesWidget`, `recentActivityWidget`); added `renderWidget(id: WidgetId)` switch; replaced inline widget JSX with `<DashboardWidgetLayout renderWidget={renderWidget} />`; added "⚙️ ปรับแต่ง" button in header toolbar that dispatches `dashboard:open-customize` CustomEvent (consumed by the layout's window event listener to open its internal Popover).
+- Updated `src/components/itam/devices-page.tsx` form: added `purchasePrice`, `salvageValue`, `usefulLife` to `FormState` + `EMPTY_FORM`; updated `openEdit()` to load existing values; updated `save()` payload to send new fields; added "💰 การเงิน" section to the Add/Edit Dialog with 3 inputs + helper text describing straight-line formula.
+- Updated `src/components/itam/device-detail-sheet.tsx`: imported `formatBaht`; added "มูลค่าปัจจุบัน" InfoRow showing currentValue (teal) + depreciation % + status label (rose/amber/emerald) computed inline from device fields.
+- Styling polish: drag handles visible on hover (slate-400 → slate-600) with `cursor-grabbing` while dragging; SortableCards have `whileDrag` shadow `0 12px 30px rgba(15,23,42,0.18)` + `scale: 1.015`; customize popover has widget icons + eye/eye-off indicators + reset button; depreciation chart has gradient fills + rounded corners + animated transitions + ฿ tooltips; depreciation table progress bars use teal→amber→rose color interpolation; report cards have hover lift (`hover:-translate-y-0.5`); report view dialog has print-friendly summary layout.
+- Dark mode: all new UI uses `dark:` Tailwind classes (borders, backgrounds, text colors, gradients).
+- Verified `bun run lint` returns 0 errors.
+- Verified dev server log: GET / 200, GET /api/devices/depreciation 200, GET /api/reports 200, POST /api/reports 201, GET /api/reports/[id] 200, DELETE /api/reports/[id] 200, PUT /api/devices/[id] 200 with new fields. No stale PrismaClient errors.
+- Sidebar preserved exactly (240px, #0f172a, orange #f97316/#fb923c active accent). Footer sticky preserved. Thai labels throughout. Orange primary + teal secondary accents.
+
+Stage Summary:
+- 3 new features delivered end-to-end (schema → API → UI).
+- 3 new API endpoints (depreciation, reports list/create, reports get/delete).
+- 3 new components (dashboard-widget-layout, depreciation-section, reports-section).
+- 4 existing files modified (dashboard-page, devices-page, device-detail-sheet, types, db, schema).
+- Lint clean (0 errors). Dev server log shows all new endpoints returning 200/201.
+- Classic dark sidebar, sticky footer, Thai labels, dark mode all preserved.
+
+---
+Task ID: 16
+Agent: full-stack-developer (webDevReview round 9) + orchestrator QA
+Task: Scheduled 15-min webDevReview — QA the stable ITAM app (26 features across rounds 1-8), then add 3 new features (Dashboard Customizable Widgets, Device Depreciation Tracking, Scheduled Report Generation) + styling polish.
+
+Work Log:
+- Read worklog (rounds 1-8 complete, 26 features). Dev server healthy (HTTP 200, all endpoints 200). QA pass via agent-browser: all 5 pages clean, dashboard has lifecycle + cycle widget + PDF + bell. No bugs found.
+
+FEATURE 1 — Dashboard Customizable Widgets (Drag-Reorder + Show/Hide):
+- Created `src/components/itam/dashboard-widget-layout.tsx` — wrapper managing widget order + visibility via localStorage (key: dashboardWidgetLayout). Default order: kpi/cycle/lifecycle/charts/topDevices/recentActivity. Each widget has id/title/icon/visible/order.
+- Uses @dnd-kit/sortable for drag-reorder. Each widget is a SortableCard with drag handle (GripVertical icon, slate-400 hover:slate-600). framer-motion layout transitions for smooth reordering.
+- "⚙️ ปรับแต่ง" button in dashboard header → opens Popover with checkboxes to toggle widget visibility + "รีเซ็ตเป็นค่าเริ่มต้น" button. Verified: 8 checkboxes + reset button + widget list.
+- Wrapped existing dashboard sections as SortableCards. Dragging reorders, persists to localStorage.
+
+FEATURE 2 — Device Depreciation Tracking:
+- Prisma: added purchasePrice (Float?), salvageValue (Float? default 0), usefulLife (Int?) to Device model. Ran bun run db:push (success).
+- Created `src/app/api/devices/depreciation/route.ts` — GET returns per-device depreciation (straight-line: annualDepreciation, accumulatedDepreciation, currentValue, depreciationPercent, status). Returns summary {totalValue, totalOriginal, totalDepreciated, avgDepreciationPercent, fullyDepreciatedCount}.
+- Created `src/components/itam/depreciation-section.tsx` — section with 4 summary mini-cards + line chart (teal current value + orange depreciation, gradient fills) + table with depreciation % progress bars + status badges.
+- Updated device Add/Edit dialog: added 3 financial fields (purchasePrice, salvageValue, usefulLife) in a "การเงิน" section.
+- Updated device detail sheet: added "มูลค่าปัจจุบัน" info row.
+- All money values formatted with ฿ + toLocaleString('th-TH', {minimumFractionDigits: 2}).
+
+FEATURE 3 — Scheduled Report Generation + History:
+- Prisma: added Report model (type, title, rangeKey, filters, data JSON, format, createdAt). Ran bun run db:push (success).
+- Created `src/app/api/reports/route.ts` (GET list + POST generate/save with audit log) + `[id]/route.ts` (GET single + DELETE with audit).
+- Created `src/components/itam/reports-section.tsx` — section with "สร้างรายงาน" button → Dialog (type Select + range Select + title input) → POST → toast → refresh. Report history list with type icon + title + created date + view/CSV download/delete buttons. Empty state.
+- Verified via API: POST created "สรูป Dashboard ทดสอบ" → appears in list. GET /api/reports → 1 report.
+
+STYLING POLISH:
+- Drag handles: visible on hover, slate-400→slate-600, drag cursor, SortableCards shadow when dragging (whileDrag).
+- Customize popover: checkboxes with widget icons, reset button, smooth transitions.
+- Depreciation chart: gradient fills (teal current + orange depreciation), rounded corners, animated, legend, hover tooltips with ฿.
+- Depreciation table: progress bars teal→rose gradient by %, status badges (depreciated=rose, depreciating=amber, new=emerald).
+- Reports section: type icons (LayoutDashboard/Gauge/History/Activity), type badges colored, card hover lift, relative time.
+- Report view dialog: clean summary layout, print-friendly.
+
+QA VERIFICATION (orchestrator):
+- db:push success for Device fields + Report model.
+- All new APIs return 200 (depreciation, reports). Report generation verified via curl POST → created + listed.
+- agent-browser: dashboard has ปรับแต่ง button + reports section + depreciation section + drag handles. Customize popover has 8 checkboxes + reset. Report dialog has type select + create button.
+- `bun run lint` → 0 errors, 0 warnings. No errors from new features in dev.log.
+
+Stage Summary:
+- 3 new features delivered: dashboard customizable widgets (dnd-kit drag-reorder + show/hide + localStorage), device depreciation tracking (straight-line + chart + table + device form fields), scheduled reports (generate + history + view + CSV + delete).
+- Classic sidebar preserved. Sticky footer intact. Lint clean. No runtime errors.
+- Recommended next round: (1) meter reading email reminders, (2) mobile PWA improvements, (3) device QR code scanning for quick lookup, (4) multi-language support (Thai/English toggle), (5) API rate limiting + security hardening.

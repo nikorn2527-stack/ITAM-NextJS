@@ -16,7 +16,8 @@ if (
       .deviceTransfer &&
     (globalForPrisma.prisma as unknown as { siteRate?: unknown }).siteRate &&
     (globalForPrisma.prisma as unknown as { user?: unknown }).user &&
-    (globalForPrisma.prisma as unknown as { assignment?: unknown }).assignment
+    (globalForPrisma.prisma as unknown as { assignment?: unknown }).assignment &&
+    (globalForPrisma.prisma as unknown as { report?: unknown }).report
   )
 ) {
   void globalForPrisma.prisma.$disconnect().catch(() => {})

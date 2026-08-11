@@ -19,6 +19,9 @@ export interface Device {
   warrantyMonths: number
   lastMeterReading: number
   currentAssignee: string | null
+  purchasePrice: number | null
+  salvageValue: number | null
+  usefulLife: number | null
   createdAt: string
   updatedAt: string
 }
@@ -393,4 +396,142 @@ export function statusBadgeClass(status: string): string {
 
 export function statusLabel(status: string): string {
   return DEVICE_STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status
+}
+
+// ---- Depreciation tracking (straight-line) ----
+export type DepreciationStatus = 'depreciated' | 'depreciating' | 'new'
+
+export interface DepreciationDevice {
+  id: string
+  assetCode: string
+  name: string
+  brand: string
+  model: string
+  site: string
+  purchasePrice: number
+  salvageValue: number
+  usefulLife: number
+  purchaseDate: string | null
+  ageInMonths: number
+  annualDepreciation: number
+  accumulatedDepreciation: number
+  currentValue: number
+  depreciationPercent: number
+  status: DepreciationStatus
+}
+
+export interface DepreciationSummary {
+  totalValue: number
+  totalOriginal: number
+  totalDepreciated: number
+  avgDepreciationPercent: number
+  fullyDepreciatedCount: number
+  deviceCount: number
+}
+
+export interface DepreciationData {
+  devices: DepreciationDevice[]
+  summary: DepreciationSummary
+}
+
+export function depreciationBadgeClass(status: DepreciationStatus): string {
+  switch (status) {
+    case 'depreciated':
+      return 'border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
+    case 'depreciating':
+      return 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+    case 'new':
+    default:
+      return 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+  }
+}
+
+export function depreciationLabel(status: DepreciationStatus): string {
+  switch (status) {
+    case 'depreciated':
+      return 'หมดอายุการใช้งาน'
+    case 'depreciating':
+      return 'กำลังเสื่อม'
+    case 'new':
+    default:
+      return 'ใหม่'
+  }
+}
+
+// ---- Scheduled Reports ----
+export type ReportType =
+  | 'dashboard_summary'
+  | 'cycle'
+  | 'audit'
+  | 'utilization'
+
+export interface ReportListItem {
+  id: string
+  type: ReportType
+  title: string
+  rangeKey: string | null
+  format: string
+  createdAt: string
+}
+
+export interface ReportDetail extends ReportListItem {
+  filters: unknown
+  data: unknown
+}
+
+export const REPORT_TYPE_OPTIONS: {
+  value: ReportType
+  label: string
+  icon: string
+  supportsRange: boolean
+}[] = [
+  {
+    value: 'dashboard_summary',
+    label: 'สรุป Dashboard',
+    icon: 'LayoutDashboard',
+    supportsRange: true,
+  },
+  { value: 'cycle', label: 'รอบจดมิเตอร์', icon: 'Gauge', supportsRange: true },
+  {
+    value: 'audit',
+    label: 'ประวัติการใช้งาน',
+    icon: 'History',
+    supportsRange: true,
+  },
+  {
+    value: 'utilization',
+    label: 'การใช้งานอุปกรณ์',
+    icon: 'Activity',
+    supportsRange: true,
+  },
+]
+
+export function reportTypeLabel(type: string): string {
+  return (
+    REPORT_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type
+  )
+}
+
+/** Returns a Thai relative-time string like "เมื่อสักครู่" / "5 นาทีที่แล้ว" / "2 ชม. ที่แล้ว" / "3 วันที่แล้ว". */
+export function relativeTime(iso: string): string {
+  try {
+    const then = new Date(iso).getTime()
+    if (Number.isNaN(then)) return iso
+    const now = Date.now()
+    const diff = Math.max(0, now - then)
+    const sec = Math.floor(diff / 1000)
+    if (sec < 60) return 'เมื่อสักครู่'
+    const min = Math.floor(sec / 60)
+    if (min < 60) return `${min} นาทีที่แล้ว`
+    const hr = Math.floor(min / 60)
+    if (hr < 24) return `${hr} ชม. ที่แล้ว`
+    const day = Math.floor(hr / 24)
+    if (day < 30) return `${day} วันที่แล้ว`
+    const mo = Math.floor(day / 30)
+    if (mo < 12) return `${mo} เดือนที่แล้ว`
+    const yr = Math.floor(mo / 12)
+    return `${yr} ปีที่แล้ว`
+  } catch {
+    return iso
+  }
 }

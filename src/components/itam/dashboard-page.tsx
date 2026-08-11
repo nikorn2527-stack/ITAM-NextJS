@@ -46,6 +46,7 @@ import {
   CalendarClock,
   ArrowRight,
   Printer,
+  Settings2,
 } from 'lucide-react'
 import type {
   DashboardData,
@@ -56,6 +57,12 @@ import { DASHBOARD_RANGE_OPTIONS } from './types'
 import { useAppStore } from '@/store/app-store'
 import { exportDashboardPdf } from './dashboard-pdf-export'
 import { LifecycleDashboard } from './lifecycle-dashboard'
+import {
+  DashboardWidgetLayout,
+  type WidgetId,
+} from './dashboard-widget-layout'
+import { DepreciationSection } from './depreciation-section'
+import { ReportsSection } from './reports-section'
 
 interface WarrantySummary {
   active: number
@@ -401,6 +408,416 @@ export function DashboardPage() {
   const donutCenterText = isDark ? '#e2e8f0' : '#1e293b'
   const donutCenterSub = isDark ? '#64748b' : '#94a3b8'
 
+  // ---- Pre-render each widget as a JSX const so the DashboardWidgetLayout
+  //      can re-order / show / hide them via drag-and-drop. ----
+  const kpiWidget = (
+    <>
+      {/* KPI row — 5 cards on lg */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+        <KpiCard
+          title="อุปกรณ์ทั้งหมด"
+          value={total}
+          icon={<Package className="h-5 w-5" />}
+          accent="#0f172a"
+          loading={isLoading}
+          trend={total > 0 ? `${(data?.byType ?? []).length} ประเภท` : undefined}
+        />
+        <KpiCard
+          title="ใช้งานอยู่"
+          value={active}
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          accent="#10b981"
+          loading={isLoading}
+          trend={activeTrend}
+        />
+        <KpiCard
+          title="สำรอง"
+          value={spare}
+          icon={<Archive className="h-5 w-5" />}
+          accent="#f59e0b"
+          loading={isLoading}
+          trend={total > 0 ? `${Math.round((spare / total) * 100)}% ของทั้งหมด` : undefined}
+        />
+        <KpiCard
+          title="ส่งซ่อม"
+          value={repair}
+          icon={<Wrench className="h-5 w-5" />}
+          accent="#f97316"
+          loading={isLoading}
+          trend={repair > 0 ? 'รอดำเนินการ' : 'ปกติ'}
+        />
+        <KpiCard
+          title={paperKpiLabel}
+          value={paperThisMonth}
+          icon={<FileText className="h-5 w-5" />}
+          accent="#0d9488"
+          loading={isLoading}
+          unit="แผ่น"
+          trend={paperTrend}
+        />
+      </div>
+
+      {/* Warranty alert bar — amber card linking to devices */}
+      <button
+        type="button"
+        onClick={() => {
+          setActivePage('devices')
+          setPendingWarrantyFilter('expiring')
+        }}
+        disabled={warrantyAlerts === 0}
+        className={cn(
+          'group relative w-full overflow-hidden rounded-lg border text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950',
+          warrantyAlerts > 0
+            ? 'cursor-pointer border-amber-200 bg-amber-50 hover:-translate-y-0.5 hover:shadow-md dark:border-amber-800/60 dark:bg-amber-950/30'
+            : 'cursor-default border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
+        )}
+      >
+        {warrantyAlerts > 0 && (
+          <div
+            className="absolute inset-x-0 top-0 h-[3px]"
+            style={{
+              background: 'linear-gradient(90deg, #f59e0b, #f97316)',
+            }}
+          />
+        )}
+        <div className="flex items-center gap-3 p-3 sm:p-4">
+          <div
+            className={cn(
+              'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11',
+              warrantyAlerts > 0 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+            )}
+          >
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+              รับประกันใกล้หมด
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
+                {warrantyAlerts}
+              </span>
+              <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
+                เครื่อง
+              </span>
+            </div>
+            <div className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
+              {warrantyAlerts > 0
+                ? `ใกล้หมด ${warrantyData?.summary.expiring ?? 0} · หมดแล้ว ${warrantyData?.summary.expired ?? 0} — กดเพื่อดูรายการ`
+                : 'ทุกเครื่องยังอยู่ในรับประกัน'}
+            </div>
+          </div>
+          {warrantyAlerts > 0 && (
+            <span className="shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-medium text-amber-600 opacity-0 transition-opacity group-hover:opacity-100 dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-400">
+              ดูรายการ →
+            </span>
+          )}
+        </div>
+      </button>
+    </>
+  )
+
+  const cycleWidget = (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+    >
+      <CycleProgressWidget
+        activeCycle={activeCycle ?? null}
+        cycleLoading={cycleLoading}
+        remindersSummary={remindersSummary ?? null}
+        onManageCycle={() => {
+          setPendingMeterAction('open-cycle')
+          setActivePage('meter')
+        }}
+        onCreateCycle={() => {
+          setPendingMeterAction('open-cycle')
+          setActivePage('meter')
+        }}
+      />
+    </motion.div>
+  )
+
+  const lifecycleWidget = <LifecycleDashboard />
+
+  const chartsWidget = (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+        <CardHeader>
+          <CardTitle className="text-base text-slate-800 dark:text-slate-100">
+            สัดส่วนสถานะอุปกรณ์
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-64 w-full dark:bg-slate-800" />
+          ) : (data?.byStatus ?? []).length === 0 ? (
+            <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={data?.byStatus ?? []}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={95}
+                  paddingAngle={2}
+                >
+                  {(data?.byStatus ?? []).map((entry) => (
+                    <Cell
+                      key={entry.name}
+                      fill={STATUS_COLORS[entry.name] ?? '#94a3b8'}
+                    />
+                  ))}
+                  <Label
+                    content={({ viewBox }) => {
+                      if (!viewBox || !('cx' in viewBox)) return null
+                      const { cx, cy } = viewBox as {
+                        cx: number
+                        cy: number
+                      }
+                      return (
+                        <>
+                          <text
+                            x={cx}
+                            y={cy - 6}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            style={{
+                              fontSize: 26,
+                              fontWeight: 700,
+                              fontVariantNumeric: 'tabular-nums',
+                              fill: donutCenterText,
+                            }}
+                          >
+                            {total}
+                          </text>
+                          <text
+                            x={cx}
+                            y={cy + 16}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            style={{ fontSize: 12, fill: donutCenterSub }}
+                          >
+                            เครื่อง
+                          </text>
+                        </>
+                      )
+                    }}
+                  />
+                </Pie>
+                <Tooltip
+                  formatter={(value: number, name: string) => [value, name]}
+                  contentStyle={{
+                    fontSize: 12,
+                    borderRadius: 8,
+                    border: `1px solid ${tooltipBorder}`,
+                    background: tooltipBg,
+                    color: tooltipFg,
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 13 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+        <CardHeader>
+          <CardTitle className="text-base text-slate-800 dark:text-slate-100">
+            จำนวนอุปกรณ์ตามประเภท
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <Skeleton className="h-64 w-full dark:bg-slate-800" />
+          ) : (data?.byType ?? []).length === 0 ? (
+            <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={data?.byType ?? []}>
+                <defs>
+                  <linearGradient
+                    id="barTypeFill"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.95} />
+                    <stop offset="100%" stopColor="#0d9488" stopOpacity={0.7} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke={gridStroke}
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 12, fill: axisTickColor }}
+                  tickLine={false}
+                  axisLine={{ stroke: gridStroke }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 12, fill: axisTickColor }}
+                  tickLine={false}
+                  axisLine={{ stroke: gridStroke }}
+                />
+                <Tooltip
+                  cursor={{ fill: '#0d948810' }}
+                  contentStyle={{
+                    fontSize: 12,
+                    borderRadius: 8,
+                    border: `1px solid ${tooltipBorder}`,
+                    background: tooltipBg,
+                    color: tooltipFg,
+                  }}
+                />
+                <Bar
+                  dataKey="value"
+                  fill="url(#barTypeFill)"
+                  radius={[6, 6, 0, 0]}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+
+  const topDevicesWidget = (
+    <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+          <TrendingUp className="h-4 w-4 text-[#f97316]" />
+          Top อุปกรณ์ตามการใช้งานกระดาษ
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="itam-scroll max-h-72 overflow-y-auto">
+          {(data?.topUsage ?? []).length === 0 ||
+          (data?.topUsage ?? []).every((d) => d.value === 0) ? (
+            <EmptyState message="ยังไม่มีข้อมูลการใช้งาน" />
+          ) : (
+            <ul className="space-y-2">
+              {(data?.topUsage ?? [])
+                .filter((d) => d.value > 0)
+                .map((d, i) => (
+                  <li
+                    key={d.id}
+                    className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f97316] text-xs font-bold text-white">
+                        {i + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                          {d.name}
+                        </div>
+                        <div className="truncate font-mono text-xs text-slate-400 dark:text-slate-500">
+                          {d.assetCode}
+                        </div>
+                      </div>
+                    </div>
+                    <Badge className="border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316] tabular-nums">
+                      {d.value.toLocaleString()} แผ่น
+                    </Badge>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  const recentActivityWidget = (
+    <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+          <History className="h-4 w-4 text-[#f97316]" />
+          กิจกรรมล่าสุด (จดมิเตอร์)
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="itam-scroll max-h-72 overflow-y-auto">
+          {(data?.recentActivity ?? []).length === 0 ? (
+            <EmptyState message="ยังไม่มีกิจกรรม" />
+          ) : (
+            <ul className="space-y-2">
+              {(data?.recentActivity ?? []).map((a) => (
+                <li
+                  key={a.id}
+                  className="rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {a.deviceName}
+                    </span>
+                    <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+                      {a.date}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="font-mono text-slate-400 dark:text-slate-500">
+                      {a.assetCode}
+                    </span>
+                    <span>·</span>
+                    <span className="tabular-nums">
+                      อ่าน {a.reading.toLocaleString()}
+                    </span>
+                    {a.delta > 0 && (
+                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 tabular-nums dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        +{a.delta.toLocaleString()}
+                      </Badge>
+                    )}
+                    {a.remark && (
+                      <span className="truncate text-amber-600 dark:text-amber-400">
+                        ⚠ {a.remark}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+
+  function renderWidget(id: WidgetId): React.ReactNode {
+    switch (id) {
+      case 'kpi':
+        return kpiWidget
+      case 'cycle':
+        return cycleWidget
+      case 'lifecycle':
+        return lifecycleWidget
+      case 'charts':
+        return chartsWidget
+      case 'topDevices':
+        return topDevicesWidget
+      case 'recentActivity':
+        return recentActivityWidget
+      case 'depreciation':
+        return <DepreciationSection />
+      case 'reports':
+        return <ReportsSection />
+      default:
+        return null
+    }
+  }
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       {/* Page header */}
@@ -466,6 +883,22 @@ export function DashboardPage() {
             <Printer className="mr-1.5 h-4 w-4" />
             {exporting ? 'กำลังเตรียม...' : 'ส่งออก PDF'}
           </Button>
+          {/* Customize widget layout — opens the popover managed by DashboardWidgetLayout */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(
+                  new CustomEvent('dashboard:open-customize'),
+                )
+              }
+            }}
+            className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:border-[#fb923c] dark:text-[#fb923c] dark:hover:bg-[#fb923c]/10 dark:focus-visible:ring-offset-slate-950"
+            title="ปรับแต่งวิดเจ็ต"
+          >
+            <Settings2 className="h-4 w-4" />
+            ปรับแต่ง
+          </Button>
         </div>
       </div>
 
@@ -477,384 +910,7 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* KPI row — 5 cards on lg + warranty alert bar */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
-        <KpiCard
-          title="อุปกรณ์ทั้งหมด"
-          value={total}
-          icon={<Package className="h-5 w-5" />}
-          accent="#0f172a"
-          loading={isLoading}
-          trend={total > 0 ? `${(data?.byType ?? []).length} ประเภท` : undefined}
-        />
-        <KpiCard
-          title="ใช้งานอยู่"
-          value={active}
-          icon={<CheckCircle2 className="h-5 w-5" />}
-          accent="#10b981"
-          loading={isLoading}
-          trend={activeTrend}
-        />
-        <KpiCard
-          title="สำรอง"
-          value={spare}
-          icon={<Archive className="h-5 w-5" />}
-          accent="#f59e0b"
-          loading={isLoading}
-          trend={total > 0 ? `${Math.round((spare / total) * 100)}% ของทั้งหมด` : undefined}
-        />
-        <KpiCard
-          title="ส่งซ่อม"
-          value={repair}
-          icon={<Wrench className="h-5 w-5" />}
-          accent="#f97316"
-          loading={isLoading}
-          trend={repair > 0 ? 'รอดำเนินการ' : 'ปกติ'}
-        />
-        <KpiCard
-          title={paperKpiLabel}
-          value={paperThisMonth}
-          icon={<FileText className="h-5 w-5" />}
-          accent="#0d9488"
-          loading={isLoading}
-          unit="แผ่น"
-          trend={paperTrend}
-        />
-      </div>
-
-      {/* Cycle progress widget — animated, full-width */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: 'easeOut' }}
-      >
-        <CycleProgressWidget
-          activeCycle={activeCycle ?? null}
-          cycleLoading={cycleLoading}
-          remindersSummary={remindersSummary ?? null}
-          onManageCycle={() => {
-            setPendingMeterAction('open-cycle')
-            setActivePage('meter')
-          }}
-          onCreateCycle={() => {
-            setPendingMeterAction('open-cycle')
-            setActivePage('meter')
-          }}
-        />
-      </motion.div>
-
-      {/* Lifecycle / replacement planning widget */}
-      <LifecycleDashboard />
-
-      {/* Warranty alert bar — full-width amber card linking to devices */}
-      <button
-        type="button"
-        onClick={() => {
-          setActivePage('devices')
-          setPendingWarrantyFilter('expiring')
-        }}
-        disabled={warrantyAlerts === 0}
-        className={cn(
-          'group relative w-full overflow-hidden rounded-lg border text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950',
-          warrantyAlerts > 0
-            ? 'cursor-pointer border-amber-200 bg-amber-50 hover:-translate-y-0.5 hover:shadow-md dark:border-amber-800/60 dark:bg-amber-950/30'
-            : 'cursor-default border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
-        )}
-      >
-        {warrantyAlerts > 0 && (
-          <div
-            className="absolute inset-x-0 top-0 h-[3px]"
-            style={{
-              background: 'linear-gradient(90deg, #f59e0b, #f97316)',
-            }}
-          />
-        )}
-        <div className="flex items-center gap-3 p-3 sm:p-4">
-          <div
-            className={cn(
-              'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11',
-              warrantyAlerts > 0 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
-            )}
-          >
-            <AlertTriangle className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
-              รับประกันใกล้หมด
-            </div>
-            <div className="flex items-baseline gap-1">
-              <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
-                {warrantyAlerts}
-              </span>
-              <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
-                เครื่อง
-              </span>
-            </div>
-            <div className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
-              {warrantyAlerts > 0
-                ? `ใกล้หมด ${warrantyData?.summary.expiring ?? 0} · หมดแล้ว ${warrantyData?.summary.expired ?? 0} — กดเพื่อดูรายการ`
-                : 'ทุกเครื่องยังอยู่ในรับประกัน'}
-            </div>
-          </div>
-          {warrantyAlerts > 0 && (
-            <span className="shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-medium text-amber-600 opacity-0 transition-opacity group-hover:opacity-100 dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-400">
-              ดูรายการ →
-            </span>
-          )}
-        </div>
-      </button>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
-          <CardHeader>
-            <CardTitle className="text-base text-slate-800 dark:text-slate-100">
-              สัดส่วนสถานะอุปกรณ์
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-64 w-full dark:bg-slate-800" />
-            ) : (data?.byStatus ?? []).length === 0 ? (
-              <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
-            ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={data?.byStatus ?? []}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={95}
-                    paddingAngle={2}
-                  >
-                    {(data?.byStatus ?? []).map((entry) => (
-                      <Cell
-                        key={entry.name}
-                        fill={STATUS_COLORS[entry.name] ?? '#94a3b8'}
-                      />
-                    ))}
-                    <Label
-                      content={({ viewBox }) => {
-                        if (!viewBox || !('cx' in viewBox)) return null
-                        const { cx, cy } = viewBox as {
-                          cx: number
-                          cy: number
-                        }
-                        return (
-                          <>
-                            <text
-                              x={cx}
-                              y={cy - 6}
-                              textAnchor="middle"
-                              dominantBaseline="central"
-                              style={{
-                                fontSize: 26,
-                                fontWeight: 700,
-                                fontVariantNumeric: 'tabular-nums',
-                                fill: donutCenterText,
-                              }}
-                            >
-                              {total}
-                            </text>
-                            <text
-                              x={cx}
-                              y={cy + 16}
-                              textAnchor="middle"
-                              dominantBaseline="central"
-                              style={{ fontSize: 12, fill: donutCenterSub }}
-                            >
-                              เครื่อง
-                            </text>
-                          </>
-                        )
-                      }}
-                    />
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: number, name: string) => [value, name]}
-                    contentStyle={{
-                      fontSize: 12,
-                      borderRadius: 8,
-                      border: `1px solid ${tooltipBorder}`,
-                      background: tooltipBg,
-                      color: tooltipFg,
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 13 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
-          <CardHeader>
-            <CardTitle className="text-base text-slate-800 dark:text-slate-100">
-              จำนวนอุปกรณ์ตามประเภท
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <Skeleton className="h-64 w-full dark:bg-slate-800" />
-            ) : (data?.byType ?? []).length === 0 ? (
-              <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
-            ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={data?.byType ?? []}>
-                  <defs>
-                    <linearGradient
-                      id="barTypeFill"
-                      x1="0"
-                      y1="0"
-                      x2="0"
-                      y2="1"
-                    >
-                      <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.95} />
-                      <stop offset="100%" stopColor="#0d9488" stopOpacity={0.7} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke={gridStroke}
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 12, fill: axisTickColor }}
-                    tickLine={false}
-                    axisLine={{ stroke: gridStroke }}
-                  />
-                  <YAxis
-                    allowDecimals={false}
-                    tick={{ fontSize: 12, fill: axisTickColor }}
-                    tickLine={false}
-                    axisLine={{ stroke: gridStroke }}
-                  />
-                  <Tooltip
-                    cursor={{ fill: '#0d948810' }}
-                    contentStyle={{
-                      fontSize: 12,
-                      borderRadius: 8,
-                      border: `1px solid ${tooltipBorder}`,
-                      background: tooltipBg,
-                      color: tooltipFg,
-                    }}
-                  />
-                  <Bar
-                    dataKey="value"
-                    fill="url(#barTypeFill)"
-                    radius={[6, 6, 0, 0]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Lists */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
-              <TrendingUp className="h-4 w-4 text-[#f97316]" />
-              Top อุปกรณ์ตามการใช้งานกระดาษ
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="itam-scroll max-h-72 overflow-y-auto">
-              {(data?.topUsage ?? []).length === 0 ||
-              (data?.topUsage ?? []).every((d) => d.value === 0) ? (
-                <EmptyState message="ยังไม่มีข้อมูลการใช้งาน" />
-              ) : (
-                <ul className="space-y-2">
-                  {(data?.topUsage ?? [])
-                    .filter((d) => d.value > 0)
-                    .map((d, i) => (
-                      <li
-                        key={d.id}
-                        className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f97316] text-xs font-bold text-white">
-                            {i + 1}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
-                              {d.name}
-                            </div>
-                            <div className="truncate font-mono text-xs text-slate-400 dark:text-slate-500">
-                              {d.assetCode}
-                            </div>
-                          </div>
-                        </div>
-                        <Badge className="border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316] tabular-nums">
-                          {d.value.toLocaleString()} แผ่น
-                        </Badge>
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
-              <History className="h-4 w-4 text-[#f97316]" />
-              กิจกรรมล่าสุด (จดมิเตอร์)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="itam-scroll max-h-72 overflow-y-auto">
-              {(data?.recentActivity ?? []).length === 0 ? (
-                <EmptyState message="ยังไม่มีกิจกรรม" />
-              ) : (
-                <ul className="space-y-2">
-                  {(data?.recentActivity ?? []).map((a) => (
-                    <li
-                      key={a.id}
-                      className="rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
-                          {a.deviceName}
-                        </span>
-                        <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
-                          {a.date}
-                        </span>
-                      </div>
-                      <div className="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                        <span className="font-mono text-slate-400 dark:text-slate-500">
-                          {a.assetCode}
-                        </span>
-                        <span>·</span>
-                        <span className="tabular-nums">
-                          อ่าน {a.reading.toLocaleString()}
-                        </span>
-                        {a.delta > 0 && (
-                          <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 tabular-nums dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                            +{a.delta.toLocaleString()}
-                          </Badge>
-                        )}
-                        {a.remark && (
-                          <span className="truncate text-amber-600 dark:text-amber-400">
-                            ⚠ {a.remark}
-                          </span>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <DashboardWidgetLayout renderWidget={renderWidget} />
     </div>
   )
 }
