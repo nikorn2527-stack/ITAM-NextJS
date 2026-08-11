@@ -96,10 +96,24 @@ model MeterReading {
 // TODO: Models ถัดไป (รอ headers จากผู้ใช้)
 //
 // 6) Cycles              — รอบจดมิเตอร์ (ยังไม่มี sheet — ข้ามไปก่อน)
-// 10) App_Settings       — ตั้งค่าแอป
 // 11) Assignments        — การมอบหมาย
 // 12) MaintenanceLog     — ซ่อมบำรุง
 // ============================================================
+
+// ============================================================
+// 10) App_Settings — ตั้งค่าแอป (key-value)
+//    Source: sheet "App_Settings" (4 columns)
+// ============================================================
+model AppSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique @map("Key") // เช่น appName, notifyEmails, telegramToken
+  value       String?  @map("Value") // ค่า (เก็บเป็น string ทั้งหมด แม้ boolean/number)
+  description String?  @map("Description") // คำอธิบาย
+  updatedAt   DateTime @updatedAt @map("UpdatedAt")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("app_settings")
+}
 
 // ============================================================
 // 9) Site_Attributes — ข้อมูลสาขา + อัตราค่ากระดาษ
