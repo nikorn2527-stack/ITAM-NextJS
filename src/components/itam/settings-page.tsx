@@ -103,7 +103,7 @@ export function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ตั้งค่าแอป</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          ตั้งค่าทั่วไป · ข้อมูลมาตรฐาน · สาขา · อัตราค่ากระดาษ · สิทธิ์ผู้ใช้
+          กำหนดค่าระบบ ข้อมูลมาตรฐาน สาขา อัตราค่ากระดาษ และสิทธิ์ผู้ใช้
         </p>
       </div>
 
@@ -170,6 +170,15 @@ function AppTab() {
       return json.settings as Record<string, string>
     },
   })
+  const { data: sites } = useQuery<Site[]>({
+    queryKey: ['sites'],
+    queryFn: async () => {
+      const res = await fetch('/api/sites')
+      if (!res.ok) throw new Error('Failed to load sites')
+      const json = await res.json()
+      return json.sites as Site[]
+    },
+  })
 
   const [form, setForm] = React.useState<Record<string, string>>({})
   const [saving, setSaving] = React.useState(false)
@@ -217,34 +226,45 @@ function AppTab() {
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-600">
+            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
               ชื่อองค์กร
             </Label>
             <Input
               value={form.orgName ?? ''}
               onChange={(e) => setForm({ ...form, orgName: e.target.value })}
+              placeholder="PNG TEAM"
+              className="dark:bg-slate-800 dark:border-slate-700"
             />
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-600">
+            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
               สาขาเริ่มต้น
             </Label>
-            <Input
+            <Select
               value={form.defaultSite ?? ''}
-              onChange={(e) =>
-                setForm({ ...form, defaultSite: e.target.value })
-              }
-            />
+              onValueChange={(v) => setForm({ ...form, defaultSite: v })}
+            >
+              <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700">
+                <SelectValue placeholder="เลือกสาขา" />
+              </SelectTrigger>
+              <SelectContent>
+                {(sites ?? []).map((s) => (
+                  <SelectItem key={s.id} value={s.code}>
+                    {s.code} — {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
         <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-800/40">
           <div>
             <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
-              เปิดใช้งานการล็อกอินด้วยรหัสผ่าน
+              ล็อกอินด้วยรหัสผ่าน
             </div>
             <div className="text-xs text-slate-500 dark:text-slate-400">
-              อนุญาตให้ผู้ใช้ล็อกอินด้วยรหัสผ่าน (นอกเหนือจาก SSO)
+              อนุญาตนอกเหนือจาก SSO (Google)
             </div>
           </div>
           <Switch
@@ -253,33 +273,6 @@ function AppTab() {
               setForm({ ...form, enablePasswordLogin: c ? 'true' : 'false' })
             }
           />
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-600">
-              แม่แบบสติกเกอร์
-            </Label>
-            <Input
-              value={form.stickerTemplate ?? ''}
-              onChange={(e) =>
-                setForm({ ...form, stickerTemplate: e.target.value })
-              }
-              placeholder="template-1"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-slate-600">
-              แม่แบบเอกสาร
-            </Label>
-            <Input
-              value={form.docTemplate ?? ''}
-              onChange={(e) =>
-                setForm({ ...form, docTemplate: e.target.value })
-              }
-              placeholder="doc-1"
-            />
-          </div>
         </div>
 
         <div className="flex justify-end">

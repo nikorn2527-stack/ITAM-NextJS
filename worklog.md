@@ -400,3 +400,41 @@ Stage Summary:
 - 3 new features delivered: Global Search (Ctrl+K command palette across all 5 entity types), Warranty/Lifecycle Tracking (warrantyMonths field + warranty column/filter/alerts + dashboard KPI + detail sheet banner), Cost Analytics (SiteRate model + cost API + cost KPIs + cost chart on paper-analytics + site-rates settings tab).
 - Classic sidebar preserved (with new search button below nav). Sticky footer intact. Lint clean. No runtime errors. All new UI supports dark mode.
 - Recommended next round: (1) dashboard export to PDF (summary report), (2) user permissions UI (make editable), (3) device lifecycle dashboard (purchase date → replacement planning), (4) bulk device operations (bulk status change, bulk delete), (5) notifications/settings panel for reminder thresholds.
+
+---
+Task ID: 11
+Agent: orchestrator (main) — user-directed cycle fix + settings cleanup
+Task: Merge sidebar PR, then fix meter cycle (ทำงานไม่ได้จริง) + clean up settings (เปลืองเนื้อที่/คำซ้ำ/ฟังก์ชันซ้ำ).
+
+Work Log:
+- **MERGED PR**: pushed local refactor/master-columns (commit 1ab4706 = revert sidebar) to origin/refactor/master-columns (fast-forward 00a20b2..1ab4706). Classic sidebar now on the main branch. Branch restore/classic-sidebar fully merged.
+
+PROBLEM 1 — รอบจดมิเตอร์ทำงานไม่ได้จริง:
+- Root cause: cycles API only had GET + POST (create). No end/cancel/delete. The "จัดการรอบ" button opened a tiny create-only dialog — couldn't end the active cycle, cancel, view history, or reopen.
+- Fix: Created `/api/cycles/[id]/route.ts` — GET (single cycle + reading stats), PUT (end/cancel/reopen/edit with audit logging CYCLE_END/CYCLE_CANCEL/CYCLE_REOPEN), DELETE (with safety: can't delete active cycles or cycles with readings → CYCLE_HAS_READINGS 400).
+- Created `src/components/itam/cycle-manage-dialog.tsx` — a proper management panel (sm:max-w-2xl) that's the SINGLE control point:
+  - Active cycle highlight card (emerald gradient, animated ping dot, End + Cancel buttons)
+  - Collapsible "สร้างรอบใหม่" section (with date validation + warning if active cycle will auto-end)
+  - Full cycle history list (sorted active-first then by date) with per-cycle status badge, reading count + sheets stats, and action buttons (reopen/end/cancel/delete based on status)
+  - AlertDialog confirmation for all destructive actions (end/cancel/reopen/delete) with Thai descriptions
+- Updated meter-page.tsx: replaced old create-only dialog with <CycleManageDialog>, removed dead state (cycleName/cycleStart/cycleEnd/creatingCycle) + createCycle function + Plus import.
+- Verified end-to-end: clicked "จบรอบ" → confirm → API PUT changed status active→ended (active cycles: 0). Created new cycle via API (active restored). DELETE on ended-with-readings cycle correctly returns 400 CYCLE_HAS_READINGS. VLM rated the panel 9/10 ("clean, workflow efficient, immediate access to create + view/edit, good info density").
+
+PROBLEM 2 — Settings เปลืองเนื้อที่/คำซ้ำ/ฟังก์ชันซ้ำ:
+- Page subtitle "ตั้งค่าทั่วไป · ข้อมูลมาตรฐาน · สาขา · อัตราค่ากระดาษ · สิทธิ์ผู้ใช้" repeated the tab names → changed to concise "กำหนดค่าระบบ ข้อมูลมาตรฐาน สาขา อัตราค่ากระดาษ และสิทธิ์ผู้ใช้".
+- AppTab "สาขาเริ่มต้น" was a plain text Input (error-prone, duplicates the Sites tab data) → changed to Select populated from /api/sites (shows "code — name").
+- AppTab password login toggle had duplicate wording: title "เปิดใช้งานการล็อกอินด้วยรหัสผ่าน" + desc "อนุญาตให้ผู้ใช้ล็อกอินด้วยรหัสผ่าน (นอกเหนือจาก SSO)" → shortened to title "ล็อกอินด้วยรหัสผ่าน" + desc "อนุญาตนอกเหนือจาก SSO (Google)".
+- Removed "แม่แบบสติกเกอร์" + "แม่แบบเอกสาร" placeholder Input fields — they had no backing functionality, just wasted space.
+- Confirmed NO cycle management in settings (cycle is ONLY on meter page = single control point, addressing user's concern about duplicate functions).
+
+VERIFICATION:
+- `bun run lint` → 0 errors, 0 warnings.
+- Dev server: all cycle endpoints 200/201 (GET, POST, PUT, DELETE-400-expected). No new errors in dev.log.
+- agent-browser: cycle manage dialog shows active cycle card + End/Cancel buttons + create section + history list with stats. Settings AppTab shows Select for default site, no sticker/doc template fields, concise wording.
+- VLM: cycle panel 9/10 functionality.
+
+Stage Summary:
+- Meter cycle now has FULL lifecycle: create → active → end/cancel → reopen → delete (with safety guards). Single control point on meter page (no duplication in settings).
+- Settings cleaned: default site is now a Select (not manual text), removed 2 placeholder fields, fixed duplicate wording, concise subtitle.
+- Classic sidebar preserved. Sticky footer intact. Lint clean. No runtime errors.
+- Recommended next: (1) cycle-based meter reading report (show readings grouped by cycle), (2) auto-create next cycle when current ends, (3) dashboard "cycle progress" widget, (4) make the Sites tab + Rates tab share data better (rates tab already uses sites).

@@ -30,7 +30,6 @@ import {
 import {
   Gauge,
   CalendarClock,
-  Plus,
   RefreshCw,
   AlertTriangle,
   Download,
@@ -41,6 +40,7 @@ import type { Device, Cycle, MeterReading } from './types'
 import { statusBadgeClass, statusLabel } from './types'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { BulkMeterDialog } from './bulk-meter-dialog'
+import { CycleManageDialog } from './cycle-manage-dialog'
 
 const METER_CSV_HEADERS = [
   { key: 'date', label: 'วันที่' },
@@ -95,10 +95,6 @@ export function MeterPage() {
   const [remark, setRemark] = React.useState('')
   const [saving, setSaving] = React.useState(false)
   const [cycleDialogOpen, setCycleDialogOpen] = React.useState(false)
-  const [cycleName, setCycleName] = React.useState('')
-  const [cycleStart, setCycleStart] = React.useState(todayISO())
-  const [cycleEnd, setCycleEnd] = React.useState(todayISO())
-  const [creatingCycle, setCreatingCycle] = React.useState(false)
   const [exporting, setExporting] = React.useState(false)
   const [bulkOpen, setBulkOpen] = React.useState(false)
 
@@ -206,39 +202,6 @@ export function MeterPage() {
     }
   }
 
-  async function createCycle() {
-    if (!cycleName || !cycleStart || !cycleEnd) {
-      toast.error('กรุณากรอกชื่อรอบและวันที่ให้ครบ')
-      return
-    }
-    try {
-      setCreatingCycle(true)
-      const res = await fetch('/api/cycles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: cycleName,
-          startDate: cycleStart,
-          endDate: cycleEnd,
-          status: 'active',
-        }),
-      })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'Create cycle failed')
-      }
-      toast.success('สร้างรอบจดมิเตอร์ใหม่แล้ว')
-      setCycleDialogOpen(false)
-      setCycleName('')
-      await qc.invalidateQueries({ queryKey: ['active-cycle'] })
-      await qc.invalidateQueries({ queryKey: ['meter-reminders'] })
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Create cycle failed')
-    } finally {
-      setCreatingCycle(false)
-    }
-  }
-
   const remainingDays = activeCycle
     ? daysBetween(todayISO(), activeCycle.endDate)
     : null
@@ -298,7 +261,7 @@ export function MeterPage() {
             onClick={() => setCycleDialogOpen(true)}
             className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
-            <Plus className="h-4 w-4" />
+            <CalendarClock className="h-4 w-4" />
             จัดการรอบ
           </Button>
           <Button
@@ -706,67 +669,12 @@ export function MeterPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Cycle manage dialog */}
-      <Dialog open={cycleDialogOpen} onOpenChange={setCycleDialogOpen}>
-        <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
-          <DialogHeader>
-            <DialogTitle className="text-slate-800 dark:text-slate-100">จัดการรอบจดมิเตอร์</DialogTitle>
-            <DialogDescription>
-              สร้างรอบใหม่ (รอบเดิมที่กำลังดำเนินการจะถูกปิดอัตโนมัติ)
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                ชื่อรอบ *
-              </Label>
-              <Input
-                value={cycleName}
-                onChange={(e) => setCycleName(e.target.value)}
-                placeholder="เช่น รอบจดมิเตอร์ ต.ค. 2025"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  วันเริ่ม *
-                </Label>
-                <Input
-                  type="date"
-                  value={cycleStart}
-                  onChange={(e) => setCycleStart(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  วันสิ้นสุด *
-                </Label>
-                <Input
-                  type="date"
-                  value={cycleEnd}
-                  onChange={(e) => setCycleEnd(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setCycleDialogOpen(false)}
-              disabled={creatingCycle}
-            >
-              ยกเลิก
-            </Button>
-            <Button
-              onClick={createCycle}
-              disabled={creatingCycle}
-              className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
-            >
-              {creatingCycle ? 'กำลังสร้าง...' : 'สร้างรอบ'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Cycle manage dialog — single control point for all cycle operations */}
+      <CycleManageDialog
+        open={cycleDialogOpen}
+        onOpenChange={setCycleDialogOpen}
+        activeCycle={activeCycle ?? null}
+      />
 
       {/* Bulk meter dialog */}
       <BulkMeterDialog
