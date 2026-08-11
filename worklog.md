@@ -1090,3 +1090,39 @@ Stage Summary:
 - หน้าตั้งค่าจัดระเบียบแล้ว (6 tabs ชัดเจน แทน 9 tabs กระจัดกระจาย)
 - Dashboard มีปุ่มเครื่องมือ 4 อันใหม่: 🏗️ สาขา | 📈 Heatmap | 📊 รอบ | 📄 PDF
 - รวม Task 18-23 = 6 commits ใหม่บน refactor/master-columns
+
+---
+Task ID: 24
+Agent: orchestrator (main) — ITAM database schema + import + API
+Task: สร้าง Prisma schema จาก Google Sheets headers จริง + import ข้อมูล + สร้าง Next.js API + เปรียบเทียบความเร็ว
+
+Work Log:
+- รับ headers จากผู้ใช้ทีละ sheet (9 sheets จาก Google Sheets + 3 จาก Next.js)
+- เขียน Prisma schema ที่ตรงกับ headers จริง (12 models, 137 fields):
+  Device(28), MeterReading(20), MasterItem(10), MasterCategory(4), LocationHistory(20), AuditLog(4), UserPermission(10), SiteAttribute(6), AppSetting(4), LicenseRecord(9), Assignment(11), MaintenanceLog(11)
+- รัน bun run db:push สำเร็จ — 12 tables สร้างใน SQLite
+- เขียน import script (scripts/import-google-sheets.ts + import-sheets-v2.ts)
+- ดึงข้อมูลจาก Google Sheets ผ่าน CSV export URL (ผู้ใช้ share link)
+- Import สำเร็จ: 2,378 devices + 14,269 meter readings + 306 master items + 13 categories + 121 location history + 281 audit logs + 5 users + 6 sites + 217 settings = 17,596 แถว
+- แก้ปัญหา 3 sheets (Audit_Log/Site_Attributes/App_Settings) ที่ Google Sheets ส่ง header+data ติดกันใน row 1 — แก้โดยดึงค่าหลังช่องว่างแรก
+- สร้าง 4 Next.js API routes ใหม่:
+  /api/itam/devices (GET list+search+filter+pagination, POST create)
+  /api/itam/dashboard (GET dashboard stats — totals/byType/bySite/paperThisMonth/recentActivity)
+  /api/itam/meter-readings (GET list+filter by assetNo/month)
+  /api/itam/sites (GET list with device count)
+
+RESULTS:
+A. Query ทดสอบ — ทุก query ทำงานถูกต้อง (2,378 เครื่อง, 2,151 active, 855 ต้องจดมิเตอร์, 6 สาขา, 5 ผู้ใช้)
+B. API ทำงานครบ — dashboard, devices (search PRINTER → 1,618 ผล), meter-readings, sites
+C. ความเร็ว:
+   - Prisma count: 29ms
+   - Prisma 100 devices + relations: 40ms
+   - Prisma dashboard (4 queries): 19ms
+   - Google Sheets CSV fetch: 626ms + 686KB transfer
+   → Prisma เร็วกว่า 15-30x
+
+Stage Summary:
+- Database พร้อมใช้: 12 tables, 17,596 แถวข้อมูลจริง
+- API พร้อมใช้: 4 endpoints ทำงานได้
+- ความเร็ว: Prisma 19ms vs Google Sheets 626ms (32x เร็วกว่า)
+- ขั้นตอนถัดไป: สร้าง UI ที่ใช้ API ใหม่ + เพิ่ม API endpoints อื่น (CRUD devices, meter readings POST, etc.)
