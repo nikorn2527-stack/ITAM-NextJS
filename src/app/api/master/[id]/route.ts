@@ -1,0 +1,58 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await params
+    const body = await req.json()
+    const updated = await db.masterItem.update({
+      where: { id },
+      data: {
+        category: body.category !== undefined ? String(body.category).trim() : undefined,
+        code: body.code !== undefined ? String(body.code).trim() : undefined,
+        label: body.label !== undefined ? String(body.label).trim() : undefined,
+        parentRef:
+          body.parentRef !== undefined
+            ? body.parentRef
+              ? String(body.parentRef).trim()
+              : null
+            : undefined,
+        displayLabel:
+          body.displayLabel !== undefined
+            ? body.displayLabel
+              ? String(body.displayLabel).trim()
+              : null
+            : undefined,
+        siteCode:
+          body.siteCode !== undefined
+            ? body.siteCode
+              ? String(body.siteCode).trim()
+              : null
+            : undefined,
+      },
+    })
+    return NextResponse.json({ item: updated })
+  } catch (err) {
+    console.error('PUT /api/master/[id]', err)
+    const message = err instanceof Error ? err.message : 'Failed to update master item'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await params
+    await db.masterItem.delete({ where: { id } })
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('DELETE /api/master/[id]', err)
+    const message = err instanceof Error ? err.message : 'Failed to delete master item'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
