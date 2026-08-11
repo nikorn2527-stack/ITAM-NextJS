@@ -94,8 +94,6 @@ model MeterReading {
 // ============================================================
 // TODO: Models ถัดไป (รอ headers จากผู้ใช้)
 //
-// 2) Meter_Readings      — การจดมิเตอร์
-// 3) Master_Items        — ข้อมูลมาตรฐาน
 // 4) Master_Category     — หมวดหมู่ master
 // 5) Location_History    — ประวัติการย้าย
 // 6) Cycles              — รอบจดมิเตอร์
@@ -106,3 +104,27 @@ model MeterReading {
 // 11) Assignments        — การมอบหมาย
 // 12) MaintenanceLog     — ซ่อมบำรุง
 // ============================================================
+
+// ============================================================
+// 3) Master_Items — ข้อมูลมาตรฐาน (Brand/Type/Model/Department/Status/DeviceGroup)
+//    Source: sheet "Master_Items" (10 columns)
+// ============================================================
+model MasterItem {
+  id              String   @id @default(cuid())
+  itemId          String?  @map("ItemID") // เช่น MD-0164
+  categoryKey     String   @map("CategoryKey") // Brand | Type | Model | Department | Status | DeviceGroup
+  value           String   @map("Value") // ค่าจริง เช่น "ศูนย์บริการข้าราชการ..."
+  groupName       String?  @map("GroupName") // ศูนย์สิทธิ์เบิกได้
+  parentRef       String?  @map("ParentRef") // เช่น Brand|Type สำหรับ Model
+  displayLabel    String?  @map("DisplayLabel")
+  siteCode        String?  @map("SiteCode")
+  allowedSites    String?  @map("AllowedSites") // ALL หรือ comma-separated
+  active          Boolean  @default(true) @map("Active")
+  departmentCode  String?  @map("DepartmentCode") // เช่น ACC-001
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([categoryKey])
+  @@index([value])
+  @@map("master_items")
+}
