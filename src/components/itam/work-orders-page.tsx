@@ -12,10 +12,13 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -53,6 +56,13 @@ import {
   AlertTriangle,
   CalendarClock,
   Image as ImageIcon,
+  Building2,
+  Edit3,
+  Trash2,
+  ShieldCheck,
+  PackageOpen,
+  ClipboardList,
+  Hash,
 } from 'lucide-react'
 import { formatThaiDate, relativeTime } from './types'
 
@@ -77,6 +87,13 @@ export interface WorkOrderReview {
   createdAt: string
 }
 
+export interface ExternalMeta {
+  clientName?: string
+  place?: string
+  contactPhone?: string
+  serials?: string[]
+}
+
 export interface WorkOrder {
   id: string
   woNumber: string | null
@@ -91,16 +108,24 @@ export interface WorkOrder {
   employeeCode: string | null
   submissionSource: string
   trackable: boolean
+  externalMeta: string | null
   picBefore: string | null
   picOnsite: string | null
   picAfter: string | null
   status: string
+  acceptStatus: string | null
   assignedTo: string | null
   assignedBy: string | null
   assignedAt: string | null
   assignmentNote: string | null
   detailsAdmin: string | null
   dateAdmin: string | null
+  resolution: string | null
+  resolutionGroup: string | null
+  editUnlockActive: boolean
+  editUnlockBy: string | null
+  editUnlockAt: string | null
+  editUnlockNote: string | null
   workCompletedAt: string | null
   closedAt: string | null
   canceledAt: string | null
@@ -131,6 +156,34 @@ interface WorkOrderDetail extends WorkOrder {
   review: WorkOrderReview | null
 }
 
+interface SubjectOption {
+  group: string
+  value: string
+  default_priority: string
+}
+
+interface ResolutionOption {
+  group: string
+  value: string
+}
+
+interface OptionsResponse {
+  subjects: SubjectOption[]
+  resolutions: ResolutionOption[]
+}
+
+interface DeviceLookupItem {
+  id: string
+  assetCode: string
+  name: string
+  brand: string
+  model: string
+  site: string
+  building: string | null
+  location: string | null
+  serialNumber: string | null
+}
+
 // ============================================================
 // Constants
 // ============================================================
@@ -144,7 +197,7 @@ const STATUS_OPTIONS = [
 ] as const
 
 const PRIORITY_OPTIONS = [
-  { value: 'all', label: 'ความเร่งด่วยทั้งหมด' },
+  { value: 'all', label: 'ความเร่งด่วนทั้งหมด' },
   { value: 'ปกติ', label: 'ปกติ' },
   { value: 'ปานกลาง', label: 'ปานกลาง' },
   { value: 'สูง', label: 'สูง' },
@@ -210,27 +263,113 @@ function formatDateTime(iso: string | null): string {
   }
 }
 
+function parseExternalMeta(raw: string | null): ExternalMeta | null {
+  if (!raw) return null
+  try {
+    const obj = JSON.parse(raw)
+    if (!obj || typeof obj !== 'object') return null
+    return obj as ExternalMeta
+  } catch {
+    return null
+  }
+}
+
 // ============================================================
 // Main component
 // ============================================================
 interface NewFormState {
   subject: string
+  subjectGroup: string
   building: string
   location: string
   details: string
   priority: string
   reporterName: string
   tel: string
+  employeeCode: string
+  isExternal: boolean
+  // External fields
+  clientName: string
+  place: string
+  contactPhone: string
+  serials: string[]
+  serialInput: string
+  // Device lookup (internal)
+  deviceId: string | null
+  deviceSearch: string
+  // Image before
+  picBefore: string | null
+  picBeforeName: string
 }
 
 const EMPTY_FORM: NewFormState = {
   subject: '',
+  subjectGroup: '',
   building: '',
   location: '',
   details: '',
   priority: 'ปกติ',
   reporterName: '',
   tel: '',
+  employeeCode: '',
+  isExternal: false,
+  clientName: '',
+  place: '',
+  contactPhone: '',
+  serials: [],
+  serialInput: '',
+  deviceId: null,
+  deviceSearch: '',
+  picBefore: null,
+  picBeforeName: '',
+}
+
+// 1 MB hard cap to keep SQLite payload sane
+const MAX_PIC_BYTES = 1_000_000
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function compressImage(file: File, maxBytes = MAX_PIC_BYTES): Promise<string> {
+  const dataUrl = await readFileAsDataUrl(file)
+  if (dataUrl.length <= maxBytes) return dataUrl
+  // Try shrinking via canvas
+  return new Promise<string>((resolve) => {
+    const img = new window.Image()
+    img.onload = () => {
+      const maxDim = 1280
+      let { width, height } = img
+      if (width > maxDim || height > maxDim) {
+        const ratio = Math.min(maxDim / width, maxDim / height)
+        width = Math.round(width * ratio)
+        height = Math.round(height * ratio)
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        resolve(dataUrl)
+        return
+      }
+      ctx.drawImage(img, 0, 0, width, height)
+      let quality = 0.8
+      let out = canvas.toDataURL('image/jpeg', quality)
+      while (out.length > maxBytes && quality > 0.3) {
+        quality -= 0.15
+        out = canvas.toDataURL('image/jpeg', quality)
+      }
+      resolve(out)
+    }
+    img.onerror = () => resolve(dataUrl)
+    img.src = dataUrl
+  })
 }
 
 export function WorkOrdersPage() {
@@ -243,6 +382,17 @@ export function WorkOrdersPage() {
   const [form, setForm] = React.useState<NewFormState>(EMPTY_FORM)
   const [saving, setSaving] = React.useState(false)
   const [detailId, setDetailId] = React.useState<string | null>(null)
+
+  // Load subject + resolution options once
+  const optionsQuery = useQuery<OptionsResponse>({
+    queryKey: ['wo-options'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings/options')
+      if (!res.ok) throw new Error('Failed to load options')
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
 
   // Debounce search to avoid spamming the API on every keystroke
   const [debouncedSearch, setDebouncedSearch] = React.useState('')
@@ -298,21 +448,51 @@ export function WorkOrdersPage() {
       toast.error('กรุณาระบุประเภทปัญหา')
       return
     }
+    if (form.isExternal) {
+      if (!form.clientName.trim()) {
+        toast.error('กรุณาระบุชื่อลูกค้าสำหรับงานนอก')
+        return
+      }
+    } else {
+      // Internal: guest must provide name + phone for verification
+      if (!form.reporterName.trim() || !form.tel.trim()) {
+        toast.error('ผู้แจ้ง (Guest) ต้องระบุชื่อและเบอร์โทร เพื่อยืนยันตัวตน')
+        return
+      }
+    }
     try {
       setSaving(true)
+      const payload: Record<string, unknown> = {
+        subject: form.subject.trim(),
+        details: form.details.trim() || null,
+        priority: form.priority,
+        picBefore: form.picBefore,
+        submissionSource: 'guest',
+      }
+      if (form.isExternal) {
+        payload.isExternal = true
+        payload.externalMeta = {
+          clientName: form.clientName.trim(),
+          place: form.place.trim() || undefined,
+          contactPhone: form.contactPhone.trim() || undefined,
+          serials: form.serials.length > 0 ? form.serials : undefined,
+        }
+        // For external WOs the reporter is the staff filling the form
+        payload.reporterName = form.reporterName.trim() || null
+        payload.tel = form.tel.trim() || null
+        payload.skipGuestValidation = true
+      } else {
+        payload.reporterName = form.reporterName.trim()
+        payload.tel = form.tel.trim()
+        payload.employeeCode = form.employeeCode.trim() || null
+        payload.building = form.building.trim() || null
+        payload.location = form.location.trim() || null
+        payload.deviceId = form.deviceId || null
+      }
       const res = await fetch('/api/work-orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subject: form.subject.trim(),
-          building: form.building.trim() || null,
-          location: form.location.trim() || null,
-          details: form.details.trim() || null,
-          priority: form.priority,
-          reporterName: form.reporterName.trim() || null,
-          tel: form.tel.trim() || null,
-          actor: form.reporterName.trim() || 'system',
-        }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -341,7 +521,7 @@ export function WorkOrdersPage() {
             แจ้งซ่อม
           </h1>
           <p className="text-sm text-muted-foreground">
-            ระบบแจ้งซ่อมครบวงจร — แจ้ง → รับงาน → ซ่อม → ปิดงาน
+            ระบบแจ้งซ่อมครบวงจร — แจ้ง → รับงาน → ซ่อม → ปิดงาน (รองรับลูกค้าภายนอก)
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -511,6 +691,7 @@ export function WorkOrdersPage() {
         setForm={setForm}
         saving={saving}
         onSubmit={handleCreate}
+        subjects={optionsQuery.data?.subjects ?? []}
       />
 
       {/* Detail dialog */}
@@ -519,6 +700,7 @@ export function WorkOrdersPage() {
         onOpenChange={(open) => {
           if (!open) setDetailId(null)
         }}
+        resolutions={optionsQuery.data?.resolutions ?? []}
       />
     </div>
   )
@@ -575,6 +757,7 @@ function WorkOrderCard({
   wo: WorkOrder
   onOpen: () => void
 }) {
+  const external = parseExternalMeta(wo.externalMeta)
   return (
     <Card
       className="group cursor-pointer py-0 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
@@ -594,9 +777,19 @@ function WorkOrderCard({
           <span className="truncate font-mono text-xs font-semibold text-muted-foreground">
             {wo.woNumber ?? '—'}
           </span>
-          <Badge className={statusBadgeClass(wo.status)} variant="outline">
-            {statusLabel(wo.status)}
-          </Badge>
+          <div className="flex items-center gap-1">
+            {external && (
+              <Badge
+                className="border-teal-200 bg-teal-100 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
+                variant="outline"
+              >
+                งานนอก
+              </Badge>
+            )}
+            <Badge className={statusBadgeClass(wo.status)} variant="outline">
+              {statusLabel(wo.status)}
+            </Badge>
+          </div>
         </div>
 
         {/* Subject */}
@@ -616,27 +809,47 @@ function WorkOrderCard({
 
         {/* Meta */}
         <div className="space-y-1 text-xs text-muted-foreground">
-          {wo.building && (
-            <div className="flex items-center gap-1.5">
-              <MapPin className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">
-                {wo.building}
-                {wo.location ? ` • ${wo.location}` : ''}
-              </span>
-            </div>
-          )}
-          {wo.reporterName && (
-            <div className="flex items-center gap-1.5">
-              <User className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{wo.reporterName}</span>
-              {wo.tel && (
-                <>
-                  <span aria-hidden>•</span>
+          {external ? (
+            <>
+              <div className="flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  {external.clientName ?? '—'}
+                  {external.place ? ` • ${external.place}` : ''}
+                </span>
+              </div>
+              {external.contactPhone && (
+                <div className="flex items-center gap-1.5">
                   <Phone className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{wo.tel}</span>
-                </>
+                  <span className="truncate">{external.contactPhone}</span>
+                </div>
               )}
-            </div>
+            </>
+          ) : (
+            <>
+              {wo.building && (
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">
+                    {wo.building}
+                    {wo.location ? ` • ${wo.location}` : ''}
+                  </span>
+                </div>
+              )}
+              {wo.reporterName && (
+                <div className="flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{wo.reporterName}</span>
+                  {wo.tel && (
+                    <>
+                      <span aria-hidden>•</span>
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{wo.tel}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -667,7 +880,7 @@ function WorkOrderCard({
 }
 
 // ============================================================
-// Create Dialog
+// Create Dialog — with guest verification + external mode + subject dropdown
 // ============================================================
 function CreateWorkOrderDialog({
   open,
@@ -676,6 +889,7 @@ function CreateWorkOrderDialog({
   setForm,
   saving,
   onSubmit,
+  subjects,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -683,10 +897,94 @@ function CreateWorkOrderDialog({
   setForm: React.Dispatch<React.SetStateAction<NewFormState>>
   saving: boolean
   onSubmit: () => void
+  subjects: SubjectOption[]
 }) {
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  // Group subjects for the dropdown
+  const subjectGroups = React.useMemo(() => {
+    const map = new Map<string, SubjectOption[]>()
+    for (const s of subjects) {
+      if (!map.has(s.group)) map.set(s.group, [])
+      map.get(s.group)!.push(s)
+    }
+    return Array.from(map.entries())
+  }, [subjects])
+
+  // Device lookup (internal mode only)
+  const [deviceResults, setDeviceResults] = React.useState<DeviceLookupItem[]>([])
+  const [deviceLoading, setDeviceLoading] = React.useState(false)
+  React.useEffect(() => {
+    if (!form.deviceSearch.trim() || form.isExternal) {
+      setDeviceResults([])
+      return
+    }
+    let cancelled = false
+    setDeviceLoading(true)
+    const t = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ search: form.deviceSearch.trim() })
+        const res = await fetch(`/api/devices?${params.toString()}`)
+        if (!res.ok) return
+        const json = await res.json()
+        if (!cancelled) setDeviceResults((json.devices ?? []).slice(0, 8))
+      } catch {
+        if (!cancelled) setDeviceResults([])
+      } finally {
+        if (!cancelled) setDeviceLoading(false)
+      }
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [form.deviceSearch, form.isExternal])
+
+  // When subject changes, auto-set priority from default_priority
+  function handleSubjectChange(value: string) {
+    if (value === '__custom__') {
+      setForm((s) => ({ ...s, subject: '__custom__', subjectGroup: '' }))
+      return
+    }
+    const opt = subjects.find((s) => s.value === value)
+    setForm((s) => ({
+      ...s,
+      subject: value,
+      subjectGroup: opt?.group ?? '',
+      priority: opt?.default_priority ?? s.priority,
+    }))
+  }
+
+  async function handlePicBeforeChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const dataUrl = await compressImage(file)
+      setForm((s) => ({ ...s, picBefore: dataUrl, picBeforeName: file.name }))
+    } catch {
+      toast.error('อ่านไฟล์รูปไม่สำเร็จ')
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  function addSerial() {
+    const v = form.serialInput.trim()
+    if (!v) return
+    if (form.serials.includes(v)) {
+      toast.error('S/N นี้มีอยู่แล้ว')
+      return
+    }
+    setForm((s) => ({ ...s, serials: [...s.serials, v], serialInput: '' }))
+  }
+
+  function removeSerial(s: string) {
+    setForm((frm) => ({ ...frm, serials: frm.serials.filter((x) => x !== s) }))
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="max-h-[92vh] overflow-hidden sm:max-w-[640px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5 text-orange-500" />
@@ -697,101 +995,405 @@ function CreateWorkOrderDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-3">
-          <div className="grid gap-1.5">
-            <Label htmlFor="wo-subject">
-              ประเภทปัญหา <span className="text-rose-500">*</span>
-            </Label>
-            <Input
-              id="wo-subject"
-              value={form.subject}
-              onChange={(e) => setForm((s) => ({ ...s, subject: e.target.value }))}
-              placeholder="เช่น เครื่องพิมพ์ไม่ทำงาน, อินเทอร์เน็ตไม่ติด, คอมพิวเตอร์ค้าง"
-              autoFocus
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="wo-building">อาคาร / ฝ่าย</Label>
-              <Input
-                id="wo-building"
-                value={form.building}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, building: e.target.value }))
+        <ScrollArea className="max-h-[68vh]">
+          <div className="grid gap-3 px-1 py-1">
+            {/* External mode toggle */}
+            <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2.5">
+              <div className="flex items-start gap-2">
+                <PackageOpen className="mt-0.5 h-4 w-4 text-teal-600 dark:text-teal-400" />
+                <div>
+                  <div className="text-sm font-medium">ลูกค้าภายนอก / นอกสถานที่</div>
+                  <div className="text-xs text-muted-foreground">
+                    เปิดเมื่องานไม่ได้อยู่ในระบบ (เช่น ลูกค้าบริษัทอื่น)
+                  </div>
+                </div>
+              </div>
+              <Switch
+                checked={form.isExternal}
+                onCheckedChange={(v) =>
+                  setForm((s) => ({ ...s, isExternal: v }))
                 }
-                placeholder="เช่น อาคาร A, ฝ่ายบัญชี"
+                aria-label="เปิดโหมดลูกค้าภายนอก"
               />
             </div>
+
+            {/* Subject dropdown (grouped) */}
             <div className="grid gap-1.5">
-              <Label htmlFor="wo-location">ตำแหน่ง / ห้อง</Label>
-              <Input
-                id="wo-location"
-                value={form.location}
-                onChange={(e) =>
-                  setForm((s) => ({ ...s, location: e.target.value }))
-                }
-                placeholder="เช่น ชั้น 3 ห้อง 305"
+              <Label htmlFor="wo-subject">
+                ประเภทปัญหา <span className="text-rose-500">*</span>
+              </Label>
+              {subjects.length === 0 ? (
+                <Input
+                  id="wo-subject"
+                  value={form.subject}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, subject: e.target.value }))
+                  }
+                  placeholder="เช่น เครื่องพิมพ์ไม่ทำงาน, อินเทอร์เน็ตไม่ติด"
+                  autoFocus
+                />
+              ) : (
+                <Select value={form.subject} onValueChange={handleSubjectChange}>
+                  <SelectTrigger id="wo-subject">
+                    <SelectValue placeholder="เลือกประเภทปัญหา" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subjectGroups.map(([group, opts]) => (
+                      <SelectGroup key={group}>
+                        <SelectLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {group}
+                        </SelectLabel>
+                        {opts.map((o) => (
+                          <SelectItem key={group + '|' + o.value} value={o.value}>
+                            <span className="flex w-full items-center justify-between gap-2">
+                              <span>{o.value}</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {o.default_priority}
+                              </span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
+                    <SelectItem value="__custom__">— ระบุเอง —</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              {form.subject === '__custom__' && (
+                <Input
+                  value={form.subject === '__custom__' ? '' : form.subject}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, subject: e.target.value }))
+                  }
+                  placeholder="พิมพ์หัวข้อปัญหา"
+                  autoFocus
+                />
+              )}
+              {form.subjectGroup && (
+                <div className="text-[11px] text-muted-foreground">
+                  หมวด: {form.subjectGroup} • ความเร่งด่วนอัตโนมัติ: {form.priority}
+                </div>
+              )}
+            </div>
+
+            {/* Conditional sections */}
+            {form.isExternal ? (
+              <div className="grid gap-3 rounded-lg border border-teal-200 bg-teal-50/50 p-3 dark:border-teal-800 dark:bg-teal-950/30">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="wo-client">
+                      ชื่อลูกค้า <span className="text-rose-500">*</span>
+                    </Label>
+                    <Input
+                      id="wo-client"
+                      value={form.clientName}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, clientName: e.target.value }))
+                      }
+                      placeholder="เช่น บจก. ตัวอย่าง"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="wo-place">สถานที่</Label>
+                    <Input
+                      id="wo-place"
+                      value={form.place}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, place: e.target.value }))
+                      }
+                      placeholder="เช่น อาคาร X ชั้น 2"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="wo-contact-phone">เบอร์ติดต่อลูกค้า</Label>
+                  <Input
+                    id="wo-contact-phone"
+                    value={form.contactPhone}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, contactPhone: e.target.value }))
+                    }
+                    placeholder="08xxxxxxxx"
+                    inputMode="tel"
+                  />
+                </div>
+                {/* Serials list */}
+                <div className="grid gap-1.5">
+                  <Label htmlFor="wo-serial">S/N (Serial Number)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="wo-serial"
+                      value={form.serialInput}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, serialInput: e.target.value }))
+                      }
+                      placeholder="กรอก S/N แล้วกด + เพื่อเพิ่ม"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          addSerial()
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={addSerial}
+                      disabled={!form.serialInput.trim()}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {form.serials.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {form.serials.map((s) => (
+                        <Badge
+                          key={s}
+                          variant="outline"
+                          className="gap-1 font-mono text-[11px]"
+                        >
+                          <Hash className="h-3 w-3" />
+                          {s}
+                          <button
+                            type="button"
+                            onClick={() => removeSerial(s)}
+                            className="ml-1 rounded-full p-0.5 hover:bg-muted"
+                            aria-label={`ลบ ${s}`}
+                          >
+                            <XCircle className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="wo-building">อาคาร / ฝ่าย</Label>
+                    <Input
+                      id="wo-building"
+                      value={form.building}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, building: e.target.value }))
+                      }
+                      placeholder="เช่น อาคาร A, ฝ่ายบัญชี"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="wo-location">ตำแหน่ง / ห้อง</Label>
+                    <Input
+                      id="wo-location"
+                      value={form.location}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, location: e.target.value }))
+                      }
+                      placeholder="เช่น ชั้น 3 ห้อง 305"
+                    />
+                  </div>
+                </div>
+
+                {/* Asset lookup */}
+                <div className="grid gap-1.5">
+                  <Label htmlFor="wo-device-search">เลขทะเบียนอุปกรณ์ (Optional)</Label>
+                  <Input
+                    id="wo-device-search"
+                    value={form.deviceSearch}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, deviceSearch: e.target.value }))
+                    }
+                    placeholder="พิมพ์เลขทะเบียน / ชื่อ / S/N เพื่อค้นหาอุปกรณ์"
+                  />
+                  {deviceLoading && (
+                    <div className="text-[11px] text-muted-foreground">กำลังค้นหา...</div>
+                  )}
+                  {!deviceLoading && deviceResults.length > 0 && (
+                    <div className="max-h-40 overflow-y-auto rounded-md border bg-card">
+                      {deviceResults.map((d) => (
+                        <button
+                          key={d.id}
+                          type="button"
+                          onClick={() => {
+                            setForm((s) => ({
+                              ...s,
+                              deviceId: d.id,
+                              deviceSearch: `${d.assetCode} — ${d.name}`,
+                              building: s.building || d.building || '',
+                              location: s.location || d.location || '',
+                            }))
+                            setDeviceResults([])
+                          }}
+                          className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-2 text-left text-xs last:border-b-0 hover:bg-muted"
+                        >
+                          <span className="font-mono font-semibold">{d.assetCode}</span>
+                          <span className="text-muted-foreground">
+                            {d.name} {d.brand && d.model ? `(${d.brand} ${d.model})` : ''}
+                            {d.site ? ` • ${d.site}` : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {form.deviceId && (
+                    <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="h-3 w-3" /> เลือกอุปกรณ์แล้ว
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((s) => ({
+                            ...s,
+                            deviceId: null,
+                            deviceSearch: '',
+                          }))
+                        }
+                        className="ml-1 underline"
+                      >
+                        ล้าง
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="wo-details">รายละเอียดปัญหา</Label>
+              <Textarea
+                id="wo-details"
+                value={form.details}
+                onChange={(e) => setForm((s) => ({ ...s, details: e.target.value }))}
+                placeholder="อธิบายอาการ ความถี่ หรือข้อมูลที่ช่างควรทราบ"
+                className="min-h-[80px]"
               />
             </div>
-          </div>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="wo-details">รายละเอียดปัญหา</Label>
-            <Textarea
-              id="wo-details"
-              value={form.details}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, details: e.target.value }))
-              }
-              placeholder="อธิบายอาการ ความถี่ หรือข้อมูลที่ช่างควรทราบ"
-              className="min-h-[80px]"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="wo-priority">ความเร่งด่วน</Label>
-              <Select
-                value={form.priority}
-                onValueChange={(v) => setForm((s) => ({ ...s, priority: v }))}
-              >
-                <SelectTrigger id="wo-priority">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PRIORITY_FORM_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="wo-priority">ความเร่งด่วน</Label>
+                <Select
+                  value={form.priority}
+                  onValueChange={(v) => setForm((s) => ({ ...s, priority: v }))}
+                >
+                  <SelectTrigger id="wo-priority">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PRIORITY_FORM_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="wo-pic">รูปก่อนซ่อม (Optional)</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={fileInputRef}
+                    id="wo-pic"
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePicBeforeChange}
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <ImageIcon className="h-4 w-4" />
+                    {form.picBefore ? 'เปลี่ยนรูป' : 'เลือกรูป'}
+                  </Button>
+                  {form.picBefore && (
+                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <img
+                        src={form.picBefore}
+                        alt="pic-before"
+                        className="h-8 w-8 rounded border object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((s) => ({
+                            ...s,
+                            picBefore: null,
+                            picBeforeName: '',
+                          }))
+                        }
+                        className="text-rose-500 underline"
+                      >
+                        ลบ
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="wo-tel">เบอร์โทร</Label>
-              <Input
-                id="wo-tel"
-                value={form.tel}
-                onChange={(e) => setForm((s) => ({ ...s, tel: e.target.value }))}
-                placeholder="08xxxxxxxx"
-                inputMode="tel"
-              />
+
+            {/* Reporter block */}
+            <div className="grid gap-2 rounded-lg border bg-card p-3">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                {form.isExternal
+                  ? 'ผู้แจ้ง (ช่างที่รับงาน)'
+                  : 'ผู้แจ้ง (ต้องยืนยันตัวตนกับสมุดผู้ติดต่อ)'}
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="wo-reporter">
+                    ชื่อผู้แจ้ง
+                    {!form.isExternal && <span className="text-rose-500"> *</span>}
+                  </Label>
+                  <Input
+                    id="wo-reporter"
+                    value={form.reporterName}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, reporterName: e.target.value }))
+                    }
+                    placeholder="ชื่อ-นามสกุล"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="wo-tel">
+                    เบอร์โทร
+                    {!form.isExternal && <span className="text-rose-500"> *</span>}
+                  </Label>
+                  <Input
+                    id="wo-tel"
+                    value={form.tel}
+                    onChange={(e) => setForm((s) => ({ ...s, tel: e.target.value }))}
+                    placeholder="08xxxxxxxx"
+                    inputMode="tel"
+                  />
+                </div>
+              </div>
+              {!form.isExternal && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="wo-emp">รหัสพนักงาน (Optional)</Label>
+                  <Input
+                    id="wo-emp"
+                    value={form.employeeCode}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, employeeCode: e.target.value }))
+                    }
+                    placeholder="เช่น EMP001"
+                  />
+                </div>
+              )}
+              {!form.isExternal && (
+                <div className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                  ระบบจะตรวจสอบชื่อ + เบอร์โทรกับสมุดผู้ติดต่อ (ContactDirectory)
+                  หากไม่ตรงจะไม่สามารถส่งใบแจ้งซ่อมได้
+                </div>
+              )}
             </div>
           </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="wo-reporter">ผู้แจ้ง</Label>
-            <Input
-              id="wo-reporter"
-              value={form.reporterName}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, reporterName: e.target.value }))
-              }
-              placeholder="ชื่อผู้แจ้งซ่อม"
-            />
-          </div>
-        </div>
+        </ScrollArea>
 
         <DialogFooter>
           <Button
@@ -803,7 +1405,7 @@ function CreateWorkOrderDialog({
           </Button>
           <Button
             onClick={onSubmit}
-            disabled={saving || !form.subject.trim()}
+            disabled={saving || !form.subject.trim() || form.subject === '__custom__'}
             className="bg-orange-500 hover:bg-orange-600"
           >
             {saving ? (
@@ -825,9 +1427,11 @@ function CreateWorkOrderDialog({
 function WorkOrderDetailDialog({
   id,
   onOpenChange,
+  resolutions,
 }: {
   id: string | null
   onOpenChange: (open: boolean) => void
+  resolutions: ResolutionOption[]
 }) {
   const qc = useQueryClient()
   const open = Boolean(id)
@@ -854,7 +1458,7 @@ function WorkOrderDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-[720px]">
+      <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-[760px]">
         {detailQuery.isLoading ? (
           <div className="space-y-3 p-6">
             <Skeleton className="h-6 w-32" />
@@ -871,6 +1475,7 @@ function WorkOrderDetailDialog({
             wo={wo}
             onMutated={refreshAll}
             onClose={() => onOpenChange(false)}
+            resolutions={resolutions}
           />
         )}
       </DialogContent>
@@ -882,10 +1487,12 @@ function WorkOrderDetailContent({
   wo,
   onMutated,
   onClose,
+  resolutions,
 }: {
   wo: WorkOrderDetail
   onMutated: () => void
   onClose: () => void
+  resolutions: ResolutionOption[]
 }) {
   // Assign technician
   const [assignOpen, setAssignOpen] = React.useState(false)
@@ -897,11 +1504,29 @@ function WorkOrderDetailContent({
   const [completeOpen, setCompleteOpen] = React.useState(false)
   const [completeNote, setCompleteNote] = React.useState('')
   const [completing, setCompleting] = React.useState(false)
+  const [resolutionValue, setResolutionValue] = React.useState<string>(wo.resolution ?? '')
+  const [resolutionGroup, setResolutionGroup] = React.useState<string>(wo.resolutionGroup ?? '')
+  const [picAfter, setPicAfter] = React.useState<string | null>(wo.picAfter ?? null)
+  const picAfterInputRef = React.useRef<HTMLInputElement>(null)
 
   // Cancel
   const [cancelOpen, setCancelOpen] = React.useState(false)
   const [cancelReason, setCancelReason] = React.useState('')
   const [canceling, setCanceling] = React.useState(false)
+
+  // Reporter edit
+  const [reporterEditOpen, setReporterEditOpen] = React.useState(false)
+  const [reporterEdit, setReporterEdit] = React.useState({
+    verifyName: wo.reporterName ?? '',
+    verifyPhone: wo.tel ?? '',
+    employeeCode: wo.employeeCode ?? '',
+    subject: wo.subject,
+    building: wo.building ?? '',
+    location: wo.location ?? '',
+    details: wo.details ?? '',
+    tel: wo.tel ?? '',
+  })
+  const [reporterEditSaving, setReporterEditSaving] = React.useState(false)
 
   // Chat
   const [chatText, setChatText] = React.useState('')
@@ -913,7 +1538,20 @@ function WorkOrderDetailContent({
     // sync tech name when WO changes
     setTechName(wo.assignedTo ?? '')
     setAssignNote(wo.assignmentNote ?? '')
-  }, [wo.id, wo.assignedTo, wo.assignmentNote])
+    setResolutionValue(wo.resolution ?? '')
+    setResolutionGroup(wo.resolutionGroup ?? '')
+    setPicAfter(wo.picAfter ?? null)
+    setReporterEdit({
+      verifyName: wo.reporterName ?? '',
+      verifyPhone: wo.tel ?? '',
+      employeeCode: wo.employeeCode ?? '',
+      subject: wo.subject,
+      building: wo.building ?? '',
+      location: wo.location ?? '',
+      details: wo.details ?? '',
+      tel: wo.tel ?? '',
+    })
+  }, [wo.id, wo.assignedTo, wo.assignmentNote, wo.resolution, wo.resolutionGroup, wo.picAfter, wo.reporterName, wo.tel, wo.employeeCode, wo.subject, wo.building, wo.location, wo.details])
 
   React.useEffect(() => {
     if (messagesEndRef.current) {
@@ -921,10 +1559,23 @@ function WorkOrderDetailContent({
     }
   }, [messages.length])
 
+  const external = parseExternalMeta(wo.externalMeta)
+
   const canAssign = wo.status === 'PENDING' || wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
   const canComplete = wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
   const canCancel = wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
   const canChat = wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
+  const canReporterEdit = wo.status === 'PENDING'
+
+  // Resolution groups for the dropdown
+  const resolutionGroups = React.useMemo(() => {
+    const map = new Map<string, ResolutionOption[]>()
+    for (const r of resolutions) {
+      if (!map.has(r.group)) map.set(r.group, [])
+      map.get(r.group)!.push(r)
+    }
+    return Array.from(map.entries())
+  }, [resolutions])
 
   async function handleAssign() {
     if (!techName.trim()) {
@@ -956,14 +1607,36 @@ function WorkOrderDetailContent({
     }
   }
 
+  async function handlePicAfterChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const dataUrl = await compressImage(file)
+      setPicAfter(dataUrl)
+    } catch {
+      toast.error('อ่านไฟล์รูปไม่สำเร็จ')
+    } finally {
+      if (picAfterInputRef.current) picAfterInputRef.current.value = ''
+    }
+  }
+
   async function handleComplete() {
     try {
       setCompleting(true)
+      // Look up group for the chosen resolution
+      let group = ''
+      if (resolutionValue) {
+        const opt = resolutions.find((r) => r.value === resolutionValue)
+        group = opt?.group ?? ''
+      }
       const res = await fetch(`/api/work-orders/${wo.id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           note: completeNote.trim() || null,
+          resolution: resolutionValue || null,
+          resolutionGroup: group || null,
+          picAfter: picAfter,
           actor: 'admin',
         }),
       })
@@ -1012,6 +1685,41 @@ function WorkOrderDetailContent({
     }
   }
 
+  async function handleReporterEdit() {
+    if (!reporterEdit.verifyName.trim() || !reporterEdit.verifyPhone.trim()) {
+      toast.error('ต้องระบุชื่อและเบอร์โทรของผู้แจ้งเพื่อยืนยันตัวตน')
+      return
+    }
+    try {
+      setReporterEditSaving(true)
+      const res = await fetch(`/api/work-orders/${wo.id}/reporter-edit`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          verifyName: reporterEdit.verifyName.trim(),
+          verifyPhone: reporterEdit.verifyPhone.trim(),
+          employeeCode: reporterEdit.employeeCode.trim() || undefined,
+          subject: reporterEdit.subject.trim() || undefined,
+          building: reporterEdit.building.trim() || null,
+          location: reporterEdit.location.trim() || null,
+          details: reporterEdit.details.trim() || null,
+          tel: reporterEdit.tel.trim() || null,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'แก้ไขไม่สำเร็จ')
+      }
+      toast.success('แก้ไขใบงานเรียบร้อย')
+      setReporterEditOpen(false)
+      onMutated()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'แก้ไขไม่สำเร็จ')
+    } finally {
+      setReporterEditSaving(false)
+    }
+  }
+
   async function handleSendMessage() {
     const text = chatText.trim()
     if (!text) return
@@ -1055,9 +1763,19 @@ function WorkOrderDetailContent({
           <span className="font-mono text-xs font-semibold text-muted-foreground">
             {wo.woNumber ?? '—'}
           </span>
-          <Badge className={statusBadgeClass(wo.status)} variant="outline">
-            {statusLabel(wo.status)}
-          </Badge>
+          <div className="flex items-center gap-1">
+            {external && (
+              <Badge
+                className="border-teal-200 bg-teal-100 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
+                variant="outline"
+              >
+                งานนอก
+              </Badge>
+            )}
+            <Badge className={statusBadgeClass(wo.status)} variant="outline">
+              {statusLabel(wo.status)}
+            </Badge>
+          </div>
         </div>
         <h2 className="text-lg font-bold leading-tight">{wo.subject}</h2>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -1069,24 +1787,74 @@ function WorkOrderDetailContent({
           <Badge className={priorityBadgeClass(wo.priority)} variant="outline">
             {wo.priority}
           </Badge>
+          <span className="text-[10px] uppercase tracking-wide">
+            ({wo.submissionSource === 'session' ? 'ล็อกอิน' : 'guest'})
+          </span>
         </div>
       </div>
 
       {/* Body — scrollable */}
       <ScrollArea className="flex-1 overflow-y-auto">
         <div className="space-y-4 px-5 py-4">
+          {/* External block */}
+          {external && (
+            <div className="rounded-lg border border-teal-200 bg-teal-50/60 p-3 dark:border-teal-800 dark:bg-teal-950/30">
+              <div className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-teal-700 dark:text-teal-300">
+                <PackageOpen className="h-3.5 w-3.5" />
+                ข้อมูลลูกค้าภายนอก
+              </div>
+              <div className="grid grid-cols-1 gap-1.5 text-sm sm:grid-cols-2">
+                {external.clientName && (
+                  <div>
+                    <span className="text-[10px] uppercase text-muted-foreground">ลูกค้า</span>
+                    <div className="font-medium">{external.clientName}</div>
+                  </div>
+                )}
+                {external.place && (
+                  <div>
+                    <span className="text-[10px] uppercase text-muted-foreground">สถานที่</span>
+                    <div className="font-medium">{external.place}</div>
+                  </div>
+                )}
+                {external.contactPhone && (
+                  <div>
+                    <span className="text-[10px] uppercase text-muted-foreground">เบอร์ติดต่อ</span>
+                    <div className="font-medium">{external.contactPhone}</div>
+                  </div>
+                )}
+              </div>
+              {external.serials && external.serials.length > 0 && (
+                <div className="mt-2">
+                  <div className="mb-1 text-[10px] uppercase text-muted-foreground">S/N</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {external.serials.map((s) => (
+                      <Badge key={s} variant="outline" className="gap-1 font-mono text-[11px]">
+                        <Hash className="h-3 w-3" />
+                        {s}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Info grid */}
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <InfoRow
-              icon={<MapPin className="h-4 w-4" />}
-              label="อาคาร / ฝ่าย"
-              value={wo.building ?? '—'}
-            />
-            <InfoRow
-              icon={<MapPin className="h-4 w-4" />}
-              label="ตำแหน่ง"
-              value={wo.location ?? '—'}
-            />
+            {!external && (
+              <>
+                <InfoRow
+                  icon={<MapPin className="h-4 w-4" />}
+                  label="อาคาร / ฝ่าย"
+                  value={wo.building ?? '—'}
+                />
+                <InfoRow
+                  icon={<MapPin className="h-4 w-4" />}
+                  label="ตำแหน่ง"
+                  value={wo.location ?? '—'}
+                />
+              </>
+            )}
             <InfoRow
               icon={<User className="h-4 w-4" />}
               label="ผู้แจ้ง"
@@ -1097,6 +1865,20 @@ function WorkOrderDetailContent({
               label="เบอร์โทร"
               value={wo.tel ?? '—'}
             />
+            {wo.employeeCode && (
+              <InfoRow
+                icon={<Hash className="h-4 w-4" />}
+                label="รหัสพนักงาน"
+                value={wo.employeeCode}
+              />
+            )}
+            {wo.device && (
+              <InfoRow
+                icon={<ClipboardList className="h-4 w-4" />}
+                label="เลขทะเบียนอุปกรณ์"
+                value={`${wo.device.assetCode} — ${wo.device.name}`}
+              />
+            )}
             <InfoRow
               icon={<User className="h-4 w-4" />}
               label="ช่างผู้รับผิดชอบ"
@@ -1107,7 +1889,38 @@ function WorkOrderDetailContent({
               label="มอบหมายเมื่อ"
               value={wo.assignedAt ? formatDateTime(wo.assignedAt) : '—'}
             />
+            {wo.assignedBy && (
+              <InfoRow
+                icon={<User className="h-4 w-4" />}
+                label="มอบหมายโดย"
+                value={wo.assignedBy}
+              />
+            )}
+            {wo.workCompletedAt && (
+              <InfoRow
+                icon={<CheckCircle2 className="h-4 w-4" />}
+                label="ปิดงานเมื่อ"
+                value={formatDateTime(wo.workCompletedAt)}
+              />
+            )}
+            {wo.closedAt && wo.closedAt !== wo.workCompletedAt && (
+              <InfoRow
+                icon={<CheckCircle2 className="h-4 w-4" />}
+                label="ปิดเรื่องเมื่อ"
+                value={formatDateTime(wo.closedAt)}
+              />
+            )}
           </div>
+
+          {/* Assignment note */}
+          {wo.assignmentNote && (
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+              <div className="mb-1 text-xs font-semibold text-muted-foreground">
+                หมายเหตุการมอบหมาย
+              </div>
+              <p className="whitespace-pre-wrap">{wo.assignmentNote}</p>
+            </div>
+          )}
 
           {/* Details */}
           {wo.details && (
@@ -1119,14 +1932,32 @@ function WorkOrderDetailContent({
             </div>
           )}
 
-          {/* Admin note */}
-          {wo.detailsAdmin && (
-            <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm dark:border-orange-800 dark:bg-orange-950/40">
-              <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-orange-700 dark:text-orange-300">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                หมายเหตุช่าง
-              </div>
-              <p className="whitespace-pre-wrap">{wo.detailsAdmin}</p>
+          {/* Admin note + Resolution */}
+          {(wo.detailsAdmin || wo.resolution) && (
+            <div className="space-y-2">
+              {wo.resolution && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm dark:border-emerald-800 dark:bg-emerald-950/40">
+                  <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    ผลการแก้ไข
+                    {wo.resolutionGroup && (
+                      <span className="ml-1 rounded bg-emerald-200/60 px-1.5 py-0.5 text-[10px] dark:bg-emerald-900/60">
+                        {wo.resolutionGroup}
+                      </span>
+                    )}
+                  </div>
+                  <p className="whitespace-pre-wrap">{wo.resolution}</p>
+                </div>
+              )}
+              {wo.detailsAdmin && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm dark:border-orange-800 dark:bg-orange-950/40">
+                  <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-orange-700 dark:text-orange-300">
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    หมายเหตุช่าง
+                  </div>
+                  <p className="whitespace-pre-wrap">{wo.detailsAdmin}</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -1138,6 +1969,20 @@ function WorkOrderDetailContent({
                 เหตุผลการยกเลิก
               </div>
               <p className="whitespace-pre-wrap">{wo.cancelReason}</p>
+            </div>
+          )}
+
+          {/* Edit-unlock info */}
+          {wo.editUnlockActive && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950/40">
+              <div className="mb-1 flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-300">
+                <Edit3 className="h-3.5 w-3.5" />
+                ปลดล็อกให้ผู้แจ้งแก้ไข
+              </div>
+              <div>
+                ปลดล็อกโดย: {wo.editUnlockBy ?? '—'} • {wo.editUnlockAt ? formatDateTime(wo.editUnlockAt) : '—'}
+              </div>
+              {wo.editUnlockNote && <div className="mt-0.5">หมายเหตุ: {wo.editUnlockNote}</div>}
             </div>
           )}
 
@@ -1213,7 +2058,9 @@ function WorkOrderDetailContent({
                             ? 'bg-muted text-muted-foreground'
                             : m.authorRole === 'admin'
                               ? 'bg-orange-100 text-orange-900 dark:bg-orange-950 dark:text-orange-100'
-                              : 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-100'
+                              : m.authorRole === 'reporter'
+                                ? 'bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-100'
+                                : 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-100'
                         }`}
                       >
                         {!isSystem && (
@@ -1266,6 +2113,17 @@ function WorkOrderDetailContent({
 
       {/* Footer actions */}
       <div className="flex flex-wrap items-center gap-2 border-t px-5 py-3">
+        {canReporterEdit && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setReporterEditOpen(true)}
+            className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950"
+          >
+            <Edit3 className="h-4 w-4" />
+            ผู้แจ้งแก้ไข
+          </Button>
+        )}
         {canAssign && (
           <Button
             size="sm"
@@ -1355,22 +2213,100 @@ function WorkOrderDetailContent({
 
       {/* Complete dialog */}
       <AlertDialog open={completeOpen} onOpenChange={setCompleteOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>ปิดงาน</AlertDialogTitle>
             <AlertDialogDescription>
               ยืนยันการปิดงาน {wo.woNumber} — สถานะจะเปลี่ยนเป็น &quot;เสร็จแล้ว&quot;
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="grid gap-1.5 py-2">
-            <Label htmlFor="complete-note">หมายเหตุการซ่อม</Label>
-            <Textarea
-              id="complete-note"
-              value={completeNote}
-              onChange={(e) => setCompleteNote(e.target.value)}
-              placeholder="เช่น เปลี่ยนหมึก, แก้ไขการตั้งค่าเครือข่าย..."
-              className="min-h-[80px]"
-            />
+          <div className="space-y-3 py-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="complete-resolution">ผลการแก้ไข</Label>
+              {resolutions.length === 0 ? (
+                <Input
+                  id="complete-resolution"
+                  value={resolutionValue}
+                  onChange={(e) => setResolutionValue(e.target.value)}
+                  placeholder="พิมพ์ผลการแก้ไข"
+                />
+              ) : (
+                <Select
+                  value={resolutionValue}
+                  onValueChange={(v) => {
+                    setResolutionValue(v)
+                    const opt = resolutions.find((r) => r.value === v)
+                    setResolutionGroup(opt?.group ?? '')
+                  }}
+                >
+                  <SelectTrigger id="complete-resolution">
+                    <SelectValue placeholder="เลือกผลการแก้ไข" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {resolutionGroups.map(([group, opts]) => (
+                      <SelectGroup key={group}>
+                        <SelectLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {group}
+                        </SelectLabel>
+                        {opts.map((o) => (
+                          <SelectItem key={group + '|' + o.value} value={o.value}>
+                            {o.value}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="complete-note">หมายเหตุการซ่อม</Label>
+              <Textarea
+                id="complete-note"
+                value={completeNote}
+                onChange={(e) => setCompleteNote(e.target.value)}
+                placeholder="เช่น เปลี่ยนหมึก, แก้ไขการตั้งค่าเครือข่าย..."
+                className="min-h-[80px]"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="complete-pic-after">รูปหลังซ่อม (Optional)</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={picAfterInputRef}
+                  id="complete-pic-after"
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePicAfterChange}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => picAfterInputRef.current?.click()}
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  {picAfter ? 'เปลี่ยนรูป' : 'เลือกรูป'}
+                </Button>
+                {picAfter && (
+                  <div className="flex items-center gap-1">
+                    <img
+                      src={picAfter}
+                      alt="pic-after"
+                      className="h-8 w-8 rounded border object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPicAfter(null)}
+                      className="text-[11px] text-rose-500 underline"
+                    >
+                      ลบ
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={completing}>ยกเลิก</AlertDialogCancel>
@@ -1434,6 +2370,139 @@ function WorkOrderDetailContent({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Reporter edit dialog */}
+      <Dialog open={reporterEditOpen} onOpenChange={setReporterEditOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit3 className="h-5 w-5 text-amber-500" />
+              ผู้แจ้งแก้ไขใบงานเอง
+            </DialogTitle>
+            <DialogDescription>
+              สามารถแก้ไขได้เฉพาะใบงานที่ยังไม่ถูกรับ (สถานะ PENDING)
+              ต้องยืนยันตัวตนด้วยชื่อ + เบอร์โทรของผู้แจ้ง
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="re-verify-name">
+                  ชื่อผู้แจ้ง <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="re-verify-name"
+                  value={reporterEdit.verifyName}
+                  onChange={(e) =>
+                    setReporterEdit((s) => ({ ...s, verifyName: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="re-verify-phone">
+                  เบอร์โทร <span className="text-rose-500">*</span>
+                </Label>
+                <Input
+                  id="re-verify-phone"
+                  value={reporterEdit.verifyPhone}
+                  onChange={(e) =>
+                    setReporterEdit((s) => ({ ...s, verifyPhone: e.target.value }))
+                  }
+                  inputMode="tel"
+                />
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="re-emp">รหัสพนักงาน (Optional)</Label>
+              <Input
+                id="re-emp"
+                value={reporterEdit.employeeCode}
+                onChange={(e) =>
+                  setReporterEdit((s) => ({ ...s, employeeCode: e.target.value }))
+                }
+              />
+            </div>
+            <div className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+              ชื่อ + เบอร์โทรต้องตรงกับสมุดผู้ติดต่อ และตรงกับผู้แจ้งในใบงานนี้
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="re-subject">ประเภทปัญหา</Label>
+              <Input
+                id="re-subject"
+                value={reporterEdit.subject}
+                onChange={(e) =>
+                  setReporterEdit((s) => ({ ...s, subject: e.target.value }))
+                }
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="re-building">อาคาร / ฝ่าย</Label>
+                <Input
+                  id="re-building"
+                  value={reporterEdit.building}
+                  onChange={(e) =>
+                    setReporterEdit((s) => ({ ...s, building: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="re-location">ตำแหน่ง</Label>
+                <Input
+                  id="re-location"
+                  value={reporterEdit.location}
+                  onChange={(e) =>
+                    setReporterEdit((s) => ({ ...s, location: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="re-details">รายละเอียด</Label>
+              <Textarea
+                id="re-details"
+                value={reporterEdit.details}
+                onChange={(e) =>
+                  setReporterEdit((s) => ({ ...s, details: e.target.value }))
+                }
+                className="min-h-[80px]"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="re-tel">เบอร์โทรใหม่</Label>
+              <Input
+                id="re-tel"
+                value={reporterEdit.tel}
+                onChange={(e) =>
+                  setReporterEdit((s) => ({ ...s, tel: e.target.value }))
+                }
+                inputMode="tel"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setReporterEditOpen(false)}
+              disabled={reporterEditSaving}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleReporterEdit}
+              disabled={reporterEditSaving}
+              className="bg-amber-500 hover:bg-amber-600"
+            >
+              {reporterEditSaving ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Edit3 className="h-4 w-4" />
+              )}
+              บันทึกการแก้ไข
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
