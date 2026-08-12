@@ -2471,3 +2471,32 @@ Stage Summary:
 - Dashboard: ดึงข้อมูลจริงทั้ง 3 ระบบ (2,378 devices + 4,942 WO + 60 stock)
 - Sidebar: กรองตามสิทธิ์ (coordinator เห็นแค่แจ้งซ่อน, viewer เห็นแค่ดู)
 - พร้อมสำหรับการใช้งานจริง
+
+---
+Task ID: FIX-BELL-AVATAR
+Agent: orchestrator — แก้กระดิ่งแจ้งเตือน z-index + เพิ่มรูปโปรไฟล์
+
+Work Log:
+
+1. แก้กระดิ่งแจ้งเตือนซ่อนใต้ sidebar:
+   - สาเหตุ: PopoverContent ไม่มี z-index → ซ่อนใต้ sidebar (z-[100])
+   - แก้: เพิ่ม className="z-[300]" ให้ PopoverContent (สูงกว่า sidebar z-[100] + mobile z-[200])
+   - ผล: Popover แสดงเหนือ sidebar แล้ว
+
+2. เพิ่มรูปโปรไฟล์ผู้ใช้:
+   - Schema: เพิ่ม avatarUrl, phone, lineUserId ใน User model
+   - Sidebar: แสดง avatar (รูปจริง หรือ initials ถ้าไม่มีรูป)
+     • ถ้ามี avatarUrl (เริ่มด้วย http) → แสดง <img> วงกลม
+     • ถ้าไม่มี → แสดง initials (2 ตัวแรกของชื่อ) ในวงกลมสีส้ม gradient
+   - ดีไซน์: ring-2 ring-white/20 + ขนาด 8×8 (h-8 w-8)
+
+3. เรื่อง Supabase Auth:
+   - ตอนนี้ใช้ session แบบง่าย (cookie-based)
+   - เมื่อ deploy ขึ้น Supabase → แนะนำให้ใช้ Supabase Auth (รองรับ OAuth, RLS, ฟรี 50K MAU)
+   - RBAC ที่สร้างไว้ (28 permissions, 5 roles) ใช้ได้กับทั้ง 2 แบบ
+
+Verification:
+✅ กระดิ่งแจ้งเตือน: คลิกแล้ว popover แสดงเหนือ sidebar (z-[300] > z-[100])
+✅ รูปโปรไฟล์: แสดง initials "ผู้ดูแลระบบ" → "ผู" ในวงกลมสีส้ม (ไม่มีรูปจริง → ใช้ initials)
+✅ Lint: 0 errors
+✅ Prisma: db:push สำเร็จ (avatarUrl, phone, lineUserId ใน User)
