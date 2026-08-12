@@ -1857,3 +1857,29 @@ Stage Summary:
 - รูปเก็บ Google Drive ได้ (พร้อม swap ไป Supabase ในอนาคต)
 - CSV mapping รองรับทั้ง 3 ระบบ (snake_case, PascalCase, JSON)
 - ค่าเริ่มต้นดี: ชื่อกลาง, Google Drive, 3 asset patterns
+
+---
+Task ID: DATA-IMPORT-1
+Agent: orchestrator — Import IT-Asset ข้อมูลจริง 2,378 อุปกรณ์
+Task: ดึงข้อมูลจาก Google Sheet ID 1Zi2sDW1... (IT-Asset) เข้า Next.js
+
+Work Log:
+- รับ Sheet ID: 1Zi2sDW1xeAUdHb6MSt0AdpZttRY8C3-WB5agHLaeUpc
+- ลอง download CSV ผ่าน public URL → 401 (ต้อง login)
+- แต่มี CSV export อยู่แล้วใน upload/ (947KB, 2,378 rows)
+- แก้ FIELD_MAPPINGS.device: เพิ่ม identity mappings สำหรับ direct-match fields (brand, model, status, site, department, location, building, floor, ip, mac, remark, vendor)
+- สร้าง scripts/import-it-asset.ts: อ่าน CSV → mapCsvRow → upsert Device
+- Import ครั้งแรก: 2,378 inserted, 0 errors (แต่ brand/model = Unknown เพราะไม่ได้เพิ่ม identity mappings)
+- ลบข้อมูล + import ใหม่: 2,378 inserted, 0 errors, ข้อมูลครบสมบูรณ์
+- ตรวจสอบ: BROTHER HL-L5210DN, ZEBRA DS2208, EPSON L5290, OKI B412DN — brand, model, type, site, department, status ครบ
+
+Sheet IDs ที่รับ:
+- IT-Asset: 1Zi2sDW1xeAUdHb6MSt0AdpZttRY8C3-WB5agHLaeUpc (✅ imported 2,378 devices)
+- Services: 1_YPa5fvNnsoKA0I3JFk38x7A7kTGHCVfDhsvQ-aCmgw (⏳ รอ export หรือแชร์)
+- Stock: 18unmy8rRwQYgFuunZkKueMwBUFvpVtqvokb6l-YihaM (⏳ รอ export หรือแชร์)
+
+Stage Summary:
+- IT-Asset: ✅ 2,378 อุปกรณ์ import สำเร็จ (0 errors)
+- Services + Stock: ต้อง export CSV หรือแชร์ Sheet เป็น "Anyone with link"
+- CSV mapping ทำงานถูกต้อง (snake_case → camelCase + identity mappings)
+- พร้อม import อีก 2 แอปเมื่อได้ไฟล์

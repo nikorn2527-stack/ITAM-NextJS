@@ -35,8 +35,19 @@ export const FIELD_MAPPINGS = {
     'meter_required': 'meterRequired',
     'meter_mode': 'meterMode',
     'asset_site_code': 'displayLabel',
-    // Direct matches (no rename needed): brand, model, status, site, department,
-    // location, building, floor, ip, mac, remark, vendor
+    // Direct matches (identity mappings — same name in CSV and Prisma)
+    'brand': 'brand',
+    'model': 'model',
+    'status': 'status',
+    'site': 'site',
+    'department': 'department',
+    'location': 'location',
+    'building': 'building',
+    'floor': 'floor',
+    'ip': 'ip',
+    'mac': 'mac',
+    'remark': 'remark',
+    'vendor': 'vendor',
   } as Record<string, string>,
 
   // ── IT-Asset: Meter_Readings (snake_case) ──
