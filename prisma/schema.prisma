@@ -526,17 +526,22 @@ model SiteRate {
 
 // ============================================================
 // 16) User — ผู้ใช้งานระบบ
+//     RBAC + Site-Level Permissions (Task ID: RBAC-DASHBOARD)
+//     - role: admin | manager | staff | coordinator | viewer
+//     - permissions: JSON array of permission strings (overrides role)
+//     - allowedSites: "ALL" หรือ comma-separated site names
 // ============================================================
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
   username      String?
   name          String?
-  role          String   @default("viewer") // admin | editor | staff | viewer
+  role          String   @default("viewer") // admin | manager | staff | coordinator | viewer | editor (legacy)
   department    String?
+  permissions   String?  // JSON array of permission strings (custom override)
+  allowedSites  String?  // "ALL" หรือ comma-separated site names
   active        Boolean  @default(true)
   passwordHash  String?
-  allowedSites  String?  // ALL หรือ comma-separated
   lastLoginAt   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
