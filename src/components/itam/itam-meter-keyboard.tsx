@@ -44,6 +44,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
 import { Search, Keyboard, ArrowUp, ArrowDown, CornerDownLeft, CheckCircle2, AlertTriangle, Loader2, RefreshCw, X } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
+import { useAppStore } from '@/store/app-store'
 
 interface UnreadDevice {
   id: string
@@ -109,6 +110,13 @@ export function ItamMeterKeyboard() {
   const [recent, setRecent] = React.useState<RecentlyKeyed[]>([])
   const [focus, setFocus] = React.useState<'search' | 'meter'>('search')
 
+  // ── Pending device (from QR scan or dashboard quick-action) ──
+  // When the user scans a QR code or clicks a "จดมิเตอร์" button on a specific
+  // device, the store sets pendingDeviceId. We pre-select that device and
+  // jump straight to meter input — no search needed.
+  const pendingDeviceId = useAppStore((s) => s.pendingDeviceId)
+  const clearPendingDeviceId = useAppStore((s) => s.clearPendingDeviceId)
+
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const bwInputRef = React.useRef<HTMLInputElement>(null)
   const colorInputRef = React.useRef<HTMLInputElement>(null)
@@ -137,6 +145,26 @@ export function ItamMeterKeyboard() {
   const total = data?.total ?? 0
   const read = data?.read ?? 0
   const unread = data?.unread ?? 0
+
+  // ── Pre-select pending device (from QR scan or quick-action) ──
+  // When a pendingDeviceId is set, find it in the loaded list and select it,
+  // then jump focus to the meter input. This makes the flow: scan QR →
+  // (page loads) → device already selected → just type meter → Enter.
+  React.useEffect(() => {
+    if (!pendingDeviceId || devices.length === 0) return
+    const idx = devices.findIndex((d) => d.assetNo === pendingDeviceId)
+    if (idx >= 0) {
+      setSelectedIndex(idx)
+      setFocus('meter')
+      // Scroll the selected item into view
+      setTimeout(() => {
+        const el = listRef.current?.querySelector(`[data-idx="${idx}"]`)
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      }, 50)
+      toast.success(`เลือกอุปกรณ์ ${pendingDeviceId} แล้ว — พิมพ์มิเตอร์แล้วกด Enter`)
+      clearPendingDeviceId()
+    }
+  }, [pendingDeviceId, devices, clearPendingDeviceId])
   const pct = total > 0 ? Math.round((read / total) * 100) : 0
 
   // The selected device (clamped to the visible list).
@@ -463,6 +491,7 @@ export function ItamMeterKeyboard() {
                     return (
                       <li
                         key={d.id}
+                        data-idx={i}
                         data-row-idx={i}
                         onClick={() => {
                           setSelectedIndex(i)

@@ -17,6 +17,8 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status')?.trim() ?? ''
     const site = searchParams.get('site')?.trim() ?? ''
     const deviceType = searchParams.get('type')?.trim() ?? ''
+    // Exact-match assetNo filter (used by QR scanner smart-routing and quick-lookup)
+    const assetNoExact = searchParams.get('assetNo')?.trim() ?? ''
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
     // Allow up to 2000 rows per page — virtual scroll mode fetches a large
     // batch in one shot so it can render 2,378+ rows without lag.
@@ -46,6 +48,8 @@ export async function GET(req: NextRequest) {
     }
     if (status) (where.AND as unknown[]).push({ status })
     if (deviceType) (where.AND as unknown[]).push({ deviceType: { contains: deviceType } })
+    // Exact-match assetNo (takes precedence over search if both are given)
+    if (assetNoExact) (where.AND as unknown[]).push({ assetNo: assetNoExact })
     // Collapse empty AND
     if (Array.isArray(where.AND) && where.AND.length === 0) delete where.AND
 
