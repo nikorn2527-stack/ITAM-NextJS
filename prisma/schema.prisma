@@ -341,21 +341,23 @@ model WorkOrderReview {
 // ============================================================
 model StockItem {
   id                String   @id @default(cuid())
-  productCode       String   @unique // รหัสสินค้า
-  productName       String
-  category          String?  // หมวดหมู่: หมึกพิมพ์ | กระดาษ | อะไหล่ | อุปกรณ์สำนักงาน
+  productCode       String   @unique // maps from ProductCode
+  productName       String   // maps from ProductName
+  category          String?
   brand             String?
   model             String?
-  unit              String   @default("ชิ้น") // ชิ้น | กล่อง | แพ็ค | ม้วน
-  quantity          Int      @default(0)
-  minQuantity       Int      @default(0) // จุดสั่งซื้อ
+  unit              String   @default("ชิ้น") // maps from Unit
+  quantity          Int      @default(0) // maps from CurrentStock
+  minQuantity       Int      @default(0) // maps from ReorderPoint
   maxQuantity       Int      @default(0)
-  unitCost          Float?   // ราคาต่อหน่วย
-  location          String?  // ตำแหน่งเก็บ
-  site              String?  // สาขา
-  compatibleDevices String?  // "EPSON L5290, L3210" (comma-separated)
+  unitCost          Float?   // maps from UnitPrice
+  totalValue        Float?   // maps from TotalValue — COMPUTED (quantity × unitCost)
+  location          String?
+  site              String?
+  compatibleDevices String?
   remark            String?
-  active            Boolean  @default(true)
+  active            Boolean  @default(true) // maps from Status
+  lastUpdated       String?  // maps from LastUpdated
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -368,19 +370,33 @@ model StockItem {
 // ============================================================
 model StockTransaction {
   id              String   @id @default(cuid())
-  txnNumber       String?  // STX-YYYYMMDD-NNN
+  txnNumber       String?  // STX-YYYYMMDD-NNN — maps from ReceiptNo (IN) or IssueNo (OUT)
   stockItemId     String
+  productCode     String?  // maps from ProductCode — denormalized for CSV import
+  productName     String?  // maps from ProductName — denormalized
   type            String   // IN | OUT | ADJUST
-  quantity        Int      // IN=+, OUT=-, ADJUST=set
+  quantity        Int      // maps from Quantity
+  unit            String?  // maps from Unit
   balanceAfter    Int      @default(0)
-  reason          String?  // ซื้อ | เบิกใช้ | ย้าย | เสีย | ตรวจนับ
-  workOrderId     String?  // เชื่อมใบงาน (ถ้าเบิกเพื่อซ่อม)
-  deviceId        String?  // เชื่อมอุปกรณ์ (ถ้าเบิกไปใช้กับเครื่องนั้น)
-  cost            Float?   // มูลค่ารวม (สำหรับ IN)
-  vendor          String?  // ซื้อจาก
-  txnDate         String   // ISO date
-  performedBy     String?
-  remark          String?
+  reason          String?
+  requester       String?  // maps from Requester (StockOut)
+  department      String?  // maps from Department (StockOut)
+  purpose         String?  // maps from Purpose (StockOut)
+  approver        String?  // maps from Approver (StockOut)
+  approvedAt      String?  // maps from ApprovedAt (StockOut)
+  workOrderId     String?
+  workOrderNo     String?  // maps from WorkOrderNo — for CSV import
+  deviceId        String?
+  cost            Float?   // maps from TotalValue
+  unitCost        Float?   // maps from UnitPrice
+  vendor          String?  // maps from Supplier
+  receiver        String?  // maps from Receiver (StockIn)
+  purchaseOrderNo String?  // maps from PurchaseOrderNo (StockIn)
+  txnDate         String   // maps from Date
+  performedBy     String?  // maps from PerformedBy
+  remark          String?  // maps from Remark
+  sourceKey       String?  // maps from source_key
+  processedFlag   String?  // maps from processed_flag
   createdAt       DateTime @default(now())
 
   stockItem       StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
