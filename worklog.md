@@ -2827,3 +2827,103 @@ Verification:
 ✅ Stock: มีคอลัมน์หมวดหมู่ + filter + เรียงตาม category+productCode
 ✅ Lint: 0 errors
 ✅ 4 หมวดหมู่: หมึกพิมพ์ 42, กระดาษ 6, อะไหล่ 5, อื่นๆ 7
+
+---
+Task ID: STOCK-DOCS
+Agent: full-stack-developer — เพิ่มระบบพิมพ์เอกสาร (ใบรับ/ใบเบิก/ใบสั่งซื้อ) + Export CSV สำหรับสต็อกสินค้า
+
+Work Log:
+
+1. สร้าง API endpoint พิมพ์ใบรับ/ใบเบิกสินค้า: `src/app/api/stock-items/[id]/print/route.ts`
+   - GET /api/stock-items/[id]/print?txnId=<id>&type=in|out
+   - คืน HTML แบบ self-contained (inline CSS, ไม่มี dependency ภายนอก)
+   - Header: "ใบรับสินค้า" / "ใบเบิกสินค้า" / "ใบปรับปรุงสต็อก" + เลขที่เอกสาร + วันที่
+   - Info section แยกตามประเภท:
+     • IN: ผู้จัดจำหน่าย, ผู้รับสินค้า, เลขที่ใบสั่งซื้อ, คงเหลือหลังรับ
+     • OUT: ผู้เบิก, แผนก, วัตถุประสงค์, ผู้อนุมัติ, วันที่อนุมัติ, คงเหลือหลังเบิก
+     • ADJUST: เหตุผล, ดำเนินการโดย, คงเหลือหลังปรับ
+   - ตารางสินค้า: รองรับ multi-item (group ธุรกรรมที่มี txnNumber เดียวกัน)
+   - Signatures: ผู้ส่ง/ผู้รับ/ผู้ตรวจสอบ (IN) | ผู้เบิก/คลังสินค้า/ผู้อนุมัติ (OUT) | ดำเนินการ/ตรวจสอบ/อนุมัติ (ADJUST)
+   - @page { size: A4 portrait; margin: 14mm }
+   - auto-trigger window.print() เมื่อเปิดผ่าน window.opener
+   - สี accent ต่างกัน: emerald (IN), rose (OUT), amber (ADJUST)
+
+2. สร้าง API endpoint พิมพ์ใบสั่งซื้อ: `src/app/api/purchase-orders/[id]/print/route.ts`
+   - GET /api/purchase-orders/[id]/print
+   - Header: "ใบสั่งซื้อ" + เลข PO + วันที่สั่ง
+   - Supplier info box: ชื่อผู้จัดจำหน่าย, เลข PO, วันที่, ผู้สั่งซื้อ, หมายเหตุ
+   - ตารางสินค้า: #, รหัส, ชื่อ, จำนวนสั่ง, จำนวนรับ, หน่วย, ราคา/หน่วย, มูลค่ารวม
+   - Total summary: จำนวนรายการ, จำนวนสั่งรวม, จำนวนรับรวม, มูลค่ารวมทั้งสิ้น
+   - Signatures: ผู้สั่งซื้อ, ผู้อนุมัติ, ซัพพลายเออร์
+   - สี accent: teal (#0d9488)
+   - @page { size: A4 portrait; margin: 14mm }
+   - auto-trigger window.print()
+
+3. แก้ไข `src/components/itam/stock-page.tsx`:
+   - เพิ่ม imports: Printer, FileDown จาก lucide-react
+   - ขยาย StockTransaction interface ให้ครบทุก field (vendor, requester, department, purpose, approver, receiver, purchaseOrderNo, unitCost, ฯลฯ)
+   - ปรับ PendingStockTransaction ให้ไม่ duplicate fields ที่มีใน base
+   - เพิ่ม module-level helpers:
+     • printDocument(url) — เปิด window ใหม่ + toast error ถ้า pop-up ถูกบล็อก
+     • csvCell(value) — escape ตาม RFC 4180
+     • downloadCSV(filename, rows) — สร้าง CSV พร้อม UTF-8 BOM สำหรับ Excel
+   - ในตารางประวัติธุรกรรม (detail dialog):
+     • เพิ่มปุ่ม "Export CSV" ข้าง badge จำนวนรายการ — ส่งออกธุรกรรมทั้งหมดของสินค้านั้น (18 คอลัมน์)
+     • เพิ่มคอลัมน์ "พิมพ์" กับปุ่มต่อแถว:
+       - IN → "ใบรับ" (emerald) → /api/stock-items/{id}/print?txnId={t.id}&type=in
+       - OUT → "ใบเบิก" (rose) → /api/stock-items/{id}/print?txnId={t.id}&type=out
+       - ADJUST → "ใบปรับ" (amber) → /api/stock-items/{id}/print?txnId={t.id}
+   - ในแท็บใบสั่งซื้อ:
+     • เพิ่ม header bar เหนือตาราง: จำนวน PO + ปุ่ม "Export CSV"
+     • เพิ่มคอลัมน์ "การจัดการ" กับปุ่ม "พิมพ์ใบสั่งซื้อ" (teal) ต่อแถว → /api/purchase-orders/{po.id}/print
+
+Verification:
+✅ bun run lint: ผ่าน 0 errors
+✅ Dev server: ตอบกลับ 200 OK สำหรับ /api/stock-items และ /api/purchase-orders
+✅ ไม่มี compile error ในไฟล์ใหม่ (เช็กจาก dev.log)
+✅ HTML pages self-contained (inline CSS, ไม่มี external deps)
+✅ Auto-trigger window.print() เมื่อเปิดผ่าน window.opener เท่านั้น
+✅ CSV export มี UTF-8 BOM (Excel อ่านภาษาไทยได้)
+✅ Thai labels ทั้งหมด
+
+---
+Task ID: STOCK-DOCS-VERIFY
+Agent: orchestrator — ตรวจสอบเอกสารสต็อก + ข้อมูลแสดงผล
+
+Work Log:
+
+1. ตรวจสอบข้อมูลแสดงผลทุกหน้า:
+   ✅ Dashboard API: devices=2,378, WO=4,942, stock=60 (48 active), PO=32
+   ✅ Devices API: ส่งข้อมูลกลับ (2,378 รายการ, BROTHER HL-L5210DN, ZEBRA DS2208)
+   ✅ Work Orders API: 4,942 รายการ (WO-20260812-005 รออะไหล่, WO-20260812-004 เสร็จแล้ว)
+   ✅ Stock API: 48 รายการ active (เรียงตาม category+productCode)
+   ✅ Purchase Orders API: 32 ใบสั่งซื้อ
+
+2. เพิ่มเอกสารใบรับ-ส่ง + ใบสั่งซื้อ:
+   - /api/stock-items/[id]/print: ใบรับ (IN), ใบเบิก (OUT), ใบปรับ (ADJUST) — HTTP 200, 28KB HTML
+   - /api/purchase-orders/[id]/print: ใบสั่งซื้อ — HTTP 200, 10.5KB HTML
+   - stock-page.tsx: ปุ่ม "ใบรับ"/"ใบเบิก"/"ใบปรับ" ต่อแถว + "Export CSV" + "พิมพ์ใบสั่งซื้อ"
+   - แก้ bug: PurchaseOrderItem ไม่มี createdAt → เปลี่ยน orderBy เป็น id
+
+3. แก้กราฟซ้อนกัน:
+   - ซ่อน label เมื่อ pct < 2% + ลดขนาด pie + ปิด animation
+
+4. หมวดหมู่สต็อก:
+   - 60 รายการ categorize อัตโนมัติ: หมึกพิมพ์ 42, กระดาษ 6, อะไหล่ 5, อื่นๆ 7
+   - เรียงตาม category + productCode
+   - มี filter dropdown + คอลัมน์หมวดหมู่
+
+Verification:
+✅ Stock print: HTTP 200, 28KB HTML (ใบรับ/ใบเบิก/ใบปรับ)
+✅ PO print: HTTP 200, 10.5KB HTML (ใบสั่งซื้อ)
+✅ Export CSV: พร้อม (UTF-8 BM สำหรับ Excel)
+✅ Dashboard: แสดงข้อมูลจริง (2,378 + 4,942 + 60)
+✅ Lint: 0 errors
+
+Stage Summary:
+- ข้อมูลจริงแสดงครบทุกหน้า (2,378 devices + 4,942 WO + 60 stock + 32 PO)
+- เอกสารใบรับ/ใบเบิก/ใบปรับ/ใบสั่งซื้อ พิมพ์ได้
+- Export CSV ได้
+- กราฟไม่ซ้อน
+- สต็อกมีหมวดหมู่ + เรียงตาม category
+- พร้อมสำหรับ push + deploy
