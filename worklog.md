@@ -3108,3 +3108,69 @@ Stage Summary:
   5. Auto-save draft
   6. GPS auto-fill
 - รอ PAT ใหม่เพื่อ push ขึ้น GitHub
+
+---
+Task ID: WO-MOBILE-FIX
+Agent: full-stack-developer — แก้ไข UI แจ้งซ่อมสำหรับมือถือ/แท็บเล็ต (VLM audit follow-up)
+
+ไฟล์ที่แก้:
+- src/components/itam/work-orders-page.tsx
+
+การเปลี่ยนแปลง (ตาม VLM audit WO-MOBILE-AUDIT):
+
+1. **Full-screen form on mobile (CreateWorkOrderDialog)**
+   - DialogContent: `flex h-[100vh] max-h-[100vh] w-full max-w-[100vw] flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[92vh] sm:max-w-2xl sm:rounded-lg sm:p-6`
+   - ใช้ `showCloseButton={false}` + custom 44px DialogClose button ใน header
+   - แทนที่ ScrollArea ด้วย `<div className="flex-1 overflow-y-auto">` สำหรับ body scroll
+
+2. **Touch targets ≥44px**
+   - Close button (X): `h-11 w-11` (ทั้ง create + detail dialog)
+   - Scan QR button: `min-h-11 w-full` (full-width orange)
+   - ปุ่มทั้งหมดใน detail dialog footer: `min-h-11` (พิมพ์ใบงาน, ผู้แจ้งแก้ไข, มอบหมายช่าง, เบิกอะไหล่, ปิดงาน, ยกเลิก, ปิด)
+   - ปุ่ม chat send: `min-h-11`
+   - ปุ่ม "เพิ่มรูปก่อนซ่อม": `min-h-11 w-full`
+   - ปุ่มบันทึก/ยกเลิก: `min-h-11 w-full sm:w-auto`
+
+3. **Single column on mobile**
+   - อาคาร + ตำแหน่ง: เปลี่ยน `grid grid-cols-2 gap-3` → `grid grid-cols-1 gap-3 sm:grid-cols-2`
+
+4. **Sticky save button (DialogFooter)**
+   - `sticky bottom-0 gap-2 border-t bg-white p-3 dark:bg-slate-900 sm:flex-row sm:justify-end sm:border-0 sm:bg-transparent sm:p-0 sm:dark:bg-transparent`
+
+5. **Prominent scan button**
+   - ลบ inline scan icon ใน input
+   - เพิ่ม full-width orange button ด้านล่าง input: `<Button className="min-h-11 w-full justify-center border-orange-300 text-orange-700 ...">สแกน QR / บาร์โค้ด</Button>`
+
+6. **Image upload button — mobile-friendly**
+   - Label: flex justify-between พร้อม count badge "{n}/{max} รูป"
+   - Button: `min-h-11 w-full` + orange accent
+   - Thumbnails: `flex gap-2 overflow-x-auto pb-2 sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0`
+     - Mobile: horizontal scroll, `h-20 w-20 shrink-0`
+     - Desktop: grid 4 cols, aspect-square
+   - ปุ่มลบรูปใหญ่ขึ้น: `h-7 w-7`
+
+7. **WO card list — mobile optimization**
+   - ย้าย priority badge ไป top-right corner (คู่กับ subject)
+   - Status badge: `px-2.5 py-1 text-xs font-semibold` (ใหญ่ขึ้น อ่านง่ายขึ้น)
+   - Priority badge: `px-2.5 py-1 text-xs font-semibold shrink-0` (โดดเด่น)
+   - Footer เหลือเฉพาะ assignedTo
+   - ใช้ `relativeTime(wo.createdAt)` อยู่แล้ว ("2 ชม.ที่แล้ว")
+
+8. **Detail dialog — mobile optimization**
+   - DialogContent: full-screen on mobile (เหมือน create dialog)
+   - ปุ่ม X 44px ใน header (mobile เท่านั้น — `sm:hidden`)
+   - เปลี่ยน ScrollArea → `<div className="flex-1 overflow-y-auto">`
+   - Footer: sticky bottom + ทุกปุ่ม `min-h-11`
+   - Images (WoImageStageGroup): horizontal scroll บนมือถือ, grid บน desktop
+   - Chat: `min-h-[180px] max-h-80` (มี min-height สำหรับ scrolling บนมือถือ)
+
+Verification:
+✅ ESLint: ไม่มี errors ใน work-orders-page.tsx (pre-existing merge conflicts ใน app/page.tsx, sidebar.tsx, lib/auth.ts ไม่เกี่ยวข้อง)
+✅ TypeScript: ไม่มี errors ใน work-orders-page.tsx (verified ด้วย `bunx tsc --noEmit -p tsconfig.json | grep work-orders-page`)
+✅ ไม่มีการเปลี่ยน business logic — pure UI/layout changes
+✅ 'use client' คงไว้, Thai labels ครบ, Tailwind responsive prefixes ใช้ครบ
+
+Out of scope:
+- Pre-existing merge conflicts (app/page.tsx, sidebar.tsx, app-store.ts, auth-store.ts) — จาก agent อื่น
+- Auto-save draft / GPS auto-fill (audit ข้อ 5-6) — ยังไม่ได้ทำ รอ task ใหม่
+- Parts request dialog, reporter edit dialog — sub-dialogs ไม่ได้อยู่ในขอบเขต audit

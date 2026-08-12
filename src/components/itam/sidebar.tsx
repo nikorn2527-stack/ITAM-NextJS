@@ -5,13 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
 import { Sun, Moon, Search, LogOut, QrCode } from 'lucide-react'
 import { useAppStore, type ActivePage } from '@/store/app-store'
-<<<<<<< HEAD
 import { useAuthStore, useNavVisibility, useRole } from '@/store/auth-store'
 import { ROLE_LABELS } from '@/lib/rbac'
-=======
-import { useAuthStore } from '@/store/auth-store'
-import { ROLE_LABELS, type Role } from '@/lib/auth-shared'
->>>>>>> 2386e420dd5213d7c1389c7241edf34760b7def6
 import { cn } from '@/lib/utils'
 import { NotificationsPopover } from './notifications-popover'
 import { useRealtimeStatus } from '@/hooks/use-realtime-updates'
@@ -32,7 +27,6 @@ interface NavItemDef {
 
 // Permission requirements per nav item (Task ID: RBAC-DASHBOARD)
 const NAV_ITEMS: NavItemDef[] = [
-<<<<<<< HEAD
   { page: 'dashboard', icon: '📊', label: 'Dashboard', requires: ['dashboard:view'] },
   { page: 'devices', icon: '💻', label: 'จัดการอุปกรณ์', requires: ['devices:view'] },
   { page: 'meter', icon: '📈', label: 'จดมิเตอร์', requires: ['meter:write'] },
@@ -43,22 +37,6 @@ const NAV_ITEMS: NavItemDef[] = [
   { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล', requires: ['import:data'] },
   { page: 'templates', icon: '📄', label: 'เทมเพลต', requires: ['templates:manage'] },
   { page: 'settings', icon: '⚙️', label: 'ตั้งค่าแอป', requires: ['settings:manage'] },
-=======
-  { page: 'dashboard', icon: '📊', label: 'Dashboard' },
-  { page: 'itam', icon: '🎯', label: 'ITAM Dashboard' },
-  { page: 'itam-devices', icon: '💻', label: 'ITAM อุปกรณ์' },
-  { page: 'itam-meter', icon: '📈', label: 'ITAM มิเตอร์' },
-  { page: 'itam-meter-keyboard', icon: '⌨️', label: 'จดมิเตอร์ (Keyboard)' },
-  { page: 'itam-paper-analytics', icon: '📄', label: 'ITAM กระดาษ' },
-  { page: 'itam-sticker-editor', icon: '🎨', label: 'สติกเกอร์' },
-  { page: 'itam-document-editor', icon: '📄', label: 'เอกสาร PDF' },
-  { page: 'itam-settings', icon: '⚙️', label: 'ITAM ตั้งค่า' },
-  { page: 'itam-audit', icon: '📜', label: 'ITAM ประวัติ' },
-  { page: 'devices', icon: '💻', label: 'จัดการอุปกรณ์' },
-  { page: 'meter', icon: '📈', label: 'จดมิเตอร์' },
-  { page: 'paper-analytics', icon: '📊', label: 'การใช้กระดาษ' },
-  { page: 'settings', icon: '⚙️', label: 'ตั้งค่าแอป' },
->>>>>>> 2386e420dd5213d7c1389c7241edf34760b7def6
 ]
 
 interface CycleInfo {
@@ -408,7 +386,6 @@ export function Sidebar() {
           </div>
         )}
 
-<<<<<<< HEAD
         {/* Current user — แสดงรูปโปรไฟล์ + ชื่อ + role (reads from auth store) */}
         <div
           className="flex items-center gap-2 px-4 py-2.5 text-[11px]"
@@ -431,39 +408,6 @@ export function Sidebar() {
             <div className="truncate font-medium text-white/90">{displayName}</div>
             <div className="mt-0.5 truncate text-[10px] text-slate-400">{roleLabel}</div>
           </div>
-=======
-        {/* Current user role + logout button (dynamic from auth store) */}
-        <div
-          className="flex items-center justify-between gap-2 px-4 py-2 text-[11px]"
-          style={{ color: 'rgba(255,255,255,0.75)' }}
-        >
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-medium text-white/90">
-              {authUser ? (authUser.name || authUser.username || authUser.email) : 'ไม่ได้เข้าสู่ระบบ'}
-            </div>
-            <div className="truncate text-[10px] text-slate-400">
-              {authUser
-                ? `${authUser.email} · ${roleLabel(authUser.role)}`
-                : 'กรุณาเข้าสู่ระบบ'}
-            </div>
-            {authUser && authUser.allowedSites !== 'ALL' && (
-              <div className="mt-0.5 truncate text-[10px] text-teal-300">
-                สาขา: {authUser.allowedSites.split(',').join(' | ')}
-              </div>
-            )}
-          </div>
-          {authUser && (
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              aria-label="ออกจากระบบ"
-              title="ออกจากระบบ"
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-300 transition-colors hover:border-rose-400/40 hover:bg-rose-500/15 hover:text-rose-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-            </button>
-          )}
->>>>>>> 2386e420dd5213d7c1389c7241edf34760b7def6
         </div>
 
         {/* Powered footer */}
