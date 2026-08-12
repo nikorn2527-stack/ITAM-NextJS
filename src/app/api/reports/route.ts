@@ -52,10 +52,10 @@ function computeRange(key: RangeKey): RangeInfo {
 function readingDateWhere(range: RangeInfo): Record<string, unknown> {
   if (range.start === null && range.end === null) return {}
   if (range.start && range.end) {
-    return { date: { gte: range.start, lte: range.end } }
+    return { readingDate: { gte: range.start, lte: range.end } }
   }
-  if (range.start) return { date: { gte: range.start } }
-  if (range.end) return { date: { lte: range.end } }
+  if (range.start) return { readingDate: { gte: range.start } }
+  if (range.end) return { readingDate: { lte: range.end } }
   return {}
 }
 
@@ -98,11 +98,11 @@ async function buildDashboardSummary(rangeKey: RangeKey) {
 
   const rangeReadings = await db.meterReading.findMany({
     where: readingDateWhere(range),
-    select: { deviceId: true, delta: true },
+    select: { deviceId: true, pagesBw: true, pagesColor: true },
   })
   const usageMap = new Map<string, number>()
   for (const r of rangeReadings) {
-    usageMap.set(r.deviceId, (usageMap.get(r.deviceId) ?? 0) + r.delta)
+    usageMap.set(r.deviceId, (usageMap.get(r.deviceId) ?? 0) + r.pagesBw + r.pagesColor)
   }
   const topUsage = devices
     .map((d) => ({
@@ -124,14 +124,14 @@ async function buildDashboardSummary(rangeKey: RangeKey) {
     id: r.id,
     deviceName: r.device?.name ?? '-',
     assetCode: r.device?.assetCode ?? '-',
-    reading: r.reading,
-    delta: r.delta,
-    date: r.date,
+    reading: r.meterBw + r.meterColor,
+    delta: r.pagesBw + r.pagesColor,
+    date: r.readingDate,
     remark: r.remark,
   }))
 
   const paperUsage = rangeReadings.reduce(
-    (sum, r) => sum + (r.delta > 0 ? r.delta : 0),
+    (sum, r) => sum + (r.pagesBw + r.pagesColor > 0 ? r.pagesBw + r.pagesColor : 0),
     0,
   )
 
@@ -163,12 +163,12 @@ async function buildCycleReport(rangeKey: RangeKey) {
         select: { id: true, name: true, assetCode: true, site: true },
       },
     },
-    orderBy: { date: 'desc' },
+    orderBy: { readingDate: 'desc' },
     take: 200,
   })
 
   const totalDelta = readings.reduce(
-    (sum, r) => sum + (r.delta > 0 ? r.delta : 0),
+    (sum, r) => sum + (r.pagesBw + r.pagesColor > 0 ? r.pagesBw + r.pagesColor : 0),
     0,
   )
   const byDeviceMap = new Map<string, { name: string; assetCode: string; site: string; delta: number; count: number }>()
@@ -181,7 +181,7 @@ async function buildCycleReport(rangeKey: RangeKey) {
       delta: 0,
       count: 0,
     }
-    entry.delta += r.delta
+    entry.delta += r.pagesBw + r.pagesColor
     entry.count += 1
     byDeviceMap.set(key, entry)
   }
@@ -205,9 +205,9 @@ async function buildCycleReport(rangeKey: RangeKey) {
     byDevice,
     recentReadings: readings.slice(0, 20).map((r) => ({
       id: r.id,
-      date: r.date,
-      reading: r.reading,
-      delta: r.delta,
+      date: r.readingDate,
+      reading: r.meterBw + r.meterColor,
+      delta: r.pagesBw + r.pagesColor,
       remark: r.remark,
       deviceName: r.device?.name ?? '-',
       assetCode: r.device?.assetCode ?? '-',
@@ -285,17 +285,18 @@ async function buildUtilizationReport(rangeKey: RangeKey) {
       site: true,
       type: true,
       status: true,
-      lastMeterReading: true,
+      lastMeterBw: true,
+      lastMeterColor: true,
     },
     orderBy: { assetCode: 'asc' },
   })
   const readings = await db.meterReading.findMany({
     where: readingDateWhere(range),
-    select: { deviceId: true, delta: true },
+    select: { deviceId: true, pagesBw: true, pagesColor: true },
   })
   const usageMap = new Map<string, number>()
   for (const r of readings) {
-    usageMap.set(r.deviceId, (usageMap.get(r.deviceId) ?? 0) + r.delta)
+    usageMap.set(r.deviceId, (usageMap.get(r.deviceId) ?? 0) + r.pagesBw + r.pagesColor)
   }
   const rows = devices.map((d) => ({
     id: d.id,
@@ -306,7 +307,7 @@ async function buildUtilizationReport(rangeKey: RangeKey) {
     site: d.site,
     type: d.type,
     status: d.status,
-    lastMeterReading: d.lastMeterReading,
+    lastMeterReading: d.lastMeterBw + d.lastMeterColor,
     sheets: usageMap.get(d.id) ?? 0,
   }))
   rows.sort((a, b) => b.sheets - a.sheets)

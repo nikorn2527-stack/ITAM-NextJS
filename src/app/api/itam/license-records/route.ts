@@ -13,11 +13,11 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const assetNo = searchParams.get('assetNo')?.trim() ?? ''
     const where: Record<string, unknown> = {}
-    if (assetNo) where.assetNo = assetNo
+    if (assetNo) where.assetCode = assetNo
 
     // Site-level filter via device relation when assetNo present
     if (user.role !== 'admin' && user.role !== 'superadmin' && assetNo) {
-      const device = await db.device.findUnique({ where: { assetNo }, select: { site: true } })
+      const device = await db.device.findUnique({ where: { assetCode: assetNo }, select: { site: true } })
       if (device && !canAccessSite(user, device.site)) {
         return NextResponse.json({ error: 'ไม่มีสิทธิ์เข้าถึงลิขสิทธิ์ของอุปกรณ์ในสาขานี้' }, { status: 403 })
       }
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     // If asset-bound, verify site access
     if (body.assetNo) {
-      const device = await db.device.findUnique({ where: { assetNo: body.assetNo }, select: { site: true } })
+      const device = await db.device.findUnique({ where: { assetCode: body.assetNo }, select: { site: true } })
       if (device && !canAccessSite(user, device.site)) {
         return NextResponse.json({ error: 'ไม่มีสิทธิ์ผูกลิขสิทธิ์กับอุปกรณ์ในสาขานี้' }, { status: 403 })
       }
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     const created = await db.licenseRecord.create({
       data: {
         licenseId: body.licenseId || null,
-        assetNo: body.assetNo || null,
+        assetCode: body.assetNo || null,
         software: body.software,
         licenseType: body.licenseType || null,
         licenseKey: body.licenseKey || null,
@@ -64,10 +64,12 @@ export async function POST(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'LICENSE_CREATE',
-          user: user.email,
-          details: JSON.stringify({ software: body.software, assetNo: body.assetNo || null }),
+          entity: 'LicenseRecord',
+          entityId: created.id,
+          summary: `เพิ่มลิขสิทธิ์ ${body.software}`,
+          actor: user.email,
+          detail: JSON.stringify({ software: body.software, assetNo: body.assetNo || null }),
         },
       })
     } catch { /* ignore */ }

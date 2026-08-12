@@ -98,21 +98,21 @@ export async function POST() {
       department?: string
       location?: string
       purchaseDate?: string
-      lastMeterReading: number
+      lastMeterBw: number
     }
     const deviceSeeds: DeviceSeed[] = [
-      { assetCode: 'IT-PRT-001', name: 'เครื่องพิมพ์ห้อง IT', brand: 'HP', model: 'LaserJet 4001', type: 'PRINTER', serialNumber: 'SN-HP-001', status: 'active', site: 'HQ', department: 'ฝ่ายเทคโนโลยีสารสนเทศ', location: 'ชั้น 3 ห้อง IT', purchaseDate: '2023-01-15', lastMeterReading: 124500 },
-      { assetCode: 'IT-COP-002', name: 'เครื่องถ่ายเอกสารชั้น 1', brand: 'Canon', model: 'imageRUNNER 2630', type: 'COPIER', serialNumber: 'SN-CN-002', status: 'active', site: 'HQ', department: 'ฝ่ายปฏิบัติการ', location: 'ชั้น 1', purchaseDate: '2022-08-20', lastMeterReading: 285000 },
-      { assetCode: 'IT-MFP-003', name: 'MFP สาขา BKK-1', brand: 'Brother', model: 'DCP-L3520', type: 'MFP', serialNumber: 'SN-BR-003', status: 'active', site: 'BKK-1', department: 'ฝ่ายขาย', location: 'โซน A', purchaseDate: '2023-03-10', lastMeterReading: 56000 },
-      { assetCode: 'IT-MFP-004', name: 'MFP สาขา CNX', brand: 'Epson', model: 'L3250', type: 'MFP', serialNumber: 'SN-EP-004', status: 'spare', site: 'CNX', department: 'ฝ่ายการตลาด', location: 'คลัง', purchaseDate: '2023-05-01', lastMeterReading: 12000 },
-      { assetCode: 'IT-COP-005', name: 'เครื่องถ่ายเอกสารชั้น 5', brand: 'Konica Minolta', model: 'bizhub C250i', type: 'COPIER', serialNumber: 'SN-KM-005', status: 'active', site: 'HQ', department: 'ฝ่ายการเงิน', location: 'ชั้น 5', purchaseDate: '2022-11-25', lastMeterReading: 410000 },
-      { assetCode: 'IT-COP-006', name: 'เครื่องถ่ายเอกสาร CNX', brand: 'Ricoh', model: 'IM C2500', type: 'COPIER', serialNumber: 'SN-RC-006', status: 'repair', site: 'CNX', department: 'ฝ่ายทรัพยากรบุคคล', location: 'ชั้น 2', purchaseDate: '2021-07-19', lastMeterReading: 332000 },
-      { assetCode: 'IT-PRT-007', name: 'เครื่องพิมพ์ห้องประชุม', brand: 'HP', model: 'LaserJet 4001', type: 'PRINTER', serialNumber: 'SN-HP-007', status: 'active', site: 'BKK-1', department: 'ฝ่ายขาย', location: 'ห้องประชุม', purchaseDate: '2023-06-22', lastMeterReading: 38000 },
-      { assetCode: 'IT-SCN-008', name: 'สแกนเนอร์ห้องเอกสาร', brand: 'Canon', model: 'imageFormula R40', type: 'SCANNER', serialNumber: 'SN-CN-008', status: 'active', site: 'HQ', department: 'ฝ่ายการเงิน', location: 'ชั้น 2', purchaseDate: '2023-02-11', lastMeterReading: 0 },
-      { assetCode: 'IT-MFP-009', name: 'MFP สำรอง HQ', brand: 'Epson', model: 'L3250', type: 'MFP', serialNumber: 'SN-EP-009', status: 'spare', site: 'HQ', department: 'ฝ่ายเทคโนโลยีสารสนเทศ', location: 'คลังชั้น 3', purchaseDate: '2024-01-05', lastMeterReading: 2500 },
-      { assetCode: 'IT-PRT-010', name: 'เครื่องพิมพ์ฝ่ายการตลาด', brand: 'Brother', model: 'DCP-L3520', type: 'PRINTER', serialNumber: 'SN-BR-010', status: 'active', site: 'HQ', department: 'ฝ่ายการตลาด', location: 'ชั้น 4', purchaseDate: '2023-09-30', lastMeterReading: 22400 },
-      { assetCode: 'IT-COP-011', name: 'เครื่องถ่ายเอกสาร BKK-1', brand: 'Konica Minolta', model: 'bizhub C250i', type: 'COPIER', serialNumber: 'SN-KM-011', status: 'active', site: 'BKK-1', department: 'ฝ่ายปฏิบัติการ', location: 'ชั้น 1', purchaseDate: '2022-04-14', lastMeterReading: 510000 },
-      { assetCode: 'IT-COP-012', name: 'เครื่องถ่ายเอกสารเก่า', brand: 'Ricoh', model: 'IM C2500', type: 'COPIER', serialNumber: 'SN-RC-012', status: 'disposed', site: 'HQ', department: 'ฝ่ายเทคโนโลยีสารสนเทศ', location: 'คลังรอตัดของ', purchaseDate: '2019-12-01', lastMeterReading: 999999 },
+      { assetCode: 'IT-PRT-001', name: 'เครื่องพิมพ์ห้อง IT', brand: 'HP', model: 'LaserJet 4001', type: 'PRINTER', serialNumber: 'SN-HP-001', status: 'active', site: 'HQ', department: 'ฝ่ายเทคโนโลยีสารสนเทศ', location: 'ชั้น 3 ห้อง IT', purchaseDate: '2023-01-15', lastMeterBw: 124500 },
+      { assetCode: 'IT-COP-002', name: 'เครื่องถ่ายเอกสารชั้น 1', brand: 'Canon', model: 'imageRUNNER 2630', type: 'COPIER', serialNumber: 'SN-CN-002', status: 'active', site: 'HQ', department: 'ฝ่ายปฏิบัติการ', location: 'ชั้น 1', purchaseDate: '2022-08-20', lastMeterBw: 285000 },
+      { assetCode: 'IT-MFP-003', name: 'MFP สาขา BKK-1', brand: 'Brother', model: 'DCP-L3520', type: 'MFP', serialNumber: 'SN-BR-003', status: 'active', site: 'BKK-1', department: 'ฝ่ายขาย', location: 'โซน A', purchaseDate: '2023-03-10', lastMeterBw: 56000 },
+      { assetCode: 'IT-MFP-004', name: 'MFP สาขา CNX', brand: 'Epson', model: 'L3250', type: 'MFP', serialNumber: 'SN-EP-004', status: 'spare', site: 'CNX', department: 'ฝ่ายการตลาด', location: 'คลัง', purchaseDate: '2023-05-01', lastMeterBw: 12000 },
+      { assetCode: 'IT-COP-005', name: 'เครื่องถ่ายเอกสารชั้น 5', brand: 'Konica Minolta', model: 'bizhub C250i', type: 'COPIER', serialNumber: 'SN-KM-005', status: 'active', site: 'HQ', department: 'ฝ่ายการเงิน', location: 'ชั้น 5', purchaseDate: '2022-11-25', lastMeterBw: 410000 },
+      { assetCode: 'IT-COP-006', name: 'เครื่องถ่ายเอกสาร CNX', brand: 'Ricoh', model: 'IM C2500', type: 'COPIER', serialNumber: 'SN-RC-006', status: 'repair', site: 'CNX', department: 'ฝ่ายทรัพยากรบุคคล', location: 'ชั้น 2', purchaseDate: '2021-07-19', lastMeterBw: 332000 },
+      { assetCode: 'IT-PRT-007', name: 'เครื่องพิมพ์ห้องประชุม', brand: 'HP', model: 'LaserJet 4001', type: 'PRINTER', serialNumber: 'SN-HP-007', status: 'active', site: 'BKK-1', department: 'ฝ่ายขาย', location: 'ห้องประชุม', purchaseDate: '2023-06-22', lastMeterBw: 38000 },
+      { assetCode: 'IT-SCN-008', name: 'สแกนเนอร์ห้องเอกสาร', brand: 'Canon', model: 'imageFormula R40', type: 'SCANNER', serialNumber: 'SN-CN-008', status: 'active', site: 'HQ', department: 'ฝ่ายการเงิน', location: 'ชั้น 2', purchaseDate: '2023-02-11', lastMeterBw: 0 },
+      { assetCode: 'IT-MFP-009', name: 'MFP สำรอง HQ', brand: 'Epson', model: 'L3250', type: 'MFP', serialNumber: 'SN-EP-009', status: 'spare', site: 'HQ', department: 'ฝ่ายเทคโนโลยีสารสนเทศ', location: 'คลังชั้น 3', purchaseDate: '2024-01-05', lastMeterBw: 2500 },
+      { assetCode: 'IT-PRT-010', name: 'เครื่องพิมพ์ฝ่ายการตลาด', brand: 'Brother', model: 'DCP-L3520', type: 'PRINTER', serialNumber: 'SN-BR-010', status: 'active', site: 'HQ', department: 'ฝ่ายการตลาด', location: 'ชั้น 4', purchaseDate: '2023-09-30', lastMeterBw: 22400 },
+      { assetCode: 'IT-COP-011', name: 'เครื่องถ่ายเอกสาร BKK-1', brand: 'Konica Minolta', model: 'bizhub C250i', type: 'COPIER', serialNumber: 'SN-KM-011', status: 'active', site: 'BKK-1', department: 'ฝ่ายปฏิบัติการ', location: 'ชั้น 1', purchaseDate: '2022-04-14', lastMeterBw: 510000 },
+      { assetCode: 'IT-COP-012', name: 'เครื่องถ่ายเอกสารเก่า', brand: 'Ricoh', model: 'IM C2500', type: 'COPIER', serialNumber: 'SN-RC-012', status: 'disposed', site: 'HQ', department: 'ฝ่ายเทคโนโลยีสารสนเทศ', location: 'คลังรอตัดของ', purchaseDate: '2019-12-01', lastMeterBw: 999999 },
     ]
 
     const createdDevices: Device[] = []
@@ -137,14 +137,15 @@ export async function POST() {
     )
     const readingsToCreate: Array<{
       deviceId: string
-      reading: number
-      prevReading: number
-      date: string
-      delta: number
-      cycleId: string
+      readingDate: string
+      meterBw: number
+      pagesBw: number
+      pagesColor: number
+      prevMeterBw: number
+      prevMeterColor: number
     }> = []
     for (const dev of meterables) {
-      let prev = Math.max(0, dev.lastMeterReading - 30000)
+      let prev = Math.max(0, dev.lastMeterBw - 30000)
       // 2-3 readings per device over the past ~30 days
       const numReadings = dev.status === 'disposed' ? 1 : 2 + (Math.floor(Math.random() % 2))
       for (let i = 0; i < numReadings; i++) {
@@ -154,11 +155,12 @@ export async function POST() {
         const date = isoDaysFromNow(dayOffset)
         readingsToCreate.push({
           deviceId: dev.id,
-          reading: newReading,
-          prevReading: prev,
-          date,
-          delta: newReading - prev,
-          cycleId: cycle.id,
+          readingDate: date,
+          meterBw: newReading,
+          pagesBw: newReading - prev,
+          pagesColor: 0,
+          prevMeterBw: prev,
+          prevMeterColor: 0,
         })
         prev = newReading
       }
@@ -170,12 +172,12 @@ export async function POST() {
     for (const dev of meterables) {
       const latest = readingsToCreate
         .filter((r) => r.deviceId === dev.id)
-        .sort((a, b) => a.date.localeCompare(b.date))
+        .sort((a, b) => a.readingDate.localeCompare(b.readingDate))
         .at(-1)
       if (latest) {
         await db.device.update({
           where: { id: dev.id },
-          data: { lastMeterReading: latest.reading },
+          data: { lastMeterBw: latest.meterBw },
         })
       }
     }

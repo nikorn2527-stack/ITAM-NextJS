@@ -1140,7 +1140,6 @@ export function DashboardPage() {
                         className="h-1.5"
                         style={
                           {
-                            // @ts-expect-error -- inline CSS var for shadcn progress
                             '--progress-foreground': '#f97316',
                           } as React.CSSProperties
                         }

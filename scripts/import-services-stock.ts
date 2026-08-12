@@ -334,14 +334,10 @@ async function importStock() {
             data: {
               purchaseOrderId: po.id,
               stockItemId: item.id,
-              productCode,
-              productName: String(row.ProductName || ''),
               quantityOrdered: Number(row.QuantityOrdered) || 0,
-              unit: String(row.Unit || 'ชิ้น'),
               unitPrice: Number(row.UnitPrice) || null,
               totalValue: Number(row.TotalValue) || null,
               quantityReceived: Number(row.QuantityReceived) || 0,
-              quantityRemaining: Number(row.QuantityRemaining) || 0,
             },
           })
         }

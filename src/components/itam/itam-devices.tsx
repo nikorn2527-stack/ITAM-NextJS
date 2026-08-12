@@ -42,6 +42,19 @@ interface Device {
   __optimistic?: 'add' | 'edit' | 'delete' | null
   /** client-only: timestamp when this row was last successfully saved */
   __savedAt?: number
+  departmentCode?: string | null
+  contractNo?: string | null
+  ip?: string | null
+  mac?: string | null
+  remoteId?: string | null
+  vendor?: string | null
+  installDate?: string | null
+  warrantyEnd?: string | null
+  deviceGroup?: string | null
+  costCenter?: string | null
+  meterMode?: string | null
+  assetSiteCode?: string | null
+  remark?: string | null
 }
 interface DevicesResponse {
   devices: Device[]; pagination: { page: number; limit: number; total: number; totalPages: number }
@@ -436,7 +449,7 @@ export function ItamDevices() {
     setEditAssetNo(assetNo)
     fetch(`/api/itam/devices/${assetNo}`)
       .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then((j: { device: Device & Record<string, unknown> }) => {
+      .then((j: { device: Device }) => {
         const d = j.device
         setForm({
           assetNo: d.assetNo, deviceType: d.deviceType || '', brand: d.brand || '', model: d.model || '',
@@ -688,7 +701,7 @@ export function ItamDevices() {
       const headerHtml = CSV_HEADERS.map((h) => `<th style="background:#f97316;color:#fff;padding:6px;border:1px solid #ddd;font-weight:600">${esc(h.label)}</th>`).join('')
       const bodyHtml = rows.map((d) => {
         const cells = CSV_HEADERS.map((h) => {
-          const v = (d as Record<string, unknown>)[h.key]
+          const v = (d as unknown as Record<string, unknown>)[h.key]
           const text = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
           return `<td style="padding:5px;border:1px solid #e2e8f0;mso-number-format:'\\@'">${esc(text)}</td>`
         }).join('')
@@ -938,7 +951,7 @@ tr:nth-child(even) td { background: #fafbfc; }
         const exportRows = rows.map(d => {
           const row: Record<string, unknown> = {}
           cols.forEach(h => {
-            const v = (d as Record<string, unknown>)[h.key]
+            const v = (d as unknown as Record<string, unknown>)[h.key]
             row[h.key] = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
           })
           return row
@@ -950,7 +963,7 @@ tr:nth-child(even) td { background: #fafbfc; }
         const headerHtml = cols.map(h => `<th style="background:#f97316;color:#fff;padding:6px;border:1px solid #ddd;font-weight:600">${esc(h.label)}</th>`).join('')
         const bodyHtml = rows.map(d => {
           const cells = cols.map(h => {
-            const v = (d as Record<string, unknown>)[h.key]
+            const v = (d as unknown as Record<string, unknown>)[h.key]
             const text = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
             return `<td style="padding:5px;border:1px solid #e2e8f0;mso-number-format:'\\@'">${esc(text)}</td>`
           }).join('')
@@ -1005,7 +1018,7 @@ tr:nth-child(even) td { background: #fafbfc; }
     const headCells = cols.map(h => `<th>${esc(h.label)}</th>`).join('')
     const bodyRows = rows.map(d => {
       const cells = cols.map(h => {
-        const v = (d as Record<string, unknown>)[h.key]
+        const v = (d as unknown as Record<string, unknown>)[h.key]
         const text = h.key === 'meterRequired' ? (d.meterRequired ? '✓' : '—') : (v ?? '')
         return `<td>${esc(text)}</td>`
       }).join('')

@@ -13,6 +13,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
+import type { DocumentTemplate } from '@prisma/client'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 
@@ -38,7 +39,7 @@ export async function PATCH(
     }
 
     // Validate that the template exists (if a non-null id is provided)
-    let template = null
+    let template: DocumentTemplate | null = null
     if (printTemplateId) {
       template = await db.documentTemplate.findUnique({
         where: { id: printTemplateId },

@@ -155,7 +155,7 @@ function mapRow(
   const row: ImportRow = { ...EMPTY_ROW, _rowIndex: rowIndex }
   Object.entries(fieldMap).forEach(([idx, field]) => {
     const value = raw[Number(idx)]?.trim() ?? ''
-    ;(row as Record<string, unknown>)[field] = value
+    ;(row as unknown as Record<string, unknown>)[field] = value
   })
   // Normalize Thai status labels to English keys
   if (row.status && STATUS_THAI_TO_EN[row.status]) {

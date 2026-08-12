@@ -11,8 +11,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const category = searchParams.get('category')?.trim() ?? ''
     const where: Record<string, unknown> = {}
-    if (category) where.categoryKey = category
-    const items = await db.masterItem.findMany({ where, orderBy: { value: 'asc' } })
+    if (category) where.category = category
+    const items = await db.masterItem.findMany({ where, orderBy: { label: 'asc' } })
     return NextResponse.json({ items })
   } catch (err) {
     return NextResponse.json({ error: 'Failed' }, { status: 500 })
@@ -32,26 +32,24 @@ export async function POST(req: NextRequest) {
     }
     const created = await db.masterItem.create({
       data: {
-        categoryKey: body.categoryKey,
-        value: body.value,
-        itemId: body.itemId || null,
-        groupName: body.groupName || null,
+        category: body.categoryKey,
+        code: body.itemId || body.value,
+        label: body.value,
         parentRef: body.parentRef || null,
         displayLabel: body.displayLabel || null,
         siteCode: body.siteCode || null,
-        allowedSites: body.allowedSites || null,
         active: body.active ?? true,
-        departmentCode: body.departmentCode || null,
       },
     })
 
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'MASTER_DATA_EDIT',
-          user: user.email,
-          details: JSON.stringify({ categoryKey: body.categoryKey, value: body.value }),
+          entity: 'MasterItem',
+          summary: `Created master item ${body.value}`,
+          actor: user.email,
+          detail: JSON.stringify({ categoryKey: body.categoryKey, value: body.value }),
         },
       })
     } catch { /* ignore */ }

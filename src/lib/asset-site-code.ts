@@ -5,9 +5,9 @@
  *
  * Behavior mirrors the Apps Script version (SettingsService.gs +
  * DeviceService.gs `getNextAssetSiteCode`):
- *   • Look up the SiteAttribute.siteCode for the given siteName.
- *   • Find the MAX existing AssetSiteCode for that site in the devices table.
- *   • If the device was previously at this site (per Location_History),
+ *   • Look up the Site.code for the given siteName.
+ *   • Find the MAX existing toAssetSiteCode for that site in transfer history.
+ *   • If the device was previously at this site (per DeviceTransfer),
  *     REUSE the old AssetSiteCode (the Apps Script version says
  *     "ใช้ทะเบียน Site เดิมเมื่อย้ายกลับ Site ที่เคยอยู่").
  *   • Otherwise increment + format.
@@ -60,15 +60,15 @@ export function normalizeAssetSiteCodeForCompare(code: string | null | undefined
 
 /**
  * Look up the SiteCode prefix for a given siteName (e.g. "โรงพยาบาลศูนย์อุดรธานี" → "UDH").
- * Returns null if the site is not found in SiteAttribute.
+ * Returns null if the site is not found in Site.
  */
 export async function getSiteCodeForName(siteName: string | null | undefined): Promise<string | null> {
   if (!siteName) return null
-  const site = await db.siteAttribute.findFirst({
-    where: { siteName: { equals: siteName } },
-    select: { siteCode: true },
+  const site = await db.site.findFirst({
+    where: { name: siteName },
+    select: { code: true },
   })
-  return site?.siteCode ?? null
+  return site?.code ?? null
 }
 
 /**
@@ -76,11 +76,11 @@ export async function getSiteCodeForName(siteName: string | null | undefined): P
  */
 export async function getSiteNameForCode(siteCode: string | null | undefined): Promise<string | null> {
   if (!siteCode) return null
-  const site = await db.siteAttribute.findUnique({
-    where: { siteCode },
-    select: { siteName: true },
+  const site = await db.site.findUnique({
+    where: { code: siteCode },
+    select: { name: true },
   })
-  return site?.siteName ?? null
+  return site?.name ?? null
 }
 
 /**
@@ -121,13 +121,13 @@ async function continueWithPrefix(
 
   // 1. Reuse from history if applicable
   if (reuse && options?.assetNo) {
-    const hist = await db.locationHistory.findFirst({
+    const hist = await db.deviceTransfer.findFirst({
       where: {
-        assetNo: options.assetNo,
+        assetCode: options.assetNo,
         toSite: targetSiteName,
         toAssetSiteCode: { not: null },
       },
-      orderBy: { moveDate: 'desc' },
+      orderBy: { transferDate: 'desc' },
       select: { toAssetSiteCode: true },
     })
     if (hist?.toAssetSiteCode) {
@@ -136,20 +136,10 @@ async function continueWithPrefix(
     }
   }
 
-  // 2. Find MAX assetSiteCode across all devices currently at this site
-  //    (and also any historical references, to avoid collisions).
-  const devicesAtSite = await db.device.findMany({
-    where: { site: targetSiteName, assetSiteCode: { not: null } },
-    select: { assetSiteCode: true },
-    orderBy: { assetSiteCode: 'desc' },
-    take: 1,
-  })
+  // 2. Find MAX historical site code to avoid collisions. The active Device
+  // model stores the current site but not a separate asset-site-code column.
   let maxSeed = 0
-  if (devicesAtSite.length > 0 && devicesAtSite[0].assetSiteCode) {
-    maxSeed = parseAssetSiteCodeSeed(devicesAtSite[0].assetSiteCode)
-  }
-  // Also probe Location_History for any higher historical code we should not collide with.
-  const histMax = await db.locationHistory.findFirst({
+  const histMax = await db.deviceTransfer.findFirst({
     where: { toSite: targetSiteName, toAssetSiteCode: { not: null } },
     orderBy: { toAssetSiteCode: 'desc' },
     select: { toAssetSiteCode: true },

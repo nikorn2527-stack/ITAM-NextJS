@@ -112,6 +112,7 @@ interface WorkOrderDetail {
     name: string
     brand: string
     model: string
+    serialNumber: string | null
     site: string
   } | null
   messages?: WoMessage[]

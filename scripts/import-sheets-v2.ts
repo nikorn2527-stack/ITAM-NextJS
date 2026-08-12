@@ -142,10 +142,13 @@ async function importAuditLog() {
       if (!action) { skipped++; continue }
       await db.auditLog.create({
         data: {
-          timestamp: clean(row['Timestamp']),
           action,
-          user: clean(row['User']),
-          details: clean(row['Details']),
+          entity: clean(row['Entity']) ?? 'System',
+          entityId: clean(row['EntityId']),
+          summary: clean(row['Summary']) ?? clean(row['Details']) ?? action,
+          actor: clean(row['User']) ?? 'system',
+          detail: clean(row['Details']),
+          ...(clean(row['Timestamp']) ? { createdAt: new Date(clean(row['Timestamp']) as string) } : {}),
         },
       })
       inserted++
@@ -164,24 +167,19 @@ async function importSiteAttributes() {
     try {
       const siteCode = clean(row['SiteCode'])
       if (!siteCode) { skipped++; continue }
-      await db.siteAttribute.upsert({
-        where: { siteCode },
-        create: {
-          siteCode,
-          siteName: clean(row['SiteName']),
-          lineOa: clean(row['LineOA']),
-          hotline: clean(row['Hotline']),
-          paperRateBw: parseFloat0(row['PaperRateBW']) || 0.5,
-          paperRateColor: parseFloat0(row['PaperRateColor']) || 2.0,
-        },
-        update: {
-          siteName: clean(row['SiteName']),
-          lineOa: clean(row['LineOA']),
-          hotline: clean(row['Hotline']),
-          paperRateBw: parseFloat0(row['PaperRateBW']) || 0.5,
-          paperRateColor: parseFloat0(row['PaperRateColor']) || 2.0,
-        },
+      await db.site.upsert({
+        where: { code: siteCode },
+        create: { code: siteCode, name: clean(row['SiteName']) ?? siteCode, phone: clean(row['Hotline']) },
+        update: { name: clean(row['SiteName']) ?? siteCode, phone: clean(row['Hotline']) },
       })
+      const rate = await db.siteRate.findFirst({ where: { siteCode } })
+      const rateData = {
+        siteCode,
+        bwRate: parseFloat0(row['PaperRateBW']) || 0.5,
+        colorRate: parseFloat0(row['PaperRateColor']) || 2.0,
+      }
+      if (rate) await db.siteRate.update({ where: { id: rate.id }, data: rateData })
+      else await db.siteRate.create({ data: rateData })
       inserted++
     } catch (e) { skipped++ }
   }
@@ -200,8 +198,8 @@ async function importAppSettings() {
       if (!key) { skipped++; continue }
       await db.appSetting.upsert({
         where: { key },
-        create: { key, value: clean(row['Value']), description: clean(row['Description']) },
-        update: { value: clean(row['Value']), description: clean(row['Description']) },
+        create: { key, value: clean(row['Value']) ?? '' },
+        update: { value: clean(row['Value']) ?? '' },
       })
       inserted++
     } catch (e) { skipped++ }
@@ -217,7 +215,7 @@ async function main() {
   console.log('\n✨ Import v2 เสร็จสิ้น!')
   console.log('\n📊 สรุป:')
   console.log('   AuditLogs:', await db.auditLog.count())
-  console.log('   SiteAttributes:', await db.siteAttribute.count())
+  console.log('   SiteAttributes:', await db.site.count())
   console.log('   AppSettings:', await db.appSetting.count())
 }
 

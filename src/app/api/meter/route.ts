@@ -12,13 +12,13 @@ export async function GET(req: NextRequest) {
     if (aggregate === 'monthly') {
       // Aggregate delta per month across all readings
       const readings = await db.meterReading.findMany({
-        select: { date: true, delta: true },
-        orderBy: { date: 'asc' },
+        select: { readingDate: true, pagesBw: true, pagesColor: true },
+        orderBy: { readingDate: 'asc' },
       })
       const map = new Map<string, number>()
       for (const r of readings) {
-        const month = r.date.slice(0, 7) // YYYY-MM
-        map.set(month, (map.get(month) ?? 0) + r.delta)
+        const month = r.readingDate.slice(0, 7) // YYYY-MM
+        map.set(month, (map.get(month) ?? 0) + r.pagesBw + r.pagesColor)
       }
       const monthly = Array.from(map.entries()).map(([month, value]) => ({
         month,
@@ -29,11 +29,11 @@ export async function GET(req: NextRequest) {
 
     if (aggregate === 'byDevice') {
       const readings = await db.meterReading.findMany({
-        select: { deviceId: true, delta: true },
+        select: { deviceId: true, pagesBw: true, pagesColor: true },
       })
       const map = new Map<string, number>()
       for (const r of readings) {
-        map.set(r.deviceId, (map.get(r.deviceId) ?? 0) + r.delta)
+        map.set(r.deviceId, (map.get(r.deviceId) ?? 0) + r.pagesBw + r.pagesColor)
       }
       const devices = await db.device.findMany({ select: { id: true, name: true, assetCode: true } })
       const byDevice = devices
@@ -49,11 +49,14 @@ export async function GET(req: NextRequest) {
 
     const where: Record<string, unknown> = {}
     if (deviceId) where.deviceId = deviceId
-    if (cycleId) where.cycleId = cycleId
+    if (cycleId) {
+      const cycle = await db.cycle.findUnique({ where: { id: cycleId } })
+      if (cycle) where.readingDate = { gte: cycle.startDate, lte: cycle.endDate }
+    }
 
     const readings = await db.meterReading.findMany({
       where,
-      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ readingDate: 'asc' }, { createdAt: 'asc' }],
       include: { device: { select: { id: true, name: true, assetCode: true, brand: true, model: true } } },
       take: 500,
     })
@@ -95,7 +98,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     }
 
-    const prevReading = device.lastMeterReading ?? 0
+    const prevReading = device.lastMeterBw
     const delta = newReading - prevReading
 
     // Validation: new < prev requires a remark (RESET behavior)
@@ -113,18 +116,23 @@ export async function POST(req: NextRequest) {
     const created = await db.meterReading.create({
       data: {
         deviceId,
-        reading: newReading,
-        prevReading,
-        date: String(date),
+        assetCode: device.assetCode,
+        meterBw: newReading,
+        meterColor: 0,
+        prevMeterBw: prevReading,
+        prevMeterColor: 0,
+        pagesBw: Math.max(0, delta),
+        pagesColor: 0,
+        readingDate: String(date),
+        readingMonth: String(date).slice(0, 7),
+        readingType: newReading < prevReading ? 'RESET' : 'MONTHLY',
         remark: remark ? String(remark).trim() : null,
-        delta,
-        cycleId: cycleId || null,
       },
     })
 
     await db.device.update({
       where: { id: deviceId },
-      data: { lastMeterReading: newReading },
+      data: { lastMeterBw: newReading },
     })
 
     await logAudit(

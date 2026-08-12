@@ -68,32 +68,32 @@ export async function POST(req: NextRequest) {
 
     // Fetch all target devices first (for site-access checks)
     const targets = await db.device.findMany({
-      where: { assetNo: { in: assetNos } },
-      select: { assetNo: true, site: true },
+      where: { assetCode: { in: assetNos } },
+      select: { assetCode: true, site: true },
     })
-    const targetMap = new Map(targets.map((t) => [t.assetNo, t.site]))
+    const targetMap = new Map(targets.map((t) => [t.assetCode, t.site]))
 
-    for (const assetNo of assetNos) {
-      const site = targetMap.get(assetNo)
+    for (const assetCode of assetNos) {
+      const site = targetMap.get(assetCode)
       if (site === undefined) {
-        errors.push({ assetNo, error: 'not found' })
+        errors.push({ assetNo: assetCode, error: 'not found' })
         skipped++
         continue
       }
       if (!canAccessSite(user, site)) {
-        errors.push({ assetNo, error: 'no site access' })
+        errors.push({ assetNo: assetCode, error: 'no site access' })
         skipped++
         continue
       }
       try {
         await db.device.update({
-          where: { assetNo },
+          where: { assetCode },
           data: { ...cleanPatch, updatedBy },
         })
         updated++
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'failed'
-        errors.push({ assetNo, error: msg })
+        errors.push({ assetNo: assetCode, error: msg })
         skipped++
       }
     }
@@ -102,10 +102,12 @@ export async function POST(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'BULK_UPDATE_DEVICES',
-          user: user.email,
-          details: JSON.stringify({
+          entity: 'Device',
+          entityId: null,
+          summary: `แก้ไขอุปกรณ์แบบกลุ่ม ${updated} รายการ`,
+          actor: user.email,
+          detail: JSON.stringify({
             count: assetNos.length,
             updated,
             skipped,

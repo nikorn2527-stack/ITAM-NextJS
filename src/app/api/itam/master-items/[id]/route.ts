@@ -13,21 +13,21 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const updated = await db.masterItem.update({
       where: { id },
       data: {
-        value: body.value,
-        groupName: body.groupName,
+        label: body.value,
         displayLabel: body.displayLabel,
         active: body.active,
-        departmentCode: body.departmentCode,
       },
     })
 
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'MASTER_DATA_EDIT',
-          user: user.email,
-          details: JSON.stringify({ itemId: id, value: body.value }),
+          entity: 'MasterItem',
+          entityId: id,
+          summary: `Updated master item ${id}`,
+          actor: user.email,
+          detail: JSON.stringify({ itemId: id, value: body.value }),
         },
       })
     } catch { /* ignore */ }
@@ -50,10 +50,12 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'MASTER_DATA_EDIT',
-          user: user.email,
-          details: JSON.stringify({ itemId: id, action: 'delete' }),
+          entity: 'MasterItem',
+          entityId: id,
+          summary: `Deleted master item ${id}`,
+          actor: user.email,
+          detail: JSON.stringify({ itemId: id, action: 'delete' }),
         },
       })
     } catch { /* ignore */ }

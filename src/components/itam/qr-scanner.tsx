@@ -184,7 +184,7 @@ export function QrScannerDialog() {
           try {
             const img = ctx.getImageData(0, 0, w, h)
             const code = jsQR(img.data, img.width, img.height, {
-              inversionAttempts: 'attemptOnly',
+              inversionAttempts: 'attemptBoth',
             })
             if (code && code.data) {
               handleDecoded(code.data)

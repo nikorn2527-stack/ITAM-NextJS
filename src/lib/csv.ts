@@ -3,15 +3,15 @@
  * Emits a UTF-8 BOM (\uFEFF) so Excel correctly renders Thai text.
  * Values containing commas, quotes, or newlines are RFC-4180 escaped.
  */
-export function downloadCsv(
+export function downloadCsv<T extends object>(
   filename: string,
-  rows: Record<string, unknown>[],
+  rows: readonly T[],
   headers?: { key: string; label: string }[],
 ): void {
   const cols =
     headers ??
     (rows.length > 0
-      ? Object.keys(rows[0]).map((k) => ({ key: k, label: k }))
+      ? Object.keys(rows[0] as object).map((k) => ({ key: k, label: k }))
       : [])
 
   const escape = (v: unknown): string => {
@@ -22,7 +22,7 @@ export function downloadCsv(
   const headerLine = cols.map((c) => escape(c.label)).join(',')
   const lines = rows.map((r) =>
     cols
-      .map((c) => escape((r as Record<string, unknown>)[c.key]))
+      .map((c) => escape((r as unknown as Record<string, unknown>)[c.key]))
       .join(','),
   )
   const csv = '\uFEFF' + [headerLine, ...lines].join('\n')

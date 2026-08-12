@@ -12,7 +12,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params
   const body = await req.json().catch(() => ({}))
-  const existing = await db.userPermission.findUnique({ where: { id } })
+  const existing = await db.user.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'ไม่พบผู้ใช้' }, { status: 404 })
 
   // ── Last-admin protection: deactivating/demoting last admin ──
@@ -40,7 +40,6 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.name != null) data.name = String(body.name).trim() || null
   if (body.username != null) data.username = String(body.username).trim().toLowerCase() || null
   if (body.allowedSites != null) data.allowedSites = String(body.allowedSites).trim() || 'ALL'
-  if (body.remark != null) data.remark = String(body.remark).trim() || null
 
   if (typeof body.password === 'string' && body.password.trim()) {
     const { hash, salt } = hashNewPassword(body.password)
@@ -50,13 +49,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // username uniqueness check
   if (data.username && data.username !== existing.username) {
-    const dup = await db.userPermission.findFirst({
+    const dup = await db.user.findFirst({
       where: { username: data.username as string, NOT: { id } },
     })
     if (dup) return NextResponse.json({ error: 'ชื่อผู้ใช้ซ้ำ' }, { status: 409 })
   }
 
-  const updated = await db.userPermission.update({ where: { id }, data })
+  const updated = await db.user.update({ where: { id }, data })
   return NextResponse.json({ user: toAuthUser(updated) })
 }
 
@@ -65,7 +64,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const { id } = await params
-  const existing = await db.userPermission.findUnique({ where: { id } })
+  const existing = await db.user.findUnique({ where: { id } })
   if (!existing) return NextResponse.json({ error: 'ไม่พบผู้ใช้' }, { status: 404 })
 
   // Self-delete protection (admins cannot delete themselves)
@@ -79,6 +78,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: guard.status })
   }
 
-  await db.userPermission.delete({ where: { id } })
+  await db.user.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }

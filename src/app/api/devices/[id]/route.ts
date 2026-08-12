@@ -150,10 +150,14 @@ export async function PUT(
         costCenter: setStr('costCenter', body),
         deviceGroup: setStr('deviceGroup', body),
         remark: setStr('remark', body),
-        lastMeterReading:
-          typeof body.lastMeterReading === 'number'
-            ? body.lastMeterReading
-            : undefined,
+        lastMeterBw:
+          typeof body.lastMeterBw === 'number'
+            ? body.lastMeterBw
+            : typeof body.lastMeterReading === 'number'
+              ? body.lastMeterReading
+              : undefined,
+        lastMeterColor:
+          typeof body.lastMeterColor === 'number' ? body.lastMeterColor : undefined,
         purchasePrice:
           body.purchasePrice !== undefined
             ? optFloat(body.purchasePrice)

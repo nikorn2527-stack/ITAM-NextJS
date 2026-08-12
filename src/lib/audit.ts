@@ -4,10 +4,8 @@ import { db } from '@/lib/db'
  * Records an audit log entry. Non-fatal — any DB error is swallowed so
  * the calling mutation still succeeds. All summaries should be in Thai.
  *
- * NOTE: The AuditLog table only has columns {action, user, details, timestamp}.
- * The legacy `entity`/`entityId`/`summary` parameters are preserved for
- * backwards-compatibility with the existing call sites but are merged into
- * the `details` JSON column (so the information is not lost).
+ * The active AuditLog model stores actor, detail, entity and summary as
+ * first-class fields. The detail JSON keeps any additional metadata.
  */
 export async function logAudit(
   action: string,
@@ -26,10 +24,12 @@ export async function logAudit(
     }
     await db.auditLog.create({
       data: {
-        timestamp: new Date().toISOString(),
         action,
-        user: user ?? null,
-        details: JSON.stringify(combined),
+        entity,
+        entityId,
+        summary,
+        actor: user ?? 'system',
+        detail: JSON.stringify(combined),
       },
     })
   } catch (err) {

@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
     })
     const counts = new Map<string, number>()
     for (const r of rows) {
-      const v = String((r as Record<string, string | null>)[field] ?? '').trim()
+      const v = String((r as unknown as Record<string, unknown>)[field] ?? '').trim()
       if (!v) continue
       counts.set(v, (counts.get(v) ?? 0) + 1)
     }
@@ -76,21 +76,19 @@ export async function GET(req: NextRequest) {
     // 2) For department field, also include Master_Items (Department category)
     let fromMaster: string[] = []
     if (field === 'department') {
-      const masterWhere: Record<string, unknown> = { categoryKey: 'Department', active: true }
+      const masterWhere: Record<string, unknown> = { category: 'Department', active: true }
       if (userSites !== 'ALL') {
-        // Master_Items.allowedSites is comma-separated site names or 'ALL'
         masterWhere.OR = [
-          { allowedSites: null },
-          { allowedSites: 'ALL' },
-          ...userSites.map((s) => ({ allowedSites: { contains: s } })),
+          { siteCode: null },
+          { siteCode: { in: userSites } },
         ]
       }
       const masterItems = await db.masterItem.findMany({
         where: masterWhere,
-        select: { value: true },
-        orderBy: { value: 'asc' },
+        select: { label: true },
+        orderBy: { label: 'asc' },
       })
-      fromMaster = masterItems.map((m) => m.value).filter((v) => v && !counts.has(v))
+      fromMaster = masterItems.map((m) => m.label).filter((v) => v && !counts.has(v))
     }
 
     // Merge, preserving order, dedup

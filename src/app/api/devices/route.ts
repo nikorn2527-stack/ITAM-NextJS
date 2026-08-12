@@ -116,10 +116,14 @@ export async function POST(req: NextRequest) {
         remoteId: optStr(body.remoteId),
         purchaseDate: optStr(body.purchaseDate),
         warrantyMonths: clampWarrantyMonths(body.warrantyMonths),
-        lastMeterReading:
-          typeof body.lastMeterReading === 'number'
-            ? body.lastMeterReading
-            : 0,
+        lastMeterBw:
+          typeof body.lastMeterBw === 'number'
+            ? body.lastMeterBw
+            : typeof body.lastMeterReading === 'number'
+              ? body.lastMeterReading
+              : 0,
+        lastMeterColor:
+          typeof body.lastMeterColor === 'number' ? body.lastMeterColor : 0,
         purchasePrice: optFloat(body.purchasePrice),
         salvageValue: optFloat(body.salvageValue) ?? 0,
         usefulLife: optInt(body.usefulLife),

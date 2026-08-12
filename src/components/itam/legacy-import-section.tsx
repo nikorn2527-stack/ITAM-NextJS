@@ -654,7 +654,7 @@ export function LegacyImportSection() {
                   </Collapsible>
 
                   {/* Export instructions */}
-                  <ExportInstructions source={selectedSource} />
+                  {selectedSource && <ExportInstructions source={selectedSource} />}
                 </motion.div>
               )}
             </CardContent>

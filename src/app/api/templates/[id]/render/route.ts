@@ -186,7 +186,7 @@ async function buildDataFromWo(
     resolution: wo.resolution ?? '—',
     details: wo.details ?? '',
     tel: wo.tel ?? '—',
-    date: formatDateOnly(wo.createdAt),
+    date: formatDateOnly(wo.createdAt.toISOString()),
     assetCode: wo.device?.assetCode ?? '—',
     brand: wo.device?.brand ?? '—',
     model: wo.device?.model ?? '—',

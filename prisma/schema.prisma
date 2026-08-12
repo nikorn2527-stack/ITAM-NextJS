@@ -568,8 +568,10 @@ model User {
   permissions   String?  // JSON array of permission strings (custom override)
   allowedSites  String?  // "ALL" หรือ comma-separated site names
   active        Boolean  @default(true)
-  passwordHash  String?
-  avatarUrl     String?  // URL รูปโปรไฟล์ (หรือ initials ถ้าไม่มีรูป)
+    passwordHash    String?
+  passwordSalt    String?  // salt สำหรับ password hash แบบ legacy
+  avatarUrl       String?  // URL รูปโปรไฟล์ (หรือ initials ถ้าไม่มีรูป)
+
   phone         String?  // เบอร์โทร
   lineUserId    String?  // LINE user ID (ถ้าเชื่อมกับ LINE)
   lastLoginAt   String?

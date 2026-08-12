@@ -14,11 +14,19 @@ export async function GET(
       return NextResponse.json({ error: 'Cycle not found' }, { status: 404 })
     }
     const readings = await db.meterReading.findMany({
-      where: { cycleId: id },
-      select: { delta: true },
+      where: {
+        readingDate: {
+          gte: cycle.startDate,
+          lte: cycle.endDate,
+        },
+      },
+      select: { pagesBw: true, pagesColor: true },
     })
     const readingCount = readings.length
-    const totalSheets = readings.reduce((s, r) => s + (r.delta > 0 ? r.delta : 0), 0)
+    const totalSheets = readings.reduce((s, r) => {
+      const delta = r.pagesBw + r.pagesColor
+      return s + (delta > 0 ? delta : 0)
+    }, 0)
     return NextResponse.json({ cycle, readingCount, totalSheets })
   } catch (err) {
     console.error('GET /api/cycles/[id]', err)
@@ -103,7 +111,14 @@ export async function DELETE(
         { status: 400 },
       )
     }
-    const readingCount = await db.meterReading.count({ where: { cycleId: id } })
+    const readingCount = await db.meterReading.count({
+      where: {
+        readingDate: {
+          gte: cycle.startDate,
+          lte: cycle.endDate,
+        },
+      },
+    })
     if (readingCount > 0) {
       return NextResponse.json(
         {

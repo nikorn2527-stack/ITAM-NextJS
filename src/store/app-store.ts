@@ -3,6 +3,7 @@ import { create } from 'zustand'
 export type ActivePage =
   | 'dashboard'
   | 'devices'
+  | 'itam-devices'
   | 'meter'
   | 'paper-analytics'
   | 'work-orders'
@@ -19,6 +20,9 @@ interface AppState {
   sidebarOpen: boolean
   /** A device id that the devices page should auto-open the detail sheet for on mount. */
   pendingDeviceId: string | null
+  /** Optional filters used by the integrated ITAM devices page. */
+  pendingDeviceType: string | null
+  pendingDeviceStatus: string | null
   /** A settings tab to auto-activate on mount. */
   pendingSettingsTab: SettingsTab | null
   /** A warranty status filter to apply on devices page on mount. */
@@ -41,6 +45,10 @@ interface AppState {
   closeSidebar: () => void
   setPendingDeviceId: (id: string | null) => void
   clearPendingDeviceId: () => void
+  setPendingDeviceType: (type: string | null) => void
+  clearPendingDeviceType: () => void
+  setPendingDeviceStatus: (status: string | null) => void
+  clearPendingDeviceStatus: () => void
   setPendingSettingsTab: (tab: SettingsTab | null) => void
   clearPendingSettingsTab: () => void
   setPendingWarrantyFilter: (f: 'expiring' | 'expired' | null) => void
@@ -59,6 +67,8 @@ export const useAppStore = create<AppState>((set) => ({
   activePage: 'dashboard',
   sidebarOpen: false,
   pendingDeviceId: null,
+  pendingDeviceType: null,
+  pendingDeviceStatus: null,
   pendingSettingsTab: null,
   pendingWarrantyFilter: null,
   pendingMeterAction: null,
@@ -71,6 +81,10 @@ export const useAppStore = create<AppState>((set) => ({
   closeSidebar: () => set({ sidebarOpen: false }),
   setPendingDeviceId: (id) => set({ pendingDeviceId: id }),
   clearPendingDeviceId: () => set({ pendingDeviceId: null }),
+  setPendingDeviceType: (type) => set({ pendingDeviceType: type }),
+  clearPendingDeviceType: () => set({ pendingDeviceType: null }),
+  setPendingDeviceStatus: (status) => set({ pendingDeviceStatus: status }),
+  clearPendingDeviceStatus: () => set({ pendingDeviceStatus: null }),
   setPendingSettingsTab: (tab) => set({ pendingSettingsTab: tab }),
   clearPendingSettingsTab: () => set({ pendingSettingsTab: null }),
   setPendingWarrantyFilter: (f) => set({ pendingWarrantyFilter: f }),

@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     const readingsThisMonth = await db.meterReading.findMany({
       where: { readingMonth: month, device: eligibleWhere },
       select: {
-        assetNo: true,
+        deviceId: true,
         meterBw: true,
         meterColor: true,
         readingDate: true,
@@ -72,8 +72,8 @@ export async function GET(req: NextRequest) {
       { meterBw: number; meterColor: number; readingDate: string | null; readBy: string | null }
     >()
     for (const r of readingsThisMonth) {
-      if (!readMap.has(r.assetNo)) {
-        readMap.set(r.assetNo, {
+      if (!readMap.has(r.deviceId)) {
+        readMap.set(r.deviceId, {
           meterBw: r.meterBw,
           meterColor: r.meterColor,
           readingDate: r.readingDate,
@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
       where: { device: eligibleWhere },
       orderBy: { readingDate: 'desc' },
       select: {
-        assetNo: true,
+        deviceId: true,
         meterBw: true,
         meterColor: true,
         readingDate: true,
@@ -101,8 +101,8 @@ export async function GET(req: NextRequest) {
       { meterBw: number; meterColor: number; readingDate: string | null }
     >()
     for (const r of lastReadingsAll) {
-      if (!lastMap.has(r.assetNo)) {
-        lastMap.set(r.assetNo, {
+      if (!lastMap.has(r.deviceId)) {
+        lastMap.set(r.deviceId, {
           meterBw: r.meterBw,
           meterColor: r.meterColor,
           readingDate: r.readingDate,
@@ -121,11 +121,11 @@ export async function GET(req: NextRequest) {
       where: eligibleWhere,
       select: {
         id: true,
-        assetNo: true,
-        deviceType: true,
+        assetCode: true,
+        type: true,
         brand: true,
         model: true,
-        serial: true,
+        serialNumber: true,
         site: true,
         building: true,
         floor: true,
@@ -134,16 +134,16 @@ export async function GET(req: NextRequest) {
         location: true,
         meterMode: true,
         meterRequired: true,
-        assetSiteCode: true,
+        displayLabel: true,
       },
-      orderBy: { assetNo: 'asc' },
+      orderBy: { assetCode: 'asc' },
     })
 
     // Apply search filter (matches anywhere, case-insensitive in SQL via contains).
     const searchLower = search.toLowerCase()
     const filtered = search
       ? devices.filter((d) =>
-          [d.assetNo, d.serial, d.brand, d.model, d.department, d.deviceType, d.assetSiteCode]
+          [d.assetCode, d.serialNumber, d.brand, d.model, d.department, d.type, d.displayLabel]
             .filter(Boolean)
             .some((v) => String(v).toLowerCase().includes(searchLower)),
         )
@@ -151,10 +151,14 @@ export async function GET(req: NextRequest) {
 
     // Mark each device read/unread.
     const enriched = filtered.map((d) => {
-      const read = readMap.get(d.assetNo)
-      const last = lastMap.get(d.assetNo)
+      const read = readMap.get(d.id)
+      const last = lastMap.get(d.id)
       return {
         ...d,
+        assetNo: d.assetCode,
+        deviceType: d.type,
+        serial: d.serialNumber,
+        assetSiteCode: d.displayLabel,
         readThisMonth: !!read,
         readAt: read?.readingDate ?? null,
         readBy: read?.readBy ?? null,
@@ -167,7 +171,7 @@ export async function GET(req: NextRequest) {
     // Sort: unread first (so the keyboard page can land on them), then by assetNo.
     enriched.sort((a, b) => {
       if (a.readThisMonth !== b.readThisMonth) return a.readThisMonth ? 1 : -1
-      return a.assetNo.localeCompare(b.assetNo)
+      return a.assetCode.localeCompare(b.assetCode)
     })
 
     // Optionally trim to `limit` unread + (if includeRead) up to 20 recently-read.

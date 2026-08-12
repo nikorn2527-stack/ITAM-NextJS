@@ -56,12 +56,12 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Find user by username OR email ─────────────────────────────
-    const row = await db.userPermission.findFirst({
+    const row = await db.user.findFirst({
       where: {
         OR: [{ username: loginRaw }, { email: loginRaw }],
       },
     })
-    console.log("[DEBUG LOGIN] user found:", row?.username, "active:", row?.active, "hash:", row?.passwordHash?.substring(0,8), "salt:", row?.passwordSalt?.substring(0,8)); console.log("[DEBUG LOGIN] verify:", verifyPassword(password, row?.passwordHash, row?.passwordSalt)); if (!row || !row.active || !row.passwordHash || !row.passwordSalt) {
+    if (!row || !row.active || !row.passwordHash || !row.passwordSalt) {
       recordLoginFailure(key)
       return NextResponse.json(
         { error: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" },
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
 
     // ── Success: clear rate-limit, update LastLoginAt, issue JWT ──
     clearLoginRateLimit(key)
-    await db.userPermission.update({
+    await db.user.update({
       where: { id: row.id },
       data: { lastLoginAt: new Date().toISOString() },
     })
@@ -109,10 +109,12 @@ export async function POST(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'LOGIN',
-          user: row.email,
-          details: JSON.stringify({ method: 'password', username: row.username }),
+          entity: 'User',
+          entityId: row.id,
+          summary: `เข้าสู่ระบบ ${row.email}`,
+          actor: row.email,
+          detail: JSON.stringify({ method: 'password', username: row.username }),
         },
       })
     } catch {

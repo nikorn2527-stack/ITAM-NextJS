@@ -49,10 +49,10 @@ function computeRange(key: RangeKey): RangeInfo {
 function readingDateWhere(range: RangeInfo): Record<string, unknown> {
   if (range.start === null && range.end === null) return {}
   if (range.start && range.end) {
-    return { date: { gte: range.start, lte: range.end } }
+    return { readingDate: { gte: range.start, lte: range.end } }
   }
-  if (range.start) return { date: { gte: range.start } }
-  if (range.end) return { date: { lte: range.end } }
+  if (range.start) return { readingDate: { gte: range.start } }
+  if (range.end) return { readingDate: { lte: range.end } }
   return {}
 }
 
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
       db.cycle.findFirst({
         where: { status: 'active' },
         orderBy: { startDate: 'desc' },
-        select: { id: true },
+        select: { startDate: true, endDate: true },
       }),
     ])
 
@@ -124,31 +124,36 @@ export async function GET(req: NextRequest) {
     const [rangeReadings, cycleReadings] = await Promise.all([
       db.meterReading.findMany({
         where: rangeWhere,
-        select: { deviceId: true, delta: true, date: true },
+        select: { deviceId: true, pagesBw: true, pagesColor: true, readingDate: true },
       }),
       activeCycle
         ? db.meterReading.findMany({
-            where: { cycleId: activeCycle.id },
-            select: { deviceId: true, date: true },
+            where: {
+              readingDate: {
+                gte: activeCycle.startDate,
+                lte: activeCycle.endDate,
+              },
+            },
+            select: { deviceId: true, readingDate: true },
           })
-        : Promise.resolve([] as Array<{ deviceId: string; date: string }>),
+        : Promise.resolve([] as Array<{ deviceId: string; readingDate: string }>),
     ])
 
     const rangeSheetsByDevice = new Map<string, number>()
     const lastReadingDateByDevice = new Map<string, string>()
     for (const r of rangeReadings) {
       const cur = rangeSheetsByDevice.get(r.deviceId) ?? 0
-      rangeSheetsByDevice.set(r.deviceId, cur + (r.delta > 0 ? r.delta : 0))
+      rangeSheetsByDevice.set(r.deviceId, cur + Math.max(0, r.pagesBw) + Math.max(0, r.pagesColor))
       const prevDate = lastReadingDateByDevice.get(r.deviceId)
-      if (!prevDate || r.date > prevDate) {
-        lastReadingDateByDevice.set(r.deviceId, r.date)
+      if (!prevDate || r.readingDate > prevDate) {
+        lastReadingDateByDevice.set(r.deviceId, r.readingDate)
       }
     }
 
     const cycleReadingsByDevice = new Map<string, string>()
     for (const r of cycleReadings) {
       const prev = cycleReadingsByDevice.get(r.deviceId)
-      if (!prev || r.date > prev) cycleReadingsByDevice.set(r.deviceId, r.date)
+      if (!prev || r.readingDate > prev) cycleReadingsByDevice.set(r.deviceId, r.readingDate)
     }
 
     const METERABLE_TYPES = ['PRINTER', 'COPIER', 'MFP']

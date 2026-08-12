@@ -12,12 +12,12 @@ export async function GET(req: NextRequest) {
 
     // Non-admin users can only see their own audit log entries
     if (user.role !== 'admin' && user.role !== 'superadmin') {
-      const where: Record<string, unknown> = { user: user.email }
+      const where: Record<string, unknown> = { actor: user.email }
       const { searchParams } = new URL(req.url)
       const action = searchParams.get('action')?.trim() ?? ''
       const q = searchParams.get('q')?.trim() ?? ''
       if (action) where.action = action
-      if (q) where.details = { contains: q }
+      if (q) where.detail = { contains: q }
       const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
       const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10)))
       const [logs, total] = await Promise.all([
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
           where,
           skip: (page - 1) * limit,
           take: limit,
-          orderBy: { timestamp: 'desc' },
+          orderBy: { createdAt: 'desc' },
         }),
         db.auditLog.count({ where }),
       ])
@@ -46,8 +46,8 @@ export async function GET(req: NextRequest) {
 
     const where: Record<string, unknown> = { AND: [] as unknown[] }
     if (action) (where.AND as unknown[]).push({ action })
-    if (qUser) (where.AND as unknown[]).push({ user: { contains: qUser } })
-    if (q) (where.AND as unknown[]).push({ details: { contains: q } })
+    if (qUser) (where.AND as unknown[]).push({ actor: { contains: qUser } })
+    if (q) (where.AND as unknown[]).push({ detail: { contains: q } })
     if (Array.isArray(where.AND) && where.AND.length === 0) delete where.AND
     // Note: site filter is informational here — admin sees all audit logs
     void siteFilterForUser
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { timestamp: 'desc' },
+        orderBy: { createdAt: 'desc' },
       }),
       db.auditLog.count({ where }),
     ])

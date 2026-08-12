@@ -40,7 +40,7 @@ export async function POST(
     const { id } = await params
     const body = await req.json()
 
-    const device = await db.device.findUnique({ where: { assetNo: id } })
+    const device = await db.device.findUnique({ where: { assetCode: id } })
     if (!device) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     }
@@ -70,7 +70,7 @@ export async function POST(
     // If a meterReadingId was passed, verify it belongs to this device.
     if (meterReadingId) {
       const reading = await db.meterReading.findUnique({ where: { id: meterReadingId } })
-      if (!reading || reading.assetNo !== device.assetNo) {
+      if (!reading || reading.assetCode !== device.assetCode) {
         return NextResponse.json(
           { error: 'meterReadingId ไม่ตรงกับอุปกรณ์นี้' },
           { status: 400 },
@@ -89,10 +89,10 @@ export async function POST(
     let toAssetSiteCode = String(body.toAssetSiteCode ?? '').trim()
     if (!toAssetSiteCode) {
       if (isCrossSite) {
-        const generated = await getNextAssetSiteCode(toSite, { assetNo: device.assetNo })
-        toAssetSiteCode = generated ?? device.assetSiteCode ?? ''
+        const generated = await getNextAssetSiteCode(toSite, { assetNo: device.assetCode })
+        toAssetSiteCode = generated ?? device.displayLabel ?? ''
       } else {
-        toAssetSiteCode = device.assetSiteCode ?? ''
+        toAssetSiteCode = device.displayLabel ?? ''
       }
     }
 
@@ -105,7 +105,7 @@ export async function POST(
     // Capture "from" state BEFORE the update.
     const fromSnapshot = {
       site: device.site,
-      assetSiteCode: device.assetSiteCode,
+      assetSiteCode: device.displayLabel,
       building: device.building,
       floor: device.floor,
       department: device.department,
@@ -122,14 +122,14 @@ export async function POST(
     //   - TRANSFER_SITE (cross-site)
     const action = isCrossSite ? 'TRANSFER_SITE' : 'TRANSFER'
 
-    // Build the LocationHistory row first so we can wire the meterReading's
+    // Build the DeviceTransfer row first so we can wire the meterReading's
     // eventId/eventType back to it (best-effort — wrapped in try/catch).
     const logId = `MV-${nowIso.replace(/[-:.TZ]/g, '').slice(0, 14)}-${Math.floor(Math.random() * 90000) + 10000}`
 
     // Single transaction: update device + create history.
     const [updatedDevice, historyRow] = await db.$transaction([
       db.device.update({
-        where: { assetNo: device.assetNo },
+        where: { assetCode: device.assetCode },
         data: {
           site: toSite,
           building: toBuilding,
@@ -137,14 +137,15 @@ export async function POST(
           department: toDepartment,
           departmentCode: toDepartmentCode,
           location: toLocation,
-          assetSiteCode: toAssetSiteCode || null,
+          displayLabel: toAssetSiteCode || null,
           updatedBy: movedBy,
         },
       }),
-      db.locationHistory.create({
+      db.deviceTransfer.create({
         data: {
           logId,
-          assetNo: device.assetNo,
+          deviceId: device.id,
+          assetCode: device.assetCode,
           moveDate,
           action,
           fromStatus: fromSnapshot.status,
@@ -164,6 +165,8 @@ export async function POST(
           meterReadingId,
           movedBy,
           remark: skipMeterReason || null,
+          transferDate: moveDate.slice(0, 10),
+          reason: skipMeterReason || null,
         },
       }),
     ])
@@ -188,11 +191,13 @@ export async function POST(
     try {
       await db.auditLog.create({
         data: {
-          timestamp: nowIso,
           action: 'TRANSFER',
-          user: user.email,
-          details: JSON.stringify({
-            assetNo: device.assetNo,
+          entity: 'DeviceTransfer',
+          entityId: historyRow.id,
+          summary: `ย้ายอุปกรณ์ ${device.assetCode} ไป ${toSite}`,
+          actor: user.email,
+          detail: JSON.stringify({
+            assetNo: device.assetCode,
             from: fromSnapshot,
             to: {
               site: toSite,
@@ -213,7 +218,7 @@ export async function POST(
 
     // Best-effort notification
     void notifyTransfer({
-      assetNo: device.assetNo,
+      assetNo: device.assetCode,
       fromSite: fromSnapshot.site,
       toSite,
       by: movedBy,
@@ -222,7 +227,7 @@ export async function POST(
     // Push SSE event — both source-site and destination-site subscribers see it
     publishRealtimeEvent({
       type: 'device-transferred',
-      assetNo: device.assetNo,
+      assetNo: device.assetCode,
       site: toSite,
       payload: {
         fromSite: fromSnapshot.site,
@@ -233,6 +238,7 @@ export async function POST(
 
     return NextResponse.json({
       device: updatedDevice,
+      transfer: historyRow,
       locationHistory: historyRow,
       reusedAssetSiteCode:
         !!fromSnapshot.assetSiteCode &&

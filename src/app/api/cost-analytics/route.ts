@@ -48,10 +48,10 @@ function computeRange(key: RangeKey): RangeInfo {
 function readingDateWhere(range: RangeInfo): Record<string, unknown> {
   if (range.start === null && range.end === null) return {}
   if (range.start && range.end) {
-    return { date: { gte: range.start, lte: range.end } }
+    return { readingDate: { gte: range.start, lte: range.end } }
   }
-  if (range.start) return { date: { gte: range.start } }
-  if (range.end) return { date: { lte: range.end } }
+  if (range.start) return { readingDate: { gte: range.start } }
+  if (range.end) return { readingDate: { lte: range.end } }
   return {}
 }
 
@@ -90,14 +90,15 @@ export async function GET(req: NextRequest) {
     const where = readingDateWhere(range)
     const readings = await db.meterReading.findMany({
       where,
-      select: { deviceId: true, delta: true },
+      select: { deviceId: true, pagesBw: true, pagesColor: true },
     })
 
     const usageByDevice = new Map<string, number>()
     for (const r of readings) {
       const cur = usageByDevice.get(r.deviceId) ?? 0
       // Sum of positive delta = sheets printed (RESET / negative deltas are corrections)
-      usageByDevice.set(r.deviceId, cur + (r.delta > 0 ? r.delta : 0))
+      const pages = r.pagesBw + r.pagesColor
+      usageByDevice.set(r.deviceId, cur + (pages > 0 ? pages : 0))
     }
 
     const deviceRows = meterableDevices.map((d) => {

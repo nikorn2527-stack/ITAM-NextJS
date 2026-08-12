@@ -32,21 +32,26 @@ export async function GET() {
         brand: true,
         model: true,
         site: true,
-        lastMeterReading: true,
+        lastMeterBw: true,
         createdAt: true,
       },
     })
 
     // 3. Readings in this cycle, grouped by deviceId (latest date per device)
     const readings = await db.meterReading.findMany({
-      where: { cycleId: activeCycle.id },
-      select: { deviceId: true, date: true },
-      orderBy: { date: 'desc' },
+      where: {
+        readingDate: {
+          gte: activeCycle.startDate,
+          lte: activeCycle.endDate,
+        },
+      },
+      select: { deviceId: true, readingDate: true },
+      orderBy: { readingDate: 'desc' },
     })
     const readDeviceMap = new Map<string, string>()
     for (const r of readings) {
       if (!readDeviceMap.has(r.deviceId)) {
-        readDeviceMap.set(r.deviceId, r.date)
+        readDeviceMap.set(r.deviceId, r.readingDate)
       }
     }
 
@@ -55,9 +60,9 @@ export async function GET() {
     const reminders = devices
       .filter((d) => !readDeviceMap.has(d.id))
       .map((d) => {
-        const lastReadingDate = d.lastMeterReading > 0 ? null : null
+        const lastReadingDate = d.lastMeterBw > 0 ? null : null
         // Use the device's createdAt as fallback "since we haven't read"
-        const referenceDate = d.lastMeterReading > 0 ? todayISO : d.createdAt.toISOString().slice(0, 10)
+        const referenceDate = d.lastMeterBw > 0 ? todayISO : d.createdAt.toISOString().slice(0, 10)
         const daysOverdue = Math.max(
           0,
           Math.round(
@@ -73,7 +78,7 @@ export async function GET() {
             brand: d.brand,
             model: d.model,
             site: d.site,
-            lastMeterReading: d.lastMeterReading,
+            lastMeterReading: d.lastMeterBw,
           },
           lastReadingDate: lastReadingDate,
           daysOverdue,

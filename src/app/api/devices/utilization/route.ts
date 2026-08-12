@@ -133,22 +133,23 @@ export async function GET(req: NextRequest) {
 
     const readings = await db.meterReading.findMany({
       where: {
-        date: { gte: firstMonthStart, lte: todayISO },
+        readingDate: { gte: firstMonthStart, lte: todayISO },
         deviceId: { in: devices.map((d) => d.id) },
       },
-      select: { deviceId: true, delta: true, date: true },
+      select: { deviceId: true, pagesBw: true, pagesColor: true, readingDate: true },
     })
 
     // Aggregate per device per month (positive deltas only = sheets printed)
     const perDeviceMonth = new Map<string, Map<string, number>>()
     for (const r of readings) {
-      const m = r.date.slice(0, 7) // YYYY-MM
+      const m = r.readingDate.slice(0, 7) // YYYY-MM
       let inner = perDeviceMonth.get(r.deviceId)
       if (!inner) {
         inner = new Map<string, number>()
         perDeviceMonth.set(r.deviceId, inner)
       }
-      inner.set(m, (inner.get(m) ?? 0) + (r.delta > 0 ? r.delta : 0))
+      const pages = r.pagesBw + r.pagesColor
+      inner.set(m, (inner.get(m) ?? 0) + (pages > 0 ? pages : 0))
     }
 
     // Build device rows

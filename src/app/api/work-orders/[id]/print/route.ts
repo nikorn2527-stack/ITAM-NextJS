@@ -48,10 +48,10 @@ function esc(input: unknown): string {
     .replace(/'/g, '&#39;')
 }
 
-function formatDate(iso: string | null | undefined): string {
-  if (!iso) return '—'
+function formatDate(value: string | Date | null | undefined): string {
+  if (!value) return '—'
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return (value instanceof Date ? value : new Date(value)).toLocaleString('th-TH', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -59,20 +59,20 @@ function formatDate(iso: string | null | undefined): string {
       minute: '2-digit',
     })
   } catch {
-    return String(iso)
+    return String(value)
   }
 }
 
-function formatThaiDateOnly(iso: string | null | undefined): string {
-  if (!iso) return '—'
+function formatThaiDateOnly(value: string | Date | null | undefined): string {
+  if (!value) return '—'
   try {
-    return new Date(iso).toLocaleDateString('th-TH', {
+    return (value instanceof Date ? value : new Date(value)).toLocaleDateString('th-TH', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
     })
   } catch {
-    return String(iso)
+    return String(value)
   }
 }
 

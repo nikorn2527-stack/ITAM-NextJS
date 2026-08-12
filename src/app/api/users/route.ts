@@ -177,8 +177,15 @@ export async function GET(req: NextRequest) {
           { status: 401 },
         )
       }
+      const current = await db.user.findUnique({ where: { id: me.id } })
+      if (!current) {
+        return NextResponse.json(
+          { error: 'ไม่พบข้อมูลผู้ใช้', users: [] },
+          { status: 404 },
+        )
+      }
       return NextResponse.json({
-        users: [publicUser(await db.user.findUnique({ where: { id: me.id } })!)],
+        users: [publicUser(current)],
         limited: true,
       })
     }

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'assetNo is required' }, { status: 400 })
     }
 
-    const device = await db.device.findUnique({ where: { assetNo } })
+    const device = await db.device.findUnique({ where: { assetCode: assetNo } })
     if (!device) {
       return NextResponse.json({ error: `ไม่พบอุปกรณ์ ${assetNo}` }, { status: 404 })
     }
@@ -62,10 +62,10 @@ export async function POST(req: NextRequest) {
     }
 
     const deviceData: StickerDeviceData = {
-      assetNo: device.assetNo,
-      assetSiteCode: device.assetSiteCode,
-      serial: device.serial,
-      deviceType: device.deviceType,
+      assetNo: device.assetCode,
+      assetSiteCode: device.displayLabel,
+      serial: device.serialNumber,
+      deviceType: device.type,
       brand: device.brand,
       model: device.model,
       building: device.building,
@@ -83,8 +83,8 @@ export async function POST(req: NextRequest) {
     await logAudit(
       'STICKER_RENDER',
       'Device',
-      device.assetNo,
-      `เรนเดอร์สติกเกอร์สำหรับ ${device.assetNo} ด้วยเทมเพลต "${template.name}"`,
+      device.assetCode,
+      `เรนเดอร์สติกเกอร์สำหรับ ${device.assetCode} ด้วยเทมเพลต "${template.name}"`,
       { assetNo, templateId: template.id, templateName: template.name },
       auth.user.email,
     )

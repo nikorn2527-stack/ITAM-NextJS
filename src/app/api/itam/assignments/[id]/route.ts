@@ -13,7 +13,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const { id } = await params
     const existing = await db.assignment.findUnique({
       where: { id },
-      include: { device: { select: { site: true } } },
+      include: { device: { select: { site: true, assetCode: true } } },
     })
     if (!existing) return NextResponse.json({ error: 'ไม่พบการมอบหมาย' }, { status: 404 })
     if (!canAccessSite(user, existing.device?.site)) {
@@ -33,10 +33,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'RETURN',
-          user: user.email,
-          details: JSON.stringify({ assignmentId: id, assetNo: existing.assetNo }),
+          entity: 'Assignment',
+          entityId: id,
+          summary: `คืนอุปกรณ์ ${existing.device?.assetCode ?? id}`,
+          actor: user.email,
+          detail: JSON.stringify({ assignmentId: id, assetNo: existing.device?.assetCode ?? null }),
         },
       })
     } catch { /* ignore */ }
@@ -56,7 +58,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const { id } = await params
     const existing = await db.assignment.findUnique({
       where: { id },
-      include: { device: { select: { site: true } } },
+      include: { device: { select: { site: true, assetCode: true } } },
     })
     if (!existing) return NextResponse.json({ error: 'ไม่พบการมอบหมาย' }, { status: 404 })
     if (!canAccessSite(user, existing.device?.site)) {

@@ -679,9 +679,9 @@ function RankingCard({
   title, rows, accent, nameKey,
 }: {
   title: string
-  rows: Array<Record<string, unknown>>
+  rows: readonly RankingRow[]
   accent: string
-  nameKey: string
+  nameKey: keyof RankingRow
 }) {
   const max = rows.length > 0 ? Number(rows[0].total ?? 0) : 1
   return (

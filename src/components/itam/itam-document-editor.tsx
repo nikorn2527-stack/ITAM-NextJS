@@ -46,7 +46,7 @@ function genTemplateId(): string {
 }
 
 function makeElement(type: DocumentElementType): DocumentElement {
-  const base: DocumentElement = {
+  const base = {
     id: genElementId(),
     x: 10, y: 30, width: 40, height: 5,
     opacity: 1, zIndex: 1,
@@ -63,11 +63,11 @@ function makeElement(type: DocumentElementType): DocumentElement {
 
 // Sample rows for preview
 const SAMPLE_ROWS: DocumentRenderRow[] = [
-  { no: 1, brand: 'HP', model: 'LaserJet Pro M404', serial: 'SN001234', remark: 'ปริ้นเตอร์เลเซอร์ขาวดำ', pagesCurrent: 1200, bwRate: 'แผ่น', startMeter: 0.5, rowCost: 600, momPercent: 7, difference: 0, endMeter: 600, pagesPrevious: 5 },
-  { no: 2, brand: 'Canon', model: 'imageRUNNER 2630', serial: 'SN005678', remark: 'มัลติฟังก์ชั่นสี', pagesCurrent: 850, bwRate: 'แผ่น', startMeter: 0.8, rowCost: 680, momPercent: 7, difference: 0, endMeter: 680, pagesPrevious: 3 },
-  { no: 3, brand: 'KYOCERA', model: 'ECOSYS P3260dn', serial: 'SN009012', remark: 'ปริ้นเตอร์ A4 ความเร็วสูง', pagesCurrent: 2400, bwRate: 'แผ่น', startMeter: 0.4, rowCost: 960, momPercent: 7, difference: 0, endMeter: 960, pagesPrevious: 8 },
-  { no: 4, brand: 'Brother', model: 'MFC-L8900CDW', serial: 'SN003456', remark: 'ปริ้นเตอร์สีเลเซอร์', pagesCurrent: 540, bwRate: 'แผ่น', startMeter: 1.5, rowCost: 810, momPercent: 7, difference: 0, endMeter: 810, pagesPrevious: 0 },
-  { no: 5, brand: 'Epson', model: 'EcoTank L15150', serial: 'SN007890', remark: 'ปริ้นเตอร์อิงค์แทงค์', pagesCurrent: 320, bwRate: 'แผ่น', startMeter: 0.3, rowCost: 96, momPercent: 7, difference: 0, endMeter: 96, pagesPrevious: 2 },
+  { no: 1, brand: 'HP', model: 'LaserJet Pro M404', serial: 'SN001234', remark: 'ปริ้นเตอร์เลเซอร์ขาวดำ', pagesCurrent: 1200, bwRate: 1, startMeter: 0.5, rowCost: 600, momPercent: 7, difference: 0, endMeter: 600, pagesPrevious: 5 },
+  { no: 2, brand: 'Canon', model: 'imageRUNNER 2630', serial: 'SN005678', remark: 'มัลติฟังก์ชั่นสี', pagesCurrent: 850, bwRate: 1, startMeter: 0.8, rowCost: 680, momPercent: 7, difference: 0, endMeter: 680, pagesPrevious: 3 },
+  { no: 3, brand: 'KYOCERA', model: 'ECOSYS P3260dn', serial: 'SN009012', remark: 'ปริ้นเตอร์ A4 ความเร็วสูง', pagesCurrent: 2400, bwRate: 1, startMeter: 0.4, rowCost: 960, momPercent: 7, difference: 0, endMeter: 960, pagesPrevious: 8 },
+  { no: 4, brand: 'Brother', model: 'MFC-L8900CDW', serial: 'SN003456', remark: 'ปริ้นเตอร์สีเลเซอร์', pagesCurrent: 540, bwRate: 1, startMeter: 1.5, rowCost: 810, momPercent: 7, difference: 0, endMeter: 810, pagesPrevious: 0 },
+  { no: 5, brand: 'Epson', model: 'EcoTank L15150', serial: 'SN007890', remark: 'ปริ้นเตอร์อิงค์แทงค์', pagesCurrent: 320, bwRate: 1, startMeter: 0.3, rowCost: 96, momPercent: 7, difference: 0, endMeter: 96, pagesPrevious: 2 },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────

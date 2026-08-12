@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { StockTransaction } from '@prisma/client'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { notifyPartsRequested } from '@/lib/notifications'
@@ -215,7 +216,7 @@ export async function POST(
     // Create all pending transactions in a single transaction.
     // Also update the WO status if needed.
     const created = await db.$transaction(async (tx) => {
-      const txns = []
+      const txns: StockTransaction[] = []
       for (const v of validated) {
         const txnNumber = await (async () => {
           const ymd = txnDate.replace(/-/g, '').slice(0, 8)

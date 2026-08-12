@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
       })
 
       let totalValue = 0
-      const itemRows = []
+      const itemRows: Array<{ id: string }> = []
       for (const it of itemInputs) {
         const qtyOrdered = optInt(it.quantityOrdered, 0)
         const unitPrice = optFloat(it.unitPrice)

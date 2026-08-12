@@ -30,11 +30,11 @@ export async function GET(req: NextRequest) {
     // 2) Devices by type (top 8)
     const allDevices = await db.device.findMany({
       where: siteFilter,
-      select: { deviceType: true },
+      select: { type: true },
     })
     const typeMap: Record<string, number> = {}
     allDevices.forEach((d) => {
-      const t = d.deviceType || 'ไม่ระบุ'
+      const t = d.type || 'ไม่ระบุ'
       typeMap[t] = (typeMap[t] || 0) + 1
     })
     const byType = Object.entries(typeMap)
@@ -43,13 +43,13 @@ export async function GET(req: NextRequest) {
       .map(([name, value]) => ({ name, value }))
 
     // 3) Devices by site (only show sites the user can access)
-    const sites = await db.siteAttribute.findMany()
+    const sites = await db.site.findMany({ orderBy: { code: 'asc' } })
     const now = new Date()
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const visibleSites = userSites === 'ALL' ? sites : sites.filter((s) => userSites.includes(s.siteName || ''))
+    const visibleSites = userSites === 'ALL' ? sites : sites.filter((s) => userSites.includes(s.name))
     const bySite = await Promise.all(
       visibleSites.map(async (s) => {
-        const siteName = s.siteName || ''
+        const siteName = s.name
         const [deviceCount, activeCount, monthReadings] = await Promise.all([
           db.device.count({ where: { site: siteName } }),
           db.device.count({ where: { site: siteName, status: 'Active' } }),
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
         ])
         const paperSheets = (monthReadings._sum.pagesBw ?? 0) + (monthReadings._sum.pagesColor ?? 0)
         return {
-          siteCode: s.siteCode,
+          siteCode: s.code,
           siteName,
           deviceCount,
           activeCount,
@@ -104,13 +104,13 @@ export async function GET(req: NextRequest) {
       orderBy: { readingDate: 'desc' },
       where: { device: siteFilter },
       include: {
-        device: { select: { assetNo: true, brand: true, model: true } },
+        device: { select: { assetCode: true, brand: true, model: true } },
       },
     })
     const recentActivity = recentReadings.map((r) => ({
       id: r.id,
-      assetNo: r.assetNo,
-      deviceName: r.device ? `${r.device.brand || ''} ${r.device.model || ''}`.trim() : r.assetNo,
+      assetNo: r.assetCode ?? r.device?.assetCode ?? '',
+      deviceName: r.device ? `${r.device.brand || ''} ${r.device.model || ''}`.trim() : r.assetCode ?? '',
       readingDate: r.readingDate,
       pagesBw: r.pagesBw,
       pagesColor: r.pagesColor,
@@ -135,29 +135,30 @@ export async function GET(req: NextRequest) {
       const topDevices = await db.device.findMany({
         where: { ...siteFilter, meterRequired: true },
         take: 12,
-        orderBy: { assetNo: 'asc' },
-        select: { assetNo: true, brand: true, model: true },
+        orderBy: { assetCode: 'asc' },
+        select: { assetCode: true, brand: true, model: true },
       })
 
       const readings = await db.meterReading.findMany({
         where: {
           readingMonth: { in: months },
-          assetNo: { in: topDevices.map((d) => d.assetNo) },
+          device: { assetCode: { in: topDevices.map((d) => d.assetCode) } },
         },
-        select: { assetNo: true, readingMonth: true, pagesBw: true, pagesColor: true },
+        select: { assetCode: true, readingMonth: true, pagesBw: true, pagesColor: true },
       })
 
       const byDeviceMonth: Record<string, Record<string, number>> = {}
       readings.forEach((r) => {
-        if (!byDeviceMonth[r.assetNo]) byDeviceMonth[r.assetNo] = {}
+        const assetNo = r.assetCode ?? ''
+        if (!byDeviceMonth[assetNo]) byDeviceMonth[assetNo] = {}
         const key = r.readingMonth || ''
-        byDeviceMonth[r.assetNo][key] = (byDeviceMonth[r.assetNo][key] || 0) + r.pagesBw + r.pagesColor
+        byDeviceMonth[assetNo][key] = (byDeviceMonth[assetNo][key] || 0) + r.pagesBw + r.pagesColor
       })
 
       heatmap = topDevices.map((d) => ({
-        assetNo: d.assetNo,
-        deviceName: `${d.brand || ''} ${d.model || ''}`.trim() || d.assetNo,
-        months: months.map((m) => ({ month: m, pages: byDeviceMonth[d.assetNo]?.[m] || 0 })),
+        assetNo: d.assetCode,
+        deviceName: `${d.brand || ''} ${d.model || ''}`.trim() || d.assetCode,
+        months: months.map((m) => ({ month: m, pages: byDeviceMonth[d.assetCode]?.[m] || 0 })),
       }))
     }
 

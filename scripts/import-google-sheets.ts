@@ -77,38 +77,44 @@ async function importDevices() {
     try {
       const assetNo = clean(row['asset_no'])
       if (!assetNo) { skipped++; continue }
+      const brand = clean(row['brand']) ?? 'Unknown'
+      const model = clean(row['model']) ?? 'Unknown'
+      const type = clean(row['device_type']) ?? 'OTHER'
+      const name = clean(row['name']) ?? `${brand} ${model}`
+      const site = clean(row['site']) ?? 'UNKNOWN'
+      const deviceData = {
+        name,
+        brand,
+        model,
+        type,
+        serialNumber: clean(row['serial']),
+        building: clean(row['building']),
+        floor: clean(row['floor']),
+        department: clean(row['department']),
+        location: clean(row['location']),
+        departmentCode: clean(row['department_code']),
+        status: clean(row['status']) || 'Active',
+        site,
+        displayLabel: clean(row['asset_site_code']),
+        contractNo: clean(row['contract_no']),
+        ip: clean(row['ip']),
+        mac: clean(row['mac']),
+        remoteId: clean(row['remote_id']),
+        remark: clean(row['remark']),
+        vendor: clean(row['vendor']),
+        purchaseDate: clean(row['install_date']),
+        uninstallDate: clean(row['uninstall_date']),
+        warrantyEnd: clean(row['warranty_end']),
+        deviceGroup: clean(row['device_group']),
+        costCenter: clean(row['cost_center']),
+        meterRequired: parseBool(row['meter_required']),
+        meterMode: clean(row['meter_mode']),
+        updatedBy: clean(row['updated_by']) || 'System',
+      }
       await db.device.upsert({
-        where: { assetNo },
-        create: {
-          assetNo, deviceType: clean(row['device_type']), brand: clean(row['brand']),
-          model: clean(row['model']), serial: clean(row['serial']),
-          building: clean(row['building']), floor: clean(row['floor']),
-          department: clean(row['department']), location: clean(row['location']),
-          departmentCode: clean(row['department_code']),
-          status: clean(row['status']) || 'Active', site: clean(row['site']),
-          contractNo: clean(row['contract_no']), ip: clean(row['ip']), mac: clean(row['mac']),
-          remoteId: clean(row['remote_id']), remark: clean(row['remark']), vendor: clean(row['vendor']),
-          installDate: clean(row['install_date']), uninstallDate: clean(row['uninstall_date']),
-          warrantyEnd: clean(row['warranty_end']), deviceGroup: clean(row['device_group']),
-          costCenter: clean(row['cost_center']), meterRequired: parseBool(row['meter_required']),
-          meterMode: clean(row['meter_mode']), assetSiteCode: clean(row['asset_site_code']),
-          updatedBy: clean(row['updated_by']) || 'System',
-        },
-        update: {
-          deviceType: clean(row['device_type']), brand: clean(row['brand']),
-          model: clean(row['model']), serial: clean(row['serial']),
-          building: clean(row['building']), floor: clean(row['floor']),
-          department: clean(row['department']), location: clean(row['location']),
-          departmentCode: clean(row['department_code']),
-          status: clean(row['status']) || 'Active', site: clean(row['site']),
-          contractNo: clean(row['contract_no']), ip: clean(row['ip']), mac: clean(row['mac']),
-          remoteId: clean(row['remote_id']), remark: clean(row['remark']), vendor: clean(row['vendor']),
-          installDate: clean(row['install_date']), uninstallDate: clean(row['uninstall_date']),
-          warrantyEnd: clean(row['warranty_end']), deviceGroup: clean(row['device_group']),
-          costCenter: clean(row['cost_center']), meterRequired: parseBool(row['meter_required']),
-          meterMode: clean(row['meter_mode']), assetSiteCode: clean(row['asset_site_code']),
-          updatedBy: clean(row['updated_by']) || 'System',
-        },
+        where: { assetCode: assetNo },
+        create: { assetCode: assetNo, ...deviceData },
+        update: deviceData,
       })
       inserted++
     } catch (e) { skipped++ }
@@ -126,18 +132,32 @@ async function importMeterReadings() {
     try {
       const assetNo = clean(row['asset_no'])
       if (!assetNo) { skipped++; continue }
+      const assetCode = assetNo
+      const device = await db.device.findUnique({ where: { assetCode }, select: { id: true } })
+      if (!device) { skipped++; continue }
       await db.meterReading.create({
         data: {
-          readingId: clean(row['reading_id']), assetNo,
-          readingDate: clean(row['reading_date']), readingMonth: clean(row['reading_month']),
-          meterBw: parseInt0(row['meter_bw']), meterColor: parseInt0(row['meter_color']),
-          pagesBw: parseInt0(row['pages_bw']), pagesColor: parseInt0(row['pages_color']),
-          locationAtReading: clean(row['location_at_reading']), readBy: clean(row['read_by']),
-          remark: clean(row['remark']), prevMeterBw: parseInt0(row['prev_meter_bw']),
-          prevMeterColor: parseInt0(row['prev_meter_color']), readingType: clean(row['reading_type']),
-          eventType: clean(row['event_type']), eventId: clean(row['event_id']),
-          siteAtReading: clean(row['site_at_reading']), buildingAtReading: clean(row['building_at_reading']),
-          floorAtReading: clean(row['floor_at_reading']), departmentAtReading: clean(row['department_at_reading']),
+          readingId: clean(row['reading_id']),
+          deviceId: device.id,
+          assetCode,
+          readingDate: clean(row['reading_date']) ?? new Date().toISOString().slice(0, 10),
+          readingMonth: clean(row['reading_month']),
+          meterBw: parseInt0(row['meter_bw']),
+          meterColor: parseInt0(row['meter_color']),
+          pagesBw: parseInt0(row['pages_bw']),
+          pagesColor: parseInt0(row['pages_color']),
+          locationAtReading: clean(row['location_at_reading']),
+          readBy: clean(row['read_by']),
+          remark: clean(row['remark']),
+          prevMeterBw: parseInt0(row['prev_meter_bw']),
+          prevMeterColor: parseInt0(row['prev_meter_color']),
+          readingType: clean(row['reading_type']),
+          eventType: clean(row['event_type']),
+          eventId: clean(row['event_id']),
+          siteAtReading: clean(row['site_at_reading']),
+          buildingAtReading: clean(row['building_at_reading']),
+          floorAtReading: clean(row['floor_at_reading']),
+          departmentAtReading: clean(row['department_at_reading']),
           departmentCodeAtReading: clean(row['department_code_at_reading']),
         },
       })
@@ -160,11 +180,13 @@ async function importMasterItems() {
       if (!categoryKey || !value) { skipped++; continue }
       await db.masterItem.create({
         data: {
-          itemId: clean(row['ItemID']), categoryKey, value,
-          groupName: clean(row['GroupName']), parentRef: clean(row['ParentRef']),
-          displayLabel: clean(row['DisplayLabel']), siteCode: clean(row['SiteCode']),
-          allowedSites: clean(row['AllowedSites']), active: parseBool(row['Active']),
-          departmentCode: clean(row['DepartmentCode']),
+          category: categoryKey,
+          code: clean(row['ItemID']) ?? value,
+          label: value,
+          parentRef: clean(row['ParentRef']),
+          displayLabel: clean(row['DisplayLabel']),
+          siteCode: clean(row['SiteCode']),
+          active: parseBool(row['Active']),
         },
       })
       inserted++
@@ -183,17 +205,21 @@ async function importMasterCategory() {
     try {
       const categoryKey = clean(row['CategoryKey'])
       if (!categoryKey) { skipped++; continue }
-      await db.masterCategory.upsert({
-        where: { categoryKey },
-        create: {
-          categoryKey, displayName: clean(row['DisplayName']),
-          sortOrder: parseInt0(row['SortOrder']), active: parseBool(row['Active']),
-        },
-        update: {
-          displayName: clean(row['DisplayName']),
-          sortOrder: parseInt0(row['SortOrder']), active: parseBool(row['Active']),
-        },
+      const label = clean(row['DisplayName']) ?? categoryKey
+      const existing = await db.masterItem.findFirst({
+        where: { category: 'Category', code: categoryKey },
+        select: { id: true },
       })
+      if (existing) {
+        await db.masterItem.update({
+          where: { id: existing.id },
+          data: { label, active: parseBool(row['Active']) },
+        })
+      } else {
+        await db.masterItem.create({
+          data: { category: 'Category', code: categoryKey, label, active: parseBool(row['Active']) },
+        })
+      }
       inserted++
     } catch (e) { skipped++ }
   }
@@ -210,18 +236,36 @@ async function importLocationHistory() {
     try {
       const assetNo = clean(row['Asset_No'])
       if (!assetNo) { skipped++; continue }
-      await db.locationHistory.create({
+      const assetCode = assetNo
+      const device = await db.device.findUnique({ where: { assetCode }, select: { id: true } })
+      if (!device) { skipped++; continue }
+      const moveDate = clean(row['Move_Date'])
+      const transferDate = moveDate ?? new Date().toISOString().slice(0, 10)
+      await db.deviceTransfer.create({
         data: {
-          logId: clean(row['Log_ID']), assetNo, moveDate: clean(row['Move_Date']),
-          action: clean(row['Action']), fromStatus: clean(row['From_Status']),
-          toStatus: clean(row['To_Status']), fromSite: clean(row['From_Site']),
-          fromAssetSiteCode: clean(row['From_AssetSiteCode']), fromBuilding: clean(row['From_Building']),
-          fromFloor: clean(row['From_Floor']), fromDepartment: clean(row['From_Department']),
-          fromLocation: clean(row['From_Location']), toSite: clean(row['To_Site']),
-          toAssetSiteCode: clean(row['To_AssetSiteCode']), toBuilding: clean(row['To_Building']),
-          toFloor: clean(row['To_Floor']), toDepartment: clean(row['To_Department']),
-          toLocation: clean(row['To_Location']), meterReadingId: clean(row['Meter_Reading_ID']),
-          movedBy: clean(row['Moved_By']), remark: clean(row['Remark']),
+          logId: clean(row['Log_ID']),
+          deviceId: device.id,
+          assetCode,
+          moveDate,
+          transferDate,
+          action: clean(row['Action']),
+          fromStatus: clean(row['From_Status']),
+          toStatus: clean(row['To_Status']),
+          fromSite: clean(row['From_Site']),
+          fromAssetSiteCode: clean(row['From_AssetSiteCode']),
+          fromBuilding: clean(row['From_Building']),
+          fromFloor: clean(row['From_Floor']),
+          fromDepartment: clean(row['From_Department']),
+          fromLocation: clean(row['From_Location']),
+          toSite: clean(row['To_Site']) ?? clean(row['From_Site']) ?? 'UNKNOWN',
+          toAssetSiteCode: clean(row['To_AssetSiteCode']),
+          toBuilding: clean(row['To_Building']),
+          toFloor: clean(row['To_Floor']),
+          toDepartment: clean(row['To_Department']),
+          toLocation: clean(row['To_Location']),
+          meterReadingId: clean(row['Meter_Reading_ID']),
+          movedBy: clean(row['Moved_By']),
+          remark: clean(row['Remark']),
         },
       })
       inserted++
@@ -242,8 +286,13 @@ async function importAuditLog() {
       if (!action) { skipped++; continue }
       await db.auditLog.create({
         data: {
-          timestamp: clean(row['Timestamp']), action,
-          user: clean(row['User']), details: clean(row['Details']),
+          action,
+          entity: clean(row['Entity']) ?? 'System',
+          entityId: clean(row['EntityId']),
+          summary: clean(row['Summary']) ?? clean(row['Details']) ?? action,
+          actor: clean(row['User']) ?? 'system',
+          detail: clean(row['Details']),
+          ...(clean(row['Timestamp']) ? { createdAt: new Date(clean(row['Timestamp']) as string) } : {}),
         },
       })
       inserted++
@@ -262,20 +311,20 @@ async function importUserPermissions() {
     try {
       const email = clean(row['Email'])
       if (!email) { skipped++; continue }
-      await db.userPermission.upsert({
+      await db.user.upsert({
         where: { email },
         create: {
           email, role: clean(row['Role']) || 'Viewer', active: parseBool(row['Active']),
           name: clean(row['Name']), username: clean(row['Username']),
           passwordHash: clean(row['PasswordHash']), passwordSalt: clean(row['PasswordSalt']),
-          remark: clean(row['Remark']), lastLoginAt: clean(row['LastLoginAt']),
+          lastLoginAt: clean(row['LastLoginAt']),
           allowedSites: clean(row['Allowed_Sites']),
         },
         update: {
           role: clean(row['Role']) || 'Viewer', active: parseBool(row['Active']),
           name: clean(row['Name']), username: clean(row['Username']),
           passwordHash: clean(row['PasswordHash']), passwordSalt: clean(row['PasswordSalt']),
-          remark: clean(row['Remark']), lastLoginAt: clean(row['LastLoginAt']),
+          lastLoginAt: clean(row['LastLoginAt']),
           allowedSites: clean(row['Allowed_Sites']),
         },
       })
@@ -295,21 +344,26 @@ async function importSiteAttributes() {
     try {
       const siteCode = clean(row['SiteCode'])
       if (!siteCode) { skipped++; continue }
-      await db.siteAttribute.upsert({
-        where: { siteCode },
+      await db.site.upsert({
+        where: { code: siteCode },
         create: {
-          siteCode, siteName: clean(row['SiteName']), lineOa: clean(row['LineOA']),
-          hotline: clean(row['Hotline']),
-          paperRateBw: parseFloat0(row['PaperRateBW']) || 0.5,
-          paperRateColor: parseFloat0(row['PaperRateColor']) || 2.0,
+          code: siteCode,
+          name: clean(row['SiteName']) ?? siteCode,
+          phone: clean(row['Hotline']),
         },
         update: {
-          siteName: clean(row['SiteName']), lineOa: clean(row['LineOA']),
-          hotline: clean(row['Hotline']),
-          paperRateBw: parseFloat0(row['PaperRateBW']) || 0.5,
-          paperRateColor: parseFloat0(row['PaperRateColor']) || 2.0,
+          name: clean(row['SiteName']) ?? siteCode,
+          phone: clean(row['Hotline']),
         },
       })
+      const rate = await db.siteRate.findFirst({ where: { siteCode } })
+      const rateData = {
+        siteCode,
+        bwRate: parseFloat0(row['PaperRateBw']) || parseFloat0(row['PaperRateBW']) || 0.5,
+        colorRate: parseFloat0(row['PaperRateColor']) || 2.0,
+      }
+      if (rate) await db.siteRate.update({ where: { id: rate.id }, data: rateData })
+      else await db.siteRate.create({ data: rateData })
       inserted++
     } catch (e) { skipped++ }
   }
@@ -328,8 +382,8 @@ async function importAppSettings() {
       if (!key) { skipped++; continue }
       await db.appSetting.upsert({
         where: { key },
-        create: { key, value: clean(row['Value']), description: clean(row['Description']) },
-        update: { value: clean(row['Value']), description: clean(row['Description']) },
+        create: { key, value: clean(row['Value']) ?? '' },
+        update: { value: clean(row['Value']) ?? '' },
       })
       inserted++
     } catch (e) { skipped++ }
@@ -349,7 +403,7 @@ async function importLicenseRecords() {
       if (!software) { skipped++; continue }
       await db.licenseRecord.create({
         data: {
-          licenseId: clean(row['License_ID']), assetNo: clean(row['Asset_No']),
+          licenseId: clean(row['License_ID']), assetCode: clean(row['Asset_No']),
           software, licenseType: clean(row['LicenseType']), licenseKey: clean(row['License_Key']),
           quantity: parseInt0(row['Quantity']) || 1, expiryDate: clean(row['Expiry_Date']),
           remark: clean(row['Remark']),
@@ -378,11 +432,11 @@ async function main() {
   console.log('   Devices:', await db.device.count())
   console.log('   MeterReadings:', await db.meterReading.count())
   console.log('   MasterItems:', await db.masterItem.count())
-  console.log('   MasterCategories:', await db.masterCategory.count())
-  console.log('   LocationHistory:', await db.locationHistory.count())
+  console.log('   MasterCategories:', await db.masterItem.count({ where: { category: 'Category' } }))
+  console.log('   LocationHistory:', await db.deviceTransfer.count())
   console.log('   AuditLogs:', await db.auditLog.count())
-  console.log('   UserPermissions:', await db.userPermission.count())
-  console.log('   SiteAttributes:', await db.siteAttribute.count())
+  console.log('   UserPermissions:', await db.user.count())
+  console.log('   SiteAttributes:', await db.site.count())
   console.log('   AppSettings:', await db.appSetting.count())
   console.log('   LicenseRecords:', await db.licenseRecord.count())
 }

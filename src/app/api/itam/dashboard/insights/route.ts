@@ -49,8 +49,8 @@ export async function GET(req: NextRequest) {
     })
     const readThisMonth = await db.meterReading.findMany({
       where: { readingMonth: currentMonth, device: siteFilter },
-      select: { assetNo: true },
-      distinct: ['assetNo'],
+      select: { assetCode: true },
+      distinct: ['assetCode'],
     })
     const readCount = readThisMonth.length
     const notReadCount = Math.max(0, meterRequiredActive - readCount)
@@ -101,11 +101,11 @@ export async function GET(req: NextRequest) {
         device: siteFilter,
       },
       select: {
-        assetNo: true,
+        assetCode: true,
         readingMonth: true,
         pagesBw: true,
         pagesColor: true,
-        device: { select: { brand: true, model: true, site: true, department: true } },
+        device: { select: { assetCode: true, brand: true, model: true, site: true, department: true } },
       },
     })
 
@@ -120,17 +120,18 @@ export async function GET(req: NextRequest) {
     }
     const perDevice = new Map<string, DevAgg>()
     for (const r of recentReadings) {
-      let d = perDevice.get(r.assetNo)
+      const assetNo = r.assetCode ?? r.device?.assetCode ?? ''
+      let d = perDevice.get(assetNo)
       if (!d) {
         d = {
-          assetNo: r.assetNo,
+          assetNo,
           brand: r.device?.brand ?? null,
           model: r.device?.model ?? null,
           site: r.device?.site ?? null,
           department: r.device?.department ?? null,
           byMonth: {},
         }
-        perDevice.set(r.assetNo, d)
+        perDevice.set(assetNo, d)
       }
       const m = r.readingMonth || ''
       if (!d.byMonth[m]) d.byMonth[m] = { bw: 0, color: 0 }

@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const assetNo = searchParams.get('assetNo')?.trim() ?? ''
     const status = searchParams.get('status')?.trim() ?? ''
     const where: Record<string, unknown> = { AND: [] as unknown[] }
-    if (assetNo) (where.AND as unknown[]).push({ assetNo })
+    if (assetNo) (where.AND as unknown[]).push({ device: { assetCode: assetNo } })
     if (status) (where.AND as unknown[]).push({ status })
 
     // Site-level filter via device relation
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     const assignments = await db.assignment.findMany({
       where,
       orderBy: { checkoutDate: 'desc' },
-      include: { device: { select: { assetNo: true, brand: true, model: true, site: true } } },
+      include: { device: { select: { assetCode: true, brand: true, model: true, site: true } } },
     })
     return NextResponse.json({ assignments })
   } catch (err) {
@@ -45,21 +45,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'assetNo, assignee, checkoutDate required' }, { status: 400 })
     }
     // Site access check
-    const device = await db.device.findUnique({ where: { assetNo: body.assetNo } })
+    const device = await db.device.findUnique({ where: { assetCode: body.assetNo } })
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     if (!canAccessSite(user, device.site)) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์มอบหมายอุปกรณ์ในสาขานี้' }, { status: 403 })
     }
 
     const existing = await db.assignment.findFirst({
-      where: { assetNo: body.assetNo, status: 'active' },
+      where: { deviceId: device.id, status: 'active' },
     })
     if (existing) {
       return NextResponse.json({ error: 'อุปกรณ์นี้ถูกมอบหมายแล้ว' }, { status: 409 })
     }
     const created = await db.assignment.create({
       data: {
-        assetNo: body.assetNo,
+        deviceId: device.id,
         assignee: body.assignee,
         assigneeRole: body.assigneeRole || null,
         department: body.department || null,
@@ -73,10 +73,12 @@ export async function POST(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'ASSIGN',
-          user: user.email,
-          details: JSON.stringify({ assetNo: body.assetNo, assignee: body.assignee }),
+          entity: 'Assignment',
+          entityId: created.id,
+          summary: `มอบหมายอุปกรณ์ ${body.assetNo} ให้ ${body.assignee}`,
+          actor: user.email,
+          detail: JSON.stringify({ assetNo: body.assetNo, assignee: body.assignee }),
         },
       })
     } catch { /* ignore */ }

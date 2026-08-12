@@ -566,7 +566,7 @@ export function mapCsvRow(
 
   for (const [csvKey, rawValue] of Object.entries(row)) {
     // Try exact match first (case-sensitive, as written in mapping)
-    let prismaField = mapping[csvKey]
+    let prismaField: string | undefined = mapping[csvKey]
     // Fall back to normalized match
     if (!prismaField) {
       prismaField = normalizedLookup.get(normalizeKey(csvKey))

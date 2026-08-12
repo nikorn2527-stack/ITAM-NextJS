@@ -7,6 +7,7 @@ import { Footer } from '@/components/itam/footer'
 import { GlobalSearch } from '@/components/itam/global-search'
 import { DashboardPage } from '@/components/itam/dashboard-page'
 import { DevicesPage } from '@/components/itam/devices-page'
+import { ItamDevices } from '@/components/itam/itam-devices'
 import { MeterPage } from '@/components/itam/meter-page'
 import { PaperAnalyticsPage } from '@/components/itam/paper-analytics-page'
 import { WorkOrdersPage } from '@/components/itam/work-orders-page'
@@ -17,19 +18,9 @@ import { SettingsPageV2 } from '@/components/itam/settings-page-v2'
 import { MonthlyReport } from '@/components/itam/monthly-report'
 import { QrScannerDialog } from '@/components/itam/qr-scanner-dialog'
 import { useAppStore } from '@/store/app-store'
-import {
-  useAuthStore,
-  hydrateAuthFromStorage,
-  authFetch,
-} from '@/store/auth-store'
-import { Loader2 } from 'lucide-react'
 
 export default function Home() {
   const activePage = useAppStore((s) => s.activePage)
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  const isBooting = useAuthStore((s) => s.isBooting)
-  const checkAuth = useAuthStore((s) => s.checkAuth)
-  const [bootDone, setBootDone] = React.useState(false)
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
@@ -44,6 +35,7 @@ export default function Home() {
           >
             {activePage === 'dashboard' && <DashboardPage />}
             {activePage === 'devices' && <DevicesPage />}
+            {activePage === 'itam-devices' && <ItamDevices />}
             {activePage === 'meter' && <MeterPage />}
             {activePage === 'paper-analytics' && <PaperAnalyticsPage />}
             {activePage === 'work-orders' && <WorkOrdersPage />}

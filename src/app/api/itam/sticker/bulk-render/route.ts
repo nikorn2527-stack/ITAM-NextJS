@@ -64,13 +64,13 @@ export async function POST(req: NextRequest) {
 
     // Fetch all requested devices, restricted to user's site access
     const siteFilter = siteFilterForUser(auth.row)
-    const where: Record<string, unknown> = { assetNo: { in: assetNos } }
+    const where: Record<string, unknown> = { assetCode: { in: assetNos } }
     if (Object.keys(siteFilter).length) {
       where.AND = [siteFilter]
     }
     const devices = await db.device.findMany({ where })
     // Maintain caller's order
-    const byNo = new Map(devices.map((d) => [d.assetNo, d] as const))
+    const byNo = new Map(devices.map((d) => [d.assetCode, d] as const))
 
     // Pre-generate QR codes for ALL unique data values across the batch
     // (most efficient: one QR per unique assetNo since most templates use {{AssetNo}})
@@ -79,13 +79,13 @@ export async function POST(req: NextRequest) {
       if (el.type !== 'qr') continue
       for (const d of devices) {
         const deviceData: StickerDeviceData = {
-          assetNo: d.assetNo, assetSiteCode: d.assetSiteCode, serial: d.serial,
-          deviceType: d.deviceType, brand: d.brand, model: d.model,
+          assetNo: d.assetCode, assetSiteCode: d.displayLabel, serial: d.serialNumber,
+          deviceType: d.type, brand: d.brand, model: d.model,
           building: d.building, floor: d.floor, department: d.department,
           departmentCode: d.departmentCode, location: d.location, site: d.site,
           contractNo: d.contractNo, vendor: d.vendor,
         }
-        const data = substituteVariables(el.content ?? '', deviceData, settings) || d.assetNo
+        const data = substituteVariables(el.content ?? '', deviceData, settings) || d.assetCode
         if (data) uniqueDataKeys.add(data)
       }
     }
@@ -116,8 +116,8 @@ export async function POST(req: NextRequest) {
         continue
       }
       const deviceData: StickerDeviceData = {
-        assetNo: d.assetNo, assetSiteCode: d.assetSiteCode, serial: d.serial,
-        deviceType: d.deviceType, brand: d.brand, model: d.model,
+        assetNo: d.assetCode, assetSiteCode: d.displayLabel, serial: d.serialNumber,
+        deviceType: d.type, brand: d.brand, model: d.model,
         building: d.building, floor: d.floor, department: d.department,
         departmentCode: d.departmentCode, location: d.location, site: d.site,
         contractNo: d.contractNo, vendor: d.vendor,

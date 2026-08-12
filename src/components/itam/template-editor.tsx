@@ -633,23 +633,25 @@ function PropertiesPanel({
     )
   }
 
+  const selectedElement = el
+
   // Type-specific editor
   function renderTypeSpecific() {
-    switch (el.type) {
+    switch (selectedElement.type) {
       case 'text':
         return (
-          <TextProperties el={el} onChange={onChange} />
+          <TextProperties el={selectedElement} onChange={onChange} />
         )
       case 'image':
-        return <ImageProperties el={el} onChange={onChange} />
+        return <ImageProperties el={selectedElement} onChange={onChange} />
       case 'qr':
-        return <QrProperties el={el} onChange={onChange} />
+        return <QrProperties el={selectedElement} onChange={onChange} />
       case 'table':
-        return <TableProperties el={el} onChange={onChange} />
+        return <TableProperties el={selectedElement} onChange={onChange} />
       case 'rectangle':
-        return <RectangleProperties el={el} onChange={onChange} />
+        return <RectangleProperties el={selectedElement} onChange={onChange} />
       case 'line':
-        return <LineProperties el={el} onChange={onChange} />
+        return <LineProperties el={selectedElement} onChange={onChange} />
       default:
         return null
     }

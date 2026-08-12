@@ -44,7 +44,7 @@ export interface UserPermissionRow {
   username: string | null
   passwordHash: string | null
   passwordSalt: string | null
-  remark: string | null
+  remark?: string | null
   lastLoginAt: string | null
   allowedSites: string | null
 }

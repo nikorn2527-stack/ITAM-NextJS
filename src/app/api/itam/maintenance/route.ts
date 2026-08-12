@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const assetNo = searchParams.get('assetNo')?.trim() ?? ''
     const status = searchParams.get('status')?.trim() ?? ''
     const where: Record<string, unknown> = { AND: [] as unknown[] }
-    if (assetNo) (where.AND as unknown[]).push({ assetNo })
+    if (assetNo) (where.AND as unknown[]).push({ device: { assetCode: assetNo } })
     if (status) (where.AND as unknown[]).push({ status })
 
     const sf = siteFilterForUser(user)
@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     const logs = await db.maintenanceLog.findMany({
       where,
       orderBy: { startDate: 'desc' },
-      include: { device: { select: { assetNo: true, brand: true, model: true, site: true } } },
+      include: { device: { select: { assetCode: true, brand: true, model: true, site: true } } },
     })
     return NextResponse.json({ logs })
   } catch (err) {
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     if (!body.assetNo || !body.type || !body.startDate) {
       return NextResponse.json({ error: 'assetNo, type, startDate required' }, { status: 400 })
     }
-    const device = await db.device.findUnique({ where: { assetNo: body.assetNo } })
+    const device = await db.device.findUnique({ where: { assetCode: body.assetNo } })
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     if (!canAccessSite(user, device.site)) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์สร้างประวัติซ่อมบำรุงสำหรับอุปกรณ์ในสาขานี้' }, { status: 403 })
@@ -51,24 +51,26 @@ export async function POST(req: NextRequest) {
 
     const created = await db.maintenanceLog.create({
       data: {
-        assetNo: body.assetNo,
+        deviceId: device.id,
         type: body.type,
         status: body.status || 'open',
         startDate: body.startDate,
         endDate: body.endDate || null,
         cost: body.cost ? Number(body.cost) : null,
         vendor: body.vendor || null,
-        description: body.description || null,
+        description: body.description || '',
       },
     })
 
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'MAINTENANCE',
-          user: user.email,
-          details: JSON.stringify({ assetNo: body.assetNo, type: body.type }),
+          entity: 'MaintenanceLog',
+          entityId: created.id,
+          summary: `บันทึกงานบำรุงรักษา ${body.assetNo}`,
+          actor: user.email,
+          detail: JSON.stringify({ assetNo: body.assetNo, type: body.type }),
         },
       })
     } catch { /* ignore */ }

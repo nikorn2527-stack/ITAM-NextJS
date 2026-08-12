@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, canAccessSite } from '@/lib/auth'
 import { notifyMeter } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { logAudit } from '@/lib/audit'
 
 // GET /api/itam/meter-readings?assetNo=&month=&page=1&limit=20
 export async function GET(req: NextRequest) {
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
 
     const where: Record<string, unknown> = { AND: [] as unknown[] }
-    if (assetNo) (where.AND as unknown[]).push({ assetNo })
+    if (assetNo) (where.AND as unknown[]).push({ assetCode: assetNo })
     if (month) (where.AND as unknown[]).push({ readingMonth: month })
 
     // Site-level filter via the device relation: non-admin users only see
@@ -37,7 +38,7 @@ export async function GET(req: NextRequest) {
         take: limit,
         orderBy: { readingDate: 'desc' },
         include: {
-          device: { select: { assetNo: true, brand: true, model: true, site: true } },
+          device: { select: { assetCode: true, brand: true, model: true, site: true } },
         },
       }),
       db.meterReading.count({ where }),
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'assetNo and meterBw required' }, { status: 400 })
     }
 
-    const device = await db.device.findUnique({ where: { assetNo: body.assetNo } })
+    const device = await db.device.findUnique({ where: { assetCode: body.assetNo } })
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     if (!canAccessSite(user, device.site)) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์จดมิเตอร์สำหรับอุปกรณ์ในสาขานี้' }, { status: 403 })
@@ -104,7 +105,7 @@ export async function POST(req: NextRequest) {
       prevMeterBw = Math.floor(Number(body.prevMeterBw))
     } else {
       const last = await db.meterReading.findFirst({
-        where: { assetNo: body.assetNo },
+        where: { deviceId: device.id },
         orderBy: { readingDate: 'desc' },
         select: { meterBw: true, meterColor: true },
       })
@@ -117,7 +118,7 @@ export async function POST(req: NextRequest) {
       // otherwise fall back to a separate probe.
       if (body.prevMeterBw === undefined || body.prevMeterBw === null) {
         const last = await db.meterReading.findFirst({
-          where: { assetNo: body.assetNo },
+          where: { deviceId: device.id },
           orderBy: { readingDate: 'desc' },
           select: { meterColor: true },
         })
@@ -136,7 +137,8 @@ export async function POST(req: NextRequest) {
 
     const created = await db.meterReading.create({
       data: {
-        assetNo: body.assetNo,
+        deviceId: device.id,
+        assetCode: device.assetCode,
         readingDate: body.readingDate || new Date().toISOString().slice(0, 10),
         readingMonth: body.readingMonth || new Date().toISOString().slice(0, 7),
         meterBw,
@@ -157,23 +159,14 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    try {
-      await db.auditLog.create({
-        data: {
-          timestamp: new Date().toISOString(),
-          action: 'METER_WRITE',
-          user: user.email,
-          details: JSON.stringify({
-            assetNo: body.assetNo,
-            meterBw,
-            meterColor,
-            pagesBw,
-            pagesColor,
-            reset: isReset,
-          }),
-        },
-      })
-    } catch { /* ignore */ }
+    await logAudit('METER_WRITE', 'MeterReading', created.id, 'บันทึกมิเตอร์', {
+      assetNo: body.assetNo,
+      meterBw,
+      meterColor,
+      pagesBw,
+      pagesColor,
+      reset: isReset,
+    }, user.email)
 
     // Best-effort notification
     void notifyMeter({

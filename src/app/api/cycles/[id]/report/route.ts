@@ -72,8 +72,13 @@ export async function GET(
 
     // Fetch all readings for this cycle, ordered chronologically per device
     const readings = await db.meterReading.findMany({
-      where: { cycleId: id },
-      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+      where: {
+        readingDate: {
+          gte: cycle.startDate,
+          lte: cycle.endDate,
+        },
+      },
+      orderBy: [{ readingDate: 'asc' }, { createdAt: 'asc' }],
       include: {
         device: {
           select: {
@@ -96,6 +101,9 @@ export async function GET(
     for (const r of readings) {
       const dev = r.device
       if (!dev) continue
+      const reading = r.meterBw + r.meterColor
+      const prevReading = r.prevMeterBw + r.prevMeterColor
+      const delta = r.pagesBw + r.pagesColor
 
       if (!deviceMap.has(dev.id)) {
         deviceMap.set(dev.id, {
@@ -117,42 +125,42 @@ export async function GET(
 
       const cycleReading: CycleReportReading = {
         id: r.id,
-        date: r.date,
-        reading: r.reading,
-        prevReading: r.prevReading,
-        delta: r.delta,
+        date: r.readingDate,
+        reading,
+        prevReading,
+        delta,
         remark: r.remark,
       }
       entry.readings.push(cycleReading)
       entry.readingCount += 1
-      if (entry.firstReading === null) entry.firstReading = r.reading
-      entry.lastReading = r.reading
-      entry.totalDelta += r.delta
+      if (entry.firstReading === null) entry.firstReading = reading
+      entry.lastReading = reading
+      entry.totalDelta += delta
 
       // Anomaly detection
-      if (r.delta < 0) {
+      if (delta < 0) {
         anomalies.push({
           readingId: r.id,
           deviceId: dev.id,
           assetCode: dev.assetCode,
           deviceName: dev.name,
-          date: r.date,
-          reading: r.reading,
-          prevReading: r.prevReading,
-          delta: r.delta,
+          date: r.readingDate,
+          reading,
+          prevReading,
+          delta,
           remark: r.remark,
           type: 'RESET',
         })
-      } else if (r.delta > 20000) {
+      } else if (delta > 20000) {
         anomalies.push({
           readingId: r.id,
           deviceId: dev.id,
           assetCode: dev.assetCode,
           deviceName: dev.name,
-          date: r.date,
-          reading: r.reading,
-          prevReading: r.prevReading,
-          delta: r.delta,
+          date: r.readingDate,
+          reading,
+          prevReading,
+          delta,
           remark: r.remark,
           type: 'HIGH_DELTA',
         })
@@ -167,7 +175,8 @@ export async function GET(
     // Summary
     const totalReadings = readings.length
     const totalSheets = readings.reduce(
-      (sum, r) => sum + (r.delta > 0 ? r.delta : 0),
+      (sum, r) =>       sum + (r.pagesBw + r.pagesColor > 0 ? r.pagesBw + r.pagesColor : 0),
+
       0,
     )
     const avgDelta =

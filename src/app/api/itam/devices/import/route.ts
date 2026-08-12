@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        const existing = await db.device.findUnique({ where: { assetNo } })
+        const existing = await db.device.findUnique({ where: { assetCode: assetNo } })
 
         // Site access check on the CSV row's site
         const csvSite = cell(row, 'site')
@@ -181,15 +181,23 @@ export async function POST(req: NextRequest) {
           }
           // Build update payload — only fields that have a non-null value
           const updateData: Record<string, unknown> = { updatedBy: user.username || user.email }
+          const fieldMap: Record<string, string> = {
+            deviceType: 'type', serial: 'serialNumber', installDate: 'purchaseDate', assetSiteCode: 'displayLabel',
+          }
           for (const f of FIELDS) {
             if (f === 'meterRequired') {
               if (mr !== null) updateData.meterRequired = mr
             } else {
               const v = cell(row, f)
-              if (v !== null) updateData[f] = v
+              if (v !== null) updateData[fieldMap[f] ?? f] = v
             }
           }
-          await db.device.update({ where: { assetNo }, data: updateData })
+          const updateBrand = cell(row, 'brand')
+          const updateModel = cell(row, 'model')
+          if (updateBrand !== null || updateModel !== null) {
+            updateData.name = `${updateBrand ?? existing.brand} ${updateModel ?? existing.model}`.trim()
+          }
+          await db.device.update({ where: { assetCode: assetNo }, data: updateData })
           updated++
           byRow.push({ row: i + 1, assetNo, action: 'update', ok: true })
         } else {
@@ -197,33 +205,36 @@ export async function POST(req: NextRequest) {
             byRow.push({ row: i + 1, assetNo, action: 'skip-missing', ok: true })
             continue
           }
+          const brand = cell(row, 'brand') ?? ''
+          const model = cell(row, 'model') ?? ''
           await db.device.create({
             data: {
-              assetNo,
-              deviceType: cell(row, 'deviceType'),
-              brand: cell(row, 'brand'),
-              model: cell(row, 'model'),
-              serial: cell(row, 'serial'),
+              assetCode: assetNo,
+              name: `${brand} ${model}`.trim() || assetNo,
+              type: cell(row, 'deviceType') ?? 'OTHER',
+              brand,
+              model,
+              serialNumber: cell(row, 'serial'),
               building: cell(row, 'building'),
               floor: cell(row, 'floor'),
               department: cell(row, 'department'),
               location: cell(row, 'location'),
               departmentCode: cell(row, 'departmentCode'),
               status: cell(row, 'status') ?? 'Active',
-              site: csvSite,
+              site: csvSite ?? 'UNKNOWN',
               contractNo: cell(row, 'contractNo'),
               ip: cell(row, 'ip'),
               mac: cell(row, 'mac'),
               remoteId: cell(row, 'remoteId'),
               remark: cell(row, 'remark'),
               vendor: cell(row, 'vendor'),
-              installDate: cell(row, 'installDate'),
+              purchaseDate: cell(row, 'installDate'),
               warrantyEnd: cell(row, 'warrantyEnd'),
               deviceGroup: cell(row, 'deviceGroup'),
               costCenter: cell(row, 'costCenter'),
               meterRequired: mr ?? false,
               meterMode: cell(row, 'meterMode'),
-              assetSiteCode: cell(row, 'assetSiteCode'),
+              displayLabel: cell(row, 'assetSiteCode'),
               updatedBy: user.username || user.email,
             },
           })
@@ -241,10 +252,12 @@ export async function POST(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'IMPORT_DEVICES',
-          user: user.email,
-          details: JSON.stringify({
+          entity: 'Device',
+          entityId: null,
+          summary: `นำเข้าอุปกรณ์: เพิ่ม ${inserted} รายการ แก้ไข ${updated} รายการ`,
+          actor: user.email,
+          detail: JSON.stringify({
             mode,
             inserted,
             updated,

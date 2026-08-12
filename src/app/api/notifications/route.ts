@@ -145,14 +145,19 @@ export async function GET() {
 
       // Readings in this cycle, grouped by deviceId
       const readings = await db.meterReading.findMany({
-        where: { cycleId: activeCycle.id },
-        select: { deviceId: true, date: true, createdAt: true },
-        orderBy: { date: 'desc' },
+        where: {
+          readingDate: {
+            gte: activeCycle.startDate,
+            lte: activeCycle.endDate,
+          },
+        },
+        select: { deviceId: true, readingDate: true, createdAt: true },
+        orderBy: { readingDate: 'desc' },
       })
-      const readDeviceMap = new Map<string, { date: string; createdAt: Date }>()
+      const readDeviceMap = new Map<string, { readingDate: string; createdAt: Date }>()
       for (const r of readings) {
         if (!readDeviceMap.has(r.deviceId)) {
-          readDeviceMap.set(r.deviceId, { date: r.date, createdAt: r.createdAt })
+          readDeviceMap.set(r.deviceId, { readingDate: r.readingDate, createdAt: r.createdAt })
         }
       }
 

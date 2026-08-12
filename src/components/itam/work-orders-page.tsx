@@ -1737,6 +1737,8 @@ function WorkOrderDetailContent({
   onClose: () => void
   resolutions: ResolutionOption[]
 }) {
+  const qc = useQueryClient()
+
   // Assign technician
   const [assignOpen, setAssignOpen] = React.useState(false)
   const [techName, setTechName] = React.useState(wo.assignedTo ?? '')
@@ -2363,12 +2365,17 @@ function WorkOrderDetailContent({
   }
 
   // Build timeline from key WO timestamps + messages
-  const timeline: Array<{ key: string; label: string; at: string | null; tone: 'info' | 'success' | 'warning' | 'danger' | 'muted' }> = [
-    { key: 'created', label: 'แจ้งซ่อมใหม่', at: wo.createdAt, tone: 'info' },
-    { key: 'assigned', label: wo.assignedTo ? `มอบหมายให้ ${wo.assignedTo}` : 'มอบหมาย', at: wo.assignedAt, tone: wo.assignedAt ? 'info' : 'muted' },
-    { key: 'completed', label: 'ปิดงาน', at: wo.workCompletedAt ?? wo.closedAt, tone: wo.workCompletedAt ? 'success' : 'muted' },
-    { key: 'cancelled', label: wo.cancelReason ? `ยกเลิก — ${wo.cancelReason}` : 'ยกเลิก', at: wo.canceledAt, tone: wo.canceledAt ? 'danger' : 'muted' },
-  ].filter((t) => t.at !== null || t.key === 'created')
+  const timeline = [
+    { key: 'created', label: 'แจ้งซ่อมใหม่', at: wo.createdAt, tone: 'info' as const },
+    { key: 'assigned', label: wo.assignedTo ? `มอบหมายให้ ${wo.assignedTo}` : 'มอบหมาย', at: wo.assignedAt, tone: wo.assignedAt ? ('info' as const) : ('muted' as const) },
+    { key: 'completed', label: 'ปิดงาน', at: wo.workCompletedAt ?? wo.closedAt, tone: wo.workCompletedAt ? ('success' as const) : ('muted' as const) },
+    { key: 'cancelled', label: wo.cancelReason ? `ยกเลิก — ${wo.cancelReason}` : 'ยกเลิก', at: wo.canceledAt, tone: wo.canceledAt ? ('danger' as const) : ('muted' as const) },
+  ].filter((t) => t.at !== null || t.key === 'created') satisfies Array<{
+    key: string
+    label: string
+    at: string | null
+    tone: 'info' | 'success' | 'warning' | 'danger' | 'muted'
+  }>
 
   return (
     <div className="flex h-full flex-col">
@@ -2848,10 +2855,8 @@ function WorkOrderDetailContent({
                     className={`absolute -left-[21px] top-1 h-3 w-3 rounded-full border-2 border-background ${
                       t.tone === 'success'
                         ? 'bg-emerald-500'
-                        : t.tone === 'danger'
-                          ? 'bg-rose-500'
-                          : t.tone === 'warning'
-                            ? 'bg-amber-500'
+                          : t.tone === 'danger'
+                            ? 'bg-rose-500'
                             : t.tone === 'info'
                               ? 'bg-orange-500'
                               : 'bg-slate-300'

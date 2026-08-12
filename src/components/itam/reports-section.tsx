@@ -632,13 +632,13 @@ function ReportDataView({ report }: { report: ReportDetail }) {
               </div>
             </div>
           ))}
-          {typeof data.paperThisMonth === 'number' && (
+          {typeof (data as typeof data & { paperThisMonth?: number }).paperThisMonth === 'number' && (
             <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
               <div className="text-xs text-slate-500 dark:text-slate-400">
                 กระดาษในช่วง
               </div>
               <div className="mt-0.5 text-sm font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                {data.paperThisMonth.toLocaleString()} แผ่น
+                {(data as typeof data & { paperThisMonth?: number }).paperThisMonth!.toLocaleString()} แผ่น
               </div>
             </div>
           )}
@@ -733,7 +733,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
           <ol className="space-y-1">
             {data.topUsage.slice(0, 10).map((d, i) => (
               <li
-                key={String(d.id ?? i)}
+                key={`${d.assetCode}-${i}`}
                 className="flex items-center justify-between rounded border border-slate-100 bg-slate-50/60 px-2 py-1 text-xs dark:border-slate-800 dark:bg-slate-800/40"
               >
                 <span className="flex items-center gap-2">
