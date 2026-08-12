@@ -2763,3 +2763,34 @@ Stage Summary:
 - Visual Template Editor สมบูรณ์: ลากวาง + QR + ภาพ + ตาราง + ขนาดกระดาษ
 - Template Binding: Fix + จำเทมเพลตเดิม + พิมพ์อัตโนมัติ
 - พร้อมสำหรับ push + deploy
+
+---
+Task ID: FIX-CHARTS-STOCK
+Agent: orchestrator — แก้กราฟซ้อน + สต็อกล้นกรอบ + default templates
+
+Work Log:
+
+1. Default templates สำหรับ Export (Visual Editor format):
+   - work-order: ใบแจ้งซ่อนมาตรฐาน (A4) — 20 elements (header, info, device, resolution box, parts table, signatures)
+   - stock-out: ใบเบิกสินค้ามาตรฐาน (A4) — 11 elements (header, info, items table, signatures)
+   - stock-in: ใบรับสินค้ามาตรฐาน (A4) — 9 elements (header, info, items table, signatures)
+   - purchase-order: ใบสั่งซื้อมาตรฐาน (A4) — 12 elements (header, info, items table, total, signatures)
+   - pdf: รายงาน PDF มาตรฐาน (A4 แนวนอน) — 4 elements (title, date range, data table, total)
+   - sticker: สติกเกอร์อุปกรณ์มาตรฐาน (100×50มม.) — 6 elements (brand/model, asset, S/N, site, dept, QR)
+
+2. แก้กราฟ Pie chart ซ้อนกัน:
+   - เดิม: ใช้ Legend (แสดงครบทุกชื่อ → ซ้อนกันเวลามีค่าเล็ก)
+   - ใหม่: ใช้ label ภายนอก + labelLine (เส้นโยง) + ลดขนาด (innerRadius 45, outerRadius 75)
+   - label แสดง "ชื่อ XX%" — กระจายรอบ pie ด้วยเส้นโยง ไม่ซ้อนกัน
+
+3. แก้รายการสต็อกต่ำล้นกรอบ:
+   - เดิม: max-h-96 (อาจไม่ทำงานในบางกรณี)
+   - ใหม่: h-[280px] max-h-[280px] overflow-hidden + border (กรอบชัดเจน)
+   - รายการอยู่ในกรอบ + เลื่อนได้ (ScrollArea)
+
+Verification:
+✅ Default templates: 6 templates ใน Visual Editor format (paper + elements)
+✅ Pie chart: label ภายนอก + labelLine (ไม่ซ้อน)
+✅ Low stock: อยู่ในกรอบ h-[280px] + scroll
+✅ Lint: 0 errors
+✅ Dev server: 200 OK

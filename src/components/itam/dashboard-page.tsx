@@ -614,9 +614,16 @@ export function DashboardPage() {
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius={55}
-                      outerRadius={90}
+                      innerRadius={45}
+                      outerRadius={75}
                       paddingAngle={2}
+                      label={({ value, name }) => {
+                        const total = woStatusPie.reduce((s, d) => s + d.value, 0)
+                        const pct = total > 0 ? ((value / total) * 100).toFixed(0) : '0'
+                        return `${name} ${pct}%`
+                      }}
+                      labelLine={{ stroke: axisTickColor, strokeWidth: 1 }}
+                      isAnimationActive={false}
                     >
                       {woStatusPie.map((entry, idx) => (
                         <Cell key={`cell-${idx}`} fill={entry.color} />
@@ -636,10 +643,6 @@ export function DashboardPage() {
                         const raw = (props?.payload as { raw?: string })?.raw ?? ''
                         return [`${value} ใบ (${pct}%)`, statusLabel(raw)]
                       }}
-                    />
-                    <Legend
-                      iconType="circle"
-                      wrapperStyle={{ fontSize: 12, color: axisTickColor }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -856,7 +859,7 @@ export function DashboardPage() {
                 icon={<Package className="h-6 w-6 text-emerald-400" />}
               />
             ) : (
-              <ScrollArea className="max-h-96 pr-2">
+              <ScrollArea className="h-[280px] max-h-[280px] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800 pr-2">
                 <ul className="space-y-2">
                   {data.alerts.lowStockItems.map((item) => (
                     <li
@@ -913,7 +916,7 @@ export function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <ScrollArea className="max-h-96 pr-2">
+              <ScrollArea className="h-[280px] max-h-[280px] overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800 pr-2">
                 {/* Pending WOs waiting > 24h */}
                 <div className="mb-3">
                   <div className="mb-1.5 flex items-center justify-between text-xs">
