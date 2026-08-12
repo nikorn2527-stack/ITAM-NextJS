@@ -1,0 +1,1133 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { useTheme } from 'next-themes'
+     6→import { motion } from 'framer-motion'
+     7→import {
+     8→  PieChart,
+     9→  Pie,
+    10→  Cell,
+    11→  ResponsiveContainer,
+    12→  Tooltip,
+    13→  Legend,
+    14→  BarChart,
+    15→  Bar,
+    16→  XAxis,
+    17→  YAxis,
+    18→  CartesianGrid,
+    19→  Label,
+    20→} from 'recharts'
+    21→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    22→import { Button } from '@/components/ui/button'
+    23→import { Skeleton } from '@/components/ui/skeleton'
+    24→import { Badge } from '@/components/ui/badge'
+    25→import { Progress } from '@/components/ui/progress'
+    26→import {
+    27→  Select,
+    28→  SelectContent,
+    29→  SelectItem,
+    30→  SelectTrigger,
+    31→  SelectValue,
+    32→} from '@/components/ui/select'
+    33→import { cn } from '@/lib/utils'
+    34→import { toast } from 'sonner'
+    35→import {
+    36→  Package,
+    37→  CheckCircle2,
+    38→  Archive,
+    39→  Wrench,
+    40→  TrendingUp,
+    41→  History,
+    42→  Sparkles,
+    43→  FileText,
+    44→  Inbox,
+    45→  AlertTriangle,
+    46→  CalendarClock,
+    47→  ArrowRight,
+    48→  Printer,
+    49→  Settings2,
+    50→} from 'lucide-react'
+    51→import type {
+    52→  DashboardData,
+    53→  DashboardRangeKey,
+    54→  Cycle,
+    55→} from './types'
+    56→import { DASHBOARD_RANGE_OPTIONS } from './types'
+    57→import { useAppStore } from '@/store/app-store'
+    58→import { exportDashboardPdf } from './dashboard-pdf-export'
+    59→import { LifecycleDashboard } from './lifecycle-dashboard'
+    60→import { QuickActionsBar } from './quick-actions-bar'
+    61→import {
+    62→  DashboardWidgetLayout,
+    63→  type WidgetId,
+    64→} from './dashboard-widget-layout'
+    65→import { DepreciationSection } from './depreciation-section'
+    66→import { ReportsSection } from './reports-section'
+    67→
+    68→interface WarrantySummary {
+    69→  active: number
+    70→  expiring: number
+    71→  expired: number
+    72→  unknown: number
+    73→}
+    74→
+    75→const STATUS_COLORS: Record<string, string> = {
+    76→  ใช้งานอยู่: '#10b981',
+    77→  สำรอง: '#f59e0b',
+    78→  ส่งซ่อม: '#f97316',
+    79→  ตัดของออก: '#f43f5e',
+    80→}
+    81→
+    82→interface KpiCardProps {
+    83→  title: string
+    84→  value: number
+    85→  icon: React.ReactNode
+    86→  accent: string
+    87→  loading?: boolean
+    88→  trend?: string
+    89→  format?: (v: number) => string
+    90→  unit?: string
+    91→}
+    92→
+    93→/**
+    94→ * Animated count-up hook — tweens from the previous value to the next
+    95→ * over 500ms using requestAnimationFrame.
+    96→ */
+    97→function useCountUp(target: number, duration = 500) {
+    98→  const [display, setDisplay] = React.useState(target)
+    99→  const fromRef = React.useRef(target)
+   100→  const rafRef = React.useRef<number | null>(null)
+   101→  const startRef = React.useRef<number | null>(null)
+   102→
+   103→  React.useEffect(() => {
+   104→    if (typeof window === 'undefined') return
+   105→    const from = fromRef.current
+   106→    if (from === target) {
+   107→      setDisplay(target)
+   108→      return
+   109→    }
+   110→    startRef.current = null
+   111→    const step = (ts: number) => {
+   112→      if (startRef.current === null) startRef.current = ts
+   113→      const elapsed = ts - startRef.current
+   114→      const t = Math.min(1, elapsed / duration)
+   115→      // easeOutCubic
+   116→      const eased = 1 - Math.pow(1 - t, 3)
+   117→      const next = Math.round(from + (target - from) * eased)
+   118→      setDisplay(next)
+   119→      if (t < 1) {
+   120→        rafRef.current = window.requestAnimationFrame(step)
+   121→      } else {
+   122→        fromRef.current = target
+   123→        setDisplay(target)
+   124→      }
+   125→    }
+   126→    rafRef.current = window.requestAnimationFrame(step)
+   127→    return () => {
+   128→      if (rafRef.current !== null) {
+   129→        window.cancelAnimationFrame(rafRef.current)
+   130→      }
+   131→      // remember where we landed so the next tween starts smoothly
+   132→      fromRef.current = display
+   133→    }
+   134→  }, [target, duration])
+   135→
+   136→  return display
+   137→}
+   138→
+   139→function KpiCard({
+   140→  title,
+   141→  value,
+   142→  icon,
+   143→  accent,
+   144→  loading,
+   145→  trend,
+   146→  format,
+   147→  unit,
+   148→}: KpiCardProps) {
+   149→  const animated = useCountUp(value, 500)
+   150→  const display = format ? format(animated) : animated.toLocaleString()
+   151→  return (
+   152→    <Card
+   153→      className="group relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-[#f97316] focus-within:ring-offset-1 dark:focus-within:ring-offset-slate-950"
+   154→    >
+   155→      {/* Thin top accent bar */}
+   156→      <div
+   157→        className="absolute inset-x-0 top-0 h-[3px]"
+   158→        style={{ background: accent }}
+   159→      />
+   160→      {/* Subtle gradient overlay on hover */}
+   161→      <div
+   162→        aria-hidden
+   163→        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-transparent to-black/[0.02] opacity-0 transition-opacity group-hover:opacity-100 dark:to-white/[0.03]"
+   164→      />
+   165→      <CardContent className="relative p-3 sm:p-4">
+   166→        <div className="flex items-center gap-2 sm:gap-3">
+   167→          <div
+   168→            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11"
+   169→            style={{ background: `${accent}1a`, color: accent }}
+   170→          >
+   171→            {icon}
+   172→          </div>
+   173→          <div className="min-w-0 flex-1">
+   174→            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+   175→              {title}
+   176→            </div>
+   177→            {loading ? (
+   178→              <Skeleton className="mt-1 h-7 w-20 dark:bg-slate-800" />
+   179→            ) : (
+   180→              <div className="flex items-baseline gap-1">
+   181→                <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
+   182→                  {display}
+   183→                </span>
+   184→                {unit && (
+   185→                  <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
+   186→                    {unit}
+   187→                  </span>
+   188→                )}
+   189→              </div>
+   190→            )}
+   191→            {trend && !loading && (
+   192→              <div
+   193→                className="mt-0.5 truncate text-xs leading-tight text-slate-400 dark:text-slate-500"
+   194→                title={trend}
+   195→              >
+   196→                {trend}
+   197→              </div>
+   198→            )}
+   199→          </div>
+   200→        </div>
+   201→      </CardContent>
+   202→    </Card>
+   203→  )
+   204→}
+   205→
+   206→function EmptyState({
+   207→  message,
+   208→  subtitle,
+   209→  icon,
+   210→}: {
+   211→  message: string
+   212→  subtitle?: string
+   213→  icon?: React.ReactNode
+   214→}) {
+   215→  return (
+   216→    <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400 dark:text-slate-500">
+   217→      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+   218→        {icon ?? <Inbox className="h-6 w-6 text-slate-300 dark:text-slate-600" />}
+   219→      </div>
+   220→      <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">{message}</div>
+   221→      {subtitle && (
+   222→        <div className="text-xs text-slate-400 dark:text-slate-500">{subtitle}</div>
+   223→      )}
+   224→    </div>
+   225→  )
+   226→}
+   227→
+   228→export function DashboardPage() {
+   229→  const qc = useQueryClient()
+   230→  const { theme } = useTheme()
+   231→  const [mounted, setMounted] = React.useState(false)
+   232→  React.useEffect(() => setMounted(true), [])
+   233→  const isDark = mounted && theme === 'dark'
+   234→
+   235→  const setActivePage = useAppStore((s) => s.setActivePage)
+   236→  const setPendingWarrantyFilter = useAppStore(
+   237→    (s) => s.setPendingWarrantyFilter,
+   238→  )
+   239→  const setPendingMeterAction = useAppStore((s) => s.setPendingMeterAction)
+   240→
+   241→  const [seeding, setSeeding] = React.useState(false)
+   242→  const [range, setRange] = React.useState<DashboardRangeKey>('month')
+   243→  const [exporting, setExporting] = React.useState(false)
+   244→
+   245→  const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery<DashboardData>({
+   246→    queryKey: ['dashboard', range],
+   247→    queryFn: async () => {
+   248→      const res = await fetch(`/api/dashboard?range=${range}`)
+   249→      if (!res.ok) throw new Error('Failed to load dashboard')
+   250→      return res.json()
+   251→    },
+   252→    // Dashboard data doesn't change frequently — keep it fresh for 30s,
+   253→    // then auto-refetch every 60s so the user sees updates without manual refresh.
+   254→    staleTime: 30_000,
+   255→    refetchInterval: 60_000,
+   256→    refetchOnWindowFocus: true,
+   257→    // Smooth range-switching: keep previous data while new range loads
+   258→    placeholderData: (prev) => prev,
+   259→  })
+   260→
+   261→  // Active cycle (for the dashboard cycle progress widget)
+   262→  const { data: activeCycle, isLoading: cycleLoading } = useQuery<Cycle | null>({
+   263→    queryKey: ['active-cycle'],
+   264→    queryFn: async () => {
+   265→      const res = await fetch('/api/cycles?status=active')
+   266→      if (!res.ok) return null
+   267→      const json = await res.json()
+   268→      return (json.cycles?.[0] as Cycle | undefined) ?? null
+   269→    },
+   270→    staleTime: 60_000,
+   271→    refetchInterval: 120_000,
+   272→  })
+   273→
+   274→  // Reading progress for the active cycle (totalRead / totalMeterable)
+   275→  interface RemindersSummary {
+   276→    hasActiveCycle: boolean
+   277→    totalRead: number
+   278→    totalUnread: number
+   279→  }
+   280→  const { data: remindersSummary } = useQuery<RemindersSummary>({
+   281→    queryKey: ['meter-reminders-summary'],
+   282→    queryFn: async () => {
+   283→      const res = await fetch('/api/meter/reminders')
+   284→      if (!res.ok) return { hasActiveCycle: false, totalRead: 0, totalUnread: 0 }
+   285→      const json = await res.json()
+   286→      return {
+   287→        hasActiveCycle: Boolean(json.hasActiveCycle),
+   288→        totalRead: Number(json.totalRead ?? 0),
+   289→        totalUnread: Number(json.totalUnread ?? 0),
+   290→      }
+   291→    },
+   292→    staleTime: 30_000,
+   293→    refetchInterval: 60_000,
+   294→  })
+   295→
+   296→  // Warranty summary (always fetched once)
+   297→  const { data: warrantyData } = useQuery<{
+   298→    summary: WarrantySummary
+   299→  }>({
+   300→    queryKey: ['warranty-summary'],
+   301→    queryFn: async () => {
+   302→      const res = await fetch('/api/devices/warranty')
+   303→      if (!res.ok) throw new Error('Failed to load warranty')
+   304→      const json = await res.json()
+   305→      return { summary: json.summary as WarrantySummary }
+   306→    },
+   307→    staleTime: 60_000,
+   308→  })
+   309→
+   310→  // App settings (for org name used in PDF export)
+   311→  const { data: settingsMap } = useQuery<Record<string, string>>({
+   312→    queryKey: ['settings'],
+   313→    queryFn: async () => {
+   314→      const res = await fetch('/api/settings')
+   315→      if (!res.ok) return {}
+   316→      const json = await res.json()
+   317→      return (json.settings as Record<string, string>) ?? {}
+   318→    },
+   319→    staleTime: 60_000,
+   320→  })
+   321→
+   322→  // Auto-seed if empty
+   323→  React.useEffect(() => {
+   324→    if (!data) return
+   325→    if (data.totals.total === 0) {
+   326→      void runSeed()
+   327→    }
+   328→  }, [data?.totals.total])
+   329→
+   330→  async function runSeed() {
+   331→    try {
+   332→      setSeeding(true)
+   333→      const res = await fetch('/api/seed', { method: 'POST' })
+   334→      if (!res.ok) throw new Error('Seed failed')
+   335→      const json = await res.json()
+   336→      toast.success(`โหลดข้อมูลตัวอย่างแล้ว (${json.counts?.devices ?? 0} อุปกรณ์)`)
+   337→      await qc.invalidateQueries()
+   338→    } catch (e) {
+   339→      toast.error(e instanceof Error ? e.message : 'Seed failed')
+   340→    } finally {
+   341→      setSeeding(false)
+   342→    }
+   343→  }
+   344→
+   345→  async function handleExportPdf() {
+   346→    try {
+   347→      setExporting(true)
+   348→      // Use the freshest data we have (refetch to be safe).
+   349→      const latest = await refetch()
+   350→      const payload = latest.data ?? data
+   351→      if (!payload) {
+   352→        toast.error('ยังไม่มีข้อมูลให้ส่งออก')
+   353→        return
+   354→      }
+   355→      exportDashboardPdf({
+   356→        data: payload,
+   357→        range,
+   358→        orgName: settingsMap?.orgName,
+   359→      })
+   360→    } catch (e) {
+   361→      toast.error(e instanceof Error ? e.message : 'ส่งออก PDF ไม่สำเร็จ')
+   362→    } finally {
+   363→      setExporting(false)
+   364→    }
+   365→  }
+   366→
+   367→  if (isError) {
+   368→    return (
+   369→      <div className="p-6">
+   370→        <Card>
+   371→          <CardContent className="p-6">
+   372→            <p className="text-sm text-rose-600 dark:text-rose-400">
+   373→              โหลดข้อมูล Dashboard ไม่สำเร็จ กรุณาลองอีกครั้ง
+   374→            </p>
+   375→            <Button className="mt-3" onClick={() => refetch()}>
+   376→              ลองอีกครั้ง
+   377→            </Button>
+   378→          </CardContent>
+   379→        </Card>
+   380→      </div>
+   381→    )
+   382→  }
+   383→
+   384→  const total = data?.totals.total ?? 0
+   385→  const active = data?.totals.active ?? 0
+   386→  const spare = data?.totals.spare ?? 0
+   387→  const repair = data?.totals.repair ?? 0
+   388→  const paperThisMonth = data?.paperThisMonth ?? 0
+   389→  const warrantyAlerts =
+   390→    (warrantyData?.summary.expiring ?? 0) +
+   391→    (warrantyData?.summary.expired ?? 0)
+   392→
+   393→  const activeTrend =
+   394→    total > 0
+   395→      ? `${Math.round((active / total) * 100)}% ของทั้งหมด ${total} เครื่อง`
+   396→      : undefined
+   397→
+   398→  const paperKpiLabel =
+   399→    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.kpiLabel ??
+   400→    'กระดาษเดือนนี้'
+   401→  const paperTrend =
+   402→    range === 'all'
+   403→      ? 'รวมทุกช่วงเวลา'
+   404→      : data?.range?.start
+   405→        ? `${data.range.start}${data.range.end ? ` → ${data.range.end}` : ''}`
+   406→        : new Date().toLocaleDateString('th-TH', {
+   407→            month: 'long',
+   408→            year: 'numeric',
+   409→          })
+   410→
+   411→  const rangeInfoLabel =
+   412→    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'เดือนนี้'
+   413→
+   414→  // Chart palette — works in both themes
+   415→  const axisTickColor = '#64748b'
+   416→  const gridStroke = isDark ? '#334155' : '#e2e8f0'
+   417→  const tooltipBorder = isDark ? '#334155' : '#e2e8f0'
+   418→  const tooltipBg = isDark ? '#0f172a' : '#ffffff'
+   419→  const tooltipFg = isDark ? '#e2e8f0' : '#1e293b'
+   420→  const donutCenterText = isDark ? '#e2e8f0' : '#1e293b'
+   421→  const donutCenterSub = isDark ? '#64748b' : '#94a3b8'
+   422→
+   423→  // ---- Pre-render each widget as a JSX const so the DashboardWidgetLayout
+   424→  //      can re-order / show / hide them via drag-and-drop. ----
+   425→  const kpiWidget = (
+   426→    <>
+   427→      {/* KPI row — 5 cards on lg */}
+   428→      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+   429→        <KpiCard
+   430→          title="อุปกรณ์ทั้งหมด"
+   431→          value={total}
+   432→          icon={<Package className="h-5 w-5" />}
+   433→          accent="#0f172a"
+   434→          loading={isLoading}
+   435→          trend={total > 0 ? `${(data?.byType ?? []).length} ประเภท` : undefined}
+   436→        />
+   437→        <KpiCard
+   438→          title="ใช้งานอยู่"
+   439→          value={active}
+   440→          icon={<CheckCircle2 className="h-5 w-5" />}
+   441→          accent="#10b981"
+   442→          loading={isLoading}
+   443→          trend={activeTrend}
+   444→        />
+   445→        <KpiCard
+   446→          title="สำรอง"
+   447→          value={spare}
+   448→          icon={<Archive className="h-5 w-5" />}
+   449→          accent="#f59e0b"
+   450→          loading={isLoading}
+   451→          trend={total > 0 ? `${Math.round((spare / total) * 100)}% ของทั้งหมด` : undefined}
+   452→        />
+   453→        <KpiCard
+   454→          title="ส่งซ่อม"
+   455→          value={repair}
+   456→          icon={<Wrench className="h-5 w-5" />}
+   457→          accent="#f97316"
+   458→          loading={isLoading}
+   459→          trend={repair > 0 ? 'รอดำเนินการ' : 'ปกติ'}
+   460→        />
+   461→        <KpiCard
+   462→          title={paperKpiLabel}
+   463→          value={paperThisMonth}
+   464→          icon={<FileText className="h-5 w-5" />}
+   465→          accent="#0d9488"
+   466→          loading={isLoading}
+   467→          unit="แผ่น"
+   468→          trend={paperTrend}
+   469→        />
+   470→      </div>
+   471→
+   472→      {/* Warranty alert bar — amber card linking to devices */}
+   473→      <button
+   474→        type="button"
+   475→        onClick={() => {
+   476→          setActivePage('devices')
+   477→          setPendingWarrantyFilter('expiring')
+   478→        }}
+   479→        disabled={warrantyAlerts === 0}
+   480→        className={cn(
+   481→          'group relative w-full overflow-hidden rounded-lg border text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950',
+   482→          warrantyAlerts > 0
+   483→            ? 'cursor-pointer border-amber-200 bg-amber-50 hover:-translate-y-0.5 hover:shadow-md dark:border-amber-800/60 dark:bg-amber-950/30'
+   484→            : 'cursor-default border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
+   485→        )}
+   486→      >
+   487→        {warrantyAlerts > 0 && (
+   488→          <div
+   489→            className="absolute inset-x-0 top-0 h-[3px]"
+   490→            style={{
+   491→              background: 'linear-gradient(90deg, #f59e0b, #f97316)',
+   492→            }}
+   493→          />
+   494→        )}
+   495→        <div className="flex items-center gap-3 p-3 sm:p-4">
+   496→          <div
+   497→            className={cn(
+   498→              'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11',
+   499→              warrantyAlerts > 0 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
+   500→            )}
+   501→          >
+   502→            <AlertTriangle className="h-5 w-5" />
+   503→          </div>
+   504→          <div className="min-w-0 flex-1">
+   505→            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+   506→              รับประกันใกล้หมด
+   507→            </div>
+   508→            <div className="flex items-baseline gap-1">
+   509→              <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
+   510→                {warrantyAlerts}
+   511→              </span>
+   512→              <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
+   513→                เครื่อง
+   514→              </span>
+   515→            </div>
+   516→            <div className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
+   517→              {warrantyAlerts > 0
+   518→                ? `ใกล้หมด ${warrantyData?.summary.expiring ?? 0} · หมดแล้ว ${warrantyData?.summary.expired ?? 0} — กดเพื่อดูรายการ`
+   519→                : 'ทุกเครื่องยังอยู่ในรับประกัน'}
+   520→            </div>
+   521→          </div>
+   522→          {warrantyAlerts > 0 && (
+   523→            <span className="shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-medium text-amber-600 opacity-0 transition-opacity group-hover:opacity-100 dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-400">
+   524→              ดูรายการ →
+   525→            </span>
+   526→          )}
+   527→        </div>
+   528→      </button>
+   529→    </>
+   530→  )
+   531→
+   532→  const cycleWidget = (
+   533→    <motion.div
+   534→      initial={{ opacity: 0, y: 12 }}
+   535→      animate={{ opacity: 1, y: 0 }}
+   536→      transition={{ duration: 0.35, ease: 'easeOut' }}
+   537→    >
+   538→      <CycleProgressWidget
+   539→        activeCycle={activeCycle ?? null}
+   540→        cycleLoading={cycleLoading}
+   541→        remindersSummary={remindersSummary ?? null}
+   542→        onManageCycle={() => {
+   543→          setPendingMeterAction('open-cycle')
+   544→          setActivePage('meter')
+   545→        }}
+   546→        onCreateCycle={() => {
+   547→          setPendingMeterAction('open-cycle')
+   548→          setActivePage('meter')
+   549→        }}
+   550→      />
+   551→    </motion.div>
+   552→  )
+   553→
+   554→  const lifecycleWidget = <LifecycleDashboard />
+   555→
+   556→  const chartsWidget = (
+   557→    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   558→      <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   559→        <CardHeader>
+   560→          <CardTitle className="text-base text-slate-800 dark:text-slate-100">
+   561→            สัดส่วนสถานะอุปกรณ์
+   562→          </CardTitle>
+   563→        </CardHeader>
+   564→        <CardContent>
+   565→          {isLoading ? (
+   566→            <Skeleton className="h-64 w-full dark:bg-slate-800" />
+   567→          ) : (data?.byStatus ?? []).length === 0 ? (
+   568→            <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
+   569→          ) : (
+   570→            <ResponsiveContainer width="100%" height={280}>
+   571→              <PieChart>
+   572→                <Pie
+   573→                  data={data?.byStatus ?? []}
+   574→                  dataKey="value"
+   575→                  nameKey="name"
+   576→                  cx="50%"
+   577→                  cy="50%"
+   578→                  innerRadius={60}
+   579→                  outerRadius={95}
+   580→                  paddingAngle={2}
+   581→                >
+   582→                  {(data?.byStatus ?? []).map((entry) => (
+   583→                    <Cell
+   584→                      key={entry.name}
+   585→                      fill={STATUS_COLORS[entry.name] ?? '#94a3b8'}
+   586→                    />
+   587→                  ))}
+   588→                  <Label
+   589→                    content={({ viewBox }) => {
+   590→                      if (!viewBox || !('cx' in viewBox)) return null
+   591→                      const { cx, cy } = viewBox as {
+   592→                        cx: number
+   593→                        cy: number
+   594→                      }
+   595→                      return (
+   596→                        <>
+   597→                          <text
+   598→                            x={cx}
+   599→                            y={cy - 6}
+   600→                            textAnchor="middle"
+   601→                            dominantBaseline="central"
+   602→                            style={{
+   603→                              fontSize: 26,
+   604→                              fontWeight: 700,
+   605→                              fontVariantNumeric: 'tabular-nums',
+   606→                              fill: donutCenterText,
+   607→                            }}
+   608→                          >
+   609→                            {total}
+   610→                          </text>
+   611→                          <text
+   612→                            x={cx}
+   613→                            y={cy + 16}
+   614→                            textAnchor="middle"
+   615→                            dominantBaseline="central"
+   616→                            style={{ fontSize: 12, fill: donutCenterSub }}
+   617→                          >
+   618→                            เครื่อง
+   619→                          </text>
+   620→                        </>
+   621→                      )
+   622→                    }}
+   623→                  />
+   624→                </Pie>
+   625→                <Tooltip
+   626→                  formatter={(value: number, name: string) => [value, name]}
+   627→                  contentStyle={{
+   628→                    fontSize: 12,
+   629→                    borderRadius: 8,
+   630→                    border: `1px solid ${tooltipBorder}`,
+   631→                    background: tooltipBg,
+   632→                    color: tooltipFg,
+   633→                  }}
+   634→                />
+   635→                <Legend wrapperStyle={{ fontSize: 13 }} />
+   636→              </PieChart>
+   637→            </ResponsiveContainer>
+   638→          )}
+   639→        </CardContent>
+   640→      </Card>
+   641→
+   642→      <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   643→        <CardHeader>
+   644→          <CardTitle className="text-base text-slate-800 dark:text-slate-100">
+   645→            จำนวนอุปกรณ์ตามประเภท
+   646→          </CardTitle>
+   647→        </CardHeader>
+   648→        <CardContent>
+   649→          {isLoading ? (
+   650→            <Skeleton className="h-64 w-full dark:bg-slate-800" />
+   651→          ) : (data?.byType ?? []).length === 0 ? (
+   652→            <EmptyState message="ยังไม่มีข้อมูลอุปกรณ์" />
+   653→          ) : (
+   654→            <ResponsiveContainer width="100%" height={280}>
+   655→              <BarChart data={data?.byType ?? []}>
+   656→                <defs>
+   657→                  <linearGradient
+   658→                    id="barTypeFill"
+   659→                    x1="0"
+   660→                    y1="0"
+   661→                    x2="0"
+   662→                    y2="1"
+   663→                  >
+   664→                    <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.95} />
+   665→                    <stop offset="100%" stopColor="#0d9488" stopOpacity={0.7} />
+   666→                  </linearGradient>
+   667→                </defs>
+   668→                <CartesianGrid
+   669→                  strokeDasharray="3 3"
+   670→                  stroke={gridStroke}
+   671→                  vertical={false}
+   672→                />
+   673→                <XAxis
+   674→                  dataKey="name"
+   675→                  tick={{ fontSize: 12, fill: axisTickColor }}
+   676→                  tickLine={false}
+   677→                  axisLine={{ stroke: gridStroke }}
+   678→                />
+   679→                <YAxis
+   680→                  allowDecimals={false}
+   681→                  tick={{ fontSize: 12, fill: axisTickColor }}
+   682→                  tickLine={false}
+   683→                  axisLine={{ stroke: gridStroke }}
+   684→                />
+   685→                <Tooltip
+   686→                  cursor={{ fill: '#0d948810' }}
+   687→                  contentStyle={{
+   688→                    fontSize: 12,
+   689→                    borderRadius: 8,
+   690→                    border: `1px solid ${tooltipBorder}`,
+   691→                    background: tooltipBg,
+   692→                    color: tooltipFg,
+   693→                  }}
+   694→                />
+   695→                <Bar
+   696→                  dataKey="value"
+   697→                  fill="url(#barTypeFill)"
+   698→                  radius={[6, 6, 0, 0]}
+   699→                />
+   700→              </BarChart>
+   701→            </ResponsiveContainer>
+   702→          )}
+   703→        </CardContent>
+   704→      </Card>
+   705→    </div>
+   706→  )
+   707→
+   708→  const topDevicesWidget = (
+   709→    <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   710→      <CardHeader>
+   711→        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+   712→          <TrendingUp className="h-4 w-4 text-[#f97316]" />
+   713→          Top อุปกรณ์ตามการใช้งานกระดาษ
+   714→        </CardTitle>
+   715→      </CardHeader>
+   716→      <CardContent>
+   717→        <div className="itam-scroll max-h-72 overflow-y-auto">
+   718→          {(data?.topUsage ?? []).length === 0 ||
+   719→          (data?.topUsage ?? []).every((d) => d.value === 0) ? (
+   720→            <EmptyState message="ยังไม่มีข้อมูลการใช้งาน" />
+   721→          ) : (
+   722→            <ul className="space-y-2">
+   723→              {(data?.topUsage ?? [])
+   724→                .filter((d) => d.value > 0)
+   725→                .map((d, i) => (
+   726→                  <li
+   727→                    key={d.id}
+   728→                    className="flex items-center justify-between rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
+   729→                  >
+   730→                    <div className="flex min-w-0 items-center gap-3">
+   731→                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f97316] text-xs font-bold text-white">
+   732→                        {i + 1}
+   733→                      </span>
+   734→                      <div className="min-w-0">
+   735→                        <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+   736→                          {d.name}
+   737→                        </div>
+   738→                        <div className="truncate font-mono text-xs text-slate-400 dark:text-slate-500">
+   739→                          {d.assetCode}
+   740→                        </div>
+   741→                      </div>
+   742→                    </div>
+   743→                    <Badge className="border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316] tabular-nums">
+   744→                      {d.value.toLocaleString()} แผ่น
+   745→                    </Badge>
+   746→                  </li>
+   747→                ))}
+   748→            </ul>
+   749→          )}
+   750→        </div>
+   751→      </CardContent>
+   752→    </Card>
+   753→  )
+   754→
+   755→  const recentActivityWidget = (
+   756→    <Card className="shadow-sm transition-shadow hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+   757→      <CardHeader>
+   758→        <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+   759→          <History className="h-4 w-4 text-[#f97316]" />
+   760→          กิจกรรมล่าสุด (จดมิเตอร์)
+   761→        </CardTitle>
+   762→      </CardHeader>
+   763→      <CardContent>
+   764→        <div className="itam-scroll max-h-72 overflow-y-auto">
+   765→          {(data?.recentActivity ?? []).length === 0 ? (
+   766→            <EmptyState message="ยังไม่มีกิจกรรม" />
+   767→          ) : (
+   768→            <ul className="space-y-2">
+   769→              {(data?.recentActivity ?? []).map((a) => (
+   770→                <li
+   771→                  key={a.id}
+   772→                  className="rounded-md border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40"
+   773→                >
+   774→                  <div className="flex items-center justify-between gap-2">
+   775→                    <span className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+   776→                      {a.deviceName}
+   777→                    </span>
+   778→                    <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">
+   779→                      {a.date}
+   780→                    </span>
+   781→                  </div>
+   782→                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+   783→                    <span className="font-mono text-slate-400 dark:text-slate-500">
+   784→                      {a.assetCode}
+   785→                    </span>
+   786→                    <span>·</span>
+   787→                    <span className="tabular-nums">
+   788→                      อ่าน {a.reading.toLocaleString()}
+   789→                    </span>
+   790→                    {a.delta > 0 && (
+   791→                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 tabular-nums dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+   792→                        +{a.delta.toLocaleString()}
+   793→                      </Badge>
+   794→                    )}
+   795→                    {a.remark && (
+   796→                      <span className="truncate text-amber-600 dark:text-amber-400">
+   797→                        ⚠ {a.remark}
+   798→                      </span>
+   799→                    )}
+   800→                  </div>
+   801→                </li>
+   802→              ))}
+   803→            </ul>
+   804→          )}
+   805→        </div>
+   806→      </CardContent>
+   807→    </Card>
+   808→  )
+   809→
+   810→  function renderWidget(id: WidgetId): React.ReactNode {
+   811→    switch (id) {
+   812→      case 'kpi':
+   813→        return kpiWidget
+   814→      case 'cycle':
+   815→        return cycleWidget
+   816→      case 'lifecycle':
+   817→        return lifecycleWidget
+   818→      case 'charts':
+   819→        return chartsWidget
+   820→      case 'topDevices':
+   821→        return topDevicesWidget
+   822→      case 'recentActivity':
+   823→        return recentActivityWidget
+   824→      case 'depreciation':
+   825→        return <DepreciationSection />
+   826→      case 'reports':
+   827→        return <ReportsSection />
+   828→      default:
+   829→        return null
+   830→    }
+   831→  }
+   832→
+   833→  return (
+   834→    <div className="space-y-6 p-4 md:p-6">
+   835→      {/* Page header */}
+   836→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+   837→        <div>
+   838→          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+   839→            Dashboard
+   840→          </h1>
+   841→          <p className="text-sm text-slate-500 dark:text-slate-400">
+   842→            ภาพรวมระบบจัดการอุปกรณ์ IT
+   843→            {data?.range && (
+   844→              <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">
+   845→                · ช่วง: <span className="font-medium">{rangeInfoLabel}</span>
+   846→                {data.range.start && (
+   847→                  <>
+   848→                    {' '}({data.range.start}
+   849→                    {data.range.end ? ` → ${data.range.end}` : ''})
+   850→                  </>
+   851→                )}
+   852→              </span>
+   853→            )}
+   854→          </p>
+   855→        </div>
+   856→        <div className="flex items-center gap-2">
+   857→          <Select value={range} onValueChange={(v) => setRange(v as DashboardRangeKey)}>
+   858→            <SelectTrigger className="w-[160px]">
+   859→              <SelectValue placeholder="ช่วงเวลา" />
+   860→            </SelectTrigger>
+   861→            <SelectContent>
+   862→              {DASHBOARD_RANGE_OPTIONS.map((o) => (
+   863→                <SelectItem key={o.value} value={o.value}>
+   864→                  {o.label}
+   865→                </SelectItem>
+   866→              ))}
+   867→            </SelectContent>
+   868→          </Select>
+   869→          {data && total === 0 && (
+   870→            <Button
+   871→              onClick={runSeed}
+   872→              disabled={seeding}
+   873→              variant="outline"
+   874→              className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   875→            >
+   876→              <Sparkles className="mr-1.5 h-4 w-4" />
+   877→              {seeding ? 'กำลังโหลด...' : 'โหลดข้อมูลตัวอย่าง'}
+   878→            </Button>
+   879→          )}
+   880→          <Button
+   881→            variant="outline"
+   882→            onClick={() => refetch()}
+   883→            disabled={isLoading}
+   884→            className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+   885→          >
+   886→            🔄 รีเฟรช
+   887→          </Button>
+   888→          {/* Last-updated indicator — shows when data was last refreshed (Next.js-exclusive: auto-refresh every 60s) */}
+   889→          {dataUpdatedAt > 0 && (
+   890→            <span className="hidden items-center gap-1 text-xs text-slate-400 sm:inline-flex">
+   891→              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+   892→              อัปเดต {new Date(dataUpdatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+   893→              <span className="text-slate-300">· auto 60s</span>
+   894→            </span>
+   895→          )}
+   896→          <Button
+   897→            variant="outline"
+   898→            onClick={handleExportPdf}
+   899→            disabled={exporting || isLoading || total === 0}
+   900→            className="border-[#0d9488] text-[#0d9488] hover:bg-[#0d9488]/10 focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6] dark:text-[#14b8a6] dark:hover:bg-[#14b8a6]/10 dark:focus-visible:ring-offset-slate-950"
+   901→            title="ส่งออก PDF รายงานภาพรวม"
+   902→          >
+   903→            <Printer className="mr-1.5 h-4 w-4" />
+   904→            {exporting ? 'กำลังเตรียม...' : 'ส่งออก PDF'}
+   905→          </Button>
+   906→          {/* Customize widget layout — opens the popover managed by DashboardWidgetLayout */}
+   907→          <Button
+   908→            variant="outline"
+   909→            onClick={() => {
+   910→              if (typeof window !== 'undefined') {
+   911→                window.dispatchEvent(
+   912→                  new CustomEvent('dashboard:open-customize'),
+   913→                )
+   914→              }
+   915→            }}
+   916→            className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:border-[#fb923c] dark:text-[#fb923c] dark:hover:bg-[#fb923c]/10 dark:focus-visible:ring-offset-slate-950"
+   917→            title="ปรับแต่งวิดเจ็ต"
+   918→          >
+   919→            <Settings2 className="h-4 w-4" />
+   920→            ปรับแต่ง
+   921→          </Button>
+   922→        </div>
+   923→      </div>
+   924→
+   925→      {seeding && (
+   926→        <Card className="border-[#f97316]/40 bg-[#f97316]/5 dark:border-[#f97316]/30 dark:bg-[#f97316]/10">
+   927→          <CardContent className="p-4 text-sm text-[#f97316]">
+   928→            กำลังโหลดข้อมูลตัวอย่าง... กรุณารอสักครู่
+   929→          </CardContent>
+   930→        </Card>
+   931→      )}
+   932→
+   933→      {/* ── Quick Actions bar — 1-click access to the 4 most common tasks ──
+   934→          Designed from the USER's perspective: open the app, see what to do,
+   935→          click once, you're in the task. No sidebar hunting needed. */}
+   936→      <QuickActionsBar
+   937→        unreadCount={remindersSummary?.totalUnread ?? 0}
+   938→        hasActiveCycle={remindersSummary?.hasActiveCycle ?? false}
+   939→        onGoMeter={() => setActivePage('itam-meter-keyboard')}
+   940→        onGoDevices={() => setActivePage('itam-devices')}
+   941→        onGoPaper={() => setActivePage('itam-paper-analytics')}
+   942→        onScan={() => useAppStore.getState().setQrScannerOpen(true)}
+   943→      />
+   944→
+   945→
+   946→      <DashboardWidgetLayout renderWidget={renderWidget} />
+   947→    </div>
+   948→  )
+   949→}
+   950→
+   951→// ----------------------------------------------------------------------------
+   952→// Cycle Progress Widget — shows active cycle status at a glance
+   953→// ----------------------------------------------------------------------------
+   954→interface CycleProgressWidgetProps {
+   955→  activeCycle: Cycle | null
+   956→  cycleLoading: boolean
+   957→  remindersSummary: {
+   958→    hasActiveCycle: boolean
+   959→    totalRead: number
+   960→    totalUnread: number
+   961→  } | null
+   962→  onManageCycle: () => void
+   963→  onCreateCycle: () => void
+   964→}
+   965→
+   966→function daysBetween(a: string, b: string): number {
+   967→  return Math.round(
+   968→    (new Date(b).getTime() - new Date(a).getTime()) / (1000 * 60 * 60 * 24),
+   969→  )
+   970→}
+   971→
+   972→function todayISO(): string {
+   973→  return new Date().toISOString().slice(0, 10)
+   974→}
+   975→
+   976→function CycleProgressWidget({
+   977→  activeCycle,
+   978→  cycleLoading,
+   979→  remindersSummary,
+   980→  onManageCycle,
+   981→  onCreateCycle,
+   982→}: CycleProgressWidgetProps) {
+   983→  // Start progress bars at 0 then animate to their real value after mount
+   984→  // — Radix Progress needs a value change to trigger the CSS transition.
+   985→  const [mounted, setMounted] = React.useState(false)
+   986→  React.useEffect(() => {
+   987→    const t = window.setTimeout(() => setMounted(true), 60)
+   988→    return () => window.clearTimeout(t)
+   989→  }, [])
+   990→
+   991→  if (cycleLoading) {
+   992→    return (
+   993→      <Card className="overflow-hidden border-[#f97316]/20 bg-gradient-to-br from-orange-50 to-white dark:border-[#f97316]/30 dark:from-slate-900 dark:to-slate-800/50">
+   994→        <CardContent className="p-4">
+   995→          <Skeleton className="h-24 w-full dark:bg-slate-800" />
+   996→        </CardContent>
+   997→      </Card>
+   998→    )
+   999→  }
+  1000→
+  1001→  // No active cycle — amber alert prompting the user to create one
+  1002→  if (!activeCycle) {
+  1003→    return (
+  1004→      <Card className="relative overflow-hidden border-amber-200 bg-gradient-to-br from-amber-50 to-white dark:border-amber-800/60 dark:from-amber-950/30 dark:to-slate-900">
+  1005→        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-amber-400 to-[#f97316]" />
+  1006→        <CardContent className="relative flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+  1007→          <div className="flex items-start gap-3">
+  1008→            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition-transform group-hover:scale-105 dark:bg-amber-900/40 dark:text-amber-300">
+  1009→              <CalendarClock className="h-5 w-5" />
+  1010→            </div>
+  1011→            <div>
+  1012→              <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+  1013→                ⚠️ ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ
+  1014→              </div>
+  1015→              <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-300/80">
+  1016→                สร้างรอบใหม่เพื่อเริ่มจดมิเตอร์ได้ทันที
+  1017→              </div>
+  1018→            </div>
+  1019→          </div>
+  1020→          <Button
+  1021→            size="sm"
+  1022→            onClick={onCreateCycle}
+  1023→            className="shrink-0 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+  1024→          >
+  1025→            <CalendarClock className="h-4 w-4" />
+  1026→            สร้างรอบใหม่
+  1027→            <ArrowRight className="h-3.5 w-3.5" />
+  1028→          </Button>
+  1029→        </CardContent>
+  1030→      </Card>
+  1031→    )
+  1032→  }
+  1033→
+  1034→  // Active cycle — show progress bars
+  1035→  const totalDays = Math.max(1, daysBetween(activeCycle.startDate, activeCycle.endDate))
+  1036→  const elapsed = Math.max(0, daysBetween(activeCycle.startDate, todayISO()))
+  1037→  const daysRemaining = Math.max(0, daysBetween(todayISO(), activeCycle.endDate))
+  1038→  const elapsedPct = Math.min(100, Math.round((elapsed / totalDays) * 100))
+  1039→
+  1040→  const totalRead = remindersSummary?.totalRead ?? 0
+  1041→  const totalMeterable =
+  1042→    (remindersSummary?.totalRead ?? 0) + (remindersSummary?.totalUnread ?? 0)
+  1043→  const readPct =
+  1044→    totalMeterable > 0 ? Math.round((totalRead / totalMeterable) * 100) : 0
+  1045→
+  1046→  // Animate from 0 → target on mount
+  1047→  const animElapsedPct = mounted ? elapsedPct : 0
+  1048→  const animReadPct = mounted ? readPct : 0
+  1049→
+  1050→  return (
+  1051→    <Card className="group relative overflow-hidden border-[#f97316]/20 bg-gradient-to-br from-orange-50 to-white shadow-sm transition-shadow hover:shadow-md dark:border-[#f97316]/30 dark:from-slate-900 dark:to-slate-800/50">
+  1052→      {/* Top accent bar */}
+  1053→      <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-[#fb923c] to-[#f97316]" />
+  1054→      {/* Watermark icon */}
+  1055→      <span
+  1056→        aria-hidden
+  1057→        className="pointer-events-none absolute -right-2 -top-2 select-none text-[100px] leading-none text-[#f97316]/5 dark:text-[#fb923c]/10"
+  1058→      >
+  1059→        <CalendarClock className="h-24 w-24" />
+  1060→      </span>
+  1061→
+  1062→      <CardContent className="relative p-4 sm:p-5">
+  1063→        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+  1064→          {/* Left: cycle name + dates */}
+  1065→          <div className="min-w-0 flex-1">
+  1066→            <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+  1067→              <CalendarClock className="h-3.5 w-3.5" />
+  1068→              รอบจดมิเตอร์ปัจจุบัน
+  1069→            </div>
+  1070→            <div className="truncate text-base font-bold text-slate-800 dark:text-slate-100 sm:text-lg">
+  1071→              {activeCycle.name}
+  1072→            </div>
+  1073→            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+  1074→              <span className="font-mono">
+  1075→                📅 {activeCycle.startDate} → {activeCycle.endDate}
+  1076→              </span>
+  1077→              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:scale-105 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+  1078→                กำลังดำเนินการ
+  1079→              </Badge>
+  1080→            </div>
+  1081→          </div>
+  1082→
+  1083→          {/* Middle: days remaining big number */}
+  1084→          <div className="flex shrink-0 items-center gap-4">
+  1085→            <div className="flex flex-col items-center justify-center rounded-lg bg-white/70 px-4 py-2 text-center shadow-sm dark:bg-slate-800/60">
+  1086→              <div className="text-3xl font-bold tabular-nums leading-tight text-[#f97316] dark:text-[#fb923c]">
+  1087→                {daysRemaining}
+  1088→              </div>
+  1089→              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+  1090→                วันที่เหลือ
+  1091→              </div>
+  1092→            </div>
+  1093→
+  1094→            {/* Right: progress bars + manage button */}
+  1095→            <div className="flex min-w-[180px] flex-1 flex-col gap-2">
+  1096→              <div>
+  1097→                <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+  1098→                  <span>ความคืบหน้ารอบ</span>
+  1099→                  <span className="font-mono tabular-nums">{elapsedPct}%</span>
+  1100→                </div>
+  1101→                <Progress
+  1102→                  value={animElapsedPct}
+  1103→                  className="h-1.5 [&>div]:bg-gradient-to-r [&>div]:from-[#fb923c] [&>div]:to-[#f97316]"
+  1104→                />
+  1105→              </div>
+  1106→              <div>
+  1107→                <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+  1108→                  <span>การจดมิเตอร์</span>
+  1109→                  <span className="font-mono tabular-nums">
+  1110→                    {totalRead}/{totalMeterable} ({readPct}%)
+  1111→                  </span>
+  1112→                </div>
+  1113→                <Progress
+  1114→                  value={animReadPct}
+  1115→                  className="h-1.5 [&>div]:bg-[#0d9488]"
+  1116→                />
+  1117→              </div>
+  1118→              <Button
+  1119→                size="sm"
+  1120→                onClick={onManageCycle}
+  1121→                className="mt-1 self-end bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+  1122→              >
+  1123→                จัดการรอบ
+  1124→                <ArrowRight className="h-3.5 w-3.5" />
+  1125→              </Button>
+  1126→            </div>
+  1127→          </div>
+  1128→        </div>
+  1129→      </CardContent>
+  1130→    </Card>
+  1131→  )
+  1132→}
+  1133→

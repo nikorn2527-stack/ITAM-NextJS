@@ -30,8 +30,11 @@ import { cn } from '@/lib/utils'
 export type WidgetId =
   | 'kpi'
   | 'cycle'
+  | 'insights'
   | 'lifecycle'
   | 'charts'
+  | 'paperTrend'
+  | 'bySite'
   | 'topDevices'
   | 'recentActivity'
   | 'depreciation'
@@ -46,19 +49,24 @@ interface WidgetMeta {
 export const DEFAULT_WIDGET_ORDER: WidgetId[] = [
   'kpi',
   'cycle',
-  'lifecycle',
+  'insights',
   'charts',
-  'topDevices',
+  'paperTrend',
+  'bySite',
   'recentActivity',
+  'lifecycle',
   'depreciation',
   'reports',
 ]
 
 const WIDGET_META: Record<WidgetId, WidgetMeta> = {
-  kpi: { id: 'kpi', title: 'KPI ภาพรวม', icon: '📊' },
+  kpi: { id: 'kpi', title: 'KPI ภาพรวม + รับประกัน', icon: '📊' },
   cycle: { id: 'cycle', title: 'รอบจดมิเตอร์', icon: '⏰' },
+  insights: { id: 'insights', title: 'Smart Insights', icon: '💡' },
   lifecycle: { id: 'lifecycle', title: 'อายุการใช้งาน', icon: '♻️' },
   charts: { id: 'charts', title: 'กราฟสถานะ/ประเภท', icon: '📈' },
+  paperTrend: { id: 'paperTrend', title: 'แนวโน้มกระดาษ', icon: '📄' },
+  bySite: { id: 'bySite', title: 'อุปกรณ์ตามสาขา', icon: '🏢' },
   topDevices: { id: 'topDevices', title: 'อุปกรณ์ใช้งานสูงสุด', icon: '🏆' },
   recentActivity: { id: 'recentActivity', title: 'กิจกรรมล่าสุด', icon: '🕘' },
   depreciation: { id: 'depreciation', title: 'ค่าเสื่อมราคา', icon: '💰' },

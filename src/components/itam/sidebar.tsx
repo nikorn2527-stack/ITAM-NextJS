@@ -37,8 +37,7 @@ const NAV_GROUPS: NavGroupDef[] = [
   {
     title: 'ภาพรวม',
     items: [
-      { page: 'dashboard', icon: '📊', label: 'Dashboard', desc: 'สรุปภาพรวม' },
-      { page: 'itam', icon: '🎯', label: 'ITAM Dashboard', desc: 'แดชบอร์ดหลัก' },
+      { page: 'dashboard', icon: '📊', label: 'Dashboard', desc: 'สรุปภาพรวมระบบ' },
     ],
   },
   {

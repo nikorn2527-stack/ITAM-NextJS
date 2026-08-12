@@ -13,9 +13,16 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const assetNo = searchParams.get('assetNo')?.trim() ?? ''
     const status = searchParams.get('status')?.trim() ?? ''
+    // ?open=1 — กรองเฉพาะงานที่ยังไม่เสร็จ (open + in_progress) เหมือน getOpenMaintenanceLogs ใน Apps Script
+    const openOnly = searchParams.get('open')?.trim() === '1'
     const where: Record<string, unknown> = { AND: [] as unknown[] }
     if (assetNo) (where.AND as unknown[]).push({ assetNo })
-    if (status) (where.AND as unknown[]).push({ status })
+    if (openOnly) {
+      // กรองทั้ง open และ in_progress (เหมือน Apps Script getOpenMaintenanceLogs)
+      ;(where.AND as unknown[]).push({ status: { in: ['open', 'in_progress'] } })
+    } else if (status) {
+      ;(where.AND as unknown[]).push({ status })
+    }
 
     const sf = siteFilterForUser(user)
     if (Object.keys(sf).length) (where.AND as unknown[]).push({ device: sf })
