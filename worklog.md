@@ -2291,3 +2291,22 @@ Agent: orchestrator
   - PDF Template Picker (shows when exporting PDF)
   - renderPDFFromTemplate with pagination + variable substitution
   - Sidebar nav "📄 เอกสาร PDF"
+
+---
+Task ID: 31
+Agent: orchestrator — Create separate Next.js repo
+Task: สร้าง repo ใหม่สำหรับ Next.js ITAM (แยกจาก Apps Script repo)
+
+Work Log:
+- ตรวจสอบ PAT: หมดอายุแล้ว (Bad credentials) — ไม่สามารถสร้าง repo ผ่าน API ได้
+- เตรียมโค้ดพร้อม push:
+  - สร้าง .gitignore (node_modules, .next, .env, db/*.db, etc.)
+  - สร้าง README.md (ภาพรวมระบบ + ฟีเจอร์ + วิธีติดตั้ง)
+  - Commit ทั้งหมด: 305 files, commit bdf61e0
+  - Branch: main
+- รอผู้ใช้สร้าง repo ใหม่ + ให้ PAT ใหม่
+
+Stage Summary:
+- โค้ดพร้อม push แล้ว (305 files)
+- ต้องการ: 1) ผู้ใช้สร้าง repo "ITAM-NextJS" บน GitHub  2) ให้ PAT ใหม่  3) push ขึ้น
+- หลัง push: เชื่อม repo เดิม (Apps Script) เป็น reference ใน README
