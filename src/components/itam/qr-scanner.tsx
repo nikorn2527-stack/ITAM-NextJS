@@ -202,12 +202,12 @@ export function QrScannerDialog() {
     rafRef.current = setTimeout(tick, 250)
   }
 
+  // ── Handle decoded QR — smart routing (meter-required → meter entry, else detail) ──
   async function handleDecoded(raw: string) {
     const assetNo = parseAssetNo(raw)
     setLastScan(raw)
     if (!assetNo) {
       toast.error('สแกนสำเร็จ แต่ไม่สามารถอ่านรหัสอุปกรณ์ได้', { description: raw.slice(0, 80) })
-      // Continue scanning
       rafRef.current = setTimeout(startScanLoop, 800)
       return
     }
@@ -219,14 +219,11 @@ export function QrScannerDialog() {
         /* ignore */
       }
     }
-    // ── Smart routing (user-perspective UX) ──
-    // Check if the scanned device is meter-required. If yes, go straight to
-    // meter entry (the most common reason for scanning). If not, go to device
-    // detail. This saves 2-3 clicks vs. always going to detail page.
+    // Smart routing: check if device is meter-required
     try {
       const res = await fetch(`/api/itam/devices?assetNo=${encodeURIComponent(assetNo)}&limit=1`)
       if (res.ok) {
-        const json = await res.json()
+        const json = (await res.json()) as { devices?: Array<{ meterRequired?: boolean; brand?: string; model?: string }> }
         const device = json.devices?.[0]
         if (device?.meterRequired) {
           toast.success(`สแกนสำเร็จ: ${assetNo}`, {
