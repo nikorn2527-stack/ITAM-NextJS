@@ -8,6 +8,11 @@ const PAGE_LABELS: Record<string, string> = {
   meter: 'จดมิเตอร์',
   'paper-analytics': 'การใช้กระดาษ',
   settings: 'ตั้งค่าแอป',
+  itam: 'ITAM Dashboard',
+  'itam-devices': 'ITAM อุปกรณ์',
+  'itam-meter': 'ITAM มิเตอร์',
+  'itam-settings': 'ITAM ตั้งค่า',
+  'itam-audit': 'ITAM ประวัติ',
 }
 
 export function Footer() {

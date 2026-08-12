@@ -1,0 +1,1283 @@
+'use client'
+
+import * as React from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  Plus, Pencil, Copy, Star, Trash2, Save, Eye, Type, Image as ImageIcon,
+  QrCode, Square, Loader2, Settings as SettingsIcon,
+} from 'lucide-react'
+import {
+  PAPER_PRESETS,
+  STICKER_VARIABLES,
+  SAMPLE_DEVICE,
+  genElementId,
+  elementExceedsBounds,
+  type StickerElement,
+  type StickerTemplate,
+  type StickerSettings,
+  type StickerElementType,
+} from '@/lib/sticker-template'
+
+// ─────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+function genTemplateId(): string {
+  return `tpl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function makeElement(type: StickerElementType): StickerElement {
+  const base = {
+    id: genElementId(),
+    x: 5, y: 5, width: 20, height: 6,
+    opacity: 1, zIndex: 1, rotation: 0,
+  }
+  if (type === 'text') {
+    return { ...base, type, width: 40, height: 5, content: 'ข้อความใหม่', fontSize: 7, fontWeight: 500, color: '#1e293b', align: 'left' }
+  }
+  if (type === 'image') {
+    return { ...base, type, width: 20, height: 20, content: '', source: '' }
+  }
+  if (type === 'qr') {
+    return { ...base, type, width: 15, height: 15, content: '{{AssetNo}}' }
+  }
+  // rect
+  return { ...base, type, width: 30, height: 5, background: '#f97316', border: 'none', borderRadius: 0 }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Element renderer — used inside the workspace
+// ─────────────────────────────────────────────────────────────────────────
+
+function WorkspaceElement({
+  el,
+  selected,
+  exceedsBounds,
+  onMouseDown,
+  onResizeMouseDown,
+}: {
+  el: StickerElement
+  selected: boolean
+  exceedsBounds: boolean
+  onMouseDown: (e: React.MouseEvent, id: string) => void
+  onResizeMouseDown: (e: React.MouseEvent, id: string) => void
+}) {
+  const style: React.CSSProperties = {
+    position: 'absolute',
+    left: `${el.x}mm`,
+    top: `${el.y}mm`,
+    width: `${el.width}mm`,
+    height: `${el.height}mm`,
+    opacity: el.opacity ?? 1,
+    zIndex: el.zIndex ?? 0,
+    transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+    cursor: 'move',
+    userSelect: 'none',
+  }
+
+  let content: React.ReactNode = null
+  if (el.type === 'text') {
+    Object.assign(style, {
+      fontSize: `${el.fontSize}pt`,
+      fontWeight: el.fontWeight,
+      color: el.color,
+      textAlign: el.align,
+      lineHeight: 1.15,
+      whiteSpace: 'pre-wrap',
+      wordBreak: 'break-word',
+      overflow: 'hidden',
+      fontFamily: '"Sukhumvit Set","Noto Sans Thai","Tahoma","Segoe UI",sans-serif',
+    })
+    content = el.content || '​'
+  } else if (el.type === 'rect') {
+    Object.assign(style, {
+      background: el.background || 'transparent',
+      border: el.border || 'none',
+      borderRadius: el.borderRadius ? `${el.borderRadius}mm` : undefined,
+    })
+  } else if (el.type === 'image') {
+    Object.assign(style, { objectFit: 'contain' as const })
+    const src = el.source || el.content
+    if (src) {
+      return (
+        <img
+          src={src}
+          alt=""
+          style={style}
+          draggable={false}
+          onMouseDown={(e) => onMouseDown(e, el.id)}
+        />
+      )
+    }
+    Object.assign(style, {
+      background: '#f1f5f9', border: '1px dashed #cbd5e1',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#94a3b8', fontSize: '6pt',
+    })
+    content = '(image)'
+  } else if (el.type === 'qr') {
+    Object.assign(style, {
+      background: '#f8fafc', border: '1px solid #e2e8f0',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#94a3b8', fontSize: '5pt',
+    })
+    content = 'QR'
+  }
+
+  return (
+    <div
+      style={style}
+      onMouseDown={(e) => onMouseDown(e, el.id)}
+      className={selected ? 'ring-2 ring-[#f97316] ring-offset-1' : exceedsBounds ? 'ring-1 ring-orange-400' : ''}
+    >
+      {content}
+      {selected && (
+        <div
+          onMouseDown={(e) => onResizeMouseDown(e, el.id)}
+          style={{
+            position: 'absolute',
+            right: -4, bottom: -4,
+            width: 10, height: 10,
+            background: '#f97316',
+            border: '2px solid #ffffff',
+            borderRadius: 2,
+            cursor: 'nwse-resize',
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Main component
+// ─────────────────────────────────────────────────────────────────────────
+
+export function ItamStickerEditor() {
+  const qc = useQueryClient()
+  const workspaceRef = React.useRef<HTMLDivElement>(null)
+
+  // ── Data: templates + settings ────────────────────────────────────────
+  const { data: tplData, isLoading: tplLoading } = useQuery({
+    queryKey: ['sticker-templates'],
+    queryFn: async () => {
+      const res = await fetch('/api/itam/sticker/templates')
+      if (!res.ok) throw new Error('Failed')
+      return res.json() as Promise<{ templates: StickerTemplate[]; activeId: string | null }>
+    },
+  })
+
+  const { data: settingsData } = useQuery({
+    queryKey: ['sticker-settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/itam/sticker/settings')
+      if (!res.ok) throw new Error('Failed')
+      return res.json() as Promise<{ settings: StickerSettings }>
+    },
+  })
+
+  const templates = tplData?.templates ?? []
+  const activeId = tplData?.activeId ?? null
+  const settings = settingsData?.settings
+
+  // ── Editing state ─────────────────────────────────────────────────────
+  const [editingId, setEditingId] = React.useState<string | null>(null)
+  const [draft, setDraft] = React.useState<StickerTemplate | null>(null)
+  const [selectedElId, setSelectedElId] = React.useState<string | null>(null)
+  const [previewHtml, setPreviewHtml] = React.useState<string | null>(null)
+  const [previewOpen, setPreviewOpen] = React.useState(false)
+  const [deleteTplId, setDeleteTplId] = React.useState<string | null>(null)
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
+
+  // Local settings form
+  const [settingsForm, setSettingsForm] = React.useState<StickerSettings | null>(null)
+
+  // Auto-select first template for editing when list first loads
+  React.useEffect(() => {
+    if (!editingId && templates.length > 0 && !tplLoading) {
+      const first = templates[0]
+      setEditingId(first.id)
+      setDraft(structuredCloneSafe(first))
+      setSelectedElId(null)
+    }
+  }, [templates, tplLoading, editingId])
+
+  React.useEffect(() => {
+    if (settings && !settingsForm) {
+      setSettingsForm(settings)
+    }
+  }, [settings, settingsForm])
+
+  // ── Mutations ─────────────────────────────────────────────────────────
+  const createMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await fetch('/api/itam/sticker/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, canvas: { width: 75.2, height: 36, unit: 'mm' }, overflow: 'clip', elements: [] }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed')
+      }
+      return res.json() as Promise<{ template: StickerTemplate }>
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['sticker-templates'] })
+      setEditingId(data.template.id)
+      setDraft(structuredCloneSafe(data.template))
+      setSelectedElId(null)
+      toast.success('สร้างเทมเพลตแล้ว')
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'สร้างไม่สำเร็จ'),
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: StickerTemplate }) => {
+      const res = await fetch(`/api/itam/sticker/templates/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: payload.name,
+          canvas: payload.canvas,
+          overflow: payload.overflow,
+          elements: payload.elements,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed')
+      }
+      return res.json() as Promise<{ template: StickerTemplate }>
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sticker-templates'] })
+      toast.success('บันทึกเทมเพลตแล้ว')
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/itam/sticker/templates/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed')
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sticker-templates'] })
+      setDeleteTplId(null)
+      if (editingId === deleteTplId) {
+        setEditingId(null)
+        setDraft(null)
+      }
+      toast.success('ลบเทมเพลตแล้ว')
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'ลบไม่สำเร็จ'),
+  })
+
+  const activateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/itam/sticker/templates/${id}/activate`, { method: 'POST' })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed')
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sticker-templates'] })
+      toast.success('ตั้งเป็นเทมเพลตที่ใช้งานแล้ว')
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'ตั้งค่าไม่สำเร็จ'),
+  })
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: async (s: StickerSettings) => {
+      const res = await fetch('/api/itam/sticker/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(s),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed')
+      }
+      return res.json() as Promise<{ settings: StickerSettings }>
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sticker-settings'] })
+      setSettingsOpen(false)
+      toast.success('บันทึกการตั้งค่าแล้ว')
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ'),
+  })
+
+  // ── Drag logic ─────────────────────────────────────────────────────────
+  const dragStateRef = React.useRef<{
+    mode: 'move' | 'resize'
+    elId: string
+    startClientX: number
+    startClientY: number
+    startElX: number
+    startElY: number
+    startElW: number
+    startElH: number
+    pxPerMm: number
+  } | null>(null)
+
+  function calcPxPerMm(): number {
+    const ws = workspaceRef.current
+    if (!ws) return 3.78
+    const rect = ws.getBoundingClientRect()
+    // Workspace has 30mm padding all around, so usable width is total - 60mm
+    const widthMm = (draft?.canvas.width ?? 75.2) + 60
+    return rect.width / widthMm
+  }
+
+  function onElementMouseDown(e: React.MouseEvent, id: string) {
+    if (!draft) return
+    e.stopPropagation()
+    setSelectedElId(id)
+    const el = draft.elements.find((x) => x.id === id)
+    if (!el) return
+    dragStateRef.current = {
+      mode: 'move',
+      elId: id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startElX: el.x,
+      startElY: el.y,
+      startElW: el.width,
+      startElH: el.height,
+      pxPerMm: calcPxPerMm(),
+    }
+  }
+
+  function onResizeMouseDown(e: React.MouseEvent, id: string) {
+    if (!draft) return
+    e.stopPropagation()
+    e.preventDefault()
+    const el = draft.elements.find((x) => x.id === id)
+    if (!el) return
+    dragStateRef.current = {
+      mode: 'resize',
+      elId: id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startElX: el.x,
+      startElY: el.y,
+      startElW: el.width,
+      startElH: el.height,
+      pxPerMm: calcPxPerMm(),
+    }
+  }
+
+  React.useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      const ds = dragStateRef.current
+      if (!ds || !draft) return
+      const dxPx = e.clientX - ds.startClientX
+      const dyPx = e.clientY - ds.startClientY
+      const dxMm = dxPx / ds.pxPerMm
+      const dyMm = dyPx / ds.pxPerMm
+      setDraft((cur) => {
+        if (!cur) return cur
+        return {
+          ...cur,
+          elements: cur.elements.map((el) => {
+            if (el.id !== ds.elId) return el
+            if (ds.mode === 'move') {
+              let newX = ds.startElX + dxMm
+              let newY = ds.startElY + dyMm
+              // Snap to 0.5mm grid for cleaner UX
+              newX = Math.round(newX * 2) / 2
+              newY = Math.round(newY * 2) / 2
+              return { ...el, x: newX, y: newY }
+            }
+            // resize
+            let newW = ds.startElW + dxMm
+            let newH = ds.startElH + dyMm
+            newW = Math.max(2, Math.round(newW * 2) / 2)
+            newH = Math.max(2, Math.round(newH * 2) / 2)
+            return { ...el, width: newW, height: newH }
+          }),
+        }
+      })
+    }
+    function onMouseUp() {
+      dragStateRef.current = null
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [draft])
+
+  // Delete selected element with Delete/Backspace key (but not when typing)
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      const target = e.target as HTMLElement
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return
+      }
+      if (!selectedElId || !draft) return
+      e.preventDefault()
+      setDraft({
+        ...draft,
+        elements: draft.elements.filter((el) => el.id !== selectedElId),
+      })
+      setSelectedElId(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [selectedElId, draft])
+
+  // ── Element CRUD on draft ─────────────────────────────────────────────
+  function addElement(type: StickerElementType) {
+    if (!draft) return
+    const newEl = makeElement(type)
+    setDraft({ ...draft, elements: [...draft.elements, newEl] })
+    setSelectedElId(newEl.id)
+  }
+
+  function deleteSelectedElement() {
+    if (!draft || !selectedElId) return
+    setDraft({
+      ...draft,
+      elements: draft.elements.filter((el) => el.id !== selectedElId),
+    })
+    setSelectedElId(null)
+  }
+
+  function updateSelectedElement(patch: Partial<StickerElement>) {
+    if (!draft || !selectedElId) return
+    setDraft({
+      ...draft,
+      elements: draft.elements.map((el) =>
+        el.id === selectedElId ? { ...el, ...patch } : el,
+      ),
+    })
+  }
+
+  // ── Template-level actions ───────────────────────────────────────────
+  function selectForEdit(t: StickerTemplate) {
+    setEditingId(t.id)
+    setDraft(structuredCloneSafe(t))
+    setSelectedElId(null)
+  }
+
+  function duplicateTemplate(t: StickerTemplate) {
+    const dup: StickerTemplate = {
+      ...structuredCloneSafe(t),
+      id: genTemplateId(),
+      name: `${t.name} (สำเนา)`,
+      isDefault: false,
+    }
+    // Reassign element ids to avoid collisions
+    dup.elements = dup.elements.map((el) => ({ ...el, id: genElementId() }))
+    createMutation.mutate(dup.name, {
+      onSuccess: async (data) => {
+        // Now overwrite with the duplicated elements via PUT
+        await updateMutation.mutateAsync({ id: data.template.id, payload: dup })
+        setEditingId(data.template.id)
+        setDraft(structuredCloneSafe(dup))
+        setSelectedElId(null)
+      },
+    })
+  }
+
+  function saveTemplate() {
+    if (!draft || !editingId) return
+    updateMutation.mutate({ id: editingId, payload: draft })
+  }
+
+  async function previewTemplate() {
+    if (!draft) return
+    try {
+      // Find a real device assetNo to render with (preview with sample data)
+      let assetNo: string | null = null
+      try {
+        const devRes = await fetch('/api/itam/devices?limit=1')
+        if (devRes.ok) {
+          const devJson = (await devRes.json()) as { devices: { assetNo: string }[] }
+          assetNo = devJson.devices[0]?.assetNo ?? null
+        }
+      } catch {
+        /* ignore — fall through to sample */
+      }
+      if (!assetNo) assetNo = SAMPLE_DEVICE.assetNo
+
+      const res = await fetch('/api/itam/sticker/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetNo, templateId: draft.id }),
+      })
+      if (!res.ok) {
+        // Fallback: try with bulk-render
+        const bulk = await fetch('/api/itam/sticker/bulk-render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assetNos: [assetNo], templateId: draft.id }),
+        })
+        if (!bulk.ok) throw new Error('Preview failed')
+        const j = await bulk.json() as { stickers: { html: string }[] }
+        setPreviewHtml(j.stickers[0]?.html ?? '')
+      } else {
+        const j = await res.json() as { html: string }
+        setPreviewHtml(j.html)
+      }
+      setPreviewOpen(true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'พรีวิวไม่สำเร็จ')
+    }
+  }
+
+  // ── Derived ──────────────────────────────────────────────────────────
+  const selectedEl = React.useMemo(
+    () => draft?.elements.find((el) => el.id === selectedElId) ?? null,
+    [draft, selectedElId],
+  )
+
+  // ── Render ────────────────────────────────────────────────────────────
+  if (tplLoading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#f97316]" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3 p-4 md:p-6">
+      {/* Header */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+            🎨 ตัวออกแบบสติกเกอร์
+          </h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            สร้างและแก้ไขเทมเพลตสติกเกอร์ — ลากเพื่อย้าย, ดึงมุมเพื่อปรับขนาด
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setSettingsOpen(true)}
+            className="dark:border-slate-700 dark:bg-slate-800"
+          >
+            <SettingsIcon className="h-4 w-4" /> ตั้งค่าบริษัท
+          </Button>
+          <Button
+            onClick={() => createMutation.mutate('เทมเพลตใหม่')}
+            disabled={createMutation.isPending}
+            className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+          >
+            <Plus className="h-4 w-4" /> สร้างเทมเพลตใหม่
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_1fr_300px]">
+        {/* ── Left: Template Library ────────────────────────────────── */}
+        <Card className="dark:border-slate-800 dark:bg-slate-900">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-slate-700 dark:text-slate-200">
+              📚 คลังเทมเพลต
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 p-3 pt-0">
+            <div className="itam-scroll max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+              {templates.length === 0 && (
+                <div className="py-8 text-center text-xs text-slate-400">
+                  ยังไม่มีเทมเพลต
+                </div>
+              )}
+              {templates.map((t) => {
+                const isActive = activeId === t.id
+                const isEditing = editingId === t.id
+                return (
+                  <div
+                    key={t.id}
+                    className={[
+                      'rounded-md border p-2.5 transition cursor-pointer',
+                      isEditing
+                        ? 'border-[#f97316] bg-orange-50 dark:bg-orange-950/30'
+                        : 'border-slate-200 hover:border-orange-300 dark:border-slate-700 dark:hover:border-orange-700',
+                    ].join(' ')}
+                    onClick={() => selectForEdit(t)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+                          {t.name}
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                          {t.isDefault && (
+                            <Badge className="bg-teal-50 text-teal-700 border-teal-200 text-[9px] dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800">
+                              [เริ่มต้น]
+                            </Badge>
+                          )}
+                          {isActive && (
+                            <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-[9px] dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800">
+                              ⭐ ใช้งาน
+                            </Badge>
+                          )}
+                          {!isActive && !t.isDefault && (
+                            <Badge className="bg-slate-100 text-slate-500 border-slate-200 text-[9px] dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700">
+                              📄 ปกติ
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="mt-1 font-mono text-[10px] text-slate-400">
+                          {t.canvas.width}×{t.canvas.height}mm · {t.elements.length} องค์ประกอบ
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      className="mt-2 flex flex-wrap gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Button
+                        size="sm" variant="ghost" className="h-7 px-2 text-[11px]"
+                        onClick={() => selectForEdit(t)}
+                        title="แก้ไข"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm" variant="ghost" className="h-7 px-2 text-[11px]"
+                        onClick={() => duplicateTemplate(t)}
+                        title="สำเนา"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm" variant="ghost" className="h-7 px-2 text-[11px]"
+                        onClick={() => activateMutation.mutate(t.id)}
+                        disabled={isActive || activateMutation.isPending}
+                        title="ตั้งเป็นเทมเพลตที่ใช้งาน"
+                      >
+                        <Star className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm" variant="ghost" className="h-7 px-2 text-[11px] text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                        onClick={() => setDeleteTplId(t.id)}
+                        disabled={t.isDefault || isActive}
+                        title={t.isDefault ? 'ลบเทมเพลตเริ่มต้นไม่ได้' : isActive ? 'ลบเทมเพลตที่ใช้งานอยู่ไม่ได้' : 'ลบ'}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ── Center: Workspace ─────────────────────────────────────── */}
+        <Card className="dark:border-slate-800 dark:bg-slate-900">
+          <CardHeader className="pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="text-sm text-slate-700 dark:text-slate-200">
+                🖼️ Workspace
+                {draft && (
+                  <span className="ml-2 font-mono text-[10px] font-normal text-slate-400">
+                    ({draft.canvas.width}×{draft.canvas.height}mm)
+                  </span>
+                )}
+              </CardTitle>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Select
+                  value={
+                    draft
+                      ? PAPER_PRESETS.find((p) => p.width === draft.canvas.width && p.height === draft.canvas.height)
+                        ? `${draft.canvas.width}x${draft.canvas.height}`
+                        : 'custom'
+                      : 'custom'
+                  }
+                  onValueChange={(v) => {
+                    if (!draft) return
+                    if (v === 'custom') return
+                    const [w, h] = v.split('x').map(Number)
+                    setDraft({ ...draft, canvas: { ...draft.canvas, width: w, height: h } })
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-32 text-xs dark:bg-slate-800 dark:border-slate-700">
+                    <SelectValue placeholder="Paper size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAPER_PRESETS.map((p) => (
+                      <SelectItem key={p.label} value={`${p.width}x${p.height}`}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="custom">กำหนดเอง</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 dark:border-slate-700">
+                  <Label className="text-[11px] text-slate-500">Clip</Label>
+                  <Switch
+                    checked={draft?.overflow === 'visible'}
+                    onCheckedChange={(c) => draft && setDraft({ ...draft, overflow: c ? 'visible' : 'clip' })}
+                  />
+                  <Label className="text-[11px] text-slate-500">Visible</Label>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Workspace scrollable area */}
+            <div
+              className="itam-scroll overflow-auto rounded-md border border-slate-200 bg-slate-100 p-2 dark:border-slate-700 dark:bg-slate-950"
+              style={{ maxHeight: '60vh' }}
+              onClick={() => setSelectedElId(null)}
+            >
+              {draft && (
+                <div
+                  ref={workspaceRef}
+                  style={{
+                    position: 'relative',
+                    width: `${draft.canvas.width + 60}mm`,
+                    height: `${draft.canvas.height + 60}mm`,
+                    minWidth: `${draft.canvas.width + 60}mm`,
+                    // Light grid background
+                    backgroundImage:
+                      'linear-gradient(rgba(148,163,184,0.15) 1px, transparent 1px),' +
+                      'linear-gradient(90deg, rgba(148,163,184,0.15) 1px, transparent 1px)',
+                    backgroundSize: '5mm 5mm',
+                  }}
+                >
+                  {/* Red boundary box showing actual template size */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: '30mm',
+                      top: '30mm',
+                      width: `${draft.canvas.width}mm`,
+                      height: `${draft.canvas.height}mm`,
+                      border: '2px dashed #ef4444',
+                      background: '#ffffff',
+                      overflow: draft.overflow === 'visible' ? 'visible' : 'hidden',
+                      boxSizing: 'border-box',
+                    }}
+                    onClick={(e) => { e.stopPropagation(); setSelectedElId(null) }}
+                  >
+                    {/* White sticker container */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: '#ffffff',
+                      }}
+                    />
+                    {/* Elements */}
+                    {[...draft.elements]
+                      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+                      .map((el) => (
+                        <WorkspaceElement
+                          key={el.id}
+                          el={el}
+                          selected={el.id === selectedElId}
+                          exceedsBounds={elementExceedsBounds(el, draft.canvas)}
+                          onMouseDown={onElementMouseDown}
+                          onResizeMouseDown={onResizeMouseDown}
+                        />
+                      ))}
+                    {/* Corner label showing dimensions */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '-16px',
+                        left: 0,
+                        fontSize: '10px',
+                        color: '#ef4444',
+                        fontWeight: 600,
+                        fontFamily: 'monospace',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {draft.canvas.width} × {draft.canvas.height} mm
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Toolbar */}
+            <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-200 pt-3 dark:border-slate-700">
+              <Button size="sm" variant="outline" onClick={() => addElement('text')} className="dark:border-slate-700 dark:bg-slate-800">
+                <Type className="h-3.5 w-3.5" /> +Text
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => addElement('image')} className="dark:border-slate-700 dark:bg-slate-800">
+                <ImageIcon className="h-3.5 w-3.5" /> +Image
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => addElement('qr')} className="dark:border-slate-700 dark:bg-slate-800">
+                <QrCode className="h-3.5 w-3.5" /> +QR
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => addElement('rect')} className="dark:border-slate-700 dark:bg-slate-800">
+                <Square className="h-3.5 w-3.5" /> +Rect
+              </Button>
+              <div className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={deleteSelectedElement}
+                disabled={!selectedEl}
+                className="border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:hover:bg-rose-950/30"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> ลบองค์ประกอบ
+              </Button>
+              <div className="ml-auto flex gap-1.5">
+                <Button size="sm" variant="outline" onClick={previewTemplate} disabled={!draft} className="dark:border-slate-700 dark:bg-slate-800">
+                  <Eye className="h-3.5 w-3.5" /> พรีวิว
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={saveTemplate}
+                  disabled={!draft || updateMutation.isPending}
+                  className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+                >
+                  {updateMutation.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Save className="h-3.5 w-3.5" />
+                  )}{' '}
+                  บันทึก
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* ── Right: Property Panel ─────────────────────────────────── */}
+        <Card className="dark:border-slate-800 dark:bg-slate-900">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-slate-700 dark:text-slate-200">
+              ⚙️ คุณสมบัติ
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-3 pt-0">
+            {!selectedEl ? (
+              <div className="space-y-3">
+                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
+                  คลิกที่องค์ประกอบใน workspace เพื่อแก้ไข หรือกดปุ่ม +Text/+Image/+QR/+Rect เพื่อเพิ่มใหม่
+                </div>
+
+                {/* Template name */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">ชื่อเทมเพลต</Label>
+                  <Input
+                    value={draft?.name ?? ''}
+                    onChange={(e) => draft && setDraft({ ...draft, name: e.target.value })}
+                    className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                  />
+                </div>
+
+                {/* Canvas size custom */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">กว้าง (mm)</Label>
+                    <Input
+                      type="number" step="0.1" min="10" max="300"
+                      value={draft?.canvas.width ?? ''}
+                      onChange={(e) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, width: Number(e.target.value) || 10 } })}
+                      className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">สูง (mm)</Label>
+                    <Input
+                      type="number" step="0.1" min="10" max="300"
+                      value={draft?.canvas.height ?? ''}
+                      onChange={(e) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, height: Number(e.target.value) || 10 } })}
+                      className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Available variables */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">ตัวแปรที่ใช้ได้</Label>
+                  <div className="flex flex-wrap gap-1">
+                    {STICKER_VARIABLES.map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[9px] text-slate-600 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-orange-700 dark:hover:bg-orange-950 dark:hover:text-orange-300"
+                        title={`คลิกเพื่อคัดลอก ${v}`}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          navigator.clipboard?.writeText(v).catch(() => {})
+                          toast.success(`คัดลอก ${v}`)
+                        }}
+                      >
+                        {v}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Badge className="bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800">
+                    {selectedEl.type.toUpperCase()}
+                  </Badge>
+                  {elementExceedsBounds(selectedEl, draft!.canvas) && (
+                    <Badge className="bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800">
+                      ⚠ ล้นขอบ
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Position & Size */}
+                <div className="grid grid-cols-2 gap-2">
+                  <NumInput label="X (mm)" value={selectedEl.x} onChange={(v) => updateSelectedElement({ x: v })} step={0.5} />
+                  <NumInput label="Y (mm)" value={selectedEl.y} onChange={(v) => updateSelectedElement({ y: v })} step={0.5} />
+                  <NumInput label="W (mm)" value={selectedEl.width} onChange={(v) => updateSelectedElement({ width: v })} step={0.5} />
+                  <NumInput label="H (mm)" value={selectedEl.height} onChange={(v) => updateSelectedElement({ height: v })} step={0.5} />
+                </div>
+
+                {/* Type-specific */}
+                {selectedEl.type === 'text' && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">ข้อความ (รองรับ {'{{ตัวแปร}}'})</Label>
+                      <Textarea
+                        value={selectedEl.content ?? ''}
+                        onChange={(e) => updateSelectedElement({ content: e.target.value })}
+                        rows={2}
+                        className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <NumInput label="ขนาด (pt)" value={selectedEl.fontSize ?? 6} onChange={(v) => updateSelectedElement({ fontSize: v })} step={0.5} min={2} max={48} />
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">น้ำหนัก</Label>
+                        <Select
+                          value={String(selectedEl.fontWeight ?? 500)}
+                          onValueChange={(v) => updateSelectedElement({ fontWeight: Number(v) })}
+                        >
+                          <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="300">300 (บาง)</SelectItem>
+                            <SelectItem value="400">400 (ปกติ)</SelectItem>
+                            <SelectItem value="500">500</SelectItem>
+                            <SelectItem value="600">600</SelectItem>
+                            <SelectItem value="700">700 (หนา)</SelectItem>
+                            <SelectItem value="800">800 (หนามาก)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">สี</Label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="color"
+                            value={selectedEl.color ?? '#1e293b'}
+                            onChange={(e) => updateSelectedElement({ color: e.target.value })}
+                            className="h-8 w-10 cursor-pointer rounded border border-slate-200 dark:border-slate-700"
+                          />
+                          <Input
+                            value={selectedEl.color ?? ''}
+                            onChange={(e) => updateSelectedElement({ color: e.target.value })}
+                            className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">จัดวาง</Label>
+                        <Select
+                          value={selectedEl.align ?? 'left'}
+                          onValueChange={(v) => updateSelectedElement({ align: v as 'left' | 'center' | 'right' })}
+                        >
+                          <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="left">ซ้าย</SelectItem>
+                            <SelectItem value="center">กลาง</SelectItem>
+                            <SelectItem value="right">ขวา</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {selectedEl.type === 'rect' && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">สีพื้น</Label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="color"
+                          value={selectedEl.background && selectedEl.background !== 'transparent' ? selectedEl.background : '#f97316'}
+                          onChange={(e) => updateSelectedElement({ background: e.target.value })}
+                          className="h-8 w-10 cursor-pointer rounded border border-slate-200 dark:border-slate-700"
+                        />
+                        <Input
+                          value={selectedEl.background ?? ''}
+                          onChange={(e) => updateSelectedElement({ background: e.target.value })}
+                          placeholder="transparent หรือ #f97316"
+                          className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">ขอบ (border CSS)</Label>
+                      <Input
+                        value={selectedEl.border ?? ''}
+                        onChange={(e) => updateSelectedElement({ border: e.target.value })}
+                        placeholder="เช่น 1px solid #000 หรือ none"
+                        className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                      />
+                    </div>
+                    <NumInput label="รัศมี (mm)" value={selectedEl.borderRadius ?? 0} onChange={(v) => updateSelectedElement({ borderRadius: v })} step={0.5} min={0} />
+                  </>
+                )}
+
+                {selectedEl.type === 'image' && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">URL รูปภาพ</Label>
+                    <Input
+                      value={selectedEl.source ?? ''}
+                      onChange={(e) => updateSelectedElement({ source: e.target.value })}
+                      placeholder="https://..."
+                      className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                    />
+                  </div>
+                )}
+
+                {selectedEl.type === 'qr' && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">ข้อมูล QR (รองรับ {'{{ตัวแปร}}'})</Label>
+                    <Input
+                      value={selectedEl.content ?? ''}
+                      onChange={(e) => updateSelectedElement({ content: e.target.value })}
+                      placeholder="{{AssetNo}}"
+                      className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                    />
+                    <p className="text-[10px] text-slate-400">
+                      ค่าเริ่มต้นใช้ {'{{AssetNo}}'} เพื่อสร้าง QR จากรหัสอุปกรณ์
+                    </p>
+                  </div>
+                )}
+
+                {/* Common props */}
+                <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+                  <NumInput label="Opacity (0-1)" value={selectedEl.opacity ?? 1} onChange={(v) => updateSelectedElement({ opacity: Math.min(1, Math.max(0, v)) })} step={0.1} min={0} max={1} />
+                  <NumInput label="Z-Index" value={selectedEl.zIndex ?? 0} onChange={(v) => updateSelectedElement({ zIndex: v })} step={1} />
+                  <NumInput label="หมุน (deg)" value={selectedEl.rotation ?? 0} onChange={(v) => updateSelectedElement({ rotation: v })} step={1} />
+                </div>
+
+                <Button
+                  size="sm" variant="outline"
+                  onClick={deleteSelectedElement}
+                  className="w-full border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:hover:bg-rose-950/30"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> ลบองค์ประกอบนี้
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Preview modal ─────────────────────────────────────────────── */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-h-[92vh] overflow-auto sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="text-slate-800 dark:text-slate-100">
+              👁️ พรีวิวสติกเกอร์
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              ตัวอย่างสติกเกอร์สำหรับอุปกรณ์ <span className="font-mono font-semibold">{SAMPLE_DEVICE.assetNo}</span> ({SAMPLE_DEVICE.brand} {SAMPLE_DEVICE.model})
+            </p>
+            <div
+              className="overflow-auto rounded-md border border-slate-200 bg-slate-100 p-8 dark:border-slate-700 dark:bg-slate-950"
+              style={{ minHeight: 200 }}
+            >
+              {previewHtml ? (
+                <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+              ) : (
+                <div className="text-center text-xs text-slate-400 py-8">กำลังโหลด...</div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>ปิด</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete confirm ───────────────────────────────────────────── */}
+      <AlertDialog open={!!deleteTplId} onOpenChange={(o) => !o && setDeleteTplId(null)}>
+        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบเทมเพลต?</AlertDialogTitle>
+            <AlertDialogDescription>
+              จะลบเทมเพลต{' '}
+              <span className="font-semibold">
+                {templates.find((t) => t.id === deleteTplId)?.name}
+              </span>
+              {' '}การกระทำนี้ย้อนกลับไม่ได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteTplId && deleteMutation.mutate(deleteTplId)}
+              disabled={deleteMutation.isPending}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบ'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Settings modal ───────────────────────────────────────────── */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="sm:max-w-lg dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="text-slate-800 dark:text-slate-100">
+              ตั้งค่าบริษัท / ข้อมูลสติกเกอร์
+            </DialogTitle>
+          </DialogHeader>
+          {settingsForm && (
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">ชื่อบริษัท {'({{companyName}})'}</Label>
+                <Input
+                  value={settingsForm.companyName}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, companyName: e.target.value })}
+                  className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">ชื่อโรงพยาบาล {'({{hospitalName}})'}</Label>
+                <Input
+                  value={settingsForm.hospitalName}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, hospitalName: e.target.value })}
+                  className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">เบอร์ติดต่อ {'({{hotline}})'}</Label>
+                <Input
+                  value={settingsForm.hotline}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, hotline: e.target.value })}
+                  className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">LINE OA {'({{lineOA}})'}</Label>
+                <Input
+                  value={settingsForm.lineOALink}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, lineOALink: e.target.value })}
+                  className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">หมายเหตุท้ายสติกเกอร์ {'({{footerNote}})'}</Label>
+                <Textarea
+                  value={settingsForm.footerNote}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, footerNote: e.target.value })}
+                  rows={2}
+                  className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSettingsOpen(false)}>ยกเลิก</Button>
+            <Button
+              onClick={() => settingsForm && saveSettingsMutation.mutate(settingsForm)}
+              disabled={saveSettingsMutation.isPending || !settingsForm}
+              className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+            >
+              {saveSettingsMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Small helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+function NumInput({
+  label, value, onChange, step = 1, min, max,
+}: {
+  label: string
+  value: number
+  onChange: (v: number) => void
+  step?: number
+  min?: number
+  max?: number
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs">{label}</Label>
+      <Input
+        type="number"
+        value={Number.isFinite(value) ? value : ''}
+        onChange={(e) => {
+          const n = Number(e.target.value)
+          if (!Number.isFinite(n)) return
+          onChange(n)
+        }}
+        step={step}
+        min={min}
+        max={max}
+        className="text-xs dark:bg-slate-800 dark:border-slate-700"
+      />
+    </div>
+  )
+}
+
+// Safe structured clone (with fallback for older browsers)
+function structuredCloneSafe<T>(obj: T): T {
+  if (typeof structuredClone === 'function') {
+    try {
+      return structuredClone(obj)
+    } catch {
+      /* fall through */
+    }
+  }
+  return JSON.parse(JSON.stringify(obj)) as T
+}

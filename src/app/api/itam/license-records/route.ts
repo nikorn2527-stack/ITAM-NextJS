@@ -1,0 +1,79 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-middleware'
+import { canAccessSite } from '@/lib/auth'
+
+// GET /api/itam/license-records?assetNo=
+export async function GET(req: NextRequest) {
+  try {
+    const auth = await requireAuth(req, 'VIEW_DEVICES')
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    const user = auth.row
+
+    const { searchParams } = new URL(req.url)
+    const assetNo = searchParams.get('assetNo')?.trim() ?? ''
+    const where: Record<string, unknown> = {}
+    if (assetNo) where.assetNo = assetNo
+
+    // Site-level filter via device relation when assetNo present
+    if (user.role !== 'admin' && user.role !== 'superadmin' && assetNo) {
+      const device = await db.device.findUnique({ where: { assetNo }, select: { site: true } })
+      if (device && !canAccessSite(user, device.site)) {
+        return NextResponse.json({ error: 'ไม่มีสิทธิ์เข้าถึงลิขสิทธิ์ของอุปกรณ์ในสาขานี้' }, { status: 403 })
+      }
+    }
+
+    const records = await db.licenseRecord.findMany({ where, orderBy: { software: 'asc' } })
+    return NextResponse.json({ records })
+  } catch (err) {
+    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  }
+}
+
+// POST — create license record (requires DEVICE_EDIT)
+export async function POST(req: NextRequest) {
+  try {
+    const auth = await requireAuth(req, 'DEVICE_EDIT')
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    const user = auth.row
+
+    const body = await req.json()
+    if (!body.software) return NextResponse.json({ error: 'software required' }, { status: 400 })
+
+    // If asset-bound, verify site access
+    if (body.assetNo) {
+      const device = await db.device.findUnique({ where: { assetNo: body.assetNo }, select: { site: true } })
+      if (device && !canAccessSite(user, device.site)) {
+        return NextResponse.json({ error: 'ไม่มีสิทธิ์ผูกลิขสิทธิ์กับอุปกรณ์ในสาขานี้' }, { status: 403 })
+      }
+    }
+
+    const created = await db.licenseRecord.create({
+      data: {
+        licenseId: body.licenseId || null,
+        assetNo: body.assetNo || null,
+        software: body.software,
+        licenseType: body.licenseType || null,
+        licenseKey: body.licenseKey || null,
+        quantity: body.quantity || 1,
+        expiryDate: body.expiryDate || null,
+        remark: body.remark || null,
+      },
+    })
+
+    try {
+      await db.auditLog.create({
+        data: {
+          timestamp: new Date().toISOString(),
+          action: 'LICENSE_CREATE',
+          user: user.email,
+          details: JSON.stringify({ software: body.software, assetNo: body.assetNo || null }),
+        },
+      })
+    } catch { /* ignore */ }
+
+    return NextResponse.json({ record: created }, { status: 201 })
+  } catch (err) {
+    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+  }
+}
