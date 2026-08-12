@@ -2794,3 +2794,36 @@ Verification:
 ✅ Low stock: อยู่ในกรอบ h-[280px] + scroll
 ✅ Lint: 0 errors
 ✅ Dev server: 200 OK
+
+---
+Task ID: FIX-CHARTS-STOCK-2
+Agent: orchestrator — แก้กราฟซ้อน (ครั้ง 2) + เพิ่มหมวดหมู่สต็อก
+
+Work Log:
+
+1. แก้กราฟ Pie chart ซ้อนกัน (ครั้งที่ 2):
+   - สาเหตุ: label แสดงค่า 0% (เมื่อ value=0 แต่ยังแสดง label) → ซ้อนกับ label อื่น
+   - แก้: ซ่อน label เมื่อ pct < 2% (return '' ถ้าค่าน้อยเกินไป)
+   - ลดขนาด pie (innerRadius 40, outerRadius 70) ให้มีที่ว่างสำหรับ label
+   - labelLine: ใช้ object แทน function (กัน error)
+   - isAnimationActive={false} (กัน animation ทำให้ label กระโดด)
+
+2. เพิ่มหมวดหมู่ (Category) ในสต็อก:
+   - กำหนด category อัตโนมัติจากชื่อสินค้า (60 รายการ):
+     • หมึกพิมพ์: 42 รายการ (หมึก, inkjet, toner, ribbon)
+     • กระดาษ: 6 รายการ (กระดาษ, paper, sticker, label)
+     • อะไหล่เครื่องพิมพ์: 5 รายการ (fuser, drum, roller)
+     • อื่นๆ: 7 รายการ
+   - API: เปลี่ยน orderBy จาก createdAt → [category asc, productCode asc]
+   - UI: มีคอลัมน์ "หมวดหมู่" ในตาราง + filter dropdown
+
+3. Default templates (Visual Editor format):
+   - 6 templates พร้อมใช้ (work-order, stock-out, stock-in, purchase-order, pdf, sticker)
+   - แต่ละ template มี paper + elements ครบ (header, info, table, signatures)
+
+Verification:
+✅ Dashboard: โหลดได้ (ไม่มี Application error)
+✅ Pie chart: label ซ่อนเมื่อ pct < 2% (ไม่ซ้อน)
+✅ Stock: มีคอลัมน์หมวดหมู่ + filter + เรียงตาม category+productCode
+✅ Lint: 0 errors
+✅ 4 หมวดหมู่: หมึกพิมพ์ 42, กระดาษ 6, อะไหล่ 5, อื่นๆ 7
