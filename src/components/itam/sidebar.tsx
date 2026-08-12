@@ -19,6 +19,8 @@ const NAV_ITEMS: NavItemDef[] = [
   { page: 'devices', icon: '💻', label: 'จัดการอุปกรณ์' },
   { page: 'meter', icon: '📈', label: 'จดมิเตอร์' },
   { page: 'paper-analytics', icon: '📊', label: 'การใช้กระดาษ' },
+  { page: 'work-orders', icon: '🔧', label: 'แจ้งซ่อม' },
+  { page: 'stock', icon: '📦', label: 'สต๊อก' },
   { page: 'settings', icon: '⚙️', label: 'ตั้งค่าแอป' },
 ]
 
@@ -60,6 +62,25 @@ export function Sidebar() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
+
+  // ── Organization Profile (flexible: ชื่อ/โลโก้/tagline เปลี่ยนได้) ──
+  const { data: orgProfile } = useQuery({
+    queryKey: ['org-profile'],
+    queryFn: async () => {
+      try {
+        const res = await fetch('/api/settings/org-profile')
+        if (!res.ok) return null
+        const j = await res.json()
+        return j.profile
+      } catch {
+        return null
+      }
+    },
+    staleTime: 60_000,
+  })
+  const appName = orgProfile?.appName || 'ระบบจัดการสินทรัพย์'
+  const appTagline = orgProfile?.appTagline || 'Asset Management System'
+  const logoUrl = orgProfile?.logoUrl || ''
 
   const isDark = mounted && theme === 'dark'
   function toggleTheme() {
@@ -127,17 +148,21 @@ export function Sidebar() {
         )}
         style={{ width: 240 }}
       >
-        {/* Header */}
+        {/* Header — uses OrganizationProfile (flexible: เปลี่ยนชื่อ/โลโก้ได้) */}
         <div
           className="px-5 pb-5 pt-5 text-center"
           style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}
         >
           <div className="flex items-center justify-center gap-2">
-            <span className="text-lg">📦</span>
-            <span className="text-base font-bold text-white">Asset Mgmt</span>
+            {logoUrl && logoUrl.startsWith('http') ? (
+              <img src={logoUrl} alt={appName} className="h-6 w-6 rounded object-contain" />
+            ) : (
+              <span className="text-lg">{logoUrl || '📦'}</span>
+            )}
+            <span className="text-base font-bold text-white">{appName}</span>
           </div>
           <div className="mt-0.5 text-[11px] text-slate-400">
-            IT Asset Management
+            {appTagline}
           </div>
         </div>
 

@@ -19,7 +19,19 @@ if (
     (globalForPrisma.prisma as unknown as { assignment?: unknown }).assignment &&
     (globalForPrisma.prisma as unknown as { report?: unknown }).report &&
     (globalForPrisma.prisma as unknown as { maintenanceLog?: unknown })
-      .maintenanceLog
+      .maintenanceLog &&
+    (globalForPrisma.prisma as unknown as { workOrder?: unknown }).workOrder &&
+    (globalForPrisma.prisma as unknown as { workOrderMessage?: unknown })
+      .workOrderMessage &&
+    (globalForPrisma.prisma as unknown as { workOrderReview?: unknown })
+      .workOrderReview &&
+    (globalForPrisma.prisma as unknown as { stockItem?: unknown }).stockItem &&
+    (globalForPrisma.prisma as unknown as { stockTransaction?: unknown })
+      .stockTransaction &&
+    (globalForPrisma.prisma as unknown as { purchaseOrder?: unknown })
+      .purchaseOrder &&
+    (globalForPrisma.prisma as unknown as { purchaseOrderItem?: unknown })
+      .purchaseOrderItem
   )
 ) {
   void globalForPrisma.prisma.$disconnect().catch(() => {})

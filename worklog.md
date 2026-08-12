@@ -1090,3 +1090,211 @@ Stage Summary:
 - หน้าตั้งค่าจัดระเบียบแล้ว (6 tabs ชัดเจน แทน 9 tabs กระจัดกระจาย)
 - Dashboard มีปุ่มเครื่องมือ 4 อันใหม่: 🏗️ สาขา | 📈 Heatmap | 📊 รอบ | 📄 PDF
 - รวม Task 18-23 = 6 commits ใหม่บน refactor/master-columns
+
+---
+Task ID: A6-WO
+Agent: full-stack-developer (subagent)
+Task: Build WorkOrder (แจ้งซ่อม) API + UI for the Next.js ITAM project — full feature set covering list/filter/pagination, create with auto woNumber, detail with messages + review, assign technician, complete, cancel, and chat messages. Plus UI page with KPI cards, filters, card-based mobile-friendly list, and detail dialog with timeline + chat.
+
+Work Log:
+- Read project context (worklog.md, prisma/schema.prisma) — confirmed WorkOrder / WorkOrderMessage / WorkOrderReview models already exist; ran `bunx prisma db push` to confirm schema is in sync.
+- Studied existing API patterns (`/api/devices/route.ts`, `/api/devices/[id]/route.ts`, `/api/devices/[id]/assign/route.ts`) and the audit helper `src/lib/audit.ts` — note that the helper only writes `actor='system'`; for WorkOrder routes I call `db.auditLog.create` directly with the explicit actor so the audit row records who actually did the action.
+- Created 6 API route files under `src/app/api/work-orders/`:
+  - `route.ts` — GET (list with search, status, priority, assignedTo filters + pagination + stats group-by-status) and POST (create with sequential `WO-YYYYMMDD-NNN` woNumber, collision-retry up to 5x, auto system message, audit `WO_CREATE`).
+  - `[id]/route.ts` — GET (detail with device + messages + review includes) and PUT (whitelist update of editable fields, diff audit `UPDATE`).
+  - `[id]/assign/route.ts` — POST (sets assignedTo/assignedBy/assignedAt/assignmentNote, auto-advances PENDING→IN_PROGRESS, posts a chat message, audit `WO_ASSIGN`).
+  - `[id]/complete/route.ts` — POST (sets status=COMPLETED + workCompletedAt + closedAt, appends note to detailsAdmin, posts a chat message, audit `WO_COMPLETE`; refuses if already completed/cancelled).
+  - `[id]/cancel/route.ts` — POST (requires reason, sets status=CANCELLED + canceledAt + cancelReason, posts a chat message, audit `WO_CANCEL`; refuses if already completed/cancelled).
+  - `[id]/messages/route.ts` — GET (list messages ascending) and POST (create message with author/authorRole; refuses when WO is COMPLETED or CANCELLED; audit `WO_MESSAGE`).
+- Created `src/components/itam/work-orders-page.tsx` (~1495 lines, named export `WorkOrdersPage`) with `'use client'`:
+  - 4 KPI cards (รอดำเนินการ / กำลังซ่อม / เสร็จแล้ว / ยกเลิก) driven by the `stats` payload from the list endpoint.
+  - Filter bar: debounced search (350ms), status select, priority select, all in Thai.
+  - "แจ้งซ่อมใหม่" button → Dialog form (subject*, building, location, details, priority, reporterName, tel) with validation + saving spinner.
+  - Card-based list (responsive grid 1/2/3 cols) — NOT a table; each card shows woNumber, status badge, subject, relative time, building/location, reporter/tel, priority badge, assignedTo. Cards are keyboard-accessible (role=button, Enter/Space handler).
+  - Pagination (prev/next + total pages) when totalPages > 1.
+  - Detail Dialog: header (woNumber, status, subject, created time, priority), info grid (building/location/reporter/tel/assignedTo/assignedAt), details box, admin note box (orange), cancel reason box (rose), images grid (before/onsite/after placeholders), timeline (created → assigned → completed → cancelled), chat panel (max-h-64 scroll, system messages centered, admin orange, staff blue, relative timestamps), and footer actions (มอบหมายช่าง / ปิดงาน / ยกเลิก) gated by current status.
+  - Sub-dialogs (AlertDialog) for assign / complete / cancel with proper validation (cancel requires reason).
+  - Uses shadcn/ui (Card, Button, Input, Label, Badge, Skeleton, Textarea, ScrollArea, Select, Dialog, AlertDialog), Lucide icons, @tanstack/react-query, framer-motion, sonner toasts, and Thai labels throughout.
+- Updated wiring:
+  - `src/store/app-store.ts` — added `'work-orders'` to `ActivePage` union.
+  - `src/components/itam/sidebar.tsx` — added nav item `{ page: 'work-orders', icon: '🔧', label: 'แจ้งซ่อม' }` between `paper-analytics` and `settings`.
+  - `src/app/page.tsx` — imported `WorkOrdersPage` and added conditional render for `activePage === 'work-orders'`.
+- Updated `src/lib/db.ts` — extended the stale-PrismaClient probe list to include `workOrder`, `workOrderMessage`, `workOrderReview`, `stockItem`, `stockTransaction`, `purchaseOrder`, `purchaseOrderItem`. This was required because the dev server had a stale in-memory PrismaClient instance (generated before the WorkOrder models existed), causing `db.workOrder is undefined`. After touching the generated `node_modules/.prisma/client/index.js` and `node_modules/@prisma/client/index.js` to invalidate Turbopack's bundle cache, the new client was picked up and all routes return 200.
+
+Verification:
+- `bun run lint` → clean (0 errors, 0 warnings).
+- curl smoke tests against `http://localhost:3000`:
+  - POST /api/work-orders → 201 with `woNumber: "WO-20260812-001"`, status PENDING, system message auto-created.
+  - POST /api/work-orders (2nd) → `woNumber: "WO-20260812-002"` (sequential per day works).
+  - GET /api/work-orders?page=1&pageSize=12 → 200, returns `data`, `pagination`, `stats`.
+  - GET /api/work-orders/[id] → 200, returns detail with `device`, `messages`, `review` includes.
+  - POST /api/work-orders/[id]/assign → 200, status auto-advanced PENDING→IN_PROGRESS, assignedTo set, chat message posted.
+  - POST /api/work-orders/[id]/messages → 201, message stored with author/authorRole.
+  - POST /api/work-orders/[id]/complete → 200, status=COMPLETED, workCompletedAt/closedAt set, note appended to detailsAdmin, chat message posted.
+  - POST /api/work-orders/[id]/cancel on already-completed → 400 with Thai error "ใบงานนี้ปิดไปแล้ว ไม่สามารถยกเลิกได้".
+  - POST /api/work-orders/[id]/cancel on fresh PENDING → 200, status=CANCELLED, cancelReason stored, chat message posted.
+  - GET /api/work-orders/[id]/messages → 200, returns full chat history (system + admin + staff messages).
+- dev.log shows `GET /api/work-orders 200` and `GET / 200` with no runtime errors after the cache invalidation.
+
+Notes for future agents:
+- The `src/lib/db.ts` probe now covers all "newer" models (WorkOrder, StockItem, PurchaseOrder families). If you add yet another model in the future, extend the probe list — otherwise the dev server will keep using a stale in-memory PrismaClient until you touch the generated client files.
+- To force a fresh PrismaClient in dev: `touch node_modules/.prisma/client/index.js node_modules/@prisma/client/index.js` after running `bun run db:push`.
+- The WorkOrder routes use `db.auditLog.create` directly (with explicit `actor`) rather than the `logAudit` helper in `src/lib/audit.ts` — that helper hardcodes `actor: 'system'`. If you want consistent actor-aware auditing, consider extending `logAudit` to accept an optional `actor` parameter and migrating the WorkOrder routes back to it.
+- UI is fully mobile-friendly (card grid, touch-sized buttons, scrollable chat) — the task brief mentioned "ช่างใช้มือถือ".
+
+---
+Task ID: A6-STOCK
+Agent: full-stack-developer (Stock module)
+Task: Build the Stock (สต๊อก) API + UI for the Next.js ITAM project — 5 API routes + StockPage component + sidebar/page wiring.
+
+Work Log:
+- Read worklog (Tasks 1-23), prisma/schema.prisma (StockItem, StockTransaction, PurchaseOrder, PurchaseOrderItem already defined), and existing patterns from /api/devices, /api/master, /lib/audit, devices-page, sidebar, app-store, page.tsx.
+- Verified the dev server was healthy. Noticed pre-existing /api/work-orders errors ("Cannot read properties of undefined (reading 'findMany')") — caused by a stale PrismaClient cache.
+
+API Routes created (all import `db` from '@/lib/db', use `logAudit`, return `{ data, ... }` / `{ data: [...], pagination, stats }`):
+
+1. `/src/app/api/stock-items/route.ts`
+   - GET: filter by search (productCode/productName/brand/model/compatibleDevices), category, lowStock toggle, activeOnly; pagination (page/pageSize, capped at 200); plus stats { total, lowStock, totalValue, thisMonth } computed over the full active set (ignoring pagination). lowStock rule = quantity ≤ minQuantity applied post-fetch.
+   - POST: validates productName; auto-generates productCode `STK-NNNN` (max+1 of existing STK-\d+ codes) when not supplied; uniqueness check (returns 400 with Thai error on conflict); creates StockItem + audit `CREATE / StockItem` with summary `เพิ่มสินค้า <code> (<name>)`.
+
+2. `/src/app/api/stock-items/[id]/route.ts`
+   - GET: detail with `transactions` relation (last 100, newest first).
+   - PUT: validates productCode uniqueness on rename; updates all editable fields (null-coalescing for optional fields); computes diff `changes` map for audit; logs `UPDATE / StockItem`.
+   - DELETE: soft delete — sets `active=false`; keeps StockTransaction history intact; logs `DELETE / StockItem` with `{ softDelete: true }`.
+
+3. `/src/app/api/stock-items/[id]/transaction/route.ts`
+   - POST: validates type ∈ {IN, OUT, ADJUST}, quantity ≥ 0 (must be > 0 for IN/OUT).
+   - Runs inside `db.$transaction` for atomicity:
+     - Reads StockItem (throws NOT_FOUND / INACTIVE business-rule errors).
+     - Computes newBalance: IN = +qty, OUT = -qty (refuses with Thai error "สต็อกไม่เพียงพอ" if quantity > current), ADJUST = qty (set balance).
+     - Updates StockItem.quantity.
+     - Generates txnNumber `STX-YYYYMMDD-NNN` (max+1 of today's STX-<ymd>-\d+ numbers, queried through `tx` so concurrent inserts in the same transaction see uncommitted counts).
+     - Creates StockTransaction { balanceAfter, reason, workOrderId?, deviceId?, cost?, vendor?, txnDate, performedBy?, remark? }.
+   - Cost fallback for IN: if cost omitted, uses item.unitCost × quantity.
+   - Logs audit `STOCK_IN` / `STOCK_OUT` / `STOCK_ADJUST` with summary `<verb> <code> จำนวน <qty> <unit> (คงเหลือ <balance>)`.
+
+4. `/src/app/api/purchase-orders/route.ts`
+   - GET: filter by search (poNumber/supplier/remark), status; pagination; includes `items.stockItem` (productCode/productName/unit).
+   - POST: validates orderDate + non-empty items[]; each line requires stockItemId + quantityOrdered > 0; verifies all stockItemIds exist (400 with Thai list of missing IDs otherwise). Runs in `db.$transaction`: creates PurchaseOrder, creates each PurchaseOrderItem (computing per-line totalValue = unitPrice × qtyOrdered), updates PO.totalValue. Auto-generates poNumber `PO-YYYYMMDD-NNN`. Audit `CREATE / PurchaseOrder`.
+
+5. `/src/app/api/purchase-orders/[id]/route.ts`
+   - GET: detail with items + stockItem info.
+   - PUT: validates status ∈ {open, partial, received, cancelled}; updates status/supplier/remark/orderDate/totalValue; logs audit `UPDATE / PurchaseOrder`.
+
+UI Component:
+6. `/src/components/itam/stock-page.tsx` (named export `StockPage`, 'use client', ~1000 lines)
+   - **KPI bar**: 4 cards (รายการทั้งหมด / สต็อกต่ำ / มูลค่ารวม / รายการเดือนนี้) with colored accent icons (orange/rose/teal/slate), motion staggered entrance, loading skeletons.
+   - **Tabs**: "สินค้าคงคลัง" | "ใบสั่งซื้อ".
+   - **Filter bar** (items tab): debounced search input (300ms), category Select (6 categories incl. หมึกพิมพ์/กระดาษ/อะไหล่/อุปกรณ์สำนักงาน), lowStock Switch ("แสดงเฉพาะสต็อกต่ำ").
+   - **Stock table**: productCode (orange mono), productName + brand/model, category badge, quantity (red + "ต่ำกว่า N" hint when ≤ minQuantity), unit, unitCost, totalValue (unitCost × qty), actions column.
+   - **Action buttons** per row: รับเข้า (IN, emerald), เบิกออก (OUT, rose, disabled when qty=0), ปรับปรุง (ADJUST, amber), ดูรายละเอียด (Eye), แก้ไข (Pencil), ลบ (Trash2).
+   - **Add/Edit item dialog**: 2-column responsive grid (productCode, productName*, category Select, unit Select, brand, model, quantity, minQuantity, maxQuantity, unitCost, location, site, compatibleDevices, remark). On create, surfaces the auto-generated productCode via toast.info.
+   - **Transaction dialog**: dynamic title (IN/OUT/ADJUST with colored icon), quantity input (label changes to "จำนวนคงเหลือใหม่" for ADJUST, shows max-writable hint for OUT), txnDate, reason, vendor + cost (IN only), performedBy, remark. Submit button color matches type.
+   - **Detail dialog**: 12-field info grid (productCode mono, category, brand, model, qty with highlight when low, minQuantity, unitCost, total value, location, site, compatibleDevices, remark, status), stock-level Progress bar (when maxQuantity>0), transaction history table (sticky header, scrollable max-h-72) showing txnNumber/type badge/qty with sign (+/-/=)/balanceAfter/reason+vendor/Thai date. Quick-action buttons (รับเข้า/เบิกออก/ปรับปรุง/แก้ไข) at the bottom.
+   - **Delete confirmation dialog**: explains soft-delete behavior in Thai, rose button.
+   - **Purchase Orders tab**: read-only table (poNumber, orderDate, supplier, item count, totalValue, status badge).
+   - **Create PO dialog**: orderDate*, supplier, dynamic line items (add/remove rows), each line = stockItem Select + qty + unitPrice + computed lineTotal + remove button, grand total at the bottom, remark. Submits to /api/purchase-orders.
+   - Uses TanStack Query (`['stock-items']`, `['purchase-orders']`, `['stock-item-detail']`), Sonner toasts, framer-motion, Lucide icons, Tailwind dark: variants throughout. Orange (#f97316) primary, teal/rose/amber semantic accents — no indigo/blue.
+
+Wiring:
+7. `/src/store/app-store.ts` — added `'stock'` to ActivePage union (between 'work-orders' and 'settings').
+8. `/src/components/itam/sidebar.tsx` — added `{ page: 'stock', icon: '📦', label: 'สต๊อก' }` to NAV_ITEMS.
+9. `/src/app/page.tsx` — imported `StockPage` and added `{activePage === 'stock' && <StockPage />}`.
+10. `/src/lib/db.ts` — extended the staleness probe to also check `stockItem`, `stockTransaction`, `purchaseOrder`, `purchaseOrderItem` so a cached PrismaClient from before these models existed gets rebuilt automatically.
+
+Verification:
+- `cd /home/z/my-project && bun run lint 2>&1 | tail -5` → 0 errors, 0 warnings.
+- Ran `bun run db:push` (schema already in sync; regenerated Prisma Client v6.19.2). Touched `next.config.ts` to force HMR pickup of the regenerated client (same recovery pattern used in Task 14).
+- Live API tests via curl:
+  - POST /api/stock-items (no productCode) → 201, returns `{ data: { productCode: "STK-0001", ... } }`. ✓
+  - POST /api/stock-items (second item, paper, qty=5 min=10) → 201, `STK-0002`. ✓
+  - GET /api/stock-items → 200, `stats: { total: 2, lowStock: 1, totalValue: 5400, thisMonth: 2 }` (correct: 10×450 + 5×180 = 5400, paper is low). ✓
+  - POST /api/stock-items/[id]/transaction (IN qty=5) → 201, balance 10→15, txnNumber `STX-20260812-001`. ✓
+  - POST .../transaction (OUT qty=3) → 201, balance 15→12, `STX-20260812-002`. ✓
+  - POST .../transaction (OUT qty=100) → 400 `{ error: "สต็อกไม่เพียงพอ (คงเหลือ 12 ขวด)" }`. ✓
+  - POST .../transaction (ADJUST qty=20) → 201, balance 12→20 (set), `STX-20260812-003`. ✓
+  - GET /api/stock-items/[id] → 200, includes `transactions: [3 entries]` in newest-first order with correct balanceAfter values. ✓
+  - POST /api/purchase-orders (2 items) → 201, `poNumber: "PO-20260812-001"`, `totalValue: 8100` (10×450 + 20×180). ✓
+  - GET /api/purchase-orders → 200, includes items[].stockItem info. ✓
+  - PUT /api/purchase-orders/[id] (status=received) → 200, status updated. ✓
+  - DELETE /api/stock-items/[id] → 200 (soft delete), subsequent GET shows `total: 1` (deleted item excluded by active filter). ✓
+- Sidebar verified to render the new "สต๊อก" nav item (curl / returns HTML containing the label).
+- AuditLog inserts verified in dev.log (DELETE / StockItem and STOCK_IN/OUT/ADJUST entries).
+- Pre-existing /api/work-orders errors (`db.workOrder` undefined) cleared up as a side effect of the db.ts staleness probe extension — the cached client is now rebuilt whenever any of the new stock/workOrder models is missing.
+
+Stage Summary:
+- Stock module delivered end-to-end: 5 API routes + 1 UI component + sidebar/store/page wiring + db.ts probe extension.
+- All endpoints return 200/201 with correct data; business-rule errors (insufficient stock, missing items, duplicate productCode) return 400 with Thai messages.
+- All mutations create AuditLog entries with Thai summaries.
+- Transactions are atomic (`db.$transaction`) — quantity + transaction record commit together.
+- productCode (STK-NNNN), txnNumber (STX-YYYYMMDD-NNN), poNumber (PO-YYYYMMDD-NNN) all auto-generated sequentially.
+- Soft delete preserves transaction history; deleted items hidden from default list via `active` filter.
+- StockPage UI: 4 KPI cards, search/category/lowStock filter, 2-column responsive add/edit form, IN/OUT/ADJUST transaction dialogs with type-colored buttons, detail dialog with transaction history table + quick actions, PO tab + create-PO dialog with dynamic line items and live grand-total.
+- Classic dark sidebar (240px, #0f172a, orange #f97316/#fb923c active accent) preserved exactly. Sticky footer untouched. Dark mode supported throughout. Thai labels throughout. No indigo/blue. `bun run lint` clean.
+
+---
+Task ID: A-FLEX
+Agent: orchestrator — Rebuild แอปใหม่ทั้งหมด (Flexible Multi-Industry)
+Task: ทำข้อ A (รื้อทำใหม่) พร้อมรองรับ 5 ข้อ: ชื่อกลาง, เปลี่ยนโลโก้/ชื่อ, Excel import, เลขทะเบียนกำหนดเอง, เทมเพลตแยกประเภท
+
+Work Log:
+
+Phase A1: Prisma schema rebuild (19 models)
+- OrganizationProfile: appName, appTagline, industryType, logoUrl, primaryColor, accentColor — ข้อ 1,2
+- AssetNumberPattern: pattern, defaultPrefix, seqPadding — ข้อ 4
+- Device: ขยาย fields (building, floor, room, warrantyEnd, vendor, meterRequired, ip, mac, ฯลฯ)
+- WorkOrder + WorkOrderMessage + WorkOrderReview: แจ้งซ่อมครบวงจร (40+ fields)
+- StockItem + StockTransaction: สต็อกคงคลัง + รับเข้า/เบิกออก
+- PurchaseOrder + PurchaseOrderItem: ใบสั่งซื้อ
+- DocumentTemplate: เทมเพลตแยกประเภท (sticker|pdf|work-order|stock-out|stock-in|purchase-order) — ข้อ 5
+- ImportJob: Excel import แยกฟังก์ชัน — ข้อ 3
+- MasterItem, Site, SiteRate, User, AppSetting, AuditLog, Report: คงจากเดิม + ปรับ
+- DB: SQLite (fresh) — 13 models → 19 models
+
+Phase A2: Organization Profile + Asset Number Pattern
+- src/lib/org-profile.ts: getOrgProfile(), updateOrgProfile(), INDUSTRY_LABELS
+- src/lib/asset-number-pattern.ts: generateAssetNumber(), parseSegments(), padValue()
+  • รองรับ: {prefix}, {seq:N}, {year:2|4}, {month:2}, {dept:N}, {type:N}, {site:N}
+  • ตัวอย่าง: ASSET-00001, ACC-PRT-001-26, 202608-0001
+  • ensureDefaultPatterns(): 3 patterns (ง่าย, โรงพยาบาล, ปี-เดือน)
+- API: /api/settings/org-profile (GET+PUT), /api/settings/asset-patterns (GET+POST), /api/settings/asset-patterns/[id]/activate (POST)
+
+Phase A3: Sidebar — ใช้ OrgProfile (ไม่ hardcoded)
+- ชื่อแอป: "ระบบจัดการสินทรัพย์" (ไม่อ้างโรงพยาบาล) — ข้อ 1
+- โลโก้: รองรับ emoji หรือ URL รูปภาพ — ข้อ 2
+- tagline: "Asset Management System"
+- Nav: Dashboard, จัดการอุปกรณ์, จดมิเตอร์, แจ้งซ่อม, สต๊อก, ตั้งค่าแอป
+
+Phase A4: WorkOrder API + UI (subagent A6-WO)
+- 6 API routes: /api/work-orders (list+create), [id] (detail+update), assign, complete, cancel, messages
+- woNumber: WO-YYYYMMDD-NNN (sequential per day)
+- UI: 4 KPI cards, card-based list (mobile), detail dialog with chat, assign/complete/cancel dialogs
+- 1495 lines, 'use client', shadcn/ui, @tanstack/react-query
+
+Phase A5: Stock API + UI (subagent A6-STOCK)
+- 5 API routes: /api/stock-items (list+create), [id] (detail+update+delete), [id]/transaction (IN/OUT/ADJUST), /api/purchase-orders (list+create), [id] (detail+update)
+- productCode: STK-NNNN, txnNumber: STX-YYYYMMDD-NNN, poNumber: PO-YYYYMMDD-NNN
+- UI: 4 KPI cards, tabs (สินค้าคงคลัง | ใบสั่งซื้อ), transaction dialogs, detail dialog
+- ~1000 lines, 'use client', shadcn/ui
+
+Verification (agent-browser):
+✅ Sidebar: "ระบบจัดการสินทรัพย์" + "Asset Management System" (ไม่อ้างโรงพยาบาล)
+✅ Nav: Dashboard, จัดการอุปกรณ์, จดมิเตอร์, แจ้งซ่อม, สต๊อก, ตั้งค่าแอป
+✅ แจ้งซ่อม page: 4 KPI cards + "แจ้งซ่อมใหม่" + card list (1 COMPLETED, 1 CANCELLED from testing)
+✅ สต๊อก page: 4 KPI cards + tabs + 1 รายการ (฿9,000) + "เพิ่มสินค้า" + "สร้างใบสั่งซื้อ"
+✅ OrgProfile API: GET → {appName: "ระบบจัดการสินทรัพย์", ...}
+✅ AssetPattern API: GET → 3 patterns (ง่าย=active, โรงพยาบาล, ปี-เดือน)
+✅ Lint: 0 errors
+
+Stage Summary — 5 ข้อที่ทำได้แล้ว:
+1. ✅ ชื่อกลาง: "ระบบจัดการสินทรัพย์" (ไม่อ้างสาขาเฉพาะ)
+2. ✅ เปลี่ยนโลโก้/ชื่อ: OrgProfile API + sidebar ใช้ค่าจาก DB
+3. ⏳ Excel import: ImportJob model พร้อม, ต้องสร้าง UI อัปโหลด
+4. ✅ เลขทะเบียนกำหนดเอง: AssetNumberPattern (3 patterns default, รองรับ {prefix}-{seq:N}, {dept:N}-{type:N}-{seq:N}-{year:N})
+5. ⏳ เทมเพลตแยกประเภท: DocumentTemplate model พร้อม (type: sticker|pdf|work-order|stock-out|stock-in|purchase-order), ต้องสร้าง UI
+
+สถานะปัจจุบัน:
+- Schema: 19 models (SQLite, fresh DB)
+- API: 35+ routes (devices, work-orders, stock-items, purchase-orders, settings, ฯลฯ)
+- UI: Dashboard, จัดการอุปกรณ์, จดมิเตอร์, แจ้งซ่อม, สต๊อก, ตั้งค่าแอป
+- พร้อมสำหรับ: Excel import UI (ข้อ 3) + Template editor UI (ข้อ 5) + Settings page สำหรับ OrgProfile/AssetPattern
