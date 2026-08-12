@@ -202,7 +202,7 @@ export function QrScannerDialog() {
     rafRef.current = setTimeout(tick, 250)
   }
 
-  function handleDecoded(raw: string) {
+  async function handleDecoded(raw: string) {
     const assetNo = parseAssetNo(raw)
     setLastScan(raw)
     if (!assetNo) {
@@ -219,6 +219,30 @@ export function QrScannerDialog() {
         /* ignore */
       }
     }
+    // ── Smart routing (user-perspective UX) ──
+    // Check if the scanned device is meter-required. If yes, go straight to
+    // meter entry (the most common reason for scanning). If not, go to device
+    // detail. This saves 2-3 clicks vs. always going to detail page.
+    try {
+      const res = await fetch(`/api/itam/devices?assetNo=${encodeURIComponent(assetNo)}&limit=1`)
+      if (res.ok) {
+        const json = await res.json()
+        const device = json.devices?.[0]
+        if (device?.meterRequired) {
+          toast.success(`สแกนสำเร็จ: ${assetNo}`, {
+            description: `${device.brand || ''} ${device.model || ''} — ไปหน้าจดมิเตอร์`,
+          })
+          stopCamera()
+          setOpen(false)
+          setActivePage('itam-meter-keyboard')
+          setPendingDeviceId(assetNo)
+          return
+        }
+      }
+    } catch {
+      /* fall through to default route */
+    }
+    // Default: go to device detail
     toast.success(`สแกนสำเร็จ: ${assetNo}`, {
       description: 'กำลังเปิดรายละเอียดอุปกรณ์...',
     })
@@ -228,7 +252,7 @@ export function QrScannerDialog() {
     setPendingDeviceId(assetNo)
   }
 
-  function handleManualSubmit(e: React.FormEvent) {
+  async function handleManualSubmit(e: React.FormEvent) {
     e.preventDefault()
     const raw = manualInput.trim()
     if (!raw) {
@@ -236,6 +260,25 @@ export function QrScannerDialog() {
       return
     }
     const assetNo = parseAssetNo(raw) ?? raw
+    // Smart routing (same as QR scan): meter-required → meter entry, else detail
+    try {
+      const res = await fetch(`/api/itam/devices?assetNo=${encodeURIComponent(assetNo)}&limit=1`)
+      if (res.ok) {
+        const json = await res.json()
+        const device = json.devices?.[0]
+        if (device?.meterRequired) {
+          toast.success(`ค้นหา: ${assetNo}`, {
+            description: `${device.brand || ''} ${device.model || ''} — ไปหน้าจดมิเตอร์`,
+          })
+          setOpen(false)
+          setActivePage('itam-meter-keyboard')
+          setPendingDeviceId(assetNo)
+          return
+        }
+      }
+    } catch {
+      /* fall through */
+    }
     toast.success(`ค้นหา: ${assetNo}`)
     setOpen(false)
     setActivePage('itam-devices')

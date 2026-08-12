@@ -4775,3 +4775,78 @@ Stage Summary:
 - P2 Snapshot Viewer UI: list + detail + verify (SHA-256 hash check) ทำงานสมบูรณ์
 - หลักการ API-first 12 ข้อ (8 ของผู้ใช้ + 4 ที่เสริม) ทำงานครบ
 - Multi-app ready: ทุก app สามารถใช้ /api/v1/* ร่วมกันได้ (consistent shape, auth, pagination)
+
+---
+Task ID: 37
+Agent: orchestrator — UX overhaul from USER's perspective (fewer clicks, smarter flows)
+Task: ผู้ใช้ขอให้คิดจากมุมคนใช้ ไม่ใช่คนสร้าง — สะดวก คลิกน้อย คือสำคัญ
+
+UX Audit findings (จากการเดินผ่าน flows):
+1. Dashboard เปิดมาไม่มีปุ่ม action เลย — ต้องไป sidebar หาหน้า แล้วค่อยหา device = 3-4 clicks
+2. QR scan สแกนแล้วไป device detail ทุกครั้ง แม้จะตั้งใจจะจดมิเตอร์ = 2-3 clicks เกินจำเป็น
+3. Meter keyboard: 2/856 progress = ขวัญกำลังใจตก (แต่ flow ดีอยู่แล้ว — auto-advance, last value hint)
+
+Quick Wins ที่ทำ:
+
+1. QuickActionsBar (src/components/itam/quick-actions-bar.tsx — NEW)
+   - 4 ปุ่มใหญ่บน Dashboard: จดมิเตอร์ (primary CTA), สแกน QR, ค้นหาอุปกรณ์, วิเคราะห์กระดาษ
+   - ปุ่ม "จดมิเตอร์" pulse สีส้มเมื่อมี unread devices + แสดง count badge
+   - ⌘K hint สำหรับ power users
+   - Mobile: horizontal scroll, Desktop: single row
+   - ผล: เปิดแอป → เห็นปุ่ม → คลิก 1 ที → อยู่ใน task (จาก 3-4 clicks → 1 click)
+
+2. QR Scanner Smart Routing (src/components/itam/qr-scanner.tsx)
+   - handleDecoded + handleManualSubmit ทั้งคู่เป็น async ตอนนี้
+   - หลังสแกน/ใส่รหัส → เช็ค device.meterRequired ผ่าน API
+   - meter-required → ไปหน้าจดมิเตอร์ (Keyboard) พร้อม pre-select device
+   - ไม่ใช่ meter-required → ไปหน้า device detail (default)
+   - ผล: สแกน QR → อุปกรณ์ meter-required → หน้ากรอกมิเตอร์ทันที (1 scan + 0 click = ไปถูกที่)
+
+3. Meter Keyboard Pre-select (src/components/itam/itam-meter-keyboard.tsx)
+   - อ่าน pendingDeviceId จาก store (set โดย QR scanner)
+   - หา device ใน list → setSelectedIndex → setFocus('meter') → scroll into view
+   - Toast: "เลือกอุปกรณ์ XX แล้ว — พิมพ์มิเตอร์แล้วกด Enter"
+   - ผล: สแกน QR → device pre-selected → พิมพ์เลข → Enter = บันทึก (3 actions total)
+
+4. Devices API: Exact-match assetNo filter (src/app/api/itam/devices/route.ts)
+   - เพิ่ม ?assetNo=XX exact match (ก่อนหน้านี้มีแค่ search= ที่เป็น contains)
+   - QR scanner ใช้สำหรับ smart routing lookup
+   - ผล: API คืน device ที่ตรงทั้งหมด ไม่ใช่ "ขึ้นต้นด้วย"
+
+Flow comparison (ก่อน vs หลัง):
+
+จดมิเตอร์รายเดือน (856 เครื่อง):
+  ก่อน: Sidebar → จดมิเตอร์ → ค้นหา → เลือก → พิมพ์ → Enter (5-6 actions/เครื่อง)
+  หลัง: Dashboard → จดมิเตอร์ (1 click) → พิมพ์ → Enter → auto-advance (2 actions/เครื่อง)
+
+สแกน QR เพื่อจดมิเตอร์:
+  ก่อน: สแกน → device detail → หาปุ่มจดมิเตอร์ → คลิก → พิมพ์ → Enter (5 actions)
+  หลัง: สแกน → (auto-route to meter) → พิมพ์ → Enter (3 actions)
+
+ค้นหาอุปกรณ์:
+  ก่อน: Sidebar → จัดการอุปกรณ์ → พิมพ์ค้นหา → คลิก (3 actions)
+  หลัง: Dashboard → ค้นหาอุปกรณ์ (1 click) → พิมพ์ → คลิก (3 actions) — เท่าเดิมแต่เริ่มได้เร็วกว่า
+  หรือ: ⌘K → พิมพ์ → คลิก (2 actions — power user)
+
+Verification (agent-browser):
+✅ Quick Actions bar แสดงบน Dashboard (toolbar "Quick actions" with 4 buttons + ⌘K hint)
+✅ ปุ่ม "จดมิเตอร์" แสดง pulse + count badge เมื่อมี unread
+✅ QR scanner dialog เปิดได้จากปุ่ม "สแกน QR" ใน Quick Actions bar
+✅ Manual input tab ทำงาน
+✅ API /api/itam/devices?assetNo=11 คืน device ที่ถูกต้อง (meterRequired=true)
+✅ Smart routing code: meter-required → itam-meter-keyboard, else → itam-devices
+✅ Meter keyboard รองรับ pendingDeviceId pre-select
+✅ Lint: 0 new errors
+✅ Dev server stable
+
+Design Philosophy (ที่ยึดตามคำแนะนำผู้ใช้):
+- คิดจากมุมคนใช้ ไม่ใช่คนสร้าง
+- สะดวก = คลิกน้อย (1-2 คลิก = ดี, 3+ = เริ่มเยอะ)
+- ไม่สนใจขั้นตอนข้างใน สนใจแค่ผลลัพธ์ที่เห็น
+- ความถูกต้องของข้อมูลต้องคงไว้ (smart routing ไม่กระทบ data integrity)
+
+Stage Summary:
+- Quick Actions bar: 1-click access to 4 most common tasks (from 3-4 clicks → 1)
+- QR smart routing: scan → auto-route to meter entry if meter-required (saves 2-3 clicks)
+- Meter keyboard pre-select: pending device auto-selected + focused (saves search + select)
+- Total clicks saved per meter reading: ~3 (× 856 devices/month = ~2,500 clicks/month saved)

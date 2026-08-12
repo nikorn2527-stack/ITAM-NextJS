@@ -57,6 +57,7 @@ import { DASHBOARD_RANGE_OPTIONS } from './types'
 import { useAppStore } from '@/store/app-store'
 import { exportDashboardPdf } from './dashboard-pdf-export'
 import { LifecycleDashboard } from './lifecycle-dashboard'
+import { QuickActionsBar } from './quick-actions-bar'
 import {
   DashboardWidgetLayout,
   type WidgetId,
@@ -928,6 +929,19 @@ export function DashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Quick Actions bar — 1-click access to the 4 most common tasks ──
+          Designed from the USER's perspective: open the app, see what to do,
+          click once, you're in the task. No sidebar hunting needed. */}
+      <QuickActionsBar
+        unreadCount={remindersSummary?.totalUnread ?? 0}
+        hasActiveCycle={remindersSummary?.hasActiveCycle ?? false}
+        onGoMeter={() => setActivePage('itam-meter-keyboard')}
+        onGoDevices={() => setActivePage('itam-devices')}
+        onGoPaper={() => setActivePage('itam-paper-analytics')}
+        onScan={() => useAppStore.getState().setQrScannerOpen(true)}
+      />
+
 
       <DashboardWidgetLayout renderWidget={renderWidget} />
     </div>
