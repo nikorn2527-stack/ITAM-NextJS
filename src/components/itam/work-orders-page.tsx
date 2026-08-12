@@ -66,8 +66,10 @@ import {
   Package,
   Check,
   Box,
+  Printer,
 } from 'lucide-react'
 import { formatThaiDate, relativeTime } from './types'
+import { WoPrintForm } from './wo-print-form'
 
 // ============================================================
 // Types
@@ -1614,6 +1616,9 @@ function WorkOrderDetailContent({
   const [rejectingTxnId, setRejectingTxnId] = React.useState<string | null>(null)
   const [rejectReason, setRejectReason] = React.useState('')
 
+  // ── Print form (ใบแจ้งซ่อน) ──
+  const [printOpen, setPrintOpen] = React.useState(false)
+
   // Parts list query (always on for the detail view)
   const partsQuery = useQuery<PartsListResponse>({
     queryKey: ['wo-parts', wo.id],
@@ -2540,6 +2545,15 @@ function WorkOrderDetailContent({
 
       {/* Footer actions */}
       <div className="flex flex-wrap items-center gap-2 border-t px-5 py-3">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setPrintOpen(true)}
+          className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
+        >
+          <Printer className="h-4 w-4" />
+          พิมพ์ใบงาน
+        </Button>
         {canReporterEdit && (
           <Button
             size="sm"
@@ -3111,6 +3125,24 @@ function WorkOrderDetailContent({
               ส่งคำขอเบิก ({partsLines.filter((l) => Number(l.quantity) > 0).length})
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Print form dialog (ใบแจ้งซ่อน) ── */}
+      <Dialog open={printOpen} onOpenChange={setPrintOpen}>
+        <DialogContent className="flex max-h-[94vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1024px]">
+          <DialogHeader className="border-b px-5 py-3">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Printer className="h-5 w-5 text-orange-500" />
+              พิมพ์ใบแจ้งซ่อน — {wo.woNumber ?? '—'}
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              เลือกขนาดกระดาษ แล้วกด &quot;พิมพ์&quot; หรือเปิดหน้าใหม่เพื่อพิมพ์แยกต่างหาก
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100 dark:bg-slate-950">
+            <WoPrintForm workOrderId={wo.id} />
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -13,6 +13,7 @@ import { StockPage } from '@/components/itam/stock-page'
 import { ImportPage } from '@/components/itam/import-page'
 import { TemplatesPage } from '@/components/itam/templates-page'
 import { SettingsPageV2 } from '@/components/itam/settings-page-v2'
+import { MonthlyReport } from '@/components/itam/monthly-report'
 import { useAppStore } from '@/store/app-store'
 
 export default function Home() {
@@ -38,6 +39,7 @@ export default function Home() {
             {activePage === 'import' && <ImportPage />}
             {activePage === 'templates' && <TemplatesPage />}
             {activePage === 'settings' && <SettingsPageV2 />}
+            {activePage === 'monthly-report' && <MonthlyReport />}
           </motion.div>
         </main>
         <Footer />

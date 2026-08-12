@@ -10,6 +10,7 @@ export type ActivePage =
   | 'import'
   | 'templates'
   | 'settings'
+  | 'monthly-report'
 
 export type SettingsTab = 'app' | 'master' | 'sites' | 'rates' | 'users' | 'audit'
 

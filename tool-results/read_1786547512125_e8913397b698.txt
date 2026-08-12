@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import { motion, AnimatePresence } from 'framer-motion'
+     7→import { Card, CardContent } from '@/components/ui/card'
+     8→import { Button } from '@/components/ui/button'
+     9→import { Input } from '@/components/ui/input'
+    10→import { Label } from '@/components/ui/label'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Skeleton } from '@/components/ui/skeleton'
+    13→import { Textarea } from '@/components/ui/textarea'
+    14→import { ScrollArea } from '@/components/ui/scroll-area'
+    15→import { Switch } from '@/components/ui/switch'
+    16→import {
+    17→  Select,
+    18→  SelectContent,
+    19→  SelectGroup,
+    20→  SelectItem,
+    21→  SelectLabel,
+    22→  SelectTrigger,
+    23→  SelectValue,
+    24→} from '@/components/ui/select'
+    25→import {
+    26→  Dialog,
+    27→  DialogContent,
+    28→  DialogDescription,
+    29→  DialogFooter,
+    30→  DialogHeader,
+    31→  DialogTitle,
+    32→} from '@/components/ui/dialog'
+    33→import {
+    34→  AlertDialog,
+    35→  AlertDialogAction,
+    36→  AlertDialogCancel,
+    37→  AlertDialogContent,
+    38→  AlertDialogDescription,
+    39→  AlertDialogFooter,
+    40→  AlertDialogHeader,
+    41→  AlertDialogTitle,
+    42→} from '@/components/ui/alert-dialog'
+    43→import {
+    44→  Plus,
+    45→  RefreshCw,
+    46→  Search,
+    47→  Wrench,
+    48→  Clock,
+    49→  CheckCircle2,
+    50→  XCircle,
+    51→  MapPin,
+    52→  User,
+    53→  Phone,
+    54→  Send,
+    55→  MessageSquare,
+    56→  AlertTriangle,
+    57→  CalendarClock,
+    58→  Image as ImageIcon,
+    59→  Building2,
+    60→  Edit3,
+    61→  Trash2,
+    62→  ShieldCheck,
+    63→  PackageOpen,
+    64→  ClipboardList,
+    65→  Hash,
+    66→  Package,
+    67→  Check,
+    68→  Box,
+    69→} from 'lucide-react'
+    70→import { formatThaiDate, relativeTime } from './types'
+    71→
+    72→// ============================================================
+    73→// Types
+    74→// ============================================================
+    75→export interface WorkOrderMessage {
+    76→  id: string
+    77→  workOrderId: string
+    78→  message: string
+    79→  author: string | null
+    80→  authorRole: string | null
+    81→  createdAt: string
+    82→}
+    83→
+    84→export interface WorkOrderReview {
+    85→  id: string
+    86→  workOrderId: string
+    87→  rating: number
+    88→  comment: string | null
+    89→  reviewedBy: string | null
+    90→  createdAt: string
+    91→}
+    92→
+    93→export interface ExternalMeta {
+    94→  clientName?: string
+    95→  place?: string
+    96→  contactPhone?: string
+    97→  serials?: string[]
+    98→}
+    99→
+   100→export interface WorkOrder {
+   101→  id: string
+   102→  woNumber: string | null
+   103→  subject: string
+   104→  building: string | null
+   105→  location: string | null
+   106→  details: string | null
+   107→  priority: string
+   108→  reporterName: string | null
+   109→  reporterEmail: string | null
+   110→  tel: string | null
+   111→  employeeCode: string | null
+   112→  submissionSource: string
+   113→  trackable: boolean
+   114→  externalMeta: string | null
+   115→  picBefore: string | null
+   116→  picOnsite: string | null
+   117→  picAfter: string | null
+   118→  status: string
+   119→  acceptStatus: string | null
+   120→  assignedTo: string | null
+   121→  assignedBy: string | null
+   122→  assignedAt: string | null
+   123→  assignmentNote: string | null
+   124→  detailsAdmin: string | null
+   125→  dateAdmin: string | null
+   126→  resolution: string | null
+   127→  resolutionGroup: string | null
+   128→  editUnlockActive: boolean
+   129→  editUnlockBy: string | null
+   130→  editUnlockAt: string | null
+   131→  editUnlockNote: string | null
+   132→  workCompletedAt: string | null
+   133→  closedAt: string | null
+   134→  canceledAt: string | null
+   135→  cancelReason: string | null
+   136→  deviceId: string | null
+   137→  createdAt: string
+   138→  updatedAt: string
+   139→  device?: {
+   140→    id: string
+   141→    assetCode: string
+   142→    name: string
+   143→    brand: string
+   144→    model: string
+   145→    site: string
+   146→  } | null
+   147→  messages?: WorkOrderMessage[]
+   148→  review?: WorkOrderReview | null
+   149→}
+   150→
+   151→interface WorkOrderListResponse {
+   152→  data: WorkOrder[]
+   153→  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+   154→  stats: Record<string, number>
+   155→}
+   156→
+   157→interface WorkOrderDetail extends WorkOrder {
+   158→  messages: WorkOrderMessage[]
+   159→  review: WorkOrderReview | null
+   160→}
+   161→
+   162→interface SubjectOption {
+   163→  group: string
+   164→  value: string
+   165→  default_priority: string
+   166→}
+   167→
+   168→interface ResolutionOption {
+   169→  group: string
+   170→  value: string
+   171→}
+   172→
+   173→interface OptionsResponse {
+   174→  subjects: SubjectOption[]
+   175→  resolutions: ResolutionOption[]
+   176→}
+   177→
+   178→interface DeviceLookupItem {
+   179→  id: string
+   180→  assetCode: string
+   181→  name: string
+   182→  brand: string
+   183→  model: string
+   184→  site: string
+   185→  building: string | null
+   186→  location: string | null
+   187→  serialNumber: string | null
+   188→}
+   189→
+   190→// ============================================================
+   191→// Stock parts (linked to a work order)
+   192→// ============================================================
+   193→interface PartsStockItem {
+   194→  id: string
+   195→  productCode: string
+   196→  productName: string
+   197→  unit: string
+   198→  quantity: number
+   199→  unitCost: number | null
+   200→  active: boolean
+   201→}
+   202→
+   203→interface PartsTransaction {
+   204→  id: string
+   205→  txnNumber: string | null
+   206→  stockItemId: string
+   207→  productCode: string | null
+   208→  productName: string | null
+   209→  type: string
+   210→  quantity: number
+   211→  unit: string | null
+   212→  balanceAfter: number
+   213→  reason: string | null
+   214→  requester: string | null
+   215→  purpose: string | null
+   216→  workOrderId: string | null
+   217→  workOrderNo: string | null
+   218→  approver: string | null
+   219→  approvedAt: string | null
+   220→  approvalStatus: string | null
+   221→  approvalMode: string | null
+   222→  rejectReason: string | null
+   223→  txnDate: string
+   224→  remark: string | null
+   225→  createdAt: string
+   226→  stockItem?: {
+   227→    productCode: string
+   228→    productName: string
+   229→    unit: string
+   230→    quantity: number
+   231→    active: boolean
+   232→  } | null
+   233→}
+   234→
+   235→interface PartsListResponse {
+   236→  data: PartsTransaction[]
+   237→  summary: {
+   238→    total: number
+   239→    pending: number
+   240→    approved: number
+   241→    rejected: number
+   242→    immediate: number
+   243→  }
+   244→}
+   245→
+   246→interface PartsListApiResponse {
+   247→  data: PartsStockItem[]
+   248→  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+   249→}
+   250→
+   251→// ============================================================
+   252→// Constants
+   253→// ============================================================
+   254→const STATUS_OPTIONS = [
+   255→  { value: 'all', label: 'สถานะทั้งหมด' },
+   256→  { value: 'PENDING', label: 'รอดำเนินการ' },
+   257→  { value: 'IN_PROGRESS', label: 'กำลังซ่อม' },
+   258→  { value: 'WAITING_PARTS', label: 'รออะไหล่' },
+   259→  { value: 'COMPLETED', label: 'เสร็จแล้ว' },
+   260→  { value: 'CANCELLED', label: 'ยกเลิก' },
+   261→] as const
+   262→
+   263→const PRIORITY_OPTIONS = [
+   264→  { value: 'all', label: 'ความเร่งด่วนทั้งหมด' },
+   265→  { value: 'ปกติ', label: 'ปกติ' },
+   266→  { value: 'ปานกลาง', label: 'ปานกลาง' },
+   267→  { value: 'สูง', label: 'สูง' },
+   268→  { value: 'ด่วน', label: 'ด่วน' },
+   269→] as const
+   270→
+   271→const PRIORITY_FORM_OPTIONS = [
+   272→  { value: 'ปกติ', label: 'ปกติ' },
+   273→  { value: 'ปานกลาง', label: 'ปานกลาง' },
+   274→  { value: 'สูง', label: 'สูง' },
+   275→  { value: 'ด่วน', label: 'ด่วน' },
+   276→] as const
+   277→
+   278→const PAGE_SIZE = 12
+   279→
+   280→function statusLabel(status: string): string {
+   281→  return STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status
+   282→}
+   283→
+   284→function statusBadgeClass(status: string): string {
+   285→  switch (status) {
+   286→    case 'PENDING':
+   287→      return 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+   288→    case 'IN_PROGRESS':
+   289→      return 'border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300'
+   290→    case 'WAITING_PARTS':
+   291→      return 'border-purple-200 bg-purple-100 text-purple-700 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300'
+   292→    case 'COMPLETED':
+   293→      return 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+   294→    case 'CANCELLED':
+   295→      return 'border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
+   296→    default:
+   297→      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+   298→  }
+   299→}
+   300→
+   301→function priorityBadgeClass(priority: string): string {
+   302→  switch (priority) {
+   303→    case 'ด่วน':
+   304→      return 'border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
+   305→    case 'สูง':
+   306→      return 'border-orange-200 bg-orange-100 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300'
+   307→    case 'ปานกลาง':
+   308→      return 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+   309→    case 'ปกติ':
+   310→    default:
+   311→      return 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+   312→  }
+   313→}
+   314→
+   315→function formatDateTime(iso: string | null): string {
+   316→  if (!iso) return '—'
+   317→  try {
+   318→    return new Date(iso).toLocaleString('th-TH', {
+   319→      day: '2-digit',
+   320→      month: '2-digit',
+   321→      year: 'numeric',
+   322→      hour: '2-digit',
+   323→      minute: '2-digit',
+   324→    })
+   325→  } catch {
+   326→    return iso
+   327→  }
+   328→}
+   329→
+   330→function parseExternalMeta(raw: string | null): ExternalMeta | null {
+   331→  if (!raw) return null
+   332→  try {
+   333→    const obj = JSON.parse(raw)
+   334→    if (!obj || typeof obj !== 'object') return null
+   335→    return obj as ExternalMeta
+   336→  } catch {
+   337→    return null
+   338→  }
+   339→}
+   340→
+   341→// ============================================================
+   342→// Main component
+   343→// ============================================================
+   344→interface NewFormState {
+   345→  subject: string
+   346→  subjectGroup: string
+   347→  building: string
+   348→  location: string
+   349→  details: string
+   350→  priority: string
+   351→  reporterName: string
+   352→  tel: string
+   353→  employeeCode: string
+   354→  isExternal: boolean
+   355→  // External fields
+   356→  clientName: string
+   357→  place: string
+   358→  contactPhone: string
+   359→  serials: string[]
+   360→  serialInput: string
+   361→  // Device lookup (internal)
+   362→  deviceId: string | null
+   363→  deviceSearch: string
+   364→  // Image before
+   365→  picBefore: string | null
+   366→  picBeforeName: string
+   367→}
+   368→
+   369→const EMPTY_FORM: NewFormState = {
+   370→  subject: '',
+   371→  subjectGroup: '',
+   372→  building: '',
+   373→  location: '',
+   374→  details: '',
+   375→  priority: 'ปกติ',
+   376→  reporterName: '',
+   377→  tel: '',
+   378→  employeeCode: '',
+   379→  isExternal: false,
+   380→  clientName: '',
+   381→  place: '',
+   382→  contactPhone: '',
+   383→  serials: [],
+   384→  serialInput: '',
+   385→  deviceId: null,
+   386→  deviceSearch: '',
+   387→  picBefore: null,
+   388→  picBeforeName: '',
+   389→}
+   390→
+   391→// 1 MB hard cap to keep SQLite payload sane
+   392→const MAX_PIC_BYTES = 1_000_000
+   393→
+   394→function readFileAsDataUrl(file: File): Promise<string> {
+   395→  return new Promise((resolve, reject) => {
+   396→    const reader = new FileReader()
+   397→    reader.onload = () => resolve(String(reader.result))
+   398→    reader.onerror = reject
+   399→    reader.readAsDataURL(file)
+   400→  })
+   401→}
+   402→
+   403→async function compressImage(file: File, maxBytes = MAX_PIC_BYTES): Promise<string> {
+   404→  const dataUrl = await readFileAsDataUrl(file)
+   405→  if (dataUrl.length <= maxBytes) return dataUrl
+   406→  // Try shrinking via canvas
+   407→  return new Promise<string>((resolve) => {
+   408→    const img = new window.Image()
+   409→    img.onload = () => {
+   410→      const maxDim = 1280
+   411→      let { width, height } = img
+   412→      if (width > maxDim || height > maxDim) {
+   413→        const ratio = Math.min(maxDim / width, maxDim / height)
+   414→        width = Math.round(width * ratio)
+   415→        height = Math.round(height * ratio)
+   416→      }
+   417→      const canvas = document.createElement('canvas')
+   418→      canvas.width = width
+   419→      canvas.height = height
+   420→      const ctx = canvas.getContext('2d')
+   421→      if (!ctx) {
+   422→        resolve(dataUrl)
+   423→        return
+   424→      }
+   425→      ctx.drawImage(img, 0, 0, width, height)
+   426→      let quality = 0.8
+   427→      let out = canvas.toDataURL('image/jpeg', quality)
+   428→      while (out.length > maxBytes && quality > 0.3) {
+   429→        quality -= 0.15
+   430→        out = canvas.toDataURL('image/jpeg', quality)
+   431→      }
+   432→      resolve(out)
+   433→    }
+   434→    img.onerror = () => resolve(dataUrl)
+   435→    img.src = dataUrl
+   436→  })
+   437→}
+   438→
+   439→export function WorkOrdersPage() {
+   440→  const qc = useQueryClient()
+   441→  const [search, setSearch] = React.useState('')
+   442→  const [statusFilter, setStatusFilter] = React.useState<string>('all')
+   443→  const [priorityFilter, setPriorityFilter] = React.useState<string>('all')
+   444→  const [page, setPage] = React.useState(1)
+   445→  const [createOpen, setCreateOpen] = React.useState(false)
+   446→  const [form, setForm] = React.useState<NewFormState>(EMPTY_FORM)
+   447→  const [saving, setSaving] = React.useState(false)
+   448→  const [detailId, setDetailId] = React.useState<string | null>(null)
+   449→
+   450→  // Load subject + resolution options once
+   451→  const optionsQuery = useQuery<OptionsResponse>({
+   452→    queryKey: ['wo-options'],
+   453→    queryFn: async () => {
+   454→      const res = await fetch('/api/settings/options')
+   455→      if (!res.ok) throw new Error('Failed to load options')
+   456→      return res.json()
+   457→    },
+   458→    staleTime: 5 * 60 * 1000,
+   459→  })
+   460→
+   461→  // Debounce search to avoid spamming the API on every keystroke
+   462→  const [debouncedSearch, setDebouncedSearch] = React.useState('')
+   463→  React.useEffect(() => {
+   464→    const t = setTimeout(() => {
+   465→      setDebouncedSearch(search)
+   466→      setPage(1)
+   467→    }, 350)
+   468→    return () => clearTimeout(t)
+   469→  }, [search])
+   470→
+   471→  React.useEffect(() => {
+   472→    setPage(1)
+   473→  }, [statusFilter, priorityFilter])
+   474→
+   475→  const listQuery = useQuery<WorkOrderListResponse>({
+   476→    queryKey: [
+   477→      'work-orders',
+   478→      debouncedSearch,
+   479→      statusFilter,
+   480→      priorityFilter,
+   481→      page,
+   482→    ],
+   483→    queryFn: async () => {
+   484→      const params = new URLSearchParams()
+   485→      if (debouncedSearch) params.set('search', debouncedSearch)
+   486→      if (statusFilter !== 'all') params.set('status', statusFilter)
+   487→      if (priorityFilter !== 'all') params.set('priority', priorityFilter)
+   488→      params.set('page', String(page))
+   489→      params.set('pageSize', String(PAGE_SIZE))
+   490→      const res = await fetch(`/api/work-orders?${params.toString()}`)
+   491→      if (!res.ok) throw new Error('Failed to load work orders')
+   492→      return res.json()
+   493→    },
+   494→  })
+   495→
+   496→  const items = listQuery.data?.data ?? []
+   497→  const stats = listQuery.data?.stats ?? {
+   498→    PENDING: 0,
+   499→    IN_PROGRESS: 0,
+   500→    COMPLETED: 0,
+   501→    CANCELLED: 0,
+   502→  }
+   503→  const pagination = listQuery.data?.pagination
+   504→
+   505→  function openCreate() {
+   506→    setForm({ ...EMPTY_FORM })
+   507→    setCreateOpen(true)
+   508→  }
+   509→
+   510→  async function handleCreate() {
+   511→    if (!form.subject.trim()) {
+   512→      toast.error('กรุณาระบุประเภทปัญหา')
+   513→      return
+   514→    }
+   515→    if (form.isExternal) {
+   516→      if (!form.clientName.trim()) {
+   517→        toast.error('กรุณาระบุชื่อลูกค้าสำหรับงานนอก')
+   518→        return
+   519→      }
+   520→    } else {
+   521→      // Internal: guest must provide name + phone for verification
+   522→      if (!form.reporterName.trim() || !form.tel.trim()) {
+   523→        toast.error('ผู้แจ้ง (Guest) ต้องระบุชื่อและเบอร์โทร เพื่อยืนยันตัวตน')
+   524→        return
+   525→      }
+   526→    }
+   527→    try {
+   528→      setSaving(true)
+   529→      const payload: Record<string, unknown> = {
+   530→        subject: form.subject.trim(),
+   531→        details: form.details.trim() || null,
+   532→        priority: form.priority,
+   533→        picBefore: form.picBefore,
+   534→        submissionSource: 'guest',
+   535→      }
+   536→      if (form.isExternal) {
+   537→        payload.isExternal = true
+   538→        payload.externalMeta = {
+   539→          clientName: form.clientName.trim(),
+   540→          place: form.place.trim() || undefined,
+   541→          contactPhone: form.contactPhone.trim() || undefined,
+   542→          serials: form.serials.length > 0 ? form.serials : undefined,
+   543→        }
+   544→        // For external WOs the reporter is the staff filling the form
+   545→        payload.reporterName = form.reporterName.trim() || null
+   546→        payload.tel = form.tel.trim() || null
+   547→        payload.skipGuestValidation = true
+   548→      } else {
+   549→        payload.reporterName = form.reporterName.trim()
+   550→        payload.tel = form.tel.trim()
+   551→        payload.employeeCode = form.employeeCode.trim() || null
+   552→        payload.building = form.building.trim() || null
+   553→        payload.location = form.location.trim() || null
+   554→        payload.deviceId = form.deviceId || null
+   555→      }
+   556→      const res = await fetch('/api/work-orders', {
+   557→        method: 'POST',
+   558→        headers: { 'Content-Type': 'application/json' },
+   559→        body: JSON.stringify(payload),
+   560→      })
+   561→      if (!res.ok) {
+   562→        const j = await res.json().catch(() => ({}))
+   563→        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
+   564→      }
+   565→      const json = await res.json()
+   566→      toast.success(`สร้างใบแจ้งซ่อม ${json.data?.woNumber ?? ''} แล้ว`)
+   567→      setCreateOpen(false)
+   568→      qc.invalidateQueries({ queryKey: ['work-orders'] })
+   569→      // Open the new detail right away
+   570→      if (json.data?.id) setDetailId(json.data.id)
+   571→    } catch (e) {
+   572→      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+   573→    } finally {
+   574→      setSaving(false)
+   575→    }
+   576→  }
+   577→
+   578→  return (
+   579→    <div className="space-y-4 p-4 md:p-6">
+   580→      {/* Header */}
+   581→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   582→        <div>
+   583→          <h1 className="flex items-center gap-2 text-xl font-bold md:text-2xl">
+   584→            <Wrench className="h-6 w-6 text-orange-500" />
+   585→            แจ้งซ่อม
+   586→          </h1>
+   587→          <p className="text-sm text-muted-foreground">
+   588→            ระบบแจ้งซ่อมครบวงจร — แจ้ง → รับงาน → ซ่อม → ปิดงาน (รองรับลูกค้าภายนอก)
+   589→          </p>
+   590→        </div>
+   591→        <div className="flex items-center gap-2">
+   592→          <Button
+   593→            variant="outline"
+   594→            size="sm"
+   595→            onClick={() => listQuery.refetch()}
+   596→            disabled={listQuery.isFetching}
+   597→            aria-label="รีเฟรช"
+   598→          >
+   599→            <RefreshCw
+   600→              className={listQuery.isFetching ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+   601→            />
+   602→            <span className="hidden sm:inline">รีเฟรช</span>
+   603→          </Button>
+   604→          <Button size="sm" onClick={openCreate} className="bg-orange-500 hover:bg-orange-600">
+   605→            <Plus className="h-4 w-4" />
+   606→            แจ้งซ่อมใหม่
+   607→          </Button>
+   608→        </div>
+   609→      </div>
+   610→
+   611→      {/* KPI stats bar */}
+   612→      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+   613→        <KpiCard
+   614→          label="รอดำเนินการ"
+   615→          value={stats.PENDING ?? 0}
+   616→          icon={<Clock className="h-5 w-5" />}
+   617→          color="amber"
+   618→        />
+   619→        <KpiCard
+   620→          label="กำลังซ่อม"
+   621→          value={(stats.IN_PROGRESS ?? 0) + (stats.WAITING_PARTS ?? 0)}
+   622→          icon={<Wrench className="h-5 w-5" />}
+   623→          color="blue"
+   624→        />
+   625→        <KpiCard
+   626→          label="เสร็จแล้ว"
+   627→          value={stats.COMPLETED ?? 0}
+   628→          icon={<CheckCircle2 className="h-5 w-5" />}
+   629→          color="emerald"
+   630→        />
+   631→        <KpiCard
+   632→          label="ยกเลิก"
+   633→          value={stats.CANCELLED ?? 0}
+   634→          icon={<XCircle className="h-5 w-5" />}
+   635→          color="rose"
+   636→        />
+   637→      </div>
+   638→
+   639→      {/* Filter bar */}
+   640→      <Card className="gap-3 py-3">
+   641→        <CardContent className="flex flex-col gap-3 px-3 md:flex-row md:items-center">
+   642→          <div className="relative flex-1">
+   643→            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   644→            <Input
+   645→              value={search}
+   646→              onChange={(e) => setSearch(e.target.value)}
+   647→              placeholder="ค้นหาเลขใบงาน / ปัญหา / สถานที่ / ผู้แจ้ง / เบอร์โทร"
+   648→              className="pl-9"
+   649→              aria-label="ค้นหาใบแจ้งซ่อม"
+   650→            />
+   651→          </div>
+   652→          <div className="grid grid-cols-2 gap-2 md:flex md:w-auto">
+   653→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+   654→              <SelectTrigger className="w-full md:w-[160px]" aria-label="กรองสถานะ">
+   655→                <SelectValue placeholder="สถานะ" />
+   656→              </SelectTrigger>
+   657→              <SelectContent>
+   658→                {STATUS_OPTIONS.map((o) => (
+   659→                  <SelectItem key={o.value} value={o.value}>
+   660→                    {o.label}
+   661→                  </SelectItem>
+   662→                ))}
+   663→              </SelectContent>
+   664→            </Select>
+   665→            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+   666→              <SelectTrigger className="w-full md:w-[160px]" aria-label="กรองความเร่งด่วน">
+   667→                <SelectValue placeholder="ความเร่งด่วน" />
+   668→              </SelectTrigger>
+   669→              <SelectContent>
+   670→                {PRIORITY_OPTIONS.map((o) => (
+   671→                  <SelectItem key={o.value} value={o.value}>
+   672→                    {o.label}
+   673→                  </SelectItem>
+   674→                ))}
+   675→              </SelectContent>
+   676→            </Select>
+   677→          </div>
+   678→        </CardContent>
+   679→      </Card>
+   680→
+   681→      {/* List */}
+   682→      {listQuery.isLoading ? (
+   683→        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+   684→          {Array.from({ length: 6 }).map((_, i) => (
+   685→            <Skeleton key={i} className="h-44 w-full rounded-xl" />
+   686→          ))}
+   687→        </div>
+   688→      ) : items.length === 0 ? (
+   689→        <Card className="py-12">
+   690→          <CardContent className="flex flex-col items-center justify-center gap-3 text-center">
+   691→            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950">
+   692→              <Wrench className="h-7 w-7 text-orange-500" />
+   693→            </div>
+   694→            <div className="text-base font-medium">ยังไม่มีใบแจ้งซ่อม</div>
+   695→            <p className="max-w-sm text-sm text-muted-foreground">
+   696→              กดปุ่ม &quot;แจ้งซ่อมใหม่&quot; เพื่อสร้างใบงานแรก หรือปรับตัวกรองเพื่อค้นหาใบงานเก่า
+   697→            </p>
+   698→            <Button size="sm" onClick={openCreate} className="mt-1 bg-orange-500 hover:bg-orange-600">
+   699→              <Plus className="h-4 w-4" />
+   700→              แจ้งซ่อมใหม่
+   701→            </Button>
+   702→          </CardContent>
+   703→        </Card>
+   704→      ) : (
+   705→        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+   706→          <AnimatePresence mode="popLayout">
+   707→            {items.map((wo) => (
+   708→              <motion.div
+   709→                key={wo.id}
+   710→                layout
+   711→                initial={{ opacity: 0, y: 8 }}
+   712→                animate={{ opacity: 1, y: 0 }}
+   713→                exit={{ opacity: 0, scale: 0.97 }}
+   714→                transition={{ duration: 0.18 }}
+   715→              >
+   716→                <WorkOrderCard wo={wo} onOpen={() => setDetailId(wo.id)} />
+   717→              </motion.div>
+   718→            ))}
+   719→          </AnimatePresence>
+   720→        </div>
+   721→      )}
+   722→
+   723→      {/* Pagination */}
+   724→      {pagination && pagination.totalPages > 1 && (
+   725→        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
+   726→          <p className="text-sm text-muted-foreground">
+   727→            ทั้งหมด {pagination.total} รายการ • หน้า {pagination.page} / {pagination.totalPages}
+   728→          </p>
+   729→          <div className="flex items-center gap-1">
+   730→            <Button
+   731→              variant="outline"
+   732→              size="sm"
+   733→              disabled={page <= 1}
+   734→              onClick={() => setPage((p) => Math.max(1, p - 1))}
+   735→            >
+   736→              ก่อนหน้า
+   737→            </Button>
+   738→            <Button
+   739→              variant="outline"
+   740→              size="sm"
+   741→              disabled={page >= pagination.totalPages}
+   742→              onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+   743→            >
+   744→              ถัดไป
+   745→            </Button>
+   746→          </div>
+   747→        </div>
+   748→      )}
+   749→
+   750→      {/* Create dialog */}
+   751→      <CreateWorkOrderDialog
+   752→        open={createOpen}
+   753→        onOpenChange={setCreateOpen}
+   754→        form={form}
+   755→        setForm={setForm}
+   756→        saving={saving}
+   757→        onSubmit={handleCreate}
+   758→        subjects={optionsQuery.data?.subjects ?? []}
+   759→      />
+   760→
+   761→      {/* Detail dialog */}
+   762→      <WorkOrderDetailDialog
+   763→        id={detailId}
+   764→        onOpenChange={(open) => {
+   765→          if (!open) setDetailId(null)
+   766→        }}
+   767→        resolutions={optionsQuery.data?.resolutions ?? []}
+   768→      />
+   769→    </div>
+   770→  )
+   771→}
+   772→
+   773→// ============================================================
+   774→// KPI Card
+   775→// ============================================================
+   776→const KPI_COLORS: Record<string, string> = {
+   777→  amber: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+   778→  blue: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+   779→  emerald:
+   780→    'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+   781→  rose: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+   782→}
+   783→
+   784→function KpiCard({
+   785→  label,
+   786→  value,
+   787→  icon,
+   788→  color,
+   789→}: {
+   790→  label: string
+   791→  value: number
+   792→  icon: React.ReactNode
+   793→  color: keyof typeof KPI_COLORS | string
+   794→}) {
+   795→  return (
+   796→    <Card className="gap-0 py-4">
+   797→      <CardContent className="flex items-center gap-3 px-4">
+   798→        <div
+   799→          className={`flex h-11 w-11 items-center justify-center rounded-lg ${
+   800→            KPI_COLORS[color] ?? KPI_COLORS.amber
+   801→          }`}
+   802→        >
+   803→          {icon}
+   804→        </div>
+   805→        <div className="min-w-0">
+   806→          <div className="text-2xl font-bold leading-tight">{value}</div>
+   807→          <div className="truncate text-xs text-muted-foreground">{label}</div>
+   808→        </div>
+   809→      </CardContent>
+   810→    </Card>
+   811→  )
+   812→}
+   813→
+   814→// ============================================================
+   815→// Work Order Card (mobile-friendly list item)
+   816→// ============================================================
+   817→function WorkOrderCard({
+   818→  wo,
+   819→  onOpen,
+   820→}: {
+   821→  wo: WorkOrder
+   822→  onOpen: () => void
+   823→}) {
+   824→  const external = parseExternalMeta(wo.externalMeta)
+   825→  return (
+   826→    <Card
+   827→      className="group cursor-pointer py-0 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+   828→      onClick={onOpen}
+   829→      role="button"
+   830→      tabIndex={0}
+   831→      onKeyDown={(e) => {
+   832→        if (e.key === 'Enter' || e.key === ' ') {
+   833→          e.preventDefault()
+   834→          onOpen()
+   835→        }
+   836→      }}
+   837→    >
+   838→      <CardContent className="space-y-3 p-4">
+   839→        {/* Top row: WO number + status */}
+   840→        <div className="flex items-center justify-between gap-2">
+   841→          <span className="truncate font-mono text-xs font-semibold text-muted-foreground">
+   842→            {wo.woNumber ?? '—'}
+   843→          </span>
+   844→          <div className="flex items-center gap-1">
+   845→            {external && (
+   846→              <Badge
+   847→                className="border-teal-200 bg-teal-100 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
+   848→                variant="outline"
+   849→              >
+   850→                งานนอก
+   851→              </Badge>
+   852→            )}
+   853→            <Badge className={statusBadgeClass(wo.status)} variant="outline">
+   854→              {statusLabel(wo.status)}
+   855→            </Badge>
+   856→          </div>
+   857→        </div>
+   858→
+   859→        {/* Subject */}
+   860→        <div className="flex items-start gap-2">
+   861→          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-orange-100 dark:bg-orange-950">
+   862→            <Wrench className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   863→          </div>
+   864→          <div className="min-w-0 flex-1">
+   865→            <div className="line-clamp-2 text-sm font-semibold leading-tight">
+   866→              {wo.subject}
+   867→            </div>
+   868→            <div className="mt-0.5 text-[11px] text-muted-foreground">
+   869→              {relativeTime(wo.createdAt)}
+   870→            </div>
+   871→          </div>
+   872→        </div>
+   873→
+   874→        {/* Meta */}
+   875→        <div className="space-y-1 text-xs text-muted-foreground">
+   876→          {external ? (
+   877→            <>
+   878→              <div className="flex items-center gap-1.5">
+   879→                <Building2 className="h-3.5 w-3.5 shrink-0" />
+   880→                <span className="truncate">
+   881→                  {external.clientName ?? '—'}
+   882→                  {external.place ? ` • ${external.place}` : ''}
+   883→                </span>
+   884→              </div>
+   885→              {external.contactPhone && (
+   886→                <div className="flex items-center gap-1.5">
+   887→                  <Phone className="h-3.5 w-3.5 shrink-0" />
+   888→                  <span className="truncate">{external.contactPhone}</span>
+   889→                </div>
+   890→              )}
+   891→            </>
+   892→          ) : (
+   893→            <>
+   894→              {wo.building && (
+   895→                <div className="flex items-center gap-1.5">
+   896→                  <MapPin className="h-3.5 w-3.5 shrink-0" />
+   897→                  <span className="truncate">
+   898→                    {wo.building}
+   899→                    {wo.location ? ` • ${wo.location}` : ''}
+   900→                  </span>
+   901→                </div>
+   902→              )}
+   903→              {wo.reporterName && (
+   904→                <div className="flex items-center gap-1.5">
+   905→                  <User className="h-3.5 w-3.5 shrink-0" />
+   906→                  <span className="truncate">{wo.reporterName}</span>
+   907→                  {wo.tel && (
+   908→                    <>
+   909→                      <span aria-hidden>•</span>
+   910→                      <Phone className="h-3.5 w-3.5 shrink-0" />
+   911→                      <span className="truncate">{wo.tel}</span>
+   912→                    </>
+   913→                  )}
+   914→                </div>
+   915→              )}
+   916→            </>
+   917→          )}
+   918→        </div>
+   919→
+   920→        {/* Footer: priority + assignedTo */}
+   921→        <div className="flex items-center justify-between gap-2 border-t pt-2.5">
+   922→          <Badge
+   923→            className={priorityBadgeClass(wo.priority)}
+   924→            variant="outline"
+   925→          >
+   926→            {wo.priority}
+   927→          </Badge>
+   928→          <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+   929→            {wo.assignedTo ? (
+   930→              <>
+   931→                <User className="h-3 w-3" />
+   932→                <span className="truncate">{wo.assignedTo}</span>
+   933→              </>
+   934→            ) : wo.status === 'PENDING' ? (
+   935→              <span className="text-amber-600 dark:text-amber-400">ยังไม่มอบหมาย</span>
+   936→            ) : (
+   937→              <span>—</span>
+   938→            )}
+   939→          </div>
+   940→        </div>
+   941→      </CardContent>
+   942→    </Card>
+   943→  )
+   944→}
+   945→
+   946→// ============================================================
+   947→// Create Dialog — with guest verification + external mode + subject dropdown
+   948→// ============================================================
+   949→function CreateWorkOrderDialog({
+   950→  open,
+   951→  onOpenChange,
+   952→  form,
+   953→  setForm,
+   954→  saving,
+   955→  onSubmit,
+   956→  subjects,
+   957→}: {
+   958→  open: boolean
+   959→  onOpenChange: (open: boolean) => void
+   960→  form: NewFormState
+   961→  setForm: React.Dispatch<React.SetStateAction<NewFormState>>
+   962→  saving: boolean
+   963→  onSubmit: () => void
+   964→  subjects: SubjectOption[]
+   965→}) {
+   966→  const fileInputRef = React.useRef<HTMLInputElement>(null)
+   967→
+   968→  // Group subjects for the dropdown
+   969→  const subjectGroups = React.useMemo(() => {
+   970→    const map = new Map<string, SubjectOption[]>()
+   971→    for (const s of subjects) {
+   972→      if (!map.has(s.group)) map.set(s.group, [])
+   973→      map.get(s.group)!.push(s)
+   974→    }
+   975→    return Array.from(map.entries())
+   976→  }, [subjects])
+   977→
+   978→  // Device lookup (internal mode only)
+   979→  const [deviceResults, setDeviceResults] = React.useState<DeviceLookupItem[]>([])
+   980→  const [deviceLoading, setDeviceLoading] = React.useState(false)
+   981→  React.useEffect(() => {
+   982→    if (!form.deviceSearch.trim() || form.isExternal) {
+   983→      setDeviceResults([])
+   984→      return
+   985→    }
+   986→    let cancelled = false
+   987→    setDeviceLoading(true)
+   988→    const t = setTimeout(async () => {
+   989→      try {
+   990→        const params = new URLSearchParams({ search: form.deviceSearch.trim() })
+   991→        const res = await fetch(`/api/devices?${params.toString()}`)
+   992→        if (!res.ok) return
+   993→        const json = await res.json()
+   994→        if (!cancelled) setDeviceResults((json.devices ?? []).slice(0, 8))
+   995→      } catch {
+   996→        if (!cancelled) setDeviceResults([])
+   997→      } finally {
+   998→        if (!cancelled) setDeviceLoading(false)
+   999→      }
+  1000→    }, 300)
+  1001→    return () => {
+  1002→      cancelled = true
+  1003→      clearTimeout(t)
+  1004→    }
+  1005→  }, [form.deviceSearch, form.isExternal])
+  1006→
+  1007→  // When subject changes, auto-set priority from default_priority
+  1008→  function handleSubjectChange(value: string) {
+  1009→    if (value === '__custom__') {
+  1010→      setForm((s) => ({ ...s, subject: '__custom__', subjectGroup: '' }))
+  1011→      return
+  1012→    }
+  1013→    const opt = subjects.find((s) => s.value === value)
+  1014→    setForm((s) => ({
+  1015→      ...s,
+  1016→      subject: value,
+  1017→      subjectGroup: opt?.group ?? '',
+  1018→      priority: opt?.default_priority ?? s.priority,
+  1019→    }))
+  1020→  }
+  1021→
+  1022→  async function handlePicBeforeChange(e: React.ChangeEvent<HTMLInputElement>) {
+  1023→    const file = e.target.files?.[0]
+  1024→    if (!file) return
+  1025→    try {
+  1026→      const dataUrl = await compressImage(file)
+  1027→      setForm((s) => ({ ...s, picBefore: dataUrl, picBeforeName: file.name }))
+  1028→    } catch {
+  1029→      toast.error('อ่านไฟล์รูปไม่สำเร็จ')
+  1030→    } finally {
+  1031→      if (fileInputRef.current) fileInputRef.current.value = ''
+  1032→    }
+  1033→  }
+  1034→
+  1035→  function addSerial() {
+  1036→    const v = form.serialInput.trim()
+  1037→    if (!v) return
+  1038→    if (form.serials.includes(v)) {
+  1039→      toast.error('S/N นี้มีอยู่แล้ว')
+  1040→      return
+  1041→    }
+  1042→    setForm((s) => ({ ...s, serials: [...s.serials, v], serialInput: '' }))
+  1043→  }
+  1044→
+  1045→  function removeSerial(s: string) {
+  1046→    setForm((frm) => ({ ...frm, serials: frm.serials.filter((x) => x !== s) }))
+  1047→  }
+  1048→
+  1049→  return (
+  1050→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1051→      <DialogContent className="max-h-[92vh] overflow-hidden sm:max-w-[640px]">
+  1052→        <DialogHeader>
+  1053→          <DialogTitle className="flex items-center gap-2">
+  1054→            <Plus className="h-5 w-5 text-orange-500" />
+  1055→            แจ้งซ่อมใหม่
+  1056→          </DialogTitle>
+  1057→          <DialogDescription>
+  1058→            กรอกรายละเอียดปัญหา ระบบจะสร้างเลขใบงานอัตโนมัติ (WO-YYYYMMDD-NNN)
+  1059→          </DialogDescription>
+  1060→        </DialogHeader>
+  1061→
+  1062→        <ScrollArea className="max-h-[68vh]">
+  1063→          <div className="grid gap-3 px-1 py-1">
+  1064→            {/* External mode toggle */}
+  1065→            <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2.5">
+  1066→              <div className="flex items-start gap-2">
+  1067→                <PackageOpen className="mt-0.5 h-4 w-4 text-teal-600 dark:text-teal-400" />
+  1068→                <div>
+  1069→                  <div className="text-sm font-medium">ลูกค้าภายนอก / นอกสถานที่</div>
+  1070→                  <div className="text-xs text-muted-foreground">
+  1071→                    เปิดเมื่องานไม่ได้อยู่ในระบบ (เช่น ลูกค้าบริษัทอื่น)
+  1072→                  </div>
+  1073→                </div>
+  1074→              </div>
+  1075→              <Switch
+  1076→                checked={form.isExternal}
+  1077→                onCheckedChange={(v) =>
+  1078→                  setForm((s) => ({ ...s, isExternal: v }))
+  1079→                }
+  1080→                aria-label="เปิดโหมดลูกค้าภายนอก"
+  1081→              />
+  1082→            </div>
+  1083→
+  1084→            {/* Subject dropdown (grouped) */}
+  1085→            <div className="grid gap-1.5">
+  1086→              <Label htmlFor="wo-subject">
+  1087→                ประเภทปัญหา <span className="text-rose-500">*</span>
+  1088→              </Label>
+  1089→              {subjects.length === 0 ? (
+  1090→                <Input
+  1091→                  id="wo-subject"
+  1092→                  value={form.subject}
+  1093→                  onChange={(e) =>
+  1094→                    setForm((s) => ({ ...s, subject: e.target.value }))
+  1095→                  }
+  1096→                  placeholder="เช่น เครื่องพิมพ์ไม่ทำงาน, อินเทอร์เน็ตไม่ติด"
+  1097→                  autoFocus
+  1098→                />
+  1099→              ) : (
+  1100→                <Select value={form.subject} onValueChange={handleSubjectChange}>
+  1101→                  <SelectTrigger id="wo-subject">
+  1102→                    <SelectValue placeholder="เลือกประเภทปัญหา" />
+  1103→                  </SelectTrigger>
+  1104→                  <SelectContent>
+  1105→                    {subjectGroups.map(([group, opts]) => (
+  1106→                      <SelectGroup key={group}>
+  1107→                        <SelectLabel className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+  1108→                          {group}
+  1109→                        </SelectLabel>
+  1110→                        {opts.map((o) => (
+  1111→                          <SelectItem key={group + '|' + o.value} value={o.value}>
+  1112→                            <span className="flex w-full items-center justify-between gap-2">
+  1113→                              <span>{o.value}</span>
+  1114→                              <span className="text-[10px] text-muted-foreground">
+  1115→                                {o.default_priority}
+  1116→                              </span>
+  1117→                            </span>
+  1118→                          </SelectItem>
+  1119→                        ))}
+  1120→                      </SelectGroup>
+  1121→                    ))}
+  1122→                    <SelectItem value="__custom__">— ระบุเอง —</SelectItem>
+  1123→                  </SelectContent>
+  1124→                </Select>
+  1125→              )}
+  1126→              {form.subject === '__custom__' && (
+  1127→                <Input
+  1128→                  value={form.subject === '__custom__' ? '' : form.subject}
+  1129→                  onChange={(e) =>
+  1130→                    setForm((s) => ({ ...s, subject: e.target.value }))
+  1131→                  }
+  1132→                  placeholder="พิมพ์หัวข้อปัญหา"
+  1133→                  autoFocus
+  1134→                />
+  1135→              )}
+  1136→              {form.subjectGroup && (
+  1137→                <div className="text-[11px] text-muted-foreground">
+  1138→                  หมวด: {form.subjectGroup} • ความเร่งด่วนอัตโนมัติ: {form.priority}
+  1139→                </div>
+  1140→              )}
+  1141→            </div>
+  1142→
+  1143→            {/* Conditional sections */}
+  1144→            {form.isExternal ? (
+  1145→              <div className="grid gap-3 rounded-lg border border-teal-200 bg-teal-50/50 p-3 dark:border-teal-800 dark:bg-teal-950/30">
+  1146→                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+  1147→                  <div className="grid gap-1.5">
+  1148→                    <Label htmlFor="wo-client">
+  1149→                      ชื่อลูกค้า <span className="text-rose-500">*</span>
+  1150→                    </Label>
+  1151→                    <Input
+  1152→                      id="wo-client"
+  1153→                      value={form.clientName}
+  1154→                      onChange={(e) =>
+  1155→                        setForm((s) => ({ ...s, clientName: e.target.value }))
+  1156→                      }
+  1157→                      placeholder="เช่น บจก. ตัวอย่าง"
+  1158→                    />
+  1159→                  </div>
+  1160→                  <div className="grid gap-1.5">
+  1161→                    <Label htmlFor="wo-place">สถานที่</Label>
+  1162→                    <Input
+  1163→                      id="wo-place"
+  1164→                      value={form.place}
+  1165→                      onChange={(e) =>
+  1166→                        setForm((s) => ({ ...s, place: e.target.value }))
+  1167→                      }
+  1168→                      placeholder="เช่น อาคาร X ชั้น 2"
+  1169→                    />
+  1170→                  </div>
+  1171→                </div>
+  1172→                <div className="grid gap-1.5">
+  1173→                  <Label htmlFor="wo-contact-phone">เบอร์ติดต่อลูกค้า</Label>
+  1174→                  <Input
+  1175→                    id="wo-contact-phone"
+  1176→                    value={form.contactPhone}
+  1177→                    onChange={(e) =>
+  1178→                      setForm((s) => ({ ...s, contactPhone: e.target.value }))
+  1179→                    }
+  1180→                    placeholder="08xxxxxxxx"
+  1181→                    inputMode="tel"
+  1182→                  />
+  1183→                </div>
+  1184→                {/* Serials list */}
+  1185→                <div className="grid gap-1.5">
+  1186→                  <Label htmlFor="wo-serial">S/N (Serial Number)</Label>
+  1187→                  <div className="flex items-center gap-2">
+  1188→                    <Input
+  1189→                      id="wo-serial"
+  1190→                      value={form.serialInput}
+  1191→                      onChange={(e) =>
+  1192→                        setForm((s) => ({ ...s, serialInput: e.target.value }))
+  1193→                      }
+  1194→                      placeholder="กรอก S/N แล้วกด + เพื่อเพิ่ม"
+  1195→                      onKeyDown={(e) => {
+  1196→                        if (e.key === 'Enter') {
+  1197→                          e.preventDefault()
+  1198→                          addSerial()
+  1199→                        }
+  1200→                      }}
+  1201→                    />
+  1202→                    <Button
+  1203→                      type="button"
+  1204→                      size="sm"
+  1205→                      variant="outline"
+  1206→                      onClick={addSerial}
+  1207→                      disabled={!form.serialInput.trim()}
+  1208→                    >
+  1209→                      <Plus className="h-4 w-4" />
+  1210→                    </Button>
+  1211→                  </div>
+  1212→                  {form.serials.length > 0 && (
+  1213→                    <div className="flex flex-wrap gap-1.5 pt-1">
+  1214→                      {form.serials.map((s) => (
+  1215→                        <Badge
+  1216→                          key={s}
+  1217→                          variant="outline"
+  1218→                          className="gap-1 font-mono text-[11px]"
+  1219→                        >
+  1220→                          <Hash className="h-3 w-3" />
+  1221→                          {s}
+  1222→                          <button
+  1223→                            type="button"
+  1224→                            onClick={() => removeSerial(s)}
+  1225→                            className="ml-1 rounded-full p-0.5 hover:bg-muted"
+  1226→                            aria-label={`ลบ ${s}`}
+  1227→                          >
+  1228→                            <XCircle className="h-3 w-3" />
+  1229→                          </button>
+  1230→                        </Badge>
+  1231→                      ))}
+  1232→                    </div>
+  1233→                  )}
+  1234→                </div>
+  1235→              </div>
+  1236→            ) : (
+  1237→              <div className="grid gap-3">
+  1238→                <div className="grid grid-cols-2 gap-3">
+  1239→                  <div className="grid gap-1.5">
+  1240→                    <Label htmlFor="wo-building">อาคาร / ฝ่าย</Label>
+  1241→                    <Input
+  1242→                      id="wo-building"
+  1243→                      value={form.building}
+  1244→                      onChange={(e) =>
+  1245→                        setForm((s) => ({ ...s, building: e.target.value }))
+  1246→                      }
+  1247→                      placeholder="เช่น อาคาร A, ฝ่ายบัญชี"
+  1248→                    />
+  1249→                  </div>
+  1250→                  <div className="grid gap-1.5">
+  1251→                    <Label htmlFor="wo-location">ตำแหน่ง / ห้อง</Label>
+  1252→                    <Input
+  1253→                      id="wo-location"
+  1254→                      value={form.location}
+  1255→                      onChange={(e) =>
+  1256→                        setForm((s) => ({ ...s, location: e.target.value }))
+  1257→                      }
+  1258→                      placeholder="เช่น ชั้น 3 ห้อง 305"
+  1259→                    />
+  1260→                  </div>
+  1261→                </div>
+  1262→
+  1263→                {/* Asset lookup */}
+  1264→                <div className="grid gap-1.5">
+  1265→                  <Label htmlFor="wo-device-search">เลขทะเบียนอุปกรณ์ (Optional)</Label>
+  1266→                  <Input
+  1267→                    id="wo-device-search"
+  1268→                    value={form.deviceSearch}
+  1269→                    onChange={(e) =>
+  1270→                      setForm((s) => ({ ...s, deviceSearch: e.target.value }))
+  1271→                    }
+  1272→                    placeholder="พิมพ์เลขทะเบียน / ชื่อ / S/N เพื่อค้นหาอุปกรณ์"
+  1273→                  />
+  1274→                  {deviceLoading && (
+  1275→                    <div className="text-[11px] text-muted-foreground">กำลังค้นหา...</div>
+  1276→                  )}
+  1277→                  {!deviceLoading && deviceResults.length > 0 && (
+  1278→                    <div className="max-h-40 overflow-y-auto rounded-md border bg-card">
+  1279→                      {deviceResults.map((d) => (
+  1280→                        <button
+  1281→                          key={d.id}
+  1282→                          type="button"
+  1283→                          onClick={() => {
+  1284→                            setForm((s) => ({
+  1285→                              ...s,
+  1286→                              deviceId: d.id,
+  1287→                              deviceSearch: `${d.assetCode} — ${d.name}`,
+  1288→                              building: s.building || d.building || '',
+  1289→                              location: s.location || d.location || '',
+  1290→                            }))
+  1291→                            setDeviceResults([])
+  1292→                          }}
+  1293→                          className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-2 text-left text-xs last:border-b-0 hover:bg-muted"
+  1294→                        >
+  1295→                          <span className="font-mono font-semibold">{d.assetCode}</span>
+  1296→                          <span className="text-muted-foreground">
+  1297→                            {d.name} {d.brand && d.model ? `(${d.brand} ${d.model})` : ''}
+  1298→                            {d.site ? ` • ${d.site}` : ''}
+  1299→                          </span>
+  1300→                        </button>
+  1301→                      ))}
+  1302→                    </div>
+  1303→                  )}
+  1304→                  {form.deviceId && (
+  1305→                    <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
+  1306→                      <CheckCircle2 className="h-3 w-3" /> เลือกอุปกรณ์แล้ว
+  1307→                      <button
+  1308→                        type="button"
+  1309→                        onClick={() =>
+  1310→                          setForm((s) => ({
+  1311→                            ...s,
+  1312→                            deviceId: null,
+  1313→                            deviceSearch: '',
+  1314→                          }))
+  1315→                        }
+  1316→                        className="ml-1 underline"
+  1317→                      >
+  1318→                        ล้าง
+  1319→                      </button>
+  1320→                    </div>
+  1321→                  )}
+  1322→                </div>
+  1323→              </div>
+  1324→            )}
+  1325→
+  1326→            <div className="grid gap-1.5">
+  1327→              <Label htmlFor="wo-details">รายละเอียดปัญหา</Label>
+  1328→              <Textarea
+  1329→                id="wo-details"
+  1330→                value={form.details}
+  1331→                onChange={(e) => setForm((s) => ({ ...s, details: e.target.value }))}
+  1332→                placeholder="อธิบายอาการ ความถี่ หรือข้อมูลที่ช่างควรทราบ"
+  1333→                className="min-h-[80px]"
+  1334→              />
+  1335→            </div>
+  1336→
+  1337→            <div className="grid grid-cols-2 gap-3">
+  1338→              <div className="grid gap-1.5">
+  1339→                <Label htmlFor="wo-priority">ความเร่งด่วน</Label>
+  1340→                <Select
+  1341→                  value={form.priority}
+  1342→                  onValueChange={(v) => setForm((s) => ({ ...s, priority: v }))}
+  1343→                >
+  1344→                  <SelectTrigger id="wo-priority">
+  1345→                    <SelectValue />
+  1346→                  </SelectTrigger>
+  1347→                  <SelectContent>
+  1348→                    {PRIORITY_FORM_OPTIONS.map((o) => (
+  1349→                      <SelectItem key={o.value} value={o.value}>
+  1350→                        {o.label}
+  1351→                      </SelectItem>
+  1352→                    ))}
+  1353→                  </SelectContent>
+  1354→                </Select>
+  1355→              </div>
+  1356→              <div className="grid gap-1.5">
+  1357→                <Label htmlFor="wo-pic">รูปก่อนซ่อม (Optional)</Label>
+  1358→                <div className="flex items-center gap-2">
+  1359→                  <input
+  1360→                    ref={fileInputRef}
+  1361→                    id="wo-pic"
+  1362→                    type="file"
+  1363→                    accept="image/*"
+  1364→                    onChange={handlePicBeforeChange}
+  1365→                    className="hidden"
+  1366→                  />
+  1367→                  <Button
+  1368→                    type="button"
+  1369→                    variant="outline"
+  1370→                    size="sm"
+  1371→                    onClick={() => fileInputRef.current?.click()}
+  1372→                  >
+  1373→                    <ImageIcon className="h-4 w-4" />
+  1374→                    {form.picBefore ? 'เปลี่ยนรูป' : 'เลือกรูป'}
+  1375→                  </Button>
+  1376→                  {form.picBefore && (
+  1377→                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+  1378→                      <img
+  1379→                        src={form.picBefore}
+  1380→                        alt="pic-before"
+  1381→                        className="h-8 w-8 rounded border object-cover"
+  1382→                      />
+  1383→                      <button
+  1384→                        type="button"
+  1385→                        onClick={() =>
+  1386→                          setForm((s) => ({
+  1387→                            ...s,
+  1388→                            picBefore: null,
+  1389→                            picBeforeName: '',
+  1390→                          }))
+  1391→                        }
+  1392→                        className="text-rose-500 underline"
+  1393→                      >
+  1394→                        ลบ
+  1395→                      </button>
+  1396→                    </div>
+  1397→                  )}
+  1398→                </div>
+  1399→              </div>
+  1400→            </div>
+  1401→
+  1402→            {/* Reporter block */}
+  1403→            <div className="grid gap-2 rounded-lg border bg-card p-3">
+  1404→              <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+  1405→                <ShieldCheck className="h-3.5 w-3.5" />
+  1406→                {form.isExternal
+  1407→                  ? 'ผู้แจ้ง (ช่างที่รับงาน)'
+  1408→                  : 'ผู้แจ้ง (ต้องยืนยันตัวตนกับสมุดผู้ติดต่อ)'}
+  1409→              </div>
+  1410→              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+  1411→                <div className="grid gap-1.5">
+  1412→                  <Label htmlFor="wo-reporter">
+  1413→                    ชื่อผู้แจ้ง
+  1414→                    {!form.isExternal && <span className="text-rose-500"> *</span>}
+  1415→                  </Label>
+  1416→                  <Input
+  1417→                    id="wo-reporter"
+  1418→                    value={form.reporterName}
+  1419→                    onChange={(e) =>
+  1420→                      setForm((s) => ({ ...s, reporterName: e.target.value }))
+  1421→                    }
+  1422→                    placeholder="ชื่อ-นามสกุล"
+  1423→                  />
+  1424→                </div>
+  1425→                <div className="grid gap-1.5">
+  1426→                  <Label htmlFor="wo-tel">
+  1427→                    เบอร์โทร
+  1428→                    {!form.isExternal && <span className="text-rose-500"> *</span>}
+  1429→                  </Label>
+  1430→                  <Input
+  1431→                    id="wo-tel"
+  1432→                    value={form.tel}
+  1433→                    onChange={(e) => setForm((s) => ({ ...s, tel: e.target.value }))}
+  1434→                    placeholder="08xxxxxxxx"
+  1435→                    inputMode="tel"
+  1436→                  />
+  1437→                </div>
+  1438→              </div>
+  1439→              {!form.isExternal && (
+  1440→                <div className="grid gap-1.5">
+  1441→                  <Label htmlFor="wo-emp">รหัสพนักงาน (Optional)</Label>
+  1442→                  <Input
+  1443→                    id="wo-emp"
+  1444→                    value={form.employeeCode}
+  1445→                    onChange={(e) =>
+  1446→                      setForm((s) => ({ ...s, employeeCode: e.target.value }))
+  1447→                    }
+  1448→                    placeholder="เช่น EMP001"
+  1449→                  />
+  1450→                </div>
+  1451→              )}
+  1452→              {!form.isExternal && (
+  1453→                <div className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+  1454→                  ระบบจะตรวจสอบชื่อ + เบอร์โทรกับสมุดผู้ติดต่อ (ContactDirectory)
+  1455→                  หากไม่ตรงจะไม่สามารถส่งใบแจ้งซ่อมได้
+  1456→                </div>
+  1457→              )}
+  1458→            </div>
+  1459→          </div>
+  1460→        </ScrollArea>
+  1461→
+  1462→        <DialogFooter>
+  1463→          <Button
+  1464→            variant="outline"
+  1465→            onClick={() => onOpenChange(false)}
+  1466→            disabled={saving}
+  1467→          >
+  1468→            ยกเลิก
+  1469→          </Button>
+  1470→          <Button
+  1471→            onClick={onSubmit}
+  1472→            disabled={saving || !form.subject.trim() || form.subject === '__custom__'}
+  1473→            className="bg-orange-500 hover:bg-orange-600"
+  1474→          >
+  1475→            {saving ? (
+  1476→              <RefreshCw className="h-4 w-4 animate-spin" />
+  1477→            ) : (
+  1478→              <Plus className="h-4 w-4" />
+  1479→            )}
+  1480→            บันทึกใบแจ้งซ่อม
+  1481→          </Button>
+  1482→        </DialogFooter>
+  1483→      </DialogContent>
+  1484→    </Dialog>
+  1485→  )
+  1486→}
+  1487→
+  1488→// ============================================================
+  1489→// Detail Dialog
+  1490→// ============================================================
+  1491→function WorkOrderDetailDialog({
+  1492→  id,
+  1493→  onOpenChange,
+  1494→  resolutions,
+  1495→}: {
+  1496→  id: string | null
+  1497→  onOpenChange: (open: boolean) => void
+  1498→  resolutions: ResolutionOption[]
+  1499→}) {
+  1500→  const qc = useQueryClient()
+  1501→  const open = Boolean(id)
+  1502→
+  1503→  // Detail query (only when an id is selected)
+  1504→  const detailQuery = useQuery<WorkOrderDetail>({
+  1505→    queryKey: ['work-order', id],
+  1506→    queryFn: async () => {
+  1507→      const res = await fetch(`/api/work-orders/${id}`)
+  1508→      if (!res.ok) throw new Error('Failed to load work order')
+  1509→      const json = await res.json()
+  1510→      return json.data as WorkOrderDetail
+  1511→    },
+  1512→    enabled: Boolean(id),
+  1513→  })
+  1514→
+  1515→  const wo = detailQuery.data
+  1516→
+  1517→  // Invalidate list when detail changes (action happened)
+  1518→  function refreshAll() {
+  1519→    qc.invalidateQueries({ queryKey: ['work-orders'] })
+  1520→    qc.invalidateQueries({ queryKey: ['work-order', id] })
+  1521→  }
+  1522→
+  1523→  return (
+  1524→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1525→      <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-[760px]">
+  1526→        {detailQuery.isLoading ? (
+  1527→          <div className="space-y-3 p-6">
+  1528→            <Skeleton className="h-6 w-32" />
+  1529→            <Skeleton className="h-10 w-3/4" />
+  1530→            <Skeleton className="h-32 w-full" />
+  1531→            <Skeleton className="h-24 w-full" />
+  1532→          </div>
+  1533→        ) : !wo ? (
+  1534→          <div className="p-6 text-center text-sm text-muted-foreground">
+  1535→            ไม่พบใบงาน
+  1536→          </div>
+  1537→        ) : (
+  1538→          <WorkOrderDetailContent
+  1539→            wo={wo}
+  1540→            onMutated={refreshAll}
+  1541→            onClose={() => onOpenChange(false)}
+  1542→            resolutions={resolutions}
+  1543→          />
+  1544→        )}
+  1545→      </DialogContent>
+  1546→    </Dialog>
+  1547→  )
+  1548→}
+  1549→
+  1550→function WorkOrderDetailContent({
+  1551→  wo,
+  1552→  onMutated,
+  1553→  onClose,
+  1554→  resolutions,
+  1555→}: {
+  1556→  wo: WorkOrderDetail
+  1557→  onMutated: () => void
+  1558→  onClose: () => void
+  1559→  resolutions: ResolutionOption[]
+  1560→}) {
+  1561→  // Assign technician
+  1562→  const [assignOpen, setAssignOpen] = React.useState(false)
+  1563→  const [techName, setTechName] = React.useState(wo.assignedTo ?? '')
+  1564→  const [assignNote, setAssignNote] = React.useState(wo.assignmentNote ?? '')
+  1565→  const [assigning, setAssigning] = React.useState(false)
+  1566→
+  1567→  // Complete
+  1568→  const [completeOpen, setCompleteOpen] = React.useState(false)
+  1569→  const [completeNote, setCompleteNote] = React.useState('')
+  1570→  const [completing, setCompleting] = React.useState(false)
+  1571→  const [resolutionValue, setResolutionValue] = React.useState<string>(wo.resolution ?? '')
+  1572→  const [resolutionGroup, setResolutionGroup] = React.useState<string>(wo.resolutionGroup ?? '')
+  1573→  const [picAfter, setPicAfter] = React.useState<string | null>(wo.picAfter ?? null)
+  1574→  const picAfterInputRef = React.useRef<HTMLInputElement>(null)
+  1575→
+  1576→  // Cancel
+  1577→  const [cancelOpen, setCancelOpen] = React.useState(false)
+  1578→  const [cancelReason, setCancelReason] = React.useState('')
+  1579→  const [canceling, setCanceling] = React.useState(false)
+  1580→
+  1581→  // Reporter edit
+  1582→  const [reporterEditOpen, setReporterEditOpen] = React.useState(false)
+  1583→  const [reporterEdit, setReporterEdit] = React.useState({
+  1584→    verifyName: wo.reporterName ?? '',
+  1585→    verifyPhone: wo.tel ?? '',
+  1586→    employeeCode: wo.employeeCode ?? '',
+  1587→    subject: wo.subject,
+  1588→    building: wo.building ?? '',
+  1589→    location: wo.location ?? '',
+  1590→    details: wo.details ?? '',
+  1591→    tel: wo.tel ?? '',
+  1592→  })
+  1593→  const [reporterEditSaving, setReporterEditSaving] = React.useState(false)
+  1594→
+  1595→  // Chat
+  1596→  const [chatText, setChatText] = React.useState('')
+  1597→  const [sendingMsg, setSendingMsg] = React.useState(false)
+  1598→  const messagesEndRef = React.useRef<HTMLDivElement>(null)
+  1599→  const messages = wo.messages ?? []
+  1600→
+  1601→  // ── Parts (เบิกอะไหล่) ──
+  1602→  const [partsOpen, setPartsOpen] = React.useState(false)
+  1603→  const [partsRequester, setPartsRequester] = React.useState('')
+  1604→  const [partsSearch, setPartsSearch] = React.useState('')
+  1605→  const [partsLines, setPartsLines] = React.useState<
+  1606→    { productCode: string; productName: string; quantity: string; remark: string }[]
+  1607→  >([])
+  1608→  const [partsSaving, setPartsSaving] = React.useState(false)
+  1609→  const [partsSearchResults, setPartsSearchResults] = React.useState<PartsStockItem[]>([])
+  1610→  const [partsSearchLoading, setPartsSearchLoading] = React.useState(false)
+  1611→
+  1612→  // Approve / reject parts (inline)
+  1613→  const [approvingTxnId, setApprovingTxnId] = React.useState<string | null>(null)
+  1614→  const [rejectingTxnId, setRejectingTxnId] = React.useState<string | null>(null)
+  1615→  const [rejectReason, setRejectReason] = React.useState('')
+  1616→
+  1617→  // Parts list query (always on for the detail view)
+  1618→  const partsQuery = useQuery<PartsListResponse>({
+  1619→    queryKey: ['wo-parts', wo.id],
+  1620→    queryFn: async () => {
+  1621→      const res = await fetch(`/api/work-orders/${wo.id}/parts`)
+  1622→      if (!res.ok) throw new Error('Failed to load parts')
+  1623→      return res.json()
+  1624→    },
+  1625→  })
+  1626→  const partsList: PartsTransaction[] = partsQuery.data?.data ?? []
+  1627→  const partsSummary = partsQuery.data?.summary
+  1628→
+  1629→  React.useEffect(() => {
+  1630→    if (partsOpen) {
+  1631→      // Reset the parts form when the dialog opens
+  1632→      setPartsRequester('')
+  1633→      setPartsSearch('')
+  1634→      setPartsLines([])
+  1635→      setPartsSearchResults([])
+  1636→    }
+  1637→  }, [partsOpen])
+  1638→
+  1639→  // Debounced parts search
+  1640→  React.useEffect(() => {
+  1641→    if (!partsSearch.trim()) {
+  1642→      setPartsSearchResults([])
+  1643→      return
+  1644→    }
+  1645→    let cancelled = false
+  1646→    setPartsSearchLoading(true)
+  1647→    const t = setTimeout(async () => {
+  1648→      try {
+  1649→        const params = new URLSearchParams({ search: partsSearch.trim(), pageSize: '20' })
+  1650→        const res = await fetch(`/api/stock-items?${params.toString()}`)
+  1651→        if (!res.ok) return
+  1652→        const json: PartsListApiResponse = await res.json()
+  1653→        if (!cancelled) setPartsSearchResults(json.data ?? [])
+  1654→      } catch {
+  1655→        if (!cancelled) setPartsSearchResults([])
+  1656→      } finally {
+  1657→        if (!cancelled) setPartsSearchLoading(false)
+  1658→      }
+  1659→    }, 300)
+  1660→    return () => {
+  1661→      cancelled = true
+  1662→      clearTimeout(t)
+  1663→    }
+  1664→  }, [partsSearch])
+  1665→
+  1666→  React.useEffect(() => {
+  1667→    // sync tech name when WO changes
+  1668→    setTechName(wo.assignedTo ?? '')
+  1669→    setAssignNote(wo.assignmentNote ?? '')
+  1670→    setResolutionValue(wo.resolution ?? '')
+  1671→    setResolutionGroup(wo.resolutionGroup ?? '')
+  1672→    setPicAfter(wo.picAfter ?? null)
+  1673→    setReporterEdit({
+  1674→      verifyName: wo.reporterName ?? '',
+  1675→      verifyPhone: wo.tel ?? '',
+  1676→      employeeCode: wo.employeeCode ?? '',
+  1677→      subject: wo.subject,
+  1678→      building: wo.building ?? '',
+  1679→      location: wo.location ?? '',
+  1680→      details: wo.details ?? '',
+  1681→      tel: wo.tel ?? '',
+  1682→    })
+  1683→  }, [wo.id, wo.assignedTo, wo.assignmentNote, wo.resolution, wo.resolutionGroup, wo.picAfter, wo.reporterName, wo.tel, wo.employeeCode, wo.subject, wo.building, wo.location, wo.details])
+  1684→
+  1685→  React.useEffect(() => {
+  1686→    if (messagesEndRef.current) {
+  1687→      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+  1688→    }
+  1689→  }, [messages.length])
+  1690→
+  1691→  const external = parseExternalMeta(wo.externalMeta)
+  1692→
+  1693→  const canAssign = wo.status === 'PENDING' || wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
+  1694→  const canComplete = wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
+  1695→  const canCancel = wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
+  1696→  const canChat = wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
+  1697→  const canReporterEdit = wo.status === 'PENDING'
+  1698→  const canRequestParts = wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
+  1699→
+  1700→  // Resolution groups for the dropdown
+  1701→  const resolutionGroups = React.useMemo(() => {
+  1702→    const map = new Map<string, ResolutionOption[]>()
+  1703→    for (const r of resolutions) {
+  1704→      if (!map.has(r.group)) map.set(r.group, [])
+  1705→      map.get(r.group)!.push(r)
+  1706→    }
+  1707→    return Array.from(map.entries())
+  1708→  }, [resolutions])
+  1709→
+  1710→  async function handleAssign() {
+  1711→    if (!techName.trim()) {
+  1712→      toast.error('กรุณาระบุชื่อช่าง')
+  1713→      return
+  1714→    }
+  1715→    try {
+  1716→      setAssigning(true)
+  1717→      const res = await fetch(`/api/work-orders/${wo.id}/assign`, {
+  1718→        method: 'POST',
+  1719→        headers: { 'Content-Type': 'application/json' },
+  1720→        body: JSON.stringify({
+  1721→          assignedTo: techName.trim(),
+  1722→          assignmentNote: assignNote.trim() || null,
+  1723→          actor: 'admin',
+  1724→        }),
+  1725→      })
+  1726→      if (!res.ok) {
+  1727→        const j = await res.json().catch(() => ({}))
+  1728→        throw new Error(j.error ?? 'มอบหมายไม่สำเร็จ')
+  1729→      }
+  1730→      toast.success(`มอบหมายให้ ${techName.trim()} แล้ว`)
+  1731→      setAssignOpen(false)
+  1732→      onMutated()
+  1733→    } catch (e) {
+  1734→      toast.error(e instanceof Error ? e.message : 'มอบหมายไม่สำเร็จ')
+  1735→    } finally {
+  1736→      setAssigning(false)
+  1737→    }
+  1738→  }
+  1739→
+  1740→  async function handlePicAfterChange(e: React.ChangeEvent<HTMLInputElement>) {
+  1741→    const file = e.target.files?.[0]
+  1742→    if (!file) return
+  1743→    try {
+  1744→      const dataUrl = await compressImage(file)
+  1745→      setPicAfter(dataUrl)
+  1746→    } catch {
+  1747→      toast.error('อ่านไฟล์รูปไม่สำเร็จ')
+  1748→    } finally {
+  1749→      if (picAfterInputRef.current) picAfterInputRef.current.value = ''
+  1750→    }
+  1751→  }
+  1752→
+  1753→  async function handleComplete() {
+  1754→    try {
+  1755→      setCompleting(true)
+  1756→      // Look up group for the chosen resolution
+  1757→      let group = ''
+  1758→      if (resolutionValue) {
+  1759→        const opt = resolutions.find((r) => r.value === resolutionValue)
+  1760→        group = opt?.group ?? ''
+  1761→      }
+  1762→      const res = await fetch(`/api/work-orders/${wo.id}/complete`, {
+  1763→        method: 'POST',
+  1764→        headers: { 'Content-Type': 'application/json' },
+  1765→        body: JSON.stringify({
+  1766→          note: completeNote.trim() || null,
+  1767→          resolution: resolutionValue || null,
+  1768→          resolutionGroup: group || null,
+  1769→          picAfter: picAfter,
+  1770→          actor: 'admin',
+  1771→        }),
+  1772→      })
+  1773→      if (!res.ok) {
+  1774→        const j = await res.json().catch(() => ({}))
+  1775→        throw new Error(j.error ?? 'ปิดงานไม่สำเร็จ')
+  1776→      }
+  1777→      toast.success('ปิดงานเรียบร้อย')
+  1778→      setCompleteOpen(false)
+  1779→      setCompleteNote('')
+  1780→      onMutated()
+  1781→    } catch (e) {
+  1782→      toast.error(e instanceof Error ? e.message : 'ปิดงานไม่สำเร็จ')
+  1783→    } finally {
+  1784→      setCompleting(false)
+  1785→    }
+  1786→  }
+  1787→
+  1788→  async function handleCancel() {
+  1789→    if (!cancelReason.trim()) {
+  1790→      toast.error('กรุณาระบุเหตุผลในการยกเลิก')
+  1791→      return
+  1792→    }
+  1793→    try {
+  1794→      setCanceling(true)
+  1795→      const res = await fetch(`/api/work-orders/${wo.id}/cancel`, {
+  1796→        method: 'POST',
+  1797→        headers: { 'Content-Type': 'application/json' },
+  1798→        body: JSON.stringify({
+  1799→          reason: cancelReason.trim(),
+  1800→          actor: 'admin',
+  1801→        }),
+  1802→      })
+  1803→      if (!res.ok) {
+  1804→        const j = await res.json().catch(() => ({}))
+  1805→        throw new Error(j.error ?? 'ยกเลิกไม่สำเร็จ')
+  1806→      }
+  1807→      toast.success('ยกเลิกใบงานแล้ว')
+  1808→      setCancelOpen(false)
+  1809→      setCancelReason('')
+  1810→      onMutated()
+  1811→    } catch (e) {
+  1812→      toast.error(e instanceof Error ? e.message : 'ยกเลิกไม่สำเร็จ')
+  1813→    } finally {
+  1814→      setCanceling(false)
+  1815→    }
+  1816→  }
+  1817→
+  1818→  async function handleReporterEdit() {
+  1819→    if (!reporterEdit.verifyName.trim() || !reporterEdit.verifyPhone.trim()) {
+  1820→      toast.error('ต้องระบุชื่อและเบอร์โทรของผู้แจ้งเพื่อยืนยันตัวตน')
+  1821→      return
+  1822→    }
+  1823→    try {
+  1824→      setReporterEditSaving(true)
+  1825→      const res = await fetch(`/api/work-orders/${wo.id}/reporter-edit`, {
+  1826→        method: 'PUT',
+  1827→        headers: { 'Content-Type': 'application/json' },
+  1828→        body: JSON.stringify({
+  1829→          verifyName: reporterEdit.verifyName.trim(),
+  1830→          verifyPhone: reporterEdit.verifyPhone.trim(),
+  1831→          employeeCode: reporterEdit.employeeCode.trim() || undefined,
+  1832→          subject: reporterEdit.subject.trim() || undefined,
+  1833→          building: reporterEdit.building.trim() || null,
+  1834→          location: reporterEdit.location.trim() || null,
+  1835→          details: reporterEdit.details.trim() || null,
+  1836→          tel: reporterEdit.tel.trim() || null,
+  1837→        }),
+  1838→      })
+  1839→      if (!res.ok) {
+  1840→        const j = await res.json().catch(() => ({}))
+  1841→        throw new Error(j.error ?? 'แก้ไขไม่สำเร็จ')
+  1842→      }
+  1843→      toast.success('แก้ไขใบงานเรียบร้อย')
+  1844→      setReporterEditOpen(false)
+  1845→      onMutated()
+  1846→    } catch (e) {
+  1847→      toast.error(e instanceof Error ? e.message : 'แก้ไขไม่สำเร็จ')
+  1848→    } finally {
+  1849→      setReporterEditSaving(false)
+  1850→    }
+  1851→  }
+  1852→
+  1853→  async function handleSendMessage() {
+  1854→    const text = chatText.trim()
+  1855→    if (!text) return
+  1856→    try {
+  1857→      setSendingMsg(true)
+  1858→      const res = await fetch(`/api/work-orders/${wo.id}/messages`, {
+  1859→        method: 'POST',
+  1860→        headers: { 'Content-Type': 'application/json' },
+  1861→        body: JSON.stringify({
+  1862→          message: text,
+  1863→          author: 'admin',
+  1864→          authorRole: 'admin',
+  1865→        }),
+  1866→      })
+  1867→      if (!res.ok) {
+  1868→        const j = await res.json().catch(() => ({}))
+  1869→        throw new Error(j.error ?? 'ส่งข้อความไม่สำเร็จ')
+  1870→      }
+  1871→      setChatText('')
+  1872→      onMutated()
+  1873→    } catch (e) {
+  1874→      toast.error(e instanceof Error ? e.message : 'ส่งข้อความไม่สำเร็จ')
+  1875→    } finally {
+  1876→      setSendingMsg(false)
+  1877→    }
+  1878→  }
+  1879→
+  1880→  // ── Parts request (เบิกอะไหล่) ──
+  1881→  function addPartsLine(item: PartsStockItem) {
+  1882→    // Skip if already in list
+  1883→    if (partsLines.some((l) => l.productCode === item.productCode)) {
+  1884→      toast.error(`${item.productCode} มีอยู่ในรายการแล้ว`)
+  1885→      return
+  1886→    }
+  1887→    setPartsLines((prev) => [
+  1888→      ...prev,
+  1889→      {
+  1890→        productCode: item.productCode,
+  1891→        productName: item.productName,
+  1892→        quantity: '1',
+  1893→        remark: '',
+  1894→      },
+  1895→    ])
+  1896→    setPartsSearch('')
+  1897→    setPartsSearchResults([])
+  1898→  }
+  1899→  function removePartsLine(idx: number) {
+  1900→    setPartsLines((prev) => prev.filter((_, i) => i !== idx))
+  1901→  }
+  1902→  function updatePartsLine(
+  1903→    idx: number,
+  1904→    key: 'quantity' | 'remark',
+  1905→    value: string,
+  1906→  ) {
+  1907→    setPartsLines((prev) =>
+  1908→      prev.map((l, i) => (i === idx ? { ...l, [key]: value } : l)),
+  1909→    )
+  1910→  }
+  1911→  async function handleRequestParts() {
+  1912→    const valid = partsLines.filter((l) => Number(l.quantity) > 0)
+  1913→    if (valid.length === 0) {
+  1914→      toast.error('ต้องเพิ่มอย่างน้อย 1 รายการอะไหล่ พร้อมจำนวนที่ถูกต้อง')
+  1915→      return
+  1916→    }
+  1917→    try {
+  1918→      setPartsSaving(true)
+  1919→      const res = await fetch(`/api/work-orders/${wo.id}/parts`, {
+  1920→        method: 'POST',
+  1921→        headers: { 'Content-Type': 'application/json' },
+  1922→        body: JSON.stringify({
+  1923→          requester: partsRequester.trim() || undefined,
+  1924→          items: valid.map((l) => ({
+  1925→            productCode: l.productCode,
+  1926→            quantity: Number(l.quantity),
+  1927→            remark: l.remark.trim() || undefined,
+  1928→          })),
+  1929→          actor: 'admin',
+  1930→        }),
+  1931→      })
+  1932→      if (!res.ok) {
+  1933→        const j = await res.json().catch(() => ({}))
+  1934→        throw new Error(j.error ?? 'เบิกอะไหล่ไม่สำเร็จ')
+  1935→      }
+  1936→      const json = await res.json()
+  1937→      toast.success(
+  1938→        `สร้างคำขอเบิกอะไหล่ ${json.data?.created ?? valid.length} รายการ — สถานะใบงาน: ${
+  1939→          json.data?.workOrderStatus === 'WAITING_PARTS' ? 'รออะไหล่' : json.data?.workOrderStatus
+  1940→        }`,
+  1941→      )
+  1942→      setPartsOpen(false)
+  1943→      onMutated()
+  1944→      qc.invalidateQueries({ queryKey: ['wo-parts', wo.id] })
+  1945→    } catch (e) {
+  1946→      toast.error(e instanceof Error ? e.message : 'เบิกอะไหล่ไม่สำเร็จ')
+  1947→    } finally {
+  1948→      setPartsSaving(false)
+  1949→    }
+  1950→  }
+  1951→
+  1952→  async function handleApprovePart(txnId: string) {
+  1953→    try {
+  1954→      setApprovingTxnId(txnId)
+  1955→      const res = await fetch(`/api/work-orders/${wo.id}/parts/${txnId}/approve`, {
+  1956→        method: 'POST',
+  1957→        headers: { 'Content-Type': 'application/json' },
+  1958→        body: JSON.stringify({ approver: 'admin' }),
+  1959→      })
+  1960→      if (!res.ok) {
+  1961→        const j = await res.json().catch(() => ({}))
+  1962→        throw new Error(j.error ?? 'อนุมัติไม่สำเร็จ')
+  1963→      }
+  1964→      toast.success('อนุมัติเบิกอะไหล่เรียบร้อย')
+  1965→      qc.invalidateQueries({ queryKey: ['wo-parts', wo.id] })
+  1966→      qc.invalidateQueries({ queryKey: ['stock-items'] })
+  1967→      qc.invalidateQueries({ queryKey: ['stock-pending'] })
+  1968→      onMutated()
+  1969→    } catch (e) {
+  1970→      toast.error(e instanceof Error ? e.message : 'อนุมัติไม่สำเร็จ')
+  1971→    } finally {
+  1972→      setApprovingTxnId(null)
+  1973→    }
+  1974→  }
+  1975→
+  1976→  async function handleRejectPart(txn: PartsTransaction) {
+  1977→    if (!rejectReason.trim()) {
+  1978→      toast.error('กรุณาระบุเหตุผลในการปฏิเสธ')
+  1979→      return
+  1980→    }
+  1981→    try {
+  1982→      setRejectingTxnId(txn.id)
+  1983→      // Reject goes through the stock-items pending route (id = stockItemId)
+  1984→      const res = await fetch(
+  1985→        `/api/stock-items/${txn.stockItemId}/pending/${txn.id}/reject`,
+  1986→        {
+  1987→          method: 'POST',
+  1988→          headers: { 'Content-Type': 'application/json' },
+  1989→          body: JSON.stringify({
+  1990→            approver: 'admin',
+  1991→            reason: rejectReason.trim(),
+  1992→          }),
+  1993→        },
+  1994→      )
+  1995→      if (!res.ok) {
+  1996→        const j = await res.json().catch(() => ({}))
+  1997→        throw new Error(j.error ?? 'ปฏิเสธไม่สำเร็จ')
+  1998→      }
+  1999→      toast.success('ปฏิเสธคำขอเบิกอะไหล่เรียบร้อย')
+  2000→      setRejectingTxnId(null)
+
+[showing lines 1-2000 of 3215; use offset=2001 with limit to continue reading]

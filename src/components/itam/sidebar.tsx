@@ -26,6 +26,7 @@ const NAV_ITEMS: NavItemDef[] = [
   { page: 'paper-analytics', icon: '📊', label: 'การใช้กระดาษ', requires: ['reports:view'] },
   { page: 'work-orders', icon: '🔧', label: 'แจ้งซ่อม', requires: ['wo:create', 'wo:view:own', 'wo:view:site', 'wo:view:all'] },
   { page: 'stock', icon: '📦', label: 'สต๊อก', requires: ['stock:view'] },
+  { page: 'monthly-report', icon: '📅', label: 'รายงานรายเดือน', requires: ['reports:view'] },
   { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล', requires: ['import:data'] },
   { page: 'templates', icon: '📄', label: 'เทมเพลต', requires: ['templates:manage'] },
   { page: 'settings', icon: '⚙️', label: 'ตั้งค่าแอป', requires: ['settings:manage'] },
@@ -104,6 +105,9 @@ export function Sidebar() {
             return navVisibility.workOrders
           case 'stock':
             return navVisibility.stock
+          case 'monthly-report':
+            // Uses reports:view (same as paper-analytics)
+            return navVisibility.paperAnalytics
           case 'import':
             return navVisibility.import
           case 'templates':
