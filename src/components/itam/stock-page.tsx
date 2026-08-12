@@ -59,6 +59,10 @@ import {
   ClipboardList,
   Package2,
   ShoppingCart,
+  Clock,
+  Check,
+  XCircle,
+  Hourglass,
 } from 'lucide-react'
 
 // ---------- Types ----------
@@ -97,6 +101,35 @@ interface StockTransaction {
   performedBy: string | null
   remark: string | null
   createdAt: string
+}
+
+interface PendingStockTransaction extends StockTransaction {
+  productCode: string | null
+  productName: string | null
+  unit: string | null
+  requester: string | null
+  department: string | null
+  purpose: string | null
+  approver: string | null
+  approvedAt: string | null
+  workOrderId: string | null
+  workOrderNo: string | null
+  approvalStatus: string | null
+  approvalMode: string | null
+  autoApproveAt: string | null
+  rejectReason: string | null
+  stockItem?: {
+    productCode: string
+    productName: string
+    unit: string
+    quantity: number
+    active: boolean
+  } | null
+}
+
+interface PendingListResponse {
+  data: PendingStockTransaction[]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
 }
 
 interface StockItemDetail extends StockItem {
@@ -248,7 +281,7 @@ const EMPTY_TXN_FORM: TxnFormState = {
 
 export function StockPage() {
   const qc = useQueryClient()
-  const [activeTab, setActiveTab] = React.useState<'items' | 'po'>('items')
+  const [activeTab, setActiveTab] = React.useState<'items' | 'po' | 'pending'>('items')
 
   // Filters
   const [search, setSearch] = React.useState('')
@@ -282,6 +315,103 @@ export function StockPage() {
     { stockItemId: string; quantityOrdered: string; unitPrice: string }[]
   >([{ stockItemId: '', quantityOrdered: '1', unitPrice: '' }])
   const [savingPo, setSavingPo] = React.useState(false)
+
+  // ── Pending approval (PART 1) ──
+  const [pendingFilter, setPendingFilter] = React.useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'all'>('PENDING')
+  const [pendingSearch, setPendingSearch] = React.useState('')
+  const [pendingDebouncedSearch, setPendingDebouncedSearch] = React.useState('')
+  const [approvingTxn, setApprovingTxn] = React.useState<PendingStockTransaction | null>(null)
+  const [approving, setApproving] = React.useState(false)
+  const [rejectingTxn, setRejectingTxn] = React.useState<PendingStockTransaction | null>(null)
+  const [rejectReason, setRejectReason] = React.useState('')
+  const [rejecting, setRejecting] = React.useState(false)
+
+  React.useEffect(() => {
+    const t = setTimeout(() => setPendingDebouncedSearch(pendingSearch), 300)
+    return () => clearTimeout(t)
+  }, [pendingSearch])
+
+  // ---- Pending list query ----
+  const { data: pendingData, isLoading: loadingPending } = useQuery<PendingListResponse>({
+    queryKey: ['stock-pending', pendingFilter, pendingDebouncedSearch],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      params.set('status', pendingFilter)
+      if (pendingDebouncedSearch) params.set('search', pendingDebouncedSearch)
+      params.set('pageSize', '200')
+      const res = await fetch(`/api/stock-items/pending?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to load pending')
+      const json = await res.json()
+      return json as PendingListResponse
+    },
+  })
+
+  const pendingList = pendingData?.data ?? []
+
+  async function handleApprovePending(t: PendingStockTransaction) {
+    try {
+      setApproving(true)
+      setApprovingTxn(t)
+      const res = await fetch(
+        `/api/stock-items/${t.stockItemId}/pending/${t.id}/approve`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ approver: 'admin' }),
+        },
+      )
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'อนุมัติไม่สำเร็จ')
+      }
+      toast.success(`อนุมัติเบิกออก ${t.productCode ?? ''} สำเร็จ`)
+      setApprovingTxn(null)
+      await qc.invalidateQueries({ queryKey: ['stock-pending'] })
+      await qc.invalidateQueries({ queryKey: ['stock-items'] })
+      // Refresh any open detail dialog
+      if (detailId) {
+        await qc.invalidateQueries({ queryKey: ['stock-item-detail', detailId] })
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'อนุมัติไม่สำเร็จ')
+    } finally {
+      setApproving(false)
+    }
+  }
+
+  async function handleRejectPending() {
+    if (!rejectingTxn) return
+    if (!rejectReason.trim()) {
+      toast.error('กรุณาระบุเหตุผลในการปฏิเสธ')
+      return
+    }
+    try {
+      setRejecting(true)
+      const res = await fetch(
+        `/api/stock-items/${rejectingTxn.stockItemId}/pending/${rejectingTxn.id}/reject`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            approver: 'admin',
+            reason: rejectReason.trim(),
+          }),
+        },
+      )
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'ปฏิเสธไม่สำเร็จ')
+      }
+      toast.success(`ปฏิเสธคำขอเบิกออก ${rejectingTxn.productCode ?? ''} เรียบร้อย`)
+      setRejectingTxn(null)
+      setRejectReason('')
+      await qc.invalidateQueries({ queryKey: ['stock-pending'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ปฏิเสธไม่สำเร็จ')
+    } finally {
+      setRejecting(false)
+    }
+  }
 
   // Debounce search
   const [debouncedSearch, setDebouncedSearch] = React.useState('')
@@ -610,6 +740,35 @@ export function StockPage() {
     )
   }
 
+  const pendingStatusBadge = (status: string | null) => {
+    if (status === 'PENDING') {
+      return (
+        <Badge className="border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+          รออนุมัติ
+        </Badge>
+      )
+    }
+    if (status === 'APPROVED') {
+      return (
+        <Badge className="border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+          อนุมัติแล้ว
+        </Badge>
+      )
+    }
+    if (status === 'REJECTED') {
+      return (
+        <Badge className="border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+          ปฏิเสธ
+        </Badge>
+      )
+    }
+    return (
+      <Badge className="border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+        ทำรายการแล้ว
+      </Badge>
+    )
+  }
+
   // ---------- KPI cards ----------
   const KPI_CARDS = [
     {
@@ -728,8 +887,8 @@ export function StockPage() {
         ))}
       </div>
 
-      {/* Tabs: items | purchase orders */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'items' | 'po')}>
+      {/* Tabs: items | purchase orders | pending approval */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'items' | 'po' | 'pending')}>
         <TabsList className="bg-slate-100 dark:bg-slate-800">
           <TabsTrigger value="items">
             <Package2 className="mr-1.5 h-3.5 w-3.5" />
@@ -738,6 +897,10 @@ export function StockPage() {
           <TabsTrigger value="po">
             <ClipboardList className="mr-1.5 h-3.5 w-3.5" />
             ใบสั่งซื้อ
+          </TabsTrigger>
+          <TabsTrigger value="pending">
+            <Hourglass className="mr-1.5 h-3.5 w-3.5" />
+            รออนุมัติ
           </TabsTrigger>
         </TabsList>
 
@@ -1039,6 +1202,239 @@ export function StockPage() {
                           <TableCell>{poStatusBadge(po.status)}</TableCell>
                         </TableRow>
                       ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ===== Pending approval tab ===== */}
+        <TabsContent value="pending" className="mt-4">
+          {/* Filter bar */}
+          <Card className="mb-4 border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+            <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <Label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                  ค้นหา
+                </Label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    value={pendingSearch}
+                    onChange={(e) => setPendingSearch(e.target.value)}
+                    placeholder="เลขที่คำขอ / รหัสสินค้า / ชื่อ / เลขใบงาน"
+                    className="pl-8"
+                  />
+                </div>
+              </div>
+              <div className="w-full sm:w-56">
+                <Label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
+                  สถานะ
+                </Label>
+                <Select
+                  value={pendingFilter}
+                  onValueChange={(v) =>
+                    setPendingFilter(
+                      v as 'PENDING' | 'APPROVED' | 'REJECTED' | 'all',
+                    )
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PENDING">รออนุมัติ</SelectItem>
+                    <SelectItem value="APPROVED">อนุมัติแล้ว</SelectItem>
+                    <SelectItem value="REJECTED">ปฏิเสธ</SelectItem>
+                    <SelectItem value="all">ทั้งหมด</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  qc.invalidateQueries({ queryKey: ['stock-pending'] })
+                }
+                className="border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                รีเฟรช
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50 dark:bg-slate-800/60">
+                      <TableHead className="w-32">เลขที่คำขอ</TableHead>
+                      <TableHead className="w-32">วันที่</TableHead>
+                      <TableHead>สินค้า</TableHead>
+                      <TableHead className="w-24 text-right">จำนวน</TableHead>
+                      <TableHead className="w-28 text-right">คงเหลือ</TableHead>
+                      <TableHead className="w-32">เลขใบงาน</TableHead>
+                      <TableHead>เหตุผล / หมายเหตุ</TableHead>
+                      <TableHead className="w-28">สถานะ</TableHead>
+                      <TableHead className="w-40 text-right">การจัดการ</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loadingPending ? (
+                      Array.from({ length: 4 }).map((_, i) => (
+                        <TableRow key={`pen-${i}`}>
+                          {Array.from({ length: 9 }).map((__, j) => (
+                            <TableCell key={`pen-${i}-${j}`}>
+                              <Skeleton className="h-5 w-full" />
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : pendingList.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={9}
+                          className="py-12 text-center text-slate-500 dark:text-slate-400"
+                        >
+                          <Hourglass className="mx-auto mb-2 h-10 w-10 opacity-30" />
+                          <div className="text-sm">
+                            ไม่พบคำขอเบิกออก
+                            {pendingFilter !== 'all'
+                              ? ` ที่มีสถานะ "${
+                                  pendingFilter === 'PENDING'
+                                    ? 'รออนุมัติ'
+                                    : pendingFilter === 'APPROVED'
+                                    ? 'อนุมัติแล้ว'
+                                    : 'ปฏิเสธ'
+                                }"`
+                              : ''}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      pendingList.map((t) => {
+                        const stockQty = t.stockItem?.quantity
+                        const insufficient =
+                          stockQty !== undefined && stockQty < t.quantity
+                        return (
+                          <TableRow
+                            key={t.id}
+                            className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                          >
+                            <TableCell className="font-mono text-xs font-semibold text-purple-600 dark:text-purple-400">
+                              {t.txnNumber ?? '—'}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-600 dark:text-slate-300">
+                              {formatThaiDate(t.txnDate)}
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-medium text-slate-800 dark:text-slate-100">
+                                {t.productName ?? t.stockItem?.productName ?? '—'}
+                              </div>
+                              <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                                {t.productCode ?? '—'}
+                                {t.requester && (
+                                  <span className="ml-1.5 text-slate-400">
+                                    • ผู้เบิก: {t.requester}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-rose-600 dark:text-rose-400">
+                              -{t.quantity} {t.unit ?? ''}
+                            </TableCell>
+                            <TableCell
+                              className={`text-right ${
+                                insufficient
+                                  ? 'font-semibold text-rose-600 dark:text-rose-400'
+                                  : 'text-slate-600 dark:text-slate-300'
+                              }`}
+                            >
+                              {stockQty !== undefined ? stockQty : '—'}
+                              {insufficient && (
+                                <div className="text-[10px] font-normal text-rose-500">
+                                  ไม่เพียงพอ
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {t.workOrderNo ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-purple-200 bg-purple-100 text-purple-700 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300"
+                                >
+                                  {t.workOrderNo}
+                                </Badge>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-xs text-slate-600 dark:text-slate-300">
+                              <div className="line-clamp-2 max-w-xs">
+                                {t.reason ?? '—'}
+                              </div>
+                              {t.purpose && (
+                                <div className="text-[10px] text-slate-400">
+                                  เพื่อ: {t.purpose}
+                                </div>
+                              )}
+                              {t.rejectReason && (
+                                <div className="text-[10px] text-rose-500">
+                                  ปฏิเสธ: {t.rejectReason}
+                                </div>
+                              )}
+                              {t.approver && (
+                                <div className="text-[10px] text-slate-400">
+                                  โดย: {t.approver}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>{pendingStatusBadge(t.approvalStatus)}</TableCell>
+                            <TableCell>
+                              {t.approvalStatus === 'PENDING' ? (
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 px-2 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                                    onClick={() => handleApprovePending(t)}
+                                    disabled={
+                                      approving && approvingTxn?.id === t.id
+                                    }
+                                    title="อนุมัติ"
+                                  >
+                                    {approving && approvingTxn?.id === t.id ? (
+                                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Check className="h-3.5 w-3.5" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 px-2 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                                    onClick={() => {
+                                      setRejectingTxn(t)
+                                      setRejectReason('')
+                                    }}
+                                    title="ปฏิเสธ"
+                                  >
+                                    <XCircle className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <span className="block text-right text-[11px] text-slate-400">
+                                  —
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
                     )}
                   </TableBody>
                 </Table>
@@ -1885,6 +2281,76 @@ export function StockPage() {
               className="bg-teal-600 text-white hover:bg-teal-700 focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
               {savingPo ? 'กำลังบันทึก...' : 'สร้างใบสั่งซื้อ'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ===== Reject pending dialog ===== */}
+      <Dialog
+        open={Boolean(rejectingTxn)}
+        onOpenChange={(o) => {
+          if (!o) {
+            setRejectingTxn(null)
+            setRejectReason('')
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-700 dark:text-rose-400">
+              <XCircle className="h-4 w-4" />
+              ปฏิเสธคำขอเบิกออก
+            </DialogTitle>
+            <DialogDescription>
+              {rejectingTxn && (
+                <span>
+                  คุณกำลังจะปฏิเสธคำขอเบิกออก{' '}
+                  <strong className="text-slate-700 dark:text-slate-200">
+                    {rejectingTxn.productCode ?? '—'} — {rejectingTxn.productName ?? rejectingTxn.stockItem?.productName ?? ''}
+                  </strong>
+                  <br />
+                  จำนวน {rejectingTxn.quantity} {rejectingTxn.unit ?? ''}
+                  {rejectingTxn.workOrderNo && (
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                      เลขใบงานที่เชื่อมโยง: {rejectingTxn.workOrderNo}
+                    </span>
+                  )}
+                  <br />
+                  ระบบจะไม่ลดจำนวนสต็อก — ผู้เบิกต้องสร้างคำขอใหม่ถ้าต้องการ
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+              เหตุผลที่ปฏิเสธ <span className="text-rose-500">*</span>
+            </Label>
+            <Textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              rows={3}
+              placeholder="เช่น ระบุเหตุผลในการปฏิเสธ, จำนวนเกินกว่าที่อนุมัติได้, ไม่ใช่งานที่รับผิดชอบ..."
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRejectingTxn(null)
+                setRejectReason('')
+              }}
+              disabled={rejecting}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleRejectPending}
+              disabled={rejecting || !rejectReason.trim()}
+              className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+            >
+              {rejecting ? 'กำลังบันทึก...' : 'ปฏิเสธคำขอ'}
             </Button>
           </DialogFooter>
         </DialogContent>
