@@ -21,6 +21,8 @@ const NAV_ITEMS: NavItemDef[] = [
   { page: 'paper-analytics', icon: '📊', label: 'การใช้กระดาษ' },
   { page: 'work-orders', icon: '🔧', label: 'แจ้งซ่อม' },
   { page: 'stock', icon: '📦', label: 'สต๊อก' },
+  { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล' },
+  { page: 'templates', icon: '📄', label: 'เทมเพลต' },
   { page: 'settings', icon: '⚙️', label: 'ตั้งค่าแอป' },
 ]
 

@@ -7,6 +7,8 @@ export type ActivePage =
   | 'paper-analytics'
   | 'work-orders'
   | 'stock'
+  | 'import'
+  | 'templates'
   | 'settings'
 
 export type SettingsTab = 'app' | 'master' | 'sites' | 'rates' | 'users' | 'audit'
