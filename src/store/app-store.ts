@@ -11,6 +11,7 @@ export type ActivePage =
   | 'itam-meter'
   | 'itam-meter-keyboard'
   | 'itam-sticker-editor'
+  | 'itam-document-editor'
   | 'itam-paper-analytics'
   | 'itam-settings'
   | 'itam-audit'

@@ -23,6 +23,13 @@ import { downloadCsv, dateStamp, parseCsv } from '@/lib/csv'
 import { ItamDeviceDetailSheet } from './itam-device-detail-sheet'
 import { printSingleSticker, printBulkStickers } from './sticker-print-helpers'
 import { SavedFilters, type FilterCombo } from './saved-filters'
+import {
+  DocumentTemplatePicker,
+  getDocumentTemplateMode,
+  getActiveDocumentTemplateIdForExport,
+  type DocumentTemplatePickerResult,
+} from './document-template-picker'
+import type { DocumentRenderRow } from '@/lib/document-template'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -303,6 +310,14 @@ export function ItamDevices() {
   // Excel/PDF export status
   const [excelExporting, setExcelExporting] = React.useState(false)
   const [pdfExporting, setPdfExporting] = React.useState(false)
+
+  // Document Template Picker state
+  const [docTplPickerOpen, setDocTplPickerOpen] = React.useState(false)
+  const [docTplPickerTarget, setDocTplPickerTarget] = React.useState<'export' | 'custom' | null>(null)
+  // Cached devices fetched before showing the picker — used to render after the user picks a template
+  const docTplPendingDevicesRef = React.useRef<Device[] | null>(null)
+  // Cached columns (for custom export)
+  const docTplPendingColumnsRef = React.useRef<typeof CSV_HEADERS | null>(null)
 
   // Auth-driven permissions
   const authUser = useAuthStore((s) => s.user)
@@ -695,7 +710,63 @@ export function ItamDevices() {
     }
   }
 
-  // ── PDF export: opens a print window with a professional table layout
+  // ── Map Device → DocumentRenderRow (for the document-template renderer)
+  function deviceToRenderRow(d: Device, idx: number): DocumentRenderRow {
+    const dev = d as Device & { vendor?: string | null; contractNo?: string | null; remark?: string | null }
+    return {
+      no: idx + 1,
+      brand: d.brand ?? '',
+      model: d.model ?? '',
+      serial: d.serial ?? '',
+      buildingFloor: `${d.building ?? ''}/${d.floor ?? ''}`,
+      building: d.building ?? '',
+      floor: d.floor ?? '',
+      department: d.department ?? '',
+      location: d.location ?? '',
+      site: d.site ?? '',
+      status: d.status,
+      vendor: dev.vendor ?? '',
+      remark: dev.remark ?? '',
+    }
+  }
+
+  // ── Render PDF using a Document Template (calls /api/itam/document-templates/render)
+  async function exportPdfWithTemplate(
+    devices: Device[],
+    templateId: string,
+    title: string,
+  ): Promise<void> {
+    const rows = devices.map((d, i) => deviceToRenderRow(d, i))
+    const res = await fetch('/api/itam/document-templates/render', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        templateId,
+        data: {
+          title,
+          rows,
+          siteName: devices[0]?.site ?? '',
+        },
+      }),
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      throw new Error(j.error || 'Render failed')
+    }
+    const j = (await res.json()) as { html: string; totalPages: number }
+    const win = window.open('', '_blank', 'width=1000,height=1200')
+    if (!win) {
+      toast.warning('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัปแล้วลองอีกครั้ง')
+      return
+    }
+    win.document.open()
+    win.document.write(j.html)
+    win.document.close()
+    toast.success(`กำลังเปิดหน้าพิมพ์รายงาน PDF (${j.totalPages} หน้า)...`)
+  }
+
+  // ── PDF export: opens a print window with a professional table layout.
+  // If document templates are enabled, shows the template picker first.
   async function exportPdf() {
     try {
       setPdfExporting(true)
@@ -704,31 +775,64 @@ export function ItamDevices() {
       if (!res.ok) throw new Error('Failed')
       const j: DevicesResponse = await res.json()
       const rows = j.devices
-      const win = window.open('', '_blank', 'width=1000,height=1200')
-      if (!win) {
-        toast.warning('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัปแล้วลองอีกครั้ง')
+
+      // ── Check if document templates are enabled ────────────────────
+      const tplMode = await getDocumentTemplateMode()
+      if (tplMode === 'single') {
+        // Only 1 template → use it directly (no picker)
+        const tplId = await getActiveDocumentTemplateIdForExport()
+        if (tplId) {
+          await exportPdfWithTemplate(rows, tplId, 'รายงานอุปกรณ์ ITAM')
+          return
+        }
+      } else if (tplMode === 'multi') {
+        // Multiple templates → show the picker — actual render happens in
+        // handleDocTplPickerSelect after the user picks a template.
+        docTplPendingDevicesRef.current = rows
+        docTplPendingColumnsRef.current = null
+        setDocTplPickerTarget('export')
+        setDocTplPickerOpen(true)
+        toast.info('เลือกเทมเพลตเอกสาร PDF')
         return
       }
-      const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
-      const generatedAt = new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
-      const headCells = ['รหัส', 'ประเภท', 'แบรนด์/รุ่น', 'Serial', 'สถานะ', 'สาขา', 'อาคาร', 'ชั้น', 'แผนก', 'ที่ตั้ง', 'มิเตอร์']
-        .map((h) => `<th>${esc(h)}</th>`).join('')
-      const bodyRows = rows.map((d) => {
-        return `<tr>
-          <td class="mono">${esc(d.assetNo)}</td>
-          <td>${esc(d.deviceType || '')}</td>
-          <td>${esc(d.brand || '')} ${esc(d.model || '')}</td>
-          <td class="mono">${esc(d.serial || '')}</td>
-          <td>${esc(d.status)}</td>
-          <td>${esc(d.site || '')}</td>
-          <td>${esc(d.building || '')}</td>
-          <td>${esc(d.floor || '')}</td>
-          <td>${esc(d.department || '')}</td>
-          <td>${esc(d.location || '')}</td>
-          <td class="ctr">${d.meterRequired ? '✓' : '—'}</td>
-        </tr>`
-      }).join('')
-      const html = `<!doctype html><html lang="th"><head><meta charset="utf-8">
+
+      // ── Standard layout (no template) ──────────────────────────────
+      await exportPdfStandard(rows)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ส่งออก PDF ไม่สำเร็จ')
+    } finally {
+      setPdfExporting(false)
+    }
+  }
+
+  // Standard PDF layout (legacy behavior — used when templates disabled
+  // OR when the user explicitly picks "Use standard layout" in the picker)
+  async function exportPdfStandard(rows: Device[]) {
+    const win = window.open('', '_blank', 'width=1000,height=1200')
+    if (!win) {
+      toast.warning('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัปแล้วลองอีกครั้ง')
+      return
+    }
+    const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+    const generatedAt = new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
+    const headCells = ['รหัส', 'ประเภท', 'แบรนด์/รุ่น', 'Serial', 'สถานะ', 'สาขา', 'อาคาร', 'ชั้น', 'แผนก', 'ที่ตั้ง', 'มิเตอร์']
+      .map((h) => `<th>${esc(h)}</th>`).join('')
+    const bodyRows = rows.map((d) => {
+      return `<tr>
+        <td class="mono">${esc(d.assetNo)}</td>
+        <td>${esc(d.deviceType || '')}</td>
+        <td>${esc(d.brand || '')} ${esc(d.model || '')}</td>
+        <td class="mono">${esc(d.serial || '')}</td>
+        <td>${esc(d.status)}</td>
+        <td>${esc(d.site || '')}</td>
+        <td>${esc(d.building || '')}</td>
+        <td>${esc(d.floor || '')}</td>
+        <td>${esc(d.department || '')}</td>
+        <td>${esc(d.location || '')}</td>
+        <td class="ctr">${d.meterRequired ? '✓' : '—'}</td>
+      </tr>`
+    }).join('')
+    const html = `<!doctype html><html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ITAM Devices Report</title>
 <style>
@@ -760,14 +864,46 @@ tr:nth-child(even) td { background: #fafbfc; }
 <div class="footer"><div><span class="brand">PNG TEAM</span> — IT Asset Management</div><div>หน้า 1 · ${esc(generatedAt)}</div></div>
 <script>window.addEventListener('load', function () { setTimeout(function () { try { window.print(); } catch (e) {} }, 250); });</script>
 </body></html>`
-      win.document.open()
-      win.document.write(html)
-      win.document.close()
-      toast.success('กำลังเปิดหน้าพิมพ์รายงาน PDF...')
+    win.document.open()
+    win.document.write(html)
+    win.document.close()
+    toast.success('กำลังเปิดหน้าพิมพ์รายงาน PDF...')
+  }
+
+  // ── Handle the result from the document template picker ──────────────
+  async function handleDocTplPickerSelect(result: DocumentTemplatePickerResult | null) {
+    const devices = docTplPendingDevicesRef.current
+    const target = docTplPickerTarget
+    // Clear cached state
+    docTplPendingDevicesRef.current = null
+    docTplPendingColumnsRef.current = null
+    setDocTplPickerTarget(null)
+
+    if (!result || !devices || !target) return
+
+    try {
+      if (target === 'export') {
+        setPdfExporting(true)
+        if (result.mode === 'template' && result.templateId) {
+          await exportPdfWithTemplate(devices, result.templateId, 'รายงานอุปกรณ์ ITAM')
+        } else {
+          await exportPdfStandard(devices)
+        }
+      } else if (target === 'custom') {
+        setCustomExporting(true)
+        if (result.mode === 'template' && result.templateId) {
+          await exportPdfWithTemplate(devices, result.templateId, 'รายงานอุปกรณ์ ITAM (Custom)')
+        } else {
+          // Use the standard custom-export PDF (legacy behavior)
+          await exportCustomPdfStandard(devices, docTplPendingColumnsRef.current ?? CSV_HEADERS)
+        }
+        setCustomExportOpen(false)
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'ส่งออก PDF ไม่สำเร็จ')
     } finally {
       setPdfExporting(false)
+      setCustomExporting(false)
     }
   }
 
@@ -827,21 +963,58 @@ tr:nth-child(even) td { background: #fafbfc; }
         URL.revokeObjectURL(url)
         toast.success(`ส่งออก Excel ${rows.length} เครื่อง (${cols.length} คอลัมน์)`)
       } else if (format === 'pdf') {
-        const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
-        const generatedAt = new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
-        const headCells = cols.map(h => `<th>${esc(h.label)}</th>`).join('')
-        const bodyRows = rows.map(d => {
-          const cells = cols.map(h => {
-            const v = (d as Record<string, unknown>)[h.key]
-            const text = h.key === 'meterRequired' ? (d.meterRequired ? '✓' : '—') : (v ?? '')
-            return `<td>${esc(text)}</td>`
-          }).join('')
-          return `<tr>${cells}</tr>`
-        }).join('')
-        const win = window.open('', '_blank', 'width=1000,height=1200')
-        if (!win) { toast.warning('เบราว์เซอร์บล็อกป๊อปอัป'); return }
-        win.document.open()
-        win.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ITAM Custom Report</title>
+        // ── Check if document templates are enabled ─────────────────
+        const tplMode = await getDocumentTemplateMode()
+        if (tplMode === 'single') {
+          // Only 1 template → use it directly (no picker)
+          const tplId = await getActiveDocumentTemplateIdForExport()
+          if (tplId) {
+            await exportPdfWithTemplate(rows, tplId, 'รายงานอุปกรณ์ ITAM (Custom)')
+            setCustomExportOpen(false)
+            return
+          }
+        } else if (tplMode === 'multi') {
+          // Multiple templates → show the picker — actual render
+          // happens in handleDocTplPickerSelect after the user picks.
+          docTplPendingDevicesRef.current = rows
+          docTplPendingColumnsRef.current = cols
+          setDocTplPickerTarget('custom')
+          setDocTplPickerOpen(true)
+          toast.info('เลือกเทมเพลตเอกสาร PDF')
+          return
+        }
+        // Standard custom-export PDF (legacy behavior)
+        await exportCustomPdfStandard(rows, cols)
+      }
+      setCustomExportOpen(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ส่งออกไม่สำเร็จ')
+    } finally {
+      setCustomExporting(false)
+    }
+  }
+
+  // Standard custom-export PDF (legacy behavior — used when templates
+  // disabled OR when the user picks "Use standard layout" in the picker)
+  async function exportCustomPdfStandard(
+    rows: Device[],
+    cols: typeof CSV_HEADERS,
+  ): Promise<void> {
+    const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+    const generatedAt = new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
+    const headCells = cols.map(h => `<th>${esc(h.label)}</th>`).join('')
+    const bodyRows = rows.map(d => {
+      const cells = cols.map(h => {
+        const v = (d as Record<string, unknown>)[h.key]
+        const text = h.key === 'meterRequired' ? (d.meterRequired ? '✓' : '—') : (v ?? '')
+        return `<td>${esc(text)}</td>`
+      }).join('')
+      return `<tr>${cells}</tr>`
+    }).join('')
+    const win = window.open('', '_blank', 'width=1000,height=1200')
+    if (!win) { toast.warning('เบราว์เซอร์บล็อกป๊อปอัป'); return }
+    win.document.open()
+    win.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ITAM Custom Report</title>
 <style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:'Sukhumvit Set','Thonburi','Tahoma',sans-serif;color:#1e293b;font-size:10px;line-height:1.3;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .header{border-bottom:3px solid #f97316;padding-bottom:8px;margin-bottom:10px;display:flex;justify-content:space-between}
 .header .org{font-size:16px;font-weight:700}.header .meta{text-align:right;font-size:10px;color:#64748b}
@@ -858,15 +1031,8 @@ tr:nth-child(even) td{background:#fafbfc}
 <div class="footer"><div><span style="color:#f97316;font-weight:700">PNG TEAM</span> — IT Asset Management</div><div>${esc(generatedAt)}</div></div>
 <script>setTimeout(function(){try{window.print()}catch(e){}},300)</script>
 </body></html>`)
-        win.document.close()
-        toast.success(`กำลังเปิดหน้า PDF (${cols.length} คอลัมน์)...`)
-      }
-      setCustomExportOpen(false)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ส่งออกไม่สำเร็จ')
-    } finally {
-      setCustomExporting(false)
-    }
+    win.document.close()
+    toast.success(`กำลังเปิดหน้า PDF (${cols.length} คอลัมน์)...`)
   }
 
   // ── Import CSV
@@ -1619,8 +1785,19 @@ tr:nth-child(even) td{background:#fafbfc}
               </Button>
             </div>
           </div>
+          <p className="text-[10px] text-slate-400">
+            💡 เมื่อกด PDF — ถ้าเปิดใช้งานเทมเพลตเอกสาร ระบบจะถามให้เลือกเทมเพลตก่อน (คอลัมน์ที่เลือกจะใช้เฉพาะเมื่อเลือก "layout มาตรฐาน")
+          </p>
         </DialogContent>
       </Dialog>
+
+      {/* Document Template Picker — shown when document templates are enabled */}
+      <DocumentTemplatePicker
+        open={docTplPickerOpen}
+        onOpenChange={setDocTplPickerOpen}
+        onSelect={handleDocTplPickerSelect}
+        title={docTplPickerTarget === 'custom' ? 'เลือกเทมเพลต (Custom Export)' : 'เลือกเทมเพลตเอกสาร PDF'}
+      />
 
       {/* Import CSV dialog */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
