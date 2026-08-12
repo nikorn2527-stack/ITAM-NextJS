@@ -32,9 +32,9 @@ const G = globalThis as unknown as {
 const ItamLogin = dynamic(() =>
   import('@/components/itam/itam-login').then((m) => m.ItamLogin),
 )
-const DashboardPage = dynamic(() =>
-  import('@/components/itam/dashboard-page').then((m) => m.DashboardPage),
-)
+// Unified dashboard — merges the legacy DashboardPage into ItamDashboard.
+// 'dashboard' and 'itam' both render this single component (itam kept as
+// backward-compat alias for any deep links / bookmarks).
 const ItamDashboard = dynamic(() =>
   import('@/components/itam/itam-dashboard').then((m) => m.ItamDashboard),
 )
@@ -172,7 +172,7 @@ export default function Home() {
                 exit={{ opacity: 0, x: -10 }}
                 transition={{ duration: 0.22, ease: 'easeOut' }}
               >
-                {activePage === 'dashboard' && <DashboardPage />}
+                {activePage === 'dashboard' && <ItamDashboard />}
                 {activePage === 'itam' && <ItamDashboard />}
                 {(activePage === 'itam-devices' || activePage === 'devices') && <ItamDevices />}
                 {(activePage === 'itam-meter' || activePage === 'meter' || activePage === 'itam-meter-keyboard') && <ItamMeterUnified />}
