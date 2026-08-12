@@ -65,6 +65,9 @@ const SnapshotViewer = dynamic(() =>
 const ItamRepairs = dynamic(() =>
   import('@/components/itam/itam-repairs').then((m) => m.ItamRepairs),
 )
+const ItamWorkOrders = dynamic(() =>
+  import('@/components/itam/itam-work-orders').then((m) => m.ItamWorkOrders),
+)
 const ItamStock = dynamic(() =>
   import('@/components/itam/itam-stock').then((m) => m.ItamStock),
 )
@@ -183,6 +186,7 @@ export default function Home() {
                 {activePage === 'itam-audit' && <ItamAudit />}
                 {activePage === 'itam-snapshot-viewer' && <SnapshotViewer />}
                 {activePage === 'itam-repairs' && <ItamRepairs />}
+                {activePage === 'itam-work-orders' && <ItamWorkOrders />}
                 {activePage === 'itam-stock' && <ItamStock />}
               </motion.div>
             </AnimatePresence>

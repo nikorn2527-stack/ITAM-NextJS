@@ -5345,3 +5345,272 @@ Stage Summary:
 - ข้อสงสัย 2 แก้แล้ว: รวม Dashboard 2 ตัว → 1 ตัว (เอาของดีทั้งสองมารวม)
 - Dashboard ตอนนี้: optimized API + Quick Actions + count-up KPI + Smart Insights + lifecycle + warranty + customization
 - Sidebar: สะอาด — ไม่มี duplicate
+
+---
+
+Task ID: 1c-UI
+Agent: full-stack-developer
+Task: Build the WorkOrder UI for the Next.js ITAM project — replace old `itam-repairs.tsx` with a full WorkOrder system (aligned with the Services App). Mobile-first design optimized for ช่าง on site.
+
+Work Log:
+
+Files Modified:
+
+1. `src/components/itam/itam-work-orders.tsx` (NEW, ~1010 lines)
+   - Full WorkOrder component `ItamWorkOrders` exported as named export
+   - Header: "🔧 แจ้งซ่อม / ใบงาน" + subtitle "แจ้งซ่อม รับงาน ซ่อม และปิดงาน — ครบวงจร"
+   - Stats bar (5 KPI cards):
+     • รอดำเนินการ (PENDING, orange)
+     • กำลังซ่อม (IN_PROGRESS + WAITING_PARTS, blue)
+     • เสร็จแล้ว (COMPLETED this month, green)
+     • ยกเลิก (CANCELLED this month, slate)
+     • คะแนนเฉลี่ย (avg rating placeholder, amber — shows "—" until backend exposes summary)
+   - Filter bar: status select, priority select, debounced search box, prominent orange "แจ้งซ่อมใหม่" button
+   - **"แจ้งซ่อมใหม่" dialog** (mobile-friendly):
+     • assetNo + สแกน QR button (calls useAppStore.setQrScannerOpen(true))
+     • subject dropdown (เครื่องพิมพ์, สแกนเนอร์, เครือข่าย, คอมพิวเตอร์, อื่นๆ + custom text)
+     • building (with datalist autocomplete), location, details textarea
+     • priority segmented buttons (ปกติ/ปานกลาง/สูง/ด่วน — color-coded with ring)
+     • reporterName (auto-filled from auth user), tel
+     • picBefore file upload (`accept="image/*" capture="environment"` — opens camera on mobile)
+     • Submit → POST /api/v1/work-orders
+   - **Work order list** (card-based, mobile-first — NOT table):
+     • Responsive grid (1/2/3 columns at sm/lg)
+     • Each card: woNumber, status badge, priority badge, subject, building/location, reporterName, assignedTo, createdAt (relative Thai via `relativeTime()` from `./types`)
+     • Touch-friendly (min-h-[44px] clickable cards, hover affordance)
+     • Click → opens detail dialog
+   - **Detail dialog** (max-h-92vh, scrollable):
+     • Header: woNumber + status badge + priority badge
+     • Info section (2-col grid): subject, priority, building, location, assetNo, employeeCode, reporter, tel, email, details
+     • Images section: 3-slot thumbnail grid (picBefore, picOnsite, picAfter) — click to enlarge in preview modal
+     • Inline pic-onsite uploader when status is IN_PROGRESS
+     • Assignment section: assignedTo, assignedBy, assignedAt
+     • Admin section (when detailsAdmin or workCompletedAt): detailsAdmin, workCompletedAt, closedAt
+     • Review section (when review present): star rating + comment + reviewer + timestamp
+     • Cancel info section (when CANCELLED): cancelReason + canceledAt
+     • Timeline: createdAt → assignedAt → workCompletedAt → closedAt (or canceledAt) — visual dot timeline
+     • **Action buttons** (context-dependent, role-aware):
+       - PENDING + admin → "มอบหมายงาน" + "รับงานเอง"
+       - PENDING + staff (non-admin) → "รับงาน" (auto-assigns to self, sets IN_PROGRESS)
+       - IN_PROGRESS → "บันทึกรูปหน้างาน" + "รอเบิกอะไหล่" + "ปิดงาน"
+       - WAITING_PARTS → "ปิดงาน"
+       - COMPLETED + no review → "ให้คะแนน"
+       - not CANCELLED/COMPLETED → "ยกเลิกงาน" (rose)
+     • **Chat section**: scrollable message list (max-h-72), auto-scroll to bottom, send button (Enter to send, Shift+Enter for newline), message bubbles color-coded (own = orange, others = slate), relative timestamp
+   - **Sub-dialogs**:
+     • AssignDialog: fetches /api/itam/auth/users (handles 403 gracefully → falls back to manual text input), select technician + assignmentNote
+     • CompleteDialog: detailsAdmin textarea (required) + picAfter file upload (camera on mobile)
+     • ReviewDialog: 1-5 clickable star rating (hover preview, keyboard accessible) + comment textarea
+     • CancelDialog: cancelReason textarea (required, rose theme)
+   - Image preview modal: full-size view with title
+   - Auth: uses `getAuthHeaders()` helper to attach Bearer token from `localStorage['itam.token']` to all /api/v1/* calls (per spec — global interceptor only covers /api/itam/*)
+   - 401 handling: clears auth store → redirects to login
+   - All mutations invalidate both list and detail query caches
+   - Pagination UI when totalPages > 1
+   - Empty state with friendly CTA
+   - Error state with retry button
+   - All Thai labels throughout; uses existing `relativeTime()` from `./types` for Thai relative timestamps
+
+2. `src/components/itam/sidebar.tsx`
+   - Changed `{ page: 'itam-repairs', icon: '🔧', label: 'แจ้งซ่อม', desc: 'ซ่อมบำรุงอุปกรณ์' }` → `{ page: 'itam-work-orders', icon: '🔧', label: 'แจ้งซ่อม', desc: 'แจ้งซ่อม รับงาน ปิดงาน' }`
+   - Kept icon 🔧 and label "แจ้งซ่อม" unchanged
+
+3. `src/store/app-store.ts`
+   - Added `'itam-work-orders'` to `ActivePage` union type
+   - `'itam-repairs'` kept in union for backward-compat
+
+4. `src/app/page.tsx`
+   - Added `const ItamWorkOrders = dynamic(() => import('@/components/itam/itam-work-orders').then((m) => m.ItamWorkOrders))`
+   - Added `{activePage === 'itam-work-orders' && <ItamWorkOrders />}` to render block
+   - `ItamRepairs` import + render kept (not deleted per spec — old file retained for reference)
+
+5. `src/components/itam/itam-repairs.tsx` — NOT deleted (kept for reference, just not rendered via the "itam-work-orders" nav item)
+
+Design Decisions:
+- **Mobile-first**: All dialogs use `max-h-[92vh] overflow-y-auto`, buttons min-h-[44px], grid switches from 1-col (mobile) to 2/3-col (desktop)
+- **Card-based list** instead of table — works on phone screens (ช่างใช้มือถือที่หน้างาน)
+- **Image upload with `capture="environment"`** — opens rear camera on mobile, file picker on desktop
+- **Base64 image storage**: per spec, images are converted to data URLs via `FileReader.readAsDataURL()` and stored directly in the `picBefore`/`picOnsite`/`picAfter` fields — no actual file upload (backend can decide whether to accept base64 or use a separate upload endpoint later)
+- **Inline pic-onsite uploader**: when IN_PROGRESS, a dashed blue box appears in the images section with its own upload button — no extra dialog needed (faster for ช่าง on site)
+- **Role-aware actions**: admin sees "มอบหมายงาน", staff sees "รับงาน", COMPLETED without review sees "ให้คะแนน" — avoids clutter
+- **Stats avg rating**: shows "—" until backend exposes a summary endpoint (would need a separate query for all reviews — kept simple per spec)
+
+Verification:
+- `bun run lint`: only the pre-existing `src/lib/auth.ts:88` error remains (1 error, 0 warnings — per Task 38 this is OK)
+- Dev server still running on `/` (dashboard page) — no compile errors triggered
+- File structure verified: ~1010 lines of TypeScript, all imports resolve, all shadcn/ui components used (Dialog, Card, Button, Input, Textarea, Label, Badge, Skeleton, Select)
+- Lucide icons used: Wrench, Plus, QrCode, Camera, CheckCircle, XCircle, Clock, Star, Send, MapPin, User, AlertCircle, RefreshCw, Search, Loader2, MessageCircle, CalendarDays, ChevronRight, ImageIcon
+- Named export `ItamWorkOrders` confirmed
+- 'use client' directive at top of file
+- All Thai labels, mobile-first responsive design, touch-friendly (min 44px targets)
+
+Stage Summary:
+- Full WorkOrder system replaces old itam-repairs UI — covers the entire lifecycle: แจ้งซ่อม → มอบหมาย/รับงาน → ซ่อม (with onsite photo) → ปิดงาน → ให้คะแนน + แชตในงานตลอดเวลา
+- Mobile-first design optimized for ช่าง using phones at the work site (camera capture, touch targets, card-based list)
+- Backend API contract (v1 endpoints) implemented in full — auth helper adds Bearer token manually since global interceptor only covers /api/itam/*
+- All role-based action buttons wired (admin/staff/viewer)
+- Old itam-repairs.tsx retained for reference (not deleted per spec), just no longer reachable via sidebar nav
+- Lint passes (only pre-existing auth.ts error)
+- 4 files touched: 1 new (~1010 lines) + 3 modified (sidebar, app-store, page.tsx)
+
+---
+
+Task ID: 1b-API
+Agent: full-stack-developer
+Task: Build the WorkOrder v1 API — 7 route files under `/api/v1/work-orders/` covering the full lifecycle (list, create, get, update, assign, complete, cancel, messages, review) using the project's v1 response helpers + auth middleware + audit logging. Replaces the old MaintenanceLog system with a WorkOrder system aligned with the Services App structure.
+
+Work Log:
+
+Pre-flight — context gathering:
+- Read worklog.md (Task IDs 33-40, recent v1 API work) to understand the project context.
+- Read v1 API foundation (src/lib/api/response.ts, src/lib/api/auth.ts) — standard envelope {data, meta} / {data, pagination, meta} / {error: {code, message}}, helpers: ok/created/list/badRequest/notFound/conflict/unprocessable/serverError/parseQuery/buildWhere/buildOrderBy.
+- Read existing v1 routes (/api/v1/devices, /api/v1/snapshots, /api/v1/meter-readings) to mirror patterns: `requireApiAuth(req, PERM)` → `if (!auth.ok) return auth.response`, then `const { user } = auth.ctx`.
+- Read src/lib/audit.ts to confirm `logAudit(action, entity, entityId, summary, details, userEmail)` signature.
+- Read Prisma schema for WorkOrder / WorkOrderMessage / WorkOrderReview — verified all field names + relations match the task spec.
+
+File 0 — Shared helpers: src/app/api/v1/work-orders/_shared.ts (non-route module, `_`-prefixed so App Router excludes it from routing):
+- VALID_STATUSES, VALID_PRIORITIES, TERMINAL_STATUSES = {COMPLETED, CANCELLED}
+- roleToAuthorRole(role) — maps ITAM RBAC role → admin | staff | reporter
+- generateWoNumber() — WO-YYYYMMDD-NNN (sequential per day, padded to 3 digits; queries existing rows with startsWith(prefix) and finds the max sequence)
+- findWorkOrder(idOrWoNumber) — findFirst({ where: { OR: [{ id }, { woNumber }] } }) so the [id] param accepts either the cuid or the WO number
+
+File 1 — src/app/api/v1/work-orders/route.ts (GET + POST):
+- GET (VIEW_DEVICES): merges shortcut params (?status=, ?priority=, ?assignedTo=) into the standard filter[...] mechanism, then calls buildWhere(query, FIELD_MAP, SEARCH_FIELDS). Search fields: subject, building, location, reporterName, woNumber. Parallel count + findMany with skip/take. Returns list(orders, { page, limit, total }).
+- POST (DEVICE_EDIT OR guest): tries requireApiAuth('DEVICE_EDIT'); on 401 (missing token) → fall through to guest mode; on 403 → return forbidden. Guest mode requires reporterName + tel. Validates subject + priority. If requestId provided → dedup check (returns existing record idempotently). Calls generateWoNumber(). Sets submissionSource = session|guest, trackable = !!tel. Authed users: reporterEmail defaults to their email. externalMeta accepted as object (JSON-stringified) or string. Audit WO_CREATE with {woNumber, subject, priority, submissionSource, trackable, assetNo}. Conflict handling on unique-woNumber race → 409.
+
+File 2 — src/app/api/v1/work-orders/[id]/route.ts (GET + PUT):
+- GET (VIEW_DEVICES OR guest via ?reporterTel=): resolves order by id or woNumber via findWorkOrder. Guest access requires reporterTel to match order.tel exactly (else forbidden). Returns ok({ order, messages, review }) — messages ordered createdAt asc, review is unique so findUnique.
+- PUT (DEVICE_EDIT): lock check — if status ∈ {COMPLETED, CANCELLED} AND not editUnlockActive AND not admin → conflict('WO_LOCKED'). Validates status + priority enums. Builds update payload from whitelist of scalar text fields, boolean fields, date fields, plus externalMeta JSON-stringification. Status-derived side-effects: COMPLETED → workCompletedAt + closedAt = now; CANCELLED → canceledAt = now (+ cancelReason if provided); IN_PROGRESS → acceptStatus = 'accepted'. detailsAdmin changes auto-stamp dateAdmin. editUnlockActive toggling stamps editUnlockBy/editUnlockAt/editUnlockUpdatedAt when opening, editUnlockClosedAt when closing. Audit WO_UPDATE with {oldStatus, newStatus, changedFields}.
+
+File 3 — src/app/api/v1/work-orders/[id]/assign/route.ts (POST):
+- Auth: ADMIN OR DEVICE_EDIT (technician self-assignment allowed). Tries ADMIN first; if 403, falls back to DEVICE_EDIT; if both fail, returns the original error.
+- Validates assignedTo is present. Rejects if order is in terminal status (COMPLETED/CANCELLED) with conflict('WO_LOCKED').
+- Sets assignedTo, assignedBy = currentUser, assignedAt = now. If old status was PENDING, auto-promotes to IN_PROGRESS and sets acceptStatus = 'accepted'.
+- Audit WO_ASSIGN with {oldStatus, newStatus, assignedTo, assignedBy}.
+
+File 4 — src/app/api/v1/work-orders/[id]/complete/route.ts (POST):
+- Auth: DEVICE_EDIT. Rejects if already CANCELLED (conflict('WO_CANCELLED')). Idempotent: if already COMPLETED, returns the record unchanged.
+- Body accepts detailsAdmin, picAfter, picOnsite (optional). If detailsAdmin provided, also stamps dateAdmin.
+- Sets status = COMPLETED, workCompletedAt = now, closedAt = now. Audit WO_COMPLETE with {oldStatus, newStatus}.
+
+File 5 — src/app/api/v1/work-orders/[id]/cancel/route.ts (POST):
+- Auth: DEVICE_EDIT. Rejects if already COMPLETED (conflict('WO_COMPLETED')). Idempotent: if already CANCELLED, returns the record unchanged.
+- Validates cancelReason is present. Sets status = CANCELLED, canceledAt = now, cancelReason. Audit WO_CANCEL with {oldStatus, newStatus, cancelReason}.
+
+File 6 — src/app/api/v1/work-orders/[id]/messages/route.ts (GET + POST):
+- GET (VIEW_DEVICES): paginated messages for the work order, ordered createdAt asc by default (sortable via ?sort=). Returns list(messages, { page, limit, total }).
+- POST (DEVICE_EDIT OR guest via ?reporterTel=): same guest-access pattern as GET single work order. Validates message is present. Author identity: authed → author = user.name || user.username || user.email, authorRole = roleToAuthorRole(user.role) (admin → 'admin', everyone else → 'staff'); guest → author = order.reporterName || 'ผู้แจ้ง', authorRole = 'reporter'. Audit WO_MESSAGE with {woNumber, messageId, author, authorRole, messagePreview (truncated 120 chars)}. Returns created(message).
+
+File 7 — src/app/api/v1/work-orders/[id]/review/route.ts (POST):
+- Auth: VIEW_DEVICES OR guest (anyone who knows the work-order ID can submit; the unique constraint on WorkOrderReview.workOrderId enforces one review per work order).
+- Validates rating is integer 1-5. comment optional (nullable string). Rejects if status ≠ COMPLETED (badRequest('WO_NOT_COMPLETED')). Pre-check for existing review → conflict('REVIEW_EXISTS') (plus Prisma @unique catches races).
+- Reviewer identity: authed → reviewedBy = user.name || user.username || user.email; guest → reviewedBy = order.reporterName || 'ผู้แจ้ง'. Audit WO_REVIEW with {woNumber, reviewId, rating, comment (preview)}. Returns created(review).
+
+Architecture compliance:
+- All v1 response helpers used (ok / created / list / badRequest / notFound / conflict / unprocessable / serverError / parseQuery / buildWhere / buildOrderBy).
+- All auth via requireApiAuth(req, PERM) from @/lib/api/auth.
+- Imports: { db } from '@/lib/db', { logAudit } from '@/lib/audit'.
+- All writes have audit logs (WO_CREATE, WO_UPDATE, WO_ASSIGN, WO_COMPLETE, WO_CANCEL, WO_MESSAGE, WO_REVIEW).
+- Prisma transactions: not strictly required for any of these flows — each handler does at most one main write + one audit-log write, and logAudit is non-fatal by design (catches its own errors). This matches the pattern of every other route in the codebase (e.g., /api/cycles/[id], /api/site-rates). If a future need arises for true atomicity (e.g., creating a WorkOrder + multiple related Messages in one call), the audit step could be wrapped together with the main write in a $transaction.
+- Guest access pattern: 401 (missing token) falls through to guest mode; 403 (logged-in but lacks permission) always returns forbidden (never silently down-grade perms).
+
+Lint verification (cd /home/z/my-project && bun run lint 2>&1 | tail -5):
+```
+/home/z/my-project/src/lib/auth.ts
+  88:14  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+✖ 1 problem (1 error, 0 warnings)
+```
+Only the pre-existing auth.ts error remains — none of the 8 new files produce any lint warnings or errors.
+
+Dev server health check:
+- Inspected /home/z/my-project/dev.log after the new files were written — server still serves /api/itam/dashboard 200 in 556ms, no compile-time crashes, no errors related to work-orders routes (they'll JIT-compile on first request).
+
+Files Created (8 total, ~1060 lines):
+| # | Path | Methods | Lines |
+|---|------|---------|-------|
+| 0 | src/app/api/v1/work-orders/_shared.ts | — (helpers) | ~85 |
+| 1 | src/app/api/v1/work-orders/route.ts | GET, POST | ~230 |
+| 2 | src/app/api/v1/work-orders/[id]/route.ts | GET, PUT | ~215 |
+| 3 | src/app/api/v1/work-orders/[id]/assign/route.ts | POST | ~95 |
+| 4 | src/app/api/v1/work-orders/[id]/complete/route.ts | POST | ~95 |
+| 5 | src/app/api/v1/work-orders/[id]/cancel/route.ts | POST | ~90 |
+| 6 | src/app/api/v1/work-orders/[id]/messages/route.ts | GET, POST | ~135 |
+| 7 | src/app/api/v1/work-orders/[id]/review/route.ts | POST | ~115 |
+
+Stage Summary:
+- ✅ All 7 required API route files created (covering 10 HTTP handlers total: 3 GET, 6 POST, 1 PUT).
+- ✅ Uses v1 response helpers + v1 auth middleware consistently — zero direct NextResponse.json calls in route bodies.
+- ✅ All write operations emit audit logs via logAudit(action, 'WorkOrder', id, summary, details, userEmail) with action codes WO_CREATE, WO_UPDATE, WO_ASSIGN, WO_COMPLETE, WO_CANCEL, WO_MESSAGE, WO_REVIEW.
+- ✅ Guest access pattern implemented consistently for: POST work-order (reporterName + tel), GET single work-order (?reporterTel=), POST message (?reporterTel=), POST review (open to anyone — unique constraint enforces one-per-order).
+- ✅ woNumber auto-generation: WO-YYYYMMDD-NNN, sequential per day, race-safe via Prisma @unique constraint + 409 fallback.
+- ✅ Work-order locking: terminal statuses (COMPLETED, CANCELLED) block PUT unless editUnlockActive or admin caller.
+- ✅ Status-derived side-effects in PUT: COMPLETED → workCompletedAt + closedAt; CANCELLED → canceledAt; IN_PROGRESS → acceptStatus = 'accepted'.
+- ✅ Idempotent endpoints: complete and cancel return the existing record if already in that state (avoid spurious errors on retries).
+- ✅ Lint clean: only the pre-existing auth.ts require('bcryptjs') error remains (per task spec, OK).
+- ✅ All Thai summary strings in audit logs (สร้างใบแจ้งซ่อม, มอบหมาย, ปิดงาน, ยกเลิก, เพิ่มข้อความ, รีวิว).
+
+Notes for downstream agents (UI integration):
+- Base URL: /api/v1/work-orders
+- Auth header: Authorization: Bearer <jwt> (from existing /api/itam/auth/login)
+- List query params: ?status=&priority=&assignedTo=&q=&page=1&limit=20 (also supports ?sort=-createdAt, ?filter[status]=in:PENDING,IN_PROGRESS)
+- Single-resource [id] accepts both cuid and woNumber (e.g., /api/v1/work-orders/WO-20250115-001)
+- Guest endpoints (no auth): POST /work-orders (with reporterName + tel), GET /work-orders/[id]?reporterTel=..., POST /work-orders/[id]/messages?reporterTel=..., POST /work-orders/[id]/review
+- Status flow: PENDING → IN_PROGRESS → WAITING_PARTS → COMPLETED (or CANCELLED from any non-terminal state). Assign auto-promotes PENDING → IN_PROGRESS.
+- Locking: once COMPLETED or CANCELLED, edits are blocked unless admin OR editUnlockActive = true (set via PUT body { editUnlockActive: true }).
+- Review: only allowed after COMPLETED; one review per work order (Prisma @unique).
+
+---
+Task ID: 41
+Agent: orchestrator — Phase 1: Rebuild แจ้งซ่อม (WorkOrder system)
+Task: Rebuild แจ้งซ่อมจาก MaintenanceLog (11 fields) → WorkOrder (40+ fields) ตาม Services App
+
+Work Log:
+
+Phase 1a: WorkOrder Prisma models
+- WorkOrder: 40+ fields (woNumber, subject, building, location, details, priority, reporterName/Email/tel/employeeCode, externalMeta, picBefore/Onsite/After, status, assignedTo/By/At, editUnlock, workCompletedAt, closedAt, canceledAt, assetNo, etc.)
+- WorkOrderMessage: แชทในใบงาน (workOrderId, message, author, authorRole)
+- WorkOrderReview: คะแนนความพึงพอใจ (rating 1-5, comment)
+- Statuses: PENDING → IN_PROGRESS → WAITING_PARTS → COMPLETED | CANCELLED
+- Priority: ปกติ | ปานกลาง | สูง | ด่วน
+- 7 indexes (status, priority, assignedTo, reporterEmail, assetNo, createdAt, [status,priority])
+- db:push ไป Supabase สำเร็จ
+
+Phase 1b: WorkOrder API (8 files, subagent Task 1b-API)
+- GET/POST /api/v1/work-orders — list + create (auto woNumber WO-YYYYMMDD-NNN, guest mode, requestId dedup)
+- GET/PUT /api/v1/work-orders/[id] — detail (with messages + review) + update (lock-check)
+- POST /api/v1/work-orders/[id]/assign — assign technician (auto PENDING → IN_PROGRESS)
+- POST /api/v1/work-orders/[id]/complete — mark completed (workCompletedAt + closedAt)
+- POST /api/v1/work-orders/[id]/cancel — cancel (canceledAt + cancelReason)
+- GET/POST /api/v1/work-orders/[id]/messages — chat (guest via ?reporterTel=)
+- POST /api/v1/work-orders/[id]/review — rating (1-5, only after COMPLETED, one-per-order)
+- v1 standard response shape, audit logs for all writes, guest access for reporter
+
+Phase 1c: WorkOrder UI (subagent Task 1c-UI)
+- src/components/itam/itam-work-orders.tsx (~1010 lines):
+  • 5 KPI cards: รอดำเนินการ, กำลังซ่อม, เสร็จแล้ว, ยกเลิก, คะแนนเฉลี่ย
+  • Filter: status, priority, search (debounced)
+  • "แจ้งซ่อมใหม่" dialog: assetNo + สแกน QR, subject dropdown, building, location, details, priority segmented buttons (4 colors), reporterName (auto-filled), tel, picBefore upload (capture="environment" for mobile camera)
+  • Card-based list (mobile-friendly, NOT table) — ช่างใช้มือถือ
+  • Detail dialog: info, image grid (before/onsite/after), assignment, timeline, action buttons (context-dependent), chat section
+  • Sub-dialogs: AssignDialog, CompleteDialog, ReviewDialog (1-5 stars), CancelDialog
+  • getAuthHeaders() for v1 API auth
+- sidebar.tsx: "แจ้งซ่อม" → page 'itam-work-orders'
+- app-store.ts: added 'itam-work-orders' to ActivePage
+- page.tsx: dynamic import + render
+
+Verification (agent-browser):
+✅ API: GET /api/v1/work-orders → 200, {data:[], pagination}
+✅ API: POST → 201, WO-20260812-001 created
+✅ UI: แจ้งซ่อม page loads with 5 KPI cards
+✅ "แจ้งซ่อมใหม่" dialog: สแกน QR, subject, building, location, details, priority (4 levels), reporterName (auto), tel
+✅ Card list: WO-20260812-001 with status badge + priority badge
+✅ Detail dialog: WO number, status, priority, info, images, assignment, timeline, action buttons (มอบหมายงาน + รับงานเอง)
+✅ Lint: 0 new errors
+
+Stage Summary:
+- แจ้งซ่อม rebuild สำเร็จ: MaintenanceLog (11 fields) → WorkOrder (40+ fields)
+- รองรับ: สแกน QR, รูปภาพ 3 ช่วง, priority 4 levels, มอบหมายงาน, แชท, คะแนน
+- Mobile-friendly: card-based list, touch targets, camera capture
+- API: 8 endpoints ใช้ v1 standard
+- พร้อมสำหรับ Phase 2: rebuild สต็อก (PO + Pending Approval + External Sync)

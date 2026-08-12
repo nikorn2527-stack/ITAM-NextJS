@@ -512,6 +512,128 @@ model Report {
 }
 
 // ============================================================
+// 17) Work_Orders — ใบงานแจ้งซ่อม (aligned with Services App)
+//     ระบบแจ้งซ่อมครบวงจร: ผู้ใช้แจ้ง → ช่างรับงาน → ซ่อม → ปิดงาน
+//     รองรับ: รูปภาพ 3 ช่วง, สแกน QR, priority, มอบหมาย, แชท, คะแนน
+//     Statuses: PENDING → IN_PROGRESS → WAITING_PARTS → COMPLETED | CANCELLED
+// ============================================================
+model WorkOrder {
+  id                  String   @id @default(cuid())
+  woNumber            String?  @unique @map("WO_Number") // เช่น WO-20260812-001
+  requestId           String?  @map("Request_ID") // client-generated dedup ID
+
+  // ── ข้อมูลการแจ้ง ──
+  subject             String   @map("Subject") // ประเภทปัญหา
+  building            String?  @map("Building") // อาคาร/โซน
+  location            String?  @map("Location") // สถานที่/ห้อง
+  details             String?  @map("Details") // รายละเอียดเพิ่มเติม
+  priority            String   @default("ปกติ") @map("Priority") // ปกติ|ปานกลาง|สูง|ด่วน
+
+  // ── ข้อมูลผู้แจ้ง ──
+  reporterName        String?  @map("Reporter_Name")
+  reporterEmail       String?  @map("Reporter_Email") // ถ้า login
+  tel                 String?  @map("Tel") // เบอร์ติดต่อ
+  employeeCode        String?  @map("Employee_Code") // รหัสพนักงาน
+  submissionSource    String   @default("guest") @map("Submission_Source") // session|guest
+  trackable           Boolean  @default(false) @map("Trackable") // มีเบอร์ติดต่อหรือไม่
+
+  // ── ลูกค้าภายนอก (ถ้ามี) ──
+  externalMeta        String?  @map("External_Meta") // JSON: { clientName, place, phone, serials }
+
+  // ── รูปภาพ 3 ช่วง ──
+  picBefore           String?  @map("Pic_Before") // URL (ก่อนซ่อม)
+  picOnsite           String?  @map("Pic_Onsite") // URL (หน้างาน)
+  picAfter            String?  @map("Pic_After") // URL (หลังซ่อม)
+
+  // ── สถานะ ──
+  status              String   @default("PENDING") @map("Status") // PENDING|IN_PROGRESS|WAITING_PARTS|COMPLETED|CANCELLED
+  acceptStatus        String?  @map("Accept_Status") // สถานะการรับงานโดยช่าง
+
+  // ── มอบหมายงาน ──
+  assignedTo          String?  @map("Assigned_To") // username ช่าง
+  assignedBy          String?  @map("Assigned_By") // username แอดมิน
+  assignedAt          DateTime? @map("Assigned_At")
+  assignmentNote      String?  @map("Assignment_Note")
+
+  // ── หมายเหตุแอดมิน ──
+  detailsAdmin        String?  @map("Details_Admin") // หมายเหตุจากแอดมิน/ช่าง
+  dateAdmin           String?  @map("Date_Admin") // ISO date ที่อัปเดตล่าสุด
+
+  // ── ปลดล็อกแก้ไข (admin unlock) ──
+  editUnlockActive    Boolean  @default(false) @map("Edit_Unlock_Active")
+  editUnlockBy        String?  @map("Edit_Unlock_By")
+  editUnlockAt        DateTime? @map("Edit_Unlock_At")
+  editUnlockNote      String?  @map("Edit_Unlock_Note")
+  editUnlockUpdatedAt DateTime? @map("Edit_Unlock_Updated_At")
+  editUnlockClosedAt  DateTime? @map("Edit_Unlock_Closed_At")
+
+  // ── วันที่สำคัญ ──
+  workCompletedAt     DateTime? @map("Work_Completed_At")
+  closedAt            DateTime? @map("Closed_At")
+  canceledAt          DateTime? @map("Canceled_At")
+  cancelReason        String?  @map("Cancel_Reason")
+
+  // ── เชื่อมกับ Device (ถ้าแจ้งซ่อมอุปกรณ์ในระบบ) ──
+  assetNo             String?  @map("Asset_No") // FK ไป Device (optional)
+
+  // ── Audit ──
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  messages            WorkOrderMessage[]
+  review              WorkOrderReview?
+
+  @@index([status])
+  @@index([priority])
+  @@index([assignedTo])
+  @@index([reporterEmail])
+  @@index([assetNo])
+  @@index([createdAt])
+  @@index([status, priority])
+  @@map("work_orders")
+}
+
+// ============================================================
+// 18) Work_Order_Messages — แชทในใบงาน
+//     ช่างคุยกับผู้แจ้ง/แอดมิน ในแต่ละใบงาน
+// ============================================================
+model WorkOrderMessage {
+  id            String   @id @default(cuid())
+  workOrderId   String   @map("Work_Order_ID")
+  message       String   @map("Message")
+  author        String?  @map("Author") // username หรือ ชื่อผู้แจ้ง
+  authorRole    String?  @map("Author_Role") // admin|staff|reporter|system
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relation
+  workOrder     WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+  @@index([createdAt])
+  @@map("work_order_messages")
+}
+
+// ============================================================
+// 19) Work_Order_Reviews — คะแนนความพึงพอใจ (1-5 ดาว)
+//     ผู้แจ้งให้คะแนนหลังปิดงาน
+// ============================================================
+model WorkOrderReview {
+  id            String   @id @default(cuid())
+  workOrderId   String   @unique @map("Work_Order_ID")
+  rating        Int      @map("Rating") // 1-5
+  comment       String?  @map("Comment")
+  reviewedBy    String?  @map("Reviewed_By") // username หรือ ชื่อผู้แจ้ง
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relation
+  workOrder     WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([rating])
+  @@map("work_order_reviews")
+}
+
+// ============================================================
 // 4) Master_Category — หมวดหมู่ของ Master Items
 //    Source: sheet "Master_Category" (4 columns)
 // ============================================================

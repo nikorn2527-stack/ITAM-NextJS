@@ -45,7 +45,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     items: [
       { page: 'itam-devices', icon: '💻', label: 'จัดการอุปกรณ์', desc: 'ครุภัณฑ์ทั้งหมด' },
       { page: 'itam-meter-keyboard', icon: '📈', label: 'จดมิเตอร์', desc: 'จดมิเตอร์ + ประวัติ' },
-      { page: 'itam-repairs', icon: '🔧', label: 'แจ้งซ่อม', desc: 'ซ่อมบำรุงอุปกรณ์' },
+      { page: 'itam-work-orders', icon: '🔧', label: 'แจ้งซ่อม', desc: 'แจ้งซ่อม รับงาน ปิดงาน' },
       { page: 'itam-stock', icon: '📦', label: 'สต๊อก', desc: 'คลังสิ้นเปลือง/อะไหล่' },
       { page: 'itam-paper-analytics', icon: '📄', label: 'วิเคราะห์กระดาษ', desc: 'สถิติการใช้งาน' },
     ],
