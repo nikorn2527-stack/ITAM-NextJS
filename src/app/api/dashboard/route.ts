@@ -47,15 +47,15 @@ function computeRange(key: RangeKey): RangeInfo {
   return { key, label: 'เดือนนี้', start, end }
 }
 
-/** Build a Prisma `where` clause on MeterReading.date for the given range. */
+/** Build a Prisma `where` clause on MeterReading.readingDate for the given range. */
 function readingDateWhere(range: RangeInfo): Record<string, unknown> {
   if (range.start === null && range.end === null) return {} // all
-  // Inclusive on both ends (date is stored as YYYY-MM-DD string)
+  // Inclusive on both ends (readingDate is stored as YYYY-MM-DD string)
   if (range.start && range.end) {
-    return { date: { gte: range.start, lte: range.end } }
+    return { readingDate: { gte: range.start, lte: range.end } }
   }
-  if (range.start) return { date: { gte: range.start } }
-  if (range.end) return { date: { lte: range.end } }
+  if (range.start) return { readingDate: { gte: range.start } }
+  if (range.end) return { readingDate: { lte: range.end } }
   return {}
 }
 
@@ -72,17 +72,19 @@ export async function GET(req: NextRequest) {
     })
 
     const total = devices.length
-    const active = devices.filter((d) => d.status === 'active').length
-    const spare = devices.filter((d) => d.status === 'spare').length
-    const repair = devices.filter((d) => d.status === 'repair').length
+    const active = devices.filter((d) => d.status?.toLowerCase() === 'active').length
+    const spare = devices.filter((d) => d.status?.toLowerCase() === 'spare').length
+    const repair = devices.filter((d) => d.status?.toLowerCase() === 'repair').length
 
     // By status
     const statusMap = new Map<string, number>()
     for (const d of devices) {
-      statusMap.set(d.status, (statusMap.get(d.status) ?? 0) + 1)
+      const s = (d.status ?? 'Unknown').toLowerCase()
+      statusMap.set(s, (statusMap.get(s) ?? 0) + 1)
     }
     const statusLabelMap: Record<string, string> = {
       active: 'ใช้งานอยู่',
+      inactive: 'ไม่ใช้งาน',
       spare: 'สำรอง',
       repair: 'ส่งซ่อม',
       disposed: 'ตัดของออก',
@@ -96,28 +98,30 @@ export async function GET(req: NextRequest) {
     // By type
     const typeMap = new Map<string, number>()
     for (const d of devices) {
-      typeMap.set(d.type, (typeMap.get(d.type) ?? 0) + 1)
+      const t = d.deviceType ?? 'Unknown'
+      typeMap.set(t, (typeMap.get(t) ?? 0) + 1)
     }
     const byType = Array.from(typeMap.entries()).map(([name, value]) => ({
       name,
       value,
     }))
 
-    // Top usage — filtered by selected range
+    // Top usage — filtered by selected range (sum of pagesBw + pagesColor)
     const rangeReadings = await db.meterReading.findMany({
       where: readingDateWhere(range),
-      select: { deviceId: true, delta: true },
+      select: { assetNo: true, pagesBw: true, pagesColor: true },
     })
     const usageMap = new Map<string, number>()
     for (const r of rangeReadings) {
-      usageMap.set(r.deviceId, (usageMap.get(r.deviceId) ?? 0) + r.delta)
+      const usage = (r.pagesBw ?? 0) + (r.pagesColor ?? 0)
+      usageMap.set(r.assetNo, (usageMap.get(r.assetNo) ?? 0) + usage)
     }
     const topUsage = devices
       .map((d) => ({
         id: d.id,
-        name: d.name,
-        assetCode: d.assetCode,
-        value: usageMap.get(d.id) ?? 0,
+        name: d.brand && d.model ? `${d.brand} ${d.model}`.trim() : (d.assetNo ?? '-'),
+        assetCode: d.assetNo,
+        value: usageMap.get(d.assetNo) ?? 0,
       }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5)
@@ -130,23 +134,25 @@ export async function GET(req: NextRequest) {
       take: 8,
       include: {
         device: {
-          select: { id: true, name: true, assetCode: true },
+          select: { id: true, brand: true, model: true, assetNo: true },
         },
       },
     })
     const recentActivity = recent.map((r) => ({
       id: r.id,
-      deviceName: r.device?.name ?? '-',
-      assetCode: r.device?.assetCode ?? '-',
-      reading: r.reading,
-      delta: r.delta,
-      date: r.date,
+      deviceName: r.device?.brand && r.device?.model
+        ? `${r.device.brand} ${r.device.model}`.trim()
+        : (r.device?.assetNo ?? '-'),
+      assetCode: r.device?.assetNo ?? '-',
+      reading: r.meterBw,
+      delta: (r.pagesBw ?? 0) + (r.pagesColor ?? 0),
+      date: r.readingDate,
       remark: r.remark,
     }))
 
     // Paper usage for the selected range (sum of positive deltas)
     const paperUsage = rangeReadings.reduce(
-      (sum, r) => sum + (r.delta > 0 ? r.delta : 0),
+      (sum, r) => sum + (((r.pagesBw ?? 0) + (r.pagesColor ?? 0)) > 0 ? ((r.pagesBw ?? 0) + (r.pagesColor ?? 0)) : 0),
       0,
     )
 

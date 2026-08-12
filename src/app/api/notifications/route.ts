@@ -76,40 +76,45 @@ export async function GET() {
     const devices = await db.device.findMany({
       select: {
         id: true,
-        assetCode: true,
-        name: true,
+        assetNo: true,
         brand: true,
         model: true,
         site: true,
-        purchaseDate: true,
-        warrantyMonths: true,
-        type: true,
+        installDate: true,
+        warrantyEnd: true,
+        deviceType: true,
         updatedAt: true,
       },
-      orderBy: { assetCode: 'asc' },
+      orderBy: { assetNo: 'asc' },
     })
 
+    // Helper to build display name from brand+model (falls back to assetNo)
+    const deviceName = (d: { brand: string | null; model: string | null; assetNo: string }) =>
+      d.brand && d.model ? `${d.brand} ${d.model}`.trim() : d.assetNo
+
     for (const d of devices) {
-      if (!d.purchaseDate || !/^\d{4}-\d{2}-\d{2}/.test(d.purchaseDate)) continue
-      const expiry = addMonthsISO(d.purchaseDate.slice(0, 10), d.warrantyMonths)
+      // Warranty end is stored as an ISO date string (YYYY-MM-DD)
+      if (!d.warrantyEnd || !/^\d{4}-\d{2}-\d{2}/.test(d.warrantyEnd)) continue
+      const expiry = new Date(d.warrantyEnd.slice(0, 10) + 'T00:00:00')
       if (Number.isNaN(expiry.getTime())) continue
       const today = new Date()
       const todayMid = new Date(today.getFullYear(), today.getMonth(), today.getDate())
       const diffMs = expiry.getTime() - todayMid.getTime()
       const days = Math.round(diffMs / (1000 * 60 * 60 * 24))
-      const expiryISO = expiry.toISOString().slice(0, 10)
+      const expiryISO = d.warrantyEnd.slice(0, 10)
+      const name = deviceName(d)
 
       if (days < 0) {
         notifications.push({
           id: `warranty-expired-${d.id}`,
           type: 'warranty',
           severity: 'expired',
-          title: `รับประกันหมดแล้ว — ${d.name}`,
-          subtitle: `${d.assetCode} · หมด ${expiryISO} (${Math.abs(days)} วันที่แล้ว)`,
+          title: `รับประกันหมดแล้ว — ${name}`,
+          subtitle: `${d.assetNo} · หมด ${expiryISO} (${Math.abs(days)} วันที่แล้ว)`,
           timestamp: d.updatedAt.toISOString(),
           deviceId: d.id,
-          assetCode: d.assetCode,
-          name: d.name,
+          assetCode: d.assetNo,
+          name,
           expiryDate: expiryISO,
           daysOverdue: Math.abs(days),
           action: { page: 'devices', deviceId: d.id, warrantyFilter: 'expired' },
@@ -119,12 +124,12 @@ export async function GET() {
           id: `warranty-expiring-${d.id}`,
           type: 'warranty',
           severity: 'expiring',
-          title: `รับประกันใกล้หมด — ${d.name}`,
-          subtitle: `${d.assetCode} · จะหมดใน ${days} วัน (${expiryISO})`,
+          title: `รับประกันใกล้หมด — ${name}`,
+          subtitle: `${d.assetNo} · จะหมดใน ${days} วัน (${expiryISO})`,
           timestamp: d.updatedAt.toISOString(),
           deviceId: d.id,
-          assetCode: d.assetCode,
-          name: d.name,
+          assetCode: d.assetNo,
+          name,
           expiryDate: expiryISO,
           daysOverdue: days,
           action: { page: 'devices', deviceId: d.id, warrantyFilter: 'expiring' },
@@ -140,30 +145,36 @@ export async function GET() {
 
     if (activeCycle) {
       const meterableDevices = devices.filter((d) =>
-        METERABLE_TYPES.has(d.type.toUpperCase()),
+        METERABLE_TYPES.has((d.deviceType ?? '').toUpperCase()),
       )
 
-      // Readings in this cycle, grouped by deviceId
+      // Readings in this cycle's date range, grouped by assetNo
       const readings = await db.meterReading.findMany({
-        where: { cycleId: activeCycle.id },
-        select: { deviceId: true, date: true, createdAt: true },
-        orderBy: { date: 'desc' },
+        where: {
+          readingDate: {
+            gte: activeCycle.startDate,
+            lte: activeCycle.endDate,
+          },
+        },
+        select: { assetNo: true, readingDate: true, createdAt: true },
+        orderBy: { readingDate: 'desc' },
       })
-      const readDeviceMap = new Map<string, { date: string; createdAt: Date }>()
+      const readAssetMap = new Map<string, { date: string | null; createdAt: Date }>()
       for (const r of readings) {
-        if (!readDeviceMap.has(r.deviceId)) {
-          readDeviceMap.set(r.deviceId, { date: r.date, createdAt: r.createdAt })
+        if (!readAssetMap.has(r.assetNo)) {
+          readAssetMap.set(r.assetNo, { date: r.readingDate, createdAt: r.createdAt })
         }
       }
 
       const todayISO = new Date().toISOString().slice(0, 10)
       for (const d of meterableDevices) {
-        if (readDeviceMap.has(d.id)) continue
-        const referenceDate = d.purchaseDate ?? d.updatedAt.toISOString().slice(0, 10)
+        if (readAssetMap.has(d.assetNo)) continue
+        const name = deviceName(d)
+        const referenceDate = d.installDate ?? d.updatedAt.toISOString().slice(0, 10)
         const daysSince = Math.max(
           0,
           Math.round(
-            (new Date(todayISO).getTime() - new Date(referenceDate).getTime()) /
+            (new Date(todayISO).getTime() - new Date(referenceDate.slice(0, 10)).getTime()) /
               (1000 * 60 * 60 * 24),
           ),
         )
@@ -171,12 +182,12 @@ export async function GET() {
           id: `meter-unread-${d.id}`,
           type: 'meter',
           severity: 'info',
-          title: `ยังไม่ได้จดมิเตอร์ — ${d.name}`,
-          subtitle: `${d.assetCode} · รอบ "${activeCycle.name}" · ${daysSince} วัน`,
+          title: `ยังไม่ได้จดมิเตอร์ — ${name}`,
+          subtitle: `${d.assetNo} · รอบ "${activeCycle.name}" · ${daysSince} วัน`,
           timestamp: d.updatedAt.toISOString(),
           deviceId: d.id,
-          assetCode: d.assetCode,
-          name: d.name,
+          assetCode: d.assetNo,
+          name,
           daysSinceLastReading: daysSince,
           action: { page: 'meter', meterAction: 'open-cycle' },
         })
@@ -195,7 +206,7 @@ export async function GET() {
           severity: 'warning',
           title: `รอบจดมิเตอร์ใกล้จบ — ${activeCycle.name}`,
           subtitle: `จะสิ้นสุดใน ${daysRemaining} วัน (${activeCycle.endDate})`,
-          timestamp: activeCycle.updatedAt.toISOString(),
+          timestamp: activeCycle.createdAt.toISOString(),
           cycleName: activeCycle.name,
           endDate: activeCycle.endDate,
           daysRemaining,
