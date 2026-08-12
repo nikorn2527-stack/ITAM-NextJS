@@ -325,14 +325,28 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Current user role (reads from auth store) */}
+        {/* Current user — แสดงรูปโปรไฟล์ + ชื่อ + role (reads from auth store) */}
         <div
-          className="px-4 py-2 text-[11px]"
-          style={{ color: 'rgba(255,255,255,0.75)' }}
+          className="flex items-center gap-2 px-4 py-2.5 text-[11px]"
+          style={{ color: 'rgba(255,255,255,0.75)', borderTop: '1px solid rgba(255,255,255,0.08)' }}
           title={authUser?.email ?? ''}
         >
-          <div className="truncate">{displayName}</div>
-          <div className="mt-0.5 text-[10px] text-slate-400">{roleLabel}</div>
+          {/* Avatar — รูปโปรไฟล์หรือ initials */}
+          {authUser?.avatarUrl && authUser.avatarUrl.startsWith('http') ? (
+            <img
+              src={authUser.avatarUrl}
+              alt={displayName}
+              className="h-8 w-8 flex-shrink-0 rounded-full object-cover ring-2 ring-white/20"
+            />
+          ) : (
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#f97316] to-[#ea580c] text-xs font-bold text-white ring-2 ring-white/20">
+              {displayName.slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium text-white/90">{displayName}</div>
+            <div className="mt-0.5 truncate text-[10px] text-slate-400">{roleLabel}</div>
+          </div>
         </div>
 
         {/* Powered footer */}
