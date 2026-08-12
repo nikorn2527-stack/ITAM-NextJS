@@ -1,0 +1,1495 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import { motion, AnimatePresence } from 'framer-motion'
+     7→import { Card, CardContent } from '@/components/ui/card'
+     8→import { Button } from '@/components/ui/button'
+     9→import { Input } from '@/components/ui/input'
+    10→import { Label } from '@/components/ui/label'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Skeleton } from '@/components/ui/skeleton'
+    13→import { Textarea } from '@/components/ui/textarea'
+    14→import { ScrollArea } from '@/components/ui/scroll-area'
+    15→import {
+    16→  Select,
+    17→  SelectContent,
+    18→  SelectItem,
+    19→  SelectTrigger,
+    20→  SelectValue,
+    21→} from '@/components/ui/select'
+    22→import {
+    23→  Dialog,
+    24→  DialogContent,
+    25→  DialogDescription,
+    26→  DialogFooter,
+    27→  DialogHeader,
+    28→  DialogTitle,
+    29→} from '@/components/ui/dialog'
+    30→import {
+    31→  AlertDialog,
+    32→  AlertDialogAction,
+    33→  AlertDialogCancel,
+    34→  AlertDialogContent,
+    35→  AlertDialogDescription,
+    36→  AlertDialogFooter,
+    37→  AlertDialogHeader,
+    38→  AlertDialogTitle,
+    39→} from '@/components/ui/alert-dialog'
+    40→import {
+    41→  Plus,
+    42→  RefreshCw,
+    43→  Search,
+    44→  Wrench,
+    45→  Clock,
+    46→  CheckCircle2,
+    47→  XCircle,
+    48→  MapPin,
+    49→  User,
+    50→  Phone,
+    51→  Send,
+    52→  MessageSquare,
+    53→  AlertTriangle,
+    54→  CalendarClock,
+    55→  Image as ImageIcon,
+    56→} from 'lucide-react'
+    57→import { formatThaiDate, relativeTime } from './types'
+    58→
+    59→// ============================================================
+    60→// Types
+    61→// ============================================================
+    62→export interface WorkOrderMessage {
+    63→  id: string
+    64→  workOrderId: string
+    65→  message: string
+    66→  author: string | null
+    67→  authorRole: string | null
+    68→  createdAt: string
+    69→}
+    70→
+    71→export interface WorkOrderReview {
+    72→  id: string
+    73→  workOrderId: string
+    74→  rating: number
+    75→  comment: string | null
+    76→  reviewedBy: string | null
+    77→  createdAt: string
+    78→}
+    79→
+    80→export interface WorkOrder {
+    81→  id: string
+    82→  woNumber: string | null
+    83→  subject: string
+    84→  building: string | null
+    85→  location: string | null
+    86→  details: string | null
+    87→  priority: string
+    88→  reporterName: string | null
+    89→  reporterEmail: string | null
+    90→  tel: string | null
+    91→  employeeCode: string | null
+    92→  submissionSource: string
+    93→  trackable: boolean
+    94→  picBefore: string | null
+    95→  picOnsite: string | null
+    96→  picAfter: string | null
+    97→  status: string
+    98→  assignedTo: string | null
+    99→  assignedBy: string | null
+   100→  assignedAt: string | null
+   101→  assignmentNote: string | null
+   102→  detailsAdmin: string | null
+   103→  dateAdmin: string | null
+   104→  workCompletedAt: string | null
+   105→  closedAt: string | null
+   106→  canceledAt: string | null
+   107→  cancelReason: string | null
+   108→  deviceId: string | null
+   109→  createdAt: string
+   110→  updatedAt: string
+   111→  device?: {
+   112→    id: string
+   113→    assetCode: string
+   114→    name: string
+   115→    brand: string
+   116→    model: string
+   117→    site: string
+   118→  } | null
+   119→  messages?: WorkOrderMessage[]
+   120→  review?: WorkOrderReview | null
+   121→}
+   122→
+   123→interface WorkOrderListResponse {
+   124→  data: WorkOrder[]
+   125→  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+   126→  stats: Record<string, number>
+   127→}
+   128→
+   129→interface WorkOrderDetail extends WorkOrder {
+   130→  messages: WorkOrderMessage[]
+   131→  review: WorkOrderReview | null
+   132→}
+   133→
+   134→// ============================================================
+   135→// Constants
+   136→// ============================================================
+   137→const STATUS_OPTIONS = [
+   138→  { value: 'all', label: 'สถานะทั้งหมด' },
+   139→  { value: 'PENDING', label: 'รอดำเนินการ' },
+   140→  { value: 'IN_PROGRESS', label: 'กำลังซ่อม' },
+   141→  { value: 'WAITING_PARTS', label: 'รออะไหล่' },
+   142→  { value: 'COMPLETED', label: 'เสร็จแล้ว' },
+   143→  { value: 'CANCELLED', label: 'ยกเลิก' },
+   144→] as const
+   145→
+   146→const PRIORITY_OPTIONS = [
+   147→  { value: 'all', label: 'ความเร่งด่วยทั้งหมด' },
+   148→  { value: 'ปกติ', label: 'ปกติ' },
+   149→  { value: 'ปานกลาง', label: 'ปานกลาง' },
+   150→  { value: 'สูง', label: 'สูง' },
+   151→  { value: 'ด่วน', label: 'ด่วน' },
+   152→] as const
+   153→
+   154→const PRIORITY_FORM_OPTIONS = [
+   155→  { value: 'ปกติ', label: 'ปกติ' },
+   156→  { value: 'ปานกลาง', label: 'ปานกลาง' },
+   157→  { value: 'สูง', label: 'สูง' },
+   158→  { value: 'ด่วน', label: 'ด่วน' },
+   159→] as const
+   160→
+   161→const PAGE_SIZE = 12
+   162→
+   163→function statusLabel(status: string): string {
+   164→  return STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status
+   165→}
+   166→
+   167→function statusBadgeClass(status: string): string {
+   168→  switch (status) {
+   169→    case 'PENDING':
+   170→      return 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+   171→    case 'IN_PROGRESS':
+   172→      return 'border-blue-200 bg-blue-100 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300'
+   173→    case 'WAITING_PARTS':
+   174→      return 'border-purple-200 bg-purple-100 text-purple-700 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300'
+   175→    case 'COMPLETED':
+   176→      return 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+   177→    case 'CANCELLED':
+   178→      return 'border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
+   179→    default:
+   180→      return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+   181→  }
+   182→}
+   183→
+   184→function priorityBadgeClass(priority: string): string {
+   185→  switch (priority) {
+   186→    case 'ด่วน':
+   187→      return 'border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
+   188→    case 'สูง':
+   189→      return 'border-orange-200 bg-orange-100 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300'
+   190→    case 'ปานกลาง':
+   191→      return 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+   192→    case 'ปกติ':
+   193→    default:
+   194→      return 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+   195→  }
+   196→}
+   197→
+   198→function formatDateTime(iso: string | null): string {
+   199→  if (!iso) return '—'
+   200→  try {
+   201→    return new Date(iso).toLocaleString('th-TH', {
+   202→      day: '2-digit',
+   203→      month: '2-digit',
+   204→      year: 'numeric',
+   205→      hour: '2-digit',
+   206→      minute: '2-digit',
+   207→    })
+   208→  } catch {
+   209→    return iso
+   210→  }
+   211→}
+   212→
+   213→// ============================================================
+   214→// Main component
+   215→// ============================================================
+   216→interface NewFormState {
+   217→  subject: string
+   218→  building: string
+   219→  location: string
+   220→  details: string
+   221→  priority: string
+   222→  reporterName: string
+   223→  tel: string
+   224→}
+   225→
+   226→const EMPTY_FORM: NewFormState = {
+   227→  subject: '',
+   228→  building: '',
+   229→  location: '',
+   230→  details: '',
+   231→  priority: 'ปกติ',
+   232→  reporterName: '',
+   233→  tel: '',
+   234→}
+   235→
+   236→export function WorkOrdersPage() {
+   237→  const qc = useQueryClient()
+   238→  const [search, setSearch] = React.useState('')
+   239→  const [statusFilter, setStatusFilter] = React.useState<string>('all')
+   240→  const [priorityFilter, setPriorityFilter] = React.useState<string>('all')
+   241→  const [page, setPage] = React.useState(1)
+   242→  const [createOpen, setCreateOpen] = React.useState(false)
+   243→  const [form, setForm] = React.useState<NewFormState>(EMPTY_FORM)
+   244→  const [saving, setSaving] = React.useState(false)
+   245→  const [detailId, setDetailId] = React.useState<string | null>(null)
+   246→
+   247→  // Debounce search to avoid spamming the API on every keystroke
+   248→  const [debouncedSearch, setDebouncedSearch] = React.useState('')
+   249→  React.useEffect(() => {
+   250→    const t = setTimeout(() => {
+   251→      setDebouncedSearch(search)
+   252→      setPage(1)
+   253→    }, 350)
+   254→    return () => clearTimeout(t)
+   255→  }, [search])
+   256→
+   257→  React.useEffect(() => {
+   258→    setPage(1)
+   259→  }, [statusFilter, priorityFilter])
+   260→
+   261→  const listQuery = useQuery<WorkOrderListResponse>({
+   262→    queryKey: [
+   263→      'work-orders',
+   264→      debouncedSearch,
+   265→      statusFilter,
+   266→      priorityFilter,
+   267→      page,
+   268→    ],
+   269→    queryFn: async () => {
+   270→      const params = new URLSearchParams()
+   271→      if (debouncedSearch) params.set('search', debouncedSearch)
+   272→      if (statusFilter !== 'all') params.set('status', statusFilter)
+   273→      if (priorityFilter !== 'all') params.set('priority', priorityFilter)
+   274→      params.set('page', String(page))
+   275→      params.set('pageSize', String(PAGE_SIZE))
+   276→      const res = await fetch(`/api/work-orders?${params.toString()}`)
+   277→      if (!res.ok) throw new Error('Failed to load work orders')
+   278→      return res.json()
+   279→    },
+   280→  })
+   281→
+   282→  const items = listQuery.data?.data ?? []
+   283→  const stats = listQuery.data?.stats ?? {
+   284→    PENDING: 0,
+   285→    IN_PROGRESS: 0,
+   286→    COMPLETED: 0,
+   287→    CANCELLED: 0,
+   288→  }
+   289→  const pagination = listQuery.data?.pagination
+   290→
+   291→  function openCreate() {
+   292→    setForm({ ...EMPTY_FORM })
+   293→    setCreateOpen(true)
+   294→  }
+   295→
+   296→  async function handleCreate() {
+   297→    if (!form.subject.trim()) {
+   298→      toast.error('กรุณาระบุประเภทปัญหา')
+   299→      return
+   300→    }
+   301→    try {
+   302→      setSaving(true)
+   303→      const res = await fetch('/api/work-orders', {
+   304→        method: 'POST',
+   305→        headers: { 'Content-Type': 'application/json' },
+   306→        body: JSON.stringify({
+   307→          subject: form.subject.trim(),
+   308→          building: form.building.trim() || null,
+   309→          location: form.location.trim() || null,
+   310→          details: form.details.trim() || null,
+   311→          priority: form.priority,
+   312→          reporterName: form.reporterName.trim() || null,
+   313→          tel: form.tel.trim() || null,
+   314→          actor: form.reporterName.trim() || 'system',
+   315→        }),
+   316→      })
+   317→      if (!res.ok) {
+   318→        const j = await res.json().catch(() => ({}))
+   319→        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
+   320→      }
+   321→      const json = await res.json()
+   322→      toast.success(`สร้างใบแจ้งซ่อม ${json.data?.woNumber ?? ''} แล้ว`)
+   323→      setCreateOpen(false)
+   324→      qc.invalidateQueries({ queryKey: ['work-orders'] })
+   325→      // Open the new detail right away
+   326→      if (json.data?.id) setDetailId(json.data.id)
+   327→    } catch (e) {
+   328→      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+   329→    } finally {
+   330→      setSaving(false)
+   331→    }
+   332→  }
+   333→
+   334→  return (
+   335→    <div className="space-y-4 p-4 md:p-6">
+   336→      {/* Header */}
+   337→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   338→        <div>
+   339→          <h1 className="flex items-center gap-2 text-xl font-bold md:text-2xl">
+   340→            <Wrench className="h-6 w-6 text-orange-500" />
+   341→            แจ้งซ่อม
+   342→          </h1>
+   343→          <p className="text-sm text-muted-foreground">
+   344→            ระบบแจ้งซ่อมครบวงจร — แจ้ง → รับงาน → ซ่อม → ปิดงาน
+   345→          </p>
+   346→        </div>
+   347→        <div className="flex items-center gap-2">
+   348→          <Button
+   349→            variant="outline"
+   350→            size="sm"
+   351→            onClick={() => listQuery.refetch()}
+   352→            disabled={listQuery.isFetching}
+   353→            aria-label="รีเฟรช"
+   354→          >
+   355→            <RefreshCw
+   356→              className={listQuery.isFetching ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+   357→            />
+   358→            <span className="hidden sm:inline">รีเฟรช</span>
+   359→          </Button>
+   360→          <Button size="sm" onClick={openCreate} className="bg-orange-500 hover:bg-orange-600">
+   361→            <Plus className="h-4 w-4" />
+   362→            แจ้งซ่อมใหม่
+   363→          </Button>
+   364→        </div>
+   365→      </div>
+   366→
+   367→      {/* KPI stats bar */}
+   368→      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+   369→        <KpiCard
+   370→          label="รอดำเนินการ"
+   371→          value={stats.PENDING ?? 0}
+   372→          icon={<Clock className="h-5 w-5" />}
+   373→          color="amber"
+   374→        />
+   375→        <KpiCard
+   376→          label="กำลังซ่อม"
+   377→          value={(stats.IN_PROGRESS ?? 0) + (stats.WAITING_PARTS ?? 0)}
+   378→          icon={<Wrench className="h-5 w-5" />}
+   379→          color="blue"
+   380→        />
+   381→        <KpiCard
+   382→          label="เสร็จแล้ว"
+   383→          value={stats.COMPLETED ?? 0}
+   384→          icon={<CheckCircle2 className="h-5 w-5" />}
+   385→          color="emerald"
+   386→        />
+   387→        <KpiCard
+   388→          label="ยกเลิก"
+   389→          value={stats.CANCELLED ?? 0}
+   390→          icon={<XCircle className="h-5 w-5" />}
+   391→          color="rose"
+   392→        />
+   393→      </div>
+   394→
+   395→      {/* Filter bar */}
+   396→      <Card className="gap-3 py-3">
+   397→        <CardContent className="flex flex-col gap-3 px-3 md:flex-row md:items-center">
+   398→          <div className="relative flex-1">
+   399→            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   400→            <Input
+   401→              value={search}
+   402→              onChange={(e) => setSearch(e.target.value)}
+   403→              placeholder="ค้นหาเลขใบงาน / ปัญหา / สถานที่ / ผู้แจ้ง / เบอร์โทร"
+   404→              className="pl-9"
+   405→              aria-label="ค้นหาใบแจ้งซ่อม"
+   406→            />
+   407→          </div>
+   408→          <div className="grid grid-cols-2 gap-2 md:flex md:w-auto">
+   409→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+   410→              <SelectTrigger className="w-full md:w-[160px]" aria-label="กรองสถานะ">
+   411→                <SelectValue placeholder="สถานะ" />
+   412→              </SelectTrigger>
+   413→              <SelectContent>
+   414→                {STATUS_OPTIONS.map((o) => (
+   415→                  <SelectItem key={o.value} value={o.value}>
+   416→                    {o.label}
+   417→                  </SelectItem>
+   418→                ))}
+   419→              </SelectContent>
+   420→            </Select>
+   421→            <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+   422→              <SelectTrigger className="w-full md:w-[160px]" aria-label="กรองความเร่งด่วน">
+   423→                <SelectValue placeholder="ความเร่งด่วน" />
+   424→              </SelectTrigger>
+   425→              <SelectContent>
+   426→                {PRIORITY_OPTIONS.map((o) => (
+   427→                  <SelectItem key={o.value} value={o.value}>
+   428→                    {o.label}
+   429→                  </SelectItem>
+   430→                ))}
+   431→              </SelectContent>
+   432→            </Select>
+   433→          </div>
+   434→        </CardContent>
+   435→      </Card>
+   436→
+   437→      {/* List */}
+   438→      {listQuery.isLoading ? (
+   439→        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+   440→          {Array.from({ length: 6 }).map((_, i) => (
+   441→            <Skeleton key={i} className="h-44 w-full rounded-xl" />
+   442→          ))}
+   443→        </div>
+   444→      ) : items.length === 0 ? (
+   445→        <Card className="py-12">
+   446→          <CardContent className="flex flex-col items-center justify-center gap-3 text-center">
+   447→            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950">
+   448→              <Wrench className="h-7 w-7 text-orange-500" />
+   449→            </div>
+   450→            <div className="text-base font-medium">ยังไม่มีใบแจ้งซ่อม</div>
+   451→            <p className="max-w-sm text-sm text-muted-foreground">
+   452→              กดปุ่ม &quot;แจ้งซ่อมใหม่&quot; เพื่อสร้างใบงานแรก หรือปรับตัวกรองเพื่อค้นหาใบงานเก่า
+   453→            </p>
+   454→            <Button size="sm" onClick={openCreate} className="mt-1 bg-orange-500 hover:bg-orange-600">
+   455→              <Plus className="h-4 w-4" />
+   456→              แจ้งซ่อมใหม่
+   457→            </Button>
+   458→          </CardContent>
+   459→        </Card>
+   460→      ) : (
+   461→        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+   462→          <AnimatePresence mode="popLayout">
+   463→            {items.map((wo) => (
+   464→              <motion.div
+   465→                key={wo.id}
+   466→                layout
+   467→                initial={{ opacity: 0, y: 8 }}
+   468→                animate={{ opacity: 1, y: 0 }}
+   469→                exit={{ opacity: 0, scale: 0.97 }}
+   470→                transition={{ duration: 0.18 }}
+   471→              >
+   472→                <WorkOrderCard wo={wo} onOpen={() => setDetailId(wo.id)} />
+   473→              </motion.div>
+   474→            ))}
+   475→          </AnimatePresence>
+   476→        </div>
+   477→      )}
+   478→
+   479→      {/* Pagination */}
+   480→      {pagination && pagination.totalPages > 1 && (
+   481→        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
+   482→          <p className="text-sm text-muted-foreground">
+   483→            ทั้งหมด {pagination.total} รายการ • หน้า {pagination.page} / {pagination.totalPages}
+   484→          </p>
+   485→          <div className="flex items-center gap-1">
+   486→            <Button
+   487→              variant="outline"
+   488→              size="sm"
+   489→              disabled={page <= 1}
+   490→              onClick={() => setPage((p) => Math.max(1, p - 1))}
+   491→            >
+   492→              ก่อนหน้า
+   493→            </Button>
+   494→            <Button
+   495→              variant="outline"
+   496→              size="sm"
+   497→              disabled={page >= pagination.totalPages}
+   498→              onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
+   499→            >
+   500→              ถัดไป
+   501→            </Button>
+   502→          </div>
+   503→        </div>
+   504→      )}
+   505→
+   506→      {/* Create dialog */}
+   507→      <CreateWorkOrderDialog
+   508→        open={createOpen}
+   509→        onOpenChange={setCreateOpen}
+   510→        form={form}
+   511→        setForm={setForm}
+   512→        saving={saving}
+   513→        onSubmit={handleCreate}
+   514→      />
+   515→
+   516→      {/* Detail dialog */}
+   517→      <WorkOrderDetailDialog
+   518→        id={detailId}
+   519→        onOpenChange={(open) => {
+   520→          if (!open) setDetailId(null)
+   521→        }}
+   522→      />
+   523→    </div>
+   524→  )
+   525→}
+   526→
+   527→// ============================================================
+   528→// KPI Card
+   529→// ============================================================
+   530→const KPI_COLORS: Record<string, string> = {
+   531→  amber: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+   532→  blue: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+   533→  emerald:
+   534→    'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+   535→  rose: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+   536→}
+   537→
+   538→function KpiCard({
+   539→  label,
+   540→  value,
+   541→  icon,
+   542→  color,
+   543→}: {
+   544→  label: string
+   545→  value: number
+   546→  icon: React.ReactNode
+   547→  color: keyof typeof KPI_COLORS | string
+   548→}) {
+   549→  return (
+   550→    <Card className="gap-0 py-4">
+   551→      <CardContent className="flex items-center gap-3 px-4">
+   552→        <div
+   553→          className={`flex h-11 w-11 items-center justify-center rounded-lg ${
+   554→            KPI_COLORS[color] ?? KPI_COLORS.amber
+   555→          }`}
+   556→        >
+   557→          {icon}
+   558→        </div>
+   559→        <div className="min-w-0">
+   560→          <div className="text-2xl font-bold leading-tight">{value}</div>
+   561→          <div className="truncate text-xs text-muted-foreground">{label}</div>
+   562→        </div>
+   563→      </CardContent>
+   564→    </Card>
+   565→  )
+   566→}
+   567→
+   568→// ============================================================
+   569→// Work Order Card (mobile-friendly list item)
+   570→// ============================================================
+   571→function WorkOrderCard({
+   572→  wo,
+   573→  onOpen,
+   574→}: {
+   575→  wo: WorkOrder
+   576→  onOpen: () => void
+   577→}) {
+   578→  return (
+   579→    <Card
+   580→      className="group cursor-pointer py-0 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+   581→      onClick={onOpen}
+   582→      role="button"
+   583→      tabIndex={0}
+   584→      onKeyDown={(e) => {
+   585→        if (e.key === 'Enter' || e.key === ' ') {
+   586→          e.preventDefault()
+   587→          onOpen()
+   588→        }
+   589→      }}
+   590→    >
+   591→      <CardContent className="space-y-3 p-4">
+   592→        {/* Top row: WO number + status */}
+   593→        <div className="flex items-center justify-between gap-2">
+   594→          <span className="truncate font-mono text-xs font-semibold text-muted-foreground">
+   595→            {wo.woNumber ?? '—'}
+   596→          </span>
+   597→          <Badge className={statusBadgeClass(wo.status)} variant="outline">
+   598→            {statusLabel(wo.status)}
+   599→          </Badge>
+   600→        </div>
+   601→
+   602→        {/* Subject */}
+   603→        <div className="flex items-start gap-2">
+   604→          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-orange-100 dark:bg-orange-950">
+   605→            <Wrench className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   606→          </div>
+   607→          <div className="min-w-0 flex-1">
+   608→            <div className="line-clamp-2 text-sm font-semibold leading-tight">
+   609→              {wo.subject}
+   610→            </div>
+   611→            <div className="mt-0.5 text-[11px] text-muted-foreground">
+   612→              {relativeTime(wo.createdAt)}
+   613→            </div>
+   614→          </div>
+   615→        </div>
+   616→
+   617→        {/* Meta */}
+   618→        <div className="space-y-1 text-xs text-muted-foreground">
+   619→          {wo.building && (
+   620→            <div className="flex items-center gap-1.5">
+   621→              <MapPin className="h-3.5 w-3.5 shrink-0" />
+   622→              <span className="truncate">
+   623→                {wo.building}
+   624→                {wo.location ? ` • ${wo.location}` : ''}
+   625→              </span>
+   626→            </div>
+   627→          )}
+   628→          {wo.reporterName && (
+   629→            <div className="flex items-center gap-1.5">
+   630→              <User className="h-3.5 w-3.5 shrink-0" />
+   631→              <span className="truncate">{wo.reporterName}</span>
+   632→              {wo.tel && (
+   633→                <>
+   634→                  <span aria-hidden>•</span>
+   635→                  <Phone className="h-3.5 w-3.5 shrink-0" />
+   636→                  <span className="truncate">{wo.tel}</span>
+   637→                </>
+   638→              )}
+   639→            </div>
+   640→          )}
+   641→        </div>
+   642→
+   643→        {/* Footer: priority + assignedTo */}
+   644→        <div className="flex items-center justify-between gap-2 border-t pt-2.5">
+   645→          <Badge
+   646→            className={priorityBadgeClass(wo.priority)}
+   647→            variant="outline"
+   648→          >
+   649→            {wo.priority}
+   650→          </Badge>
+   651→          <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+   652→            {wo.assignedTo ? (
+   653→              <>
+   654→                <User className="h-3 w-3" />
+   655→                <span className="truncate">{wo.assignedTo}</span>
+   656→              </>
+   657→            ) : wo.status === 'PENDING' ? (
+   658→              <span className="text-amber-600 dark:text-amber-400">ยังไม่มอบหมาย</span>
+   659→            ) : (
+   660→              <span>—</span>
+   661→            )}
+   662→          </div>
+   663→        </div>
+   664→      </CardContent>
+   665→    </Card>
+   666→  )
+   667→}
+   668→
+   669→// ============================================================
+   670→// Create Dialog
+   671→// ============================================================
+   672→function CreateWorkOrderDialog({
+   673→  open,
+   674→  onOpenChange,
+   675→  form,
+   676→  setForm,
+   677→  saving,
+   678→  onSubmit,
+   679→}: {
+   680→  open: boolean
+   681→  onOpenChange: (open: boolean) => void
+   682→  form: NewFormState
+   683→  setForm: React.Dispatch<React.SetStateAction<NewFormState>>
+   684→  saving: boolean
+   685→  onSubmit: () => void
+   686→}) {
+   687→  return (
+   688→    <Dialog open={open} onOpenChange={onOpenChange}>
+   689→      <DialogContent className="sm:max-w-[560px]">
+   690→        <DialogHeader>
+   691→          <DialogTitle className="flex items-center gap-2">
+   692→            <Plus className="h-5 w-5 text-orange-500" />
+   693→            แจ้งซ่อมใหม่
+   694→          </DialogTitle>
+   695→          <DialogDescription>
+   696→            กรอกรายละเอียดปัญหา ระบบจะสร้างเลขใบงานอัตโนมัติ (WO-YYYYMMDD-NNN)
+   697→          </DialogDescription>
+   698→        </DialogHeader>
+   699→
+   700→        <div className="grid gap-3">
+   701→          <div className="grid gap-1.5">
+   702→            <Label htmlFor="wo-subject">
+   703→              ประเภทปัญหา <span className="text-rose-500">*</span>
+   704→            </Label>
+   705→            <Input
+   706→              id="wo-subject"
+   707→              value={form.subject}
+   708→              onChange={(e) => setForm((s) => ({ ...s, subject: e.target.value }))}
+   709→              placeholder="เช่น เครื่องพิมพ์ไม่ทำงาน, อินเทอร์เน็ตไม่ติด, คอมพิวเตอร์ค้าง"
+   710→              autoFocus
+   711→            />
+   712→          </div>
+   713→
+   714→          <div className="grid grid-cols-2 gap-3">
+   715→            <div className="grid gap-1.5">
+   716→              <Label htmlFor="wo-building">อาคาร / ฝ่าย</Label>
+   717→              <Input
+   718→                id="wo-building"
+   719→                value={form.building}
+   720→                onChange={(e) =>
+   721→                  setForm((s) => ({ ...s, building: e.target.value }))
+   722→                }
+   723→                placeholder="เช่น อาคาร A, ฝ่ายบัญชี"
+   724→              />
+   725→            </div>
+   726→            <div className="grid gap-1.5">
+   727→              <Label htmlFor="wo-location">ตำแหน่ง / ห้อง</Label>
+   728→              <Input
+   729→                id="wo-location"
+   730→                value={form.location}
+   731→                onChange={(e) =>
+   732→                  setForm((s) => ({ ...s, location: e.target.value }))
+   733→                }
+   734→                placeholder="เช่น ชั้น 3 ห้อง 305"
+   735→              />
+   736→            </div>
+   737→          </div>
+   738→
+   739→          <div className="grid gap-1.5">
+   740→            <Label htmlFor="wo-details">รายละเอียดปัญหา</Label>
+   741→            <Textarea
+   742→              id="wo-details"
+   743→              value={form.details}
+   744→              onChange={(e) =>
+   745→                setForm((s) => ({ ...s, details: e.target.value }))
+   746→              }
+   747→              placeholder="อธิบายอาการ ความถี่ หรือข้อมูลที่ช่างควรทราบ"
+   748→              className="min-h-[80px]"
+   749→            />
+   750→          </div>
+   751→
+   752→          <div className="grid grid-cols-2 gap-3">
+   753→            <div className="grid gap-1.5">
+   754→              <Label htmlFor="wo-priority">ความเร่งด่วน</Label>
+   755→              <Select
+   756→                value={form.priority}
+   757→                onValueChange={(v) => setForm((s) => ({ ...s, priority: v }))}
+   758→              >
+   759→                <SelectTrigger id="wo-priority">
+   760→                  <SelectValue />
+   761→                </SelectTrigger>
+   762→                <SelectContent>
+   763→                  {PRIORITY_FORM_OPTIONS.map((o) => (
+   764→                    <SelectItem key={o.value} value={o.value}>
+   765→                      {o.label}
+   766→                    </SelectItem>
+   767→                  ))}
+   768→                </SelectContent>
+   769→              </Select>
+   770→            </div>
+   771→            <div className="grid gap-1.5">
+   772→              <Label htmlFor="wo-tel">เบอร์โทร</Label>
+   773→              <Input
+   774→                id="wo-tel"
+   775→                value={form.tel}
+   776→                onChange={(e) => setForm((s) => ({ ...s, tel: e.target.value }))}
+   777→                placeholder="08xxxxxxxx"
+   778→                inputMode="tel"
+   779→              />
+   780→            </div>
+   781→          </div>
+   782→
+   783→          <div className="grid gap-1.5">
+   784→            <Label htmlFor="wo-reporter">ผู้แจ้ง</Label>
+   785→            <Input
+   786→              id="wo-reporter"
+   787→              value={form.reporterName}
+   788→              onChange={(e) =>
+   789→                setForm((s) => ({ ...s, reporterName: e.target.value }))
+   790→              }
+   791→              placeholder="ชื่อผู้แจ้งซ่อม"
+   792→            />
+   793→          </div>
+   794→        </div>
+   795→
+   796→        <DialogFooter>
+   797→          <Button
+   798→            variant="outline"
+   799→            onClick={() => onOpenChange(false)}
+   800→            disabled={saving}
+   801→          >
+   802→            ยกเลิก
+   803→          </Button>
+   804→          <Button
+   805→            onClick={onSubmit}
+   806→            disabled={saving || !form.subject.trim()}
+   807→            className="bg-orange-500 hover:bg-orange-600"
+   808→          >
+   809→            {saving ? (
+   810→              <RefreshCw className="h-4 w-4 animate-spin" />
+   811→            ) : (
+   812→              <Plus className="h-4 w-4" />
+   813→            )}
+   814→            บันทึกใบแจ้งซ่อม
+   815→          </Button>
+   816→        </DialogFooter>
+   817→      </DialogContent>
+   818→    </Dialog>
+   819→  )
+   820→}
+   821→
+   822→// ============================================================
+   823→// Detail Dialog
+   824→// ============================================================
+   825→function WorkOrderDetailDialog({
+   826→  id,
+   827→  onOpenChange,
+   828→}: {
+   829→  id: string | null
+   830→  onOpenChange: (open: boolean) => void
+   831→}) {
+   832→  const qc = useQueryClient()
+   833→  const open = Boolean(id)
+   834→
+   835→  // Detail query (only when an id is selected)
+   836→  const detailQuery = useQuery<WorkOrderDetail>({
+   837→    queryKey: ['work-order', id],
+   838→    queryFn: async () => {
+   839→      const res = await fetch(`/api/work-orders/${id}`)
+   840→      if (!res.ok) throw new Error('Failed to load work order')
+   841→      const json = await res.json()
+   842→      return json.data as WorkOrderDetail
+   843→    },
+   844→    enabled: Boolean(id),
+   845→  })
+   846→
+   847→  const wo = detailQuery.data
+   848→
+   849→  // Invalidate list when detail changes (action happened)
+   850→  function refreshAll() {
+   851→    qc.invalidateQueries({ queryKey: ['work-orders'] })
+   852→    qc.invalidateQueries({ queryKey: ['work-order', id] })
+   853→  }
+   854→
+   855→  return (
+   856→    <Dialog open={open} onOpenChange={onOpenChange}>
+   857→      <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-[720px]">
+   858→        {detailQuery.isLoading ? (
+   859→          <div className="space-y-3 p-6">
+   860→            <Skeleton className="h-6 w-32" />
+   861→            <Skeleton className="h-10 w-3/4" />
+   862→            <Skeleton className="h-32 w-full" />
+   863→            <Skeleton className="h-24 w-full" />
+   864→          </div>
+   865→        ) : !wo ? (
+   866→          <div className="p-6 text-center text-sm text-muted-foreground">
+   867→            ไม่พบใบงาน
+   868→          </div>
+   869→        ) : (
+   870→          <WorkOrderDetailContent
+   871→            wo={wo}
+   872→            onMutated={refreshAll}
+   873→            onClose={() => onOpenChange(false)}
+   874→          />
+   875→        )}
+   876→      </DialogContent>
+   877→    </Dialog>
+   878→  )
+   879→}
+   880→
+   881→function WorkOrderDetailContent({
+   882→  wo,
+   883→  onMutated,
+   884→  onClose,
+   885→}: {
+   886→  wo: WorkOrderDetail
+   887→  onMutated: () => void
+   888→  onClose: () => void
+   889→}) {
+   890→  // Assign technician
+   891→  const [assignOpen, setAssignOpen] = React.useState(false)
+   892→  const [techName, setTechName] = React.useState(wo.assignedTo ?? '')
+   893→  const [assignNote, setAssignNote] = React.useState(wo.assignmentNote ?? '')
+   894→  const [assigning, setAssigning] = React.useState(false)
+   895→
+   896→  // Complete
+   897→  const [completeOpen, setCompleteOpen] = React.useState(false)
+   898→  const [completeNote, setCompleteNote] = React.useState('')
+   899→  const [completing, setCompleting] = React.useState(false)
+   900→
+   901→  // Cancel
+   902→  const [cancelOpen, setCancelOpen] = React.useState(false)
+   903→  const [cancelReason, setCancelReason] = React.useState('')
+   904→  const [canceling, setCanceling] = React.useState(false)
+   905→
+   906→  // Chat
+   907→  const [chatText, setChatText] = React.useState('')
+   908→  const [sendingMsg, setSendingMsg] = React.useState(false)
+   909→  const messagesEndRef = React.useRef<HTMLDivElement>(null)
+   910→  const messages = wo.messages ?? []
+   911→
+   912→  React.useEffect(() => {
+   913→    // sync tech name when WO changes
+   914→    setTechName(wo.assignedTo ?? '')
+   915→    setAssignNote(wo.assignmentNote ?? '')
+   916→  }, [wo.id, wo.assignedTo, wo.assignmentNote])
+   917→
+   918→  React.useEffect(() => {
+   919→    if (messagesEndRef.current) {
+   920→      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+   921→    }
+   922→  }, [messages.length])
+   923→
+   924→  const canAssign = wo.status === 'PENDING' || wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
+   925→  const canComplete = wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
+   926→  const canCancel = wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
+   927→  const canChat = wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
+   928→
+   929→  async function handleAssign() {
+   930→    if (!techName.trim()) {
+   931→      toast.error('กรุณาระบุชื่อช่าง')
+   932→      return
+   933→    }
+   934→    try {
+   935→      setAssigning(true)
+   936→      const res = await fetch(`/api/work-orders/${wo.id}/assign`, {
+   937→        method: 'POST',
+   938→        headers: { 'Content-Type': 'application/json' },
+   939→        body: JSON.stringify({
+   940→          assignedTo: techName.trim(),
+   941→          assignmentNote: assignNote.trim() || null,
+   942→          actor: 'admin',
+   943→        }),
+   944→      })
+   945→      if (!res.ok) {
+   946→        const j = await res.json().catch(() => ({}))
+   947→        throw new Error(j.error ?? 'มอบหมายไม่สำเร็จ')
+   948→      }
+   949→      toast.success(`มอบหมายให้ ${techName.trim()} แล้ว`)
+   950→      setAssignOpen(false)
+   951→      onMutated()
+   952→    } catch (e) {
+   953→      toast.error(e instanceof Error ? e.message : 'มอบหมายไม่สำเร็จ')
+   954→    } finally {
+   955→      setAssigning(false)
+   956→    }
+   957→  }
+   958→
+   959→  async function handleComplete() {
+   960→    try {
+   961→      setCompleting(true)
+   962→      const res = await fetch(`/api/work-orders/${wo.id}/complete`, {
+   963→        method: 'POST',
+   964→        headers: { 'Content-Type': 'application/json' },
+   965→        body: JSON.stringify({
+   966→          note: completeNote.trim() || null,
+   967→          actor: 'admin',
+   968→        }),
+   969→      })
+   970→      if (!res.ok) {
+   971→        const j = await res.json().catch(() => ({}))
+   972→        throw new Error(j.error ?? 'ปิดงานไม่สำเร็จ')
+   973→      }
+   974→      toast.success('ปิดงานเรียบร้อย')
+   975→      setCompleteOpen(false)
+   976→      setCompleteNote('')
+   977→      onMutated()
+   978→    } catch (e) {
+   979→      toast.error(e instanceof Error ? e.message : 'ปิดงานไม่สำเร็จ')
+   980→    } finally {
+   981→      setCompleting(false)
+   982→    }
+   983→  }
+   984→
+   985→  async function handleCancel() {
+   986→    if (!cancelReason.trim()) {
+   987→      toast.error('กรุณาระบุเหตุผลในการยกเลิก')
+   988→      return
+   989→    }
+   990→    try {
+   991→      setCanceling(true)
+   992→      const res = await fetch(`/api/work-orders/${wo.id}/cancel`, {
+   993→        method: 'POST',
+   994→        headers: { 'Content-Type': 'application/json' },
+   995→        body: JSON.stringify({
+   996→          reason: cancelReason.trim(),
+   997→          actor: 'admin',
+   998→        }),
+   999→      })
+  1000→      if (!res.ok) {
+  1001→        const j = await res.json().catch(() => ({}))
+  1002→        throw new Error(j.error ?? 'ยกเลิกไม่สำเร็จ')
+  1003→      }
+  1004→      toast.success('ยกเลิกใบงานแล้ว')
+  1005→      setCancelOpen(false)
+  1006→      setCancelReason('')
+  1007→      onMutated()
+  1008→    } catch (e) {
+  1009→      toast.error(e instanceof Error ? e.message : 'ยกเลิกไม่สำเร็จ')
+  1010→    } finally {
+  1011→      setCanceling(false)
+  1012→    }
+  1013→  }
+  1014→
+  1015→  async function handleSendMessage() {
+  1016→    const text = chatText.trim()
+  1017→    if (!text) return
+  1018→    try {
+  1019→      setSendingMsg(true)
+  1020→      const res = await fetch(`/api/work-orders/${wo.id}/messages`, {
+  1021→        method: 'POST',
+  1022→        headers: { 'Content-Type': 'application/json' },
+  1023→        body: JSON.stringify({
+  1024→          message: text,
+  1025→          author: 'admin',
+  1026→          authorRole: 'admin',
+  1027→        }),
+  1028→      })
+  1029→      if (!res.ok) {
+  1030→        const j = await res.json().catch(() => ({}))
+  1031→        throw new Error(j.error ?? 'ส่งข้อความไม่สำเร็จ')
+  1032→      }
+  1033→      setChatText('')
+  1034→      onMutated()
+  1035→    } catch (e) {
+  1036→      toast.error(e instanceof Error ? e.message : 'ส่งข้อความไม่สำเร็จ')
+  1037→    } finally {
+  1038→      setSendingMsg(false)
+  1039→    }
+  1040→  }
+  1041→
+  1042→  // Build timeline from key WO timestamps + messages
+  1043→  const timeline: Array<{ key: string; label: string; at: string | null; tone: 'info' | 'success' | 'warning' | 'danger' | 'muted' }> = [
+  1044→    { key: 'created', label: 'แจ้งซ่อมใหม่', at: wo.createdAt, tone: 'info' },
+  1045→    { key: 'assigned', label: wo.assignedTo ? `มอบหมายให้ ${wo.assignedTo}` : 'มอบหมาย', at: wo.assignedAt, tone: wo.assignedAt ? 'info' : 'muted' },
+  1046→    { key: 'completed', label: 'ปิดงาน', at: wo.workCompletedAt ?? wo.closedAt, tone: wo.workCompletedAt ? 'success' : 'muted' },
+  1047→    { key: 'cancelled', label: wo.cancelReason ? `ยกเลิก — ${wo.cancelReason}` : 'ยกเลิก', at: wo.canceledAt, tone: wo.canceledAt ? 'danger' : 'muted' },
+  1048→  ].filter((t) => t.at !== null || t.key === 'created')
+  1049→
+  1050→  return (
+  1051→    <div className="flex max-h-[92vh] flex-col">
+  1052→      {/* Header */}
+  1053→      <div className="space-y-2 border-b px-5 py-4">
+  1054→        <div className="flex items-center justify-between gap-2">
+  1055→          <span className="font-mono text-xs font-semibold text-muted-foreground">
+  1056→            {wo.woNumber ?? '—'}
+  1057→          </span>
+  1058→          <Badge className={statusBadgeClass(wo.status)} variant="outline">
+  1059→            {statusLabel(wo.status)}
+  1060→          </Badge>
+  1061→        </div>
+  1062→        <h2 className="text-lg font-bold leading-tight">{wo.subject}</h2>
+  1063→        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+  1064→          <span className="flex items-center gap-1">
+  1065→            <CalendarClock className="h-3.5 w-3.5" />
+  1066→            {formatDateTime(wo.createdAt)}
+  1067→          </span>
+  1068→          <span aria-hidden>•</span>
+  1069→          <Badge className={priorityBadgeClass(wo.priority)} variant="outline">
+  1070→            {wo.priority}
+  1071→          </Badge>
+  1072→        </div>
+  1073→      </div>
+  1074→
+  1075→      {/* Body — scrollable */}
+  1076→      <ScrollArea className="flex-1 overflow-y-auto">
+  1077→        <div className="space-y-4 px-5 py-4">
+  1078→          {/* Info grid */}
+  1079→          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+  1080→            <InfoRow
+  1081→              icon={<MapPin className="h-4 w-4" />}
+  1082→              label="อาคาร / ฝ่าย"
+  1083→              value={wo.building ?? '—'}
+  1084→            />
+  1085→            <InfoRow
+  1086→              icon={<MapPin className="h-4 w-4" />}
+  1087→              label="ตำแหน่ง"
+  1088→              value={wo.location ?? '—'}
+  1089→            />
+  1090→            <InfoRow
+  1091→              icon={<User className="h-4 w-4" />}
+  1092→              label="ผู้แจ้ง"
+  1093→              value={wo.reporterName ?? '—'}
+  1094→            />
+  1095→            <InfoRow
+  1096→              icon={<Phone className="h-4 w-4" />}
+  1097→              label="เบอร์โทร"
+  1098→              value={wo.tel ?? '—'}
+  1099→            />
+  1100→            <InfoRow
+  1101→              icon={<User className="h-4 w-4" />}
+  1102→              label="ช่างผู้รับผิดชอบ"
+  1103→              value={wo.assignedTo ?? '—'}
+  1104→            />
+  1105→            <InfoRow
+  1106→              icon={<CalendarClock className="h-4 w-4" />}
+  1107→              label="มอบหมายเมื่อ"
+  1108→              value={wo.assignedAt ? formatDateTime(wo.assignedAt) : '—'}
+  1109→            />
+  1110→          </div>
+  1111→
+  1112→          {/* Details */}
+  1113→          {wo.details && (
+  1114→            <div className="rounded-lg border bg-muted/40 p-3">
+  1115→              <div className="mb-1 text-xs font-semibold text-muted-foreground">
+  1116→                รายละเอียดปัญหา
+  1117→              </div>
+  1118→              <p className="whitespace-pre-wrap text-sm">{wo.details}</p>
+  1119→            </div>
+  1120→          )}
+  1121→
+  1122→          {/* Admin note */}
+  1123→          {wo.detailsAdmin && (
+  1124→            <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm dark:border-orange-800 dark:bg-orange-950/40">
+  1125→              <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-orange-700 dark:text-orange-300">
+  1126→                <AlertTriangle className="h-3.5 w-3.5" />
+  1127→                หมายเหตุช่าง
+  1128→              </div>
+  1129→              <p className="whitespace-pre-wrap">{wo.detailsAdmin}</p>
+  1130→            </div>
+  1131→          )}
+  1132→
+  1133→          {/* Cancel reason */}
+  1134→          {wo.status === 'CANCELLED' && wo.cancelReason && (
+  1135→            <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm dark:border-rose-800 dark:bg-rose-950/40">
+  1136→              <div className="mb-1 flex items-center gap-1 text-xs font-semibold text-rose-700 dark:text-rose-300">
+  1137→                <XCircle className="h-3.5 w-3.5" />
+  1138→                เหตุผลการยกเลิก
+  1139→              </div>
+  1140→              <p className="whitespace-pre-wrap">{wo.cancelReason}</p>
+  1141→            </div>
+  1142→          )}
+  1143→
+  1144→          {/* Images */}
+  1145→          {(wo.picBefore || wo.picOnsite || wo.picAfter) && (
+  1146→            <div className="space-y-2">
+  1147→              <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+  1148→                <ImageIcon className="h-3.5 w-3.5" />
+  1149→                รูปภาพ
+  1150→              </div>
+  1151→              <div className="grid grid-cols-3 gap-2">
+  1152→                <WoImage label="ก่อน" src={wo.picBefore} />
+  1153→                <WoImage label="ระหว่าง" src={wo.picOnsite} />
+  1154→                <WoImage label="หลัง" src={wo.picAfter} />
+  1155→              </div>
+  1156→            </div>
+  1157→          )}
+  1158→
+  1159→          {/* Timeline */}
+  1160→          <div className="space-y-2">
+  1161→            <div className="text-xs font-semibold text-muted-foreground">
+  1162→              ไทม์ไลน์
+  1163→            </div>
+  1164→            <ol className="relative space-y-3 border-l-2 border-muted pl-4">
+  1165→              {timeline.map((t) => (
+  1166→                <li key={t.key} className="relative">
+  1167→                  <span
+  1168→                    className={`absolute -left-[21px] top-1 h-3 w-3 rounded-full border-2 border-background ${
+  1169→                      t.tone === 'success'
+  1170→                        ? 'bg-emerald-500'
+  1171→                        : t.tone === 'danger'
+  1172→                          ? 'bg-rose-500'
+  1173→                          : t.tone === 'warning'
+  1174→                            ? 'bg-amber-500'
+  1175→                            : t.tone === 'info'
+  1176→                              ? 'bg-orange-500'
+  1177→                              : 'bg-slate-300'
+  1178→                    }`}
+  1179→                  />
+  1180→                  <div className="text-sm font-medium">{t.label}</div>
+  1181→                  {t.at && (
+  1182→                    <div className="text-[11px] text-muted-foreground">
+  1183→                      {formatDateTime(t.at)}
+  1184→                    </div>
+  1185→                  )}
+  1186→                </li>
+  1187→              ))}
+  1188→            </ol>
+  1189→          </div>
+  1190→
+  1191→          {/* Chat */}
+  1192→          <div className="space-y-2">
+  1193→            <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+  1194→              <MessageSquare className="h-3.5 w-3.5" />
+  1195→              ข้อความ ({messages.length})
+  1196→            </div>
+  1197→            {messages.length === 0 ? (
+  1198→              <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+  1199→                ยังไม่มีข้อความในใบงานนี้
+  1200→              </p>
+  1201→            ) : (
+  1202→              <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border bg-muted/30 p-3">
+  1203→                {messages.map((m) => {
+  1204→                  const isSystem = m.authorRole === 'system'
+  1205→                  return (
+  1206→                    <div
+  1207→                      key={m.id}
+  1208→                      className={`flex ${isSystem ? 'justify-center' : 'justify-start'}`}
+  1209→                    >
+  1210→                      <div
+  1211→                        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+  1212→                          isSystem
+  1213→                            ? 'bg-muted text-muted-foreground'
+  1214→                            : m.authorRole === 'admin'
+  1215→                              ? 'bg-orange-100 text-orange-900 dark:bg-orange-950 dark:text-orange-100'
+  1216→                              : 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-100'
+  1217→                        }`}
+  1218→                      >
+  1219→                        {!isSystem && (
+  1220→                          <div className="mb-0.5 text-[10px] font-semibold opacity-70">
+  1221→                            {m.author ?? '—'} · {m.authorRole ?? 'staff'}
+  1222→                          </div>
+  1223→                        )}
+  1224→                        <p className="whitespace-pre-wrap break-words">{m.message}</p>
+  1225→                        <div className="mt-0.5 text-right text-[10px] opacity-60">
+  1226→                          {relativeTime(m.createdAt)}
+  1227→                        </div>
+  1228→                      </div>
+  1229→                    </div>
+  1230→                  )
+  1231→                })}
+  1232→                <div ref={messagesEndRef} />
+  1233→              </div>
+  1234→            )}
+  1235→            {canChat && (
+  1236→              <div className="flex items-center gap-2">
+  1237→                <Input
+  1238→                  value={chatText}
+  1239→                  onChange={(e) => setChatText(e.target.value)}
+  1240→                  placeholder="พิมพ์ข้อความ..."
+  1241→                  onKeyDown={(e) => {
+  1242→                    if (e.key === 'Enter' && !e.shiftKey) {
+  1243→                      e.preventDefault()
+  1244→                      handleSendMessage()
+  1245→                    }
+  1246→                  }}
+  1247→                  disabled={sendingMsg}
+  1248→                />
+  1249→                <Button
+  1250→                  size="sm"
+  1251→                  onClick={handleSendMessage}
+  1252→                  disabled={sendingMsg || !chatText.trim()}
+  1253→                  className="bg-orange-500 hover:bg-orange-600"
+  1254→                >
+  1255→                  {sendingMsg ? (
+  1256→                    <RefreshCw className="h-4 w-4 animate-spin" />
+  1257→                  ) : (
+  1258→                    <Send className="h-4 w-4" />
+  1259→                  )}
+  1260→                </Button>
+  1261→              </div>
+  1262→            )}
+  1263→          </div>
+  1264→        </div>
+  1265→      </ScrollArea>
+  1266→
+  1267→      {/* Footer actions */}
+  1268→      <div className="flex flex-wrap items-center gap-2 border-t px-5 py-3">
+  1269→        {canAssign && (
+  1270→          <Button
+  1271→            size="sm"
+  1272→            variant="outline"
+  1273→            onClick={() => setAssignOpen(true)}
+  1274→            className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950"
+  1275→          >
+  1276→            <User className="h-4 w-4" />
+  1277→            {wo.assignedTo ? 'เปลี่ยนช่าง' : 'มอบหมายช่าง'}
+  1278→          </Button>
+  1279→        )}
+  1280→        {canComplete && (
+  1281→          <Button
+  1282→            size="sm"
+  1283→            onClick={() => setCompleteOpen(true)}
+  1284→            className="bg-emerald-600 hover:bg-emerald-700"
+  1285→          >
+  1286→            <CheckCircle2 className="h-4 w-4" />
+  1287→            ปิดงาน
+  1288→          </Button>
+  1289→        )}
+  1290→        {canCancel && (
+  1291→          <Button
+  1292→            size="sm"
+  1293→            variant="outline"
+  1294→            onClick={() => setCancelOpen(true)}
+  1295→            className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950"
+  1296→          >
+  1297→            <XCircle className="h-4 w-4" />
+  1298→            ยกเลิก
+  1299→          </Button>
+  1300→        )}
+  1301→        <div className="flex-1" />
+  1302→        <Button size="sm" variant="ghost" onClick={onClose}>
+  1303→          ปิด
+  1304→        </Button>
+  1305→      </div>
+  1306→
+  1307→      {/* Assign dialog */}
+  1308→      <AlertDialog open={assignOpen} onOpenChange={setAssignOpen}>
+  1309→        <AlertDialogContent>
+  1310→          <AlertDialogHeader>
+  1311→            <AlertDialogTitle>มอบหมายช่าง</AlertDialogTitle>
+  1312→            <AlertDialogDescription>
+  1313→              ระบุชื่อช่างที่จะรับผิดชอบใบงาน {wo.woNumber}
+  1314→            </AlertDialogDescription>
+  1315→          </AlertDialogHeader>
+  1316→          <div className="space-y-3 py-2">
+  1317→            <div className="grid gap-1.5">
+  1318→              <Label htmlFor="tech-name">ชื่อช่าง</Label>
+  1319→              <Input
+  1320→                id="tech-name"
+  1321→                value={techName}
+  1322→                onChange={(e) => setTechName(e.target.value)}
+  1323→                placeholder="เช่น คุณสมชาย"
+  1324→                autoFocus
+  1325→              />
+  1326→            </div>
+  1327→            <div className="grid gap-1.5">
+  1328→              <Label htmlFor="assign-note">หมายเหตุ (ถ้ามี)</Label>
+  1329→              <Textarea
+  1330→                id="assign-note"
+  1331→                value={assignNote}
+  1332→                onChange={(e) => setAssignNote(e.target.value)}
+  1333→                placeholder="เช่น นัดเข้าไปตรวจสอบวันที่..."
+  1334→                className="min-h-[60px]"
+  1335→              />
+  1336→            </div>
+  1337→          </div>
+  1338→          <AlertDialogFooter>
+  1339→            <AlertDialogCancel disabled={assigning}>ยกเลิก</AlertDialogCancel>
+  1340→            <AlertDialogAction
+  1341→              disabled={assigning || !techName.trim()}
+  1342→              onClick={(e) => {
+  1343→                e.preventDefault()
+  1344→                handleAssign()
+  1345→              }}
+  1346→            >
+  1347→              {assigning ? (
+  1348→                <RefreshCw className="h-4 w-4 animate-spin" />
+  1349→              ) : null}
+  1350→              มอบหมาย
+  1351→            </AlertDialogAction>
+  1352→          </AlertDialogFooter>
+  1353→        </AlertDialogContent>
+  1354→      </AlertDialog>
+  1355→
+  1356→      {/* Complete dialog */}
+  1357→      <AlertDialog open={completeOpen} onOpenChange={setCompleteOpen}>
+  1358→        <AlertDialogContent>
+  1359→          <AlertDialogHeader>
+  1360→            <AlertDialogTitle>ปิดงาน</AlertDialogTitle>
+  1361→            <AlertDialogDescription>
+  1362→              ยืนยันการปิดงาน {wo.woNumber} — สถานะจะเปลี่ยนเป็น &quot;เสร็จแล้ว&quot;
+  1363→            </AlertDialogDescription>
+  1364→          </AlertDialogHeader>
+  1365→          <div className="grid gap-1.5 py-2">
+  1366→            <Label htmlFor="complete-note">หมายเหตุการซ่อม</Label>
+  1367→            <Textarea
+  1368→              id="complete-note"
+  1369→              value={completeNote}
+  1370→              onChange={(e) => setCompleteNote(e.target.value)}
+  1371→              placeholder="เช่น เปลี่ยนหมึก, แก้ไขการตั้งค่าเครือข่าย..."
+  1372→              className="min-h-[80px]"
+  1373→            />
+  1374→          </div>
+  1375→          <AlertDialogFooter>
+  1376→            <AlertDialogCancel disabled={completing}>ยกเลิก</AlertDialogCancel>
+  1377→            <AlertDialogAction
+  1378→              disabled={completing}
+  1379→              onClick={(e) => {
+  1380→                e.preventDefault()
+  1381→                handleComplete()
+  1382→              }}
+  1383→              className="bg-emerald-600 hover:bg-emerald-700"
+  1384→            >
+  1385→              {completing ? (
+  1386→                <RefreshCw className="h-4 w-4 animate-spin" />
+  1387→              ) : (
+  1388→                <CheckCircle2 className="h-4 w-4" />
+  1389→              )}
+  1390→              ปิดงาน
+  1391→            </AlertDialogAction>
+  1392→          </AlertDialogFooter>
+  1393→        </AlertDialogContent>
+  1394→      </AlertDialog>
+  1395→
+  1396→      {/* Cancel dialog */}
+  1397→      <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
+  1398→        <AlertDialogContent>
+  1399→          <AlertDialogHeader>
+  1400→            <AlertDialogTitle>ยกเลิกใบงาน</AlertDialogTitle>
+  1401→            <AlertDialogDescription>
+  1402→              ยืนยันการยกเลิกใบงาน {wo.woNumber} — ไม่สามารถย้อนกลับได้
+  1403→            </AlertDialogDescription>
+  1404→          </AlertDialogHeader>
+  1405→          <div className="grid gap-1.5 py-2">
+  1406→            <Label htmlFor="cancel-reason">
+  1407→              เหตุผลการยกเลิก <span className="text-rose-500">*</span>
+  1408→            </Label>
+  1409→            <Textarea
+  1410→              id="cancel-reason"
+  1411→              value={cancelReason}
+  1412→              onChange={(e) => setCancelReason(e.target.value)}
+  1413→              placeholder="เช่น ผู้แจ้งขอถอน, ซ่อมเองได้แล้ว, ไม่ใช่ปัญหาจริง..."
+  1414→              className="min-h-[80px]"
+  1415→            />
+  1416→          </div>
+  1417→          <AlertDialogFooter>
+  1418→            <AlertDialogCancel disabled={canceling}>ปิด</AlertDialogCancel>
+  1419→            <AlertDialogAction
+  1420→              disabled={canceling || !cancelReason.trim()}
+  1421→              onClick={(e) => {
+  1422→                e.preventDefault()
+  1423→                handleCancel()
+  1424→              }}
+  1425→              className="bg-rose-600 hover:bg-rose-700"
+  1426→            >
+  1427→              {canceling ? (
+  1428→                <RefreshCw className="h-4 w-4 animate-spin" />
+  1429→              ) : (
+  1430→                <XCircle className="h-4 w-4" />
+  1431→              )}
+  1432→              ยกเลิกใบงาน
+  1433→            </AlertDialogAction>
+  1434→          </AlertDialogFooter>
+  1435→        </AlertDialogContent>
+  1436→      </AlertDialog>
+  1437→    </div>
+  1438→  )
+  1439→}
+  1440→
+  1441→function InfoRow({
+  1442→  icon,
+  1443→  label,
+  1444→  value,
+  1445→}: {
+  1446→  icon: React.ReactNode
+  1447→  label: string
+  1448→  value: string
+  1449→}) {
+  1450→  return (
+  1451→    <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2">
+  1452→      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+  1453→        {icon}
+  1454→      </span>
+  1455→      <div className="min-w-0">
+  1456→        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+  1457→          {label}
+  1458→        </div>
+  1459→        <div className="truncate text-sm font-medium">{value}</div>
+  1460→      </div>
+  1461→    </div>
+  1462→  )
+  1463→}
+  1464→
+  1465→function WoImage({
+  1466→  label,
+  1467→  src,
+  1468→}: {
+  1469→  label: string
+  1470→  src: string | null
+  1471→}) {
+  1472→  if (!src) {
+  1473→    return (
+  1474→      <div className="flex aspect-square flex-col items-center justify-center rounded-md border border-dashed text-[10px] text-muted-foreground">
+  1475→        <ImageIcon className="mb-1 h-5 w-5 opacity-40" />
+  1476→        {label}
+  1477→      </div>
+  1478→    )
+  1479→  }
+  1480→  // If src is base64 or URL, render img
+  1481→  return (
+  1482→    <div className="relative aspect-square overflow-hidden rounded-md border">
+  1483→      <img
+  1484→        src={src}
+  1485→        alt={label}
+  1486→        className="h-full w-full object-cover"
+  1487→        loading="lazy"
+  1488→      />
+  1489→      <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+  1490→        {label}
+  1491→      </span>
+  1492→    </div>
+  1493→  )
+  1494→}
+  1495→

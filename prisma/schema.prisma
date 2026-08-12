@@ -289,6 +289,10 @@ model WorkOrder {
   detailsAdmin     String?
   dateAdmin        String?
 
+  // ── ผลการแก้ไข ──
+  resolution       String?  // ผลการแก้ไข (option label)
+  resolutionGroup  String?  // group label ของผลการแก้ไข
+
   // ── ปลดล็อกแก้ไข ──
   editUnlockActive Boolean  @default(false)
   editUnlockBy     String?

@@ -1926,3 +1926,151 @@ Stage Summary:
 - เลขใบงานเปลี่ยนเป็น WO-YYYYMMDD-NNN (สวย อ่านง่าย)
 - Locations sheet ลบออก (ดึงจาก IT-Asset แทน)
 - พร้อมสำหรับการปรับการทำงานในแอปต่อไป
+
+---
+
+## Task WO-COMPLETE — WorkOrder (แจ้งซ่อม) System Completion
+
+**Agent:** full-stack-developer
+**Task ID:** WO-COMPLETE
+**Date:** 2025
+**Parent project:** /home/z/my-project
+
+### Goal
+Complete the WorkOrder (แจ้งซ่อม) system: guest reporting with identity
+verification, external work orders, subject + resolution option dropdowns,
+reporter self-edit, complete-with-resolution, and a comprehensive detail
+view showing all fields.
+
+### Files Created / Modified
+
+| File | Action | Notes |
+|------|--------|-------|
+| `prisma/schema.prisma` | Modified | Added `resolution String?` + `resolutionGroup String?` on WorkOrder |
+| `src/lib/guest-validation.ts` | Created | `validateGuestContact()` + helpers; reads `contactDirectory` AppSetting JSON |
+| `src/app/api/settings/options/route.ts` | Created | GET `{subjects, resolutions}` from AppSetting (35-subject / 43-resolution defaults) |
+| `src/app/api/work-orders/route.ts` | Modified | POST validates guest contact (skip for external/session); supports `externalMeta` |
+| `src/app/api/work-orders/[id]/complete/route.ts` | Modified | POST accepts `resolution` + `resolutionGroup`; stores on WorkOrder |
+| `src/app/api/work-orders/[id]/reporter-edit/route.ts` | Created | PUT — guest self-edit while status=PENDING; double verification |
+| `src/components/itam/work-orders-page.tsx` | Rewritten | External mode toggle, grouped subject dropdown (auto priority), resolution picker on complete, full detail view with all fields, reporter-edit dialog |
+
+### Key implementation details
+
+- **Guest validation rules** (`guest-validation.ts`):
+  - `normalizePhone()` strips non-digits, converts `+66`/leading `66` to `0`.
+  - `normalizeName()` lower-cases + collapses whitespace.
+  - `validateGuestContact()` requires name+phone, skips inactive rows,
+    matches case-insensitive name + digit-only phone, optionally narrows
+    by employee_code. Returns canonical name/phone/code/department.
+- **Settings options API** (`/api/settings/options`):
+  - Supports both flat (`{group, value, default_priority}`) and nested
+    (`{group, options: [...]}`) shapes from AppSetting.
+  - Falls back to built-in defaults when keys are missing — UI works
+    out-of-the-box. Admins can override by PUTting to `/api/settings`.
+  - Validates `default_priority` against `{ปกติ, ปานกลาง, สูง, ด่วน}`.
+- **External work orders**:
+  - `isExternal=true` + `externalMeta={clientName, place?, contactPhone?, serials?}`
+  - Skips guest contact validation (these are off-site jobs for clients
+    not in the system).
+  - Stored as JSON string in `WorkOrder.externalMeta`.
+- **Reporter-edit** (`PUT /api/work-orders/[id]/reporter-edit`):
+  - Only allowed when `status === 'PENDING'`.
+  - Requires `verifyName` + `verifyPhone` (+ optional `employeeCode`).
+  - **Double verification**: name+phone must pass `validateGuestContact`
+    AND the canonical identity must match the WO's stored reporter.
+  - Editable fields: `subject, building, location, details, tel`.
+  - Writes system message + AuditLog (`action=WO_REPORTER_EDIT`).
+- **Complete with resolution**:
+  - POST `/api/work-orders/[id]/complete` accepts `resolution` +
+    `resolutionGroup`; persists to WorkOrder row.
+  - System message: `ปิดงานเรียบร้อย — ผลการแก้ไข: <resolution> (<note>)`.
+  - AuditLog `WO_COMPLETE` includes resolution info.
+- **UI overhaul** (`work-orders-page.tsx`, ~1700 lines):
+  - `optionsQuery` fetches `/api/settings/options` once (5min stale).
+  - CreateWorkOrderDialog: Switch toggle for "ลูกค้าภายนอก", grouped
+    subject `<Select>` (auto-sets priority), device lookup for internal
+    mode, multi-S/N input for external mode, optional picBefore with
+    client-side canvas compression (≤1MB / ≤1280px).
+  - WorkOrderCard: shows "งานนอก" badge + external clientName.
+  - WorkOrderDetailContent: comprehensive view of every field — external
+    block, info grid (reporter/tel/empCode/device/assignedTo/assignedAt/
+    assignedBy/workCompletedAt/closedAt), assignment note, details, admin
+    note, resolution (emerald box w/ group chip), cancel reason,
+    edit-unlock info, images, timeline, chat.
+  - Footer actions: "ผู้แจ้งแก้ไข" (PENDING only) + มอบหมายช่าง + ปิดงาน
+    (with resolution picker + picAfter upload) + ยกเลิก.
+  - Reporter-edit dialog with verify fields + edit form.
+- Image compression: client-side canvas, JPEG quality iterated down
+  from 0.8 → 0.3 until ≤1MB; falls back to original dataURL if canvas
+  fails.
+
+### Verification
+
+- `bun run db:push` → DB schema in sync (2 nullable columns added; no
+  data loss). Prisma client regenerated.
+- `bun run lint` → **0 errors, 0 warnings** ✅
+- Prisma client verified to expose `WorkOrder.resolution` +
+  `WorkOrder.resolutionGroup` (via grep on `node_modules/.prisma/client/index.d.ts`).
+- Dev server log shows successful compile ("✓ Compiled in 1077ms") with
+  no errors related to the new files. Pre-existing
+  `/api/cost-analytics` PrismaClientValidationError (unknown arg `date`)
+  is unrelated — left as-is.
+
+### Notes for downstream agents
+
+- The `contactDirectory`, `subjectOptions`, `resolutionOptions` AppSetting
+  keys are not seeded by default. The settings/options API returns
+  built-in defaults for subjects/resolutions, but `validateGuestContact`
+  fails closed (returns "ยังไม่มีข้อมูลผู้ติดต่อในระบบ" with 403) until the
+  admin adds entries via `PUT /api/settings` with the `contactDirectory`
+  key. This mirrors the legacy Services-app behavior.
+- `editUnlockActive/By/At/Note` are surfaced in the detail view but not
+  editable from this UI — admin-only unlock flow is out of scope; the
+  schema and audit hooks are already in place for a future task.
+- The db.ts staleness probe did not need extending — no new Prisma
+  models were added, only 2 nullable columns on an existing model.
+- TanStack Query keys used: `['wo-options']` (5min staleTime),
+  `['work-orders', search, status, priority, page]`,
+  `['work-order', id]`. Invalidation patterns: `['work-orders']` after
+  any mutation; `['work-order', id]` after detail mutations.
+
+### Files affected (summary)
+- `prisma/schema.prisma` (+3 lines)
+- `src/lib/guest-validation.ts` (new, ~180 lines)
+- `src/app/api/settings/options/route.ts` (new, ~260 lines)
+- `src/app/api/work-orders/route.ts` (modified POST, +90 lines)
+- `src/app/api/work-orders/[id]/complete/route.ts` (modified POST, +15 lines)
+- `src/app/api/work-orders/[id]/reporter-edit/route.ts` (new, ~150 lines)
+- `src/components/itam/work-orders-page.tsx` (rewritten, ~1700 lines)
+- `agent-ctx/WO-COMPLETE-full-stack-developer.md` (new — agent work record)
+
+---
+Task ID: WO-COMPLETE-VERIFY
+Agent: orchestrator — ตรวจสอบ + ทดสอบฟีเจอร์แจ้งซ่อนที่เพิ่ม
+
+Work Log:
+- ตรวจสอบ Services App ทุกฟังก์ชัน (173 functions)
+- ดึง SubjectOptions (35 options, 4 groups) + ResolutionOptions (43 options) + ContactDirectory
+- Import เข้า AppSetting (JSON)
+
+ฟีเจอร์ที่เพิ่ม (subagent WO-COMPLETE):
+1. ✅ Guest reporting (แจ้งโดยไม่ต้อง login) — ตรวจชื่อ+เบอร์กับ ContactDirectory
+2. ✅ External work orders (งานนอก) — toggle "ลูกค้าภายนอก" → แสดงฟิลด์ clientName, place, contactPhone, serials
+3. ✅ Subject options (35 หัวข้อ 4 กลุ่ม) — dropdown + auto-set priority
+4. ✅ Resolution options (43 ผลการแก้ไข) — เลือกตอนปิดงาน
+5. ✅ Reporter self-edit — แก้ไขได้เมื่อ status=PENDING (ยืนยันตัวตน)
+6. ✅ Complete with resolution — เลือกผลการแก้ไข + บันทึก note + อัปโหลดรูป
+7. ✅ Full detail view — แสดงทุก field (external, reporter, images, assignment, resolution, timeline, cancel, unlock)
+
+Verification (agent-browser):
+✅ แจ้งซ่อม page: แสดง WO-20260812-005 (สร้างจาก guest test) + WO-20260812-004 (ข้อมูลเดิม)
+✅ "แจ้งซ่อมใหม่" dialog: มี toggle "ลูกค้าภายนอก", dropdown ประเภทปัญหา, priority, ชื่อผู้แจ้ง, เบอร์โทร
+✅ External mode: toggle แล้วแสดงฟิลด์ สถานที่ + เบอร์ติดต่อลูกค้า
+✅ API: /api/settings/options → 35 subjects + 43 resolutions
+✅ API: POST /api/work-orders (guest mode) → สร้าง WO-20260812-005 สำเร็จ
+✅ Lint: 0 errors
+
+Stage Summary:
+- แจ้งซ่อมครบวงจร: guest + external + subject options + resolution + reporter edit + full detail
+- ข้อมูลเก่า 4,941 ใบงานแสดงได้ + สร้างใหม่ได้
+- พร้อมสำหรับการปรับสต็อกต่อไป

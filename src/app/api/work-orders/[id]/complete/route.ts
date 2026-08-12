@@ -31,11 +31,20 @@ export async function POST(
   try {
     const { id } = await params
     const body = await req.json()
-    const { note, picAfter, picOnsite, actor } = body as {
+    const {
+      note,
+      picAfter,
+      picOnsite,
+      actor,
+      resolution,
+      resolutionGroup,
+    } = body as {
       note?: string | null
       picAfter?: string | null
       picOnsite?: string | null
       actor?: string
+      resolution?: string | null
+      resolutionGroup?: string | null
     }
 
     const wo = await db.workOrder.findUnique({ where: { id } })
@@ -59,6 +68,11 @@ export async function POST(
       typeof actor === 'string' && actor.trim() ? actor.trim() : 'system'
     const now = new Date()
 
+    const resolutionTrim =
+      typeof resolution === 'string' ? resolution.trim() : ''
+    const resolutionGroupTrim =
+      typeof resolutionGroup === 'string' ? resolutionGroup.trim() : ''
+
     const updated = await db.workOrder.update({
       where: { id },
       data: {
@@ -67,16 +81,22 @@ export async function POST(
         closedAt: now,
         picAfter: picAfter ? String(picAfter) : wo.picAfter,
         picOnsite: picOnsite ? String(picOnsite) : wo.picOnsite,
+        resolution: resolutionTrim || null,
+        resolutionGroup: resolutionTrim ? (resolutionGroupTrim || null) : null,
         detailsAdmin: note
           ? (wo.detailsAdmin ? wo.detailsAdmin + '\n' : '') + String(note).trim()
           : wo.detailsAdmin,
       },
     })
 
+    const completionMsg = resolutionTrim
+      ? `ปิดงานเรียบร้อย — ผลการแก้ไข: ${resolutionTrim}${note ? ` (${String(note).trim()})` : ''}`
+      : `ปิดงานเรียบร้อย${note ? ` — ${String(note).trim()}` : ''}`
+
     await db.workOrderMessage.create({
       data: {
         workOrderId: id,
-        message: `ปิดงานเรียบร้อย${note ? ` — ${String(note).trim()}` : ''}`,
+        message: completionMsg,
         author: actorName,
         authorRole: 'admin',
       },
@@ -86,7 +106,11 @@ export async function POST(
       'WO_COMPLETE',
       id,
       `ปิดงาน ${updated.woNumber ?? id}`,
-      { note: note ?? null },
+      {
+        note: note ?? null,
+        resolution: resolutionTrim || null,
+        resolutionGroup: resolutionGroupTrim || null,
+      },
       actorName,
     )
 

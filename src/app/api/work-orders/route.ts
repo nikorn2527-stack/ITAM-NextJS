@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { validateGuestContact } from '@/lib/guest-validation'
 
 // Allowed status values
 const VALID_STATUSES = new Set([
@@ -11,6 +12,8 @@ const VALID_STATUSES = new Set([
 ])
 
 const VALID_PRIORITIES = new Set(['ปกติ', 'ปานกลาง', 'สูง', 'ด่วน'])
+
+const VALID_SOURCES = new Set(['session', 'guest'])
 
 function pad3(n: number): string {
   return String(n).padStart(3, '0')
@@ -73,6 +76,41 @@ async function generateWoNumber(): Promise<string | null> {
     if (!exists) return candidate
   }
   return null
+}
+
+/**
+ * Validates the externalMeta payload (for external / off-site work orders).
+ * Returns a normalized object or null if invalid.
+ */
+function normalizeExternalMeta(input: unknown): {
+  clientName: string
+  place?: string
+  contactPhone?: string
+  serials?: string[]
+} | null {
+  if (!input || typeof input !== 'object') return null
+  const obj = input as Record<string, unknown>
+  const clientName = String(obj.clientName ?? '').trim()
+  if (!clientName) return null
+  const out: {
+    clientName: string
+    place?: string
+    contactPhone?: string
+    serials?: string[]
+  } = { clientName }
+  if (typeof obj.place === 'string' && obj.place.trim()) {
+    out.place = obj.place.trim()
+  }
+  if (typeof obj.contactPhone === 'string' && obj.contactPhone.trim()) {
+    out.contactPhone = obj.contactPhone.trim()
+  }
+  if (Array.isArray(obj.serials)) {
+    const serials = obj.serials
+      .map((s) => (typeof s === 'string' ? s.trim() : ''))
+      .filter(Boolean)
+    if (serials.length > 0) out.serials = serials
+  }
+  return out
 }
 
 export async function GET(req: NextRequest) {
@@ -165,6 +203,9 @@ export async function POST(req: NextRequest) {
       deviceId,
       picBefore,
       actor,
+      externalMeta,
+      isExternal,
+      skipGuestValidation,
     } = body as Record<string, unknown>
 
     if (!subject || !String(subject).trim()) {
@@ -172,6 +213,71 @@ export async function POST(req: NextRequest) {
         { error: 'กรุณาระบุประเภทปัญหา (subject)' },
         { status: 400 },
       )
+    }
+
+    const source =
+      typeof submissionSource === 'string' &&
+      VALID_SOURCES.has(submissionSource.trim())
+        ? submissionSource.trim()
+        : 'guest'
+
+    // ── External work order (ลูกค้าภายนอก / นอกสถานที่) ──
+    // External WOs do NOT require guest contact validation — they are
+    // for clients/locations not in the system.
+    const externalFlag =
+      isExternal === true ||
+      (externalMeta && typeof externalMeta === 'object')
+    let externalMetaString: string | null = null
+    if (externalFlag) {
+      const norm = normalizeExternalMeta(externalMeta)
+      if (!norm) {
+        return NextResponse.json(
+          { error: 'กรุณาระบุชื่อลูกค้า (clientName) สำหรับงานนอก' },
+          { status: 400 },
+        )
+      }
+      externalMetaString = JSON.stringify(norm)
+    }
+
+    // ── Normalize reporter info ──
+    let finalReporterName =
+      typeof reporterName === 'string' ? reporterName.trim() : ''
+    let finalTel = typeof tel === 'string' ? tel.trim() : ''
+    let finalEmployeeCode =
+      typeof employeeCode === 'string' ? employeeCode.trim() : ''
+    let department: string | null = null
+
+    // ── Guest contact validation (skip for external WOs and session users) ──
+    if (
+      source === 'guest' &&
+      !externalFlag &&
+      skipGuestValidation !== true
+    ) {
+      if (!finalReporterName || !finalTel) {
+        return NextResponse.json(
+          {
+            error:
+              'ผู้แจ้งซ่อม (Guest) ต้องระบุชื่อและเบอร์โทร เพื่อยืนยันตัวตนกับสมุดผู้ติดต่อ',
+          },
+          { status: 400 },
+        )
+      }
+      const validation = await validateGuestContact({
+        name: finalReporterName,
+        phone: finalTel,
+        employeeCode: finalEmployeeCode || null,
+      })
+      if (!validation.ok) {
+        return NextResponse.json(
+          { error: validation.error ?? 'ยืนยันตัวตนไม่สำเร็จ' },
+          { status: 403 },
+        )
+      }
+      // Use canonical (directory) data for the stored WO
+      finalReporterName = validation.canonicalName ?? finalReporterName
+      finalTel = validation.canonicalPhone ?? finalTel
+      finalEmployeeCode = validation.canonicalEmployeeCode ?? finalEmployeeCode
+      department = validation.department ?? null
     }
 
     const woNumber = await generateWoNumber()
@@ -185,9 +291,7 @@ export async function POST(req: NextRequest) {
     const actorName =
       typeof actor === 'string' && actor.trim()
         ? actor.trim()
-        : (typeof reporterName === 'string' && reporterName.trim()
-            ? reporterName.trim()
-            : 'system')
+        : (finalReporterName || 'system')
 
     const prPriority =
       typeof priority === 'string' && VALID_PRIORITIES.has(priority)
@@ -202,17 +306,15 @@ export async function POST(req: NextRequest) {
         location: location ? String(location).trim() : null,
         details: details ? String(details).trim() : null,
         priority: prPriority,
-        reporterName: reporterName ? String(reporterName).trim() : null,
+        reporterName: finalReporterName || null,
         reporterEmail: reporterEmail ? String(reporterEmail).trim() : null,
-        tel: tel ? String(tel).trim() : null,
-        employeeCode: employeeCode ? String(employeeCode).trim() : null,
-        submissionSource:
-          typeof submissionSource === 'string' && submissionSource.trim()
-            ? submissionSource.trim()
-            : 'guest',
+        tel: finalTel || null,
+        employeeCode: finalEmployeeCode || null,
+        submissionSource: source,
         deviceId:
           typeof deviceId === 'string' && deviceId.trim() ? deviceId.trim() : null,
         picBefore: picBefore ? String(picBefore) : null,
+        externalMeta: externalMetaString,
         status: 'PENDING',
       },
     })
@@ -221,7 +323,9 @@ export async function POST(req: NextRequest) {
     await db.workOrderMessage.create({
       data: {
         workOrderId: created.id,
-        message: `แจ้งซ่อมใหม่: ${created.subject}`,
+        message: externalFlag
+          ? `แจ้งซ่อมใหม่ (งานนอก): ${created.subject}`
+          : `แจ้งซ่อมใหม่: ${created.subject}`,
         author: actorName,
         authorRole: 'system',
       },
@@ -238,6 +342,9 @@ export async function POST(req: NextRequest) {
         building: created.building,
         location: created.location,
         reporterName: created.reporterName,
+        submissionSource: created.submissionSource,
+        external: externalFlag,
+        department,
       },
       actorName,
     )
