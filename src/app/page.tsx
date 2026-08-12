@@ -62,6 +62,9 @@ const ItamSettings = dynamic(() =>
 const ItamAudit = dynamic(() =>
   import('@/components/itam/itam-audit').then((m) => m.ItamAudit),
 )
+const SnapshotViewer = dynamic(() =>
+  import('@/components/itam/snapshot-viewer').then((m) => m.SnapshotViewer),
+)
 
 export default function Home() {
   const activePage = useAppStore((s) => s.activePage)
@@ -176,6 +179,7 @@ export default function Home() {
                 {(activePage === 'itam-paper-analytics' || activePage === 'paper-analytics') && <ItamPaperAnalytics />}
                 {(activePage === 'itam-settings' || activePage === 'settings') && <ItamSettings />}
                 {activePage === 'itam-audit' && <ItamAudit />}
+                {activePage === 'itam-snapshot-viewer' && <SnapshotViewer />}
               </motion.div>
             </AnimatePresence>
           </main>

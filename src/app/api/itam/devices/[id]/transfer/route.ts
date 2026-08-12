@@ -5,28 +5,31 @@ import { canAccessSite } from '@/lib/auth'
 import { getNextAssetSiteCode, normalizeAssetSiteCodeForCompare } from '@/lib/asset-site-code'
 import { notifyTransfer } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { getLifecycleReadingType } from '@/lib/lifecycle-reading-type'
 
 /**
  * POST /api/itam/devices/[id]/transfer
  *
- * Body:
+ * Body (aligned with Apps Script commit 6e57904 — transfer acknowledge flow):
  *   {
  *     toSite, toBuilding?, toFloor?, toDepartment?, toDepartmentCode?,
  *     toLocation?, toAssetSiteCode?,
- *     meterReadingId?,     // id of a freshly-created MeterReading (when meter-required)
- *     skipMeterReason?     // free-text reason for NOT reading the meter
+ *     toStatus?,                          // optional status change during transfer
+ *     meterReadingId?,                    // id of a freshly-created MeterReading
+ *     meterSkipAcknowledged?,             // boolean — user ack "มิเตอร์นับต่อเนื่อง"
+ *     skipMeterReason?                    // optional free-text note (was required, now optional)
  *   }
  *
  * Permission: DEVICE_TRANSFER
  *
  * Logic:
  *   1. Capture current device state as "from".
- *   2. If device.meterRequired and no meterReadingId and no skipMeterReason → 400.
- *   3. Auto-generate toAssetSiteCode if not provided (and reuse from history
- *      if the device has lived at this site before).
- *   4. Update the device row.
- *   5. Create LocationHistory with all from/to fields + meterReadingId.
- *   6. Audit log: TRANSFER.
+ *   2. If device.meterRequired and no meterReadingId and no meterSkipAcknowledged → 400.
+ *   3. Derive readingType server-side using getLifecycleReadingType(fromStatus, toStatus).
+ *   4. Auto-generate toAssetSiteCode if not provided.
+ *   5. Update device + create LocationHistory (with meterSkipAcknowledged) in transaction.
+ *   6. If meterReadingId, link it back with derived readingType + eventId.
+ *   7. Audit log: TRANSFER.
  */
 export async function POST(
   req: NextRequest,
@@ -57,15 +60,29 @@ export async function POST(
       return NextResponse.json({ error: `ไม่มีสิทธิ์ย้ายอุปกรณ์ไปสาขา: ${toSite}` }, { status: 403 })
     }
 
-    // Meter-required enforcement — exactly the Apps Script behavior.
+    // ── Meter-required enforcement (Apps Script commit 6e57904) ────────────
+    // NEW: meterSkipAcknowledged (boolean checkbox) replaces skipMeterReason
+    //      as the required field. skipMeterReason is now an OPTIONAL note.
+    // The user must EITHER provide a meterReadingId OR check the acknowledge
+    // checkbox (confirming "มิเตอร์นับต่อเนื่อง" — meter continues).
     const meterReadingId = body.meterReadingId ? String(body.meterReadingId) : null
+    const meterSkipAcknowledged = Boolean(body.meterSkipAcknowledged)
     const skipMeterReason = body.skipMeterReason ? String(body.skipMeterReason).trim() : null
-    if (device.meterRequired && !meterReadingId && !skipMeterReason) {
+    if (device.meterRequired && !meterReadingId && !meterSkipAcknowledged) {
       return NextResponse.json(
-        { error: 'ต้องจดมิเตอร์ก่อนย้าย — กรุณาจดมิเตอร์หรือระบุเหตุผลที่จดไม่ได้' },
+        {
+          error: 'ต้องจดมิเตอร์ก่อนย้าย หรือยืนยันว่า "มิเตอร์นับต่อเนื่อง" (ติ๊ก checkbox)',
+          code: 'METER_REQUIRED',
+        },
         { status: 400 },
       )
     }
+
+    // ── Optional status change during transfer ─────────────────────────────
+    // If toStatus is provided, derive the readingType server-side (defense
+    // against client tampering — Apps Script commit 6e57904).
+    const toStatus = body.toStatus ? String(body.toStatus).trim() : device.status
+    const derivedReadingType = getLifecycleReadingType(device.status, toStatus)
 
     // If a meterReadingId was passed, verify it belongs to this device.
     if (meterReadingId) {
@@ -127,6 +144,8 @@ export async function POST(
     const logId = `MV-${nowIso.replace(/[-:.TZ]/g, '').slice(0, 14)}-${Math.floor(Math.random() * 90000) + 10000}`
 
     // Single transaction: update device + create history.
+    // Order matters (Apps Script commit 6e57904): status update FIRST, then
+    // meter/history, so a partial failure doesn't leave 3 sheets inconsistent.
     const [updatedDevice, historyRow] = await db.$transaction([
       db.device.update({
         where: { assetNo: device.assetNo },
@@ -138,6 +157,7 @@ export async function POST(
           departmentCode: toDepartmentCode,
           location: toLocation,
           assetSiteCode: toAssetSiteCode || null,
+          status: toStatus, // may equal existing status (pure location move)
           updatedBy: movedBy,
         },
       }),
@@ -148,7 +168,7 @@ export async function POST(
           moveDate,
           action,
           fromStatus: fromSnapshot.status,
-          toStatus: fromSnapshot.status, // transfer doesn't change status
+          toStatus, // may differ from fromStatus if lifecycle transfer
           fromSite: fromSnapshot.site,
           fromAssetSiteCode: fromSnapshot.assetSiteCode,
           fromBuilding: fromSnapshot.building,
@@ -164,11 +184,18 @@ export async function POST(
           meterReadingId,
           movedBy,
           remark: skipMeterReason || null,
+          // Transfer acknowledge flow fields (Apps Script commit 6e57904):
+          meterSkipAcknowledged: meterSkipAcknowledged || null,
+          meterSkipReason: skipMeterReason,
+          // Server-side derived readingType (defense against client tampering):
+          readingType: derivedReadingType,
         },
       }),
     ])
 
     // Best-effort: link the meter reading back to this history row.
+    // Uses the SERVER-DERIVED readingType (not hardcoded 'CHECKOUT') so that
+    // RETURN / SEND_REPAIR / FINAL flows get the correct type.
     if (meterReadingId) {
       try {
         await db.meterReading.update({
@@ -176,7 +203,7 @@ export async function POST(
           data: {
             eventType: action,
             eventId: historyRow.id,
-            readingType: 'CHECKOUT',
+            readingType: derivedReadingType,
           },
         })
       } catch {
@@ -201,10 +228,13 @@ export async function POST(
               floor: toFloor,
               department: toDepartment,
               location: toLocation,
+              status: toStatus,
             },
             crossSite: isCrossSite,
             meterReadingId,
+            meterSkipAcknowledged,
             skipMeterReason: skipMeterReason ? true : false,
+            derivedReadingType,
             historyId: historyRow.id,
           }),
         },

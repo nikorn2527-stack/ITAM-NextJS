@@ -4611,3 +4611,167 @@ Stage Summary:
   • Lifecycle reading-type derivation (shared logic)
 - ฟีเจอร์ที่เหลือ (P1/P2): transfer acknowledge UI, site attribution using *_At_Reading, snapshot viewer UI, amendment flow
 - Clone ล่าสุดอยู่ที่ /tmp/itam-apps-script-latest สำหรับอ้างอิงต่อ
+
+---
+Task ID: B-1
+Agent: full-stack-developer
+Task: Create 2 new v1 API route files (`/api/v1/meter-readings` + `/api/v1/cycles`) following the standardized `/api/v1/*` response architecture (helpers in `src/lib/api/response.ts`, auth in `src/lib/api/auth.ts`, AuditLog on every write, standard query params `?q=&page=&limit=&sort=&filter[]=&include=&fields=`).
+
+Work Log:
+- Read worklog Task IDs 33–35 to absorb project context (DB indexes, Cycle model expansion to 15 fields, immutable-snapshot write-lock via `assertMeterMonthWritable`, INITIAL baseline fix via `calcPagesBw/calcPagesColor`, RBAC + site-level access via `canAccessSite`).
+- Read existing v1 reference routes (`/api/v1/devices/route.ts` GET+POST, `/api/v1/snapshots/[id]/route.ts` GET, `/api/v1/snapshots/route.ts` GET, `/api/v1/snapshots/[id]/rows/route.ts` GET) to internalize the v1 envelope pattern (success `{data, pagination?, meta}`, error `{error:{code,message,details?,field?}, meta}`).
+- Read legacy `/api/itam/meter-readings/route.ts` to port the meter-write logic (prev-resolution, RESET auto-detect, write-lock, audit, notify, realtime push).
+- Read `/api/cycles/route.ts` legacy to mirror the OPEN-cycle invariant (auto-close prior OPEN cycles when a new one starts).
+- Read Prisma schema (Cycle + MeterReading models) and `lifecycle-reading-type.ts` / `meter-snapshot.ts` / `auth-shared.ts` to confirm field names and signatures.
+
+Files Created:
+
+1. **`src/app/api/v1/meter-readings/route.ts`** (GET + POST)
+   - **GET**: auth `VIEW_DEVICES`; field map `{assetNo, readingMonth, readingType, readBy}`; search fields `[assetNo, remark, readBy]`; default sort `{readingDate:'desc'}`; `?include=device` expands device with `{assetNo, brand, model, site, deviceType}`; site-level filter via `{device:{site:{in:allowedSites}}}` when `allowedSites !== 'ALL'`; response `list(readings, {page,limit,total})`.
+   - **POST**: auth `METER_WRITE`; body validation `assetNo`+`meterBw` required (400 with field); device lookup → 404 `notFound('device')`; `canAccessSite(user, device.site)` → 403 `forbidden('ไม่มีสิทธิ์เข้าถึงอุปกรณ์ในสาขานี้')`; prev-value resolution (fall back to device's last reading; if only `prevMeterBw` supplied, `prevMeterColor` defaults 0); `calcPagesBw`/`calcPagesColor` from `@/lib/lifecycle-reading-type`; auto-detect RESET (`meterBw < prevMeterBw || meterColor < prevMeterColor` with no explicit type → `'RESET'`); `assertMeterMonthWritable` → 409 `conflict(message, {code:'CYCLE_CLOSED'})`; `db.meterReading.create` with `siteAtReading` falling back to `device.site`; `db.auditLog.create` action `METER_WRITE`; best-effort `notifyMeter` (void) + `publishRealtimeEvent` (fire-and-forget); response `created(reading, {reset, pagesBw, pagesColor})`.
+
+2. **`src/app/api/v1/cycles/route.ts`** (GET + POST)
+   - **GET**: auth `VIEW_DASHBOARD`; field map `{status, cycleMonth}`; default sort `{startDate:'desc'}`; no site filter (cycles are global); response `list(cycles, {page,limit,total})`.
+   - **POST**: auth `METER_WRITE`; body validation `name`/`startDate`/`endDate` required → 400 `badRequest` with field; default status `'OPEN'`; if status is `OPEN`/`active` → `db.cycle.updateMany` flips existing OPEN/active cycles to CLOSED with `closedAt=now()` (one-active-cycle invariant); `startedAt = now()` when status is OPEN/active; `db.cycle.create` with `cycleMonth`/`deadlineDate`/`remarks` (optional); `db.auditLog.create` action `CYCLE_START`; response `created(cycle)`.
+
+Verification:
+- ✅ `bun run lint` → 1 error total (the pre-existing `@typescript-eslint/no-require-imports` in `src/lib/auth.ts:88` — `require('bcryptjs')` — unchanged baseline).
+- ✅ Targeted `eslint` on the 2 new files → 0 errors, 0 warnings.
+- ✅ No other files modified; no Prisma schema changes; no `db:push` needed.
+
+Stage Summary:
+- Two new v1 API route files added to `/api/v1/*`, fully aligned with the standardized response envelope (single → `{data, meta}`, list → `{data, pagination, meta}`, error → `{error:{code,message,details?,field?}, meta}`).
+- `meter-readings` route is a faithful port of the legacy `/api/itam/meter-readings` logic — preserves the immutable-snapshot write-lock, INITIAL/RESET baseline calc, RBAC site-access check, audit log, and realtime/notification side-effects — but wrapped in the v1 envelope and using `requireApiAuth`.
+- `cycles` route is a clean v1 port of the legacy `/api/cycles` POST (auto-close prior OPEN cycles, startedAt/closedAt, CYCLE_START audit) plus a full standard-query-param GET list.
+- All imports follow the spec: `@/lib/db`, `@/lib/api/response`, `@/lib/api/auth`, `@/lib/lifecycle-reading-type`, `@/lib/meter-snapshot`, `@/lib/auth` (for `canAccessSite`), plus best-effort `@/lib/notifications` + `@/lib/realtime`.
+
+---
+Task ID: D-1
+Agent: full-stack-developer
+Task: สร้าง Snapshot Viewer UI component สำหรับดูและตรวจสอบ immutable meter report snapshots ใน Next.js ITAM project — ทำงานกับ v1 API (`/api/v1/snapshots/*`) ที่มีอยู่แล้ว
+
+Work Log:
+1. อ่าน context จาก worklog (Task 33-35) เพื่อเข้าใจระบบ immutable snapshots ที่ Task 35 เพิ่งเพิ่มเข้ามา — มี Prisma models (MeterReportSnapshot, MeterReportSnapshotRow, MeterReportAmendment), SHA-256 content hash, append-only revisions, และ v1 API routes (`/api/v1/snapshots`, `/api/v1/snapshots/[id]`, `/api/v1/snapshots/[id]/rows`, `/api/v1/snapshots/[id]/verify`)
+2. ตรวจสอบ v1 API response shapes จาก `src/lib/api/response.ts` — list: `{ data, pagination, meta }`, single: `{ data, meta }`, error: `{ error: { code, message }, meta }`
+3. ตรวจสอบ auth-store: token เก็บใน localStorage key `'itam.token'`; fetch interceptor ใน `page.tsx` จับเฉพาะ `/api/itam/*` เท่านั้น → ต้องใส่ `Authorization: Bearer` เองสำหรับ `/api/v1/*` ผ่าน `getAuthHeaders()`
+4. สร้างไฟล์ `src/components/itam/snapshot-viewer.tsx` (~580 บรรทัด) ด้วยโครงสร้าง:
+   - `SnapshotViewer` (page entry): Card อธิบาย + ปุ่ม "🔒 Snapshots" (Lock icon) ที่เปิด Dialog
+   - `SnapshotDialog`: DialogContent ขนาดใหญ่ (max-w-6xl, h-92vh) ภายในมี Tabs 2 ตัว — "รายการ Snapshots" / "รายละเอียด" (detail tab disabled จนกว่าจะเลือก snapshot)
+   - `SnapshotListTab`: useQuery → `GET /api/v1/snapshots?page=N&limit=20&sort=-createdAt`; ตาราง 9 คอลัมน์ (snapshotId, cycleMonth, revision, status badge, rowCount, totalPagesBw/Color, totalCost ฿, createdBy, createdAt Thai); คลิกแถว → สลับไป detail tab; pagination prev/next + ข้อมูล "หน้า X / Y · ทั้งหมด N รายการ"
+   - `SnapshotDetailTab`: useQuery → `GET /api/v1/snapshots/[id]?include=rows`; การ์ด metadata 12 ฟิลด์ (รวม contentHash + ปุ่ม copy ด้วย navigator.clipboard); ปุ่ม "ตรวจสอบความถูกต้อง" → `POST /api/v1/snapshots/[id]/verify` → แสดงผลเป็นกล่องเขียว (✓ ข้อมูลถูกต้อง) หรือกล่องแดง (✗ ตรวจพบการแก้ไข พร้อมแสดง storedHash + computedHash); ตาราง frozen rows 11 คอลัมน์พร้อม readingType badge สีตามประเภท; ปุ่ม "กลับ" สำหรับย้อนกลับไป list
+   - ใช้ `useEffect` reset verify state เมื่อ snapshotId เปลี่ยน (react-query v5 ลบ `onSuccess` ออกแล้ว จึงใช้ effect แทน)
+5. Helper functions: `getAuthHeaders()`, `formatBaht()` (฿ + th-TH 2 decimals), `formatThaiDate()` (Thai locale), `statusBadge()` (ACTIVE=เขียว / SUPERSEDED=เทา), `readingTypeBadge()` (7 ประเภท สีต่างกัน), `Info()` (label+value grid item)
+6. Loading state: `Loader2` spinner + ข้อความ "กำลังโหลด..."; Error state: ข้อความแดง + ปุ่ม "ลองอีกครั้ง" ที่เรียก refetch; Empty state: ไอคอน Shield + ข้อความ "ยังไม่มี snapshot"
+7. เพิ่ม nav item ใน `src/components/itam/sidebar.tsx` (กลุ่ม "เครื่องมือ"): `{ page: 'itam-snapshot-viewer', icon: '🔒', label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์' }`
+8. เพิ่ม `'itam-snapshot-viewer'` ใน `ActivePage` union type ใน `src/store/app-store.ts`
+9. เพิ่ม dynamic import + render condition ใน `src/app/page.tsx`:
+   - `const SnapshotViewer = dynamic(() => import('@/components/itam/snapshot-viewer').then((m) => m.SnapshotViewer))`
+   - `{activePage === 'itam-snapshot-viewer' && <SnapshotViewer />}`
+10. รัน `bun run lint` → พบเพียง 1 pre-existing error ใน `src/lib/auth.ts` (require import — OK ตาม task spec) ไม่มี lint errors ใหม่จากไฟล์ที่สร้าง/แก้ไข
+
+ไฟล์ที่สร้าง/แก้ไข:
+- สร้าง: `src/components/itam/snapshot-viewer.tsx` (ใหม่, ~580 บรรทัด)
+- แก้ไข: `src/components/itam/sidebar.tsx` (+1 nav item ในกลุ่ม "เครื่องมือ")
+- แก้ไข: `src/store/app-store.ts` (+1 union member ใน ActivePage)
+- แก้ไข: `src/app/page.tsx` (+1 dynamic import + +1 render condition)
+
+Design decisions:
+- ใช้ Dialog ขนาดใหญ่ (max-w-6xl, h-92vh) เพื่อให้ตาราง frozen rows (11 คอลัมน์) แสดงได้พอดี + มี overflow-auto ทั้ง horizontal (ใน Table) และ vertical (ใน list/detail tab)
+- แยก List และ Detail เป็น component ย่อย เพื่อให้แต่ละ tab จัดการ useQuery lifecycle ของตัวเอง — เมื่อกลับจาก detail ไป list, react-query cache ยังเก็บข้อมูล list อยู่ (staleTime default) → UX รวดเร็ว
+- Verify button ไม่ได้ใช้ useMutation — ใช้ state แบบ local เพื่อควบคุม loading/error/result แยกจาก useQuery ของ snapshot detail (verify เป็น action แบบ one-shot ไม่จำเป็นต้อง cache ผล)
+- ใช้ toast จาก sonner สำหรับ feedback การ copy hash + ผล verify (success/error)
+- รองรับ dark mode ผ่าน Tailwind dark: variants ทุกที่
+- รองรับ mobile: Table อยู่ใน `overflow-auto` container, grid metadata เป็น `grid-cols-2 md:grid-cols-3`
+
+Stage Summary:
+- สร้าง Snapshot Viewer UI ครบตาม spec: ปุ่มเปิด Dialog + Tabs 2 ตัว (list/detail) + pagination + verify integrity + frozen rows table + Thai labels + loading/error states + mobile responsive
+- ใช้ existing shadcn/ui primitives (Dialog, Tabs, Table, Badge, Button, Card) และ Lucide icons (Lock, Shield, ShieldCheck, ShieldAlert, Copy, Check, ArrowLeft, RefreshCw, Loader2, ChevronLeft, ChevronRight) — ไม่ได้สร้าง UI primitive ใหม่
+- จัดการ auth สำหรับ v1 API ด้วย `getAuthHeaders()` ที่อ่าน token จาก `localStorage['itam.token']` เพราะ fetch interceptor ของ `/api/itam/*` ไม่จับ `/api/v1/*`
+- Lint: 0 new errors (มีเพียง 1 pre-existing error ใน `src/lib/auth.ts` ซึ่ง OK ตาม spec)
+- ไม่ได้แตะ backend API routes — ใช้ v1 API ที่ Task 34-35 เตรียมไว้แล้วทั้งหมด
+- พร้อมใช้งาน: user คลิก "🔒 Snapshots" ใน sidebar (กลุ่มเครื่องมือ) → เห็นหน้า SnapshotViewer → กดปุ่ม "🔒 Snapshots" → เปิด Dialog → เห็นลิสต์ snapshot → คลิกแถว → เห็น metadata + rows → กด "ตรวจสอบความถูกต้อง" → เห็นผล hash match/mismatch
+
+---
+Task ID: 36
+Agent: orchestrator — API-first architecture + P1/P2 features
+Task: สร้าง /api/v1/* architecture ตามหลักการ API-first + ทำ P1 (transfer ack) + P2 (snapshot viewer)
+
+Work Log:
+
+Phase A: API Foundation
+- สร้าง src/lib/api/response.ts — standard response shape + error shape + query parser
+  • Success: { data, meta: {requestId, timestamp, apiVersion:'v1'} } for single
+  • List: { data, pagination: {page,limit,total,totalPages,hasNext,hasPrev}, meta }
+  • Error: { error: {code, message, details?, field?}, meta }
+  • Helpers: ok(), created(), list(), badRequest(), unauthorized(), forbidden(), notFound(), conflict(), unprocessable(), serverError(), noContent()
+  • parseQuery(): ?q=, ?page=, ?limit=, ?sort=-field, ?filter[field]=, ?include=, ?fields=
+  • buildWhere(): filter → Prisma where (exact, in:a,b,c, null, notnull)
+  • buildOrderBy(): sort → Prisma orderBy
+- สร้าง src/lib/api/auth.ts — requireApiAuth() wraps requireAuth with v1 error shape
+
+Phase B: /api/v1/* Resource Endpoints (มอบหมายให้ subagent Task B-1)
+- /api/v1/devices — GET (list+filter+search+pagination) + POST (create with validation+audit)
+- /api/v1/meter-readings — GET (list) + POST (create with lifecycle calc + write-lock)
+- /api/v1/cycles — GET (list) + POST (create with auto-close-existing + audit)
+- /api/v1/snapshots — GET (list)
+- /api/v1/snapshots/[id] — GET (detail, ?include=rows)
+- /api/v1/snapshots/[id]/rows — GET (paginated frozen rows)
+- /api/v1/snapshots/[id]/verify — POST (re-compute SHA-256, compare with stored)
+
+Phase C (P1): Transfer Acknowledge Flow
+- src/app/api/itam/devices/[id]/transfer/route.ts:
+  • เปลี่ยนจาก skipMeterReason (required) → meterSkipAcknowledged (boolean checkbox, required)
+  • skipMeterReason เป็น optional note แทน
+  • เพิ่ม toStatus (optional status change during transfer)
+  • เพิ่ม getLifecycleReadingType(fromStatus, toStatus) — server-side derivation
+  • meterReading link ใช้ derivedReadingType แทน hardcoded 'CHECKOUT'
+  • LocationHistory เก็บ meterSkipAcknowledged + meterSkipReason + readingType
+  • Transaction order: status update FIRST, then history (atomic on partial failure)
+  • Audit log บันทึก meterSkipAcknowledged + derivedReadingType + toStatus
+
+Phase D (P2): Snapshot Viewer UI (มอบหมายให้ subagent Task D-1)
+- src/components/itam/snapshot-viewer.tsx (~580 บรรทัด):
+  • Page entry: Card + ปุ่ม "🔒 Snapshots"
+  • Dialog (max-w-6xl, h-92vh) พร้อม 2 tabs
+  • List tab: table 9 cols (snapshotId, cycleMonth, revision, status badge, rowCount, pages BW/Color, totalCost ฿, createdBy, createdAt), pagination
+  • Detail tab: metadata card (12 fields + contentHash copy button), verify button, frozen rows table (11 cols with readingType badge)
+  • getAuthHeaders() อ่าน token จาก localStorage 'itam.token' (v1 API ไม่ถูก interceptor จับ)
+- sidebar.tsx: เพิ่ม nav item "Snapshots" ในกลุ่ม "เครื่องมือ"
+- app-store.ts: เพิ่ม 'itam-snapshot-viewer' ใน ActivePage union
+- page.tsx: dynamic import + render condition
+
+Phase E: Site Attribution (using *_At_Reading fields)
+- ใน meter-readings POST route: siteAtReading ฯลฯ ถูกเก็บตอน create (มีอยู่แล้ว)
+- ใน meter-snapshot.ts: snapshot rows เก็บ siteAtReading ฯลฯ (frozen at reading time)
+- ใน snapshot verify: ใช้ข้อมูลจาก frozen rows (ไม่ใช่ current device state)
+- ผล: historical reports ใช้ site ตอนจด ไม่ใช่ site ปัจจุบัน
+
+Verification (agent-browser):
+✅ Dashboard: 2,378 devices, 2,152 active, 942,335 sheets (ตรง Apps Script ใหม่)
+✅ Sidebar: มีปุ่ม "Snapshots" ในกลุ่ม "เครื่องมือ"
+✅ Snapshot Viewer page loads
+✅ Dialog opens (list tab shows snapshot MRS-202501-R1-... with 554 rows, ACTIVE, ฿22,999.77)
+✅ Click row → detail tab shows metadata + contentHash + verify button
+✅ Click verify → "✓ ข้อมูลถูกต้อง — hash ตรงกัน" (SHA-256 verified)
+✅ No console errors
+✅ Lint: 0 new errors
+✅ Dev server stable at ~1.1GB
+
+API Design Principles (confirmed + enhanced):
+1. API เป็นตัวกลาง — ทุก v1 route ผ่าน requireApiAuth + db (ไม่มี direct DB access จาก frontend)
+2. Model ใช้ API มาตรฐาน — /api/v1/devices, /api/v1/meter-readings, /api/v1/cycles, /api/v1/snapshots
+3. Response รูปแบบเดียวกัน — { data, meta } / { data, pagination, meta } / { error, meta }
+4. ID + Relationship — ?include=device expands relations, ไม่ duplicate data
+5. Business Logic ที่ API — calcPagesBw, getLifecycleReadingType, assertMeterMonthWritable อยู่ที่ backend
+6. Auth + Permission — requireApiAuth(req, 'DEVICE_EDIT') ทุก route
+7. Search/Filter/Pagination — parseQuery + buildWhere + buildOrderBy ตั้งแต่แรก
+8. Version API — /api/v1/*
+9. Error shape มาตรฐาน — { error: { code, message, details?, field? } }
+10. Audit log ทุก write — CREATE, METER_WRITE, CYCLE_START, TRANSFER, etc.
+
+Stage Summary:
+- /api/v1/* architecture พร้อมใช้ (7 resource endpoints)
+- P1 Transfer acknowledge flow: meterSkipAcknowledged checkbox + server-side lifecycle type derivation
+- P2 Snapshot Viewer UI: list + detail + verify (SHA-256 hash check) ทำงานสมบูรณ์
+- หลักการ API-first 12 ข้อ (8 ของผู้ใช้ + 4 ที่เสริม) ทำงานครบ
+- Multi-app ready: ทุก app สามารถใช้ /api/v1/* ร่วมกันได้ (consistent shape, auth, pagination)
