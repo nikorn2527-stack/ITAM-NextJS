@@ -1,0 +1,608 @@
+     1→// ============================================================
+     2→// IT Asset Management — Flexible Multi-Industry Schema
+     3→// ============================================================
+     4→// ออกแบบให้ยืดหยุ่น: รองรับทุกประเภทองค์กร (โรงพยาบาล, โรงงาน, บริษัท)
+     5→// เปลี่ยนชื่อ/โลโก้/รูปแบบเลขทะเบียน/ธีมได้โดยไม่กระทบข้อมูล
+     6→// ============================================================
+     7→
+     8→generator client {
+     9→  provider = "prisma-client-js"
+    10→}
+    11→
+    12→datasource db {
+    13→  provider = "sqlite"
+    14→  url      = env("DATABASE_URL")
+    15→}
+    16→
+    17→// ============================================================
+    18→// 0) Organization Profile — หัวใจความยืดหยุ่น (ข้อ 1, 2)
+    19→//    เก็บชื่อแอป, โลโก้, tagline, สีหลัก, ประเภทอุตสาหกรรม
+    20→//    เปลี่ยนได้ตลอด ไม่กระทบข้อมูล
+    21→// ============================================================
+    22→model OrganizationProfile {
+    23→  id            String   @id @default(cuid())
+    24→  // ── ข้อ 1: ชื่อไม่อ้างสาขาเฉพาะ ──
+    25→  appName       String   @default("ระบบจัดการสินทรัพย์") // ไม่อ้าง "โรงพยาบาล" หรือ "โรงงาน"
+    26→  appTagline    String   @default("Asset Management System")
+    27→  industryType  String   @default("general") // general | hospital | factory | office | school | government
+    28→  // ── ข้อ 2: โลโก้ + สี ──
+    29→  logoUrl       String?  // URL รูปภาพ หรือ emoji
+    30→  primaryColor  String   @default("#f97316") // สีหลัก (ส้ม default)
+    31→  accentColor   String   @default("#0d9488") // สีรอง (เขียว teal default)
+    32→  // ── ตั้งค่าระบบ ──
+    33→  language      String   @default("th") // th | en
+    34→  timezone      String   @default("Asia/Bangkok")
+    35→  currency      String   @default("THB")
+    36→  // ── ข้อ 3: สิทธิ์การ import ──
+    37→  allowExcelImport Boolean @default(true)
+    38→  // ── Audit ──
+    39→  createdAt     DateTime @default(now())
+    40→  updatedAt     DateTime @updatedAt
+    41→}
+    42→
+    43→// ============================================================
+    44→// 1) Asset Number Pattern — ข้อ 4: เลขทะเบียนกำหนดเองได้
+    45→//    รูปแบบ: {prefix}-{seq:5} หรือ {dept:4}-{type:3}-{seq:3}-{year:2}
+    46→//    ตัวอย่าง:
+    47→//      โรงงาน: "ASSET-{seq:5}" → ASSET-00001
+    48→//      โรงพยาบาล: "{dept:4}-{type:3}-{seq:3}-{year:2}" → ACC-PRT-001-26
+    49→// ============================================================
+    50→model AssetNumberPattern {
+    51→  id            String   @id @default(cuid())
+    52→  name          String   // เช่น "รูปแบบโรงงาน", "รูปแบบโรงพยาบาล"
+    53→  pattern       String   // {prefix}-{seq:5} หรือ {dept:4}-{type:3}-{seq:3}-{year:2}
+    54→  description   String?
+    55→  isActive      Boolean  @default(false) // ใช้ได้ทีละ 1 pattern
+    56→  // ── ค่า default สำหรับแต่ละ segment ──
+    57→  defaultPrefix String?  // ถ้า pattern มี {prefix}
+    58→  seqPadding    Int      @default(5) // จำนวนหลักของเลขลำดับ
+    59→  seqStart      Int      @default(1) // เลขเริ่มต้น
+    60→  // ── Audit ──
+    61→  createdAt     DateTime @default(now())
+    62→  updatedAt     DateTime @updatedAt
+    63→}
+    64→
+    65→// ============================================================
+    66→// 2) Device — อุปกรณ์ IT หลัก (ขยายจากเดิม)
+    67→// ============================================================
+    68→model Device {
+    69→  id              String   @id @default(cuid())
+    70→  assetCode       String   @unique // เลขทะเบียน (ตามรูปแบบ AssetNumberPattern) — maps from asset_no
+    71→  name            String   // ชื่ออุปกรณ์ (derived from brand+model for display)
+    72→  brand           String
+    73→  model           String
+    74→  type            String   // ประเภท: PRINTER | SCANNER | COMPUTER | NETWORK | OTHER — maps from device_type
+    75→  serialNumber    String?  // maps from serial
+    76→  status          String   @default("Active") // Active | In Repair | Retired | Spare | Inactive
+    77→  site            String   // สาขา/ที่ตั้ง
+    78→  department      String?
+    79→  departmentCode  String?  // maps from department_code
+    80→  parentRef       String?
+    81→  displayLabel    String?  // maps from asset_site_code
+    82→  location        String?
+    83→  building        String?
+    84→  floor           String?
+    85→  room            String?  // NEW (ไม่มีในเดิม)
+    86→  // ── การซื้อ ──
+    87→  purchaseDate    String?  // maps from install_date
+    88→  purchasePrice   Float?   // ราคาซื้อ (THB) — NEW
+    89→  salvageValue    Float?   @default(0) // มูลค่าซาก — NEW
+    90→  usefulLife      Int?     // อายุการใช้งาน (เดือน) — NEW
+    91→  warrantyMonths  Int      @default(12)
+    92→  warrantyEnd     String?  // ISO date — วันหมดประกัน
+    93→  vendor          String?  // ผู้ขาย
+    94→  contractNo      String?  // maps from contract_no — เพิ่มจากเดิม
+    95→  uninstallDate   String?  // maps from uninstall_date — เพิ่มจากเดิม
+    96→  // ── มิเตอร์ (สำหรับเครื่องพิมพ์) ──
+    97→  meterRequired   Boolean  @default(false) // maps from meter_required (TRUE/FALSE)
+    98→  meterMode       String?  // TOTAL | BW_COLOR — maps from meter_mode
+    99→  lastMeterBw     Int      @default(0)
+   100→  lastMeterColor  Int      @default(0)
+   101→  // ── เครือข่าย ──
+   102→  ip              String?
+   103→  mac             String?
+   104→  remoteId        String?  // maps from remote_id — TeamViewer/AnyDesk ID
+   105→  // ── มอบหมาย ──
+   106→  currentAssignee String?  // ผู้ใช้ปัจจุบัน (denormalized) — NEW
+   107→  // ── หมายเหตุ ──
+   108→  remark          String?
+   109→  costCenter      String?  // maps from cost_center
+   110→  deviceGroup     String?  // maps from device_group
+   111→  // ── Audit ──
+   112→  createdAt       DateTime @default(now())
+   113→  updatedAt       DateTime @updatedAt
+   114→  updatedBy       String?  @default("System") // maps from updated_by
+   115→
+   116→  // Relations
+   117→  meterReadings     MeterReading[]
+   118→  transfers         DeviceTransfer[]
+   119→  assignments       Assignment[]
+   120→  maintenanceLogs   MaintenanceLog[]
+   121→  workOrders        WorkOrder[]
+   122→  stockTransactions StockTransaction[]
+   123→}
+   124→
+   125→// ============================================================
+   126→// 3) Meter Reading — การจดมิเตอร์
+   127→// ============================================================
+   128→model MeterReading {
+   129→  id                       String   @id @default(cuid())
+   130→  readingId                String?  @unique // maps from reading_id (MR-YYYYMMDDHHMMSS-NNNNN หรือ HIST-NN-YYYY-MM)
+   131→  deviceId                 String
+   132→  assetCode                String?  // maps from asset_no — เก็บไว้สำหรับ CSV import (lookup deviceId ภายหลัง)
+   133→  readingDate              String   // ISO date — maps from reading_date
+   134→  readingMonth             String?  // YYYY-MM — maps from reading_month
+   135→  meterBw                  Int      @default(0) // maps from meter_bw
+   136→  meterColor               Int      @default(0) // maps from meter_color
+   137→  pagesBw                  Int      @default(0) // delta BW — maps from pages_bw
+   138→  pagesColor               Int      @default(0) // delta Color — maps from pages_color
+   139→  prevMeterBw              Int      @default(0) // maps from prev_meter_bw
+   140→  prevMeterColor           Int      @default(0) // maps from prev_meter_color
+   141→  readingType              String?  // MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN — maps from reading_type
+   142→  readBy                   String?  // maps from read_by
+   143→  remark                   String?  // maps from remark
+   144→  locationAtReading        String?  // maps from location_at_reading
+   145→  siteAtReading            String?  // maps from site_at_reading
+   146→  buildingAtReading        String?  // maps from building_at_reading
+   147→  floorAtReading           String?  // maps from floor_at_reading
+   148→  departmentAtReading      String?  // maps from department_at_reading
+   149→  departmentCodeAtReading  String?  // maps from department_code_at_reading
+   150→  eventType                String?  // maps from event_type
+   151→  eventId                  String?  // maps from event_id (FK → Location_History.Log_ID)
+   152→  createdAt                DateTime @default(now())
+   153→
+   154→  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+   155→}
+   156→
+   157→// ============================================================
+   158→// 4) Cycle — รอบจดมิเตอร์
+   159→// ============================================================
+   160→model Cycle {
+   161→  id          String   @id @default(cuid())
+   162→  name        String
+   163→  startDate   String   // ISO date
+   164→  endDate     String   // ISO date
+   165→  status      String   @default("active") // active | ended | cancelled
+   166→  createdAt   DateTime @default(now())
+   167→  updatedAt   DateTime @updatedAt
+   168→}
+   169→
+   170→// ============================================================
+   171→// 5) Device Transfer — ประวัติการย้าย
+   172→// ============================================================
+   173→model DeviceTransfer {
+   174→  id                 String   @id @default(cuid())
+   175→  logId              String?  @unique // maps from Log_ID (MV-YYYYMMDDHHMMSS-NNNNN)
+   176→  deviceId           String
+   177→  assetCode          String?  // maps from Asset_No — เก็บไว้สำหรับ CSV import
+   178→  moveDate           String?  // maps from Move_Date — ISO datetime
+   179→  action             String?  // maps from Action — TRANSFER | TRANSFER_SITE | STATUS_CHANGE | STATUS_AND_TRANSFER | TRANSFER_BY_LIFECYCLE
+   180→  fromStatus         String?  // maps from From_Status
+   181→  toStatus           String?  // maps from To_Status
+   182→  fromSite           String?  // maps from From_Site
+   183→  fromAssetSiteCode  String?  // maps from From_AssetSiteCode
+   184→  fromBuilding       String?  // maps from From_Building
+   185→  fromFloor          String?  // maps from From_Floor
+   186→  fromDepartment     String?  // maps from From_Department
+   187→  fromLocation       String?  // maps from From_Location
+   188→  toSite             String   // maps from To_Site
+   189→  toAssetSiteCode    String?  // maps from To_AssetSiteCode
+   190→  toBuilding         String?  // maps from To_Building
+   191→  toFloor            String?  // maps from To_Floor
+   192→  toDepartment       String?  // maps from To_Department
+   193→  toLocation         String?  // maps from To_Location
+   194→  meterReadingId     String?  // maps from Meter_Reading_ID (FK → Meter_Readings.reading_id)
+   195→  movedBy            String?  // maps from Moved_By
+   196→  remark             String?  // maps from Remark
+   197→  transferDate       String   // ISO date (computed from moveDate for backward compat)
+   198→  reason             String?  // alias for remark (backward compat)
+   199→  createdAt          DateTime @default(now())
+   200→
+   201→  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+   202→}
+   203→
+   204→// ============================================================
+   205→// 6) Assignment — การมอบหมายอุปกรณ์
+   206→// ============================================================
+   207→model Assignment {
+   208→  id                 String   @id @default(cuid())
+   209→  assignmentId       String?  @unique // maps from Assignment_ID
+   210→  deviceId           String
+   211→  assignee           String   // maps from Assignee — ชื่อหรือ email
+   212→  assigneeRole       String?  // maps from Assignee_Role
+   213→  department         String?  // maps from Department
+   214→  checkoutDate       String   // maps from Checkout_Date — ISO date
+   215→  expectedReturnDate String?  // maps from Expected_Return_Date
+   216→  actualReturnDate   String?  // maps from Actual_Return_Date
+   217→  status             String   @default("active") // maps from Status — active | returned
+   218→  notes              String?  // maps from Notes
+   219→  createdAt          DateTime @default(now()) // maps from Created_At
+   220→  updatedAt          DateTime @updatedAt
+   221→
+   222→  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+   223→}
+   224→
+   225→// ============================================================
+   226→// 7) Maintenance Log — ประวัติซ่อมบำรุง (legacy, ใช้คู่กับ WorkOrder)
+   227→// ============================================================
+   228→model MaintenanceLog {
+   229→  id           String   @id @default(cuid())
+   230→  logId        String?  @unique // maps from Log_ID (MNT-xxxxxxxx)
+   231→  deviceId     String
+   232→  type         String   // maps from Type — repair | maintenance | inspection | upgrade
+   233→  status       String   @default("open") // maps from Status — open | in_progress | completed | cancelled
+   234→  startDate    String   // maps from Start_Date — ISO date
+   235→  endDate      String?  // maps from End_Date
+   236→  cost         Float?   // maps from Cost
+   237→  vendor       String?  // maps from Vendor
+   238→  description  String   // maps from Description
+   239→  resolvedNote String?  // maps from Resolved_Note
+   240→  createdAt    DateTime @default(now()) // maps from Created_At
+   241→  updatedAt    DateTime @updatedAt
+   242→
+   243→  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+   244→}
+   245→
+   246→// ============================================================
+   247→// 8) Work Order — ใบงานแจ้งซ่อม (aligned with Services App)
+   248→//    ระบบแจ้งซ่อมครบวงจร: ผู้ใช้แจ้ง → ช่างรับงาน → ซ่อม → ปิดงาน
+   249→// ============================================================
+   250→model WorkOrder {
+   251→  id               String   @id @default(cuid())
+   252→  woNumber         String?  @unique // WO-YYYYMMDD-NNN
+   253→  requestId        String?  // dedup ID
+   254→
+   255→  // ── ข้อมูลการแจ้ง ──
+   256→  subject          String   // ประเภทปัญหา
+   257→  building         String?
+   258→  location         String?
+   259→  details          String?
+   260→  priority         String   @default("ปกติ") // ปกติ | ปานกลาง | สูง | ด่วน
+   261→
+   262→  // ── ผู้แจ้ง ──
+   263→  reporterName     String?
+   264→  reporterEmail    String?
+   265→  tel              String?
+   266→  employeeCode     String?
+   267→  submissionSource String   @default("guest") // session | guest | line
+   268→  trackable        Boolean  @default(false)
+   269→
+   270→  // ── LINE OA integration (Task ID: NOTIFY-LINE) ──
+   271→  // lineUserId  — LINE user ID (ถ้าใบงานนี้แจ้งผ่าน LINE)
+   272→  // lineMessageId — message ID ของข้อความแจ้งซ่อมต้นทาง (สำหรับ reply)
+   273→  lineUserId       String?
+   274→  lineMessageId    String?
+   275→
+   276→  // ── ลูกค้าภายนอก ──
+   277→  externalMeta     String?  // JSON
+   278→
+   279→  // ── รูปภาพ 3 ช่วง ──
+   280→  picBefore        String?  // base64 หรือ URL
+   281→  picOnsite        String?
+   282→  picAfter         String?
+   283→
+   284→  // ── สถานะ ──
+   285→  status           String   @default("PENDING") // PENDING | IN_PROGRESS | WAITING_PARTS | COMPLETED | CANCELLED
+   286→  acceptStatus     String?
+   287→
+   288→  // ── มอบหมาย ──
+   289→  assignedTo       String?  // username ช่าง
+   290→  assignedBy       String?
+   291→  assignedAt       DateTime?
+   292→  assignmentNote   String?
+   293→
+   294→  // ── หมายเหตุ ──
+   295→  detailsAdmin     String?
+   296→  dateAdmin        String?
+   297→
+   298→  // ── ผลการแก้ไข ──
+   299→  resolution       String?  // ผลการแก้ไข (option label)
+   300→  resolutionGroup  String?  // group label ของผลการแก้ไข
+   301→
+   302→  // ── ปลดล็อกแก้ไข ──
+   303→  editUnlockActive Boolean  @default(false)
+   304→  editUnlockBy     String?
+   305→  editUnlockAt     DateTime?
+   306→  editUnlockNote   String?
+   307→
+   308→  // ── วันที่สำคัญ ──
+   309→  workCompletedAt  DateTime?
+   310→  closedAt         DateTime?
+   311→  canceledAt       DateTime?
+   312→  cancelReason     String?
+   313→
+   314→  // ── เชื่อม Device ──
+   315→  deviceId         String?  // optional FK
+   316→
+   317→  // ── Audit ──
+   318→  createdAt        DateTime @default(now())
+   319→  updatedAt        DateTime @updatedAt
+   320→
+   321→  // Relations
+   322→  device           Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+   323→  messages         WorkOrderMessage[]
+   324→  review           WorkOrderReview?
+   325→}
+   326→
+   327→model WorkOrderMessage {
+   328→  id          String   @id @default(cuid())
+   329→  workOrderId String
+   330→  message     String
+   331→  author      String?
+   332→  authorRole  String?  // admin | staff | reporter | system
+   333→  createdAt   DateTime @default(now())
+   334→
+   335→  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+   336→}
+   337→
+   338→model WorkOrderReview {
+   339→  id          String   @id @default(cuid())
+   340→  workOrderId String   @unique
+   341→  rating      Int      // 1-5
+   342→  comment     String?
+   343→  reviewedBy  String?
+   344→  createdAt   DateTime @default(now())
+   345→
+   346→  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+   347→}
+   348→
+   349→// ============================================================
+   350→// 9) Stock Item — สินค้าคงคลัง (ข้อ 3: import จาก Excel)
+   351→// ============================================================
+   352→model StockItem {
+   353→  id                String   @id @default(cuid())
+   354→  productCode       String   @unique // maps from ProductCode
+   355→  productName       String   // maps from ProductName
+   356→  category          String?
+   357→  brand             String?
+   358→  model             String?
+   359→  unit              String   @default("ชิ้น") // maps from Unit
+   360→  quantity          Int      @default(0) // maps from CurrentStock
+   361→  minQuantity       Int      @default(0) // maps from ReorderPoint
+   362→  maxQuantity       Int      @default(0)
+   363→  unitCost          Float?   // maps from UnitPrice
+   364→  totalValue        Float?   // maps from TotalValue — COMPUTED (quantity × unitCost)
+   365→  location          String?
+   366→  site              String?
+   367→  compatibleDevices String?
+   368→  remark            String?
+   369→  active            Boolean  @default(true) // maps from Status
+   370→  lastUpdated       String?  // maps from LastUpdated
+   371→  createdAt         DateTime @default(now())
+   372→  updatedAt         DateTime @updatedAt
+   373→
+   374→  transactions      StockTransaction[]
+   375→  purchaseOrderItems PurchaseOrderItem[]
+   376→}
+   377→
+   378→// ============================================================
+   379→// 10) Stock Transaction — รายการรับเข้า/เบิกออก
+   380→// ============================================================
+   381→model StockTransaction {
+   382→  id              String   @id @default(cuid())
+   383→  txnNumber       String?  // STX-YYYYMMDD-NNN — maps from ReceiptNo (IN) or IssueNo (OUT)
+   384→  stockItemId     String
+   385→  productCode     String?  // maps from ProductCode — denormalized for CSV import
+   386→  productName     String?  // maps from ProductName — denormalized
+   387→  type            String   // IN | OUT | ADJUST
+   388→  quantity        Int      // maps from Quantity
+   389→  unit            String?  // maps from Unit
+   390→  balanceAfter    Int      @default(0)
+   391→  reason          String?
+   392→  requester       String?  // maps from Requester (StockOut)
+   393→  department      String?  // maps from Department (StockOut)
+   394→  purpose         String?  // maps from Purpose (StockOut)
+   395→  approver        String?  // maps from Approver (StockOut)
+   396→  approvedAt      String?  // maps from ApprovedAt (StockOut)
+   397→  workOrderId     String?
+   398→  workOrderNo     String?  // maps from WorkOrderNo — for CSV import
+   399→  deviceId        String?
+   400→  cost            Float?   // maps from TotalValue
+   401→  unitCost        Float?   // maps from UnitPrice
+   402→  vendor          String?  // maps from Supplier
+   403→  receiver        String?  // maps from Receiver (StockIn)
+   404→  purchaseOrderNo String?  // maps from PurchaseOrderNo (StockIn)
+   405→  txnDate         String   // maps from Date
+   406→  performedBy     String?  // maps from PerformedBy
+   407→  remark          String?  // maps from Remark
+   408→  sourceKey       String?  // maps from source_key
+   409→  processedFlag   String?  // maps from processed_flag
+   410→  // ── Approval workflow (PART 1: Stock Pending Approval System) ──
+   411→  // null = immediate (legacy/IN-OUT-ADJUST processed at once)
+   412→  // PENDING = waiting for approval (stock NOT yet reduced)
+   413→  // APPROVED = approved (stock reduced on approval)
+   414→  // REJECTED = rejected (no stock change)
+   415→  approvalStatus  String?  // null (immediate) | PENDING | APPROVED | REJECTED
+   416→  approvalMode    String?  // manual | auto
+   417→  autoApproveAt   String?  // ISO datetime for auto-approval
+   418→  rejectReason    String?  // reason when rejected
+   419→  createdAt       DateTime @default(now())
+   420→
+   421→  stockItem       StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+   422→  device          Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+   423→}
+   424→
+   425→// ============================================================
+   426→// 11) Purchase Order — ใบสั่งซื้อ
+   427→// ============================================================
+   428→model PurchaseOrder {
+   429→  id              String   @id @default(cuid())
+   430→  poNumber        String?  @unique // PO-YYYYMMDD-NNN
+   431→  orderDate       String   // ISO date
+   432→  supplier        String?
+   433→  status          String   @default("open") // open | partial | received | cancelled
+   434→  totalValue      Float?   // มูลค่ารวม
+   435→  createdBy       String?
+   436→  remark          String?
+   437→  createdAt       DateTime @default(now())
+   438→  updatedAt       DateTime @updatedAt
+   439→
+   440→  items           PurchaseOrderItem[]
+   441→}
+   442→
+   443→model PurchaseOrderItem {
+   444→  id              String   @id @default(cuid())
+   445→  purchaseOrderId String
+   446→  stockItemId     String
+   447→  quantityOrdered Int
+   448→  quantityReceived Int     @default(0)
+   449→  unitPrice       Float?
+   450→  totalValue      Float?
+   451→
+   452→  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+   453→  stockItem       StockItem     @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+   454→}
+   455→
+   456→// ============================================================
+   457→// 12) Document Template — ข้อ 5: เทมเพลตแยกประเภท
+   458→//     sticker | pdf | work-order | stock-out | stock-in | purchase-order
+   459→// ============================================================
+   460→model DocumentTemplate {
+   461→  id          String   @id @default(cuid())
+   462→  name        String
+   463→  type        String   // sticker | pdf | work-order | stock-out | stock-in | purchase-order
+   464→  category    String?  // หมวดหมู่ย่อย (เช่น sticker: asset | meter | location)
+   465→  content     String   // JSON: { canvas, elements, table, footer, etc. }
+   466→  isActive    Boolean  @default(true)
+   467→  isDefault   Boolean  @default(false)
+   468→  createdAt   DateTime @default(now())
+   469→  updatedAt   DateTime @updatedAt
+   470→}
+   471→
+   472→// ============================================================
+   473→// 13) Import Job — ข้อ 3: Excel import แยกฟังก์ชัน
+   474→// ============================================================
+   475→model ImportJob {
+   476→  id          String   @id @default(cuid())
+   477→  jobType     String   // device | work-order | stock | meter-reading | master-data
+   478→  fileName    String
+   479→  fileType    String   @default("excel") // excel | csv
+   480→  status      String   @default("pending") // pending | processing | completed | failed
+   481→  totalRows   Int      @default(0)
+   482→  processedRows Int    @default(0)
+   483→  errorRows   Int      @default(0)
+   484→  errors      String?  // JSON: [{ row, error }]
+   485→  uploadedBy  String?
+   486→  createdAt   DateTime @default(now())
+   487→  completedAt DateTime?
+   488→}
+   489→
+   490→// ============================================================
+   491→// 14) Master Item — ข้อมูลมาตรฐาน (Brand, Type, Model, Department, etc.)
+   492→// ============================================================
+   493→model MasterItem {
+   494→  id           String   @id @default(cuid())
+   495→  category     String   // Brand | Type | Model | Department | Status | DeviceGroup
+   496→  code         String
+   497→  label        String
+   498→  parentRef    String?
+   499→  displayLabel String?
+   500→  siteCode     String?
+   501→  active       Boolean  @default(true)
+   502→  createdAt    DateTime @default(now())
+   503→  updatedAt    DateTime @updatedAt
+   504→}
+   505→
+   506→// ============================================================
+   507→// 15) Site — สาขา/ที่ตั้ง
+   508→// ============================================================
+   509→model Site {
+   510→  id        String   @id @default(cuid())
+   511→  code      String   @unique
+   512→  name      String
+   513→  address   String?
+   514→  phone     String?
+   515→  createdAt DateTime @default(now())
+   516→}
+   517→
+   518→model SiteRate {
+   519→  id        String   @id @default(cuid())
+   520→  siteCode  String
+   521→  bwRate    Float    @default(0.5)
+   522→  colorRate Float    @default(2.0)
+   523→  createdAt DateTime @default(now())
+   524→  updatedAt DateTime @updatedAt
+   525→}
+   526→
+   527→// ============================================================
+   528→// 16) User — ผู้ใช้งานระบบ
+   529→//     RBAC + Site-Level Permissions (Task ID: RBAC-DASHBOARD)
+   530→//     - role: admin | manager | staff | coordinator | viewer
+   531→//     - permissions: JSON array of permission strings (overrides role)
+   532→//     - allowedSites: "ALL" หรือ comma-separated site names
+   533→// ============================================================
+   534→model User {
+   535→  id            String   @id @default(cuid())
+   536→  email         String   @unique
+   537→  username      String?
+   538→  name          String?
+   539→  role          String   @default("viewer") // admin | manager | staff | coordinator | viewer | editor (legacy)
+   540→  department    String?
+   541→  permissions   String?  // JSON array of permission strings (custom override)
+   542→  allowedSites  String?  // "ALL" หรือ comma-separated site names
+   543→  active        Boolean  @default(true)
+   544→  passwordHash  String?
+   545→  avatarUrl     String?  // URL รูปโปรไฟล์ (หรือ initials ถ้าไม่มีรูป)
+   546→  phone         String?  // เบอร์โทร
+   547→  lineUserId    String?  // LINE user ID (ถ้าเชื่อมกับ LINE)
+   548→  lastLoginAt   String?
+   549→  createdAt     DateTime @default(now())
+   550→  updatedAt     DateTime @updatedAt
+   551→}
+   552→
+   553→// ============================================================
+   554→// 17) App Setting — ตั้งค่าระบบ (key-value)
+   555→// ============================================================
+   556→model AppSetting {
+   557→  id        String   @id @default(cuid())
+   558→  key       String   @unique
+   559→  value     String
+   560→  updatedAt DateTime @updatedAt
+   561→}
+   562→
+   563→// ============================================================
+   564→// 18) Audit Log — ประวัติการทำรายการ
+   565→// ============================================================
+   566→model AuditLog {
+   567→  id        String   @id @default(cuid())
+   568→  action    String   // CREATE | UPDATE | DELETE | METER_READING | WO_CREATE | STOCK_IN | STOCK_OUT | etc.
+   569→  entity    String   // Device | WorkOrder | StockItem | etc.
+   570→  entityId  String?
+   571→  summary   String
+   572→  detail    String?  // JSON
+   573→  actor     String   @default("system")
+   574→  createdAt DateTime @default(now())
+   575→}
+   576→
+   577→// ============================================================
+   578→// 19) Report — รายงานที่บันทึกไว้
+   579→// ============================================================
+   580→model Report {
+   581→  id        String   @id @default(cuid())
+   582→  type      String   // dashboard_summary | cycle | audit | utilization | stock | work-order
+   583→  title     String
+   584→  rangeKey  String?  // month | 30d | quarter | all
+   585→  filters   String?  // JSON
+   586→  data      String   // JSON snapshot
+   587→  format    String   @default("json")
+   588→  createdAt DateTime @default(now())
+   589→}
+   590→
+   591→// ============================================================
+   592→// 20) LINE Binding — ผูก LINE user ID กับข้อมูลผู้ติดต่อ
+   593→//     (Task ID: NOTIFY-LINE — LINE OA integration)
+   594→//     ใช้สำหรับ: แจ้งซ่อมผ่าน LINE, ส่งสถานะใบงานกลับไปที่ LINE,
+   595→//     ตอบกลับข้อความจาก staff ในระบบไปยัง LINE ของผู้แจ้ง
+   596→// ============================================================
+   597→model LineBinding {
+   598→  id               String   @id @default(cuid())
+   599→  lineUserId       String   @unique // LINE user ID (Uxxxxxxxx)
+   600→  lineDisplayName  String?  // ชื่อที่แสดงใน LINE
+   601→  reporterName     String?  // ชื่อจริง (จากการลงทะเบียน)
+   602→  tel              String?  // เบอร์โทร
+   603→  employeeCode     String?  // รหัสพนักงาน (ถ้ามี)
+   604→  workOrderCount   Int      @default(0) // นับจำนวนใบงานที่แจ้งผ่าน LINE ของ user นี้
+   605→  createdAt        DateTime @default(now())
+   606→  updatedAt        DateTime @updatedAt
+   607→}
+   608→

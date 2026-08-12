@@ -2500,3 +2500,129 @@ Verification:
 ✅ รูปโปรไฟล์: แสดง initials "ผู้ดูแลระบบ" → "ผู" ในวงกลมสีส้ม (ไม่มีรูปจริง → ใช้ initials)
 ✅ Lint: 0 errors
 ✅ Prisma: db:push สำเร็จ (avatarUrl, phone, lineUserId ใน User)
+
+---
+Task ID: PRINT-REPORT
+Agent: orchestrator — ใบแจ้งซ่อนรายจ๊อบ + รีพอร์ตรายเดือน
+
+Work Log:
+
+PART 1 — ใบแจ้งซ่อนรายจ๊อบ (Work Order Print Form)
+
+1. สร้าง /api/work-orders/[id]/print/route.ts (GET, returns text/html)
+   - รับ query ?paper=a4-portrait|a4-landscape|a5-portrait (default a4-portrait)
+   - ดึง WO + device + parts (StockTransaction ที่เชื่อมกับ WO ผ่าน workOrderNo/workOrderId)
+   - คืน HTML เต็มหน้า พร้อม @page { size: ... } ตามขนาดที่เลือก
+   - มีหัวเรื่องครบ: header (logo+ใบแจ้งซ่อน+WO number+date), info section
+     (ผู้แจ้ง/เบอร์/อาคาร/สถานที่/หัวข้อ/ความเร่งด่วน/สถานะ/รหัสพนักงาน),
+     รายละเอียดปัญหา, external section (ถ้ามี externalMeta), device section
+     (assetCode/brand/model/serial/site), assignment section, work section
+     (resolution/admin note/cancel reason), parts table, images grid
+     (ก่อน/หน้างาน/หลัง), signatures (ผู้แจ้ง/ช่าง/ผู้อนุมัติ), footer
+     (เลขใบงาน+วันที่พิมพ์)
+   - มีปุ่ม "พิมพ์" + "ปิดหน้าต่าง" ที่ซ่อนเมื่อ print
+   - Auto-trigger window.print() หลังรูปโหลดเสร็จ (ถ้าเปิดผ่าน window.open)
+   - HTML-escape ทุก dynamic value (ป้องกัน XSS)
+
+2. สร้าง src/components/itam/wo-print-form.tsx (use client)
+   - export function WoPrintForm({ workOrderId }: { workOrderId: string })
+   - ดึง /api/work-orders/[id] + /api/work-orders/[id]/parts ผ่าน react-query
+   - Paper size selector (A4 แนวตั้ง/แนวนอน, A5 แนวตั้ง) — preview สดทันที
+   - ปุ่ม "พิมพ์" (window.print ด้วย @media print CSS) และ "เปิดหน้าใหม่"
+     (window.open ไปยัง /api/work-orders/[id]/print?paper=...)
+   - Print CSS scoped: ซ่อน body * (visibility:hidden), แสดงเฉพาะ .print-area
+   - @page size เปลี่ยนตาม paper ที่เลือก, page-break-inside:avoid สำหรับ
+     แต่ละ section + table + signatures
+   - หน้า preview ใช้ความกว้างตามขนาดจริง (210mm/297mm/148mm) เพื่อให้เห็น
+     layout ตรงจริง
+
+3. อัปเดต src/components/itam/work-orders-page.tsx
+   - เพิ่ม import: Printer icon + WoPrintForm
+   - เพิ่ม state printOpen ใน WorkOrderDetailContent
+   - เพิ่มปุ่ม "พิมพ์ใบงาน" (สีส้ม) ใน footer actions ของ detail dialog
+   - เปิด Dialog ใหม่ (sm:max-w-[1024px]) ที่บรรจุ WoPrintForm
+
+PART 2 — รีพอร์ตรายเดือน (Monthly Report)
+
+4. สร้าง /api/reports/monthly/route.ts (GET)
+   - Query params: ?month=YYYY-MM&site=&type=work-order|stock|devices|all
+   - คืนข้อมูลครบ:
+     • workOrders: total, byStatus, byPriority, bySubject (top 10),
+       avgResponseTimeMin (assigned - created, ส่งกลับเป็น label ด้วย),
+       avgRating, byStaff (รับ/เสร็จ)
+     • stock: totalIn, totalOut, topItems (รวม IN+OUT+ADJUST เรียงตาม qty),
+       lowStockItems (quantity <= minQuantity), totalValue
+     • devices: total, newDevices (createdAt ในเดือน), byStatus
+   - รองรับ site filter (กรอง stockItem.site + device.site)
+   - ใช้ Promise.all ดึงข้อมูล 3 ส่วนพร้อมกันเมื่อ type=all
+   - ตรวจ validate type → 400 error พร้อมข้อความ
+
+5. สร้าง src/components/itam/monthly-report.tsx (use client)
+   - export function MonthlyReport()
+   - คอนโทรล: month input (default เดือนปัจจุบัน), site select (โหลดจาก
+     /api/sites), tabs 4 ตัว (ทั้งหมด/ใบงาน/สต็อก/อุปกรณ์)
+   - Summary cards (2×4 grid): ใบงานทั้งหมด, เสร็จแล้ว, คะแนนเฉลี่ย, เวลาตอบ
+     เฉลี่ย, รับเข้า, เบิกออก, มูลค่าสต็อก, ของเหลือน้อย, อุปกรณ์ทั้งหมด,
+     เพิ่มใหม่
+   - Charts (recharts): Pie (status), Bar (priority), horizontal Bar (subject
+     top 10), Bar (staff รับ/เสร็จ ซ้อนกัน), Pie (device status)
+   - Tables: staff performance (พร้อม %เสร็จ), top stock items, low stock
+     items, device status breakdown
+   - ปุ่ม "พิมพ์" (window.print ด้วย @media print CSS เช่นเดียวกับ WoPrintForm)
+   - ปุ่ม "CSV" — export ทุก section เป็น CSV พร้อม BOM (เปิดใน Excel อ่าน
+     ภาษาไทยได้), ชื่อไฟล์ monthly-report-YYYY-MM.csv
+   - ปุ่ม "รีเฟรช" เรียก refetch()
+   - รองรับ dark mode (ใช้ useTheme เพื่อสี chart ที่เหมาะสม)
+   - Skeleton ตอน loading, EmptyHint เมื่อไม่มีข้อมูล
+
+6. อัปเดต src/store/app-store.ts — เพิ่ม 'monthly-report' ใน ActivePage union
+
+7. อัปเดต src/components/itam/sidebar.tsx
+   - เพิ่ม nav item: { page: 'monthly-report', icon: '📅', label: 'รายงานรายเดือน', requires: ['reports:view'] }
+   - เพิ่ม case 'monthly-report' ใน visibleNavItems useMemo (ใช้ navVisibility.paperAnalytics
+     เพราอยู่หลัง reports:view permission เช่นเดียวกับ paper-analytics)
+   - วางระหว่าง 'สต๊อก' กับ 'นำเข้าข้อมูล' เพื่อจัดกลุ่ม reports ไว้ใกล้กัน
+
+8. อัปเดต src/app/page.tsx — import MonthlyReport + render เมื่อ activePage === 'monthly-report'
+
+Verification:
+✅ bun run lint: 0 errors, 0 warnings
+✅ GET /api/reports/monthly?month=2026-08&type=all → 200, คืนข้อมูลครบ
+   (workOrders.total=201, stock.totalIn=4040/totalOut=4934, devices.total=2378)
+✅ GET /api/reports/monthly?type=work-order|stock|devices → 200 (partial response)
+✅ GET /api/reports/monthly?type=invalid → 400 พร้อมข้อความ error
+✅ GET /api/work-orders/[id]/print?paper=a4-portrait|a4-landscape|a5-portrait
+   → 200 text/html ครบทุกขนาด
+✅ Home page (/) โหลด 200 ไม่มี error
+✅ Print CSS: ใช้ visibility:hidden + @page size + page-break-inside:avoid
+   (ทดสอบได้จากปุ่ม "พิมพ์" ใน WoPrintForm และ MonthlyReport)
+
+---
+Task ID: PRINT-REPORT-VERIFY
+Agent: orchestrator — ตรวจสอบใบแจ้งซ่อนพิมพ์ได้ + รีพอร์ตรายเดือน
+
+Work Log:
+
+PART 1: ใบแจ้งซ่อนรายจอบ (Print Form) ✅
+- /api/work-orders/[id]/print: GET → 200, 12.6KB HTML (พร้อมพิมพ์)
+- /components/itam/wo-print-form.tsx: Paper size selector (A4 แนวตั้ง/แนวนอน, A5) + พิมพ์ + เปิดหน้าใหม่
+- work-orders-page.tsx: "พิมพ์ใบงาน" button ใน detail dialog
+- ทดสอบ: คลิก WO-20260812-004 → "พิมพ์ใบงาน" → แสดง "พิมพ์ใบแจ้งซ่อน — WO-20260812-004" + เลือกขนาดกระดาษ
+
+PART 2: รีพอร์ตรายเดือน ✅
+- /api/reports/monthly: GET → 200
+  • WO: 201 ใบ (เดือน ส.ค.)
+  • Stock: IN 4,040 / OUT 4,934
+  • Devices: 2,378
+- /components/itam/monthly-report.tsx: month selector + 4 tabs + charts + tables + print + CSV
+- sidebar: "📅 รายงานรายเดือน"
+
+Verification:
+✅ พิมพ์ใบแจ้งซ่อน: แสดง dialog พร้อมเลือกขนาดกระดาษ (A4 แนวตั้ง/แนวนอน, A5) + ปุ่มพิมพ์ + เปิดหน้าใหม่
+✅ รีพอร์ตรายเดือน: แสดง 201 ใบงาน + stock 4,040 IN/4,934 OUT + 2,378 devices
+✅ Lint: 0 errors
+
+Stage Summary:
+- ฟอร์มใบแจ้งซ่อน: เลือก A4/A5 + พิมพ์ได้ + เปิดหน้าใหม่ได้
+- รีพอร์ตรายเดือน: ข้อมูลจริง + charts + tables + print + CSV export
+- พร้อมสำหรับ push + deploy
