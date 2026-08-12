@@ -69,7 +69,7 @@ import {
   Printer,
 } from 'lucide-react'
 import { formatThaiDate, relativeTime } from './types'
-import { WoPrintForm } from './wo-print-form'
+import { TemplatePrintDialog } from './template-print-dialog'
 
 // ============================================================
 // Types
@@ -136,6 +136,8 @@ export interface WorkOrder {
   canceledAt: string | null
   cancelReason: string | null
   deviceId: string | null
+  // ── VISUAL-TEMPLATE-EDITOR: เทมเพลตพิมพ์ที่ Fix ไว้ ──
+  printTemplateId: string | null
   createdAt: string
   updatedAt: string
   device?: {
@@ -3129,22 +3131,16 @@ function WorkOrderDetailContent({
       </Dialog>
 
       {/* ── Print form dialog (ใบแจ้งซ่อน) ── */}
-      <Dialog open={printOpen} onOpenChange={setPrintOpen}>
-        <DialogContent className="flex max-h-[94vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1024px]">
-          <DialogHeader className="border-b px-5 py-3">
-            <DialogTitle className="flex items-center gap-2 text-base">
-              <Printer className="h-5 w-5 text-orange-500" />
-              พิมพ์ใบแจ้งซ่อน — {wo.woNumber ?? '—'}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              เลือกขนาดกระดาษ แล้วกด &quot;พิมพ์&quot; หรือเปิดหน้าใหม่เพื่อพิมพ์แยกต่างหาก
-            </DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100 dark:bg-slate-950">
-            <WoPrintForm workOrderId={wo.id} />
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Use the new Visual Template Editor-driven print flow.
+          If WO has a printTemplateId, the dialog uses that template
+          automatically (with a "เปลี่ยนเทมเพลต" option). */}
+      <TemplatePrintDialog
+        open={printOpen}
+        onOpenChange={setPrintOpen}
+        workOrderId={wo.id}
+        woNumber={wo.woNumber}
+        fixedTemplateId={wo.printTemplateId ?? null}
+      />
     </div>
   )
 }

@@ -1,5 +1,18 @@
 'use client'
 
+// ============================================================
+// TemplatesPage — เทมเพลตเอกสาร (Visual Editor)
+// (Task ID: VISUAL-TEMPLATE-EDITOR, PART 3)
+// ============================================================
+// แทนที่ JSON editor เดิมด้วย TemplateEditor (WYSIWYG).
+// Workflow:
+//   • เลือกประเภทเทมเพลต (sticker / pdf / work-order / ...)
+//   • รายการเทมเพลตในประเภทนั้น ๆ
+//   • ปุ่ม "สร้างเทมเพลตใหม่" → เปิดหน้าจอ Visual Editor
+//   • ปุ่ม "แก้ไข" → เปิด Visual Editor พร้อมโหลดเนื้อหาเดิม
+//   • Toggle "ใช้งาน" / "ตั้งเป็นค่าเริ่มต้น" / "Fix สำหรับใบงานทั้งหมด"
+// ============================================================
+
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -10,7 +23,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -24,7 +36,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -46,6 +57,7 @@ import {
   Check,
   Copy,
   Loader2,
+  Pin,
 } from 'lucide-react'
 import {
   DEFAULT_TEMPLATES,
@@ -53,6 +65,13 @@ import {
   TEMPLATE_TYPE_META,
   type TemplateType,
 } from '@/lib/templates'
+import {
+  makeDefaultContent,
+  parseContent,
+  serializeContent,
+  type TemplateContent,
+} from '@/lib/template-editor'
+import { TemplateEditor } from './template-editor'
 
 // ---------- Types ----------
 
@@ -64,6 +83,7 @@ interface DocumentTemplate {
   content: string
   isActive: boolean
   isDefault: boolean
+  isFixed: boolean
   createdAt: string
   updatedAt: string
 }
@@ -83,17 +103,7 @@ function formatThaiDate(iso: string | null): string {
   }
 }
 
-/** Pretty-print a JSON string for display; returns the original on parse error. */
-function prettyJson(raw: string): string {
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
-  }
-}
-
 // ---------- Default-template seeding ----------
-// On first load, if a type has zero templates, auto-create the default one.
 
 function useSeedDefaults() {
   const queryClient = useQueryClient()
@@ -124,14 +134,22 @@ function useSeedDefaults() {
     setSeeding(true)
     Promise.all(
       missing.map(async (t) => {
-        const def = DEFAULT_TEMPLATES[t]
+        // For types we have visual layouts for, seed with makeDefaultContent.
+        // Otherwise fall back to the legacy DEFAULT_TEMPLATES JSON.
+        let content: string
+        try {
+          const def: TemplateContent = makeDefaultContent('A4', t)
+          content = serializeContent(def)
+        } catch {
+          content = DEFAULT_TEMPLATES[t].content
+        }
         const res = await fetch('/api/templates', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: def.name,
+            name: DEFAULT_TEMPLATES[t].name,
             type: t,
-            content: def.content,
+            content,
             isActive: true,
             isDefault: true,
           }),
@@ -158,24 +176,16 @@ function useSeedDefaults() {
   return { seeding }
 }
 
-// ---------- Editor dialog ----------
+// ---------- Editor dialog (uses Visual TemplateEditor) ----------
 
 interface EditorState {
   id: string | null // null = creating new
   name: string
   category: string
-  content: string
+  content: TemplateContent
   isActive: boolean
   isDefault: boolean
-}
-
-const EMPTY_EDITOR: EditorState = {
-  id: null,
-  name: '',
-  category: '',
-  content: '{\n  \n}',
-  isActive: true,
-  isDefault: false,
+  isFixed: boolean
 }
 
 interface EditorDialogProps {
@@ -188,227 +198,154 @@ interface EditorDialogProps {
 function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) {
   const queryClient = useQueryClient()
   const [form, setForm] = React.useState<EditorState>(initial)
-  const [jsonError, setJsonError] = React.useState<string | null>(null)
+  const [saving, setSaving] = React.useState(false)
 
-  // Sync form state whenever the dialog opens or the initial value changes.
   React.useEffect(() => {
     if (open) {
       setForm(initial)
-      setJsonError(null)
     }
   }, [open, initial])
 
   const isEditing = form.id !== null
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      // Validate JSON content (must be parseable).
-      let contentStr = form.content
-      try {
-        // Re-stringify to normalise — store a compact-but-valid JSON.
-        const parsed = JSON.parse(form.content)
-        contentStr = JSON.stringify(parsed)
-      } catch {
-        throw new Error('เนื้อหา (content) ต้องเป็น JSON ที่ถูกต้อง')
-      }
-
+  // ── Save handler — called by TemplateEditor's "บันทึก" button ──
+  async function handleSave(content: TemplateContent) {
+    if (!form.name.trim()) {
+      toast.error('กรุณาระบุชื่อเทมเพลต')
+      throw new Error('กรุณาระบุชื่อเทมเพลต')
+    }
+    setSaving(true)
+    try {
       const payload = {
         name: form.name,
-        type, // type is fixed by the selected card
+        type,
         category: form.category.trim() || null,
-        content: contentStr,
+        content: serializeContent(content),
         isActive: form.isActive,
         isDefault: form.isDefault,
+        isFixed: form.isFixed,
       }
-
-      if (isEditing && form.id) {
-        const res = await fetch(`/api/templates/${form.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
-        }
-        return res.json()
-      } else {
-        const res = await fetch('/api/templates', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          throw new Error(j.error ?? 'สร้างไม่สำเร็จ')
-        }
-        return res.json()
+      const res = isEditing && form.id
+        ? await fetch(`/api/templates/${form.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+        : await fetch('/api/templates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
       }
-    },
-    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates'] })
       toast.success(isEditing ? 'บันทึกเทมเพลตเรียบร้อย' : 'สร้างเทมเพลตเรียบร้อย')
       onOpenChange(false)
-    },
-    onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ')
-    },
-  })
-
-  // Live JSON validation as the user types.
-  React.useEffect(() => {
-    if (!open) return
-    try {
-      JSON.parse(form.content)
-      setJsonError(null)
-    } catch (e) {
-      setJsonError(e instanceof Error ? e.message : 'JSON ไม่ถูกต้อง')
+    } finally {
+      setSaving(false)
     }
-  }, [form.content, open])
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!form.name.trim()) {
-      toast.error('กรุณาระบุชื่อเทมเพลต')
-      return
-    }
-    saveMutation.mutate()
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            {isEditing ? 'แก้ไขเทมเพลต' : 'สร้างเทมเพลตใหม่'}
-          </DialogTitle>
-          <DialogDescription>
-            ประเภท:{' '}
-            <span className="font-medium text-foreground">
+      <DialogContent className="flex max-h-[95vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[1200px]">
+        <DialogHeader className="border-b px-5 py-3">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            {isEditing ? 'แก้ไขเทมเพลต' : 'สร้างเทมเพลตใหม่'}{' '}
+            <Badge variant="outline" className="text-xs">
               {TEMPLATE_TYPE_META.find((m) => m.value === type)?.label ?? type}
-            </span>
+            </Badge>
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            ออกแบบเทมเพลตบนกระดาษจำลอง — ลาก/ย่อ/ขยาย แล้วกด
+            &quot;บันทึก&quot; เมื่อเสร็จ
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* name */}
-          <div className="space-y-2">
-            <Label htmlFor="tpl-name">
+        {/* Meta form (name / category / toggles) */}
+        <div className="grid grid-cols-1 gap-3 border-b bg-card px-5 py-3 sm:grid-cols-[1fr_1fr_auto_auto_auto]">
+          <div className="space-y-1">
+            <Label htmlFor="tpl-name" className="text-[11px]">
               ชื่อเทมเพลต <span className="text-destructive">*</span>
             </Label>
             <Input
               id="tpl-name"
               value={form.name}
-              onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
-              placeholder="เช่น สติกเกอร์อุปกรณ์ IT"
-              autoFocus
+              onChange={(e) =>
+                setForm((s) => ({ ...s, name: e.target.value }))
+              }
+              placeholder="เช่น ใบแจ้งซ่อนมาตรฐาน"
+              className="h-8"
             />
           </div>
-
-          {/* category */}
-          <div className="space-y-2">
-            <Label htmlFor="tpl-category">หมวดหมู่ (ไม่บังคับ)</Label>
+          <div className="space-y-1">
+            <Label htmlFor="tpl-category" className="text-[11px]">
+              หมวดหมู่
+            </Label>
             <Input
               id="tpl-category"
               value={form.category}
               onChange={(e) =>
                 setForm((s) => ({ ...s, category: e.target.value }))
               }
-              placeholder="เช่น asset, meter, location"
+              placeholder="ไม่บังคับ"
+              className="h-8"
             />
           </div>
-
-          {/* content (JSON) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="tpl-content">
-                เนื้อหา (JSON) <span className="text-destructive">*</span>
-              </Label>
-              <span
-                className={
-                  jsonError
-                    ? 'text-xs font-medium text-rose-600 dark:text-rose-400'
-                    : 'text-xs font-medium text-emerald-600 dark:text-emerald-400'
-                }
-              >
-                {jsonError ? '⚠ JSON ไม่ถูกต้อง' : '✓ JSON ถูกต้อง'}
-              </span>
-            </div>
-            <Textarea
-              id="tpl-content"
-              value={form.content}
-              onChange={(e) =>
-                setForm((s) => ({ ...s, content: e.target.value }))
+          <div className="flex items-end gap-2">
+            <Switch
+              id="tpl-active"
+              checked={form.isActive}
+              onCheckedChange={(v) =>
+                setForm((s) => ({ ...s, isActive: v }))
               }
-              className="min-h-[240px] font-mono text-xs"
-              spellCheck={false}
             />
-            {jsonError && (
-              <p className="text-xs text-rose-600 dark:text-rose-400">
-                {jsonError}
-              </p>
-            )}
+            <Label htmlFor="tpl-active" className="text-[11px]">
+              ใช้งาน
+            </Label>
           </div>
-
-          {/* toggles */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div className="space-y-0.5">
-                <Label htmlFor="tpl-active" className="cursor-pointer">
-                  ใช้งาน
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  ปิดชั่วคราวเพื่อซ่อนจากรายการที่ใช้ได้
-                </p>
-              </div>
-              <Switch
-                id="tpl-active"
-                checked={form.isActive}
-                onCheckedChange={(v) =>
-                  setForm((s) => ({ ...s, isActive: v }))
-                }
-              />
-            </div>
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div className="space-y-0.5">
-                <Label htmlFor="tpl-default" className="cursor-pointer">
-                  ตั้งเป็นค่าเริ่มต้น
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  ใช้เป็นเทมเพลตหลักของประเภทนี้
-                </p>
-              </div>
-              <Switch
-                id="tpl-default"
-                checked={form.isDefault}
-                onCheckedChange={(v) =>
-                  setForm((s) => ({ ...s, isDefault: v }))
-                }
-              />
-            </div>
+          <div className="flex items-end gap-2">
+            <Switch
+              id="tpl-default"
+              checked={form.isDefault}
+              onCheckedChange={(v) =>
+                setForm((s) => ({ ...s, isDefault: v }))
+              }
+            />
+            <Label htmlFor="tpl-default" className="text-[11px]">
+              ค่าเริ่มต้น
+            </Label>
           </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={saveMutation.isPending}
+          <div className="flex items-end gap-2">
+            <Switch
+              id="tpl-fixed"
+              checked={form.isFixed}
+              onCheckedChange={(v) =>
+                setForm((s) => ({ ...s, isFixed: v }))
+              }
+            />
+            <Label
+              htmlFor="tpl-fixed"
+              className="flex items-center gap-1 text-[11px]"
+              title="Fix กับเทมเพลตนี้สำหรับใบงานทั้งหมดในประเภทนี้"
             >
-              ยกเลิก
-            </Button>
-            <Button type="submit" disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  กำลังบันทึก…
-                </>
-              ) : (
-                'บันทึก'
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
+              <Pin className="h-3 w-3" />
+              Fix
+            </Label>
+          </div>
+        </div>
+
+        {/* Visual editor */}
+        <div className="min-h-0 flex-1">
+          <TemplateEditor
+            initialContent={form.content}
+            onSave={handleSave}
+            saving={saving}
+            templateType={type}
+          />
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -419,10 +356,17 @@ function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) 
 export function TemplatesPage() {
   const queryClient = useQueryClient()
   const [selectedType, setSelectedType] =
-    React.useState<TemplateType>('sticker')
+    React.useState<TemplateType>('work-order')
   const [editorOpen, setEditorOpen] = React.useState(false)
-  const [editorInitial, setEditorInitial] =
-    React.useState<EditorState>(EMPTY_EDITOR)
+  const [editorInitial, setEditorInitial] = React.useState<EditorState>(() => ({
+    id: null,
+    name: '',
+    category: '',
+    content: makeDefaultContent('A4', 'work-order'),
+    isActive: true,
+    isDefault: false,
+    isFixed: false,
+  }))
   const [deleteTarget, setDeleteTarget] =
     React.useState<DocumentTemplate | null>(null)
 
@@ -465,6 +409,54 @@ export function TemplatesPage() {
     },
   })
 
+  const setDefaultMutation = useMutation({
+    mutationFn: async (tpl: DocumentTemplate) => {
+      const res = await fetch(`/api/templates/${tpl.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isDefault: !tpl.isDefault }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'อัปเดตไม่สำเร็จ')
+      }
+      return res.json()
+    },
+    onSuccess: (_data, tpl) => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] })
+      toast.success(
+        tpl.isDefault ? 'ยกเลิกการตั้งเป็นค่าเริ่มต้น' : 'ตั้งเป็นค่าเริ่มต้นแล้ว',
+      )
+    },
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : 'อัปเดตไม่สำเร็จ')
+    },
+  })
+
+  const setFixedMutation = useMutation({
+    mutationFn: async (tpl: DocumentTemplate) => {
+      const res = await fetch(`/api/templates/${tpl.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isFixed: !tpl.isFixed }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'อัปเดตไม่สำเร็จ')
+      }
+      return res.json()
+    },
+    onSuccess: (_data, tpl) => {
+      queryClient.invalidateQueries({ queryKey: ['templates'] })
+      toast.success(
+        tpl.isFixed ? 'ยกเลิกการ Fix เทมเพลต' : 'Fix เทมเพลตเรียบร้อย',
+      )
+    },
+    onError: (err: unknown) => {
+      toast.error(err instanceof Error ? err.message : 'อัปเดตไม่สำเร็จ')
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await fetch(`/api/templates/${id}`, { method: 'DELETE' })
@@ -496,6 +488,7 @@ export function TemplatesPage() {
           content: tpl.content,
           isActive: true,
           isDefault: false,
+          isFixed: false,
         }),
       })
       if (!res.ok) {
@@ -517,8 +510,13 @@ export function TemplatesPage() {
 
   function openCreate() {
     setEditorInitial({
-      ...EMPTY_EDITOR,
-      content: DEFAULT_TEMPLATES[selectedType].content,
+      id: null,
+      name: '',
+      category: '',
+      content: makeDefaultContent('A4', selectedType),
+      isActive: true,
+      isDefault: false,
+      isFixed: false,
     })
     setEditorOpen(true)
   }
@@ -528,9 +526,10 @@ export function TemplatesPage() {
       id: tpl.id,
       name: tpl.name,
       category: tpl.category ?? '',
-      content: prettyJson(tpl.content),
+      content: parseContent(tpl.content),
       isActive: tpl.isActive,
       isDefault: tpl.isDefault,
+      isFixed: tpl.isFixed,
     })
     setEditorOpen(true)
   }
@@ -552,7 +551,8 @@ export function TemplatesPage() {
           📄 เทมเพลตเอกสาร
         </h1>
         <p className="text-sm text-muted-foreground md:text-base">
-          สร้างและจัดการเทมเพลต — แยกตามประเภทงาน
+          สร้างและจัดการเทมเพลต — แยกตามประเภทงาน • ตัวแก้ไขแบบลากวาง (Visual
+          Editor)
         </p>
       </motion.div>
 
@@ -650,6 +650,7 @@ export function TemplatesPage() {
                     <TableHead className="min-w-[120px]">หมวดหมู่</TableHead>
                     <TableHead className="text-center">สถานะ</TableHead>
                     <TableHead className="text-center">ค่าเริ่มต้น</TableHead>
+                    <TableHead className="text-center">Fix</TableHead>
                     <TableHead className="min-w-[110px]">สร้างเมื่อ</TableHead>
                     <TableHead className="text-right">การจัดการ</TableHead>
                   </TableRow>
@@ -695,6 +696,21 @@ export function TemplatesPage() {
                           </span>
                         )}
                       </TableCell>
+                      <TableCell className="text-center">
+                        {tpl.isFixed ? (
+                          <Badge
+                            variant="default"
+                            className="border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                          >
+                            <Pin className="mr-0.5 h-2.5 w-2.5" />
+                            Fix
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-muted-foreground/60">
+                            —
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {formatThaiDate(tpl.createdAt)}
                       </TableCell>
@@ -715,6 +731,52 @@ export function TemplatesPage() {
                             <Check
                               className={`h-4 w-4 ${
                                 tpl.isActive
+                                  ? 'text-emerald-600'
+                                  : 'text-muted-foreground'
+                              }`}
+                            />
+                          </Button>
+                          {/* Toggle default */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => setDefaultMutation.mutate(tpl)}
+                            disabled={setDefaultMutation.isPending}
+                            title={
+                              tpl.isDefault
+                                ? 'ยกเลิกการตั้งเป็นค่าเริ่มต้น'
+                                : 'ตั้งเป็นค่าเริ่มต้น'
+                            }
+                            aria-label="ค่าเริ่มต้น"
+                          >
+                            <span
+                              className={`text-sm ${
+                                tpl.isDefault
+                                  ? 'text-orange-500'
+                                  : 'text-muted-foreground'
+                              }`}
+                            >
+                              ★
+                            </span>
+                          </Button>
+                          {/* Toggle fixed */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => setFixedMutation.mutate(tpl)}
+                            disabled={setFixedMutation.isPending}
+                            title={
+                              tpl.isFixed
+                                ? 'ยกเลิกการ Fix'
+                                : 'Fix สำหรับใบงานทั้งหมดในประเภทนี้'
+                            }
+                            aria-label="Fix"
+                          >
+                            <Pin
+                              className={`h-4 w-4 ${
+                                tpl.isFixed
                                   ? 'text-emerald-600'
                                   : 'text-muted-foreground'
                               }`}
@@ -770,7 +832,33 @@ export function TemplatesPage() {
         </CardContent>
       </Card>
 
-      {/* Editor dialog */}
+      {/* Hint card */}
+      <Card>
+        <CardContent className="space-y-2 p-4 text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">
+            💡 วิธีใช้งาน Visual Editor
+          </p>
+          <ul className="ml-4 list-disc space-y-1 text-xs">
+            <li>
+              กดปุ่ม &quot;สร้างเทมเพลตใหม่&quot; หรือ &quot;แก้ไข&quot; เพื่อเปิดหน้าจอออกแบบ
+            </li>
+            <li>
+              ลากองค์ประกอบเพื่อย้าย (จะ snap ตามกริด 1 มม.) • ลากจุดสี่มุมเพื่อย่อ/ขยาย
+            </li>
+            <li>
+              ดับเบิลคลิกที่ข้อความเพื่อแก้ไข ณ ที่ • ปุ่มลัด: Del=ลบ, Ctrl+D=คัดลอก, Ctrl+Z=ยกเลิก
+            </li>
+            <li>
+              ตัวแปร {`{woNumber}`} {`{subject}`} {`{reporterName}`} ฯลฯ จะถูกแทนค่าด้วยข้อมูลจริงตอนพิมพ์
+            </li>
+            <li>
+              ติ๊ก &quot;Fix&quot; เพื่อให้เทมเพลตนี้ถูกใช้โดยอัตโนมัติสำหรับใบงานในประเภทนี้
+            </li>
+          </ul>
+        </CardContent>
+      </Card>
+
+      {/* Editor dialog (full-screen visual editor) */}
       <EditorDialog
         open={editorOpen}
         onOpenChange={setEditorOpen}
