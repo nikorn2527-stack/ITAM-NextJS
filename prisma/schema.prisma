@@ -493,6 +493,25 @@ model StockTransaction {
 }
 
 // ============================================================
+// 16) Reports — รายงานที่บันทึกไว้ (snapshot ของ dashboard/cycle/audit/utilization)
+//     สร้างโดยใช้ buildReport() ใน /api/reports/route.ts
+// ============================================================
+model Report {
+  id          String   @id @default(cuid())
+  type        String   @map("Type") // dashboard_summary | cycle | audit | utilization
+  title       String   @map("Title")
+  rangeKey    String   @map("Range_Key") // month | 30d | quarter | all
+  filters     String?  @map("Filters") // JSON string
+  data        String   @map("Data") // JSON string (the report payload)
+  format      String   @default("json") @map("Format")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([type])
+  @@index([createdAt])
+  @@map("reports")
+}
+
+// ============================================================
 // 4) Master_Category — หมวดหมู่ของ Master Items
 //    Source: sheet "Master_Category" (4 columns)
 // ============================================================
