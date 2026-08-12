@@ -771,6 +771,104 @@ tr:nth-child(even) td { background: #fafbfc; }
     }
   }
 
+  // ── Custom Export (เลือกคอลัมน์เอง + เลือก format CSV/Excel/PDF)
+  const [customExportOpen, setCustomExportOpen] = React.useState(false)
+  const [selectedColumns, setSelectedColumns] = React.useState<string[]>(
+    () => JSON.parse(localStorage.getItem('itam.customExportColumns') || 'null') || CSV_HEADERS.map(h => h.key)
+  )
+  const [customExporting, setCustomExporting] = React.useState(false)
+
+  function toggleColumn(key: string) {
+    setSelectedColumns(prev =>
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    )
+  }
+
+  function selectAllColumns() { setSelectedColumns(CSV_HEADERS.map(h => h.key)) }
+
+  async function customExport(format: 'csv' | 'excel' | 'pdf') {
+    if (selectedColumns.length === 0) { toast.error('กรุณาเลือกอย่างน้อย 1 คอลัมน์'); return }
+    try {
+      setCustomExporting(true)
+      toast.info('กำลังดึงข้อมูลทั้งหมด...')
+      const res = await fetch('/api/itam/devices?limit=2000')
+      if (!res.ok) throw new Error('Failed')
+      const j: DevicesResponse = await res.json()
+      const rows = j.devices
+      const cols = CSV_HEADERS.filter(h => selectedColumns.includes(h.key))
+      localStorage.setItem('itam.customExportColumns', JSON.stringify(selectedColumns))
+
+      if (format === 'csv') {
+        const exportRows = rows.map(d => {
+          const row: Record<string, unknown> = {}
+          cols.forEach(h => {
+            const v = (d as Record<string, unknown>)[h.key]
+            row[h.key] = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
+          })
+          return row
+        })
+        downloadCsv(`devices-custom-${dateStamp()}.csv`, exportRows, cols)
+        toast.success(`ส่งออก CSV ${rows.length} เครื่อง (${cols.length} คอลัมน์)`)
+      } else if (format === 'excel') {
+        const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+        const headerHtml = cols.map(h => `<th style="background:#f97316;color:#fff;padding:6px;border:1px solid #ddd;font-weight:600">${esc(h.label)}</th>`).join('')
+        const bodyHtml = rows.map(d => {
+          const cells = cols.map(h => {
+            const v = (d as Record<string, unknown>)[h.key]
+            const text = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
+            return `<td style="padding:5px;border:1px solid #e2e8f0;mso-number-format:'\\@'">${esc(text)}</td>`
+          }).join('')
+          return `<tr>${cells}</tr>`
+        }).join('')
+        const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body><table style="border-collapse:collapse;font-family:'Tahoma',sans-serif;font-size:11px"><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></body></html>`
+        const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a'); a.href = url; a.download = `devices-custom-${dateStamp()}.xls`; a.click()
+        URL.revokeObjectURL(url)
+        toast.success(`ส่งออก Excel ${rows.length} เครื่อง (${cols.length} คอลัมน์)`)
+      } else if (format === 'pdf') {
+        const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+        const generatedAt = new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
+        const headCells = cols.map(h => `<th>${esc(h.label)}</th>`).join('')
+        const bodyRows = rows.map(d => {
+          const cells = cols.map(h => {
+            const v = (d as Record<string, unknown>)[h.key]
+            const text = h.key === 'meterRequired' ? (d.meterRequired ? '✓' : '—') : (v ?? '')
+            return `<td>${esc(text)}</td>`
+          }).join('')
+          return `<tr>${cells}</tr>`
+        }).join('')
+        const win = window.open('', '_blank', 'width=1000,height=1200')
+        if (!win) { toast.warning('เบราว์เซอร์บล็อกป๊อปอัป'); return }
+        win.document.open()
+        win.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ITAM Custom Report</title>
+<style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:'Sukhumvit Set','Thonburi','Tahoma',sans-serif;color:#1e293b;font-size:10px;line-height:1.3;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.header{border-bottom:3px solid #f97316;padding-bottom:8px;margin-bottom:10px;display:flex;justify-content:space-between}
+.header .org{font-size:16px;font-weight:700}.header .meta{text-align:right;font-size:10px;color:#64748b}
+table{width:100%;border-collapse:collapse}th,td{border:1px solid #e2e8f0;padding:4px 5px;text-align:left}
+th{background:#f97316;color:#fff;font-weight:600;font-size:9px;text-transform:uppercase}
+tr:nth-child(even) td{background:#fafbfc}
+.print-btn{position:fixed;top:12px;right:12px;background:#f97316;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+.footer{margin-top:10px;padding-top:6px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;display:flex;justify-content:space-between}
+@media print{.no-print{display:none}tr{page-break-inside:avoid}thead{display:table-header-group}}
+</style></head><body>
+<button class="print-btn no-print" onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button>
+<div class="header"><div><div class="org">PNG TEAM</div><div style="font-size:11px;color:#475569">ITAM Custom Report — ${rows.length} เครื่อง · ${cols.length} คอลัมน์</div></div><div class="meta">วันที่: ${esc(generatedAt)}</div></div>
+<table><thead><tr>${headCells}</tr></thead><tbody>${bodyRows}</tbody></table>
+<div class="footer"><div><span style="color:#f97316;font-weight:700">PNG TEAM</span> — IT Asset Management</div><div>${esc(generatedAt)}</div></div>
+<script>setTimeout(function(){try{window.print()}catch(e){}},300)</script>
+</body></html>`)
+        win.document.close()
+        toast.success(`กำลังเปิดหน้า PDF (${cols.length} คอลัมน์)...`)
+      }
+      setCustomExportOpen(false)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ส่งออกไม่สำเร็จ')
+    } finally {
+      setCustomExporting(false)
+    }
+  }
+
   // ── Import CSV
   function openImport() {
     setImportText('')
@@ -915,6 +1013,9 @@ tr:nth-child(even) td { background: #fafbfc; }
           </Button>
           <Button variant="outline" onClick={exportPdf} disabled={pdfExporting} className="dark:bg-slate-800 dark:border-slate-700">
             {pdfExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} PDF
+          </Button>
+          <Button variant="outline" onClick={() => setCustomExportOpen(true)} className="border-[#f97316]/50 text-[#f97316] hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/30">
+            ⚙️ Custom
           </Button>
           {canEdit && (
             <Button variant="outline" onClick={openImport} className="dark:bg-slate-800 dark:border-slate-700">
@@ -1481,6 +1582,45 @@ tr:nth-child(even) td { background: #fafbfc; }
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Custom Export Dialog — เลือกคอลัมน์ + format */}
+      <Dialog open={customExportOpen} onOpenChange={setCustomExportOpen}>
+        <DialogContent className="sm:max-w-lg dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+              📋 เลือกคอลัมน์สำหรับ Export
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-slate-500 dark:text-slate-400">ติ๊กเลือกคอลัมน์ที่ต้องการส่งออก ({selectedColumns.length}/{CSV_HEADERS.length} เลือก)</p>
+          <div className="itam-scroll max-h-[50vh] overflow-y-auto space-y-1 pr-1">
+            {CSV_HEADERS.map((col) => (
+              <label key={col.key} className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2 cursor-pointer hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50">
+                <Checkbox
+                  checked={selectedColumns.includes(col.key)}
+                  onCheckedChange={() => toggleColumn(col.key)}
+                  className="data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316]"
+                />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{col.label}</span>
+                <span className="ml-auto text-xs text-slate-400">{col.key}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={selectAllColumns}>เลือกทั้งหมด</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => customExport('csv')} disabled={customExporting || selectedColumns.length === 0}>
+                📥 CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => customExport('excel')} disabled={customExporting || selectedColumns.length === 0}>
+                📊 Excel
+              </Button>
+              <Button size="sm" onClick={() => customExport('pdf')} disabled={customExporting || selectedColumns.length === 0} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+                📄 PDF
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Import CSV dialog */}
       <Dialog open={importOpen} onOpenChange={setImportOpen}>
