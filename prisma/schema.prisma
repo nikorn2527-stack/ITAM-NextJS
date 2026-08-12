@@ -315,6 +315,13 @@ model LocationHistory {
   meterReadingId      String?  @map("Meter_Reading_ID") // เชื่อมกับ MeterReading (ถ้าจดมิเตอร์พร้อมย้าย)
   movedBy             String?  @map("Moved_By") // อีเมลผู้ทำรายการ
   remark              String?  @map("Remark")
+  // Transfer acknowledge flow (Apps Script commit 6e57904):
+  //   When a device is transferred WITHOUT a meter reading, the user must
+  //   acknowledge that "มิเตอร์นับต่อเนื่อง" (meter continues) by checking a
+  //   checkbox. This replaces the old free-text skipMeterReason.
+  meterSkipAcknowledged Boolean? @default(false) @map("Meter_Skip_Acknowledged")
+  meterSkipReason     String?  @map("Meter_Skip_Reason") // optional note (was the old field)
+  readingType         String?  @map("Reading_Type") // MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN (lifecycle-derived)
   createdAt           DateTime @default(now()) @map("created_at")
 
   // Relation
@@ -322,7 +329,102 @@ model LocationHistory {
 
   @@index([assetNo])
   @@index([moveDate])
+  @@index([action])
   @@map("location_history")
+}
+
+// ============================================================
+// 6b) Meter_Report_Snapshots — Immutable billing snapshots
+//     Aligned with Apps Script MeterSnapshotService.gs (commit 67f8e54)
+//     Created automatically when a cycle is CLOSED. Contains frozen copies
+//     of all meter readings for that cycle month, with SHA-256 hash for
+//     tamper detection. Prevents retroactive edits from changing historical bills.
+// ============================================================
+model MeterReportSnapshot {
+  id              String   @id @default(cuid())
+  snapshotId      String   @unique @map("Snapshot_ID") // e.g. MRS-202608-R1-20260812150000
+  cycleMonth      String   @map("Cycle_Month") // e.g. 2026-08
+  revision        Int      @default(1) @map("Revision") // increments on amendments
+  status          String   @default("ACTIVE") @map("Status") // ACTIVE | SUPERSEDED
+  ruleVersion     String?  @map("Rule_Version") // calc logic version, e.g. "v2-initial-baseline"
+  rowCount        Int      @default(0) @map("Row_Count")
+  totalPagesBw    Int      @default(0) @map("Total_Pages_BW")
+  totalPagesColor Int      @default(0) @map("Total_Pages_Color")
+  totalCost       Float    @default(0) @map("Total_Cost")
+  contentHash     String   @map("Content_Hash") // SHA-256 hex (64 chars)
+  createdBy       String?  @map("Created_By") // user email
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relation — one snapshot has many frozen rows
+  rows            MeterReportSnapshotRow[]
+  amendments      MeterReportAmendment[]
+
+  @@index([cycleMonth])
+  @@index([status])
+  @@index([cycleMonth, revision])
+  @@map("meter_report_snapshots")
+}
+
+// ============================================================
+// 6c) Meter_Report_Snapshot_Rows — Frozen reading data (27 cols)
+//     A copy of MeterReading + Device fields + rates, taken at snapshot time.
+//     Append-only: never updated after creation.
+// ============================================================
+model MeterReportSnapshotRow {
+  id              String   @id @default(cuid())
+  snapshotId      String   @map("Snapshot_ID") // FK to MeterReportSnapshot.snapshotId
+  assetNo         String   @map("Asset_No")
+  readingDate     String?  @map("Reading_Date")
+  readingMonth    String?  @map("Reading_Month")
+  meterBw         Int      @default(0) @map("Meter_BW")
+  meterColor      Int      @default(0) @map("Meter_Color")
+  pagesBw         Int      @default(0) @map("Pages_BW")
+  pagesColor      Int      @default(0) @map("Pages_Color")
+  prevMeterBw     Int      @default(0) @map("Prev_Meter_BW")
+  prevMeterColor  Int      @default(0) @map("Prev_Meter_Color")
+  readingType     String?  @map("Reading_Type")
+  brand           String?  @map("Brand")
+  model           String?  @map("Model")
+  siteAtReading   String?  @map("Site_At_Reading")
+  buildingAtReading String? @map("Building_At_Reading")
+  floorAtReading  String?  @map("Floor_At_Reading")
+  departmentAtReading String? @map("Department_At_Reading")
+  rateBw          Float    @default(0.5) @map("Rate_BW")
+  rateColor       Float    @default(2.0) @map("Rate_Color")
+  costBw          Float    @default(0) @map("Cost_BW")
+  costColor       Float    @default(0) @map("Cost_Color")
+  readBy          String?  @map("Read_By")
+  remark          String?  @map("Remark")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relation
+  snapshot        MeterReportSnapshot @relation(fields: [snapshotId], references: [snapshotId], onDelete: Cascade)
+
+  @@index([snapshotId])
+  @@index([assetNo])
+  @@map("meter_report_snapshot_rows")
+}
+
+// ============================================================
+// 6d) Meter_Report_Amendments — Audit trail for snapshot corrections
+//     When a CLOSED cycle's data needs correction, an amendment is created
+//     (never overwrites the original snapshot). Records who/when/why.
+// ============================================================
+model MeterReportAmendment {
+  id              String   @id @default(cuid())
+  amendmentId     String   @unique @map("Amendment_ID") // e.g. MRA-202608-20260812150000
+  cycleMonth      String   @map("Cycle_Month")
+  reason          String   @map("Reason")
+  createdBy       String?  @map("Created_By")
+  createdAt       DateTime @default(now()) @map("created_at")
+  // Link to the new snapshot revision created by this amendment
+  newSnapshotId   String?  @map("New_Snapshot_ID")
+
+  // Relation
+  snapshot        MeterReportSnapshot? @relation(fields: [newSnapshotId], references: [snapshotId], onDelete: SetNull)
+
+  @@index([cycleMonth])
+  @@map("meter_report_amendments")
 }
 
 // ============================================================

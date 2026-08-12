@@ -3481,3 +3481,1133 @@ Stage Summary:
 - 4 broken legacy routes กลับมาทำงาน
 - Next.js-exclusive features: auto-refresh, staleTime, real-time WebSocket, PWA, TypeScript, JWT RBAC
 - พร้อม deploy ไป Vercel เพื่อทดสอบบนเว็บจริง
+
+---
+Task ID: 3-a
+Agent: Explore (sub-agent)
+Task: Study the LATEST Google Apps Script ITAM code at `/tmp/itam-apps-script-latest` (branch `refactor/master-columns`, commit `e0f78b3`) to understand the new "immutable meter report snapshots" feature and meter calculation fixes added since commit `a25f779`. RESEARCH ONLY — no code written.
+
+Work Log:
+- Read full MeterSnapshotService.gs (217 lines, NEW FILE) — added by commit `67f8e54` "Add immutable meter report snapshots, tighten cycle locks, and fix meter/reporting logic", then optimized by `26ef5e0` "Optimize immutable meter report loading".
+- Ran `git diff a25f779..HEAD -- MeterService.gs` (+96 lines across 6 distinct changes) — INITIAL brand-new baseline change, `normalizeMeterHistoryRows` extraction, `assertMeterMonthWritable` integration into writer + recalc + edit paths, lifecycle `RETURN` extension to DISPOSED/RETIRED/RETURNED, `hasNumericMeterValue` helper to accept `0`.
+- Ran `git diff a25f779..HEAD -- CycleService.gs` (+47 lines) — `findPendingCycle()` (OPEN+QUEUED), `endCycle` rejects non-OPEN cycles, snapshot creation BEFORE writing `CLOSED`, new `assertMeterMonthWritable()` gate.
+- Ran `git diff a25f779..HEAD -- METER_RULES.md` (+5 lines) — 4 new rules + 1 new row in protected-functions table.
+- Ran `git diff a25f779..HEAD -- AnalyticsService.gs` (+79/-78 lines) — `readMeterRowsForReports()` replaces `readMeterRowsCached()` everywhere, CHECKOUT re-included as a valid monthly closing reading, location fields read from `*_At_Reading` columns first, snapshot rate columns used when present.
+- Ran `git diff a25f779..HEAD -- TransferService.gs javascript.html index.html` (+67 lines) — transfer acknowledgement flow, server-side lifecycle type derivation, sticker/PDF settings tabs restored.
+- Read all 5 test files in `/tmp/itam-apps-script-latest/tests/`: `meter-snapshot.test.js` (62 lines), `meter-snapshot-simulation.test.js` (143 lines), `meter-history.test.js` (50 lines), `meter-integrity.test.js` (51 lines), `regression.test.js` (44 lines), `settings-tabs.test.js` (21 lines).
+- Inspected commits `e78c34e` ("fix: derive missing page totals in meter history") and `3f53d41` ("Improve cycle/transfer lifecycle handling") to understand the lineage — `e78c34e` originally set INITIAL-brand-new `pages=meter`, then `67f8e54` reversed that to `pages=0` to match METER_RULES.
+
+---
+
+## 1. Immutable Meter Report Snapshots — MeterSnapshotService.gs
+
+### 1.1 What is an "immutable meter report snapshot"?
+
+A snapshot is an **append-only, hash-verifiable freeze** of every Meter_Readings row for a single billing month, captured at the instant a cycle is closed. Once written, snapshot rows are never edited or deleted — if the data is wrong after closing, the only fix is to write a NEW revision (a higher `Revision` number) and record an Amendment that links the old snapshot to the new one. The hash (SHA-256 over all row fields) lets any later reader detect tampering.
+
+It solves three concrete problems:
+1. **Late edits silently change historical bills.** Without snapshots, a user backfilling a reading for month X can change `Pages_*` and `Meter_*` for that month, which then propagates into dashboards, exports, and audit reports that were already filed.
+2. **Rate changes retroactively re-price bills.** If a site's `PaperRateBW` changes mid-year, the old `getEffectivePaperRate(site,'BW')` call would re-cost every historical row at the new rate.
+3. **Device moves shift historical attribution.** When a device is transferred to a new building/department, analytics that read the device table (`device.Site||row.Site_At_Reading`) would silently re-attribute old readings to the new location.
+
+### 1.2 When is a snapshot created?
+
+Two paths:
+
+**(a) Automatic — on cycle close.** In `CycleService.gs:endCycle` (line ~412), AFTER progress is computed and bypass-ack checks pass, but BEFORE the cycle sheet row is updated to `CLOSED`:
+```js
+// สร้าง immutable billing snapshot ให้สำเร็จก่อนเปลี่ยนสถานะเป็น CLOSED
+// หากสร้างไม่ได้ จะไม่ปิดรอบและข้อมูลเดิมไม่ถูกแก้ไข
+var snapshot = createMeterReportSnapshot(month, authToken);
+```
+Test `meter-snapshot.test.js:13` verifies the ordering invariant: `cycle.indexOf('createMeterReportSnapshot(month, authToken)')` must come BEFORE `cycle.indexOf("setValue('CLOSED')", createAt)`. This is critical: if snapshot creation throws, the cycle stays OPEN and no data is mutated.
+
+**(b) Manual — via amendment.** `createMeterSnapshotAmendment(month, reason, authToken)` is callable by SYSTEM_CONFIG-permission users, but ONLY on a CLOSED cycle. It calls `createMeterReportSnapshot(month, authToken, {forceRevision:true})` to write a NEW revision without touching the old one.
+
+`createMeterReportSnapshot(month, authToken, options)` has a guard: if a FINAL snapshot already exists for the month and `options.forceRevision` is not set, it returns the existing meta without writing — so calling it twice during the same `endCycle` is a no-op.
+
+### 1.3 Storage — three new sheets
+
+The service introduces three new sheets (created lazily by `ensureMeterSnapshotSheet_`):
+
+**Sheet 1: `Meter_Report_Snapshots`** — one row per snapshot revision (metadata):
+```
+Snapshot_ID, Cycle_Month, Revision, Status, Rule_Version, Created_At, Created_By,
+Row_Count, Total_Pages_BW, Total_Pages_Color, Total_Cost, Content_Hash
+```
+- `Snapshot_ID` format: `MRS-<YYYYMM>-R<revision>-<yyyyMMddHHmmss>` (e.g. `MRS-202608-R1-20260831120000`).
+- `Revision` starts at 1; amendments increment it.
+- `Status` is always `'FINAL'` for stored snapshots (only the latest revision per month has `Status=FINAL` and is the one reports read — older revisions remain in the sheet but `getLatestMeterSnapshotMetaByMonth_` filters them out).
+- `Rule_Version` is currently the constant `'METER_RULE_V1'` (declared as `var METER_RULE_VERSION = 'METER_RULE_V1';` at the top of the file). When the calculation rule changes, bump this so old snapshots can be tagged with the rule under which they were computed.
+- `Content_Hash` is a 64-char SHA-256 hex digest over all snapshot row fields (excluding `Snapshot_ID` and `Cycle_Month`).
+
+**Sheet 2: `Meter_Report_Snapshot_Rows`** — one row per meter reading in the snapshot (the actual frozen data):
+```
+Snapshot_ID, Cycle_Month, Reading_ID, Asset_No, Reading_Date, Reading_Month,
+Meter_BW, Meter_Color, Pages_BW, Pages_Color, Prev_Meter_BW, Prev_Meter_Color,
+Reading_Type, Event_Type, Event_ID, Location_At_Reading, Site_At_Reading,
+Building_At_Reading, Floor_At_Reading, Department_At_Reading, DepartmentCode_At_Reading,
+Read_By, Remark, Rate_BW, Rate_Color, Cost_BW, Cost_Color
+```
+Note the four extra columns vs. the live `Meter_Readings` sheet: **`Rate_BW`, `Rate_Color`, `Cost_BW`, `Cost_Color`** — these freeze the per-site paper rate at snapshot time so that future rate changes do not retroactively re-cost historical bills.
+
+**Sheet 3: `Meter_Report_Amendments`** — audit trail for revisions:
+```
+Amendment_ID, Cycle_Month, Previous_Snapshot_ID, New_Snapshot_ID,
+Reason, Requested_By, Approved_By, Approved_At
+```
+Amendment ID format: `MRA-<YYYYMM>-<yyyyMMddHHmmss>`.
+
+### 1.4 Why immutable? (problem solved)
+
+Test `meter-snapshot-simulation.test.js:73` ("simulated close freezes readings, location, rates, totals, and hash") demonstrates the contract:
+1. Take a live row: `{Meter_BW:1250, Pages_BW:250, Site_At_Reading:'SITE-A'}`.
+2. Call `createMeterReportSnapshot('2026-08', token)` — returns `{Row_Count:1, Total_Pages_BW:250, Total_Pages_Color:10, Total_Cost:9, Content_Hash: <64 hex>}`.
+3. **Before CLOSED**: `readMeterRowsForReports()[0]._snapshot === undefined` (live row).
+4. Close the cycle: `cycleSheet.data[1][1] = 'CLOSED'`.
+5. `readMeterRowsForReports()[0]._snapshot === true; .Meter_BW === 1250; .Site_At_Reading === 'SITE-A'; .Rate_BW === 0.03`.
+6. **Tamper with live data**: set `liveRows[0].Meter_BW=9999, Pages_BW=8999, Site_At_Reading='SITE-B'` AND change the site rate to `99`.
+7. `readMeterRowsForReports()[0].Meter_BW === 1250` (snapshot value preserved), `.Pages_BW === 250`, `.Site_At_Reading === 'SITE-A'`, `.Rate_BW === 0.03`. `verifyMeterReportSnapshot('2026-08').success === true`.
+
+The same test (`meter-snapshot-simulation.test.js:102`) verifies tamper detection: if you edit `rowSheet.data[1][meterColumn] = 7777` directly in the snapshot sheet, then `verifyMeterReportSnapshot('2026-08').success === false` (hash mismatch). The remedy is `createMeterSnapshotAmendment` — it writes revision R2, leaves R1 intact, and records an Amendment row linking the two. The test asserts:
+- `revised.Revision === 2`
+- `Meter_Report_Snapshots` sheet now has 3 rows (header + R1 + R2)
+- `Meter_Report_Amendments` sheet now has 2 rows (header + 1 amendment)
+- `getMeterSnapshotMeta_('2026-08').Snapshot_ID === revised.Snapshot_ID` (latest wins)
+- `revised.Snapshot_ID !== first.Snapshot_ID`
+
+### 1.5 Relationship to the normal `Meter_Readings` sheet
+
+The `Meter_Readings` sheet is still the single source of truth for **OPEN** and **never-cycled** months. Reports route through `readMeterRowsForReports()` (replaces every prior `readMeterRowsCached()` call in `AnalyticsService.gs`):
+
+```js
+function readMeterRowsForReportsUncached_() {
+  var live = readMeterRowsCached();
+  var months = {};
+  live.forEach(function(row){ var m = normalizeReadingMonth(row.Reading_Month||row.Reading_Date); if(m) months[m]=true; });
+  var closedMonths = getClosedMeterCycleMonths_();        // one cycle-sheet read
+  var latestMeta = getLatestMeterSnapshotMetaByMonth_();   // one snapshot-meta read
+  var snapshotByMonth = {};
+  Object.keys(months).forEach(function(month) {
+    if (closedMonths[month] && latestMeta[month]) snapshotByMonth[month] = latestMeta[month];
+  });
+  var result = live.filter(function(row){ return !snapshotByMonth[normalizeReadingMonth(row.Reading_Month||row.Reading_Date)]; });
+  var snapshotRowsByMonth = readActiveMeterSnapshotRowsByMonth_(snapshotByMonth);  // ONE snapshot-rows read
+  Object.keys(snapshotByMonth).forEach(function(month){ result = result.concat(snapshotRowsByMonth[month]||[]); });
+  return result;
+}
+```
+
+Rules:
+- If a month has a `CLOSED` cycle row AND a FINAL snapshot → swap live rows for snapshot rows.
+- Otherwise (cycle is OPEN, QUEUED, or doesn't exist yet) → use live rows.
+- Snapshot rows are tagged with `row._snapshot = true` so downstream code (e.g. `getPaperUsageStatsFast`) can branch on `r._snapshot ? parseNumberValue(r.Rate_BW) : getEffectivePaperRate(site, 'BW')`.
+- The function is wrapped in `rcLazy('meterRowsForReports', ...)` so it's cached per-request — important because AnalyticsService.gs calls it 6 times per dashboard render.
+
+The optimization commit `26ef5e0` is the reason for the helper functions `getLatestMeterSnapshotMetaByMonth_`, `getClosedMeterCycleMonths_`, and `readActiveMeterSnapshotRowsByMonth_`. Pre-optimization, `readMeterRowsForReports` called `findCycleByMonth` and `getMeterSnapshotMeta_` and `readMeterSnapshotRows_` for EVERY month present in the live data — O(N) sheet reads. Post-optimization: 1 read of `Meter_Cycles`, 1 read of `Meter_Report_Snapshots`, 1 read of `Meter_Report_Snapshot_Rows`. Test `meter-snapshot-simulation.test.js:120` verifies `[1, 1, 1]` sheet reads for arbitrary number of months.
+
+### 1.6 Exposed API functions
+
+Public (callable from `google.script.run` / other services):
+| Function | Purpose |
+|----------|---------|
+| `createMeterReportSnapshot(month, authToken, options)` | Create or return snapshot for a month. No-op if FINAL exists and `!options.forceRevision`. |
+| `verifyMeterReportSnapshot(month)` | Re-hash the stored snapshot rows and compare to `Content_Hash`. Returns `{success, month, snapshotId, expectedHash, actualHash, rowCount}`. |
+| `createMeterSnapshotAmendment(month, reason, authToken)` | SYSTEM_CONFIG only. Requires CLOSED cycle. Writes a new revision + amendment row. |
+| `readMeterRowsForReports()` | The single entry point for analytics. Returns live rows + snapshot rows (tagged `_snapshot`) for closed months. Cached per-request via `rcLazy`. |
+
+Private helpers (suffix `_`):
+| Helper | Purpose |
+|--------|---------|
+| `ensureMeterSnapshotSheet_(name, headers)` | Create sheet if missing, with frozen header row. |
+| `meterSnapshotHash_(rows)` | SHA-256 hex over canonical `key|key|...` per row, joined by `\n`. |
+| `getMeterSnapshotMeta_(month)` | Return latest FINAL meta row for a single month. |
+| `getLatestMeterSnapshotMetaByMonth_()` | Read snapshot sheet once, return `{month: latestFinalMeta}`. |
+| `getClosedMeterCycleMonths_()` | Read cycle sheet once, return `{month: true}` for CLOSED cycles. |
+| `readMeterSnapshotRows_(snapshotId)` | Read snapshot rows for ONE snapshot ID. |
+| `readActiveMeterSnapshotRowsByMonth_(metaByMonth)` | Read snapshot-rows sheet once, group by active snapshot ID's month. |
+| `readMeterRowsForReportsUncached_()` | The actual live-merge-snapshot logic. |
+
+Audit-log events emitted: `CREATE_METER_SNAPSHOT`, `AMEND_METER_SNAPSHOT`.
+
+---
+
+## 2. MeterService.gs — Calculation Logic Changes (+96 lines)
+
+### 2.1 **BREAKING CALC CHANGE**: INITIAL brand-new → pages=0 (was: pages=meter)
+
+The most consequential change. Across **three** functions the brand-new INITIAL formula changed from `pages = meter` to `pages = 0`:
+
+**`saveMeterReading` (line ~676):**
+```js
+// BEFORE (a25f779):
+if (readingType === 'INITIAL' && isBrandNew) {
+  // เครื่องใหม่: prev=0, pages=meter (หน้าที่พิมพ์ตั้งแต่ติดตั้ง)
+  pagesBW = mBW; pagesColor = mColor;
+}
+
+// AFTER (HEAD):
+if (readingType === 'INITIAL' && isBrandNew) {
+  // INITIAL เป็น baseline เริ่มต้นตาม METER_RULES: ยังไม่นับเป็นการใช้ของรอบ
+  pagesBW = 0; pagesColor = 0;
+}
+```
+
+**`recalculateMeterReadings` (line ~1059):**
+```js
+// BEFORE: newPagesBW = mBW; newPagesColor = mColor;
+// AFTER:  newPagesBW = 0; newPagesColor = 0;
+```
+
+**`auditAllMeterReadings` (line ~1564):**
+```js
+// BEFORE: correctPagesBW = mBW; correctPagesColor = mColor;
+//         issue = '⚠️ INITIAL เครื่องใหม่: pages ควรเป็น ' + mBW + ' (ในชีท ' + r.Pages_BW + ')';
+// AFTER:  correctPagesBW = 0; correctPagesColor = 0;
+//         issue = '⚠️ INITIAL เครื่องใหม่: pages ควรเป็น 0 ตามกฎ baseline (ในชีท ' + r.Pages_BW + ')';
+```
+
+The file-header comment (line 46) is also updated: `INITIAL เครื่องใหม่ (ไม่มี prev): prev = 0, pages = 0 (baseline)`.
+
+**Why?** METER_RULES.md §3 says INITIAL → pages = 0 (it's a baseline, not a usage row). The original `pages=meter` formula effectively counted all pages printed from factory-to-install as the "first bill" — but those pages were never billed through ITAM. Setting `pages=0` makes INITIAL a pure baseline, and the first MONTHLY reading (meter − 0) correctly bills only post-install usage.
+
+Test `meter-history.test.js:44` "INITIAL is always a zero-page baseline according to METER_RULES" confirms:
+```js
+const output = context.normalizeMeterHistoryRows([
+  { Reading_Month:'2026-08', Reading_Type:'INITIAL', Meter_BW:900, Pages_BW:900 }
+]);
+assert.equal(output[0].Prev_Meter_BW, 0);
+assert.equal(output[0].Pages_BW, 0);   // ← was 900 under old rule
+```
+
+### 2.2 New function `normalizeMeterHistoryRows` (extracted + extended from `getMeterHistory`)
+
+The old `getMeterHistory` did three things inline: filter, sort, fix prev/pages. The new `normalizeMeterHistoryRows` is now a standalone pure function that:
+1. **Does NOT mutate the cached input rows** — clones every row first (`Object.keys(row).forEach`). This is critical because `readMeterRowsCached()` returns the same array reference for the entire request; mutating it would corrupt other consumers.
+2. Coerces all numeric fields through `parseNumberValue`.
+3. Sorts by `Reading_Month` then `Reading_Date`.
+4. Walks the sorted history to derive missing values:
+   - **INITIAL**: `prev = isBrandNew ? 0 : meter; pages = 0`. (`isBrandNew` is local: `lastBW===0 && lastColor===0` at the time we reach this row — i.e. it's the first row ever for this asset.)
+   - **RESET**: `prev = meter; pages = 0` (baseline reset).
+   - **All usage types** (MONTHLY, CHECKOUT, FINAL, RETURN, SEND_REPAIR):
+     - If `Prev_Meter_BW <= 0`: derive from `Meter_BW - Pages_BW` if `Pages_BW > 0`, else fall back to `lastBW`.
+     - If `Pages_BW <= 0` AND `Meter_BW > Prev_Meter_BW`: **derive `Pages_BW = Meter_BW - Prev_Meter_BW`**.
+   - Update `lastBW = r.Meter_BW || lastBW` for the next iteration (per-asset — no cross-asset leakage because this function is called per asset).
+
+**The bug being fixed (commit `e78c34e` "fix: derive missing page totals in meter history"):**
+The OLD `getMeterHistory` (a25f779) had this block:
+```js
+history.forEach(function(r) {
+  if (r.Reading_Type==='INITIAL'||r.Reading_Type==='RESET') { r.Prev_Meter_BW=r.Meter_BW; r.Prev_Meter_Color=r.Meter_Color; }
+  else {
+    if (parseNumberValue(r.Prev_Meter_BW)<=0) r.Prev_Meter_BW = r.Pages_BW>0 ? Math.max(0,r.Meter_BW-r.Pages_BW) : lastBW;
+    if (parseNumberValue(r.Prev_Meter_Color)<=0) r.Prev_Meter_Color = r.Pages_Color>0 ? Math.max(0,r.Meter_Color-r.Pages_Color) : lastColor;
+  }
+  lastBW=r.Meter_BW||lastBW; lastColor=r.Meter_Color||lastColor;
+});
+```
+Two bugs:
+1. INITIAL `prev=meter` was wrong for brand-new devices (should be `prev=0` when there's no prior history).
+2. If a usage row had `Pages_BW=0` (because of an old logic bug, or because the row was imported without pages) but `Meter_BW=1250` and `Prev_Meter_BW=1000`, the history page would show `Pages: 0` instead of `250` — visually wrong.
+
+Commit `e78c34e` initially fixed #2 with the line `if (isBrandNew && r.Pages_BW<=0 && r.Meter_BW>0) r.Pages_BW=r.Meter_BW;` (set INITIAL pages to meter), but later commit `67f8e54` reversed that to align with the METER_RULES baseline semantics (INITIAL → pages=0 always). The final `normalizeMeterHistoryRows` is the cleanest form: INITIAL is always baseline (pages=0), and usage rows derive pages when missing.
+
+Tests in `meter-history.test.js`:
+- `history derives pages when start and end differ but stored pages are zero` — `{Prev:1000, Meter:1250, Pages:0}` → `{Pages:250}`, AND `input[1].Pages_BW === 0` (input not mutated).
+- `RESET remains zero pages even when a previous reading was higher` — `{Prev:1000, Meter:50, RESET}` → `{Prev:50, Pages:0}` (RESET is always zero).
+- `lifecycle usage readings also derive missing pages` — for each of `CHECKOUT, FINAL, RETURN, SEND_REPAIR`, `{Prev:200, Meter:275, Pages:0}` → `{Pages:75}`.
+- `INITIAL is always a zero-page baseline according to METER_RULES` — `{INITIAL, Meter:900, Pages:900}` → `{Prev:0, Pages:0}`.
+
+### 2.3 New validation gate: `assertMeterMonthWritable(month, actionLabel)`
+
+Called from three sites in MeterService.gs:
+1. `saveMeterReading` (line ~602): `assertMeterMonthWritable(readingMonth, 'บันทึกหรือแก้ไขมิเตอร์');`
+2. `updateSingleMeterPrev` (line ~1170): `assertMeterMonthWritable(row.Reading_Month, 'แก้ไขเลขเริ่มของมิเตอร์');`
+3. `recalculateMeterReadings` write phase (line ~1112): `assertMeterMonthWritable(ch.month, 'คำนวณข้อมูลมิเตอร์ย้อนหลังใหม่');`
+
+The function itself lives in `CycleService.gs`:
+```js
+function assertMeterMonthWritable(month, actionLabel) {
+  month = normalizeReadingMonth(month);
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(CYCLE_SHEET);
+  if (!sheet) return true;
+  var cycle = findCycleByMonth(month);
+  if (!cycle) return true;
+  if (cycle.Status !== 'OPEN') {
+    throw new Error('รอบ ' + month + ' อยู่ในสถานะ ' + cycle.Status +
+      ' — ห้าม' + (actionLabel||'แก้ไขข้อมูลมิเตอร์') + ' เพื่อคงยอดรายงานย้อนหลัง');
+  }
+  return true;
+}
+```
+Semantics:
+- No cycle row for the month → writable (backwards-compatible with months before the cycle system existed).
+- Cycle status = `OPEN` → writable.
+- Cycle status = `QUEUED` or `CLOSED` → **THROWS**. The error message includes the offending month, status, and the action label so the UI can surface a meaningful toast.
+
+Test `meter-integrity.test.js:10` verifies all three call sites and that CycleService has the `if (cycle.Status !== 'OPEN')` gate.
+
+### 2.4 Lifecycle type: `Active` from DISPOSED/RETIRED/RETURNED → RETURN
+
+`getLifecycleReadingType(status, fromStatus)` previously only treated In Repair/Inactive/In Stock/Pending Repair/Temporary as "was inactive" — meaning a device that came back from Disposed/Retired/Returned would emit `MONTHLY`, which `findValidPrevReading` would then use as a normal prev, double-counting pages.
+
+```js
+// BEFORE (a25f779):
+var wasInactive = f.indexOf('REPAIR')!==-1 || f==='INACTIVE' || f==='IN STOCK' ||
+  f==='PENDING REPAIR' || f==='TEMPORARY';
+
+// AFTER (HEAD):
+var wasInactive = f.indexOf('REPAIR')!==-1 || f==='INACTIVE' || f==='IN STOCK' ||
+  f==='PENDING REPAIR' || f==='TEMPORARY' || f==='DISPOSED' ||
+  f==='RETIRED' || f==='RETURNED';
+return wasInactive ? 'RETURN' : 'MONTHLY';
+```
+Now any "reinstall" from a terminal state produces `RETURN`, which creates a new baseline (`prev=meter, pages=meter-prev`). Test `regression.test.js:10` "reinstall lifecycle readings are RETURN for every reusable inactive status" iterates all 8 statuses and asserts `RETURN` for each, and `MONTHLY` for `Active→Active`.
+
+### 2.5 New helper `hasNumericMeterValue(v)` — accept `0` as a real reading
+
+```js
+function hasNumericMeterValue(v) {
+  if (v === null || v === undefined || v === '') return false;
+  return !isNaN(Number(v));
+}
+function hasMeterReadingInput(data) {
+  if (!data) return false;
+  return hasNumericMeterValue(data.meterBW) || hasNumericMeterValue(data.meterColor);
+}
+```
+The OLD `hasMeterReadingInput` used truthy checks that treated `0` as "no input" — meaning a legitimate meter reading of `0` (a brand-new device) was treated as missing. The new helper correctly distinguishes "not provided" (null/undefined/'') from "zero" (a real numeric value). `hasCompleteMeterReadingInput` and the transfer flow both use this.
+
+This change pairs with the client-side change in `javascript.html` (lines ~5273): `meterBW: meterBW` instead of `meterBW: meterBW || 0` — empty is no longer coerced to zero, so the server can distinguish "user didn't enter a meter" from "user entered 0".
+
+### 2.6 `isLifecycleMeterRequiredAction` extended
+
+Now includes `TEMPORARY` and `ACTIVE` in its keyword list (line 288). This affects whether the lifecycle UI shows the meter input field — previously going Active→Temporary or temporary-status moves did not trigger meter prompt.
+
+### 2.7 Comment update in file header (line 46)
+
+```
+- *     → INITIAL เครื่องใหม่ (ไม่มี prev): prev = 0, pages = meter
++ *     → INITIAL เครื่องใหม่ (ไม่มี prev): prev = 0, pages = 0 (baseline)
+```
+Documents the new INITIAL semantics for future maintainers.
+
+### 2.8 `changes` array in `recalculateMeterReadings` now carries `month`
+
+```js
+// BEFORE: changes.push({ _row: r._row, newPrevBW, newPrevColor, newPagesBW, newPagesColor });
+// AFTER:  changes.push({ _row: r._row, month: readingMonth, newPrevBW, newPrevColor, newPagesBW, newPagesColor });
+```
+This is so the write phase can call `assertMeterMonthWritable(ch.month, ...)` for each row individually — important because a single recalc pass may touch rows across multiple months, some OPEN and some CLOSED.
+
+---
+
+## 3. CycleService.gs — Cycle Lock Tightening (+47 lines)
+
+### 3.1 New helper `findPendingCycle()` — treats OPEN and QUEUED as "in use"
+
+```js
+/** หารอบที่กำลังเปิดหรือเข้าคิวรอเริ่ม */
+function findPendingCycle() {
+  var sheet = ensureCycleSheet();
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return null;
+  var headers = data[0];
+  for (var i = 1; i < data.length; i++) {
+    var row = mapRowToObject(headers, data[i]);
+    if (row.Status === 'OPEN' || row.Status === 'QUEUED') return row;
+  }
+  return null;
+}
+```
+Replaces `findOpenCycle()` calls in `startCycle` (line 165) and `queueCycle` (line 240):
+```js
+// BEFORE: var existing = findOpenCycle();
+//         throw new Error('ยังมีรอบ ' + existing.Cycle_Month + ' เปิดอยู่ — ต้องปิดก่อนถึงจะเริ่มรอบใหม่');
+// AFTER:  var existing = findPendingCycle();
+//         throw new Error('ยังมีรอบ ' + existing.Cycle_Month + ' อยู่ในสถานะ ' + existing.Status + ' — ต้องปิดหรือยกเลิกก่อน');
+```
+**Why?** Previously you could `startCycle` or `queueCycle` while another cycle was QUEUED (not yet auto-started). That created two pending cycles with overlapping auto-start windows, leading to ambiguity about which one was "the" current cycle. The new rule: at most one OPEN-or-QUEUED cycle at a time, unless `allowParallelCycle` is on. Test `regression.test.js:39` "cycle parallel guard treats OPEN and QUEUED as pending" verifies the function exists, the regex `OPEN' || row.Status === 'QUEUED'`, and that `findPendingCycle()` is called exactly twice (start + queue).
+
+### 3.2 `endCycle` rejects non-OPEN cycles
+
+```js
+// NEW (line ~378):
+if (cycle.Status !== 'OPEN') throw new Error('รอบ ' + month + ' อยู่ในสถานะ ' + cycle.Status + ' — ปิดได้เฉพาะรอบ OPEN');
+```
+The OLD code only checked `if (cycle.Status === 'CLOSED')` — meaning a QUEUED cycle could be force-closed, skipping the entire snapshot+progress flow. Now: only OPEN cycles can be closed. To close a QUEUED cycle, first delete it (or wait for auto-start). Test `meter-integrity.test.js:16` asserts `assert.match(cycle, /if \(cycle\.Status !== 'OPEN'\)/)`.
+
+### 3.3 Snapshot creation BEFORE writing CLOSED
+
+```js
+// NEW (line ~412):
+// สร้าง immutable billing snapshot ให้สำเร็จก่อนเปลี่ยนสถานะเป็น CLOSED
+// หากสร้างไม่ได้ จะไม่ปิดรอบและข้อมูลเดิมไม่ถูกแก้ไข
+var snapshot = createMeterReportSnapshot(month, authToken);
+
+// ปิดรอบ
+var now = new Date();
+var sheet = ensureCycleSheet();
+// ... writes Status='CLOSED', Closed_At, Closed_By, etc. ...
+```
+And the return value now carries snapshot metadata:
+```js
+return {
+  // ... existing fields ...
+  snapshotId: snapshot.Snapshot_ID,
+  snapshotHash: snapshot.Content_Hash,
+  // ...
+};
+```
+The ordering invariant is critical: if `createMeterReportSnapshot` throws (e.g., permission denied, sheet quota exceeded), the cycle stays OPEN and no meter rows are mutated. This makes `endCycle` atomic with respect to the snapshot.
+
+### 3.4 New gate function `assertMeterMonthWritable(month, actionLabel)`
+
+Already covered in §2.3 above. Lives in CycleService.gs because it depends on `findCycleByMonth`. It is the **only** function added to METER_RULES.md's protected-functions table.
+
+### 3.5 No new cycle statuses
+
+Statuses remain exactly 4: `NONE` (implicit), `QUEUED`, `OPEN`, `CLOSED`. No new transitions were added — only:
+- `QUEUED` is now treated as "in use" for parallel-cycle guard.
+- `QUEUED` → `CLOSED` direct transition is now forbidden (must go through `OPEN`).
+
+---
+
+## 4. METER_RULES.md — New Rules (+5 lines)
+
+### 4.1 Four new rules in §1 (Important Rules)
+
+Added under the "### กฎสำคัญ:" section:
+
+> - เมื่อรอบเป็น `CLOSED` ค่า `Meter_*`, `Prev_Meter_*`, `Pages_*` ของเดือนนั้นเป็น snapshot สำหรับวางบิล ห้ามแก้จากการจดเดือนถัดไป
+> ("When a cycle is CLOSED, the Meter_*, Prev_Meter_*, Pages_* values for that month are billing snapshots — must not be edited by next month's reading")
+
+> - รายงานย้อนหลังต้องใช้ `Site_At_Reading`, `Building_At_Reading`, `Floor_At_Reading`, `Department_At_Reading` และ `Location_At_Reading` ก่อนข้อมูลตำแน่งปัจจุบัน
+> ("Historical reports must use the *_At_Reading location columns before the device's current location")
+
+> - ก่อนปิดรอบต้องสร้าง immutable snapshot พร้อม Rule Version, อัตราค่ากระดาษ และ SHA-256 hash; รายงานรอบปิดอ่าน snapshot เท่านั้น
+> ("Before closing a cycle, must create an immutable snapshot with Rule Version, paper rates, and SHA-256 hash; closed-cycle reports read snapshot only")
+
+> - หากพบข้อมูลผิดหลังปิดรอบ ห้ามเขียนทับ snapshot เดิม ต้องสร้าง revision/amendment ใหม่โดยผู้มีสิทธิ์พร้อมเหตุผล
+> ("If data is found wrong after close, never overwrite the original snapshot — must create a new revision/amendment by an authorized user with a reason")
+
+### 4.2 New row in §11 (Protected Functions table)
+
+```
+| `assertMeterMonthWritable()` | CycleService.gs | ล็อคการเขียนเดือน QUEUED/CLOSED | รายงานย้อนหลังเปลี่ยนหลังวางบิล |
+```
+("Locks writes for QUEUED/CLOSED months" | "Historical reports change after billing")
+
+This brings the protected-functions list from 6 to 7 entries — anyone touching `assertMeterMonthWritable` must read METER_RULES.md first, run `auditAllMeterReadings()` before+after, and check `⚠️ PROTECTED` comments.
+
+---
+
+## 5. Test Files — Edge Cases & Expected Behaviors
+
+### 5.1 `tests/meter-snapshot.test.js` (62 lines, 6 tests)
+
+Static + dynamic checks on MeterSnapshotService.gs source:
+
+| Test | What it verifies |
+|------|------------------|
+| `cycle creates a snapshot before it writes CLOSED status` | `createMeterReportSnapshot(month, authToken)` appears in source BEFORE `setValue('CLOSED')` in CycleService.gs — the atomicity invariant. |
+| `snapshot captures billing inputs, rates, rule version, and integrity hash` | Source contains all of: `Rule_Version`, `Content_Hash`, `Prev_Meter_BW`, `Meter_BW`, `Pages_BW`, `Site_At_Reading`, `Rate_BW`, `Cost_BW`, plus `Utilities.DigestAlgorithm.SHA_256` and `METER_RULE_VERSION = 'METER_RULE_V1'`. |
+| `snapshot hash is deterministic and changes with billing data` | Hashing the same row twice → same hash; changing `Meter_BW:150→151` → different hash; hash length = 64 (SHA-256 hex). |
+| `closed-month analytics reads immutable report rows` | `AnalyticsService.gs` references `readMeterRowsForReports()` exactly 6 times and contains **ZERO** references to `readMeterRowsCached()` — proves all analytics went through the snapshot-aware path. |
+| `report rows activate a snapshot only after the cycle is CLOSED` | Source contains `String(row.Status) === 'CLOSED'` AND `closedMonths[month] && latestMeta[month]` — both conditions required for a snapshot to be used. |
+| `amendments create revisions and never overwrite the previous snapshot` | Source contains `forceRevision:true`, `previousSnapshotId:previous.Snapshot_ID`, `Meter_Report_Amendments`, `Previous_Snapshot_ID.*New_Snapshot_ID`. Source does NOT contain `deleteRow`, `clearContent`, or `setValue(...Content_Hash` — i.e. amendments are strictly append-only. |
+
+### 5.2 `tests/meter-snapshot-simulation.test.js` (143 lines, 3 tests)
+
+End-to-end behavioral simulation with a mock Spreadsheet/Sheet/Range class:
+
+| Test | What it verifies |
+|------|------------------|
+| `simulated close freezes readings, location, rates, totals, and hash` | (a) Snapshot has `Row_Count=1, Total_Pages_BW=250, Total_Pages_Color=10, Total_Cost=9, Content_Hash` (64 chars). (b) Before CLOSED, `readMeterRowsForReports()[0]._snapshot === undefined`. (c) After CLOSED, `_snapshot === true` and all values match the snapshot. (d) After tampering with live rows AND changing the rate, `readMeterRowsForReports()[0]` still returns snapshot values. (e) `verifyMeterReportSnapshot('2026-08').success === true`. |
+| `simulated tampering is detected and amendment keeps revision one` | (a) Edit `rowSheet.data[1][meterColumn] = 7777` → `verifyMeterReportSnapshot().success === false`. (b) `createMeterSnapshotAmendment('2026-08', reason, token)` returns `{Revision:2, ...}`. (c) `Meter_Report_Snapshots` sheet now has 3 rows (header + R1 + R2 — R1 was NOT deleted). (d) `Meter_Report_Amendments` sheet has 2 rows. (e) `getMeterSnapshotMeta_` returns the NEW snapshot ID (latest wins). |
+| `report loading scans cycle, metadata, and snapshot rows only once for multiple months` | With 2 months (one CLOSED+snapshotted, one OPEN+live), `readMeterRowsForReports()` triggers exactly `[1, 1, 1]` reads on `[cycleSheet, metaSheet, rowSheet]` — proves the optimization in commit `26ef5e0` works. Result: snapshot row tagged `_snapshot=true`, live row `_snapshot=undefined`. |
+
+### 5.3 `tests/meter-history.test.js` (50 lines, 4 tests)
+
+Pure-function tests on `normalizeMeterHistoryRows` (extracted via `vm.runInNewContext`):
+
+| Test | What it verifies |
+|------|------------------|
+| `history derives pages when start and end differ but stored pages are zero` | Input: `[{INITIAL, Meter:1000}, {MONTHLY, Prev:1000, Meter:1250, Pages:0}]` → output `[{Prev:0, Pages:0}, {Prev:1000, Meter:1250, Pages:250}]`. **Critically**: `input[1].Pages_BW === 0` after the call — the cached source row was NOT mutated (because `normalizeMeterHistoryRows` clones). |
+| `RESET remains zero pages even when a previous reading was higher` | Input: `[{INITIAL, Meter:1000}, {RESET, Prev:1000, Meter:50, Pages:0}]` → `[{Prev:0, Pages:0}, {Prev:50, Pages:0}]`. RESET is always a zero-page baseline regardless of meter decrease. |
+| `lifecycle usage readings also derive missing pages` | For each of `CHECKOUT, FINAL, RETURN, SEND_REPAIR`: `[{INITIAL, Meter:200}, {TYPE, Prev:200, Meter:275, Pages:0}]` → `[{...}, {Pages:75}]`. Confirms the derivation applies to ALL usage types, not just MONTHLY. |
+| `INITIAL is always a zero-page baseline according to METER_RULES` | Input: `[{INITIAL, Meter:900, Pages:900}]` → `[{Prev:0, Pages:0}]`. The stored `Pages:900` is overwritten to `0` — INITIAL is always baseline per the new rule. |
+
+### 5.4 `tests/meter-integrity.test.js` (51 lines, 4 tests)
+
+Cross-file integrity checks:
+
+| Test | What it verifies |
+|------|------------------|
+| `meter writes and manual previous-meter edits enforce the cycle lock` | MeterService.gs source contains all three `assertMeterMonthWritable(...)` calls with the exact Thai action labels: `'บันทึกหรือแก้ไขมิเตอร์'`, `'แก้ไขเลขเริ่มของมิเตอร์'`, `'คำนวณข้อมูลมิเตอร์ย้อนหลังใหม่'`. CycleService.gs contains `if (cycle.Status !== 'OPEN')`. |
+| `monthly analytics retains CHECKOUT as a valid closing reading` | `AnalyticsService.gs` does NOT contain the regex `rt==='INITIAL'||rt==='RESET'||rt==='FINAL'||rt==='SEND_REPAIR'||rt==='CHECKOUT'` — i.e. CHECKOUT is no longer filtered out (it IS now counted in monthly analytics). |
+| `previous lookup excludes the current/future month and skipped lifecycle types` | Source of `findValidPrevReading` contains `if (rowMonth >= readingMonth) return` and `rt === 'FINAL' || rt === 'SEND_REPAIR'`. Functional test: with index `{A1:[july, august, september]}`, `findValidPrevReading(index,'A1','2026-08',true)===july` and `findValidPrevReading(index,'A1','2026-09',true)===august`. And **`july.Meter_BW === 1000`** after the lookup — the prior report row was not mutated. |
+| `historical analytics prefers reading-time location snapshots` | `AnalyticsService.gs` contains `row.Site_At_Reading||device.Site`, `row.Building_At_Reading||device.Building`, `row.Department_At_Reading||device.Department` — i.e. the `*_At_Reading` column is checked FIRST, falling back to the device's current location. |
+
+### 5.5 `tests/regression.test.js` (44 lines, 3 tests)
+
+| Test | What it verifies |
+|------|------------------|
+| `reinstall lifecycle readings are RETURN for every reusable inactive status` | For each of `In Repair, Inactive, In Stock, Pending Repair, Temporary, Disposed, Retired, Returned`: `getLifecycleReadingType('Active', fromStatus) === 'RETURN'`. And `getLifecycleReadingType('Active', 'Active') === 'MONTHLY'` (Active→Active must NOT be RETURN). |
+| `transfer UI requires acknowledgement without requiring a meter input` | Source contains `transfer: { needLoc:true, needMeter:false, ... }`, `ctx.selectedAction !== 'transfer'`, `meterSkipAcknowledged: transferAcknowledged`. Source does NOT contain `meterBW: meterBW || 0` or `meterColor: meterColor || 0` (no more empty-to-zero coercion). |
+| `cycle parallel guard treats OPEN and QUEUED as pending` | `findPendingCycle` exists, contains `row.Status === 'OPEN' || row.Status === 'QUEUED'`, and `findPendingCycle()` is called exactly twice (in startCycle + queueCycle). |
+
+### 5.6 `tests/settings-tabs.test.js` (21 lines, 2 tests)
+
+Verifies the restored sticker + PDF settings tabs in `index.html` and their lazy-load wiring in `javascript.html`. Not meter-related but included for completeness.
+
+---
+
+## 6. Key Calculation Rules to Replicate (summary of behavior changes)
+
+| # | Rule | Old (a25f779) | New (HEAD e0f78b3) |
+|---|------|---------------|---------------------|
+| 1 | INITIAL brand-new pages | `pages = meter` | **`pages = 0`** (baseline) |
+| 2 | INITIAL brand-new prev | `prev = 0` | `prev = 0` (unchanged) |
+| 3 | INITIAL transfer pages | `pages = 0` | `pages = 0` (unchanged) |
+| 4 | INITIAL transfer prev | `prev = meter` | `prev = meter` (unchanged) |
+| 5 | `Active` from `Disposed/Retired/Returned` | `MONTHLY` | **`RETURN`** |
+| 6 | `Active` from `Active` (pure move) | `MONTHLY` | `MONTHLY` (unchanged — still must NOT be RETURN) |
+| 7 | CHECKOUT in monthly analytics | filtered out | **INCLUDED** (closing reading for withdrawn device) |
+| 8 | `*_At_Reading` vs device.* | device.* preferred | **`*_At_Reading` preferred** (historical location snapshot) |
+| 9 | Reporting data source for closed months | `readMeterRowsCached()` (live) | **`readMeterRowsForReports()`** (snapshot for CLOSED months) |
+| 10 | Cycle write lock | only `isCycleOpenForMonth` soft check in some paths | **`assertMeterMonthWritable()` throws for QUEUED/CLOSED** in saveMeterReading, updateSingleMeterPrev, recalculateMeterReadings |
+| 11 | endCycle on QUEUED | allowed (skipped progress/snapshot) | **rejected** ("ปิดได้เฉพาะรอบ OPEN") |
+| 12 | startCycle/queueCycle while QUEUED | allowed if no OPEN | **rejected** (treats QUEUED as pending) |
+| 13 | endCycle atomicity | close-then-maybe-snapshot | **snapshot-then-close** (if snapshot fails, cycle stays OPEN) |
+| 14 | Empty meter input | coerced to `0` client-side | **passed as empty** (server distinguishes "no input" from "0") |
+| 15 | Lifecycle type derivation | client-side (`actionData.readingType`) | **server-side** (`getLifecycleReadingType(targetStatus, device.Status)`) — anti-tamper |
+| 16 | Transfer without meter | required free-text reason | **required acknowledgement checkbox** (`meterSkipAcknowledged: true`) |
+| 17 | Rate for closed-month rows | `getEffectivePaperRate(site, type)` (live) | **`parseNumberValue(r.Rate_BW)`** when `r._snapshot === true` (frozen at snapshot time) |
+
+---
+
+## 7. Recommendations for the Next.js Version
+
+The Next.js preview currently lacks the entire snapshot subsystem. To match the Apps Script behavior:
+
+### 7.1 High Priority — Data model
+
+Add **3 new Prisma models** mirroring the 3 new sheets:
+
+```prisma
+model MeterReportSnapshot {
+  id              String   @id @default(cuid())
+  snapshotId      String   @unique           // MRS-202608-R1-20260831120000
+  cycleMonth      String                      // 2026-08
+  revision        Int      @default(1)
+  status          String   @default("FINAL") // always FINAL for stored rows
+  ruleVersion     String   @default("METER_RULE_V1")
+  createdAt       DateTime @default(now())
+  createdBy       String                      // user email
+  rowCount        Int
+  totalPagesBw    Int
+  totalPagesColor Int
+  totalCost       Float
+  contentHash     String                      // 64-char SHA-256 hex
+  rows            MeterReportSnapshotRow[]
+
+  @@index([cycleMonth, revision])
+  @@index([status])
+}
+
+model MeterReportSnapshotRow {
+  id                  String   @id @default(cuid())
+  snapshotId          String
+  cycleMonth          String
+  readingId           String
+  assetNo             String
+  readingDate         DateTime
+  readingMonth        String
+  meterBw             Int
+  meterColor          Int
+  pagesBw             Int
+  pagesColor          Int
+  prevMeterBw         Int
+  prevMeterColor      Int
+  readingType         String
+  eventType           String?
+  eventId             String?
+  locationAtReading   String?
+  siteAtReading       String?
+  buildingAtReading   String?
+  floorAtReading      String?
+  departmentAtReading String?
+  departmentCodeAtReading String?
+  readBy              String?
+  remark              String?
+  rateBw              Float    // FROZEN at snapshot time
+  rateColor           Float    // FROZEN at snapshot time
+  costBw              Float
+  costColor           Float
+  snapshot            MeterReportSnapshot @relation(fields: [snapshotId], references: [snapshotId])
+
+  @@index([snapshotId])
+  @@index([cycleMonth])
+  @@index([assetNo, readingMonth])
+}
+
+model MeterReportAmendment {
+  id                 String   @id @default(cuid())
+  amendmentId        String   @unique         // MRA-202608-20260831120000
+  cycleMonth         String
+  previousSnapshotId String
+  newSnapshotId      String
+  reason             String
+  requestedBy        String
+  approvedBy         String
+  approvedAt         DateTime @default(now())
+
+  @@index([cycleMonth])
+}
+```
+
+### 7.2 High Priority — Server logic
+
+1. **Port `MeterSnapshotService.gs` to `src/lib/meter-snapshot.ts`** with the same public API:
+   - `createMeterReportSnapshot(month, userId, options?)`
+   - `verifyMeterReportSnapshot(month)` — re-hash and compare
+   - `createMeterSnapshotAmendment(month, reason, userId)` — SYSTEM_CONFIG role only
+   - `readMeterRowsForReports()` — returns `{ rows: (MeterReading | MeterReportSnapshotRow)[] }` where snapshot rows are tagged with `_snapshot: true` and expose `rateBw`/`rateColor` directly.
+
+2. **Hash function** — Node `crypto.createHash('sha256').update(canonical).digest('hex')`. Canonical format = `field|field|...` per row (excluding `Snapshot_ID` and `Cycle_Month`), joined by `\n`.
+
+3. **Update `endCycle` server action** to call `createMeterReportSnapshot` BEFORE setting `cycle.status = 'CLOSED'`. Wrap in a transaction: if snapshot fails, transaction rolls back and cycle stays OPEN.
+
+4. **Add `assertMeterMonthWritable(month, actionLabel)` helper** — called from `saveMeterReading`, `updateSingleMeterPrev`, `recalculateMeterReadings`. Throws if cycle exists for that month and `status !== 'OPEN'`.
+
+5. **Update all analytics reads** (the 6 places in `AnalyticsService.gs` that call `readMeterRowsForReports()`) to use the snapshot-aware path in Next.js too:
+   - `/api/itam/dashboard` (the `getPaperUsageStatsFast` equivalent)
+   - `/api/itam/dashboard?month=X` (the `getDashboardStatsForMonth` equivalent)
+   - `/api/itam/paper-analytics`
+   - `/api/itam/paper-export`
+   - `/api/itam/completed-meter-readings`
+   - `/api/itam/site-comparison`
+
+### 7.3 High Priority — Calculation fixes
+
+1. **Change INITIAL brand-new `pages` from `meter` to `0`** in:
+   - `calcPagesDelta()` (or equivalent) in `src/lib/status-utils.ts`
+   - The `recalculateMeterReadings` equivalent
+   - The `auditAllMeterReadings` equivalent (audit message should say "pages ควรเป็น 0 ตามกฎ baseline")
+2. **Extend `getLifecycleReadingType`** to include `DISPOSED, RETIRED, RETURNED` in the `wasInactive` check for `Active` target.
+3. **Include `CHECKOUT` in monthly analytics filter** — remove `'CHECKOUT'` from the skip list (currently the Next.js code likely skips it like the old Apps Script did).
+4. **Prefer `*_At_Reading` columns** in analytics over `device.Site`/`device.Building`/etc. — this requires storing these columns on the MeterReading model (which the Apps Script sheet already has, but the Next.js Prisma schema may not).
+5. **Use snapshot `rateBw`/`rateColor`** when row is from a snapshot (`row._snapshot === true`), else call `getEffectivePaperRate(site, type)`.
+
+### 7.4 Medium Priority — Cycle logic
+
+1. **Replace `findOpenCycle` with `findPendingCycle`** in `/api/cycles/start` and `/api/cycles/queue` — reject if any OPEN or QUEUED cycle exists (unless `allowParallelCycle` setting is on).
+2. **Reject `endCycle` on non-OPEN cycles** with the message: `รอบ ${month} อยู่ในสถานะ ${status} — ปิดได้เฉพาะรอบ OPEN`.
+
+### 7.5 Medium Priority — Transfer / lifecycle UX
+
+1. **Transfer no longer requires meter input** — change `{ needLoc: true, needMeter: isMeterRequiredDeviceClient(device) }` to `{ needLoc: true, needMeter: false }` in the action config.
+2. **Add "รับทราบ" acknowledgement checkbox** for transfers (replaces the free-text "skip reason" requirement). Wire `meterSkipAcknowledged: true` instead of `meterSkipReason: <text>`.
+3. **Stop coercing empty meter fields to `0`** in the transfer/lifecycle payload — pass empty string/undefined so the server can distinguish "no input" from "0".
+4. **Derive lifecycle `readingType` server-side** in `changeDeviceLifecycle` — ignore any `actionData.readingType` from the client; always call `getLifecycleReadingType(targetStatus, device.status)`.
+
+### 7.6 Low Priority — Audit / observability
+
+1. Emit audit events `CREATE_METER_SNAPSHOT`, `AMEND_METER_SNAPSHOT` in the audit log table.
+2. Surface `snapshotId` + `snapshotHash` in the `endCycle` response so the frontend can show "สร้าง snapshot แล้ว: MRS-202608-R1-... (hash: abc...)".
+3. Add a "verify snapshot" admin endpoint that re-hashes and reports mismatches (matches `verifyMeterReportSnapshot(month)`).
+
+### 7.7 Tests to port
+
+Port the 5 Apps Script test files to Vitest:
+- `__tests__/meter-snapshot.test.ts` — port all 6 static + dynamic tests.
+- `__tests__/meter-snapshot-simulation.test.ts` — port the end-to-end simulation using Prisma mock or in-memory SQLite.
+- `__tests__/meter-history.test.ts` — port the 4 `normalizeMeterHistoryRows` tests against a TypeScript port of the function.
+- `__tests__/meter-integrity.test.ts` — port the 4 cross-file checks (these become source-string checks against the .ts files or behavioral checks against the functions).
+- `__tests__/regression.test.ts` — port the 3 regression tests (lifecycle RETURN, transfer ack, cycle pending guard).
+
+### 7.8 Migration considerations
+
+If the Next.js DB already has historical MeterReading data (it does — 965,710 pages this month), the snapshot system starts EMPTY. The first time each cycle is closed, a snapshot will be created from the current live data. There is NO retroactive snapshot creation for past CLOSED cycles — if you need that, you'd write a one-time backfill script that calls `createMeterReportSnapshot(month, systemUserId, {forceRevision: false})` for every historical CLOSED cycle month. Until that backfill runs, those past months continue to read from live data (which is the safe default — same behavior as before).
+
+---
+
+Stage Summary:
+- **Immutable snapshot feature** is fully understood: 3 new sheets (`Meter_Report_Snapshots` with 12 cols, `Meter_Report_Snapshot_Rows` with 27 cols including frozen `Rate_BW`/`Rate_Color`/`Cost_BW`/`Cost_Color`, `Meter_Report_Amendments` with 8 cols). Created automatically in `endCycle` BEFORE writing CLOSED, plus on-demand via `createMeterSnapshotAmendment` (SYSTEM_CONFIG role only, CLOSED cycles only, never overwrites — always creates a new revision). SHA-256 hash over canonical row data; `verifyMeterReportSnapshot` re-hashes to detect tampering. `readMeterRowsForReports()` is the single analytics entry point — uses live rows for OPEN months, snapshot rows (tagged `_snapshot=true`) for CLOSED months. Optimization in commit `26ef5e0` reduced sheet reads from O(N months) to 3 reads total per request.
+- **Meter calc changes**: INITIAL brand-new now `pages=0` (was `pages=meter`) — matches METER_RULES baseline semantics. `getLifecycleReadingType('Active', fromStatus)` returns `RETURN` for 3 additional statuses (Disposed, Retired, Returned). CHECKOUT is re-included in monthly analytics (was filtered out). `*_At_Reading` columns preferred over `device.*` in analytics. New `normalizeMeterHistoryRows` pure function (no cache mutation, derives missing prev/pages). New `hasNumericMeterValue` accepts `0` as real input. `assertMeterMonthWritable` throws for QUEUED/CLOSED months in 3 writer paths.
+- **Cycle lock changes**: `findPendingCycle` replaces `findOpenCycle` in start+queue paths (QUEUED now blocks new cycles). `endCycle` rejects non-OPEN cycles. Snapshot creation is atomic with cycle close (snapshot fails → cycle stays OPEN → no data mutated).
+- **METER_RULES.md**: 4 new rules added (CLOSED months are billing snapshots, reports use `*_At_Reading` columns, immutable snapshot before close with rule version + rates + SHA-256 hash, amendments never overwrite). 1 new row in protected-functions table for `assertMeterMonthWritable`.
+- **Tests**: 6 + 3 + 4 + 4 + 3 + 2 = **22 tests** covering snapshot atomicity, hash determinism, tamper detection, amendment append-only behavior, optimization (3 sheet reads), INITIAL zero-page baseline, RESET zero-page, derivation for all usage types, cache non-mutation, lifecycle RETURN for 8 inactive statuses, transfer ack flow, cycle pending guard, location-snapshot preference, CHECKOUT inclusion, prev-lookup >= comparison, FINAL/SEND_REPAIR skip.
+- **Next.js gaps**: No Prisma models for snapshots/amendments; no `readMeterRowsForReports` equivalent; INITIAL brand-new still computes `pages=meter` in `calcPagesDelta`; CHECKOUT likely still filtered in analytics; `*_At_Reading` columns may not be on the Prisma `MeterReading` model yet; no `assertMeterMonthWritable` gate; no transfer acknowledgement UX; lifecycle `readingType` is client-derived (security gap). Recommended 18 specific code changes (7.1–7.8) to close the gap.
+
+---
+Task ID: 3-b
+Agent: Explore (sub-agent)
+Task: Study the LATEST Google Apps Script ITAM code (branch `refactor/master-columns`, commit `e0f78b3`) at `/tmp/itam-apps-script-latest` to understand dashboard/analytics changes and the new transfer acknowledge flow added since commit `a25f779`. RESEARCH ONLY — no code written. Produce a detailed report covering: AnalyticsService changes, MeterSnapshotService (new), TransferService acknowledge flow, javascript.html UI changes, index.html tab additions, and a gap analysis vs the Next.js preview at `/home/z/my-project`.
+
+Work Log:
+- Ran `git log --oneline a25f779..HEAD` → 10 commits (6e57904 Transfer acknowledge + lifecycle/cycle/meter fixes; 3f53d41 cycle/transfer/meter validation + settings UI; 67f8e54 immutable meter snapshots + cycle locks + meter/reporting fixes; 7664a77/3e80059 snapshot simulation tests; 26ef5e0/e0f78b3 optimize immutable meter report loading; e78c34e/f5d2c8b sticker+PDF settings tabs; 278425a merge meter history page calc fix; e78c34e derive missing page totals in meter history).
+- Ran `git diff a25f779..HEAD -- AnalyticsService.gs` (79 lines changed: 42 ins / 37 del) — 5 functions switched from `readMeterRowsCached()` → `readMeterRowsForReports()`; CHECKOUT un-skipped; `Site_At_Reading` preferred over `device.Site`; snapshot rate values (`r.Rate_BW`/`r.Rate_Color`) used when `r._snapshot` is true.
+- Ran `git diff a25f779..HEAD -- TransferService.gs` (12 lines changed: 8 ins / 4 del) — `meterSkipReason` (free-text) → `meterSkipAcknowledged` (boolean); server-side `getLifecycleReadingType` derivation replaces client-supplied `readingType`.
+- Ran `git diff a25f779..HEAD -- javascript.html` (53 lines changed) — `da-transfer-acknowledge` checkbox + `da-transfer-remark` textarea wiring; empty-vs-zero meter fix; settings tab loaders for sticker/document; `ThaiDatePicker.refreshDisplay` calls.
+- Ran `git diff a25f779..HEAD -- index.html` (2 lines added) — 2 new settings tabs: 🎨 สติกเกอร์ + 📄 เอกสาร PDF.
+- Ran `git diff a25f779..HEAD -- MeterSnapshotService.gs` (217 lines, NEW file) — append-only billing snapshots with SHA-256 hashing, row-level storage, amendment support.
+- Ran `git diff a25f779..HEAD -- CycleService.gs` (47 lines) — `findPendingCycle`, `assertMeterMonthWritable`, snapshot-then-close ordering.
+- Ran `git diff a25f779..HEAD -- MeterService.gs` (96 lines) — INITIAL brand-new baseline fix (pages=0); `getLifecycleReadingType` wasInactive now includes DISPOSED/RETIRED/RETURNED; `normalizeMeterHistoryRows` for history-page derivation; `assertMeterMonthWritable` invoked in all write/recalc paths.
+- Ran `git diff a25f779..HEAD -- METER_RULES.md` (5 lines) — added snapshot rules + `assertMeterMonthWritable` to protected-functions table.
+- Inspected Next.js equivalents:
+  - `prisma/schema.prisma` (367 lines) — confirmed NO `MeterReportSnapshot`/`MeterReportSnapshotRow`/`MeterReportAmendment` models exist. `MeterReading` has `siteAtReading`/`buildingAtReading`/`floorAtReading`/`departmentAtReading`/`departmentCodeAtReading` columns (good — already matches the snapshot-attribution pattern, but they're unused in queries).
+  - `src/app/api/itam/devices/[id]/transfer/route.ts` (249 lines) — still uses `skipMeterReason` (free-text); does NOT have `meterSkipAcknowledged`.
+  - `src/app/api/itam/meter-readings/route.ts` (203 lines) — does NOT have `assertMeterMonthWritable` check; uses generic `Math.max(0, meter - prev)` for all reading types (no INITIAL/RESET/CHECKOUT/FINAL/RETURN/SEND_REPAIR distinction); auto-RESET only when `meter < prev`.
+  - `src/app/api/cycles/route.ts` (72 lines) + `src/app/api/cycles/[id]/route.ts` (125 lines) — uses LEGACY status values `active`/`ended`/`cancelled`; PUT route EXPLICITLY REJECTS `OPEN`/`QUEUED`/`CLOSED` (invalid status); no `findPendingCycle` equivalent; no snapshot creation on close. Also L16-21 has latent bug: filters by `cycleId` and reads `r.delta` — neither field exists in `MeterReading` schema (would 500 if called).
+  - `src/app/api/itam/dashboard/route.ts` (281 lines) — uses `db.meterReading.aggregate` + `groupBy` (high perf, from Task 34); does NOT filter by `readingType`; uses `device: siteFilter` (current device site), NOT `siteAtReading`.
+  - `src/app/api/itam/paper-analytics/route.ts` (368 lines) — uses `device: siteFilter` + `device.building`/`device.department` (current location); does NOT filter by `readingType`.
+  - `src/components/itam/itam-device-detail-sheet.tsx` (lines 640-660, 763-825, 1073-1079) — TransferFormState has `skipMeterReason: string` (no acknowledge boolean); L767 coerces empty meter to `0` (`meterColor: form.meterColor ? Number(form.meterColor) : 0`) — same empty-vs-zero bug the Apps Script commit fixed.
+  - Searched `src/` for `snapshot|assertMeterMonthWritable|findPendingCycle|findOpenCycle|MeterReportSnapshot` — only matches are unrelated "fromSnapshot" variable in transfer route + `useSnapshot` React hooks. NO meter-snapshot infrastructure.
+- Confirmed Next.js ALREADY HAS (so no work needed): sticker templates (`/api/itam/sticker/*`), document templates (`/api/itam/document-templates/*`), `siteAtReading`/`buildingAtReading`/`floorAtReading`/`departmentAtReading` columns in `MeterReading` schema.
+
+---
+
+## 1. AnalyticsService.gs — Dashboard/Analytics Changes (+79 lines: 42 ins / 37 del)
+
+### 1.1 What changed (function-by-function)
+
+| Function | Old behavior | New behavior |
+|---|---|---|
+| `getPaperUsageStats` (L22-50) | Reads `readMeterRowsCached()`. Skips INITIAL/RESET/FINAL/SEND_REPAIR/**CHECKOUT**. Uses `device.Site \|\| r.Site_At_Reading`. Uses `device.Building`/`Floor`/`Department`/`DepartmentCode`. | Reads `readMeterRowsForReports()`. Skips INITIAL/RESET/FINAL/SEND_REPAIR (CHECKOUT now INCLUDED). Uses `r.Site_At_Reading \|\| device.Site`. Uses `r.Building_At_Reading \|\| d.Building` etc. |
+| `getPaperUsageStatsFast` (L210-245) | Same as above for fast 3-month view (current + prev + YoY). Computes `bwRate = getEffectivePaperRate(siteName, 'BW')`. | Same source/filter change. **Rate is now snapshot-aware**: `r._snapshot ? parseNumberValue(r.Rate_BW) : getEffectivePaperRate(siteName, 'BW')`. |
+| `getPaperAnalyticsData` (L560-655) | Two `readMeterRowsCached()` calls. Same skip list. Uses `device.Site \|\| row.Site_At_Reading` etc. | Two `readMeterRowsForReports()` calls. CHECKOUT un-skipped. Uses `row.Site_At_Reading \|\| device.Site` etc. Snapshot-aware rates: `row._snapshot ? parseNumberValue(row.Rate_BW) : getEffectivePaperRate(rowSite, 'BW')`. Enriched rows now carry `rateBW`/`rateColor`. Cost rollup at L652-655 uses `r.rateBW !== undefined ? r.rateBW : getEffectivePaperRate(...)`. |
+| `getPaperExportRows` (L914-925) | Filters to MONTHLY+RETURN only (skips INITIAL/RESET/FINAL/SEND_REPAIR/CHECKOUT). | Now includes CHECKOUT ("เลขปิดตอนถอน" — closing reading for withdrawn devices). |
+| `getCompletedMeterReadings` (L1006-1025) | Same skip list. | Same source change + CHECKOUT un-skipped. |
+
+### 1.2 Are there new KPI calculations?
+
+**No new KPIs.** The dashboard KPI structure itself is unchanged — same `byMonth`/`byDept`/`byBF`/`byDevice` aggregations, same MoM/YoY comparisons. The 79 lines are all **correctness fixes** (snapshot source, snapshot site attribution, snapshot rate), not new metrics.
+
+### 1.3 Bug fixes in the analytics
+
+Three categories of bugs fixed:
+
+**Bug 1 — CHECKOUT readings excluded from monthly totals (under-counting)**
+- Symptom: A meter-required device that was withdrawn (status → Inactive/In Stock) mid-cycle had its final CHECKOUT reading skipped from the monthly paper total. The pages printed between the last MONTHLY reading and the CHECKOUT were silently lost from billing.
+- Fix: Removed `'CHECKOUT'` from the skip list. Comment: "CHECKOUT เป็นเลขปิดรอบของเครื่องที่ถอน จึงต้องรวมในยอดเดือน" (CHECKOUT is the closing reading for withdrawn devices, must be included in monthly totals).
+
+**Bug 2 — Site/building/floor attribution used CURRENT device location (wrong attribution for moved devices)**
+- Symptom: Device was at Site A in January, moved to Site B in February. January's report attributed the January usage to Site B (because `device.Site` was now B), inflating Site B's totals and deflating Site A's.
+- Fix: Reversed the precedence: `r.Site_At_Reading || device.Site` (reading-time wins, current location only as fallback). Same for Building/Floor/Department/DepartmentCode.
+
+**Bug 3 — Historical bills recomputed at CURRENT rates (rate drift)**
+- Symptom: Site A's BW rate was 0.5 ฿/page in January, raised to 0.7 ฿/page in March. January's closed-cycle report recomputed cost at 0.7 (current rate), producing a different total than what was actually billed.
+- Fix: For snapshot rows (`r._snapshot === true`), use `r.Rate_BW`/`r.Rate_Color` (frozen at close time). For live rows, still use `getEffectivePaperRate()`.
+
+### 1.4 Does it now use snapshots instead of live readings?
+
+**Yes — conditionally.** `readMeterRowsForReports()` (in `MeterSnapshotService.gs`) returns:
+- Live `Meter_Readings` rows for months whose cycle is OPEN, QUEUED, or has no cycle record.
+- Snapshot rows (from `Meter_Report_Snapshot_Rows` sheet, with `_snapshot=true` flag) for months whose cycle is CLOSED — these rows have `Rate_BW`/`Rate_Color`/`Cost_BW`/`Cost_Color` frozen at close time.
+
+This means historical reports are now **immutable** — once a cycle is CLOSED, the report data cannot change even if someone edits the underlying `Meter_Readings` sheet.
+
+### 1.5 Commit 67f8e54 — What reporting logic was fixed?
+
+Commit "Add immutable meter report snapshots, tighten cycle locks, and fix meter/reporting logic" fixed:
+
+1. **INITIAL semantics** — brand-new INITIAL readings were `pages=meter` (treated the full odometer as first-cycle usage). Now `pages=0` (pure baseline). This was over-counting the first cycle's bill by the full meter value.
+2. **CHECKOUT handling** — was being skipped in monthly totals. Now included (see Bug 1 above).
+3. **Lifecycle types** — `getLifecycleReadingType` now classifies transitions from DISPOSED/RETIRED/RETURNED → Active as `RETURN` (baseline reset). Previously these fell through to `MONTHLY` (no reset), causing the next month's pages to be massively over-counted (entire history re-billed).
+4. **Site/location snapshotting** — reporting now uses reading-time location fields (`Site_At_Reading` etc.) instead of current device location (see Bug 2 above).
+5. **Snapshot rate values** — closed-cycle reports use rates frozen at close time (see Bug 3 above).
+6. **`readMeterRowsForReports()` gate** — all 5 reporting functions now route through this function so closed-cycle months read from immutable snapshots.
+
+---
+
+## 2. TransferService.gs — Transfer Acknowledge Flow (+12 lines: 8 ins / 4 del)
+
+### 2.1 What is the "transfer acknowledge flow"? (commit 6e57904)
+
+**Problem:** A meter-required device (e.g., a network printer) being moved from Desk A to Desk B in the same site doesn't actually need a meter reading — the meter keeps counting continuously, and the next monthly reading will capture the delta. But the OLD code forced the user to either (a) enter a meter reading OR (b) type a free-text "skip reason". This was friction for routine moves, and the free-text reason was unstructured (hard to audit).
+
+**Solution:** Replace the free-text skip reason with an explicit boolean acknowledgement. The user checks a checkbox saying "I acknowledge that I'm moving this device without recording a meter reading — the previous count won't be precisely known for this cycle." The server requires this boolean; the free-text reason is now optional (defaults to "ย้ายตำแหน่ง มิเตอร์นับต่อเนื่อง" = "moved position, meter counts continuously").
+
+### 2.2 What fields were added for acknowledge?
+
+**Server-side (`transferDevice` in TransferService.gs):**
+- Reads `transferData.meterSkipAcknowledged` (boolean) — replaces the old `transferData.meterSkipReason` (string) check.
+- Still reads `transferData.meterSkipReason` (string) — but as an OPTIONAL companion to the acknowledgement, not a substitute.
+- Stores in `Location_History.Remark`: `' | ไม่บันทึกมิเตอร์ (รับทราบแล้ว): ' + (transferData.meterSkipReason || 'ย้ายตำแหน่ง มิเตอร์นับต่อเนื่อง')`.
+
+**Client-side (`javascript.html` + `index.html`):**
+- New checkbox `da-transfer-acknowledge` (in `index.html` L2829) with label: "⚠️ รับทราบ — หากไม่บันทึกเลขมิเตอร์ตอนนี้ จะไม่ทราบจำนวนก่อนหน้าที่แน่นอน" (⚠️ Acknowledge — if you don't record the meter now, the previous count won't be precisely known).
+- New textarea `da-transfer-remark` (in `index.html` L2826) — optional companion reason.
+- Both wrapped in `<div id="da-transfer-remark-section">` shown only when the transfer action is selected.
+- `submitDeviceAction()` sends `meterSkipAcknowledged: transferAcknowledged` + `meterSkipReason: transferRemark || 'ย้ายตำแหน่งโดยไม่บันทึกมิเตอร์ (รับทราบแล้ว)'`.
+
+### 2.3 How does the acknowledge lifecycle work?
+
+```
+User clicks "ย้ายตำแหน่ง" (Transfer) on a device
+   ↓
+Device Action modal opens; transfer action config has needMeter: false
+   ↓
+"da-transfer-remark-section" becomes visible (textarea + checkbox)
+   ↓
+User enters destination site/building/floor/dept/location
+   ↓
+User has TWO choices:
+   (A) Enter meter BW/Color values → server saves a CHECKOUT reading
+       (transferDevice calls saveMeterReading with readingType:'CHECKOUT')
+   (B) Leave meter fields empty → MUST check "da-transfer-acknowledge" checkbox
+       (textarea is optional; defaults to "ย้ายตำแหน่ง มิเตอร์นับต่อเนื่อง")
+   ↓
+validateTransferAction() runs:
+   - if ctx.selectedAction !== 'transfer' → return true (skip validation)
+   - if ackCheckbox not checked → toast "⚠️ ย้ายจุด: กรุณากด "รับทราบ" ก่อนดำเนินการ" + return false
+   ↓
+submitDeviceAction() sends POST with:
+   - meterBW: meterBW (empty string, NOT coerced to 0)
+   - meterColor: meterColor (empty string, NOT coerced to 0)
+   - meterSkipAcknowledged: true
+   - meterSkipReason: transferRemark || default
+   ↓
+Server (transferDevice):
+   - if requiresMeter && !hasMeterReadingInput(transferData) && transferData.meterSkipAcknowledged !== true
+       → return { success:false, message:'กรุณากดรับทราบการย้ายโดยไม่บันทึกเลขมิเตอร์' }
+   - if hasMeterReadingInput → saveMeterReading with readingType:'CHECKOUT'
+   - skipRemark = ' | ไม่บันทึกมิเตอร์ (รับทราบแล้ว): ' + (reason || default)
+   - appendLocationHistoryRow with Remark = (remark || '') + skipRemark
+   - updateDevice (site/building/floor/dept/location/assetSiteCode)
+   - auditLog('TRANSFER', ...) + sendAppNotification('transfer', ...)
+```
+
+### 2.4 Server-side lifecycle type derivation (defense-in-depth)
+
+The same commit also hardened `changeDeviceLifecycle` (used for status changes like Active → In Repair):
+
+- OLD: trusted `actionData.readingType` from the client (a modified/stale client could classify a reinstall as MONTHLY or a disposal as RETURN).
+- NEW: ignores `actionData.readingType`; calls `getLifecycleReadingType(targetStatus, device.Status)` server-side. Comment: "Derive lifecycle type server-side so a stale/modified client cannot classify a reinstall as MONTHLY or a disposal as RETURN."
+
+Also: `changeDeviceLifecycle` now applies the device status update FIRST (in a transaction-like ordering), then writes the meter reading + location history. If the status update fails, nothing is written. If the status update succeeds but meter/history fails, the status is still correct (user can backfill the meter later). This fixes a real-world inconsistency where the meter was recorded but the device status wasn't updated, leaving 3 sheets out of sync.
+
+---
+
+## 3. javascript.html — UI Changes (+53 lines: 30 ins / 23 del)
+
+### 3.1 New UI for meter snapshots?
+
+**No direct UI for meter snapshots** in `javascript.html`. The snapshot system is server-side only (no admin panel to view/verify/amend snapshots in this commit). The UI changes are downstream effects:
+- Closed-cycle reports now silently read from snapshots (no visible difference to the user except that the numbers don't change after close).
+- The cycle "End" button now triggers snapshot creation server-side; the response includes `snapshotId` + `snapshotHash` but these aren't displayed in the UI yet.
+
+### 3.2 New UI for transfer acknowledge?
+
+**Yes** — the transfer acknowledge UI is the main UI addition. Three elements (in `index.html` L2823-2832, wired in `javascript.html`):
+
+```html
+<div id="da-transfer-remark-section" style="display:none;">
+  <div class="form-group">
+    <label>หมายเหตุการย้าย <span class="text-muted">(ไม่บังคับ)</span></label>
+    <textarea id="da-transfer-remark" class="form-control" rows="2"
+              placeholder="เช่น ย้ายเพราะปรับพื้นที่..."></textarea>
+  </div>
+  <label id="da-transfer-ack-label" class="checkbox-label" style="display:none;">
+    <input type="checkbox" id="da-transfer-acknowledge">
+    <span style="color:#c53030;">⚠️ รับทราบ — หากไม่บันทึกเลขมิเตอร์ตอนนี้
+      จะไม่ทราบจำนวนก่อนหน้าที่แน่นอน</span>
+  </label>
+</div>
+```
+
+JavaScript wiring:
+- `openDeviceAction()` (L4858-4866): resets `da-transfer-remark` value + unchecks `da-transfer-acknowledge` when the modal opens.
+- `buildDeviceActionButtons()` (L4906): transfer action description changed to "ย้ายไปแผนก/Site/ตำแหน่งอื่น — กดรับทราบแทนการจดมิเตอร์" + `needMeter: false` (was `isMeterDevice`).
+- `selectDeviceAction('transfer')` (L5025-5028): `needMeter: false` (was `isMeterRequiredDeviceClient(ctx.device)`).
+- `submitDeviceAction()` (L5200-5290): reads `transferRemark` + `transferAcknowledged`; sends `meterSkipAcknowledged` + `meterSkipReason` instead of free-text skip reason; **stops coercing empty meter to 0** (`meterBW: meterBW` not `meterBW: meterBW || 0`).
+- `validateTransferAction()` (L18028-18042): rewritten — now requires the checkbox to be checked (was: required either remark OR acknowledge). Toast: "⚠️ ย้ายจุด: กรุณากด "รับทราบ" ก่อนดำเนินการ".
+
+### 3.3 Dashboard UI changes?
+
+**No dashboard UI changes** in this commit range. The dashboard KPI tiles, donut charts, cycle widget, lifecycle alert, device-type breakdown, paper-cost dashboard, site-comparison modal, utilization-heatmap modal, and cycle-report modal are all unchanged. The AnalyticsService changes (snapshot source, CHECKOUT un-skip, site-at-reading attribution) affect the NUMBERS shown in the existing dashboard, but not the dashboard's structure.
+
+### 3.4 Any new modal or page?
+
+**No new modals or pages.** The 2 new settings TABS (sticker, document) activate EXISTING panels (`settings-panel-sticker`, `settings-panel-document`) that were already in the HTML — the comment in `showSettingsTab()` was updated from "legacy panels (ยังเก็บไว้แต่ไม่มี tab เรียก)" ("retained but no tab calls them") to "Panels retained from the full settings editor" + the loaders were wired:
+
+```js
+if (tab === 'sticker' && !stickerEditorState._libraryLoaded) loadStickerEditorTab();
+if (tab === 'document' && !docEditorState._libraryLoaded) loadDocumentEditorTab();
+```
+
+### 3.5 Other UI fixes
+
+- **ThaiDatePicker.refreshDisplay()** calls added in `onCycleMonthChange()` (L17656-17660) and `onCycleMgmtMonthChange()` (L18120-18123). When the cycle month dropdown changes, the start/end date inputs are programmatically updated — but programmatic `.value =` assignments don't emit input/change events, so the Thai-calendar facade display stayed stale. The new `refreshDisplay()` call syncs the facade.
+- **Empty-vs-zero meter input fix** (L5270-5279): previously `meterBW: meterBW || 0` and `meterColor: meterColor || 0` coerced empty strings to `0`, which the server treated as a real reading (the server's `hasMeterReadingInput()` was added in the same commit to treat `0` as valid input). The client now passes the empty string unchanged — the server decides whether to treat it as input.
+
+---
+
+## 4. index.html — Tab/Nav Additions (+2 lines)
+
+Two new settings tabs (L1055-1056), both requiring `ADMIN` permission:
+
+```html
+<div class="tab" onclick="showSettingsTab('sticker')" data-permission="ADMIN">🎨 สติกเกอร์</div>
+<div class="tab" onclick="showSettingsTab('document')" data-permission="ADMIN">📄 เอกสาร PDF</div>
+```
+
+These activate the sticker editor (template library + editor) and PDF document editor (template library + editor) that were already in the HTML but had no tab to reach them. The sticker editor is for designing device asset-tag stickers; the PDF document editor is for designing printable device-summary PDFs. (Next.js already has equivalents at `/api/itam/sticker/templates/*` and `/api/itam/document-templates/*` — more advanced than the Apps Script versions.)
+
+No changes to the main left-sidebar navigation (`NAV_ITEMS` / `NAV_GROUPS`). No changes to the top-header bar. No new pages.
+
+---
+
+## 5. Gap Analysis: Next.js vs Latest Apps Script
+
+### 5.1 What Next.js ALREADY HAS (no work needed)
+
+| Feature | Next.js location | Status |
+|---|---|---|
+| Sticker templates + render + bulk-render + settings | `src/app/api/itam/sticker/*` | ✅ More advanced than Apps Script |
+| Document templates + render + activate | `src/app/api/itam/document-templates/*` | ✅ More advanced than Apps Script |
+| `MeterReading.siteAtReading`/`buildingAtReading`/`floorAtReading`/`departmentAtReading`/`departmentCodeAtReading` columns | `prisma/schema.prisma` L89-93 | ✅ Schema exists, but UNUSED in queries |
+| `Cycle` model with `cycleMonth`/`status`/`startedAt`/`closedAt`/`bypassReason`/`unlockAt` etc. (15 fields) | `prisma/schema.prisma` L114-138 | ✅ Schema matches Apps Script |
+| Transfer route with `meterReadingId` + `skipMeterReason` | `src/app/api/itam/devices/[id]/transfer/route.ts` | ⚠️ Has OLD free-text skip reason, NOT the new acknowledge boolean |
+| Dashboard with optimized groupBy/aggregate queries (Task 34) | `src/app/api/itam/dashboard/route.ts` | ✅ Performant, but missing reading-type filter + site-at-reading attribution |
+
+### 5.2 What Next.js is MISSING (gaps to close)
+
+#### 🔴 P0 — Correctness / Billing Integrity
+
+| # | Gap | Apps Script location | Impact |
+|---|---|---|---|
+| G1 | **No `MeterReportSnapshot` / `MeterReportSnapshotRow` / `MeterReportAmendment` Prisma models**. Historical reports can be silently mutated by editing `Meter_Readings` after close. | `MeterSnapshotService.gs` (217 lines, new file) | HIGH — billing integrity |
+| G2 | **No `assertMeterMonthWritable` equivalent**. `/api/itam/meter-readings` POST allows writing to any month regardless of cycle status. No protection against editing CLOSED-cycle months. | `CycleService.gs` L743-760 | HIGH — billing integrity |
+| G3 | **No INITIAL brand-new baseline fix**. `/api/itam/meter-readings` uses generic `Math.max(0, meter - prev)` for all reading types. Doesn't have type-specific logic for INITIAL (pages=0)/RESET (pages=0)/CHECKOUT/FINAL/RETURN/SEND_REPAIR. First-cycle billing is over-counted by the full meter value. | `MeterService.gs` L676-680, L1059-1063, L1564-1568 | HIGH — billing correctness |
+| G4 | **No `/api/itam/devices/[id]/lifecycle` POST route**. Apps Script `changeDeviceLifecycle` covers Active↔In Repair, Inactive, In Stock, Disposed, Retired, Returned, Temporary. Next.js has NO equivalent endpoint — users can't change device status through the API. The only lifecycle code is the legacy read-only `/api/devices/lifecycle` route. | `TransferService.gs` L99-204 | HIGH — feature missing |
+| G5 | **No server-side `getLifecycleReadingType` derivation**. Apps Script derives the reading type from `(targetStatus, fromStatus)` server-side; Next.js only auto-detects RESET (meter < prev). A modified client could misclassify readings. | `MeterService.gs` L294-320 | MEDIUM — security/correctness |
+| G6 | **CHECKOUT un-skipped in paper totals**. Next.js dashboard/paper-analytics do NOT filter by `readingType` at all — they include ALL types (INITIAL/RESET/FINAL/SEND_REPAIR/CHECKOUT). This means they currently over-count by INITIAL pages (if any) AND include FINAL/SEND_REPAIR (lifecycle events). The new Apps Script behavior is: skip INITIAL/RESET/FINAL/SEND_REPAIR, INCLUDE CHECKOUT. | `AnalyticsService.gs` L25, L213, L583, L918, L1018 | MEDIUM — billing correctness |
+
+#### 🟡 P1 — Attribution / Audit
+
+| # | Gap | Apps Script location | Impact |
+|---|---|---|---|
+| G7 | **Reading-time site attribution not used**. Next.js dashboard/paper-analytics filter by `device: siteFilter` (current device location). Apps Script now uses `r.Site_At_Reading \|\| device.Site`. For historical reports where devices moved sites, Next.js attributes usage to the WRONG site. | `AnalyticsService.gs` L37, L221, L586-590, L917 | MEDIUM — attribution correctness |
+| G8 | **Snapshot rate values not used**. Next.js always uses `getEffectivePaperRate` (current rate). Apps Script uses the rate frozen at close-time for closed-cycle months. Historical bills may differ from current totals when rates change. | `AnalyticsService.gs` L233-234, L593-594 | MEDIUM — billing stability |
+| G9 | **Cycle state machine incomplete**. Next.js `/api/cycles` POST uses `active`/`ended`/`cancelled`; PUT route EXPLICITLY REJECTS `OPEN`/`QUEUED`/`CLOSED` (`!['active', 'ended', 'cancelled'].includes(s)` → 400). No `findPendingCycle` equivalent (can't prevent queuing a 2nd cycle when one is QUEUED). No snapshot creation on close. | `CycleService.gs` L162-170, L237-245, L375-411, L694-708 | MEDIUM — cycle integrity |
+| G10 | **Transfer acknowledge flow not implemented**. Next.js transfer route still uses `skipMeterReason` (free-text). The acknowledge boolean (`meterSkipAcknowledged`) is NOT implemented. UI in `itam-device-detail-sheet.tsx` has a free-text `skipMeterReason` textarea, no checkbox. | `TransferService.gs` L34-52; `javascript.html` L5203-5290; `index.html` L2823-2832 | MEDIUM — UX + audit trail |
+| G11 | **Latent bug in `/api/cycles/[id]` GET** (L16-21): filters `MeterReading` by `cycleId` and reads `r.delta` — NEITHER field exists in the Prisma schema (`MeterReading` has no `cycleId` or `delta` field; it has `readingMonth` + `pagesBw` + `pagesColor`). This route would 500 if called. | N/A (Next.js-only bug) | LOW — broken endpoint (probably unused) |
+
+#### 🟢 P2 — UI Polish
+
+| # | Gap | Apps Script location | Impact |
+|---|---|---|---|
+| G12 | **Empty-vs-zero meter input bug** in `itam-device-detail-sheet.tsx` L767: `meterColor: form.meterColor ? Number(form.meterColor) : 0` coerces empty to `0`, which the server treats as a real reading. Same bug the Apps Script commit fixed. | `javascript.html` L5273-5274 | LOW — UX bug |
+| G13 | **No "Verify snapshot" UI** — no admin panel to show snapshot ID + hash + verify button for CLOSED cycles (audit trail visibility). | N/A (Apps Script also lacks this UI) | LOW — future enhancement |
+| G14 | **No amendment flow UI** — admin-only, requires reason, creates new revision. Apps Script has the server function (`createMeterSnapshotAmendment`) but no UI either. | `MeterSnapshotService.gs` L174-193 | LOW — future enhancement |
+| G15 | **No `getLifecycleReadingType` helper in Next.js** — needed for G4 + G5. Should live in `src/lib/meter-utils.ts` (or similar) and be reused by the meter-readings route + the new lifecycle route. | `MeterService.gs` L294-320 | LOW — implementation detail |
+
+---
+
+## 6. Recommendations for Next.js (prioritized)
+
+### P0 — Must-do (correctness + billing integrity)
+
+1. **Add 3 Prisma models** for the snapshot system, mirroring the Apps Script sheets:
+   - `MeterReportSnapshot` (Snapshot_ID, Cycle_Month, Revision, Status, Rule_Version, Created_At, Created_By, Row_Count, Total_Pages_BW, Total_Pages_Color, Total_Cost, Content_Hash) — `@@index([cycleMonth])`, `@@index([status])`
+   - `MeterReportSnapshotRow` (Snapshot_ID, Cycle_Month, Reading_ID, Asset_No, Reading_Date, Reading_Month, Meter_BW, Meter_Color, Pages_BW, Pages_Color, Prev_Meter_BW, Prev_Meter_Color, Reading_Type, Event_Type, Event_ID, Location_At_Reading, Site_At_Reading, Building_At_Reading, Floor_At_Reading, Department_At_Reading, DepartmentCode_At_Reading, Read_By, Remark, Rate_BW, Rate_Color, Cost_BW, Cost_Color) — `@@index([snapshotId])`, `@@index([cycleMonth])`, `@@index([assetNo])`
+   - `MeterReportAmendment` (Amendment_ID, Cycle_Month, Previous_Snapshot_ID, New_Snapshot_ID, Reason, Requested_By, Approved_By, Approved_At) — `@@index([cycleMonth])`
+   - Run `prisma db push` to migrate to Supabase.
+   - Create `src/lib/meter-snapshot.ts` with `createMeterReportSnapshot(month, user)`, `readMeterRowsForReports()`, `verifyMeterReportSnapshot(month)`, `createMeterSnapshotAmendment(month, reason, user)` — port the SHA-256 hashing logic using Node `crypto`.
+   - Add `/api/itam/meter-snapshots/[month]/verify` GET + `/api/itam/meter-snapshots/[month]/amend` POST routes.
+
+2. **Add `assertMeterMonthWritable` helper** in `src/lib/cycle-utils.ts`:
+   ```ts
+   export async function assertMeterMonthWritable(month: string, actionLabel?: string): Promise<void> {
+     const cycle = await db.cycle.findFirst({ where: { cycleMonth: month } })
+     if (cycle && cycle.status !== 'OPEN') {
+       throw new Error(`รอบ ${month} อยู่ในสถานะ ${cycle.status} — ห้าม${actionLabel || 'แก้ไขข้อมูลมิเตอร์'}`)
+     }
+   }
+   ```
+   Call it from `/api/itam/meter-readings` POST (before the create) + any future meter-update routes. Return 409 Conflict on throw.
+
+3. **Add `/api/itam/devices/[id]/lifecycle` POST route** implementing `changeDeviceLifecycle`:
+   - Accept `{ toStatus, toBuilding?, toFloor?, toDepartment?, toLocation?, readingMonth?, meterBw?, meterColor?, meterConfirmReset?, remark? }`.
+   - Apply status update FIRST (in a `db.$transaction` with location history).
+   - If meter input present, save a meter reading with `readingType` derived server-side via `getLifecycleReadingType(targetStatus, fromStatus)`.
+   - If meter save fails after status update, return 200 with `statusUpdated: true` + message telling user to backfill meter manually (matches Apps Script behavior).
+   - Audit log + SSE event.
+
+4. **Add `getLifecycleReadingType` helper** in `src/lib/meter-utils.ts` — port the exact Apps Script logic (including the DISPOSED/RETIRED/RETURNED → RETURN fix).
+
+5. **Fix INITIAL baseline logic in `/api/itam/meter-readings` POST**:
+   - When `readingType === 'INITIAL'` AND no prior reading exists → `pagesBw=0; pagesColor=0; prevMeterBw=0; prevMeterColor=0` (baseline).
+   - When `readingType === 'INITIAL'` AND prior reading exists → `prevMeterBw=meterBw; prevMeterColor=meterColor; pagesBw=0; pagesColor=0` (re-baseline on transfer).
+   - When `readingType === 'RESET'` → same as INITIAL-with-history.
+   - For MONTHLY/CHECKOUT/FINAL/RETURN/SEND_REPAIR → `pages = max(0, meter - prev)`.
+
+6. **Add `readingType` filter to dashboard + paper-analytics**:
+   - In `/api/itam/dashboard/route.ts` aggregate queries, add `where: { ...existing, readingType: { notIn: ['INITIAL', 'RESET', 'FINAL', 'SEND_REPAIR'] } }` (keeps MONTHLY/RETURN/CHECKOUT).
+   - Same in `/api/itam/paper-analytics/route.ts`.
+
+### P1 — Should-do (attribution + cycle integrity)
+
+7. **Switch dashboard + paper-analytics to use `siteAtReading`**:
+   - In dashboard `paperThisMonthAgg` + `paperTrendGroups`: change `where: { device: siteFilter }` to `where: { siteAtReading: { in: userSites } }` (when user is site-restricted) or no site filter (when super admin).
+   - In paper-analytics: change `readingWhere.device = { ...siteFilter, site }` to `readingWhere.siteAtReading = site` (with fallback to `device.site` for old rows where `siteAtReading` is null).
+
+8. **Add `meterSkipAcknowledged` boolean to transfer route**:
+   - In `/api/itam/devices/[id]/transfer/route.ts`: accept `meterSkipAcknowledged: boolean` in body. Change the guard from `if (device.meterRequired && !meterReadingId && !skipMeterReason)` to `if (device.meterRequired && !meterReadingId && body.meterSkipAcknowledged !== true)`.
+   - Keep `skipMeterReason` as optional companion.
+   - Store in `LocationHistory.remark`: `' | ไม่บันทึกมิเตอร์ (รับทราบแล้ว): ' + (skipMeterReason || 'ย้ายตำแหน่ง มิเตอร์นับต่อเนื่อง')`.
+   - In `itam-device-detail-sheet.tsx`: add a checkbox `acknowledgeMeterSkip` to the transfer form; remove the `needMeter` requirement for transfers; send `meterSkipAcknowledged` instead of (or in addition to) `skipMeterReason`.
+
+9. **Migrate cycle route to OPEN/QUEUED/CLOSED state machine**:
+   - In `/api/cycles/route.ts` POST: accept `status: 'QUEUED' | 'OPEN'`. Reject if a pending cycle (OPEN or QUEUED) already exists (unless `allowParallelCycle` setting is on).
+   - In `/api/cycles/[id]/route.ts` PUT: accept `OPEN`/`QUEUED`/`CLOSED`/`CANCELLED`. When transitioning to `CLOSED`, call `createMeterReportSnapshot(cycle.cycleMonth, user)` BEFORE the status update; if snapshot fails, return 500 and don't close.
+   - Add `findPendingCycle` helper in `src/lib/cycle-utils.ts`.
+   - Fix the L16-21 latent bug (remove `cycleId`/`delta` references — use `readingMonth` + `pagesBw + pagesColor`).
+
+10. **Use snapshot rows for closed-cycle months in dashboard/paper-analytics**:
+    - Create `readMeterRowsForReports()` helper in `src/lib/meter-snapshot.ts` that returns live `MeterReading` rows for open months + `MeterReportSnapshotRow` rows for closed months (with a `_snapshot: true` flag).
+    - In paper-analytics: use this helper instead of `db.meterReading.findMany` for the detail view. (Dashboard can stay on aggregate queries since it doesn't need per-row data.)
+    - When `_snapshot` is true, use `r.rateBw`/`r.rateColor` instead of looking up the current site rate.
+
+### P2 — Nice-to-have (UX polish)
+
+11. **Fix empty-vs-zero meter input** in `itam-device-detail-sheet.tsx` L767:
+    ```ts
+    // OLD:
+    meterColor: form.meterColor ? Number(form.meterColor) : 0,
+    // NEW:
+    meterColor: form.meterColor === '' ? null : Number(form.meterColor),
+    ```
+    Server should treat `null`/`undefined` as "no input" and `0` as a real reading (matching the Apps Script `hasMeterReadingInput` + `hasNumericMeterValue` helpers).
+
+12. **Add "Verify snapshot" UI** in the cycle page — for CLOSED cycles, show snapshot ID + hash + a "Verify integrity" button that calls `/api/itam/meter-snapshots/[month]/verify`.
+
+13. **Add amendment flow** — admin-only modal to create a new snapshot revision with a required reason; calls `/api/itam/meter-snapshots/[month]/amend`.
+
+---
+
+## 7. Summary
+
+The Apps Script codebase added a **complete immutable billing-snapshot subsystem** (commit 67f8e54) and a **transfer acknowledge flow** (commit 6e57904) since `a25f779`. The snapshot subsystem is the larger architectural change: 3 new sheets, SHA-256 hashing, append-only revisions, amendment audit trail, and a `readMeterRowsForReports()` gateway that all 5 reporting functions now route through. The transfer acknowledge flow is smaller but improves UX (no more forced meter entry for routine moves) and audit clarity (boolean flag vs free-text reason).
+
+The Next.js preview at `/home/z/my-project` has NONE of these changes. The 6 P0 gaps (snapshot models, write-lock, INITIAL baseline, lifecycle route, server-side type derivation, reading-type filter) are billing-correctness issues that should be addressed before the Next.js version is used for real billing. The 4 P1 gaps (site-at-reading attribution, snapshot rates, cycle state machine, acknowledge flow) are attribution/integrity issues. The 4 P2 gaps are UX polish.
+
+Estimated effort: P0 = 3-5 days (snapshot subsystem is the bulk), P1 = 2-3 days, P2 = 1 day. Total ~1-2 weeks of focused work to reach feature parity with the latest Apps Script.
+
+Stage Summary:
+- Analyzed 14 files changed across 10 commits since `a25f779` (79 + 47 + 96 + 217 + 12 + 53 + 2 + 5 = 511 net lines added in Apps Script).
+- Documented 3 categories of analytics bug fixes (CHECKOUT un-skip, site-at-reading attribution, snapshot rate values).
+- Documented the complete transfer acknowledge lifecycle (UI checkbox → server boolean → location-history remark).
+- Identified 15 gaps in Next.js (6 P0, 4 P1, 4 P2) with specific file/line references and recommended fixes.
+- Confirmed Next.js already has sticker + document template APIs (more advanced than Apps Script) — no work needed there.
+- No code written (research only). Report appended to `/home/z/my-project/worklog.md`.
+
+---
+Task ID: 35
+Agent: orchestrator — Sync Next.js with latest Apps Script (commit e0f78b3)
+Task: Clone Apps Script repo ด้วย PAT ใหม่ เพื่อ sync logic ให้ตรงกันกับ branch refactor/master-columns ล่าสุด
+
+Work Log:
+- Clone Apps Script repo สำเร็จด้วย PAT ใหม่ (github_pat_11BXFLXDY...) → /tmp/itam-apps-script-latest
+- เปรียบเทียบ: clone เดิม (a25f779) vs clone ใหม่ (e0f78b3) → มี 11 commits ใหม่
+- มอบหมาย Task 3-a (Explore) ศึกษา MeterSnapshotService + meter calc fixes → รายงานใน worklog
+- มอบหมาย Task 3-b (Explore) ศึกษา Analytics + Transfer changes → รายงานใน worklog
+
+11 commits ใหม่ใน Apps Script:
+1. 6e57904 Transfer acknowledge flow + lifecycle/cycle/meter fixes
+2. 3f53d41 Improve cycle/transfer lifecycle handling, meter validation, settings UI
+3. e78c34e fix: derive missing page totals in meter history
+4. f5d2c8b fix: restore sticker and PDF settings tabs
+5. 278425a Merge restore sticker and PDF settings tabs
+6. 9800844 Merge meter history page calculation fix
+7. 67f8e54 Add immutable meter report snapshots, tighten cycle locks, fix meter/reporting logic
+8. 3e80059 test: simulate immutable meter snapshot lifecycle
+9. 7664a77 Merge immutable meter snapshots and simulation tests
+10. 26ef5e0 Optimize immutable meter report loading
+11. e0f78b3 Merge optimized immutable meter report loading
+
+P0 Fixes Applied (calculation correctness):
+
+1. **INITIAL brand-new baseline fix** (src/app/api/itam/meter-readings/route.ts)
+   - OLD: pages = max(0, meterBw - prevMeterBw) → INITIAL brand-new (prev=0) gave pages=meter (over-counted)
+   - NEW: INITIAL/RESET → pages = 0 (baseline); MONTHLY/CHECKOUT/RETURN/etc → max(0, current-prev)
+   - Uses shared calcPagesBw/calcPagesColor from lifecycle-reading-type.ts
+
+2. **readingType filter for usage totals** (both dashboard routes)
+   - OLD: included ALL reading types in paper-usage totals
+   - NEW: INCLUDE only MONTHLY, CHECKOUT, RETURN (actual usage)
+   - EXCLUDE: INITIAL, RESET, FINAL, SEND_REPAIR (baselines / non-usage)
+   - Result: paperThisMonth 965,710 → 942,335 (ลด 23,375 แผ่นจาก baseline readings)
+
+3. **Lifecycle reading-type derivation** (src/lib/lifecycle-reading-type.ts — NEW)
+   - getLifecycleReadingType(fromStatus, toStatus) → ReadingType
+   - Active → Disposed/Retired/Returned = CHECKOUT
+   - Inactive → Active = RETURN (new baseline after repair/return)
+   - Active → Repair = SEND_REPAIR; Repair → Active = RETURN
+   - Active → Active (move) = MONTHLY
+   - USAGE_READING_TYPES = [MONTHLY, CHECKOUT, RETURN]
+   - BASELINE_READING_TYPES = [INITIAL, RESET] (pages = 0)
+   - calcPagesBw/calcPagesColor shared functions
+
+4. **assertMeterMonthWritable write-lock** (src/lib/meter-snapshot.ts — NEW)
+   - บล็อกการเขียน meter ในเดือนที่ cycle CLOSED แล้ว
+   - ตรวจสอบทุก CLOSED cycle ว่า date range คลุมเดือนที่จะเขียนไหม
+   - ถ้าใช่ → throw ข้อความ "ถูกปิดและสร้าง snapshot แล้ว — ข้อมูลถูกล็อก"
+   - เรียกใช้ใน meter-readings POST route → return 409 CYCLE_CLOSED
+
+P0 Features Added (immutable snapshots):
+
+5. **3 new Prisma models** (prisma/schema.prisma)
+   - MeterReportSnapshot: snapshotId, cycleMonth, revision, status, ruleVersion, rowCount, totalPagesBw/Color, totalCost, contentHash (SHA-256), createdBy
+   - MeterReportSnapshotRow: 23 frozen columns (reading + device + rates + costs)
+   - MeterReportAmendment: audit trail (amendmentId, cycleMonth, reason, newSnapshotId)
+
+6. **Meter Snapshot Service** (src/lib/meter-snapshot.ts — NEW, 220 lines)
+   - createMeterReportSnapshot(month, createdBy):
+     • Fetch all readings for the month + device info + site rates
+     • Build frozen rows with costBw/costColor per row
+     • Compute SHA-256 content hash (pipe-delimited canonical, \n-joined)
+     • Mark previous ACTIVE snapshot as SUPERSEDED
+     • Transaction: create snapshot + createMany rows
+     • Returns { snapshotId, contentHash, rowCount, totalPagesBw, totalPagesColor, totalCost, revision }
+   - verifyMeterReportSnapshot(month): re-compute hash, compare with stored → detect tampering
+   - assertMeterMonthWritable(month, actionLabel): throw if any CLOSED cycle covers that month
+
+7. **Snapshot-on-close in cycle PUT** (src/app/api/cycles/[id]/route.ts)
+   - เมื่อ status → CLOSED หรือ ended: เรียก createMeterReportSnapshot() ก่อน update
+   - ถ้า snapshot fail → cycle ยัง OPEN (atomic — ป้องกันข้อมูลไม่ถูกล็อก)
+   - ส่ง snapshot info กลับใน response + audit log
+   - V5 status validation: รับทั้ง legacy (active|ended|cancelled) และ V5 (OPEN|QUEUED|CLOSED|NONE)
+   - Cycle lock: ปิดได้เฉพาะ OPEN/active เท่านั้น
+
+8. **LocationHistory schema expansion**
+   - เพิ่ม meterSkipAcknowledged (Boolean) — transfer ack checkbox
+   - เพิ่ม meterSkipReason (String, optional note)
+   - เพิ่ม readingType (lifecycle-derived) + index [action]
+
+9. **DELETE cycle fix**
+   - OLD: used non-existent cycleId field on MeterReading → 500
+   - NEW: count by readingDate range (gte startDate, lte endDate)
+
+Verification:
+✅ Snapshot creation: MRS-202501-R1-20260812072610, 554 rows, hash c810e3...d5b59
+✅ Write-lock: POST meter-readings with readingMonth=2025-01 → 409 CYCLE_CLOSED
+✅ Dashboard paperThisMonth: 942,335 (both dashboards ตรงกัน, ลดจาก 965,710)
+✅ paperTrend ลดลงทุกเดือน (กรอง INITIAL/RESET ออก)
+✅ Lint: 0 new errors
+✅ No console errors in browser
+✅ Dev server stable
+
+Stage Summary:
+- Next.js ตรงกับ Apps Script commit e0f78b3 ในเรื่อง:
+  • INITIAL/RESET baseline = 0 pages (was over-counting)
+  • readingType filter (MONTHLY/CHECKOUT/RETURN only)
+  • Immutable snapshot on cycle close (SHA-256 hash, append-only)
+  • Write-lock for CLOSED cycles (billing integrity)
+  • Lifecycle reading-type derivation (shared logic)
+- ฟีเจอร์ที่เหลือ (P1/P2): transfer acknowledge UI, site attribution using *_At_Reading, snapshot viewer UI, amendment flow
+- Clone ล่าสุดอยู่ที่ /tmp/itam-apps-script-latest สำหรับอ้างอิงต่อ

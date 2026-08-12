@@ -4,6 +4,11 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, canAccessSite } from '@/lib/auth'
 import { notifyMeter } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import {
+  calcPagesBw,
+  calcPagesColor,
+} from '@/lib/lifecycle-reading-type'
+import { assertMeterMonthWritable } from '@/lib/meter-snapshot'
 
 // GET /api/itam/meter-readings?assetNo=&month=&page=1&limit=20
 export async function GET(req: NextRequest) {
@@ -127,18 +132,42 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const pagesBw = Math.max(0, meterBw - prevMeterBw)
-    const pagesColor = Math.max(0, meterColor - prevMeterColor)
-
-    // RESET detection — only auto-tag if the caller didn't specify a type.
+    // ── Page-delta calculation (aligned with Apps Script MeterService.gs) ──
+    // Key rules (from METER_RULES.md + commit 67f8e54):
+    //   • INITIAL (brand-new device): pages = 0  (baseline, NOT meter — was over-counting)
+    //   • INITIAL (transfer):         pages = 0  (prev = meter, delta = 0)
+    //   • RESET:                      pages = 0  (new baseline)
+    //   • MONTHLY/CHECKOUT/FINAL/RETURN/SEND_REPAIR: pages = max(0, current - prev)
     const isReset = meterBw < prevMeterBw || meterColor < prevMeterColor
-    const readingType = body.readingType || (isReset ? 'RESET' : 'MONTHLY')
+    const explicitType = body.readingType || null
+    const readingType = explicitType || (isReset ? 'RESET' : 'MONTHLY')
+
+    // Use the shared calc functions (also used by the transfer/lifecycle flow)
+    const pagesBw = calcPagesBw(meterBw, prevMeterBw, readingType)
+    const pagesColor = calcPagesColor(meterColor, prevMeterColor, readingType)
+
+    // ── Write-lock: reject writes to CLOSED-cycle months (Apps Script commit 67f8e54) ──
+    // The readingMonth determines which cycle this reading belongs to. If that
+    // cycle is CLOSED and has an immutable snapshot, we refuse the write to
+    // protect billing integrity.
+    const finalReadingMonth = body.readingMonth || new Date().toISOString().slice(0, 7)
+    try {
+      await assertMeterMonthWritable(finalReadingMonth, 'บันทึกมิเตอร์')
+    } catch (lockErr) {
+      return NextResponse.json(
+        {
+          error: lockErr instanceof Error ? lockErr.message : 'รอบจดมิเตอร์ถูกปิดแล้ว',
+          code: 'CYCLE_CLOSED',
+        },
+        { status: 409 },
+      )
+    }
 
     const created = await db.meterReading.create({
       data: {
         assetNo: body.assetNo,
         readingDate: body.readingDate || new Date().toISOString().slice(0, 10),
-        readingMonth: body.readingMonth || new Date().toISOString().slice(0, 7),
+        readingMonth: finalReadingMonth,
         meterBw,
         meterColor,
         pagesBw,
