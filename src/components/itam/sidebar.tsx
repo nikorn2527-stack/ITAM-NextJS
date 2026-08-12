@@ -21,23 +21,49 @@ interface NavItemDef {
   page: ActivePage
   icon: string
   label: string
+  desc?: string
 }
 
-const NAV_ITEMS: NavItemDef[] = [
-  { page: 'dashboard', icon: '📊', label: 'Dashboard' },
-  { page: 'itam', icon: '🎯', label: 'ITAM Dashboard' },
-  { page: 'itam-devices', icon: '💻', label: 'ITAM อุปกรณ์' },
-  { page: 'itam-meter', icon: '📈', label: 'ITAM มิเตอร์' },
-  { page: 'itam-meter-keyboard', icon: '⌨️', label: 'จดมิเตอร์ (Keyboard)' },
-  { page: 'itam-paper-analytics', icon: '📄', label: 'ITAM กระดาษ' },
-  { page: 'itam-sticker-editor', icon: '🎨', label: 'สติกเกอร์' },
-  { page: 'itam-document-editor', icon: '📄', label: 'เอกสาร PDF' },
-  { page: 'itam-settings', icon: '⚙️', label: 'ITAM ตั้งค่า' },
-  { page: 'itam-audit', icon: '📜', label: 'ITAM ประวัติ' },
-  { page: 'devices', icon: '💻', label: 'จัดการอุปกรณ์' },
-  { page: 'meter', icon: '📈', label: 'จดมิเตอร์' },
-  { page: 'paper-analytics', icon: '📊', label: 'การใช้กระดาษ' },
-  { page: 'settings', icon: '⚙️', label: 'ตั้งค่าแอป' },
+interface NavGroupDef {
+  title: string
+  items: NavItemDef[]
+}
+
+// Single consolidated nav — no more duplicate "ITAM" vs non-"ITAM" sets.
+// Legacy page ids (devices/meter/paper-analytics/settings) are intentionally
+// NOT shown here; they are kept as aliases in page.tsx for backward-compatible
+// deep links from the dashboard / notifications / global search.
+const NAV_GROUPS: NavGroupDef[] = [
+  {
+    title: 'ภาพรวม',
+    items: [
+      { page: 'dashboard', icon: '📊', label: 'Dashboard', desc: 'สรุปภาพรวม' },
+      { page: 'itam', icon: '🎯', label: 'ITAM Dashboard', desc: 'แดชบอร์ดหลัก' },
+    ],
+  },
+  {
+    title: 'การทำงาน',
+    items: [
+      { page: 'itam-devices', icon: '💻', label: 'จัดการอุปกรณ์', desc: 'ครุภัณฑ์ทั้งหมด' },
+      { page: 'itam-meter', icon: '📈', label: 'จดมิเตอร์', desc: 'บันทึกการใช้งาน' },
+      { page: 'itam-meter-keyboard', icon: '⌨️', label: 'จดมิเตอร์ (Keyboard)', desc: 'ป้อนเร็วด้วยคีย์บอร์ด' },
+      { page: 'itam-paper-analytics', icon: '📄', label: 'วิเคราะห์กระดาษ', desc: 'สถิติการใช้งาน' },
+    ],
+  },
+  {
+    title: 'เครื่องมือ',
+    items: [
+      { page: 'itam-sticker-editor', icon: '🎨', label: 'สติกเกอร์', desc: 'ออกแบบสติกเกอร์' },
+      { page: 'itam-document-editor', icon: '📑', label: 'เอกสาร PDF', desc: 'ออกแบบเอกสาร' },
+    ],
+  },
+  {
+    title: 'ระบบ',
+    items: [
+      { page: 'itam-settings', icon: '⚙️', label: 'ตั้งค่าระบบ', desc: 'การตั้งค่าทั้งหมด' },
+      { page: 'itam-audit', icon: '📜', label: 'ประวัติการใช้งาน', desc: 'Audit log' },
+    ],
+  },
 ]
 
 interface CycleInfo {
@@ -175,41 +201,51 @@ export function Sidebar() {
           style={{ padding: '12px 0' }}
           aria-label="Main navigation"
         >
-          {NAV_ITEMS.map((item) => {
-            const active = activePage === item.page
-            return (
-              <button
-                key={item.page}
-                type="button"
-                onClick={() => handleNav(item.page)}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'group relative flex w-full cursor-pointer items-center border-l-[3px] px-5 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]',
-                  active
-                    ? 'border-[#f97316] bg-[rgba(234,88,12,0.12)] text-[#fb923c]'
-                    : 'border-transparent text-slate-300 hover:bg-[rgba(255,255,255,0.05)] hover:text-white',
-                )}
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={group.title} className={gi > 0 ? 'mt-3' : ''}>
+              <div
+                className="px-5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500"
               >
-                <span
-                  className="mr-3 inline-flex w-5 justify-center text-base"
-                  aria-hidden
-                >
-                  {item.icon}
-                </span>
-                <span className="flex-1 text-left">{item.label}</span>
-                {/* Active/hover indicator dot at the right edge */}
-                <span
-                  aria-hidden
-                  className={cn(
-                    'pointer-events-none absolute right-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-[#f97316] transition-all duration-200',
-                    active
-                      ? 'scale-100 opacity-100 shadow-[0_0_8px_rgba(249,115,22,0.7)]'
-                      : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-60',
-                  )}
-                />
-              </button>
-            )
-          })}
+                {group.title}
+              </div>
+              {group.items.map((item) => {
+                const active = activePage === item.page
+                return (
+                  <button
+                    key={item.page}
+                    type="button"
+                    onClick={() => handleNav(item.page)}
+                    aria-current={active ? 'page' : undefined}
+                    title={item.desc}
+                    className={cn(
+                      'group relative flex w-full cursor-pointer items-center border-l-[3px] px-5 py-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]',
+                      active
+                        ? 'border-[#f97316] bg-[rgba(234,88,12,0.12)] text-[#fb923c]'
+                        : 'border-transparent text-slate-300 hover:bg-[rgba(255,255,255,0.05)] hover:text-white',
+                    )}
+                  >
+                    <span
+                      className="mr-3 inline-flex w-5 justify-center text-base"
+                      aria-hidden
+                    >
+                      {item.icon}
+                    </span>
+                    <span className="flex-1 text-left">{item.label}</span>
+                    {/* Active/hover indicator dot at the right edge */}
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'pointer-events-none absolute right-3 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-[#f97316] transition-all duration-200',
+                        active
+                          ? 'scale-100 opacity-100 shadow-[0_0_8px_rgba(249,115,22,0.7)]'
+                          : 'scale-0 opacity-0 group-hover:scale-100 group-hover:opacity-60',
+                      )}
+                    />
+                  </button>
+                )
+              })}
+            </div>
+          ))}
 
           {/* Global search button */}
           <div className="px-3 pt-2">

@@ -95,10 +95,19 @@ model MeterReading {
 }
 
 // ============================================================
-// TODO: Models ถัดไป (รอ headers จากผู้ใช้)
-//
-// 6) Cycles              — รอบจดมิเตอร์ (ยังไม่มี sheet — ข้ามไปก่อน)
+// 6) Cycles — รอบจดมิเตอร์รายเดือน
+//    Used by /api/cycles + sidebar countdown + meter entry flow
 // ============================================================
+model Cycle {
+  id        String   @id @default(cuid())
+  name      String   @map("Name")
+  startDate String   @map("Start_Date")
+  endDate   String   @map("End_Date")
+  status    String   @default("active") @map("Status") // active | ended | draft
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("cycles")
+}
 
 // ============================================================
 // 13) License_Records — ลิขสิทธิ์ซอฟต์แวร์

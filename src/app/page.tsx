@@ -1,25 +1,11 @@
 'use client'
 
 import * as React from 'react'
+import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Sidebar } from '@/components/itam/sidebar'
 import { Footer } from '@/components/itam/footer'
 import { GlobalSearch } from '@/components/itam/global-search'
-import { DashboardPage } from '@/components/itam/dashboard-page'
-import { DevicesPage } from '@/components/itam/devices-page'
-import { MeterPage } from '@/components/itam/meter-page'
-import { PaperAnalyticsPage } from '@/components/itam/paper-analytics-page'
-import { SettingsPage } from '@/components/itam/settings-page'
-import { ItamDashboard } from '@/components/itam/itam-dashboard'
-import { ItamDevices } from '@/components/itam/itam-devices'
-import { ItamMeter } from '@/components/itam/itam-meter'
-import { ItamMeterKeyboard } from '@/components/itam/itam-meter-keyboard'
-import { ItamStickerEditor } from '@/components/itam/itam-sticker-editor'
-import { ItamDocumentEditor } from '@/components/itam/itam-document-editor'
-import { ItamSettings } from '@/components/itam/itam-settings'
-import { ItamAudit } from '@/components/itam/itam-audit'
-import { ItamLogin } from '@/components/itam/itam-login'
-import { ItamPaperAnalytics } from '@/components/itam/itam-paper-analytics'
 import { RealtimeProvider } from '@/hooks/use-realtime-updates'
 import { PwaInstallButton } from '@/components/itam/pwa-registration'
 import { QrScannerDialog } from '@/components/itam/qr-scanner'
@@ -27,9 +13,55 @@ import { useAppStore } from '@/store/app-store'
 import {
   useAuthStore,
   hydrateAuthFromStorage,
-  authFetch,
 } from '@/store/auth-store'
 import { Loader2 } from 'lucide-react'
+
+// Capture the native fetch ONCE and store it on globalThis so it survives
+// Fast Refresh module re-evaluations. Without this, each Fast Refresh would
+// capture the already-patched fetch as "native", creating a chain of nested
+// patched-fetches → stack overflow.
+const G = globalThis as unknown as {
+  __nativeFetch?: typeof fetch
+  __itamFetchPatched?: boolean
+}
+
+// ── Lazy-load every page component so the initial compile only builds the
+//    active page. This drastically reduces peak RAM during first compile
+//    (prevents OOM crashes in the sandbox) and also speeds up navigation
+//    because each page is compiled on demand and cached.
+const ItamLogin = dynamic(() =>
+  import('@/components/itam/itam-login').then((m) => m.ItamLogin),
+)
+const DashboardPage = dynamic(() =>
+  import('@/components/itam/dashboard-page').then((m) => m.DashboardPage),
+)
+const ItamDashboard = dynamic(() =>
+  import('@/components/itam/itam-dashboard').then((m) => m.ItamDashboard),
+)
+const ItamDevices = dynamic(() =>
+  import('@/components/itam/itam-devices').then((m) => m.ItamDevices),
+)
+const ItamMeter = dynamic(() =>
+  import('@/components/itam/itam-meter').then((m) => m.ItamMeter),
+)
+const ItamMeterKeyboard = dynamic(() =>
+  import('@/components/itam/itam-meter-keyboard').then((m) => m.ItamMeterKeyboard),
+)
+const ItamStickerEditor = dynamic(() =>
+  import('@/components/itam/itam-sticker-editor').then((m) => m.ItamStickerEditor),
+)
+const ItamDocumentEditor = dynamic(() =>
+  import('@/components/itam/itam-document-editor').then((m) => m.ItamDocumentEditor),
+)
+const ItamPaperAnalytics = dynamic(() =>
+  import('@/components/itam/itam-paper-analytics').then((m) => m.ItamPaperAnalytics),
+)
+const ItamSettings = dynamic(() =>
+  import('@/components/itam/itam-settings').then((m) => m.ItamSettings),
+)
+const ItamAudit = dynamic(() =>
+  import('@/components/itam/itam-audit').then((m) => m.ItamAudit),
+)
 
 export default function Home() {
   const activePage = useAppStore((s) => s.activePage)
@@ -60,18 +92,45 @@ export default function Home() {
 
   // ── Global fetch interceptor: attach Bearer token to every /api/itam/* call
   //    so the existing components (which use raw `fetch`) don't need rewriting.
+  //
+  //    CRITICAL: We capture the NATIVE fetch ONCE at module load (not inside the
+  //    effect) so that Fast Refresh re-runs of the effect don't create a chain
+  //    of patched-fetches calling each other (which causes stack overflow).
   React.useEffect(() => {
-    const originalFetch = window.fetch.bind(window)
+    // Capture the true native fetch ONCE — stored on globalThis so it survives
+    // Fast Refresh module re-evaluations. Without this guard, each re-eval
+    // would capture the already-patched fetch, creating a chain of nested
+    // patched-fetches → "Maximum call stack size exceeded".
+    if (!G.__nativeFetch) {
+      G.__nativeFetch = window.fetch.bind(window)
+    }
+    const nativeFetch = G.__nativeFetch
+    // Don't double-patch: if already patched (e.g. by a previous mount that
+    // wasn't cleaned up), just restore to native first.
+    if (G.__itamFetchPatched) {
+      window.fetch = nativeFetch
+      G.__itamFetchPatched = false
+    }
     const patchedFetch: typeof window.fetch = (input, init) => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url)
       if (url.includes('/api/itam/') && !url.includes('/api/itam/auth/login')) {
-        return authFetch(input, init)
+        const token = useAuthStore.getState().token
+        if (token) {
+          const headers = new Headers(init?.headers || {})
+          headers.set('Authorization', `Bearer ${token}`)
+          if (!headers.has('Content-Type') && init?.body && typeof init.body === 'string') {
+            headers.set('Content-Type', 'application/json')
+          }
+          return nativeFetch(input, { ...init, headers })
+        }
       }
-      return originalFetch(input, init)
+      return nativeFetch(input, init)
     }
     window.fetch = patchedFetch
+    G.__itamFetchPatched = true
     return () => {
-      window.fetch = originalFetch
+      window.fetch = nativeFetch
+      G.__itamFetchPatched = false
     }
   }, [])
 
@@ -109,18 +168,14 @@ export default function Home() {
               >
                 {activePage === 'dashboard' && <DashboardPage />}
                 {activePage === 'itam' && <ItamDashboard />}
-                {activePage === 'itam-devices' && <ItamDevices />}
-                {activePage === 'itam-meter' && <ItamMeter />}
+                {(activePage === 'itam-devices' || activePage === 'devices') && <ItamDevices />}
+                {(activePage === 'itam-meter' || activePage === 'meter') && <ItamMeter />}
                 {activePage === 'itam-meter-keyboard' && <ItamMeterKeyboard />}
                 {activePage === 'itam-sticker-editor' && <ItamStickerEditor />}
                 {activePage === 'itam-document-editor' && <ItamDocumentEditor />}
-                {activePage === 'itam-paper-analytics' && <ItamPaperAnalytics />}
-                {activePage === 'itam-settings' && <ItamSettings />}
+                {(activePage === 'itam-paper-analytics' || activePage === 'paper-analytics') && <ItamPaperAnalytics />}
+                {(activePage === 'itam-settings' || activePage === 'settings') && <ItamSettings />}
                 {activePage === 'itam-audit' && <ItamAudit />}
-                {activePage === 'devices' && <DevicesPage />}
-                {activePage === 'meter' && <MeterPage />}
-                {activePage === 'paper-analytics' && <PaperAnalyticsPage />}
-                {activePage === 'settings' && <SettingsPage />}
               </motion.div>
             </AnimatePresence>
           </main>

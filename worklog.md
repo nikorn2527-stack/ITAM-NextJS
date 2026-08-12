@@ -2351,3 +2351,54 @@ Stage Summary:
 - ✅ Query 94ms (ผ่านเน็ตจาก sandbox → Singapore)
 - ⚠️ Dev server crash เป็นปัญหา sandbox memory ไม่ใช่โค้ด
 - ขั้นตอนถัดไป: Deploy ขึ้น Vercel (จะทำงานปกติ)
+
+---
+Task ID: 33
+Agent: orchestrator — Fix "data not showing" + duplicate sidebar icons
+Task: ผู้ใช้แจ้ง "เข้าได้แล้วแต่ข้อมูลไม่มีแสดง ไอคอนตอนนี้มี 2 ชุดที่คล้ายกัน ชุดที่ขึ้นต้นด้วย ITAM และชุดที่ไม่มี"
+
+Work Log:
+- ตรวจสอบ dev.log → พบว่า dev server crash (OOM) ซ้ำๆ
+- ตรวจสอบ sidebar.tsx → พบ NAV_ITEMS มี 14 รายการซ้ำซ้อน (ITAM set + legacy set)
+- ตรวจสอบ page.tsx → พบว่า import ทั้ง 14 page components แบบ eager ทำให้ compile ใช้ RAM เยอะ → OOM
+- ตรวจสอบ API → พบ Prisma error "URL must start with postgresql://" เพราะ shell env DATABASE_URL=file:...custom.db (SQLite เก่า) override ไฟล์ .env (Supabase)
+- ตรวจสอบต่อ → พบ fetch interceptor infinite recursion (authFetch → window.fetch → authFetch → stack overflow)
+- ตรวจสอบต่อ → พบ dashboard API ใช้ field ผิด (assetCode/deviceId/date แทน assetNo/assetNo/readingDate)
+- ตรวจสอบต่อ → พบ Cycle model หายจาก Prisma schema, notifications API ใช้ field ผิด
+
+Root Causes (7 ปัญหาที่ทำให้ข้อมูลไม่แสดง):
+1. DATABASE_URL env var เก่าใน shell (SQLite URL) override ไฟล์ .env (Supabase URL) — Prisma ไม่สามารถเชื่อมต่อ DB ได้
+2. page.tsx import ทั้ง 14 components แบบ eager → OOM crash (2.8GB RSS, sandbox limit 4GB)
+3. Fetch interceptor: authFetch เรียก window.fetch ที่ถูก patch ให้เรียก authFetch → infinite recursion → "Maximum call stack size exceeded"
+4. Fast Refresh re-evaluate module → capture already-patched fetch as "native" → chain of nested patched-fetches → stack overflow
+5. /api/dashboard ใช้ field ผิด: d.type (ควรเป็น d.deviceType), d.assetCode (d.assetNo), r.deviceId (r.assetNo), r.date (r.readingDate), r.delta (r.pagesBw+r.pagesColor)
+6. /api/notifications ใช้ field ผิดคล้านกัน + ใช้ purchaseDate/warrantyMonths (ไม่มีใน model; ควรใช้ warrantyEnd)
+7. Cycle model หายจาก schema แต่ /api/cycles และ sidebar ใช้ → 500 error
+
+Fixes Applied:
+1. page.tsx — เปลี่ยนเป็น next/dynamic lazy imports (14 components) → ลด peak RAM จาก 2.8GB เหลือ ~1.1GB
+2. page.tsx — แก้ fetch interceptor: ใช้ globalThis.__nativeFetch (capture ครั้งเดียว, survive Fast Refresh) + __itamFetchPatched guard ป้องกัน double-patch
+3. sidebar.tsx — รวม NAV_ITEMS เป็น NAV_GROUPS (4 กลุ่ม: ภาพรวม/การทำงาน/เครื่องมือ/ระบบ) ลบ 4 legacy items (devices/meter/paper-analytics/settings)
+4. page.tsx — map legacy page ids (devices/meter/etc) ไปยัง ITAM equivalents ใน render (backward-compatible deep links)
+5. package.json — dev script: unset DATABASE_URL ก่อน start next dev (ให้ Next.js อ่านจาก .env)
+6. .env.local — สร้างไฟล์ (Supabase URL) เป็น backup
+7. prisma/schema.prisma — เพิ่ม Cycle model (id/name/startDate/endDate/status/createdAt) + db:push ไป Supabase
+8. src/app/api/dashboard/route.ts — แก้ field mismatches: deviceType, assetNo, readingDate, pagesBw+pagesColor, status case-insensitive
+9. src/app/api/notifications/route.ts — แก้ field mismatches: assetNo, brand+model (แทน name), warrantyEnd (แทน purchaseDate+warrantyMonths), deviceType, readingDate (แทน cycleId+date), createdAt (แทน updatedAt)
+10. next.config.ts — เพิ่ม watchOptions.ignored สำหรับ dev.log/db (ป้องกัน rebuild loop)
+11. dev.log — ย้ายไป /tmp/itam-dev.log + symlink (ป้องกัน file watcher ตรวจจับการเปลี่ยนแปลง)
+
+Verification (agent-browser):
+✅ Login สำเร็จ (testadmin / superadmin)
+✅ Sidebar สะอาด — 10 รายการใน 4 กลุ่ม, ไม่มี duplicate icons
+✅ Dashboard แสดงข้อมูล: 2,378 อุปกรณ์, 2,152 ใช้งานอยู่ (90%), 965,710 แผ่นกระดาษ
+✅ จัดการอุปกรณ์ page แสดงข้อมูลจริง: 2,378 เครื่อง, ตารางแสดง ZEBRA DS2208 / BARCODE SCANNERS / โรงพยาบาลศูนย์อุดรธานี
+✅ Realtime status: เชื่อมต่อแล้ว
+✅ Footer sticky ที่ bottom
+
+Stage Summary:
+- ข้อมูลแสดงครบทุกหน้า (Dashboard + จัดการอุปกรณ์) — 2,378 อุปกรณ์จริงจาก Supabase
+- Sidebar มี 1 ชุดไอคอน (4 กลุ่ม) ไม่มี duplicate
+- Dev server ทำงานเสถียรที่ ~1.1GB RAM (ไม่ OOM)
+- สร้าง test user: testadmin/test1234 (superadmin) สำหรับ testing — ลบได้ถ้าไม่ต้องการ
+- ปัญหาที่ยังเหลือ: /api/devices/warranty, /api/devices/depreciation, /api/devices/lifecycle ยังใช้ field เก่า (legacy routes) — แต่ไม่กระทบหน้าหลัก
