@@ -54,6 +54,13 @@ model Device {
   assignments       Assignment[]
   maintenanceLogs   MaintenanceLog[]
 
+  // Performance indexes — critical for dashboard queries on 2,378+ devices
+  @@index([status])
+  @@index([deviceType])
+  @@index([site])
+  @@index([status, site])
+  @@index([meterRequired])
+  @@index([createdAt])
   @@map("devices")
 }
 
@@ -89,23 +96,44 @@ model MeterReading {
   // Relation
   device                    Device   @relation(fields: [assetNo], references: [assetNo], onDelete: Cascade)
 
+  // Performance indexes — critical for dashboard paper-usage queries on 14k+ readings
   @@index([assetNo])
   @@index([readingMonth])
+  @@index([readingDate])
+  @@index([readingMonth, assetNo])
+  @@index([readingType])
+  @@index([createdAt])
   @@map("meter_readings")
 }
 
 // ============================================================
 // 6) Cycles — รอบจดมิเตอร์รายเดือน
-//    Used by /api/cycles + sidebar countdown + meter entry flow
+//    Aligned with Apps Script CycleService.gs (15 columns)
+//    Statuses: NONE → QUEUED → OPEN → CLOSED (legacy: active|ended|draft)
 // ============================================================
 model Cycle {
-  id        String   @id @default(cuid())
-  name      String   @map("Name")
-  startDate String   @map("Start_Date")
-  endDate   String   @map("End_Date")
-  status    String   @default("active") @map("Status") // active | ended | draft
-  createdAt DateTime @default(now()) @map("created_at")
+  id              String   @id @default(cuid())
+  name            String   @map("Name")
+  cycleMonth      String?  @map("Cycle_Month") // e.g. 2025-01
+  startDate       String   @map("Start_Date")
+  endDate         String   @map("End_Date")
+  deadlineDate    String?  @map("Deadline_Date") // soft deadline for meter entry
+  status          String   @default("OPEN") @map("Status") // NONE | QUEUED | OPEN | CLOSED | active | ended | draft
+  totalDevices    Int      @default(0) @map("Total_Devices")
+  completedCount  Int      @default(0) @map("Completed_Count")
+  missingCount    Int      @default(0) @map("Missing_Count")
+  bypassReason    String?  @map("Bypass_Reason")
+  bypassAckBy     String?  @map("Bypass_Ack_By")
+  unlockAt        DateTime? @map("Unlock_At")
+  unlockBy        String?  @map("Unlock_By")
+  startedAt       DateTime? @map("Started_At")
+  closedAt        DateTime? @map("Closed_At")
+  remarks         String?  @map("Remarks")
+  createdAt       DateTime @default(now()) @map("created_at")
 
+  @@index([status])
+  @@index([cycleMonth])
+  @@index([startDate])
   @@map("cycles")
 }
 

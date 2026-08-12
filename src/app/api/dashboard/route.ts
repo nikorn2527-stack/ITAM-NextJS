@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { bucketizeStatusGroups } from '@/lib/status-utils'
 
 type RangeKey = 'month' | '30d' | 'quarter' | 'all'
 
@@ -50,7 +51,6 @@ function computeRange(key: RangeKey): RangeInfo {
 /** Build a Prisma `where` clause on MeterReading.readingDate for the given range. */
 function readingDateWhere(range: RangeInfo): Record<string, unknown> {
   if (range.start === null && range.end === null) return {} // all
-  // Inclusive on both ends (readingDate is stored as YYYY-MM-DD string)
   if (range.start && range.end) {
     return { readingDate: { gte: range.start, lte: range.end } }
   }
@@ -59,6 +59,15 @@ function readingDateWhere(range: RangeInfo): Record<string, unknown> {
   return {}
 }
 
+// GET /api/dashboard — legacy dashboard (optimized)
+//
+// Performance optimizations:
+//   1. groupBy for status counts (was findMany all devices + JS filter)
+//   2. groupBy for type counts (was findMany + JS loop)
+//   3. groupBy for top-usage per asset (was findMany all readings + JS reduce)
+//   4. aggregate for total paper usage (was findMany + reduce)
+//   5. All independent queries parallelized with Promise.all
+//   6. Status classification uses shared status-utils.ts (consistent with ITAM dashboard)
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -67,77 +76,85 @@ export async function GET(req: NextRequest) {
       ? computeRange(rawRange)
       : computeRange('month')
 
-    const devices = await db.device.findMany({
-      orderBy: { createdAt: 'desc' },
-    })
+    const readingWhere = readingDateWhere(range)
 
-    const total = devices.length
-    const active = devices.filter((d) => d.status?.toLowerCase() === 'active').length
-    const spare = devices.filter((d) => d.status?.toLowerCase() === 'spare').length
-    const repair = devices.filter((d) => d.status?.toLowerCase() === 'repair').length
+    // ── PARALLEL: all independent queries ──────────────────────────────────
+    const [statusGroups, typeGroups, usageByAsset, paperAgg, recent] = await Promise.all([
+      // 1) All device counts by status — single groupBy
+      db.device.groupBy({
+        by: ['status'],
+        _count: { status: true },
+      }),
 
-    // By status
-    const statusMap = new Map<string, number>()
-    for (const d of devices) {
-      const s = (d.status ?? 'Unknown').toLowerCase()
-      statusMap.set(s, (statusMap.get(s) ?? 0) + 1)
-    }
-    const statusLabelMap: Record<string, string> = {
-      active: 'ใช้งานอยู่',
-      inactive: 'ไม่ใช้งาน',
-      spare: 'สำรอง',
-      repair: 'ส่งซ่อม',
-      disposed: 'ตัดของออก',
-    }
-    const byStatus = Array.from(statusMap.entries()).map(([name, value]) => ({
-      name: statusLabelMap[name] ?? name,
-      raw: name,
-      value,
-    }))
+      // 2) Device counts by type — single groupBy
+      db.device.groupBy({
+        by: ['deviceType'],
+        _count: { deviceType: true },
+      }),
 
-    // By type
-    const typeMap = new Map<string, number>()
-    for (const d of devices) {
-      const t = d.deviceType ?? 'Unknown'
-      typeMap.set(t, (typeMap.get(t) ?? 0) + 1)
-    }
-    const byType = Array.from(typeMap.entries()).map(([name, value]) => ({
-      name,
-      value,
-    }))
+      // 3) Top usage per asset in range — groupBy (was findMany all readings)
+      db.meterReading.groupBy({
+        by: ['assetNo'],
+        where: readingWhere,
+        _sum: { pagesBw: true, pagesColor: true },
+      }),
 
-    // Top usage — filtered by selected range (sum of pagesBw + pagesColor)
-    const rangeReadings = await db.meterReading.findMany({
-      where: readingDateWhere(range),
-      select: { assetNo: true, pagesBw: true, pagesColor: true },
-    })
-    const usageMap = new Map<string, number>()
-    for (const r of rangeReadings) {
-      const usage = (r.pagesBw ?? 0) + (r.pagesColor ?? 0)
-      usageMap.set(r.assetNo, (usageMap.get(r.assetNo) ?? 0) + usage)
-    }
-    const topUsage = devices
-      .map((d) => ({
-        id: d.id,
-        name: d.brand && d.model ? `${d.brand} ${d.model}`.trim() : (d.assetNo ?? '-'),
-        assetCode: d.assetNo,
-        value: usageMap.get(d.assetNo) ?? 0,
-      }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5)
+      // 4) Total paper usage in range — single aggregate
+      db.meterReading.aggregate({
+        _sum: { pagesBw: true, pagesColor: true },
+        where: readingWhere,
+      }),
 
-    // Recent activity — latest meter readings within range
-    const recentWhere = readingDateWhere(range)
-    const recent = await db.meterReading.findMany({
-      where: recentWhere,
-      orderBy: { createdAt: 'desc' },
-      take: 8,
-      include: {
-        device: {
-          select: { id: true, brand: true, model: true, assetNo: true },
+      // 5) Recent activity (8 readings with device info)
+      db.meterReading.findMany({
+        where: readingWhere,
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        include: {
+          device: {
+            select: { id: true, brand: true, model: true, assetNo: true },
+          },
         },
-      },
+      }),
+    ])
+
+    // ── Process status groups into canonical KPI buckets ───────────────────
+    const { total, active, spare, repair, byStatus } = bucketizeStatusGroups(
+      statusGroups as { status: string; _count: { status: number } }[],
+    )
+
+    // ── Process type groups ─────────────────────────────────────────────────
+    const byType = (typeGroups as { deviceType: string | null; _count: { deviceType: number } }[])
+      .map((g) => ({ name: g.deviceType || 'Unknown', value: g._count.deviceType }))
+      .sort((a, b) => b.value - a.value)
+
+    // ── Top usage (need device names — fetch top 5 assetNos only) ──────────
+    const usageMap = new Map<string, number>()
+    for (const r of usageByAsset as { assetNo: string; _sum: { pagesBw: number | null; pagesColor: number | null } }[]) {
+      usageMap.set(r.assetNo, (r._sum.pagesBw ?? 0) + (r._sum.pagesColor ?? 0))
+    }
+    const topAssetNos = Array.from(usageMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([assetNo]) => assetNo)
+    const topDevices = topAssetNos.length > 0
+      ? await db.device.findMany({
+          where: { assetNo: { in: topAssetNos } },
+          select: { id: true, assetNo: true, brand: true, model: true },
+        })
+      : []
+    const deviceMap = new Map(topDevices.map((d) => [d.assetNo, d]))
+    const topUsage = topAssetNos.map((assetNo) => {
+      const d = deviceMap.get(assetNo)
+      return {
+        id: d?.id ?? assetNo,
+        name: d?.brand && d?.model ? `${d.brand} ${d.model}`.trim() : assetNo,
+        assetCode: assetNo,
+        value: usageMap.get(assetNo) ?? 0,
+      }
     })
+
+    // ── Recent activity ─────────────────────────────────────────────────────
     const recentActivity = recent.map((r) => ({
       id: r.id,
       deviceName: r.device?.brand && r.device?.model
@@ -150,11 +167,8 @@ export async function GET(req: NextRequest) {
       remark: r.remark,
     }))
 
-    // Paper usage for the selected range (sum of positive deltas)
-    const paperUsage = rangeReadings.reduce(
-      (sum, r) => sum + (((r.pagesBw ?? 0) + (r.pagesColor ?? 0)) > 0 ? ((r.pagesBw ?? 0) + (r.pagesColor ?? 0)) : 0),
-      0,
-    )
+    // ── Paper usage total ───────────────────────────────────────────────────
+    const paperUsage = (paperAgg._sum.pagesBw ?? 0) + (paperAgg._sum.pagesColor ?? 0)
 
     return NextResponse.json({
       totals: { total, active, spare, repair },
