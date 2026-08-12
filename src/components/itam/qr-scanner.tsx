@@ -223,11 +223,12 @@ export function QrScannerDialog() {
     try {
       const res = await fetch(`/api/itam/devices?assetNo=${encodeURIComponent(assetNo)}&limit=1`)
       if (res.ok) {
-        const json = (await res.json()) as { devices?: Array<{ meterRequired?: boolean; brand?: string; model?: string }> }
-        const device = json.devices?.[0]
-        if (device?.meterRequired) {
-          toast.success(`สแกนสำเร็จ: ${assetNo}`, {
-            description: `${device.brand || ''} ${device.model || ''} — ไปหน้าจดมิเตอร์`,
+        const json = await res.json()
+        const device = json.devices && json.devices[0]
+        if (device && device.meterRequired) {
+          const devName = (device.brand || '') + ' ' + (device.model || '')
+          toast.success('สแกนสำเร็จ: ' + assetNo, {
+            description: devName.trim() + ' — ไปหน้าจดมิเตอร์',
           })
           stopCamera()
           setOpen(false)
@@ -262,10 +263,11 @@ export function QrScannerDialog() {
       const res = await fetch(`/api/itam/devices?assetNo=${encodeURIComponent(assetNo)}&limit=1`)
       if (res.ok) {
         const json = await res.json()
-        const device = json.devices?.[0]
-        if (device?.meterRequired) {
-          toast.success(`ค้นหา: ${assetNo}`, {
-            description: `${device.brand || ''} ${device.model || ''} — ไปหน้าจดมิเตอร์`,
+        const device = json.devices && json.devices[0]
+        if (device && device.meterRequired) {
+          const devName = (device.brand || '') + ' ' + (device.model || '')
+          toast.success('ค้นหา: ' + assetNo, {
+            description: devName.trim() + ' — ไปหน้าจดมิเตอร์',
           })
           setOpen(false)
           setActivePage('itam-meter-keyboard')
