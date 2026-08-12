@@ -11,7 +11,7 @@ trap 'rm -rf "$TEST_ROOT"' EXIT
 POSTGRES_BUILD="$TEST_ROOT/postgres-build"
 PROJECT_DIR="$TEST_ROOT/project" \
 BUILD_DIR="$POSTGRES_BUILD" \
-DATABASE_URL="postgresql://postgres:password@example.test:5432/postgres" \
+DATABASE_URL="postgresql://test.invalid:5432/postgres" \
     bash "$SCRIPT_DIR/database-runtime-build.sh"
 
 test -d "$POSTGRES_BUILD"

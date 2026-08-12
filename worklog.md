@@ -3182,7 +3182,7 @@ Agent: orchestrator — Push สำเร็จ + แก้ merge conflicts + �
 Work Log:
 
 1. Push ขึ้น GitHub สำเร็จ:
-   - PAT ใหม่: github_pat_11BXFLXDY04EOyKu... (admin + push + maintain)
+   - PAT ใหม่: PAT_REDACTED... (admin + push + maintain)
    - git pull → resolve merge conflicts (4 files: page.tsx, sidebar.tsx, app-store.ts, auth-store.ts)
    - git push → สำเร็จ (commits: 5b508a8, 6d6aad7, 5300a4b)
 

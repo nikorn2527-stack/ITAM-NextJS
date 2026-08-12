@@ -69,7 +69,7 @@ bun run dev
 ใน Vercel ให้เพิ่มตัวแปรทั้งสองสำหรับ Environment ที่ต้องการ deploy จากนั้น sync schema ไปยังฐานข้อมูลครั้งแรกด้วยคำสั่งต่อไปนี้จากเครื่องที่ตั้งค่า `DATABASE_URL` แล้ว:
 
 ```bash
-DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres?sslmode=require" \
+DATABASE_URL="<set-in-Vercel-Project-Settings>" \
   pnpm exec prisma db push
 ```
 

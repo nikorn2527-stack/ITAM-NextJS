@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { readStockApprovalSettings } from '@/lib/stock-approval-settings'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -82,13 +83,21 @@ export async function POST(
     const requester = body.requester ? String(body.requester).trim() : null
     const remark = body.remark ? String(body.remark).trim() : null
 
-    const approvalMode = VALID_APPROVAL_MODES.has(String(body.approvalMode ?? ''))
-      ? String(body.approvalMode)
-      : 'manual'
-    const autoApproveAt =
+    const approvalSettings = await readStockApprovalSettings()
+    const requestedApprovalMode = String(body.approvalMode ?? '')
+    const approvalMode = VALID_APPROVAL_MODES.has(requestedApprovalMode)
+      ? requestedApprovalMode
+      : approvalSettings.approvalMode
+    const requestedAutoApproveAt =
       typeof body.autoApproveAt === 'string' && body.autoApproveAt.trim()
         ? body.autoApproveAt.trim()
         : null
+    const autoApproveAt = requestedAutoApproveAt
+      ?? (approvalMode === 'auto'
+        ? new Date(
+            Date.now() + approvalSettings.autoApproveDelayMinutes * 60_000,
+          ).toISOString()
+        : null)
 
     const txnDate = body.txnDate
       ? String(body.txnDate).trim()

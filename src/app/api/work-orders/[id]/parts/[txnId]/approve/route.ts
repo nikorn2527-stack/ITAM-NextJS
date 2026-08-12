@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { notifyWorkOrderCompleted } from '@/lib/notifications'
 
 /**
  * POST /api/work-orders/[id]/parts/[txnId]/approve
@@ -106,10 +107,57 @@ export async function POST(
         },
       })
 
+      // Legacy Services behavior: a work order waiting for parts is closed
+      // automatically once every linked request has been approved. Keep the
+      // rule narrow so ordinary work orders are still completed explicitly.
+      const linkedPartsCount = await tx.stockTransaction.count({
+        where: {
+          OR: [{ workOrderId: wo.id }, { workOrderNo: wo.woNumber ?? '' }],
+        },
+      })
+      const shouldAutoClose =
+        wo.status === 'WAITING_PARTS' &&
+        linkedPartsCount > 0 &&
+        remainingPending === 0
+
+      let autoClosed = false
+      if (shouldAutoClose) {
+        const currentWorkOrder = await tx.workOrder.findUnique({
+          where: { id: wo.id },
+          select: { picAfter: true, picOnsite: true, detailsAdmin: true },
+        })
+        if (currentWorkOrder) {
+          const now = new Date()
+          await tx.workOrder.update({
+            where: { id: wo.id },
+            data: {
+              status: 'COMPLETED',
+              workCompletedAt: now,
+              closedAt: now,
+              picAfter:
+                currentWorkOrder.picAfter || currentWorkOrder.picOnsite || null,
+              detailsAdmin: currentWorkOrder.detailsAdmin
+                ? `${currentWorkOrder.detailsAdmin}\n[ปิดงานอัตโนมัติหลังอนุมัติอะไหล่ครบ]`
+                : '[ปิดงานอัตโนมัติหลังอนุมัติอะไหล่ครบ]',
+            },
+          })
+          await tx.workOrderMessage.create({
+            data: {
+              workOrderId: wo.id,
+              message: 'ระบบปิดงานอัตโนมัติหลังอนุมัติรายการอะไหล่ครบแล้ว',
+              author: approverName,
+              authorRole: 'system',
+            },
+          })
+          autoClosed = true
+        }
+      }
+
       return {
         item: updatedItem,
         txn: updatedTxn,
         remainingPending,
+        autoClosed,
       }
     })
 
@@ -130,6 +178,7 @@ export async function POST(
             approver: approverName,
             note,
             remainingPending: result.remainingPending,
+            autoClosed: result.autoClosed,
           }),
           actor: approverName,
         },
@@ -138,12 +187,38 @@ export async function POST(
       console.error('audit log failed', e)
     }
 
+    if (result.autoClosed) {
+      try {
+        const completed = await db.workOrder.findUnique({
+          where: { id: wo.id },
+          select: {
+            id: true,
+            woNumber: true,
+            subject: true,
+            resolution: true,
+            detailsAdmin: true,
+            lineUserId: true,
+            reporterEmail: true,
+          },
+        })
+        if (completed) {
+          await notifyWorkOrderCompleted(completed, {
+            channels: ['line-oa', 'telegram'],
+            actor: approverName,
+          })
+        }
+      } catch (e) {
+        console.error('[notifications] auto-close trigger failed', e)
+      }
+    }
+
     return NextResponse.json({
       data: {
         transaction: result.txn,
         stockItem: result.item,
         remainingPending: result.remainingPending,
         allPartsApproved: result.remainingPending === 0,
+        autoClosed: result.autoClosed,
       },
     })
   } catch (err) {
