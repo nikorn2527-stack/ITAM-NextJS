@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
 import { Sun, Moon, Search } from 'lucide-react'
 import { useAppStore, type ActivePage } from '@/store/app-store'
+import { useAuthStore, useNavVisibility, useRole } from '@/store/auth-store'
+import { ROLE_LABELS } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 import { NotificationsPopover } from './notifications-popover'
 
@@ -12,18 +14,21 @@ interface NavItemDef {
   page: ActivePage
   icon: string
   label: string
+  /** permission key — if set, item is shown only when the user has this perm */
+  requires?: string[]
 }
 
+// Permission requirements per nav item (Task ID: RBAC-DASHBOARD)
 const NAV_ITEMS: NavItemDef[] = [
-  { page: 'dashboard', icon: '📊', label: 'Dashboard' },
-  { page: 'devices', icon: '💻', label: 'จัดการอุปกรณ์' },
-  { page: 'meter', icon: '📈', label: 'จดมิเตอร์' },
-  { page: 'paper-analytics', icon: '📊', label: 'การใช้กระดาษ' },
-  { page: 'work-orders', icon: '🔧', label: 'แจ้งซ่อม' },
-  { page: 'stock', icon: '📦', label: 'สต๊อก' },
-  { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล' },
-  { page: 'templates', icon: '📄', label: 'เทมเพลต' },
-  { page: 'settings', icon: '⚙️', label: 'ตั้งค่าแอป' },
+  { page: 'dashboard', icon: '📊', label: 'Dashboard', requires: ['dashboard:view'] },
+  { page: 'devices', icon: '💻', label: 'จัดการอุปกรณ์', requires: ['devices:view'] },
+  { page: 'meter', icon: '📈', label: 'จดมิเตอร์', requires: ['meter:write'] },
+  { page: 'paper-analytics', icon: '📊', label: 'การใช้กระดาษ', requires: ['reports:view'] },
+  { page: 'work-orders', icon: '🔧', label: 'แจ้งซ่อม', requires: ['wo:create', 'wo:view:own', 'wo:view:site', 'wo:view:all'] },
+  { page: 'stock', icon: '📦', label: 'สต๊อก', requires: ['stock:view'] },
+  { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล', requires: ['import:data'] },
+  { page: 'templates', icon: '📄', label: 'เทมเพลต', requires: ['templates:manage'] },
+  { page: 'settings', icon: '⚙️', label: 'ตั้งค่าแอป', requires: ['settings:manage'] },
 ]
 
 interface CycleInfo {
@@ -64,6 +69,53 @@ export function Sidebar() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
+
+  // ── Auth + permissions (Task ID: RBAC-DASHBOARD) ──
+  const fetchMe = useAuthStore((s) => s.fetchMe)
+  const authUser = useAuthStore((s) => s.user)
+  const authInitialized = useAuthStore((s) => s.initialized)
+  const navVisibility = useNavVisibility()
+  const role = useRole()
+
+  // Fetch /api/auth/me once on mount (silently — falls back to preview user)
+  React.useEffect(() => {
+    if (!authInitialized) {
+      void fetchMe()
+    }
+  }, [authInitialized, fetchMe])
+
+  // Filter NAV_ITEMS by permission
+  const visibleNavItems = React.useMemo(() => {
+    return NAV_ITEMS.filter((item) => {
+      if (!item.requires || item.requires.length === 0) return true
+      return item.requires.some((perm) => {
+        // Use the precomputed navVisibility map for known keys,
+        // otherwise fall back to a direct check.
+        switch (item.page) {
+          case 'dashboard':
+            return navVisibility.dashboard
+          case 'devices':
+            return navVisibility.devices
+          case 'meter':
+            return navVisibility.meter
+          case 'paper-analytics':
+            return navVisibility.paperAnalytics
+          case 'work-orders':
+            return navVisibility.workOrders
+          case 'stock':
+            return navVisibility.stock
+          case 'import':
+            return navVisibility.import
+          case 'templates':
+            return navVisibility.templates
+          case 'settings':
+            return navVisibility.settings
+          default:
+            return true
+        }
+      })
+    })
+  }, [navVisibility])
 
   // ── Organization Profile (flexible: ชื่อ/โลโก้/tagline เปลี่ยนได้) ──
   const { data: orgProfile } = useQuery({
@@ -120,6 +172,11 @@ export function Sidebar() {
     closeSidebar()
   }
 
+  // Display name + role label
+  const displayName =
+    authUser?.name || authUser?.email || 'admin@example.com'
+  const roleLabel = ROLE_LABELS[role] ?? role
+
   return (
     <>
       {/* Mobile menu button */}
@@ -170,11 +227,11 @@ export function Sidebar() {
 
         {/* Nav menu */}
         <nav
-          className="flex-1 py-3"
+          className="flex-1 overflow-y-auto py-3"
           style={{ padding: '12px 0' }}
           aria-label="Main navigation"
         >
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const active = activePage === item.page
             return (
               <button
@@ -209,6 +266,14 @@ export function Sidebar() {
               </button>
             )
           })}
+
+          {visibleNavItems.length === 0 && (
+            <div className="px-5 py-6 text-center text-xs text-slate-400">
+              คุณไม่มีสิทธิ์เข้าถึงเมนูใด ๆ
+              <br />
+              กรุณาติดต่อผู้ดูแลระบบ
+            </div>
+          )}
 
           {/* Global search button */}
           <div className="px-3 pt-2">
@@ -260,12 +325,14 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Current user role */}
+        {/* Current user role (reads from auth store) */}
         <div
           className="px-4 py-2 text-[11px]"
           style={{ color: 'rgba(255,255,255,0.75)' }}
+          title={authUser?.email ?? ''}
         >
-          admin@example.com · ผู้ดูแลระบบ
+          <div className="truncate">{displayName}</div>
+          <div className="mt-0.5 text-[10px] text-slate-400">{roleLabel}</div>
         </div>
 
         {/* Powered footer */}
