@@ -15,13 +15,47 @@ export interface Device {
   parentRef: string | null
   displayLabel: string | null
   location: string | null
+  // ── ข้อมูลที่ตั้ง ──
+  building: string | null
+  floor: string | null
+  room: string | null
+  // ── เครือข่าย ──
+  ip: string | null
+  mac: string | null
+  remoteId: string | null
+  // ── การซื้อ/รับประกัน ──
   purchaseDate: string | null
   warrantyMonths: number
+  warrantyEnd: string | null
+  vendor: string | null
+  contractNo: string | null
+  uninstallDate: string | null
+  // ── มิเตอร์ ──
+  meterRequired: boolean
+  meterMode: string | null
+  // ── อื่นๆ ──
+  costCenter: string | null
+  deviceGroup: string | null
+  remark: string | null
   lastMeterReading: number
   currentAssignee: string | null
   purchasePrice: number | null
   salvageValue: number | null
   usefulLife: number | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LicenseRecord {
+  id: string
+  licenseId: string | null
+  assetCode: string | null
+  software: string
+  licenseType: string | null
+  licenseKey: string | null
+  quantity: number
+  expiryDate: string | null
+  remark: string | null
   createdAt: string
   updatedAt: string
 }

@@ -56,8 +56,11 @@ import {
   UserPlus,
   Undo2,
   ClipboardList,
+  KeyRound,
+  Plus,
+  Trash2,
 } from 'lucide-react'
-import type { Device, MeterReading, DeviceTransfer, Site, Assignment } from './types'
+import type { Device, MeterReading, DeviceTransfer, Site, Assignment, LicenseRecord } from './types'
 import {
   statusBadgeClass,
   statusLabel,
@@ -144,6 +147,28 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const [rNotes, setRNotes] = React.useState('')
   const [returning, setReturning] = React.useState(false)
 
+  // License dialog state
+  const [licenseOpen, setLicenseOpen] = React.useState(false)
+  const [lcSoftware, setLcSoftware] = React.useState('')
+  const [lcLicenseId, setLcLicenseId] = React.useState('')
+  const [lcLicenseType, setLcLicenseType] = React.useState('')
+  const [lcLicenseKey, setLcLicenseKey] = React.useState('')
+  const [lcQuantity, setLcQuantity] = React.useState('1')
+  const [lcExpiryDate, setLcExpiryDate] = React.useState('')
+  const [lcRemark, setLcRemark] = React.useState('')
+  const [savingLicense, setSavingLicense] = React.useState(false)
+  const [deletingLicenseId, setDeletingLicenseId] = React.useState<string | null>(
+    null,
+  )
+
+  const LICENSE_TYPE_OPTIONS = [
+    { value: 'OEM', label: 'OEM' },
+    { value: 'Volume', label: 'Volume' },
+    { value: 'Retail', label: 'Retail' },
+    { value: 'Subscription', label: 'Subscription' },
+    { value: 'Open License', label: 'Open License' },
+  ]
+
   const { data: deviceData, isLoading: deviceLoading } = useQuery<{
     device: Device
   } | null>({
@@ -199,6 +224,87 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     },
     enabled: Boolean(deviceId),
   })
+
+  const { data: licenses, isLoading: licensesLoading } = useQuery<
+    LicenseRecord[]
+  >({
+    queryKey: ['device-licenses', deviceId],
+    queryFn: async () => {
+      if (!deviceId) return []
+      const res = await fetch(`/api/devices/${deviceId}/licenses`)
+      if (!res.ok) return []
+      const json = await res.json()
+      return (json.licenses ?? []) as LicenseRecord[]
+    },
+    enabled: Boolean(deviceId),
+  })
+
+  function openLicenseDialog() {
+    setLcSoftware('')
+    setLcLicenseId('')
+    setLcLicenseType('')
+    setLcLicenseKey('')
+    setLcQuantity('1')
+    setLcExpiryDate('')
+    setLcRemark('')
+    setLicenseOpen(true)
+  }
+
+  async function saveLicense() {
+    if (!deviceId) return
+    if (!lcSoftware.trim()) {
+      toast.error('กรุณากรอกชื่อซอฟต์แวร์')
+      return
+    }
+    try {
+      setSavingLicense(true)
+      const res = await fetch(`/api/devices/${deviceId}/licenses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          licenseId: lcLicenseId || null,
+          software: lcSoftware.trim(),
+          licenseType: lcLicenseType || null,
+          licenseKey: lcLicenseKey || null,
+          quantity: Number(lcQuantity) || 1,
+          expiryDate: lcExpiryDate || null,
+          remark: lcRemark || null,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Save failed')
+      }
+      toast.success('เพิ่ม License แล้ว')
+      setLicenseOpen(false)
+      await qc.invalidateQueries({ queryKey: ['device-licenses', deviceId] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSavingLicense(false)
+    }
+  }
+
+  async function deleteLicense(id: string) {
+    if (!deviceId) return
+    try {
+      setDeletingLicenseId(id)
+      const res = await fetch(
+        `/api/devices/${deviceId}/licenses?licenseId=${encodeURIComponent(id)}`,
+        { method: 'DELETE' },
+      )
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'Delete failed')
+      }
+      toast.success('ลบ License แล้ว')
+      await qc.invalidateQueries({ queryKey: ['device-licenses', deviceId] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Delete failed')
+    } finally {
+      setDeletingLicenseId(null)
+    }
+  }
 
   const activeAssignment = React.useMemo(
     () => (assignments ?? []).find((a) => a.status === 'active') ?? null,
@@ -954,6 +1060,106 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
               </ol>
             )}
           </section>
+
+          {/* License records section */}
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <KeyRound className="h-3.5 w-3.5 text-[#0d9488]" />
+                ลิขสิทธิ์ซอฟต์แวร์ ({licenses?.length ?? 0})
+              </h3>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={openLicenseDialog}
+                disabled={!device}
+                className="h-7 border-[#0d9488]/40 text-[#0d9488] hover:bg-[#0d9488]/10 focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6]/40 dark:text-[#14b8a6] dark:focus-visible:ring-offset-slate-950"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                เพิ่ม License
+              </Button>
+            </div>
+            {licensesLoading ? (
+              <Skeleton className="h-24 w-full dark:bg-slate-800" />
+            ) : !licenses || licenses.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 py-8 text-slate-400 dark:border-slate-700 dark:text-slate-500">
+                <KeyRound className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                  ยังไม่มีลิขสิทธิ์ซอฟต์แวร์
+                </span>
+                <span className="text-xs text-slate-400 dark:text-slate-500">
+                  กดปุ่ม &quot;เพิ่ม License&quot; ด้านบนเพื่อบันทึก License ใหม่
+                </span>
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {licenses.map((lc) => (
+                  <li
+                    key={lc.id}
+                    className="rounded-md border border-slate-100 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-800/40"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                            {lc.software}
+                          </span>
+                          {lc.licenseType && (
+                            <Badge className="border-[#0d9488]/30 bg-[#0d9488]/10 text-[#0d9488] dark:border-[#14b8a6]/30 dark:bg-[#14b8a6]/10 dark:text-[#14b8a6]">
+                              {lc.licenseType}
+                            </Badge>
+                          )}
+                          <Badge className="border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            จำนวน {lc.quantity}
+                          </Badge>
+                        </div>
+                        {lc.licenseId && (
+                          <div className="mt-0.5 font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                            ID: {lc.licenseId}
+                          </div>
+                        )}
+                        {lc.licenseKey && (
+                          <div className="mt-1 font-mono text-xs text-slate-600 dark:text-slate-300">
+                            Key: <span className="break-all">{lc.licenseKey}</span>
+                          </div>
+                        )}
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+                          {lc.expiryDate && (
+                            <span>
+                              หมดอายุ:{' '}
+                              <span className="font-medium">
+                                {formatThaiDate(lc.expiryDate)}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                        {lc.remark && (
+                          <div className="mt-1.5 rounded bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                            📝 {lc.remark}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => deleteLicense(lc.id)}
+                        disabled={deletingLicenseId === lc.id}
+                        aria-label="ลบ License"
+                        title="ลบ License"
+                        className="h-7 w-7 shrink-0 text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                      >
+                        {deletingLicenseId === lc.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
 
         <SheetFooter className="flex-row gap-2 border-t border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -1252,6 +1458,133 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                 </>
               ) : (
                 'ยืนยันการคืน'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* License add sub-dialog */}
+      <Dialog open={licenseOpen} onOpenChange={setLicenseOpen}>
+        <DialogContent className="sm:max-w-lg dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+              <KeyRound className="h-4 w-4 text-[#0d9488]" />
+              🔑 เพิ่ม License ให้ {device?.assetCode}
+            </DialogTitle>
+            <DialogDescription>
+              บันทึกลิขสิทธิ์ซอฟต์แวร์ของอุปกรณ์นี้
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                ชื่อซอฟต์แวร์ *
+              </Label>
+              <Input
+                value={lcSoftware}
+                onChange={(e) => setLcSoftware(e.target.value)}
+                placeholder="เช่น Microsoft Office 2021, Windows 11 Pro"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                License ID
+              </Label>
+              <Input
+                value={lcLicenseId}
+                onChange={(e) => setLcLicenseId(e.target.value)}
+                placeholder="เช่น LIC-0001"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                ประเภท License
+              </Label>
+              <Select
+                value={lcLicenseType}
+                onValueChange={(v) =>
+                  setLcLicenseType(v === '__none__' ? '' : v)
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="เลือกประเภท" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— ไม่ระบุ —</SelectItem>
+                  {LICENSE_TYPE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                License Key / Product Key
+              </Label>
+              <Input
+                value={lcLicenseKey}
+                onChange={(e) => setLcLicenseKey(e.target.value)}
+                placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"
+                className="font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                จำนวน (Quantity)
+              </Label>
+              <Input
+                type="number"
+                min={1}
+                step={1}
+                value={lcQuantity}
+                onChange={(e) => setLcQuantity(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                วันหมดอายุ
+              </Label>
+              <Input
+                type="date"
+                value={lcExpiryDate}
+                onChange={(e) => setLcExpiryDate(e.target.value)}
+              />
+            </div>
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                หมายเหตุ
+              </Label>
+              <Textarea
+                value={lcRemark}
+                onChange={(e) => setLcRemark(e.target.value)}
+                rows={2}
+                placeholder="หมายเหตุเพิ่มเติม"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setLicenseOpen(false)}
+              disabled={savingLicense}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={saveLicense}
+              disabled={savingLicense}
+              className="bg-[#0d9488] text-white hover:bg-[#0f766e] focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+            >
+              {savingLicense ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  กำลังบันทึก...
+                </>
+              ) : (
+                'บันทึก'
               )}
             </Button>
           </DialogFooter>
