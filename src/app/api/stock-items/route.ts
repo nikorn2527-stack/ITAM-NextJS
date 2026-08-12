@@ -68,7 +68,10 @@ export async function GET(req: NextRequest) {
       db.stockItem.count({ where }),
       db.stockItem.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [
+          { category: 'asc' },
+          { productCode: 'asc' },
+        ],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),

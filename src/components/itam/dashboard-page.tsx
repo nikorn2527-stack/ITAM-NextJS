@@ -458,6 +458,9 @@ export function DashboardPage() {
     ].filter((d) => d.value > 0)
   }, [data])
 
+  // Total for percentage calculation
+  const woTotal = woStatusPie.reduce((s, d) => s + d.value, 0)
+
   // Bar chart data for device types (top 8)
   const deviceTypeBar = React.useMemo(() => {
     if (!data) return []
@@ -614,13 +617,14 @@ export function DashboardPage() {
                       nameKey="name"
                       cx="50%"
                       cy="50%"
-                      innerRadius={45}
-                      outerRadius={75}
+                      innerRadius={40}
+                      outerRadius={70}
                       paddingAngle={2}
                       label={({ value, name }) => {
-                        const total = woStatusPie.reduce((s, d) => s + d.value, 0)
-                        const pct = total > 0 ? ((value / total) * 100).toFixed(0) : '0'
-                        return `${name} ${pct}%`
+                        const pct = woTotal > 0 ? ((value / woTotal) * 100) : 0
+                        // ซ่อน label ถ้าค่าน้อยกว่า 2% (กันซ้อนกัน)
+                        if (pct < 2) return ''
+                        return `${name} ${pct.toFixed(0)}%`
                       }}
                       labelLine={{ stroke: axisTickColor, strokeWidth: 1 }}
                       isAnimationActive={false}
