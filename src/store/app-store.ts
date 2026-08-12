@@ -11,6 +11,7 @@ export type ActivePage =
   | 'itam-meter'
   | 'itam-meter-keyboard'
   | 'itam-repairs'
+  | 'itam-work-orders'
   | 'itam-stock'
   | 'itam-sticker-editor'
   | 'itam-document-editor'
