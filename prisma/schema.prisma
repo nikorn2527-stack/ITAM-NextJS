@@ -325,7 +325,28 @@ model WorkOrder {
   // Relations
   device           Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   messages         WorkOrderMessage[]
+  images           WorkOrderImage[]
   review           WorkOrderReview?
+}
+
+// ============================================================
+// 18b) Work Order Images — รองรับหลายรูปต่อขั้นตอน (ก่อน/หน้างาน/หลัง)
+//      แทน picBefore/picOnsite/picAfter แบบ 1 รูป เดิม
+// ============================================================
+model WorkOrderImage {
+  id          String   @id @default(cuid())
+  workOrderId String
+  stage       String   // before | onsite | after
+  image_data  String   // base64 data URL หรือ URL
+  fileName    String?
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+  @@index([stage])
+  @@map("work_order_images")
 }
 
 model WorkOrderMessage {

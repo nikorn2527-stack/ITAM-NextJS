@@ -35,11 +35,16 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = {}
     if (search) {
       where.OR = [
+        { serialNumber: { contains: search } },
         { assetCode: { contains: search } },
         { name: { contains: search } },
-        { serialNumber: { contains: search } },
         { brand: { contains: search } },
         { model: { contains: search } },
+        { building: { contains: search } },
+        { floor: { contains: search } },
+        { department: { contains: search } },
+        { location: { contains: search } },
+        { site: { contains: search } },
       ]
     }
     if (status) where.status = status

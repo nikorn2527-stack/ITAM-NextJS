@@ -27,6 +27,15 @@ interface AppState {
   pendingMeterAction: string | null
   /** Set true to open the global search palette from anywhere. */
   searchOpen: boolean
+  /** Set true to open the global QR/barcode scanner dialog. */
+  qrScannerOpen: boolean
+  /**
+   * The last scanned QR/barcode value plus a monotonically-increasing
+   * `nonce` so consumers can react even when the same code is scanned twice
+   * in a row. Use `qrScanNonce` in deps to detect new scans.
+   */
+  lastQrScan: string | null
+  qrScanNonce: number
   setActivePage: (page: ActivePage) => void
   toggleSidebar: () => void
   closeSidebar: () => void
@@ -39,6 +48,11 @@ interface AppState {
   setPendingMeterAction: (action: string | null) => void
   clearPendingMeterAction: () => void
   setSearchOpen: (open: boolean) => void
+  setQrScannerOpen: (open: boolean) => void
+  /** Publish a scanned value (also bumps the nonce). */
+  publishQrScan: (value: string) => void
+  /** Clear the last scanned value (does not affect nonce). */
+  clearLastQrScan: () => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -49,6 +63,9 @@ export const useAppStore = create<AppState>((set) => ({
   pendingWarrantyFilter: null,
   pendingMeterAction: null,
   searchOpen: false,
+  qrScannerOpen: false,
+  lastQrScan: null,
+  qrScanNonce: 0,
   setActivePage: (page) => set({ activePage: page }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   closeSidebar: () => set({ sidebarOpen: false }),
@@ -61,4 +78,12 @@ export const useAppStore = create<AppState>((set) => ({
   setPendingMeterAction: (action) => set({ pendingMeterAction: action }),
   clearPendingMeterAction: () => set({ pendingMeterAction: null }),
   setSearchOpen: (open) => set({ searchOpen: open }),
+  setQrScannerOpen: (open) => set({ qrScannerOpen: open }),
+  publishQrScan: (value) =>
+    set((s) => ({
+      lastQrScan: value,
+      qrScanNonce: s.qrScanNonce + 1,
+      qrScannerOpen: false,
+    })),
+  clearLastQrScan: () => set({ lastQrScan: null }),
 }))

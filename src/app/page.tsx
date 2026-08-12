@@ -14,6 +14,7 @@ import { ImportPage } from '@/components/itam/import-page'
 import { TemplatesPage } from '@/components/itam/templates-page'
 import { SettingsPageV2 } from '@/components/itam/settings-page-v2'
 import { MonthlyReport } from '@/components/itam/monthly-report'
+import { QrScannerDialog } from '@/components/itam/qr-scanner-dialog'
 import { useAppStore } from '@/store/app-store'
 
 export default function Home() {
@@ -45,6 +46,7 @@ export default function Home() {
         <Footer />
       </div>
       <GlobalSearch />
+      <QrScannerDialog />
     </div>
   )
 }

@@ -67,9 +67,13 @@ import {
   Check,
   Box,
   Printer,
+  ScanLine,
+  Eye,
+  X,
 } from 'lucide-react'
 import { formatThaiDate, relativeTime } from './types'
 import { TemplatePrintDialog } from './template-print-dialog'
+import { useAppStore } from '@/store/app-store'
 
 // ============================================================
 // Types
@@ -97,6 +101,16 @@ export interface ExternalMeta {
   place?: string
   contactPhone?: string
   serials?: string[]
+}
+
+export interface WorkOrderImage {
+  id: string
+  workOrderId: string
+  stage: 'before' | 'onsite' | 'after'
+  image_data: string
+  fileName: string | null
+  uploadedBy: string | null
+  createdAt: string
 }
 
 export interface WorkOrder {
@@ -150,6 +164,7 @@ export interface WorkOrder {
   } | null
   messages?: WorkOrderMessage[]
   review?: WorkOrderReview | null
+  images?: WorkOrderImage[]
 }
 
 interface WorkOrderListResponse {
@@ -161,6 +176,15 @@ interface WorkOrderListResponse {
 interface WorkOrderDetail extends WorkOrder {
   messages: WorkOrderMessage[]
   review: WorkOrderReview | null
+}
+
+interface ImagesGroupedResponse {
+  data: WorkOrderImage[]
+  grouped: {
+    before: WorkOrderImage[]
+    onsite: WorkOrderImage[]
+    after: WorkOrderImage[]
+  }
 }
 
 interface SubjectOption {
@@ -365,9 +389,8 @@ interface NewFormState {
   // Device lookup (internal)
   deviceId: string | null
   deviceSearch: string
-  // Image before
-  picBefore: string | null
-  picBeforeName: string
+  // Multi-image (before stage) — up to 9 base64 data URLs
+  picBeforeImages: string[]
 }
 
 const EMPTY_FORM: NewFormState = {
@@ -388,12 +411,13 @@ const EMPTY_FORM: NewFormState = {
   serialInput: '',
   deviceId: null,
   deviceSearch: '',
-  picBefore: null,
-  picBeforeName: '',
+  picBeforeImages: [],
 }
 
-// 1 MB hard cap to keep SQLite payload sane
-const MAX_PIC_BYTES = 1_000_000
+// 9 images per stage (matches user requirement)
+const MAX_IMAGES_PER_STAGE = 9
+// 1.5 MB hard cap on a single base64 data URL (~1 MB image after JPEG q=0.7)
+const MAX_PIC_BYTES = 1_500_000
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -404,14 +428,23 @@ function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
+/**
+ * Compress an image file to a JPEG data URL.
+ *
+ * - Max dimension: 1024px (preserves aspect ratio)
+ * - JPEG quality starts at 0.7 and steps down to ~0.4 if the output is still
+ *   larger than `maxBytes`
+ *
+ * Falls back to the original data URL if canvas drawing fails.
+ */
 async function compressImage(file: File, maxBytes = MAX_PIC_BYTES): Promise<string> {
   const dataUrl = await readFileAsDataUrl(file)
-  if (dataUrl.length <= maxBytes) return dataUrl
-  // Try shrinking via canvas
+  // For non-image inputs (shouldn't happen given accept="image/*"), skip canvas
+  if (!dataUrl.startsWith('data:image')) return dataUrl
   return new Promise<string>((resolve) => {
     const img = new window.Image()
     img.onload = () => {
-      const maxDim = 1280
+      const maxDim = 1024
       let { width, height } = img
       if (width > maxDim || height > maxDim) {
         const ratio = Math.min(maxDim / width, maxDim / height)
@@ -426,11 +459,15 @@ async function compressImage(file: File, maxBytes = MAX_PIC_BYTES): Promise<stri
         resolve(dataUrl)
         return
       }
+      // White background to avoid black-on-transparent PNGs turning into black
+      // when re-encoded as JPEG.
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, width, height)
       ctx.drawImage(img, 0, 0, width, height)
-      let quality = 0.8
+      let quality = 0.7
       let out = canvas.toDataURL('image/jpeg', quality)
-      while (out.length > maxBytes && quality > 0.3) {
-        quality -= 0.15
+      while (out.length > maxBytes && quality > 0.4) {
+        quality -= 0.1
         out = canvas.toDataURL('image/jpeg', quality)
       }
       resolve(out)
@@ -450,6 +487,18 @@ export function WorkOrdersPage() {
   const [form, setForm] = React.useState<NewFormState>(EMPTY_FORM)
   const [saving, setSaving] = React.useState(false)
   const [detailId, setDetailId] = React.useState<string | null>(null)
+
+  // ── QR/barcode scan handling for the list search box ──
+  // Only react when the create dialog is NOT open (otherwise the create
+  // form's device-search field is the intended target).
+  const qrScanNonce = useAppStore((s) => s.qrScanNonce)
+  const lastQrScan = useAppStore((s) => s.lastQrScan)
+  React.useEffect(() => {
+    if (qrScanNonce === 0) return
+    if (createOpen) return
+    if (!lastQrScan) return
+    setSearch(lastQrScan)
+  }, [qrScanNonce, createOpen, lastQrScan])
 
   // Load subject + resolution options once
   const optionsQuery = useQuery<OptionsResponse>({
@@ -534,7 +583,7 @@ export function WorkOrdersPage() {
         subject: form.subject.trim(),
         details: form.details.trim() || null,
         priority: form.priority,
-        picBefore: form.picBefore,
+        picBeforeImages: form.picBeforeImages,
         submissionSource: 'guest',
       }
       if (form.isExternal) {
@@ -648,10 +697,25 @@ export function WorkOrdersPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="ค้นหาเลขใบงาน / ปัญหา / สถานที่ / ผู้แจ้ง / เบอร์โทร"
-              className="pl-9"
+              placeholder="ค้นหาเลขใบงาน / ปัญหา / สถานที่ / ผู้แจ้ง / เบอร์โทร / รหัสพนักงาน / ช่าง / ผลการแก้ไข"
+              className="pl-9 pr-9"
               aria-label="ค้นหาใบแจ้งซ่อม"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setSearch((e.target as HTMLInputElement).value)
+                }
+              }}
             />
+            {/* Quick scan button — opens QR/barcode scanner */}
+            <button
+              type="button"
+              onClick={() => useAppStore.getState().setQrScannerOpen(true)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-orange-500"
+              title="สแกน QR / บาร์โค้ด"
+              aria-label="สแกน QR / บาร์โค้ด"
+            >
+              <ScanLine className="h-4 w-4" />
+            </button>
           </div>
           <div className="grid grid-cols-2 gap-2 md:flex md:w-auto">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -968,6 +1032,7 @@ function CreateWorkOrderDialog({
   subjects: SubjectOption[]
 }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [picBusy, setPicBusy] = React.useState(false)
 
   // Group subjects for the dropdown
   const subjectGroups = React.useMemo(() => {
@@ -1008,6 +1073,20 @@ function CreateWorkOrderDialog({
     }
   }, [form.deviceSearch, form.isExternal])
 
+  // ── QR/barcode scan handling for the device search field ──
+  // When a scan is published while the create dialog is open, drop the value
+  // into the device search field so the lookup effect kicks in.
+  const qrScanNonce = useAppStore((s) => s.qrScanNonce)
+  const lastQrScan = useAppStore((s) => s.lastQrScan)
+  React.useEffect(() => {
+    if (!open) return
+    if (qrScanNonce === 0) return
+    if (!lastQrScan) return
+    // Only fill if the user was focused on the create dialog (the list page
+    // checks `!createOpen` for its own scan reaction, so the two won't fight).
+    setForm((s) => ({ ...s, deviceSearch: lastQrScan, deviceId: null }))
+  }, [qrScanNonce, open, lastQrScan, setForm])
+
   // When subject changes, auto-set priority from default_priority
   function handleSubjectChange(value: string) {
     if (value === '__custom__') {
@@ -1023,17 +1102,53 @@ function CreateWorkOrderDialog({
     }))
   }
 
+  // Multi-image upload (up to 9). Reads every selected file, compresses each,
+  // then appends to form.picBeforeImages while respecting the cap.
   async function handlePicBeforeChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = e.target.files
+    if (!files || files.length === 0) return
     try {
-      const dataUrl = await compressImage(file)
-      setForm((s) => ({ ...s, picBefore: dataUrl, picBeforeName: file.name }))
-    } catch {
-      toast.error('อ่านไฟล์รูปไม่สำเร็จ')
+      setPicBusy(true)
+      const remaining = MAX_IMAGES_PER_STAGE - form.picBeforeImages.length
+      if (remaining <= 0) {
+        toast.error(`เพิ่มรูปได้สูงสุด ${MAX_IMAGES_PER_STAGE} รูป`)
+        return
+      }
+      const list = Array.from(files).slice(0, remaining)
+      const compressed: string[] = []
+      for (const f of list) {
+        try {
+          const dataUrl = await compressImage(f)
+          compressed.push(dataUrl)
+        } catch {
+          /* skip bad file */
+        }
+      }
+      if (compressed.length === 0) {
+        toast.error('อ่านไฟล์รูปไม่สำเร็จ')
+        return
+      }
+      setForm((s) => ({
+        ...s,
+        picBeforeImages: [...s.picBeforeImages, ...compressed].slice(
+          0,
+          MAX_IMAGES_PER_STAGE,
+        ),
+      }))
+      if (list.length < files.length) {
+        toast.message(`เพิ่มได้สูงสุด ${MAX_IMAGES_PER_STAGE} รูป — เพิ่ม ${list.length} รูปแรก`)
+      }
     } finally {
+      setPicBusy(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
+  }
+
+  function removePicBefore(idx: number) {
+    setForm((s) => ({
+      ...s,
+      picBeforeImages: s.picBeforeImages.filter((_, i) => i !== idx),
+    }))
   }
 
   function addSerial() {
@@ -1267,14 +1382,30 @@ function CreateWorkOrderDialog({
                 {/* Asset lookup */}
                 <div className="grid gap-1.5">
                   <Label htmlFor="wo-device-search">เลขทะเบียนอุปกรณ์ (Optional)</Label>
-                  <Input
-                    id="wo-device-search"
-                    value={form.deviceSearch}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, deviceSearch: e.target.value }))
-                    }
-                    placeholder="พิมพ์เลขทะเบียน / ชื่อ / S/N เพื่อค้นหาอุปกรณ์"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="wo-device-search"
+                      value={form.deviceSearch}
+                      onChange={(e) =>
+                        setForm((s) => ({
+                          ...s,
+                          deviceSearch: e.target.value,
+                          deviceId: null,
+                        }))
+                      }
+                      placeholder="พิมพ์เลขทะเบียน / ชื่อ / S/N เพื่อค้นหาอุปกรณ์"
+                      className="pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => useAppStore.getState().setQrScannerOpen(true)}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-orange-500"
+                      title="สแกน QR / บาร์โค้ด"
+                      aria-label="สแกน QR / บาร์โค้ด"
+                    >
+                      <ScanLine className="h-4 w-4" />
+                    </button>
+                  </div>
                   {deviceLoading && (
                     <div className="text-[11px] text-muted-foreground">กำลังค้นหา...</div>
                   )}
@@ -1338,7 +1469,7 @@ function CreateWorkOrderDialog({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="wo-priority">ความเร่งด่วน</Label>
                 <Select
@@ -1358,48 +1489,71 @@ function CreateWorkOrderDialog({
                 </Select>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="wo-pic">รูปก่อนซ่อม (Optional)</Label>
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={fileInputRef}
-                    id="wo-pic"
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePicBeforeChange}
-                    className="hidden"
-                  />
+                <Label htmlFor="wo-pic">
+                  รูปก่อนซ่อม (Optional){' '}
+                  <span className="text-[10px] text-muted-foreground">
+                    {form.picBeforeImages.length}/{MAX_IMAGES_PER_STAGE} รูป
+                  </span>
+                </Label>
+                <input
+                  ref={fileInputRef}
+                  id="wo-pic"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  multiple
+                  onChange={handlePicBeforeChange}
+                  className="hidden"
+                />
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => fileInputRef.current?.click()}
+                    disabled={
+                      picBusy || form.picBeforeImages.length >= MAX_IMAGES_PER_STAGE
+                    }
                   >
-                    <ImageIcon className="h-4 w-4" />
-                    {form.picBefore ? 'เปลี่ยนรูป' : 'เลือกรูป'}
+                    {picBusy ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ImageIcon className="h-4 w-4" />
+                    )}
+                    เพิ่มรูป
                   </Button>
-                  {form.picBefore && (
-                    <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <img
-                        src={form.picBefore}
-                        alt="pic-before"
-                        className="h-8 w-8 rounded border object-cover"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setForm((s) => ({
-                            ...s,
-                            picBefore: null,
-                            picBeforeName: '',
-                          }))
-                        }
-                        className="text-rose-500 underline"
-                      >
-                        ลบ
-                      </button>
-                    </div>
-                  )}
+                  <span className="text-[10px] text-muted-foreground">
+                    สูงสุด {MAX_IMAGES_PER_STAGE} รูป • บีบอัดอัตโนมัติ
+                  </span>
                 </div>
+                {form.picBeforeImages.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {form.picBeforeImages.map((src, idx) => (
+                      <div
+                        key={`${idx}-${src.slice(0, 24)}`}
+                        className="group relative aspect-square overflow-hidden rounded-md border"
+                      >
+                        <img
+                          src={src}
+                          alt={`รูปก่อนซ่อม ${idx + 1}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removePicBefore(idx)}
+                          className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white opacity-100 transition-opacity hover:bg-rose-600"
+                          aria-label={`ลบรูปที่ ${idx + 1}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                          {idx + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1632,6 +1786,177 @@ function WorkOrderDetailContent({
   })
   const partsList: PartsTransaction[] = partsQuery.data?.data ?? []
   const partsSummary = partsQuery.data?.summary
+
+  // ── Multi-image (WorkOrderImage) — grouped by stage ──
+  const imagesQuery = useQuery<ImagesGroupedResponse>({
+    queryKey: ['wo-images', wo.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/work-orders/${wo.id}/images`)
+      if (!res.ok) throw new Error('Failed to load images')
+      return res.json()
+    },
+  })
+  const imagesGrouped = imagesQuery.data?.grouped ?? {
+    before: [],
+    onsite: [],
+    after: [],
+  }
+  // Mirror legacy single-picAfter into the "after" group so old WOs still
+  // show their picAfter image even if no WorkOrderImage row exists.
+  const afterImages: WorkOrderImage[] = React.useMemo(() => {
+    if (imagesGrouped.after.length > 0) return imagesGrouped.after
+    if (wo.picAfter) {
+      return [
+        {
+          id: `legacy-after-${wo.id}`,
+          workOrderId: wo.id,
+          stage: 'after',
+          image_data: wo.picAfter,
+          fileName: null,
+          uploadedBy: null,
+          createdAt: wo.updatedAt,
+        },
+      ]
+    }
+    return []
+  }, [imagesGrouped.after, wo.id, wo.picAfter, wo.updatedAt])
+  // Mirror legacy picBefore / picOnsite too.
+  const beforeImages: WorkOrderImage[] = React.useMemo(() => {
+    if (imagesGrouped.before.length > 0) return imagesGrouped.before
+    if (wo.picBefore) {
+      return [
+        {
+          id: `legacy-before-${wo.id}`,
+          workOrderId: wo.id,
+          stage: 'before',
+          image_data: wo.picBefore,
+          fileName: null,
+          uploadedBy: null,
+          createdAt: wo.createdAt,
+        },
+      ]
+    }
+    return []
+  }, [imagesGrouped.before, wo.id, wo.picBefore, wo.createdAt])
+  const onsiteImages: WorkOrderImage[] = React.useMemo(() => {
+    if (imagesGrouped.onsite.length > 0) return imagesGrouped.onsite
+    if (wo.picOnsite) {
+      return [
+        {
+          id: `legacy-onsite-${wo.id}`,
+          workOrderId: wo.id,
+          stage: 'onsite',
+          image_data: wo.picOnsite,
+          fileName: null,
+          uploadedBy: null,
+          createdAt: wo.updatedAt,
+        },
+      ]
+    }
+    return []
+  }, [imagesGrouped.onsite, wo.id, wo.picOnsite, wo.updatedAt])
+
+  // Image upload state — single hidden input reused for whichever stage
+  // the user clicks "เพิ่มรูป" on.
+  const stageFileInputRef = React.useRef<HTMLInputElement>(null)
+  const [activeStage, setActiveStage] = React.useState<
+    'before' | 'onsite' | 'after' | null
+  >(null)
+  const [imgBusy, setImgBusy] = React.useState(false)
+  const [lightboxSrc, setLightboxSrc] = React.useState<string | null>(null)
+  const [deletingImgId, setDeletingImgId] = React.useState<string | null>(null)
+
+  function triggerUpload(stage: 'before' | 'onsite' | 'after') {
+    setActiveStage(stage)
+    // Defer the click to the next tick so React has a chance to set activeStage
+    // (not strictly required, but safer).
+    setTimeout(() => stageFileInputRef.current?.click(), 0)
+  }
+
+  async function handleStageImageChange(
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const files = e.target.files
+    const stage = activeStage
+    if (!files || files.length === 0 || !stage) return
+    try {
+      setImgBusy(true)
+      const existingCount =
+        stage === 'before'
+          ? beforeImages.length
+          : stage === 'onsite'
+            ? onsiteImages.length
+            : afterImages.length
+      const remaining = MAX_IMAGES_PER_STAGE - existingCount
+      if (remaining <= 0) {
+        toast.error(`เพิ่มรูปได้สูงสุด ${MAX_IMAGES_PER_STAGE} รูปต่อขั้นตอน`)
+        return
+      }
+      const list = Array.from(files).slice(0, remaining)
+      let added = 0
+      for (const f of list) {
+        try {
+          const dataUrl = await compressImage(f)
+          const res = await fetch(`/api/work-orders/${wo.id}/images`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              stage,
+              image_data: dataUrl,
+              fileName: f.name,
+              uploadedBy: 'admin',
+            }),
+          })
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}))
+            throw new Error(j.error ?? 'อัปโหลดรูปไม่สำเร็จ')
+          }
+          added++
+        } catch (err) {
+          toast.error(
+            err instanceof Error ? err.message : 'อัปโหลดรูปไม่สำเร็จ',
+          )
+        }
+      }
+      if (added > 0) {
+        toast.success(`เพิ่มรูป ${stage} แล้ว ${added} รูป`)
+        qc.invalidateQueries({ queryKey: ['wo-images', wo.id] })
+        onMutated()
+      }
+    } finally {
+      setImgBusy(false)
+      setActiveStage(null)
+      if (stageFileInputRef.current) stageFileInputRef.current.value = ''
+    }
+  }
+
+  async function handleDeleteImage(img: WorkOrderImage) {
+    // Legacy mirror images can't be deleted through this endpoint — they live
+    // on the WorkOrder row itself.
+    if (img.id.startsWith('legacy-')) {
+      toast.error('รูปนี้เป็นข้อมูลเดิม — ใช้การแก้ไขใบงานเพื่อลบ')
+      return
+    }
+    if (!confirm(`ลบรูป (${img.stage}) ใช่ไหม?`)) return
+    try {
+      setDeletingImgId(img.id)
+      const res = await fetch(
+        `/api/work-orders/${wo.id}/images?imageId=${encodeURIComponent(img.id)}`,
+        { method: 'DELETE' },
+      )
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'ลบรูปไม่สำเร็จ')
+      }
+      toast.success('ลบรูปแล้ว')
+      qc.invalidateQueries({ queryKey: ['wo-images', wo.id] })
+      onMutated()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ลบรูปไม่สำเร็จ')
+    } finally {
+      setDeletingImgId(null)
+    }
+  }
 
   React.useEffect(() => {
     if (partsOpen) {
@@ -2420,20 +2745,61 @@ function WorkOrderDetailContent({
             )}
           </div>
 
-          {/* Images */}
-          {(wo.picBefore || wo.picOnsite || wo.picAfter) && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                <ImageIcon className="h-3.5 w-3.5" />
-                รูปภาพ
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <WoImage label="ก่อน" src={wo.picBefore} />
-                <WoImage label="ระหว่าง" src={wo.picOnsite} />
-                <WoImage label="หลัง" src={wo.picAfter} />
-              </div>
+          {/* Images — grouped by stage, multi-image per stage */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+              <ImageIcon className="h-3.5 w-3.5" />
+              รูปภาพแยกตามขั้นตอน
+              {imagesQuery.isFetching && (
+                <RefreshCw className="ml-1 h-3 w-3 animate-spin" />
+              )}
             </div>
-          )}
+            {/* Hidden input reused for all 3 stages. `multiple` + `capture`
+                let mobile browsers open the back camera directly. */}
+            <input
+              ref={stageFileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              multiple
+              onChange={handleStageImageChange}
+              className="hidden"
+              aria-hidden
+            />
+            <WoImageStageGroup
+              label="ก่อนซ่อม"
+              stageKey="before"
+              images={beforeImages}
+              onAdd={() => triggerUpload('before')}
+              onView={(src) => setLightboxSrc(src)}
+              onDelete={(img) => handleDeleteImage(img)}
+              deletingId={deletingImgId}
+              busy={imgBusy && activeStage === 'before'}
+              canAdd={true}
+            />
+            <WoImageStageGroup
+              label="หน้างาน / ระหว่างซ่อม"
+              stageKey="onsite"
+              images={onsiteImages}
+              onAdd={() => triggerUpload('onsite')}
+              onView={(src) => setLightboxSrc(src)}
+              onDelete={(img) => handleDeleteImage(img)}
+              deletingId={deletingImgId}
+              busy={imgBusy && activeStage === 'onsite'}
+              canAdd={true}
+            />
+            <WoImageStageGroup
+              label="หลังซ่อมเสร็จ"
+              stageKey="after"
+              images={afterImages}
+              onAdd={() => triggerUpload('after')}
+              onView={(src) => setLightboxSrc(src)}
+              onDelete={(img) => handleDeleteImage(img)}
+              deletingId={deletingImgId}
+              busy={imgBusy && activeStage === 'after'}
+              canAdd={true}
+            />
+          </div>
 
           {/* Timeline */}
           <div className="space-y-2">
@@ -3141,6 +3507,40 @@ function WorkOrderDetailContent({
         woNumber={wo.woNumber}
         fixedTemplateId={wo.printTemplateId ?? null}
       />
+
+      {/* ── Image lightbox (full-size view) ── */}
+      <Dialog
+        open={Boolean(lightboxSrc)}
+        onOpenChange={(v) => {
+          if (!v) setLightboxSrc(null)
+        }}
+      >
+        <DialogContent className="max-h-[92vh] max-w-[92vw] overflow-hidden border-none bg-black/95 p-0 sm:max-w-[1000px]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>ดูภาพเต็มขนาด</DialogTitle>
+            <DialogDescription>
+              คลิกนอกภาพหรือกด Esc เพื่อปิด
+            </DialogDescription>
+          </DialogHeader>
+          {lightboxSrc && (
+            <div className="relative flex max-h-[92vh] items-center justify-center">
+              <img
+                src={lightboxSrc}
+                alt="รูปภาพเต็มขนาด"
+                className="max-h-[92vh] max-w-full object-contain"
+              />
+              <button
+                type="button"
+                onClick={() => setLightboxSrc(null)}
+                className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                aria-label="ปิด"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -3210,33 +3610,137 @@ function InfoRow({
   )
 }
 
-function WoImage({
+function WoImageStageGroup({
   label,
-  src,
+  stageKey,
+  images,
+  onAdd,
+  onView,
+  onDelete,
+  deletingId,
+  busy,
+  canAdd,
 }: {
   label: string
-  src: string | null
+  stageKey: 'before' | 'onsite' | 'after'
+  images: WorkOrderImage[]
+  onAdd: () => void
+  onView: (src: string) => void
+  onDelete: (img: WorkOrderImage) => void
+  deletingId: string | null
+  busy: boolean
+  canAdd: boolean
 }) {
-  if (!src) {
-    return (
-      <div className="flex aspect-square flex-col items-center justify-center rounded-md border border-dashed text-[10px] text-muted-foreground">
-        <ImageIcon className="mb-1 h-5 w-5 opacity-40" />
-        {label}
-      </div>
-    )
-  }
-  // If src is base64 or URL, render img
+  const full = images.length >= MAX_IMAGES_PER_STAGE
   return (
-    <div className="relative aspect-square overflow-hidden rounded-md border">
-      <img
-        src={src}
-        alt={label}
-        className="h-full w-full object-cover"
-        loading="lazy"
-      />
-      <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
-        {label}
-      </span>
+    <div className="rounded-lg border bg-card p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-xs font-semibold">
+          <span
+            className={`inline-block h-2 w-2 rounded-full ${
+              stageKey === 'before'
+                ? 'bg-amber-500'
+                : stageKey === 'onsite'
+                  ? 'bg-blue-500'
+                  : 'bg-emerald-500'
+            }`}
+            aria-hidden
+          />
+          {label}
+          <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            {images.length}/{MAX_IMAGES_PER_STAGE}
+          </span>
+        </div>
+        {canAdd && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onAdd}
+            disabled={busy || full}
+            className="h-7 px-2 text-[11px]"
+          >
+            {busy ? (
+              <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+            ) : (
+              <Plus className="mr-1 h-3 w-3" />
+            )}
+            เพิ่มรูป
+          </Button>
+        )}
+      </div>
+      {images.length === 0 ? (
+        <div className="rounded-md border border-dashed px-3 py-4 text-center text-[11px] text-muted-foreground">
+          ยังไม่มีรูปในขั้นตอนนี้
+          {canAdd && ' — กด "เพิ่มรูป" เพื่ออัปโหลด'}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {images.map((img) => {
+            const isDeleting = deletingId === img.id
+            const isLegacy = img.id.startsWith('legacy-')
+            return (
+              <div
+                key={img.id}
+                className="group relative aspect-square overflow-hidden rounded-md border bg-muted/30"
+              >
+                <button
+                  type="button"
+                  onClick={() => onView(img.image_data)}
+                  className="absolute inset-0 h-full w-full"
+                  aria-label={`ดารูป${label}ขนาดเต็ม`}
+                  title="ดูภาพเต็มขนาด"
+                >
+                  <img
+                    src={img.image_data}
+                    alt={`${label} ${img.fileName ?? ''}`}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                </button>
+                {/* Hover toolbar */}
+                <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-end gap-1 bg-gradient-to-b from-black/60 to-transparent p-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onView(img.image_data)
+                    }}
+                    className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                    aria-label="ดูภาพเต็มขนาด"
+                    title="ดูภาพเต็มขนาด"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </button>
+                  {!isLegacy && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDelete(img)
+                      }}
+                      disabled={isDeleting}
+                      className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-rose-600 disabled:opacity-50"
+                      aria-label="ลบรูป"
+                      title="ลบรูป"
+                    >
+                      {isDeleting ? (
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  )}
+                </div>
+                <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                  {img.fileName ?? label}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
+
