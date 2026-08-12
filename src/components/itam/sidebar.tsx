@@ -31,6 +31,7 @@ const NAV_ITEMS: NavItemDef[] = [
   { page: 'itam-meter-keyboard', icon: '⌨️', label: 'จดมิเตอร์ (Keyboard)' },
   { page: 'itam-paper-analytics', icon: '📄', label: 'ITAM กระดาษ' },
   { page: 'itam-sticker-editor', icon: '🎨', label: 'สติกเกอร์' },
+  { page: 'itam-document-editor', icon: '📄', label: 'เอกสาร PDF' },
   { page: 'itam-settings', icon: '⚙️', label: 'ITAM ตั้งค่า' },
   { page: 'itam-audit', icon: '📜', label: 'ITAM ประวัติ' },
   { page: 'devices', icon: '💻', label: 'จัดการอุปกรณ์' },

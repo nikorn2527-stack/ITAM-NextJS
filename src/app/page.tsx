@@ -15,6 +15,7 @@ import { ItamDevices } from '@/components/itam/itam-devices'
 import { ItamMeter } from '@/components/itam/itam-meter'
 import { ItamMeterKeyboard } from '@/components/itam/itam-meter-keyboard'
 import { ItamStickerEditor } from '@/components/itam/itam-sticker-editor'
+import { ItamDocumentEditor } from '@/components/itam/itam-document-editor'
 import { ItamSettings } from '@/components/itam/itam-settings'
 import { ItamAudit } from '@/components/itam/itam-audit'
 import { ItamLogin } from '@/components/itam/itam-login'
@@ -112,6 +113,7 @@ export default function Home() {
                 {activePage === 'itam-meter' && <ItamMeter />}
                 {activePage === 'itam-meter-keyboard' && <ItamMeterKeyboard />}
                 {activePage === 'itam-sticker-editor' && <ItamStickerEditor />}
+                {activePage === 'itam-document-editor' && <ItamDocumentEditor />}
                 {activePage === 'itam-paper-analytics' && <ItamPaperAnalytics />}
                 {activePage === 'itam-settings' && <ItamSettings />}
                 {activePage === 'itam-audit' && <ItamAudit />}
