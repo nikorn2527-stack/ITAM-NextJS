@@ -1,5 +1,5 @@
 {
-  "buildCommand": "next build",
+  "buildCommand": "npx prisma generate && next build",
   "framework": "nextjs",
   "github": {
     "silent": true
