@@ -1,0 +1,1079 @@
+     1→     1→/**
+     2→     2→ * ================================================================
+     3→     3→ *  AnalyticsService.gs — Dashboard + Paper Analytics
+     4→     4→ *  ใช้ Cached readers ป้องกันอ่าน Sheet ซ้ำ
+     5→     5→ * ================================================================
+     6→     6→ */
+     7→     7→
+     8→     8→function incrementUsageGroup(group, key, pages, deviceCountMap, assetNo) {
+     9→     9→  if (!group[key]) group[key] = { pages:0, devices:0, deviceSet:{} };
+    10→    10→  group[key].pages += pages;
+    11→    11→  if (!group[key].deviceSet[assetNo]) { group[key].deviceSet[assetNo]=true; group[key].devices++; }
+    12→    12→}
+    13→    13→
+    14→    14→function toUsageArray(groupMap, limit) {
+    15→    15→  return Object.keys(groupMap).map(function(k){return {name:k, pages:Math.round(groupMap[k].pages), devices:groupMap[k].devices};})
+    16→    16→    .sort(function(a,b){return b.pages-a.pages;}).slice(0, limit||999);
+    17→    17→}
+    18→    18→
+    19→    19→function getPaperUsageStats(devices, meterRows, authToken) {
+    20→    20→  var allowedSites = getUserAllowedSites(authToken);
+    21→    21→  var isSuper = allowedSites.includes('ALL');
+    22→    22→  var deviceMap = {};
+    23→    23→  (devices||[]).forEach(function(d){deviceMap[formatAssetNo(d.AssetNo)]=d;});
+    24→    24→
+    25→    25→  var rows = (meterRows||readMeterRowsCached()).filter(function(r){
+    26→    26→    // ✨ FIX: ข้าม INITIAL/RESET (ไม่มี pages) + FINAL/SEND_REPAIR/CHECKOUT (lifecycle event, ไม่ใช่รายเดือน)
+    27→    27→    var rt = String(r.Reading_Type||'').trim().toUpperCase();
+    28→    28→    if (rt==='INITIAL'||rt==='RESET'||rt==='FINAL'||rt==='SEND_REPAIR'||rt==='CHECKOUT') return false;
+    29→    29→    var assetNo=formatAssetNo(r.Asset_No);
+    30→    30→    var device=deviceMap[assetNo];
+    31→    31→    if (!isSuper && !device) return false;
+    32→    32→    if (!isSuper && device) {
+    33→    33→      var rowSite=device.Site||r.Site_At_Reading||'';
+    34→    34→      if (!allowedSites.includes(rowSite)) return false;
+    35→    35→    }
+    36→    36→    return true;
+    37→    37→  }).map(function(r){
+    38→    38→    var d=deviceMap[formatAssetNo(r.Asset_No)]||{};
+    39→    39→    return { assetNo:formatAssetNo(r.Asset_No), month:normalizeReadingMonth(r.Reading_Month||r.Reading_Date),
+    40→    40→      pages:parseNumberValue(r.Pages_BW)+parseNumberValue(r.Pages_Color), brand:d.Brand||'', model:d.Model||'',
+    41→    41→      building:d.Building||'', floor:d.Floor||'', department:d.Department||'', departmentCode:d.DepartmentCode||'',
+    42→    42→      site:d.Site||'', serial:d.Serial||'', location:d.Location||'', readingType:r.Reading_Type||'',
+    43→    43→      buildingFloor:(d.Building||'')+(d.Floor?' / ชั้น '+d.Floor:'') };
+    44→    44→  });
+    45→    45→
+    46→    46→  var byMonth={}, byDept={}, byBF={}, byDevice={};
+    47→    47→  var allMonths={};
+    48→    48→  rows.forEach(function(r){
+    49→    49→    var m=r.month; if(!m)return;
+    50→    50→    allMonths[m]=true;
+    51→    51→    incrementUsageGroup(byMonth, m, r.pages, null, r.assetNo);
+    52→    52→    var deptKey=r.departmentCode||r.department||'ไม่ระบุ';
+    53→    53→    incrementUsageGroup(byDept, deptKey, r.pages, null, r.assetNo);
+    54→    54→    incrementUsageGroup(byBF, r.buildingFloor||'ไม่ระบุ', r.pages, null, r.assetNo);
+    55→    55→    incrementUsageGroup(byDevice, r.assetNo, r.pages, null, r.assetNo);
+    56→    56→  });
+    57→    57→
+    58→    58→  var months = Object.keys(allMonths).sort();
+    59→    59→  var totalPages = rows.reduce(function(s,r){return s+r.pages;},0);
+    60→    60→  var latestMonth = months.length?months[months.length-1]:'';
+    61→    61→  var prevMonth = months.length>1?months[months.length-2]:'';
+    62→    62→  var latestPages = latestMonth?(byMonth[latestMonth]||{}).pages||0:0;
+    63→    63→  var prevPages = prevMonth?(byMonth[prevMonth]||{}).pages||0:0;
+    64→    64→  var momChange = (latestMonth && prevMonth && prevPages>0) ? Math.round((latestPages-prevPages)/prevPages*1000)/10 : null;
+    65→    65→
+    66→    66→  return {
+    67→    67→    totalPages: Math.round(totalPages), latestMonth:latestMonth, latestMonthPages:Math.round(latestPages),
+    68→    68→    momChange:momChange, avgPages:months.length?Math.round(totalPages/months.length):0,
+    69→    69→    monthlyTrend: months.map(function(m){return {month:m, pages:Math.round((byMonth[m]||{}).pages||0)};}),
+    70→    70→    byDepartment: toUsageArray(byDept, 10).map(function(d){return {name:d.name, pages:d.pages, devices:d.devices};}),
+    71→    71→    byBuildingFloor: toUsageArray(byBF, 10),
+    72→    72→    topDept: toUsageArray(byDept,1)[0]||null,
+    73→    73→    topDevice: null,
+    74→    74→    detailRows: rows
+    75→    75→  };
+    76→    76→}
+    77→    77→
+    78→    78→
+    79→    79→function getDashboardStats(authToken) {
+    80→    80→  try {
+    81→    81→    rcClear();
+    82→    82→    var cache = CacheService.getScriptCache();
+    83→    83→    var safeToken = authToken ? String(authToken).substring(0,15) : 'guest';
+    84→    84→    var cacheKey = 'dashboard_v15_'+safeToken;
+    85→    85→    try { var c=cache.get(cacheKey); if(c) return JSON.parse(c); } catch(e){}
+    86→    86→
+    87→    87→    var devices = getAllDevicesCached(authToken);
+    88→    88→    var total=devices.length;
+    89→    89→    var active=devices.filter(function(d){return d.Status==='Active';}).length;
+    90→    90→    var byType={}, byBuilding={}, byStatus={};
+    91→    91→    // ✨ ข้อ 3: bySite — แยกจำนวนอุปกรณ์ + สถานะ + จดมิเตอร์ครบ ตามแต่ละ Site
+    92→    92→    var bySite = {};
+    93→    93→    devices.forEach(function(d){
+    94→    94→      var t=d.Type||'ไม่ระบุ', b=d.Building||'ไม่ระบุ', s=d.Status||'ไม่ระบุ';
+    95→    95→      var site=d.Site||'ไม่ระบุ';
+    96→    96→      byType[t]=(byType[t]||0)+1; byBuilding[b]=(byBuilding[b]||0)+1; byStatus[s]=(byStatus[s]||0)+1;
+    97→    97→      if (!bySite[site]) bySite[site] = { total:0, active:0, byStatus:{} };
+    98→    98→      bySite[site].total++;
+    99→    99→      if (s === 'Active') bySite[site].active++;
+   100→   100→      bySite[site].byStatus[s] = (bySite[site].byStatus[s]||0) + 1;
+   101→   101→    });
+   102→   102→
+   103→   103→    // ✨ Phase: โหลด paper usage เฉพาะเดือนปัจจุบัน (เร็วกว่าโหลดทั้ง 14,000 rows)
+   104→   104→    var nowMonth = Utilities.formatDate(new Date(),CONFIG.TIMEZONE,'yyyy-MM');
+   105→   105→    var paperUsage = {};
+   106→   106→    try {
+   107→   107→      paperUsage = getPaperUsageStatsFast(devices, nowMonth, authToken);
+   108→   108→    } catch(pe) {
+   109→   109→      // ✨ ถ้า paper usage พัง → ไม่ทำให้ทั้ง dashboard พัง — ส่ง empty object
+   110→   110→      console.warn('getPaperUsageStatsFast error (non-fatal): ' + pe.message);
+   111→   111→      paperUsage = { latestMonth: '', latestMonthPages: 0, detailRows: [], byDepartment: [], byBuildingFloor: [], monthlyTrend: [], insights: [], meterCompleteness: { readCount: 0, activeCount: 0, percent: 0 } };
+   112→   112→    }
+   113→   113→
+   114→   114→    // ✨ ข้อ 3: เพิ่ม meter completeness by Site ใช้ข้อมูลจาก paperUsage.meterCompleteness.devicesWithReading
+   115→   115→    var completenessMonth = (paperUsage.meterCompleteness && paperUsage.meterCompleteness.month) || nowMonth;
+   116→   116→    var devicesWithReadingSet = (paperUsage.meterCompleteness && paperUsage.meterCompleteness.devicesWithReading) || {};
+   117→   117→    Object.keys(bySite).forEach(function(site){
+   118→   118→      var siteDevices = devices.filter(function(d){ return (d.Site||'ไม่ระบุ') === site; });
+   119→   119→      var siteMeterRequired = 0;
+   120→   120→      var siteRead = 0;
+   121→   121→      siteDevices.forEach(function(d){
+   122→   122→        if (d.Status === 'Active' && typeof isMeterRequiredDevice === 'function' && isMeterRequiredDevice(d)) {
+   123→   123→          siteMeterRequired++;
+   124→   124→          if (devicesWithReadingSet[formatAssetNo(d.AssetNo)]) siteRead++;
+   125→   125→        }
+   126→   126→      });
+   127→   127→      bySite[site].meterRequired = siteMeterRequired;
+   128→   128→      bySite[site].meterRead = siteRead;
+   129→   129→      bySite[site].meterPercent = siteMeterRequired > 0 ? Math.round(siteRead / siteMeterRequired * 1000) / 10 : 0;
+   130→   130→      bySite[site].meterRemaining = siteMeterRequired - siteRead;
+   131→   131→    });
+   132→   132→
+   133→   133→    var result = { total:total, active:active, inactive:total-active, byType:byType, byBuilding:byBuilding, byStatus:byStatus, bySite:bySite, paperUsage:paperUsage };
+   134→   134→    try { cache.put(cacheKey, JSON.stringify(result), CONFIG.DASHBOARD_CACHE_TTL); } catch(e){}
+   135→   135→    return result;
+   136→   136→  } catch(e) { throw new Error('getDashboardStats error: '+e.message); }
+   137→   137→}
+   138→   138→
+   139→   139→// ✨ ข้อ 2: getDashboardStatsForMonth — สำหรับ reload เฉพาะ meter stats ตามเดือนที่เลือก
+   140→   140→//   เหมือน getDashboardStats แต่รับ month parameter และไม่ cache (เพราะเป็น on-demand)
+   141→   141→function getDashboardStatsForMonth(month, authToken) {
+   142→   142→  try {
+   143→   143→    rcClear();
+   144→   144→    if (!month) month = Utilities.formatDate(new Date(),CONFIG.TIMEZONE,'yyyy-MM');
+   145→   145→    var devices = getAllDevicesCached(authToken);
+   146→   146→    var total=devices.length;
+   147→   147→    var active=devices.filter(function(d){return d.Status==='Active';}).length;
+   148→   148→    var byType={}, byBuilding={}, byStatus={};
+   149→   149→    var bySite = {};
+   150→   150→    devices.forEach(function(d){
+   151→   151→      var t=d.Type||'ไม่ระบุ', b=d.Building||'ไม่ระบุ', s=d.Status||'ไม่ระบุ';
+   152→   152→      var site=d.Site||'ไม่ระบุ';
+   153→   153→      byType[t]=(byType[t]||0)+1; byBuilding[b]=(byBuilding[b]||0)+1; byStatus[s]=(byStatus[s]||0)+1;
+   154→   154→      if (!bySite[site]) bySite[site] = { total:0, active:0, byStatus:{} };
+   155→   155→      bySite[site].total++;
+   156→   156→      if (s === 'Active') bySite[site].active++;
+   157→   157→      bySite[site].byStatus[s] = (bySite[site].byStatus[s]||0) + 1;
+   158→   158→    });
+   159→   159→    var paperUsage = {};
+   160→   160→    try {
+   161→   161→      paperUsage = getPaperUsageStatsFast(devices, month, authToken);
+   162→   162→    } catch(pe) {
+   163→   163→      console.warn('getPaperUsageStatsFast error (non-fatal): ' + pe.message);
+   164→   164→      paperUsage = { latestMonth: '', latestMonthPages: 0, detailRows: [], byDepartment: [], byBuildingFloor: [], monthlyTrend: [], insights: [], meterCompleteness: { readCount: 0, activeCount: 0, percent: 0 } };
+   165→   165→    }
+   166→   166→    var completenessMonth = (paperUsage.meterCompleteness && paperUsage.meterCompleteness.month) || month;
+   167→   167→    var devicesWithReadingSet = (paperUsage.meterCompleteness && paperUsage.meterCompleteness.devicesWithReading) || {};
+   168→   168→    Object.keys(bySite).forEach(function(site){
+   169→   169→      var siteDevices = devices.filter(function(d){ return (d.Site||'ไม่ระบุ') === site; });
+   170→   170→      var siteMeterRequired = 0;
+   171→   171→      var siteRead = 0;
+   172→   172→      siteDevices.forEach(function(d){
+   173→   173→        if (d.Status === 'Active' && typeof isMeterRequiredDevice === 'function' && isMeterRequiredDevice(d)) {
+   174→   174→          siteMeterRequired++;
+   175→   175→          if (devicesWithReadingSet[formatAssetNo(d.AssetNo)]) siteRead++;
+   176→   176→        }
+   177→   177→      });
+   178→   178→      bySite[site].meterRequired = siteMeterRequired;
+   179→   179→      bySite[site].meterRead = siteRead;
+   180→   180→      bySite[site].meterPercent = siteMeterRequired > 0 ? Math.round(siteRead / siteMeterRequired * 1000) / 10 : 0;
+   181→   181→      bySite[site].meterRemaining = siteMeterRequired - siteRead;
+   182→   182→    });
+   183→   183→    var result = { total:total, active:active, inactive:total-active, byType:byType, byBuilding:byBuilding, byStatus:byStatus, bySite:bySite, paperUsage:paperUsage };
+   184→   184→    return result;
+   185→   185→  } catch(e) { throw new Error('getDashboardStatsForMonth error: '+e.message); }
+   186→   186→}
+   187→   187→
+   188→   188→// ✨ เวอร์ชันเร็ว — กรองเฉพาะเดือนปัจจุบัน + เดือนก่อนหน้า (เทียบ MoM)
+   189→   189→// ✨ Phase: เพิ่ม cost analytics (BW/Color split + rate per site) + Top 10 devices + completeness + YoY
+   190→   190→function getPaperUsageStatsFast(devices, currentMonth, authToken) {
+   191→   191→  var allowedSites = getUserAllowedSites(authToken);
+   192→   192→  var isSuper = allowedSites.includes('ALL');
+   193→   193→  var deviceMap = {};
+   194→   194→  (devices||[]).forEach(function(d){deviceMap[formatAssetNo(d.AssetNo)]=d;});
+   195→   195→
+   196→   196→  // ✨ กรองเฉพาะเดือนปัจจุบัน + เดือนก่อนหน้า (ไม่อ่านทั้ง 14,000)
+   197→   197→  var prevMonth = '';
+   198→   198→  var ym = currentMonth.split('-');
+   199→   199→  if (ym.length===2) {
+   200→   200→    var y=parseInt(ym[0],10), m=parseInt(ym[1],10);
+   201→   201→    var pm = m-1; if (pm<1) {pm=12; y--;}
+   202→   202→    prevMonth = y+'-'+String(pm).padStart(2,'0');
+   203→   203→  }
+   204→   204→
+   205→   205→  // ✨ YoY: เดือนเดียวกันของปีก่อน
+   206→   206→  var yoyMonth = '';
+   207→   207→  if (ym.length===2) {
+   208→   208→    var yoyY = parseInt(ym[0],10) - 1;
+   209→   209→    yoyMonth = yoyY + '-' + ym[1];
+   210→   210→  }
+   211→   211→
+   212→   212→  var rows = readMeterRowsCached().filter(function(r){
+   213→   213→    // ✨ FIX: ข้าม INITIAL/RESET (ไม่มี pages) + FINAL/SEND_REPAIR/CHECKOUT (lifecycle event)
+   214→   214→    var rt = String(r.Reading_Type||'').trim().toUpperCase();
+   215→   215→    if (rt==='INITIAL'||rt==='RESET'||rt==='FINAL'||rt==='SEND_REPAIR'||rt==='CHECKOUT') return false;
+   216→   216→    var rowMonth = normalizeReadingMonth(r.Reading_Month||r.Reading_Date);
+   217→   217→    if (rowMonth !== currentMonth && rowMonth !== prevMonth && rowMonth !== yoyMonth) return false; // ✨ 3 เดือน: current + prev + YoY
+   218→   218→    var assetNo=formatAssetNo(r.Asset_No);
+   219→   219→    var device=deviceMap[assetNo];
+   220→   220→    if (!isSuper && !device) return false;
+   221→   221→    if (!isSuper && device) {
+   222→   222→      var rowSite=device.Site||r.Site_At_Reading||'';
+   223→   223→      if (!allowedSites.includes(rowSite)) return false;
+   224→   224→    }
+   225→   225→    return true;
+   226→   226→  }).map(function(r){
+   227→   227→    var d=deviceMap[formatAssetNo(r.Asset_No)]||{};
+   228→   228→    var pagesBW = parseNumberValue(r.Pages_BW);
+   229→   229→    var pagesColor = parseNumberValue(r.Pages_Color);
+   230→   230→    var siteName = d.Site || r.Site_At_Reading || '';
+   231→   231→    // ✨ คำนวณ cost ด้วย effective rate ของ site นั้น
+   232→   232→    var bwRate = siteName ? getEffectivePaperRate(siteName, 'BW') : getEffectivePaperRate(null, 'BW');
+   233→   233→    var colorRate = siteName ? getEffectivePaperRate(siteName, 'Color') : getEffectivePaperRate(null, 'Color');
+   234→   234→    var costBW = pagesBW * bwRate;
+   235→   235→    var costColor = pagesColor * colorRate;
+   236→   236→    return { assetNo:formatAssetNo(r.Asset_No), month:normalizeReadingMonth(r.Reading_Month||r.Reading_Date),
+   237→   237→      pages: pagesBW + pagesColor, pagesBW: pagesBW, pagesColor: pagesColor,
+   238→   238→      costBW: costBW, costColor: costColor, costTotal: costBW + costColor,
+   239→   239→      bwRate: bwRate, colorRate: colorRate,
+   240→   240→      brand:d.Brand||'', model:d.Model||'',
+   241→   241→      building:d.Building||'', floor:d.Floor||'', department:d.Department||'', departmentCode:d.DepartmentCode||'',
+   242→   242→      site: siteName, serial:d.Serial||'', location:d.Location||'', readingType:r.Reading_Type||'',
+   243→   243→      buildingFloor:(d.Building||'')+(d.Floor?' / ชั้น '+d.Floor:'') };
+   244→   244→  });
+   245→   245→
+   246→   246→  var byMonth={}, byDept={}, byBF={}, byDevice={};
+   247→   247→  var byMonthBW={}, byMonthColor={}, byMonthCost={};
+   248→   248→  var allMonths={};
+   249→   249→  // ✨ Top device tracking — เก็บข้อมูลละเอียดสำหรับ Top 10
+   250→   250→  var topDeviceMap = {};
+   251→   251→  rows.forEach(function(r){
+   252→   252→    var m=r.month; if(!m)return;
+   253→   253→    allMonths[m]=true;
+   254→   254→    incrementUsageGroup(byMonth, m, r.pages, null, r.assetNo);
+   255→   255→    incrementUsageGroup(byMonthBW, m, r.pagesBW, null, r.assetNo);
+   256→   256→    incrementUsageGroup(byMonthColor, m, r.pagesColor, null, r.assetNo);
+   257→   257→    incrementUsageGroup(byMonthCost, m, r.costTotal, null, r.assetNo);
+   258→   258→    var deptKey=r.departmentCode||r.department||'ไม่ระบุ';
+   259→   259→    incrementUsageGroup(byDept, deptKey, r.pages, null, r.assetNo);
+   260→   260→    incrementUsageGroup(byBF, r.buildingFloor||'ไม่ระบุ', r.pages, null, r.assetNo);
+   261→   261→    incrementUsageGroup(byDevice, r.assetNo, r.pages, null, r.assetNo);
+   262→   262→    // ✨ Top device: aggregate cost + BW + Color + site + brand/model
+   263→   263→    //    ใช้ latestMonth แทน currentMonth (เพราะ currentMonth อาจยังไม่มีข้อมูล)
+   264→   264→    //    latestMonth ยังไม่ถูกคำนวณตอนนี้ → เก็บไว้ใน temp map แล้วกรองทีหลัง
+   265→   265→    if (!topDeviceMap[r.assetNo]) {
+   266→   266→      topDeviceMap[r.assetNo] = {
+   267→   267→        assetNo: r.assetNo, brand: r.brand, model: r.model, site: r.site,
+   268→   268→        building: r.building, floor: r.floor, department: r.department,
+   269→   269→        buildingFloor: r.buildingFloor, serial: r.serial,
+   270→   270→        pages: 0, pagesBW: 0, pagesColor: 0, costTotal: 0,
+   271→   271→        _months: {}  // track which months this device has data
+   272→   272→      };
+   273→   273→    }
+   274→   274→    topDeviceMap[r.assetNo].pages += r.pages;
+   275→   275→    topDeviceMap[r.assetNo].pagesBW += r.pagesBW;
+   276→   276→    topDeviceMap[r.assetNo].pagesColor += r.pagesColor;
+   277→   277→    topDeviceMap[r.assetNo].costTotal += r.costTotal;
+   278→   278→    topDeviceMap[r.assetNo]._months[r.month] = true;
+   279→   279→  });
+   280→   280→
+   281→   281→  var months = Object.keys(allMonths).sort();
+   282→   282→  var totalPages = rows.reduce(function(s,r){return s+r.pages;},0);
+   283→   283→  var latestMonth = months.length?months[months.length-1]:'';
+   284→   284→  var prevMonthIdx = months.length>1?months[months.length-2]:'';
+   285→   285→  var latestPages = latestMonth?(byMonth[latestMonth]||{}).pages||0:0;
+   286→   286→  var prevPages = prevMonthIdx?(byMonth[prevMonthIdx]||{}).pages||0:0;
+   287→   287→  var momChange = (latestMonth && prevMonthIdx && prevPages>0) ? Math.round((latestPages-prevPages)/prevPages*1000)/10 : null;
+   288→   288→
+   289→   289→  // ✨ Filter topDeviceMap — เก็บเฉพาะ devices ที่มีข้อมูลใน latestMonth
+   290→   290→  //    และ reset ค่า pages/cost ให้เป็นเฉพาะเดือน latestMonth (ไม่รวมเดือนอื่น)
+   291→   291→  var topDeviceLatestMap = {};
+   292→   292→  if (latestMonth) {
+   293→   293→    rows.forEach(function(r) {
+   294→   294→      if (r.month === latestMonth && r.assetNo) {
+   295→   295→        if (!topDeviceLatestMap[r.assetNo]) {
+   296→   296→          var orig = topDeviceMap[r.assetNo] || {};
+   297→   297→          topDeviceLatestMap[r.assetNo] = {
+   298→   298→            assetNo: r.assetNo, brand: orig.brand || r.brand, model: orig.model || r.model,
+   299→   299→            site: orig.site || r.site, building: orig.building || r.building,
+   300→   300→            floor: orig.floor || r.floor, department: orig.department || r.department,
+   301→   301→            buildingFloor: orig.buildingFloor || r.buildingFloor, serial: orig.serial || r.serial,
+   302→   302→            pages: 0, pagesBW: 0, pagesColor: 0, costTotal: 0
+   303→   303→          };
+   304→   304→        }
+   305→   305→        topDeviceLatestMap[r.assetNo].pages += r.pages;
+   306→   306→        topDeviceLatestMap[r.assetNo].pagesBW += r.pagesBW;
+   307→   307→        topDeviceLatestMap[r.assetNo].pagesColor += r.pagesColor;
+   308→   308→        topDeviceLatestMap[r.assetNo].costTotal += r.costTotal;
+   309→   309→      }
+   310→   310→    });
+   311→   311→  }
+   312→   312→  topDeviceMap = topDeviceLatestMap;
+   313→   313→
+   314→   314→  // ✨ Cost summary สำหรับเดือนปัจจุบัน — แยก BW/Color โดยตรงจาก byMonthCost maps
+   315→   315→  //    ไม่ใช้ byMonthCost (เป็น total) → ต้องคำนวณ costBW/costColor แยกจาก detailRows ของเดือนนั้น
+   316→   316→  var latestBW = latestMonth ? (byMonthBW[latestMonth]||{}).pages||0 : 0;
+   317→   317→  var latestColor = latestMonth ? (byMonthColor[latestMonth]||{}).pages||0 : 0;
+   318→   318→  var latestCost = latestMonth ? (byMonthCost[latestMonth]||{}).pages||0 : 0;
+   319→   319→  // ✨ Split cost BW/Color สำหรับเดือนปัจจุบัน (สำหรับ frontend ไม่ต้อง re-filter detailRows)
+   320→   320→  var latestCostBW = 0, latestCostColor = 0;
+   321→   321→  if (latestMonth) {
+   322→   322→    rows.forEach(function(r){
+   323→   323→      if (r.month === latestMonth) {
+   324→   324→        latestCostBW += Number(r.costBW || 0);
+   325→   325→        latestCostColor += Number(r.costColor || 0);
+   326→   326→      }
+   327→   327→    });
+   328→   328→  }
+   329→   329→  // ✨ YoY cost — เทียบค่าใช้จ่ายกับเดือนเดียวกันปีก่อน
+   330→   330→  var yoyCost = 0;
+   331→   331→  if (yoyMonth) {
+   332→   332→    rows.forEach(function(r){
+   333→   333→      if (r.month === yoyMonth) yoyCost += Number(r.costTotal || 0);
+   334→   334→    });
+   335→   335→  }
+   336→   336→  var yoyCostChange = (latestCost > 0 && yoyCost > 0) ? Math.round((latestCost - yoyCost) / yoyCost * 1000) / 10 : null;
+   337→   337→
+   338→   338→  // ✨ Cost forecast — linear projection สำหรับเดือนหน้า จาก trend 3 เดือนล่าสุด
+   339→   339→  var costForecast = null;
+   340→   340→  if (months.length >= 2) {
+   341→   341→    var recentMonths = months.slice(-3); // ใช้ 3 เดือนล่าสุด (หรือ 2 ถ้ามีแค่ 2)
+   342→   342→    var recentCosts = recentMonths.map(function(m){ return (byMonthCost[m]||{}).pages || 0; });
+   343→   343→    var recentDates = recentMonths.map(function(m){
+   344→   344→      var parts = m.split('-');
+   345→   345→      return parseInt(parts[0],10) * 12 + parseInt(parts[1],10); // sequential month number
+   346→   346→    });
+   347→   347→    // Simple linear regression: y = a + b*x
+   348→   348→    var n = recentCosts.length;
+   349→   349→    var sumX = recentDates.reduce(function(s,v){return s+v;},0);
+   350→   350→    var sumY = recentCosts.reduce(function(s,v){return s+v;},0);
+   351→   351→    var sumXY = recentDates.reduce(function(s,v,i){return s + v * recentCosts[i];},0);
+   352→   352→    var sumXX = recentDates.reduce(function(s,v){return s + v * v;},0);
+   353→   353→    var denom = n * sumXX - sumX * sumX;
+   354→   354→    var b = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+   355→   355→    var a = (sumY - b * sumX) / n;
+   356→   356→    var nextMonthNum = recentDates[recentDates.length-1] + 1;
+   357→   357→    var forecastVal = Math.max(0, a + b * nextMonthNum);
+   358→   358→    costForecast = Math.round(forecastVal * 100) / 100;
+   359→   359→  }
+   360→   360→
+   361→   361→  // ✨ Anomaly detection — devices ที่มี cost > 2x ค่าเฉลี่ย (เดือนปัจจุบัน)
+   362→   362→  var avgCost = topDeviceMap && Object.keys(topDeviceMap).length > 0
+   363→   363→    ? Object.values(topDeviceMap).reduce(function(s,d){return s + d.costTotal;},0) / Object.keys(topDeviceMap).length
+   364→   364→    : 0;
+   365→   365→
+   366→   366→  // ✨ YoY: เดือนเดียวกันปีก่อน
+   367→   367→  var yoyPages = yoyMonth ? (byMonth[yoyMonth]||{}).pages||0 : 0;
+   368→   368→  var yoyChange = (latestMonth && yoyMonth && yoyPages>0) ? Math.round((latestPages-yoyPages)/yoyPages*1000)/10 : null;
+   369→   369→
+   370→   370→  // ✨ Meter completeness: % ของอุปกรณ์ที่ "ต้องจดมิเตอร์" (Active + isMeterRequiredDevice)
+   371→   371→  //    ที่มี meter reading ในเดือนปัจจุบัน (currentMonth)
+   372→   372→  // ✨ FIX: เดิมใช้ latestMonth (เดือนที่มีข้อมูลล่าสุด) → ถ้าเดือนนี้ยังไม่มีใครจด
+   373→   373→  //    ระบบจะใช้เดือนก่อนเป็นเกณฑ์ → แสดง "จดครบแล้ว" ทั้งที่เดือนนี้ยังไม่ได้จด
+   374→   374→  //    แก้: ใช้ currentMonth เป็นเกณฑ์เสมอ → สะท้อนสถานะจริงของเดือนนี้
+   375→   375→  var meterRequiredCount = 0;
+   376→   376→  var devicesWithReading = {};
+   377→   377→  (devices||[]).forEach(function(d){
+   378→   378→    // ✨ นับเฉพาะ Active + ต้องจดมิเตอร์ (เครื่องพิมพ์/copier/MFP) — ไม่ใช่ทุก Active device
+   379→   379→    if (d.Status === 'Active' && typeof isMeterRequiredDevice === 'function' && isMeterRequiredDevice(d)) {
+   380→   380→      meterRequiredCount++;
+   381→   381→    }
+   382→   382→  });
+   383→   383→  // ✨ FIX: ใช้ currentMonth เป็นเกณฑ์เสมอ (ไม่ใช่ latestMonth)
+   384→   384→  var completenessMonth = currentMonth;
+   385→   385→  rows.forEach(function(r){
+   386→   386→    if (r.month === completenessMonth && r.assetNo) devicesWithReading[r.assetNo] = true;
+   387→   387→  });
+   388→   388→  var readCount = Object.keys(devicesWithReading).length;
+   389→   389→  var completenessPercent = meterRequiredCount > 0 ? Math.round(readCount / meterRequiredCount * 1000) / 10 : 0;
+   390→   390→
+   391→   391→  // ✨ Top 10 devices by pages (current month) — with anomaly flag
+   392→   392→  var topDevices = Object.values(topDeviceMap)
+   393→   393→    .sort(function(a,b){return b.pages - a.pages;})
+   394→   394→    .slice(0, 10)
+   395→   395→    .map(function(d){
+   396→   396→      // ✨ Anomaly: cost > 2x average = flag
+   397→   397→      var isAnomaly = avgCost > 0 && d.costTotal > avgCost * 2;
+   398→   398→      // ✨ Color ratio: % สีของเครื่องนี้ (สีเยอะ = ค่าใช้จ่ายเยอะ)
+   399→   399→      var colorRatio = d.pages > 0 ? Math.round(d.pagesColor / d.pages * 1000) / 10 : 0;
+   400→   400→      return {
+   401→   401→        assetNo: d.assetNo, brand: d.brand, model: d.model, site: d.site,
+   402→   402→        buildingFloor: d.buildingFloor, department: d.department, serial: d.serial,
+   403→   403→        pages: Math.round(d.pages), pagesBW: Math.round(d.pagesBW), pagesColor: Math.round(d.pagesColor),
+   404→   404→        costTotal: Math.round(d.costTotal * 100) / 100,
+   405→   405→        colorRatio: colorRatio,
+   406→   406→        isAnomaly: isAnomaly,
+   407→   407→        anomalyMultiple: avgCost > 0 ? Math.round(d.costTotal / avgCost * 10) / 10 : 0
+   408→   408→      };
+   409→   409→    });
+   410→   410→
+   411→   411→  // ✨ Anomaly count — ต้องคำนวณก่อน insights block (bug fix: เดิมอยู่ใน return เท่านั้น)
+   412→   412→  var anomalyCount = topDevices.filter(function(d){return d.isAnomaly;}).length;
+   413→   413→
+   414→   414→  // ✨ Default rates สำหรับแสดงใน dashboard
+   415→   415→  var defaultRates = getDefaultPaperRates();
+   416→   416→
+   417→   417→  // ✨ Next month name (สำหรับ forecast label)
+   418→   418→  var nextMonthLabel = '';
+   419→   419→  if (latestMonth) {
+   420→   420→    var lparts = latestMonth.split('-');
+   421→   421→    if (lparts.length === 2) {
+   422→   422→      var ly = parseInt(lparts[0],10), lm = parseInt(lparts[1],10);
+   423→   423→      var nm = lm + 1; if (nm > 12) { nm = 1; ly++; }
+   424→   424→      nextMonthLabel = ly + '-' + String(nm).padStart(2,'0');
+   425→   425→    }
+   426→   426→  }
+   427→   427→
+   428→   428→  // ✨ Dashboard Insights — สรุปอัตโนมัติจากข้อมูลที่มี (ไม่ต้องไปเรียก getPaperAnalyticsData)
+   429→   429→  var insights = [];
+   430→   430→  if (latestMonth && latestPages > 0) {
+   431→   431→    // Top device insight
+   432→   432→    if (topDevices.length > 0) {
+   433→   433→      var td = topDevices[0];
+   434→   434→      insights.push('🏆 เครื่องใช้สูงสุด: ' + td.assetNo + ' (' + td.pages.toLocaleString() + ' แผ่น, ' + td.costTotal.toFixed(2) + ' ฿)');
+   435→   435→    }
+   436→   436→    // MoM insight
+   437→   437→    if (momChange !== null && Math.abs(momChange) >= 10) {
+   438→   438→      insights.push((momChange > 0 ? '📈' : '📉') + ' เทียบเดือนก่อน ' + (momChange > 0 ? '+' : '') + momChange + '% (' + latestPages.toLocaleString() + ' แผ่น)');
+   439→   439→    }
+   440→   440→    // Cost insight
+   441→   441→    if (latestCost > 0) {
+   442→   442→      insights.push('💰 ค่ากระดาษเดือนนี้: ' + latestCost.toFixed(2) + ' ฿ (BW ' + latestCostBW.toFixed(0) + ' + สี ' + latestCostColor.toFixed(0) + ')');
+   443→   443→    }
+   444→   444→    // Anomaly insight
+   445→   445→    if (anomalyCount > 0) {
+   446→   446→      var anomalyDevices = topDevices.filter(function(d){return d.isAnomaly;});
+   447→   447→      if (anomalyDevices.length > 0) {
+   448→   448→        insights.push('⚠️ ' + anomalyCount + ' เครื่องสูงผิดปกติ: ' + anomalyDevices.slice(0,3).map(function(d){return d.assetNo + ' (' + d.anomalyMultiple + 'x)';}).join(', '));
+   449→   449→      }
+   450→   450→    }
+   451→   451→    // YoY insight
+   452→   452→    if (yoyCostChange !== null && Math.abs(yoyCostChange) >= 10) {
+   453→   453→      insights.push('📅 เทียบปีก่อน: ' + (yoyCostChange > 0 ? '+' : '') + yoyCostChange + '% (' + (yoyCostChange > 0 ? 'แพงขึ้น' : 'ถูกลง') + ')');
+   454→   454→    }
+   455→   455→    // Forecast insight
+   456→   456→    if (costForecast && costForecast > 0) {
+   457→   457→      var forecastDiff = latestCost > 0 ? Math.round((costForecast - latestCost) / latestCost * 1000) / 10 : 0;
+   458→   458→      insights.push('🔮 พยากรณ์เดือนหน้า: ' + costForecast.toFixed(0) + ' ฿' + (forecastDiff !== 0 ? ' (' + (forecastDiff > 0 ? '+' : '') + forecastDiff + '%)' : ''));
+   459→   459→    }
+   460→   460→    // Color ratio insight (if color pages > 40% of total → suggest reviewing)
+   461→   461→    var totalLatestPages = latestBW + latestColor;
+   462→   462→    if (totalLatestPages > 0) {
+   463→   463→      var colorPctOfTotal = Math.round(latestColor / totalLatestPages * 1000) / 10;
+   464→   464→      if (colorPctOfTotal > 40) {
+   465→   465→        insights.push('🎨 สีคิดเป็น ' + colorPctOfTotal + '% ของแผ่นพิมพ์ → ตรวจสอบว่าคุ้มค่าหรือไม่ (สีแพงกว่า BW ' + Math.round(defaultRates.color / defaultRates.bw) + 'x)');
+   466→   466→      }
+   467→   467→    }
+   468→   468→    // Meter completeness insight
+   469→   469→    if (completenessPercent < 80 && meterRequiredCount > 0) {
+   470→   470→      insights.push('⏰ จดมิเตอร์ครบ ' + completenessPercent + '% (' + readCount + '/' + meterRequiredCount + ' เครื่อง' + (completenessMonth ? ' เดือน ' + completenessMonth : '') + ') → เหลือ ' + (meterRequiredCount - readCount) + ' เครื่อง');
+   471→   471→    }
+   472→   472→  }
+   473→   473→
+   474→   474→  return {
+   475→   475→    totalPages: Math.round(totalPages), latestMonth:latestMonth, latestMonthPages:Math.round(latestPages),
+   476→   476→    latestMonthBW: Math.round(latestBW), latestMonthColor: Math.round(latestColor),
+   477→   477→    latestMonthCost: Math.round(latestCost * 100) / 100,
+   478→   478→    latestMonthCostBW: Math.round(latestCostBW * 100) / 100,
+   479→   479→    latestMonthCostColor: Math.round(latestCostColor * 100) / 100,
+   480→   480→    insights: insights,
+   481→   481→    momChange:momChange, avgPages:months.length?Math.round(totalPages/months.length):0,
+   482→   482→    yoyMonth: yoyMonth, yoyPages: Math.round(yoyPages), yoyChange: yoyChange,
+   483→   483→    yoyCost: Math.round(yoyCost * 100) / 100, yoyCostChange: yoyCostChange,
+   484→   484→    costForecast: costForecast, nextMonthLabel: nextMonthLabel,
+   485→   485→    avgDeviceCost: Math.round(avgCost * 100) / 100,
+   486→   486→    meterCompleteness: { readCount: readCount, activeCount: meterRequiredCount, percent: completenessPercent, month: completenessMonth, devicesWithReading: devicesWithReading },
+   487→   487→    topDevices: topDevices,
+   488→   488→    anomalyCount: topDevices.filter(function(d){return d.isAnomaly;}).length,
+   489→   489→    defaultRates: defaultRates,
+   490→   490→    monthlyTrend: months.map(function(m){
+   491→   491→      // ✨ Calculate costBW/costColor per month from detailRows
+   492→   492→      var mCostBW = 0, mCostColor = 0;
+   493→   493→      rows.forEach(function(r){
+   494→   494→        if (r.month === m) { mCostBW += Number(r.costBW || 0); mCostColor += Number(r.costColor || 0); }
+   495→   495→      });
+   496→   496→      return {
+   497→   497→        month:m,
+   498→   498→        pages:Math.round((byMonth[m]||{}).pages||0),
+   499→   499→        pagesBW: Math.round((byMonthBW[m]||{}).pages||0),
+   500→   500→        pagesColor: Math.round((byMonthColor[m]||{}).pages||0),
+   501→   501→        costTotal: Math.round((byMonthCost[m]||{}).pages * 100) / 100,
+   502→   502→        costBW: Math.round(mCostBW * 100) / 100,
+   503→   503→        costColor: Math.round(mCostColor * 100) / 100
+   504→   504→      };
+   505→   505→    }),
+   506→   506→    byDepartment: toUsageArray(byDept, 10).map(function(d){return {name:d.name, pages:d.pages, devices:d.devices};}),
+   507→   507→    byBuildingFloor: toUsageArray(byBF, 10),
+   508→   508→    topDept: toUsageArray(byDept,1)[0]||null,
+   509→   509→    topDevice: topDevices[0] || null,
+   510→   510→    detailRows: rows
+   511→   511→  };
+   512→   512→}
+   513→   513→
+   514→   514→function getDashboardStatsLite(authToken) {
+   515→   515→  // Backward compatibility — ใช้ตัวเดียวกัน
+   516→   516→  return getDashboardStats(authToken);
+   517→   517→}
+   518→   518→
+   519→   519→
+   520→   520→// ==================== PAPER ANALYTICS ====================
+   521→   521→function getPaperAnalyticsData(filters, authToken) {
+   522→   522→  try {
+   523→   523→    filters=filters||{};
+   524→   524→    var fromMonth=String(filters.fromMonth||'').trim(), toMonth=String(filters.toMonth||'').trim();
+   525→   525→    var siteFilter=String(filters.site||'').trim();
+   526→   526→    var buildingFilters=Array.isArray(filters.building)?filters.building:(filters.building?[String(filters.building)]:[]);
+   527→   527→    var floorFilters=Array.isArray(filters.floor)?filters.floor.map(normalizeFloorValue):(filters.floor?[normalizeFloorValue(filters.floor)]:[]);
+   528→   528→    var deptCodeFilters=Array.isArray(filters.departmentCode)?filters.departmentCode:(filters.departmentCode||filters.department?[String(filters.departmentCode||filters.department)]:[]);
+   529→   529→
+   530→   530→    // ✨ อ่านค่า settings สำหรับ Smart Insights
+   531→   531→    var appSettings = getAppSettingsInternal();
+   532→   532→    var costPerSheet = parseFloat(appSettings.insightCostPerSheet) || 3;
+   533→   533→    var momThreshold = parseFloat(appSettings.insightMoMThreshold) || 15;
+   534→   534→    var anomalyMultiplier = parseFloat(appSettings.insightAnomalyMultiplier) || 2.5;
+   535→   535→    var trendMonths = parseInt(appSettings.insightTrendMonths) || 3;
+   536→   536→    var showCost = appSettings.insightShowCost !== false;
+   537→   537→    var showPerDevice = appSettings.insightShowPerDevice !== false;
+   538→   538→    var showPareto = appSettings.insightShowPareto !== false;
+   539→   539→    var showCompleteness = appSettings.insightShowCompleteness !== false;
+   540→   540→    var showForecast = appSettings.insightShowForecast !== false;
+   541→   541→    var showRecommendation = appSettings.insightShowRecommendation !== false;
+   542→   542→
+   543→   543→    var devices=getAllDevicesCached(authToken);
+   544→   544→    var deviceMap={};
+   545→   545→    devices.forEach(function(d){deviceMap[formatAssetNo(d.AssetNo)]=d;});
+   546→   546→
+   547→   547→    // ✨ Phase: ถ้าไม่ระบุช่วงเดือน → default เดือนปัจจุบัน
+   548→   548→    // แต่ถ้าเดือนปัจจุบันไม่มีข้อมูล → fallback ไป 3 เดือนล่าสุดที่มีข้อมูล
+   549→   549→    if (!fromMonth && !toMonth) {
+   550→   550→      var nowM = Utilities.formatDate(new Date(),CONFIG.TIMEZONE,'yyyy-MM');
+   551→   551→      fromMonth = nowM;
+   552→   552→      toMonth = nowM;
+   553→   553→    }
+   554→   554→    // ✨ ถ้าระบุแค่ fromMonth หรือ toMonth อันเดียว → ให้อีกอันเท่ากับอันที่ระบุ
+   555→   555→    if (fromMonth && !toMonth) toMonth = fromMonth;
+   556→   556→    if (toMonth && !fromMonth) fromMonth = toMonth;
+   557→   557→
+   558→   558→    // ✨ ตรวจสอบว่ามีข้อมูลในช่วงที่เลือกหรือไม่
+   559→   559→    //    ถ้าไม่มี → fallback ไป 3 เดือนล่าสุดที่มีข้อมูล (แต่เก็บ fromMonth/toMonth เดิมไว้สำหรับ return)
+   560→   560→    var originalFromMonth = fromMonth;
+   561→   561→    var originalToMonth = toMonth;
+   562→   562→    var hasDataInRange = false;
+   563→   563→    var allMeterRows = readMeterRowsCached();
+   564→   564→    var latestMonths = {};
+   565→   565→    allMeterRows.forEach(function(row) {
+   566→   566→      var m = normalizeReadingMonth(row.Reading_Month||row.Reading_Date);
+   567→   567→      if (m && row.Reading_Type!=='INITIAL' && row.Reading_Type!=='RESET') latestMonths[m] = true;
+   568→   568→    });
+   569→   569→    var sortedMonths = Object.keys(latestMonths).sort();
+   570→   570→    for (var si=0; si<sortedMonths.length; si++) {
+   571→   571→      if (sortedMonths[si] >= fromMonth && sortedMonths[si] <= toMonth) { hasDataInRange = true; break; }
+   572→   572→    }
+   573→   573→    if (!hasDataInRange && sortedMonths.length > 0) {
+   574→   574→      // fallback: 3 เดือนล่าสุดที่มีข้อมูล
+   575→   575→      var lastIdx = sortedMonths.length - 1;
+   576→   576→      toMonth = sortedMonths[lastIdx];
+   577→   577→      var startIdx = Math.max(0, lastIdx - 2);
+   578→   578→      fromMonth = sortedMonths[startIdx];
+   579→   579→    }
+   580→   580→
+   581→   581→    var enriched=[];
+   582→   582→    readMeterRowsCached().forEach(function(row){
+   583→   583→      var month=normalizeReadingMonth(row.Reading_Month||row.Reading_Date);
+   584→   584→      if(!month)return;
+   585→   585→      if(fromMonth&&month<fromMonth)return;
+   586→   586→      if(toMonth&&month>toMonth)return;
+   587→   587→      // ✨ FIX: ข้าม INITIAL/RESET (ไม่มี pages) + FINAL/SEND_REPAIR/CHECKOUT (lifecycle event)
+   588→   588→      var rt = String(row.Reading_Type||'').trim().toUpperCase();
+   589→   589→      if(rt==='INITIAL'||rt==='RESET'||rt==='FINAL'||rt==='SEND_REPAIR'||rt==='CHECKOUT')return;
+   590→   590→      var device=deviceMap[formatAssetNo(row.Asset_No)];
+   591→   591→      if(!device)return;
+   592→   592→      var rowSite=device.Site||row.Site_At_Reading||'';
+   593→   593→      var rowBuilding=device.Building||row.Building_At_Reading||'';
+   594→   594→      var rowDept=device.Department||row.Department_At_Reading||'';
+   595→   595→      var rowDeptCode=device.DepartmentCode||row.DepartmentCode_At_Reading||'';
+   596→   596→      var rowFloor=normalizeFloorValue(device.Floor||row.Floor_At_Reading||'');
+   597→   597→      if(siteFilter&&rowSite!==siteFilter)return;
+   598→   598→      if(buildingFilters.length&&buildingFilters.indexOf(rowBuilding)===-1)return;
+   599→   599→      if(floorFilters.length&&floorFilters.indexOf(rowFloor)===-1)return;
+   600→   600→      if(deptCodeFilters.length&&deptCodeFilters.indexOf(rowDeptCode)===-1)return;
+   601→   601→      var pagesBW=parseNumberValue(row.Pages_BW), pagesColor=parseNumberValue(row.Pages_Color);
+   602→   602→      enriched.push({assetNo:formatAssetNo(row.Asset_No),month:month,pagesBW:pagesBW,pagesColor:pagesColor,
+   603→   603→        totalPages:pagesBW+pagesColor,site:rowSite,building:rowBuilding,floor:device.Floor||row.Floor_At_Reading||'',
+   604→   604→        department:rowDept,departmentCode:rowDeptCode,brand:device.Brand||'',model:device.Model||'',serial:device.Serial||'',
+   605→   605→        location:device.Location||'',readingType:row.Reading_Type||''});
+   606→   606→    });
+   607→   607→
+   608→   608→    var byMonth={}, byDept={}, byBF={}, byDevice={};
+   609→   609→    enriched.forEach(function(r){
+   610→   610→      var m=r.month;
+   611→   611→      if(!byMonth[m])byMonth[m]={pages:0,pagesBW:0,pagesColor:0,deviceSet:{}};
+   612→   612→      byMonth[m].pages+=r.totalPages;byMonth[m].pagesBW+=r.pagesBW;byMonth[m].pagesColor+=r.pagesColor;byMonth[m].deviceSet[r.assetNo]=true;
+   613→   613→      var dc=r.departmentCode||r.department||'ไม่ระบุ';
+   614→   614→      if(!byDept[dc])byDept[dc]={pages:0,pagesBW:0,pagesColor:0,deviceSet:{},monthData:{},departmentCode:r.departmentCode||'',department:r.department||''};
+   615→   615→      byDept[dc].pages+=r.totalPages;byDept[dc].pagesBW+=r.pagesBW;byDept[dc].pagesColor+=r.pagesColor;byDept[dc].deviceSet[r.assetNo]=true;
+   616→   616→      byDept[dc].monthData[m]=(byDept[dc].monthData[m]||0)+r.totalPages;
+   617→   617→      if(!byDept[dc].department&&r.department)byDept[dc].department=r.department;
+   618→   618→      var bldgFloor=(r.building||'ไม่ระบุ')+(r.floor?' / ชั้น '+r.floor:'');
+   619→   619→      if(!byBF[bldgFloor])byBF[bldgFloor]={pages:0,deviceSet:{}};
+   620→   620→      byBF[bldgFloor].pages+=r.totalPages;byBF[bldgFloor].deviceSet[r.assetNo]=true;
+   621→   621→      if(!byDevice[r.assetNo])byDevice[r.assetNo]={pages:0,pagesBW:0,pagesColor:0,readings:0,monthData:{},brand:r.brand,model:r.model,serial:r.serial,site:r.site,building:r.building,floor:r.floor,department:r.department,departmentCode:r.departmentCode};
+   622→   622→      byDevice[r.assetNo].pages+=r.totalPages;byDevice[r.assetNo].pagesBW+=r.pagesBW;byDevice[r.assetNo].pagesColor+=r.pagesColor;byDevice[r.assetNo].readings++;
+   623→   623→      byDevice[r.assetNo].monthData[m]=(byDevice[r.assetNo].monthData[m]||0)+r.totalPages;
+   624→   624→    });
+   625→   625→
+   626→   626→    var months=Object.keys(byMonth).sort();
+   627→   627→    var totalPages=enriched.reduce(function(s,r){return s+r.totalPages;},0);
+   628→   628→    var avgPages=months.length?Math.round(totalPages/months.length):0;
+   629→   629→    var monthsArr=months.map(function(m){return{month:m,pages:Math.round(byMonth[m].pages),pagesBW:Math.round(byMonth[m].pagesBW),pagesColor:Math.round(byMonth[m].pagesColor),devices:Object.keys(byMonth[m].deviceSet).length};});
+   630→   630→    var deptArr=Object.keys(byDept).map(function(n){var d=byDept[n];return{name:n,displayName:d.departmentCode?(d.department?d.departmentCode+' — '+d.department:d.departmentCode):n,departmentCode:d.departmentCode||'',department:d.department||'',pages:Math.round(d.pages),pagesBW:Math.round(d.pagesBW),pagesColor:Math.round(d.pagesColor),devices:Object.keys(d.deviceSet).length,monthData:d.monthData};}).sort(function(a,b){return b.pages-a.pages;});
+   631→   631→    var bfArr=Object.keys(byBF).map(function(n){var d=byBF[n];return{name:n,pages:Math.round(d.pages),devices:Object.keys(d.deviceSet).length};}).sort(function(a,b){return b.pages-a.pages;});
+   632→   632→    var devArr=Object.keys(byDevice).map(function(a){var d=byDevice[a];return{assetNo:a,pages:Math.round(d.pages),pagesBW:Math.round(d.pagesBW),pagesColor:Math.round(d.pagesColor),readings:d.readings,brand:d.brand,model:d.model,serial:d.serial,site:d.site,building:d.building,floor:d.floor,department:d.department,departmentCode:d.departmentCode};}).sort(function(a,b){return b.pages-a.pages;}).slice(0,30);
+   633→   633→
+   634→   634→    var latestMonth=monthsArr.length?monthsArr[monthsArr.length-1]:null;
+   635→   635→    var prevMonth=monthsArr.length>1?monthsArr[monthsArr.length-2]:null;
+   636→   636→    var momChange=(latestMonth&&prevMonth&&prevMonth.pages>0)?Math.round((latestMonth.pages-prevMonth.pages)/prevMonth.pages*1000)/10:null;
+   637→   637→
+   638→   638→        var smartInsights=[];
+   639→   639→    if(deptArr.length&&totalPages>0)smartInsights.push({type:'TOP_DEPARTMENT',tone:'info',title:'กลุ่มใช้งานสูงสุด',text:deptArr[0].displayName+' ใช้ '+deptArr[0].pages.toLocaleString()+' แผ่น ('+Math.round(deptArr[0].pages/totalPages*100)+'%)',drillType:'departmentCode',drillValue:deptArr[0].departmentCode||deptArr[0].name});
+   640→   640→    if(devArr.length&&totalPages>0)smartInsights.push({type:'TOP_DEVICE',tone:'info',title:'เครื่องที่ควรตรวจสอบ',text:'Asset '+devArr[0].assetNo+' ใช้สูงสุด '+devArr[0].pages.toLocaleString()+' แผ่น',drillType:'assetNo',drillValue:devArr[0].assetNo});
+   641→   641→    if(momChange!==null&&Math.abs(momChange)>=momThreshold)smartInsights.push({type:'MOM_CHANGE',tone:momChange>0?'warning':'success',title:'แนวโน้มเดือนล่าสุด',text:'เดือน '+latestMonth.month+(momChange>0?' เพิ่มขึ้น ':' ลดลง ')+Math.abs(momChange)+'%',drillType:'month',drillValue:latestMonth.month});
+   642→   642→
+   643→   643→    // ✨ FIX #13: คำนวณต้นทุนจาก BW/Color rate จริง (site-specific) แทน flat rate 3฿
+   644→   644→    // ปัญหาเดิม: ใช้ costPerSheet (default 3) × totalPages → เกินจริง 10-50× (Dashboard ใช้ split rate)
+   645→   645→    // แก้: วน enriched detailRows คำนวณ BW×bwRate + Color×colorRate ตาม site ของแต่ละ row
+   646→   646→    if(showCost&&totalPages>0){
+   647→   647→      var totalCostCalc=0, totalBwPages=0, totalColorPages=0;
+   648→   648→      enriched.forEach(function(r){
+   649→   649→        var siteName=r.site||'';
+   650→   650→        var bwRate=getEffectivePaperRate(siteName,'BW');
+   651→   651→        var colorRate=getEffectivePaperRate(siteName,'Color');
+   652→   652→        totalCostCalc += (r.pagesBW||0)*bwRate + (r.pagesColor||0)*colorRate;
+   653→   653→        totalBwPages += r.pagesBW||0;
+   654→   654→        totalColorPages += r.pagesColor||0;
+   655→   655→      });
+   656→   656→      var totalCost=Math.round(totalCostCalc);
+   657→   657→      var detailText = totalColorPages>0
+   658→   658→        ? ' (BW '+totalBwPages.toLocaleString()+' + สี '+totalColorPages.toLocaleString()+' แผ่น)'
+   659→   659→        : '';
+   660→   660→      smartInsights.push({type:'COST',tone:'info',title:'💰 ต้นทุนกระดาษ',text:'ใช้ '+totalPages.toLocaleString()+' แผ่น'+detailText+' = ฿'+totalCost.toLocaleString()+' (คำนวณจากอัตรา BW/สี แยกตาม Site)'});
+   661→   661→    }
+   662→   662→
+   663→   663→    // ✨ เพิ่ม: เฉลี่ยต่อเครื่อง
+   664→   664→    if(showPerDevice&&devArr.length>0&&monthsArr.length>0){
+   665→   665→      var avgPerDevice=Math.round(totalPages/devArr.length/monthsArr.length);
+   666→   666→      smartInsights.push({type:'PER_DEVICE',tone:'info',title:'📊 เฉลี่ยต่อเครื่อง',text:avgPerDevice.toLocaleString()+' แผ่น/เครื่อง/เดือน (จาก '+devArr.length+' เครื่อง, '+monthsArr.length+' เดือน)'});
+   667→   667→    }
+   668→   668→
+   669→   669→    // ✨ เพิ่ม: Pareto — Top 20% = กี่ %
+   670→   670→    if(showPareto&&devArr.length>=5){
+   671→   671→      var top20Count=Math.max(1,Math.ceil(devArr.length*0.2));
+   672→   672→      var top20Pages=devArr.slice(0,top20Count).reduce(function(s,d){return s+d.pages;},0);
+   673→   673→      var top20Pct=Math.round(top20Pages/totalPages*100);
+   674→   674→      if(top20Pct>50){
+   675→   675→        smartInsights.push({type:'PARETO',tone:'warning',title:'🎯 กระจุกตัว',text:'เครื่อง '+top20Count+' ตัว ('+Math.round(top20Count/devArr.length*100)+'%) ใช้ '+top20Pct+'% ของทั้งหมด → ตรวจสอบว่าเหมาะสมหรือไม่'});
+   676→   676→      }
+   677→   677→    }
+   678→   678→
+   679→   679→    // ✨ เพิ่ม: จดครบหรือยัง
+   680→   680→    if(showCompleteness&&latestMonth){
+   681→   681→      var totalDevices=devArr.length;
+   682→   682→      var recordedDevices=Object.keys(byDevice).filter(function(a){return byDevice[a].monthData[latestMonth.month]>0;}).length;
+   683→   683→      if(recordedDevices<totalDevices){
+   684→   684→        var remain=totalDevices-recordedDevices;
+   685→   685→        smartInsights.push({type:'COMPLETENESS',tone:'warning',title:'⏰ จดครบหรือยัง',text:'เดือน '+latestMonth.month+' จดแล้ว '+recordedDevices+'/'+totalDevices+' เครื่อง (เหลือ '+remain+' เครื่อง)',recommendation:'ส่งช่างไปจดมิเตอร์เครื่องที่เหลือ หรือตรวจสอบว่าเครื่องยังใช้งานอยู่'});
+   686→   686→      }
+   687→   687→    }
+   688→   688→
+   689→   689→    // ✨ เพิ่ม: คาดการณ์เดือนหน้า (linear regression)
+   690→   690→    if(showForecast&&monthsArr.length>=3){
+   691→   691→      var forecastValues=monthsArr.map(function(m){return m.pages;});
+   692→   692→      var n=forecastValues.length, sumX=0, sumY=0, sumXY=0, sumX2=0;
+   693→   693→      for(var fi=0;fi<n;fi++){sumX+=fi;sumY+=forecastValues[fi];sumXY+=fi*forecastValues[fi];sumX2+=fi*fi;}
+   694→   694→      var slope=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX);
+   695→   695→      var forecast=Math.round(sumY/n+slope*n);
+   696→   696→      if(forecast>0){
+   697→   697→        var forecastCost=Math.round(forecast*costPerSheet);
+   698→   698→        smartInsights.push({type:'FORECAST',tone:'info',title:'📈 คาดการณ์เดือนหน้า',text:'คาดว่าจะใช้ ~'+forecast.toLocaleString()+' แผ่น'+(showCost?' (฿'+forecastCost.toLocaleString()+')':''),recommendation:showCost?'สั่งกระดาษล่วงหน้า '+Math.ceil(forecast/500)+' รีม':''});
+   699→   699→      }
+   700→   700→    }
+   701→   701→
+   702→   702→    // =====================================================
+   703→   703→    // Smart Insights: วิเคราะห์จากประวัติย้อนหลังแต่ละเครื่อง
+   704→   704→    // =====================================================
+   705→   705→    function calcDeviceTrend(monthData, monthKeys) {
+   706→   706→      var values = monthKeys.map(function(m){return monthData[m]||0;});
+   707→   707→      if(values.length<2) return {trend:'stable',slope:0,avg:values[0]||0};
+   708→   708→      var n=values.length, sumX=0, sumY=0, sumXY=0, sumX2=0;
+   709→   709→      for(var i=0;i<n;i++){sumX+=i;sumY+=values[i];sumXY+=i*values[i];sumX2+=i*i;}
+   710→   710→      var slope=(n*sumXY-sumX*sumY)/(n*sumX2-sumX*sumX);
+   711→   711→      var avg=Math.round(sumY/n);
+   712→   712→      var trend='stable';
+   713→   713→      if(avg>0 && slope/avg>0.2) trend='increasing';
+   714→   714→      if(avg>0 && slope/avg<-0.2) trend='decreasing';
+   715→   715→      return {trend:trend, slope:Math.round(slope), avg:avg};
+   716→   716→    }
+   717→   717→
+   718→   718→    // 1. เครื่องใช้งานลดลงต่อเนื่อง
+   719→   719→    if(monthsArr.length>=trendMonths) {
+   720→   720→      var allMonths=monthsArr.map(function(m){return m.month;});
+   721→   721→      var lowTrend=[];
+   722→   722→      Object.keys(byDevice).forEach(function(a){
+   723→   723→        var d=byDevice[a], t=calcDeviceTrend(d.monthData,allMonths);
+   724→   724→        if(t.avg>0&&t.trend==='decreasing') lowTrend.push({assetNo:a,avg:t.avg,slope:t.slope});
+   725→   725→      });
+   726→   726→      if(lowTrend.length>=2){
+   727→   727→        lowTrend.sort(function(a,b){return a.slope-b.slope;});
+   728→   728→        smartInsights.push({type:'LOW_TREND',tone:'info',title:'เครื่องใช้งานลดลงต่อเนื่อง',text:lowTrend.length+' เครื่อง มีแนวโน้มลดลง ('+lowTrend[0].assetNo+' ลดเฉลี่ย '+Math.abs(lowTrend[0].slope)+' แผ่น/เดือน)',recommendation:'พิจารณาย้ายเครื่อง หรือตรวจสอบว่ายังใช้งานปกติ',drillType:'assetNo',drillValue:lowTrend[0].assetNo});
+   729→   729→      }
+   730→   730→    }
+   731→   731→
+   732→   732→    // 2. เครื่องใช้งานเพิ่มขึ้นต่อเนื่อง
+   733→   733→    if(monthsArr.length>=trendMonths) {
+   734→   734→      var allMonths=monthsArr.map(function(m){return m.month;});
+   735→   735→      var highTrend=[];
+   736→   736→      Object.keys(byDevice).forEach(function(a){
+   737→   737→        var d=byDevice[a], t=calcDeviceTrend(d.monthData,allMonths);
+   738→   738→        if(t.avg>100&&t.trend==='increasing') highTrend.push({assetNo:a,avg:t.avg,slope:t.slope});
+   739→   739→      });
+   740→   740→      if(highTrend.length>=1){
+   741→   741→        highTrend.sort(function(a,b){return b.slope-a.slope;});
+   742→   742→        smartInsights.push({type:'HIGH_TREND',tone:'warning',title:'เครื่องใช้งานเพิ่มขึ้นต่อเนื่อง',text:highTrend[0].assetNo+' เพิ่มเฉลี่ย '+highTrend[0].slope+' แผ่น/เดือน (เฉลี่ย '+highTrend[0].avg.toLocaleString()+' แผ่น/เดือน)',recommendation:'ตรวจสอบว่างานพิมพ์เพิ่มขึ้นจริง หรือมีการพิมพ์ซ้ำ',drillType:'assetNo',drillValue:highTrend[0].assetNo});
+   743→   743→      }
+   744→   744→    }
+   745→   745→
+   746→   746→    // 3. เครื่องที่เดือนล่าสุดผิดปกติจาก pattern ตัวเอง
+   747→   747→    if(monthsArr.length>=3 && latestMonth) {
+   748→   748→      var allMonths=monthsArr.map(function(m){return m.month;});
+   749→   749→      var anomaly=[];
+   750→   750→      Object.keys(byDevice).forEach(function(a){
+   751→   751→        var d=byDevice[a], t=calcDeviceTrend(d.monthData,allMonths.slice(0,-1));
+   752→   752→        if(t.avg<50) return;
+   753→   753→        var lv=d.monthData[latestMonth.month]||0;
+   754→   754→        if(lv===0) return;
+   755→   755→        var ratio=lv/t.avg;
+   756→   756→        if(ratio>anomalyMultiplier||ratio<(1/anomalyMultiplier)) anomaly.push({assetNo:a,latest:lv,avg:t.avg,ratio:Math.round(ratio*10)/10,type:ratio>anomalyMultiplier?'spike':'drop'});
+   757→   757→      });
+   758→   758→      if(anomaly.length>0){
+   759→   759→        var a=anomaly[0];
+   760→   760→        smartInsights.push({type:'ANOMALY',tone:a.type==='spike'?'warning':'success',title:'เดือนล่าสุดผิดปกติ',text:'Asset '+a.assetNo+' เดือน '+latestMonth.month+' ใช้ '+a.latest.toLocaleString()+' แผ่น (เฉลี่ย '+a.avg.toLocaleString()+' = '+(a.type==='spike'?'สูง':'ต่ำ')+'กว่าปกติ '+a.ratio+' เท่า)',recommendation:a.type==='spike'?'ตรวจสอบงานพิมพ์ก้อนใหญ่':'ตรวจสอบว่าเครื่องยังใช้งานปกติหรือลืมจดมิเตอร์',drillType:'assetNo',drillValue:a.assetNo});
+   761→   761→      }
+   762→   762→    }
+   763→   763→
+   764→   764→    // 4. เครื่องไม่มีการใช้งานเลย
+   765→   765→    var allMeterDevices=Object.keys(byDevice).length;
+   766→   766→    if(devArr.length>0 && allMeterDevices<devArr.length) {
+   767→   767→      var idleCount=devArr.length-allMeterDevices;
+   768→   768→      if(idleCount>0) smartInsights.push({type:'IDLE_DEVICES',tone:'warning',title:'เครื่องไม่มีการใช้งาน',text:idleCount+' เครื่อง ไม่มีประวัติจดมิเตอร์ในช่วงที่เลือก',recommendation:'ตรวจสอบว่าเครื่องยังใช้งานอยู่หรือไม่ หรือลืมจดมิเตอร์'});
+   769→   769→    }
+   770→   770→
+   771→   771→    // 5. แผนกที่เพิ่มขึ้นมากที่สุด
+   772→   772→    if(monthsArr.length>=3 && deptArr.length>1) {
+   773→   773→      var recentMonths=monthsArr.slice(-3).map(function(m){return m.month;});
+   774→   774→      var maxInc=null;
+   775→   775→      deptArr.forEach(function(d){
+   776→   776→        var md=d.monthData||{};
+   777→   777→        var first=md[recentMonths[0]]||0, last=md[recentMonths[2]]||0;
+   778→   778→        if(first>0&&last>first){var pct=Math.round((last-first)/first*100);if(!maxInc||pct>maxInc.pct)maxInc={name:d.displayName||d.name,departmentCode:d.departmentCode||d.name,pct:pct,first:first,last:last};}
+   779→   779→      });
+   780→   780→      if(maxInc&&maxInc.pct>=30&&showRecommendation){
+   781→   781→        smartInsights.push({type:'DEPT_INCREASE',tone:'warning',title:'แผนกใช้กระดาษเพิ่มขึ้น',text:maxInc.name+' เพิ่มขึ้น '+maxInc.pct+'% ใน 3 เดือน ('+maxInc.first.toLocaleString()+' → '+maxInc.last.toLocaleString()+' แผ่น)',recommendation:'เจาะดูรายละเอียดแผนกนี้เพื่อหาสาเหตุ',drillType:'departmentCode',drillValue:maxInc.departmentCode||maxInc.name});
+   782→   782→      }
+   783→   783→    }
+   784→   784→
+   785→   785→    // 6. แผนกที่ใช้กระดาษลดลง (สำเร็จในการควบคุม)
+   786→   786→    if(monthsArr.length>=3 && deptArr.length>1) {
+   787→   787→      var recentMonths=monthsArr.slice(-3).map(function(m){return m.month;});
+   788→   788→      var maxDecrease=null;
+   789→   789→      deptArr.forEach(function(d){
+   790→   790→        var md=d.monthData||{};
+   791→   791→        var first=md[recentMonths[0]]||0, last=md[recentMonths[2]]||0;
+   792→   792→        if(first>100&&last<first){var pct=Math.round((first-last)/first*100);if(!maxDecrease||pct>maxDecrease.pct)maxDecrease={name:d.displayName||d.name,departmentCode:d.departmentCode||d.name,pct:pct,first:first,last:last};}
+   793→   793→      });
+   794→   794→      if(maxDecrease&&maxDecrease.pct>=25){
+   795→   795→        smartInsights.push({type:'DEPT_DECREASE',tone:'success',title:'แผนกควบคุมกระดาษได้สำเร็จ',text:maxDecrease.name+' ลดลง '+maxDecrease.pct+'% ใน 3 เดือน ('+maxDecrease.first.toLocaleString()+' → '+maxDecrease.last.toLocaleString()+' แผ่น)',recommendation:'ใช้เป็นตัวอย่างสำหรับแผนกอื่น หรือตรวจสอบว่าลดลงจริงหรือลืมจดมิเตอร์',drillType:'departmentCode',drillValue:maxDecrease.departmentCode||maxDecrease.name});
+   796→   796→      }
+   797→   797→    }
+   798→   798→
+   799→   799→    // 7. เดือนที่ใช้สูงสุด/ต่ำสุด (seasonal pattern)
+   800→   800→    if(monthsArr.length>=4) {
+   801→   801→      var maxMonth=null, minMonth=null;
+   802→   802→      monthsArr.forEach(function(m){
+   803→   803→        if(!maxMonth||m.pages>maxMonth.pages) maxMonth=m;
+   804→   804→        if(!minMonth||m.pages<minMonth.pages) minMonth=m;
+   805→   805→      });
+   806→   806→      if(maxMonth&&minMonth&&maxMonth.month!==minMonth.month&&maxMonth.pages>minMonth.pages*1.5) {
+   807→   807→        smartInsights.push({type:'SEASONAL',tone:'info',title:'รูปแบบการใช้ตามฤดูกาล',text:'เดือน '+maxMonth.month+' ใช้สูงสุด ('+maxMonth.pages.toLocaleString()+') เดือน '+minMonth.month+' ต่ำสุด ('+minMonth.pages.toLocaleString()+') ต่างกัน '+Math.round(maxMonth.pages/minMonth.pages*100)+'%',recommendation:'วางแผนจัดซื้อกระดาษให้สอดคล้องกับช่วงที่ใช้มาก หรือตรวจสอบว่าเดือนที่ใช้น้อยมีการจดมิเตอร์ครบหรือไม่'});
+   808→   808→      }
+   809→   809→    }
+   810→   810→
+   811→   811→    // ✨ ระดับ 2: ข้อมูลเชิงลึก
+   812→   812→
+   813→   813→    // 🔔 Early Warning — แผนก trend ขึ้นต่อเนื่อง อาจเกินงบ
+   814→   814→    if(showRecommendation&&monthsArr.length>=trendMonths&&deptArr.length>0) {
+   815→   815→      var recentDeptMonths=monthsArr.slice(-trendMonths).map(function(m){return m.month;});
+   816→   816→      deptArr.forEach(function(d){
+   817→   817→        var md=d.monthData||{};
+   818→   818→        var vals=recentDeptMonths.map(function(m){return md[m]||0;});
+   819→   819→        var firstVal=vals[0], lastVal=vals[vals.length-1];
+   820→   820→        if(firstVal>0&&lastVal>firstVal*1.3) {
+   821→   821→          var incPct=Math.round((lastVal-firstVal)/firstVal*100);
+   822→   822→          smartInsights.push({type:'EARLY_WARNING',tone:'warning',title:'🔔 แจ้งเตือน: '+d.displayName,
+   823→   823→            text:d.displayName+' เพิ่มขึ้น '+incPct+'% ใน '+trendMonths+' เดือน ('+firstVal.toLocaleString()+' → '+lastVal.toLocaleString()+' แผ่น) — ถ้า trend ต่อเนื่อง จะเพิ่มอีก ~'+Math.round(lastVal*incPct/100).toLocaleString()+' แผ่น/ด.',
+   824→   824→            recommendation:'นัดคุยกับหัวหน้าแผนก '+d.displayName+' เพื่อหาสาเหตุ และวางแผนควบคุม',
+   825→   825→            drillType:'departmentCode',drillValue:d.departmentCode||d.name});
+   826→   826→        }
+   827→   827→      });
+   828→   828→    }
+   829→   829→
+   830→   830→    // 🔍 Blind Spots — เครื่องไม่มีข้อมูลมิเตอร์หลายเดือนติด
+   831→   831→    if(showRecommendation&&monthsArr.length>=2) {
+   832→   832→      var recentMonthKeys=monthsArr.slice(-3).map(function(m){return m.month;});
+   833→   833→      var blindSpotDevices=[];
+   834→   834→      Object.keys(byDevice).forEach(function(a){
+   835→   835→        var d=byDevice[a];
+   836→   836→        var missingCount=0;
+   837→   837→        recentMonthKeys.forEach(function(m){if(!d.monthData[m]||d.monthData[m]===0)missingCount++;});
+   838→   838→        if(missingCount>=2) blindSpotDevices.push({assetNo:a,missing:missingCount,brand:d.brand,model:d.model});
+   839→   839→      });
+   840→   840→      if(blindSpotDevices.length>0) {
+   841→   841→        smartInsights.push({type:'BLIND_SPOT',tone:'warning',title:'🔍 จุดบอด: เครื่องไม่มีข้อมูล',
+   842→   842→          text:blindSpotDevices.length+' เครื่อง ไม่มีข้อมูลมิเตอร์ '+blindSpotDevices[0].missing+' เดือนติด ('+blindSpotDevices.slice(0,3).map(function(d){return d.assetNo;}).join(', ')+(blindSpotDevices.length>3?' ...':'')+')',
+   843→   843→          recommendation:'ตรวจสอบสถานะเครื่อง: อาจเสีย, ย้ายไปแล้ว, หรือช่างลืมจดมิเตอร์',
+   844→   844→          drillType:'assetNo',drillValue:blindSpotDevices[0].assetNo});
+   845→   845→      }
+   846→   846→    }
+   847→   847→
+   848→   848→    // ✨ ระดับ 3: Actionable — เพิ่ม recommendation ให้ insight ที่มีอยู่แล้ว
+   849→   849→
+   850→   850→    // Top Device — เพิ่ม recommendation ถ้ายังไม่มี
+   851→   851→    if(showRecommendation&&devArr.length>0&&totalPages>0) {
+   852→   852→      var topDev=devArr[0];
+   853→   853→      var topDevPct=Math.round(topDev.pages/totalPages*100);
+   854→   854→      if(topDevPct>20) {
+   855→   855→        // หา recommendation จาก insight TOP_DEVICE ที่มีอยู่แล้ว เพิ่ม recommendation
+   856→   856→        var topDevInsight=smartInsights.find(function(i){return i.type==='TOP_DEVICE';});
+   857→   857→        if(topDevInsight&&!topDevInsight.recommendation) {
+   858→   858→          topDevInsight.recommendation='เครื่องนี้ใช้ '+topDevPct+'% ของทั้งหมด — ตรวจสอบว่างานพิมพ์จริง หรือควรเปลี่ยนเป็นเครื่องเล็กกว่า';
+   859→   859→        }
+   860→   860→      }
+   861→   861→    }
+   862→   862→
+   863→   863→    // Top Department — เพิ่ม recommendation
+   864→   864→    if(showRecommendation&&deptArr.length>0&&totalPages>0) {
+   865→   865→      var topDept=deptArr[0];
+   866→   866→      var topDeptPct=Math.round(topDept.pages/totalPages*100);
+   867→   867→      if(topDeptPct>30) {
+   868→   868→        var topDeptInsight=smartInsights.find(function(i){return i.type==='TOP_DEPARTMENT';});
+   869→   869→        if(topDeptInsight&&!topDeptInsight.recommendation) {
+   870→   870→          topDeptInsight.recommendation=topDept.displayName+' ใช้ '+topDeptPct+'% — ตรวจสอบว่ามีนโยบายลดกระดาษหรือไม่';
+   871→   871→        }
+   872→   872→      }
+   873→   873→    }
+   874→   874→
+   875→   875→    // MoM Change — เพิ่ม recommendation
+   876→   876→    if(showRecommendation&&momChange!==null&&Math.abs(momChange)>=momThreshold) {
+   877→   877→      var momInsight=smartInsights.find(function(i){return i.type==='MOM_CHANGE';});
+   878→   878→      if(momInsight&&!momInsight.recommendation) {
+   879→   879→        momInsight.recommendation=momChange>0?'ตรวจสอบว่ามีงานพิมพ์ก้อนใหญ่ หรือมีเครื่องใหม่เพิ่ม':'ตรวจสอบว่าจดมิเตอร์ครบ หรือมีเครื่องเสีย/ย้ายออก';
+   880→   880→      }
+   881→   881→    }
+   882→   882→
+   883→   883→    // 8. สรุปภาพรวม (summary)
+   884→   884→    if(monthsArr.length>=2 && totalPages>0) {
+   885→   885→      var summaryParts = [];
+   886→   886→      summaryParts.push('รวม '+totalPages.toLocaleString()+" แผ่น ใน "+monthsArr.length+" เดือน");
+   887→   887→      if(deptArr.length>0) summaryParts.push(deptArr.length+' แผนก');
+   888→   888→      if(devArr.length>0) summaryParts.push(devArr.length+' เครื่อง');
+   889→   889→      smartInsights.push({type:'SUMMARY',tone:'info',title:'สรุปภาพรวม',text:summaryParts.join(' | ')});
+   890→   890→    }
+   891→   891→
+   892→   892→    return {totalPages:Math.round(totalPages),avgPages:avgPages,momChange:momChange,months:monthsArr,allMonths:months,byDepartment:deptArr,byBuildingFloor:bfArr,byDevice:devArr,latestMonth:latestMonth,prevMonth:prevMonth,topDept:deptArr[0]||null,topDevice:devArr[0]||null,smartInsights:smartInsights,detailRows:enriched,fromMonth:fromMonth,toMonth:toMonth};
+   893→   893→  } catch(e) { throw new Error('getPaperAnalyticsData error: '+e.message); }
+   894→   894→}
+   895→   895→
+   896→   896→
+   897→   897→function getPaperExportRows(filters, authToken) {
+   898→   898→  try {
+   899→   899→    filters=filters||{};
+   900→   900→    var requestedFormat=String(filters.format||'').trim().toLowerCase();
+   901→   901→    requirePermission(requestedFormat==='print'?'PRINT':'EXPORT_PRINT', authToken);
+   902→   902→    var toMonth=String(filters.toMonth||'').trim();
+   903→   903→    var siteFilter=String(filters.site||'').trim();
+   904→   904→    var buildingFilters=Array.isArray(filters.building)?filters.building:(filters.building?[String(filters.building)]:[]);
+   905→   905→    var deptCodeFilters=Array.isArray(filters.departmentCode)?filters.departmentCode:(filters.departmentCode||filters.department?[String(filters.departmentCode||filters.department)]:[]);
+   906→   906→    var allowedSites=getUserAllowedSites(authToken);
+   907→   907→    var isSuper=allowedSites.includes('ALL');
+   908→   908→    var devices=getAllDevicesCached(authToken);
+   909→   909→    var deviceMap={};
+   910→   910→    devices.forEach(function(d){deviceMap[formatAssetNo(d.AssetNo)]=d;});
+   911→   911→
+   912→   912→    var allMeterRows=readMeterRowsCached();
+   913→   913→    // ✨ FIX: กรองเฉพาะ MONTHLY + RETURN (รายงานรายเดือนเท่านั้น)
+   914→   914→    var filteredMeters=allMeterRows.filter(function(row){
+   915→   915→      var a=formatAssetNo(row.Asset_No), d=deviceMap[a];
+   916→   916→      if(!isSuper&&!d)return false;
+   917→   917→      var rs=row.Site_At_Reading||(d?d.Site:'');
+   918→   918→      if(!isSuper&&!allowedSites.includes(rs))return false;
+   919→   919→      // ✨ FIX: ข้าม INITIAL/RESET/FINAL/SEND_REPAIR/CHECKOUT — เอาเฉพาะรายจดมิเตอร์รายเดือน
+   920→   920→      var rt=String(row.Reading_Type||'').trim().toUpperCase();
+   921→   921→      if(rt==='INITIAL'||rt==='RESET'||rt==='FINAL'||rt==='SEND_REPAIR'||rt==='CHECKOUT')return false;
+   922→   922→      return true;
+   923→   923→    });
+   924→   924→
+   925→   925→    var months=[...new Set(filteredMeters.map(function(r){return normalizeReadingMonth(r.Reading_Month||r.Reading_Date);}).filter(Boolean))].sort();
+   926→   926→    var latestMonth=toMonth||(months.length?months[months.length-1]:'');
+   927→   927→    var previousMonth=getPreviousMonthKey(latestMonth);
+   928→   928→    var agg={};
+   929→   929→
+   930→   930→    filteredMeters.forEach(function(row){
+   931→   931→      var month=normalizeReadingMonth(row.Reading_Month||row.Reading_Date);
+   932→   932→      if(!month)return;
+   933→   933→      if(month!==latestMonth&&month!==previousMonth)return;
+   934→   934→      var assetNo=formatAssetNo(row.Asset_No), key=assetNo+'|'+month;
+   935→   935→      // ✨ FIX: แยก BW และ Color — เดิมใช้ || รวมกัน (Prev_Meter_BW || Prev_Meter_Color)
+   936→   936→      //   ถ้า BW=0 จะใช้ Color (ผิด — คนละ meter)
+   937→   937→      //   ใหม่: ใช้ BW + Color แยก (sum รวมเป็น meterStart/meterEnd)
+   938→   938→      var prevBW=Number(row.Prev_Meter_BW)||0, prevColor=Number(row.Prev_Meter_Color)||0;
+   939→   939→      var currBW=Number(row.Meter_BW)||0, currColor=Number(row.Meter_Color)||0;
+   940→   940→      var prev=prevBW+prevColor;
+   941→   941→      var curr=currBW+currColor;
+   942→   942→      var pages=Number(row.Pages_BW||0)+Number(row.Pages_Color||0);
+   943→   943→      if(!agg[key])agg[key]={pages:0,meterStart:prev,meterEnd:curr,remark:''};
+   944→   944→      agg[key].pages+=pages;
+   945→   945→      if(prev>0)agg[key].meterStart=agg[key].meterStart>0?Math.min(agg[key].meterStart,prev):prev;
+   946→   946→      if(curr>0)agg[key].meterEnd=Math.max(agg[key].meterEnd,curr);
+   947→   947→      if(!agg[key].remark&&row.Remark)agg[key].remark=String(row.Remark);
+   948→   948→    });
+   949→   949→
+   950→   950→    return devices.filter(function(d){
+   951→   951→      var a=formatAssetNo(d.AssetNo), isReq=d.MeterRequired===true||String(d.MeterRequired).toUpperCase()==='TRUE';
+   952→   952→      return isReq||agg[a+'|'+latestMonth]||agg[a+'|'+previousMonth];
+   953→   953→    }).filter(function(d){return !siteFilter||String(d.Site||'')===siteFilter;})
+   954→   954→    .filter(function(d){return buildingFilters.length===0||buildingFilters.indexOf(String(d.Building||''))!==-1;})
+   955→   955→    .filter(function(d){return deptCodeFilters.length===0||deptCodeFilters.indexOf(String(d.DepartmentCode||''))!==-1;})
+   956→   956→    .map(function(d){
+   957→   957→      var a=formatAssetNo(d.AssetNo);
+   958→   958→      var curr=agg[a+'|'+latestMonth]||{pages:0,meterStart:0,meterEnd:0,remark:''};
+   959→   959→      var prev=agg[a+'|'+previousMonth]||{pages:0,meterStart:0,meterEnd:0};
+   960→   960→      var pc=Number(curr.pages||0), pp=Number(prev.pages||0), diff=pc-pp;
+   961→   961→      var pct=pp>0?(diff/pp)*100:0;
+   962→   962→      var me=Number(curr.meterEnd||0), ms=Number(curr.meterStart||0);
+   963→   963→      if(ms===0&&Number(prev.meterEnd||0)>0)ms=Number(prev.meterEnd);
+   964→   964→      if(ms===0&&me>0&&pc>0)ms=Math.max(0,me-pc);
+   965→   965→      if(me===0&&ms>0&&pc>0)me=ms+pc;
+   966→   966→      // ✨ FIX: คำนวณต้นทุนตาม site rate ของอุปกรณ์นั้น
+   967→   967→      var dSite=d.Site||'';
+   968→   968→      var bwRate=getEffectivePaperRate(dSite,'BW');
+   969→   969→      var colorRate=getEffectivePaperRate(dSite,'Color');
+   970→   970→      var rowCost=pc*bwRate; // BW only (ส่วนใหญ่ UDH ใช้ BW)
+   971→   971→      return{brand:d.Brand||'',model:d.Model||'',serial:d.Serial||'',buildingFloor:d.Building||'',floor:d.Floor||'',
+   972→   972→        department:d.Department||d.DepartmentCode||'',site:dSite,meterStart:ms,meterEnd:me,pagesCurrent:pc,pagesPrevious:pp,
+   973→   973→        pagesDiff:diff,momPercent:Math.round(pct*100)/100,status:d.Status||'',remark:curr.remark||'',
+   974→   974→        rowCost:rowCost,bwRate:bwRate,colorRate:colorRate};
+   975→   975→    });
+   976→   976→  } catch(e) { throw new Error('getPaperExportRows error: '+e.message); }
+   977→   977→}
+   978→   978→
+   979→   979→/**
+   980→   980→ * ✨ ดึงรายการมิเตอร์ที่ "จดแล้ว" ในเดือนที่ระบุ
+   981→   981→ * ใช้สำหรับ "📋 รายการที่จดแล้ว" mode ในหน้าจดมิเตอร์
+   982→   982→ * คืนข้อมูล 11 คอลัมน์: Brand, Model, Serial, Building, Floor, Department,
+   983→   983→ *   Start Meter, End Meter, Pages (Current), Pages (Previous), Difference, MoM Change (%)
+   984→   984→ *
+   985→   985→ * @param {Object} params - {month: 'YYYY-MM', site: '', building: '', department: ''}
+   986→   986→ * @param {string} authToken
+   987→   987→ */
+   988→   988→function getCompletedMeterReadings(params, authToken) {
+   989→   989→  try {
+   990→   990→    params = params || {};
+   991→   991→    requirePermission('METER_WRITE', authToken);
+   992→   992→    var month = String(params.month || '').trim();
+   993→   993→    if (!month) return { success: false, message: 'กรุณาระบุเดือน' };
+   994→   994→    var siteFilter = String(params.site || '').trim();
+   995→   995→    var buildingFilter = String(params.building || '').trim();
+   996→   996→    var deptFilter = String(params.department || '').trim();
+   997→   997→
+   998→   998→    var allowedSites = getUserAllowedSites(authToken);
+   999→   999→    var isSuper = allowedSites.includes('ALL');
+  1000→  1000→    var devices = getAllDevicesCached(authToken);
+  1001→  1001→    var deviceMap = {};
+  1002→  1002→    devices.forEach(function(d) { deviceMap[formatAssetNo(d.AssetNo)] = d; });
+  1003→  1003→
+  1004→  1004→    var allMeterRows = readMeterRowsCached();
+  1005→  1005→    var previousMonth = getPreviousMonthKey(month);
+  1006→  1006→    var agg = {};
+  1007→  1007→
+  1008→  1008→    // ✨ เก็บเฉพาะ reading ของเดือนปัจจุบัน + เดือนก่อน (เฉพาะ MONTHLY/RETURN — ข้าม lifecycle events)
+  1009→  1009→    allMeterRows.forEach(function(row) {
+  1010→  1010→      var rowMonth = normalizeReadingMonth(row.Reading_Month || row.Reading_Date);
+  1011→  1011→      if (!rowMonth) return;
+  1012→  1012→      if (rowMonth !== month && rowMonth !== previousMonth) return;
+  1013→  1013→      // ✨ FIX: ข้าม INITIAL/RESET/FINAL/SEND_REPAIR/CHECKOUT — เอาเฉพาะรายจดรายเดือน
+  1014→  1014→      var rt = String(row.Reading_Type || '').trim().toUpperCase();
+  1015→  1015→      if (rt === 'INITIAL' || rt === 'RESET' || rt === 'FINAL' || rt === 'SEND_REPAIR' || rt === 'CHECKOUT') return;
+  1016→  1016→      var assetNo = formatAssetNo(row.Asset_No);
+  1017→  1017→      var key = assetNo + '|' + rowMonth;
+  1018→  1018→      // ✨ FIX: ใช้ + แยก BW กับ Color (เดิมใช้ || ทำให้เสีย BW=0 ตกไปใช้ Color)
+  1019→  1019→      var prev = (Number(row.Prev_Meter_BW) || 0) + (Number(row.Prev_Meter_Color) || 0);
+  1020→  1020→      var curr = (Number(row.Meter_BW) || 0) + (Number(row.Meter_Color) || 0);
+  1021→  1021→      var pages = Number(row.Pages_BW || 0) + Number(row.Pages_Color || 0);
+  1022→  1022→      if (!agg[key]) agg[key] = { pages: 0, meterStart: prev, meterEnd: curr, remark: '' };
+  1023→  1023→      agg[key].pages += pages;
+  1024→  1024→      if (prev > 0) agg[key].meterStart = agg[key].meterStart > 0 ? Math.min(agg[key].meterStart, prev) : prev;
+  1025→  1025→      if (curr > 0) agg[key].meterEnd = Math.max(agg[key].meterEnd, curr);
+  1026→  1026→      if (!agg[key].remark && row.Remark) agg[key].remark = String(row.Remark);
+  1027→  1027→    });
+  1028→  1028→
+  1029→  1029→    // ✨ กรองเฉพาะอุปกรณ์ที่ "จดแล้ว" ในเดือนปัจจุบัน (มี reading ในเดือนที่เลือก)
+  1030→  1030→    var result = devices
+  1031→  1031→      .filter(function(d) {
+  1032→  1032→        var a = formatAssetNo(d.AssetNo);
+  1033→  1033→        return agg[a + '|' + month]; // ✨ ต้องมี reading เดือนนี้
+  1034→  1034→      })
+  1035→  1035→      .filter(function(d) {
+  1036→  1036→        if (isSuper) return true;
+  1037→  1037→        var rs = d.Site || '';
+  1038→  1038→        return allowedSites.indexOf(rs) !== -1;
+  1039→  1039→      })
+  1040→  1040→      .filter(function(d) { return !siteFilter || String(d.Site || '') === siteFilter; })
+  1041→  1041→      .filter(function(d) { return !buildingFilter || String(d.Building || '') === buildingFilter; })
+  1042→  1042→      .filter(function(d) {
+  1043→  1043→        if (!deptFilter) return true;
+  1044→  1044→        return String(d.Department || '') === deptFilter || String(d.DepartmentCode || '') === deptFilter;
+  1045→  1045→      })
+  1046→  1046→      .map(function(d) {
+  1047→  1047→        var a = formatAssetNo(d.AssetNo);
+  1048→  1048→        var curr = agg[a + '|' + month] || { pages: 0, meterStart: 0, meterEnd: 0, remark: '' };
+  1049→  1049→        var prev = agg[a + '|' + previousMonth] || { pages: 0, meterStart: 0, meterEnd: 0 };
+  1050→  1050→        var pc = Number(curr.pages || 0), pp = Number(prev.pages || 0), diff = pc - pp;
+  1051→  1051→        var pct = pp > 0 ? (diff / pp) * 100 : 0;
+  1052→  1052→        var me = Number(curr.meterEnd || 0), ms = Number(curr.meterStart || 0);
+  1053→  1053→        if (ms === 0 && Number(prev.meterEnd || 0) > 0) ms = Number(prev.meterEnd);
+  1054→  1054→        if (ms === 0 && me > 0 && pc > 0) ms = Math.max(0, me - pc);
+  1055→  1055→        if (me === 0 && ms > 0 && pc > 0) me = ms + pc;
+  1056→  1056→        return {
+  1057→  1057→          assetNo: a,
+  1058→  1058→          site: d.Site || '',
+  1059→  1059→          brand: d.Brand || '',
+  1060→  1060→          model: d.Model || '',
+  1061→  1061→          serial: d.Serial || '',
+  1062→  1062→          building: d.Building || '',
+  1063→  1063→          floor: d.Floor || '',
+  1064→  1064→          department: d.Department || d.DepartmentCode || '',
+  1065→  1065→          startMeter: ms,
+  1066→  1066→          endMeter: me,
+  1067→  1067→          pagesCurrent: pc,
+  1068→  1068→          pagesPrevious: pp,
+  1069→  1069→          difference: diff,
+  1070→  1070→          momPercent: Math.round(pct * 100) / 100,
+  1071→  1071→          remark: curr.remark || ''
+  1072→  1072→        };
+  1073→  1073→      });
+  1074→  1074→
+  1075→  1075→    console.log('[CompletedMeter] month=' + month + ', completed=' + result.length);
+  1076→  1076→    return { success: true, rows: result, month: month, count: result.length };
+  1077→  1077→  } catch(e) { return { success: false, message: 'getCompletedMeterReadings error: ' + e.message }; }
+  1078→  1078→}
+  1079→  1079→

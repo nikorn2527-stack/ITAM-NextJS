@@ -241,13 +241,20 @@ export function DashboardPage() {
   const [range, setRange] = React.useState<DashboardRangeKey>('month')
   const [exporting, setExporting] = React.useState(false)
 
-  const { data, isLoading, isError, refetch } = useQuery<DashboardData>({
+  const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery<DashboardData>({
     queryKey: ['dashboard', range],
     queryFn: async () => {
       const res = await fetch(`/api/dashboard?range=${range}`)
       if (!res.ok) throw new Error('Failed to load dashboard')
       return res.json()
     },
+    // Dashboard data doesn't change frequently — keep it fresh for 30s,
+    // then auto-refetch every 60s so the user sees updates without manual refresh.
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    // Smooth range-switching: keep previous data while new range loads
+    placeholderData: (prev) => prev,
   })
 
   // Active cycle (for the dashboard cycle progress widget)
@@ -259,6 +266,8 @@ export function DashboardPage() {
       const json = await res.json()
       return (json.cycles?.[0] as Cycle | undefined) ?? null
     },
+    staleTime: 60_000,
+    refetchInterval: 120_000,
   })
 
   // Reading progress for the active cycle (totalRead / totalMeterable)
@@ -279,6 +288,8 @@ export function DashboardPage() {
         totalUnread: Number(json.totalUnread ?? 0),
       }
     },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   })
 
   // Warranty summary (always fetched once)
@@ -873,6 +884,14 @@ export function DashboardPage() {
           >
             🔄 รีเฟรช
           </Button>
+          {/* Last-updated indicator — shows when data was last refreshed (Next.js-exclusive: auto-refresh every 60s) */}
+          {dataUpdatedAt > 0 && (
+            <span className="hidden items-center gap-1 text-xs text-slate-400 sm:inline-flex">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+              อัปเดต {new Date(dataUpdatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              <span className="text-slate-300">· auto 60s</span>
+            </span>
+          )}
           <Button
             variant="outline"
             onClick={handleExportPdf}
