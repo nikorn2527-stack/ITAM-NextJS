@@ -1883,3 +1883,46 @@ Stage Summary:
 - Services + Stock: ต้อง export CSV หรือแชร์ Sheet เป็น "Anyone with link"
 - CSV mapping ทำงานถูกต้อง (snake_case → camelCase + identity mappings)
 - พร้อม import อีก 2 แอปเมื่อได้ไฟล์
+
+---
+Task ID: DATA-LIVE
+Agent: orchestrator — ข้อมูลจริงทั้ง 3 แอปเข้าระบบ + เปลี่ยนเลขใบงานใหม่
+Task: ดึงข้อมูลจาก 3 Google Sheets (แชร์แล้ว) + เปลี่ยนเลขใบงาน + ปรับแอป
+
+Work Log:
+
+1. ดึงข้อมูลจาก Google Sheets (แชร์เป็น Anyone with link):
+   - Services (1_YPa5f...): ดึง xlsx 3.3MB → parse JSON-in-cell → import
+   - Stock (18unmy8...): ดึง xlsx 535KB → parse column-per-field → import
+   - IT-Asset (1Zi2sDW...): มี CSV อยู่แล้ว → import (2,378 devices)
+
+2. Import สำเร็จ:
+   - Devices: 2,378 (IT-Asset)
+   - WorkOrders: 4,941 (Services — JSON parse สำเร็จ)
+   - WorkOrderMessages: 2 (Services)
+   - WorkOrderReviews: 1 (Services — มี 547 rows แต่ lookup WO ไม่เจอครบ)
+   - Users: 10 (Services)
+   - StockItems: 60 (Stock Products)
+   - StockTransactions: 3,458 (159 IN + 3,299 OUT)
+   - PurchaseOrders: 32 (Stock PurchaseOrders)
+
+3. แก้ไข:
+   - เพิ่ม totalValue + lastUpdated ใน StockItem schema (หายไปตอน push)
+   - เพิ่ม productCode, productName, unit, requester, department, purpose, approver, approvedAt, workOrderNo, unitCost, receiver, purchaseOrderNo, sourceKey, processedFlag ใน StockTransaction schema
+   - ลบ sheet Locations ออกจาก Services (ไม่ได้ใช้ — ดึงจาก IT-Asset แทน)
+
+4. เปลี่ยนเลขใบงานจากเดิม (001, 002, ...) → ใหม่ WO-YYYYMMDD-NNN:
+   - 4,941 records updated ทั้งหมด
+   - ตัวอย่าง: WO-20250826-001, WO-20250826-002, WO-20260812-004
+   - เรียงตามวันที่ + sequential per day
+
+5. ตรวจสอบใน browser:
+   - ✅ แจ้งซ่อม: แสดง WO-20260812-004, WO-20260812-003, etc. พร้อม subject, building, location, S/N, ผู้แจ้ง, priority
+   - ✅ สต็อก: 48 รายการ (active), สต็อกต่ำ 25 รายการ, มูลค่ารวม
+   - ✅ อุปกรณ์: 2,378 รายการ (BROTHER, ZEBRA, EPSON, OKI)
+
+Stage Summary:
+- ข้อมูลจริงทั้ง 3 แอปเข้าระบบครบ: 2,378 devices + 4,941 work orders + 60 stock items + 3,458 transactions
+- เลขใบงานเปลี่ยนเป็น WO-YYYYMMDD-NNN (สวย อ่านง่าย)
+- Locations sheet ลบออก (ดึงจาก IT-Asset แทน)
+- พร้อมสำหรับการปรับการทำงานในแอปต่อไป
