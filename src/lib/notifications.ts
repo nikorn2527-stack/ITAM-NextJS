@@ -52,6 +52,11 @@ export type NotificationTemplate =
   | 'stock_low' // สต็อกต่ำ
   | 'stock_out' // สต็อกหมด
   | 'meter_reminder' // แจ้งเตือนจดมิเตอร์
+  | 'device_added' // เพิ่มอุปกรณ์
+  | 'device_updated' // แก้ไขอุปกรณ์
+  | 'transfer' // ย้ายตำแหน่งอุปกรณ์
+  | 'meter' // จดมิเตอร์
+  | 'custom' // ข้อความกำหนดเอง
 
 export interface NotificationData {
   template: NotificationTemplate
@@ -75,6 +80,36 @@ export interface NotificationData {
 export interface RenderedMessage {
   title: string
   body: string
+}
+
+export interface NotifyChannelConfig {
+  email: boolean
+  telegram: boolean
+  lineNotify: boolean
+  lineOA: boolean
+}
+
+export interface NotifyEventConfig {
+  deviceAdded: boolean
+  deviceUpdated: boolean
+  transfer: boolean
+  lifecycle: boolean
+  meter: boolean
+}
+
+const DEFAULT_NOTIFY_CHANNELS: NotifyChannelConfig = {
+  email: false,
+  telegram: true,
+  lineNotify: false,
+  lineOA: true,
+}
+
+const DEFAULT_NOTIFY_EVENTS: NotifyEventConfig = {
+  deviceAdded: true,
+  deviceUpdated: true,
+  transfer: true,
+  lifecycle: true,
+  meter: true,
 }
 
 // ============================================================
@@ -176,6 +211,26 @@ const TEMPLATES: Record<NotificationTemplate, { title: string; body: string }> =
   meter_reminder: {
     title: 'แจ้งเตือนจดมิเตอร์',
     body: '📈 แจ้งเตือนจดมิเตอร์\nยังไม่ได้จด: {deviceName} ({assetCode})\nรอบ: {cycleName}',
+  },
+  device_added: {
+    title: 'เพิ่มอุปกรณ์ใหม่',
+    body: 'เพิ่มอุปกรณ์ {assetNo}\nประเภท: {deviceType}\nยี่ห้อ/รุ่น: {brand} {model}',
+  },
+  device_updated: {
+    title: 'แก้ไขข้อมูลอุปกรณ์',
+    body: 'แก้ไขอุปกรณ์ {assetNo}\nฟิลด์ที่เปลี่ยน: {changedFields}',
+  },
+  transfer: {
+    title: 'ย้ายตำแหน่งอุปกรณ์',
+    body: 'ย้ายอุปกรณ์ {assetNo}\nจาก: {fromSite}\nไปยัง: {toSite}\nผู้ดำเนินการ: {by}',
+  },
+  meter: {
+    title: 'บันทึกมิเตอร์',
+    body: 'บันทึกมิเตอร์อุปกรณ์ {assetNo}\nขาวดำ: {pagesBw} หน้า\nสี: {pagesColor} หน้า\nผู้บันทึก: {by}',
+  },
+  custom: {
+    title: '{title}',
+    body: '{message}',
   },
 }
 
@@ -726,6 +781,173 @@ export async function notifyMeterReminder(
     },
     actor: opts.actor,
     entityId: ctx.deviceId,
+    entity: 'Device',
+  })
+}
+
+// ============================================================
+// ITAM compatibility helpers and persisted notification settings
+// ============================================================
+
+const CHANNEL_KEYS = {
+  email: 'notify_channel_email',
+  telegram: 'notify_channel_telegram',
+  lineNotify: 'notify_channel_line_notify',
+  lineOA: 'notify_channel_line_oa',
+} as const
+
+const EVENT_KEYS = {
+  deviceAdded: 'notify_event_device_added',
+  deviceUpdated: 'notify_event_device_updated',
+  transfer: 'notify_event_transfer',
+  lifecycle: 'notify_event_lifecycle',
+  meter: 'notify_event_meter',
+} as const
+
+async function readBooleanSetting(key: string, fallback: boolean): Promise<boolean> {
+  const row = await db.appSetting.findUnique({ where: { key } })
+  if (row?.value == null) return fallback
+  return row.value !== 'false'
+}
+
+async function writeBooleanSetting(key: string, value: boolean): Promise<void> {
+  await db.appSetting.upsert({
+    where: { key },
+    create: { key, value: String(value) },
+    update: { value: String(value) },
+  })
+}
+
+export async function getNotifyChannels(): Promise<NotifyChannelConfig> {
+  const [email, telegram, lineNotify, lineOA] = await Promise.all([
+    readBooleanSetting(CHANNEL_KEYS.email, DEFAULT_NOTIFY_CHANNELS.email),
+    readBooleanSetting(CHANNEL_KEYS.telegram, DEFAULT_NOTIFY_CHANNELS.telegram),
+    readBooleanSetting(CHANNEL_KEYS.lineNotify, DEFAULT_NOTIFY_CHANNELS.lineNotify),
+    readBooleanSetting(CHANNEL_KEYS.lineOA, DEFAULT_NOTIFY_CHANNELS.lineOA),
+  ])
+  return { email, telegram, lineNotify, lineOA }
+}
+
+export async function saveNotifyChannels(config: NotifyChannelConfig): Promise<void> {
+  await Promise.all([
+    writeBooleanSetting(CHANNEL_KEYS.email, Boolean(config.email)),
+    writeBooleanSetting(CHANNEL_KEYS.telegram, Boolean(config.telegram)),
+    writeBooleanSetting(CHANNEL_KEYS.lineNotify, Boolean(config.lineNotify)),
+    writeBooleanSetting(CHANNEL_KEYS.lineOA, Boolean(config.lineOA)),
+  ])
+}
+
+export async function getNotifyEvents(): Promise<NotifyEventConfig> {
+  const [deviceAdded, deviceUpdated, transfer, lifecycle, meter] = await Promise.all([
+    readBooleanSetting(EVENT_KEYS.deviceAdded, DEFAULT_NOTIFY_EVENTS.deviceAdded),
+    readBooleanSetting(EVENT_KEYS.deviceUpdated, DEFAULT_NOTIFY_EVENTS.deviceUpdated),
+    readBooleanSetting(EVENT_KEYS.transfer, DEFAULT_NOTIFY_EVENTS.transfer),
+    readBooleanSetting(EVENT_KEYS.lifecycle, DEFAULT_NOTIFY_EVENTS.lifecycle),
+    readBooleanSetting(EVENT_KEYS.meter, DEFAULT_NOTIFY_EVENTS.meter),
+  ])
+  return { deviceAdded, deviceUpdated, transfer, lifecycle, meter }
+}
+
+export async function saveNotifyEvents(config: NotifyEventConfig): Promise<void> {
+  await Promise.all([
+    writeBooleanSetting(EVENT_KEYS.deviceAdded, Boolean(config.deviceAdded)),
+    writeBooleanSetting(EVENT_KEYS.deviceUpdated, Boolean(config.deviceUpdated)),
+    writeBooleanSetting(EVENT_KEYS.transfer, Boolean(config.transfer)),
+    writeBooleanSetting(EVENT_KEYS.lifecycle, Boolean(config.lifecycle)),
+    writeBooleanSetting(EVENT_KEYS.meter, Boolean(config.meter)),
+  ])
+}
+
+async function channelsForEvent(event: keyof NotifyEventConfig): Promise<NotificationChannel[]> {
+  const [channels, events] = await Promise.all([getNotifyChannels(), getNotifyEvents()])
+  if (!events[event]) return []
+
+  const selected: NotificationChannel[] = []
+  if (channels.telegram) selected.push('telegram')
+  if (channels.lineOA) selected.push('line-oa')
+  if (channels.email) selected.push('email')
+  // LINE Notify is retained in the settings UI, but has no sender in the
+  // current implementation; do not silently send it through a different API.
+  return selected
+}
+
+export async function notifyDeviceAdded(
+  device: { assetNo?: string | null; deviceType?: string | null; brand?: string | null; model?: string | null },
+  actor = 'system',
+): Promise<void> {
+  await sendNotification({
+    template: 'device_added',
+    channels: await channelsForEvent('deviceAdded'),
+    data: {
+      assetNo: device.assetNo ?? '—',
+      deviceType: device.deviceType ?? '—',
+      brand: device.brand ?? '—',
+      model: device.model ?? '—',
+    },
+    actor,
+    entityId: device.assetNo ?? undefined,
+    entity: 'Device',
+  })
+}
+
+export async function notifyDeviceUpdated(
+  device: { assetNo?: string | null; brand?: string | null; model?: string | null },
+  actor = 'system',
+  changedFields: string[] = [],
+): Promise<void> {
+  await sendNotification({
+    template: 'device_updated',
+    channels: await channelsForEvent('deviceUpdated'),
+    data: {
+      assetNo: device.assetNo ?? '—',
+      brand: device.brand ?? '—',
+      model: device.model ?? '—',
+      changedFields: changedFields.length ? changedFields.join(', ') : '—',
+    },
+    actor,
+    entityId: device.assetNo ?? undefined,
+    entity: 'Device',
+  })
+}
+
+export async function notifyTransfer(ctx: {
+  assetNo: string
+  fromSite?: string | null
+  toSite?: string | null
+  by?: string | null
+}): Promise<void> {
+  await sendNotification({
+    template: 'transfer',
+    channels: await channelsForEvent('transfer'),
+    data: {
+      assetNo: ctx.assetNo,
+      fromSite: ctx.fromSite ?? '—',
+      toSite: ctx.toSite ?? '—',
+      by: ctx.by ?? '—',
+    },
+    actor: ctx.by ?? 'system',
+    entityId: ctx.assetNo,
+    entity: 'Device',
+  })
+}
+
+export async function notifyMeter(ctx: {
+  assetNo: string
+  pagesBw: number
+  pagesColor: number
+  by?: string | null
+}): Promise<void> {
+  await sendNotification({
+    template: 'meter',
+    channels: await channelsForEvent('meter'),
+    data: {
+      assetNo: ctx.assetNo,
+      pagesBw: ctx.pagesBw,
+      pagesColor: ctx.pagesColor,
+      by: ctx.by ?? '—',
+    },
+    actor: ctx.by ?? 'system',
+    entityId: ctx.assetNo,
     entity: 'Device',
   })
 }

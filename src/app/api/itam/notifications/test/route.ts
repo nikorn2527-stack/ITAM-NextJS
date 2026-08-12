@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
-import { sendNotification } from '@/lib/notifications'
+import { getNotifyChannels, sendNotification } from '@/lib/notifications'
 
 /**
  * POST /api/itam/notifications/test
@@ -23,11 +23,25 @@ export async function POST(req: NextRequest) {
       ? body.message.trim()
       : 'ทดสอบการแจ้งเตือนจากระบบ ITAM — หากคุณได้รับข้อความนี้แสดงว่าช่องทางการแจ้งเตือนทำงานปกติ'
 
+    const configured = await getNotifyChannels()
+    const channels = [
+      ...(configured.email ? (['email'] as const) : []),
+      ...(configured.telegram ? (['telegram'] as const) : []),
+      ...(configured.lineOA ? (['line-oa'] as const) : []),
+    ]
+
     await sendNotification({
-      event: 'deviceAdded', // any event — the test bypasses event-filter check below
-      title: '🔔 ทดสอบการแจ้งเตือน',
-      message: `${message}\n\nส่งโดย: ${user.email}`,
-      data: { test: true, by: user.email, sentAt: new Date().toISOString() },
+      template: 'custom',
+      channels,
+      data: {
+        title: '🔔 ทดสอบการแจ้งเตือน',
+        message: `${message}\n\nส่งโดย: ${user.email}`,
+        test: true,
+        by: user.email,
+        sentAt: new Date().toISOString(),
+      },
+      actor: user.email,
+      entity: 'NotificationTest',
     })
 
     return NextResponse.json({ ok: true, sentAt: new Date().toISOString(), by: user.email })
