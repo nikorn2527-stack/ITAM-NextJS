@@ -80,12 +80,21 @@ export function verifyPassword(
   storedSalt: string | null,
 ): boolean {
   if (!storedHash || !storedSalt) return false
-  const target = storedHash.trim().toLowerCase()
+  const target = storedHash.trim()
   if (!target) return false
+  // bcrypt (starts with $2b$ or $2a$)
+  if (target.startsWith('$2b$') || target.startsWith('$2a$')) {
+    try {
+      return require('bcryptjs').compareSync(password, target)
+    } catch {
+      return false
+    }
+  }
   // Modern PBKDF2-like (10 000 rounds)
-  if (hashPassword(password, storedSalt, PBKDF2_ITERATIONS).toLowerCase() === target) return true
+  const lowerTarget = target.toLowerCase()
+  if (hashPassword(password, storedSalt, PBKDF2_ITERATIONS).toLowerCase() === lowerTarget) return true
   // Legacy single-round (GAS Auth.gs oldHash path)
-  if (hashPassword(password, storedSalt, 1).toLowerCase() === target) return true
+  if (hashPassword(password, storedSalt, 1).toLowerCase() === lowerTarget) return true
   return false
 }
 
