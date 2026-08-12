@@ -1,0 +1,963 @@
+     1→'use client'
+     2→
+     3→/**
+     4→ * ItamRepairs — หน้า "แจ้งซ่อม / ซ่อมบำรุง"
+     5→ *
+     6→ * ผู้ใช้สามารถ:
+     7→ *   1. ดู KPI สรุปจำนวนงานซ่อมแยกตามสถานะ + ค่าซ่อมรวมเดือนนี้
+     8→ *   2. กรองรายการตามสถานะ / ประเภท / คำค้น (assetNo หรือ description)
+     9→ *   3. สร้างคำขอซ่อมใหม่ (เลือกอุปกรณ์จาก list, ระบุประเภท, อาการ, ร้านซ่อม, วันเริ่ม)
+    10→ *   4. คลิกแถวเพื่อดูรายละเอียดเต็ม + แก้ไขสถานะ / ค่าซ่อม / ผลการซ่อม
+    11→ *
+    12→ * API (มี interceptor แปะ Bearer token ให้ /api/itam/* อัตโนมัติ):
+    13→ *   - GET    /api/itam/maintenance             → { logs: [...] }
+    14→ *   - POST   /api/itam/maintenance             → create new log
+    15→ *   - PUT    /api/itam/maintenance/[id]        → update status / cost / resolvedNote / endDate
+    16→ *   - GET    /api/itam/devices?limit=100       → สำหรับค้นเลือกอุปกรณ์ในฟอร์ม
+    17→ */
+    18→
+    19→import * as React from 'react'
+    20→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+    21→import { toast } from 'sonner'
+    22→import {
+    23→  Card,
+    24→  CardContent,
+    25→} from '@/components/ui/card'
+    26→import { Button } from '@/components/ui/button'
+    27→import { Input } from '@/components/ui/input'
+    28→import { Label } from '@/components/ui/label'
+    29→import { Textarea } from '@/components/ui/textarea'
+    30→import { Badge } from '@/components/ui/badge'
+    31→import { Skeleton } from '@/components/ui/skeleton'
+    32→import {
+    33→  Select,
+    34→  SelectContent,
+    35→  SelectItem,
+    36→  SelectTrigger,
+    37→  SelectValue,
+    38→} from '@/components/ui/select'
+    39→import {
+    40→  Table,
+    41→  TableBody,
+    42→  TableCell,
+    43→  TableHead,
+    44→  TableHeader,
+    45→  TableRow,
+    46→} from '@/components/ui/table'
+    47→import {
+    48→  Dialog,
+    49→  DialogContent,
+    50→  DialogDescription,
+    51→  DialogFooter,
+    52→  DialogHeader,
+    53→  DialogTitle,
+    54→} from '@/components/ui/dialog'
+    55→import {
+    56→  Popover,
+    57→  PopoverContent,
+    58→  PopoverTrigger,
+    59→} from '@/components/ui/popover'
+    60→import {
+    61→  Command,
+    62→  CommandEmpty,
+    63→  CommandGroup,
+    64→  CommandInput,
+    65→  CommandItem,
+    66→  CommandList,
+    67→} from '@/components/ui/command'
+    68→import {
+    69→  Wrench,
+    70→  Plus,
+    71→  RefreshCw,
+    72→  Search,
+    73→  CheckCheck,
+    74→  Clock,
+    75→  Loader2,
+    76→  AlertCircle,
+    77→  Banknote,
+    78→  Pencil,
+    79→  Check,
+    80→  ChevronsUpDown,
+    81→  CalendarDays,
+    82→} from 'lucide-react'
+    83→
+    84→// ── Types ───────────────────────────────────────────────────────────────
+    85→
+    86→interface DeviceLite {
+    87→  id: string
+    88→  assetNo: string
+    89→  brand: string | null
+    90→  model: string | null
+    91→  deviceType: string | null
+    92→  site: string | null
+    93→}
+    94→
+    95→interface MaintenanceLog {
+    96→  id: string
+    97→  logId: string | null
+    98→  assetNo: string
+    99→  type: string // repair | maintenance | inspection | upgrade
+   100→  status: string // open | in_progress | completed | cancelled
+   101→  startDate: string | null
+   102→  endDate: string | null
+   103→  cost: number | null
+   104→  vendor: string | null
+   105→  description: string | null
+   106→  resolvedNote: string | null
+   107→  createdAt: string
+   108→  device?: {
+   109→    assetNo: string
+   110→    brand: string | null
+   111→    model: string | null
+   112→    site: string | null
+   113→  } | null
+   114→}
+   115→
+   116→interface MaintenanceResponse {
+   117→  logs: MaintenanceLog[]
+   118→}
+   119→
+   120→// ── Constants ───────────────────────────────────────────────────────────
+   121→
+   122→const TYPE_LABELS: Record<string, string> = {
+   123→  repair: 'ซ่อมแซม',
+   124→  maintenance: 'บำรุงรักษา',
+   125→  inspection: 'ตรวจสอบ',
+   126→  upgrade: 'อัปเกรด',
+   127→}
+   128→
+   129→const TYPE_BADGES: Record<string, string> = {
+   130→  repair: 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800',
+   131→  maintenance: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800',
+   132→  inspection: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800',
+   133→  upgrade: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800',
+   134→}
+   135→
+   136→const STATUS_LABELS: Record<string, string> = {
+   137→  open: 'เปิดงาน',
+   138→  in_progress: 'กำลังซ่อม',
+   139→  completed: 'เสร็จแล้ว',
+   140→  cancelled: 'ยกเลิก',
+   141→}
+   142→
+   143→const STATUS_BADGES: Record<string, string> = {
+   144→  open: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800',
+   145→  in_progress: 'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800',
+   146→  completed: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800',
+   147→  cancelled: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+   148→}
+   149→
+   150→const STATUS_FILTER_OPTIONS = [
+   151→  { value: 'all', label: 'ทุกสถานะ' },
+   152→  { value: 'open', label: 'เปิดงาน' },
+   153→  { value: 'in_progress', label: 'กำลังซ่อม' },
+   154→  { value: 'completed', label: 'เสร็จแล้ว' },
+   155→  { value: 'cancelled', label: 'ยกเลิก' },
+   156→]
+   157→
+   158→const TYPE_FILTER_OPTIONS = [
+   159→  { value: 'all', label: 'ทุกประเภท' },
+   160→  { value: 'repair', label: 'ซ่อมแซม' },
+   161→  { value: 'maintenance', label: 'บำรุงรักษา' },
+   162→  { value: 'inspection', label: 'ตรวจสอบ' },
+   163→  { value: 'upgrade', label: 'อัปเกรด' },
+   164→]
+   165→
+   166→// ── Helpers ─────────────────────────────────────────────────────────────
+   167→
+   168→function formatBaht(n: number | null | undefined): string {
+   169→  if (n == null || isNaN(n)) return '—'
+   170→  return '฿' + n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+   171→}
+   172→
+   173→function formatDate(iso: string | null | undefined): string {
+   174→  if (!iso) return '—'
+   175→  try {
+   176→    // Accept both ISO datetime and yyyy-mm-dd
+   177→    const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso)
+   178→    if (isNaN(d.getTime())) return iso
+   179→    return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })
+   180→  } catch {
+   181→    return iso
+   182→  }
+   183→}
+   184→
+   185→function todayISO(): string {
+   186→  // Local date in yyyy-mm-dd (avoid UTC drift)
+   187→  const d = new Date()
+   188→  const y = d.getFullYear()
+   189→  const m = String(d.getMonth() + 1).padStart(2, '0')
+   190→  const day = String(d.getDate()).padStart(2, '0')
+   191→  return `${y}-${m}-${day}`
+   192→}
+   193→
+   194→function isThisMonth(iso: string | null | undefined): boolean {
+   195→  if (!iso) return false
+   196→  try {
+   197→    const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso)
+   198→    if (isNaN(d.getTime())) return false
+   199→    const now = new Date()
+   200→    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+   201→  } catch {
+   202→    return false
+   203→  }
+   204→}
+   205→
+   206→function truncate(s: string | null | undefined, n = 40): string {
+   207→  if (!s) return '—'
+   208→  return s.length > n ? s.slice(0, n) + '…' : s
+   209→}
+   210→
+   211→// ── Component ───────────────────────────────────────────────────────────
+   212→
+   213→export function ItamRepairs() {
+   214→  const qc = useQueryClient()
+   215→
+   216→  // Filter state
+   217→  const [statusFilter, setStatusFilter] = React.useState('all')
+   218→  const [typeFilter, setTypeFilter] = React.useState('all')
+   219→  const [search, setSearch] = React.useState('')
+   220→
+   221→  // Create dialog state
+   222→  const [createOpen, setCreateOpen] = React.useState(false)
+   223→  const [createForm, setCreateForm] = React.useState({
+   224→    assetNo: '',
+   225→    type: 'repair',
+   226→    description: '',
+   227→    vendor: '',
+   228→    startDate: todayISO(),
+   229→  })
+   230→  const [devicePickerOpen, setDevicePickerOpen] = React.useState(false)
+   231→
+   232→  // Detail dialog state
+   233→  const [detailLog, setDetailLog] = React.useState<MaintenanceLog | null>(null)
+   234→  const [detailOpen, setDetailOpen] = React.useState(false)
+   235→  const [editMode, setEditMode] = React.useState(false)
+   236→  const [editForm, setEditForm] = React.useState({
+   237→    status: 'open',
+   238→    endDate: '',
+   239→    cost: '',
+   240→    resolvedNote: '',
+   241→  })
+   242→
+   243→  // ── Queries ──────────────────────────────────────────────────────────
+   244→
+   245→  // Devices for the create-form picker (limit 100 to keep payload small)
+   246→  const { data: devicesData } = useQuery<{ devices: DeviceLite[] }>({
+   247→    queryKey: ['itam-devices-picker', 'limit-100'],
+   248→    queryFn: async () => {
+   249→      const res = await fetch('/api/itam/devices?limit=100')
+   250→      if (!res.ok) throw new Error('Failed to load devices')
+   251→      return res.json()
+   252→    },
+   253→    enabled: createOpen,
+   254→    staleTime: 60_000,
+   255→  })
+   256→  const devices = devicesData?.devices ?? []
+   257→
+   258→  // Maintenance logs list
+   259→  const queryKey = React.useMemo(
+   260→    () => ['itam-maintenance', statusFilter, typeFilter, search],
+   261→    [statusFilter, typeFilter, search],
+   262→  )
+   263→  const { data, isLoading, isFetching } = useQuery<MaintenanceResponse>({
+   264→    queryKey,
+   265→    queryFn: async () => {
+   266→      const res = await fetch('/api/itam/maintenance')
+   267→      if (!res.ok) throw new Error('Failed to load maintenance logs')
+   268→      return res.json()
+   269→    },
+   270→    staleTime: 30_000,
+   271→  })
+   272→
+   273→  const allLogs = data?.logs ?? []
+   274→
+   275→  // ── Client-side filter (status/type/search) ──────────────────────────
+   276→  const filteredLogs = React.useMemo(() => {
+   277→    let arr = allLogs
+   278→    if (statusFilter !== 'all') arr = arr.filter((l) => l.status === statusFilter)
+   279→    if (typeFilter !== 'all') arr = arr.filter((l) => l.type === typeFilter)
+   280→    const q = search.trim().toLowerCase()
+   281→    if (q) {
+   282→      arr = arr.filter(
+   283→        (l) =>
+   284→          l.assetNo.toLowerCase().includes(q) ||
+   285→          (l.description ?? '').toLowerCase().includes(q) ||
+   286→          (l.logId ?? '').toLowerCase().includes(q) ||
+   287→          (l.vendor ?? '').toLowerCase().includes(q),
+   288→      )
+   289→    }
+   290→    return arr
+   291→  }, [allLogs, statusFilter, typeFilter, search])
+   292→
+   293→  // ── KPI stats (computed client-side from allLogs) ────────────────────
+   294→  const stats = React.useMemo(() => {
+   295→    const open = allLogs.filter((l) => l.status === 'open').length
+   296→    const inProgress = allLogs.filter((l) => l.status === 'in_progress').length
+   297→    const completedThisMonth = allLogs.filter(
+   298→      (l) => l.status === 'completed' && isThisMonth(l.endDate ?? l.startDate ?? l.createdAt),
+   299→    ).length
+   300→    const costThisMonth = allLogs
+   301→      .filter(
+   302→        (l) =>
+   303→          l.status === 'completed' &&
+   304→          isThisMonth(l.endDate ?? l.startDate ?? l.createdAt) &&
+   305→          l.cost != null,
+   306→      )
+   307→      .reduce((sum, l) => sum + (l.cost ?? 0), 0)
+   308→    return { open, inProgress, completedThisMonth, costThisMonth }
+   309→  }, [allLogs])
+   310→
+   311→  // ── Mutations ────────────────────────────────────────────────────────
+   312→
+   313→  const createMutation = useMutation({
+   314→    mutationFn: async (input: typeof createForm) => {
+   315→      const res = await fetch('/api/itam/maintenance', {
+   316→        method: 'POST',
+   317→        headers: { 'Content-Type': 'application/json' },
+   318→        body: JSON.stringify({
+   319→          assetNo: input.assetNo,
+   320→          type: input.type,
+   321→          status: 'open',
+   322→          startDate: input.startDate,
+   323→          description: input.description.trim() || null,
+   324→          vendor: input.vendor.trim() || null,
+   325→        }),
+   326→      })
+   327→      const json = await res.json()
+   328→      if (!res.ok) throw new Error(json?.error || 'ไม่สามารถสร้างคำขอซ่อมได้')
+   329→      return json
+   330→    },
+   331→    onSuccess: () => {
+   332→      toast.success('สร้างคำขอซ่อมแล้ว')
+   333→      qc.invalidateQueries({ queryKey: ['itam-maintenance'] })
+   334→      setCreateOpen(false)
+   335→      setCreateForm({
+   336→        assetNo: '',
+   337→        type: 'repair',
+   338→        description: '',
+   339→        vendor: '',
+   340→        startDate: todayISO(),
+   341→      })
+   342→    },
+   343→    onError: (err: unknown) => {
+   344→      toast.error(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
+   345→    },
+   346→  })
+   347→
+   348→  const updateMutation = useMutation({
+   349→    mutationFn: async ({ id, body }: { id: string; body: Record<string, unknown> }) => {
+   350→      const res = await fetch(`/api/itam/maintenance/${id}`, {
+   351→        method: 'PUT',
+   352→        headers: { 'Content-Type': 'application/json' },
+   353→        body: JSON.stringify(body),
+   354→      })
+   355→      const json = await res.json()
+   356→      if (!res.ok) throw new Error(json?.error || 'ไม่สามารถอัปเดตได้')
+   357→      return json
+   358→    },
+   359→    onSuccess: () => {
+   360→      toast.success('อัปเดตสถานะแล้ว')
+   361→      qc.invalidateQueries({ queryKey: ['itam-maintenance'] })
+   362→      setEditMode(false)
+   363→      setDetailOpen(false)
+   364→      setDetailLog(null)
+   365→    },
+   366→    onError: (err: unknown) => {
+   367→      toast.error(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
+   368→    },
+   369→  })
+   370→
+   371→  // ── Handlers ─────────────────────────────────────────────────────────
+   372→
+   373→  function openDetail(log: MaintenanceLog) {
+   374→    setDetailLog(log)
+   375→    setEditForm({
+   376→      status: log.status,
+   377→      endDate: log.endDate ?? '',
+   378→      cost: log.cost != null ? String(log.cost) : '',
+   379→      resolvedNote: log.resolvedNote ?? '',
+   380→    })
+   381→    setEditMode(false)
+   382→    setDetailOpen(true)
+   383→  }
+   384→
+   385→  function submitCreate() {
+   386→    if (!createForm.assetNo) {
+   387→      toast.error('กรุณาเลือกอุปกรณ์')
+   388→      return
+   389→    }
+   390→    if (!createForm.startDate) {
+   391→      toast.error('กรุณาระบุวันที่เริ่ม')
+   392→      return
+   393→    }
+   394→    createMutation.mutate(createForm)
+   395→  }
+   396→
+   397→  function submitEdit() {
+   398→    if (!detailLog) return
+   399→    updateMutation.mutate({
+   400→      id: detailLog.id,
+   401→      body: {
+   402→        status: editForm.status,
+   403→        endDate: editForm.endDate || null,
+   404→        cost: editForm.cost === '' ? null : Number(editForm.cost),
+   405→        resolvedNote: editForm.resolvedNote.trim() || null,
+   406→      },
+   407→    })
+   408→  }
+   409→
+   410→  // ── Render ───────────────────────────────────────────────────────────
+   411→
+   412→  return (
+   413→    <div className="space-y-4 p-4 md:p-6">
+   414→      {/* Header */}
+   415→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+   416→        <div>
+   417→          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+   418→            🔧 แจ้งซ่อม / ซ่อมบำรุง
+   419→          </h1>
+   420→          <p className="text-sm text-slate-500 dark:text-slate-400">
+   421→            สร้างและติดตามคำขอซ่อมบำรุงอุปกรณ์
+   422→          </p>
+   423→        </div>
+   424→        <div className="flex gap-2">
+   425→          <Button
+   426→            variant="outline"
+   427→            onClick={() => qc.invalidateQueries({ queryKey })}
+   428→            className="dark:bg-slate-800 dark:border-slate-700"
+   429→          >
+   430→            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+   431→            รีเฟรช
+   432→          </Button>
+   433→          <Button onClick={() => setCreateOpen(true)} className="bg-[#f97316] hover:bg-[#ea580c]">
+   434→            <Plus className="h-4 w-4" /> แจ้งซ่อมใหม่
+   435→          </Button>
+   436→        </div>
+   437→      </div>
+   438→
+   439→      {/* KPI cards */}
+   440→      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+   441→        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   442→          <CardContent className="p-4">
+   443→            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+   444→              <AlertCircle className="h-4 w-4" />
+   445→              <span className="text-xs font-medium">เปิดงาน</span>
+   446→            </div>
+   447→            <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
+   448→              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.open.toLocaleString()}
+   449→            </div>
+   450→          </CardContent>
+   451→        </Card>
+   452→        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   453→          <CardContent className="p-4">
+   454→            <div className="flex items-center gap-2 text-sky-600 dark:text-sky-400">
+   455→              <Clock className="h-4 w-4" />
+   456→              <span className="text-xs font-medium">กำลังซ่อม</span>
+   457→            </div>
+   458→            <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
+   459→              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.inProgress.toLocaleString()}
+   460→            </div>
+   461→          </CardContent>
+   462→        </Card>
+   463→        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   464→          <CardContent className="p-4">
+   465→            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+   466→              <CheckCheck className="h-4 w-4" />
+   467→              <span className="text-xs font-medium">เสร็จแล้ว (เดือนนี้)</span>
+   468→            </div>
+   469→            <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
+   470→              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.completedThisMonth.toLocaleString()}
+   471→            </div>
+   472→          </CardContent>
+   473→        </Card>
+   474→        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   475→          <CardContent className="p-4">
+   476→            <div className="flex items-center gap-2 text-[#f97316]">
+   477→              <Banknote className="h-4 w-4" />
+   478→              <span className="text-xs font-medium">ค่าซ่อมรวม (เดือนนี้)</span>
+   479→            </div>
+   480→            <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
+   481→              {isLoading ? <Skeleton className="h-7 w-24" /> : formatBaht(stats.costThisMonth)}
+   482→            </div>
+   483→          </CardContent>
+   484→        </Card>
+   485→      </div>
+   486→
+   487→      {/* Filter bar */}
+   488→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+   489→        <Select value={statusFilter} onValueChange={setStatusFilter}>
+   490→          <SelectTrigger className="w-full sm:w-44 dark:bg-slate-800 dark:border-slate-700">
+   491→            <SelectValue placeholder="สถานะ" />
+   492→          </SelectTrigger>
+   493→          <SelectContent>
+   494→            {STATUS_FILTER_OPTIONS.map((o) => (
+   495→              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+   496→            ))}
+   497→          </SelectContent>
+   498→        </Select>
+   499→        <Select value={typeFilter} onValueChange={setTypeFilter}>
+   500→          <SelectTrigger className="w-full sm:w-44 dark:bg-slate-800 dark:border-slate-700">
+   501→            <SelectValue placeholder="ประเภท" />
+   502→          </SelectTrigger>
+   503→          <SelectContent>
+   504→            {TYPE_FILTER_OPTIONS.map((o) => (
+   505→              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+   506→            ))}
+   507→          </SelectContent>
+   508→        </Select>
+   509→        <div className="relative flex-1">
+   510→          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+   511→          <Input
+   512→            placeholder="ค้นหาด้วยรหัสอุปกรณ์ / คำอธิบาย / เลขที่..."
+   513→            value={search}
+   514→            onChange={(e) => setSearch(e.target.value)}
+   515→            className="pl-9 dark:bg-slate-800 dark:border-slate-700"
+   516→          />
+   517→        </div>
+   518→      </div>
+   519→
+   520→      {/* Table */}
+   521→      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   522→        <CardContent className="p-0">
+   523→          <div className="itam-scroll max-h-[60vh] overflow-auto">
+   524→            <Table>
+   525→              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+   526→                <TableRow>
+   527→                  <TableHead className="w-28">เลขที่</TableHead>
+   528→                  <TableHead className="min-w-[180px]">รหัสอุปกรณ์</TableHead>
+   529→                  <TableHead className="w-24">ประเภท</TableHead>
+   530→                  <TableHead className="w-28">สถานะ</TableHead>
+   531→                  <TableHead className="w-32">วันที่เริ่ม</TableHead>
+   532→                  <TableHead className="w-32">วันที่เสร็จ</TableHead>
+   533→                  <TableHead className="w-28 text-right">ค่าซ่อม</TableHead>
+   534→                  <TableHead className="w-32">ร้านซ่อม</TableHead>
+   535→                  <TableHead className="min-w-[200px]">คำอธิบาย</TableHead>
+   536→                  <TableHead className="w-20 text-right">จัดการ</TableHead>
+   537→                </TableRow>
+   538→              </TableHeader>
+   539→              <TableBody>
+   540→                {isLoading ? (
+   541→                  Array.from({ length: 8 }).map((_, i) => (
+   542→                    <TableRow key={`sk-${i}`}>
+   543→                      <TableCell colSpan={10}><Skeleton className="h-7 w-full" /></TableCell>
+   544→                    </TableRow>
+   545→                  ))
+   546→                ) : filteredLogs.length === 0 ? (
+   547→                  <TableRow>
+   548→                    <TableCell colSpan={10} className="py-14">
+   549→                      <div className="flex flex-col items-center gap-3 text-slate-400 dark:text-slate-500">
+   550→                        <Wrench className="h-12 w-12" />
+   551→                        <div className="text-sm font-medium">ยังไม่มีคำขอซ่อม</div>
+   552→                        <Button
+   553→                          size="sm"
+   554→                          onClick={() => setCreateOpen(true)}
+   555→                          className="bg-[#f97316] hover:bg-[#ea580c]"
+   556→                        >
+   557→                          <Plus className="h-4 w-4" /> แจ้งซ่อมใหม่
+   558→                        </Button>
+   559→                      </div>
+   560→                    </TableCell>
+   561→                  </TableRow>
+   562→                ) : (
+   563→                  filteredLogs.map((log) => (
+   564→                    <TableRow
+   565→                      key={log.id}
+   566→                      onClick={() => openDetail(log)}
+   567→                      className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+   568→                    >
+   569→                      <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
+   570→                        {log.logId ?? '—'}
+   571→                      </TableCell>
+   572→                      <TableCell>
+   573→                        <div className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
+   574→                          {log.assetNo}
+   575→                        </div>
+   576→                        {(log.device?.brand || log.device?.model) && (
+   577→                          <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+   578→                            {[log.device?.brand, log.device?.model].filter(Boolean).join(' · ')}
+   579→                          </div>
+   580→                        )}
+   581→                      </TableCell>
+   582→                      <TableCell>
+   583→                        <Badge className={TYPE_BADGES[log.type] || 'bg-slate-100 text-slate-600'}>
+   584→                          {TYPE_LABELS[log.type] || log.type}
+   585→                        </Badge>
+   586→                      </TableCell>
+   587→                      <TableCell>
+   588→                        <Badge className={STATUS_BADGES[log.status] || 'bg-slate-100 text-slate-600'}>
+   589→                          {STATUS_LABELS[log.status] || log.status}
+   590→                        </Badge>
+   591→                      </TableCell>
+   592→                      <TableCell className="text-xs text-slate-600 dark:text-slate-300">
+   593→                        {formatDate(log.startDate)}
+   594→                      </TableCell>
+   595→                      <TableCell className="text-xs text-slate-600 dark:text-slate-300">
+   596→                        {formatDate(log.endDate)}
+   597→                      </TableCell>
+   598→                      <TableCell className="text-right text-xs font-mono text-slate-700 dark:text-slate-200">
+   599→                        {formatBaht(log.cost)}
+   600→                      </TableCell>
+   601→                      <TableCell className="max-w-[120px] truncate text-xs text-slate-600 dark:text-slate-300" title={log.vendor ?? ''}>
+   602→                        {log.vendor ?? '—'}
+   603→                      </TableCell>
+   604→                      <TableCell className="max-w-[260px] truncate text-xs text-slate-500 dark:text-slate-400" title={log.description ?? ''}>
+   605→                        {truncate(log.description)}
+   606→                      </TableCell>
+   607→                      <TableCell className="text-right">
+   608→                        <Button
+   609→                          size="sm"
+   610→                          variant="ghost"
+   611→                          onClick={(e) => {
+   612→                            e.stopPropagation()
+   613→                            openDetail(log)
+   614→                          }}
+   615→                          className="h-7 px-2 text-slate-500 hover:text-[#f97316]"
+   616→                          aria-label="ดูรายละเอียด"
+   617→                        >
+   618→                          <Pencil className="h-3.5 w-3.5" />
+   619→                        </Button>
+   620→                      </TableCell>
+   621→                    </TableRow>
+   622→                  ))
+   623→                )}
+   624→              </TableBody>
+   625→            </Table>
+   626→          </div>
+   627→        </CardContent>
+   628→      </Card>
+   629→
+   630→      {/* Footer summary */}
+   631→      {filteredLogs.length > 0 && (
+   632→        <div className="text-xs text-slate-500 dark:text-slate-400">
+   633→          แสดง {filteredLogs.length.toLocaleString()} รายการ
+   634→          {filteredLogs.length !== allLogs.length && (
+   635→            <span className="ml-1">จากทั้งหมด {allLogs.length.toLocaleString()} รายการ</span>
+   636→          )}
+   637→        </div>
+   638→      )}
+   639→
+   640→      {/* ── Create Dialog ─────────────────────────────────────────────── */}
+   641→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   642→        <DialogContent className="sm:max-w-lg dark:border-slate-800 dark:bg-slate-900">
+   643→          <DialogHeader>
+   644→            <DialogTitle>🔧 แจ้งซ่อมใหม่</DialogTitle>
+   645→            <DialogDescription>กรอกข้อมูลอุปกรณ์และอาการที่ต้องการซ่อม</DialogDescription>
+   646→          </DialogHeader>
+   647→
+   648→          <div className="space-y-4">
+   649→            {/* Asset picker (searchable) */}
+   650→            <div className="space-y-1.5">
+   651→              <Label>อุปกรณ์ <span className="text-rose-500">*</span></Label>
+   652→              <Popover open={devicePickerOpen} onOpenChange={setDevicePickerOpen}>
+   653→                <PopoverTrigger asChild>
+   654→                  <Button
+   655→                    type="button"
+   656→                    variant="outline"
+   657→                    role="combobox"
+   658→                    className="w-full justify-between font-normal dark:bg-slate-800 dark:border-slate-700"
+   659→                  >
+   660→                    {createForm.assetNo ? (
+   661→                      <span className="flex items-center gap-2 truncate">
+   662→                        <span className="font-mono text-xs">{createForm.assetNo}</span>
+   663→                        {(() => {
+   664→                          const d = devices.find((x) => x.assetNo === createForm.assetNo)
+   665→                          if (!d) return null
+   666→                          return (
+   667→                            <span className="truncate text-xs text-slate-500">
+   668→                              {[d.brand, d.model].filter(Boolean).join(' · ')}
+   669→                            </span>
+   670→                          )
+   671→                        })()}
+   672→                      </span>
+   673→                    ) : (
+   674→                      <span className="text-slate-400">เลือกอุปกรณ์...</span>
+   675→                    )}
+   676→                    <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+   677→                  </Button>
+   678→                </PopoverTrigger>
+   679→                <PopoverContent className="w-[--radix-popover-trigger-width] p-0 dark:border-slate-700 dark:bg-slate-900" align="start">
+   680→                  <Command>
+   681→                    <CommandInput placeholder="ค้นหา asset no / brand / model..." />
+   682→                    <CommandList className="itam-scroll max-h-72">
+   683→                      <CommandEmpty>ไม่พบอุปกรณ์</CommandEmpty>
+   684→                      <CommandGroup>
+   685→                        {devices.map((d) => (
+   686→                          <CommandItem
+   687→                            key={d.id}
+   688→                            value={`${d.assetNo} ${d.brand ?? ''} ${d.model ?? ''}`}
+   689→                            onSelect={() => {
+   690→                              setCreateForm((f) => ({ ...f, assetNo: d.assetNo }))
+   691→                              setDevicePickerOpen(false)
+   692→                            }}
+   693→                            className="hover:bg-slate-100 dark:hover:bg-slate-800"
+   694→                          >
+   695→                            <Check
+   696→                              className={`mr-2 h-3.5 w-3.5 ${
+   697→                                createForm.assetNo === d.assetNo ? 'opacity-100' : 'opacity-0'
+   698→                              }`}
+   699→                            />
+   700→                            <div className="flex flex-1 items-center gap-2 truncate">
+   701→                              <span className="font-mono text-xs font-semibold">{d.assetNo}</span>
+   702→                              <span className="truncate text-xs text-slate-500">
+   703→                                {[d.brand, d.model].filter(Boolean).join(' · ')}
+   704→                              </span>
+   705→                            </div>
+   706→                          </CommandItem>
+   707→                        ))}
+   708→                      </CommandGroup>
+   709→                    </CommandList>
+   710→                  </Command>
+   711→                </PopoverContent>
+   712→              </Popover>
+   713→            </div>
+   714→
+   715→            {/* Type */}
+   716→            <div className="space-y-1.5">
+   717→              <Label>ประเภท <span className="text-rose-500">*</span></Label>
+   718→              <Select value={createForm.type} onValueChange={(v) => setCreateForm((f) => ({ ...f, type: v }))}>
+   719→                <SelectTrigger className="w-full dark:bg-slate-800 dark:border-slate-700">
+   720→                  <SelectValue />
+   721→                </SelectTrigger>
+   722→                <SelectContent>
+   723→                  <SelectItem value="repair">ซ่อมแซม</SelectItem>
+   724→                  <SelectItem value="maintenance">บำรุงรักษา</SelectItem>
+   725→                  <SelectItem value="inspection">ตรวจสอบ</SelectItem>
+   726→                  <SelectItem value="upgrade">อัปเกรด</SelectItem>
+   727→                </SelectContent>
+   728→              </Select>
+   729→            </div>
+   730→
+   731→            {/* Description */}
+   732→            <div className="space-y-1.5">
+   733→              <Label htmlFor="rep-desc">อาการ / งานที่ต้องการ</Label>
+   734→              <Textarea
+   735→                id="rep-desc"
+   736→                rows={3}
+   737→                placeholder="อธิบายอาการหรืองานที่ต้องการให้ทำ..."
+   738→                value={createForm.description}
+   739→                onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
+   740→                className="dark:bg-slate-800 dark:border-slate-700"
+   741→              />
+   742→            </div>
+   743→
+   744→            {/* Vendor */}
+   745→            <div className="space-y-1.5">
+   746→              <Label htmlFor="rep-vendor">ร้านซ่อม / ผู้ให้บริการ</Label>
+   747→              <Input
+   748→                id="rep-vendor"
+   749→                placeholder="(ไม่บังคับ) เช่น บจก. ซ่อมพิมพ์..."
+   750→                value={createForm.vendor}
+   751→                onChange={(e) => setCreateForm((f) => ({ ...f, vendor: e.target.value }))}
+   752→                className="dark:bg-slate-800 dark:border-slate-700"
+   753→              />
+   754→            </div>
+   755→
+   756→            {/* Start date */}
+   757→            <div className="space-y-1.5">
+   758→              <Label htmlFor="rep-start" className="flex items-center gap-1">
+   759→                <CalendarDays className="h-3.5 w-3.5" /> วันที่เริ่ม <span className="text-rose-500">*</span>
+   760→              </Label>
+   761→              <Input
+   762→                id="rep-start"
+   763→                type="date"
+   764→                value={createForm.startDate}
+   765→                onChange={(e) => setCreateForm((f) => ({ ...f, startDate: e.target.value }))}
+   766→                className="dark:bg-slate-800 dark:border-slate-700"
+   767→              />
+   768→            </div>
+   769→          </div>
+   770→
+   771→          <DialogFooter>
+   772→            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={createMutation.isPending}>
+   773→              ยกเลิก
+   774→            </Button>
+   775→            <Button
+   776→              onClick={submitCreate}
+   777→              disabled={createMutation.isPending || !createForm.assetNo}
+   778→              className="bg-[#f97316] hover:bg-[#ea580c]"
+   779→            >
+   780→              {createMutation.isPending ? (
+   781→                <><Loader2 className="h-4 w-4 animate-spin" /> กำลังบันทึก...</>
+   782→              ) : (
+   783→                <><Plus className="h-4 w-4" /> สร้างคำขอ</>
+   784→              )}
+   785→            </Button>
+   786→          </DialogFooter>
+   787→        </DialogContent>
+   788→      </Dialog>
+   789→
+   790→      {/* ── Detail Dialog ─────────────────────────────────────────────── */}
+   791→      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+   792→        <DialogContent className="sm:max-w-2xl dark:border-slate-800 dark:bg-slate-900">
+   793→          <DialogHeader>
+   794→            <DialogTitle>รายละเอียดคำขอซ่อม</DialogTitle>
+   795→            <DialogDescription>
+   796→              {detailLog?.logId && <span className="font-mono">{detailLog.logId}</span>}
+   797→            </DialogDescription>
+   798→          </DialogHeader>
+   799→
+   800→          {detailLog && (
+   801→            <div className="space-y-4">
+   802→              {/* Top summary row */}
+   803→              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   804→                <div className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+   805→                  <div className="text-[10px] uppercase text-slate-400">ประเภท</div>
+   806→                  <Badge className={TYPE_BADGES[detailLog.type] || 'bg-slate-100'} variant="outline">
+   807→                    {TYPE_LABELS[detailLog.type] || detailLog.type}
+   808→                  </Badge>
+   809→                </div>
+   810→                <div className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+   811→                  <div className="text-[10px] uppercase text-slate-400">สถานะ</div>
+   812→                  {editMode ? (
+   813→                    <Select
+   814→                      value={editForm.status}
+   815→                      onValueChange={(v) => setEditForm((f) => ({ ...f, status: v }))}
+   816→                    >
+   817→                      <SelectTrigger className="h-7 w-full text-xs dark:bg-slate-800 dark:border-slate-700">
+   818→                        <SelectValue />
+   819→                      </SelectTrigger>
+   820→                      <SelectContent>
+   821→                        <SelectItem value="open">เปิดงาน</SelectItem>
+   822→                        <SelectItem value="in_progress">กำลังซ่อม</SelectItem>
+   823→                        <SelectItem value="completed">เสร็จแล้ว</SelectItem>
+   824→                        <SelectItem value="cancelled">ยกเลิก</SelectItem>
+   825→                      </SelectContent>
+   826→                    </Select>
+   827→                  ) : (
+   828→                    <Badge className={STATUS_BADGES[detailLog.status] || 'bg-slate-100'} variant="outline">
+   829→                      {STATUS_LABELS[detailLog.status] || detailLog.status}
+   830→                    </Badge>
+   831→                  )}
+   832→                </div>
+   833→                <div className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+   834→                  <div className="text-[10px] uppercase text-slate-400">วันที่เริ่ม</div>
+   835→                  <div className="text-xs text-slate-700 dark:text-slate-200">
+   836→                    {formatDate(detailLog.startDate)}
+   837→                  </div>
+   838→                </div>
+   839→                <div className="rounded-md border border-slate-200 p-2 dark:border-slate-700">
+   840→                  <div className="text-[10px] uppercase text-slate-400">วันที่เสร็จ</div>
+   841→                  {editMode ? (
+   842→                    <Input
+   843→                      type="date"
+   844→                      value={editForm.endDate}
+   845→                      onChange={(e) => setEditForm((f) => ({ ...f, endDate: e.target.value }))}
+   846→                      className="h-7 w-full text-xs dark:bg-slate-800 dark:border-slate-700"
+   847→                    />
+   848→                  ) : (
+   849→                    <div className="text-xs text-slate-700 dark:text-slate-200">
+   850→                      {formatDate(detailLog.endDate)}
+   851→                    </div>
+   852→                  )}
+   853→                </div>
+   854→              </div>
+   855→
+   856→              {/* Device info */}
+   857→              <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+   858→                <div className="text-[10px] uppercase text-slate-400">อุปกรณ์</div>
+   859→                <div className="mt-1 flex items-center gap-2">
+   860→                  <span className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-100">
+   861→                    {detailLog.assetNo}
+   862→                  </span>
+   863→                  {(detailLog.device?.brand || detailLog.device?.model) && (
+   864→                    <span className="text-sm text-slate-500 dark:text-slate-400">
+   865→                      {[detailLog.device?.brand, detailLog.device?.model].filter(Boolean).join(' · ')}
+   866→                    </span>
+   867→                  )}
+   868→                </div>
+   869→                {detailLog.device?.site && (
+   870→                  <div className="mt-0.5 text-xs text-slate-400">สาขา: {detailLog.device.site}</div>
+   871→                )}
+   872→              </div>
+   873→
+   874→              {/* Description */}
+   875→              <div className="space-y-1">
+   876→                <Label className="text-xs text-slate-500">อาการ / งานที่ต้องการ</Label>
+   877→                <div className="whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+   878→                  {detailLog.description || '—'}
+   879→                </div>
+   880→              </div>
+   881→
+   882→              {/* Vendor + Cost */}
+   883→              <div className="grid grid-cols-2 gap-3">
+   884→                <div className="space-y-1">
+   885→                  <Label className="text-xs text-slate-500">ร้านซ่อม / ผู้ให้บริการ</Label>
+   886→                  <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+   887→                    {detailLog.vendor || '—'}
+   888→                  </div>
+   889→                </div>
+   890→                <div className="space-y-1">
+   891→                  <Label className="text-xs text-slate-500">ค่าซ่อม (฿)</Label>
+   892→                  {editMode ? (
+   893→                    <Input
+   894→                      type="number"
+   895→                      min="0"
+   896→                      step="0.01"
+   897→                      placeholder="0.00"
+   898→                      value={editForm.cost}
+   899→                      onChange={(e) => setEditForm((f) => ({ ...f, cost: e.target.value }))}
+   900→                      className="dark:bg-slate-800 dark:border-slate-700"
+   901→                    />
+   902→                  ) : (
+   903→                    <div className="rounded-md border border-slate-200 bg-slate-50 p-2 font-mono text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+   904→                      {formatBaht(detailLog.cost)}
+   905→                    </div>
+   906→                  )}
+   907→                </div>
+   908→              </div>
+   909→
+   910→              {/* Resolved note */}
+   911→              <div className="space-y-1">
+   912→                <Label htmlFor="rep-resolved" className="text-xs text-slate-500">ผลการซ่อม / หมายเหตุ</Label>
+   913→                {editMode ? (
+   914→                  <Textarea
+   915→                    id="rep-resolved"
+   916→                    rows={3}
+   917→                    placeholder="บันทึกผลการซ่อมเมื่อเสร็จงาน..."
+   918→                    value={editForm.resolvedNote}
+   919→                    onChange={(e) => setEditForm((f) => ({ ...f, resolvedNote: e.target.value }))}
+   920→                    className="dark:bg-slate-800 dark:border-slate-700"
+   921→                  />
+   922→                ) : (
+   923→                  <div className="whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+   924→                    {detailLog.resolvedNote || '—'}
+   925→                  </div>
+   926→                )}
+   927→              </div>
+   928→            </div>
+   929→          )}
+   930→
+   931→          <DialogFooter>
+   932→            {detailLog && !editMode ? (
+   933→              <>
+   934→                <Button variant="outline" onClick={() => setDetailOpen(false)}>ปิด</Button>
+   935→                <Button onClick={() => setEditMode(true)} className="bg-[#f97316] hover:bg-[#ea580c]">
+   936→                  <Pencil className="h-4 w-4" /> แก้ไขสถานะ
+   937→                </Button>
+   938→              </>
+   939→            ) : (
+   940→              <>
+   941→                <Button variant="outline" onClick={() => setEditMode(false)} disabled={updateMutation.isPending}>
+   942→                  ยกเลิก
+   943→                </Button>
+   944→                <Button
+   945→                  onClick={submitEdit}
+   946→                  disabled={updateMutation.isPending}
+   947→                  className="bg-[#f97316] hover:bg-[#ea580c]"
+   948→                >
+   949→                  {updateMutation.isPending ? (
+   950→                    <><Loader2 className="h-4 w-4 animate-spin" /> กำลังบันทึก...</>
+   951→                  ) : (
+   952→                    <><Check className="h-4 w-4" /> บันทึก</>
+   953→                  )}
+   954→                </Button>
+   955→              </>
+   956→            )}
+   957→          </DialogFooter>
+   958→        </DialogContent>
+   959→      </Dialog>
+   960→    </div>
+   961→  )
+   962→}
+   963→

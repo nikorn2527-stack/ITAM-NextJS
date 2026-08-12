@@ -428,6 +428,71 @@ model MeterReportAmendment {
 }
 
 // ============================================================
+// 14) Stock_Items — คลังสต๊อกอุปกรณ์สิ้นเปลือง/อะไหล่
+//     เช่น หมึกพิมพ์, กระดาษ, อะไหล่, สายไฟ, ฯลฯ
+//     แยกจาก Device (ที่เป็นครุภัณฑ์ถาวร) — Stock = สิ้นเปลือง
+// ============================================================
+model StockItem {
+  id            String   @id @default(cuid())
+  itemId        String?  @map("Item_ID") // เช่น STK-0001
+  name          String   @map("Name") // เช่น "หมึกพิมพ์ EPSON T544"
+  category      String?  @map("Category") // เช่น หมึกพิมพ์, กระดาษ, อะไหล่, อุปกรณ์สำนักงาน
+  brand         String?  @map("Brand")
+  model         String?  @map("Model") // รุ่น/ขนาด
+  unit          String   @default("ชิ้น") @map("Unit") // ชิ้น, กล่อง, แพ็ค, ม้วน
+  quantity      Int      @default(0) @map("Quantity") // จำนวนคงเหลือ
+  minQuantity   Int      @default(0) @map("Min_Quantity") // จุดสั่งซื้อ (เตือนเมื่อต่ำกว่า)
+  maxQuantity   Int      @default(0) @map("Max_Quantity") // สต็อกสูงสุด
+  unitCost      Float?   @map("Unit_Cost") // ราคาต่อหน่วย (฿)
+  location      String?  @map("Location") // ตำแหน่งเก็บ (ตู้/ชั้น/ห้อง)
+  site          String?  @map("Site") // สาขาที่เก็บ (null = กลาง)
+  compatibleDevices String? @map("Compatible_Devices") // เช่น "EPSON L5290, L3210" (comma-separated)
+  remark        String?  @map("Remark")
+  active        Boolean  @default(true) @map("Active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  transactions  StockTransaction[]
+
+  @@index([category])
+  @@index([site])
+  @@index([name])
+  @@index([active])
+  @@map("stock_items")
+}
+
+// ============================================================
+// 15) Stock_Transactions — รายการเข้า/ออกสต็อก
+//     type: IN (รับเข้า) | OUT (เบิกออก) | ADJUST (ปรับปรุง)
+// ============================================================
+model StockTransaction {
+  id            String   @id @default(cuid())
+  txnId         String?  @map("Txn_ID") // เช่น STX-0001
+  stockItemId   String   @map("Stock_Item_ID")
+  type          String   @map("Type") // IN | OUT | ADJUST
+  quantity      Int      @map("Quantity") // จำนวน (IN=+, OUT=-, ADJUST=±)
+  balanceAfter  Int      @default(0) @map("Balance_After") // คงเหลือหลังรายการ
+  reason        String?  @map("Reason") // เหตุผล: ซื้อ, เบิกใช้, ย้าย, เสีย, ตรวจนับ
+  relatedAssetNo String? @map("Related_Asset_No") // เชื่อมกับ Device (ถ้าเบิกไปใช้กับอุปกรณ์)
+  cost          Float?   @map("Cost") // มูลค่ารวม (สำหรับ IN)
+  vendor        String?  @map("Vendor") // ซื้อจาก
+  txnDate       String   @map("Txn_Date") // ISO date
+  performedBy   String?  @map("Performed_By") // อีเมลผู้ทำรายการ
+  remark        String?  @map("Remark")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relation
+  stockItem     StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  @@index([stockItemId])
+  @@index([type])
+  @@index([txnDate])
+  @@index([relatedAssetNo])
+  @@map("stock_transactions")
+}
+
+// ============================================================
 // 4) Master_Category — หมวดหมู่ของ Master Items
 //    Source: sheet "Master_Category" (4 columns)
 // ============================================================

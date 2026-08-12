@@ -45,8 +45,9 @@ const NAV_GROUPS: NavGroupDef[] = [
     title: 'การทำงาน',
     items: [
       { page: 'itam-devices', icon: '💻', label: 'จัดการอุปกรณ์', desc: 'ครุภัณฑ์ทั้งหมด' },
-      { page: 'itam-meter', icon: '📈', label: 'จดมิเตอร์', desc: 'บันทึกการใช้งาน' },
-      { page: 'itam-meter-keyboard', icon: '⌨️', label: 'จดมิเตอร์ (Keyboard)', desc: 'ป้อนเร็วด้วยคีย์บอร์ด' },
+      { page: 'itam-meter-keyboard', icon: '📈', label: 'จดมิเตอร์', desc: 'จดมิเตอร์ + ประวัติ' },
+      { page: 'itam-repairs', icon: '🔧', label: 'แจ้งซ่อม', desc: 'ซ่อมบำรุงอุปกรณ์' },
+      { page: 'itam-stock', icon: '📦', label: 'สต๊อก', desc: 'คลังสิ้นเปลือง/อะไหล่' },
       { page: 'itam-paper-analytics', icon: '📄', label: 'วิเคราะห์กระดาษ', desc: 'สถิติการใช้งาน' },
     ],
   },
@@ -109,6 +110,29 @@ export function Sidebar() {
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
   const realtimeStatus = useRealtimeStatus()
+
+  // ── App customization (appName, logo, tagline from settings) ──
+  // Lets the admin change the app's display name + logo + tagline without
+  // touching code. Falls back to defaults if not set.
+  const { data: appSettings } = useQuery<Record<string, string>>({
+    queryKey: ['app-customization'],
+    queryFn: async () => {
+      try {
+        const res = await fetch('/api/itam/settings')
+        if (!res.ok) return {}
+        const j = await res.json()
+        const map: Record<string, string> = {}
+        for (const s of j.settings ?? []) map[s.key] = s.value ?? ''
+        return map
+      } catch {
+        return {}
+      }
+    },
+    staleTime: 60_000,
+  })
+  const appName = appSettings?.appName || 'Asset Mgmt'
+  const appLogo = appSettings?.appLogoUrl || '' // emoji or image URL
+  const appTagline = appSettings?.appTagline || 'IT Asset Management'
 
   async function handleLogout() {
     await authLogout()
@@ -182,17 +206,21 @@ export function Sidebar() {
         )}
         style={{ width: 240 }}
       >
-        {/* Header */}
+        {/* Header — uses customizable appName/logo/tagline from settings */}
         <div
           className="px-5 pb-5 pt-5 text-center"
           style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}
         >
           <div className="flex items-center justify-center gap-2">
-            <span className="text-lg">📦</span>
-            <span className="text-base font-bold text-white">Asset Mgmt</span>
+            {appLogo && appLogo.startsWith('http') ? (
+              <img src={appLogo} alt={appName} className="h-6 w-6 rounded object-contain" />
+            ) : (
+              <span className="text-lg">{appLogo || '📦'}</span>
+            )}
+            <span className="text-base font-bold text-white">{appName}</span>
           </div>
           <div className="mt-0.5 text-[11px] text-slate-400">
-            IT Asset Management
+            {appTagline}
           </div>
         </div>
 

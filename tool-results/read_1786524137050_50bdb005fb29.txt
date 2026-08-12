@@ -1,0 +1,1300 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import { motion, AnimatePresence } from 'framer-motion'
+     7→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     8→import { Button } from '@/components/ui/button'
+     9→import { Input } from '@/components/ui/input'
+    10→import { Label } from '@/components/ui/label'
+    11→import { Textarea } from '@/components/ui/textarea'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import { Switch } from '@/components/ui/switch'
+    14→import {
+    15→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    16→} from '@/components/ui/select'
+    17→import {
+    18→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+    19→} from '@/components/ui/dialog'
+    20→import {
+    21→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    22→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    23→} from '@/components/ui/alert-dialog'
+    24→import {
+    25→  Plus, Pencil, Copy, Star, Trash2, Save, Eye, Type, Image as ImageIcon,
+    26→  QrCode, Square, Loader2, Settings as SettingsIcon,
+    27→} from 'lucide-react'
+    28→import {
+    29→  PAPER_PRESETS,
+    30→  STICKER_VARIABLES,
+    31→  SAMPLE_DEVICE,
+    32→  genElementId,
+    33→  elementExceedsBounds,
+    34→  type StickerElement,
+    35→  type StickerTemplate,
+    36→  type StickerSettings,
+    37→  type StickerElementType,
+    38→} from '@/lib/sticker-template'
+    39→
+    40→// ─────────────────────────────────────────────────────────────────────────
+    41→// Helpers
+    42→// ─────────────────────────────────────────────────────────────────────────
+    43→
+    44→function genTemplateId(): string {
+    45→  return `tpl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    46→}
+    47→
+    48→function makeElement(type: StickerElementType): StickerElement {
+    49→  const base = {
+    50→    id: genElementId(),
+    51→    x: 5, y: 5, width: 20, height: 6,
+    52→    opacity: 1, zIndex: 1, rotation: 0,
+    53→  }
+    54→  if (type === 'text') {
+    55→    return { ...base, type, width: 40, height: 5, content: 'ข้อความใหม่', fontSize: 7, fontWeight: 500, color: '#1e293b', align: 'left' }
+    56→  }
+    57→  if (type === 'image') {
+    58→    return { ...base, type, width: 20, height: 20, content: '', source: '' }
+    59→  }
+    60→  if (type === 'qr') {
+    61→    return { ...base, type, width: 15, height: 15, content: '{{AssetNo}}' }
+    62→  }
+    63→  // rect
+    64→  return { ...base, type, width: 30, height: 5, background: '#f97316', border: 'none', borderRadius: 0 }
+    65→}
+    66→
+    67→// ─────────────────────────────────────────────────────────────────────────
+    68→// Element renderer — used inside the workspace
+    69→// ─────────────────────────────────────────────────────────────────────────
+    70→
+    71→function WorkspaceElement({
+    72→  el,
+    73→  selected,
+    74→  exceedsBounds,
+    75→  onMouseDown,
+    76→  onResizeMouseDown,
+    77→}: {
+    78→  el: StickerElement
+    79→  selected: boolean
+    80→  exceedsBounds: boolean
+    81→  onMouseDown: (e: React.MouseEvent, id: string) => void
+    82→  onResizeMouseDown: (e: React.MouseEvent, id: string) => void
+    83→}) {
+    84→  const style: React.CSSProperties = {
+    85→    position: 'absolute',
+    86→    left: `${el.x}mm`,
+    87→    top: `${el.y}mm`,
+    88→    width: `${el.width}mm`,
+    89→    height: `${el.height}mm`,
+    90→    opacity: el.opacity ?? 1,
+    91→    zIndex: el.zIndex ?? 0,
+    92→    transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+    93→    cursor: 'move',
+    94→    userSelect: 'none',
+    95→  }
+    96→
+    97→  let content: React.ReactNode = null
+    98→  if (el.type === 'text') {
+    99→    Object.assign(style, {
+   100→      fontSize: `${el.fontSize}pt`,
+   101→      fontWeight: el.fontWeight,
+   102→      color: el.color,
+   103→      textAlign: el.align,
+   104→      lineHeight: 1.15,
+   105→      whiteSpace: 'pre-wrap',
+   106→      wordBreak: 'break-word',
+   107→      overflow: 'hidden',
+   108→      fontFamily: '"Sukhumvit Set","Noto Sans Thai","Tahoma","Segoe UI",sans-serif',
+   109→    })
+   110→    content = el.content || '​'
+   111→  } else if (el.type === 'rect') {
+   112→    Object.assign(style, {
+   113→      background: el.background || 'transparent',
+   114→      border: el.border || 'none',
+   115→      borderRadius: el.borderRadius ? `${el.borderRadius}mm` : undefined,
+   116→    })
+   117→  } else if (el.type === 'image') {
+   118→    Object.assign(style, { objectFit: 'contain' as const })
+   119→    const src = el.source || el.content
+   120→    if (src) {
+   121→      return (
+   122→        <img
+   123→          src={src}
+   124→          alt=""
+   125→          style={style}
+   126→          draggable={false}
+   127→          onMouseDown={(e) => onMouseDown(e, el.id)}
+   128→        />
+   129→      )
+   130→    }
+   131→    Object.assign(style, {
+   132→      background: '#f1f5f9', border: '1px dashed #cbd5e1',
+   133→      display: 'flex', alignItems: 'center', justifyContent: 'center',
+   134→      color: '#94a3b8', fontSize: '6pt',
+   135→    })
+   136→    content = '(image)'
+   137→  } else if (el.type === 'qr') {
+   138→    Object.assign(style, {
+   139→      background: '#f8fafc', border: '1px solid #e2e8f0',
+   140→      display: 'flex', alignItems: 'center', justifyContent: 'center',
+   141→      color: '#94a3b8', fontSize: '5pt',
+   142→    })
+   143→    content = 'QR'
+   144→  }
+   145→
+   146→  return (
+   147→    <div
+   148→      style={style}
+   149→      onMouseDown={(e) => onMouseDown(e, el.id)}
+   150→      className={selected ? 'ring-2 ring-[#f97316] ring-offset-1' : exceedsBounds ? 'ring-1 ring-orange-400' : ''}
+   151→    >
+   152→      {content}
+   153→      {selected && (
+   154→        <div
+   155→          onMouseDown={(e) => onResizeMouseDown(e, el.id)}
+   156→          style={{
+   157→            position: 'absolute',
+   158→            right: -4, bottom: -4,
+   159→            width: 10, height: 10,
+   160→            background: '#f97316',
+   161→            border: '2px solid #ffffff',
+   162→            borderRadius: 2,
+   163→            cursor: 'nwse-resize',
+   164→          }}
+   165→        />
+   166→      )}
+   167→    </div>
+   168→  )
+   169→}
+   170→
+   171→// ─────────────────────────────────────────────────────────────────────────
+   172→// Main component
+   173→// ─────────────────────────────────────────────────────────────────────────
+   174→
+   175→export function ItamStickerEditor() {
+   176→  const qc = useQueryClient()
+   177→  const workspaceRef = React.useRef<HTMLDivElement>(null)
+   178→
+   179→  // ── Data: templates + settings ────────────────────────────────────────
+   180→  const { data: tplData, isLoading: tplLoading } = useQuery({
+   181→    queryKey: ['sticker-templates'],
+   182→    queryFn: async () => {
+   183→      const res = await fetch('/api/itam/sticker/templates')
+   184→      if (!res.ok) throw new Error('Failed')
+   185→      return res.json() as Promise<{ templates: StickerTemplate[]; activeId: string | null }>
+   186→    },
+   187→  })
+   188→
+   189→  const { data: settingsData } = useQuery({
+   190→    queryKey: ['sticker-settings'],
+   191→    queryFn: async () => {
+   192→      const res = await fetch('/api/itam/sticker/settings')
+   193→      if (!res.ok) throw new Error('Failed')
+   194→      return res.json() as Promise<{ settings: StickerSettings }>
+   195→    },
+   196→  })
+   197→
+   198→  const templates = tplData?.templates ?? []
+   199→  const activeId = tplData?.activeId ?? null
+   200→  const settings = settingsData?.settings
+   201→
+   202→  // ── Editing state ─────────────────────────────────────────────────────
+   203→  const [editingId, setEditingId] = React.useState<string | null>(null)
+   204→  const [draft, setDraft] = React.useState<StickerTemplate | null>(null)
+   205→  const [selectedElId, setSelectedElId] = React.useState<string | null>(null)
+   206→  const [previewHtml, setPreviewHtml] = React.useState<string | null>(null)
+   207→  const [previewOpen, setPreviewOpen] = React.useState(false)
+   208→  const [deleteTplId, setDeleteTplId] = React.useState<string | null>(null)
+   209→  const [settingsOpen, setSettingsOpen] = React.useState(false)
+   210→  // ── Dirty tracking — shows "ยังไม่ได้บันทึก" indicator when draft ≠ saved ──
+   211→  // Helps users see their edits are pending and need saving.
+   212→  const [savedSnapshot, setSavedSnapshot] = React.useState<string>('')
+   213→  const isDirty = draft ? JSON.stringify(draft) !== savedSnapshot : false
+   214→
+   215→  // Local settings form
+   216→  const [settingsForm, setSettingsForm] = React.useState<StickerSettings | null>(null)
+   217→
+   218→  // Auto-select first template for editing when list first loads
+   219→  React.useEffect(() => {
+   220→    if (!editingId && templates.length > 0 && !tplLoading) {
+   221→      const first = templates[0]
+   222→      setEditingId(first.id)
+   223→      const cloned = structuredCloneSafe(first)
+   224→      setDraft(cloned)
+   225→      setSavedSnapshot(JSON.stringify(cloned))
+   226→      setSelectedElId(null)
+   227→    }
+   228→  }, [templates, tplLoading, editingId])
+   229→
+   230→  React.useEffect(() => {
+   231→    if (settings && !settingsForm) {
+   232→      setSettingsForm(settings)
+   233→    }
+   234→  }, [settings, settingsForm])
+   235→
+   236→  // ── Mutations ─────────────────────────────────────────────────────────
+   237→  const createMutation = useMutation({
+   238→    mutationFn: async (name: string) => {
+   239→      const res = await fetch('/api/itam/sticker/templates', {
+   240→        method: 'POST',
+   241→        headers: { 'Content-Type': 'application/json' },
+   242→        body: JSON.stringify({ name, canvas: { width: 75.2, height: 36, unit: 'mm' }, overflow: 'clip', elements: [] }),
+   243→      })
+   244→      if (!res.ok) {
+   245→        const j = await res.json().catch(() => ({}))
+   246→        throw new Error(j.error || 'Failed')
+   247→      }
+   248→      return res.json() as Promise<{ template: StickerTemplate }>
+   249→    },
+   250→    onSuccess: (data) => {
+   251→      qc.invalidateQueries({ queryKey: ['sticker-templates'] })
+   252→      setEditingId(data.template.id)
+   253→      setDraft(structuredCloneSafe(data.template))
+   254→      setSelectedElId(null)
+   255→      toast.success('สร้างเทมเพลตแล้ว')
+   256→    },
+   257→    onError: (e) => toast.error(e instanceof Error ? e.message : 'สร้างไม่สำเร็จ'),
+   258→  })
+   259→
+   260→  const updateMutation = useMutation({
+   261→    mutationFn: async ({ id, payload }: { id: string; payload: StickerTemplate }) => {
+   262→      const res = await fetch(`/api/itam/sticker/templates/${id}`, {
+   263→        method: 'PUT',
+   264→        headers: { 'Content-Type': 'application/json' },
+   265→        body: JSON.stringify({
+   266→          name: payload.name,
+   267→          canvas: payload.canvas,
+   268→          overflow: payload.overflow,
+   269→          elements: payload.elements,
+   270→        }),
+   271→      })
+   272→      if (!res.ok) {
+   273→        const j = await res.json().catch(() => ({}))
+   274→        throw new Error(j.error || 'Failed')
+   275→      }
+   276→      return res.json() as Promise<{ template: StickerTemplate }>
+   277→    },
+   278→    onSuccess: () => {
+   279→      qc.invalidateQueries({ queryKey: ['sticker-templates'] })
+   280→      toast.success('บันทึกเทมเพลตแล้ว')
+   281→      // Update saved snapshot so isDirty resets to false
+   282→      if (draft) setSavedSnapshot(JSON.stringify(draft))
+   283→    },
+   284→    onError: (e) => toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ'),
+   285→  })
+   286→
+   287→  const deleteMutation = useMutation({
+   288→    mutationFn: async (id: string) => {
+   289→      const res = await fetch(`/api/itam/sticker/templates/${id}`, { method: 'DELETE' })
+   290→      if (!res.ok) {
+   291→        const j = await res.json().catch(() => ({}))
+   292→        throw new Error(j.error || 'Failed')
+   293→      }
+   294→    },
+   295→    onSuccess: () => {
+   296→      qc.invalidateQueries({ queryKey: ['sticker-templates'] })
+   297→      setDeleteTplId(null)
+   298→      if (editingId === deleteTplId) {
+   299→        setEditingId(null)
+   300→        setDraft(null)
+   301→      }
+   302→      toast.success('ลบเทมเพลตแล้ว')
+   303→    },
+   304→    onError: (e) => toast.error(e instanceof Error ? e.message : 'ลบไม่สำเร็จ'),
+   305→  })
+   306→
+   307→  const activateMutation = useMutation({
+   308→    mutationFn: async (id: string) => {
+   309→      const res = await fetch(`/api/itam/sticker/templates/${id}/activate`, { method: 'POST' })
+   310→      if (!res.ok) {
+   311→        const j = await res.json().catch(() => ({}))
+   312→        throw new Error(j.error || 'Failed')
+   313→      }
+   314→    },
+   315→    onSuccess: () => {
+   316→      qc.invalidateQueries({ queryKey: ['sticker-templates'] })
+   317→      toast.success('ตั้งเป็นเทมเพลตที่ใช้งานแล้ว')
+   318→    },
+   319→    onError: (e) => toast.error(e instanceof Error ? e.message : 'ตั้งค่าไม่สำเร็จ'),
+   320→  })
+   321→
+   322→  const saveSettingsMutation = useMutation({
+   323→    mutationFn: async (s: StickerSettings) => {
+   324→      const res = await fetch('/api/itam/sticker/settings', {
+   325→        method: 'PUT',
+   326→        headers: { 'Content-Type': 'application/json' },
+   327→        body: JSON.stringify(s),
+   328→      })
+   329→      if (!res.ok) {
+   330→        const j = await res.json().catch(() => ({}))
+   331→        throw new Error(j.error || 'Failed')
+   332→      }
+   333→      return res.json() as Promise<{ settings: StickerSettings }>
+   334→    },
+   335→    onSuccess: () => {
+   336→      qc.invalidateQueries({ queryKey: ['sticker-settings'] })
+   337→      setSettingsOpen(false)
+   338→      toast.success('บันทึกการตั้งค่าแล้ว')
+   339→    },
+   340→    onError: (e) => toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ'),
+   341→  })
+   342→
+   343→  // ── Drag logic ─────────────────────────────────────────────────────────
+   344→  const dragStateRef = React.useRef<{
+   345→    mode: 'move' | 'resize'
+   346→    elId: string
+   347→    startClientX: number
+   348→    startClientY: number
+   349→    startElX: number
+   350→    startElY: number
+   351→    startElW: number
+   352→    startElH: number
+   353→    pxPerMm: number
+   354→  } | null>(null)
+   355→
+   356→  function calcPxPerMm(): number {
+   357→    const ws = workspaceRef.current
+   358→    if (!ws) return 3.78
+   359→    const rect = ws.getBoundingClientRect()
+   360→    // Workspace has 30mm padding all around, so usable width is total - 60mm
+   361→    const widthMm = (draft?.canvas.width ?? 75.2) + 60
+   362→    return rect.width / widthMm
+   363→  }
+   364→
+   365→  function onElementMouseDown(e: React.MouseEvent, id: string) {
+   366→    if (!draft) return
+   367→    e.stopPropagation()
+   368→    setSelectedElId(id)
+   369→    const el = draft.elements.find((x) => x.id === id)
+   370→    if (!el) return
+   371→    dragStateRef.current = {
+   372→      mode: 'move',
+   373→      elId: id,
+   374→      startClientX: e.clientX,
+   375→      startClientY: e.clientY,
+   376→      startElX: el.x,
+   377→      startElY: el.y,
+   378→      startElW: el.width,
+   379→      startElH: el.height,
+   380→      pxPerMm: calcPxPerMm(),
+   381→    }
+   382→  }
+   383→
+   384→  function onResizeMouseDown(e: React.MouseEvent, id: string) {
+   385→    if (!draft) return
+   386→    e.stopPropagation()
+   387→    e.preventDefault()
+   388→    const el = draft.elements.find((x) => x.id === id)
+   389→    if (!el) return
+   390→    dragStateRef.current = {
+   391→      mode: 'resize',
+   392→      elId: id,
+   393→      startClientX: e.clientX,
+   394→      startClientY: e.clientY,
+   395→      startElX: el.x,
+   396→      startElY: el.y,
+   397→      startElW: el.width,
+   398→      startElH: el.height,
+   399→      pxPerMm: calcPxPerMm(),
+   400→    }
+   401→  }
+   402→
+   403→  React.useEffect(() => {
+   404→    function onMouseMove(e: MouseEvent) {
+   405→      const ds = dragStateRef.current
+   406→      if (!ds || !draft) return
+   407→      const dxPx = e.clientX - ds.startClientX
+   408→      const dyPx = e.clientY - ds.startClientY
+   409→      const dxMm = dxPx / ds.pxPerMm
+   410→      const dyMm = dyPx / ds.pxPerMm
+   411→      setDraft((cur) => {
+   412→        if (!cur) return cur
+   413→        return {
+   414→          ...cur,
+   415→          elements: cur.elements.map((el) => {
+   416→            if (el.id !== ds.elId) return el
+   417→            if (ds.mode === 'move') {
+   418→              let newX = ds.startElX + dxMm
+   419→              let newY = ds.startElY + dyMm
+   420→              // Snap to 0.5mm grid for cleaner UX
+   421→              newX = Math.round(newX * 2) / 2
+   422→              newY = Math.round(newY * 2) / 2
+   423→              return { ...el, x: newX, y: newY }
+   424→            }
+   425→            // resize
+   426→            let newW = ds.startElW + dxMm
+   427→            let newH = ds.startElH + dyMm
+   428→            newW = Math.max(2, Math.round(newW * 2) / 2)
+   429→            newH = Math.max(2, Math.round(newH * 2) / 2)
+   430→            return { ...el, width: newW, height: newH }
+   431→          }),
+   432→        }
+   433→      })
+   434→    }
+   435→    function onMouseUp() {
+   436→      dragStateRef.current = null
+   437→    }
+   438→    window.addEventListener('mousemove', onMouseMove)
+   439→    window.addEventListener('mouseup', onMouseUp)
+   440→    return () => {
+   441→      window.removeEventListener('mousemove', onMouseMove)
+   442→      window.removeEventListener('mouseup', onMouseUp)
+   443→    }
+   444→  }, [draft])
+   445→
+   446→  // Delete selected element with Delete/Backspace key (but not when typing)
+   447→  React.useEffect(() => {
+   448→    function onKey(e: KeyboardEvent) {
+   449→      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+   450→      const target = e.target as HTMLElement
+   451→      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+   452→        return
+   453→      }
+   454→      if (!selectedElId || !draft) return
+   455→      e.preventDefault()
+   456→      setDraft({
+   457→        ...draft,
+   458→        elements: draft.elements.filter((el) => el.id !== selectedElId),
+   459→      })
+   460→      setSelectedElId(null)
+   461→    }
+   462→    window.addEventListener('keydown', onKey)
+   463→    return () => window.removeEventListener('keydown', onKey)
+   464→  }, [selectedElId, draft])
+   465→
+   466→  // ── Element CRUD on draft ─────────────────────────────────────────────
+   467→  function addElement(type: StickerElementType) {
+   468→    if (!draft) return
+   469→    const newEl = makeElement(type)
+   470→    setDraft({ ...draft, elements: [...draft.elements, newEl] })
+   471→    setSelectedElId(newEl.id)
+   472→  }
+   473→
+   474→  function deleteSelectedElement() {
+   475→    if (!draft || !selectedElId) return
+   476→    setDraft({
+   477→      ...draft,
+   478→      elements: draft.elements.filter((el) => el.id !== selectedElId),
+   479→    })
+   480→    setSelectedElId(null)
+   481→  }
+   482→
+   483→  function updateSelectedElement(patch: Partial<StickerElement>) {
+   484→    if (!draft || !selectedElId) return
+   485→    setDraft({
+   486→      ...draft,
+   487→      elements: draft.elements.map((el) =>
+   488→        el.id === selectedElId ? { ...el, ...patch } : el,
+   489→      ),
+   490→    })
+   491→  }
+   492→
+   493→  // ── Template-level actions ───────────────────────────────────────────
+   494→  function selectForEdit(t: StickerTemplate) {
+   495→    setEditingId(t.id)
+   496→    setDraft(structuredCloneSafe(t))
+   497→    setSelectedElId(null)
+   498→  }
+   499→
+   500→  function duplicateTemplate(t: StickerTemplate) {
+   501→    const dup: StickerTemplate = {
+   502→      ...structuredCloneSafe(t),
+   503→      id: genTemplateId(),
+   504→      name: `${t.name} (สำเนา)`,
+   505→      isDefault: false,
+   506→    }
+   507→    // Reassign element ids to avoid collisions
+   508→    dup.elements = dup.elements.map((el) => ({ ...el, id: genElementId() }))
+   509→    createMutation.mutate(dup.name, {
+   510→      onSuccess: async (data) => {
+   511→        // Now overwrite with the duplicated elements via PUT
+   512→        await updateMutation.mutateAsync({ id: data.template.id, payload: dup })
+   513→        setEditingId(data.template.id)
+   514→        setDraft(structuredCloneSafe(dup))
+   515→        setSelectedElId(null)
+   516→      },
+   517→    })
+   518→  }
+   519→
+   520→  function saveTemplate() {
+   521→    if (!draft || !editingId) return
+   522→    updateMutation.mutate({ id: editingId, payload: draft })
+   523→  }
+   524→
+   525→  async function previewTemplate() {
+   526→    if (!draft) return
+   527→    try {
+   528→      // Find a real device assetNo to render with (preview with sample data)
+   529→      let assetNo: string | null = null
+   530→      try {
+   531→        const devRes = await fetch('/api/itam/devices?limit=1')
+   532→        if (devRes.ok) {
+   533→          const devJson = (await devRes.json()) as { devices: { assetNo: string }[] }
+   534→          assetNo = devJson.devices[0]?.assetNo ?? null
+   535→        }
+   536→      } catch {
+   537→        /* ignore — fall through to sample */
+   538→      }
+   539→      if (!assetNo) assetNo = SAMPLE_DEVICE.assetNo
+   540→
+   541→      const res = await fetch('/api/itam/sticker/render', {
+   542→        method: 'POST',
+   543→        headers: { 'Content-Type': 'application/json' },
+   544→        body: JSON.stringify({ assetNo, templateId: draft.id }),
+   545→      })
+   546→      if (!res.ok) {
+   547→        // Fallback: try with bulk-render
+   548→        const bulk = await fetch('/api/itam/sticker/bulk-render', {
+   549→          method: 'POST',
+   550→          headers: { 'Content-Type': 'application/json' },
+   551→          body: JSON.stringify({ assetNos: [assetNo], templateId: draft.id }),
+   552→        })
+   553→        if (!bulk.ok) throw new Error('Preview failed')
+   554→        const j = await bulk.json() as { stickers: { html: string }[] }
+   555→        setPreviewHtml(j.stickers[0]?.html ?? '')
+   556→      } else {
+   557→        const j = await res.json() as { html: string }
+   558→        setPreviewHtml(j.html)
+   559→      }
+   560→      setPreviewOpen(true)
+   561→    } catch (e) {
+   562→      toast.error(e instanceof Error ? e.message : 'พรีวิวไม่สำเร็จ')
+   563→    }
+   564→  }
+   565→
+   566→  // ── Derived ──────────────────────────────────────────────────────────
+   567→  const selectedEl = React.useMemo(
+   568→    () => draft?.elements.find((el) => el.id === selectedElId) ?? null,
+   569→    [draft, selectedElId],
+   570→  )
+   571→
+   572→  // ── Render ────────────────────────────────────────────────────────────
+   573→  if (tplLoading) {
+   574→    return (
+   575→      <div className="flex min-h-[60vh] items-center justify-center">
+   576→        <Loader2 className="h-8 w-8 animate-spin text-[#f97316]" />
+   577→      </div>
+   578→    )
+   579→  }
+   580→
+   581→  return (
+   582→    <div className="space-y-3 p-4 md:p-6">
+   583→      {/* Header */}
+   584→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+   585→        <div>
+   586→          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+   587→            🎨 ตัวออกแบบสติกเกอร์
+   588→          </h1>
+   589→          <p className="text-sm text-slate-500 dark:text-slate-400">
+   590→            สร้างและแก้ไขเทมเพลตสติกเกอร์ — ลากเพื่อย้าย, ดึงมุมเพื่อปรับขนาด
+   591→          </p>
+   592→        </div>
+   593→        <div className="flex flex-wrap gap-2">
+   594→          <Button
+   595→            variant="outline"
+   596→            onClick={() => setSettingsOpen(true)}
+   597→            className="dark:border-slate-700 dark:bg-slate-800"
+   598→          >
+   599→            <SettingsIcon className="h-4 w-4" /> ตั้งค่าบริษัท
+   600→          </Button>
+   601→          <Button
+   602→            onClick={() => createMutation.mutate('เทมเพลตใหม่')}
+   603→            disabled={createMutation.isPending}
+   604→            className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+   605→          >
+   606→            <Plus className="h-4 w-4" /> สร้างเทมเพลตใหม่
+   607→          </Button>
+   608→        </div>
+   609→      </div>
+   610→
+   611→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_1fr_300px]">
+   612→        {/* ── Left: Template Library ────────────────────────────────── */}
+   613→        <Card className="dark:border-slate-800 dark:bg-slate-900">
+   614→          <CardHeader className="pb-3">
+   615→            <CardTitle className="text-sm text-slate-700 dark:text-slate-200">
+   616→              📚 คลังเทมเพลต
+   617→            </CardTitle>
+   618→          </CardHeader>
+   619→          <CardContent className="space-y-2 p-3 pt-0">
+   620→            <div className="itam-scroll max-h-[60vh] space-y-2 overflow-y-auto pr-1">
+   621→              {templates.length === 0 && (
+   622→                <div className="py-8 text-center text-xs text-slate-400">
+   623→                  ยังไม่มีเทมเพลต
+   624→                </div>
+   625→              )}
+   626→              {templates.map((t) => {
+   627→                const isActive = activeId === t.id
+   628→                const isEditing = editingId === t.id
+   629→                return (
+   630→                  <div
+   631→                    key={t.id}
+   632→                    className={[
+   633→                      'rounded-md border p-2.5 transition cursor-pointer',
+   634→                      isEditing
+   635→                        ? 'border-[#f97316] bg-orange-50 dark:bg-orange-950/30'
+   636→                        : 'border-slate-200 hover:border-orange-300 dark:border-slate-700 dark:hover:border-orange-700',
+   637→                    ].join(' ')}
+   638→                    onClick={() => selectForEdit(t)}
+   639→                  >
+   640→                    <div className="flex items-start justify-between gap-2">
+   641→                      <div className="min-w-0 flex-1">
+   642→                        <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+   643→                          {t.name}
+   644→                        </div>
+   645→                        <div className="mt-0.5 flex flex-wrap items-center gap-1">
+   646→                          {t.isDefault && (
+   647→                            <Badge className="bg-teal-50 text-teal-700 border-teal-200 text-[9px] dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800">
+   648→                              [เริ่มต้น]
+   649→                            </Badge>
+   650→                          )}
+   651→                          {isActive && (
+   652→                            <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-[9px] dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800">
+   653→                              ⭐ ใช้งาน
+   654→                            </Badge>
+   655→                          )}
+   656→                          {!isActive && !t.isDefault && (
+   657→                            <Badge className="bg-slate-100 text-slate-500 border-slate-200 text-[9px] dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700">
+   658→                              📄 ปกติ
+   659→                            </Badge>
+   660→                          )}
+   661→                        </div>
+   662→                        <div className="mt-1 font-mono text-[10px] text-slate-400">
+   663→                          {t.canvas.width}×{t.canvas.height}mm · {t.elements.length} องค์ประกอบ
+   664→                        </div>
+   665→                      </div>
+   666→                    </div>
+   667→                    <div
+   668→                      className="mt-2 flex flex-wrap gap-1"
+   669→                      onClick={(e) => e.stopPropagation()}
+   670→                    >
+   671→                      <Button
+   672→                        size="sm" variant="ghost" className="h-7 px-2 text-[11px]"
+   673→                        onClick={() => selectForEdit(t)}
+   674→                        title="แก้ไข"
+   675→                      >
+   676→                        <Pencil className="h-3 w-3" />
+   677→                      </Button>
+   678→                      <Button
+   679→                        size="sm" variant="ghost" className="h-7 px-2 text-[11px]"
+   680→                        onClick={() => duplicateTemplate(t)}
+   681→                        title="สำเนา"
+   682→                      >
+   683→                        <Copy className="h-3 w-3" />
+   684→                      </Button>
+   685→                      <Button
+   686→                        size="sm" variant="ghost" className="h-7 px-2 text-[11px]"
+   687→                        onClick={() => activateMutation.mutate(t.id)}
+   688→                        disabled={isActive || activateMutation.isPending}
+   689→                        title="ตั้งเป็นเทมเพลตที่ใช้งาน"
+   690→                      >
+   691→                        <Star className="h-3 w-3" />
+   692→                      </Button>
+   693→                      <Button
+   694→                        size="sm" variant="ghost" className="h-7 px-2 text-[11px] text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+   695→                        onClick={() => setDeleteTplId(t.id)}
+   696→                        disabled={t.isDefault || isActive}
+   697→                        title={t.isDefault ? 'ลบเทมเพลตเริ่มต้นไม่ได้' : isActive ? 'ลบเทมเพลตที่ใช้งานอยู่ไม่ได้' : 'ลบ'}
+   698→                      >
+   699→                        <Trash2 className="h-3 w-3" />
+   700→                      </Button>
+   701→                    </div>
+   702→                  </div>
+   703→                )
+   704→              })}
+   705→            </div>
+   706→          </CardContent>
+   707→        </Card>
+   708→
+   709→        {/* ── Center: Workspace ─────────────────────────────────────── */}
+   710→        <Card className="dark:border-slate-800 dark:bg-slate-900">
+   711→          <CardHeader className="pb-3">
+   712→            <div className="flex flex-wrap items-center justify-between gap-2">
+   713→              <CardTitle className="text-sm text-slate-700 dark:text-slate-200">
+   714→                🖼️ Workspace
+   715→                {draft && (
+   716→                  <span className="ml-2 font-mono text-[10px] font-normal text-slate-400">
+   717→                    ({draft.canvas.width}×{draft.canvas.height}mm)
+   718→                  </span>
+   719→                )}
+   720→              </CardTitle>
+   721→              <div className="flex flex-wrap items-center gap-1.5">
+   722→                <Select
+   723→                  value={
+   724→                    draft
+   725→                      ? PAPER_PRESETS.find((p) => p.width === draft.canvas.width && p.height === draft.canvas.height)
+   726→                        ? `${draft.canvas.width}x${draft.canvas.height}`
+   727→                        : 'custom'
+   728→                      : 'custom'
+   729→                  }
+   730→                  onValueChange={(v) => {
+   731→                    if (!draft) return
+   732→                    if (v === 'custom') return
+   733→                    const [w, h] = v.split('x').map(Number)
+   734→                    setDraft({ ...draft, canvas: { ...draft.canvas, width: w, height: h } })
+   735→                  }}
+   736→                >
+   737→                  <SelectTrigger className="h-8 w-32 text-xs dark:bg-slate-800 dark:border-slate-700">
+   738→                    <SelectValue placeholder="Paper size" />
+   739→                  </SelectTrigger>
+   740→                  <SelectContent>
+   741→                    {PAPER_PRESETS.map((p) => (
+   742→                      <SelectItem key={p.label} value={`${p.width}x${p.height}`}>
+   743→                        {p.label}
+   744→                      </SelectItem>
+   745→                    ))}
+   746→                    <SelectItem value="custom">กำหนดเอง</SelectItem>
+   747→                  </SelectContent>
+   748→                </Select>
+   749→                <div className="flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1 dark:border-slate-700">
+   750→                  <Label className="text-[11px] text-slate-500">Clip</Label>
+   751→                  <Switch
+   752→                    checked={draft?.overflow === 'visible'}
+   753→                    onCheckedChange={(c) => draft && setDraft({ ...draft, overflow: c ? 'visible' : 'clip' })}
+   754→                  />
+   755→                  <Label className="text-[11px] text-slate-500">Visible</Label>
+   756→                </div>
+   757→              </div>
+   758→            </div>
+   759→          </CardHeader>
+   760→          <CardContent>
+   761→            {/* Workspace scrollable area */}
+   762→            <div
+   763→              className="itam-scroll overflow-auto rounded-md border border-slate-200 bg-slate-100 p-2 dark:border-slate-700 dark:bg-slate-950"
+   764→              style={{ maxHeight: '60vh' }}
+   765→              onClick={() => setSelectedElId(null)}
+   766→            >
+   767→              {draft && (
+   768→                <div
+   769→                  ref={workspaceRef}
+   770→                  style={{
+   771→                    position: 'relative',
+   772→                    width: `${draft.canvas.width + 60}mm`,
+   773→                    height: `${draft.canvas.height + 60}mm`,
+   774→                    minWidth: `${draft.canvas.width + 60}mm`,
+   775→                    // Light grid background
+   776→                    backgroundImage:
+   777→                      'linear-gradient(rgba(148,163,184,0.15) 1px, transparent 1px),' +
+   778→                      'linear-gradient(90deg, rgba(148,163,184,0.15) 1px, transparent 1px)',
+   779→                    backgroundSize: '5mm 5mm',
+   780→                  }}
+   781→                >
+   782→                  {/* Red boundary box showing actual template size */}
+   783→                  <div
+   784→                    style={{
+   785→                      position: 'absolute',
+   786→                      left: '30mm',
+   787→                      top: '30mm',
+   788→                      width: `${draft.canvas.width}mm`,
+   789→                      height: `${draft.canvas.height}mm`,
+   790→                      border: '2px dashed #ef4444',
+   791→                      background: '#ffffff',
+   792→                      overflow: draft.overflow === 'visible' ? 'visible' : 'hidden',
+   793→                      boxSizing: 'border-box',
+   794→                    }}
+   795→                    onClick={(e) => { e.stopPropagation(); setSelectedElId(null) }}
+   796→                  >
+   797→                    {/* White sticker container */}
+   798→                    <div
+   799→                      style={{
+   800→                        position: 'absolute',
+   801→                        inset: 0,
+   802→                        background: '#ffffff',
+   803→                      }}
+   804→                    />
+   805→                    {/* Elements */}
+   806→                    {[...draft.elements]
+   807→                      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+   808→                      .map((el) => (
+   809→                        <WorkspaceElement
+   810→                          key={el.id}
+   811→                          el={el}
+   812→                          selected={el.id === selectedElId}
+   813→                          exceedsBounds={elementExceedsBounds(el, draft.canvas)}
+   814→                          onMouseDown={onElementMouseDown}
+   815→                          onResizeMouseDown={onResizeMouseDown}
+   816→                        />
+   817→                      ))}
+   818→                    {/* Corner label showing dimensions */}
+   819→                    <div
+   820→                      style={{
+   821→                        position: 'absolute',
+   822→                        top: '-16px',
+   823→                        left: 0,
+   824→                        fontSize: '10px',
+   825→                        color: '#ef4444',
+   826→                        fontWeight: 600,
+   827→                        fontFamily: 'monospace',
+   828→                        pointerEvents: 'none',
+   829→                      }}
+   830→                    >
+   831→                      {draft.canvas.width} × {draft.canvas.height} mm
+   832→                    </div>
+   833→                  </div>
+   834→                </div>
+   835→              )}
+   836→            </div>
+   837→
+   838→            {/* Toolbar */}
+   839→            <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-200 pt-3 dark:border-slate-700">
+   840→              <Button size="sm" variant="outline" onClick={() => addElement('text')} className="dark:border-slate-700 dark:bg-slate-800">
+   841→                <Type className="h-3.5 w-3.5" /> +Text
+   842→              </Button>
+   843→              <Button size="sm" variant="outline" onClick={() => addElement('image')} className="dark:border-slate-700 dark:bg-slate-800">
+   844→                <ImageIcon className="h-3.5 w-3.5" /> +Image
+   845→              </Button>
+   846→              <Button size="sm" variant="outline" onClick={() => addElement('qr')} className="dark:border-slate-700 dark:bg-slate-800">
+   847→                <QrCode className="h-3.5 w-3.5" /> +QR
+   848→              </Button>
+   849→              <Button size="sm" variant="outline" onClick={() => addElement('rect')} className="dark:border-slate-700 dark:bg-slate-800">
+   850→                <Square className="h-3.5 w-3.5" /> +Rect
+   851→              </Button>
+   852→              <div className="mx-1 h-5 w-px bg-slate-200 dark:bg-slate-700" />
+   853→              <Button
+   854→                size="sm"
+   855→                variant="outline"
+   856→                onClick={deleteSelectedElement}
+   857→                disabled={!selectedEl}
+   858→                className="border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:hover:bg-rose-950/30"
+   859→              >
+   860→                <Trash2 className="h-3.5 w-3.5" /> ลบองค์ประกอบ
+   861→              </Button>
+   862→              <div className="ml-auto flex items-center gap-1.5">
+   863→                {/* Dirty indicator — shows when there are unsaved edits */}
+   864→                {isDirty && (
+   865→                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+   866→                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+   867→                    ยังไม่ได้บันทึก
+   868→                  </span>
+   869→                )}
+   870→                <Button size="sm" variant="outline" onClick={previewTemplate} disabled={!draft} className="dark:border-slate-700 dark:bg-slate-800">
+   871→                  <Eye className="h-3.5 w-3.5" /> พรีวิว
+   872→                </Button>
+   873→                <Button
+   874→                  size="sm"
+   875→                  onClick={saveTemplate}
+   876→                  disabled={!draft || updateMutation.isPending || !isDirty}
+   877→                  className="bg-[#f97316] text-white hover:bg-[#ea580c] disabled:opacity-50"
+   878→                  title={isDirty ? 'บันทึกการเปลี่ยนแปลง' : 'ไม่มีการเปลี่ยนแปลง'}
+   879→                >
+   880→                  {updateMutation.isPending ? (
+   881→                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   882→                  ) : (
+   883→                    <Save className="h-3.5 w-3.5" />
+   884→                  )}{' '}
+   885→                  บันทึก
+   886→                </Button>
+   887→              </div>
+   888→            </div>
+   889→          </CardContent>
+   890→        </Card>
+   891→
+   892→        {/* ── Right: Property Panel ─────────────────────────────────── */}
+   893→        <Card className="dark:border-slate-800 dark:bg-slate-900">
+   894→          <CardHeader className="pb-3">
+   895→            <CardTitle className="text-sm text-slate-700 dark:text-slate-200">
+   896→              ⚙️ คุณสมบัติ
+   897→            </CardTitle>
+   898→          </CardHeader>
+   899→          <CardContent className="space-y-3 p-3 pt-0">
+   900→            {!selectedEl ? (
+   901→              <div className="space-y-3">
+   902→                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
+   903→                  คลิกที่องค์ประกอบใน workspace เพื่อแก้ไข หรือกดปุ่ม +Text/+Image/+QR/+Rect เพื่อเพิ่มใหม่
+   904→                </div>
+   905→
+   906→                {/* Template name */}
+   907→                <div className="space-y-1.5">
+   908→                  <Label className="text-xs">ชื่อเทมเพลต</Label>
+   909→                  <Input
+   910→                    value={draft?.name ?? ''}
+   911→                    onChange={(e) => draft && setDraft({ ...draft, name: e.target.value })}
+   912→                    className="text-xs dark:bg-slate-800 dark:border-slate-700"
+   913→                  />
+   914→                </div>
+   915→
+   916→                {/* Canvas size custom */}
+   917→                <div className="grid grid-cols-2 gap-2">
+   918→                  <div className="space-y-1.5">
+   919→                    <Label className="text-xs">กว้าง (mm)</Label>
+   920→                    <Input
+   921→                      type="number" step="0.1" min="10" max="300"
+   922→                      value={draft?.canvas.width ?? ''}
+   923→                      onChange={(e) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, width: Number(e.target.value) || 10 } })}
+   924→                      className="text-xs dark:bg-slate-800 dark:border-slate-700"
+   925→                    />
+   926→                  </div>
+   927→                  <div className="space-y-1.5">
+   928→                    <Label className="text-xs">สูง (mm)</Label>
+   929→                    <Input
+   930→                      type="number" step="0.1" min="10" max="300"
+   931→                      value={draft?.canvas.height ?? ''}
+   932→                      onChange={(e) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, height: Number(e.target.value) || 10 } })}
+   933→                      className="text-xs dark:bg-slate-800 dark:border-slate-700"
+   934→                    />
+   935→                  </div>
+   936→                </div>
+   937→
+   938→                {/* Available variables */}
+   939→                <div className="space-y-1.5">
+   940→                  <Label className="text-xs">ตัวแปรที่ใช้ได้</Label>
+   941→                  <div className="flex flex-wrap gap-1">
+   942→                    {STICKER_VARIABLES.map((v) => (
+   943→                      <button
+   944→                        key={v}
+   945→                        type="button"
+   946→                        className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[9px] text-slate-600 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-orange-700 dark:hover:bg-orange-950 dark:hover:text-orange-300"
+   947→                        title={`คลิกเพื่อคัดลอก ${v}`}
+   948→                        onClick={(e) => {
+   949→                          e.preventDefault()
+   950→                          navigator.clipboard?.writeText(v).catch(() => {})
+   951→                          toast.success(`คัดลอก ${v}`)
+   952→                        }}
+   953→                      >
+   954→                        {v}
+   955→                      </button>
+   956→                    ))}
+   957→                  </div>
+   958→                </div>
+   959→              </div>
+   960→            ) : (
+   961→              <div className="space-y-3">
+   962→                <div className="flex items-center justify-between">
+   963→                  <Badge className="bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800">
+   964→                    {selectedEl.type.toUpperCase()}
+   965→                  </Badge>
+   966→                  {elementExceedsBounds(selectedEl, draft!.canvas) && (
+   967→                    <Badge className="bg-orange-50 text-orange-700 border-orange-300 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800">
+   968→                      ⚠ ล้นขอบ
+   969→                    </Badge>
+   970→                  )}
+   971→                </div>
+   972→
+   973→                {/* Position & Size */}
+   974→                <div className="grid grid-cols-2 gap-2">
+   975→                  <NumInput label="X (mm)" value={selectedEl.x} onChange={(v) => updateSelectedElement({ x: v })} step={0.5} />
+   976→                  <NumInput label="Y (mm)" value={selectedEl.y} onChange={(v) => updateSelectedElement({ y: v })} step={0.5} />
+   977→                  <NumInput label="W (mm)" value={selectedEl.width} onChange={(v) => updateSelectedElement({ width: v })} step={0.5} />
+   978→                  <NumInput label="H (mm)" value={selectedEl.height} onChange={(v) => updateSelectedElement({ height: v })} step={0.5} />
+   979→                </div>
+   980→
+   981→                {/* Type-specific */}
+   982→                {selectedEl.type === 'text' && (
+   983→                  <>
+   984→                    <div className="space-y-1.5">
+   985→                      <Label className="text-xs">ข้อความ (รองรับ {'{{ตัวแปร}}'})</Label>
+   986→                      <Textarea
+   987→                        value={selectedEl.content ?? ''}
+   988→                        onChange={(e) => updateSelectedElement({ content: e.target.value })}
+   989→                        rows={2}
+   990→                        className="text-xs dark:bg-slate-800 dark:border-slate-700"
+   991→                      />
+   992→                    </div>
+   993→                    <div className="grid grid-cols-2 gap-2">
+   994→                      <NumInput label="ขนาด (pt)" value={selectedEl.fontSize ?? 6} onChange={(v) => updateSelectedElement({ fontSize: v })} step={0.5} min={2} max={48} />
+   995→                      <div className="space-y-1.5">
+   996→                        <Label className="text-xs">น้ำหนัก</Label>
+   997→                        <Select
+   998→                          value={String(selectedEl.fontWeight ?? 500)}
+   999→                          onValueChange={(v) => updateSelectedElement({ fontWeight: Number(v) })}
+  1000→                        >
+  1001→                          <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
+  1002→                            <SelectValue />
+  1003→                          </SelectTrigger>
+  1004→                          <SelectContent>
+  1005→                            <SelectItem value="300">300 (บาง)</SelectItem>
+  1006→                            <SelectItem value="400">400 (ปกติ)</SelectItem>
+  1007→                            <SelectItem value="500">500</SelectItem>
+  1008→                            <SelectItem value="600">600</SelectItem>
+  1009→                            <SelectItem value="700">700 (หนา)</SelectItem>
+  1010→                            <SelectItem value="800">800 (หนามาก)</SelectItem>
+  1011→                          </SelectContent>
+  1012→                        </Select>
+  1013→                      </div>
+  1014→                    </div>
+  1015→                    <div className="grid grid-cols-2 gap-2">
+  1016→                      <div className="space-y-1.5">
+  1017→                        <Label className="text-xs">สี</Label>
+  1018→                        <div className="flex gap-1.5">
+  1019→                          <input
+  1020→                            type="color"
+  1021→                            value={selectedEl.color ?? '#1e293b'}
+  1022→                            onChange={(e) => updateSelectedElement({ color: e.target.value })}
+  1023→                            className="h-8 w-10 cursor-pointer rounded border border-slate-200 dark:border-slate-700"
+  1024→                          />
+  1025→                          <Input
+  1026→                            value={selectedEl.color ?? ''}
+  1027→                            onChange={(e) => updateSelectedElement({ color: e.target.value })}
+  1028→                            className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1029→                          />
+  1030→                        </div>
+  1031→                      </div>
+  1032→                      <div className="space-y-1.5">
+  1033→                        <Label className="text-xs">จัดวาง</Label>
+  1034→                        <Select
+  1035→                          value={selectedEl.align ?? 'left'}
+  1036→                          onValueChange={(v) => updateSelectedElement({ align: v as 'left' | 'center' | 'right' })}
+  1037→                        >
+  1038→                          <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
+  1039→                            <SelectValue />
+  1040→                          </SelectTrigger>
+  1041→                          <SelectContent>
+  1042→                            <SelectItem value="left">ซ้าย</SelectItem>
+  1043→                            <SelectItem value="center">กลาง</SelectItem>
+  1044→                            <SelectItem value="right">ขวา</SelectItem>
+  1045→                          </SelectContent>
+  1046→                        </Select>
+  1047→                      </div>
+  1048→                    </div>
+  1049→                  </>
+  1050→                )}
+  1051→
+  1052→                {selectedEl.type === 'rect' && (
+  1053→                  <>
+  1054→                    <div className="space-y-1.5">
+  1055→                      <Label className="text-xs">สีพื้น</Label>
+  1056→                      <div className="flex gap-1.5">
+  1057→                        <input
+  1058→                          type="color"
+  1059→                          value={selectedEl.background && selectedEl.background !== 'transparent' ? selectedEl.background : '#f97316'}
+  1060→                          onChange={(e) => updateSelectedElement({ background: e.target.value })}
+  1061→                          className="h-8 w-10 cursor-pointer rounded border border-slate-200 dark:border-slate-700"
+  1062→                        />
+  1063→                        <Input
+  1064→                          value={selectedEl.background ?? ''}
+  1065→                          onChange={(e) => updateSelectedElement({ background: e.target.value })}
+  1066→                          placeholder="transparent หรือ #f97316"
+  1067→                          className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1068→                        />
+  1069→                      </div>
+  1070→                    </div>
+  1071→                    <div className="space-y-1.5">
+  1072→                      <Label className="text-xs">ขอบ (border CSS)</Label>
+  1073→                      <Input
+  1074→                        value={selectedEl.border ?? ''}
+  1075→                        onChange={(e) => updateSelectedElement({ border: e.target.value })}
+  1076→                        placeholder="เช่น 1px solid #000 หรือ none"
+  1077→                        className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1078→                      />
+  1079→                    </div>
+  1080→                    <NumInput label="รัศมี (mm)" value={selectedEl.borderRadius ?? 0} onChange={(v) => updateSelectedElement({ borderRadius: v })} step={0.5} min={0} />
+  1081→                  </>
+  1082→                )}
+  1083→
+  1084→                {selectedEl.type === 'image' && (
+  1085→                  <div className="space-y-1.5">
+  1086→                    <Label className="text-xs">URL รูปภาพ</Label>
+  1087→                    <Input
+  1088→                      value={selectedEl.source ?? ''}
+  1089→                      onChange={(e) => updateSelectedElement({ source: e.target.value })}
+  1090→                      placeholder="https://..."
+  1091→                      className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1092→                    />
+  1093→                  </div>
+  1094→                )}
+  1095→
+  1096→                {selectedEl.type === 'qr' && (
+  1097→                  <div className="space-y-1.5">
+  1098→                    <Label className="text-xs">ข้อมูล QR (รองรับ {'{{ตัวแปร}}'})</Label>
+  1099→                    <Input
+  1100→                      value={selectedEl.content ?? ''}
+  1101→                      onChange={(e) => updateSelectedElement({ content: e.target.value })}
+  1102→                      placeholder="{{AssetNo}}"
+  1103→                      className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1104→                    />
+  1105→                    <p className="text-[10px] text-slate-400">
+  1106→                      ค่าเริ่มต้นใช้ {'{{AssetNo}}'} เพื่อสร้าง QR จากรหัสอุปกรณ์
+  1107→                    </p>
+  1108→                  </div>
+  1109→                )}
+  1110→
+  1111→                {/* Common props */}
+  1112→                <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-2 dark:border-slate-700">
+  1113→                  <NumInput label="Opacity (0-1)" value={selectedEl.opacity ?? 1} onChange={(v) => updateSelectedElement({ opacity: Math.min(1, Math.max(0, v)) })} step={0.1} min={0} max={1} />
+  1114→                  <NumInput label="Z-Index" value={selectedEl.zIndex ?? 0} onChange={(v) => updateSelectedElement({ zIndex: v })} step={1} />
+  1115→                  <NumInput label="หมุน (deg)" value={selectedEl.rotation ?? 0} onChange={(v) => updateSelectedElement({ rotation: v })} step={1} />
+  1116→                </div>
+  1117→
+  1118→                <Button
+  1119→                  size="sm" variant="outline"
+  1120→                  onClick={deleteSelectedElement}
+  1121→                  className="w-full border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:hover:bg-rose-950/30"
+  1122→                >
+  1123→                  <Trash2 className="h-3.5 w-3.5" /> ลบองค์ประกอบนี้
+  1124→                </Button>
+  1125→              </div>
+  1126→            )}
+  1127→          </CardContent>
+  1128→        </Card>
+  1129→      </div>
+  1130→
+  1131→      {/* ── Preview modal ─────────────────────────────────────────────── */}
+  1132→      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+  1133→        <DialogContent className="max-h-[92vh] overflow-auto sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
+  1134→          <DialogHeader>
+  1135→            <DialogTitle className="text-slate-800 dark:text-slate-100">
+  1136→              👁️ พรีวิวสติกเกอร์
+  1137→            </DialogTitle>
+  1138→          </DialogHeader>
+  1139→          <div className="space-y-3">
+  1140→            <p className="text-xs text-slate-500 dark:text-slate-400">
+  1141→              ตัวอย่างสติกเกอร์สำหรับอุปกรณ์ <span className="font-mono font-semibold">{SAMPLE_DEVICE.assetNo}</span> ({SAMPLE_DEVICE.brand} {SAMPLE_DEVICE.model})
+  1142→            </p>
+  1143→            <div
+  1144→              className="overflow-auto rounded-md border border-slate-200 bg-slate-100 p-8 dark:border-slate-700 dark:bg-slate-950"
+  1145→              style={{ minHeight: 200 }}
+  1146→            >
+  1147→              {previewHtml ? (
+  1148→                <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+  1149→              ) : (
+  1150→                <div className="text-center text-xs text-slate-400 py-8">กำลังโหลด...</div>
+  1151→              )}
+  1152→            </div>
+  1153→          </div>
+  1154→          <DialogFooter>
+  1155→            <Button variant="outline" onClick={() => setPreviewOpen(false)}>ปิด</Button>
+  1156→          </DialogFooter>
+  1157→        </DialogContent>
+  1158→      </Dialog>
+  1159→
+  1160→      {/* ── Delete confirm ───────────────────────────────────────────── */}
+  1161→      <AlertDialog open={!!deleteTplId} onOpenChange={(o) => !o && setDeleteTplId(null)}>
+  1162→        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+  1163→          <AlertDialogHeader>
+  1164→            <AlertDialogTitle>ยืนยันการลบเทมเพลต?</AlertDialogTitle>
+  1165→            <AlertDialogDescription>
+  1166→              จะลบเทมเพลต{' '}
+  1167→              <span className="font-semibold">
+  1168→                {templates.find((t) => t.id === deleteTplId)?.name}
+  1169→              </span>
+  1170→              {' '}การกระทำนี้ย้อนกลับไม่ได้
+  1171→            </AlertDialogDescription>
+  1172→          </AlertDialogHeader>
+  1173→          <AlertDialogFooter>
+  1174→            <AlertDialogCancel disabled={deleteMutation.isPending}>ยกเลิก</AlertDialogCancel>
+  1175→            <AlertDialogAction
+  1176→              onClick={() => deleteTplId && deleteMutation.mutate(deleteTplId)}
+  1177→              disabled={deleteMutation.isPending}
+  1178→              className="bg-rose-600 text-white hover:bg-rose-700"
+  1179→            >
+  1180→              {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบ'}
+  1181→            </AlertDialogAction>
+  1182→          </AlertDialogFooter>
+  1183→        </AlertDialogContent>
+  1184→      </AlertDialog>
+  1185→
+  1186→      {/* ── Settings modal ───────────────────────────────────────────── */}
+  1187→      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+  1188→        <DialogContent className="sm:max-w-lg dark:border-slate-800 dark:bg-slate-900">
+  1189→          <DialogHeader>
+  1190→            <DialogTitle className="text-slate-800 dark:text-slate-100">
+  1191→              ตั้งค่าบริษัท / ข้อมูลสติกเกอร์
+  1192→            </DialogTitle>
+  1193→          </DialogHeader>
+  1194→          {settingsForm && (
+  1195→            <div className="space-y-3">
+  1196→              <div className="space-y-1.5">
+  1197→                <Label className="text-xs">ชื่อบริษัท {'({{companyName}})'}</Label>
+  1198→                <Input
+  1199→                  value={settingsForm.companyName}
+  1200→                  onChange={(e) => setSettingsForm({ ...settingsForm, companyName: e.target.value })}
+  1201→                  className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1202→                />
+  1203→              </div>
+  1204→              <div className="space-y-1.5">
+  1205→                <Label className="text-xs">ชื่อโรงพยาบาล {'({{hospitalName}})'}</Label>
+  1206→                <Input
+  1207→                  value={settingsForm.hospitalName}
+  1208→                  onChange={(e) => setSettingsForm({ ...settingsForm, hospitalName: e.target.value })}
+  1209→                  className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1210→                />
+  1211→              </div>
+  1212→              <div className="space-y-1.5">
+  1213→                <Label className="text-xs">เบอร์ติดต่อ {'({{hotline}})'}</Label>
+  1214→                <Input
+  1215→                  value={settingsForm.hotline}
+  1216→                  onChange={(e) => setSettingsForm({ ...settingsForm, hotline: e.target.value })}
+  1217→                  className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1218→                />
+  1219→              </div>
+  1220→              <div className="space-y-1.5">
+  1221→                <Label className="text-xs">LINE OA {'({{lineOA}})'}</Label>
+  1222→                <Input
+  1223→                  value={settingsForm.lineOALink}
+  1224→                  onChange={(e) => setSettingsForm({ ...settingsForm, lineOALink: e.target.value })}
+  1225→                  className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1226→                />
+  1227→              </div>
+  1228→              <div className="space-y-1.5">
+  1229→                <Label className="text-xs">หมายเหตุท้ายสติกเกอร์ {'({{footerNote}})'}</Label>
+  1230→                <Textarea
+  1231→                  value={settingsForm.footerNote}
+  1232→                  onChange={(e) => setSettingsForm({ ...settingsForm, footerNote: e.target.value })}
+  1233→                  rows={2}
+  1234→                  className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1235→                />
+  1236→              </div>
+  1237→            </div>
+  1238→          )}
+  1239→          <DialogFooter>
+  1240→            <Button variant="outline" onClick={() => setSettingsOpen(false)}>ยกเลิก</Button>
+  1241→            <Button
+  1242→              onClick={() => settingsForm && saveSettingsMutation.mutate(settingsForm)}
+  1243→              disabled={saveSettingsMutation.isPending || !settingsForm}
+  1244→              className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+  1245→            >
+  1246→              {saveSettingsMutation.isPending ? 'กำลังบันทึก...' : 'บันทึก'}
+  1247→            </Button>
+  1248→          </DialogFooter>
+  1249→        </DialogContent>
+  1250→      </Dialog>
+  1251→    </div>
+  1252→  )
+  1253→}
+  1254→
+  1255→// ─────────────────────────────────────────────────────────────────────────
+  1256→// Small helpers
+  1257→// ─────────────────────────────────────────────────────────────────────────
+  1258→
+  1259→function NumInput({
+  1260→  label, value, onChange, step = 1, min, max,
+  1261→}: {
+  1262→  label: string
+  1263→  value: number
+  1264→  onChange: (v: number) => void
+  1265→  step?: number
+  1266→  min?: number
+  1267→  max?: number
+  1268→}) {
+  1269→  return (
+  1270→    <div className="space-y-1.5">
+  1271→      <Label className="text-xs">{label}</Label>
+  1272→      <Input
+  1273→        type="number"
+  1274→        value={Number.isFinite(value) ? value : ''}
+  1275→        onChange={(e) => {
+  1276→          const n = Number(e.target.value)
+  1277→          if (!Number.isFinite(n)) return
+  1278→          onChange(n)
+  1279→        }}
+  1280→        step={step}
+  1281→        min={min}
+  1282→        max={max}
+  1283→        className="text-xs dark:bg-slate-800 dark:border-slate-700"
+  1284→      />
+  1285→    </div>
+  1286→  )
+  1287→}
+  1288→
+  1289→// Safe structured clone (with fallback for older browsers)
+  1290→function structuredCloneSafe<T>(obj: T): T {
+  1291→  if (typeof structuredClone === 'function') {
+  1292→    try {
+  1293→      return structuredClone(obj)
+  1294→    } catch {
+  1295→      /* fall through */
+  1296→    }
+  1297→  }
+  1298→  return JSON.parse(JSON.stringify(obj)) as T
+  1299→}
+  1300→

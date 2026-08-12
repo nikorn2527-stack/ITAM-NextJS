@@ -196,13 +196,19 @@ export function ItamDocumentEditor() {
   const [previewHtml, setPreviewHtml] = React.useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = React.useState(false)
   const [deleteTplId, setDeleteTplId] = React.useState<string | null>(null)
+  // ── Dirty tracking — shows "ยังไม่ได้บันทึก" indicator when draft ≠ saved ──
+  // Helps users see their edits are pending and need saving.
+  const [savedSnapshot, setSavedSnapshot] = React.useState<string>('')
+  const isDirty = draft ? JSON.stringify(draft) !== savedSnapshot : false
 
   // Auto-select first template for editing when list first loads
   React.useEffect(() => {
     if (!editingId && templates.length > 0 && !tplLoading) {
       const first = templates[0]
       setEditingId(first.id)
-      setDraft(structuredCloneSafe(first))
+      const cloned = structuredCloneSafe(first)
+      setDraft(cloned)
+      setSavedSnapshot(JSON.stringify(cloned))
       setSelectedElId(null)
     }
   }, [templates, tplLoading, editingId])
@@ -224,7 +230,9 @@ export function ItamDocumentEditor() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['document-templates'] })
       setEditingId(data.template.id)
-      setDraft(structuredCloneSafe(data.template))
+      const cloned = structuredCloneSafe(data.template)
+      setDraft(cloned)
+      setSavedSnapshot(JSON.stringify(cloned))
       setSelectedElId(null)
       toast.success('สร้างเทมเพลตแล้ว')
     },
@@ -254,6 +262,8 @@ export function ItamDocumentEditor() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['document-templates'] })
       toast.success('บันทึกเทมเพลตแล้ว')
+      // Update saved snapshot so isDirty resets to false
+      if (draft) setSavedSnapshot(JSON.stringify(draft))
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ'),
   })
@@ -461,7 +471,9 @@ export function ItamDocumentEditor() {
   // ── Template-level actions ───────────────────────────────────────────
   function selectForEdit(t: DocumentTemplate) {
     setEditingId(t.id)
-    setDraft(structuredCloneSafe(t))
+    const cloned = structuredCloneSafe(t)
+    setDraft(cloned)
+    setSavedSnapshot(JSON.stringify(cloned))
     setSelectedElId(null)
   }
 
@@ -477,7 +489,9 @@ export function ItamDocumentEditor() {
       onSuccess: async (data) => {
         await updateMutation.mutateAsync({ id: data.template.id, payload: dup })
         setEditingId(data.template.id)
-        setDraft(structuredCloneSafe(dup))
+        const cloned = structuredCloneSafe(dup)
+        setDraft(cloned)
+        setSavedSnapshot(JSON.stringify(cloned))
         setSelectedElId(null)
       },
     })
@@ -967,15 +981,23 @@ export function ItamDocumentEditor() {
               >
                 <Trash2 className="h-3.5 w-3.5" /> ลบองค์ประกอบ
               </Button>
-              <div className="ml-auto flex gap-1.5">
+              <div className="ml-auto flex items-center gap-1.5">
+                {/* Dirty indicator — shows when there are unsaved edits */}
+                {isDirty && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                    ยังไม่ได้บันทึก
+                  </span>
+                )}
                 <Button size="sm" variant="outline" onClick={previewTemplate} disabled={!draft} className="dark:border-slate-700 dark:bg-slate-800">
                   <Eye className="h-3.5 w-3.5" /> พรีวิว
                 </Button>
                 <Button
                   size="sm"
                   onClick={saveTemplate}
-                  disabled={!draft || updateMutation.isPending}
-                  className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+                  disabled={!draft || updateMutation.isPending || !isDirty}
+                  className="bg-[#f97316] text-white hover:bg-[#ea580c] disabled:opacity-50"
+                  title={isDirty ? 'บันทึกการเปลี่ยนแปลง' : 'ไม่มีการเปลี่ยนแปลง'}
                 >
                   {updateMutation.isPending ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
