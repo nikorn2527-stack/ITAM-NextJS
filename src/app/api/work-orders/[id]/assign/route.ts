@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { notifyWorkOrderAssigned } from '@/lib/notifications'
 
 async function logAudit(
   action: string,
@@ -51,6 +52,10 @@ export async function POST(
 
     const actorName =
       typeof actor === 'string' && actor.trim() ? actor.trim() : 'system'
+    // NOTE (PART 3 — Single User System): replace the 'system' fallback
+    // with the authenticated user's email/id once NextAuth is wired in.
+    // All audit-log + notification `actor` values should come from the
+    // session, not the request body.
     const tech = String(assignedTo).trim()
     const note = assignmentNote ? String(assignmentNote).trim() : null
     const now = new Date()
@@ -83,6 +88,23 @@ export async function POST(
       { assignedTo: tech, assignedBy: actorName, note },
       actorName,
     )
+
+    // ── Notification trigger (Task ID: NOTIFY-LINE) ──
+    // Send 'wo_assigned' to the assigned staff (LINE/Telegram if known).
+    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
+    try {
+      await notifyWorkOrderAssigned(
+        {
+          id: updated.id,
+          woNumber: updated.woNumber,
+          subject: updated.subject,
+          assignedTo: updated.assignedTo,
+        },
+        { channels: ['line-oa', 'telegram'], actor: actorName },
+      )
+    } catch (e) {
+      console.error('[notifications] wo_assigned trigger failed:', e)
+    }
 
     return NextResponse.json({ data: updated })
   } catch (err) {

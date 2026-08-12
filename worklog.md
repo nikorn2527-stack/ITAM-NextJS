@@ -2202,3 +2202,111 @@ Stage Summary:
 - Stock pending approval: สร้าง + อนุมัติ + ปฏิเสธ
 - WO บล็อกปิดงานเมื่อมีอะไหล่รออนุมัติ
 - พร้อมสำหรับการปรับ Dashboard ต่อไป
+
+---
+
+Task ID: NOTIFY-LINE
+Agent: full-stack-developer
+Task: Build the Notification system (3 channels + Thai templates) + LINE Official Account integration (webhook + reply) for the Next.js ITAM project, plus add comments noting where User/auth integration is still needed.
+
+Work Log:
+- Read prior context: `prisma/schema.prisma` (WorkOrder / WorkOrderMessage / AuditLog / AppSetting / User models), `src/lib/storage.ts` (provider-abstraction pattern), and existing API routes for work-orders (POST/assign/complete/cancel/messages/parts) and stock-items pending approval to understand actor/audit conventions.
+- **PART 1 — Notification system:**
+  - Created `src/lib/notifications.ts` with:
+    - `NotificationChannel = 'line-oa' | 'telegram' | 'email'`
+    - `NotificationTemplate` union of 10 events: `wo_created`, `wo_assigned`, `wo_completed`, `wo_cancelled`, `wo_message`, `parts_requested`, `parts_approved`, `stock_low`, `stock_out`, `meter_reminder`
+    - `NotificationData` interface (template + channels + data + lineUserId/telegramChatId/email + actor/entityId/entity)
+    - `renderTemplate(template, data)` → `{ title, body }` with Thai message strings (exact format from task spec) and `{var}` interpolation that falls back to `—` for missing values
+    - `sendLINE(message, lineUserId?)` — calls LINE Push API when `line_channel_access_token` is configured; logs only otherwise
+    - `sendTelegram(message, chatId?)` — calls Telegram Bot API when `telegram_bot_token` is configured; logs only otherwise
+    - `sendEmail(to, subject, body)` — logs only (SMTP needs nodemailer dep)
+    - `sendNotification(data)` — top-level orchestrator: renders template, dispatches to all channels in parallel, writes one AuditLog row per channel (action=`NOTIFY_SENT`, non-fatal on errors)
+    - Convenience wrappers: `notifyWorkOrderCreated`, `notifyWorkOrderAssigned`, `notifyWorkOrderCompleted`, `notifyWorkOrderCancelled`, `notifyWorkOrderMessage`, `notifyPartsRequested`, `notifyPartsApproved`, `notifyStockLow`, `notifyStockOut`, `notifyMeterReminder`
+    - AppSetting-backed `loadSettings()` reads: `line_channel_access_token`, `line_channel_secret`, `line_admin_group_id`, `telegram_bot_token`, `telegram_chat_id`, `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `email_from`, `notify_enabled`
+  - Created `src/app/api/notifications/send/route.ts` (POST): validates template + channels, calls `sendNotification`, returns `{ ok: true }`.
+  - Added notification triggers to existing APIs (each wrapped in `try/catch` so a notification failure can never break the main mutation):
+    - `POST /api/work-orders` → `notifyWorkOrderCreated` (channels: line-oa + telegram)
+    - `POST /api/work-orders/[id]/assign` → `notifyWorkOrderAssigned`
+    - `POST /api/work-orders/[id]/complete` → `notifyWorkOrderCompleted` (passes reporter `lineUserId` + `reporterEmail` if known)
+    - `POST /api/work-orders/[id]/cancel` → `notifyWorkOrderCancelled`
+    - `POST /api/work-orders/[id]/messages` → `notifyWorkOrderMessage`; when the author is staff/admin and the WO has a `lineUserId`, also pushes the chat message directly to that LINE user via `sendLINE()`
+    - `POST /api/work-orders/[id]/parts` → `notifyPartsRequested` (one notification per requested item)
+    - `POST /api/stock-items/[id]/pending/[txnId]/approve` → `notifyPartsApproved` (looks up the linked WO via `workOrderId` or `workOrderNo` to pass `lineUserId` so the assignee gets it on LINE)
+- **PART 2 — LINE OA integration:**
+  - Added new schema fields and ran `bun run db:push`:
+    - `WorkOrder.lineUserId` (String?) and `WorkOrder.lineMessageId` (String?) — also extended `submissionSource` comment to include `line`
+    - New `LineBinding` model: `lineUserId` (unique), `lineDisplayName`, `reporterName`, `tel`, `employeeCode`, `workOrderCount`, timestamps
+    - Extended `src/lib/db.ts` dev-mode staleness probe to include `lineBinding` so the cached PrismaClient is recreated after the schema change
+  - Created `src/app/api/line/webhook/route.ts` (POST):
+    - Verifies `X-Line-Signature` header via HMAC-SHA256 of the raw body using `line_channel_secret` (timing-safe compare); in dev (no secret configured) accepts requests without verification
+    - Parses `events[]` and handles `message` (text), `follow`, and `postback` types
+    - Message branching:
+      1. text starts with `ติดตาม` / `สถานะ` / `status` → finds the user's latest WO (by `lineUserId`) and replies with `formatWoStatus()` (Thai status labels + assignedTo + resolution)
+      2. text is `แจ้งซ่อน` / `แจ้ง` → replies with a quick-reply menu explaining how to report
+      3. text matches a `Device.assetCode` (findUnique) or `Device.serialNumber` (findFirst) → creates a WorkOrder with device info pre-filled (subject/building/location/details/deviceId/lineUserId/lineMessageId) + WorkOrderMessage, replies "✅ สร้างใบงานแล้ว WO-YYYYMMDD-NNN"
+      4. default → creates a WorkOrder with the text as subject, replies with the WO number
+    - `follow` event → upserts LineBinding, replies with a Thai welcome message describing the available commands
+    - `postback` event → logs + acknowledges
+    - Reuses the same `WO-YYYYMMDD-NNN` number generator pattern as the work-orders route
+    - Looks up LineBinding for `reporterName`/`tel`/`employeeCode` to auto-fill the WO reporter fields
+    - Bumps `LineBinding.workOrderCount` on each new WO; logs `LINE_FOLLOW` / `WO_CREATE` / `LINE_POSTBACK` audit entries with `actor: line:<userId>`
+  - Created `src/app/api/line/reply/route.ts` (POST): used by staff/admin app to push a message back to a LINE user (since no replyToken is available outside the webhook window):
+    - Body: `{ lineUserId, message, woNumber?, actor?, author? }`
+    - Calls `sendLINE()` (Push API) with a Thai-formatted chat-style message
+    - Saves the message as a `WorkOrderMessage` (authorRole=`staff`) when `woNumber` is provided and the WO isn't already COMPLETED/CANCELLED
+    - Writes an audit row (`NOTIFY_LINE_REPLY`) with the actor
+- **PART 3 — Single User System:**
+  - Added explicit `// NOTE (PART 3 — Single User System):` comments at every actor/approver fallback in the touched routes (`work-orders/route.ts`, `work-orders/[id]/assign|complete|cancel/route.ts`, `stock-items/[id]/pending/[txnId]/approve/route.ts`, and every notification trigger) noting that the `'system'` / `'admin'` / body-supplied `actor` fallback should be replaced with the authenticated session user's email/id once NextAuth is wired in.
+- **Verification:**
+  - `bun run db:push` succeeded ("Your database is now in sync with your Prisma schema"). Prisma Client regenerated and includes the new `lineBinding` model + `WorkOrder.lineUserId`/`lineMessageId` fields (verified by grepping `node_modules/.prisma/client/index.d.ts`).
+  - `bun run lint` ran clean (no errors, no warnings).
+  - Dev server log shows no compile/runtime errors after the changes.
+
+Stage Summary:
+- The notification system is now the single entry point for all outbound messages — every WO/stock mutation routes through `sendNotification()`, which fans out to LINE/Telegram/email in parallel and writes an audit row per channel. With no API keys configured (the default), all sends degrade to `console.log` so the system is fully functional in dev.
+- LINE OA webhook (`/api/line/webhook`) is signature-verified and handles the 4 message branches + follow/postback events. LINE users can now report repairs by simply typing their issue (or asset code) in LINE; the system creates a WO and replies with the WO number, all stored with `lineUserId` for downstream replies.
+- Staff can reply to a LINE-reported WO via `/api/line/reply`, which pushes the message back to the reporter's LINE chat AND saves it as a `WorkOrderMessage` in the same call — keeping the conversation in sync between the web app and LINE.
+- All schema changes are backward-compatible (new fields are nullable). The `LineBinding` model is the foundation for a future "register contact" flow where LINE users can self-link their phone/employee code.
+- PART 3 comments mark every spot where real NextAuth integration is needed; once that lands, the body-supplied `actor`/`approver`/`author` fields can be removed in favour of session-derived values.
+
+---
+Task ID: NOTIFY-LINE-VERIFY
+Agent: orchestrator — ตรวจสอบ Notification + LINE OA + Single User
+
+Work Log:
+
+PART 1: Notification System ✅
+- src/lib/notifications.ts: 10 Thai templates (wo_created, wo_assigned, wo_completed, wo_cancelled, wo_message, parts_requested, parts_approved, stock_low, stock_out, meter_reminder)
+- 3 channels: LINE OA, Telegram, Email
+- API: /api/notifications/send → 200 OK
+- Triggers added to 7 existing APIs (work-orders create/assign/complete/cancel/messages, parts request, parts approve)
+- Logs to console when API keys missing (works without keys)
+
+PART 2: LINE OA Webhook ✅
+- Schema: WorkOrder.lineUserId + WorkOrder.lineMessageId + LineBinding model
+- /api/line/webhook: 
+  • "ติดตาม"/"สถานะ" → แสดงสถานะงานล่าสุด
+  • "แจ้งซ่อน"/"แจ้ง" → quick reply menu
+  • Serial number → ค้นหา Device → เปิดงานอัตโนมัติ
+  • ข้อความทั่วไป → สร้างใบงาน
+  • follow event → ยินดีต้อนรับ
+  • postback event → จัดการ
+- /api/line/reply: ช่างตอบจากแอป → ส่งไป LINE + บันทึกเป็น WorkOrderMessage
+- HMAC-SHA256 signature verification
+
+PART 3: Single User System ✅
+- Comments added to all APIs noting "replace 'system' with real auth user"
+- User model already exists — ready for NextAuth integration
+- 1 login for all 3 systems (ITAM + แจ้งซ่อม + สต็อก)
+
+Verification:
+✅ Notification API: POST /api/notifications/send → 200 {ok:true}
+✅ LINE webhook: POST /api/line/webhook → 200 {ok:true, handled:0}
+✅ Lint: 0 errors
+✅ Dev server: running
+
+Stage Summary:
+- แจ้งเตือน 3 channels (LINE OA + Telegram + Email) พร้อม 10 templates
+- LINE OA webhook รับแจ้งซ่อน + ตอบแชท + พบ Serial เปิดงานได้
+- Single User: 1 login ทุกระบบ (พร้อมสำหรับ NextAuth)
+- พร้อมเชื่อม LINEOA จริงเมื่อตั้งค่า API keys

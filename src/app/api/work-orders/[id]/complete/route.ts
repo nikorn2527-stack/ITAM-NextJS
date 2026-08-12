@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { notifyWorkOrderCompleted } from '@/lib/notifications'
 
 async function logAudit(
   action: string,
@@ -91,6 +92,8 @@ export async function POST(
 
     const actorName =
       typeof actor === 'string' && actor.trim() ? actor.trim() : 'system'
+    // NOTE (PART 3 — Single User System): replace the 'system' fallback
+    // with the authenticated user's email/id once NextAuth is wired in.
     const now = new Date()
 
     const resolutionTrim =
@@ -138,6 +141,27 @@ export async function POST(
       },
       actorName,
     )
+
+    // ── Notification trigger (Task ID: NOTIFY-LINE) ──
+    // Send 'wo_completed' to the reporter (LINE if lineUserId is known,
+    // otherwise fall back to admin channels).
+    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
+    try {
+      await notifyWorkOrderCompleted(
+        {
+          id: updated.id,
+          woNumber: updated.woNumber,
+          subject: updated.subject,
+          resolution: updated.resolution,
+          detailsAdmin: updated.detailsAdmin,
+          lineUserId: updated.lineUserId,
+          reporterEmail: updated.reporterEmail,
+        },
+        { channels: ['line-oa', 'telegram'], actor: actorName },
+      )
+    } catch (e) {
+      console.error('[notifications] wo_completed trigger failed:', e)
+    }
 
     return NextResponse.json({ data: updated })
   } catch (err) {

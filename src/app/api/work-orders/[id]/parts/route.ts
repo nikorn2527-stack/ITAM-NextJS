@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { notifyPartsRequested } from '@/lib/notifications'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -310,6 +311,28 @@ export async function POST(
       },
       actorName,
     )
+
+    // ── Notification trigger (Task ID: NOTIFY-LINE) ──
+    // Send 'parts_requested' to the stock admin (LINE admin group + Telegram).
+    // Send one notification per requested item, so the admin sees each part.
+    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
+    try {
+      for (const t of created) {
+        await notifyPartsRequested(
+          {
+            id: wo.id,
+            woNumber: wo.woNumber,
+          },
+          {
+            productName: t.productName ?? '',
+            quantity: t.quantity,
+          },
+          { channels: ['line-oa', 'telegram'], actor: actorName },
+        )
+      }
+    } catch (e) {
+      console.error('[notifications] parts_requested trigger failed:', e)
+    }
 
     return NextResponse.json(
       {

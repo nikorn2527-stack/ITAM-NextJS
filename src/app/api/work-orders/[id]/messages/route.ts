@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { notifyWorkOrderMessage } from '@/lib/notifications'
 
 async function logAudit(
   action: string,
@@ -111,6 +112,50 @@ export async function POST(
       { message: String(message).trim(), author: authorName },
       authorName,
     )
+
+    // ── Notification trigger (Task ID: NOTIFY-LINE) ──
+    // Send 'wo_message' to the OTHER party (admin↔reporter).
+    // If author is staff/admin → notify the reporter (LINE if lineUserId is known).
+    // If author is reporter → notify staff (LINE admin group / Telegram).
+    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
+    try {
+      const woForNotify = await db.workOrder.findUnique({
+        where: { id },
+        select: { lineUserId: true, reporterEmail: true },
+      })
+      const isFromReporter = role === 'reporter'
+      await notifyWorkOrderMessage(
+        {
+          id,
+          woNumber: wo.woNumber,
+          author: authorName,
+          message: String(message).trim(),
+        },
+        {
+          // When staff/admin replies → push to the reporter's LINE.
+          // When reporter posts from the web → push to admin channels.
+          channels: isFromReporter
+            ? ['line-oa', 'telegram']
+            : ['line-oa', 'telegram'],
+          actor: authorName,
+        },
+      )
+      // If a staff reply and we have a LINE user ID, also send the message
+      // directly to the reporter's LINE chat (best-effort, logged if no token).
+      if (
+        !isFromReporter &&
+        woForNotify?.lineUserId
+      ) {
+        const { sendLINE } = await import('@/lib/notifications')
+        const lineMsg =
+          `💬 ข้อความใหม่ในใบงาน ${wo.woNumber ?? ''}\n` +
+          `จาก: ${authorName}\n` +
+          `ข้อความ: ${String(message).trim()}`
+        await sendLINE(lineMsg, woForNotify.lineUserId).catch(() => {})
+      }
+    } catch (e) {
+      console.error('[notifications] wo_message trigger failed:', e)
+    }
 
     return NextResponse.json({ data: created }, { status: 201 })
   } catch (err) {

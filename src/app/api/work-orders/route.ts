@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { validateGuestContact } from '@/lib/guest-validation'
+import { notifyWorkOrderCreated } from '@/lib/notifications'
 
 // Allowed status values
 const VALID_STATUSES = new Set([
@@ -292,6 +293,9 @@ export async function POST(req: NextRequest) {
       typeof actor === 'string' && actor.trim()
         ? actor.trim()
         : (finalReporterName || 'system')
+    // NOTE (PART 3 — Single User System): when the request comes from an
+    // authenticated staff/admin, use the session user's email as `actor`.
+    // For guest/line submissions, the reporterName (or 'system') is fine.
 
     const prPriority =
       typeof priority === 'string' && VALID_PRIORITIES.has(priority)
@@ -348,6 +352,28 @@ export async function POST(req: NextRequest) {
       },
       actorName,
     )
+
+    // ── Notification trigger (Task ID: NOTIFY-LINE) ──
+    // Send 'wo_created' to LINE admin group + Telegram admin chat.
+    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
+    try {
+      await notifyWorkOrderCreated(
+        {
+          id: created.id,
+          woNumber: created.woNumber,
+          subject: created.subject,
+          building: created.building,
+          location: created.location,
+          reporterName: created.reporterName,
+          tel: created.tel,
+          priority: created.priority,
+          lineUserId: created.lineUserId,
+        },
+        { channels: ['line-oa', 'telegram'], actor: actorName },
+      )
+    } catch (e) {
+      console.error('[notifications] wo_created trigger failed:', e)
+    }
 
     return NextResponse.json({ data: created }, { status: 201 })
   } catch (err) {
