@@ -5,6 +5,8 @@ export type ActivePage =
   | 'devices'
   | 'meter'
   | 'paper-analytics'
+  | 'work-orders'
+  | 'stock'
   | 'settings'
 
 export type SettingsTab = 'app' | 'master' | 'sites' | 'rates' | 'users' | 'audit'
