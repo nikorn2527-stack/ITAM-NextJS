@@ -1298,3 +1298,220 @@ Stage Summary — 5 ข้อที่ทำได้แล้ว:
 - API: 35+ routes (devices, work-orders, stock-items, purchase-orders, settings, ฯลฯ)
 - UI: Dashboard, จัดการอุปกรณ์, จดมิเตอร์, แจ้งซ่อม, สต๊อก, ตั้งค่าแอป
 - พร้อมสำหรับ: Excel import UI (ข้อ 3) + Template editor UI (ข้อ 5) + Settings page สำหรับ OrgProfile/AssetPattern
+
+---
+
+## Task ID: A7-SETTINGS — Settings Page V2
+
+**Agent:** full-stack-developer
+**Status:** ✅ Complete
+
+### What was built
+A new clean, tabbed Settings page (`SettingsPageV2`) replacing the old `SettingsPage` for the `settings` active page route.
+
+### Files
+- **Created:** `src/components/itam/settings-page-v2.tsx` — 'use client' named export `SettingsPageV2` (~810 lines)
+- **Modified:** `src/app/page.tsx` — swapped `SettingsPage` → `SettingsPageV2` (old file kept for reference)
+
+### Features by tab
+
+**🏢 ข้อมูลองค์กร (Org Profile)**
+- ชื่อแอป, แท็กไลน์, ประเภทอุตสาหกรรม, โลโก้ (emoji/URL), สีหลัก/รอง, ภาษา, สกุลเงิน
+- Color picker (native `<input type="color">`) + hex text input
+- Live sidebar mockup preview on the right (sticky on lg) showing logo, app name, tagline, nav sample with the picked primary color
+- PUT `/api/settings/org-profile` → toast.success("บันทึกการตั้งค่าแล้ว")
+
+**🔢 เลขทะเบียน (Asset Pattern)**
+- Lists all patterns in a 2-column card grid with `isActive` Badge
+- Each card: name, pattern (monospace), description, live preview (e.g. `ASSET-00001`), prefix/seqPadding/seqStart meta
+- "ใช้รูปแบบนี้" button → POST `/api/settings/asset-patterns/[id]/activate`
+- "สร้างรูปแบบใหม่" → Dialog with name, pattern, description, defaultPrefix, seqPadding, seqStart
+- Segment help table: `{prefix}`, `{seq:N}`, `{year:2|4}`, `{month:2}`, `{dept:N}`, `{type:N}`, `{site:N}` with examples
+- Live preview pane in dialog updates as user types
+
+**⚙️ ทั่วไป (General)**
+- Switch: Allow Excel Import (default on)
+- Select: Timezone (Asia/Bangkok, UTC, etc.)
+- Save button — merges with existing profile before PUT to avoid wiping other fields
+
+### Tech
+- `@tanstack/react-query` for both queries (`org-profile`, `asset-patterns`) and mutations
+- `sonner` toast for feedback
+- shadcn/ui components: Tabs, Card, Input, Label, Select, Switch, Button, Badge, Dialog, Textarea, Skeleton
+- Lucide icons: Building2, Hash, Settings, Save, Plus, Check, Eye, Sparkles, Palette
+- Orange (#f97316) primary + teal (#0d9488) accent — consistent with app theme; no indigo/blue
+- Thai labels throughout; responsive (mobile-first, `md:grid-cols-2`, `lg:grid-cols-[1fr_320px]`)
+
+### Verification
+- `bun run lint` → **0 errors, 0 warnings** ✅
+- Dev server: `GET /` → 200 ✅
+- Work record: `/agent-ctx/A7-SETTINGS-full-stack-developer.md`
+
+---
+Task ID: A4-TEMPLATES
+Agent: full-stack-developer
+Task: Build the Template Editor system (ข้อ 5 — สร้างเทมเพลตเอกสารแยกประเภทงาน) for the ITAM Next.js project.
+
+Work Log:
+- Read `prisma/schema.prisma` — confirmed `DocumentTemplate` model: id, name, type, category?, content (String JSON), isActive, isDefault, createdAt, updatedAt. Types: sticker | pdf | work-order | stock-out | stock-in | purchase-order.
+- Created `src/lib/templates.ts` — shared constants: `TEMPLATE_TYPES`, `TemplateType`, `DEFAULT_TEMPLATES` (6 defaults), `TEMPLATE_TYPE_META` (icon/label/description for the 6 cards), `isTemplateType()` validator, `templateTypeLabel()` helper. Keeps both API routes DRY.
+- Created `src/app/api/templates/route.ts`:
+  - `GET` — list all templates, optional `?type=` filter; returns `{ templates: [...] }`, ordered by isDefault desc then createdAt desc.
+  - `POST` — create; validates name/type/content; when `isDefault=true` clears other defaults of the same type first (one default per type rule); returns `{ template }` (201). Accepts content as string OR object (object → JSON.stringify).
+  - Audits every create via `logAudit()`.
+- Created `src/app/api/templates/[id]/route.ts`:
+  - `GET` — single template → `{ template }` (404 when missing).
+  - `PUT` — partial update of name/type/category/content/isActive/isDefault; validates type & non-empty name; clears sibling defaults when setting `isDefault=true`; logs changed fields.
+  - `DELETE` — **blocks deletion when `isDefault=true`** (returns 400 with Thai message: "ไม่สามารถลบเทมเพลตเริ่มต้นได้…"); otherwise hard-deletes + audits.
+  - Uses Next.js 16 async `params: Promise<{ id: string }>` pattern (matches existing routes).
+- Created `src/components/itam/templates-page.tsx` — `'use client'`, named export `TemplatesPage()`:
+  1. Header: "📄 เทมเพลตเอกสาร" + subtitle "สร้างและจัดการเทมเพลต — แยกตามประเภทงาน".
+  2. 6-card type selector grid (responsive 2→3→6 cols) with the exact icons/labels/descriptions from the spec; selected card highlighted orange.
+  3. Template list as a shadcn Table: name, category, isActive (badge), isDefault (★ badge), createdAt (Thai date), actions (toggle-active ✓, duplicate 📋, edit ✏, delete 🗑). Delete button disabled when isDefault. "สร้างเทมเพลตใหม่" button in card header.
+  4. Editor Dialog: name (Input), category (Input, optional), content (Textarea, monospace JSON with live validation indicator ✓/⚠), isActive (Switch), isDefault (Switch), บันทึก button. Pre-fills pretty-printed JSON when editing; defaults to the type's DEFAULT_TEMPLATES content when creating.
+  5. Auto-seed defaults on first mount via `useSeedDefaults()` hook — fetches all templates, finds types with zero templates, POSTs the default for each (one-time, guarded by a ref so it never re-runs).
+  - Uses @tanstack/react-query (useQuery + useMutation + invalidateQueries), sonner toast, framer-motion page-in animation, Lucide icons (FileText, Plus, Pencil, Trash2, Check, Copy, Loader2). AlertDialog for delete confirmation.
+- Updated `src/store/app-store.ts` — added `'templates'` to the `ActivePage` union (between 'stock' and 'settings').
+- Updated `src/components/itam/sidebar.tsx` — added nav item `{ page: 'templates', icon: '📄', label: 'เทมเพลต' }` (between stock and settings).
+- Updated `src/app/page.tsx` — imported `TemplatesPage` and added `{activePage === 'templates' && <TemplatesPage />}` render branch. (Note: this project's page.tsx already used `SettingsPageV2` from `settings-page-v2`, which was preserved.)
+- Ran `bun run db push` to confirm the DocumentTemplate table is in sync (it was already — "The database is already in sync with the Prisma schema").
+
+Verification:
+- `bun run lint` → exit 0, zero errors.
+- Live API smoke-test against the dev server (all logged in dev.log):
+  - `GET /api/templates` → 200 `{"templates":[]}`
+  - `POST /api/templates` (isDefault:true) → 201, returns created template with correct fields
+  - `GET /api/templates?type=sticker` → 200 (filter works)
+  - `DELETE` on the default template → **400** with Thai error (delete protection confirmed)
+  - `PUT` to set isDefault:false → 200, then `DELETE` → 200 (cleanup successful; DB left empty so the UI seeding will fire on first load)
+- Test template was cleaned up; database returns to `{"templates":[]}` so the UI's `useSeedDefaults()` will populate all 6 defaults on first navigation to the page.
+
+Files Created:
+- `src/lib/templates.ts`
+- `src/app/api/templates/route.ts`
+- `src/app/api/templates/[id]/route.ts`
+- `src/components/itam/templates-page.tsx`
+
+Files Updated:
+- `src/store/app-store.ts` (added 'templates' to ActivePage)
+- `src/components/itam/sidebar.tsx` (added 📄 เทมเพลต nav item)
+- `src/app/page.tsx` (import + render branch for TemplatesPage)
+
+Notes:
+- Visual editor (drag-and-drop canvas) intentionally deferred — spec says "JSON editing for now (visual editor can be added later)". The content Textarea has live JSON validation and pretty-prints on edit.
+- One-default-per-type invariant is enforced server-side in both POST and PUT, so the UI can never leave the DB in an inconsistent state.
+- Audit log entries (Thai summaries) written for every CREATE/UPDATE/DELETE via `logAudit()`, matching the existing project convention.
+
+---
+
+## Task ID: A3-IMPORT — Excel/CSV Import System (ข้อ 3)
+
+**Goal:** Let users upload Excel/CSV files to bulk-import data — แยกอัพตามฟังก์ชัน (device / work-order / stock / meter-reading / master-data). Implements "ดาต้าเบสขึ้นได้ง่าย แค่เอาไฟล์ Excel ขึ้นก็สามารถใช้งานได้".
+
+### Summary
+
+Added a complete import subsystem: a multipart upload API that parses CSV files and inserts rows into the appropriate Prisma model (Device / WorkOrder / StockItem / MeterReading / MasterItem), plus a Thai-labeled UI page with type selector, drag-and-drop upload zone, per-type CSV template download, and a history table with click-to-view error detail.
+
+### Files Created
+
+- `src/app/api/import/route.ts` — `POST /api/import` (multipart form-data: `file` + `jobType`) and `GET /api/import` (list recent ImportJob rows). Contains:
+  - Server-side RFC-4180 CSV parser (no external dep) handling quoted fields, escaped `""`, and commas/newlines inside quotes.
+  - Per-type importers (`importDevices`, `importWorkOrders`, `importStock`, `importMeterReadings`, `importMasterData`) — each validates required fields, dedups against the DB (assetCode / productCode unique), collects per-row errors, and persists via `createMany` or per-row `create`.
+  - WorkOrder importer auto-generates sequential `WO-YYYYMMDD-NNN` numbers (bulk-aware — fetches today's max seq once, then increments).
+  - MeterReading importer caches devices by assetCode, computes `pagesBw`/`pagesColor` deltas from `prevMeterBw`/`prevMeterColor`, supports multiple readings per device in the same file (carries the new prev forward), and persists updated `lastMeterBw`/`lastMeterColor` back to the Device rows at the end.
+  - Always creates an `ImportJob` row with `status='processing'` first, then updates it to `completed` (or `failed` when 0 rows succeeded). Stores up to 200 errors as JSON in `errors` column.
+  - `.xlsx`/`.xls` files are accepted but rejected with a friendly "กรุณาใช้ไฟล์ CSV" message (the ImportJob is still recorded as `failed` so it appears in history).
+  - Writes an `AuditLog` row (action=`IMPORT`, entity=jobType) with a Thai summary like "นำเข้าอุปกรณ์: 12/15 แถว (devices.csv)".
+- `src/app/api/import/[id]/route.ts` — `GET /api/import/[id]` returns a single ImportJob (used by the UI's error-detail dialog and could be used for polling a long-running job).
+- `src/components/itam/import-page.tsx` — `export function ImportPage()` client component. Layout:
+  1. Header: "📥 นำเข้าข้อมูล" + subtitle "อัปโหลดไฟล์ Excel/CSV — แยกตามประเภทข้อมูล"
+  2. 4 import-type cards (💻 อุปกรณ์ / 🔧 แจ้งซ่อม / 📦 สต๊อก / 📊 มิเตอร์) — single-select with orange ring on active.
+  3. Upload area (shown after type selected): drag-and-drop zone (dashed border, lights up orange on hover/drag-over), "เลือกไฟล์" button, "ดาวน์โหลดเทมเพลต" button (generates CSV with the correct headers + a sample row via `downloadCsv`), file name + size badge, "อัปโหลด" button. `.xlsx` selection is rejected client-side with the same "กรุณาใช้ไฟล์ CSV" toast before any upload.
+  4. Template column preview — shows the exact required headers as monospace badges.
+  5. Import history table (`@tanstack/react-query` `['import-jobs']`): fileName, jobType, status (color-coded badge with CheckCircle/AlertCircle/spinner), totalRows, processedRows, errorRows, createdAt. Rows with errors are clickable and open a Dialog showing a 3-card summary + a scrollable error table (row number + Thai message).
+  6. Collapsible "วิธีใช้งาน" instructions section with step-by-step guide, file format notes (CSV UTF-8, .xlsx not yet supported), per-type header reference, and a warning callout.
+  - On successful upload: invalidates `['import-jobs']` plus the relevant per-entity query key (`devices`/`work-orders`/`stock-items`/`meter`) and `['dashboard']` so other pages refresh.
+  - Uses Lucide icons: Upload, Download, File, CheckCircle, AlertCircle, FileSpreadsheet, Loader2, ChevronDown, ChevronRight, RefreshCw.
+
+### Files Updated
+
+- `src/store/app-store.ts` — added `'import'` to the `ActivePage` union (between 'stock' and 'templates').
+- `src/components/itam/sidebar.tsx` — added nav item `{ page: 'import', icon: '📥', label: 'นำเข้าข้อมูล' }` between 'stock' and 'templates' (these three — import, templates, settings — form an implicit "เครื่องมือ" group at the bottom of the nav).
+- `src/app/page.tsx` — imported `ImportPage` and added `{activePage === 'import' && <ImportPage />}` render branch.
+
+### Schema & DB Verification
+
+- Read `prisma/schema.prisma` first — `ImportJob` model already defined (id, jobType, fileName, fileType, status, totalRows, processedRows, errorRows, errors JSON, uploadedBy, createdAt, completedAt).
+- Verified the actual SQLite DB at `db/custom.db` matches the schema by querying `pragma_table_info` for `ImportJob`, `Device`, and `MeterReading` — all columns present (including `lastMeterBw`/`lastMeterColor` on Device and `meterBw`/`meterColor`/`pagesBw`/`pagesColor`/`readingDate`/`readingMonth` on MeterReading).
+- Ran `bun run db:generate` to refresh the Prisma client; confirmed `importJob` accessor exists in `node_modules/.prisma/client/index.d.ts`.
+- Did NOT need to run `db:push` (schema already in sync).
+
+### Verification
+
+- `bun run lint` → exit 0, zero errors.
+- Dev server log shows clean compilation (no errors after the new files were added).
+- Code review confirmed: all 4 import types covered with field-level validation; unique-constraint violations (assetCode, productCode) pre-filtered before `createMany` so they surface as graceful row-level errors instead of throwing; `woNumber` collisions handled by falling back to null; MeterReading importer correctly chains prev→current per-device within a single file.
+
+### Notes
+
+- CSV parser is server-side only and intentionally dependency-free (RFC-4180-ish — same algorithm as the existing `src/lib/csv.ts` `parseCsv` but inlined so the route module stays self-contained and SSR-safe).
+- `.xlsx` parsing intentionally deferred — the spec says "for now only parse CSV". The UI blocks .xlsx before upload AND the API records a failed ImportJob if one slips through, so users always get feedback.
+- The `master-data` jobType is supported by the API (inserts MasterItem rows) but not exposed in the UI's 4-card selector, matching the spec which lists only device / work-order / stock / meter-reading in the UI.
+- Error JSON is capped at 200 entries to keep the `errors` column from growing unbounded on very large bad files; the full per-row count is still reflected in `errorRows`.
+- Audit logging follows the existing project convention (`logAudit` from `@/lib/audit`).
+
+---
+Task ID: A-COMPLETE
+Agent: orchestrator — เสร็จครบทั้ง 5 ข้อ (Flexible Multi-Industry App)
+Task: ทำต่อข้อ 3 (Excel import) + ข้อ 5 (Template editor) + Settings page (ข้อ 1,2,4)
+
+Work Log:
+
+Phase A7: Settings Page (subagent A7-SETTINGS)
+- src/components/itam/settings-page-v2.tsx (~810 lines):
+  • Tab 1 "🏢 ข้อมูลองค์กร": appName, appTagline, industryType, logoUrl (emoji/URL + preview), primaryColor, accentColor, language, currency + live sidebar mockup
+  • Tab 2 "🔢 เลขทะเบียน": list patterns, activate, create new (with segment help + live preview)
+  • Tab 3 "⚙️ ทั่วไป": allowExcelImport switch, timezone
+- page.tsx: เปลี่ยน settings → SettingsPageV2
+
+Phase A3: Excel Import (subagent A3-IMPORT)
+- src/app/api/import/route.ts: POST (multipart, CSV parser, 5 importers: device/work-order/stock/meter-reading/master-data) + GET (history)
+- src/app/api/import/[id]/route.ts: GET single
+- src/components/itam/import-page.tsx:
+  • 4 import type cards (อุปกรณ์/แจ้งซ่อม/สต๊อก/มิเตอร์)
+  • Drag & drop upload zone
+  • Template download (CSV per type)
+  • Import history table (status, rows, errors)
+  • Instructions (collapsible)
+- sidebar: "📥 นำเข้าข้อมูล"
+
+Phase A4: Template Editor (subagent A4-TEMPLATES)
+- src/lib/templates.ts: TEMPLATE_TYPES, DEFAULT_TEMPLATES (6 types), TEMPLATE_TYPE_META
+- src/app/api/templates/route.ts: GET + POST
+- src/app/api/templates/[id]/route.ts: GET + PUT + DELETE (block default deletion)
+- src/components/itam/templates-page.tsx:
+  • 6 type cards (สติกเกอร์/PDF/ใบแจ้งซ่อน/ใบเบิก/ใบรับ/ใบสั่งซื้อ)
+  • Template list table (name, category, active/default badges, actions)
+  • Editor dialog (JSON textarea with validation)
+  • Auto-seed 6 default templates on first load
+- sidebar: "📄 เทมเพลต"
+
+Verification (agent-browser):
+✅ Sidebar: ระบบจัดการสินทรัพย์ + 9 nav items (Dashboard, จัดการอุปกรณ์, จดมิเตอร์, การใช้กระดาษ, แจ้งซ่อม, สต๊อก, นำเข้าข้อมูล, เทมเพลต, ตั้งค่าแอป)
+✅ Settings page: 3 tabs (ข้อมูลองค์กร, เลขทะเบียน, ทั่วไป)
+✅ Import page: 4 type cards + upload zone + history
+✅ Templates page: 6 type cards + template list
+✅ Lint: 0 errors
+
+Stage Summary — 5 ข้อครบ:
+1. ✅ ชื่อกลาง: "ระบบจัดการสินทรัพย์" (เปลี่ยนได้ใน Settings)
+2. ✅ เปลี่ยนโลโก้/ชื่อ: Settings → ข้อมูลองค์กร → บันทึก → sidebar อัปเดต
+3. ✅ Excel import: นำเข้าข้อมูล → เลือกประเภท → อัปโหลด CSV (4 types + template download)
+4. ✅ เลขทะเบียน: Settings → เลขทะเบียน → เลือก/สร้าง pattern (3 defaults + custom)
+5. ✅ เทมเพลต: เทมเพลต → เลือกประเภท → สร้าง/แก้ไข (6 types + auto-seed defaults)
+
+สถานะปัจจุบัน:
+- Schema: 19 models (SQLite)
+- API: 45+ routes
+- UI: 9 pages (Dashboard, จัดการอุปกรณ์, จดมิเตอร์, การใช้กระดาษ, แจ้งซ่อม, สต๊อก, นำเข้าข้อมูล, เทมเพลต, ตั้งค่าแอป)
+- ค่าเริ่มต้นที่ดี: ชื่อกลาง, 3 asset patterns, 6 document templates, import 4 types

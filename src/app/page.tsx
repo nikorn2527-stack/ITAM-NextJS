@@ -10,7 +10,9 @@ import { MeterPage } from '@/components/itam/meter-page'
 import { PaperAnalyticsPage } from '@/components/itam/paper-analytics-page'
 import { WorkOrdersPage } from '@/components/itam/work-orders-page'
 import { StockPage } from '@/components/itam/stock-page'
-import { SettingsPage } from '@/components/itam/settings-page'
+import { ImportPage } from '@/components/itam/import-page'
+import { TemplatesPage } from '@/components/itam/templates-page'
+import { SettingsPageV2 } from '@/components/itam/settings-page-v2'
 import { useAppStore } from '@/store/app-store'
 
 export default function Home() {
@@ -33,7 +35,9 @@ export default function Home() {
             {activePage === 'paper-analytics' && <PaperAnalyticsPage />}
             {activePage === 'work-orders' && <WorkOrdersPage />}
             {activePage === 'stock' && <StockPage />}
-            {activePage === 'settings' && <SettingsPage />}
+            {activePage === 'import' && <ImportPage />}
+            {activePage === 'templates' && <TemplatesPage />}
+            {activePage === 'settings' && <SettingsPageV2 />}
           </motion.div>
         </main>
         <Footer />
