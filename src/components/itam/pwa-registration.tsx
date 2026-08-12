@@ -24,10 +24,11 @@ function useServiceWorker() {
   React.useEffect(() => {
     if (typeof window === 'undefined') return
     if (!('serviceWorker' in navigator)) return
-    // Skip registration during Next dev mode — SW caching fights HMR.
+    // Skip registration during Next dev mode — SW caching fights HMR and
+    // causes stale JS to be served, leading to "Application error" crashes.
     if (process.env.NODE_ENV === 'development') {
-      // Still register, but log so devs know.
-      console.info('[PWA] dev mode — registering /sw.js (cache may serve stale)')
+      console.info('[PWA] dev mode — skipping /sw.js registration (prevents stale cache)')
+      return
     }
     const register = () => {
       navigator.serviceWorker
