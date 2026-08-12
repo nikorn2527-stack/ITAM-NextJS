@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
         OR: [{ username: loginRaw }, { email: loginRaw }],
       },
     })
-    if (!row || !row.active || !row.passwordHash || !row.passwordSalt) {
+    console.log("[DEBUG LOGIN] user found:", row?.username, "active:", row?.active, "hash:", row?.passwordHash?.substring(0,8), "salt:", row?.passwordSalt?.substring(0,8)); console.log("[DEBUG LOGIN] verify:", verifyPassword(password, row?.passwordHash, row?.passwordSalt)); if (!row || !row.active || !row.passwordHash || !row.passwordSalt) {
       recordLoginFailure(key)
       return NextResponse.json(
         { error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' },
