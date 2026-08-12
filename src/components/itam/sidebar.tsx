@@ -90,7 +90,6 @@ export function Sidebar() {
 
   // ── Auth + permissions (Task ID: RBAC-DASHBOARD) ──
   const fetchMe = useAuthStore((s) => s.fetchMe)
-  const authUser = useAuthStore((s) => s.user)
   const authInitialized = useAuthStore((s) => s.initialized)
   const navVisibility = useNavVisibility()
   const role = useRole()
