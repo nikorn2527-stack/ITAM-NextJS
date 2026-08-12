@@ -63,6 +63,8 @@ import {
   Check,
   XCircle,
   Hourglass,
+  Printer,
+  FileDown,
 } from 'lucide-react'
 
 // ---------- Types ----------
@@ -91,12 +93,25 @@ interface StockItem {
 interface StockTransaction {
   id: string
   txnNumber: string | null
+  stockItemId: string
+  productCode: string | null
+  productName: string | null
   type: string
   quantity: number
+  unit: string | null
   balanceAfter: number
   reason: string | null
+  requester: string | null
+  department: string | null
+  purpose: string | null
+  approver: string | null
+  approvedAt: string | null
+  workOrderNo: string | null
   vendor: string | null
+  receiver: string | null
+  purchaseOrderNo: string | null
   cost: number | null
+  unitCost: number | null
   txnDate: string
   performedBy: string | null
   remark: string | null
@@ -104,16 +119,7 @@ interface StockTransaction {
 }
 
 interface PendingStockTransaction extends StockTransaction {
-  productCode: string | null
-  productName: string | null
-  unit: string | null
-  requester: string | null
-  department: string | null
-  purpose: string | null
-  approver: string | null
-  approvedAt: string | null
   workOrderId: string | null
-  workOrderNo: string | null
   approvalStatus: string | null
   approvalMode: string | null
   autoApproveAt: string | null
@@ -216,6 +222,53 @@ function formatThaiDate(iso: string | null | undefined): string {
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+/**
+ * Open a print URL in a new window/tab. The HTML page returned by the API
+ * auto-triggers window.print() on load (only when opened programmatically).
+ */
+function printDocument(url: string) {
+  const win = window.open(url, '_blank', 'width=900,height=700,noopener,noreferrer')
+  if (!win) {
+    toast.error('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต Pop-up ในเบราว์เซอร์')
+  }
+}
+
+/**
+ * Escape a CSV cell value following RFC 4180:
+ * wrap in double quotes if it contains comma, quote, or newline;
+ * double any embedded double quotes.
+ */
+function csvCell(v: unknown): string {
+  if (v === null || v === undefined) return ''
+  const s = String(v)
+  if (/[",\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`
+  }
+  return s
+}
+
+/**
+ * Build and download a CSV file from an array of rows.
+ * A UTF-8 BOM is prepended so Excel renders Thai characters correctly.
+ */
+function downloadCSV(
+  filename: string,
+  rows: (string | number | null | undefined)[][],
+) {
+  const csv = rows.map((r) => r.map(csvCell).join(',')).join('\r\n')
+  const blob = new Blob(['\uFEFF' + csv], {
+    type: 'text/csv;charset=utf-8',
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
 // ---------- Form state ----------
@@ -1135,6 +1188,60 @@ export function StockPage() {
 
         {/* ===== Purchase Orders tab ===== */}
         <TabsContent value="po" className="mt-4">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              ใบสั่งซื้อทั้งหมด ({purchaseOrders.length} รายการ)
+            </h3>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={purchaseOrders.length === 0}
+                onClick={() => {
+                  const rows: (string | number | null | undefined)[][] = [
+                    [
+                      'เลขที่ใบสั่งซื้อ',
+                      'วันที่สั่ง',
+                      'ผู้จัดจำหน่าย',
+                      'จำนวนรายการ',
+                      'สถานะ',
+                      'มูลค่ารวม',
+                      'ผู้สั่งซื้อ',
+                      'หมายเหตุ',
+                      'รายการสินค้า',
+                    ],
+                  ]
+                  for (const po of purchaseOrders) {
+                    const itemDesc = (po.items ?? [])
+                      .map(
+                        (it) =>
+                          `${it.stockItem?.productCode ?? '—'} x${it.quantityOrdered} @ ${it.unitPrice ?? 0}`,
+                      )
+                      .join(' | ')
+                    rows.push([
+                      po.poNumber,
+                      formatThaiDate(po.orderDate),
+                      po.supplier,
+                      po.items?.length ?? 0,
+                      po.status,
+                      po.totalValue,
+                      po.createdBy,
+                      po.remark,
+                      itemDesc,
+                    ])
+                  }
+                  const fname = `purchase-orders-${new Date().toISOString().slice(0, 10)}.csv`
+                  downloadCSV(fname, rows)
+                  toast.success(`ส่งออก ${purchaseOrders.length} ใบสั่งซื้อเป็น CSV แล้ว`)
+                }}
+                className="h-8 border-slate-300 px-3 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                title="ส่งออกใบสั่งซื้อทั้งหมดเป็น CSV"
+              >
+                <FileDown className="mr-1.5 h-3.5 w-3.5" />
+                Export CSV
+              </Button>
+            </div>
+          </div>
           <Card className="border-slate-200 dark:border-slate-800 dark:bg-slate-900">
             <CardContent className="p-0">
               <div className="overflow-x-auto">
@@ -1147,13 +1254,14 @@ export function StockPage() {
                       <TableHead className="w-24 text-right">รายการ</TableHead>
                       <TableHead className="w-32 text-right">มูลค่ารวม</TableHead>
                       <TableHead className="w-28">สถานะ</TableHead>
+                      <TableHead className="w-32 text-right">การจัดการ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loadingPo ? (
                       Array.from({ length: 4 }).map((_, i) => (
                         <TableRow key={`p-${i}`}>
-                          {Array.from({ length: 6 }).map((__, j) => (
+                          {Array.from({ length: 7 }).map((__, j) => (
                             <TableCell key={`p-${i}-${j}`}>
                               <Skeleton className="h-5 w-full" />
                             </TableCell>
@@ -1163,7 +1271,7 @@ export function StockPage() {
                     ) : purchaseOrders.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={6}
+                          colSpan={7}
                           className="py-12 text-center text-slate-500 dark:text-slate-400"
                         >
                           <ClipboardList className="mx-auto mb-2 h-10 w-10 opacity-30" />
@@ -1200,6 +1308,20 @@ export function StockPage() {
                             {formatBaht(po.totalValue)}
                           </TableCell>
                           <TableCell>{poStatusBadge(po.status)}</TableCell>
+                          <TableCell className="text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 px-2 text-[11px] text-teal-600 hover:bg-teal-50 hover:text-teal-700 dark:text-teal-400 dark:hover:bg-teal-950/40"
+                              onClick={() =>
+                                printDocument(`/api/purchase-orders/${po.id}/print`)
+                              }
+                              title="พิมพ์ใบสั่งซื้อ"
+                            >
+                              <Printer className="mr-1 h-3 w-3" />
+                              พิมพ์ใบสั่งซื้อ
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))
                     )}
@@ -1937,13 +2059,75 @@ export function StockPage() {
 
               {/* Transaction history */}
               <div>
-                <div className="mb-2 flex items-center justify-between">
+                <div className="mb-2 flex items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                     ประวัติการรับเข้า/เบิกออก
                   </h3>
-                  <Badge variant="outline" className="text-xs">
-                    {detailData.transactions.length} รายการ
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    {detailData.transactions.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const rows: (string | number | null | undefined)[][] = [
+                            [
+                              'เลขที่',
+                              'ประเภท',
+                              'รหัสสินค้า',
+                              'ชื่อสินค้า',
+                              'จำนวน',
+                              'หน่วย',
+                              'คงเหลือ',
+                              'ราคา/หน่วย',
+                              'มูลค่ารวม',
+                              'ผู้จัดจำหน่าย/ผู้เบิก',
+                              'แผนก',
+                              'วัตถุประสงค์/เหตุผล',
+                              'ผู้อนุมัติ',
+                              'ใบสั่งซื้อ',
+                              'ใบงาน',
+                              'วันที่',
+                              'ดำเนินการโดย',
+                              'หมายเหตุ',
+                            ],
+                          ]
+                          for (const t of detailData.transactions) {
+                            rows.push([
+                              t.txnNumber,
+                              t.type,
+                              t.productCode ?? detailData.productCode,
+                              t.productName ?? detailData.productName,
+                              t.quantity,
+                              t.unit ?? detailData.unit,
+                              t.balanceAfter,
+                              t.unitCost ?? detailData.unitCost,
+                              t.cost,
+                              t.vendor ?? t.requester,
+                              t.department,
+                              t.purpose ?? t.reason,
+                              t.approver,
+                              t.purchaseOrderNo,
+                              t.workOrderNo,
+                              formatThaiDate(t.txnDate),
+                              t.performedBy,
+                              t.remark,
+                            ])
+                          }
+                          const fname = `stock-transactions-${detailData.productCode || detailData.id}-${new Date().toISOString().slice(0, 10)}.csv`
+                          downloadCSV(fname, rows)
+                          toast.success(`ส่งออก ${detailData.transactions.length} รายการเป็น CSV แล้ว`)
+                        }}
+                        className="h-7 border-slate-300 px-2 text-xs text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                        title="ส่งออกธุรกรรมทั้งหมดเป็น CSV"
+                      >
+                        <FileDown className="mr-1 h-3 w-3" />
+                        Export CSV
+                      </Button>
+                    )}
+                    <Badge variant="outline" className="text-xs">
+                      {detailData.transactions.length} รายการ
+                    </Badge>
+                  </div>
                 </div>
                 {detailData.transactions.length === 0 ? (
                   <div className="rounded-md border border-dashed border-slate-300 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -1960,6 +2144,7 @@ export function StockPage() {
                           <TableHead className="w-24 text-right">คงเหลือ</TableHead>
                           <TableHead>เหตุผล</TableHead>
                           <TableHead className="w-28">วันที่</TableHead>
+                          <TableHead className="w-16 text-right">พิมพ์</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1989,6 +2174,54 @@ export function StockPage() {
                             </TableCell>
                             <TableCell className="text-xs text-slate-500 dark:text-slate-400">
                               {formatThaiDate(t.txnDate)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {t.type === 'IN' ? (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-[11px] text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+                                  onClick={() =>
+                                    printDocument(
+                                      `/api/stock-items/${detailData.id}/print?txnId=${t.id}&type=in`,
+                                    )
+                                  }
+                                  title="พิมพ์ใบรับสินค้า"
+                                >
+                                  <Printer className="mr-1 h-3 w-3" />
+                                  ใบรับ
+                                </Button>
+                              ) : t.type === 'OUT' ? (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-[11px] text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                                  onClick={() =>
+                                    printDocument(
+                                      `/api/stock-items/${detailData.id}/print?txnId=${t.id}&type=out`,
+                                    )
+                                  }
+                                  title="พิมพ์ใบเบิกสินค้า"
+                                >
+                                  <Printer className="mr-1 h-3 w-3" />
+                                  ใบเบิก
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-[11px] text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                                  onClick={() =>
+                                    printDocument(
+                                      `/api/stock-items/${detailData.id}/print?txnId=${t.id}`,
+                                    )
+                                  }
+                                  title="พิมพ์ใบปรับปรุงสต็อก"
+                                >
+                                  <Printer className="mr-1 h-3 w-3" />
+                                  ใบปรับ
+                                </Button>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
