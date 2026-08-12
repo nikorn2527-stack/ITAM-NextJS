@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette } from 'lucide-react'
 
 interface MasterItem { id: string; itemId: string | null; categoryKey: string; value: string; displayLabel: string | null; active: boolean; departmentCode: string | null }
 interface Site { id: string; siteCode: string; siteName: string | null; lineOa: string | null; hotline: string | null; paperRateBw: number | null; paperRateColor: number | null; deviceCount?: number; activeCount?: number }
@@ -26,7 +26,7 @@ interface NotifySettings {
 
 export function ItamSettings() {
   const qc = useQueryClient()
-  const [tab, setTab] = React.useState<'master' | 'sites' | 'notifications'>('master')
+  const [tab, setTab] = React.useState<'master' | 'sites' | 'notifications' | 'customize'>('master')
   const [category, setCategory] = React.useState('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
@@ -172,6 +172,9 @@ export function ItamSettings() {
         </button>
         <button onClick={() => setTab('notifications')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'notifications' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <Bell className="mr-1 inline h-4 w-4" /> การแจ้งเตือน
+        </button>
+        <button onClick={() => setTab('customize')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'customize' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <Palette className="mr-1 inline h-4 w-4" /> ปรับแต่งแอป
         </button>
       </div>
 
@@ -469,6 +472,140 @@ export function ItamSettings() {
           )}
         </div>
       )}
+
+      {/* ── ปรับแต่งแอป tab — appName, logo, tagline, search fields ── */}
+      {tab === 'customize' && <AppCustomizeTab />}
     </div>
+  )
+}
+
+// ── AppCustomizeTab — ปรับแต่งชื่อแอป, โลโก้, tagline, ฟิลด์ค้นหา ────────
+function AppCustomizeTab() {
+  const qc = useQueryClient()
+  const { data: settings, isLoading } = useQuery<Record<string, string>>({
+    queryKey: ['app-customization'],
+    queryFn: async () => {
+      const res = await fetch('/api/itam/settings')
+      if (!res.ok) return {}
+      const j = await res.json()
+      const map: Record<string, string> = {}
+      for (const s of j.settings ?? []) map[s.key] = s.value ?? ''
+      return map
+    },
+  })
+
+  const [form, setForm] = React.useState({
+    appName: '',
+    appLogoUrl: '',
+    appTagline: '',
+    searchFields: '', // comma-separated: assetNo,serial,brand,model
+  })
+  const [saving, setSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    if (settings) {
+      setForm({
+        appName: settings.appName || 'Asset Mgmt',
+        appLogoUrl: settings.appLogoUrl || '',
+        appTagline: settings.appTagline || 'IT Asset Management',
+        searchFields: settings.searchFields || 'assetNo,serial,brand,model',
+      })
+    }
+  }, [settings])
+
+  async function save() {
+    setSaving(true)
+    try {
+      // Save each setting via the settings API (upsert pattern)
+      const entries = [
+        { key: 'appName', value: form.appName },
+        { key: 'appLogoUrl', value: form.appLogoUrl },
+        { key: 'appTagline', value: form.appTagline },
+        { key: 'searchFields', value: form.searchFields },
+      ]
+      for (const e of entries) {
+        await fetch('/api/itam/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: e.key, value: e.value }),
+        })
+      }
+      toast.success('บันทึกการตั้งค่าแอปแล้ว')
+      qc.invalidateQueries({ queryKey: ['app-customization'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (isLoading) return <Skeleton className="h-64 w-full" />
+
+  return (
+    <Card className="dark:border-slate-800 dark:bg-slate-900">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Palette className="h-4 w-4 text-[#f97316]" /> ปรับแต่งหน้าตาแอป
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-1.5">
+          <Label className="text-xs">ชื่อแอป (แสดงใน sidebar)</Label>
+          <Input
+            value={form.appName}
+            onChange={(e) => setForm({ ...form, appName: e.target.value })}
+            placeholder="Asset Mgmt"
+            className="dark:bg-slate-800 dark:border-slate-700"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">โลโก้ (emoji หรือ URL รูปภาพ)</Label>
+          <Input
+            value={form.appLogoUrl}
+            onChange={(e) => setForm({ ...form, appLogoUrl: e.target.value })}
+            placeholder="📦 หรือ https://example.com/logo.png"
+            className="dark:bg-slate-800 dark:border-slate-700"
+          />
+          <p className="text-[11px] text-slate-500">
+            💡 ใช้ emoji (เช่น 📦 🖨️ 💻) หรือวาง URL รูปภาพ (PNG/SVG, แนะนำขนาด 32×32px)
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">แท็กไลน์ (ใต้ชื่อแอป)</Label>
+          <Input
+            value={form.appTagline}
+            onChange={(e) => setForm({ ...form, appTagline: e.target.value })}
+            placeholder="IT Asset Management"
+            className="dark:bg-slate-800 dark:border-slate-700"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">ฟิลด์ที่ใช้ค้นหา (คั่นด้วยจุลภาค)</Label>
+          <Input
+            value={form.searchFields}
+            onChange={(e) => setForm({ ...form, searchFields: e.target.value })}
+            placeholder="assetNo,serial,brand,model"
+            className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
+          />
+          <p className="text-[11px] text-slate-500">
+            💡 ฟิลด์ที่รองรับ: assetNo, serial, brand, model, deviceType, department, location, site —
+            ลำดับแรกจะถูกค้นหาก่อน (ตัวอย่าง: &quot;serial,assetNo,brand&quot; จะค้น Serial ก่อน)
+          </p>
+        </div>
+        <div className="flex gap-2 pt-2">
+          <Button onClick={save} disabled={saving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+            {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
+            บันทึก
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => qc.invalidateQueries({ queryKey: ['app-customization'] })}
+            className="dark:bg-slate-800 dark:border-slate-700"
+          >
+            <RefreshCw className="h-4 w-4" /> รีเฟรช
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }

@@ -41,11 +41,8 @@ const ItamDashboard = dynamic(() =>
 const ItamDevices = dynamic(() =>
   import('@/components/itam/itam-devices').then((m) => m.ItamDevices),
 )
-const ItamMeter = dynamic(() =>
-  import('@/components/itam/itam-meter').then((m) => m.ItamMeter),
-)
-const ItamMeterKeyboard = dynamic(() =>
-  import('@/components/itam/itam-meter-keyboard').then((m) => m.ItamMeterKeyboard),
+const ItamMeterUnified = dynamic(() =>
+  import('@/components/itam/itam-meter-unified').then((m) => m.ItamMeterUnified),
 )
 const ItamStickerEditor = dynamic(() =>
   import('@/components/itam/itam-sticker-editor').then((m) => m.ItamStickerEditor),
@@ -64,6 +61,12 @@ const ItamAudit = dynamic(() =>
 )
 const SnapshotViewer = dynamic(() =>
   import('@/components/itam/snapshot-viewer').then((m) => m.SnapshotViewer),
+)
+const ItamRepairs = dynamic(() =>
+  import('@/components/itam/itam-repairs').then((m) => m.ItamRepairs),
+)
+const ItamStock = dynamic(() =>
+  import('@/components/itam/itam-stock').then((m) => m.ItamStock),
 )
 
 export default function Home() {
@@ -172,14 +175,15 @@ export default function Home() {
                 {activePage === 'dashboard' && <DashboardPage />}
                 {activePage === 'itam' && <ItamDashboard />}
                 {(activePage === 'itam-devices' || activePage === 'devices') && <ItamDevices />}
-                {(activePage === 'itam-meter' || activePage === 'meter') && <ItamMeter />}
-                {activePage === 'itam-meter-keyboard' && <ItamMeterKeyboard />}
+                {(activePage === 'itam-meter' || activePage === 'meter' || activePage === 'itam-meter-keyboard') && <ItamMeterUnified />}
                 {activePage === 'itam-sticker-editor' && <ItamStickerEditor />}
                 {activePage === 'itam-document-editor' && <ItamDocumentEditor />}
                 {(activePage === 'itam-paper-analytics' || activePage === 'paper-analytics') && <ItamPaperAnalytics />}
                 {(activePage === 'itam-settings' || activePage === 'settings') && <ItamSettings />}
                 {activePage === 'itam-audit' && <ItamAudit />}
                 {activePage === 'itam-snapshot-viewer' && <SnapshotViewer />}
+                {activePage === 'itam-repairs' && <ItamRepairs />}
+                {activePage === 'itam-stock' && <ItamStock />}
               </motion.div>
             </AnimatePresence>
           </main>

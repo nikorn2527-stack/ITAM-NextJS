@@ -1,0 +1,836 @@
+     1→'use client'
+     2→
+     3→/**
+     4→ * SnapshotViewer — UI สำหรับดูและตรวจสอบ immutable meter report snapshots.
+     5→ *
+     6→ * Page entry point: แสดงปุ่ม "🔒 Snapshots" ที่เปิด Dialog ใหญ่ ภายในมี 2 tabs:
+     7→ *   1. รายการ Snapshots — ตารางลิสต์ + pagination (GET /api/v1/snapshots)
+     8→ *   2. รายละเอียด — metadata + frozen rows + verify button
+     9→ *      (GET /api/v1/snapshots/[id]?include=rows, POST /api/v1/snapshots/[id]/verify)
+    10→ *
+    11→ * Auth: /api/v1/* calls ไม่ถูก interceptor ของ /api/itam/* จับ → ต้องใส่ Bearer token เอง
+    12→ * ผ่าน getAuthHeaders() ที่อ่านจาก localStorage 'itam.token'.
+    13→ */
+    14→
+    15→import * as React from 'react'
+    16→import { useQuery } from '@tanstack/react-query'
+    17→import { toast } from 'sonner'
+    18→import {
+    19→  Dialog,
+    20→  DialogContent,
+    21→  DialogDescription,
+    22→  DialogHeader,
+    23→  DialogTitle,
+    24→} from '@/components/ui/dialog'
+    25→import {
+    26→  Tabs,
+    27→  TabsContent,
+    28→  TabsList,
+    29→  TabsTrigger,
+    30→} from '@/components/ui/tabs'
+    31→import {
+    32→  Table,
+    33→  TableBody,
+    34→  TableCell,
+    35→  TableHead,
+    36→  TableHeader,
+    37→  TableRow,
+    38→} from '@/components/ui/table'
+    39→import { Badge } from '@/components/ui/badge'
+    40→import { Button } from '@/components/ui/button'
+    41→import {
+    42→  Card,
+    43→  CardContent,
+    44→  CardDescription,
+    45→  CardHeader,
+    46→  CardTitle,
+    47→} from '@/components/ui/card'
+    48→import {
+    49→  Lock,
+    50→  Shield,
+    51→  ShieldCheck,
+    52→  ShieldAlert,
+    53→  Copy,
+    54→  Check,
+    55→  ArrowLeft,
+    56→  RefreshCw,
+    57→  Loader2,
+    58→  ChevronLeft,
+    59→  ChevronRight,
+    60→} from 'lucide-react'
+    61→
+    62→// ── Types ───────────────────────────────────────────────────────────────
+    63→
+    64→interface Snapshot {
+    65→  id: string
+    66→  snapshotId: string
+    67→  cycleMonth: string
+    68→  revision: number
+    69→  status: string
+    70→  ruleVersion: string | null
+    71→  rowCount: number
+    72→  totalPagesBw: number
+    73→  totalPagesColor: number
+    74→  totalCost: number
+    75→  contentHash: string
+    76→  createdBy: string | null
+    77→  createdAt: string
+    78→}
+    79→
+    80→interface SnapshotRow {
+    81→  id: string
+    82→  snapshotId: string
+    83→  assetNo: string
+    84→  readingDate: string | null
+    85→  readingMonth: string | null
+    86→  meterBw: number
+    87→  meterColor: number
+    88→  pagesBw: number
+    89→  pagesColor: number
+    90→  prevMeterBw: number
+    91→  prevMeterColor: number
+    92→  readingType: string | null
+    93→  brand: string | null
+    94→  model: string | null
+    95→  siteAtReading: string | null
+    96→  buildingAtReading: string | null
+    97→  floorAtReading: string | null
+    98→  departmentAtReading: string | null
+    99→  rateBw: number
+   100→  rateColor: number
+   101→  costBw: number
+   102→  costColor: number
+   103→  readBy: string | null
+   104→  remark: string | null
+   105→  createdAt: string
+   106→}
+   107→
+   108→interface VerifyResult {
+   109→  verified: boolean
+   110→  snapshotId: string
+   111→  storedHash: string
+   112→  computedHash: string
+   113→}
+   114→
+   115→interface PaginationInfo {
+   116→  page: number
+   117→  limit: number
+   118→  total: number
+   119→  totalPages: number
+   120→  hasNext: boolean
+   121→  hasPrev: boolean
+   122→}
+   123→
+   124→interface ListResponse {
+   125→  data: Snapshot[]
+   126→  pagination: PaginationInfo
+   127→  meta: unknown
+   128→}
+   129→
+   130→interface DetailResponse {
+   131→  data: { snapshot: Snapshot; rows?: SnapshotRow[] }
+   132→  meta: unknown
+   133→}
+   134→
+   135→// ── Auth header helper for /api/v1/* calls ──────────────────────────────
+   136→
+   137→function getAuthHeaders(): HeadersInit {
+   138→  if (typeof window !== 'undefined') {
+   139→    const token = window.localStorage.getItem('itam.token')
+   140→    if (token) {
+   141→      return {
+   142→        Authorization: `Bearer ${token}`,
+   143→        'Content-Type': 'application/json',
+   144→      }
+   145→    }
+   146→  }
+   147→  return { 'Content-Type': 'application/json' }
+   148→}
+   149→
+   150→// ── Format helpers ──────────────────────────────────────────────────────
+   151→
+   152→function formatBaht(n: number): string {
+   153→  const v = typeof n === 'number' && isFinite(n) ? n : 0
+   154→  return (
+   155→    '฿' +
+   156→    v.toLocaleString('th-TH', {
+   157→      minimumFractionDigits: 2,
+   158→      maximumFractionDigits: 2,
+   159→    })
+   160→  )
+   161→}
+   162→
+   163→function formatThaiDate(iso: string): string {
+   164→  try {
+   165→    const d = new Date(iso)
+   166→    if (isNaN(d.getTime())) return iso
+   167→    return d.toLocaleString('th-TH', {
+   168→      year: 'numeric',
+   169→      month: 'short',
+   170→      day: 'numeric',
+   171→      hour: '2-digit',
+   172→      minute: '2-digit',
+   173→    })
+   174→  } catch {
+   175→    return iso
+   176→  }
+   177→}
+   178→
+   179→function statusBadge(status: string) {
+   180→  if (status === 'ACTIVE') {
+   181→    return (
+   182→      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+   183→        ACTIVE
+   184→      </Badge>
+   185→    )
+   186→  }
+   187→  return (
+   188→    <Badge
+   189→      variant="secondary"
+   190→      className="border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+   191→    >
+   192→      {status || '—'}
+   193→    </Badge>
+   194→  )
+   195→}
+   196→
+   197→const READING_TYPE_STYLES: Record<string, string> = {
+   198→  INITIAL:
+   199→    'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300',
+   200→  MONTHLY:
+   201→    'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+   202→  RESET:
+   203→    'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300',
+   204→  CHECKOUT:
+   205→    'border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300',
+   206→  RETURN:
+   207→    'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300',
+   208→  FINAL:
+   209→    'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300',
+   210→  SEND_REPAIR:
+   211→    'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300',
+   212→}
+   213→
+   214→function readingTypeBadge(type: string | null) {
+   215→  if (!type) return <span className="text-xs text-slate-400">—</span>
+   216→  const cls = READING_TYPE_STYLES[type]
+   217→  return (
+   218→    <Badge variant="outline" className={cls ?? ''}>
+   219→      {type}
+   220→    </Badge>
+   221→  )
+   222→}
+   223→
+   224→// ── Main page component ─────────────────────────────────────────────────
+   225→
+   226→export function SnapshotViewer() {
+   227→  const [open, setOpen] = React.useState(false)
+   228→
+   229→  return (
+   230→    <div className="mx-auto w-full max-w-5xl px-4 py-6 md:px-6 md:py-8">
+   231→      <Card>
+   232→        <CardHeader>
+   233→          <CardTitle className="flex items-center gap-2 text-base">
+   234→            <Lock className="h-5 w-5 text-[#f97316]" />
+   235→            ตรวจสอบ Snapshot มิเตอร์
+   236→          </CardTitle>
+   237→          <CardDescription>
+   238→            ดูและตรวจสอบความถูกต้องของ snapshot มิเตอร์ที่ถูกสร้างเมื่อปิดรอบการจด
+   239→            (Immutable — ไม่สามารถแก้ไขได้หลังสร้าง)
+   240→          </CardDescription>
+   241→        </CardHeader>
+   242→        <CardContent>
+   243→          <div className="flex flex-wrap items-start gap-4">
+   244→            <div className="max-w-xl flex-1 text-sm text-slate-600 dark:text-slate-300">
+   245→              <p className="mb-2">
+   246→                Snapshot เก็บข้อมูลมิเตอร์ทั้งหมดในรอบเดือนนั้น พร้อม hash SHA-256
+   247→                เพื่อใช้ตรวจจับการแก้ไขภายหลัง ระบบจะสร้าง snapshot อัตโนมัติเมื่อ
+   248→                <span className="font-medium"> ปิดรอบจดมิเตอร์</span>
+   249→                (CLOSED cycle)
+   250→              </p>
+   251→              <p className="text-xs text-slate-500">
+   252→                สิทธิ์: ผู้ดูแล (ADMIN) เท่านั้นที่กดตรวจสอบความถูกต้องได้
+   253→              </p>
+   254→            </div>
+   255→            <Button size="lg" onClick={() => setOpen(true)} className="gap-2">
+   256→              <Lock className="h-4 w-4" />
+   257→              🔒 Snapshots
+   258→            </Button>
+   259→          </div>
+   260→        </CardContent>
+   261→      </Card>
+   262→
+   263→      <SnapshotDialog open={open} onOpenChange={setOpen} />
+   264→    </div>
+   265→  )
+   266→}
+   267→
+   268→// ── Dialog shell with tabs ──────────────────────────────────────────────
+   269→
+   270→function SnapshotDialog({
+   271→  open,
+   272→  onOpenChange,
+   273→}: {
+   274→  open: boolean
+   275→  onOpenChange: (v: boolean) => void
+   276→}) {
+   277→  const [tab, setTab] = React.useState<'list' | 'detail'>('list')
+   278→  const [selectedId, setSelectedId] = React.useState<string | null>(null)
+   279→
+   280→  // Reset to list tab when dialog closes (after close animation)
+   281→  React.useEffect(() => {
+   282→    if (!open) {
+   283→      const t = setTimeout(() => {
+   284→        setTab('list')
+   285→        setSelectedId(null)
+   286→      }, 200)
+   287→      return () => clearTimeout(t)
+   288→    }
+   289→  }, [open])
+   290→
+   291→  function selectSnapshot(id: string) {
+   292→    setSelectedId(id)
+   293→    setTab('detail')
+   294→  }
+   295→
+   296→  function backToList() {
+   297→    setTab('list')
+   298→    setSelectedId(null)
+   299→  }
+   300→
+   301→  return (
+   302→    <Dialog open={open} onOpenChange={onOpenChange}>
+   303→      <DialogContent className="flex h-[92vh] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:max-w-6xl">
+   304→        <DialogHeader className="border-b border-slate-200 px-6 pb-3 pt-5 dark:border-slate-700">
+   305→          <DialogTitle className="flex items-center gap-2">
+   306→            <Lock className="h-5 w-5 text-[#f97316]" />
+   307→            Snapshots — มิเตอร์รายงาน (Immutable)
+   308→          </DialogTitle>
+   309→          <DialogDescription>
+   310→            ข้อมูลมิเตอร์ที่ถูกแช่แข็งเมื่อปิดรอบ สามารถตรวจสอบความถูกต้องได้ผ่าน
+   311→            SHA-256 hash
+   312→          </DialogDescription>
+   313→        </DialogHeader>
+   314→
+   315→        <Tabs
+   316→          value={tab}
+   317→          onValueChange={(v) => setTab(v as 'list' | 'detail')}
+   318→          className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-6 pb-5 pt-3"
+   319→        >
+   320→          <TabsList className="self-start">
+   321→            <TabsTrigger value="list">รายการ Snapshots</TabsTrigger>
+   322→            <TabsTrigger value="detail" disabled={!selectedId}>
+   323→              รายละเอียด
+   324→            </TabsTrigger>
+   325→          </TabsList>
+   326→
+   327→          <TabsContent
+   328→            value="list"
+   329→            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+   330→          >
+   331→            <SnapshotListTab onSelect={selectSnapshot} />
+   332→          </TabsContent>
+   333→
+   334→          <TabsContent
+   335→            value="detail"
+   336→            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+   337→          >
+   338→            {selectedId ? (
+   339→              <SnapshotDetailTab snapshotId={selectedId} onBack={backToList} />
+   340→            ) : null}
+   341→          </TabsContent>
+   342→        </Tabs>
+   343→      </DialogContent>
+   344→    </Dialog>
+   345→  )
+   346→}
+   347→
+   348→// ── List tab ────────────────────────────────────────────────────────────
+   349→
+   350→function SnapshotListTab({
+   351→  onSelect,
+   352→}: {
+   353→  onSelect: (snapshotId: string) => void
+   354→}) {
+   355→  const [page, setPage] = React.useState(1)
+   356→  const limit = 20
+   357→
+   358→  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
+   359→    queryKey: ['v1-snapshots', page],
+   360→    queryFn: async (): Promise<ListResponse> => {
+   361→      const res = await fetch(
+   362→        `/api/v1/snapshots?page=${page}&limit=${limit}&sort=-createdAt`,
+   363→        { headers: getAuthHeaders() },
+   364→      )
+   365→      if (!res.ok) {
+   366→        const j = (await res.json().catch(() => null)) as
+   367→          | { error?: { message?: string } }
+   368→          | null
+   369→        throw new Error(j?.error?.message || `HTTP ${res.status}`)
+   370→      }
+   371→      return (await res.json()) as ListResponse
+   372→    },
+   373→  })
+   374→
+   375→  if (isLoading) {
+   376→    return (
+   377→      <div className="flex flex-1 items-center justify-center py-12">
+   378→        <Loader2 className="h-6 w-6 animate-spin text-[#f97316]" />
+   379→        <span className="ml-2 text-sm text-slate-500">กำลังโหลด...</span>
+   380→      </div>
+   381→    )
+   382→  }
+   383→
+   384→  if (isError) {
+   385→    return (
+   386→      <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12">
+   387→        <div className="text-sm text-rose-600 dark:text-rose-400">
+   388→          โหลดข้อมูลไม่สำเร็จ: {(error as Error).message}
+   389→        </div>
+   390→        <Button variant="outline" size="sm" onClick={() => refetch()}>
+   391→          <RefreshCw className="h-3.5 w-3.5" /> ลองอีกครั้ง
+   392→        </Button>
+   393→      </div>
+   394→    )
+   395→  }
+   396→
+   397→  const snapshots = data?.data ?? []
+   398→  const pagination = data?.pagination
+   399→
+   400→  if (snapshots.length === 0) {
+   401→    return (
+   402→      <div className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center">
+   403→        <Shield className="h-10 w-10 text-slate-300" />
+   404→        <div className="text-sm text-slate-500">
+   405→          ยังไม่มี snapshot — จะถูกสร้างอัตโนมัติเมื่อปิดรอบจดมิเตอร์
+   406→        </div>
+   407→      </div>
+   408→    )
+   409→  }
+   410→
+   411→  return (
+   412→    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+   413→      <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
+   414→        <Table>
+   415→          <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
+   416→            <TableRow>
+   417→              <TableHead className="whitespace-nowrap">Snapshot ID</TableHead>
+   418→              <TableHead className="whitespace-nowrap">รอบเดือน</TableHead>
+   419→              <TableHead className="text-center whitespace-nowrap">Rev</TableHead>
+   420→              <TableHead className="text-center whitespace-nowrap">สถานะ</TableHead>
+   421→              <TableHead className="text-right whitespace-nowrap">แถว</TableHead>
+   422→              <TableHead className="text-right whitespace-nowrap">
+   423→                หน้า BW / สี
+   424→              </TableHead>
+   425→              <TableHead className="text-right whitespace-nowrap">ค่าใช้จ่าย</TableHead>
+   426→              <TableHead className="whitespace-nowrap">สร้างโดย</TableHead>
+   427→              <TableHead className="whitespace-nowrap">เมื่อ</TableHead>
+   428→            </TableRow>
+   429→          </TableHeader>
+   430→          <TableBody>
+   431→            {snapshots.map((s) => (
+   432→              <TableRow
+   433→                key={s.id}
+   434→                onClick={() => onSelect(s.snapshotId)}
+   435→                className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50"
+   436→              >
+   437→                <TableCell className="whitespace-nowrap font-mono text-xs">
+   438→                  {s.snapshotId}
+   439→                </TableCell>
+   440→                <TableCell className="whitespace-nowrap font-medium">
+   441→                  {s.cycleMonth}
+   442→                </TableCell>
+   443→                <TableCell className="text-center">R{s.revision}</TableCell>
+   444→                <TableCell className="text-center">{statusBadge(s.status)}</TableCell>
+   445→                <TableCell className="text-right tabular-nums">
+   446→                  {s.rowCount.toLocaleString()}
+   447→                </TableCell>
+   448→                <TableCell className="text-right tabular-nums whitespace-nowrap">
+   449→                  {s.totalPagesBw.toLocaleString()} /{' '}
+   450→                  {s.totalPagesColor.toLocaleString()}
+   451→                </TableCell>
+   452→                <TableCell className="text-right tabular-nums whitespace-nowrap font-medium">
+   453→                  {formatBaht(s.totalCost)}
+   454→                </TableCell>
+   455→                <TableCell className="whitespace-nowrap text-xs text-slate-600 dark:text-slate-400">
+   456→                  {s.createdBy || '—'}
+   457→                </TableCell>
+   458→                <TableCell className="whitespace-nowrap text-xs text-slate-600 dark:text-slate-400">
+   459→                  {formatThaiDate(s.createdAt)}
+   460→                </TableCell>
+   461→              </TableRow>
+   462→            ))}
+   463→          </TableBody>
+   464→        </Table>
+   465→      </div>
+   466→
+   467→      {pagination ? (
+   468→        <div className="flex flex-wrap items-center justify-between gap-2">
+   469→          <div className="text-xs text-slate-500">
+   470→            หน้า {pagination.page} / {pagination.totalPages} · ทั้งหมด{' '}
+   471→            {pagination.total.toLocaleString()} รายการ
+   472→          </div>
+   473→          <div className="flex items-center gap-2">
+   474→            <Button
+   475→              size="sm"
+   476→              variant="outline"
+   477→              disabled={!pagination.hasPrev || isFetching}
+   478→              onClick={() => setPage((p) => Math.max(1, p - 1))}
+   479→            >
+   480→              <ChevronLeft className="h-3.5 w-3.5" /> ก่อนหน้า
+   481→            </Button>
+   482→            <Button
+   483→              size="sm"
+   484→              variant="outline"
+   485→              disabled={!pagination.hasNext || isFetching}
+   486→              onClick={() => setPage((p) => p + 1)}
+   487→            >
+   488→              ถัดไป <ChevronRight className="h-3.5 w-3.5" />
+   489→            </Button>
+   490→          </div>
+   491→        </div>
+   492→      ) : null}
+   493→    </div>
+   494→  )
+   495→}
+   496→
+   497→// ── Detail tab ──────────────────────────────────────────────────────────
+   498→
+   499→function SnapshotDetailTab({
+   500→  snapshotId,
+   501→  onBack,
+   502→}: {
+   503→  snapshotId: string
+   504→  onBack: () => void
+   505→}) {
+   506→  const [verifyResult, setVerifyResult] = React.useState<VerifyResult | null>(
+   507→    null,
+   508→  )
+   509→  const [verifying, setVerifying] = React.useState(false)
+   510→  const [verifyError, setVerifyError] = React.useState<string | null>(null)
+   511→  const [copied, setCopied] = React.useState(false)
+   512→
+   513→  const { data, isLoading, isError, error, refetch } = useQuery({
+   514→    queryKey: ['v1-snapshot', snapshotId],
+   515→    queryFn: async (): Promise<DetailResponse> => {
+   516→      const res = await fetch(
+   517→        `/api/v1/snapshots/${encodeURIComponent(snapshotId)}?include=rows`,
+   518→        { headers: getAuthHeaders() },
+   519→      )
+   520→      if (!res.ok) {
+   521→        const j = (await res.json().catch(() => null)) as
+   522→          | { error?: { message?: string } }
+   523→          | null
+   524→        throw new Error(j?.error?.message || `HTTP ${res.status}`)
+   525→      }
+   526→      return (await res.json()) as DetailResponse
+   527→    },
+   528→  })
+   529→
+   530→  // Reset verify state when snapshot changes (react-query v5 dropped onSuccess)
+   531→  React.useEffect(() => {
+   532→    setVerifyResult(null)
+   533→    setVerifyError(null)
+   534→  }, [snapshotId])
+   535→
+   536→  async function handleVerify() {
+   537→    setVerifying(true)
+   538→    setVerifyError(null)
+   539→    setVerifyResult(null)
+   540→    try {
+   541→      const res = await fetch(
+   542→        `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/verify`,
+   543→        {
+   544→          method: 'POST',
+   545→          headers: getAuthHeaders(),
+   546→        },
+   547→      )
+   548→      const j = (await res.json().catch(() => null)) as
+   549→        | { data?: VerifyResult; error?: { message?: string } }
+   550→        | null
+   551→      if (!res.ok) {
+   552→        throw new Error(j?.error?.message || `HTTP ${res.status}`)
+   553→      }
+   554→      if (j?.data) {
+   555→        setVerifyResult(j.data)
+   556→        if (j.data.verified) {
+   557→          toast.success('ข้อมูลถูกต้อง — hash ตรงกัน')
+   558→        } else {
+   559→          toast.error('ตรวจพบการแก้ไข — hash ไม่ตรงกัน')
+   560→        }
+   561→      }
+   562→    } catch (e) {
+   563→      setVerifyError((e as Error).message)
+   564→    } finally {
+   565→      setVerifying(false)
+   566→    }
+   567→  }
+   568→
+   569→  async function copyHash() {
+   570→    const hash = data?.data?.snapshot?.contentHash
+   571→    if (!hash) return
+   572→    try {
+   573→      await navigator.clipboard.writeText(hash)
+   574→      setCopied(true)
+   575→      toast.success('คัดลอก hash แล้ว')
+   576→      setTimeout(() => setCopied(false), 1500)
+   577→    } catch {
+   578→      toast.error('คัดลอกไม่สำเร็จ')
+   579→    }
+   580→  }
+   581→
+   582→  if (isLoading) {
+   583→    return (
+   584→      <div className="flex flex-1 items-center justify-center py-12">
+   585→        <Loader2 className="h-6 w-6 animate-spin text-[#f97316]" />
+   586→        <span className="ml-2 text-sm text-slate-500">กำลังโหลด...</span>
+   587→      </div>
+   588→    )
+   589→  }
+   590→
+   591→  if (isError) {
+   592→    return (
+   593→      <div className="flex flex-1 flex-col items-center justify-center gap-3 py-12">
+   594→        <div className="text-sm text-rose-600 dark:text-rose-400">
+   595→          โหลดข้อมูลไม่สำเร็จ: {(error as Error).message}
+   596→        </div>
+   597→        <Button variant="outline" size="sm" onClick={() => refetch()}>
+   598→          <RefreshCw className="h-3.5 w-3.5" /> ลองอีกครั้ง
+   599→        </Button>
+   600→      </div>
+   601→    )
+   602→  }
+   603→
+   604→  const snapshot = data?.data?.snapshot
+   605→  const rows = data?.data?.rows ?? []
+   606→
+   607→  if (!snapshot) return null
+   608→
+   609→  return (
+   610→    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+   611→      {/* Top action bar */}
+   612→      <div className="flex flex-shrink-0 items-center justify-between gap-2">
+   613→        <Button variant="ghost" size="sm" onClick={onBack}>
+   614→          <ArrowLeft className="h-4 w-4" /> กลับ
+   615→        </Button>
+   616→        <Button variant="outline" size="sm" onClick={() => refetch()}>
+   617→          <RefreshCw className="h-3.5 w-3.5" /> รีเฟรช
+   618→        </Button>
+   619→      </div>
+   620→
+   621→      {/* Metadata card */}
+   622→      <div className="flex-shrink-0 rounded-md border border-slate-200 bg-card p-4 dark:border-slate-700">
+   623→        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3">
+   624→          <Info
+   625→            label="Snapshot ID"
+   626→            value={
+   627→              <span className="break-all font-mono text-xs">
+   628→                {snapshot.snapshotId}
+   629→              </span>
+   630→            }
+   631→          />
+   632→          <Info label="รอบเดือน" value={snapshot.cycleMonth} />
+   633→          <Info label="Revision" value={`R${snapshot.revision}`} />
+   634→          <Info label="สถานะ" value={statusBadge(snapshot.status)} />
+   635→          <Info
+   636→            label="Rule Version"
+   637→            value={snapshot.ruleVersion || '—'}
+   638→          />
+   639→          <Info
+   640→            label="จำนวนแถว"
+   641→            value={`${snapshot.rowCount.toLocaleString()} แถว`}
+   642→          />
+   643→          <Info
+   644→            label="หน้าขาวดำ"
+   645→            value={`${snapshot.totalPagesBw.toLocaleString()} แผ่น`}
+   646→          />
+   647→          <Info
+   648→            label="หน้าสี"
+   649→            value={`${snapshot.totalPagesColor.toLocaleString()} แผ่น`}
+   650→          />
+   651→          <Info
+   652→            label="ค่าใช้จ่ายรวม"
+   653→            value={<span className="font-semibold">{formatBaht(snapshot.totalCost)}</span>}
+   654→          />
+   655→          <Info label="สร้างโดย" value={snapshot.createdBy || '—'} />
+   656→          <Info label="สร้างเมื่อ" value={formatThaiDate(snapshot.createdAt)} />
+   657→          <div className="col-span-2 md:col-span-1">
+   658→            <div className="mb-0.5 text-[11px] text-slate-500">
+   659→              Content Hash (SHA-256)
+   660→            </div>
+   661→            <div className="flex items-start gap-1">
+   662→              <code className="break-all rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] dark:bg-slate-800">
+   663→                {snapshot.contentHash}
+   664→              </code>
+   665→              <Button
+   666→                size="sm"
+   667→                variant="ghost"
+   668→                onClick={copyHash}
+   669→                className="h-7 w-7 flex-shrink-0 p-0"
+   670→                aria-label="คัดลอก hash"
+   671→              >
+   672→                {copied ? (
+   673→                  <Check className="h-3.5 w-3.5 text-emerald-600" />
+   674→                ) : (
+   675→                  <Copy className="h-3.5 w-3.5" />
+   676→                )}
+   677→              </Button>
+   678→            </div>
+   679→          </div>
+   680→        </div>
+   681→
+   682→        {/* Verify section */}
+   683→        <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+   684→          <div className="flex flex-wrap items-center justify-between gap-2">
+   685→            <div className="flex items-center gap-2">
+   686→              <Shield className="h-4 w-4 text-[#f97316]" />
+   687→              <span className="text-sm font-medium">การตรวจสอบความถูกต้อง</span>
+   688→              <span className="text-xs text-slate-500">
+   689→                (เปรียบเทียบ SHA-256 hash กับข้อมูลปัจจุบัน)
+   690→              </span>
+   691→            </div>
+   692→            <Button size="sm" onClick={handleVerify} disabled={verifying}>
+   693→              {verifying ? (
+   694→                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   695→              ) : (
+   696→                <ShieldCheck className="h-3.5 w-3.5" />
+   697→              )}
+   698→              ตรวจสอบความถูกต้อง
+   699→            </Button>
+   700→          </div>
+   701→
+   702→          {verifyError ? (
+   703→            <div className="mt-2 text-sm text-rose-600 dark:text-rose-400">
+   704→              ตรวจสอบไม่สำเร็จ: {verifyError}
+   705→            </div>
+   706→          ) : null}
+   707→
+   708→          {verifyResult ? (
+   709→            <div className="mt-2">
+   710→              {verifyResult.verified ? (
+   711→                <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+   712→                  <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0" />
+   713→                  <div>
+   714→                    <div className="font-medium">✓ ข้อมูลถูกต้อง</div>
+   715→                    <div className="mt-0.5 text-xs">
+   716→                      hash ตรงกัน — ไม่พบการแก้ไขหลังสร้าง snapshot
+   717→                    </div>
+   718→                  </div>
+   719→                </div>
+   720→              ) : (
+   721→                <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+   722→                  <ShieldAlert className="mt-0.5 h-5 w-5 flex-shrink-0" />
+   723→                  <div className="flex-1">
+   724→                    <div className="font-medium">✗ ตรวจพบการแก้ไข</div>
+   725→                    <div className="mt-1 space-y-0.5 text-xs">
+   726→                      <div>
+   727→                        Stored hash:{' '}
+   728→                        <code className="font-mono">
+   729→                          {verifyResult.storedHash}
+   730→                        </code>
+   731→                      </div>
+   732→                      <div>
+   733→                        Computed hash:{' '}
+   734→                        <code className="font-mono">
+   735→                          {verifyResult.computedHash}
+   736→                        </code>
+   737→                      </div>
+   738→                    </div>
+   739→                  </div>
+   740→                </div>
+   741→              )}
+   742→            </div>
+   743→          ) : null}
+   744→        </div>
+   745→      </div>
+   746→
+   747→      {/* Frozen rows */}
+   748→      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+   749→        <div className="flex-shrink-0 text-sm font-medium">
+   750→          รายการแถวที่ถูกแช่แข็ง ({rows.length.toLocaleString()} แถว)
+   751→        </div>
+   752→        <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
+   753→          <Table>
+   754→            <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
+   755→              <TableRow>
+   756→                <TableHead className="whitespace-nowrap">เลขครุภัณฑ์</TableHead>
+   757→                <TableHead className="whitespace-nowrap">ยี่ห้อ / รุ่น</TableHead>
+   758→                <TableHead className="whitespace-nowrap">วันที่จด</TableHead>
+   759→                <TableHead className="text-center whitespace-nowrap">ประเภท</TableHead>
+   760→                <TableHead className="text-right whitespace-nowrap">มิเตอร์ BW</TableHead>
+   761→                <TableHead className="text-right whitespace-nowrap">มิเตอร์สี</TableHead>
+   762→                <TableHead className="text-right whitespace-nowrap">หน้า BW</TableHead>
+   763→                <TableHead className="text-right whitespace-nowrap">หน้าสี</TableHead>
+   764→                <TableHead className="text-right whitespace-nowrap">ค่า BW</TableHead>
+   765→                <TableHead className="text-right whitespace-nowrap">ค่าสี</TableHead>
+   766→                <TableHead className="whitespace-nowrap">สาขา</TableHead>
+   767→              </TableRow>
+   768→            </TableHeader>
+   769→            <TableBody>
+   770→              {rows.length === 0 ? (
+   771→                <TableRow>
+   772→                  <TableCell
+   773→                    colSpan={11}
+   774→                    className="py-8 text-center text-sm text-slate-500"
+   775→                  >
+   776→                    ไม่มีแถวข้อมูลใน snapshot นี้
+   777→                  </TableCell>
+   778→                </TableRow>
+   779→              ) : (
+   780→                rows.map((r) => (
+   781→                  <TableRow key={r.id}>
+   782→                    <TableCell className="whitespace-nowrap font-mono text-xs">
+   783→                      {r.assetNo}
+   784→                    </TableCell>
+   785→                    <TableCell className="whitespace-nowrap text-xs">
+   786→                      {[r.brand, r.model].filter(Boolean).join(' ') || '—'}
+   787→                    </TableCell>
+   788→                    <TableCell className="whitespace-nowrap text-xs">
+   789→                      {r.readingDate || '—'}
+   790→                    </TableCell>
+   791→                    <TableCell className="text-center">
+   792→                      {readingTypeBadge(r.readingType)}
+   793→                    </TableCell>
+   794→                    <TableCell className="text-right tabular-nums">
+   795→                      {r.meterBw.toLocaleString()}
+   796→                    </TableCell>
+   797→                    <TableCell className="text-right tabular-nums">
+   798→                      {r.meterColor.toLocaleString()}
+   799→                    </TableCell>
+   800→                    <TableCell className="text-right tabular-nums">
+   801→                      {r.pagesBw.toLocaleString()}
+   802→                    </TableCell>
+   803→                    <TableCell className="text-right tabular-nums">
+   804→                      {r.pagesColor.toLocaleString()}
+   805→                    </TableCell>
+   806→                    <TableCell className="text-right tabular-nums whitespace-nowrap">
+   807→                      {formatBaht(r.costBw)}
+   808→                    </TableCell>
+   809→                    <TableCell className="text-right tabular-nums whitespace-nowrap">
+   810→                      {formatBaht(r.costColor)}
+   811→                    </TableCell>
+   812→                    <TableCell className="whitespace-nowrap text-xs">
+   813→                      {r.siteAtReading || '—'}
+   814→                    </TableCell>
+   815→                  </TableRow>
+   816→                ))
+   817→              )}
+   818→            </TableBody>
+   819→          </Table>
+   820→        </div>
+   821→      </div>
+   822→    </div>
+   823→  )
+   824→}
+   825→
+   826→// ── Tiny helper for metadata grid ───────────────────────────────────────
+   827→
+   828→function Info({ label, value }: { label: string; value: React.ReactNode }) {
+   829→  return (
+   830→    <div className="min-w-0">
+   831→      <div className="mb-0.5 text-[11px] text-slate-500">{label}</div>
+   832→      <div className="text-sm">{value}</div>
+   833→    </div>
+   834→  )
+   835→}
+   836→

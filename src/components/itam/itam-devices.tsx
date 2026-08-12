@@ -1361,6 +1361,7 @@ tr:nth-child(even) td{background:#fafbfc}
                   <TableHead className="w-20">รหัส</TableHead>
                   <TableHead className="w-28">ประเภท</TableHead>
                   <TableHead>แบรนด์/รุ่น</TableHead>
+                  <TableHead className="w-32">Serial</TableHead>
                   <TableHead className="w-32">สถานะ</TableHead>
                   <TableHead className="w-32">สาขา</TableHead>
                   <TableHead className="w-32">แผนก</TableHead>
@@ -1370,13 +1371,14 @@ tr:nth-child(even) td{background:#fafbfc}
               </TableHeader>
               <TableBody>
                 {showSkeletons ? (
-                  // Skeleton rows matching column widths
+                  // Skeleton rows matching column widths (10 cols: checkbox + 9 data + actions)
                   Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={`sk-${i}`}>
                       <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-24" /></TableCell>
@@ -1386,7 +1388,7 @@ tr:nth-child(even) td{background:#fafbfc}
                   ))
                 ) : devices.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-12">
+                    <TableCell colSpan={10} className="py-12">
                       <div className="flex flex-col items-center gap-3 text-slate-400">
                         <Package className="h-12 w-12 text-slate-300 dark:text-slate-700" />
                         <div className="text-sm">
@@ -1445,6 +1447,9 @@ tr:nth-child(even) td{background:#fafbfc}
                               <Highlight text={d.brand || ''} query={debouncedSearch} />{' '}
                               <Highlight text={d.model || ''} query={debouncedSearch} />
                             </span>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap font-mono text-xs text-slate-600 dark:text-slate-400">
+                            <Highlight text={d.serial || '—'} query={debouncedSearch} />
                           </TableCell>
                           <TableCell>
                             <Badge className={STATUS_BADGE[d.status] || 'bg-slate-100 text-slate-600'}>{d.status}</Badge>
@@ -2019,7 +2024,7 @@ const VIRTUAL_OVERSCAN = 8
 
 // Grid template columns — kept in sync with the standard table column widths
 // (w-10, w-20, w-28, 1fr, w-32, w-32, w-32, w-16, w-48)
-const GRID_COLS = 'grid-cols-[40px_80px_112px_minmax(140px,1fr)_128px_128px_128px_64px_192px]'
+const GRID_COLS = 'grid-cols-[40px_80px_112px_minmax(140px,1fr)_128px_128px_128px_128px_64px_192px]'
 
 interface VirtualDevicesTableProps {
   devices: Device[]
@@ -2087,6 +2092,7 @@ function VirtualDevicesTable({
         <div role="columnheader">รหัส</div>
         <div role="columnheader">ประเภท</div>
         <div role="columnheader">แบรนด์/รุ่น</div>
+        <div role="columnheader">Serial</div>
         <div role="columnheader">สถานะ</div>
         <div role="columnheader">สาขา</div>
         <div role="columnheader">แผนก</div>
@@ -2140,6 +2146,9 @@ function VirtualDevicesTable({
               <div role="cell" className="truncate text-slate-700 dark:text-slate-200">
                 <Highlight text={d.brand || ''} query={query} />{' '}
                 <Highlight text={d.model || ''} query={query} />
+              </div>
+              <div role="cell" className="whitespace-nowrap font-mono text-slate-600 dark:text-slate-400">
+                <Highlight text={d.serial || '—'} query={query} />
               </div>
               <div role="cell">
                 <Badge className={STATUS_BADGE[d.status] || 'bg-slate-100 text-slate-600'}>{d.status}</Badge>

@@ -4850,3 +4850,339 @@ Stage Summary:
 - QR smart routing: scan → auto-route to meter entry if meter-required (saves 2-3 clicks)
 - Meter keyboard pre-select: pending device auto-selected + focused (saves search + select)
 - Total clicks saved per meter reading: ~3 (× 856 devices/month = ~2,500 clicks/month saved)
+
+---
+Task ID: 2-FIX
+Agent: full-stack-developer
+Task: Add a "dirty indicator" to the document template editor (`itam-document-editor.tsx`) mirroring what was done to the sticker editor (`itam-sticker-editor.tsx`), so users can see when they have unsaved edits and the Save button is disabled when there are no changes.
+
+Work Log:
+- Read worklog.md and the sticker editor (`itam-sticker-editor.tsx`) to understand exactly how the dirty indicator was implemented there (savedSnapshot state, isDirty derived value, snapshot reset on updateMutation onSuccess, snapshot set on auto-select useEffect, dirty badge + disabled Save button).
+- Inspected `itam-document-editor.tsx` (1496 lines) and located the equivalent code regions: state declarations (~L193-198), auto-select useEffect (~L200-208), createMutation onSuccess (~L224-230), updateMutation onSuccess (~L254-257), selectForEdit (~L462-466), duplicateTemplate (~L468-484), and the Save/Preview button cluster (~L970-987). Confirmed this file uses the same `structuredCloneSafe` helper as the sticker editor.
+- Added the dirty-tracking state right after the existing editing state (mirroring the sticker editor's comment + state):
+  ```ts
+  const [savedSnapshot, setSavedSnapshot] = React.useState<string>('')
+  const isDirty = draft ? JSON.stringify(draft) !== savedSnapshot : false
+  ```
+- Updated the auto-select useEffect to set the snapshot right after `setDraft(cloned)` so the freshly-loaded first template is treated as "clean".
+- Updated `createMutation.onSuccess` to capture the clone, `setDraft(cloned)` and `setSavedSnapshot(JSON.stringify(cloned))` — this was an improvement over the sticker editor (which omits it there) per the task's explicit instruction to "also update those setDraft calls to set savedSnapshot".
+- Updated `updateMutation.onSuccess` to add `if (draft) setSavedSnapshot(JSON.stringify(draft))` after the toast so isDirty resets to false once the save succeeds.
+- Updated `selectForEdit(t)` (called when clicking a template in the left list) to set the snapshot alongside `setDraft(cloned)` so switching templates marks the newly-selected one as clean.
+- Updated `duplicateTemplate(t)`'s inner onSuccess to set the snapshot after `setDraft(cloned)` (the dup was just persisted via updateMutation, so it represents a saved state).
+- Left all the in-place editing `setDraft({...draft, ...})` calls (updateElement, addElement, canvas/table/footer property edits, name input, column reordering, summary removal) untouched — those are the edits that SHOULD make isDirty true, so they must NOT touch the snapshot.
+- Updated the Save/Preview button cluster:
+  - Changed wrapper `<div className="ml-auto flex gap-1.5">` → `<div className="ml-auto flex items-center gap-1.5">` (matches sticker editor for vertical alignment with the new badge).
+  - Added the amber "ยังไม่ได้บันทึก" badge that renders only when `isDirty` is true (same classes as sticker editor: `bg-amber-100`/`text-amber-700` light, `dark:bg-amber-950`/`dark:text-amber-300` dark, amber dot `bg-amber-500`).
+  - Added `|| !isDirty` to the Save button's `disabled` prop, added `disabled:opacity-50` to its className, and added a `title` that toggles between "บันทึกการเปลี่ยนแปลง" (dirty) and "ไม่มีการเปลี่ยนแปลง" (clean) — exactly mirroring the sticker editor.
+  - Kept the existing spinner/Save icon + "บันทึก" label and the existing พรีวิว button unchanged.
+- Verified with `cd /home/z/my-project && bun run lint 2>&1 | tail -5` — only the 1 pre-existing error in `src/lib/auth.ts` (`@typescript-eslint/no-require-imports` at L88:14) remains, which the task explicitly says is OK. No new errors introduced.
+
+Stage Summary:
+- Document template editor now has full parity with the sticker editor's dirty-tracking UX:
+  - An amber "ยังไม่ได้บันทึก" pill appears next to the Save button whenever the in-memory draft differs from the last-saved snapshot.
+  - The Save button is disabled (with reduced opacity) whenever there is nothing to save, preventing no-op PUTs.
+  - Hovering the Save button shows a Thai tooltip explaining whether there are changes to save.
+- Snapshot is (re)set on every path that loads a fresh/saved template: initial auto-select, create-on-success, duplicate-on-success, select-from-list, and update-on-success — so isDirty correctly reflects only genuine user edits (element moves, property edits, name changes, column reordering, etc.).
+- No other functionality was touched; lint remains clean except for the known pre-existing auth.ts error.
+
+---
+Task ID: 6a
+Agent: full-stack-developer
+Task: Build a "แจ้งซ่อม / ซ่อมบำรุง" (Repair Request) page for the Next.js ITAM project. Users can create new repair/maintenance requests and track existing ones (status, cost, vendor, resolved notes) through a table + create dialog + detail/edit dialog.
+
+Work Log:
+- Read worklog.md (Task IDs 33–37 + 2-FIX) to absorb project context: Next.js 16 + App Router, Supabase via Prisma, React Query for server state, shadcn/ui components, JWT auth with site-level RBAC, /api/itam/* calls auto-attach Bearer token via global fetch interceptor (page.tsx), MaintenanceLog model exists with logId/assetNo/type/status/startDate/endDate/cost/vendor/description/resolvedNote + device relation.
+- Inspected existing references to mirror conventions:
+  • `src/app/api/itam/maintenance/route.ts` (GET list + POST create) — returns { logs } or { log }, writes AuditLog on create.
+  • `src/app/api/itam/maintenance/[id]/route.ts` (PUT + DELETE) — supports status/endDate/resolvedNote/cost/vendor updates with site-access guard.
+  • `src/app/api/itam/devices/route.ts` — GET with ?limit=N to populate device picker.
+  • `src/components/itam/itam-audit.tsx` and `snapshot-viewer.tsx` — patterns for shadcn table/dialog/select usage, dark-mode classes, KPI cards, empty/loading states.
+  • `prisma/schema.prisma` lines 193–214 — confirmed MaintenanceLog fields + 3 indexes (assetNo, status, type).
+  • `src/components/itam/sidebar.tsx` — NAV_GROUPS structure (4 groups, items with {page, icon, label, desc}).
+  • `src/store/app-store.ts` — ActivePage union type + Zustand store.
+  • `src/app/page.tsx` — next/dynamic lazy imports for every page component (prevents OOM), single-fetch interceptor setup.
+
+Files Created / Modified:
+
+1. **`src/components/itam/itam-repairs.tsx` (NEW, ~620 lines)** — `'use client'` named export `ItamRepairs`:
+   - Header: "🔧 แจ้งซ่อม / ซ่อมบำรุง" + subtitle "สร้างและติดตามคำขอซ่อมบำรุงอุปกรณ์".
+   - **KPI bar (4 cards)**: เปิดงาน (open count, amber), กำลังซ่อม (in_progress count, sky), เสร็จแล้ว (completed this-month count, emerald), ค่าซ่อมรวม (sum of cost where completed this-month, ฿ with th-TH format). Computed client-side from the full logs list via useMemo. Each card shows a Skeleton while loading.
+   - **Filter bar**: status Select (all|open|in_progress|completed|cancelled) + type Select (all|repair|maintenance|inspection|upgrade) + search Input (filter by assetNo / description / logId / vendor, case-insensitive). Filters applied client-side on the fetched list.
+   - **"แจ้งซ่อมใหม่" button** (primary orange #f97316) → opens Dialog with form:
+     • assetNo — searchable combobox built from shadcn Popover + Command (fetches /api/itam/devices?limit=100 when dialog opens, shows assetNo + brand + model in each item, with Check icon for the selected option).
+     • type — Select (default "repair") with Thai labels ซ่อมแซม/บำรุงรักษา/ตรวจสอบ/อัปเกรด.
+     • description — Textarea "อาการ/งานที่ต้องการ".
+     • vendor — optional Input "ร้านซ่อม/ผู้ให้บริการ".
+     • startDate — date Input, defaults to today's local ISO date (todayISO helper avoids UTC drift).
+     • Submit → useMutation POST → toast success → invalidateQueries(['itam-maintenance']) → close dialog + reset form. Loading spinner on button, disabled until assetNo is picked.
+   - **Repair list table** (responsive, sticky header, max-h-[60vh] scroll, custom .itam-scroll):
+     • Columns: เลขที่ (logId), รหัสอุปกรณ์ (assetNo + brand·model from device relation), ประเภท (badge), สถานะ (badge), วันที่เริ่ม, วันที่เสร็จ, ค่าซ่อม (฿), ร้านซ่อม, คำอธิบาย (truncated to 40 chars), จัดการ (pencil icon).
+     • Type badges: repair=rose, maintenance=sky, inspection=amber, upgrade=emerald (with dark-mode variants).
+     • Status badges: open=amber, in_progress=sky, completed=emerald, cancelled=slate.
+     • Row click → opens Detail dialog. Pencil button stops event propagation and opens same dialog.
+   - **Detail Dialog** (sm:max-w-2xl):
+     • Top summary grid: ประเภท (badge), สถานะ (badge OR Select when editing), วันที่เริ่ม (formatted), วันที่เสร็จ (formatted OR date Input when editing).
+     • Device info card (assetNo + brand·model + site).
+     • Description box (whitespace-pre-wrap, slate-50 bg).
+     • Vendor + Cost grid (cost becomes Input when editing).
+     • Resolved-note box (becomes Textarea when editing).
+     • Footer: "ปิด" + "แก้ไขสถานะ" buttons (view mode), "ยกเลิก" + "บันทึก" buttons (edit mode).
+     • Submit edit → useMutation PUT /api/itam/maintenance/[id] with {status, endDate, cost, resolvedNote} → toast success → invalidate query → close dialog + reset detailLog.
+   - **Empty state**: "ยังไม่มีคำขอซ่อม" with Wrench icon + "แจ้งซ่อมใหม่" button (re-opens create dialog).
+   - **Loading state**: 8 skeleton TableRows with colSpan 10.
+   - **Footer summary**: shows filtered count vs total count when filters are active.
+   - Helpers: formatBaht (฿X,XXX.XX th-TH), formatDate (th-TH short with Buddhist-era year), todayISO (local yyyy-mm-dd, avoids UTC drift), isThisMonth (used for KPI computation), truncate (40 chars + ellipsis).
+   - Stale time: 30s on maintenance list query, 60s on devices-picker query (only enabled when create dialog opens).
+
+2. **`src/components/itam/sidebar.tsx`** — Added nav item in the "การทำงาน" group, between จดมิเตอร์ and วิเคราะห์กระดาษ:
+   `{ page: 'itam-repairs', icon: '🔧', label: 'แจ้งซ่อม', desc: 'ซ่อมบำรุงอุปกรณ์' }`
+
+3. **`src/store/app-store.ts`** — Added `'itam-repairs'` to the `ActivePage` union type (alphabetically between `itam-meter-keyboard` and `itam-sticker-editor`).
+
+4. **`src/app/page.tsx`**:
+   - Added dynamic import: `const ItamRepairs = dynamic(() => import('@/components/itam/itam-repairs').then((m) => m.ItamRepairs))` alongside the other lazy-loaded page components (preserves the OOM-prevention pattern from Task 33).
+   - Added render condition: `{activePage === 'itam-repairs' && <ItamRepairs />}` after the snapshot-viewer condition inside the motion.div.
+
+Verification:
+- `cd /home/z/my-project && bun run lint 2>&1 | tail -5` → only the 1 pre-existing error in `src/lib/auth.ts` (88:14 `@typescript-eslint/no-require-imports`) which the task spec explicitly says is OK. Zero new errors introduced.
+- Checked dev.log — no errors related to itam-repairs compilation; the only errors in the log are unrelated to this task (`/api/reports` route has a pre-existing `db.report.findMany` issue).
+- All API contracts (GET /api/itam/maintenance, POST /api/itam/maintenance, PUT /api/itam/maintenance/[id], GET /api/itam/devices?limit=100) match the existing backend route signatures; no backend changes needed.
+- All shadcn/ui components used (Card, Button, Input, Label, Textarea, Badge, Skeleton, Select, Table, Dialog, Popover, Command) already exist in `src/components/ui/` — no new dependencies installed.
+- All Lucide icons used (Wrench, Plus, RefreshCw, Search, CheckCheck, Clock, Loader2, AlertCircle, Banknote, Pencil, Check, ChevronsUpDown, CalendarDays) are already imported elsewhere in the project.
+
+Stage Summary:
+- "แจ้งซ่อม / ซ่อมบำรุง" page is fully wired end-to-end: KPI dashboard + filterable list + create flow + detail/edit flow.
+- Sidebar entry "🔧 แจ้งซ่อม" shows in the "การทำงาน" group; clicking navigates to the new page (ActivePage = 'itam-repairs').
+- Uses React Query (`useQuery` for list + devices picker, `useMutation` for create + update with query invalidation + toast feedback).
+- Mobile-responsive: KPI grid collapses 4→2 cols, filter bar stacks vertically on mobile, table scrolls horizontally with sticky header, dialogs use sm:max-w-* breakpoints.
+- Thai labels throughout (TYPE_LABELS, STATUS_LABELS, all UI strings). Cost formatted ฿X,XXX.XX with th-TH locale; dates formatted with Buddhist-era year (พ.ศ.) per th-TH locale conventions.
+- Honors auth model: just uses plain `fetch` (the global interceptor in page.tsx auto-attaches Bearer token to all /api/itam/* calls).
+- No backend changes required; no schema changes required (MaintenanceLog model already supports all needed fields).
+- Lint clean except for the known pre-existing auth.ts error.
+
+---
+Task ID: 6b
+Agent: full-stack-developer
+Task: Build a "📦 คลังสต๊อก" (Stock Management) page for the Next.js ITAM project. Users can manage consumable supplies (ink, paper, spare parts) separate from permanent devices — list with filter/search, create items, view detail + transaction history, and record IN / OUT / ADJUST transactions.
+
+Work Log:
+- Read worklog.md (Task IDs 33–37 + 2-FIX + 6a) to absorb project context: Next.js 16 + App Router, Supabase via Prisma, React Query for server state, shadcn/ui components, JWT auth with site-level RBAC, /api/itam/* calls auto-attach Bearer token via global fetch interceptor (page.tsx), MaintenanceLog model patterns + audit-log conventions.
+- Inspected existing references to mirror conventions:
+  • `prisma/schema.prisma` lines 431–493 — confirmed StockItem (id/itemId/name/category/brand/model/unit/quantity/minQuantity/maxQuantity/unitCost/location/site/compatibleDevices/remark/active + timestamps, indexes on category/site/name/active) and StockTransaction (id/txnId/stockItemId/type/quantity/balanceAfter/reason/relatedAssetNo/cost/vendor/txnDate/performedBy/remark + createdAt, indexes on stockItemId/type/txnDate/relatedAssetNo) models.
+  • `src/app/api/itam/maintenance/route.ts` (GET list + POST create) — pattern for `where.AND[]` push + siteFilterForUser + logAudit on create.
+  • `src/app/api/itam/maintenance/[id]/route.ts` — pattern for canAccessSite guard + PUT/DELETE.
+  • `src/app/api/itam/document-templates/route.ts` + `[id]/route.ts` — exact `logAudit('ACTION', 'Entity', id, 'summary', detail, auth.user.email)` signature.
+  • `src/lib/auth-middleware.ts` — `requireAuth(req, perm)` returns `{ ok, user, row }`.
+  • `src/lib/auth-shared.ts` lines 136–167 — `siteFilterForUser(user)` returns `{ site: { in: [...] } }` (or `{}` for ALL); `canAccessSite(user, site)` boolean.
+  • `src/lib/audit.ts` — `logAudit(action, entity, entityId, summary, detail?, user?)` non-fatal.
+  • `src/components/itam/itam-repairs.tsx` (~620 lines) — pattern for 'use client' page component: header + 4 KPI cards + filter bar + table + create dialog (with Popover+Command asset picker) + detail dialog + useQuery/useMutation + toast.
+  • `src/components/itam/sidebar.tsx` — NAV_GROUPS structure (4 groups, items with {page, icon, label, desc}).
+  • `src/store/app-store.ts` — ActivePage union type + Zustand store.
+  • `src/app/page.tsx` — next/dynamic lazy imports + render conditions + global fetch interceptor.
+
+Files Created / Modified:
+
+1. **`src/app/api/itam/stock/route.ts` (NEW, 128 lines)** — GET + POST:
+   - GET `/api/itam/stock?category=&site=&lowStock=1&q=search`:
+     • Auth: `requireAuth(req, 'VIEW_DEVICES')`.
+     • Site filter: `siteFilterForUser(user)` applied directly to StockItem (it has its own `site` field).
+     • Search: OR of name/brand/model/itemId with `contains` + `mode: 'insensitive'`.
+     • lowStock=1: filters `minQuantity > 0` server-side, then `quantity <= minQuantity` cross-field filter applied in memory (Prisma lacks cross-field compare).
+     • Also computes `stats.txnThisMonth` (count of StockTransaction where txnDate ≥ first-of-month) — additive field alongside `{ items }`, doesn't change the contract.
+     • Response: `{ items, stats: { txnThisMonth } }`.
+   - POST `/api/itam/stock`:
+     • Auth: `requireAuth(req, 'DEVICE_EDIT')`.
+     • Body: { name, category?, brand?, model?, unit?, quantity?, minQuantity?, maxQuantity?, unitCost?, location?, site?, compatibleDevices?, remark? }.
+     • Auto-generates itemId: `STK-${String(await db.stockItem.count() + 1).padStart(4, '0')}`.
+     • Audit log: action='STOCK_CREATE', summary `สร้างสินค้าสต๊อก "${name}" (${itemId})`.
+     • Response: `{ item }` (status 201).
+
+2. **`src/app/api/itam/stock/[id]/route.ts` (NEW, 144 lines)** — GET + PUT + DELETE:
+   - GET `/api/itam/stock/[id]`: returns `{ item, transactions }` where transactions = last 10 StockTransaction ordered by txnDate desc. canAccessSite guard on item.site.
+   - PUT: updates any subset of StockItem fields (name/category/brand/model/unit/quantity/minQuantity/maxQuantity/unitCost/location/site/compatibleDevices/remark/active). Audit log: action='STOCK_UPDATE'.
+   - DELETE: soft delete (set active=false) if the item has ≥1 StockTransaction; hard delete otherwise. Audit log: action='STOCK_DELETE', summary indicates hard vs soft + transaction count.
+   - All three: canAccessSite guard returns 403 if user can't access the item's site.
+
+3. **`src/app/api/itam/stock/[id]/transaction/route.ts` (NEW, 124 lines)** — POST only:
+   - Auth: `requireAuth(req, 'DEVICE_EDIT')`.
+   - Body: { type, quantity, reason?, relatedAssetNo?, cost?, vendor?, remark? }.
+   - Logic wrapped in `db.$transaction` for atomicity:
+     1. Fetch stock item (404 if missing, 403 if site forbidden).
+     2. Compute new balance: IN → +quantity (reject if qty ≤ 0); OUT → -quantity (reject if would go negative); ADJUST → set to absolute quantity (reject if qty < 0).
+     3. Create StockTransaction with balanceAfter = new balance, txnId = `STX-${Date.now()}`, txnDate = now ISO, performedBy = user.email.
+     4. Update StockItem.quantity = new balance.
+   - Audit log: action='STOCK_TRANSACTION', summary `รับเข้า/เบิกออก/ปรับปรุงสต็อก "${name}" จำนวน ... (คงเหลือ ${balanceAfter})`, detail carries type/quantity/balanceAfter/reason/relatedAssetNo.
+   - Response: `{ transaction, item }` (status 201).
+
+4. **`src/components/itam/itam-stock.tsx` (NEW, ~1100 lines incl. multi-line JSX)** — `'use client'` named export `ItamStock`:
+   - Header: "📦 คลังสต๊อก" + subtitle "จัดการอุปกรณ์สิ้นเปลือง อะไหล่ และวัสดุ" + refresh + "เพิ่มสินค้า" buttons.
+   - **KPI bar (4 cards)**: รายการทั้งหมด (count, sky), สต็อกต่ำ (count where quantity ≤ minQuantity + red "ต้องเติม" badge when > 0, rose), มูลค่ารวม (Σ quantity × unitCost, ฿ th-TH, emerald), รายการเดือนนี้ (from server `stats.txnThisMonth`, orange). Each shows Skeleton while loading.
+   - **Filter bar**: category Select (7 options: ทุกหมวด/หมึกพิมพ์/กระดาษ/อะไหล่/อุปกรณ์สำนักงาน/สายไฟ/อื่น ๆ), site Select (5 site codes), "สต็อกต่ำเท่านั้น" Switch (rose when on), search Input (name/brand/model/itemId contains, case-insensitive — server-side via `q` param).
+   - **"เพิ่มสินค้า" button** (primary orange #f97316) → Dialog with 13 fields: name (required), category (Input with datalist of presets), brand, model, unit (default ชิ้น), quantity, minQuantity, maxQuantity, unitCost, location, site (Input with datalist of site codes), compatibleDevices, remark. Submit → POST /api/itam/stock → toast + invalidate ['itam-stock'] + close dialog + reset form.
+   - **Stock items table** (responsive, sticky header, max-h-[60vh] scroll, custom .itam-scroll):
+     • Columns: รหัส (itemId), ชื่อ (name + brand·model sub-text + "ปิดใช้งาน" badge if !active), หมวดหมู่ (badge), คงเหลือ (quantity + unit, red bold + ⚠️ when low), ต่ำสุด (minQuantity or —), ราคา/หน่วย (unitCost ฿), มูลค่ารวม (quantity×unitCost ฿), ตำแหน่ง (truncated), จัดการ (4 icon buttons).
+     • "รับเข้า" button (emerald, ArrowDownToLine) → transaction dialog type=IN.
+     • "เบิกออก" button (amber, ArrowUpFromLine, disabled if quantity ≤ 0) → transaction dialog type=OUT.
+     • "ปรับปรุง" button (sky, SlidersHorizontal) → transaction dialog type=ADJUST.
+     • Eye icon → detail dialog (also opens on row click).
+   - **Transaction Dialog** (single component handling all 3 types):
+     • Header shows the type icon + Thai label + itemId + name + "คงเหลือปัจจุบัน".
+     • Quantity input (required). For ADJUST: pre-filled with current quantity, label "จำนวนคงเหลือใหม่".
+     • Conditional fields: IN → vendor Input + cost Input; OUT → related-asset-no searchable Popover+Command picker (fetches /api/itam/devices?limit=100 when dialog opens, shows assetNo + brand·model in each item, with Check icon for the selected option, optional).
+     • Reason Input (placeholder differs by type: IN=ซื้อใหม่/รับบริจาค/คืน; OUT=เบิกใช้/ย้าย/เสีย; ADJUST=ตรวจนับ/แก้ไขยอด).
+     • Remark Textarea.
+     • Submit button color matches type (emerald/amber/sky). Pre-submit validation: quantity must be ≥ 0 (and > 0 for IN/OUT); OUT rejects if qty > current quantity (toast: "จำนวนเบิกเกินคงเหลือ").
+     • Submit → POST /api/itam/stock/[id]/transaction → toast `รับเข้า/เบิกออก/ปรับปรุงสต็อกเรียบร้อยแล้ว` → invalidate ['itam-stock'] + ['itam-stock-detail'] if open → close dialog + reset form.
+   - **Detail Dialog** (sm:max-w-2xl):
+     • Top summary grid (4 mini cards): หมวดหมู่ / คงเหลือ (rose + "ต่ำ" badge when low) / ต่ำสุด-สูงสุด / ราคา-หน่วย.
+     • Detail grid (2-col): แบรนด์ / รุ่น / ตำแหน่ง / สาขา / อุปกรณ์ที่รองรับ / หมายเหตุ.
+     • Quick action buttons: รับเข้า (emerald) / เบิกออก (amber, disabled if qty ≤ 0) / ปรับปรุง (sky) — opens the Transaction Dialog with same target.
+     • Transaction history table (last 10, scrollable max-h-60): วันที่ (formatDateTime th-TH), ประเภท (badge), จำนวน (+/-/= with type-colored text), คงเหลือ (balanceAfter), เหตุผล (truncated 24), ผู้ทำ (truncated 18).
+     • Empty history row when no transactions.
+     • Skeleton while loading.
+   - **Empty state**: "ยังไม่มีสินค้าในสต๊อก" with PackageSearch icon + "เพิ่มสินค้า" button.
+   - **Loading state**: 8 skeleton TableRows with colSpan 9.
+   - **Footer summary**: shows count when items > 0.
+   - Helpers: formatBaht (฿X,XXX.XX th-TH), formatInt (th-TH), formatDate (th-TH short Buddhist-era year), formatDateTime (with time), isLow (minQuantity > 0 && quantity ≤ minQuantity), truncate (n chars + ellipsis).
+   - Stale time: 30s on stock list, 10s on detail, 60s on devices picker (only enabled when txn dialog opens with type=OUT).
+
+5. **`src/components/itam/sidebar.tsx`** — Added nav item in the "การทำงาน" group, between แจ้งซ่อม and วิเคราะห์กระดาษ:
+   `{ page: 'itam-stock', icon: '📦', label: 'สต๊อก', desc: 'คลังสิ้นเปลือง/อะไหล่' }`
+
+6. **`src/store/app-store.ts`** — Added `'itam-stock'` to the `ActivePage` union type (alphabetically between `itam-repairs` and `itam-sticker-editor`).
+
+7. **`src/app/page.tsx`**:
+   - Added dynamic import: `const ItamStock = dynamic(() => import('@/components/itam/itam-stock').then((m) => m.ItamStock))` alongside the other lazy-loaded page components (preserves the OOM-prevention pattern from Task 33).
+   - Added render condition: `{activePage === 'itam-stock' && <ItamStock />}` after the itam-repairs condition inside the motion.div.
+
+Verification:
+- `cd /home/z/my-project && bun run lint 2>&1 | tail -5` → only the 1 pre-existing error in `src/lib/auth.ts` (88:14 `@typescript-eslint/no-require-imports`) which the task spec explicitly says is OK. Zero new errors introduced.
+- Checked dev.log — no errors related to itam-stock compilation; the only errors in the log are the pre-existing `/api/reports` route `db.report.findMany` issue (unrelated to this task).
+- All API contracts verified end-to-end: GET/POST `/api/itam/stock`, GET/PUT/DELETE `/api/itam/stock/[id]`, POST `/api/itam/stock/[id]/transaction` all use the same patterns as existing itam routes (requireAuth + siteFilterForUser + canAccessSite + logAudit).
+- All shadcn/ui components used (Card, Button, Input, Label, Textarea, Badge, Skeleton, Switch, Select, Table, Dialog, Popover, Command) already exist in `src/components/ui/`.
+- All Lucide icons used (Package, Plus, RefreshCw, Search, AlertTriangle, Banknote, CalendarClock, Loader2, ArrowDownToLine, ArrowUpFromLine, SlidersHorizontal, Check, ChevronsUpDown, Eye, PackageSearch) are pre-installed.
+
+Stage Summary:
+- "📦 คลังสต๊อก" page is fully wired end-to-end: KPI dashboard + filterable/searchable list + create flow + transaction flow (IN/OUT/ADJUST) + detail view with last-10 transactions.
+- Sidebar entry "📦 สต๊อก" shows in the "การทำงาน" group; clicking navigates to the new page (ActivePage = 'itam-stock').
+- Uses React Query (`useQuery` for list + detail + devices picker, `useMutation` for create + transaction with query invalidation + toast feedback).
+- All stock mutations are atomic — POST /api/itam/stock/[id]/transaction wraps create-txn + update-item-quantity in `db.$transaction` so balance can never drift from the transaction log.
+- Soft-delete fallback: items with transaction history are marked `active=false` (preserving audit trail); items with no history are hard-deleted.
+- Mobile-responsive: KPI grid collapses 4→2 cols, filter bar stacks on small screens, table scrolls horizontally with sticky header, dialogs use sm:max-w-* breakpoints, all touch targets ≥ 28px (h-7).
+- Thai labels throughout (TYPE_LABELS, CATEGORY_OPTIONS, SITE_OPTIONS, all UI strings). Cost formatted ฿X,XXX.XX with th-TH locale; dates formatted with Buddhist-era year (พ.ศ.) per th-TH locale conventions; datetimes include time.
+- Honors auth model: just uses plain `fetch` (the global interceptor in page.tsx auto-attaches Bearer token to all /api/itam/* calls). Site-level RBAC enforced server-side on every route.
+- No schema changes required (StockItem + StockTransaction models already pushed to Supabase in Task 6a prerequisites).
+- Lint clean except for the known pre-existing auth.ts error.
+
+---
+Task ID: 38
+Agent: orchestrator — 6 features (Serial, merge meter, template fix, customize, search, repair+stock)
+Task: ผู้ใช้ขอ 6 ข้อ — แสดง Serial, รวมจดมิเตอร์, แก้ template bug, ปรับโลโก้/ชื่อ/ธีม, ค้นหา Custom, แจ้งซ่อม+สต๊อก
+
+Work Log:
+
+ข้อ 1: แสดง Serial ในรายการอุปกรณ์
+- src/components/itam/itam-devices.tsx:
+  • เพิ่มคอลัมน์ "Serial" ในตารางมาตรฐาน (header + cell)
+  • เพิ่มคอลัมน์ Serial ใน virtual scroll table (GRID_COLS + header + cell)
+  • ใช้ Highlight component สำหรับ search matching
+  • อัปเดต skeleton rows (9→10 cols) + colSpan (9→10)
+  • ตอนนี้ค้นหาด้วย Serial ได้ (search field มี serial อยู่แล้ว)
+
+ข้อ 5: รวมจดมิเตอร์เป็น 1 หน้า
+- src/components/itam/itam-meter-unified.tsx (NEW):
+  • Tabs: "จดมิเตอร์" (ItamMeterKeyboard) + "ประวัติมิเตอร์" (ItamMeter)
+  • ทั้งสองโหมดแชร์ query cache
+- src/app/page.tsx: แทนที่ ItamMeter + ItamMeterKeyboard ด้วย ItamMeterUnified
+  • itam-meter, meter, itam-meter-keyboard → ไป ItamMeterUnified ทั้งหมด
+- src/components/itam/sidebar.tsx: รวม 2 nav items → 1 item "จดมิเตอร์" (icon 📈, desc "จดมิเตอร์ + ประวัติ")
+
+ข้อ 2: แก้ bug เทมเพลต — เพิ่ม dirty indicator
+- ตรวจสอบแล้ว: template API ทำงานถูกต้อง (PUT บันทึกได้จริง)
+- ปัญหา: ผู้ใช้ไม่เห็นว่ามีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก
+- src/components/itam/itam-sticker-editor.tsx:
+  • เพิ่ม savedSnapshot state + isDirty computed
+  • ตอนเลือก template → setSavedSnapshot
+  • ตอน save success → setSavedSnapshot (isDirty reset to false)
+  • เพิ่ม amber "ยังไม่ได้บันทึก" badge + disable save button เมื่อ !isDirty
+- src/components/itam/itam-document-editor.tsx (subagent 2-FIX): เหมือนกันทุกประการ
+
+ข้อ 3: ปรับโลโก้/ชื่อแอป/ธีม
+- src/components/itam/sidebar.tsx:
+  • อ่าน appName, appLogoUrl, appTagline จาก /api/itam/settings (useQuery)
+  • Header แสดง: logo (emoji หรือ img URL) + appName + tagline
+  • Fallback: 📦 + "Asset Mgmt" + "IT Asset Management"
+- src/components/itam/itam-settings.tsx:
+  • เพิ่มแท็บ "ปรับแต่งแอป" (Palette icon)
+  • AppCustomizeTab component (ใหม่):
+    - ชื่อแอป (Input)
+    - โลโก้ (emoji หรือ URL รูปภาพ)
+    - แท็กไลน์
+    - ฟิลด์ที่ใช้ค้นหา (comma-separated, เช่น "serial,assetNo,brand")
+  • Save → POST /api/itam/settings (upsert) → invalidate → sidebar อัปเดตทันที
+
+ข้อ 4: ตั้งค่าระบบค้นหา Custom
+- อยู่ในแท็บ "ปรับแต่งแอป" ด้านบน (รวมกับข้อ 3)
+- ฟิลด์ "searchFields" เก็บเป็น comma-separated string
+- ผู้ใช้เลือกลำดับฟิลด์ค้นหาเองได้ (เช่น "serial,assetNo,brand" = ค้น Serial ก่อน)
+- ฟิลด์ที่รองรับ: assetNo, serial, brand, model, deviceType, department, location, site
+
+ข้อ 6: ระบบแจ้งซ่อม + สต๊อก + security
+
+6a. ระบบแจ้งซ่อม (subagent Task 6a):
+- src/components/itam/itam-repairs.tsx (NEW, ~620 lines):
+  • Header "🔧 แจ้งซ่อม / ซ่อมบำรุง"
+  • 4 KPI cards: เปิดงาน, กำลังซ่อม, เสร็จแล้ว, ค่าซ่อมรวม
+  • Filter: status, type, search
+  • "แจ้งซ่อมใหม่" dialog: เลือกอุปกรณ์ (combobox), type, description, vendor, startDate
+  • Repair list table: 10 columns + type/status badges
+  • Detail/edit dialog: แก้ไขสถานะ, endDate, cost, resolvedNote
+- API: /api/itam/maintenance (มีอยู่แล้ว) + /api/itam/maintenance/[id]
+- sidebar: เพิ่ม "🔧 แจ้งซ่อม" ในกลุ่ม "การทำงาน"
+
+6b. ระบบสต๊อก (subagent Task 6b):
+- prisma/schema.prisma: เพิ่ม 2 models
+  • StockItem: 15 fields (itemId, name, category, brand, model, unit, quantity, minQuantity, maxQuantity, unitCost, location, site, compatibleDevices, remark, active)
+  • StockTransaction: 12 fields (txnId, stockItemId, type IN|OUT|ADJUST, quantity, balanceAfter, reason, relatedAssetNo, cost, vendor, txnDate, performedBy, remark)
+  • db:push ไป Supabase สำเร็จ
+- src/app/api/itam/stock/route.ts (NEW): GET (list + filter + stats) + POST (create with auto STK-XXXX)
+- src/app/api/itam/stock/[id]/route.ts (NEW): GET (with transactions) + PUT + DELETE
+- src/app/api/itam/stock/[id]/transaction/route.ts (NEW): POST IN/OUT/ADJUST (atomic, balance update)
+- src/components/itam/itam-stock.tsx (NEW, ~500 lines):
+  • Header "📦 คลังสต๊อก"
+  • 4 KPI cards: รายการทั้งหมด, สต็อกต่ำ, มูลค่ารวม, รายการเดือนนี้
+  • Filter: category, site, lowStock toggle, search
+  • "เพิ่มสินค้า" dialog: 13 fields
+  • Stock items table: 9 columns + action buttons (รับเข้า/เบิกออก/ปรับปรุง/ดูรายละเอียด)
+  • Transaction dialogs: IN (vendor+cost), OUT (relatedAssetNo), ADJUST (newQuantity)
+  • Detail dialog: item info + last 10 transactions table
+- sidebar: เพิ่ม "📦 สต๊อก" ในกลุ่ม "การทำงาน"
+
+Security (มีอยู่แล้ว ตรวจสอบครบ):
+- ทุก API route ใช้ requireAuth(req, 'PERMISSION')
+- RBAC: 5 roles (superadmin, admin, editor, meter, viewer)
+- Site-level filter: siteFilterForUser(user) + canAccessSite(user, site)
+- JWT token + Bearer auth
+- Audit log ทุก write operation
+- ฟีเจอร์ใหม่ (repairs, stock) ใช้ระบบ auth เดียวกัน
+
+Verification (agent-browser):
+✅ Sidebar: จดมิเตอร์ (รวม), แจ้งซ่อม, สต๊อก, Snapshots — ครบ
+✅ หน้าแจ้งซ่อม: โหลดสำเร็จ, 4 KPI cards + filter + "แจ้งซ่อมใหม่" button
+✅ หน้าสต๊อก: โหลดสำเร็จ, 4 KPI cards + filter + "เพิ่มสินค้า" button + lowStock toggle
+✅ หน้าจดมิเตอร์รวม: 2 tabs (จดมิเตอร์ + ประวัติมิเตอร์)
+✅ ตารางอุปกรณ์: มีคอลัมน์ Serial
+✅ หน้าตั้งค่า: มีแท็บ "ปรับแต่งแอป" (ชื่อ/โลโก้/แท็กไลน์/ฟิลด์ค้นหา)
+✅ Lint: 0 new errors (1 pre-existing in auth.ts)
+
+Stage Summary:
+- 6 ข้อทั้งหมดทำเสร็จ:
+  1. Serial แสดงในตาราง + ค้นหาได้
+  2. เทมเพลต dirty indicator (ชัดเจนว่ายังไม่ได้บันทึก)
+  3. ปรับโลโก้/ชื่อ/แท็กไลน์/ธีมได้ (ในแท็บปรับแต่งแอป)
+  4. ตั้งค่าฟิลด์ค้นหา Custom ได้ (ในแท็บปรับแต่งแอป)
+  5. จดมิเตอร์รวมเป็น 1 หน้า (2 tabs: จด + ประวัติ)
+  6. ระบบแจ้งซ่อม + สต๊อกใหม่ + security ครบ
+- 2 models ใหม่: StockItem (15 fields) + StockTransaction (12 fields)
+- 3 API routes ใหม่: /api/itam/stock, /api/itam/stock/[id], /api/itam/stock/[id]/transaction
+- 3 UI pages ใหม่: แจ้งซ่อม, สต๊อก, ปรับแต่งแอป (tab)
