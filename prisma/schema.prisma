@@ -401,6 +401,15 @@ model StockTransaction {
   remark          String?  // maps from Remark
   sourceKey       String?  // maps from source_key
   processedFlag   String?  // maps from processed_flag
+  // ── Approval workflow (PART 1: Stock Pending Approval System) ──
+  // null = immediate (legacy/IN-OUT-ADJUST processed at once)
+  // PENDING = waiting for approval (stock NOT yet reduced)
+  // APPROVED = approved (stock reduced on approval)
+  // REJECTED = rejected (no stock change)
+  approvalStatus  String?  // null (immediate) | PENDING | APPROVED | REJECTED
+  approvalMode    String?  // manual | auto
+  autoApproveAt   String?  // ISO datetime for auto-approval
+  rejectReason    String?  // reason when rejected
   createdAt       DateTime @default(now())
 
   stockItem       StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)

@@ -63,6 +63,9 @@ import {
   PackageOpen,
   ClipboardList,
   Hash,
+  Package,
+  Check,
+  Box,
 } from 'lucide-react'
 import { formatThaiDate, relativeTime } from './types'
 
@@ -182,6 +185,67 @@ interface DeviceLookupItem {
   building: string | null
   location: string | null
   serialNumber: string | null
+}
+
+// ============================================================
+// Stock parts (linked to a work order)
+// ============================================================
+interface PartsStockItem {
+  id: string
+  productCode: string
+  productName: string
+  unit: string
+  quantity: number
+  unitCost: number | null
+  active: boolean
+}
+
+interface PartsTransaction {
+  id: string
+  txnNumber: string | null
+  stockItemId: string
+  productCode: string | null
+  productName: string | null
+  type: string
+  quantity: number
+  unit: string | null
+  balanceAfter: number
+  reason: string | null
+  requester: string | null
+  purpose: string | null
+  workOrderId: string | null
+  workOrderNo: string | null
+  approver: string | null
+  approvedAt: string | null
+  approvalStatus: string | null
+  approvalMode: string | null
+  rejectReason: string | null
+  txnDate: string
+  remark: string | null
+  createdAt: string
+  stockItem?: {
+    productCode: string
+    productName: string
+    unit: string
+    quantity: number
+    active: boolean
+  } | null
+}
+
+interface PartsListResponse {
+  data: PartsTransaction[]
+  summary: {
+    total: number
+    pending: number
+    approved: number
+    rejected: number
+    immediate: number
+  }
+}
+
+interface PartsListApiResponse {
+  data: PartsStockItem[]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
 }
 
 // ============================================================
@@ -1534,6 +1598,71 @@ function WorkOrderDetailContent({
   const messagesEndRef = React.useRef<HTMLDivElement>(null)
   const messages = wo.messages ?? []
 
+  // ── Parts (เบิกอะไหล่) ──
+  const [partsOpen, setPartsOpen] = React.useState(false)
+  const [partsRequester, setPartsRequester] = React.useState('')
+  const [partsSearch, setPartsSearch] = React.useState('')
+  const [partsLines, setPartsLines] = React.useState<
+    { productCode: string; productName: string; quantity: string; remark: string }[]
+  >([])
+  const [partsSaving, setPartsSaving] = React.useState(false)
+  const [partsSearchResults, setPartsSearchResults] = React.useState<PartsStockItem[]>([])
+  const [partsSearchLoading, setPartsSearchLoading] = React.useState(false)
+
+  // Approve / reject parts (inline)
+  const [approvingTxnId, setApprovingTxnId] = React.useState<string | null>(null)
+  const [rejectingTxnId, setRejectingTxnId] = React.useState<string | null>(null)
+  const [rejectReason, setRejectReason] = React.useState('')
+
+  // Parts list query (always on for the detail view)
+  const partsQuery = useQuery<PartsListResponse>({
+    queryKey: ['wo-parts', wo.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/work-orders/${wo.id}/parts`)
+      if (!res.ok) throw new Error('Failed to load parts')
+      return res.json()
+    },
+  })
+  const partsList: PartsTransaction[] = partsQuery.data?.data ?? []
+  const partsSummary = partsQuery.data?.summary
+
+  React.useEffect(() => {
+    if (partsOpen) {
+      // Reset the parts form when the dialog opens
+      setPartsRequester('')
+      setPartsSearch('')
+      setPartsLines([])
+      setPartsSearchResults([])
+    }
+  }, [partsOpen])
+
+  // Debounced parts search
+  React.useEffect(() => {
+    if (!partsSearch.trim()) {
+      setPartsSearchResults([])
+      return
+    }
+    let cancelled = false
+    setPartsSearchLoading(true)
+    const t = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ search: partsSearch.trim(), pageSize: '20' })
+        const res = await fetch(`/api/stock-items?${params.toString()}`)
+        if (!res.ok) return
+        const json: PartsListApiResponse = await res.json()
+        if (!cancelled) setPartsSearchResults(json.data ?? [])
+      } catch {
+        if (!cancelled) setPartsSearchResults([])
+      } finally {
+        if (!cancelled) setPartsSearchLoading(false)
+      }
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [partsSearch])
+
   React.useEffect(() => {
     // sync tech name when WO changes
     setTechName(wo.assignedTo ?? '')
@@ -1566,6 +1695,7 @@ function WorkOrderDetailContent({
   const canCancel = wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
   const canChat = wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
   const canReporterEdit = wo.status === 'PENDING'
+  const canRequestParts = wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
 
   // Resolution groups for the dropdown
   const resolutionGroups = React.useMemo(() => {
@@ -1744,6 +1874,138 @@ function WorkOrderDetailContent({
       toast.error(e instanceof Error ? e.message : 'ส่งข้อความไม่สำเร็จ')
     } finally {
       setSendingMsg(false)
+    }
+  }
+
+  // ── Parts request (เบิกอะไหล่) ──
+  function addPartsLine(item: PartsStockItem) {
+    // Skip if already in list
+    if (partsLines.some((l) => l.productCode === item.productCode)) {
+      toast.error(`${item.productCode} มีอยู่ในรายการแล้ว`)
+      return
+    }
+    setPartsLines((prev) => [
+      ...prev,
+      {
+        productCode: item.productCode,
+        productName: item.productName,
+        quantity: '1',
+        remark: '',
+      },
+    ])
+    setPartsSearch('')
+    setPartsSearchResults([])
+  }
+  function removePartsLine(idx: number) {
+    setPartsLines((prev) => prev.filter((_, i) => i !== idx))
+  }
+  function updatePartsLine(
+    idx: number,
+    key: 'quantity' | 'remark',
+    value: string,
+  ) {
+    setPartsLines((prev) =>
+      prev.map((l, i) => (i === idx ? { ...l, [key]: value } : l)),
+    )
+  }
+  async function handleRequestParts() {
+    const valid = partsLines.filter((l) => Number(l.quantity) > 0)
+    if (valid.length === 0) {
+      toast.error('ต้องเพิ่มอย่างน้อย 1 รายการอะไหล่ พร้อมจำนวนที่ถูกต้อง')
+      return
+    }
+    try {
+      setPartsSaving(true)
+      const res = await fetch(`/api/work-orders/${wo.id}/parts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requester: partsRequester.trim() || undefined,
+          items: valid.map((l) => ({
+            productCode: l.productCode,
+            quantity: Number(l.quantity),
+            remark: l.remark.trim() || undefined,
+          })),
+          actor: 'admin',
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'เบิกอะไหล่ไม่สำเร็จ')
+      }
+      const json = await res.json()
+      toast.success(
+        `สร้างคำขอเบิกอะไหล่ ${json.data?.created ?? valid.length} รายการ — สถานะใบงาน: ${
+          json.data?.workOrderStatus === 'WAITING_PARTS' ? 'รออะไหล่' : json.data?.workOrderStatus
+        }`,
+      )
+      setPartsOpen(false)
+      onMutated()
+      qc.invalidateQueries({ queryKey: ['wo-parts', wo.id] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'เบิกอะไหล่ไม่สำเร็จ')
+    } finally {
+      setPartsSaving(false)
+    }
+  }
+
+  async function handleApprovePart(txnId: string) {
+    try {
+      setApprovingTxnId(txnId)
+      const res = await fetch(`/api/work-orders/${wo.id}/parts/${txnId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approver: 'admin' }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'อนุมัติไม่สำเร็จ')
+      }
+      toast.success('อนุมัติเบิกอะไหล่เรียบร้อย')
+      qc.invalidateQueries({ queryKey: ['wo-parts', wo.id] })
+      qc.invalidateQueries({ queryKey: ['stock-items'] })
+      qc.invalidateQueries({ queryKey: ['stock-pending'] })
+      onMutated()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'อนุมัติไม่สำเร็จ')
+    } finally {
+      setApprovingTxnId(null)
+    }
+  }
+
+  async function handleRejectPart(txn: PartsTransaction) {
+    if (!rejectReason.trim()) {
+      toast.error('กรุณาระบุเหตุผลในการปฏิเสธ')
+      return
+    }
+    try {
+      setRejectingTxnId(txn.id)
+      // Reject goes through the stock-items pending route (id = stockItemId)
+      const res = await fetch(
+        `/api/stock-items/${txn.stockItemId}/pending/${txn.id}/reject`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            approver: 'admin',
+            reason: rejectReason.trim(),
+          }),
+        },
+      )
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'ปฏิเสธไม่สำเร็จ')
+      }
+      toast.success('ปฏิเสธคำขอเบิกอะไหล่เรียบร้อย')
+      setRejectingTxnId(null)
+      setRejectReason('')
+      qc.invalidateQueries({ queryKey: ['wo-parts', wo.id] })
+      qc.invalidateQueries({ queryKey: ['stock-pending'] })
+      onMutated()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ปฏิเสธไม่สำเร็จ')
+    } finally {
+      setRejectingTxnId(null)
     }
   }
 
@@ -1986,6 +2248,171 @@ function WorkOrderDetailContent({
             </div>
           )}
 
+          {/* Parts list (เบิกอะไหล่) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                <Box className="h-3.5 w-3.5" />
+                รายการเบิกอะไหล่
+                {partsSummary && partsSummary.total > 0 && (
+                  <Badge variant="outline" className="ml-1 text-[10px]">
+                    รอ {partsSummary.pending} • อนุมัติ {partsSummary.approved} • ปฏิเสธ {partsSummary.rejected}
+                  </Badge>
+                )}
+              </div>
+              {canRequestParts && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPartsOpen(true)}
+                  className="h-7 border-purple-300 px-2 text-[11px] text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/40"
+                >
+                  <Package className="mr-1 h-3 w-3" />
+                  เบิกอะไหล่
+                </Button>
+              )}
+            </div>
+
+            {partsQuery.isLoading ? (
+              <Skeleton className="h-16 w-full" />
+            ) : partsList.length === 0 ? (
+              <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+                ยังไม่มีรายการเบิกอะไหล่สำหรับใบงานนี้
+                {canRequestParts && ' — กดปุ่ม "เบิกอะไหล่" เพื่อสร้างคำขอ'}
+              </p>
+            ) : (
+              <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border bg-card p-2">
+                {partsList.map((p) => {
+                  const status = p.approvalStatus ?? 'APPROVED'
+                  const stockItem = p.stockItem
+                  return (
+                    <div
+                      key={p.id}
+                      className="rounded-md border bg-background p-2.5 text-xs"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                              {p.productCode ?? '—'}
+                            </span>
+                            <span className="truncate font-medium">
+                              {p.productName ?? stockItem?.productName ?? '—'}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 text-[11px] text-muted-foreground">
+                            เลขที่: {p.txnNumber ?? '—'} • จำนวน:{' '}
+                            <span className="font-semibold text-foreground">
+                              {p.quantity} {p.unit ?? ''}
+                            </span>
+                            {stockItem && (
+                              <>
+                                {' '}• คงเหลือในสต็อก:{' '}
+                                <span
+                                  className={
+                                    stockItem.quantity < p.quantity
+                                      ? 'font-semibold text-rose-600 dark:text-rose-400'
+                                      : 'font-semibold text-foreground'
+                                  }
+                                >
+                                  {stockItem.quantity} {stockItem.unit}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          {p.remark && (
+                            <div className="mt-0.5 text-[11px] text-muted-foreground">
+                              หมายเหตุ: {p.remark}
+                            </div>
+                          )}
+                          {p.rejectReason && (
+                            <div className="mt-0.5 text-[11px] text-rose-600 dark:text-rose-400">
+                              เหตุผลที่ปฏิเสธ: {p.rejectReason}
+                            </div>
+                          )}
+                          {p.approver && (
+                            <div className="mt-0.5 text-[10px] text-muted-foreground">
+                              โดย: {p.approver}
+                              {p.approvedAt && ` • ${formatDateTime(p.approvedAt)}`}
+                            </div>
+                          )}
+                        </div>
+                        <PartsStatusBadge status={status} />
+                      </div>
+                      {status === 'PENDING' && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t pt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleApprovePart(p.id)}
+                            disabled={approvingTxnId === p.id}
+                            className="h-7 border-emerald-300 px-2 text-[11px] text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                          >
+                            {approvingTxnId === p.id ? (
+                              <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                            ) : (
+                              <Check className="mr-1 h-3 w-3" />
+                            )}
+                            อนุมัติ
+                          </Button>
+                          {rejectingTxnId === p.id ? (
+                            <div className="flex flex-1 items-center gap-1">
+                              <Input
+                                value={rejectReason}
+                                onChange={(e) => setRejectReason(e.target.value)}
+                                placeholder="เหตุผลที่ปฏิเสธ"
+                                className="h-7 flex-1 text-[11px]"
+                                autoFocus
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRejectPart(p)}
+                                disabled={!rejectReason.trim()}
+                                className="h-7 border-rose-300 px-2 text-[11px] text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                              >
+                                ยืนยัน
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setRejectingTxnId(null)
+                                  setRejectReason('')
+                                }}
+                                className="h-7 px-2 text-[11px]"
+                              >
+                                ยกเลิก
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setRejectingTxnId(p.id)
+                                setRejectReason('')
+                              }}
+                              className="h-7 border-rose-300 px-2 text-[11px] text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                            >
+                              <XCircle className="mr-1 h-3 w-3" />
+                              ปฏิเสธ
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {partsSummary && partsSummary.pending > 0 && (
+              <div className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                ⚠️ ยังปิดงานไม่ได้ — มีคำขอเบิกอะไหล่ {partsSummary.pending} รายการที่รออนุมัติ
+              </div>
+            )}
+          </div>
+
           {/* Images */}
           {(wo.picBefore || wo.picOnsite || wo.picAfter) && (
             <div className="space-y-2">
@@ -2133,6 +2560,17 @@ function WorkOrderDetailContent({
           >
             <User className="h-4 w-4" />
             {wo.assignedTo ? 'เปลี่ยนช่าง' : 'มอบหมายช่าง'}
+          </Button>
+        )}
+        {canRequestParts && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setPartsOpen(true)}
+            className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950"
+          >
+            <Package className="h-4 w-4" />
+            เบิกอะไหล่
           </Button>
         )}
         {canComplete && (
@@ -2503,7 +2941,220 @@ function WorkOrderDetailContent({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Parts request dialog (เบิกอะไหล่) ── */}
+      <Dialog open={partsOpen} onOpenChange={setPartsOpen}>
+        <DialogContent className="max-h-[92vh] overflow-hidden sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-purple-500" />
+              เบิกอะไหล่ — {wo.woNumber ?? '—'}
+            </DialogTitle>
+            <DialogDescription>
+              ค้นหาอะไหล่ที่ต้องการ ระบุจำนวน แล้วกดบันทึก — ระบบจะสร้างคำขอรออนุมัติ
+              (หากยังไม่มีอะไหล่รอ สถานะใบงานจะเปลี่ยนเป็น &quot;รออะไหล่&quot;)
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-[68vh]">
+            <div className="grid gap-3 px-1 py-1">
+              {/* Requester */}
+              <div className="grid gap-1.5">
+                <Label htmlFor="parts-requester">ผู้เบิก (Optional)</Label>
+                <Input
+                  id="parts-requester"
+                  value={partsRequester}
+                  onChange={(e) => setPartsRequester(e.target.value)}
+                  placeholder="ชื่อช่าง / ผู้เบิก"
+                />
+              </div>
+
+              {/* Search products */}
+              <div className="grid gap-1.5">
+                <Label htmlFor="parts-search">ค้นหาสินค้า</Label>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="parts-search"
+                    value={partsSearch}
+                    onChange={(e) => setPartsSearch(e.target.value)}
+                    placeholder="พิมพ์รหัสสินค้า / ชื่อ / แบรนด์"
+                    className="pl-9"
+                    autoFocus
+                  />
+                </div>
+                {partsSearchLoading && (
+                  <div className="text-[11px] text-muted-foreground">
+                    กำลังค้นหา...
+                  </div>
+                )}
+                {!partsSearchLoading && partsSearchResults.length > 0 && (
+                  <div className="max-h-48 overflow-y-auto rounded-md border bg-card">
+                    {partsSearchResults.map((it) => (
+                      <button
+                        key={it.id}
+                        type="button"
+                        onClick={() => addPartsLine(it)}
+                        disabled={!it.active}
+                        className="flex w-full items-center justify-between gap-2 border-b px-3 py-2 text-left text-xs last:border-b-0 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-mono font-semibold text-purple-600 dark:text-purple-400">
+                            {it.productCode}
+                          </div>
+                          <div className="truncate text-muted-foreground">
+                            {it.productName}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span>
+                            คงเหลือ: {it.quantity} {it.unit}
+                          </span>
+                          <Plus className="h-3 w-3 text-purple-500" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!partsSearchLoading &&
+                  partsSearch.trim() &&
+                  partsSearchResults.length === 0 && (
+                    <div className="rounded-md border border-dashed p-3 text-center text-[11px] text-muted-foreground">
+                      ไม่พบสินค้าที่ตรงกับ &quot;{partsSearch}&quot;
+                    </div>
+                  )}
+              </div>
+
+              {/* Selected parts list */}
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between">
+                  <Label>รายการที่เบิก ({partsLines.length})</Label>
+                </div>
+                {partsLines.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
+                    ยังไม่ได้เลือกอะไหล่ — ค้นหาแล้วกด + เพื่อเพิ่ม
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {partsLines.map((line, idx) => (
+                      <div
+                        key={`${line.productCode}-${idx}`}
+                        className="grid grid-cols-12 gap-2 rounded-md border bg-muted/30 p-2"
+                      >
+                        <div className="col-span-12 sm:col-span-6">
+                          <div className="font-mono text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                            {line.productCode}
+                          </div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {line.productName}
+                          </div>
+                        </div>
+                        <div className="col-span-4 sm:col-span-2">
+                          <Input
+                            type="number"
+                            min="1"
+                            value={line.quantity}
+                            onChange={(e) =>
+                              updatePartsLine(idx, 'quantity', e.target.value)
+                            }
+                            className="h-8 text-xs"
+                            placeholder="จำนวน"
+                          />
+                        </div>
+                        <div className="col-span-7 sm:col-span-3">
+                          <Input
+                            value={line.remark}
+                            onChange={(e) =>
+                              updatePartsLine(idx, 'remark', e.target.value)
+                            }
+                            className="h-8 text-xs"
+                            placeholder="หมายเหตุ"
+                          />
+                        </div>
+                        <div className="col-span-1 flex items-center justify-end">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                            onClick={() => removePartsLine(idx)}
+                            aria-label="ลบรายการ"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </ScrollArea>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPartsOpen(false)}
+              disabled={partsSaving}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={handleRequestParts}
+              disabled={partsSaving || partsLines.length === 0}
+              className="bg-purple-600 hover:bg-purple-700"
+            >
+              {partsSaving ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Package className="h-4 w-4" />
+              )}
+              ส่งคำขอเบิก ({partsLines.filter((l) => Number(l.quantity) > 0).length})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  )
+}
+
+function PartsStatusBadge({ status }: { status: string }) {
+  if (status === 'PENDING') {
+    return (
+      <Badge
+        variant="outline"
+        className="border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+      >
+        รออนุมัติ
+      </Badge>
+    )
+  }
+  if (status === 'APPROVED') {
+    return (
+      <Badge
+        variant="outline"
+        className="border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+      >
+        อนุมัติแล้ว
+      </Badge>
+    )
+  }
+  if (status === 'REJECTED') {
+    return (
+      <Badge
+        variant="outline"
+        className="border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300"
+      >
+        ปฏิเสธ
+      </Badge>
+    )
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+    >
+      {status}
+    </Badge>
   )
 }
 

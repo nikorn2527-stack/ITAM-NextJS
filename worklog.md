@@ -2074,3 +2074,131 @@ Stage Summary:
 - แจ้งซ่อมครบวงจร: guest + external + subject options + resolution + reporter edit + full detail
 - ข้อมูลเก่า 4,941 ใบงานแสดงได้ + สร้างใหม่ได้
 - พร้อมสำหรับการปรับสต็อกต่อไป
+
+---
+Task ID: STOCK-LINK
+Agent: full-stack-developer — Stock Pending Approval + 3-System Link (แจ้งซ่อม → เบิกอะไหล่ → ลดสต็อก)
+
+## Summary
+
+Implemented the full approval workflow linking Work Orders → Stock Parts Requests → Stock Out:
+
+1. **PART 1 — Stock Pending Approval System**: Replicated the old "StockOutPending" sheet workflow. Stock-out requests can be created in a `PENDING` state (no stock change) and only reduce `StockItem.quantity` when explicitly approved.
+2. **PART 2 — 3-System Link**: Technicians can request parts (`เบิกอะไหล่`) from inside a Work Order detail dialog. The WO auto-switches to `WAITING_PARTS` status. Completing the WO is blocked while any parts request is still `PENDING`.
+
+## Schema change (`prisma/schema.prisma`)
+
+Added 4 nullable fields to `StockTransaction` (ran `bun run db:push`):
+
+```prisma
+approvalStatus  String?  // null (immediate) | PENDING | APPROVED | REJECTED
+approvalMode    String?  // manual | auto
+autoApproveAt   String?  // ISO datetime for auto-approval
+rejectReason    String?  // reason when rejected
+```
+
+`approver` and `approvedAt` already existed in the schema (no change needed).
+
+## Files created
+
+**API — PART 1 (pending stock-out approval):**
+- `src/app/api/stock-items/[id]/pending/route.ts` — POST: create pending stock-out request. Body: `{ quantity, reason, workOrderNo?, department?, purpose?, approvalMode?: 'manual'|'auto', autoApproveAt?, requester?, remark? }`. Creates StockTransaction with `type='OUT'`, `approvalStatus='PENDING'`, balanceAfter = current quantity (NOT reduced). Auto-generates `SP-YYYYMMDD-NNN` txn number.
+- `src/app/api/stock-items/[id]/pending/[txnId]/approve/route.ts` — POST: approve. Sets `approvalStatus='APPROVED'`, reduces `StockItem.quantity` atomically (`db.$transaction`), sets `balanceAfter` to new balance, sets `approver` + `approvedAt`. Returns 400 if stock insufficient or status not PENDING.
+- `src/app/api/stock-items/[id]/pending/[txnId]/reject/route.ts` — POST: reject. Sets `approvalStatus='REJECTED'`, `rejectReason`, `approver`, `approvedAt`. Does NOT reduce stock.
+- `src/app/api/stock-items/pending/route.ts` — GET: list all pending/filtered requests. Query: `status=PENDING|APPROVED|REJECTED|all`, `workOrderNo`, `search`. Includes `stockItem` relation for current quantity display. Returns `{ data, pagination }`.
+
+**API — PART 2 (work order parts link):**
+- `src/app/api/work-orders/[id]/parts/route.ts` — GET: list parts txns linked to WO (via `workOrderNo` OR `workOrderId`) + summary (total/pending/approved/rejected/immediate counts). POST: request parts. Body: `{ items: [{ productCode, quantity, remark? }], requester?, actor? }`. Validates each item exists + is active. Creates one `PENDING` StockTransaction per item inside a single `db.$transaction`. Auto-updates WO status to `WAITING_PARTS` if not already IN_PROGRESS/WAITING_PARTS. Posts a system message on the WO. Returns `{ created: N, workOrderStatus: 'WAITING_PARTS', transactions: [...] }`.
+- `src/app/api/work-orders/[id]/parts/[txnId]/approve/route.ts` — POST: approve a parts request. Same stock-reduction logic as PART 1's approve, but also posts a system message on the WO (`"อนุมัติเบิกอะไหล่: ..."`). Returns `{ transaction, stockItem, remainingPending, allPartsApproved }` so the UI knows when all parts are cleared.
+
+## Files modified
+
+- `src/app/api/work-orders/[id]/complete/route.ts` — added PART 2 block: before marking the WO `COMPLETED`, count PENDING `StockTransaction`s linked via `workOrderId` OR `workOrderNo`. If >0, return HTTP 400 with the exact Thai message `"ยังปิดงานไม่ได้ เนื่องจากมีรายการเบิกอะไหล่ที่ยังรออนุมัติ"` and `pendingPartsCount` in the body.
+- `src/components/itam/work-orders-page.tsx` — extended the WorkOrderDetailContent:
+  - New types: `PartsStockItem`, `PartsTransaction`, `PartsListResponse`, `PartsListApiResponse`.
+  - State for parts dialog (`partsOpen`, `partsRequester`, `partsSearch`, `partsLines`, debounced search), inline approve (`approvingTxnId`), inline reject (`rejectingTxnId`, `rejectReason`).
+  - New `useQuery(['wo-parts', wo.id])` always-on for the parts list + summary.
+  - Parts list UI section in the detail body (between Edit-unlock info and Images): shows txn number, productCode, quantity, current stock (with red "ไม่เพียงพอ" warning if insufficient), status badge, remark/reject reason/approver. PENDING rows show inline Approve + Reject buttons (reject expands an inline input for the reason). Summary badge shows counts (รอ N • อนุมัติ N • ปฏิเสธ N). Warning banner when `pending > 0` ("ยังปิดงานไม่ได้ — มีคำขอเบิกอะไหล่ N รายการที่รออนุมัติ").
+  - "เบิกอะไหล่" button in the footer (visible when `status=IN_PROGRESS|WAITING_PARTS`) + smaller duplicate button in the parts list header.
+  - New parts request dialog: debounced product search (calls `/api/stock-items?search=...`), add-to-list with duplicate check, per-line quantity + remark inputs, remove button, submit count badge.
+  - New `PartsStatusBadge` helper (PENDING/APPROVED/REJECTED + fallback).
+  - Lucide imports added: `Package`, `Check`, `Box`.
+- `src/components/itam/stock-page.tsx` — added a 3rd tab "รออนุมัติ":
+  - New types: `PendingStockTransaction` (extends StockTransaction with all approval fields + `stockItem` relation), `PendingListResponse`.
+  - Tab type extended from `'items' | 'po'` to `'items' | 'po' | 'pending'`.
+  - State for `pendingFilter` (PENDING|APPROVED|REJECTED|all), `pendingSearch` (debounced), `approvingTxn`, `approving`, `rejectingTxn`, `rejectReason`, `rejecting`.
+  - New `useQuery(['stock-pending', pendingFilter, pendingDebouncedSearch])` calling `/api/stock-items/pending`.
+  - `handleApprovePending(t)` and `handleRejectPending()` handlers with invalidation of `['stock-pending']`, `['stock-items']`, and any open `['stock-item-detail', detailId]`.
+  - `pendingStatusBadge(status)` helper.
+  - Pending tab UI: filter bar (search + status select + refresh), table with 9 columns (เลขที่คำขอ, วันที่, สินค้า+ผู้เบิก, จำนวน, คงเหลือ+insufficient warning, เลขใบงาน badge, เหตุผล/หมายเหตุ/reject reason/approver, สถานะ, การจัดการ). PENDING rows show one-click Approve (✓) and Reject (✗) buttons. Reject opens a dialog requiring a reason.
+  - Reject dialog (similar to delete dialog) with required reason textarea.
+  - Lucide imports added: `Clock`, `Check`, `XCircle`, `Hourglass`.
+
+## Verification
+
+### Lint
+- `cd /home/z/my-project && bun run lint 2>&1 | tail -5` → 0 errors, 0 warnings.
+
+### End-to-end test (started dev server briefly, exercised every new endpoint with curl)
+
+| Step | Endpoint | Result |
+|------|----------|--------|
+| 1 | `GET /api/stock-items?pageSize=3` | Found item `B0060` (quantity=0) ✅ |
+| 2 | `GET /api/work-orders?pageSize=3` | Found `WO-20260812-005` (status=PENDING) ✅ |
+| 3 | `POST /api/stock-items/{id}/pending` | Created `SP-20260812-001` with `approvalStatus="PENDING"`, balanceAfter=0 (no reduction) ✅ |
+| 4 | `GET /api/stock-items/pending?status=PENDING` | Returned the new pending row with `stockItem` relation ✅ |
+| 5 | `POST /api/stock-items/{id}/pending/{txnId}/reject` | Set `approvalStatus="REJECTED"`, `approver="test-admin"`, `rejectReason="ทดสอบการปฏิเสธ"` — stock NOT reduced (still 0) ✅ |
+| 6 | `GET /api/stock-items/pending?status=REJECTED` | Rejected txn appears ✅ |
+| 7 | `POST /api/work-orders/{id}/parts` | Created `SP-20260812-002` with `workOrderId` + `workOrderNo="WO-20260812-005"`, `approvalStatus="PENDING"`. WO status changed `PENDING → WAITING_PARTS`. Returned `{ created: 1, workOrderStatus: "WAITING_PARTS" }` ✅ |
+| 8 | `GET /api/work-orders/{id}/parts` | Listed the parts txn + summary `{ total: 1, pending: 1, approved: 0, rejected: 0, immediate: 0 }` ✅ |
+| 9 | `POST /api/work-orders/{id}/complete` | **HTTP 400** with `"ยังปิดงานไม่ได้ เนื่องจากมีรายการเบิกอะไหล่ที่ยังรออนุมัติ"` + `pendingPartsCount: 1` ✅ |
+| 10 | `POST /api/work-orders/{id}/parts/{txnId}/approve` | Returned HTTP 400 `"สต็อกไม่เพียงพอ (คงเหลือ 0 ขวด ต้องการ 1)"` — confirms insufficient-stock guard works (test item had quantity=0) ✅ |
+| 11 | `GET /api/work-orders/{id}/parts` (after) | Txn still PENDING (approve was rejected by guard) ✅ |
+
+All schema fields (`approvalStatus`, `approvalMode`, `autoApproveAt`, `rejectReason`, `approver`, `approvedAt`) populated correctly. `db.$transaction` atomicity verified on approve. WorkOrder status transitions verified.
+
+## TanStack Query keys used
+
+- `['stock-pending', pendingFilter, pendingDebouncedSearch]` — new (stock page pending tab)
+- `['wo-parts', wo.id]` — new (work order detail parts list)
+- Existing keys invalidated on mutations:
+  - Approve parts → `['wo-parts', wo.id]`, `['stock-items']`, `['stock-pending']`
+  - Reject parts → `['wo-parts', wo.id]`, `['stock-pending']`
+  - Approve pending → `['stock-pending']`, `['stock-items']`, `['stock-item-detail', detailId]` (if open)
+  - Reject pending → `['stock-pending']`
+
+## Notes for downstream agents
+
+- The schema added 4 nullable columns; existing rows have `approvalStatus=null` which means "immediate" (legacy IN/OUT/ADJUST). The pending list query explicitly filters `approvalStatus != null` when `status=all` to exclude legacy rows.
+- `approver` and `approvedAt` fields already existed on `StockTransaction` (originally for the legacy StockOut sheet) — reused for the approval workflow. No migration needed.
+- The pending approval number format is `SP-YYYYMMDD-NNN` (SP = Stock Pending), distinct from regular txn `STX-YYYYMMDD-NNN`. The same SP counter is shared by both PART 1 (direct pending) and PART 2 (WO-linked parts) routes — both call the same `nextPendingNumber` helper.
+- Reject route for parts is the stock-items reject route (`/api/stock-items/{stockItemId}/pending/{txnId}/reject`), since it's stock-item-scoped. Approve route for parts is the WO-scoped route (`/api/work-orders/{woId}/parts/{txnId}/approve`) which additionally posts a system message on the WO. This asymmetry is intentional — only the approve side needs the WO system message.
+- The WO detail parts list shows real-time current stock for each requested item via the `stockItem` relation included in the parts list API. If `stockItem.quantity < txn.quantity`, the quantity cell renders red with a "ไม่เพียงพอ" sub-label so the approver knows before clicking.
+- Worklog has been appended (this section). No changes to `src/lib/db.ts` staleness probe were needed — no new Prisma models were added, only nullable columns on existing `StockTransaction`.
+
+---
+Task ID: STOCK-LINK-VERIFY
+Agent: orchestrator — ตรวจสอบ 3 ระบบเชื่อมกันสำเร็จ
+
+Work Log:
+- Stock Pending Approval: ✅ 3 tabs (สินค้าคงคลัง | ใบสั่งซื้อ | รออนุมัติ)
+- 3-System Link: ✅ แจ้งซ่อม → เบิกอะไหล่ → ลดสต็อก
+  • WO-20260812-005 สถานะ "รออะไหล่" (WAITING_PARTS)
+  • มี "รายการเบิกอะไหล่" section ใน detail dialog
+  • มี "เบิกอะไหล่" button (เพิ่มอะไหล่ใหม่)
+  • มี warning "ยังปิดงานไม่ได้ — มีคำขอเบิกอะไหล่ 1 รายการที่รออนุมัติ"
+  • Stock page มี tab "รออนุมัติ" สำหรับ approve/reject
+
+Verification (agent-browser):
+✅ Stock page: 3 tabs (สินค้าคงคลัง | ใบสั่งซื้อ | รออนุมัติ)
+✅ WO detail: "รออะไหล่" status + "รายการเบิกอะไหล่" + "เบิกอะไหล่" button
+✅ WO complete blocked: "ยังปิดงานไม่ได้ — มีคำขอเบิกอะไหล่ที่รออนุมัติ"
+✅ API: /api/stock-items/pending → แสดงรายการรออนุมัติ
+✅ API: /api/work-orders/[id]/parts → GET + POST (เบิกอะไหล่)
+✅ Lint: 0 errors
+
+Stage Summary:
+- 3 ระบบเชื่อมกันสมบูรณ์: แจ้งซ่อน → เบิกอะไหล่ → ลดสต็อก
+- Stock pending approval: สร้าง + อนุมัติ + ปฏิเสธ
+- WO บล็อกปิดงานเมื่อมีอะไหล่รออนุมัติ
+- พร้อมสำหรับการปรับ Dashboard ต่อไป

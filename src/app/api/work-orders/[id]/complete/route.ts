@@ -64,6 +64,31 @@ export async function POST(
       )
     }
 
+    // ── PART 2: Check for pending parts requests ──
+    // Block completion if there are PENDING parts requests linked to this WO.
+    const pendingPartsWhere = wo.woNumber
+      ? {
+          approvalStatus: 'PENDING',
+          OR: [{ workOrderId: id }, { workOrderNo: wo.woNumber }],
+        }
+      : {
+          approvalStatus: 'PENDING',
+          workOrderId: id,
+        }
+    const pendingPartsCount = await db.stockTransaction.count({
+      where: pendingPartsWhere,
+    })
+    if (pendingPartsCount > 0) {
+      return NextResponse.json(
+        {
+          error:
+            'ยังปิดงานไม่ได้ เนื่องจากมีรายการเบิกอะไหล่ที่ยังรออนุมัติ',
+          pendingPartsCount,
+        },
+        { status: 400 },
+      )
+    }
+
     const actorName =
       typeof actor === 'string' && actor.trim() ? actor.trim() : 'system'
     const now = new Date()
