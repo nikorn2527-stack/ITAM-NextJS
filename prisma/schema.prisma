@@ -264,8 +264,14 @@ model WorkOrder {
   reporterEmail    String?
   tel              String?
   employeeCode     String?
-  submissionSource String   @default("guest") // session | guest
+  submissionSource String   @default("guest") // session | guest | line
   trackable        Boolean  @default(false)
+
+  // ── LINE OA integration (Task ID: NOTIFY-LINE) ──
+  // lineUserId  — LINE user ID (ถ้าใบงานนี้แจ้งผ่าน LINE)
+  // lineMessageId — message ID ของข้อความแจ้งซ่อมต้นทาง (สำหรับ reply)
+  lineUserId       String?
+  lineMessageId    String?
 
   // ── ลูกค้าภายนอก ──
   externalMeta     String?  // JSON
@@ -572,4 +578,22 @@ model Report {
   data      String   // JSON snapshot
   format    String   @default("json")
   createdAt DateTime @default(now())
+}
+
+// ============================================================
+// 20) LINE Binding — ผูก LINE user ID กับข้อมูลผู้ติดต่อ
+//     (Task ID: NOTIFY-LINE — LINE OA integration)
+//     ใช้สำหรับ: แจ้งซ่อมผ่าน LINE, ส่งสถานะใบงานกลับไปที่ LINE,
+//     ตอบกลับข้อความจาก staff ในระบบไปยัง LINE ของผู้แจ้ง
+// ============================================================
+model LineBinding {
+  id               String   @id @default(cuid())
+  lineUserId       String   @unique // LINE user ID (Uxxxxxxxx)
+  lineDisplayName  String?  // ชื่อที่แสดงใน LINE
+  reporterName     String?  // ชื่อจริง (จากการลงทะเบียน)
+  tel              String?  // เบอร์โทร
+  employeeCode     String?  // รหัสพนักงาน (ถ้ามี)
+  workOrderCount   Int      @default(0) // นับจำนวนใบงานที่แจ้งผ่าน LINE ของ user นี้
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }

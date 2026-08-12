@@ -31,7 +31,9 @@ if (
     (globalForPrisma.prisma as unknown as { purchaseOrder?: unknown })
       .purchaseOrder &&
     (globalForPrisma.prisma as unknown as { purchaseOrderItem?: unknown })
-      .purchaseOrderItem
+      .purchaseOrderItem &&
+    (globalForPrisma.prisma as unknown as { lineBinding?: unknown })
+      .lineBinding
   )
 ) {
   void globalForPrisma.prisma.$disconnect().catch(() => {})

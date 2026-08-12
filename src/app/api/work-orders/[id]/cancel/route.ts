@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { notifyWorkOrderCancelled } from '@/lib/notifications'
 
 async function logAudit(
   action: string,
@@ -62,6 +63,8 @@ export async function POST(
 
     const actorName =
       typeof actor === 'string' && actor.trim() ? actor.trim() : 'system'
+    // NOTE (PART 3 — Single User System): replace the 'system' fallback
+    // with the authenticated user's email/id once NextAuth is wired in.
     const reasonStr = String(reason).trim()
     const now = new Date()
 
@@ -90,6 +93,23 @@ export async function POST(
       { reason: reasonStr },
       actorName,
     )
+
+    // ── Notification trigger (Task ID: NOTIFY-LINE) ──
+    // Send 'wo_cancelled' to reporter (LINE if lineUserId is known).
+    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
+    try {
+      await notifyWorkOrderCancelled(
+        {
+          id: updated.id,
+          woNumber: updated.woNumber,
+          cancelReason: updated.cancelReason,
+          lineUserId: updated.lineUserId,
+        },
+        { channels: ['line-oa', 'telegram'], actor: actorName },
+      )
+    } catch (e) {
+      console.error('[notifications] wo_cancelled trigger failed:', e)
+    }
 
     return NextResponse.json({ data: updated })
   } catch (err) {

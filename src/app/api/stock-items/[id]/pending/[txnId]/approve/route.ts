@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { notifyPartsApproved } from '@/lib/notifications'
 
 /**
  * POST /api/stock-items/[id]/pending/[txnId]/approve
@@ -24,6 +25,8 @@ export async function POST(
       typeof body.approver === 'string' && body.approver.trim()
         ? body.approver.trim()
         : 'admin'
+    // NOTE (PART 3 — Single User System): replace the 'admin' fallback
+    // with the authenticated user's email/id once NextAuth is wired in.
     const note =
       typeof body.note === 'string' && body.note.trim()
         ? body.note.trim()
@@ -94,6 +97,56 @@ export async function POST(
         note,
       },
     )
+
+    // ── Notification trigger (Task ID: NOTIFY-LINE) ──
+    // Send 'parts_approved' to the WO assignee (if the txn is linked to a WO).
+    // We look up the WO via workOrderId / workOrderNo to find assignedTo + lineUserId.
+    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
+    try {
+      const txn = result.txn
+      let wo: {
+        id: string
+        woNumber: string | null
+        assignedTo: string | null
+        lineUserId: string | null
+      } | null = null
+      if (txn.workOrderId) {
+        wo = await db.workOrder.findUnique({
+          where: { id: txn.workOrderId },
+          select: {
+            id: true,
+            woNumber: true,
+            assignedTo: true,
+            lineUserId: true,
+          },
+        })
+      } else if (txn.workOrderNo) {
+        wo = await db.workOrder.findUnique({
+          where: { woNumber: txn.workOrderNo },
+          select: {
+            id: true,
+            woNumber: true,
+            assignedTo: true,
+            lineUserId: true,
+          },
+        })
+      }
+      await notifyPartsApproved(
+        {
+          productName: result.item.productName,
+          quantity: result.txn.quantity,
+          balanceAfter: result.item.quantity,
+        },
+        {
+          channels: ['line-oa', 'telegram'],
+          actor: approverName,
+          lineUserId: wo?.lineUserId ?? undefined,
+          entityId: wo?.id ?? result.txn.id,
+        },
+      )
+    } catch (e) {
+      console.error('[notifications] parts_approved trigger failed:', e)
+    }
 
     return NextResponse.json({ data: result })
   } catch (err) {
