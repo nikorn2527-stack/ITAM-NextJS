@@ -15,6 +15,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs'
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -45,9 +51,11 @@ import {
   ChevronDown,
   ChevronRight,
   RefreshCw,
+  Database,
 } from 'lucide-react'
 import { downloadCsv } from '@/lib/csv'
 import { cn } from '@/lib/utils'
+import { LegacyImportSection } from './legacy-import-section'
 
 // ============================================================
 // ข้อ 3: นำเข้าข้อมูล — อัปโหลด Excel/CSV แยกตามประเภท
@@ -229,6 +237,25 @@ function jobTypeLabel(t: string): string {
     case 'master-data':
       return 'ข้อมูลมาตรฐาน'
     default:
+      // Legacy import types are stored as "legacy:{sheetId}"
+      if (t.startsWith('legacy:')) {
+        const sheetId = t.slice(7)
+        const labels: Record<string, string> = {
+          'itam-device': 'Legacy: อุปกรณ์',
+          'itam-meter': 'Legacy: มิเตอร์',
+          'itam-transfer': 'Legacy: ย้ายอุปกรณ์',
+          'itam-users': 'Legacy: ผู้ใช้',
+          'itam-settings': 'Legacy: ตั้งค่า',
+          'itam-master': 'Legacy: Master',
+          'itam-sites': 'Legacy: สาขา',
+          'stock-products': 'Legacy: สินค้า',
+          'stock-in': 'Legacy: รับเข้า',
+          'stock-out': 'Legacy: เบิกออก',
+          'stock-po': 'Legacy: ใบสั่งซื้อ',
+          'services-workorders': 'Legacy: ใบงาน',
+        }
+        return labels[sheetId] ?? t
+      }
       return t
   }
 }
@@ -419,6 +446,21 @@ export function ImportPage() {
           </p>
         </div>
 
+        {/* Tab switcher: manual import vs legacy Apps Script import */}
+        <Tabs defaultValue="manual" className="w-full">
+          <TabsList className="bg-slate-100 dark:bg-slate-800">
+            <TabsTrigger value="manual" className="gap-1.5">
+              <Upload className="h-3.5 w-3.5" />
+              นำเข้าใหม่ (Manual)
+            </TabsTrigger>
+            <TabsTrigger value="legacy" className="gap-1.5">
+              <Database className="h-3.5 w-3.5" />
+              นำเข้าจากระบบเก่า (Apps Script)
+            </TabsTrigger>
+          </TabsList>
+
+          {/* ─── Manual import tab ─── */}
+          <TabsContent value="manual" className="space-y-6">
         {/* Import type selector */}
         <div>
           <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -594,8 +636,15 @@ export function ImportPage() {
             </Card>
           </motion.div>
         )}
+          </TabsContent>
 
-        {/* Import history */}
+          {/* ─── Legacy Apps Script import tab ─── */}
+          <TabsContent value="legacy">
+            <LegacyImportSection />
+          </TabsContent>
+        </Tabs>
+
+        {/* Import history (shared between both tabs) */}
         <Card className="border-slate-200 dark:border-slate-800">
           <CardHeader>
             <CardTitle className="flex items-center justify-between text-slate-800 dark:text-slate-100">

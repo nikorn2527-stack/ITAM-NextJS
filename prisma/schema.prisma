@@ -67,49 +67,51 @@ model AssetNumberPattern {
 // ============================================================
 model Device {
   id              String   @id @default(cuid())
-  assetCode       String   @unique // เลขทะเบียน (ตามรูปแบบ AssetNumberPattern)
-  name            String
+  assetCode       String   @unique // เลขทะเบียน (ตามรูปแบบ AssetNumberPattern) — maps from asset_no
+  name            String   // ชื่ออุปกรณ์ (derived from brand+model for display)
   brand           String
   model           String
-  type            String   // ประเภท: PRINTER | SCANNER | COMPUTER | NETWORK | OTHER
-  serialNumber    String?
-  status          String   @default("active") // active | spare | repair | disposed | in_stock
+  type            String   // ประเภท: PRINTER | SCANNER | COMPUTER | NETWORK | OTHER — maps from device_type
+  serialNumber    String?  // maps from serial
+  status          String   @default("Active") // Active | In Repair | Retired | Spare | Inactive
   site            String   // สาขา/ที่ตั้ง
   department      String?
-  departmentCode  String?
+  departmentCode  String?  // maps from department_code
   parentRef       String?
-  displayLabel    String?
+  displayLabel    String?  // maps from asset_site_code
   location        String?
   building        String?
   floor           String?
-  room            String?
+  room            String?  // NEW (ไม่มีในเดิม)
   // ── การซื้อ ──
-  purchaseDate    String?  // ISO date
-  purchasePrice   Float?   // ราคาซื้อ (THB)
-  salvageValue    Float?   @default(0) // มูลค่าซาก
-  usefulLife      Int?     // อายุการใช้งาน (เดือน)
+  purchaseDate    String?  // maps from install_date
+  purchasePrice   Float?   // ราคาซื้อ (THB) — NEW
+  salvageValue    Float?   @default(0) // มูลค่าซาก — NEW
+  usefulLife      Int?     // อายุการใช้งาน (เดือน) — NEW
   warrantyMonths  Int      @default(12)
   warrantyEnd     String?  // ISO date — วันหมดประกัน
   vendor          String?  // ผู้ขาย
+  contractNo      String?  // maps from contract_no — เพิ่มจากเดิม
+  uninstallDate   String?  // maps from uninstall_date — เพิ่มจากเดิม
   // ── มิเตอร์ (สำหรับเครื่องพิมพ์) ──
-  meterRequired   Boolean  @default(false)
-  meterMode       String?  // TOTAL | BW_COLOR
+  meterRequired   Boolean  @default(false) // maps from meter_required (TRUE/FALSE)
+  meterMode       String?  // TOTAL | BW_COLOR — maps from meter_mode
   lastMeterBw     Int      @default(0)
   lastMeterColor  Int      @default(0)
   // ── เครือข่าย ──
   ip              String?
   mac             String?
-  remoteId        String?  // TeamViewer/AnyDesk ID
+  remoteId        String?  // maps from remote_id — TeamViewer/AnyDesk ID
   // ── มอบหมาย ──
-  currentAssignee String?  // ผู้ใช้ปัจจุบัน (denormalized)
+  currentAssignee String?  // ผู้ใช้ปัจจุบัน (denormalized) — NEW
   // ── หมายเหตุ ──
   remark          String?
-  costCenter      String?
-  deviceGroup     String?
+  costCenter      String?  // maps from cost_center
+  deviceGroup     String?  // maps from device_group
   // ── Audit ──
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-  updatedBy       String?  @default("System")
+  updatedBy       String?  @default("System") // maps from updated_by
 
   // Relations
   meterReadings     MeterReading[]
@@ -124,25 +126,30 @@ model Device {
 // 3) Meter Reading — การจดมิเตอร์
 // ============================================================
 model MeterReading {
-  id              String   @id @default(cuid())
-  deviceId        String
-  readingDate     String   // ISO date
-  readingMonth    String?  // YYYY-MM (cycle month)
-  meterBw         Int      @default(0)
-  meterColor      Int      @default(0)
-  pagesBw         Int      @default(0) // delta BW
-  pagesColor      Int      @default(0) // delta Color
-  prevMeterBw     Int      @default(0)
-  prevMeterColor  Int      @default(0)
-  readingType     String?  // MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN
-  readBy          String?
-  remark          String?
-  // ── สถานที่ตอนจด (snapshot) ──
-  siteAtReading   String?
-  buildingAtReading String?
-  floorAtReading  String?
-  departmentAtReading String?
-  createdAt       DateTime @default(now())
+  id                       String   @id @default(cuid())
+  readingId                String?  @unique // maps from reading_id (MR-YYYYMMDDHHMMSS-NNNNN หรือ HIST-NN-YYYY-MM)
+  deviceId                 String
+  assetCode                String?  // maps from asset_no — เก็บไว้สำหรับ CSV import (lookup deviceId ภายหลัง)
+  readingDate              String   // ISO date — maps from reading_date
+  readingMonth             String?  // YYYY-MM — maps from reading_month
+  meterBw                  Int      @default(0) // maps from meter_bw
+  meterColor               Int      @default(0) // maps from meter_color
+  pagesBw                  Int      @default(0) // delta BW — maps from pages_bw
+  pagesColor               Int      @default(0) // delta Color — maps from pages_color
+  prevMeterBw              Int      @default(0) // maps from prev_meter_bw
+  prevMeterColor           Int      @default(0) // maps from prev_meter_color
+  readingType              String?  // MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN — maps from reading_type
+  readBy                   String?  // maps from read_by
+  remark                   String?  // maps from remark
+  locationAtReading        String?  // maps from location_at_reading
+  siteAtReading            String?  // maps from site_at_reading
+  buildingAtReading        String?  // maps from building_at_reading
+  floorAtReading           String?  // maps from floor_at_reading
+  departmentAtReading      String?  // maps from department_at_reading
+  departmentCodeAtReading  String?  // maps from department_code_at_reading
+  eventType                String?  // maps from event_type
+  eventId                  String?  // maps from event_id (FK → Location_History.Log_ID)
+  createdAt                DateTime @default(now())
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 }
@@ -164,18 +171,32 @@ model Cycle {
 // 5) Device Transfer — ประวัติการย้าย
 // ============================================================
 model DeviceTransfer {
-  id           String   @id @default(cuid())
-  deviceId     String
-  fromSite     String?
-  toSite       String
-  fromDept     String?
-  toDept       String?
-  fromDeptCode String?
-  toDeptCode   String?
-  reason       String?
-  transferDate String   // ISO date
-  movedBy      String?
-  createdAt    DateTime @default(now())
+  id                 String   @id @default(cuid())
+  logId              String?  @unique // maps from Log_ID (MV-YYYYMMDDHHMMSS-NNNNN)
+  deviceId           String
+  assetCode          String?  // maps from Asset_No — เก็บไว้สำหรับ CSV import
+  moveDate           String?  // maps from Move_Date — ISO datetime
+  action             String?  // maps from Action — TRANSFER | TRANSFER_SITE | STATUS_CHANGE | STATUS_AND_TRANSFER | TRANSFER_BY_LIFECYCLE
+  fromStatus         String?  // maps from From_Status
+  toStatus           String?  // maps from To_Status
+  fromSite           String?  // maps from From_Site
+  fromAssetSiteCode  String?  // maps from From_AssetSiteCode
+  fromBuilding       String?  // maps from From_Building
+  fromFloor          String?  // maps from From_Floor
+  fromDepartment     String?  // maps from From_Department
+  fromLocation       String?  // maps from From_Location
+  toSite             String   // maps from To_Site
+  toAssetSiteCode    String?  // maps from To_AssetSiteCode
+  toBuilding         String?  // maps from To_Building
+  toFloor            String?  // maps from To_Floor
+  toDepartment       String?  // maps from To_Department
+  toLocation         String?  // maps from To_Location
+  meterReadingId     String?  // maps from Meter_Reading_ID (FK → Meter_Readings.reading_id)
+  movedBy            String?  // maps from Moved_By
+  remark             String?  // maps from Remark
+  transferDate       String   // ISO date (computed from moveDate for backward compat)
+  reason             String?  // alias for remark (backward compat)
+  createdAt          DateTime @default(now())
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 }
@@ -185,16 +206,17 @@ model DeviceTransfer {
 // ============================================================
 model Assignment {
   id                 String   @id @default(cuid())
+  assignmentId       String?  @unique // maps from Assignment_ID
   deviceId           String
-  assignee           String   // ชื่อหรือ email
-  assigneeRole       String?
-  department         String?
-  checkoutDate       String   // ISO date
-  expectedReturnDate String?
-  actualReturnDate   String?
-  status             String   @default("active") // active | returned
-  notes              String?
-  createdAt          DateTime @default(now())
+  assignee           String   // maps from Assignee — ชื่อหรือ email
+  assigneeRole       String?  // maps from Assignee_Role
+  department         String?  // maps from Department
+  checkoutDate       String   // maps from Checkout_Date — ISO date
+  expectedReturnDate String?  // maps from Expected_Return_Date
+  actualReturnDate   String?  // maps from Actual_Return_Date
+  status             String   @default("active") // maps from Status — active | returned
+  notes              String?  // maps from Notes
+  createdAt          DateTime @default(now()) // maps from Created_At
   updatedAt          DateTime @updatedAt
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
@@ -205,16 +227,17 @@ model Assignment {
 // ============================================================
 model MaintenanceLog {
   id           String   @id @default(cuid())
+  logId        String?  @unique // maps from Log_ID (MNT-xxxxxxxx)
   deviceId     String
-  type         String   // repair | maintenance | inspection | upgrade
-  status       String   @default("open") // open | in_progress | completed | cancelled
-  startDate    String   // ISO date
-  endDate      String?
-  cost         Float?
-  vendor       String?
-  description  String
-  resolvedNote String?
-  createdAt    DateTime @default(now())
+  type         String   // maps from Type — repair | maintenance | inspection | upgrade
+  status       String   @default("open") // maps from Status — open | in_progress | completed | cancelled
+  startDate    String   // maps from Start_Date — ISO date
+  endDate      String?  // maps from End_Date
+  cost         Float?   // maps from Cost
+  vendor       String?  // maps from Vendor
+  description  String   // maps from Description
+  resolvedNote String?  // maps from Resolved_Note
+  createdAt    DateTime @default(now()) // maps from Created_At
   updatedAt    DateTime @updatedAt
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)

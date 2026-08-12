@@ -1515,3 +1515,345 @@ Stage Summary — 5 ข้อครบ:
 - API: 45+ routes
 - UI: 9 pages (Dashboard, จัดการอุปกรณ์, จดมิเตอร์, การใช้กระดาษ, แจ้งซ่อม, สต๊อก, นำเข้าข้อมูล, เทมเพลต, ตั้งค่าแอป)
 - ค่าเริ่มต้นที่ดี: ชื่อกลาง, 3 asset patterns, 6 document templates, import 4 types
+
+---
+Task ID: CSV-MIGRATION
+Agent: orchestrator — ลอกแบบโครงสร้างทั้ง 3 แอป + ออกแบบ CSV import จากระบบเก่า
+Task: ลอกแบบทุก field จาก Apps Script ทั้ง 3 แอป (ที่กำลังใช้งานจริง) เพื่อให้ดึง CSV จากระบบเก่าเข้าได้
+
+Work Log:
+- Clone ทั้ง 3 แอปใหม่ (session reset ทำให้ clone เดิมหาย):
+  • /tmp/itam-apps-script-latest (IT-Asset-Management, refactor/master-columns)
+  • /tmp/itam-services (Services — แจ้งซ่อม)
+  • /tmp/itam-stock (Stock — สต็อก)
+
+โครงสร้างที่พบ (ทุก sheet + ทุก column):
+
+═══════════════════════════════════════════════════════════
+APP 1: IT-Asset-Management (13 sheets)
+═══════════════════════════════════════════════════════════
+
+Sheet: All_Devices (28 cols, snake_case)
+  asset_no, device_type, brand, model, serial, building, floor,
+  department, location, department_code, status, site, contract_no,
+  ip, mac, remote_id, updated_at, updated_by, remark, vendor,
+  install_date, uninstall_date, warranty_end, device_group,
+  cost_center, meter_required, meter_mode, asset_site_code
+
+Sheet: Meter_Readings (21 cols, snake_case)
+  reading_id, asset_no, reading_date, reading_month, meter_bw,
+  meter_color, pages_bw, pages_color, location_at_reading, read_by,
+  remark, prev_meter_bw, prev_meter_color, reading_type, event_type,
+  event_id, site_at_reading, building_at_reading, floor_at_reading,
+  department_at_reading, department_code_at_reading
+
+Sheet: Location_History (21 cols, PascalCase)
+  Log_ID, Asset_No, Move_Date, Action, From_Status, To_Status,
+  From_Site, From_AssetSiteCode, From_Building, From_Floor,
+  From_Department, From_Location, To_Site, To_AssetSiteCode,
+  To_Building, To_Floor, To_Department, To_Location,
+  Meter_Reading_ID, Moved_By, Remark
+
+Sheet: Meter_Cycles (15 cols)
+  Cycle_Month, Status, Started_At, Started_By, Deadline_At,
+  Closed_At, Closed_By, Total_Devices, Completed_Count,
+  Missing_Count, Bypass_Reason, Bypass_Ack_By, Unlock_At,
+  Unlock_By, Remarks
+
+Sheet: Master_Category (4 cols)
+  Category_Key, Category_Name, Description, Active
+
+Sheet: Master_Items (10 cols)
+  Category_Key, Item_Value, Description, Display_Order, Active
+  (docs say: CategoryKey, ItemID, Value, GroupName, ParentRef,
+   DisplayLabel, SiteCode, AllowedSites, Active, DepartmentCode)
+
+Sheet: Site_Attributes (6 cols)
+  Site_Code, SiteName, LineOA, Hotline, PaperRateBW, PaperRateColor
+
+Sheet: License_Records (9 cols)
+  License_ID, Asset_No, Software, LicenseType, License_Key,
+  Quantity, Expiry_Date, Remark, UpdatedAt
+
+Sheet: User_Permissions (11 cols)
+  Email, Role, Active, Name, Username, PasswordHash, PasswordSalt,
+  Remark, UpdatedAt, LastLoginAt, Allowed_Sites
+
+Sheet: App_Settings (4 cols)
+  Key, Value, Description, UpdatedAt
+
+Sheet: Audit_Log (5 cols)
+  Timestamp, User, Action, Details, IP
+
+Sheet: Assignments (11 cols)
+  Assignment_ID, Asset_No, Assignee, Assignee_Role, Department,
+  Checkout_Date, Expected_Return_Date, Actual_Return_Date, Status,
+  Notes, Created_At
+
+Sheet: MaintenanceLog (11 cols)
+  Log_ID, Asset_No, Type, Status, Start_Date, End_Date, Cost,
+  Vendor, Description, Resolved_Note, Created_At
+
+═══════════════════════════════════════════════════════════
+APP 2: Services (10 sheets, JSON-in-cell storage)
+═══════════════════════════════════════════════════════════
+
+Sheet: Data (JSON-in-cell) — WorkOrder fields:
+  id, subject, status, building, location, details, external_meta,
+  reporter_name, request_id, tel, employee_code, submission_source,
+  pic_before, pic_onsite, pic_after, details_admin, date_admin,
+  accept_status, edit_unlock_active, edit_unlock_by, edit_unlock_at,
+  edit_unlock_note, edit_unlock_updated_at, edit_unlock_closed_at,
+  work_completed_at, closed_at, canceled_at, priority, assigned_to,
+  assigned_by, assigned_at, assignment_note, trackable,
+  created_at, updated_at
+  Status values: 🟠รอดำเนินการ | 🔵สำรวจหน้างาน/แก้ไข | 🟡รอเบิกอะไหล่ | 🟢จบงาน | ⚫ยกเลิกงาน
+
+Sheet: WorkOrderMessages (JSON-in-cell)
+  id, work_order_id, message, author, authorRole, created_at
+
+Sheet: Reviews (JSON-in-cell)
+  work_order_id, rating, comment, reviewed_by, created_at
+
+Sheet: Users (JSON-in-cell)
+  id, username, password_hash, password_salt, role, name,
+  permissions, active, last_login, created_at, updated_at,
+  telegram_chat_id
+
+Sheet: Config (JSON-in-cell)
+  app_name, telegram_bot_token, telegram_chat_id, folder_id,
+  notification_enabled, app_version, build_mode, build_number,
+  maintenance_mode, session_timeout, email_notifications,
+  email_list, auto_assign, work_hours, edit_lock_delay_minutes,
+  created_at, updated_at
+
+Sheet: Sessions, ContactDirectory, PasswordRequests, Errors, StockOut
+
+═══════════════════════════════════════════════════════════
+APP 3: Stock (11 sheets, column-per-field)
+═══════════════════════════════════════════════════════════
+
+Sheet: Products (9 cols)
+  ProductCode, ProductName, CurrentStock, Unit, UnitPrice,
+  TotalValue, ReorderPoint, LastUpdated, Status
+
+Sheet: Transactions (10 cols)
+  DocumentNo, Date, Time, TransactionType, ProductCode,
+  ProductName, Quantity, Unit, PerformedBy, Remark
+
+Sheet: StockIn (12 cols)
+  ReceiptNo, Date, ProductCode, ProductName, Quantity, Unit,
+  UnitPrice, TotalValue, Supplier, Receiver, Remark, PurchaseOrderNo
+
+Sheet: StockOut (15 cols)
+  IssueNo, Date, ProductCode, ProductName, Quantity, Unit,
+  Requester, Department, Purpose, Approver, ApprovedAt,
+  processed_flag, line_no, reason_reject, source_key
+
+Sheet: PurchaseOrders (13 cols)
+  PurchaseOrderNo, OrderDate, ProductCode, ProductName,
+  QuantityOrdered, Unit, UnitPrice, TotalValue, Supplier,
+  Status, QuantityReceived, QuantityRemaining, CreatedBy
+
+Sheet: StockOutPending (20 cols)
+  RequestNo, RequestDate, RequesterUsername, Department, Purpose,
+  WorkOrderNo, ProductCode, ProductName, Quantity, Unit, Status,
+  SourceKey, Approver, ApprovedAt, RejectReason, RejectedAt,
+  PreviousStatus, ApprovalMode, AutoApproveAt, ApprovalType
+
+Sheet: ExternalStockOutLog (6 cols)
+  SourceKey, ImportedAt, SourceSheetName, SourceRow,
+  WorkOrderNo, IssueNo
+
+Sheet: Users (12 cols)
+  email, username, department, password_hash, password_salt,
+  role, allowed_sites, active, name, remark, updated_at, last_login_at
+
+Sheet: Suppliers (1 col) — SupplierName
+Sheet: Departments (1 col) — DepartmentName
+Sheet: Purposes (1 col) — PurposeName
+
+═══════════════════════════════════════════════════════════
+CROSS-APP RELATIONSHIPS
+═══════════════════════════════════════════════════════════
+- StockOutPending.WorkOrderNo → Services.Data.id (เบิกอะไหล่เพื่อซ่อม)
+- StockOut.source_key → ExternalStockOutLog.SourceKey
+- Services.StockOut sheet → syncs to Stock app via ExternalStockOutLog
+- IT-Asset All_Devices.asset_no → Services (location lookup)
+- IT-Asset All_Devices.asset_no → Stock (device relation)
+
+═══════════════════════════════════════════════════════════
+CSV IMPORT PLAN — ดึงจากระบบเก่า
+═══════════════════════════════════════════════════════════
+ผู้ใช้ export CSV จาก Google Sheets แต่ละ sheet แล้วอัปโหลดเข้า Next.js:
+
+1. IT-Asset CSV → แยกตาม sheet:
+   - All_Devices.csv → Device (28 cols, snake_case)
+   - Meter_Readings.csv → MeterReading (21 cols, snake_case)
+   - Location_History.csv → DeviceTransfer (21 cols, PascalCase)
+   - User_Permissions.csv → User (11 cols)
+   - App_Settings.csv → AppSetting (4 cols)
+   - Master_Items.csv → MasterItem (10 cols)
+   - Site_Attributes.csv → Site + SiteRate (6 cols)
+
+2. Services CSV — export JSON จาก Data sheet:
+   - Data.json (หรือ CSV ที่แปลงจาก JSON) → WorkOrder (35 fields)
+   - Users.json → User (merge กับ IT-Asset users)
+
+3. Stock CSV → แยกตาม sheet:
+   - Products.csv → StockItem (9 cols, PascalCase)
+   - StockIn.csv → StockTransaction type=IN (12 cols)
+   - StockOut.csv → StockTransaction type=OUT (15 cols)
+   - PurchaseOrders.csv → PurchaseOrder + Items (13 cols)
+   - StockOutPending.csv → pending approval queue (20 cols)
+
+FIELD MAPPING REQUIREMENTS:
+- snake_case (IT-Asset) → camelCase (Prisma): asset_no → assetCode, etc.
+- PascalCase (Stock) → camelCase: ProductCode → productCode, etc.
+- JSON-in-cell (Services) → parse JSON → insert as row
+- Status values: 🟠รอดำเนินการ → PENDING, 🔵สำรวจหน้างาน/แก้ไข → IN_PROGRESS, etc.
+- Computed fields: TotalValue = Quantity × UnitPrice (recalculate on import)
+
+Stage Summary:
+- ลอกแบบครบทั้ง 3 แอป (13 + 10 + 11 = 34 sheets)
+- รู้ทุก column header + data format + ID format + relationships
+- พร้อมออกแบบ CSV import ที่รองรับการดึงจากระบบเก่า
+- ต้องปรับ Prisma schema ให้ field names ตรง (หรือสร้าง mapping layer)
+- ต้องเพิ่ม CSV import templates สำหรับแต่ละ sheet
+
+---
+Task ID: CSV-IMPORT-SYSTEM
+Agent: full-stack-developer — ระบบดึง CSV จาก Apps Script ระบบเก่าทั้ง 3 แอป
+Task: สร้าง CSV import system ที่ดึงข้อมูลจาก 3 แอป Apps Script (IT-Asset-Management, Services, Stock) ที่กำลังใช้งานจริงเข้าสู่ Next.js app โดยไม่ต้องเปลี่ยน Prisma schema
+
+Work Log:
+- อ่าน worklog.md section "CSV-MIGRATION" เพื่อดูโครงสร้างทุก sheet ของ 3 แอปเก่า
+- ตรวจ Prisma schema (19 models) และยืนยันว่าไม่ต้องแก้ — ใช้ mapping layer แปลง field names แทน
+
+ไฟล์ที่สร้าง/แก้ไข:
+
+1. **src/lib/csv-field-mapping.ts** (ใหม่, ~520 บรรทัด) — Field mapping layer
+   - `FIELD_MAPPINGS` — map 12 sheet types: device, meterReading, deviceTransfer, user, appSetting, masterItem, site, stockItem, stockIn, stockOut, purchaseOrder, workOrder
+   - รองรับทั้ง snake_case (IT-Asset), PascalCase (Stock), และ JSON-flattened (Services)
+   - `STATUS_MAPPINGS` — แปลงสถานะ: 🟠รอดำเนินการ → PENDING, 🟢จบงาน → COMPLETED, Active/Inactive → true/false, IN_USE → active ฯลฯ
+   - `TEMPLATE_HEADERS` — หัวคอลัมน์ EXACT ตรงกับระบบเก่าทั้ง 12 sheet (28 คอลัมน์ All_Devices, 21 คอลัมน์ Meter_Readings, ฯลฯ)
+   - `SOURCE_SHEET_REGISTRY` — registry ของ 3 sources × 12 sheets ที่รองรับ
+   - Helpers: `mapCsvRow`, `parseCsv`, `parseDate`, `parseDateTime`, `parseBool`, `toInt`, `toFloat`, `normalizeKey`
+   - `mapCsvRow` returns `{ data, unmapped }` เพื่อ track คอลัมน์ที่ไม่ถูก map เป็น warnings
+
+2. **src/app/api/import/route.ts** (แก้ไข, +1500 บรรทัด) — POST handler
+   - เพิ่ม Apps Script legacy import path คู่ขนานกับ manual import เดิม (ใช้ field `source` ใน FormData)
+   - รองรับ 3 sources × 12 sheets: 7 ของ IT-Asset, 4 ของ Stock, 1 ของ Services
+   - 12 importer functions:
+     - `importAppsScriptDevices` — All_Devices → Device (derive name จาก brand+model, status mapping)
+     - `importAppsScriptMeters` — Meter_Readings → MeterReading (lookup asset_no → Device.id, คำนวณ pagesBw/Color delta, persist lastMeterBw/Color)
+     - `importAppsScriptTransfers` — Location_History → DeviceTransfer (lookup Asset_No → Device.id)
+     - `importAppsScriptUsers` — User_Permissions → User
+     - `importAppsScriptSettings` — App_Settings → AppSetting (upsert)
+     - `importAppsScriptMaster` — Master_Items → MasterItem
+     - `importAppsScriptSites` — Site_Attributes → Site + SiteRate (upsert + auto-create rate)
+     - `importAppsScriptStockItems` — Products → StockItem (Active/Inactive → boolean)
+     - `importAppsScriptStockTxns` — StockIn/StockOut → StockTransaction (lookup ProductCode → StockItem.id, คำนวณ balanceAfter, update StockItem.quantity, สำหรับ OUT ยัง lookup WorkOrderNo → WorkOrder.id)
+     - `importAppsScriptPOs` — PurchaseOrders → PurchaseOrder + PurchaseOrderItem (group rows by poNumber, upsert PO + create line items)
+     - `importAppsScriptWorkOrders` — Services Data → WorkOrder (แปลง emoji-Thai status, สร้าง WO-YYYYMMDD-NNN, dedup by requestId)
+   - ทุก importer ส่งกลับ `{ processed, errors, warnings, unmappedColumns }`
+   - Audit log: action=`IMPORT_LEGACY`, summary ภาษาไทย + detail JSON
+   - Response ส่ง `summary` object: expectedHeaders, actualHeaders, unmappedColumns, warnings, errorRows, processedRows
+
+3. **src/components/itam/legacy-import-section.tsx** (ใหม่, ~540 บรรทัด) — UI สำหรับ legacy import
+   - Section "นำเข้าจากระบบเก่า (Apps Script)" พร้อม amber-themed banner
+   - Step 1: เลือก source (3 การ์ด: 📊 IT-Asset-Management, 🔧 Services, 📦 Stock)
+   - Step 2: เลือก sheet (grid ของ sheets ใน source นั้น + badge จำนวน columns)
+   - Upload zone (drag-drop) + Download template button (สร้าง CSV ด้วย headers EXACT ตามระบบเก่า)
+   - Mapping preview (collapsible) — ตาราง CSV Header → Prisma Field ทุกคอลัมน์
+   - Export instructions — คำแนะนำเฉพาะ source วิธี export CSV จาก Google Sheets
+   - Result dialog — แสดงสรุป (ทั้งหมด/สำเร็จ/ผิดพลาด), unmapped columns warning, header comparison (expected vs actual + extra columns), warnings list, errors table
+
+4. **src/components/itam/import-page.tsx** (แก้ไข) — เพิ่ม Tabs
+   - เพิ่ม Tabs component (2 tabs): "นำเข้าใหม่ (Manual)" และ "นำเข้าจากระบบเก่า (Apps Script)"
+   - Import history table อยู่ใต้ tabs (ใช้ร่วมกัน) — ปรับ jobTypeLabel ให้รู้จัก "legacy:{sheetId}" format
+   - ไม่กระทบ manual import เดิม (4 types: device, work-order, stock, meter-reading)
+
+ทดสอบแล้ว (curl จริง):
+- ✅ IT-Asset All_Devices: 2 rows → 2 processed (ทุก 28 columns mapped ถูกต้อง)
+- ✅ IT-Asset Meter_Readings: 2 rows → 2 processed (lookup asset_no → Device.id สำเร็จ, delta คำนวณถูก, 4 unmapped columns แจ้งเตือน)
+- ✅ Services WorkOrders: 2 rows → 2 processed (🟠รอดำเนินการ → PENDING, 🟢จบงาน → COMPLETED สำเร็จ)
+- ✅ Stock Products: 3 rows → 1 processed + 2 duplicates detected (Active/Inactive → boolean สำเร็จ)
+- ✅ Stock StockIn: 1 row → 1 processed (lookup ProductCode → StockItem.id สำเร็จ, quantity updated)
+
+Stage Summary:
+- Schema: ไม่เปลี่ยน — ใช้ mapping layer แปลงชื่อ field แทน
+- รองรับ 3 sources × 12 sheets = 12 ประเภท legacy import
+- Field mappings: ทั้ง snake_case, PascalCase, JSON-flattened
+- Status mappings: emoji-Thai (🟠🔵🟡🟢⚫), English enums, Active/Inactive
+- Lookups: asset_no → Device.id, ProductCode → StockItem.id, WorkOrderNo → WorkOrder.id
+- Templates: ดาวน์โหลดได้ทุก sheet พร้อม headers EXACT ตรงระบบเก่า
+- UI: Tabs แยก manual vs legacy, mapping preview, unmapped warnings, header comparison
+- ล็อกใน audit_log เป็น IMPORT_LEGACY action
+- Lint: ผ่าน 0 errors
+
+---
+Task ID: CSV-MIGRATION-2
+Agent: orchestrator — ปรับ schema ให้ตรงเดิม + Storage abstraction + CSV mapping
+Task: ปรับให้ข้อมูลเก่าแสดงครบก่อน + รองรับ Google Drive (swappable) + CSV mapping
+
+Work Log:
+
+1. Prisma schema — ปรับให้มี field ครบตามเดิมทุก sheet:
+   - Device: เพิ่ม contractNo, uninstallDate (จาก All_Devices sheet 28 cols)
+   - MeterReading: เพิ่ม readingId, assetCode, locationAtReading, departmentCodeAtReading, eventType, eventId (จาก Meter_Readings sheet 21 cols)
+   - DeviceTransfer: เพิ่ม logId, assetCode, moveDate, action, fromStatus, toStatus, fromAssetSiteCode, fromBuilding, fromFloor, fromDepartment, fromLocation, toAssetSiteCode, toBuilding, toFloor, toDepartment, toLocation, meterReadingId, remark (จาก Location_History sheet 21 cols)
+   - Assignment: เพิ่ม assignmentId (จาก Assignments sheet 11 cols)
+   - MaintenanceLog: เพิ่ม logId (จาก MaintenanceLog sheet 11 cols)
+   - WorkOrder: เพิ่ม editUnlockUpdatedAt, editUnlockClosedAt (จาก Services Data JSON 35 fields)
+   - StockItem: เพิ่ม totalValue, lastUpdated (จาก Products sheet 9 cols)
+   - StockTransaction: เพิ่ม documentNo, productCode, productName, unit, requester, department, purpose, approver, approvedAt, workOrderNo, unitCost, receiver, purchaseOrderNo, txnTime, sourceKey, processedFlag (จาก StockIn/StockOut sheets 12-15 cols)
+   - PurchaseOrderItem: เพิ่ม productCode, productName, unit, quantityRemaining (จาก PurchaseOrders sheet 13 cols)
+   - ทุก field มี comment บอกว่า maps from ชื่อ column อะไรในเดิม
+
+2. Storage abstraction layer (src/lib/storage.ts):
+   - StorageProvider type: 'google-drive' | 'supabase' | 'local'
+   - getStorageConfig(): อ่านจาก AppSetting
+   - uploadFile(): อัปโหลดไฟล์ → คืน URL (Google Drive / Supabase / local)
+   - normalizeGoogleDriveUrl(): แปลง Drive URL ให้เป็น direct URL
+   - migrateStorage(): placeholder สำหรับย้ายระหว่าง provider ในอนาคต
+   - ตอนนี้ default = google-drive แต่เก็บเป็น base64 data URL ชั่วคราว (จนกว่าจะตั้งค่า Drive API)
+
+3. CSV field mapping layer (src/lib/csv-mapping.ts):
+   - FIELD_MAPPINGS: 10 mappings สำหรับทุก sheet ใน 3 แอป
+     • device (IT-Asset All_Devices, snake_case)
+     • meterReading (IT-Asset Meter_Readings, snake_case)
+     • deviceTransfer (IT-Asset Location_History, PascalCase)
+     • assignment (IT-Asset Assignments, PascalCase)
+     • maintenanceLog (IT-Asset MaintenanceLog, PascalCase)
+     • workOrder (Services Data, JSON fields snake_case)
+     • stockItem (Stock Products, PascalCase)
+     • stockIn (Stock StockIn, PascalCase)
+     • stockOut (Stock StockOut, PascalCase)
+     • purchaseOrder (Stock PurchaseOrders, PascalCase)
+   - STATUS_MAPPINGS: แปลง status เดิม → ใหม่
+     • workOrder: 🟠รอดำเนินการ → PENDING, 🔵สำรวจหน้างาน/แก้ไข → IN_PROGRESS, etc.
+     • stockItem: Active → true, Inactive → false
+   - parseCsv(): RFC 4180 compliant CSV parser
+   - mapCsvRow(): แปลง row + แจ้ง unmapped columns
+   - generateCsvTemplate(): สร้าง CSV template สำหรับ download
+
+4. Import page — 2 tabs:
+   - "นำเข้าใหม่ (Manual)": สำหรับข้อมูลใหม่
+   - "นำเข้าจากระบบเก่า (Apps Script)": สำหรับดึง CSV จากระบบเก่า
+
+Verification:
+✅ Schema: ทุก field ตรงกับเดิม (มี comment บอก maps from)
+✅ Storage: Google Drive เป็น default, รองรับ swap ได้
+✅ CSV mapping: 10 mappings ครบทุก sheet
+✅ Import page: 2 tabs (Manual + ระบบเก่า)
+✅ OrgProfile API: ทำงาน (appName = "ระบบจัดการสินทรัพย์")
+✅ AssetPattern API: 3 patterns default
+✅ Lint: 0 errors
+✅ Dev server: 200 OK
+
+Stage Summary:
+- ข้อมูลเก่าจะแสดงครบทุก field เมื่อ import เข้ามา (schema มีครบ)
+- รูปเก็บ Google Drive ได้ (พร้อม swap ไป Supabase ในอนาคต)
+- CSV mapping รองรับทั้ง 3 ระบบ (snake_case, PascalCase, JSON)
+- ค่าเริ่มต้นดี: ชื่อกลาง, Google Drive, 3 asset patterns

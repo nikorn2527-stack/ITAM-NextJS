@@ -1,12 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import {
+  FIELD_MAPPINGS,
+  STATUS_MAPPINGS,
+  SOURCE_SHEET_REGISTRY,
+  TEMPLATE_HEADERS,
+  mapCsvRow,
+  parseCsv as parseCsvLib,
+  parseBool,
+  parseDate,
+  parseDateTime,
+  toInt as toIntLib,
+  toFloat as toFloatLib,
+  type AppsScriptSource,
+} from '@/lib/csv-field-mapping'
 
 // ============================================================
 // Excel / CSV Import — ข้อ 3: ดาต้าเบสขึ้นได้ง่าย แค่เอาไฟล์ Excel ขึ้น
-// POST  /api/import          → upload + parse + insert
-// GET   /api/import          → list recent ImportJob rows (history)
-// GET   /api/import/[id]     → fetch a single ImportJob (errors detail)
+// POST  /api/import?source=apps-script-*  → ดึง CSV จากระบบเก่า
+// POST  /api/import                       → อัปโหลด CSV แบบเดิม (jobType)
+// GET   /api/import                       → list recent ImportJob rows (history)
+// GET   /api/import/[id]                  → fetch a single ImportJob (errors detail)
 // ============================================================
 
 type JobType =
@@ -640,12 +655,1386 @@ function jobTypeLabel(t: JobType): string {
 }
 
 // ============================================================
-// POST /api/import  — multipart/form-data: { file, jobType }
+// APPS-SCRIPT IMPORTERS — ดึง CSV จากระบบเก่าทั้ง 3 แอป
+// ============================================================
+
+interface AppsScriptResult {
+  processed: number
+  errors: ImportError[]
+  warnings: string[]
+  unmappedColumns: string[]
+}
+
+const emptyResult = (): AppsScriptResult => ({
+  processed: 0,
+  errors: [],
+  warnings: [],
+  unmappedColumns: [],
+})
+
+// ── IT-Asset: All_Devices → Device ─────────────────────────
+async function importAppsScriptDevices(
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = FIELD_MAPPINGS.device
+  const seen = new Set<string>()
+  const toInsert: Array<Record<string, unknown>> = []
+
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+
+    const assetCode = (data.assetCode ?? '').trim()
+    const brand = (data.brand ?? '').trim()
+    const model = (data.model ?? '').trim()
+    const type = (data.type ?? '').trim()
+
+    if (!assetCode) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี asset_no' })
+      continue
+    }
+    if (!brand || !model) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่มี brand/model (asset_no=${assetCode})`,
+      })
+      continue
+    }
+    if (!type) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่มี device_type (asset_no=${assetCode})`,
+      })
+      continue
+    }
+    if (seen.has(assetCode)) {
+      result.errors.push({ row: rowNum, message: `รหัสซ้ำในไฟล์: ${assetCode}` })
+      continue
+    }
+    seen.add(assetCode)
+
+    // Status mapping
+    let status = (data.status ?? 'active').trim()
+    const lower = status.toLowerCase()
+    if (STATUS_MAPPINGS.device[status]) {
+      status = STATUS_MAPPINGS.device[status]
+    } else if (STATUS_MAPPINGS.device[lower]) {
+      status = STATUS_MAPPINGS.device[lower]
+    } else if (
+      !['active', 'spare', 'repair', 'disposed', 'in_stock'].includes(status)
+    ) {
+      status = 'active'
+    }
+
+    toInsert.push({
+      assetCode,
+      name: `${brand} ${model}`, // legacy ไม่มี name column → derive
+      brand,
+      model,
+      type,
+      serialNumber: data.serialNumber || null,
+      status,
+      site: data.site || 'HQ',
+      department: data.department || null,
+      departmentCode: data.departmentCode || null,
+      location: data.location || null,
+      building: data.building || null,
+      floor: data.floor || null,
+      ip: data.ip || null,
+      mac: data.mac || null,
+      remoteId: data.remoteId || null,
+      purchaseDate: parseDate(data.purchaseDate),
+      warrantyEnd:
+        parseDate(data.warrantyEnd) ||
+        parseDate((data as Record<string, string>).uninstall_date ?? ''),
+      vendor: data.vendor || null,
+      remark: data.remark || null,
+      costCenter: data.costCenter || null,
+      deviceGroup: data.deviceGroup || null,
+      displayLabel: data.displayLabel || null,
+      meterRequired: parseBool(data.meterRequired),
+      meterMode: data.meterMode || null,
+      updatedBy: data.updatedBy || 'apps-script-migration',
+    })
+  }
+
+  if (toInsert.length === 0) return result
+
+  // Skip existing assetCodes (no update-on-conflict for migration safety)
+  const existing = await db.device.findMany({
+    where: { assetCode: { in: toInsert.map((r) => r.assetCode as string) } },
+    select: { assetCode: true },
+  })
+  const existingSet = new Set(existing.map((d) => d.assetCode))
+  const filtered = toInsert.filter((r) => {
+    if (existingSet.has(r.assetCode as string)) {
+      result.errors.push({
+        row: 0,
+        message: `มีอยู่แล้วในระบบ: ${r.assetCode}`,
+      })
+      return false
+    }
+    return true
+  })
+
+  if (filtered.length === 0) return result
+
+  try {
+    const r = await db.device.createMany({
+      data: filtered.map((r) => ({
+        assetCode: r.assetCode as string,
+        name: r.name as string,
+        brand: r.brand as string,
+        model: r.model as string,
+        type: r.type as string,
+        serialNumber: r.serialNumber as string | null,
+        status: r.status as string,
+        site: r.site as string,
+        department: r.department as string | null,
+        departmentCode: r.departmentCode as string | null,
+        location: r.location as string | null,
+        building: r.building as string | null,
+        floor: r.floor as string | null,
+        ip: r.ip as string | null,
+        mac: r.mac as string | null,
+        remoteId: r.remoteId as string | null,
+        purchaseDate: r.purchaseDate as string | null,
+        warrantyEnd: r.warrantyEnd as string | null,
+        vendor: r.vendor as string | null,
+        remark: r.remark as string | null,
+        costCenter: r.costCenter as string | null,
+        deviceGroup: r.deviceGroup as string | null,
+        displayLabel: r.displayLabel as string | null,
+        meterRequired: r.meterRequired as boolean,
+        meterMode: r.meterMode as string | null,
+        updatedBy: r.updatedBy as string,
+      })),
+    })
+    result.processed = r.count
+  } catch (e) {
+    console.error('importAppsScriptDevices error', e)
+    result.errors.push({
+      row: 0,
+      message: e instanceof Error ? e.message : 'DB error (apps-script device)',
+    })
+  }
+  return result
+}
+
+// ── IT-Asset: Meter_Readings → MeterReading ─────────────────
+async function importAppsScriptMeters(
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = FIELD_MAPPINGS.meterReading
+
+  // Collect distinct asset_no values for the lookup
+  const codes = new Set<string>()
+  for (const obj of objects) {
+    const c = (obj.asset_no ?? obj.assetNo ?? '').trim()
+    if (c) codes.add(c)
+  }
+  const devices = await db.device.findMany({
+    where: { assetCode: { in: Array.from(codes) } },
+    select: { id: true, assetCode: true, lastMeterBw: true, lastMeterColor: true },
+  })
+  const byCode = new Map(devices.map((d) => [d.assetCode, d]))
+  const updatesByDevice = new Map<string, { bw: number; color: number }>()
+
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+
+    const assetCode = (data.deviceId ?? '').trim() // mapped from asset_no
+    const readingDate = parseDate(data.readingDate)
+    if (!assetCode) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี asset_no' })
+      continue
+    }
+    if (!readingDate) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่มี/รูปแบบวันที่ผิด (asset_no=${assetCode})`,
+      })
+      continue
+    }
+    const device = byCode.get(assetCode)
+    if (!device) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่พบอุปกรณ์ในระบบ: ${assetCode}`,
+      })
+      continue
+    }
+
+    const meterBw = toIntLib(data.meterBw, 0)
+    const meterColor = toIntLib(data.meterColor, 0)
+    const prevMeterBw =
+      data.prevMeterBw !== undefined && data.prevMeterBw !== ''
+        ? toIntLib(data.prevMeterBw, 0)
+        : (updatesByDevice.get(device.id)?.bw ?? device.lastMeterBw ?? 0)
+    const prevMeterColor =
+      data.prevMeterColor !== undefined && data.prevMeterColor !== ''
+        ? toIntLib(data.prevMeterColor, 0)
+        : (updatesByDevice.get(device.id)?.color ?? device.lastMeterColor ?? 0)
+    const pagesBw =
+      data.pagesBw !== undefined && data.pagesBw !== ''
+        ? toIntLib(data.pagesBw, 0)
+        : Math.max(0, meterBw - prevMeterBw)
+    const pagesColor =
+      data.pagesColor !== undefined && data.pagesColor !== ''
+        ? toIntLib(data.pagesColor, 0)
+        : Math.max(0, meterColor - prevMeterColor)
+
+    try {
+      await db.meterReading.create({
+        data: {
+          deviceId: device.id,
+          readingDate,
+          readingMonth: data.readingMonth || readingDate.slice(0, 7),
+          meterBw,
+          meterColor,
+          pagesBw,
+          pagesColor,
+          prevMeterBw,
+          prevMeterColor,
+          readingType: data.readingType || 'MONTHLY',
+          readBy: data.readBy || null,
+          remark: data.remark || null,
+          siteAtReading: data.siteAtReading || null,
+          buildingAtReading: data.buildingAtReading || null,
+          floorAtReading: data.floorAtReading || null,
+          departmentAtReading: data.departmentAtReading || null,
+        },
+      })
+      updatesByDevice.set(device.id, { bw: meterBw, color: meterColor })
+      result.processed++
+    } catch (e) {
+      console.error('importAppsScriptMeters create error', e)
+      result.errors.push({
+        row: rowNum,
+        message: e instanceof Error ? e.message : 'DB error (apps-script meter)',
+      })
+    }
+  }
+
+  // Persist last-meter values back to devices
+  for (const [deviceId, val] of updatesByDevice) {
+    try {
+      await db.device.update({
+        where: { id: deviceId },
+        data: { lastMeterBw: val.bw, lastMeterColor: val.color },
+      })
+    } catch (e) {
+      console.error('importAppsScriptMeters device update error', e)
+    }
+  }
+  return result
+}
+
+// ── IT-Asset: Location_History → DeviceTransfer ─────────────
+async function importAppsScriptTransfers(
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = FIELD_MAPPINGS.deviceTransfer
+
+  const codes = new Set<string>()
+  for (const obj of objects) {
+    const c = (obj.Asset_No ?? obj.asset_no ?? '').trim()
+    if (c) codes.add(c)
+  }
+  const devices = await db.device.findMany({
+    where: { assetCode: { in: Array.from(codes) } },
+    select: { id: true, assetCode: true },
+  })
+  const byCode = new Map(devices.map((d) => [d.assetCode, d.id]))
+
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+    const assetCode = (data.deviceId ?? '').trim()
+    const transferDate = parseDate(data.transferDate)
+    if (!assetCode) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี Asset_No' })
+      continue
+    }
+    if (!transferDate) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่มี/รูปแบบวันที่ผิด (Asset_No=${assetCode})`,
+      })
+      continue
+    }
+    const deviceId = byCode.get(assetCode)
+    if (!deviceId) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่พบอุปกรณ์ในระบบ: ${assetCode}`,
+      })
+      continue
+    }
+
+    try {
+      await db.deviceTransfer.create({
+        data: {
+          deviceId,
+          fromSite: data.fromSite || null,
+          toSite: data.toSite || '',
+          fromDept: data.fromDept || null,
+          toDept: data.toDept || null,
+          fromDeptCode: data.fromDeptCode || null,
+          toDeptCode: data.toDeptCode || null,
+          reason: data.reason || null,
+          transferDate,
+          movedBy: data.movedBy || null,
+        },
+      })
+      result.processed++
+    } catch (e) {
+      console.error('importAppsScriptTransfers error', e)
+      result.errors.push({
+        row: rowNum,
+        message: e instanceof Error ? e.message : 'DB error (apps-script transfer)',
+      })
+    }
+  }
+  return result
+}
+
+// ── IT-Asset: User_Permissions → User ───────────────────────
+async function importAppsScriptUsers(
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = FIELD_MAPPINGS.user
+  const seen = new Set<string>()
+
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+    const email = (data.email ?? '').trim()
+    if (!email) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี Email' })
+      continue
+    }
+    if (seen.has(email.toLowerCase())) {
+      result.errors.push({ row: rowNum, message: `Email ซ้ำในไฟล์: ${email}` })
+      continue
+    }
+    seen.add(email.toLowerCase())
+
+    try {
+      const existing = await db.user.findUnique({ where: { email } })
+      if (existing) {
+        result.errors.push({
+          row: 0,
+          message: `มีผู้ใช้อยู่แล้ว: ${email}`,
+        })
+        continue
+      }
+      await db.user.create({
+        data: {
+          email,
+          username: data.username || null,
+          name: data.name || null,
+          role: data.role || 'viewer',
+          active: parseBool(data.active),
+          passwordHash: data.passwordHash || null,
+          allowedSites: data.allowedSites || null,
+          lastLoginAt: parseDate(data.lastLoginAt),
+        },
+      })
+      result.processed++
+    } catch (e) {
+      console.error('importAppsScriptUsers error', e)
+      result.errors.push({
+        row: rowNum,
+        message: e instanceof Error ? e.message : 'DB error (apps-script user)',
+      })
+    }
+  }
+  return result
+}
+
+// ── IT-Asset: App_Settings → AppSetting ─────────────────────
+async function importAppsScriptSettings(
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = FIELD_MAPPINGS.appSetting
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+    const key = (data.key ?? '').trim()
+    const value = (data.value ?? '').trim()
+    if (!key) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี Key' })
+      continue
+    }
+    try {
+      await db.appSetting.upsert({
+        where: { key },
+        create: { key, value },
+        update: { value },
+      })
+      result.processed++
+    } catch (e) {
+      console.error('importAppsScriptSettings error', e)
+      result.errors.push({
+        row: rowNum,
+        message: e instanceof Error ? e.message : 'DB error (apps-script setting)',
+      })
+    }
+  }
+  return result
+}
+
+// ── IT-Asset: Master_Items → MasterItem ─────────────────────
+async function importAppsScriptMaster(
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = FIELD_MAPPINGS.masterItem
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+    const category = (data.category ?? '').trim()
+    const code = (data.code ?? '').trim()
+    const label = (data.label ?? '').trim()
+    if (!category) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี CategoryKey' })
+      continue
+    }
+    if (!code) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี ItemID' })
+      continue
+    }
+    if (!label) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่มี Value (code=${code})`,
+      })
+      continue
+    }
+    try {
+      await db.masterItem.create({
+        data: {
+          category,
+          code,
+          label,
+          parentRef: data.parentRef || null,
+          displayLabel: data.displayLabel || null,
+          siteCode: data.siteCode || null,
+          active: parseBool(data.active),
+        },
+      })
+      result.processed++
+    } catch (e) {
+      console.error('importAppsScriptMaster error', e)
+      result.errors.push({
+        row: rowNum,
+        message: e instanceof Error ? e.message : 'DB error (apps-script master)',
+      })
+    }
+  }
+  return result
+}
+
+// ── IT-Asset: Site_Attributes → Site + SiteRate ─────────────
+async function importAppsScriptSites(
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = FIELD_MAPPINGS.site
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+    const code = (data.code ?? '').trim()
+    const name = (data.name ?? '').trim()
+    if (!code) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี Site_Code' })
+      continue
+    }
+    if (!name) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่มี SiteName (code=${code})`,
+      })
+      continue
+    }
+    try {
+      await db.site.upsert({
+        where: { code },
+        create: {
+          code,
+          name,
+          phone: data.phone || null,
+        },
+        update: { name, phone: data.phone || null },
+      })
+      // Upsert site rate (only create-on-miss; do not overwrite existing)
+      const bwRate = toFloatLib(data.bwRate)
+      const colorRate = toFloatLib(data.colorRate)
+      if (bwRate !== null || colorRate !== null) {
+        const existing = await db.siteRate.findFirst({
+          where: { siteCode: code },
+        })
+        if (!existing) {
+          await db.siteRate.create({
+            data: {
+              siteCode: code,
+              bwRate: bwRate ?? 0.5,
+              colorRate: colorRate ?? 2.0,
+            },
+          })
+        }
+      }
+      result.processed++
+    } catch (e) {
+      console.error('importAppsScriptSites error', e)
+      result.errors.push({
+        row: rowNum,
+        message: e instanceof Error ? e.message : 'DB error (apps-script site)',
+      })
+    }
+  }
+  return result
+}
+
+// ── Stock: Products → StockItem ─────────────────────────────
+async function importAppsScriptStockItems(
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = FIELD_MAPPINGS.stockItem
+  const seen = new Set<string>()
+  const toInsert: Array<Record<string, unknown>> = []
+
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+    const productCode = (data.productCode ?? '').trim()
+    const productName = (data.productName ?? '').trim()
+    if (!productCode) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี ProductCode' })
+      continue
+    }
+    if (!productName) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่มี ProductName (code=${productCode})`,
+      })
+      continue
+    }
+    if (seen.has(productCode)) {
+      result.errors.push({
+        row: rowNum,
+        message: `รหัสซ้ำในไฟล์: ${productCode}`,
+      })
+      continue
+    }
+    seen.add(productCode)
+
+    // Active mapping: Active/Inactive → true/false
+    let active = true
+    if (data.active) {
+      const v = STATUS_MAPPINGS.stockItem[data.active]
+      if (v !== undefined) active = v === 'true'
+      else active = parseBool(data.active)
+    }
+
+    toInsert.push({
+      productCode,
+      productName,
+      unit: data.unit || 'ชิ้น',
+      quantity: toIntLib(data.quantity, 0),
+      minQuantity: toIntLib(data.minQuantity, 0),
+      unitCost: toFloatLib(data.unitCost),
+      active,
+    })
+  }
+
+  if (toInsert.length === 0) return result
+
+  const existing = await db.stockItem.findMany({
+    where: { productCode: { in: toInsert.map((r) => r.productCode as string) } },
+    select: { productCode: true },
+  })
+  const existingSet = new Set(existing.map((s) => s.productCode))
+  const filtered = toInsert.filter((r) => {
+    if (existingSet.has(r.productCode as string)) {
+      result.errors.push({
+        row: 0,
+        message: `มีสินค้าอยู่แล้ว: ${r.productCode}`,
+      })
+      return false
+    }
+    return true
+  })
+  if (filtered.length === 0) return result
+
+  try {
+    const r = await db.stockItem.createMany({
+      data: filtered.map((r) => ({
+        productCode: r.productCode as string,
+        productName: r.productName as string,
+        unit: r.unit as string,
+        quantity: r.quantity as number,
+        minQuantity: r.minQuantity as number,
+        unitCost: r.unitCost as number | null,
+        active: r.active as boolean,
+      })),
+    })
+    result.processed = r.count
+  } catch (e) {
+    console.error('importAppsScriptStockItems error', e)
+    result.errors.push({
+      row: 0,
+      message: e instanceof Error ? e.message : 'DB error (apps-script stock-item)',
+    })
+  }
+  return result
+}
+
+// ── Stock: StockIn / StockOut → StockTransaction ───────────
+async function importAppsScriptStockTxns(
+  objects: Record<string, string>[],
+  type: 'IN' | 'OUT',
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = type === 'IN' ? FIELD_MAPPINGS.stockIn : FIELD_MAPPINGS.stockOut
+
+  // Collect distinct product codes for lookup
+  const codes = new Set<string>()
+  for (const obj of objects) {
+    const c = (obj.ProductCode ?? obj.productCode ?? '').trim()
+    if (c) codes.add(c)
+  }
+  const items = await db.stockItem.findMany({
+    where: { productCode: { in: Array.from(codes) } },
+    select: { id: true, productCode: true, quantity: true },
+  })
+  const byCode = new Map(items.map((i) => [i.productCode, i]))
+
+  // Also collect WorkOrder numbers (StockOut may reference them)
+  let woByNumber: Map<string, string> | null = null
+  if (type === 'OUT') {
+    const woNumbers = new Set<string>()
+    for (const obj of objects) {
+      const w = (obj.WorkOrderNo ?? obj.workOrderNo ?? '').trim()
+      if (w) woNumbers.add(w)
+    }
+    if (woNumbers.size > 0) {
+      const wos = await db.workOrder.findMany({
+        where: { woNumber: { in: Array.from(woNumbers) } },
+        select: { id: true, woNumber: true },
+      })
+      woByNumber = new Map(
+        wos
+          .filter((w) => w.woNumber !== null)
+          .map((w) => [w.woNumber as string, w.id]),
+      )
+    }
+  }
+
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+    const productCode = (data.stockItemId ?? '').trim() // mapped from ProductCode
+    const txnDate = parseDate(data.txnDate)
+    if (!productCode) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี ProductCode' })
+      continue
+    }
+    if (!txnDate) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่มี/รูปแบบ Date ผิด (code=${productCode})`,
+      })
+      continue
+    }
+    const item = byCode.get(productCode)
+    if (!item) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่พบสินค้าในระบบ: ${productCode}`,
+      })
+      continue
+    }
+
+    const qty = toIntLib(data.quantity, 0)
+    // Compute balanceAfter based on current quantity
+    const newBalance =
+      type === 'IN' ? item.quantity + qty : Math.max(0, item.quantity - qty)
+    // Track updates
+    item.quantity = newBalance
+
+    let workOrderId: string | null = null
+    if (type === 'OUT' && woByNumber && data.workOrderId) {
+      workOrderId = woByNumber.get(data.workOrderId) ?? null
+    }
+
+    try {
+      await db.stockTransaction.create({
+        data: {
+          txnNumber: data.txnNumber || null,
+          stockItemId: item.id,
+          type,
+          quantity: qty,
+          balanceAfter: newBalance,
+          reason: data.reason || null,
+          workOrderId,
+          cost: type === 'IN' ? toFloatLib(data.cost) : null,
+          vendor: type === 'IN' ? data.vendor || null : null,
+          txnDate,
+          performedBy: data.performedBy || null,
+          remark: data.remark || null,
+        },
+      })
+      // Update stock item quantity
+      await db.stockItem.update({
+        where: { id: item.id },
+        data: { quantity: newBalance },
+      })
+      result.processed++
+    } catch (e) {
+      console.error('importAppsScriptStockTxns error', e)
+      result.errors.push({
+        row: rowNum,
+        message: e instanceof Error ? e.message : 'DB error (apps-script stock-txn)',
+      })
+    }
+  }
+  return result
+}
+
+// ── Stock: PurchaseOrders → PurchaseOrder + Items ───────────
+async function importAppsScriptPOs(
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = FIELD_MAPPINGS.purchaseOrder
+
+  const codes = new Set<string>()
+  for (const obj of objects) {
+    const c = (obj.ProductCode ?? obj.productCode ?? '').trim()
+    if (c) codes.add(c)
+  }
+  const items = await db.stockItem.findMany({
+    where: { productCode: { in: Array.from(codes) } },
+    select: { id: true, productCode: true },
+  })
+  const byCode = new Map(items.map((i) => [i.productCode, i.id]))
+
+  // Group rows by poNumber, then create PO + items
+  const poGroups = new Map<
+    string,
+    {
+      orderDate: string
+      supplier: string | null
+      status: string
+      totalValue: number | null
+      createdBy: string | null
+      lines: Array<{
+        productCode: string
+        stockItemId: string | null
+        quantityOrdered: number
+        unitPrice: number | null
+        totalValue: number | null
+        quantityReceived: number
+        rowNum: number
+        unmapped: string[]
+      }>
+    }
+  >()
+
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+    const poNumber = (data.poNumber ?? '').trim()
+    const orderDate = parseDate(data.orderDate)
+    if (!poNumber) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี PurchaseOrderNo' })
+      continue
+    }
+    if (!orderDate) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่มี/รูปแบบ OrderDate ผิด (PO=${poNumber})`,
+      })
+      continue
+    }
+    const productCode = (data.stockItemId ?? '').trim()
+    const stockItemId = productCode ? byCode.get(productCode) ?? null : null
+    if (productCode && !stockItemId) {
+      result.errors.push({
+        row: rowNum,
+        message: `ไม่พบสินค้าในระบบ: ${productCode}`,
+      })
+    }
+
+    let status = (data.status || 'open').trim()
+    if (STATUS_MAPPINGS.purchaseOrder[status]) {
+      status = STATUS_MAPPINGS.purchaseOrder[status]
+    } else if (
+      !['open', 'partial', 'received', 'cancelled'].includes(status)
+    ) {
+      status = 'open'
+    }
+
+    let group = poGroups.get(poNumber)
+    if (!group) {
+      group = {
+        orderDate,
+        supplier: data.supplier || null,
+        status,
+        totalValue: toFloatLib(data.totalValue),
+        createdBy: data.createdBy || null,
+        lines: [],
+      }
+      poGroups.set(poNumber, group)
+    }
+    group.lines.push({
+      productCode,
+      stockItemId: stockItemId ?? null,
+      quantityOrdered: toIntLib(data.quantityOrdered, 0),
+      unitPrice: toFloatLib(data.unitPrice),
+      totalValue: toFloatLib(data.totalValue),
+      quantityReceived: toIntLib(data.quantityReceived, 0),
+      rowNum,
+      unmapped,
+    })
+  }
+
+  for (const [poNumber, g] of poGroups) {
+    try {
+      const po = await db.purchaseOrder.upsert({
+        where: { poNumber },
+        create: {
+          poNumber,
+          orderDate: g.orderDate,
+          supplier: g.supplier,
+          status: g.status,
+          totalValue: g.totalValue,
+          createdBy: g.createdBy,
+        },
+        update: {
+          orderDate: g.orderDate,
+          supplier: g.supplier,
+          status: g.status,
+          totalValue: g.totalValue,
+        },
+      })
+      // Insert line items (skip ones with missing stockItem)
+      for (const line of g.lines) {
+        if (!line.stockItemId) continue
+        try {
+          await db.purchaseOrderItem.create({
+            data: {
+              purchaseOrderId: po.id,
+              stockItemId: line.stockItemId,
+              quantityOrdered: line.quantityOrdered,
+              quantityReceived: line.quantityReceived,
+              unitPrice: line.unitPrice,
+              totalValue: line.totalValue,
+            },
+          })
+          result.processed++
+        } catch (e) {
+          console.error('importAppsScriptPOs line error', e)
+          result.errors.push({
+            row: line.rowNum,
+            message: e instanceof Error ? e.message : 'DB error (PO line item)',
+          })
+        }
+      }
+    } catch (e) {
+      console.error('importAppsScriptPOs error', e)
+      result.errors.push({
+        row: 0,
+        message: e instanceof Error ? e.message : 'DB error (apps-script PO)',
+      })
+    }
+  }
+  return result
+}
+
+// ── Services: WorkOrder (JSON-flattened CSV) → WorkOrder ────
+async function importAppsScriptWorkOrders(
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  const result = emptyResult()
+  const mapping = FIELD_MAPPINGS.workOrder
+
+  // Generate WO numbers in bulk
+  const now = new Date()
+  const ymd =
+    `${now.getFullYear()}` +
+    `${String(now.getMonth() + 1).padStart(2, '0')}` +
+    `${String(now.getDate()).padStart(2, '0')}`
+  const prefix = `WO-${ymd}-`
+  const lastWo = await db.workOrder.findFirst({
+    where: { woNumber: { startsWith: prefix } },
+    orderBy: { woNumber: 'desc' },
+    select: { woNumber: true },
+  })
+  let seq = lastWo?.woNumber
+    ? parseInt(lastWo.woNumber.match(/(\d+)$/)?.[1] ?? '0', 10)
+    : 0
+
+  for (let r = 0; r < objects.length; r++) {
+    const obj = objects[r]
+    const rowNum = r + 2
+    const { data, unmapped } = mapCsvRow(obj, mapping)
+    if (unmapped.length) {
+      result.warnings.push(
+        `บรรทัด ${rowNum}: คอลัมน์ไม่ถูก map — ${unmapped.join(', ')}`,
+      )
+      for (const u of unmapped) {
+        if (!result.unmappedColumns.includes(u)) result.unmappedColumns.push(u)
+      }
+    }
+
+    const subject = (data.subject ?? '').trim()
+    if (!subject) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี subject' })
+      continue
+    }
+
+    // Status mapping: emoji-Thai → enum
+    let status = (data.status || 'PENDING').trim()
+    if (STATUS_MAPPINGS.workOrder[status]) {
+      status = STATUS_MAPPINGS.workOrder[status]
+    } else {
+      // Try matching the bare Thai text (no emoji prefix)
+      for (const [k, v] of Object.entries(STATUS_MAPPINGS.workOrder)) {
+        if (status.includes(k)) {
+          status = v
+          break
+        }
+      }
+    }
+    if (
+      ![
+        'PENDING',
+        'IN_PROGRESS',
+        'WAITING_PARTS',
+        'COMPLETED',
+        'CANCELLED',
+      ].includes(status)
+    ) {
+      status = 'PENDING'
+    }
+
+    const requestId = (data.requestId ?? '').trim() || null
+    // Dedup: skip if requestId already in DB
+    if (requestId) {
+      const existing = await db.workOrder.findFirst({
+        where: { requestId },
+        select: { id: true },
+      })
+      if (existing) {
+        result.errors.push({
+          row: 0,
+          message: `มีใบงานอยู่แล้ว (request_id=${requestId})`,
+        })
+        continue
+      }
+    }
+
+    seq++
+    const woNumber = `${prefix}${String(seq).padStart(3, '0')}`
+
+    // Ensure woNumber uniqueness (collision → drop woNumber)
+    let useWoNumber: string | null = woNumber
+    const collision = await db.workOrder.findUnique({
+      where: { woNumber },
+      select: { id: true },
+    })
+    if (collision) useWoNumber = null
+
+    try {
+      await db.workOrder.create({
+        data: {
+          woNumber: useWoNumber ?? undefined,
+          requestId,
+          subject,
+          building: data.building || null,
+          location: data.location || null,
+          details: data.details || null,
+          priority: data.priority || 'ปกติ',
+          reporterName: data.reporterName || null,
+          tel: data.tel || null,
+          employeeCode: data.employeeCode || null,
+          submissionSource: data.submissionSource || 'guest',
+          trackable: parseBool(data.trackable),
+          externalMeta: data.externalMeta || null,
+          picBefore: data.picBefore || null,
+          picOnsite: data.picOnsite || null,
+          picAfter: data.picAfter || null,
+          status,
+          acceptStatus: data.acceptStatus || null,
+          assignedTo: data.assignedTo || null,
+          assignedBy: data.assignedBy || null,
+          assignedAt: parseDateTime(data.assignedAt),
+          assignmentNote: data.assignmentNote || null,
+          detailsAdmin: data.detailsAdmin || null,
+          dateAdmin: data.dateAdmin || null,
+          editUnlockActive: parseBool(data.editUnlockActive),
+          editUnlockBy: data.editUnlockBy || null,
+          editUnlockAt: parseDateTime(data.editUnlockAt),
+          editUnlockNote: data.editUnlockNote || null,
+          workCompletedAt: parseDateTime(data.workCompletedAt),
+          closedAt: parseDateTime(data.closedAt),
+          canceledAt: parseDateTime(data.canceledAt),
+        },
+      })
+      result.processed++
+    } catch (e) {
+      console.error('importAppsScriptWorkOrders error', e)
+      result.errors.push({
+        row: rowNum,
+        message: e instanceof Error ? e.message : 'DB error (apps-script work-order)',
+      })
+    }
+  }
+  return result
+}
+
+// ============================================================
+// Dispatcher — given (source, sheetId), call the right importer
+// ============================================================
+async function dispatchAppsScriptImport(
+  _source: AppsScriptSource,
+  sheetId: string,
+  objects: Record<string, string>[],
+): Promise<AppsScriptResult> {
+  switch (sheetId) {
+    case 'itam-device':
+      return importAppsScriptDevices(objects)
+    case 'itam-meter':
+      return importAppsScriptMeters(objects)
+    case 'itam-transfer':
+      return importAppsScriptTransfers(objects)
+    case 'itam-users':
+      return importAppsScriptUsers(objects)
+    case 'itam-settings':
+      return importAppsScriptSettings(objects)
+    case 'itam-master':
+      return importAppsScriptMaster(objects)
+    case 'itam-sites':
+      return importAppsScriptSites(objects)
+    case 'stock-products':
+      return importAppsScriptStockItems(objects)
+    case 'stock-in':
+      return importAppsScriptStockTxns(objects, 'IN')
+    case 'stock-out':
+      return importAppsScriptStockTxns(objects, 'OUT')
+    case 'stock-po':
+      return importAppsScriptPOs(objects)
+    case 'services-workorders':
+      return importAppsScriptWorkOrders(objects)
+    default:
+      return {
+        processed: 0,
+        errors: [{ row: 0, message: `sheetId ไม่รองรับ: ${sheetId}` }],
+        warnings: [],
+        unmappedColumns: [],
+      }
+  }
+}
+
+// ============================================================
+// POST /api/import  — multipart/form-data
+//   • ถ้ามี field `source` → Apps Script legacy import
+//   • ถ้าไม่มี → ใช้ jobType แบบเดิม
 // ============================================================
 export async function POST(req: NextRequest) {
   try {
     const form = await req.formData()
     const file = form.get('file')
+    const source = String(form.get('source') ?? '').trim() as
+      | AppsScriptSource
+      | ''
+    const sheetId = String(form.get('sheetId') ?? '').trim()
+
+    // ── Apps Script legacy import path ─────────────────────────
+    if (source) {
+      const validSources: AppsScriptSource[] = [
+        'apps-script-itam',
+        'apps-script-services',
+        'apps-script-stock',
+      ]
+      if (!validSources.includes(source)) {
+        return NextResponse.json(
+          { error: `source ไม่ถูกต้อง (ได้รับ: "${source}")` },
+          { status: 400 },
+        )
+      }
+      // Validate sheetId is registered under this source
+      const srcCfg = SOURCE_SHEET_REGISTRY[source]
+      const sheetCfg = srcCfg.sheets.find((s) => s.id === sheetId)
+      if (!sheetCfg) {
+        return NextResponse.json(
+          {
+            error: `sheetId "${sheetId}" ไม่อยู่ใน source "${source}"`,
+            availableSheets: srcCfg.sheets.map((s) => s.id),
+          },
+          { status: 400 },
+        )
+      }
+      if (!(file instanceof File)) {
+        return NextResponse.json(
+          { error: 'ไม่พบไฟล์ในคำขอ (field "file")' },
+          { status: 400 },
+        )
+      }
+      if (file.size === 0) {
+        return NextResponse.json({ error: 'ไฟล์ว่างเปล่า' }, { status: 400 })
+      }
+      if (file.size > MAX_FILE_BYTES) {
+        return NextResponse.json(
+          { error: `ไฟล์ใหญ่เกินไป (สูงสุด ${MAX_FILE_BYTES / 1024 / 1024} MB)` },
+          { status: 400 },
+        )
+      }
+
+      const lower = file.name.toLowerCase()
+      if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+        return NextResponse.json(
+          { error: 'Apps Script import รองรับเฉพาะ .csv เท่านั้น' },
+          { status: 400 },
+        )
+      }
+
+      // Create ImportJob with jobType=`legacy:{sheetId}` so history
+      // can show what kind of import it was.
+      const jobTypeLabel = `legacy:${sheetId}`
+      const job = await db.importJob.create({
+        data: {
+          jobType: jobTypeLabel,
+          fileName: file.name,
+          fileType: 'csv',
+          status: 'processing',
+          uploadedBy: 'system',
+        },
+      })
+
+      const text = await file.text()
+      const grid = parseCsvLib(text)
+      if (grid.length < 2) {
+        const errMsg =
+          'ไฟล์ CSV ไม่มีข้อมูล (ต้องมีบรรทัดหัวคอลัมน์ + อย่างน้อย 1 แถว)'
+        const updated = await db.importJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'failed',
+            errors: JSON.stringify([{ row: 0, message: errMsg }]),
+            completedAt: new Date(),
+          },
+        })
+        return NextResponse.json(
+          { job: updated, error: errMsg },
+          { status: 400 },
+        )
+      }
+
+      const headers = grid[0].map((h) => h.trim())
+      const dataRows = grid
+        .slice(1)
+        .filter((r) => !(r.length === 1 && r[0] === ''))
+      const totalRows = dataRows.length
+
+      // Convert rows to objects keyed by header
+      const objects: Record<string, string>[] = dataRows.map((row) => {
+        const obj: Record<string, string> = {}
+        headers.forEach((h, idx) => {
+          obj[h] = (row[idx] ?? '').trim()
+        })
+        return obj
+      })
+
+      let result: AppsScriptResult
+      try {
+        result = await dispatchAppsScriptImport(source, sheetId, objects)
+      } catch (e) {
+        console.error('POST /api/import — apps-script importer threw', e)
+        const errMsg =
+          e instanceof Error ? e.message : 'Apps Script importer error'
+        const updated = await db.importJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'failed',
+            totalRows,
+            processedRows: 0,
+            errorRows: totalRows,
+            errors: JSON.stringify([{ row: 0, message: errMsg }]),
+            completedAt: new Date(),
+          },
+        })
+        return NextResponse.json(
+          { job: updated, error: errMsg },
+          { status: 500 },
+        )
+      }
+
+      const errorRows = totalRows - result.processed
+      const status =
+        result.processed === 0 && totalRows > 0 ? 'failed' : 'completed'
+
+      // Combine errors and warnings (warnings stored as row=0 entries marked "warning")
+      const allErrors: ImportError[] = [...result.errors]
+      for (const w of result.warnings.slice(0, 50)) {
+        allErrors.push({ row: 0, message: `[warning] ${w}` })
+      }
+
+      const updated = await db.importJob.update({
+        where: { id: job.id },
+        data: {
+          status,
+          totalRows,
+          processedRows: result.processed,
+          errorRows,
+          errors:
+            allErrors.length > 0
+              ? JSON.stringify(allErrors.slice(0, 200))
+              : null,
+          completedAt: new Date(),
+        },
+      })
+
+      await logAudit(
+        'IMPORT_LEGACY',
+        sheetCfg.model.toUpperCase(),
+        job.id,
+        `ดึงข้อมูลจากระบบเก่า (${srcCfg.label} → ${sheetCfg.label}): ${result.processed}/${totalRows} แถว (${file.name})`,
+        {
+          source,
+          sheetId,
+          fileName: file.name,
+          totalRows,
+          processed: result.processed,
+          errorCount: result.errors.length,
+          unmappedColumns: result.unmappedColumns,
+          warnings: result.warnings.slice(0, 20),
+        },
+      )
+
+      return NextResponse.json(
+        {
+          job: updated,
+          summary: {
+            source,
+            sheetId,
+            sheetLabel: sheetCfg.label,
+            model: sheetCfg.model,
+            totalRows,
+            processedRows: result.processed,
+            errorRows,
+            warnings: result.warnings.slice(0, 50),
+            unmappedColumns: result.unmappedColumns,
+            expectedHeaders:
+              TEMPLATE_HEADERS[sheetId as keyof typeof TEMPLATE_HEADERS],
+            actualHeaders: headers,
+          },
+        },
+        { status: 201 },
+      )
+    }
+
+    // ── Original (manual) import path ──────────────────────────
     const jobType = String(form.get('jobType') ?? '').trim() as JobType
 
     if (!VALID_JOB_TYPES.has(jobType)) {
