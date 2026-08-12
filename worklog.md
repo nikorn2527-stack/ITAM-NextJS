@@ -2927,3 +2927,128 @@ Stage Summary:
 - กราฟไม่ซ้อน
 - สต็อกมีหมวดหมู่ + เรียงตาม category
 - พร้อมสำหรับ push + deploy
+
+---
+
+## Task ID: WO-MULTIIMG-QR — Multi-image per stage + QR scan in Work Orders
+
+**Date:** 2025
+**Scope:** WorkOrder (แจ้งซ่อม) UI — multi-image (9 per stage) + global QR/barcode scanner + search improvements
+
+### What changed
+
+1. **Multi-image per stage (9 รูป/ขั้นตอน)** — replaces the old single `picBefore` /
+   `picOnsite` / `picAfter` columns with a proper `WorkOrderImage` relation
+   (already added to the Prisma schema by a prior task). The detail dialog
+   now shows 3 stage groups (ก่อนซ่อม / หน้างาน / หลังซ่อมเสร็จ) each with its
+   own thumbnail grid, "เพิ่มรูป" button, full-size lightbox, and per-image
+   delete. The create form lets the user attach up to 9 "before" images.
+
+2. **Global QR / barcode scanner** — new `QrScannerDialog` mounted at the
+   app root that opens the device's back camera (`facingMode: environment`)
+   and uses `jsqr` to read QR codes / barcodes frame-by-frame via canvas.
+   Includes a manual-entry fallback for browsers that block camera access
+   or devices without a camera. Scan results are published via the
+   `useAppStore` `publishQrScan()` action so any page can react.
+
+3. **QR scan in WO form + list search** — a `ScanLine` icon button is
+   placed inside the asset-code field of the create dialog (fills
+   `deviceSearch` and triggers the device lookup) and inside the WO list
+   search box (fills the search input). The two consumers avoid fighting
+   over a single scan by checking `createOpen` state.
+
+4. **Search improvement** — server-side `GET /api/work-orders` already
+   matches `employeeCode`, `assignedTo`, `detailsAdmin`, `resolution`
+   (plus woNumber / subject / building / location / reporterName / tel /
+   details). Updated the list-page placeholder text to advertise the new
+   searchable fields.
+
+### Files created / modified
+
+| File | Action | Notes |
+|------|--------|-------|
+| `src/store/app-store.ts` | **Modified** | Added `qrScannerOpen`, `setQrScannerOpen`, `lastQrScan`, `qrScanNonce`, `publishQrScan`, `clearLastQrScan` |
+| `src/components/itam/qr-scanner-dialog.tsx` | **Created** | Global scanner dialog (jsQR + getUserMedia + manual fallback) |
+| `src/app/page.tsx` | **Modified** | Mounts `<QrScannerDialog />` at the app root next to `<GlobalSearch />` |
+| `src/app/api/work-orders/[id]/images/route.ts` | **Created** | `GET` (list + grouped by stage), `POST` (add one), `DELETE ?imageId=` (remove one) — caps 12 images per stage server-side |
+| `src/app/api/work-orders/route.ts` | **Modified** | POST now also accepts `picBeforeImages: string[]`; each becomes a `WorkOrderImage` row with `stage='before'`. Falls back to legacy single `picBefore` mirror if array is empty. |
+| `src/components/itam/work-orders-page.tsx` | **Modified** | <ul><li>Added `WorkOrderImage` + `ImagesGroupedResponse` types</li><li>Replaced `picBefore`/`picBeforeName` in `NewFormState` with `picBeforeImages: string[]`</li><li>Reworked `compressImage` to 1024px / JPEG 0.7 with white background</li><li>Create dialog: multi-image upload (max 9) with thumbnail grid + per-image delete; scan button inside asset-code field; QR-scan effect that fills `deviceSearch`</li><li>List search: scan button + updated placeholder ("…รหัสพนักงาน / ช่าง / ผลการแก้ไข")</li><li>Detail content: `imagesQuery` for `GET /images`; `beforeImages`/`onsiteImages`/`afterImages` memos with legacy-picAfter/picBefore/picOnsite fallback; `triggerUpload`/`handleStageImageChange`/`handleDeleteImage` handlers; new `WoImageStageGroup` component; full-size lightbox dialog</li><li>Replaced old `WoImage` helper with `WoImageStageGroup`</li></ul> |
+
+### Implementation highlights
+
+- **Compression** (`compressImage`): canvas resize to max 1024px on the
+  longest side, white-bg fill to prevent black-on-JPEG from transparent
+  PNGs, JPEG quality starts at 0.7 and steps down by 0.1 until ≤ 1.5 MB
+  (min quality 0.4).
+- **Hidden input with `multiple` + `capture="environment"`**: on mobile
+  browsers this opens the back camera directly; on desktop it opens the
+  file picker with multi-select. Reused across all 3 stage groups in the
+  detail dialog (the active stage is tracked in React state before the
+  click fires).
+- **Legacy compat**: existing WOs with `picBefore`/`picOnsite`/`picAfter`
+  but no `WorkOrderImage` rows are mirrored into the corresponding stage
+  group with synthetic IDs prefixed `legacy-`. Legacy images render the
+  thumbnail but the delete button is hidden (a toast explains why).
+- **Scan consumer arbitration**: `WorkOrdersPage` only consumes a scan
+  when `!createOpen`; `CreateWorkOrderDialog` only consumes when `open`.
+  Both depend on `qrScanNonce` (a monotonically-increasing counter) so
+  repeated scans of the same value still trigger the handler.
+- **Server-side image cap**: `STAGE_CAP = 12` per stage (above the 9-image
+  UI cap) gives some headroom for staff uploads after creation. POST
+  returns 400 with a Thai message when the cap is hit.
+- **Audit log**: every `POST` writes a `WO_IMAGE_ADD` row and every
+  `DELETE` writes a `WO_IMAGE_DELETE` row to `AuditLog` (entity
+  `WorkOrderImage`).
+
+### Verification
+
+- `bun run lint` — **0 errors, 0 warnings** ✅
+- `prisma generate` + `prisma db push` confirmed `WorkOrderImage` table
+  exists and `db.workOrderImage.*` CRUD methods are available.
+- GET `/api/work-orders/[id]/images` returns `{ data: [...], grouped: { before, onsite, after } }`.
+- POST `/api/work-orders/[id]/images` body `{ stage, image_data, fileName?, uploadedBy? }`.
+- DELETE `/api/work-orders/[id]/images?imageId=…` removes a single image.
+
+---
+Task ID: SERIAL-IMG-QR-VERIFY
+Agent: orchestrator — ตรวจสอบ Serial + Multi-image + QR + Search
+
+Work Log:
+
+1. ตารางอุปกรณ์ — เพิ่มคอลัมน์ Serial No.:
+   - TableHead: "Serial No." (ระหว่าง รหัส และ ชื่อ)
+   - TableCell: แสดง d.serialNumber (หรือ — ถ้าไม่มี)
+   - colSpan ปรับจาก 13 → 14
+
+2. ค้นหาอุปกรณ์ — Serial ก่อน + ตึก/ชั้น/หน่วยงาน:
+   - API: เปลี่ยนลำดับ search OR — serialNumber อันดับแรก
+   - เพิ่ม search fields: building, floor, department, location, site
+   - placeholder: "ค้นหา Serial / รหัส / ตึก / ชั้น / หน่วยงาน / แบรนด์..."
+   - ทดสอบ: search=S2214 → เจอ ZEBRA DS2208 (S/N: S22149010552837) ✅
+   - ทดสอบ: search=PCU → เจอ EPSON M2140 (ตึก PCU) ✅
+
+3. สแกน QR/บาร์โค้ด:
+   - อุปกรณ์: ปุ่ม ScanLine ในช่องค้นหา → เปิด QrScannerDialog
+   - แจ้งซ่อม: ปุ่ม ScanLine ในช่อง asset code → เปิด QrScannerDialog
+   - QrScannerDialog: ใช้ jsqr + getUserMedia (facingMode: environment) + manual fallback
+
+4. แจ้งซ่อน — รูปหลายรูปต่อขั้นตอน (9 รูป):
+   - Schema: WorkOrderImage model (id, workOrderId, stage, image_data, fileName, uploadedBy)
+   - API: /api/work-orders/[id]/images — GET (list + grouped) + POST (add) + DELETE (remove)
+   - Form: <input type="file" multiple> + thumbnail grid + delete per image + count badge (n/9)
+   - Detail: 3 stage groups (ก่อนซ่อม / หน้างาน / หลังซ่อมเสร็จ) + เพิ่มรูป + ดูเต็มจอ + ลบ
+   - Compression: canvas resize max 1024px, JPEG q=0.7
+   - Legacy compat: picBefore/picOnsite/picAfter เดิมแสดงเป็น legacy- rows
+
+5. ค้นหาแจ้งซ่อน — เพิ่ม fields:
+   - API: เพิ่ม employeeCode, assignedTo, detailsAdmin, resolution ใน search OR
+   - ทดสอบ: search=nikorn → เจอ WO-20260812-004 ✅
+
+Verification:
+✅ Devices API: search=S2214 → ZEBRA DS2208 (Serial search ทำงาน)
+✅ Devices API: search=PCU → EPSON M2140 (Building search ทำงาน)
+✅ WO API: search=nikorn → WO-20260812-004 (Extended search ทำงาน)
+✅ WO Images API: GET → {data:[], grouped:{before:[], onsite:[], after:[]}}
+✅ Devices table: มีคอลัมน์ Serial No.
+✅ Scan button: มีใน devices + WO (ScanLine icon)
+✅ Lint: 0 errors

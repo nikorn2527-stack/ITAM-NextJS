@@ -137,6 +137,10 @@ export async function GET(req: NextRequest) {
         { reporterName: { contains: search } },
         { tel: { contains: search } },
         { details: { contains: search } },
+        { employeeCode: { contains: search } },
+        { assignedTo: { contains: search } },
+        { detailsAdmin: { contains: search } },
+        { resolution: { contains: search } },
       ]
     }
     if (status && VALID_STATUSES.has(status)) where.status = status
@@ -203,6 +207,7 @@ export async function POST(req: NextRequest) {
       submissionSource,
       deviceId,
       picBefore,
+      picBeforeImages,
       actor,
       externalMeta,
       isExternal,
@@ -322,6 +327,36 @@ export async function POST(req: NextRequest) {
         status: 'PENDING',
       },
     })
+
+    // ── Multi-image (WorkOrderImage, stage='before') ──
+    // Accept either an array of base64 data URLs (preferred) or a single
+    // picBefore string (legacy). Each becomes its own WorkOrderImage row so
+    // the detail page can show all of them.
+    const beforeImages: string[] = []
+    if (Array.isArray(picBeforeImages)) {
+      for (const img of picBeforeImages) {
+        if (typeof img === 'string' && img.trim()) {
+          beforeImages.push(img)
+        }
+      }
+    }
+    if (beforeImages.length === 0 && picBefore) {
+      // Legacy single-image path: still mirror it into WorkOrderImage so the
+      // detail view (which reads WorkOrderImage) shows it.
+      beforeImages.push(String(picBefore))
+    }
+    if (beforeImages.length > 0) {
+      // Cap at 9 (matches the UI limit) to keep the create payload sane.
+      await db.workOrderImage.createMany({
+        data: beforeImages.slice(0, 9).map((dataUrl) => ({
+          workOrderId: created.id,
+          stage: 'before',
+          image_data: dataUrl,
+          fileName: null,
+          uploadedBy: actorName,
+        })),
+      })
+    }
 
     // Auto system message: created
     await db.workOrderMessage.create({

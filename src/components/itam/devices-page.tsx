@@ -72,6 +72,7 @@ import {
 import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
+import { QrCode, ScanLine } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { useAppStore } from '@/store/app-store'
 
@@ -578,11 +579,25 @@ export function DevicesPage() {
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
-                  placeholder="ค้นหารหัส / ชื่อ / SN / แบรนด์..."
+                  placeholder="ค้นหา Serial / รหัส / ตึก / ชั้น / หน่วยงาน / แบรนด์..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
+                  onKeyDown={(e) => {
+                    // Enter key triggers search (already debounced but this gives immediate feedback)
+                    if (e.key === 'Enter') setSearch((e.target as HTMLInputElement).value)
+                  }}
                 />
+                {/* Quick scan button — opens QR/barcode scanner */}
+                <button
+                  type="button"
+                  onClick={() => useAppStore.getState().setQrScannerOpen(true)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#f97316] dark:hover:bg-slate-800"
+                  title="สแกน QR / บาร์โค้ด"
+                  aria-label="สแกน QR / บาร์โค้ด"
+                >
+                  <ScanLine className="h-4 w-4" />
+                </button>
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-40">
@@ -795,6 +810,7 @@ export function DevicesPage() {
                     </TableHead>
                   )}
                   <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">Serial No.</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">แบรนด์</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">รุ่น</TableHead>
@@ -812,14 +828,14 @@ export function DevicesPage() {
                 {isLoading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={`sk-${i}`}>
-                      <TableCell colSpan={13}>
+                      <TableCell colSpan={14}>
                         <Skeleton className="h-6 w-full dark:bg-slate-800" />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (devices ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={13} className="py-12">
+                    <TableCell colSpan={14} className="py-12">
                       <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
                         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
                           <PackageOpen className="h-7 w-7 text-slate-300 dark:text-slate-600" />
@@ -890,6 +906,9 @@ export function DevicesPage() {
                       </TableCell>
                       <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">
                         {d.assetCode}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
+                        {d.serialNumber || <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate text-slate-700 dark:text-slate-200">
                         {d.name}
