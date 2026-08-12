@@ -1,0 +1,184 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Device {
+  id              String   @id @default(cuid())
+  assetCode       String   @unique
+  name            String
+  brand           String
+  model           String
+  type            String
+  serialNumber    String?
+  status          String // active | spare | repair | disposed
+  site            String
+  department      String?
+  departmentCode  String?
+  parentRef       String?
+  displayLabel    String?
+  location        String?
+  purchaseDate    String? // ISO date string
+  warrantyMonths  Int     @default(12)
+  lastMeterReading Int    @default(0)
+  currentAssignee String? // denormalized for quick display in tables/cards
+  // ---- Depreciation tracking (straight-line) ----
+  purchasePrice   Float?  // acquisition cost in THB
+  salvageValue    Float?  @default(0) // residual / scrap value
+  usefulLife      Int?    // useful life in months (default 60 = 5 years)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  meterReadings MeterReading[]
+  transfers    DeviceTransfer[]
+  assignments  Assignment[]
+  maintenanceLogs MaintenanceLog[]
+}
+
+model Assignment {
+  id                 String   @id @default(cuid())
+  deviceId           String
+  assignee           String   // user email or name
+  assigneeRole       String?  // job title / role (optional)
+  department         String?
+  checkoutDate       String   // ISO date
+  expectedReturnDate String?
+  actualReturnDate   String?
+  status             String   // active | returned
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}
+
+model SiteRate {
+  id        String   @id @default(cuid())
+  siteCode  String
+  bwRate    Float    @default(0.5)
+  colorRate Float    @default(2.0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DeviceTransfer {
+  id           String   @id @default(cuid())
+  deviceId     String
+  fromSite     String?
+  toSite       String
+  fromDept     String?
+  toDept       String?
+  fromDeptCode String?
+  toDeptCode   String?
+  reason       String?  // Thai reason note
+  transferDate String   // ISO date
+  createdAt    DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}
+
+model MasterItem {
+  id           String   @id @default(cuid())
+  category     String // Brand | Type | Model | Department | Status | DeviceGroup
+  code         String
+  label        String
+  parentRef    String?
+  displayLabel String?
+  siteCode     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model MeterReading {
+  id        String   @id @default(cuid())
+  deviceId  String
+  reading   Int
+  prevReading Int
+  date      String // ISO date string
+  remark    String?
+  delta     Int
+  cycleId   String?
+  createdAt DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}
+
+model Cycle {
+  id        String   @id @default(cuid())
+  name      String
+  startDate String // ISO date string
+  endDate   String // ISO date string
+  status    String // active | ended | cancelled
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Site {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  role      String   // admin | editor | viewer
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // CREATE | UPDATE | DELETE | METER_READING | SYNC | SEED | CYCLE_START | CYCLE_END
+  entity    String   // Device | MasterItem | MeterReading | Cycle | Site | Setting
+  entityId  String?
+  summary   String   // human-readable Thai summary, e.g. "เพิ่มอุปกรณ์ IT-PRT-001 (เครื่องพิมพ์ห้อง IT)"
+  detail    String?  // JSON string of before/after or key fields
+  actor     String   @default("admin@example.com")
+  createdAt DateTime @default(now())
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  type      String   // dashboard_summary | cycle | audit | utilization
+  title     String
+  rangeKey  String?  // month|30d|quarter|all
+  filters   String?  // JSON string of applied filters
+  data      String   // JSON string of the report data (snapshot)
+  format    String   @default("json") // json|csv|pdf
+  createdAt DateTime @default(now())
+}
+
+model MaintenanceLog {
+  id           String   @id @default(cuid())
+  deviceId     String
+  type         String   // repair | maintenance | inspection | upgrade
+  status       String   // open | in_progress | completed | cancelled
+  startDate    String   // ISO date
+  endDate      String?
+  cost         Float?
+  vendor       String?  // repair shop / service provider
+  description  String
+  resolvedNote String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+}
