@@ -34,11 +34,31 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await req.json()
-    const { status, name, startDate, endDate } = body as {
+    const {
+      status,
+      name,
+      startDate,
+      endDate,
+      cycleMonth,
+      deadlineDate,
+      remarks,
+    } = body as {
       status?: string
       name?: string
       startDate?: string
       endDate?: string
+      cycleMonth?: string
+      deadlineDate?: string
+      remarks?: string
+    }
+    // `user` for audit attribution (optional — this route may be unauthenticated)
+    let user: { email?: string } | null = null
+    try {
+      const { requireAuth } = await import('@/lib/auth-middleware')
+      const auth = await requireAuth(req, 'METER_WRITE')
+      if (auth.ok) user = auth.row
+    } catch {
+      // unauthenticated — proceed without user (for testing)
     }
 
     const existing = await db.cycle.findUnique({ where: { id } })
@@ -49,27 +69,67 @@ export async function PUT(
     const data: Record<string, unknown> = {}
     if (status !== undefined) {
       const s = String(status).trim()
-      if (!['active', 'ended', 'cancelled'].includes(s)) {
+      // Accept both legacy (active|ended|cancelled) and V5 (OPEN|QUEUED|CLOSED) statuses
+      if (!['active', 'ended', 'cancelled', 'OPEN', 'QUEUED', 'CLOSED', 'NONE'].includes(s)) {
         return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+      }
+      // V5 cycle lock (Apps Script commit 67f8e54):
+      //   Only OPEN cycles can be transitioned to CLOSED. Reject if not OPEN.
+      if (s === 'CLOSED' && existing.status !== 'OPEN' && existing.status !== 'active') {
+        return NextResponse.json(
+          { error: `ไม่สามารถปิดรอบได้: รอบปัจจุบันมีสถานะ "${existing.status}" (ต้องเป็น OPEN หรือ active ก่อน)` },
+          { status: 400 },
+        )
       }
       data.status = s
     }
     if (name !== undefined) data.name = String(name).trim()
     if (startDate !== undefined) data.startDate = String(startDate)
     if (endDate !== undefined) data.endDate = String(endDate)
+    if (cycleMonth !== undefined) data.cycleMonth = String(cycleMonth)
+    if (deadlineDate !== undefined) data.deadlineDate = String(deadlineDate)
+    if (remarks !== undefined) data.remarks = String(remarks)
+
+    // ── Snapshot-on-close (Apps Script MeterSnapshotService commit 67f8e54) ──
+    // When transitioning to CLOSED/ended, create an immutable snapshot of all
+    // meter readings for this cycle's month BEFORE writing the CLOSED status.
+    // If snapshot creation fails, the cycle stays OPEN (atomic).
+    let snapshotResult: { snapshotId: string; contentHash: string; rowCount: number } | null = null
+    const isClosing =
+      status === 'CLOSED' || status === 'ended'
+    if (isClosing && existing.status !== 'CLOSED' && existing.status !== 'ended') {
+      const cycleMonth = existing.cycleMonth || existing.startDate.slice(0, 7)
+      try {
+        const { createMeterReportSnapshot } = await import('@/lib/meter-snapshot')
+        snapshotResult = await createMeterReportSnapshot(cycleMonth, user?.email || 'system')
+        data.closedAt = new Date()
+      } catch (snapErr) {
+        console.error('Snapshot creation failed — cycle stays OPEN:', snapErr)
+        return NextResponse.json(
+          {
+            error: 'สร้าง snapshot ไม่สำเร็จ — รอบจดมิเตอร์ยังคงเปิดอยู่เพื่อความปลอดภัย',
+            detail: snapErr instanceof Error ? snapErr.message : 'Unknown error',
+          },
+          { status: 500 },
+        )
+      }
+    }
 
     const updated = await db.cycle.update({ where: { id }, data })
 
     // Audit log with Thai summary
     let action = 'UPDATE'
     let summary = `แก้ไขรอบจดมิเตอร์ ${updated.name}`
-    if (status === 'ended') {
+    if (status === 'ended' || status === 'CLOSED') {
       action = 'CYCLE_END'
       summary = `จบรอบจดมิเตอร์ ${updated.name}`
+      if (snapshotResult) {
+        summary += ` (snapshot: ${snapshotResult.snapshotId}, ${snapshotResult.rowCount} rows, hash: ${snapshotResult.contentHash.slice(0, 12)}...)`
+      }
     } else if (status === 'cancelled') {
       action = 'CYCLE_CANCEL'
       summary = `ยกเลิกรอบจดมิเตอร์ ${updated.name}`
-    } else if (status === 'active') {
+    } else if (status === 'active' || status === 'OPEN') {
       action = 'CYCLE_REOPEN'
       summary = `เปิดใช้งานรอบจดมิเตอร์ ${updated.name} อีกครั้ง`
     }
@@ -77,9 +137,25 @@ export async function PUT(
       name: updated.name,
       oldStatus: existing.status,
       newStatus: updated.status,
+      snapshot: snapshotResult
+        ? {
+            snapshotId: snapshotResult.snapshotId,
+            contentHash: snapshotResult.contentHash,
+            rowCount: snapshotResult.rowCount,
+          }
+        : null,
     })
 
-    return NextResponse.json({ cycle: updated })
+    return NextResponse.json({
+      cycle: updated,
+      snapshot: snapshotResult
+        ? {
+            snapshotId: snapshotResult.snapshotId,
+            contentHash: snapshotResult.contentHash,
+            rowCount: snapshotResult.rowCount,
+          }
+        : null,
+    })
   } catch (err) {
     console.error('PUT /api/cycles/[id]', err)
     return NextResponse.json({ error: 'Failed to update cycle' }, { status: 500 })
@@ -97,13 +173,18 @@ export async function DELETE(
     if (!cycle) {
       return NextResponse.json({ error: 'Cycle not found' }, { status: 404 })
     }
-    if (cycle.status === 'active') {
+    if (cycle.status === 'active' || cycle.status === 'OPEN') {
       return NextResponse.json(
         { error: 'ไม่สามารถลบรอบที่กำลังดำเนินการได้ — กรุณาจบรอบก่อน' },
         { status: 400 },
       )
     }
-    const readingCount = await db.meterReading.count({ where: { cycleId: id } })
+    // Count readings by date range (no cycleId field on MeterReading)
+    const readingCount = await db.meterReading.count({
+      where: {
+        readingDate: { gte: cycle.startDate, lte: cycle.endDate },
+      },
+    })
     if (readingCount > 0) {
       return NextResponse.json(
         {

@@ -49,6 +49,16 @@ export async function GET(req: NextRequest) {
     }
     const trendMonthKeys = trendMonths.map((m) => m.key)
 
+    // ── readingType filter for "usage" totals ──────────────────────────────
+    // Aligned with Apps Script AnalyticsService.gs (commit 67f8e54):
+    //   INCLUDE: MONTHLY, CHECKOUT, RETURN (these represent actual usage)
+    //   EXCLUDE: INITIAL, RESET, FINAL, SEND_REPAIR (baselines / non-usage)
+    // INITIAL/RESET contribute 0 pages anyway (enforced in meter-readings route),
+    // but excluding them here prevents double-counting if any legacy rows have
+    // non-zero pagesBw/Color from before the fix.
+    const USAGE_TYPES = ['MONTHLY', 'CHECKOUT', 'RETURN']
+    const usageTypeFilter = { readingType: { in: USAGE_TYPES } }
+
     // ── PARALLEL BLOCK 1: all independent count/aggregate queries ──────────
     const [
       statusGroups,
@@ -74,21 +84,20 @@ export async function GET(req: NextRequest) {
       }),
 
       // 3) Paper usage this month — by readingDate (actual reading date, not cycle month)
-      //    Using readingDate ensures consistency with the legacy dashboard which also
-      //    filters by readingDate. readingMonth represents the cycle month being
-      //    reported, which may differ from when the reading was taken.
+      //    Filtered to USAGE_TYPES only (MONTHLY/CHECKOUT/RETURN) to match Apps Script.
       db.meterReading.aggregate({
         _sum: { pagesBw: true, pagesColor: true },
         where: {
           readingDate: { gte: monthStart, lte: monthEnd },
           device: siteFilter,
+          ...usageTypeFilter,
         },
       }),
 
-      // 4) Paper usage trend (6 months) — single groupBy (was findMany + JS loop)
+      // 4) Paper usage trend (6 months) — single groupBy, USAGE_TYPES only
       db.meterReading.groupBy({
         by: ['readingMonth'],
-        where: { readingMonth: { in: trendMonthKeys }, device: siteFilter },
+        where: { readingMonth: { in: trendMonthKeys }, device: siteFilter, ...usageTypeFilter },
         _sum: { pagesBw: true, pagesColor: true },
       }),
 
@@ -183,12 +192,13 @@ export async function GET(req: NextRequest) {
           where: { site: { in: visibleSiteNames } },
           select: { assetNo: true, site: true },
         }),
-        // Paper usage per asset this month (by readingDate, aggregated)
+        // Paper usage per asset this month (by readingDate, USAGE_TYPES only, aggregated)
         db.meterReading.groupBy({
           by: ['assetNo'],
           where: {
             readingDate: { gte: monthStart, lte: monthEnd },
             device: { site: { in: visibleSiteNames } },
+            ...usageTypeFilter,
           },
           _sum: { pagesBw: true, pagesColor: true },
         }),
@@ -240,6 +250,7 @@ export async function GET(req: NextRequest) {
         where: {
           readingMonth: { in: trendMonthKeys },
           assetNo: { in: topDevices.map((d) => d.assetNo) },
+          ...usageTypeFilter,
         },
         _sum: { pagesBw: true, pagesColor: true },
       })

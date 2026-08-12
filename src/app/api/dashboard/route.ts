@@ -78,6 +78,12 @@ export async function GET(req: NextRequest) {
 
     const readingWhere = readingDateWhere(range)
 
+    // ── readingType filter for usage totals (aligned with Apps Script) ──────
+    // INCLUDE: MONTHLY, CHECKOUT, RETURN (actual usage)
+    // EXCLUDE: INITIAL, RESET, FINAL, SEND_REPAIR (baselines / non-usage)
+    const USAGE_TYPES = ['MONTHLY', 'CHECKOUT', 'RETURN']
+    const usageWhere = { ...readingWhere, readingType: { in: USAGE_TYPES } }
+
     // ── PARALLEL: all independent queries ──────────────────────────────────
     const [statusGroups, typeGroups, usageByAsset, paperAgg, recent] = await Promise.all([
       // 1) All device counts by status — single groupBy
@@ -92,20 +98,20 @@ export async function GET(req: NextRequest) {
         _count: { deviceType: true },
       }),
 
-      // 3) Top usage per asset in range — groupBy (was findMany all readings)
+      // 3) Top usage per asset in range — groupBy, USAGE_TYPES only
       db.meterReading.groupBy({
         by: ['assetNo'],
-        where: readingWhere,
+        where: usageWhere,
         _sum: { pagesBw: true, pagesColor: true },
       }),
 
-      // 4) Total paper usage in range — single aggregate
+      // 4) Total paper usage in range — single aggregate, USAGE_TYPES only
       db.meterReading.aggregate({
         _sum: { pagesBw: true, pagesColor: true },
-        where: readingWhere,
+        where: usageWhere,
       }),
 
-      // 5) Recent activity (8 readings with device info)
+      // 5) Recent activity (8 readings with device info, ALL types for timeline)
       db.meterReading.findMany({
         where: readingWhere,
         orderBy: { createdAt: 'desc' },
