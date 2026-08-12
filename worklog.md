@@ -2626,3 +2626,140 @@ Stage Summary:
 - ฟอร์มใบแจ้งซ่อน: เลือก A4/A5 + พิมพ์ได้ + เปิดหน้าใหม่ได้
 - รีพอร์ตรายเดือน: ข้อมูลจริง + charts + tables + print + CSV export
 - พร้อมสำหรับ push + deploy
+
+---
+
+## Task ID: VISUAL-TEMPLATE-EDITOR — Visual WYSIWYG Template Editor + Print Binding
+
+**วันที่:** 2026-08-12
+**ลักษณะงาน:** สร้าง Visual Template Editor สำหรับออกแบบเทมเพลตเอกสารแบบลากวาง (WYSIWYG) บนกระดาษจำลอง และผูกเทมเพลตเข้ากับใบงานเพื่อจำสำหรับครั้งถัดไป
+
+### สิ่งที่ผู้ใช้ต้องการ (จากโจทย์)
+> "จำลองขนาดกระดาษ แล้วให้เพิ่มข้อความ ปรับขนาด ย้าย เพิ่ม QR code เพิ่มภาพ ปรับขนาดตาราง หัวตาราง เลือกได้ ปรับตามที่อยากได้ข้อมูลออกมา บันทึก เวลาจะสั่งปริ้นค่อยขึ้นมาให้เลือก ถ้าเอกสารชุดนั้น Fix กับเทมเพลตไหนก็ให้มีช่องติ๊กเพื่อให้รู้ว่าพิมพ์หน้านี้ก็จะจำเทมเพลตเดิม โดยไม่ต้องเลือกใหม่"
+
+### ไฟล์ที่สร้าง/แก้ไข
+
+**1. Schema (Prisma)**
+- `prisma/schema.prisma`:
+  - เพิ่ม `printTemplateId String?` ในโมเดล `WorkOrder` — เก็บ ID เทมเพลตที่ Fix ไว้สำหรับใบงานนี้
+  - เพิ่ม `isFixed Boolean @default(false)` ในโมเดล `DocumentTemplate` — ติ๊กว่า Fix กับเทมเพลตนี้สำหรับใบงานทั้งหมด
+  - รัน `bun run db:push` เรียบร้อย
+
+**2. Shared lib**
+- `src/lib/template-editor.ts` (ใหม่):
+  - ประเภทข้อมูล `TemplateElement` ทั้ง 6 ชนิด: text / image / qr / table / rectangle / line
+  - ฟังก์ชันแปลงหน่วย `mmToPx`, `pxToMm`, `snapMm` (1mm ≈ 3.78px)
+  - `PAPER_SIZES`: A4, A4 Landscape, A5, Letter
+  - `TEMPLATE_VARIABLES`: 22 ตัวแปร ({woNumber}, {subject}, {reporterName}, {assetCode}, {brand}, {model}, {serial}, {quantity}, {unit}, {totalPrice}, …) แบ่ง 4 กลุ่ม
+  - `SAMPLE_DATA` สำหรับพรีวิว
+  - `makeDefaultContent()` — เลย์เอาต์เริ่มต้นสำหรับแต่ละประเภทเทมเพลต (sticker / work-order / pdf / …)
+  - `makeElement()` — โรงงานสร้างองค์ประกอบใหม่แต่ละชนิด
+  - `interpolate()` — แทนที่ {variable} ด้วยข้อมูลจริง
+  - `parseContent()` / `serializeContent()` — แปลง JSON ↔ TemplateContent
+
+**3. API routes (ใหม่)**
+- `src/app/api/templates/[id]/render/route.ts` — `POST`
+  - Body: `{ data?, workOrderId? }`
+  - ถ้าส่ง `workOrderId` → ดึงข้อมูลจริงจากใบงาน + parts + device มาแทนตัวแปร
+  - ถ้าไม่ส่ง → ใช้ `SAMPLE_DATA`
+  - คืน `{ html, elements, paper }` — HTML เป็นหน้าเต็มพร้อมพิมพ์ (absolute position ในหน่วย mm, @page size ถูกต้อง)
+- `src/app/api/work-orders/[id]/print-template/route.ts` — `PATCH`
+  - Body: `{ printTemplateId, setAsDefault? }`
+  - บันทึก `printTemplateId` ลงในใบงาน (จำสำหรับครั้งถัดไป)
+  - ถ้า `setAsDefault=true` → ตั้งเทมเพลตเป็น default ของประเภท
+  - เขียน AuditLog
+
+**4. UI Components (ใหม่)**
+- `src/components/itam/template-editor.tsx` — `TemplateEditor`
+  - จำลองกระดาษขาวบนพื้นหลังเทาพร้อมเงา + grid dot pattern
+  - เลือกขนาดกระดาษ A4 / A4L / A5 / Letter + ปรับ margin + ซูม 50–150%
+  - เส้น margin guide แบบ dashed
+  - องค์ประกอบ 6 ชนิด ลากย้ายได้ (snap 1mm) + ย่อ/ขยายจาก 8 จุด
+  - ดับเบิลคลิกข้อความ → inline edit (contentEditable)
+  - ปุ่มลัด: Del=ลบ, Ctrl+D=คัดลอก, Ctrl+Z=ยกเลิก, Ctrl+Shift+Z=ทำซ้ำ
+  - Properties panel ทางขวา — แก้ตำแหน่ง/ขนาด + คุณสมบัติเฉพาะชนิด (font, color, alignment, border, table columns, …)
+  - Toolbar: เพิ่มองค์ประกอบ, เลือกขนาดกระดาษ, ปรับขอบ, ซูม, บันทึก, พรีวิว (เปิดแท็บใหม่), ทดสอบพิมพ์ (auto print)
+  - ปุ่ม Variable Picker — แทรก {variable} จาก 4 กลุ่ม
+  - History (undo/redo) จำกัด 50 สเต็ป
+  - สถานะบน status bar บอก "ยังไม่บันทึก/บันทึกแล้ว"
+- `src/components/itam/template-print-dialog.tsx` — `TemplatePrintDialog`
+  - ถ้า WO มี `printTemplateId` → แสดง banner "Fix กับเทมเพลต: X" พร้อมปุ่ม "เปลี่ยนเทมเพลต" / "ล้างการจำ"
+  - ถ้าไม่มี → แสดง picker ของ work-order templates (ค้นหาได้, แสดง badge ค่าเริ่มต้น/Fix)
+  - Checkbox 2 ช่อง:
+    - ☑ ใช้เทมเพลตนี้สำหรับใบงานนี้ทุกครั้ง → PATCH `printTemplateId`
+    - ☑ ใช้เทมเพลตนี้สำหรับใบงานทั้งหมด → ตั้งเป็น default ของประเภท
+  - ปุ่ม "เปิดพรีวิว" / "พิมพ์" → เรียก `/api/templates/[id]/render` แล้วเปิด HTML ในแท็บใหม่
+
+**5. UI Components (แก้ไข)**
+- `src/components/itam/templates-page.tsx` — แทนที่ JSON editor เดิมด้วย `TemplateEditor`:
+  - เปิด Visual Editor แบบ full-screen dialog (max-w 1200px)
+  - ฟอร์ม meta ด้านบน: ชื่อ / หมวดหมู่ / ใช้งาน / ค่าเริ่มต้น / Fix
+  - เพิ่มคอลัมน์ "Fix" ในตารางรายการ + ปุ่ม toggle Pin
+  - การ seed default template ใช้ `makeDefaultContent()` แทน JSON ธรรมดา
+  - การ์ด "💡 วิธีใช้งาน Visual Editor" ด้านล่าง
+- `src/components/itam/work-orders-page.tsx`:
+  - ปุ่ม "พิมพ์ใบงาน" เปลี่ยนจาก `WoPrintForm` → `TemplatePrintDialog`
+  - ส่ง `fixedTemplateId={wo.printTemplateId}` ให้ dialog รู้ว่า Fix อยู่หรือไม่
+  - เพิ่ม `printTemplateId: string | null` ใน type `WorkOrder`
+  - ลบ import `WoPrintForm` ที่ไม่ใช้แล้ว
+
+### การทดสอบ (curl)
+- `GET /api/templates?type=work-order` → คืน `isFixed: false` ✅
+- `POST /api/templates/[id]/render` with `workOrderId` → คืน HTML 200 ✅
+- `PATCH /api/work-orders/[id]/print-template` → อัปเดต `printTemplateId` + สร้าง AuditLog 200 ✅
+- `bun run lint` → ผ่าน 0 errors, 0 warnings ✅
+- โหลดหน้า `/` สำเร็จ (HTTP 200) ✅
+
+### โครงสร้างข้อมูล (TemplateContent JSON)
+```json
+{
+  "paper": { "size": "A4", "orientation": "portrait", "width": 210, "height": 297, "margin": 10 },
+  "elements": [
+    { "id": "el1", "type": "text", "x": 20, "y": 12, "w": 170, "h": 12, "content": "ใบแจ้งซ่อน {woNumber}", "fontSize": 20, "fontWeight": "bold", "color": "#0f172a", "align": "center" },
+    { "id": "el2", "type": "qr",   "x": 175, "y": 5, "w": 30, "h": 30, "content": "{woNumber}", "fgColor": "#000000", "bgColor": "#ffffff" },
+    { "id": "el3", "type": "table","x": 15, "y": 110, "w": 180, "h": 60, "columns": [...], "dataSource": "work-order-items" }
+  ]
+}
+```
+
+### หมายเหตุ
+- QR Code ใช้บริการ `https://api.qrserver.com/v1/create-qr-code/` (สร้างฝั่ง client และ server ในรูป `<img>`)
+- ไม่ต้องติดตั้ง library เพิ่ม — ใช้ mouse events ลาก/ย่อ/ขยายเอง, contentEditable สำหรับ inline text edit
+- รองรับทั้ง light/dark mode (shadcn/ui + Tailwind)
+- ปุ่ม "เปิดหน้าใหม่ / พิมพ์" ทำงานผ่าน `window.open()` + `document.write()` ฝั่ง client และ render ฝั่ง server ผ่าน API
+
+---
+Task ID: VISUAL-TEMPLATE-EDITOR-VERIFY
+Agent: orchestrator — ตรวจสอบ Visual Template Editor
+
+Work Log:
+
+PART 1: Visual WYSIWYG Editor ✅
+- Canvas: A4/A4 Landscape/A5/Letter + margin guides + grid dots + zoom 50-150%
+- 6 element types: ข้อความ, รูป, QR Code, ตาราง, กรอบ, เส้น
+- Interactions: ลากย้าย (snap 1mm), ย่อ/ขยาย 8 จุด, ดับเบิลคลิกแก้ข้อความ, Del=ลบ, Ctrl+D=คัดลอก, Ctrl+Z=ยกเลิก
+- Properties panel: ตำแหน่ง/ขนาด (มม.) + คุณสมบัติเฉพาะแต่ละชนิด
+- Variable picker: 22 ตัวแปร ({woNumber}, {subject}, {reporterName}, etc.)
+- Toolbar: ข้อความ | รูป | QR | ตาราง | กรอบ | เส้น | A4 | ซูม | พรีวิว | ทดสอบพิมพ์ | บันทึก
+
+PART 2: Template Binding ✅
+- Schema: DocumentTemplate.isFixed + WorkOrder.printTemplateId
+- API: /api/templates/[id]/render (POST) — เรนเดอร์ HTML พร้อมข้อมูลจริง
+- API: /api/work-orders/[id]/print-template (PATCH) — บันทึก/ล้าง printTemplateId
+- TemplatePrintDialog: checkbox "ใช้เทมเพลตนี้สำหรับใบงานนี้ทุกครั้ง" + "ใช้สำหรับทั้งหมด"
+- ถ้า Fix ไว้ → พิมพ์อัตโนมัติโดยไม่ต้องเลือกใหม่
+
+PART 3: Integration ✅
+- templates-page.tsx: เปลี่ยนจาก JSON editor → Visual Editor (full-screen dialog)
+- work-orders-page.tsx: "พิมพ์ใบงาน" → TemplatePrintDialog (ส่ง fixedTemplateId)
+- Template list: มีคอลัมน์ Fix + ปุ่ม toggle Pin
+
+Verification (agent-browser):
+✅ Templates page: 6 type cards + template list with Fix column
+✅ Visual Editor: เปิดได้ — toolbar ครบ (ข้อความ, รูป, QR, ตาราง, กรอบ, เส้น, A4, ซูม, พรีวิว, บันทึก)
+✅ Lint: 0 errors
+
+Stage Summary:
+- Visual Template Editor สมบูรณ์: ลากวาง + QR + ภาพ + ตาราง + ขนาดกระดาษ
+- Template Binding: Fix + จำเทมเพลตเดิม + พิมพ์อัตโนมัติ
+- พร้อมสำหรับ push + deploy

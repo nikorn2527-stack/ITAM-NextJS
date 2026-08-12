@@ -273,6 +273,10 @@ model WorkOrder {
   lineUserId       String?
   lineMessageId    String?
 
+  // ── เทมเพลตสำหรับพิมพ์ (VISUAL-TEMPLATE-EDITOR) ──
+  // ID ของ DocumentTemplate ที่ Fix ไว้ — พิมพ์ครั้งถัดไปใช้เทมเพลตเดิมอัตโนมัติ
+  printTemplateId  String?
+
   // ── ลูกค้าภายนอก ──
   externalMeta     String?  // JSON
 
@@ -465,6 +469,8 @@ model DocumentTemplate {
   content     String   // JSON: { canvas, elements, table, footer, etc. }
   isActive    Boolean  @default(true)
   isDefault   Boolean  @default(false)
+  // ── VISUAL-TEMPLATE-EDITOR: ติ๊กว่า Fix กับเทมเพลตนี้ (จำสำหรับใบงานทั้งหมด) ──
+  isFixed     Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

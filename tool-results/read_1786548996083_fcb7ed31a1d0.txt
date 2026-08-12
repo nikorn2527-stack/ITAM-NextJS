@@ -1,0 +1,822 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import { motion } from 'framer-motion'
+     7→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     8→import { Button } from '@/components/ui/button'
+     9→import { Input } from '@/components/ui/input'
+    10→import { Label } from '@/components/ui/label'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import { Switch } from '@/components/ui/switch'
+    13→import { Textarea } from '@/components/ui/textarea'
+    14→import { Skeleton } from '@/components/ui/skeleton'
+    15→import {
+    16→  Table,
+    17→  TableBody,
+    18→  TableCell,
+    19→  TableHead,
+    20→  TableHeader,
+    21→  TableRow,
+    22→} from '@/components/ui/table'
+    23→import {
+    24→  Dialog,
+    25→  DialogContent,
+    26→  DialogDescription,
+    27→  DialogFooter,
+    28→  DialogHeader,
+    29→  DialogTitle,
+    30→} from '@/components/ui/dialog'
+    31→import {
+    32→  AlertDialog,
+    33→  AlertDialogAction,
+    34→  AlertDialogCancel,
+    35→  AlertDialogContent,
+    36→  AlertDialogDescription,
+    37→  AlertDialogFooter,
+    38→  AlertDialogHeader,
+    39→  AlertDialogTitle,
+    40→} from '@/components/ui/alert-dialog'
+    41→import {
+    42→  FileText,
+    43→  Plus,
+    44→  Pencil,
+    45→  Trash2,
+    46→  Check,
+    47→  Copy,
+    48→  Loader2,
+    49→} from 'lucide-react'
+    50→import {
+    51→  DEFAULT_TEMPLATES,
+    52→  TEMPLATE_TYPES,
+    53→  TEMPLATE_TYPE_META,
+    54→  type TemplateType,
+    55→} from '@/lib/templates'
+    56→
+    57→// ---------- Types ----------
+    58→
+    59→interface DocumentTemplate {
+    60→  id: string
+    61→  name: string
+    62→  type: string
+    63→  category: string | null
+    64→  content: string
+    65→  isActive: boolean
+    66→  isDefault: boolean
+    67→  createdAt: string
+    68→  updatedAt: string
+    69→}
+    70→
+    71→// ---------- Helpers ----------
+    72→
+    73→function formatThaiDate(iso: string | null): string {
+    74→  if (!iso) return '—'
+    75→  try {
+    76→    return new Date(iso).toLocaleDateString('th-TH', {
+    77→      day: '2-digit',
+    78→      month: '2-digit',
+    79→      year: 'numeric',
+    80→    })
+    81→  } catch {
+    82→    return iso
+    83→  }
+    84→}
+    85→
+    86→/** Pretty-print a JSON string for display; returns the original on parse error. */
+    87→function prettyJson(raw: string): string {
+    88→  try {
+    89→    return JSON.stringify(JSON.parse(raw), null, 2)
+    90→  } catch {
+    91→    return raw
+    92→  }
+    93→}
+    94→
+    95→// ---------- Default-template seeding ----------
+    96→// On first load, if a type has zero templates, auto-create the default one.
+    97→
+    98→function useSeedDefaults() {
+    99→  const queryClient = useQueryClient()
+   100→  const [seeding, setSeeding] = React.useState(false)
+   101→  const seededRef = React.useRef(false)
+   102→
+   103→  const { data: allTemplates, isLoading } = useQuery<DocumentTemplate[]>({
+   104→    queryKey: ['templates', 'all'],
+   105→    queryFn: async () => {
+   106→      const res = await fetch('/api/templates')
+   107→      if (!res.ok) throw new Error('Failed to load templates')
+   108→      const j = await res.json()
+   109→      return (j.templates ?? []) as DocumentTemplate[]
+   110→    },
+   111→    staleTime: 30_000,
+   112→  })
+   113→
+   114→  React.useEffect(() => {
+   115→    if (isLoading || seededRef.current || !allTemplates) return
+   116→    const missing = TEMPLATE_TYPES.filter(
+   117→      (t) => !allTemplates.some((tpl) => tpl.type === t),
+   118→    )
+   119→    if (missing.length === 0) {
+   120→      seededRef.current = true
+   121→      return
+   122→    }
+   123→    seededRef.current = true
+   124→    setSeeding(true)
+   125→    Promise.all(
+   126→      missing.map(async (t) => {
+   127→        const def = DEFAULT_TEMPLATES[t]
+   128→        const res = await fetch('/api/templates', {
+   129→          method: 'POST',
+   130→          headers: { 'Content-Type': 'application/json' },
+   131→          body: JSON.stringify({
+   132→            name: def.name,
+   133→            type: t,
+   134→            content: def.content,
+   135→            isActive: true,
+   136→            isDefault: true,
+   137→          }),
+   138→        })
+   139→        if (!res.ok) {
+   140→          const j = await res.json().catch(() => ({}))
+   141→          throw new Error(j.error ?? `สร้างเทมเพลตเริ่มต้นสำหรับ ${t} ล้มเหลว`)
+   142→        }
+   143→        return res.json()
+   144→      }),
+   145→    )
+   146→      .then(() => {
+   147→        queryClient.invalidateQueries({ queryKey: ['templates'] })
+   148→        toast.success('สร้างเทมเพลตเริ่มต้นเรียบร้อยแล้ว')
+   149→      })
+   150→      .catch((err: unknown) => {
+   151→        toast.error(
+   152→          err instanceof Error ? err.message : 'สร้างเทมเพลตเริ่มต้นล้มเหลว',
+   153→        )
+   154→      })
+   155→      .finally(() => setSeeding(false))
+   156→  }, [allTemplates, isLoading, queryClient])
+   157→
+   158→  return { seeding }
+   159→}
+   160→
+   161→// ---------- Editor dialog ----------
+   162→
+   163→interface EditorState {
+   164→  id: string | null // null = creating new
+   165→  name: string
+   166→  category: string
+   167→  content: string
+   168→  isActive: boolean
+   169→  isDefault: boolean
+   170→}
+   171→
+   172→const EMPTY_EDITOR: EditorState = {
+   173→  id: null,
+   174→  name: '',
+   175→  category: '',
+   176→  content: '{\n  \n}',
+   177→  isActive: true,
+   178→  isDefault: false,
+   179→}
+   180→
+   181→interface EditorDialogProps {
+   182→  open: boolean
+   183→  onOpenChange: (open: boolean) => void
+   184→  type: TemplateType
+   185→  initial: EditorState
+   186→}
+   187→
+   188→function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) {
+   189→  const queryClient = useQueryClient()
+   190→  const [form, setForm] = React.useState<EditorState>(initial)
+   191→  const [jsonError, setJsonError] = React.useState<string | null>(null)
+   192→
+   193→  // Sync form state whenever the dialog opens or the initial value changes.
+   194→  React.useEffect(() => {
+   195→    if (open) {
+   196→      setForm(initial)
+   197→      setJsonError(null)
+   198→    }
+   199→  }, [open, initial])
+   200→
+   201→  const isEditing = form.id !== null
+   202→
+   203→  const saveMutation = useMutation({
+   204→    mutationFn: async () => {
+   205→      // Validate JSON content (must be parseable).
+   206→      let contentStr = form.content
+   207→      try {
+   208→        // Re-stringify to normalise — store a compact-but-valid JSON.
+   209→        const parsed = JSON.parse(form.content)
+   210→        contentStr = JSON.stringify(parsed)
+   211→      } catch {
+   212→        throw new Error('เนื้อหา (content) ต้องเป็น JSON ที่ถูกต้อง')
+   213→      }
+   214→
+   215→      const payload = {
+   216→        name: form.name,
+   217→        type, // type is fixed by the selected card
+   218→        category: form.category.trim() || null,
+   219→        content: contentStr,
+   220→        isActive: form.isActive,
+   221→        isDefault: form.isDefault,
+   222→      }
+   223→
+   224→      if (isEditing && form.id) {
+   225→        const res = await fetch(`/api/templates/${form.id}`, {
+   226→          method: 'PUT',
+   227→          headers: { 'Content-Type': 'application/json' },
+   228→          body: JSON.stringify(payload),
+   229→        })
+   230→        if (!res.ok) {
+   231→          const j = await res.json().catch(() => ({}))
+   232→          throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
+   233→        }
+   234→        return res.json()
+   235→      } else {
+   236→        const res = await fetch('/api/templates', {
+   237→          method: 'POST',
+   238→          headers: { 'Content-Type': 'application/json' },
+   239→          body: JSON.stringify(payload),
+   240→        })
+   241→        if (!res.ok) {
+   242→          const j = await res.json().catch(() => ({}))
+   243→          throw new Error(j.error ?? 'สร้างไม่สำเร็จ')
+   244→        }
+   245→        return res.json()
+   246→      }
+   247→    },
+   248→    onSuccess: () => {
+   249→      queryClient.invalidateQueries({ queryKey: ['templates'] })
+   250→      toast.success(isEditing ? 'บันทึกเทมเพลตเรียบร้อย' : 'สร้างเทมเพลตเรียบร้อย')
+   251→      onOpenChange(false)
+   252→    },
+   253→    onError: (err: unknown) => {
+   254→      toast.error(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ')
+   255→    },
+   256→  })
+   257→
+   258→  // Live JSON validation as the user types.
+   259→  React.useEffect(() => {
+   260→    if (!open) return
+   261→    try {
+   262→      JSON.parse(form.content)
+   263→      setJsonError(null)
+   264→    } catch (e) {
+   265→      setJsonError(e instanceof Error ? e.message : 'JSON ไม่ถูกต้อง')
+   266→    }
+   267→  }, [form.content, open])
+   268→
+   269→  function handleSubmit(e: React.FormEvent) {
+   270→    e.preventDefault()
+   271→    if (!form.name.trim()) {
+   272→      toast.error('กรุณาระบุชื่อเทมเพลต')
+   273→      return
+   274→    }
+   275→    saveMutation.mutate()
+   276→  }
+   277→
+   278→  return (
+   279→    <Dialog open={open} onOpenChange={onOpenChange}>
+   280→      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+   281→        <DialogHeader>
+   282→          <DialogTitle>
+   283→            {isEditing ? 'แก้ไขเทมเพลต' : 'สร้างเทมเพลตใหม่'}
+   284→          </DialogTitle>
+   285→          <DialogDescription>
+   286→            ประเภท:{' '}
+   287→            <span className="font-medium text-foreground">
+   288→              {TEMPLATE_TYPE_META.find((m) => m.value === type)?.label ?? type}
+   289→            </span>
+   290→          </DialogDescription>
+   291→        </DialogHeader>
+   292→
+   293→        <form onSubmit={handleSubmit} className="space-y-4">
+   294→          {/* name */}
+   295→          <div className="space-y-2">
+   296→            <Label htmlFor="tpl-name">
+   297→              ชื่อเทมเพลต <span className="text-destructive">*</span>
+   298→            </Label>
+   299→            <Input
+   300→              id="tpl-name"
+   301→              value={form.name}
+   302→              onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))}
+   303→              placeholder="เช่น สติกเกอร์อุปกรณ์ IT"
+   304→              autoFocus
+   305→            />
+   306→          </div>
+   307→
+   308→          {/* category */}
+   309→          <div className="space-y-2">
+   310→            <Label htmlFor="tpl-category">หมวดหมู่ (ไม่บังคับ)</Label>
+   311→            <Input
+   312→              id="tpl-category"
+   313→              value={form.category}
+   314→              onChange={(e) =>
+   315→                setForm((s) => ({ ...s, category: e.target.value }))
+   316→              }
+   317→              placeholder="เช่น asset, meter, location"
+   318→            />
+   319→          </div>
+   320→
+   321→          {/* content (JSON) */}
+   322→          <div className="space-y-2">
+   323→            <div className="flex items-center justify-between">
+   324→              <Label htmlFor="tpl-content">
+   325→                เนื้อหา (JSON) <span className="text-destructive">*</span>
+   326→              </Label>
+   327→              <span
+   328→                className={
+   329→                  jsonError
+   330→                    ? 'text-xs font-medium text-rose-600 dark:text-rose-400'
+   331→                    : 'text-xs font-medium text-emerald-600 dark:text-emerald-400'
+   332→                }
+   333→              >
+   334→                {jsonError ? '⚠ JSON ไม่ถูกต้อง' : '✓ JSON ถูกต้อง'}
+   335→              </span>
+   336→            </div>
+   337→            <Textarea
+   338→              id="tpl-content"
+   339→              value={form.content}
+   340→              onChange={(e) =>
+   341→                setForm((s) => ({ ...s, content: e.target.value }))
+   342→              }
+   343→              className="min-h-[240px] font-mono text-xs"
+   344→              spellCheck={false}
+   345→            />
+   346→            {jsonError && (
+   347→              <p className="text-xs text-rose-600 dark:text-rose-400">
+   348→                {jsonError}
+   349→              </p>
+   350→            )}
+   351→          </div>
+   352→
+   353→          {/* toggles */}
+   354→          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   355→            <div className="flex items-center justify-between rounded-lg border p-3">
+   356→              <div className="space-y-0.5">
+   357→                <Label htmlFor="tpl-active" className="cursor-pointer">
+   358→                  ใช้งาน
+   359→                </Label>
+   360→                <p className="text-xs text-muted-foreground">
+   361→                  ปิดชั่วคราวเพื่อซ่อนจากรายการที่ใช้ได้
+   362→                </p>
+   363→              </div>
+   364→              <Switch
+   365→                id="tpl-active"
+   366→                checked={form.isActive}
+   367→                onCheckedChange={(v) =>
+   368→                  setForm((s) => ({ ...s, isActive: v }))
+   369→                }
+   370→              />
+   371→            </div>
+   372→            <div className="flex items-center justify-between rounded-lg border p-3">
+   373→              <div className="space-y-0.5">
+   374→                <Label htmlFor="tpl-default" className="cursor-pointer">
+   375→                  ตั้งเป็นค่าเริ่มต้น
+   376→                </Label>
+   377→                <p className="text-xs text-muted-foreground">
+   378→                  ใช้เป็นเทมเพลตหลักของประเภทนี้
+   379→                </p>
+   380→              </div>
+   381→              <Switch
+   382→                id="tpl-default"
+   383→                checked={form.isDefault}
+   384→                onCheckedChange={(v) =>
+   385→                  setForm((s) => ({ ...s, isDefault: v }))
+   386→                }
+   387→              />
+   388→            </div>
+   389→          </div>
+   390→
+   391→          <DialogFooter>
+   392→            <Button
+   393→              type="button"
+   394→              variant="outline"
+   395→              onClick={() => onOpenChange(false)}
+   396→              disabled={saveMutation.isPending}
+   397→            >
+   398→              ยกเลิก
+   399→            </Button>
+   400→            <Button type="submit" disabled={saveMutation.isPending}>
+   401→              {saveMutation.isPending ? (
+   402→                <>
+   403→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   404→                  กำลังบันทึก…
+   405→                </>
+   406→              ) : (
+   407→                'บันทึก'
+   408→              )}
+   409→            </Button>
+   410→          </DialogFooter>
+   411→        </form>
+   412→      </DialogContent>
+   413→    </Dialog>
+   414→  )
+   415→}
+   416→
+   417→// ---------- Main page ----------
+   418→
+   419→export function TemplatesPage() {
+   420→  const queryClient = useQueryClient()
+   421→  const [selectedType, setSelectedType] =
+   422→    React.useState<TemplateType>('sticker')
+   423→  const [editorOpen, setEditorOpen] = React.useState(false)
+   424→  const [editorInitial, setEditorInitial] =
+   425→    React.useState<EditorState>(EMPTY_EDITOR)
+   426→  const [deleteTarget, setDeleteTarget] =
+   427→    React.useState<DocumentTemplate | null>(null)
+   428→
+   429→  // Seed defaults on first mount (only for types that have zero templates).
+   430→  useSeedDefaults()
+   431→
+   432→  // List filtered by selected type.
+   433→  const { data: templates, isLoading } = useQuery<DocumentTemplate[]>({
+   434→    queryKey: ['templates', selectedType],
+   435→    queryFn: async () => {
+   436→      const res = await fetch(`/api/templates?type=${selectedType}`)
+   437→      if (!res.ok) throw new Error('Failed to load templates')
+   438→      const j = await res.json()
+   439→      return (j.templates ?? []) as DocumentTemplate[]
+   440→    },
+   441→    staleTime: 15_000,
+   442→  })
+   443→
+   444→  // ---- Mutations ----
+   445→
+   446→  const setActiveMutation = useMutation({
+   447→    mutationFn: async (tpl: DocumentTemplate) => {
+   448→      const res = await fetch(`/api/templates/${tpl.id}`, {
+   449→        method: 'PUT',
+   450→        headers: { 'Content-Type': 'application/json' },
+   451→        body: JSON.stringify({ isActive: !tpl.isActive }),
+   452→      })
+   453→      if (!res.ok) {
+   454→        const j = await res.json().catch(() => ({}))
+   455→        throw new Error(j.error ?? 'อัปเดตไม่สำเร็จ')
+   456→      }
+   457→      return res.json()
+   458→    },
+   459→    onSuccess: (_data, tpl) => {
+   460→      queryClient.invalidateQueries({ queryKey: ['templates'] })
+   461→      toast.success(tpl.isActive ? 'ปิดใช้งานเทมเพลต' : 'เปิดใช้งานเทมเพลต')
+   462→    },
+   463→    onError: (err: unknown) => {
+   464→      toast.error(err instanceof Error ? err.message : 'อัปเดตไม่สำเร็จ')
+   465→    },
+   466→  })
+   467→
+   468→  const deleteMutation = useMutation({
+   469→    mutationFn: async (id: string) => {
+   470→      const res = await fetch(`/api/templates/${id}`, { method: 'DELETE' })
+   471→      if (!res.ok) {
+   472→        const j = await res.json().catch(() => ({}))
+   473→        throw new Error(j.error ?? 'ลบไม่สำเร็จ')
+   474→      }
+   475→      return res.json()
+   476→    },
+   477→    onSuccess: () => {
+   478→      queryClient.invalidateQueries({ queryKey: ['templates'] })
+   479→      toast.success('ลบเทมเพลตเรียบร้อย')
+   480→      setDeleteTarget(null)
+   481→    },
+   482→    onError: (err: unknown) => {
+   483→      toast.error(err instanceof Error ? err.message : 'ลบไม่สำเร็จ')
+   484→    },
+   485→  })
+   486→
+   487→  const duplicateMutation = useMutation({
+   488→    mutationFn: async (tpl: DocumentTemplate) => {
+   489→      const res = await fetch('/api/templates', {
+   490→        method: 'POST',
+   491→        headers: { 'Content-Type': 'application/json' },
+   492→        body: JSON.stringify({
+   493→          name: `${tpl.name} (สำเนา)`,
+   494→          type: tpl.type,
+   495→          category: tpl.category,
+   496→          content: tpl.content,
+   497→          isActive: true,
+   498→          isDefault: false,
+   499→        }),
+   500→      })
+   501→      if (!res.ok) {
+   502→        const j = await res.json().catch(() => ({}))
+   503→        throw new Error(j.error ?? 'คัดลอกไม่สำเร็จ')
+   504→      }
+   505→      return res.json()
+   506→    },
+   507→    onSuccess: () => {
+   508→      queryClient.invalidateQueries({ queryKey: ['templates'] })
+   509→      toast.success('คัดลอกเทมเพลตเรียบร้อย')
+   510→    },
+   511→    onError: (err: unknown) => {
+   512→      toast.error(err instanceof Error ? err.message : 'คัดลอกไม่สำเร็จ')
+   513→    },
+   514→  })
+   515→
+   516→  // ---- Dialog openers ----
+   517→
+   518→  function openCreate() {
+   519→    setEditorInitial({
+   520→      ...EMPTY_EDITOR,
+   521→      content: DEFAULT_TEMPLATES[selectedType].content,
+   522→    })
+   523→    setEditorOpen(true)
+   524→  }
+   525→
+   526→  function openEdit(tpl: DocumentTemplate) {
+   527→    setEditorInitial({
+   528→      id: tpl.id,
+   529→      name: tpl.name,
+   530→      category: tpl.category ?? '',
+   531→      content: prettyJson(tpl.content),
+   532→      isActive: tpl.isActive,
+   533→      isDefault: tpl.isDefault,
+   534→    })
+   535→    setEditorOpen(true)
+   536→  }
+   537→
+   538→  const selectedMeta = TEMPLATE_TYPE_META.find(
+   539→    (m) => m.value === selectedType,
+   540→  )
+   541→
+   542→  return (
+   543→    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
+   544→      {/* Header */}
+   545→      <motion.div
+   546→        initial={{ opacity: 0, y: 8 }}
+   547→        animate={{ opacity: 1, y: 0 }}
+   548→        transition={{ duration: 0.25, ease: 'easeOut' }}
+   549→        className="space-y-1"
+   550→      >
+   551→        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+   552→          📄 เทมเพลตเอกสาร
+   553→        </h1>
+   554→        <p className="text-sm text-muted-foreground md:text-base">
+   555→          สร้างและจัดการเทมเพลต — แยกตามประเภทงาน
+   556→        </p>
+   557→      </motion.div>
+   558→
+   559→      {/* Template type selector */}
+   560→      <div>
+   561→        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
+   562→          เลือกประเภทเทมเพลต
+   563→        </h2>
+   564→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+   565→          {TEMPLATE_TYPE_META.map((meta) => {
+   566→            const active = selectedType === meta.value
+   567→            return (
+   568→              <button
+   569→                key={meta.value}
+   570→                type="button"
+   571→                onClick={() => setSelectedType(meta.value)}
+   572→                aria-pressed={active}
+   573→                className={`
+   574→                  group relative flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition-all
+   575→                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2
+   576→                  ${
+   577→                    active
+   578→                      ? 'border-orange-400 bg-orange-50 shadow-sm dark:border-orange-700 dark:bg-orange-950/40'
+   579→                      : 'border-border bg-card hover:border-orange-300 hover:bg-orange-50/50 dark:hover:border-orange-800 dark:hover:bg-orange-950/20'
+   580→                  }
+   581→                `}
+   582→              >
+   583→                <span className="text-2xl" aria-hidden>
+   584→                  {meta.icon}
+   585→                </span>
+   586→                <span
+   587→                  className={`text-sm font-semibold ${
+   588→                    active
+   589→                      ? 'text-orange-700 dark:text-orange-300'
+   590→                      : 'text-foreground'
+   591→                  }`}
+   592→                >
+   593→                  {meta.label}
+   594→                </span>
+   595→                <span className="text-[11px] leading-tight text-muted-foreground">
+   596→                  {meta.description}
+   597→                </span>
+   598→                {active && (
+   599→                  <span
+   600→                    aria-hidden
+   601→                    className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-white"
+   602→                  >
+   603→                    <Check className="h-3 w-3" />
+   604→                  </span>
+   605→                )}
+   606→              </button>
+   607→            )
+   608→          })}
+   609→        </div>
+   610→      </div>
+   611→
+   612→      {/* Template list for selected type */}
+   613→      <Card>
+   614→        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+   615→          <div className="space-y-1">
+   616→            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+   617→              <span aria-hidden>{selectedMeta?.icon}</span>
+   618→              {selectedMeta?.label} — รายการเทมเพลต
+   619→            </CardTitle>
+   620→            <p className="text-xs text-muted-foreground">
+   621→              {selectedMeta?.description}
+   622→            </p>
+   623→          </div>
+   624→          <Button onClick={openCreate} size="sm" className="shrink-0">
+   625→            <Plus className="mr-1.5 h-4 w-4" />
+   626→            สร้างเทมเพลตใหม่
+   627→          </Button>
+   628→        </CardHeader>
+   629→        <CardContent>
+   630→          {isLoading ? (
+   631→            <div className="space-y-2">
+   632→              {Array.from({ length: 3 }).map((_, i) => (
+   633→                <Skeleton key={i} className="h-12 w-full" />
+   634→              ))}
+   635→            </div>
+   636→          ) : !templates || templates.length === 0 ? (
+   637→            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+   638→              <FileText className="h-10 w-10 text-muted-foreground/50" />
+   639→              <p className="text-sm font-medium">ยังไม่มีเทมเพลตในประเภทนี้</p>
+   640→              <p className="text-xs text-muted-foreground">
+   641→                กด &quot;สร้างเทมเพลตใหม่&quot; เพื่อเริ่มต้น
+   642→              </p>
+   643→            </div>
+   644→          ) : (
+   645→            <div className="overflow-x-auto">
+   646→              <Table>
+   647→                <TableHeader>
+   648→                  <TableRow>
+   649→                    <TableHead className="min-w-[180px]">ชื่อ</TableHead>
+   650→                    <TableHead className="min-w-[120px]">หมวดหมู่</TableHead>
+   651→                    <TableHead className="text-center">สถานะ</TableHead>
+   652→                    <TableHead className="text-center">ค่าเริ่มต้น</TableHead>
+   653→                    <TableHead className="min-w-[110px]">สร้างเมื่อ</TableHead>
+   654→                    <TableHead className="text-right">การจัดการ</TableHead>
+   655→                  </TableRow>
+   656→                </TableHeader>
+   657→                <TableBody>
+   658→                  {templates.map((tpl) => (
+   659→                    <TableRow key={tpl.id}>
+   660→                      <TableCell className="font-medium">{tpl.name}</TableCell>
+   661→                      <TableCell>
+   662→                        {tpl.category ? (
+   663→                          <span className="text-sm text-muted-foreground">
+   664→                            {tpl.category}
+   665→                          </span>
+   666→                        ) : (
+   667→                          <span className="text-sm text-muted-foreground/60">
+   668→                            —
+   669→                          </span>
+   670→                        )}
+   671→                      </TableCell>
+   672→                      <TableCell className="text-center">
+   673→                        <Badge
+   674→                          variant={tpl.isActive ? 'default' : 'secondary'}
+   675→                          className={
+   676→                            tpl.isActive
+   677→                              ? 'border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+   678→                              : ''
+   679→                          }
+   680→                        >
+   681→                          {tpl.isActive ? 'ใช้งาน' : 'ปิด'}
+   682→                        </Badge>
+   683→                      </TableCell>
+   684→                      <TableCell className="text-center">
+   685→                        {tpl.isDefault ? (
+   686→                          <Badge
+   687→                            variant="default"
+   688→                            className="border-orange-200 bg-orange-100 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300"
+   689→                          >
+   690→                            ★ ค่าเริ่มต้น
+   691→                          </Badge>
+   692→                        ) : (
+   693→                          <span className="text-sm text-muted-foreground/60">
+   694→                            —
+   695→                          </span>
+   696→                        )}
+   697→                      </TableCell>
+   698→                      <TableCell className="text-sm text-muted-foreground">
+   699→                        {formatThaiDate(tpl.createdAt)}
+   700→                      </TableCell>
+   701→                      <TableCell>
+   702→                        <div className="flex items-center justify-end gap-1">
+   703→                          {/* Toggle active */}
+   704→                          <Button
+   705→                            variant="ghost"
+   706→                            size="sm"
+   707→                            className="h-8 w-8 p-0"
+   708→                            onClick={() => setActiveMutation.mutate(tpl)}
+   709→                            disabled={setActiveMutation.isPending}
+   710→                            title={tpl.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'}
+   711→                            aria-label={
+   712→                              tpl.isActive ? 'ปิดใช้งาน' : 'เปิดใช้งาน'
+   713→                            }
+   714→                          >
+   715→                            <Check
+   716→                              className={`h-4 w-4 ${
+   717→                                tpl.isActive
+   718→                                  ? 'text-emerald-600'
+   719→                                  : 'text-muted-foreground'
+   720→                              }`}
+   721→                            />
+   722→                          </Button>
+   723→                          {/* Duplicate */}
+   724→                          <Button
+   725→                            variant="ghost"
+   726→                            size="sm"
+   727→                            className="h-8 w-8 p-0"
+   728→                            onClick={() => duplicateMutation.mutate(tpl)}
+   729→                            disabled={duplicateMutation.isPending}
+   730→                            title="คัดลอก"
+   731→                            aria-label="คัดลอก"
+   732→                          >
+   733→                            <Copy className="h-4 w-4" />
+   734→                          </Button>
+   735→                          {/* Edit */}
+   736→                          <Button
+   737→                            variant="ghost"
+   738→                            size="sm"
+   739→                            className="h-8 w-8 p-0"
+   740→                            onClick={() => openEdit(tpl)}
+   741→                            title="แก้ไข"
+   742→                            aria-label="แก้ไข"
+   743→                          >
+   744→                            <Pencil className="h-4 w-4" />
+   745→                          </Button>
+   746→                          {/* Delete (disabled for default) */}
+   747→                          <Button
+   748→                            variant="ghost"
+   749→                            size="sm"
+   750→                            className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40"
+   751→                            onClick={() => setDeleteTarget(tpl)}
+   752→                            disabled={tpl.isDefault}
+   753→                            title={
+   754→                              tpl.isDefault
+   755→                                ? 'ไม่สามารถลบเทมเพลตค่าเริ่มต้นได้'
+   756→                                : 'ลบ'
+   757→                            }
+   758→                            aria-label="ลบ"
+   759→                          >
+   760→                            <Trash2 className="h-4 w-4" />
+   761→                          </Button>
+   762→                        </div>
+   763→                      </TableCell>
+   764→                    </TableRow>
+   765→                  ))}
+   766→                </TableBody>
+   767→              </Table>
+   768→            </div>
+   769→          )}
+   770→        </CardContent>
+   771→      </Card>
+   772→
+   773→      {/* Editor dialog */}
+   774→      <EditorDialog
+   775→        open={editorOpen}
+   776→        onOpenChange={setEditorOpen}
+   777→        type={selectedType}
+   778→        initial={editorInitial}
+   779→      />
+   780→
+   781→      {/* Delete confirmation */}
+   782→      <AlertDialog
+   783→        open={deleteTarget !== null}
+   784→        onOpenChange={(o) => !o && setDeleteTarget(null)}
+   785→      >
+   786→        <AlertDialogContent>
+   787→          <AlertDialogHeader>
+   788→            <AlertDialogTitle>ยืนยันการลบเทมเพลต</AlertDialogTitle>
+   789→            <AlertDialogDescription>
+   790→              คุณแน่ใจหรือว่าต้องการลบเทมเพลต{' '}
+   791→              <span className="font-medium text-foreground">
+   792→                &quot;{deleteTarget?.name}&quot;
+   793→              </span>
+   794→              ? การกระทำนี้ไม่สามารถย้อนกลับได้
+   795→            </AlertDialogDescription>
+   796→          </AlertDialogHeader>
+   797→          <AlertDialogFooter>
+   798→            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+   799→            <AlertDialogAction
+   800→              className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
+   801→              disabled={deleteMutation.isPending}
+   802→              onClick={(e) => {
+   803→                e.preventDefault()
+   804→                if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
+   805→              }}
+   806→            >
+   807→              {deleteMutation.isPending ? (
+   808→                <>
+   809→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   810→                  กำลังลบ…
+   811→                </>
+   812→              ) : (
+   813→                'ลบเทมเพลต'
+   814→              )}
+   815→            </AlertDialogAction>
+   816→          </AlertDialogFooter>
+   817→        </AlertDialogContent>
+   818→      </AlertDialog>
+   819→    </div>
+   820→  )
+   821→}
+   822→
