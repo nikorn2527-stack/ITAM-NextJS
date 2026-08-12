@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -904,12 +905,12 @@ function WorkOrderCard({
       }}
     >
       <CardContent className="space-y-3 p-4">
-        {/* Top row: WO number + status */}
-        <div className="flex items-center justify-between gap-2">
+        {/* Top row: WO number + status badges (status badge larger for readability) */}
+        <div className="flex items-start justify-between gap-2">
           <span className="truncate font-mono text-xs font-semibold text-muted-foreground">
             {wo.woNumber ?? '—'}
           </span>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center justify-end gap-1">
             {external && (
               <Badge
                 className="border-teal-200 bg-teal-100 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
@@ -918,13 +919,16 @@ function WorkOrderCard({
                 งานนอก
               </Badge>
             )}
-            <Badge className={statusBadgeClass(wo.status)} variant="outline">
+            <Badge
+              className={statusBadgeClass(wo.status) + ' px-2.5 py-1 text-xs font-semibold'}
+              variant="outline"
+            >
               {statusLabel(wo.status)}
             </Badge>
           </div>
         </div>
 
-        {/* Subject */}
+        {/* Subject + prominent priority badge top-right */}
         <div className="flex items-start gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-orange-100 dark:bg-orange-950">
             <Wrench className="h-4 w-4 text-orange-600 dark:text-orange-400" />
@@ -937,6 +941,16 @@ function WorkOrderCard({
               {relativeTime(wo.createdAt)}
             </div>
           </div>
+          {/* Priority badge — prominent, top-right corner */}
+          <Badge
+            className={
+              priorityBadgeClass(wo.priority) +
+              ' shrink-0 px-2.5 py-1 text-xs font-semibold'
+            }
+            variant="outline"
+          >
+            {wo.priority}
+          </Badge>
         </div>
 
         {/* Meta */}
@@ -985,14 +999,8 @@ function WorkOrderCard({
           )}
         </div>
 
-        {/* Footer: priority + assignedTo */}
-        <div className="flex items-center justify-between gap-2 border-t pt-2.5">
-          <Badge
-            className={priorityBadgeClass(wo.priority)}
-            variant="outline"
-          >
-            {wo.priority}
-          </Badge>
+        {/* Footer: assignedTo only (priority moved up) */}
+        <div className="flex items-center justify-end gap-2 border-t pt-2.5">
           <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
             {wo.assignedTo ? (
               <>
@@ -1167,19 +1175,31 @@ function CreateWorkOrderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-hidden sm:max-w-[640px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5 text-orange-500" />
-            แจ้งซ่อมใหม่
-          </DialogTitle>
-          <DialogDescription>
-            กรอกรายละเอียดปัญหา ระบบจะสร้างเลขใบงานอัตโนมัติ (WO-YYYYMMDD-NNN)
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent
+        showCloseButton={false}
+        className="flex h-[100vh] max-h-[100vh] w-full max-w-[100vw] flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[92vh] sm:max-w-2xl sm:rounded-lg sm:p-6"
+      >
+        {/* Mobile-first header: title + 44px close button */}
+        <div className="flex items-start justify-between gap-3 border-b px-4 py-3 sm:px-0 sm:py-0 sm:border-0">
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <Plus className="h-5 w-5 text-orange-500" />
+              แจ้งซ่อมใหม่
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-xs sm:text-sm">
+              กรอกรายละเอียดปัญหา ระบบจะสร้างเลขใบงานอัตโนมัติ (WO-YYYYMMDD-NNN)
+            </DialogDescription>
+          </div>
+          <DialogClose
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500"
+            aria-label="ปิด"
+          >
+            <X className="h-5 w-5" />
+          </DialogClose>
+        </div>
 
-        <ScrollArea className="max-h-[68vh]">
-          <div className="grid gap-3 px-1 py-1">
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-0 sm:py-1">
+          <div className="grid gap-3">
             {/* External mode toggle */}
             <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2.5">
               <div className="flex items-start gap-2">
@@ -1354,7 +1374,7 @@ function CreateWorkOrderDialog({
               </div>
             ) : (
               <div className="grid gap-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="grid gap-1.5">
                     <Label htmlFor="wo-building">อาคาร / ฝ่าย</Label>
                     <Input
@@ -1382,30 +1402,28 @@ function CreateWorkOrderDialog({
                 {/* Asset lookup */}
                 <div className="grid gap-1.5">
                   <Label htmlFor="wo-device-search">เลขทะเบียนอุปกรณ์ (Optional)</Label>
-                  <div className="relative">
-                    <Input
-                      id="wo-device-search"
-                      value={form.deviceSearch}
-                      onChange={(e) =>
-                        setForm((s) => ({
-                          ...s,
-                          deviceSearch: e.target.value,
-                          deviceId: null,
-                        }))
-                      }
-                      placeholder="พิมพ์เลขทะเบียน / ชื่อ / S/N เพื่อค้นหาอุปกรณ์"
-                      className="pr-9"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => useAppStore.getState().setQrScannerOpen(true)}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-orange-500"
-                      title="สแกน QR / บาร์โค้ด"
-                      aria-label="สแกน QR / บาร์โค้ด"
-                    >
-                      <ScanLine className="h-4 w-4" />
-                    </button>
-                  </div>
+                  <Input
+                    id="wo-device-search"
+                    value={form.deviceSearch}
+                    onChange={(e) =>
+                      setForm((s) => ({
+                        ...s,
+                        deviceSearch: e.target.value,
+                        deviceId: null,
+                      }))
+                    }
+                    placeholder="พิมพ์เลขทะเบียน / ชื่อ / S/N เพื่อค้นหาอุปกรณ์"
+                  />
+                  {/* Prominent full-width scan button (mobile-friendly touch target ≥44px) */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => useAppStore.getState().setQrScannerOpen(true)}
+                    className="min-h-11 w-full justify-center border-orange-300 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/40"
+                  >
+                    <ScanLine className="h-5 w-5" />
+                    สแกน QR / บาร์โค้ด
+                  </Button>
                   {deviceLoading && (
                     <div className="text-[11px] text-muted-foreground">กำลังค้นหา...</div>
                   )}
@@ -1489,9 +1507,9 @@ function CreateWorkOrderDialog({
                 </Select>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="wo-pic">
-                  รูปก่อนซ่อม (Optional){' '}
-                  <span className="text-[10px] text-muted-foreground">
+                <Label htmlFor="wo-pic" className="flex items-center justify-between">
+                  <span>รูปก่อนซ่อม (Optional)</span>
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                     {form.picBeforeImages.length}/{MAX_IMAGES_PER_STAGE} รูป
                   </span>
                 </Label>
@@ -1505,33 +1523,31 @@ function CreateWorkOrderDialog({
                   onChange={handlePicBeforeChange}
                   className="hidden"
                 />
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={
-                      picBusy || form.picBeforeImages.length >= MAX_IMAGES_PER_STAGE
-                    }
-                  >
-                    {picBusy ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ImageIcon className="h-4 w-4" />
-                    )}
-                    เพิ่มรูป
-                  </Button>
-                  <span className="text-[10px] text-muted-foreground">
-                    สูงสุด {MAX_IMAGES_PER_STAGE} รูป • บีบอัดอัตโนมัติ
-                  </span>
-                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={
+                    picBusy || form.picBeforeImages.length >= MAX_IMAGES_PER_STAGE
+                  }
+                  className="min-h-11 w-full justify-center border-orange-300 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/40"
+                >
+                  {picBusy ? (
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <ImageIcon className="h-5 w-5" />
+                  )}
+                  เพิ่มรูปก่อนซ่อม
+                </Button>
+                <p className="text-[11px] text-muted-foreground">
+                  สูงสุด {MAX_IMAGES_PER_STAGE} รูป • บีบอัดอัตโนมัติ
+                </p>
                 {form.picBeforeImages.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  <div className="flex gap-2 overflow-x-auto pb-2 sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
                     {form.picBeforeImages.map((src, idx) => (
                       <div
                         key={`${idx}-${src.slice(0, 24)}`}
-                        className="group relative aspect-square overflow-hidden rounded-md border"
+                        className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-md border sm:h-auto sm:w-auto sm:aspect-square"
                       >
                         <img
                           src={src}
@@ -1542,10 +1558,10 @@ function CreateWorkOrderDialog({
                         <button
                           type="button"
                           onClick={() => removePicBefore(idx)}
-                          className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white opacity-100 transition-opacity hover:bg-rose-600"
+                          className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-rose-600"
                           aria-label={`ลบรูปที่ ${idx + 1}`}
                         >
-                          <X className="h-3.5 w-3.5" />
+                          <X className="h-4 w-4" />
                         </button>
                         <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
                           {idx + 1}
@@ -1615,20 +1631,22 @@ function CreateWorkOrderDialog({
               )}
             </div>
           </div>
-        </ScrollArea>
+        </div>
 
-        <DialogFooter>
+        {/* Sticky footer — ปุ่มยกเลิก/บันทึก อยู่ติดล่างสำหรับใช้งานบนมือถือ */}
+        <DialogFooter className="sticky bottom-0 gap-2 border-t bg-white p-3 dark:bg-slate-900 sm:flex-row sm:justify-end sm:border-0 sm:bg-transparent sm:p-0 sm:dark:bg-transparent">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={saving}
+            className="min-h-11 w-full sm:w-auto"
           >
             ยกเลิก
           </Button>
           <Button
             onClick={onSubmit}
             disabled={saving || !form.subject.trim() || form.subject === '__custom__'}
-            className="bg-orange-500 hover:bg-orange-600"
+            className="min-h-11 w-full bg-orange-500 hover:bg-orange-600 sm:w-auto"
           >
             {saving ? (
               <RefreshCw className="h-4 w-4 animate-spin" />
@@ -1680,7 +1698,10 @@ function WorkOrderDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-[760px]">
+      <DialogContent
+        showCloseButton={false}
+        className="flex h-[100vh] max-h-[100vh] w-full max-w-[100vw] flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[92vh] sm:max-w-3xl sm:rounded-lg"
+      >
         {detailQuery.isLoading ? (
           <div className="space-y-3 p-6">
             <Skeleton className="h-6 w-32" />
@@ -2350,14 +2371,16 @@ function WorkOrderDetailContent({
   ].filter((t) => t.at !== null || t.key === 'created')
 
   return (
-    <div className="flex max-h-[92vh] flex-col">
-      {/* Header */}
-      <div className="space-y-2 border-b px-5 py-4">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-xs font-semibold text-muted-foreground">
-            {wo.woNumber ?? '—'}
-          </span>
-          <div className="flex items-center gap-1">
+    <div className="flex h-full flex-col">
+      {/* Header — with 44px close button for mobile */}
+      <div className="space-y-2 border-b px-4 py-3 sm:px-5 sm:py-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <span className="font-mono text-xs font-semibold text-muted-foreground">
+              {wo.woNumber ?? '—'}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-1">
             {external && (
               <Badge
                 className="border-teal-200 bg-teal-100 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
@@ -2366,19 +2389,31 @@ function WorkOrderDetailContent({
                 งานนอก
               </Badge>
             )}
-            <Badge className={statusBadgeClass(wo.status)} variant="outline">
+            <Badge
+              className={statusBadgeClass(wo.status) + ' px-2.5 py-1 text-xs font-semibold'}
+              variant="outline"
+            >
               {statusLabel(wo.status)}
             </Badge>
+            <DialogClose
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 sm:hidden"
+              aria-label="ปิด"
+            >
+              <X className="h-5 w-5" />
+            </DialogClose>
           </div>
         </div>
-        <h2 className="text-lg font-bold leading-tight">{wo.subject}</h2>
+        <h2 className="text-base font-bold leading-tight sm:text-lg">{wo.subject}</h2>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             <CalendarClock className="h-3.5 w-3.5" />
             {formatDateTime(wo.createdAt)}
           </span>
           <span aria-hidden>•</span>
-          <Badge className={priorityBadgeClass(wo.priority)} variant="outline">
+          <Badge
+            className={priorityBadgeClass(wo.priority) + ' px-2 py-0.5 text-[11px] font-semibold'}
+            variant="outline"
+          >
             {wo.priority}
           </Badge>
           <span className="text-[10px] uppercase tracking-wide">
@@ -2388,8 +2423,8 @@ function WorkOrderDetailContent({
       </div>
 
       {/* Body — scrollable */}
-      <ScrollArea className="flex-1 overflow-y-auto">
-        <div className="space-y-4 px-5 py-4">
+      <div className="flex-1 overflow-y-auto">
+        <div className="space-y-4 px-4 py-4 sm:px-5">
           {/* External block */}
           {external && (
             <div className="rounded-lg border border-teal-200 bg-teal-50/60 p-3 dark:border-teal-800 dark:bg-teal-950/30">
@@ -2844,7 +2879,7 @@ function WorkOrderDetailContent({
                 ยังไม่มีข้อความในใบงานนี้
               </p>
             ) : (
-              <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border bg-muted/30 p-3">
+              <div className="min-h-[180px] max-h-80 space-y-2 overflow-y-auto rounded-md border bg-muted/30 p-3">
                 {messages.map((m) => {
                   const isSystem = m.authorRole === 'system'
                   return (
@@ -2853,7 +2888,7 @@ function WorkOrderDetailContent({
                       className={`flex ${isSystem ? 'justify-center' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+                        className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
                           isSystem
                             ? 'bg-muted text-muted-foreground'
                             : m.authorRole === 'admin'
@@ -2897,7 +2932,7 @@ function WorkOrderDetailContent({
                   size="sm"
                   onClick={handleSendMessage}
                   disabled={sendingMsg || !chatText.trim()}
-                  className="bg-orange-500 hover:bg-orange-600"
+                  className="min-h-11 bg-orange-500 hover:bg-orange-600"
                 >
                   {sendingMsg ? (
                     <RefreshCw className="h-4 w-4 animate-spin" />
@@ -2909,15 +2944,15 @@ function WorkOrderDetailContent({
             )}
           </div>
         </div>
-      </ScrollArea>
+      </div>
 
-      {/* Footer actions */}
-      <div className="flex flex-wrap items-center gap-2 border-t px-5 py-3">
+      {/* Footer actions — sticky at bottom, all buttons ≥44px (min-h-11) */}
+      <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t bg-white px-3 py-3 dark:bg-slate-900 sm:px-5">
         <Button
           size="sm"
           variant="outline"
           onClick={() => setPrintOpen(true)}
-          className="border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
+          className="min-h-11 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
         >
           <Printer className="h-4 w-4" />
           พิมพ์ใบงาน
@@ -2927,7 +2962,7 @@ function WorkOrderDetailContent({
             size="sm"
             variant="outline"
             onClick={() => setReporterEditOpen(true)}
-            className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950"
+            className="min-h-11 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950"
           >
             <Edit3 className="h-4 w-4" />
             ผู้แจ้งแก้ไข
@@ -2938,7 +2973,7 @@ function WorkOrderDetailContent({
             size="sm"
             variant="outline"
             onClick={() => setAssignOpen(true)}
-            className="border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950"
+            className="min-h-11 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950"
           >
             <User className="h-4 w-4" />
             {wo.assignedTo ? 'เปลี่ยนช่าง' : 'มอบหมายช่าง'}
@@ -2949,7 +2984,7 @@ function WorkOrderDetailContent({
             size="sm"
             variant="outline"
             onClick={() => setPartsOpen(true)}
-            className="border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950"
+            className="min-h-11 border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950"
           >
             <Package className="h-4 w-4" />
             เบิกอะไหล่
@@ -2959,7 +2994,7 @@ function WorkOrderDetailContent({
           <Button
             size="sm"
             onClick={() => setCompleteOpen(true)}
-            className="bg-emerald-600 hover:bg-emerald-700"
+            className="min-h-11 bg-emerald-600 hover:bg-emerald-700"
           >
             <CheckCircle2 className="h-4 w-4" />
             ปิดงาน
@@ -2970,14 +3005,14 @@ function WorkOrderDetailContent({
             size="sm"
             variant="outline"
             onClick={() => setCancelOpen(true)}
-            className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950"
+            className="min-h-11 border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950"
           >
             <XCircle className="h-4 w-4" />
             ยกเลิก
           </Button>
         )}
         <div className="flex-1" />
-        <Button size="sm" variant="ghost" onClick={onClose}>
+        <Button size="sm" variant="ghost" onClick={onClose} className="min-h-11">
           ปิด
         </Button>
       </div>
@@ -3658,12 +3693,12 @@ function WoImageStageGroup({
             variant="outline"
             onClick={onAdd}
             disabled={busy || full}
-            className="h-7 px-2 text-[11px]"
+            className="min-h-9 px-3 text-xs sm:min-h-7 sm:px-2 sm:text-[11px]"
           >
             {busy ? (
-              <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+              <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin sm:h-3 sm:w-3" />
             ) : (
-              <Plus className="mr-1 h-3 w-3" />
+              <Plus className="mr-1 h-3.5 w-3.5 sm:h-3 sm:w-3" />
             )}
             เพิ่มรูป
           </Button>
@@ -3675,14 +3710,14 @@ function WoImageStageGroup({
           {canAdd && ' — กด "เพิ่มรูป" เพื่ออัปโหลด'}
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        <div className="flex gap-2 overflow-x-auto pb-2 sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
           {images.map((img) => {
             const isDeleting = deletingId === img.id
             const isLegacy = img.id.startsWith('legacy-')
             return (
               <div
                 key={img.id}
-                className="group relative aspect-square overflow-hidden rounded-md border bg-muted/30"
+                className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-md border bg-muted/30 sm:h-auto sm:w-auto sm:aspect-square"
               >
                 <button
                   type="button"
