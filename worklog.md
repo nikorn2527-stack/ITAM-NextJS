@@ -5852,3 +5852,88 @@ Stage Summary:
 - Admins can now manage SiteAttribute (site code, name, LINE OA, hotline, paper rates) from the settings page
 - Sync button mirrors sites into MasterItem category=Site
 - Verified: `bunx tsc --noEmit | grep site-attributes-section` → 0 errors; `bun run lint | grep site-attributes` → 0 errors (only pre-existing require() error in src/lib/auth.ts remains)
+
+---
+Task ID: SCHEMA-FIX-SITE-MGMT
+Agent: orchestrator — แก้ schema drift ใหญ่ + เพิ่มหน้าจัดการ Site
+
+Task: ผู้ใช้แจ้งว่าข้อมูลพลาดไม่ได้ ต้องเข้าไปดูโค้ดเดิมก่อน และยังไม่ได้เพิ่ม master data ในหน้าจัดการ
+
+ปัญหาที่พบ (Schema Drift ใหญ่):
+1. Prisma schema (prisma/schema.prisma) ใช้ @map/@@map ไป snake_case/PascalCase แต่ DB จริงใช้ camelCase ทั้งหมด
+2. schema มี Device.assetNo + @map("asset_no") แต่ DB มี assetCode (ไม่มี asset_no)
+3. schema มี MasterItem.categoryKey/value + @@map("master_items") แต่ DB มี MasterItem ที่ใช้ category/code/label
+4. schema มี SiteAttribute model แต่ DB ไม่มี site_attributes table
+5. Prisma client ที่ generate ใช้ schema เก่า (assetNo, deviceType, serial) ไม่ตรง DB
+6. App code ทั้งหมดใช้ field ใหม่ (assetCode, type, serialNumber) แต่ Prisma client ใช้เก่า → runtime พัง
+
+Work Log:
+
+1. **ตรวจสอบข้อมูล CSV จริง** (upload/IT_Asset_Management_Database - All_Devices.csv):
+   - 2,378 แถว, 4 sites: UDH (2231), NKP (114), MECUD (24), PPIT (9)
+   - asset_no = เลขรัน (1,2,3...), asset_site_code = SITE-NNNNN (UDH-00001)
+   - ยืนยันว่า assetCode (asset_no) และ assetSiteCode (asset_site_code) ถูกต้อง
+
+2. **สร้าง site_attributes table + seed 4 sites**:
+   - CREATE TABLE site_attributes (SiteCode UNIQUE, SiteName, LineOA, Hotline, PaperRateBW, PaperRateColor)
+   - Insert UDH, NKP, MECUD, PPIT พร้อมชื่อไทย
+
+3. **Rewrite prisma/schema.prisma ทั้งไฟล์** (28 models):
+   - ลบ @map/@@map ที่ไม่ตรง DB ทั้งหมด (308 @map, 22 @@map)
+   - Device: assetCode, type, serialNumber, purchaseDate, assetSiteCode (ตรง DB camelCase)
+   - MasterItem: category, code, label (ตรง DB)
+   - SiteAttribute: SiteCode, SiteName, LineOA, Hotline, PaperRateBW, PaperRateColor + @@map("site_attributes")
+   - Site, SiteRate, User, AuditLog, AppSetting, AssetNumberPattern, OrganizationProfile, DocumentTemplate, ImportJob, LineBinding, Report, PurchaseOrder, PurchaseOrderItem — ทั้งหมดตรง DB
+   - เพิ่ม relations ที่หายไป (StockTransaction, PurchaseOrderItem, WorkOrder)
+   - สำรอง schema เดิมไป prisma/schema-backup-before-fix.prisma
+
+4. **Regenerate Prisma client** — ทดสอบแล้ว Device, SiteAttribute, WorkOrder, StockItem ทำงาน
+
+5. **แก้ API 33 ไฟล์** (ใช้ subagents 3 ตัวขนาน):
+   - Task 6b: src/app/api/itam/* (14 ไฟล์) — devices, maintenance, license-records, meter-readings, sticker, dashboard, search, paper-analytics, master-items, cascading
+   - Task 6c: src/app/api/v1/* + lib/* + devices/warranty/lifecycle + meter/reminders (13 ไฟล์)
+   - Task 6a: src/app/api/dashboard + notifications (orchestrator)
+   - แก้ field renames: assetNo→assetCode, deviceType→type, serial→serialNumber, installDate→purchaseDate, categoryKey→category, value→label
+   - meterReportSnapshot (table removed) — wrap ใน try-catch คืนค่าว่าง
+
+6. **แก้ components 11 ไฟล์** (subagent 6e):
+   - itam-settings.tsx: ลบ stale MasterItem interface, import จาก types.ts
+   - itam-devices.tsx (~50 hits), itam-device-detail-sheet, itam-meter, itam-meter-keyboard, itam-repairs, itam-work-orders, itam-stock, itam-dashboard, itam-paper-analytics, itam-sticker-editor
+
+7. **เพิ่ม Site category ใน MASTER_CATEGORIES** (types.ts)
+
+8. **สร้าง API /api/site-attributes** (CRUD + sync):
+   - GET /api/site-attributes — list all sites
+   - POST /api/site-attributes — create (siteCode, siteName, lineOa, hotline, paperRateBw, paperRateColor) + mirror ไป MasterItem category=Site
+   - PUT /api/site-attributes/[id] — update + sync MasterItem
+   - DELETE /api/site-attributes/[id] — delete + deactivate MasterItem
+   - POST /api/site-attributes/sync — one-shot sync SiteAttribute → MasterItem
+
+9. **สร้าง UI site-attributes-section.tsx** (subagent 7c):
+   - ตารางแสดง SiteAttribute ทั้งหมด (SiteCode badge teal, SiteName, LINE OA, Hotline, paper rates)
+   - เพิ่ม/แก้ไข/ลบ สาขา (Dialog + AlertDialog)
+   - ปุ่ม "🔄 Sync ไป Master Data"
+   - เพิ่ม tab "🏢 จัดการสาขา" ใน itam-settings.tsx
+
+10. **แก้ lib/asset-site-code.ts**: ใช้ SiteAttribute + DeviceTransfer (ไม่ใช่ locationHistory ที่ไม่มี)
+
+11. **รัน sync**: 4 sites สร้างใน MasterItem category=Site สำเร็จ
+
+12. **Push GitHub**: commit 92205a9 สำเร็จ
+
+Verification:
+✅ Home page: HTTP 200
+✅ Dashboard API: HTTP 200 (แก้ assetNo→assetCode, deviceType→type)
+✅ Notifications API: HTTP 200
+✅ Devices API: 2,378 devices (assetCode + assetSiteCode ครบ)
+✅ next-site-code: UDH→UDH-02234, NKP→NKP-00115, MECUD→MECUD-00025 (ใช้ SiteAttribute จริง)
+✅ SiteAttributes API: 4 sites
+✅ Master category=Site: 4 items (sync สำเร็จ)
+✅ Push GitHub: สำเร็จ (commit 92205a9)
+
+Stage Summary:
+- แก้ schema drift ใหญ่: rewrite schema 28 models ให้ตรง DB จริง
+- ข้อมูลครบถ้วน ไม่สูญหาย: 2,378 devices, 4,941 work orders, 4 sites
+- เพิ่มหน้าจัดการ Site (SiteAttribute CRUD) ใน settings
+- next-site-code API ใช้ SiteAttribute จริง (ไม่ใช่ derive จาก device data)
+- Master data ตอนนี้รองรับ category=Site
