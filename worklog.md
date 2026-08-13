@@ -6148,3 +6148,62 @@ Stage Summary:
 - ข้อมูลครบทั้ง 3 ชีทใน Supabase แล้ว
 - หน้าแอปแสดงชื่อ/แท็กไลน์ที่ตั้งค่าได้ (OrganizationProfile)
 - พร้อมให้ผู้ใช้เข้าทดสอบ
+
+---
+Task ID: RESTORE-MISSING-FEATURES
+Agent: orchestrator — ตรวจสอบฟังก์ชันที่หายไป + แก้ Login แล้วเด้ง
+
+Task: ตรวจสอบทั้งหมด เพราะหลายฟังก์ชันก่อนหน้านี้หายไป หา commit ที่ทำให้เพี้ยน
+
+สาเหตุที่ฟังก์ชันหายไป:
+1. **commit 3fc8ecd (schema drift fix)** rewrite Prisma schema ทั้งไฟล์ → ทำให้ app code ที่ใช้ field เก่าพัง
+2. **commit 7c94ab0 (NAV_ITEMS fix)** ลบ NAV_ITEMS permission filtering ออก → เหลือ NAV_GROUPS แค่ itam-* pages
+3. **page.tsx** ไม่ได้ import/map components ที่มีอยู่ (ImportPage, TemplatesPage, MonthlyReport, SettingsPageV2, WorkOrdersPage, StockPage, DevicesPage, MeterPage, PaperAnalyticsPage)
+4. **sidebar.tsx** ไม่มี nav items สำหรับ: เทมเพลต, นำเข้าข้อมูล, รายงานรายเดือน
+
+ปัญหา "Login แล้วเด้ง" (สาเหตุจริง):
+- getAuthHeaders() ใน itam-work-orders.tsx + snapshot-viewer.tsx อ่าน token จาก `localStorage.getItem('itam.token')`
+- แต่ auth-store ใหม่ใช้ zustand persist ที่เก็บใน `localStorage.getItem('itam-auth')` (key เดียว)
+- ทำให้ getAuthHeaders() ไม่ได้แปะ token → API ส่ง 401 → useAuthStore.getState().clear() → session หาย → เด้งกลับ login
+
+Work Log:
+
+1. **เปรียบเทียบ files ระหว่าง commits**:
+   - พบว่า components ครบ (55 ไฟล์) แต่ page.tsx import แค่ Itam* components
+   - feat branch มี NAV_ITEMS 10 ตัว แต่ main มี NAV_GROUPS แค่ 12 itam-* items
+
+2. **เพิ่ม imports + mappings ใน page.tsx**:
+   - ImportPage, TemplatesPage, MonthlyReport, SettingsPageV2
+   - WorkOrdersPage, StockPage, DevicesPage, MeterPage, PaperAnalyticsPage
+   - เพิ่ม activePage mappings สำหรับทั้ง 9 หน้า
+
+3. **เพิ่ม nav items ใน sidebar.tsx**:
+   - 📄 เทมเพลต → templates
+   - 📥 นำเข้าข้อมูล → import
+   - 📅 รายงานรายเดือน → monthly-report
+
+4. **แก้ getAuthHeaders() — ปัญหาหลักที่ทำให้เด้ง**:
+   - เดิม: `const token = window.localStorage.getItem('itam.token')` → ไม่มี token (key ผิด)
+   - ใหม่: `const token = useAuthStore.getState()?.token` → อ่านจาก zustand store ที่ถูกต้อง
+   - แก้ใน: itam-work-orders.tsx + snapshot-viewer.tsx
+   - เพิ่ม import useAuthStore ใน snapshot-viewer.tsx
+
+5. **ขยาย global fetch interceptor** ใน page.tsx:
+   - เดิม: แปะ Bearer token เฉพาะ `/api/itam/`
+   - ใหม่: รวม `/api/v1/`, `/api/work-orders`, `/api/devices`, `/api/stock-items`, `/api/dashboard`
+
+Verification (production, commit f570800):
+✅ Login admin/admin123 → Dashboard โหลด
+✅ แจ้งซ่อม → "แจ้งซ่อม / ใบงาน" (ไม่เด้ง!)
+✅ สต๊อก → "📦 คลังสต๊อก" (ไม่เด้ง!)
+✅ เทมเพลต → "📄 เทมเพลตเอกสาร" (ไม่เด้ง!)
+✅ นำเข้าข้อมูล → โหลดปกติ
+✅ รายงานรายเดือน → โหลดปกติ
+✅ ตั้งค่าระบบ → โหลดปกติ
+✅ จัดการอุปกรณ์ → โหลดปกติ
+✅ จดมิเตอร์ → โหลดปกติ
+
+Stage Summary:
+- ฟังก์ชันที่หายไปกลับมาครบ: เทมเพลต, นำเข้าข้อมูล, รายงานรายเดือน, หน้า Settings ใหม่
+- ปัญหา "Login แล้วเด้ง" แก้แล้ว (getAuthHeaders อ่าน token จาก zustand store ที่ถูกต้อง)
+- ทุกหน้าทำงานปกติ ไม่เด้งกลับ login
