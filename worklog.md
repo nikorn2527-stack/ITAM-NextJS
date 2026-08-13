@@ -7621,3 +7621,73 @@ Stage Summary:
   Supplier/Department/Purpose in stock forms)
 - Forms aligned (items-start + flex flex-col gap-1.5 + h-9 inputs) +
   barcode-ready (autoFocus + Enter→next-field + ScanLine icon + MAC auto-format)
+
+---
+Task ID: FIX-8-ISSUES
+Agent: orchestrator — แก้ 8 ปัญหา (RBAC + audit + cycle + site + OAuth + dropdown + layout)
+
+Work Log:
+
+**1. สิทธิ์เข้าถึงเมนู (granular per-user):**
+- เพิ่ม 13 permissions ใหม่: WO_CREATE, WO_VIEW_ALL, WO_VIEW_SITE, WO_VIEW_OWN, WO_ASSIGN, WO_COMPLETE, WO_CANCEL, STOCK_VIEW, STOCK_IN, STOCK_OUT, STOCK_APPROVE, TEMPLATES_MANAGE, IMPORT_DATA, VIEW_AUDIT
+- `getUserPermissions(role, custom)` รวม role defaults + per-user custom
+- Permission management UI: ตั้งค่า → 🔐 สิทธิ์ผู้ใช้ → checkboxes grouped
+- Sidebar nav กรองตาม permissions จริง
+
+**2. สิทธิ์กำหนดผู้ใช้งาน:**
+- User management UI: ตั้งค่า → 👥 จัดการผู้ใช้
+- CRUD: create, edit, delete, activate/deactivate
+- Set role + allowedSites + custom permissions per user
+- Permissions matrix (grouped: อุปกรณ์/มิเตอร์/ใบงาน/สต็อก/ระบบ)
+
+**3. Audit Log:**
+- แก้ field names: user → actor, timestamp → createdAt, details → detail
+- แก้ API: ดึงข้อมูลถูกต้อง + date range filter + action filter
+- UI: แสดง timestamp (Thai), action badge, actor, entity, summary
+- CSV export
+
+**4. รอบจดมิเตอร์แยกตามสาขา:**
+- เพิ่ม `site` field ใน Cycle model
+- สร้างรอบ → เลือกสาขา (หรือ "ทุกสาขา")
+- Auto-close เมื่อ endDate < today
+- Countdown นับจาก startDate → endDate
+- แยก countdown ตาม site
+
+**5. จัดการสิทธิ์สาขา + device form:**
+- Sites API: อ่านจาก SiteAttribute (4 sites: UDH, NKP, MECUD, PPIT)
+- Device form: site dropdown + "✨ สร้างรหัส" button (calls next-site-code API)
+- Auto-generate assetSiteCode เมื่อเลือก site
+- Non-admin: กรอง sites ตาม allowedSites
+
+**6. OAuth Login (Gmail/LINE/Telegram):**
+- Settings → 🔑 OAuth/External Login: ตั้งค่า credentials
+- Login page: ปุ่ม Google/LINE/Telegram (แสดงเฉพาะที่ configured)
+- API: Google + LINE OAuth flow (redirect → callback → JWT)
+- Telegram: bot username for Login Widget
+- ยังไม่ทำงานจริง — admin ต้องตั้งค่า credentials ก่อน
+
+**7. Combobox dropdowns:**
+- สร้าง Combobox component (searchable select + free-form typing)
+- Device form: Brand, Type, Model (cascading by Brand), Department, DeviceGroup, Building (cascading by site), Floor (cascading by building), Location
+- Work order form: Building, Subject
+- Stock forms: Supplier, Department, Purpose
+
+**8. Layout + barcode scanner:**
+- Field wrapper: `flex flex-col gap-1.5` + `items-start` (align top)
+- All inputs: `h-9` (consistent height)
+- Barcode scanner support: assetCode, serialNumber, mac, ip, tel, employeeCode
+  - ScanLine icon + `onKeyDown` Enter → next field
+  - MAC auto-format: AA:BB:CC:DD:EE:FF
+  - font-mono for serial/MAC/IP
+
+Verification (production, commit 9cf787b):
+✅ Home: HTTP 200
+✅ Login: OK (admin/admin123)
+✅ Sites: 4 sites (UDH, NKP, MECUD, PPIT)
+✅ Audit: 3 logs (with correct field names)
+✅ OAuth status: { google: false, line: false, telegram: false } — รอตั้งค่า
+✅ Build: Compiled successfully
+
+Stage Summary:
+- 8 ปัญหาทั้งหมดแก้ครบ
+- สิทธิ์ granular + user management + audit + cycle per site + OAuth ready + combobox + barcode
