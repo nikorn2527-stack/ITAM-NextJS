@@ -6207,3 +6207,120 @@ Stage Summary:
 - ฟังก์ชันที่หายไปกลับมาครบ: เทมเพลต, นำเข้าข้อมูล, รายงานรายเดือน, หน้า Settings ใหม่
 - ปัญหา "Login แล้วเด้ง" แก้แล้ว (getAuthHeaders อ่าน token จาก zustand store ที่ถูกต้อง)
 - ทุกหน้าทำงานปกติ ไม่เด้งกลับ login
+
+---
+Task ID: STUDY-ITAM
+Agent: Explore — Study ITAM Apps Script repo
+
+Work Log:
+- Read /tmp/apps-script-repos/itam/: Code.gs (2406L), DeviceService.gs (453L),
+  MeterService.gs (1982L), CycleService.gs (980L), SettingsService.gs (981L),
+  TransferService.gs (230L), Auth.gs (507L), NotificationService.gs (249L),
+  AssignmentService.gs (166L), MaintenanceService.gs (156L), SearchService.gs (183L),
+  ImportService.gs (227L), MeterSnapshotService.gs (217L), index.html (3184L),
+  javascript.html (19282L — sampled: nav, device form, meter save, transfer, renderMeterTable)
+- Read Next.js equivalents: src/app/api/devices/route.ts,
+  src/app/api/itam/devices/route.ts, [id]/route.ts, [id]/transfer/route.ts,
+  src/app/api/itam/meter-readings/route.ts, unread/route.ts,
+  src/lib/asset-site-code.ts, src/lib/lifecycle-reading-type.ts,
+  src/lib/meter-snapshot.ts, src/components/itam/itam-devices.tsx,
+  itam-meter.tsx, meter-page.tsx, sidebar.tsx
+
+Stage Summary:
+- Found 28+ critical business-logic patterns (5 protected meter rules, 7 reading-types,
+  cycle state machine, asset-site-code resolution chain, transfer reuse-from-history,
+  rate-limit/salt/hash, sanitize, master-data auto-sync, paper-rate cache)
+- Found 14 differences from Next.js version (see priority fixes)
+- Priority fixes:
+  1. **NEXT.JS `PUT /api/itam/devices/[id]` missing lifecycle side-effects**
+     — Apps Script auto-sets `UninstallDate` when status→Retired/Returned/Inactive/Disposed
+     and `InstallDate` when status→Active & no prior install date. Next.js only persists
+     caller-supplied values. Add the same `if (updates.Status !== undefined) {…}` block.
+  2. **NEXT.JS `POST /api/itam/meter-readings` does NOT skip FINAL/SEND_REPAIR**
+     when looking up prev reading — Apps Script `findValidPrevReading` skips them
+     (PROTECTED rule #1, #2, #3). Next.js uses Prisma `findFirst orderBy desc` which
+     will happily pick a FINAL reading as prev → wrong pages on reinstall after dispose.
+     Also missing: same-month INITIAL/RESET fallback (Apps Script lines 619-633).
+  3. **NEXT.JS has NO `getPrintersByLocation`-style aggregate endpoint** — Apps Script
+     returns `prevMeterBW/prevMeterColor/hasReadingThisMonth/currentMeterBW` per device
+     in one call. Next.js `unread/route.ts` provides `lastMeterBw` only (not
+     prev-month-specific); meter-page.tsx POSTs to wrong route `/api/meter` with
+     `{deviceId, reading}` (different shape) — duplicated/conflicting UI paths.
+  4. **NEXT.JS `asset-site-code.ts` falls back to first-3-chars of site name** but
+     Apps Script also auto-derives prefix from existing devices at that site
+     (regex `/^([A-Za-z]+[-_]?)/` on AssetSiteCode) — needed for sites that have no
+     SiteAttribute row yet. Add the device-derived fallback (Code.gs lines 596-607).
+  5. **NEXT.JS `getNextAssetSiteCode` does NOT auto-generate prefix from site name**
+     when no SiteAttribute/MasterItem found (Apps Script lines 614-624 generate
+     `[A-Z]{1,3}`-prefix + `-00001`). Next.js returns null → transfer fails with
+     "กรุณากำหนด Site_Code". Add the auto-generate fallback.
+  6. **NEXT.JS missing `addDevice` auto-AssetNo generation** — Apps Script
+     `getNextAssetNoFromDeviceData` computes MAX+1 and `formatAssetNo` zero-pads to
+     5 digits. Next.js `POST /api/itam/devices` requires client to send `assetNo`
+     (returns 400 if missing). UI must do the MAX+1 itself.
+  7. **NEXT.JS missing Department auto-derivation** — Apps Script `addDevice`/`updateDevice`
+     calls `getDepartmentCodeForDepartment(department)` if `DepartmentCode` not supplied.
+     Next.js does not do this; UI must resolve it client-side.
+  8. **NEXT.JS missing `isMeterRequiredDevice` type-based fallback** — Apps Script
+     checks `Type` for PRINTER/COPIER/MFP and excludes THERMAL/LABEL/SLIP/POS.
+     Next.js `unread/route.ts` only filters by explicit `meterRequired: true`.
+  9. **NEXT.JS missing master-data auto-sync on add/update** — Apps Script
+     auto-adds unknown Type/Brand/Model/Building/Floor/DeviceGroup/CostCenter/ContractNo/Vendor
+     to Master_Items. Next.js has no equivalent (master items must be added manually).
+ 10. **NEXT.JS meter-page.tsx uses `/api/meter` (different route + field names
+     `deviceId`/`reading`)** while itam-meter.tsx uses `/api/itam/meter-readings`
+     (`assetCode`/`meterBw`). Two parallel implementations; the Apps Script-aligned
+     one (`/api/itam/meter-readings`) is correct. Consolidate.
+ 11. **NEXT.JS missing needConfirmReset 2-step flow** — Apps Script returns
+     `{success:false, needConfirmReset:true, message:'ยืนยันการตั้งฐานใหม่?'}` on first
+     attempt when meter decreased; client re-submits with `confirmReset:true`.
+     Next.js saves immediately as RESET (no user ack).
+ 12. **NEXT.JS meter-page UI missing "RESET Remark Gate" modal** — Apps Script
+     pre-scans all decreased meters, forces user to enter a remark per device
+     before save. Next.js only requires a single remark after the dialog opens.
+ 13. **NEXT.JS missing `getLifecycleReadingType` server-side derivation in the
+     meter-readings POST route** — the transfer route uses it but the standalone
+     meter POST does not (it picks `RESET` if `meterBw<prevMeterBw`, else `MONTHLY`,
+     ignoring CHECKOUT/FINAL/RETURN/SEND_REPAIR the client may request).
+ 14. **NEXT.JS sidebar/device page shows fewer columns than Apps Script** —
+     Apps Script table has 12 columns incl. ทะเบียน Site (AssetSiteCode),
+     มิเตอร์ล่าสุด, อัปเดตล่าสุด. Next.js itam-devices.tsx Device interface lacks
+     `lastMeterBw`/`lastReadingMonth` (would need join or separate fetch).
+
+---
+Task ID: STUDY-SERVICES-STOCK
+Agent: Explore — Study Services + Stock Apps Script repos
+
+Work Log:
+- Studied Services: code.gs (6170), DataAccess.gs (501), ExternalApi.gs (344), index.html (2632), javascript.html (14231)
+- Studied Stock: Code.gs (4614), index.html (5847)
+- Compared with Next.js: src/app/api/work-orders/**, src/app/api/stock-items/**, src/components/itam/itam-work-orders.tsx (2222), src/components/itam/itam-stock.tsx (1349), src/lib/stock-approval.ts, src/lib/stock-approval-settings.ts, prisma/schema.prisma
+
+Stage Summary:
+- Services: Found 14 critical patterns, 12 differences from Next.js
+- Stock: Found 12 critical patterns, 13 differences from Next.js
+- Priority fixes (top 5 each):
+
+  Services (top 5):
+  1. Missing edit-unlock toggle API + UI button (schema has editUnlockActive/editUnlockBy/editUnlockAt/editUnlockNote but no /api/work-orders/[id]/edit-unlock route, no toggleRecordEditLockFromDetail button)
+  2. Missing auto-close from parts approval — Apps Script syncApprovedStockOutToCompleted() flips WAITING_PARTS→COMPLETED when all parts approved; Next.js complete/route.ts only blocks if pendingPartsCount>0 but never auto-flips
+  3. Missing terminal-edit grace period (edit_lock_delay_minutes config + isWithinTerminalEditGracePeriod check) — schema has no editLockDelay field, no logic
+  4. Missing public QR scan-to-view endpoint (getPublicJobById — no auth, returns sanitized fields) + openJobFromQR client flow
+  5. Missing external-client mode (selectExternalClientMode + manualLocation/manualExternalPlace/manualContactPhone + manualAssetInput S/N list) — API supports isExternal/externalMeta but UI has no shortcut/button/serial list
+  Also missing: bulk-accept legacy completed jobs (bulkAcceptCompletedLegacyJobs), fifty-baht detection + bulk-print filter, single-page print job sheet (#p2r_singleJobView with logo+QR+before/onsite/after+signatures), bulk print by assigned user (table + jobsheet formats), subject/building options pulled from admin-editable sheets (SubjectOptions + asset All_Devices) instead of hardcoded COMMON_SUBJECTS/COMMON_BUILDINGS, resolution options admin (ResolutionOptions sheet), tracking by tel+employeeCode+name (getTrackingData multi-path matcher), ContactDirectory admin CRUD + bulk import.
+
+  Stock (top 5):
+  1. Next.js itam-stock.tsx only has inventory list + detail dialog — MISSING pending-approval tab, purchase-order tab, history tab, summary tab, dashboard tab, settings/users tab. Massive UI gap vs Apps Script 9-tab layout.
+  2. Missing PO receiving linkage — Apps Script updatePOStatus() marks PurchaseOrderItem quantityReceived/quantityRemaining/status when StockIn references a PO number; Next.js has PurchaseOrder+PurchaseOrderItem models but no receiving endpoint.
+  3. Missing cancel document flow — Apps Script cancelDocument() handles OUT (restores stock + posts [ยกเลิก] txn) and PO (sets status ยกเลิก + sets remaining 0); Next.js has no /cancel route.
+  4. New pending parts requests in Next.js default to approvalMode='manual' (parts/route.ts:263) — Apps Script DEFAULT_PENDING_APPROVAL_MODE='auto' with autoApproveAt=now+5min (DEFAULT_PENDING_AUTO_DELAY_VALUE=5 minutes). Should match: auto by default with 5-min SLA, configurable via /api/stock-items/pending/settings.
+  5. Missing supplier/department/purpose lookup — Apps Script StockIn/Out forms use Suppliers/Departments/Purposes dropdown sheets; department auto-looked-up from Users sheet by requester username. Next.js has no Suppliers/Departments/Purposes tables; transaction route doesn't require purpose/supplier.
+  Also missing: low-stock warning on stock-out (Apps Script warningMessages), CSV export of products, document printing by docNo (StockIn/StockOut/PO print templates), transaction-by-person + transaction-by-product summary views, quick-edit inventory mode (batch update qty+reorderPoint), inventory quick-edit "ปรับสต็อก" + "แก้ขั้นต่ำ" per-row buttons, batch approve/reject UI (checkboxes + batchApprovalBar), trigger-based sync (syncPendingQueueCron every 1 min — Next.js uses Vercel Cron but adaptive-mode logic isn't ported), stock-out-pending batch operations bar with select-all.
+
+  Schema notes:
+  - Prisma WorkOrder has editUnlockActive/By/At/Note fields ✓ but no API route or UI uses them
+  - Prisma StockTransaction has approvalStatus/approvalMode/autoApproveAt/rejectReason/sourceKey/processedFlag ✓
+  - Prisma PurchaseOrder+PurchaseOrderItem exist ✓ but no receiving/cancel logic
+  - Prisma WorkOrderImage supports multi-image per stage ✓ (Apps Script only single pic_before/onsite/after string fields)
+  - Prisma WorkOrderReview exists ✓ (Apps Script uses Reviews sheet with rating 1-5 + type + subject + recommend)
+  - Apps Script WorkOrder has `submission_source: 'session'|'guest'`, `trackable: !!tel`, `priority` (ปกติ/ปานกลาง/สูง/ด่วน), `accept_status`, `request_id` (idempotency key), `external_meta` (JSON), `assigned_by/at/note`, `work_completed_at`, `closed_at`, `canceled_at`, `auto_closed_at`, `auto_closed_by='stock_approval_sync'`, `reporter_edited_at`. Next.js Prisma has most of these but is missing `auto_closed_at`/`auto_closed_by`/`reporter_edited_at`/`accept_status` semantics and `request_id` idempotency check.
