@@ -6731,3 +6731,62 @@ Work Log:
 Stage Summary:
 - Canvas scales to fit screen (no horizontal scroll for A4)
 - Clicking element stays selected after releasing mouse
+
+---
+Task ID: FIX-EDITORS + LOGIC-COPY
+Agent: orchestrator — แก้ sticker/PDF editor + ลอก logic จาก Apps Script
+
+Task: 
+1. Logic เป็น business rules — ลอกจาก Apps Script ตรงๆ
+2. AssetNumberPattern — ยึดตามเดิม
+3. Sticker/PDF editor bug — จำลองหน้ากระดาษในหน้าเดียว + แก้ bug คลิกค้างแล้วหาย
+
+Work Log:
+
+**1. ลอก logic จาก Apps Script (Priority 1A ที่ทำก่อนหน้า):**
+- `findValidPrevReading` — ลอกจาก MeterService.gs ตรงๆ (skip FINAL/SEND_REPAIR + same-month)
+- `getLifecycleReadingType` — ลอกจาก MeterService.gs (RETURN only when wasInactive)
+- `getDocEditorScale` — ลอกจาก javascript.html (MM_PX=3.7795, fitScale calculation)
+- `snapDocElement` — ลอก alignment guides จาก javascript.html
+- ruler rendering — ลอกจาก javascript.html (mm markers every 10mm)
+
+**2. AssetNumberPattern:**
+- มีอยู่แล้วใน Next.js: src/lib/asset-number-pattern.ts + src/app/api/settings/asset-patterns/route.ts
+- DB มี AssetNumberPattern table (3 rows จากการ import เดิม)
+- ยึดตามเดิม — ไม่แก้ pattern format
+
+**3. Sticker + PDF editor bugs (commit 9715cd0):**
+
+Bug 1: Canvas ใหญ่เกินหน้าจอ (A4 = 297mm + 60mm padding)
+- เดิม: `width: ${canvas.width + 60}mm` ตรงๆ → ต้อง scroll แนวนอน
+- แก้: เพิ่ม `useFitScale` hook (ลอกจาก Apps Script getDocEditorScale)
+  - MM_PX = 3.7795 (96dpi standard)
+  - fitScale = min(containerW/nativeW, containerH/nativeH, 2.0)
+  - zoom state (default 1.0, range 0.25-4)
+  - transform: scale(fitScale * zoom) + transform-origin: top left
+- เพิ่ม zoom controls: − / percentage / + / reset (Maximize2 icon)
+
+Bug 2: คลิกค้างเพื่อเห็น settings, ปล่อยเมาส์ → settings หาย
+- สาเหตุ: `onClick={() => setSelectedElId(null)}` บน workspace
+  - click event (หลัง mouseup) bubble จาก element ขึ้นไป workspace → deselect
+- แก้: เปลี่ยน onClick → onMouseDown + target check
+  - `onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedElId(null) }}`
+  - คลิก element → เลือก + คงการเลือกไว้หลังปล่อยเมาส์
+  - คลิกพื้นที่ว่าง → deselect
+
+Bonus (ลอกจาก Apps Script):
+- Alignment guides — เส้นประสีฟ้าเวลา element จัดตำแหน่งกับ edge/center
+- Rulers — ไม้บรรทัด mm ทุก 10mm (บน + ซ้าย)
+- Snap to grid — 0.5mm หลัง alignment snap
+
+Verification (production, commit 9715cd0):
+✅ Sticker editor โหลด — "🎨 ตัวออกแบบสติกเกอร์"
+✅ Canvas มี transform: scale (ใช้ fitScale)
+✅ Zoom controls ครบ: zoom-out, zoom-in, maximize2 (reset)
+✅ 33 canvas elements แสดงใน workspace
+✅ Login + navigation ทำงานปกติ
+
+Stage Summary:
+- Editor bugs แก้ครบ: scale to fit + click-hold deselect
+- Logic ลอกจาก Apps Script ตรงๆ (ไม่เขียนใหม่)
+- AssetNumberPattern ยึดตามเดิม
