@@ -655,7 +655,7 @@ export function DevicesPage() {
   const someSelected = pageIds.some((id) => selectedIds.has(id)) && !allSelected
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
+    <div className="flex h-full flex-col p-3 md:p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จัดการอุปกรณ์</h1>
