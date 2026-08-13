@@ -7419,3 +7419,39 @@ Verification:
 Stage Summary:
 - One template page to rule them all (3 type tabs, system/custom badges, default star)
 - Clock/date always visible (sidebar expanded + footer)
+
+---
+Task ID: UNIFY-TEMPLATES-CLOCK
+Agent: orchestrator — รวมเทมเพลต + เพิ่มนาฬิกา
+
+Work Log:
+
+**Task 1: Unified Template System:**
+- รวม 3 หน้า → 1 หน้า "เทมเพลต" ที่มี 3 type tabs:
+  - 🎨 สติกเกอร์ — label เล็ก (75×36mm, 50×30mm, etc.)
+  - 📑 เอกสาร PDF — A4/A5 documents
+  - 🔧 ใบงาน — work order print forms
+- แต่ละเทมเพลตแสดง:
+  - Mini preview (scaled)
+  - Badge ระบบ (sky-blue, isFixed) / กำหนดเอง (teal)
+  - ★ ค่าเริ่มต้น + ปุ่ม star ตั้ง default
+  - ปุ่ม: แก้ไข / ตั้งค่าเริ่มต้น / คัดลอก / ลบ
+- Create flow: เลือก type → ใส่ชื่อ → เลือกขนาด → เปิด visual editor
+- ลบ nav items ซ้ำ (สติกเกอร์, เอกสาร PDF) — เหลือแค่ "เทมเพลต"
+- ปุ่มพิมพ์ยังอยู่ในจุดเดิม: ตารางอุปกรณ์ → สติกเกอร์, WO detail → พิมพ์ใบงาน
+
+**Task 2: Live Clock + Thai Date:**
+- สร้าง useClock hook (SSR-safe, อัปเดตทุกวินาที)
+- formatThaiTime: HH:MM:SS
+- formatThaiDate: วันพุธ ที่ 13 สิงหาคม 2568 (ปีพุทธศักราชอัตโนมัติ)
+- Sidebar (expanded): นาฬิกา + วันที่ ใต้ app tagline + จุดส้มกระพริบ
+- Footer: time + date pill (แสดงเสมอ, ซ่อน date บนมือถือ)
+
+Verification (production, commit 56d2118):
+✅ Home: HTTP 200
+✅ Build: Compiled successfully
+
+Stage Summary:
+- เทมเพลต 3 ระบบ → 1 หน้า พร้อม type selector
+- แยก ระบบ/Custom + ตั้ง default ได้
+- นาฬิกา + วันที่ไทย แสดงใน sidebar + footer
