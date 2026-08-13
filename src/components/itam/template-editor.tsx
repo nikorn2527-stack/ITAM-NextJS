@@ -1525,6 +1525,27 @@ export function TemplateEditor({
   const [dirty, setDirty] = React.useState(false)
   const canvasRef = React.useRef<HTMLDivElement>(null)
 
+  // ── Auto-fit: calculate scale so the full page fits in the canvas area ──
+  const [fitScale, setFitScale] = React.useState(1)
+  React.useEffect(() => {
+    function calcFit() {
+      const el = canvasRef.current
+      if (!el) return
+      const containerW = el.clientWidth - 64 // padding p-8 = 32px each side
+      const containerH = el.clientHeight - 64
+      const paperW = mmToPx(paper?.width ?? 210)
+      const paperH = mmToPx(paper?.height ?? 297)
+      const scaleW = containerW / paperW
+      const scaleH = containerH / paperH
+      const scale = Math.min(scaleW, scaleH, 1.5) // max 150%
+      setFitScale(scale > 0.1 ? scale : 0.3) // minimum 30%
+    }
+    calcFit()
+    const ro = new ResizeObserver(calcFit)
+    if (canvasRef.current) ro.observe(canvasRef.current)
+    return () => ro.disconnect()
+  }, [paper?.width, paper?.height])
+
   // History (undo) — keep a small ring buffer
   const historyRef = React.useRef<TemplateContent[]>([content])
   const historyIdxRef = React.useRef(0)
@@ -1738,9 +1759,10 @@ export function TemplateEditor({
 
   // ── Render ──
   const paper = content.paper
-  const paperWidthPx = mmToPx(paper.width) * zoom
-  const paperHeightPx = mmToPx(paper.height) * zoom
-  const marginPx = mmToPx(paper.margin) * zoom
+  const totalScale = fitScale * zoom // fitScale auto-fits, zoom is user adjustment on top
+  const paperWidthPx = mmToPx(paper.width) * totalScale
+  const paperHeightPx = mmToPx(paper.height) * totalScale
+  const marginPx = mmToPx(paper.margin) * totalScale
   const selected = content.elements.find((e) => e.id === selectedId) ?? null
 
   return (
@@ -1831,6 +1853,15 @@ export function TemplateEditor({
               <SelectItem value="1.5">150%</SelectItem>
             </SelectContent>
           </Select>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 text-xs"
+            onClick={() => setZoom(1)}
+            title="รีเซ็ตซูม — ให้พอดีหน้าจอ"
+          >
+            พอดี
+          </Button>
         </div>
         <div className="flex-1" />
         <Button
@@ -1927,7 +1958,7 @@ export function TemplateEditor({
                 el={el}
                 selected={selectedId === el.id}
                 readOnly={readOnly}
-                zoom={zoom}
+                zoom={totalScale}
                 onSelect={() => setSelectedId(el.id)}
                 onChange={(patch) => patchElement(el.id, patch)}
                 onCommit={commitHistory}
