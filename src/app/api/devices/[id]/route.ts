@@ -114,61 +114,84 @@ export async function PUT(
     if (!before) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
+    const updateData: Record<string, unknown> = {
+      assetCode: body.assetCode !== undefined ? String(body.assetCode).trim() : undefined,
+      name: body.name !== undefined ? String(body.name).trim() : undefined,
+      brand: body.brand !== undefined ? String(body.brand).trim() : undefined,
+      model: body.model !== undefined ? String(body.model).trim() : undefined,
+      type: body.type !== undefined ? String(body.type).trim() : undefined,
+      serialNumber: setStr('serialNumber', body),
+      status: body.status !== undefined ? String(body.status).trim() : undefined,
+      site: body.site !== undefined ? String(body.site).trim() : undefined,
+      department: setStr('department', body),
+      departmentCode: setStr('departmentCode', body),
+      parentRef: setStr('parentRef', body),
+      displayLabel: setStr('displayLabel', body),
+      location: setStr('location', body),
+      building: setStr('building', body),
+      floor: setStr('floor', body),
+      room: setStr('room', body),
+      ip: setStr('ip', body),
+      mac: setStr('mac', body),
+      remoteId: setStr('remoteId', body),
+      purchaseDate: setStr('purchaseDate', body),
+      warrantyMonths:
+        body.warrantyMonths !== undefined
+          ? clampWarrantyMonths(body.warrantyMonths)
+          : undefined,
+      warrantyEnd: setStr('warrantyEnd', body),
+      vendor: setStr('vendor', body),
+      contractNo: setStr('contractNo', body),
+      uninstallDate: setStr('uninstallDate', body),
+      meterRequired: setBool('meterRequired', body),
+      meterMode: setStr('meterMode', body),
+      costCenter: setStr('costCenter', body),
+      deviceGroup: setStr('deviceGroup', body),
+      remark: setStr('remark', body),
+      lastMeterReading:
+        typeof body.lastMeterReading === 'number'
+          ? body.lastMeterReading
+          : undefined,
+      purchasePrice:
+        body.purchasePrice !== undefined
+          ? optFloat(body.purchasePrice)
+          : undefined,
+      salvageValue:
+        body.salvageValue !== undefined
+          ? optFloat(body.salvageValue) ?? 0
+          : undefined,
+      usefulLife:
+        body.usefulLife !== undefined ? optInt(body.usefulLife) : undefined,
+    }
+
+    // Status transition side effects (aligned with Apps Script DeviceService.gs)
+    // - Retired/Returned/Inactive/Disposed  → set uninstallDate = today (if not already set)
+    // - Active && purchaseDate is null       → set purchaseDate = today (install/reactivation date)
+    // assetCode remains read-only (no changes here).
+    let statusSideEffects: Record<string, unknown> = {}
+    if (body.status !== undefined && body.status !== before.status) {
+      const newStatus = String(body.status).trim()
+      const today = new Date().toISOString().slice(0, 10)
+      if (
+        ['Retired', 'Returned', 'Inactive', 'Disposed', 'retired', 'returned', 'inactive', 'disposed'].includes(
+          newStatus,
+        )
+      ) {
+        if (!before.uninstallDate) statusSideEffects.uninstallDate = today
+      } else if (newStatus === 'Active' || newStatus === 'active') {
+        if (!before.purchaseDate) statusSideEffects.purchaseDate = today
+      }
+    }
+
     const updated = await db.device.update({
       where: { id },
-      data: {
-        assetCode: body.assetCode !== undefined ? String(body.assetCode).trim() : undefined,
-        name: body.name !== undefined ? String(body.name).trim() : undefined,
-        brand: body.brand !== undefined ? String(body.brand).trim() : undefined,
-        model: body.model !== undefined ? String(body.model).trim() : undefined,
-        type: body.type !== undefined ? String(body.type).trim() : undefined,
-        serialNumber: setStr('serialNumber', body),
-        status: body.status !== undefined ? String(body.status).trim() : undefined,
-        site: body.site !== undefined ? String(body.site).trim() : undefined,
-        department: setStr('department', body),
-        departmentCode: setStr('departmentCode', body),
-        parentRef: setStr('parentRef', body),
-        displayLabel: setStr('displayLabel', body),
-        location: setStr('location', body),
-        building: setStr('building', body),
-        floor: setStr('floor', body),
-        room: setStr('room', body),
-        ip: setStr('ip', body),
-        mac: setStr('mac', body),
-        remoteId: setStr('remoteId', body),
-        purchaseDate: setStr('purchaseDate', body),
-        warrantyMonths:
-          body.warrantyMonths !== undefined
-            ? clampWarrantyMonths(body.warrantyMonths)
-            : undefined,
-        warrantyEnd: setStr('warrantyEnd', body),
-        vendor: setStr('vendor', body),
-        contractNo: setStr('contractNo', body),
-        uninstallDate: setStr('uninstallDate', body),
-        meterRequired: setBool('meterRequired', body),
-        meterMode: setStr('meterMode', body),
-        costCenter: setStr('costCenter', body),
-        deviceGroup: setStr('deviceGroup', body),
-        remark: setStr('remark', body),
-        lastMeterReading:
-          typeof body.lastMeterReading === 'number'
-            ? body.lastMeterReading
-            : undefined,
-        purchasePrice:
-          body.purchasePrice !== undefined
-            ? optFloat(body.purchasePrice)
-            : undefined,
-        salvageValue:
-          body.salvageValue !== undefined
-            ? optFloat(body.salvageValue) ?? 0
-            : undefined,
-        usefulLife:
-          body.usefulLife !== undefined ? optInt(body.usefulLife) : undefined,
-      },
+      data: { ...updateData, ...statusSideEffects },
     })
     const changes: Record<string, { from: unknown; to: unknown }> = {}
     for (const k of EDITABLE_FIELDS) {
-      if (body[k] !== undefined) {
+      const inBody = body[k] !== undefined
+      const isSideEffect = Object.prototype.hasOwnProperty.call(statusSideEffects, k)
+      if (inBody || isSideEffect) {
         const from = before[k as keyof typeof before]
         const to = updated[k as keyof typeof updated]
         if (String(from ?? '') !== String(to ?? '')) {

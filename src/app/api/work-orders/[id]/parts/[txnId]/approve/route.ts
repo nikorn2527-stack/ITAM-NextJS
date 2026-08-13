@@ -106,10 +106,36 @@ export async function POST(
         },
       })
 
+      // ── Auto-close: if all parts approved AND WO is WAITING_PARTS → auto-close ──
+      // (Aligned with Apps Script syncApprovedStockOutToCompleted)
+      let autoClosed = false
+      if (remainingPending === 0 && wo.status === 'WAITING_PARTS') {
+        const now = new Date()
+        await tx.workOrder.update({
+          where: { id: wo.id },
+          data: {
+            status: 'COMPLETED',
+            workCompletedAt: now,
+            closedAt: now,
+          },
+        })
+        autoClosed = true
+        // Post system message about auto-close
+        await tx.workOrderMessage.create({
+          data: {
+            workOrderId: wo.id,
+            message: '✅ ระบบปิดงานอัตโนมัติหลังอนุมัติเบิกอะไหล่ครบ',
+            author: 'system-auto',
+            authorRole: 'system',
+          },
+        })
+      }
+
       return {
         item: updatedItem,
         txn: updatedTxn,
         remainingPending,
+        autoClosed,
       }
     })
 
@@ -144,6 +170,7 @@ export async function POST(
         stockItem: result.item,
         remainingPending: result.remainingPending,
         allPartsApproved: result.remainingPending === 0,
+        autoClosed: result.autoClosed,
       },
     })
   } catch (err) {

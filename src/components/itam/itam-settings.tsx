@@ -13,9 +13,11 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks } from 'lucide-react'
 import { type MasterItem } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
+import { ContactDirectorySection } from './contact-directory-section'
+import { WoOptionsSection } from './wo-options-section'
 
 interface Site { id: string; siteCode: string; siteName: string | null; lineOa: string | null; hotline: string | null; paperRateBw: number | null; paperRateColor: number | null; deviceCount?: number; activeCount?: number }
 
@@ -27,7 +29,7 @@ interface NotifySettings {
 
 export function ItamSettings() {
   const qc = useQueryClient()
-  const [tab, setTab] = React.useState<'master' | 'site-attributes' | 'sites' | 'notifications' | 'customize'>('master')
+  const [tab, setTab] = React.useState<'master' | 'site-attributes' | 'sites' | 'notifications' | 'customize' | 'contacts' | 'wo-options'>('master')
   const [category, setCategory] = React.useState('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
@@ -168,6 +170,12 @@ export function ItamSettings() {
         <button onClick={() => setTab('master')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'master' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <Database className="mr-1 inline h-4 w-4" /> ข้อมูลมาตรฐาน
         </button>
+        <button onClick={() => setTab('wo-options')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'wo-options' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <ListChecks className="mr-1 inline h-4 w-4" /> ตัวเลือกใบงาน
+        </button>
+        <button onClick={() => setTab('contacts')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'contacts' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <BookUser className="mr-1 inline h-4 w-4" /> สมุดผู้ติดต่อ
+        </button>
         <button onClick={() => setTab('site-attributes')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'site-attributes' ? 'border-teal-500 text-teal-600 dark:text-teal-300' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <Building2 className="mr-1 inline h-4 w-4" /> จัดการสาขา
         </button>
@@ -256,6 +264,10 @@ export function ItamSettings() {
       )}
 
       {tab === 'site-attributes' && <SiteAttributesSection />}
+
+      {tab === 'wo-options' && <WoOptionsSection />}
+
+      {tab === 'contacts' && <ContactDirectorySection />}
 
       {tab === 'sites' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

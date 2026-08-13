@@ -199,9 +199,15 @@ interface ResolutionOption {
   value: string
 }
 
+interface BuildingOption {
+  group: string
+  value: string
+}
+
 interface OptionsResponse {
   subjects: SubjectOption[]
   resolutions: ResolutionOption[]
+  buildings?: BuildingOption[]
 }
 
 interface DeviceLookupItem {
@@ -825,6 +831,7 @@ export function WorkOrdersPage() {
         saving={saving}
         onSubmit={handleCreate}
         subjects={optionsQuery.data?.subjects ?? []}
+        buildings={optionsQuery.data?.buildings ?? []}
       />
 
       {/* Detail dialog */}
@@ -1038,6 +1045,7 @@ function CreateWorkOrderDialog({
   saving: boolean
   onSubmit: () => void
   subjects: SubjectOption[]
+  buildings: BuildingOption[]
 }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [picBusy, setPicBusy] = React.useState(false)
@@ -1384,7 +1392,21 @@ function CreateWorkOrderDialog({
                         setForm((s) => ({ ...s, building: e.target.value }))
                       }
                       placeholder="เช่น อาคาร A, ฝ่ายบัญชี"
+                      list="wo-building-options"
+                      autoComplete="off"
                     />
+                    <datalist id="wo-building-options">
+                      {buildings.map((b) => (
+                        <option key={b.value} value={b.value}>
+                          {b.group}
+                        </option>
+                      ))}
+                    </datalist>
+                    {buildings.length > 0 && (
+                      <div className="text-[10px] text-muted-foreground">
+                        พิมพ์หรือเลือกจากรายการที่บันทึกไว้ ({buildings.length})
+                      </div>
+                    )}
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="wo-location">ตำแหน่ง / ห้อง</Label>
@@ -2956,6 +2978,19 @@ function WorkOrderDetailContent({
         >
           <Printer className="h-4 w-4" />
           พิมพ์ใบงาน
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            if (!wo.id) return
+            window.open(`/api/work-orders/${wo.id}/print-sheet`, '_blank', 'noopener,noreferrer')
+          }}
+          className="min-h-11 border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-300 dark:hover:bg-teal-950"
+          title="พิมพ์ใบงานช่าง (compact sheet with QR code)"
+        >
+          <Printer className="h-4 w-4" />
+          ใบงานช่าง (QR)
         </Button>
         {canReporterEdit && (
           <Button

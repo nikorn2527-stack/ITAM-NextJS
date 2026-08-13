@@ -5,12 +5,19 @@ import { siteFilterForUser, canAccessSite } from '@/lib/auth'
 import { notifyMeter } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import {
+  findValidPrevReading,
+  findSameMonthBaseline,
+  findExistingMonthlyReading,
   calcPagesBw,
   calcPagesColor,
-} from '@/lib/lifecycle-reading-type'
+  detectModeSwitch,
+  isMeterDecreased,
+  normalizeReadingMonth,
+  type ReadingType,
+} from '@/lib/meter-logic'
 import { assertMeterMonthWritable } from '@/lib/meter-snapshot'
 
-// GET /api/itam/meter-readings?assetNo=&month=&page=1&limit=20
+// GET /api/itam/meter-readings?assetCode=&month=&page=1&limit=20
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
@@ -18,17 +25,16 @@ export async function GET(req: NextRequest) {
     const user = auth.row
 
     const { searchParams } = new URL(req.url)
-    const assetNo = searchParams.get('assetNo')?.trim() ?? ''
+    const assetCode = (searchParams.get('assetCode')?.trim() || searchParams.get('assetNo')?.trim() || '')
     const month = searchParams.get('month')?.trim() ?? ''
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
 
     const where: Record<string, unknown> = { AND: [] as unknown[] }
-    if (assetNo) (where.AND as unknown[]).push({ assetNo })
+    if (assetCode) (where.AND as unknown[]).push({ assetCode })
     if (month) (where.AND as unknown[]).push({ readingMonth: month })
 
-    // Site-level filter via the device relation: non-admin users only see
-    // readings for devices in their allowed sites.
+    // Site-level filter via the device relation
     const siteFilter = siteFilterForUser(user)
     if (Object.keys(siteFilter).length) {
       (where.AND as unknown[]).push({ device: siteFilter })
@@ -42,7 +48,7 @@ export async function GET(req: NextRequest) {
         take: limit,
         orderBy: { readingDate: 'desc' },
         include: {
-          device: { select: { assetNo: true, brand: true, model: true, site: true } },
+          device: { select: { assetCode: true, brand: true, model: true, site: true } },
         },
       }),
       db.meterReading.count({ where }),
@@ -58,30 +64,21 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/itam/meter-readings — create meter reading (requires METER_WRITE)
-//
-// Body:
-//   {
-//     assetNo,
-//     meterBw,            // required (TOTAL mode uses this)
-//     meterColor?,        // optional, used for BW_COLOR mode
-//     prevMeterBw?,       // optional, defaults to device's last reading
-//     prevMeterColor?,
-//     readingDate?,
-//     readingMonth?,
-//     readingType?,       // MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN
-//     remark?,
-//     locationAtReading?,
-//     siteAtReading?, buildingAtReading?, floorAtReading?, departmentAtReading?, departmentCodeAtReading?,
-//   }
-//
-// Behavior:
-//   • If prevMeterBw/prevMeterColor are NOT supplied, look up the device's
-//     most recent meter reading and use it (so the keyboard page can omit them).
-//   • pagesBw = max(0, meterBw - prevMeterBw); pagesColor likewise.
-//   • If new < prev (RESET), the API still saves but tags readingType = 'RESET'
-//     when no explicit readingType was given, and surfaces a `reset` flag in
-//     the response so the UI can show a warning.
+/**
+ * POST /api/itam/meter-readings — create/update meter reading (requires METER_WRITE)
+ *
+ * Implements the PROTECTED meter reading rules from Apps Script MeterService.gs:
+ *   1. findValidPrevReading skips FINAL/SEND_REPAIR + same-month
+ *   2. Same-month INITIAL/RESET fallback when no prev exists
+ *   3. Mode-switch detection (TOTAL ↔ BW_COLOR)
+ *   4. needConfirmReset 2-step flow (returns { needConfirmReset: true } first)
+ *   5. Update existing MONTHLY in-place (upsert, not insert duplicate)
+ *   6. Pages: INITIAL/RESET = 0; others = max(0, meter - prev)
+ *
+ * Body:
+ *   assetCode, meterBw, meterColor?, readingDate?, readingMonth?,
+ *   readingType?, remark?, confirmReset?, location fields?
+ */
 export async function POST(req: NextRequest) {
   try {
     const auth = await requireAuth(req, 'METER_WRITE')
@@ -89,11 +86,13 @@ export async function POST(req: NextRequest) {
     const user = auth.row
 
     const body = await req.json()
-    if (!body.assetNo || body.meterBw === undefined) {
-      return NextResponse.json({ error: 'assetNo and meterBw required' }, { status: 400 })
+    // Support both assetCode (new) and assetNo (legacy client compat)
+    const assetCode = String(body.assetCode || body.assetNo || '').trim()
+    if (!assetCode || body.meterBw === undefined) {
+      return NextResponse.json({ error: 'assetCode and meterBw required' }, { status: 400 })
     }
 
-    const device = await db.device.findUnique({ where: { assetNo: body.assetNo } })
+    const device = await db.device.findUnique({ where: { assetCode } })
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     if (!canAccessSite(user, device.site)) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์จดมิเตอร์สำหรับอุปกรณ์ในสาขานี้' }, { status: 403 })
@@ -101,56 +100,11 @@ export async function POST(req: NextRequest) {
 
     const meterBw = Math.floor(Number(body.meterBw))
     const meterColor = Math.floor(Number(body.meterColor || 0))
+    const finalReadingMonth = normalizeReadingMonth(body.readingMonth) ||
+      new Date().toISOString().slice(0, 7)
+    const readingDate = body.readingDate || new Date().toISOString().slice(0, 10)
 
-    // Resolve prev values — fall back to last reading on the device if not provided.
-    let prevMeterBw: number
-    let prevMeterColor: number
-    if (body.prevMeterBw !== undefined && body.prevMeterBw !== null) {
-      prevMeterBw = Math.floor(Number(body.prevMeterBw))
-    } else {
-      const last = await db.meterReading.findFirst({
-        where: { assetNo: body.assetNo },
-        orderBy: { readingDate: 'desc' },
-        select: { meterBw: true, meterColor: true },
-      })
-      prevMeterBw = last?.meterBw ?? 0
-    }
-    if (body.prevMeterColor !== undefined && body.prevMeterColor !== null) {
-      prevMeterColor = Math.floor(Number(body.prevMeterColor))
-    } else {
-      // If we had to look up prev above we already have the same-row color;
-      // otherwise fall back to a separate probe.
-      if (body.prevMeterBw === undefined || body.prevMeterBw === null) {
-        const last = await db.meterReading.findFirst({
-          where: { assetNo: body.assetNo },
-          orderBy: { readingDate: 'desc' },
-          select: { meterColor: true },
-        })
-        prevMeterColor = last?.meterColor ?? 0
-      } else {
-        prevMeterColor = 0
-      }
-    }
-
-    // ── Page-delta calculation (aligned with Apps Script MeterService.gs) ──
-    // Key rules (from METER_RULES.md + commit 67f8e54):
-    //   • INITIAL (brand-new device): pages = 0  (baseline, NOT meter — was over-counting)
-    //   • INITIAL (transfer):         pages = 0  (prev = meter, delta = 0)
-    //   • RESET:                      pages = 0  (new baseline)
-    //   • MONTHLY/CHECKOUT/FINAL/RETURN/SEND_REPAIR: pages = max(0, current - prev)
-    const isReset = meterBw < prevMeterBw || meterColor < prevMeterColor
-    const explicitType = body.readingType || null
-    const readingType = explicitType || (isReset ? 'RESET' : 'MONTHLY')
-
-    // Use the shared calc functions (also used by the transfer/lifecycle flow)
-    const pagesBw = calcPagesBw(meterBw, prevMeterBw, readingType)
-    const pagesColor = calcPagesColor(meterColor, prevMeterColor, readingType)
-
-    // ── Write-lock: reject writes to CLOSED-cycle months (Apps Script commit 67f8e54) ──
-    // The readingMonth determines which cycle this reading belongs to. If that
-    // cycle is CLOSED and has an immutable snapshot, we refuse the write to
-    // protect billing integrity.
-    const finalReadingMonth = body.readingMonth || new Date().toISOString().slice(0, 7)
+    // ── Write-lock: reject writes to CLOSED-cycle months ──
     try {
       await assertMeterMonthWritable(finalReadingMonth, 'บันทึกมิเตอร์')
     } catch (lockErr) {
@@ -163,69 +117,171 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const created = await db.meterReading.create({
-      data: {
-        assetNo: body.assetNo,
-        readingDate: body.readingDate || new Date().toISOString().slice(0, 10),
-        readingMonth: finalReadingMonth,
-        meterBw,
-        meterColor,
-        pagesBw,
-        pagesColor,
-        prevMeterBw,
-        prevMeterColor,
-        readBy: user.username || user.email,
-        remark: body.remark || null,
-        readingType,
-        locationAtReading: body.locationAtReading || null,
-        siteAtReading: body.siteAtReading || device.site || null,
-        buildingAtReading: body.buildingAtReading || null,
-        floorAtReading: body.floorAtReading || null,
-        departmentAtReading: body.departmentAtReading || null,
-        departmentCodeAtReading: body.departmentCodeAtReading || null,
-      },
-    })
+    // ── Step 1: Find valid previous reading (PROTECTED: skip FINAL/SEND_REPAIR) ──
+    let prev = await findValidPrevReading(assetCode, finalReadingMonth, true)
 
+    // ── Step 2: Same-month INITIAL/RESET fallback (Apps Script lines 619-633) ──
+    let isInitial = false
+    if (!prev) {
+      const baseline = await findSameMonthBaseline(assetCode, finalReadingMonth)
+      if (baseline) {
+        prev = {
+          id: baseline.id,
+          meterBw: baseline.meterBw,
+          meterColor: baseline.meterColor,
+          readingMonth: finalReadingMonth,
+          readingDate,
+          readingType: baseline.readingType,
+        }
+        isInitial = true
+      } else {
+        // Brand-new device, no readings at all
+        isInitial = true
+      }
+    }
+
+    const prevMeterBw = prev?.meterBw ?? 0
+    const prevMeterColor = prev?.meterColor ?? 0
+
+    // ── Step 3: Mode-switch detection (TOTAL ↔ BW_COLOR) ──
+    const prevHasColor = prev ? prev.meterColor > 0 : false
+    const currentHasColor = meterColor > 0
+    const { prevMeterColor: adjustedPrevColor, modeSwitched } = detectModeSwitch(
+      device.meterMode,
+      prevHasColor,
+      currentHasColor,
+      prevMeterColor,
+      meterColor,
+    )
+
+    // ── Step 4: Determine readingType ──
+    const explicitType = body.readingType as ReadingType | null
+    const meterDecreased = isMeterDecreased(meterBw, prevMeterBw, meterColor, adjustedPrevColor, isInitial)
+
+    let readingType: ReadingType
+    if (explicitType) {
+      readingType = explicitType
+    } else if (isInitial) {
+      readingType = 'INITIAL'
+    } else if (meterDecreased) {
+      readingType = 'RESET'
+    } else {
+      readingType = 'MONTHLY'
+    }
+
+    // ── Step 5: needConfirmReset 2-step flow ──
+    if (readingType === 'RESET' && !body.confirmReset) {
+      return NextResponse.json(
+        {
+          needConfirmReset: true,
+          message: 'มิเตอร์ลดลง — ต้องยืนยันการ reset และกรอกหมายเหตุ',
+          assetCode,
+          prevMeterBw,
+          prevMeterColor: adjustedPrevColor,
+          newMeterBw: meterBw,
+          newMeterColor: meterColor,
+        },
+        { status: 409 },
+      )
+    }
+
+    // ── Step 6: Calculate pages ──
+    const pagesBw = calcPagesBw(meterBw, prevMeterBw, readingType)
+    const pagesColor = calcPagesColor(meterColor, adjustedPrevColor, readingType)
+
+    // ── Step 7: Check for existing MONTHLY reading in same month (upsert) ──
+    const existing = await findExistingMonthlyReading(assetCode, finalReadingMonth)
+
+    const data = {
+      assetCode,
+      readingDate,
+      readingMonth: finalReadingMonth,
+      meterBw,
+      meterColor,
+      pagesBw,
+      pagesColor,
+      prevMeterBw,
+      prevMeterColor: adjustedPrevColor,
+      readBy: user.username || user.email,
+      remark: body.remark || null,
+      readingType,
+      locationAtReading: body.locationAtReading || null,
+      siteAtReading: body.siteAtReading || device.site || null,
+      buildingAtReading: body.buildingAtReading || null,
+      floorAtReading: body.floorAtReading || null,
+      departmentAtReading: body.departmentAtReading || null,
+      departmentCodeAtReading: body.departmentCodeAtReading || null,
+    }
+
+    let saved
+    if (existing && readingType === 'MONTHLY') {
+      // Update existing MONTHLY in-place (Apps Script behavior)
+      saved = await db.meterReading.update({
+        where: { id: existing.id },
+        data,
+      })
+    } else {
+      saved = await db.meterReading.create({ data })
+    }
+
+    // Audit log
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'METER_WRITE',
-          user: user.email,
-          details: JSON.stringify({
-            assetNo: body.assetNo,
+          entity: 'MeterReading',
+          entityId: saved.id,
+          summary: `จดมิเตอร์ ${assetCode}: BW=${meterBw} สี=${meterColor} (${readingType})`,
+          detail: JSON.stringify({
+            assetCode,
             meterBw,
             meterColor,
             pagesBw,
             pagesColor,
-            reset: isReset,
+            readingType,
+            reset: readingType === 'RESET',
+            modeSwitched,
+            isInitial,
           }),
+          actor: user.email,
         },
       })
     } catch { /* ignore */ }
 
     // Best-effort notification
     void notifyMeter({
-      assetNo: body.assetNo,
+      assetCode,
       pagesBw,
       pagesColor,
       by: user.username || user.email,
     })
 
-    // Push SSE event — meter page + dashboard subscribers refresh
+    // Push SSE event
     publishRealtimeEvent({
       type: 'meter-written',
-      assetNo: body.assetNo,
+      assetCode,
       site: device.site ?? null,
-      payload: { pagesBw, pagesColor, reset: isReset },
+      payload: { pagesBw, pagesColor, reset: readingType === 'RESET', readingType },
     })
 
     return NextResponse.json(
-      { reading: created, reset: isReset, pagesBw, pagesColor },
-      { status: 201 },
+      {
+        reading: saved,
+        reset: readingType === 'RESET',
+        pagesBw,
+        pagesColor,
+        readingType,
+        modeSwitched,
+        isInitial,
+        updated: !!existing,
+      },
+      { status: existing ? 200 : 201 },
     )
   } catch (err) {
     console.error('POST /api/itam/meter-readings', err)
-    return NextResponse.json({ error: 'Failed' }, { status: 500 })
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Failed to save meter reading' },
+      { status: 500 },
+    )
   }
 }

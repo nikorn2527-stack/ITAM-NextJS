@@ -6324,3 +6324,305 @@ Stage Summary:
   - Prisma WorkOrderImage supports multi-image per stage ✓ (Apps Script only single pic_before/onsite/after string fields)
   - Prisma WorkOrderReview exists ✓ (Apps Script uses Reviews sheet with rating 1-5 + type + subject + recommend)
   - Apps Script WorkOrder has `submission_source: 'session'|'guest'`, `trackable: !!tel`, `priority` (ปกติ/ปานกลาง/สูง/ด่วน), `accept_status`, `request_id` (idempotency key), `external_meta` (JSON), `assigned_by/at/note`, `work_completed_at`, `closed_at`, `canceled_at`, `auto_closed_at`, `auto_closed_by='stock_approval_sync'`, `reporter_edited_at`. Next.js Prisma has most of these but is missing `auto_closed_at`/`auto_closed_by`/`reporter_edited_at`/`accept_status` semantics and `request_id` idempotency check.
+
+---
+Task ID: P1D-P1E
+Agent: full-stack-developer — Fix device status side effects + edit unlock
+
+Work Log:
+- Added status side effects to devices/[id]/route.ts PUT
+- Created work-orders/[id]/edit-unlock/route.ts
+
+Stage Summary:
+- Device status → uninstall_date/purchase_date auto-set
+- Edit unlock API for COMPLETED/CANCELLED work orders
+
+Implementation Notes:
+- devices/[id]/route.ts PUT: refactored inline `data: {...}` into a separate
+  `updateData: Record<string, unknown>` object, then merged with a new
+  `statusSideEffects` map before calling `db.device.update`. Side effects only
+  fire when `body.status` differs from `before.status`:
+    * Retired/Returned/Inactive/Disposed (case-insensitive) → if
+      `before.uninstallDate` is empty, set `uninstallDate = today` (ISO yyyy-mm-dd)
+    * Active (case-insensitive) → if `before.purchaseDate` is empty, set
+      `purchaseDate = today` (represents install/reactivation date)
+  `assetCode` remains read-only (untouched). Both `uninstallDate` and
+  `purchaseDate` were already present in EDITABLE_FIELDS (lines 89, 94).
+- Audit `changes` loop extended to also include side-effect fields (using
+  `Object.prototype.hasOwnProperty.call(statusSideEffects, k)`) so the audit
+  trail captures the auto-set date changes alongside the user-supplied status
+  change.
+- work-orders/[id]/edit-unlock/route.ts (new):
+    POST /api/work-orders/[id]/edit-unlock  body { active: boolean, note?: string }
+    - Requires ADMIN permission via `requireAuth(req, 'ADMIN')`
+    - 404 if work order not found
+    - 400 if `before.status` is not in {COMPLETED, CANCELLED}
+    - active=true  → set editUnlockActive=true, editUnlockBy=<username|email>,
+                     editUnlockAt=now, editUnlockNote=note (trimmed or null)
+    - active=false → set editUnlockActive=false only (keeps editUnlockBy/At/Note
+                     for audit per Apps Script setWorkOrderEditUnlock)
+    - Audit log entry written with `previous` snapshot for traceability
+    - Response: { workOrder: updated }
+
+Verification:
+- `bunx tsc --noEmit --skipLibCheck` reports NO errors in either
+  `src/app/api/devices/[id]/route.ts` or
+  `src/app/api/work-orders/[id]/edit-unlock/route.ts`.
+- `bun run lint` reports NO errors in either of the two touched files
+  (all 11 lint errors are pre-existing in unrelated files:
+  scripts/import-*.js, src/components/itam/dashboard-page.tsx, src/lib/auth.ts).
+- `npx next build` currently fails with a PRE-EXISTING parse error in
+  `src/app/api/itam/meter-readings/route.ts:28` (`?? ... || ... ??` requires
+  parens). That file was modified by an earlier task (not by P1D-P1E) and is
+  out of scope ("Do NOT change other routes"). The failure is unrelated to
+  this task's changes.
+
+---
+Task ID: P1B-STOCK-UI
+Agent: full-stack-developer — Build complete Stock UI (8 tabs)
+
+Work Log:
+- Created stock/ subdirectory with 8 tab components
+- Updated itam-stock.tsx to use new tab structure
+
+Stage Summary:
+- Stock UI now has: Dashboard, Inventory, Stock-In, Stock-Out, Pending, PO, History, Summary
+- All tabs use shadcn/ui + responsive + Thai labels
+
+Implementation Notes:
+- File layout: src/components/itam/stock/
+    shared.ts                     (302)  types, color constants, format/auth helpers, query keys
+    stock-dashboard.tsx           (352)  Tab 1: KPI cards + low-stock list + recent txns
+    stock-inventory.tsx          (1144)  Tab 2: product table + create/edit/detail + quick txn
+    stock-in-form.tsx             (450)  Tab 3: multi-item Stock-In w/ product picker
+    stock-out-form.tsx            (493)  Tab 4: multi-item Stock-Out w/ stockRemain display
+    stock-pending.tsx             (669)  Tab 5: pending list + batch approve/reject + settings
+    stock-purchase-orders.tsx     (780)  Tab 6: PO list + create dialog + detail dialog
+    stock-history.tsx             (357)  Tab 7: txn history + filters + CSV export
+    stock-summary.tsx             (429)  Tab 8: by-product + by-person summaries + date filter
+    index.tsx                     (113)  StockTabs — main tab container
+  src/components/itam/itam-stock.tsx
+                                  (25)  re-export: `export { StockTabs as ItamStock } from './stock'`
+
+- API usage (NO schema/route changes; only existing endpoints used):
+    GET    /api/stock-items?activeOnly=&category=&lowStock=&search=&pageSize=   (list + stats)
+    POST   /api/stock-items                                                     (create)
+    GET    /api/stock-items/[id]                                                (detail + transactions)
+    PUT    /api/stock-items/[id]                                                (edit)
+    DELETE /api/stock-items/[id]                                                (soft delete)
+    POST   /api/stock-items/[id]/transaction   { type, quantity, vendor, cost,  (IN/OUT/ADJUST)
+                                                  reason, remark, txnDate,
+                                                  requester, department,
+                                                  purpose, workOrderNo }
+    GET    /api/stock-items/pending?status=&search=&pageSize=                   (pending + history)
+    POST   /api/stock-items/pending/batch      { items: [{ txnId, action,       (batch approve/reject)
+                                                          note, reason }] }
+    GET    /api/stock-items/pending/settings                                    (approval settings)
+    PUT    /api/stock-items/pending/settings                                    (update settings)
+    GET    /api/purchase-orders?search=&status=                                 (PO list)
+    POST   /api/purchase-orders                                                 (create PO)
+    GET    /api/purchase-orders/[id]                                            (PO detail)
+    PUT    /api/purchase-orders/[id]                                            (status update / cancel)
+
+- Field-name compatibility: every type/interface in shared.ts mirrors the
+  Prisma schema exactly (StockItem.productCode/productName/minQuantity/
+  unitCost/totalValue, StockTransaction.type/approvalStatus/approvalMode/
+  autoApproveAt/rejectReason/requester/department/purpose/workOrderNo,
+  PurchaseOrder.poNumber/orderDate/supplier/status/totalValue, PurchaseOrderItem.
+  quantityOrdered/quantityReceived/unitPrice). The new UI is fully migrated
+  away from the legacy /api/itam/stock endpoints that used `name`/`itemId`.
+
+- Auth: implemented `authFetch()` helper in shared.ts that pulls the Bearer
+  token from `useAuthStore.getState().token` and merges with Content-Type
+  JSON. This is used uniformly across all 8 tabs because /api/stock-items
+  and /api/purchase-orders sit outside the /api/itam/* interceptor scope.
+
+- Color scheme: orange (#f97316) primary + teal (#0d9488) accent, exported
+  via PRIMARY_BTN / ACCENT_BTN constants and applied to action buttons.
+  The TabsList uses the default muted background. Dark mode is preserved
+  throughout via `dark:` Tailwind variants matching the existing project
+  style.
+
+- Responsive: all tables wrapped in `max-h-[XXvh] overflow-auto itam-scroll`
+  (custom scrollbar class already defined in app CSS); KPI grids collapse
+  from lg:grid-cols-5 → md:grid-cols-3 → grid-cols-2; filter bars stack
+  vertically on mobile.
+
+- Pending approval batch flow: checkbox column + sticky select-all + bar
+  that appears when ≥1 row is selected, with "Approve All" / "Reject All"
+  buttons. Single-row approve hits the batch endpoint with one entry
+  (simpler than wiring the per-row approve/reject routes — both end up at
+  the same `processPendingBatch` core). Reject requires a reason (dialog).
+
+- Settings dialog: dropdown (manual/auto) + delay-minutes + batch-limit
+  inputs. Form is synced from server state via useEffect, then PUT-back
+  via /api/stock-items/pending/settings. The dashboard header card on the
+  pending tab shows the current mode + delay + limit at a glance.
+
+- PO receiving status: detail dialog shows per-line `quantityOrdered`
+  vs `quantityReceived` vs `remaining`, color-coded (emerald when fully
+  received, amber when partial). Cancel button sets status='cancelled'
+  via PUT. (No new receiving endpoint was added — the schema already has
+  the fields; linkage from StockIn→PO remains a future enhancement, see
+  STUDY-SERVICES-STOCK finding #2.)
+
+- History CSV export: builds a UTF-8 BOM CSV in-memory, downloads via
+  Blob URL. Columns: DocumentNo, Date, Type, ProductCode, ProductName,
+  Quantity, Unit, PerformedBy, Remark, ApprovalStatus.
+
+- Summary tab: client-side aggregation of stock-items (current stock +
+  value) + pending-status=all txns (IN/OUT totals) → by-product table;
+  plus by-person table grouping by performedBy/requester/approver. Date
+  range filter narrows the txn aggregation.
+
+Verification:
+- `bun run lint` — 0 new errors. The 11 reported errors are all
+  pre-existing in scripts/import-*.js, dashboard-page.tsx (parse error
+  from an earlier task), and src/lib/auth.ts (require import).
+- `bunx tsc --noEmit --skipLibCheck` — 0 errors in any stock/* file or
+  itam-stock.tsx. The 3 remaining errors are pre-existing in
+  src/components/itam/dashboard-page.tsx (out of scope).
+- `npx next build` — ✓ Compiled successfully in 25.7s. No warnings or
+  errors related to the new code.
+
+---
+Task ID: P2-ALL
+Agent: full-stack-developer — Priority 2 features (6 items)
+
+Work Log:
+- Feature 1: External user mode UI
+  • Verified already-implemented toggle "ลูกค้าภายนอก/นอกสถานที่" in
+    src/components/itam/work-orders-page.tsx (yellow/teal-tinted section
+    with clientName, place, contactPhone, serials[] multi-add). The
+    /api/work-orders POST route already accepts isExternal + externalMeta
+    and serializes to JSON via normalizeExternalMeta(). No changes
+    required — pre-existing implementation is complete and correct.
+
+- Feature 2: Contact Directory + Subject/Building Options Admin
+  • 2a. Created /api/settings/contact-directory (GET/POST) and
+    /api/settings/contact-directory/[id] (DELETE). Stores entries as
+    a JSON array in AppSetting 'contactDirectory' using snake_case
+    keys (full_name, phone_primary, employee_code, department, active)
+    so lib/guest-validation.ts::loadContactDirectory continues to work.
+    Each entry gets a stable id (c_…) for safe deletion.
+  • 2b. Extended /api/settings/options:
+      - GET now also returns buildings (default seed of 11 entries)
+        stored in AppSetting 'wo_buildings' (JSON array)
+      - Added POST handler accepting { type, value, group?, defaultPriority? }
+        with type ∈ { subject, building, resolution }
+      - Added DELETE /api/settings/options/[id] that removes an entry
+        by id prefix (subj_*, bld_*, res_*)
+    Each new entry now carries a stable id (subj_…, bld_…, res_…).
+  • UI: Created two new admin components and wired them as new tabs
+    in src/components/itam/itam-settings.tsx:
+      - ContactDirectorySection (src/components/itam/contact-directory-section.tsx)
+        — searchable table + add dialog (fullName, phonePrimary,
+        employeeCode, department, note, active toggle) + delete.
+      - WoOptionsSection (src/components/itam/wo-options-section.tsx)
+        — three cards: subjects table, buildings badge list,
+        resolutions table, each with add/delete.
+  • work-orders-page.tsx: extended OptionsResponse type to include
+    buildings?, passed buildings to CreateWorkOrderDialog, added a
+    <datalist> to the building Input so the user gets autocomplete
+    suggestions from the admin-curated list (free-text still allowed
+    for backward compat).
+
+- Feature 3: PO Receiving
+  • Extended /api/stock-items/[id]/transaction POST: when type=IN and
+    body.purchaseOrderNo is provided, looks up the PurchaseOrder by
+    poNumber, finds the matching PurchaseOrderItem (by stockItemId),
+    increments quantityReceived (capped at quantityOrdered), then
+    recomputes the PO status (open → partial → received based on
+    whether every line is fulfilled). All within the existing
+    db.$transaction so stock + PO stay consistent.
+  • The transaction now also persists purchaseOrderNo, requester,
+    department, purpose, workOrderNo, receiver, unitCost fields
+    (previously dropped).
+  • UI: Added receiving column to the PO detail dialog in
+    src/components/itam/stock/stock-purchase-orders.tsx — each line
+    with remaining > 0 shows a compact (qty input + Receive button)
+    that calls the existing transaction endpoint with
+    purchaseOrderNo set. Loader state per row via receivingId.
+
+- Feature 4: Cancel Document Flow
+  • Created /api/stock-items/[id]/cancel POST. Accepts either
+    { txnNumber, reason } to cancel an OUT transaction, or
+    { poNumber, reason } to cancel a PurchaseOrder.
+  • OUT cancellation:
+      1. Restores stock: StockItem.quantity += txn.quantity
+      2. Marks original transaction approvalStatus = 'CANCELLED'
+         with rejectReason = reason, remark appended
+      3. Creates a compensating ADJUST transaction with
+         txnNumber = STX-YYYYMMDD-NNN, remark = "ยกเลิก ${txnNumber}"
+      4. Audit log STOCK_CANCEL
+  • PO cancellation:
+      1. Blocks if any line has quantityReceived > 0 (must return
+         goods first via OUT)
+      2. Sets PurchaseOrder.status = 'cancelled', appends reason to
+         remark
+      3. Audit log PO_CANCEL
+
+- Feature 5: Public QR Scan-to-View
+  • Created /api/public/work-orders/[id] GET — NO auth required.
+  • Accepts either a WorkOrder.id (cuid) or woNumber as the [id]
+    path segment (looks up by OR).
+  • Returns ONLY sanitized fields safe for public consumption:
+      woNumber, subject, status (+ statusLabel), priority, building,
+      location, createdAt, closedAt, canceledAt, cancelReason (only
+      when status=CANCELLED), device (assetCode, name, brand, model,
+      site)
+  • Deliberately EXCLUDED for privacy: reporterName, reporterEmail,
+    tel, employeeCode, detailsAdmin, dateAdmin, resolution,
+    resolutionGroup, assignmentNote, assignedTo, assignedBy,
+    externalMeta (client contact info), messages, reviews, images,
+    audit logs.
+
+- Feature 6: Print Job Sheet
+  • Created /api/work-orders/[id]/print-sheet GET — returns a self-
+    contained HTML page (text/html) for a compact one-page "ใบงานช่าง"
+    (technician job sheet) with:
+      - Logo + WO number + status badge + created/printed dates
+      - Embedded QR code (server-side via `qrcode` lib) pointing to
+        /api/public/work-orders/{id} so scanning takes you to the
+        public status view
+      - Reporter / building / location / subject / priority info grid
+      - Optional external-client box, device box, assignment info
+      - Before / Onsite / After image thumbnails (3-column grid)
+      - Resolution + admin note + cancel reason (when applicable)
+      - 3-column signature grid: ผู้แจ้ง / ช่างผู้ซ่อม / ผู้ตรวจรับ
+        with date line
+      - Footer with WO number + QR target path + print timestamp
+      - Auto window.print() when opened via window.open()
+  • Added "ใบงานช่าง (QR)" button in work-orders-page.tsx detail
+    footer (next to existing "พิมพ์ใบงาน") that opens the print-sheet
+    in a new tab.
+
+Stage Summary:
+- All 6 Priority 2 features implemented
+- New API routes (7 total):
+    GET/POST  /api/settings/contact-directory
+    DELETE    /api/settings/contact-directory/[id]
+    GET/POST  /api/settings/options (extended)
+    DELETE    /api/settings/options/[id]
+    POST      /api/stock-items/[id]/cancel
+    GET       /api/public/work-orders/[id] (NO auth)
+    GET       /api/work-orders/[id]/print-sheet
+- Extended routes:
+    POST /api/stock-items/[id]/transaction — now updates
+    PurchaseOrderItem.quantityReceived + recomputes PO status
+    when purchaseOrderNo is provided.
+- New UI components (2): ContactDirectorySection, WoOptionsSection
+- Modified UI: itam-settings.tsx (2 new tabs), work-orders-page.tsx
+  (building datalist + QR print-sheet button), stock-purchase-orders.tsx
+  (receiving column in PO detail dialog).
+- Auth: protected routes use requireAuth() with VIEW_DEVICES (read)
+  or ADMIN / MASTER_DATA_EDIT (write). Public QR scan-to-view route
+  intentionally has NO auth.
+- Verification:
+    • `npx next build` — ✓ Compiled successfully in 24.5s, all 7 new
+      routes listed in the build output.
+    • `bun run lint` — 0 new errors (all 11 reported errors are
+      pre-existing in scripts/import-*.js, dashboard-page.tsx, auth.ts).
+    • `bunx tsc --noEmit --skipLibCheck` — 0 errors in any new/modified
+      file (only pre-existing errors in dashboard-page.tsx, out of
+      scope).

@@ -140,17 +140,82 @@ export async function POST(
           quantity,
           balanceAfter: newBalance,
           reason: body.reason ? String(body.reason).trim() : null,
+          requester: body.requester ? String(body.requester).trim() : null,
+          department: body.department ? String(body.department).trim() : null,
+          purpose: body.purpose ? String(body.purpose).trim() : null,
           workOrderId: body.workOrderId ? String(body.workOrderId) : null,
+          workOrderNo: body.workOrderNo ? String(body.workOrderNo) : null,
           deviceId: body.deviceId ? String(body.deviceId) : null,
           cost,
+          unitCost: item.unitCost,
           vendor: body.vendor ? String(body.vendor).trim() : null,
+          receiver: body.receiver ? String(body.receiver).trim() : null,
+          purchaseOrderNo: body.purchaseOrderNo
+            ? String(body.purchaseOrderNo).trim()
+            : null,
           txnDate,
           performedBy: body.performedBy ? String(body.performedBy).trim() : null,
           remark: body.remark ? String(body.remark).trim() : null,
         },
       })
 
-      return { item: updatedItem, txn }
+      // ── PO Receiving (Feature 3) ──
+      // When this is an IN transaction linked to a PurchaseOrder via
+      // `purchaseOrderNo`, find the matching PurchaseOrderItem (by PO
+      // poNumber + stockItemId) and increment quantityReceived. If the
+      // whole line is fulfilled, mark it complete; if every line on the
+      // PO is fulfilled, set the PO status to 'received', otherwise
+      // 'partial' (when at least one line has been partially received).
+      let poUpdateSummary: { poId?: string; poNumber?: string; status?: string } | null = null
+      if (type === 'IN' && body.purchaseOrderNo) {
+        const poNumber = String(body.purchaseOrderNo).trim()
+        const po = await tx.purchaseOrder.findFirst({
+          where: { poNumber },
+          include: { items: true },
+        })
+        if (po) {
+          const matchedItem = po.items.find((it) => it.stockItemId === id)
+          if (matchedItem) {
+            const newReceived = Math.min(
+              matchedItem.quantityOrdered,
+              matchedItem.quantityReceived + quantity,
+            )
+            await tx.purchaseOrderItem.update({
+              where: { id: matchedItem.id },
+              data: { quantityReceived: newReceived },
+            })
+
+            // Re-fetch all items to compute the new PO status
+            const refreshedItems = await tx.purchaseOrderItem.findMany({
+              where: { purchaseOrderId: po.id },
+            })
+            const allFulfilled = refreshedItems.every(
+              (it) => it.quantityReceived >= it.quantityOrdered,
+            )
+            const anyReceived = refreshedItems.some(
+              (it) => it.quantityReceived > 0,
+            )
+            const nextStatus = allFulfilled
+              ? 'received'
+              : anyReceived
+              ? 'partial'
+              : po.status === 'cancelled'
+              ? 'cancelled'
+              : 'open'
+            await tx.purchaseOrder.update({
+              where: { id: po.id },
+              data: { status: nextStatus },
+            })
+            poUpdateSummary = {
+              poId: po.id,
+              poNumber: po.poNumber ?? poNumber,
+              status: nextStatus,
+            }
+          }
+        }
+      }
+
+      return { item: updatedItem, txn, poUpdateSummary }
     })
 
     const action =
@@ -174,11 +239,19 @@ export async function POST(
         txnNumber: result.txn.txnNumber,
         txnId: result.txn.id,
         reason: result.txn.reason,
+        purchaseOrderNo: result.txn.purchaseOrderNo,
+        poUpdate: result.poUpdateSummary,
       },
     )
 
     return NextResponse.json(
-      { data: { item: result.item, transaction: result.txn } },
+      {
+        data: {
+          item: result.item,
+          transaction: result.txn,
+          poUpdate: result.poUpdateSummary,
+        },
+      },
       { status: 201 },
     )
   } catch (err) {
