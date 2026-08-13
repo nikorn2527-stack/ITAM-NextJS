@@ -201,38 +201,13 @@ export async function GET(req: NextRequest) {
     const paperUsage = (paperAgg._sum.pagesBw ?? 0) + (paperAgg._sum.pagesColor ?? 0)
 
     return NextResponse.json({
-      devices: {
-        total: devicesTotal,
-        active: devicesActive,
-        byType: devicesByType,
-        bySite: devicesBySite,
-      },
-      workOrders: {
-        total: woTotal,
-        pending: woPending,
-        inProgress: woInProgress,
-        waitingParts: woWaitingParts,
-        completed: woCompleted,
-        cancelled: woCancelled,
-        byPriority: woByPriority,
-        recent: woRecent,
-        avgRating: Number(avgRating.toFixed(2)),
-      },
-      stock: {
-        totalItems: stockTotalItems,
-        lowStock: stockLowStock,
-        totalValue: stockTotalValue,
-        pendingApprovals: stockPendingApprovals,
-        recentTransactions: stockRecentTransactions,
-      },
-      alerts: {
-        lowStockItems,
-        pendingWOs,
-        expiringWarranties,
-      },
-      meta: {
-        generatedAt: new Date().toISOString(),
-      },
+      totals: { total, active, spare, repair },
+      byStatus,
+      byType,
+      topUsage,
+      recentActivity,
+      paperThisMonth: paperUsage,
+      range,
     })
   } catch (err) {
     console.error('GET /api/dashboard', err)
