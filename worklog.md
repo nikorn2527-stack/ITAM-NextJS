@@ -7091,3 +7091,67 @@ Stage Summary:
 - Fallback: log to console + return testLink in API response + show amber banner in UI for testing without SMTP
 - Build: ✓ Compiled successfully (DATABASE_URL=postgres... NEXTAUTH_SECRET=test JWT_SECRET=test npx next build)
 - All 16 new/modified files pass ESLint (remaining lint errors are pre-existing in unrelated files)
+
+---
+Task ID: AUTH-REGISTER-RESET
+Agent: orchestrator — ระบบลงทะเบียน + ลืมรหัสผ่าน + อนุมัติ
+
+Task: สร้างระบบลงทะเบียนขอใช้งาน 2 แบบ + ลืมรหัสผ่าน + ส่งลิงก์ผ่านอีเมล
+
+Work Log:
+
+**1. PasswordResetToken model (Prisma):**
+- id, email, token (@unique), type (register|reset|invite), data (JSON), used, expiresAt, createdAt
+- db push สำเร็จ
+
+**2. Email sending — nodemailer:**
+- ติดตั้ง nodemailer + @types/nodemailer
+- แก้ sendEmail() ใน notifications.ts ให้ใช้ nodemailer.createTransport จริง
+- SMTP config จาก AppSetting (smtpHost, smtpPort, smtpUser, smtpPass, emailFrom)
+- Fallback: log to console + return testLink ถ้าไม่มี SMTP
+
+**3. API Routes (8 ตัว):**
+- POST /api/auth/register — ลงทะเบียน (สร้าง user active=false)
+- POST /api/auth/request-invite — ขอลิงก์ลงทะเบียนทางอีเมล (Method 2)
+- GET /api/auth/verify-token — ตรวจ token
+- POST /api/auth/forgot-password — ขอรีเซ็ตรหัสผ่าน
+- POST /api/auth/reset-password — ตั้งรหัสใหม่ด้วย token
+- GET /api/itam/auth/pending — แอดมิน: รายการรออนุมัติ
+- POST /api/itam/auth/approve/[id] — แอดมิน: อนุมัติ
+- POST /api/itam/auth/reject/[id] — แอดมิน: ปฏิเสธ
+
+**4. UI — Login page (itam-login.tsx):**
+- เพิ่ม 3 dialogs: ขอเข้าใช้งาน, ลืมรหัสผ่าน, รับลิงก์ลงทะเบียนทางอีเมล
+- รองรับ ?register=1 (auto-open registration dialog)
+- รองรับ ?token={token} (from email link → register/reset page)
+
+**5. UI — Auth pages:**
+- auth-register-page.tsx — ฟอร์มลงทะเบียนจาก invite link
+- auth-reset-page.tsx — ฟอร์มตั้งรหัสผ่านใหม่จาก reset link
+
+**6. UI — Pending users management:**
+- pending-users-section.tsx — แท็บ "👥 รออนุมัติ" ใน settings
+- แสดง users ที่ active=false
+- ปุ่ม อนุมัติ/ปฏิเสธ
+
+**7. Email templates (auth-email-templates.ts):**
+- Registration confirmation: "รอผู้ดูแลอนุมัติ"
+- Invite link (24h expiry): "คลิกลิงก์เพื่อลงทะเบียน"
+- Password reset (1h expiry): "คลิกลิงก์เพื่อรีเซ็ตรหัสผ่าน"
+- Approval notification: "บัญชีอนุมัติแล้ว เข้าสู่ระบบได้"
+
+Verification (production, commit da6c235):
+✅ Home: HTTP 200
+✅ Login: OK (admin/admin123)
+✅ Register API: {"ok":true,"message":"รอผู้ดูแลอนุมัติ","userId":"...","loginUrl":"..."}
+✅ Forgot password API: {"ok":true,"testLink":"https://...?token=..."}
+✅ Request invite API: {"ok":true,"message":"ส่งลิงก์ไปยังอีเมลแล้ว","testLink":"https://...?token=..."}
+✅ Build: Compiled successfully
+
+Stage Summary:
+- แบบที่ 1: กด "ขอเข้าใช้งาน" ที่หน้า login → กรอกข้อมูล → รอแอดมินอนุมัติ
+- แบบที่ 2: กรอกอีเมล → รับลิงก์ → คลิก → กรอกข้อมูล → รอแอดมินอนุมัติ
+- ลืมรหัสผ่าน: กรอกอีเมล → รับลิงก์ → ตั้งรหัสใหม่
+- แอดมินอนุมัติ: settings → 👥 รออนุมัติ → approve/reject
+- ส่งอีเมลจริงผ่าน nodemailer (ต้องตั้ง SMTP ใน settings)
+- Fallback: ถ้าไม่มี SMTP → return testLink สำหรับทดสอบ
