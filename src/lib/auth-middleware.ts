@@ -53,7 +53,7 @@ export async function requireAuth(
     return { ok: false, status: 401, error: 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่' }
   }
   // Reload user from DB so revocations/role changes take effect immediately
-  const row = await db.userPermission.findUnique({ where: { email: payload.email } })
+  const row = await db.user.findUnique({ where: { email: payload.email } })
   if (!row || !row.active) {
     return { ok: false, status: 401, error: 'บัญชีถูกปิดใช้งานหรือไม่พบในระบบ' }
   }

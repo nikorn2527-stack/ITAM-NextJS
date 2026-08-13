@@ -528,6 +528,7 @@ model User {
   allowedSites String?  // comma-separated or ALL
   active       Boolean  @default(true)
   passwordHash String?
+  passwordSalt String?
   avatarUrl    String?
   phone        String?
   lineUserId   String?

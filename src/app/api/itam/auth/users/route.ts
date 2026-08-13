@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth(req, 'USER_MANAGE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const rows = await db.userPermission.findMany({
+  const rows = await db.user.findMany({
     orderBy: [{ role: 'asc' }, { email: 'asc' }],
   })
   // Never leak hashes/salts to the client
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Dup check
-  const dup = await db.userPermission.findFirst({
+  const dup = await db.user.findFirst({
     where: { OR: [{ email }, ...(username ? [{ username }] : [])] },
   })
   if (dup) return NextResponse.json({ error: 'อีเมลหรือชื่อผู้ใช้ซ้ำกับที่มีอยู่' }, { status: 409 })
@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     passwordSalt = salt
   }
 
-  const created = await db.userPermission.create({
+  const created = await db.user.create({
     data: {
       email,
       role,
@@ -78,11 +78,11 @@ export async function POST(req: NextRequest) {
 
 // Helper exported for the [id] route — checks "last admin" protection
 export async function assertNotLastAdmin(targetId: string): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
-  const target = await db.userPermission.findUnique({ where: { id: targetId } })
+  const target = await db.user.findUnique({ where: { id: targetId } })
   if (!target) return { ok: false, status: 404, error: 'ไม่พบผู้ใช้' }
   if (!isAdminRole(target.role)) return { ok: true }
   // Count other active admins/superadmins
-  const otherAdmins = await db.userPermission.count({
+  const otherAdmins = await db.user.count({
     where: {
       id: { not: targetId },
       active: true,
