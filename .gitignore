@@ -21,6 +21,9 @@ dist/
 # Database
 db/*.db
 db/*.db-journal
+db/custom.db
+prisma/*.db
+prisma/*.db-journal
 
 # IDE
 .vscode/
@@ -48,3 +51,6 @@ scripts/output/
 
 # Skills (development tools)
 skills/
+
+# Tool results / temp
+tool-results/

@@ -25,6 +25,18 @@ function optInt(v: unknown): number | null {
   return Math.max(1, Math.round(n))
 }
 
+/** Trim a string field, returning null when empty/missing. */
+function optStr(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null
+  return String(v).trim()
+}
+
+/** Parse a boolean field; returns false when missing/invalid. */
+function optBool(v: unknown): boolean {
+  if (v === true || v === 'true' || v === 1 || v === 'TRUE' || v === 'True') return true
+  return false
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -35,11 +47,21 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = {}
     if (search) {
       where.OR = [
+        { serialNumber: { contains: search } },
         { assetCode: { contains: search } },
         { name: { contains: search } },
-        { serialNumber: { contains: search } },
         { brand: { contains: search } },
         { model: { contains: search } },
+        { building: { contains: search } },
+        { floor: { contains: search } },
+        { department: { contains: search } },
+        { location: { contains: search } },
+        { site: { contains: search } },
+        { ip: { contains: search } },
+        { mac: { contains: search } },
+        { remoteId: { contains: search } },
+        { contractNo: { contains: search } },
+        { vendor: { contains: search } },
       ]
     }
     if (status) where.status = status
@@ -78,17 +100,21 @@ export async function POST(req: NextRequest) {
         brand: String(body.brand).trim(),
         model: String(body.model).trim(),
         type: String(body.type).trim(),
-        serialNumber: body.serialNumber ? String(body.serialNumber).trim() : null,
+        serialNumber: optStr(body.serialNumber),
         status: String(body.status).trim(),
         site: String(body.site).trim(),
-        department: body.department ? String(body.department).trim() : null,
-        departmentCode: body.departmentCode
-          ? String(body.departmentCode).trim()
-          : null,
-        parentRef: body.parentRef ? String(body.parentRef).trim() : null,
-        displayLabel: body.displayLabel ? String(body.displayLabel).trim() : null,
-        location: body.location ? String(body.location).trim() : null,
-        purchaseDate: body.purchaseDate ? String(body.purchaseDate).trim() : null,
+        department: optStr(body.department),
+        departmentCode: optStr(body.departmentCode),
+        parentRef: optStr(body.parentRef),
+        displayLabel: optStr(body.displayLabel),
+        location: optStr(body.location),
+        building: optStr(body.building),
+        floor: optStr(body.floor),
+        room: optStr(body.room),
+        ip: optStr(body.ip),
+        mac: optStr(body.mac),
+        remoteId: optStr(body.remoteId),
+        purchaseDate: optStr(body.purchaseDate),
         warrantyMonths: clampWarrantyMonths(body.warrantyMonths),
         lastMeterReading:
           typeof body.lastMeterReading === 'number'
@@ -97,6 +123,15 @@ export async function POST(req: NextRequest) {
         purchasePrice: optFloat(body.purchasePrice),
         salvageValue: optFloat(body.salvageValue) ?? 0,
         usefulLife: optInt(body.usefulLife),
+        warrantyEnd: optStr(body.warrantyEnd),
+        vendor: optStr(body.vendor),
+        contractNo: optStr(body.contractNo),
+        uninstallDate: optStr(body.uninstallDate),
+        meterRequired: optBool(body.meterRequired),
+        meterMode: optStr(body.meterMode),
+        costCenter: optStr(body.costCenter),
+        deviceGroup: optStr(body.deviceGroup),
+        remark: optStr(body.remark),
       },
     })
     await logAudit(

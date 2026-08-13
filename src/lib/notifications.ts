@@ -1,227 +1,122 @@
 /**
- * notifications.ts — server-only notification sender.
+ * Notification System — ระบบส่งการแจ้งเตือน 3 ช่องทาง
  *
- * Supports 4 channels (Email / Telegram / LINE Notify / LINE OA) and 5 events:
- *   deviceAdded, deviceUpdated, transfer, lifecycle, meter
+ * ช่องทาง (channel):
+ *   - line-oa   → ส่งผ่าน LINE Official Account (Push/Reply)
+ *   - telegram  → ส่งผ่าน Telegram Bot
+ *   - email     → ส่งผ่าน SMTP/API
  *
- * Settings are read from the `app_settings` table (key → JSON or scalar):
- *   notifyChannels        — JSON: { email, telegram, lineNotify, lineOA } booleans
- *   notifyEvents          — JSON: { deviceAdded, deviceUpdated, transfer, lifecycle, meter } booleans
- *   notifyEmails          — comma-separated email addresses
- *   telegramBotToken      — string
- *   telegramChatId        — string
- *   lineNotifyToken       — string
- *   lineOaChannelAccessToken — string
- *   lineOaToUserId        — string (LINE user ID to push to)
+ * Template:
+ *   เป็นรายการข้อความภาษาไทยสำเร็จรูป สำหรับเหตุการณ์ต่าง ๆ ในระบบ (แจ้งซ่อม,
+ *   มอบหมาย, ปิดงาน, คำขอเบิกอะไหล่, สต็อกต่ำ ฯลฯ)
  *
- * The function NEVER throws — all errors are logged. Notification failures
- * must not break user-facing mutations.
+ * การใช้งาน:
+ *   import { sendNotification, renderTemplate } from '@/lib/notifications'
+ *
+ *   await sendNotification({
+ *     template: 'wo_created',
+ *     channels: ['line-oa', 'telegram'],
+ *     data: { woNumber, subject, building, location, reporterName, tel, priority },
+ *     lineUserId,
+ *   })
+ *
+ * หมายเหตุ:
+ *   - ตอนนี้ระบบจะ log ข้อความแทนการส่งจริง (console.log + AuditLog)
+ *     สามารถเปิดการส่งจริงได้ภายหลังโดยตั้งค่า API keys ใน AppSetting
+ *   - API keys ที่ต้องใช้ (เก็บในตาราง AppSetting):
+ *       line_channel_access_token  → LINE Messaging API token
+ *       line_channel_secret        → LINE channel secret (ใช้ตรวจ signature)
+ *       line_admin_group_id        → LINE group/room ID สำหรับส่งแจ้งเตือนแอดมิน
+ *       telegram_bot_token         → Telegram Bot API token
+ *       telegram_chat_id           → Telegram chat ID เริ่มต้น (แอดมิน)
+ *       smtp_host / smtp_port / smtp_user / smtp_pass
+ *       email_from                 → อีเมลผู้ส่งเริ่มต้น
  */
 
 import { db } from '@/lib/db'
 
-export type NotifyEvent =
-  | 'deviceAdded'
-  | 'deviceUpdated'
-  | 'transfer'
-  | 'lifecycle'
-  | 'meter'
+// ============================================================
+// Types
+// ============================================================
 
-export interface NotifyChannelConfig {
-  email: boolean
-  telegram: boolean
-  lineNotify: boolean
-  lineOA: boolean
+export type NotificationChannel = 'line-oa' | 'telegram' | 'email'
+
+export type NotificationTemplate =
+  | 'wo_created' // แจ้งซ่อนใหม่
+  | 'wo_assigned' // มอบหมายงาน
+  | 'wo_completed' // ปิดงานแล้ว
+  | 'wo_cancelled' // ยกเลิกงาน
+  | 'wo_message' // ข้อความใหม่ในใบงาน
+  | 'parts_requested' // มีคำขอเบิกอะไหล่
+  | 'parts_approved' // อนุมัติเบิกอะไหล่แล้ว
+  | 'stock_low' // สต็อกต่ำ
+  | 'stock_out' // สต็อกหมด
+  | 'meter_reminder' // แจ้งเตือนจดมิเตอร์
+
+export interface NotificationData {
+  template: NotificationTemplate
+  channels: NotificationChannel[]
+  /** Context data for template rendering */
+  data: Record<string, unknown>
+  /** LINE: lineUserId (optional, if known from WorkOrder reporter) */
+  lineUserId?: string
+  /** Telegram: chatId */
+  telegramChatId?: string
+  /** Email: address */
+  email?: string
+  /** Actor (for audit log). Default 'system' */
+  actor?: string
+  /** Optional entity reference for audit log */
+  entityId?: string
+  /** Optional entity type for audit log */
+  entity?: string
 }
 
-export interface NotifyEventConfig {
-  deviceAdded: boolean
-  deviceUpdated: boolean
-  transfer: boolean
-  lifecycle: boolean
-  meter: boolean
-}
-
-export interface NotificationPayload {
-  event: NotifyEvent
+export interface RenderedMessage {
   title: string
-  message: string
-  data?: Record<string, unknown>
+  body: string
 }
 
-const DEFAULT_CHANNELS: NotifyChannelConfig = {
-  email: false,
-  telegram: false,
-  lineNotify: false,
-  lineOA: false,
+// ============================================================
+// Settings loader (AppSetting-backed)
+// ============================================================
+
+interface NotifySettings {
+  lineChannelAccessToken?: string
+  lineChannelSecret?: string
+  lineAdminGroupId?: string
+  telegramBotToken?: string
+  telegramChatId?: string
+  smtpHost?: string
+  smtpPort?: string
+  smtpUser?: string
+  smtpPass?: string
+  emailFrom?: string
+  /** Master switch — when false, log only */
+  notifyEnabled?: boolean
 }
 
-const DEFAULT_EVENTS: NotifyEventConfig = {
-  deviceAdded: true,
-  deviceUpdated: false,
-  transfer: true,
-  lifecycle: true,
-  meter: false,
-}
-
-// ─── Settings accessors ────────────────────────────────────────────────────
-async function getSetting(key: string): Promise<string | null> {
-  const row = await db.appSetting.findUnique({ where: { key } })
-  return row?.value ?? null
-}
-
-export async function getNotifyChannels(): Promise<NotifyChannelConfig> {
-  const raw = await getSetting('notifyChannels')
-  if (!raw) return DEFAULT_CHANNELS
+async function loadSettings(): Promise<NotifySettings> {
   try {
-    const parsed = JSON.parse(raw) as Partial<NotifyChannelConfig>
-    return { ...DEFAULT_CHANNELS, ...parsed }
-  } catch {
-    return DEFAULT_CHANNELS
-  }
-}
-
-export async function getNotifyEvents(): Promise<NotifyEventConfig> {
-  const raw = await getSetting('notifyEvents')
-  if (!raw) return DEFAULT_EVENTS
-  try {
-    const parsed = JSON.parse(raw) as Partial<NotifyEventConfig>
-    return { ...DEFAULT_EVENTS, ...parsed }
-  } catch {
-    return DEFAULT_EVENTS
-  }
-}
-
-export async function saveNotifyChannels(channels: NotifyChannelConfig): Promise<void> {
-  await db.appSetting.upsert({
-    where: { key: 'notifyChannels' },
-    create: { key: 'notifyChannels', value: JSON.stringify(channels) },
-    update: { value: JSON.stringify(channels) },
-  })
-}
-
-export async function saveNotifyEvents(events: NotifyEventConfig): Promise<void> {
-  await db.appSetting.upsert({
-    where: { key: 'notifyEvents' },
-    create: { key: 'notifyEvents', value: JSON.stringify(events) },
-    update: { value: JSON.stringify(events) },
-  })
-}
-
-// ─── Channel senders ──────────────────────────────────────────────────────
-
-/** Email — best-effort log (no SMTP available in sandbox). */
-async function sendEmail(to: string[], subject: string, body: string): Promise<void> {
-  if (to.length === 0) return
-  // In a real deployment, integrate nodemailer / SendGrid / Mailgun here.
-  // For the sandbox, we simply log to the server console.
-  console.log(`[notify:email] → ${to.join(', ')}`)
-  console.log(`  Subject: ${subject}`)
-  console.log(`  Body: ${body}`)
-}
-
-/** Telegram — push a message via Bot API. */
-async function sendTelegram(token: string, chatId: string, text: string): Promise<void> {
-  if (!token || !chatId) return
-  const url = `https://api.telegram.org/bot${token}/sendMessage`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text,
-      parse_mode: 'HTML',
-      disable_web_page_preview: true,
-    }),
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    console.error(`[notify:telegram] ${res.status}: ${t}`)
-  }
-}
-
-/** LINE Notify — push a message via the LINE Notify API. */
-async function sendLineNotify(token: string, message: string): Promise<void> {
-  if (!token) return
-  const res = await fetch('https://notify-api.line.me/api/notify', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ message }),
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    console.error(`[notify:lineNotify] ${res.status}: ${t}`)
-  }
-}
-
-/** LINE OA — push a message via the LINE Messaging API. */
-async function sendLineOA(token: string, toUserId: string, text: string): Promise<void> {
-  if (!token || !toUserId) return
-  const res = await fetch('https://api.line.me/v2/bot/message/push', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      to: toUserId,
-      messages: [{ type: 'text', text }],
-    }),
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    console.error(`[notify:lineOA] ${res.status}: ${t}`)
-  }
-}
-
-// ─── Public entry point ────────────────────────────────────────────────────
-
-/**
- * Dispatch a notification — non-throwing.
- *
- * 1. Reads channel + event config from app_settings
- * 2. If the event is disabled in NotifyEventConfig → no-op
- * 3. For each enabled channel, fetches its credentials and dispatches
- * 4. All errors are logged but never thrown
- */
-export async function sendNotification(payload: NotificationPayload): Promise<void> {
-  try {
-    const [channels, events] = await Promise.all([getNotifyChannels(), getNotifyEvents()])
-    if (!events[payload.event]) return
-    const subject = payload.title
-    const body = payload.message
-
-    if (channels.email) {
-      const raw = await getSetting('notifyEmails')
-      const emails = (raw ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-      await sendEmail(emails, subject, body)
-    }
-    if (channels.telegram) {
-      const [token, chatId] = await Promise.all([
-        getSetting('telegramBotToken'),
-        getSetting('telegramChatId'),
-      ])
-      await sendTelegram(token ?? '', chatId ?? '', `<b>${subject}</b>\n${body}`)
-    }
-    if (channels.lineNotify) {
-      const token = await getSetting('lineNotifyToken')
-      await sendLineNotify(token ?? '', `${subject}\n${body}`)
-    }
-    if (channels.lineOA) {
-      const [token, toUserId] = await Promise.all([
-        getSetting('lineOaChannelAccessToken'),
-        getSetting('lineOaToUserId'),
-      ])
-      await sendLineOA(token ?? '', toUserId ?? '', `${subject}\n${body}`)
+    const rows = await db.appSetting.findMany()
+    const get = (key: string) =>
+      rows.find((r) => r.key === key)?.value || undefined
+    return {
+      lineChannelAccessToken: get('line_channel_access_token'),
+      lineChannelSecret: get('line_channel_secret'),
+      lineAdminGroupId: get('line_admin_group_id'),
+      telegramBotToken: get('telegram_bot_token'),
+      telegramChatId: get('telegram_chat_id'),
+      smtpHost: get('smtp_host'),
+      smtpPort: get('smtp_port'),
+      smtpUser: get('smtp_user'),
+      smtpPass: get('smtp_pass'),
+      emailFrom: get('email_from'),
+      notifyEnabled: get('notify_enabled') !== 'false',
     }
   } catch (err) {
-    console.error('[sendNotification] failed:', err)
+    console.error('[notifications] loadSettings failed:', err)
+    return {}
   }
 }
 

@@ -5,8 +5,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
 import { Sun, Moon, Search, LogOut, QrCode } from 'lucide-react'
 import { useAppStore, type ActivePage } from '@/store/app-store'
-import { useAuthStore } from '@/store/auth-store'
-import { ROLE_LABELS, type Role } from '@/lib/auth-shared'
+import { useAuthStore, useNavVisibility, useRole } from '@/store/auth-store'
+import { ROLE_LABELS } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 import { NotificationsPopover } from './notifications-popover'
 import { useRealtimeStatus } from '@/hooks/use-realtime-updates'
@@ -139,6 +139,74 @@ export function Sidebar() {
     // page (authStore.isAuthenticated flips to false).
   }
 
+  // ── Auth + permissions (Task ID: RBAC-DASHBOARD) ──
+  const fetchMe = useAuthStore((s) => s.fetchMe)
+  const authInitialized = useAuthStore((s) => s.initialized)
+  const navVisibility = useNavVisibility()
+  const role = useRole()
+
+  // Fetch /api/auth/me once on mount (silently — falls back to preview user)
+  React.useEffect(() => {
+    if (!authInitialized) {
+      void fetchMe()
+    }
+  }, [authInitialized, fetchMe])
+
+  // Filter NAV_ITEMS by permission
+  const visibleNavItems = React.useMemo(() => {
+    return NAV_ITEMS.filter((item) => {
+      if (!item.requires || item.requires.length === 0) return true
+      return item.requires.some((perm) => {
+        // Use the precomputed navVisibility map for known keys,
+        // otherwise fall back to a direct check.
+        switch (item.page) {
+          case 'dashboard':
+            return navVisibility.dashboard
+          case 'devices':
+            return navVisibility.devices
+          case 'meter':
+            return navVisibility.meter
+          case 'paper-analytics':
+            return navVisibility.paperAnalytics
+          case 'work-orders':
+            return navVisibility.workOrders
+          case 'stock':
+            return navVisibility.stock
+          case 'monthly-report':
+            // Uses reports:view (same as paper-analytics)
+            return navVisibility.paperAnalytics
+          case 'import':
+            return navVisibility.import
+          case 'templates':
+            return navVisibility.templates
+          case 'settings':
+            return navVisibility.settings
+          default:
+            return true
+        }
+      })
+    })
+  }, [navVisibility])
+
+  // ── Organization Profile (flexible: ชื่อ/โลโก้/tagline เปลี่ยนได้) ──
+  const { data: orgProfile } = useQuery({
+    queryKey: ['org-profile'],
+    queryFn: async () => {
+      try {
+        const res = await fetch('/api/settings/org-profile')
+        if (!res.ok) return null
+        const j = await res.json()
+        return j.profile
+      } catch {
+        return null
+      }
+    },
+    staleTime: 60_000,
+  })
+  const appName = orgProfile?.appName || 'ระบบจัดการสินทรัพย์'
+  const appTagline = orgProfile?.appTagline || 'Asset Management System'
+  const logoUrl = orgProfile?.logoUrl || ''
+
   const isDark = mounted && theme === 'dark'
   function toggleTheme() {
     setTheme(isDark ? 'light' : 'dark')
@@ -174,6 +242,11 @@ export function Sidebar() {
     setActivePage(page)
     closeSidebar()
   }
+
+  // Display name + role label
+  const displayName =
+    authUser?.name || authUser?.email || 'admin@example.com'
+  const roleLabel = ROLE_LABELS[role] ?? role
 
   return (
     <>
@@ -225,7 +298,7 @@ export function Sidebar() {
 
         {/* Nav menu */}
         <nav
-          className="flex-1 py-3"
+          className="flex-1 overflow-y-auto py-3"
           style={{ padding: '12px 0' }}
           aria-label="Main navigation"
         >
@@ -274,6 +347,14 @@ export function Sidebar() {
               })}
             </div>
           ))}
+
+          {visibleNavItems.length === 0 && (
+            <div className="px-5 py-6 text-center text-xs text-slate-400">
+              คุณไม่มีสิทธิ์เข้าถึงเมนูใด ๆ
+              <br />
+              กรุณาติดต่อผู้ดูแลระบบ
+            </div>
+          )}
 
           {/* Global search button */}
           <div className="px-3 pt-2">
@@ -365,37 +446,28 @@ export function Sidebar() {
           </div>
         )}
 
-        {/* Current user role + logout button (dynamic from auth store) */}
+        {/* Current user — แสดงรูปโปรไฟล์ + ชื่อ + role (reads from auth store) */}
         <div
-          className="flex items-center justify-between gap-2 px-4 py-2 text-[11px]"
-          style={{ color: 'rgba(255,255,255,0.75)' }}
+          className="flex items-center gap-2 px-4 py-2.5 text-[11px]"
+          style={{ color: 'rgba(255,255,255,0.75)', borderTop: '1px solid rgba(255,255,255,0.08)' }}
+          title={authUser?.email ?? ''}
         >
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-medium text-white/90">
-              {authUser ? (authUser.name || authUser.username || authUser.email) : 'ไม่ได้เข้าสู่ระบบ'}
+          {/* Avatar — รูปโปรไฟล์หรือ initials */}
+          {authUser?.avatarUrl && authUser.avatarUrl.startsWith('http') ? (
+            <img
+              src={authUser.avatarUrl}
+              alt={displayName}
+              className="h-8 w-8 flex-shrink-0 rounded-full object-cover ring-2 ring-white/20"
+            />
+          ) : (
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#f97316] to-[#ea580c] text-xs font-bold text-white ring-2 ring-white/20">
+              {displayName.slice(0, 2).toUpperCase()}
             </div>
-            <div className="truncate text-[10px] text-slate-400">
-              {authUser
-                ? `${authUser.email} · ${roleLabel(authUser.role)}`
-                : 'กรุณาเข้าสู่ระบบ'}
-            </div>
-            {authUser && authUser.allowedSites !== 'ALL' && (
-              <div className="mt-0.5 truncate text-[10px] text-teal-300">
-                สาขา: {authUser.allowedSites.split(',').join(' | ')}
-              </div>
-            )}
-          </div>
-          {authUser && (
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              aria-label="ออกจากระบบ"
-              title="ออกจากระบบ"
-              className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-300 transition-colors hover:border-rose-400/40 hover:bg-rose-500/15 hover:text-rose-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-[#0f172a]"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-            </button>
           )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium text-white/90">{displayName}</div>
+            <div className="mt-0.5 truncate text-[10px] text-slate-400">{roleLabel}</div>
+          </div>
         </div>
 
         {/* Powered footer */}
