@@ -7390,3 +7390,32 @@ Verification (production, commit 2126b7e):
 และปุ่ม "พิมพ์" ต้องอยู่ในจุดที่ผู้ใช้คุ้นเคย:
 - ตารางอุปกรณ์ → ปุ่ม "สติกเกอร์"
 - ใบงาน detail → ปุ่ม "พิมพ์ใบงาน"
+
+---
+Task ID: UNIFY-TEMPLATES-CLOCK
+Agent: full-stack-developer — Unify templates + add clock
+
+Work Log:
+- Unified 3 template pages → 1 page with type tabs (sticker / document / work-order)
+- Added type field via tab selector; existing storage kept (stickerTemplates, documentTemplates, DocumentTemplate table)
+- System defaults vs Custom badges (ระบบ sky-blue / กำหนดเอง teal):
+  • Sticker: id === 'tpl-default' → system
+  • Document: id === 'doc-tpl-default' → system
+  • Work-order (DB table): isFixed === true → system (seeded defaults now created with isFixed:true)
+- Default per page via star ★ — calls existing /activate endpoints (sticker, document) or PUT isDefault (work-order)
+- Removed redundant sidebar nav items (สติกเกอร์, เอกสาร PDF) — editors still reachable from unified page
+- Live clock + Thai Buddhist date (HH:MM:SS + วันพุธ ที่ 13 สิงหาคม 2568):
+  • New hook: src/hooks/use-clock.ts (useClock + formatThaiTime/formatThaiDate using Intl.DateTimeFormat('th-TH'))
+  • Sidebar header (when expanded): time + date below app tagline
+  • Footer (always visible): time + date pill on the left
+- Create flow: sticker → name + paper size dialog → navigates to ItamStickerEditor; document → name dialog → ItamDocumentEditor; work-order → existing inline TemplateEditor dialog
+- Kept print buttons in context (device table → sticker print, WO detail → WO print) untouched
+- Did NOT touch Prisma schema or break existing template APIs
+
+Verification:
+✅ ESLint clean on all 4 modified files (templates-page, sidebar, footer, use-clock)
+✅ next build: "✓ Compiled successfully in 29.9s" — no errors
+
+Stage Summary:
+- One template page to rule them all (3 type tabs, system/custom badges, default star)
+- Clock/date always visible (sidebar expanded + footer)

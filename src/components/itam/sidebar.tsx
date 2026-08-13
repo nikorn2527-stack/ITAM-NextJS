@@ -10,6 +10,11 @@ import { ROLE_LABELS, type Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 import { NotificationsPopover } from './notifications-popover'
 import { useRealtimeStatus } from '@/hooks/use-realtime-updates'
+import {
+  useClock,
+  formatThaiTime,
+  formatThaiDate,
+} from '@/hooks/use-clock'
 
 // Map of role → Thai label (the auth store returns a normalized role string)
 function roleLabel(role: string | undefined | null): string {
@@ -53,9 +58,7 @@ const NAV_GROUPS: NavGroupDef[] = [
   {
     title: 'เครื่องมือ',
     items: [
-      { page: 'itam-sticker-editor', icon: '🎨', label: 'สติกเกอร์', desc: 'ออกแบบสติกเกอร์' },
-      { page: 'itam-document-editor', icon: '📑', label: 'เอกสาร PDF', desc: 'ออกแบบเอกสาร' },
-      { page: 'templates', icon: '📄', label: 'เทมเพลต', desc: 'จัดการเทมเพลตเอกสาร' },
+      { page: 'templates', icon: '📄', label: 'เทมเพลต', desc: 'จัดการเทมเพลต (สติกเกอร์/เอกสาร/ใบงาน)' },
       { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล', desc: 'Import CSV/Excel' },
       { page: 'monthly-report', icon: '📅', label: 'รายงานรายเดือน', desc: 'สรุปการใช้งานรายเดือน' },
       { page: 'itam-snapshot-viewer', icon: '🔒', label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์' },
@@ -160,6 +163,13 @@ export function Sidebar() {
   const appName = orgProfile?.appName || 'ระบบจัดการสินทรัพย์'
   const appTagline = orgProfile?.appTagline || 'Asset Management System'
   const logoUrl = orgProfile?.logoUrl || ''
+
+  // Live clock — updates every second. Used by the expanded sidebar header
+  // to show a "HH:MM:SS · วันพุท ที่ 13 สิงหาคม 2568" line below the app tagline.
+  // Renders nothing until mounted (avoids hydration mismatch).
+  const now = useClock()
+  const timeStr = formatThaiTime(now)
+  const dateStr = formatThaiDate(now)
 
   const isDark = mounted && theme === 'dark'
   function toggleTheme() {
@@ -269,6 +279,28 @@ export function Sidebar() {
             <div className="truncate text-[10px] leading-tight text-slate-500 dark:text-slate-400">
               {appTagline}
             </div>
+            {/* Live clock + Thai Buddhist date — visible only when sidebar is
+                expanded. Shows "HH:MM:SS" prominently with the date below.
+                Helps users see the current time without leaving the app. */}
+            {timeStr && (
+              <div
+                className="mt-1.5 rounded-md bg-slate-100 px-2 py-1 text-slate-700 dark:bg-white/5 dark:text-slate-200"
+                aria-label={`ขณะนี้เวลา ${timeStr} วันที่ ${dateStr}`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden
+                    className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[#f97316]"
+                  />
+                  <span className="font-mono text-sm font-semibold tabular-nums tracking-tight">
+                    {timeStr}
+                  </span>
+                </div>
+                <div className="mt-0.5 truncate text-[10px] leading-tight text-slate-500 dark:text-slate-400">
+                  {dateStr}
+                </div>
+              </div>
+            )}
           </div>
           {/* Realtime status dot — small indicator next to logo (always visible) */}
           <div
