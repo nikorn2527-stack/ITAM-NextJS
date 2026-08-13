@@ -1134,6 +1134,7 @@ function CreateWorkOrderDialog({
   saving,
   onSubmit,
   subjects,
+  buildings,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
