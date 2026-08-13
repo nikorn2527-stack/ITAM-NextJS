@@ -7333,3 +7333,60 @@ Stage Summary:
 - Sidebar balanced layout (top: bell+theme, middle: nav, bottom: search+QR)
 - Camera capture available everywhere (5 image upload points across 3 components)
 - Data display accuracy improved (dashboard API field fix + meter history columns)
+
+---
+Task ID: FIX-SIDEBAR-CAMERA-DATA
+Agent: orchestrator — แก้ sidebar + camera + data audit + ตอบ mobile proposal
+
+Work Log:
+
+**ข้อ 6: Sidebar rearrange:**
+- Top: logo + bell (NotificationsPopover) + theme toggle
+- Middle: nav items only (ไม่มี search/QR แล้ว)
+- Bottom: search + QR scanner (ย้ายจากบนลงล่าง)
+- Footer: user avatar + name + logout
+- สมดุลขึ้น — ไม่อัดกันด้านบน
+
+**ข้อ 5: Camera capture:**
+- สร้าง CameraCapture component (getUserMedia, facingMode: environment)
+- บีบอัด JPEG max 1024px @ 0.7 quality
+- เพิ่มที่ 5 จุด: WO 3 stages (before/onsite/after), WO form, complete dialog, itam-work-orders, template-editor
+- ทุกจุดที่มีอัพรูป → มีปุ่ม "ถ่ายภาพ" ด้วย
+
+**ข้อ 1: Data display audit:**
+- Dashboard API: แก้ assetNo → assetCode ใน recentActivity + heatmap
+- Meter history: เพิ่มคอลัมน์ ก่อนหน้า (prevMeterBw), ส่วนต่าง (delta), ประเภท (readingType)
+- ตรวจสอบ device table, work orders, stock pages — ข้อมูลถูกต้อง
+
+Verification (production, commit 2126b7e):
+✅ Home: HTTP 200
+✅ Build: Compiled successfully
+
+**ข้อ 3: Mobile Work Order — Proposal:**
+แนวทาง: สร้างหน้า "แจ้งซ่อนด่วน" สำหรับมือถือ ที่ผู้ใช้ทั่วไปเข้าได้โดยไม่ต้อง login:
+- URL: /mobile/repair หรือ ?page=mobile-repair
+- ไม่ต้อง login — กรอกชื่อ + เบอร์ + เลือกปัญหา → ส่ง
+- รองรับ: ถ่ายรูป, สแกน QR, เลือกอาคาร/ตำแหน่ง
+- หน้าจอ full-screen, touch-friendly (≥44px buttons)
+- หลังส่ง → ได้เลขใบงาน + ลิงก์ติดตาม
+- แยกจากหน้าแอปหลัก (ไม่ต้อง sidebar/nav)
+
+สิทธิ์:
+- ผู้ใช้ทั่วไป (guest): เปิดงานเองได้, ดูสถานะงานตัวเองได้
+- ช่าง (staff): รับงาน + แก้ไข + ปิดงานบนมือถือ
+- แอดมิน: ดูทั้งหมด + มอบหมาย
+
+**ข้อ 7: เทมเพลต — คำอธิบาย:**
+ปัจจุบันมี 3 หน้าซ้ำซ้อน:
+1. "เทมเพลต" (templates-page.tsx) — หน้าจัดการเทมเพลต
+2. "สติกเกอร์" (itam-sticker-editor.tsx) — editor สติกเกอร์
+3. "เอกสาร PDF" (itam-document-editor.tsx) — editor PDF
+
+คำแนะนำ: รวมเป็น 1 หน้า "เทมเพลต" ที่มี tabs:
+- Tab สติกเกอร์: list + visual editor (สำหรับ label เล็ก)
+- Tab เอกสาร PDF: list + visual editor (สำหรับ A4)
+- Tab ใบงาน: ฟอร์มพิมพ์ใบงาน
+
+และปุ่ม "พิมพ์" ต้องอยู่ในจุดที่ผู้ใช้คุ้นเคย:
+- ตารางอุปกรณ์ → ปุ่ม "สติกเกอร์"
+- ใบงาน detail → ปุ่ม "พิมพ์ใบงาน"
