@@ -6072,3 +6072,79 @@ Stage Summary:
 - Cron auto-approve ทำงาน (protected by CRON_SECRET)
 - ทุก env vars ตั้งครบบน Vercel
 - พร้อมให้ผู้ใช้เข้าทดสอบ
+
+---
+Task ID: IMPORT-ALL-DATA
+Agent: orchestrator — Import ข้อมูลครบทั้ง 3 ชีทเข้า Supabase + แก้หน้าแอป
+
+Task: ตรวจแล้วดึงเข้า DataBase ให้ครบ + แก้ปัญหาหน้าแอปเปลี่ยนไม่ได้เหมือนชุดแรก
+
+ปัญหาที่พบ:
+1. หลาย table ใน Supabase ว่าง: StockItem=0, StockTransaction=0, MeterReading=0, DeviceTransfer=0, MasterItem=4 (มีแค่ Site), OrganizationProfile=0, AppSetting=0, Cycle=0, DocumentTemplate=0
+2. Services sheet default tab เก็บ users (ไม่ใช่ work orders) — tab จริงคือ "Data" (JSON-in-cell)
+3. Stock sheet default tab ก็เก็บ users — tab จริงคือ "Products", "Transactions", "Suppliers"
+4. OrganizationProfile ว่าง → หน้าแอปใช้ default values ไม่เปลี่ยนได้
+5. StockItem.productCode ไม่ใช่ @unique, AppSetting.key ไม่ใช่ @unique
+
+Work Log:
+
+1. **ตรวจสอบ 3 Google Sheets**:
+   - ITAM (1Zi2sDW1...): 2,378 devices + 14,270 meter readings + 122 transfers + 306 master items + 291 audit logs + 69 app settings
+   - Services (1_YPa5f...): tab "Data" เก็บ 4,963 work orders (JSON-in-cell format)
+   - Stock (18unmy8...): tab "Products" (60 สินค้า), tab "Transactions" (2,454 รายการ), tab "Suppliers" (8 ราย)
+
+2. **Import Stock** (scripts/import-stock-data.js):
+   - 60 StockItems (productCode, productName, unit, quantity, minQuantity, unitCost)
+   - 1,675 StockTransactions (DocumentNo, type IN/OUT, quantity, performedBy, txnDate)
+
+3. **Import Services** (scripts/import-services-data.js):
+   - 4,935 WorkOrders (จาก 4,963 source rows — ข้าม 28 ที่เป็น users)
+   - แต่ละ row เป็น JSON-in-cell → parse + map status/priority + create WorkOrder
+   - ลบ 3,370 duplicates (requestId null + subject+createdAt ซ้ำ) → เหลือ 4,935
+
+4. **Import ITAM** (scripts/import-itam-data.js):
+   - 14,269 MeterReadings (จาก 14,270 — ข้าม 1 duplicate) — batch insert 200/ครั้ง
+   - 122 DeviceTransfers (Location_History)
+   - 306 MasterItems (Brand/Type/Model/Department/Status/DeviceGroup) — เป็น 310 รวม 4 Site เดิม
+
+5. **Schema fixes**:
+   - StockItem.productCode → @unique + CREATE UNIQUE INDEX
+   - AppSetting.key → @unique + CREATE UNIQUE INDEX
+
+6. **Seed ข้อมูลที่หายไป** (ทำให้หน้าแอปเปลี่ยนได้):
+   - OrganizationProfile: appName="ระบบจัดการสินทรัพย์ไอที", appTagline="IT Asset Management — PNG TEAM", primaryColor=#f97316, accentColor=#0d9488
+   - 6 AppSettings (appName, appTagline, notifyEnabled, stockApprovalMode, etc.)
+   - 1 Cycle (รอบจดมิเตอร์ 2026-08, active)
+   - 1 DocumentTemplate (ใบแจ้งซ่อน default, isFixed=true)
+
+Final data counts in Supabase:
+| Table | Count |
+|---|---|
+| device | 2,378 |
+| workOrder | 4,935 |
+| stockItem | 60 |
+| stockTransaction | 1,675 |
+| meterReading | 14,269 |
+| deviceTransfer | 122 |
+| masterItem | 310 |
+| siteAttribute | 4 |
+| user | 5 |
+| organizationProfile | 1 |
+| appSetting | 6 |
+| cycle | 1 |
+| documentTemplate | 1 |
+
+Verification (production):
+✅ Dashboard: HTTP 200
+✅ Devices API: 2,378 devices
+✅ StockItems API: 60 items (with data)
+✅ WorkOrders API: working (pagination 20/page)
+✅ Notifications: HTTP 200
+✅ OrgProfile API: appName="ระบบจัดการสินทรัพย์ไอที"
+✅ Login admin/admin123 → Dashboard โหลด
+✅ App name แสดง: "ระบบจัดการสินทรัพย์ไอที | IT Asset Management — PNG TEAM"
+
+Stage Summary:
+- ข้อมูลครบทั้ง 3 ชีทใน Supabase แล้ว
+- หน้าแอปแสดงชื่อ/แท็กไลน์ที่ตั้งค่าได้ (OrganizationProfile)
+- พร้อมให้ผู้ใช้เข้าทดสอบ
