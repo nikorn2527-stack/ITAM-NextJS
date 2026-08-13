@@ -61,13 +61,29 @@ export async function GET(req: NextRequest) {
         orderBy: { assetCode: 'asc' },
         include: {
           _count: { select: { meterReadings: true, transfers: true, assignments: true, maintenanceLogs: true } },
+          meterReadings: {
+            orderBy: { readingDate: 'desc' },
+            take: 1,
+            select: { readingMonth: true, readingDate: true },
+          },
         },
       }),
       db.device.count({ where }),
     ])
 
+    // Annotate each device with `lastReadingMonth` derived from its latest
+    // MeterReading record (matches Apps Script's `lastReadingMonth` column).
+    const devicesWithMeter = devices.map((d) => {
+      const latest = d.meterReadings?.[0]
+      const { meterReadings, ...rest } = d
+      return {
+        ...rest,
+        lastReadingMonth: latest?.readingMonth ?? latest?.readingDate?.slice(0, 7) ?? null,
+      }
+    })
+
     return NextResponse.json({
-      devices,
+      devices: devicesWithMeter,
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     })
   } catch (err) {

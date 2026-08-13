@@ -70,8 +70,26 @@ export async function GET(req: NextRequest) {
     const devices = await db.device.findMany({
       where,
       orderBy: { createdAt: 'desc' },
+      include: {
+        meterReadings: {
+          orderBy: { readingDate: 'desc' },
+          take: 1,
+          select: { readingMonth: true, readingDate: true },
+        },
+      },
     })
-    return NextResponse.json({ devices })
+    // Annotate each device with `lastReadingMonth` derived from its latest
+    // MeterReading record (matches Apps Script's `lastReadingMonth` column).
+    const devicesWithMeter = devices.map((d) => {
+      const latest = d.meterReadings?.[0]
+      const { meterReadings, ...rest } = d
+      return {
+        ...rest,
+        lastReadingMonth:
+          latest?.readingMonth ?? latest?.readingDate?.slice(0, 7) ?? null,
+      }
+    })
+    return NextResponse.json({ devices: devicesWithMeter })
   } catch (err) {
     console.error('GET /api/devices', err)
     return NextResponse.json(

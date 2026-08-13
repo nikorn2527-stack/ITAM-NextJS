@@ -50,14 +50,14 @@ import {
   Pencil,
   Trash2,
   Search,
-  Eye,
   Download,
   Upload,
   Tag,
   PackageOpen,
   X,
   ArrowRight,
-  UserMinus,
+  History,
+  QrCode,
 } from 'lucide-react'
 import {
   type Device,
@@ -66,13 +66,13 @@ import {
   statusBadgeClass,
   statusLabel,
   computeWarranty,
-  warrantyBadgeClass,
-  warrantyLabel,
+  formatMonthThai,
+  formatDateTime,
 } from './types'
 import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
-import { QrCode, ScanLine } from 'lucide-react'
+import { ScanLine } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { useAppStore } from '@/store/app-store'
 
@@ -189,21 +189,6 @@ const ASSIGNEE_FILTER_OPTIONS = [
   { value: 'assigned', label: 'มอบหมายแล้ว' },
   { value: 'unassigned', label: 'ยังไม่มอบหมาย' },
 ] as const
-
-// Palette used for assignee avatars — deterministic per first character.
-const AVATAR_COLORS = [
-  'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
-  'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300',
-  'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
-  'bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300',
-  'bg-orange-100 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300',
-  'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
-]
-function avatarColor(name: string): string {
-  if (!name) return AVATAR_COLORS[AVATAR_COLORS.length - 1]
-  const code = name.charCodeAt(0)
-  return AVATAR_COLORS[code % AVATAR_COLORS.length]
-}
 
 export function DevicesPage() {
   const qc = useQueryClient()
@@ -879,33 +864,31 @@ export function DevicesPage() {
                       />
                     </TableHead>
                   )}
-                  <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">Serial No.</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">แบรนด์</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">รุ่น</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">รหัสทรัพย์สิน</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">ทะเบียน Site</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">ประเภท</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">ยี่ห้อ/รุ่น</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">Serial No.</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">อาคาร/ชั้น</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">แผนก/ตำแหน่ง</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">รับประกัน</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">สาขา</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">ผู้ใช้งาน</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">แผนก</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">รหัสแผนก</TableHead>
-                  <TableHead className="text-right text-slate-600 dark:text-slate-300">การจัดการ</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">มิเตอร์ล่าสุด</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">อัปเดตล่าสุด</TableHead>
+                  <TableHead className="text-right text-slate-600 dark:text-slate-300">การกระทำ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={`sk-${i}`}>
-                      <TableCell colSpan={14}>
+                      <TableCell colSpan={12}>
                         <Skeleton className="h-6 w-full dark:bg-slate-800" />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (devices ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={14} className="py-12">
+                    <TableCell colSpan={12} className="py-12">
                       <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
                         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
                           <PackageOpen className="h-7 w-7 text-slate-300 dark:text-slate-600" />
@@ -950,8 +933,11 @@ export function DevicesPage() {
                   </TableRow>
                 ) : (
                   (devices ?? []).map((d) => {
-                    const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
                     const isSelected = selectedIds.has(d.id)
+                    const lastMeterBw = (d as { lastMeterBw?: number }).lastMeterBw ?? 0
+                    const lastMeterColor = (d as { lastMeterColor?: number }).lastMeterColor ?? 0
+                    const lastReadingMonth = d.lastReadingMonth
+                    const hasMeter = Boolean(lastReadingMonth) || lastMeterBw > 0
                     return (
                     <TableRow
                       key={d.id}
@@ -974,100 +960,123 @@ export function DevicesPage() {
                           className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
                         />
                       </TableCell>
-                      <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">
+                      {/* รหัสทรัพย์สิน */}
+                      <TableCell className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
                         {d.assetCode}
                       </TableCell>
+                      {/* ทะเบียน Site */}
+                      <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
+                        {d.assetSiteCode || <span className="text-slate-300 dark:text-slate-600">—</span>}
+                      </TableCell>
+                      {/* ประเภท */}
+                      <TableCell className="text-slate-700 dark:text-slate-200">{d.type}</TableCell>
+                      {/* ยี่ห้อ/รุ่น */}
+                      <TableCell className="max-w-[180px]">
+                        <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={`${d.brand} ${d.model}`}>
+                          {d.brand || '-'}
+                        </div>
+                        {d.model && (
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate" title={d.model}>
+                            {d.model}
+                          </div>
+                        )}
+                      </TableCell>
+                      {/* Serial No. */}
                       <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
                         {d.serialNumber || <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </TableCell>
-                      <TableCell className="max-w-[200px] truncate text-slate-700 dark:text-slate-200">
-                        {d.name}
+                      {/* อาคาร/ชั้น */}
+                      <TableCell className="max-w-[140px]">
+                        <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={d.building ?? ''}>
+                          {d.building || '-'}
+                        </div>
+                        {d.floor && (
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                            ชั้น {d.floor}
+                          </div>
+                        )}
                       </TableCell>
-                      <TableCell className="text-slate-700 dark:text-slate-200">{d.brand}</TableCell>
-                      <TableCell className="max-w-[160px] truncate text-slate-700 dark:text-slate-200">
-                        {d.model}
+                      {/* แผนก/ตำแหน่ง */}
+                      <TableCell className="max-w-[160px]">
+                        <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={d.department ?? ''}>
+                          {d.department || '-'}
+                        </div>
+                        {d.location && (
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate" title={d.location}>
+                            {d.location}
+                          </div>
+                        )}
                       </TableCell>
-                      <TableCell className="text-slate-700 dark:text-slate-200">{d.type}</TableCell>
+                      {/* สถานะ */}
                       <TableCell>
                         <Badge className={statusBadgeClass(d.status)}>
                           {statusLabel(d.status)}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <Badge className={warrantyBadgeClass(w.status)} title={w.expiry ?? undefined}>
-                          {warrantyLabel(w.status)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-slate-700 dark:text-slate-200">{d.site}</TableCell>
-                      <TableCell
-                        className="max-w-[180px] truncate"
-                        onClick={(e) => {
-                          // clicking the assignee opens the detail sheet — but allow
-                          // row click to also fire.
-                          if (d.currentAssignee) {
-                            e.stopPropagation()
-                            setDetailDeviceId(d.id)
-                          }
-                        }}
-                      >
-                        {d.currentAssignee ? (
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={
-                                'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ' +
-                                avatarColor(d.currentAssignee)
-                              }
-                              title={d.currentAssignee}
-                            >
-                              {(d.currentAssignee.charAt(0) || '?').toUpperCase()}
-                            </span>
-                            <span className="truncate text-sm text-slate-700 dark:text-slate-200" title={d.currentAssignee}>
-                              {d.currentAssignee}
-                            </span>
+                      {/* มิเตอร์ล่าสุด */}
+                      <TableCell className="min-w-[100px]">
+                        {hasMeter ? (
+                          <div>
+                            <div className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
+                              {lastMeterBw.toLocaleString()}
+                            </div>
+                            {lastMeterColor > 0 && (
+                              <div className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                                สี: {lastMeterColor.toLocaleString()}
+                              </div>
+                            )}
+                            <div className="text-[10px] text-slate-400 dark:text-slate-500">
+                              {lastReadingMonth ? formatMonthThai(lastReadingMonth) : '-'}
+                            </div>
                           </div>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
-                            <UserMinus className="h-3.5 w-3.5" />
-                            —
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                            ไม่มีข้อมูล
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="max-w-[160px] truncate text-slate-600 dark:text-slate-300">
-                        {d.department ?? '-'}
+                      {/* อัปเดตล่าสุด */}
+                      <TableCell className="text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        {formatDateTime(d.updatedAt)}
                       </TableCell>
-                      <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">
-                        {d.departmentCode ?? '-'}
-                      </TableCell>
+                      {/* การกระทำ */}
                       <TableCell
                         className="text-right"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex justify-end gap-1">
                           <Button
-                            size="icon"
-                            variant="ghost"
+                            size="sm"
+                            variant="outline"
                             onClick={() => setDetailDeviceId(d.id)}
-                            aria-label="ดูรายละเอียด"
-                            title="ดูรายละเอียด"
+                            aria-label="ดูประวัติตำแหน่งและมิเตอร์"
+                            title="ดูประวัติตำแหน่งและมิเตอร์"
+                            className="h-7 gap-1 px-2 text-[11px] dark:bg-slate-800 dark:border-slate-700"
                           >
-                            <Eye className="h-4 w-4" />
+                            <History className="h-3.5 w-3.5" />
+                            ประวัติ
                           </Button>
                           <Button
-                            size="icon"
-                            variant="ghost"
+                            size="sm"
+                            variant="default"
                             onClick={() => openEdit(d)}
-                            aria-label="แก้ไข"
+                            aria-label="แก้ไขข้อมูลอุปกรณ์"
+                            title="แก้ไขข้อมูลอุปกรณ์"
+                            className="h-7 gap-1 bg-[#f97316] px-2 text-[11px] text-white hover:bg-[#ea580c]"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <Pencil className="h-3.5 w-3.5" />
+                            แก้ไข
                           </Button>
                           <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => setDeleteTarget(d)}
-                            aria-label="ลบ"
-                            className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setStickerOpen(true)}
+                            aria-label="พิมพ์สติกเกอร์"
+                            title="พิมพ์สติกเกอร์"
+                            className="h-7 gap-1 px-2 text-[11px] dark:bg-slate-800 dark:border-slate-700"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <QrCode className="h-3.5 w-3.5" />
+                            สติกเกอร์
                           </Button>
                         </div>
                       </TableCell>
