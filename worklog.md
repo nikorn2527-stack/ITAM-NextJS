@@ -6716,3 +6716,18 @@ Stage Summary:
 - Auto-close + edit unlock + status side effects ทำงาน
 - Public QR + Print job sheet ใช้งานได้
 - พร้อมให้รีวิว
+
+---
+Task ID: FIX-EDITORS
+Agent: full-stack-developer — Fix sticker + PDF editor (scale + click bug)
+
+Work Log:
+- Added fitScale calculation (from Apps Script getDocEditorScale)
+- Added zoom controls (+/-/reset)
+- Fixed click-hold deselect bug (onMouseDown + target check)
+- Added alignment guides (optional)
+- Added rulers (optional)
+
+Stage Summary:
+- Canvas scales to fit screen (no horizontal scroll for A4)
+- Clicking element stays selected after releasing mouse
