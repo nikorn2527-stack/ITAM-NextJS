@@ -89,6 +89,12 @@ function readingDateWhere(range: RangeInfo): Record<string, unknown> {
 //   6. Status classification uses shared status-utils.ts (consistent with ITAM dashboard)
 export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url)
+    const rawRange = (searchParams.get('range')?.trim() ?? 'month') as RangeKey
+    const range: RangeInfo = ['month', '30d', 'quarter', 'all'].includes(rawRange)
+      ? computeRange(rawRange)
+      : computeRange('month')
+
     const now = Date.now()
     const todayISO = new Date().toISOString().slice(0, 10)
     const in30Days = new Date(now + 30 * DAY_MS).toISOString().slice(0, 10)
