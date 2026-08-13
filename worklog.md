@@ -6790,3 +6790,67 @@ Stage Summary:
 - Editor bugs แก้ครบ: scale to fit + click-hold deselect
 - Logic ลอกจาก Apps Script ตรงๆ (ไม่เขียนใหม่)
 - AssetNumberPattern ยึดตามเดิม
+
+---
+Task ID: FIX-4-UI-ISSUES
+Agent: full-stack-developer — Fix 4 UI issues (device table, WO list, meter cycle, notifications)
+
+Work Log:
+- Issue 1: Device table headers matched to Apps Script
+  - 12 columns: ☐ | รหัสทรัพย์สิน | ทะเบียน Site | ประเภท | ยี่ห้อ/รุ่น | Serial No. | อาคาร/ชั้น | แผนก/ตำแหน่ง | สถานะ | มิเตอร์ล่าสุด | อัปเดตล่าสุด | การกระทำ
+  - Combined Brand+Model, Building+Floor, Department+Location into 2-line cells (renderTwoLineCell pattern from Apps Script)
+  - "มิเตอร์ล่าสุด" shows BW count + color count (if >0) + Thai month (formatMonthThai)
+  - "อัปเดตล่าสุด" shows updatedAt via new formatDateTime helper
+  - Actions: ประวัติ (History icon) + แก้ไข (Pencil, primary orange) + สติกเกอร์ (QrCode icon)
+  - Extended Device type with assetSiteCode/lastMeterBw/lastMeterColor/lastReadingMonth
+  - Updated /api/devices + /api/itam/devices to include lastReadingMonth (latest MeterReading.readingMonth)
+
+- Issue 2: Work orders changed from cards to table
+  - Replaced card grid (3 cols) with shadcn Table inside Card
+  - 10 columns: เลขใบงาน | หัวข้อ | สถานะ | ความสำคัญ | อาคาร/ตำแหน่ง | ผู้แจ้ง | เบอร์ | ผู้รับผิดชอบ | วันที่แจ้ง | การกระทำ
+  - Sticky TableHeader, max-h-[calc(100vh-280px)] overflow-auto with itam-scroll
+  - Row click opens detail dialog; action button (Eye) opens detail
+  - External WO badge "นอก" inline with subject
+  - Removed framer-motion + AnimatePresence imports (no longer used)
+  - Kept WorkOrderCard function (now unused) for backward compat
+
+- Issue 3: Meter cycle countdown bar + date picker added
+  - New CycleCountdownBar component at top of ItamMeterUnified (sticky)
+  - Shows: 🔄 cycle name + 📅 start→end + ⏰ countdown text + จัดการรอบ button
+  - Progress bar: จดแล้ว X/Y เครื่อง (เหลือ Z) · pct%
+  - Color logic: red if <3 days, orange if <7 days, green otherwise (matches Apps Script)
+  - "เหลืออีก X วัน Y ชม." format from Apps Script updateCountdownDisplay
+  - New QuickCreateCycleDialog: ชื่อรอบ + วันเริ่มต้น + วันกำหนดจด (deadline) — defaults to today+30 days
+  - Empty state: amber banner "ยังไม่มีรอบจดมิเตอร์" + สร้างรอบใหม่ button
+  - Reuses existing CycleManageDialog for full management (end/cancel/reopen)
+  - Refreshes active-cycle + meter-reminders queries on cycle create
+
+- Issue 4: Notification settings fixed
+  - Root cause #1: test endpoint called sendNotification({event,title,message,data}) but sendNotification expects {template,channels,data} → channels was undefined → no-op
+  - Root cause #2: loadSettings() read snake_case keys (telegram_bot_token, line_channel_access_token) but API saved camelCase (telegramBotToken, lineOaChannelAccessToken) → credentials never loaded
+  - Root cause #3: email channel required `email` param; never used notifyEmails from settings
+  - Root cause #4: lineNotify channel had no sender (only LINE OA was implemented)
+  - Root cause #5: UI fetches didn't pass Authorization Bearer token → 401 in production
+  - Fixes in src/lib/notifications.ts:
+    * loadSettings() now reads camelCase keys (with snake_case fallback for legacy data)
+    * New sendLINENotify() function for LINE Notify API (notify-api.line.me/api/notify)
+    * sendLINE() now uses lineOaChannelAccessToken + lineOaToUserId
+    * sendNotification() supports 'line-notify' channel + uses notifyEmails for email when no email passed
+    * channelsForEvent() includes 'line-notify' when enabled
+    * NotificationChannel type extended with 'line-notify'
+  - Fixes in /api/itam/notifications/test/route.ts:
+    * Loads enabled channels via getNotifyChannels()
+    * Calls sendNotification({template:'custom', channels, data:{title,message}})
+    * Returns 400 with helpful message if no channels enabled
+    * Returns attempted channels list in response
+  - Fixes in src/components/itam/itam-settings.tsx:
+    * New authHeaders() helper injects useAuthStore.getState().token as Bearer
+    * All notification fetches (GET settings, PUT settings, POST test) now send Authorization header
+    * Better error handling: shows server error message in toast
+    * Test success toast shows which channels were attempted
+
+Stage Summary:
+- All 4 UI issues resolved
+- Build: ✓ Compiled successfully in 25.9s
+- Lint: 0 new errors (11 pre-existing errors in untouched files)
+- Dev server: APIs responding 200 (cycles, meter/reminders, devices)

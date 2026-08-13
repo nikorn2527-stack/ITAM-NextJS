@@ -3,7 +3,6 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +12,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import {
   Select,
   SelectContent,
@@ -753,13 +760,15 @@ export function WorkOrdersPage() {
         </CardContent>
       </Card>
 
-      {/* List */}
+      {/* List — table layout (replaces card grid per user request) */}
       {listQuery.isLoading ? (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-44 w-full rounded-xl" />
-          ))}
-        </div>
+        <Card className="py-3">
+          <CardContent className="space-y-2 px-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full rounded-md" />
+            ))}
+          </CardContent>
+        </Card>
       ) : items.length === 0 ? (
         <Card className="py-12">
           <CardContent className="flex flex-col items-center justify-center gap-3 text-center">
@@ -777,22 +786,110 @@ export function WorkOrdersPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <AnimatePresence mode="popLayout">
-            {items.map((wo) => (
-              <motion.div
-                key={wo.id}
-                layout
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.97 }}
-                transition={{ duration: 0.18 }}
-              >
-                <WorkOrderCard wo={wo} onOpen={() => setDetailId(wo.id)} />
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
+        <Card className="overflow-hidden py-0">
+          <div className="itam-scroll max-h-[calc(100vh-280px)] overflow-auto">
+            <Table>
+              <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
+                <TableRow>
+                  <TableHead className="text-xs">เลขใบงาน</TableHead>
+                  <TableHead className="text-xs">หัวข้อ</TableHead>
+                  <TableHead className="text-xs">สถานะ</TableHead>
+                  <TableHead className="text-xs">ความสำคัญ</TableHead>
+                  <TableHead className="text-xs">อาคาร/ตำแหน่ง</TableHead>
+                  <TableHead className="text-xs">ผู้แจ้ง</TableHead>
+                  <TableHead className="text-xs">เบอร์</TableHead>
+                  <TableHead className="text-xs">ผู้รับผิดชอบ</TableHead>
+                  <TableHead className="text-xs">วันที่แจ้ง</TableHead>
+                  <TableHead className="text-right text-xs">การกระทำ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {items.map((wo) => {
+                  const external = parseExternalMeta(wo.externalMeta)
+                  return (
+                    <TableRow
+                      key={wo.id}
+                      className="cursor-pointer border-slate-100 transition-colors hover:bg-orange-50/60 dark:border-slate-800 dark:hover:bg-orange-950/20"
+                      onClick={() => setDetailId(wo.id)}
+                    >
+                      <TableCell className="whitespace-nowrap py-2.5 font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        {wo.woNumber ?? '—'}
+                      </TableCell>
+                      <TableCell className="max-w-[260px] py-2.5">
+                        <div className="flex items-start gap-1.5">
+                          {external && (
+                            <Badge
+                              className="shrink-0 border-teal-200 bg-teal-100 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
+                              variant="outline"
+                            >
+                              นอก
+                            </Badge>
+                          )}
+                          <span className="line-clamp-2 text-sm font-medium text-slate-800 dark:text-slate-100" title={wo.subject}>
+                            {wo.subject}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-2.5">
+                        <Badge
+                          className={statusBadgeClass(wo.status) + ' px-2 py-0.5 text-[11px] font-semibold'}
+                          variant="outline"
+                        >
+                          {statusLabel(wo.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="py-2.5">
+                        <Badge
+                          className={priorityBadgeClass(wo.priority) + ' px-2 py-0.5 text-[11px] font-semibold'}
+                          variant="outline"
+                        >
+                          {wo.priority}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[180px] py-2.5 text-xs text-slate-600 dark:text-slate-300">
+                        {external ? (
+                          <div className="truncate" title={`${external.clientName ?? ''} ${external.place ?? ''}`}>
+                            {external.clientName ?? '—'}
+                            {external.place ? ` • ${external.place}` : ''}
+                          </div>
+                        ) : (
+                          <div className="truncate" title={`${wo.building ?? ''} ${wo.location ?? ''}`}>
+                            {wo.building ?? '—'}
+                            {wo.location ? ` • ${wo.location}` : ''}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="max-w-[140px] truncate py-2.5 text-xs text-slate-700 dark:text-slate-200" title={wo.reporterName ?? ''}>
+                        {wo.reporterName ?? '—'}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap py-2.5 font-mono text-xs text-slate-600 dark:text-slate-300">
+                        {wo.tel ?? '—'}
+                      </TableCell>
+                      <TableCell className="max-w-[140px] truncate py-2.5 text-xs text-slate-700 dark:text-slate-200" title={wo.assignedTo ?? ''}>
+                        {wo.assignedTo ?? '—'}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap py-2.5 text-xs text-slate-500 dark:text-slate-400" title={wo.createdAt}>
+                        {formatDateTime(wo.createdAt)}
+                      </TableCell>
+                      <TableCell className="py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDetailId(wo.id)}
+                          aria-label="ดูรายละเอียดใบงาน"
+                          title="ดูรายละเอียด"
+                          className="h-7 px-2 text-[11px]"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
       )}
 
       {/* Pagination */}

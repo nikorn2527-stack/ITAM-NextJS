@@ -39,7 +39,7 @@ import { db } from '@/lib/db'
 // Types
 // ============================================================
 
-export type NotificationChannel = 'line-oa' | 'telegram' | 'email'
+export type NotificationChannel = 'line-oa' | 'line-notify' | 'telegram' | 'email'
 
 export type NotificationTemplate =
   | 'wo_created' // แจ้งซ่อนใหม่
@@ -117,11 +117,13 @@ const DEFAULT_NOTIFY_EVENTS: NotifyEventConfig = {
 // ============================================================
 
 interface NotifySettings {
-  lineChannelAccessToken?: string
-  lineChannelSecret?: string
-  lineAdminGroupId?: string
+  // ── Channel credentials (camelCase — saved by /api/itam/notifications/settings) ──
+  notifyEmails?: string // comma-separated recipient list
   telegramBotToken?: string
   telegramChatId?: string
+  lineNotifyToken?: string // LINE Notify token
+  lineOaChannelAccessToken?: string // LINE OA channel access token
+  lineOaToUserId?: string // LINE OA target user/group ID
   smtpHost?: string
   smtpPort?: string
   smtpUser?: string
@@ -131,23 +133,38 @@ interface NotifySettings {
   notifyEnabled?: boolean
 }
 
+/**
+ * Load notification settings from AppSetting.
+ *
+ * Reads the camelCase keys saved by `/api/itam/notifications/settings` (UI),
+ * with snake_case fallbacks for any legacy data still in the DB.
+ */
 async function loadSettings(): Promise<NotifySettings> {
   try {
     const rows = await db.appSetting.findMany()
-    const get = (key: string) =>
-      rows.find((r) => r.key === key)?.value || undefined
+    const get = (...keys: string[]) => {
+      for (const k of keys) {
+        const v = rows.find((r) => r.key === k)?.value
+        if (v) return v
+      }
+      return undefined
+    }
     return {
-      lineChannelAccessToken: get('line_channel_access_token'),
-      lineChannelSecret: get('line_channel_secret'),
-      lineAdminGroupId: get('line_admin_group_id'),
-      telegramBotToken: get('telegram_bot_token'),
-      telegramChatId: get('telegram_chat_id'),
-      smtpHost: get('smtp_host'),
-      smtpPort: get('smtp_port'),
-      smtpUser: get('smtp_user'),
-      smtpPass: get('smtp_pass'),
-      emailFrom: get('email_from'),
-      notifyEnabled: get('notify_enabled') !== 'false',
+      notifyEmails: get('notifyEmails', 'notify_emails'),
+      telegramBotToken: get('telegramBotToken', 'telegram_bot_token'),
+      telegramChatId: get('telegramChatId', 'telegram_chat_id'),
+      lineNotifyToken: get('lineNotifyToken', 'line_notify_token'),
+      lineOaChannelAccessToken: get(
+        'lineOaChannelAccessToken',
+        'line_channel_access_token',
+      ),
+      lineOaToUserId: get('lineOaToUserId', 'line_admin_group_id'),
+      smtpHost: get('smtpHost', 'smtp_host'),
+      smtpPort: get('smtpPort', 'smtp_port'),
+      smtpUser: get('smtpUser', 'smtp_user'),
+      smtpPass: get('smtpPass', 'smtp_pass'),
+      emailFrom: get('emailFrom', 'email_from'),
+      notifyEnabled: get('notifyEnabled', 'notify_enabled') !== 'false',
     }
   } catch (err) {
     console.error('[notifications] loadSettings failed:', err)
@@ -300,7 +317,7 @@ async function logNotificationAudit(
 /**
  * Send a LINE message via Push API.
  * - If `lineUserId` is provided → Push to that user.
- * - Otherwise → Push to the admin group/room configured in AppSetting.
+ * - Otherwise → Push to the configured `lineOaToUserId` (admin group/room).
  *
  * NOTE: For now this just logs (no API keys configured). When keys are
  * configured in AppSetting, real sending will be attempted.
@@ -310,16 +327,16 @@ export async function sendLINE(
   lineUserId?: string,
 ): Promise<void> {
   const settings = await loadSettings()
-  const target = lineUserId ?? settings.lineAdminGroupId
+  const target = lineUserId ?? settings.lineOaToUserId
   if (!target) {
     console.warn(
-      '[notifications][line-oa] no target (lineUserId or line_admin_group_id) — log only',
+      '[notifications][line-oa] no target (lineOaToUserId or lineUserId) — log only',
     )
     console.log('[notifications][line-oa] message:\n' + message)
     return
   }
 
-  if (!settings.lineChannelAccessToken || !settings.notifyEnabled) {
+  if (!settings.lineOaChannelAccessToken || !settings.notifyEnabled) {
     console.log(
       `[notifications][line-oa] (log only) → ${target}\n${message}`,
     )
@@ -333,7 +350,7 @@ export async function sendLINE(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.lineChannelAccessToken}`,
+        Authorization: `Bearer ${settings.lineOaChannelAccessToken}`,
       },
       body: JSON.stringify({
         to: target,
@@ -348,6 +365,36 @@ export async function sendLINE(
     }
   } catch (err) {
     console.error('[notifications][line-oa] send failed:', err)
+  }
+}
+
+/**
+ * Send a message via LINE Notify API (simple 1-way push to a chat/group
+ * linked to the token's owner). Uses `lineNotifyToken` from AppSetting.
+ */
+export async function sendLINENotify(message: string): Promise<void> {
+  const settings = await loadSettings()
+  if (!settings.lineNotifyToken || !settings.notifyEnabled) {
+    console.log('[notifications][line-notify] (log only)\n' + message)
+    return
+  }
+  try {
+    const res = await fetch('https://notify-api.line.me/api/notify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Bearer ${settings.lineNotifyToken}`,
+      },
+      body: new URLSearchParams({ message }).toString(),
+    })
+    if (!res.ok) {
+      const txt = await res.text()
+      console.error(
+        `[notifications][line-notify] LINE Notify API error ${res.status}: ${txt}`,
+      )
+    }
+  } catch (err) {
+    console.error('[notifications][line-notify] send failed:', err)
   }
 }
 
@@ -438,7 +485,7 @@ export async function sendNotification(data: NotificationData): Promise<void> {
   const { template, channels, data: ctx, lineUserId, telegramChatId, email } =
     data
 
-  if (!channels.length) {
+  if (!channels || !channels.length) {
     console.warn('[notifications] no channels specified — skipping')
     return
   }
@@ -449,6 +496,15 @@ export async function sendNotification(data: NotificationData): Promise<void> {
   // Build the combined message (title + body) for channel senders
   const fullMessage = `${rendered.title}\n${rendered.body}`
 
+  // Pre-load settings once (used for email fallback + line-notify)
+  const settings = await loadSettings()
+  const emailRecipients = email
+    ? [email]
+    : (settings.notifyEmails ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+
   await Promise.all(
     channels.map(async (channel) => {
       try {
@@ -456,16 +512,23 @@ export async function sendNotification(data: NotificationData): Promise<void> {
           case 'line-oa':
             await sendLINE(fullMessage, lineUserId)
             break
+          case 'line-notify':
+            await sendLINENotify(fullMessage)
+            break
           case 'telegram':
             await sendTelegram(fullMessage, telegramChatId)
             break
           case 'email':
-            if (!email) {
+            if (emailRecipients.length === 0) {
               console.warn(
-                '[notifications][email] no email address — skipping',
+                '[notifications][email] no email address (pass `email` or set `notifyEmails`) — skipping',
               )
             } else {
-              await sendEmail(email, rendered.title, rendered.body)
+              await Promise.all(
+                emailRecipients.map((to) =>
+                  sendEmail(to, rendered.title, rendered.body),
+                ),
+              )
             }
             break
         }
@@ -473,7 +536,7 @@ export async function sendNotification(data: NotificationData): Promise<void> {
           channel,
           template,
           rendered,
-          { lineUserId, telegramChatId, email },
+          { lineUserId, telegramChatId, email: emailRecipients.join(',') || email },
           actor,
           data.entityId,
           data.entity,
@@ -484,7 +547,7 @@ export async function sendNotification(data: NotificationData): Promise<void> {
           channel,
           template,
           rendered,
-          { lineUserId, telegramChatId, email },
+          { lineUserId, telegramChatId, email: emailRecipients.join(',') || email },
           actor,
           data.entityId,
           data.entity,
@@ -865,9 +928,8 @@ async function channelsForEvent(event: keyof NotifyEventConfig): Promise<Notific
   const selected: NotificationChannel[] = []
   if (channels.telegram) selected.push('telegram')
   if (channels.lineOA) selected.push('line-oa')
+  if (channels.lineNotify) selected.push('line-notify')
   if (channels.email) selected.push('email')
-  // LINE Notify is retained in the settings UI, but has no sender in the
-  // current implementation; do not silently send it through a different API.
   return selected
 }
 

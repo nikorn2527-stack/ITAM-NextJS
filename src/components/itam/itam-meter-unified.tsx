@@ -8,19 +8,386 @@
  *   2. โหมด "ประวัติมิเตอร์" — ดู/แก้ไขการจดย้อนหลัง
  *
  * ใช้ Tabs ด้านบนสลับโหมด — ทั้งสองโหมดแชร์ query cache เดียวกัน (invalidate แล้วสดทั้งคู่)
+ *
+ * ด้านบนมี CycleCountdownBar — แสดงรอบจดมิเตอร์ปัจจุบัน + นับถอยหลังถึง deadline
+ * + ความคืบหน้า (จดแล้ว X/Y เครื่อง) + ปุ่มจัดการรอบ
  */
 
 import * as React from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { PenLine, History } from 'lucide-react'
+import { PenLine, History, CalendarClock, Plus, AlertTriangle, RotateCcw } from 'lucide-react'
 import { ItamMeterKeyboard } from './itam-meter-keyboard'
 import { ItamMeter } from './itam-meter'
+import { CycleManageDialog } from './cycle-manage-dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import type { Cycle } from './types'
+import { formatMonthThai } from './types'
 
+// ============================================================
+// CycleCountdownBar — sticky bar at top of meter page
+// ============================================================
+interface CycleRemindersData {
+  hasActiveCycle: boolean
+  cycle: {
+    id: string
+    name: string
+    startDate: string
+    endDate: string
+    status: string
+  } | null
+  totalRead: number
+  totalUnread: number
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function addDaysISO(iso: string, days: number): string {
+  const d = new Date(iso + 'T00:00:00')
+  d.setDate(d.getDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+function defaultCycleName(date = new Date()): string {
+  const monthLabel = formatMonthThai(date.toISOString().slice(0, 7))
+  return `รอบจดมิเตอร์ ${monthLabel}`
+}
+
+function useNowTick(intervalMs = 60_000): number {
+  const [now, setNow] = React.useState(() => Date.now())
+  React.useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(t)
+  }, [intervalMs])
+  return now
+}
+
+function CycleCountdownBar({
+  cycle,
+  totalRead,
+  totalUnread,
+  onManage,
+  onCreate,
+}: {
+  cycle: CycleRemindersData['cycle']
+  totalRead: number
+  totalUnread: number
+  onManage: () => void
+  onCreate: () => void
+}) {
+  const now = useNowTick(60_000)
+  if (!cycle) {
+    return (
+      <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-800 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+              ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ
+            </div>
+            <div className="text-xs text-amber-700/80 dark:text-amber-300/80">
+              กด &quot;สร้างรอบใหม่&quot; เพื่อกำหนดวันเริ่มและวันกำหนดจดมิเตอร์
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={onManage} className="dark:bg-slate-800 dark:border-slate-700">
+            <CalendarClock className="h-3.5 w-3.5" />
+            จัดการรอบ
+          </Button>
+          <Button size="sm" onClick={onCreate} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+            <Plus className="h-3.5 w-3.5" />
+            สร้างรอบใหม่
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  const deadline = new Date(cycle.endDate + 'T23:59:59')
+  const diffMs = deadline.getTime() - now
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+  const total = totalRead + totalUnread
+  const pct = total > 0 ? Math.round((totalRead / total) * 100) : 0
+
+  // Color: red if <3 days, orange if <7 days, green otherwise
+  let colorClass: string
+  let textClass: string
+  let barClass: string
+  let countdownText: string
+  if (diffMs <= 0) {
+    colorClass = 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40'
+    textClass = 'text-rose-700 dark:text-rose-300'
+    barClass = 'bg-rose-500'
+    countdownText = '⏰ หมดเวลาแล้ว!'
+  } else if (diffDays < 3) {
+    colorClass = 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40'
+    textClass = 'text-rose-700 dark:text-rose-300'
+    barClass = 'bg-rose-500'
+    countdownText = `เหลืออีก ${diffDays} วัน ${diffHours} ชม.`
+  } else if (diffDays < 7) {
+    colorClass = 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40'
+    textClass = 'text-amber-700 dark:text-amber-300'
+    barClass = 'bg-amber-500'
+    countdownText = `เหลืออีก ${diffDays} วัน ${diffHours} ชม.`
+  } else {
+    colorClass = 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40'
+    textClass = 'text-emerald-700 dark:text-emerald-300'
+    barClass = 'bg-emerald-500'
+    countdownText = `เหลืออีก ${diffDays} วัน`
+  }
+
+  return (
+    <div className={`rounded-lg border p-3 ${colorClass}`}>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/80 dark:bg-slate-900/70">
+            <CalendarClock className={`h-5 w-5 ${textClass}`} />
+          </div>
+          <div className="min-w-0">
+            <div className={`text-sm font-bold ${textClass}`}>
+              🔄 {cycle.name}
+            </div>
+            <div className="text-xs text-slate-600 dark:text-slate-300">
+              📅 {cycle.startDate} → {cycle.endDate}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className={`text-sm font-bold ${textClass}`}>
+            {countdownText}
+          </div>
+          <Button size="sm" variant="outline" onClick={onManage} className="dark:bg-slate-800 dark:border-slate-700">
+            <CalendarClock className="h-3.5 w-3.5" />
+            จัดการรอบ
+          </Button>
+        </div>
+      </div>
+      {/* Progress bar */}
+      <div className="mt-3">
+        <div className="mb-1 flex items-center justify-between text-xs">
+          <span className="font-medium text-slate-700 dark:text-slate-200">
+            จดแล้ว <span className="text-[#f97316]">{totalRead.toLocaleString()}</span>
+            <span className="mx-1 text-slate-400">/</span>
+            ทั้งหมด {total.toLocaleString()} เครื่อง
+          </span>
+          <span className="text-slate-500 dark:text-slate-400">
+            (เหลือ <span className="font-medium text-slate-700 dark:text-slate-200">{totalUnread.toLocaleString()}</span>)
+            · {pct}%
+          </span>
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+          <div
+            className={`h-full rounded-full transition-all duration-300 ${barClass}`}
+            style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// QuickCreateCycleDialog — quick cycle creation without leaving meter page
+// ============================================================
+function QuickCreateCycleDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  onCreated: () => void
+}) {
+  const qc = useQueryClient()
+  const [name, setName] = React.useState(defaultCycleName())
+  const [startDate, setStartDate] = React.useState(todayISO())
+  const [endDate, setEndDate] = React.useState(addDaysISO(todayISO(), 30))
+  const [saving, setSaving] = React.useState(false)
+
+  React.useEffect(() => {
+    if (open) {
+      setName(defaultCycleName())
+      setStartDate(todayISO())
+      setEndDate(addDaysISO(todayISO(), 30))
+    }
+  }, [open])
+
+  async function create() {
+    if (!name.trim() || !startDate || !endDate) {
+      toast.error('กรุณากรอกชื่อรอบและวันที่ให้ครบ')
+      return
+    }
+    if (new Date(endDate) < new Date(startDate)) {
+      toast.error('วันกำหนดจดต้องไม่ก่อนวันเริ่ม')
+      return
+    }
+    try {
+      setSaving(true)
+      const res = await fetch('/api/cycles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          startDate,
+          endDate,
+          status: 'active',
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'สร้างรอบไม่สำเร็จ')
+      }
+      toast.success('สร้างรอบจดมิเตอร์ใหม่แล้ว')
+      onOpenChange(false)
+      await qc.invalidateQueries({ queryKey: ['active-cycle'] })
+      await qc.invalidateQueries({ queryKey: ['meter-reminders'] })
+      await qc.invalidateQueries({ queryKey: ['itam-meter-keyboard'] })
+      onCreated()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'สร้างรอบไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="dark:border-slate-800 dark:bg-slate-900">
+        <DialogHeader>
+          <DialogTitle>สร้างรอบจดมิเตอร์ใหม่</DialogTitle>
+          <DialogDescription>
+            กำหนดชื่อรอบ + วันเริ่มต้น + วันกำหนดจดมิเตอร์ (deadline)
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs">ชื่อรอบ *</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="เช่น รอบจดมิเตอร์ สิงหาคม 2568"
+              className="dark:bg-slate-800 dark:border-slate-700"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">วันเริ่มต้น *</Label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">วันกำหนดจด (Deadline) *</Label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            ⏰ ตัวนับถอยหลังจะแสดงที่ด้านบนของหน้าจดมิเตอร์ — สีแดงหากเหลือ &lt; 3 วัน,
+            สีส้มหากเหลือ &lt; 7 วัน
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            ยกเลิก
+          </Button>
+          <Button onClick={create} disabled={saving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+            {saving ? 'กำลังสร้าง...' : 'สร้างรอบ'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============================================================
+// Main unified component
+// ============================================================
 export function ItamMeterUnified() {
+  const qc = useQueryClient()
   const [mode, setMode] = React.useState<'entry' | 'history'>('entry')
+  const [cycleDialogOpen, setCycleDialogOpen] = React.useState(false)
+  const [quickCreateOpen, setQuickCreateOpen] = React.useState(false)
+
+  // Fetch active cycle (lightweight — used by both countdown bar + manage dialog)
+  const { data: activeCycle } = useQuery<Cycle | null>({
+    queryKey: ['active-cycle'],
+    queryFn: async () => {
+      const res = await fetch('/api/cycles?status=active')
+      if (!res.ok) return null
+      const json = await res.json()
+      return (json.cycles?.[0] as Cycle | undefined) ?? null
+    },
+    staleTime: 30_000,
+  })
+
+  // Fetch cycle progress (read/unread counts) — same endpoint as MeterPage
+  const { data: remindersData, refetch: refetchReminders } = useQuery<CycleRemindersData>({
+    queryKey: ['meter-reminders'],
+    queryFn: async () => {
+      const res = await fetch('/api/meter/reminders')
+      if (!res.ok) throw new Error('Failed to load reminders')
+      return res.json()
+    },
+    staleTime: 30_000,
+  })
+
+  const cycle = activeCycle
+    ? {
+        id: activeCycle.id,
+        name: activeCycle.name,
+        startDate: activeCycle.startDate,
+        endDate: activeCycle.endDate,
+        status: activeCycle.status,
+      }
+    : remindersData?.cycle ?? null
+  const totalRead = remindersData?.totalRead ?? 0
+  const totalUnread = remindersData?.totalUnread ?? 0
+
+  // When a new cycle is created, refresh everything
+  const handleCreated = React.useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ['active-cycle'] })
+    void qc.invalidateQueries({ queryKey: ['meter-reminders'] })
+    void refetchReminders()
+  }, [qc, refetchReminders])
 
   return (
     <div className="space-y-4 p-4 md:p-6">
+      {/* Sticky countdown bar */}
+      <div className="sticky top-0 z-20 -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm md:-mx-6 md:px-6">
+        <CycleCountdownBar
+          cycle={cycle}
+          totalRead={totalRead}
+          totalUnread={totalUnread}
+          onManage={() => setCycleDialogOpen(true)}
+          onCreate={() => setQuickCreateOpen(true)}
+        />
+      </div>
+
       <Tabs value={mode} onValueChange={(v) => setMode(v as 'entry' | 'history')}>
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="entry" className="gap-1.5">
@@ -39,6 +406,18 @@ export function ItamMeterUnified() {
           <ItamMeter />
         </TabsContent>
       </Tabs>
+
+      {/* Cycle management dialogs */}
+      <CycleManageDialog
+        open={cycleDialogOpen}
+        onOpenChange={setCycleDialogOpen}
+        activeCycle={activeCycle ?? null}
+      />
+      <QuickCreateCycleDialog
+        open={quickCreateOpen}
+        onOpenChange={setQuickCreateOpen}
+        onCreated={handleCreated}
+      />
     </div>
   )
 }

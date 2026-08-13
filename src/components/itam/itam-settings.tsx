@@ -18,6 +18,15 @@ import { type MasterItem } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
 import { WoOptionsSection } from './wo-options-section'
+import { useAuthStore } from '@/store/auth-store'
+
+/** Build fetch headers with the user's JWT (if logged in). */
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const h: Record<string, string> = { ...extra }
+  const t = useAuthStore.getState()?.token
+  if (t) h['Authorization'] = `Bearer ${t}`
+  return h
+}
 
 interface Site { id: string; siteCode: string; siteName: string | null; lineOa: string | null; hotline: string | null; paperRateBw: number | null; paperRateColor: number | null; deviceCount?: number; activeCount?: number }
 
@@ -50,7 +59,9 @@ export function ItamSettings() {
   const { data: notifyData, isLoading: notifyLoading } = useQuery<NotifySettings>({
     queryKey: ['itam-notify-settings'],
     queryFn: async () => {
-      const res = await fetch('/api/itam/notifications/settings')
+      const res = await fetch('/api/itam/notifications/settings', {
+        headers: authHeaders(),
+      })
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
@@ -66,7 +77,7 @@ export function ItamSettings() {
     try {
       const res = await fetch('/api/itam/notifications/settings', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           channels: notifyDraft.channels,
           events: notifyDraft.events,
@@ -78,11 +89,14 @@ export function ItamSettings() {
           lineOaToUserId: notifyDraft.credentials.lineOaToUserId,
         }),
       })
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed')
+      }
       toast.success('บันทึกการตั้งค่าการแจ้งเตือนแล้ว')
       await qc.invalidateQueries({ queryKey: ['itam-notify-settings'] })
-    } catch {
-      toast.error('บันทึกไม่สำเร็จ')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     }
   }
 
@@ -90,12 +104,13 @@ export function ItamSettings() {
     try {
       const res = await fetch('/api/itam/notifications/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ message: '🔔 ทดสอบการแจ้งเตือนจาก ITAM' }),
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Failed')
-      toast.success('ส่งการแจ้งเตือนทดสอบแล้ว — ตรวจสอบ logs / ช่องทางที่เปิดใช้')
+      const ch = (j.channels ?? []).join(', ') || '—'
+      toast.success(`ส่งการแจ้งเตือนทดสอบแล้ว (${ch}) — ตรวจสอบช่องทางที่เปิดใช้`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'ส่งไม่สำเร็จ')
     }

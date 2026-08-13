@@ -15,6 +15,8 @@ export interface Device {
   parentRef: string | null
   displayLabel: string | null
   location: string | null
+  // ── รหัสประจำ Site ──
+  assetSiteCode?: string | null
   // ── ข้อมูลที่ตั้ง ──
   building: string | null
   floor: string | null
@@ -33,6 +35,9 @@ export interface Device {
   // ── มิเตอร์ ──
   meterRequired: boolean
   meterMode: string | null
+  lastMeterBw?: number
+  lastMeterColor?: number
+  lastReadingMonth?: string | null
   // ── อื่นๆ ──
   costCenter: string | null
   deviceGroup: string | null
@@ -291,6 +296,52 @@ export function formatThaiDate(iso: string | null): string {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
+    })
+  } catch {
+    return iso
+  }
+}
+
+const MONTH_NAMES_TH = [
+  'มกราคม',
+  'กุมภาพันธ์',
+  'มีนาคม',
+  'เมษายน',
+  'พฤษภาคม',
+  'มิถุนายน',
+  'กรกฎาคม',
+  'สิงหาคม',
+  'กันยายน',
+  'ตุลาคม',
+  'พฤศจิกายน',
+  'ธันวาคม',
+]
+
+/** Format YYYY-MM or YYYY-MM-DD as Thai month name + Buddhist year. */
+export function formatMonthThai(value: string | null | undefined): string {
+  if (!value) return '-'
+  const s = String(value).trim()
+  const m = s.match(/^(\d{4})-(\d{1,2})/)
+  if (!m) return s
+  const year = parseInt(m[1], 10)
+  const monthIdx = parseInt(m[2], 10) - 1
+  if (monthIdx < 0 || monthIdx > 11) return s
+  const buddhistYear = year + 543
+  return MONTH_NAMES_TH[monthIdx] + ' ' + buddhistYear
+}
+
+/** Format a datetime/iso string for compact display (e.g. table "อัปเดตล่าสุด"). */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  try {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return iso
+    return d.toLocaleString('th-TH', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
     })
   } catch {
     return iso
