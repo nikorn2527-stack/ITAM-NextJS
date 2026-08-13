@@ -24,6 +24,7 @@ import {
 import {
   Plus, Pencil, Copy, Star, Trash2, Save, Eye, Type, Image as ImageIcon,
   QrCode, Square, Loader2, Settings as SettingsIcon,
+  ZoomIn, ZoomOut, Maximize2,
 } from 'lucide-react'
 import {
   PAPER_PRESETS,
@@ -62,6 +63,126 @@ function makeElement(type: StickerElementType): StickerElement {
   }
   // rect
   return { ...base, type, width: 30, height: 5, background: '#f97316', border: 'none', borderRadius: 0 }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Editor scale + alignment guide helpers (ported from Apps Script)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** 1mm in CSS pixels at 96dpi (CSS standard) */
+const MM_PX = 3.7795
+
+/**
+ * useFitScale — measures the container with ResizeObserver and computes a
+ * fitScale so the workspace always fits inside the container (no horizontal
+ * scroll when an A4 page is loaded). Multiplied by `zoom` (default 1.0) so the
+ * user can zoom in/out. Mirrors Apps Script `getDocEditorScale()`.
+ */
+function useFitScale(canvasWmm: number, canvasHmm: number, padMm: number, zoom: number) {
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const [size, setSize] = React.useState({ width: 800, height: 480 })
+
+  React.useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const cr = entry.contentRect
+        setSize({ width: cr.width, height: cr.height })
+      }
+    })
+    ro.observe(el)
+    // Initial measurement (ResizeObserver fires on observe, but be safe)
+    const r = el.getBoundingClientRect()
+    if (r.width > 0 && r.height > 0) setSize({ width: r.width, height: r.height })
+    return () => ro.disconnect()
+  }, [])
+
+  const totalWmm = canvasWmm + padMm * 2
+  const totalHmm = canvasHmm + padMm * 2
+  const nativeWpx = totalWmm * MM_PX
+  const nativeHpx = totalHmm * MM_PX
+  // Reserve a few px for padding inside the container
+  const availW = Math.max(50, size.width - 16)
+  const availH = Math.max(50, size.height - 16)
+  const fitScale = Math.min(availW / nativeWpx, availH / nativeHpx, 2.0)
+  const totalScale = fitScale * zoom
+  const mmScale = totalScale * MM_PX
+  return { containerRef, fitScale, totalScale, mmScale }
+}
+
+/**
+ * snapToGuides — snap an element to alignment guides (page edges/center +
+ * other elements' edges/centers) within `threshold` mm. Returns the snapped
+ * x/y plus the list of guide lines to render.
+ * Ported from Apps Script `snapDocElement()`.
+ */
+function snapToGuides(
+  elId: string,
+  rawX: number,
+  rawY: number,
+  elements: { id: string; x: number; y: number; width: number; height: number }[],
+  canvas: { width: number; height: number },
+  threshold = 1,
+): { x: number; y: number; guides: { x: number[]; y: number[] } } {
+  const el = elements.find((e) => e.id === elId)
+  if (!el) return { x: rawX, y: rawY, guides: { x: [], y: [] } }
+  const w = el.width || 30
+  const h = el.height || 8
+  const guides = { x: [] as number[], y: [] as number[] }
+  let snapX = rawX
+  let snapY = rawY
+
+  const xPoints: number[] = [0, canvas.width, canvas.width / 2]
+  const yPoints: number[] = [0, canvas.height, canvas.height / 2]
+  elements.forEach((other) => {
+    if (other.id === elId) return
+    const oX = other.x || 0
+    const oY = other.y || 0
+    const oW = other.width || 30
+    const oH = other.height || 8
+    xPoints.push(oX, oX + oW, oX + oW / 2)
+    yPoints.push(oY, oY + oH, oY + oH / 2)
+  })
+
+  let bestDistX = threshold + 1
+  let bestSnapX = rawX
+  xPoints.forEach((px) => {
+    let d = Math.abs(rawX - px)
+    if (d < threshold && d < bestDistX) { bestDistX = d; bestSnapX = px }
+    d = Math.abs((rawX + w) - px)
+    if (d < threshold && d < bestDistX) { bestDistX = d; bestSnapX = px - w }
+    d = Math.abs((rawX + w / 2) - px)
+    if (d < threshold && d < bestDistX) { bestDistX = d; bestSnapX = px - w / 2 }
+  })
+  if (bestDistX <= threshold) snapX = bestSnapX
+
+  let bestDistY = threshold + 1
+  let bestSnapY = rawY
+  yPoints.forEach((py) => {
+    let d = Math.abs(rawY - py)
+    if (d < threshold && d < bestDistY) { bestDistY = d; bestSnapY = py }
+    d = Math.abs((rawY + h) - py)
+    if (d < threshold && d < bestDistY) { bestDistY = d; bestSnapY = py - h }
+    d = Math.abs((rawY + h / 2) - py)
+    if (d < threshold && d < bestDistY) { bestDistY = d; bestSnapY = py - h / 2 }
+  })
+  if (bestDistY <= threshold) snapY = bestSnapY
+
+  const sL = snapX, sR = snapX + w, sC = snapX + w / 2
+  xPoints.forEach((px) => {
+    if (Math.abs(sL - px) < 0.05 && !guides.x.includes(px)) guides.x.push(px)
+    if (Math.abs(sR - px) < 0.05 && !guides.x.includes(px)) guides.x.push(px)
+    if (Math.abs(sC - px) < 0.05 && !guides.x.includes(px)) guides.x.push(px)
+  })
+  const sT = snapY, sB = snapY + h, sCY = snapY + h / 2
+  yPoints.forEach((py) => {
+    if (Math.abs(sT - py) < 0.05 && !guides.y.includes(py)) guides.y.push(py)
+    if (Math.abs(sB - py) < 0.05 && !guides.y.includes(py)) guides.y.push(py)
+    if (Math.abs(sCY - py) < 0.05 && !guides.y.includes(py)) guides.y.push(py)
+  })
+
+  return { x: snapX, y: snapY, guides }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -175,6 +296,12 @@ function WorkspaceElement({
 export function ItamStickerEditor() {
   const qc = useQueryClient()
   const workspaceRef = React.useRef<HTMLDivElement>(null)
+
+  // ── Zoom + fit-scale (Bug 1: canvas too large) ───────────────────────
+  // Workspace scales to fit the container; user can zoom +/- from toolbar.
+  const [zoom, setZoom] = React.useState(1)
+  // Alignment guides (dashed lines when element aligns with others)
+  const [guides, setGuides] = React.useState<{ x: number[]; y: number[] }>({ x: [], y: [] })
 
   // ── Data: templates + settings ────────────────────────────────────────
   const { data: tplData, isLoading: tplLoading } = useQuery({
@@ -341,6 +468,14 @@ export function ItamStickerEditor() {
   })
 
   // ── Drag logic ─────────────────────────────────────────────────────────
+  // fitScale hook — measured from the container (Bug 1 fix)
+  const { containerRef, mmScale, totalScale } = useFitScale(
+    draft?.canvas.width ?? 75.2,
+    draft?.canvas.height ?? 36,
+    30,
+    zoom,
+  )
+
   const dragStateRef = React.useRef<{
     mode: 'move' | 'resize'
     elId: string
@@ -353,13 +488,11 @@ export function ItamStickerEditor() {
     pxPerMm: number
   } | null>(null)
 
+  // pxPerMm = how many CSS pixels equal 1mm *on screen*. With transform: scale,
+  // the workspace's mm-based width is visually scaled by `totalScale`, so the
+  // effective px/mm is `mmScale = totalScale * MM_PX`.
   function calcPxPerMm(): number {
-    const ws = workspaceRef.current
-    if (!ws) return 3.78
-    const rect = ws.getBoundingClientRect()
-    // Workspace has 30mm padding all around, so usable width is total - 60mm
-    const widthMm = (draft?.canvas.width ?? 75.2) + 60
-    return rect.width / widthMm
+    return mmScale > 0 ? mmScale : 3.78
   }
 
   function onElementMouseDown(e: React.MouseEvent, id: string) {
@@ -408,32 +541,43 @@ export function ItamStickerEditor() {
       const dyPx = e.clientY - ds.startClientY
       const dxMm = dxPx / ds.pxPerMm
       const dyMm = dyPx / ds.pxPerMm
-      setDraft((cur) => {
-        if (!cur) return cur
-        return {
-          ...cur,
-          elements: cur.elements.map((el) => {
-            if (el.id !== ds.elId) return el
-            if (ds.mode === 'move') {
-              let newX = ds.startElX + dxMm
-              let newY = ds.startElY + dyMm
-              // Snap to 0.5mm grid for cleaner UX
-              newX = Math.round(newX * 2) / 2
-              newY = Math.round(newY * 2) / 2
-              return { ...el, x: newX, y: newY }
-            }
-            // resize
-            let newW = ds.startElW + dxMm
-            let newH = ds.startElH + dyMm
-            newW = Math.max(2, Math.round(newW * 2) / 2)
-            newH = Math.max(2, Math.round(newH * 2) / 2)
-            return { ...el, width: newW, height: newH }
-          }),
-        }
-      })
+      if (ds.mode === 'move') {
+        const el = draft.elements.find((x) => x.id === ds.elId)
+        if (!el) return
+        let newX = ds.startElX + dxMm
+        let newY = ds.startElY + dyMm
+        // Snap to alignment guides (page edges + other elements) — Apps Script parity
+        const snap = snapToGuides(ds.elId, newX, newY, draft.elements, draft.canvas)
+        newX = snap.x
+        newY = snap.y
+        setGuides(snap.guides)
+        // Snap to 0.5mm grid for cleaner UX (final)
+        newX = Math.round(newX * 2) / 2
+        newY = Math.round(newY * 2) / 2
+        setDraft({
+          ...draft,
+          elements: draft.elements.map((x) =>
+            x.id === ds.elId ? { ...x, x: newX, y: newY } : x,
+          ),
+        })
+      } else {
+        // resize
+        let newW = ds.startElW + dxMm
+        let newH = ds.startElH + dyMm
+        newW = Math.max(2, Math.round(newW * 2) / 2)
+        newH = Math.max(2, Math.round(newH * 2) / 2)
+        setDraft({
+          ...draft,
+          elements: draft.elements.map((x) =>
+            x.id === ds.elId ? { ...x, width: newW, height: newH } : x,
+          ),
+        })
+      }
     }
     function onMouseUp() {
       dragStateRef.current = null
+      // Clear alignment guides when drag ends
+      setGuides({ x: [], y: [] })
     }
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
@@ -441,7 +585,7 @@ export function ItamStickerEditor() {
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
     }
-  }, [draft])
+  }, [draft, mmScale])
 
   // Delete selected element with Delete/Backspace key (but not when typing)
   React.useEffect(() => {
@@ -754,81 +898,223 @@ export function ItamStickerEditor() {
                   />
                   <Label className="text-[11px] text-slate-500">Visible</Label>
                 </div>
+                {/* Zoom controls (Bug 1 fix) */}
+                <div className="flex items-center gap-0.5 rounded-md border border-slate-200 px-1 py-0.5 dark:border-slate-700">
+                  <Button
+                    size="sm" variant="ghost" className="h-7 w-7 p-0"
+                    onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
+                    disabled={zoom <= 0.25}
+                    title="ซูมออก"
+                  >
+                    <ZoomOut className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="min-w-[44px] text-center font-mono text-[11px] text-slate-600 dark:text-slate-300" title="ระดับซูม">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                  <Button
+                    size="sm" variant="ghost" className="h-7 w-7 p-0"
+                    onClick={() => setZoom((z) => Math.min(4, +(z + 0.25).toFixed(2)))}
+                    disabled={zoom >= 4}
+                    title="ซูมเข้า"
+                  >
+                    <ZoomIn className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="sm" variant="ghost" className="h-7 w-7 p-0"
+                    onClick={() => setZoom(1)}
+                    disabled={zoom === 1}
+                    title="รีเซ็ตซูม (100%)"
+                  >
+                    <Maximize2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             </div>
           </CardHeader>
           <CardContent>
-            {/* Workspace scrollable area */}
+            {/* Workspace scrollable area — measures container width for fitScale */}
             <div
+              ref={containerRef}
               className="itam-scroll overflow-auto rounded-md border border-slate-200 bg-slate-100 p-2 dark:border-slate-700 dark:bg-slate-950"
-              style={{ maxHeight: '60vh' }}
-              onClick={() => setSelectedElId(null)}
+              style={{ height: '60vh' }}
+              // Bug 2 fix: only deselect when clicking the workspace background
+              // itself (not bubbling up from an element).
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setSelectedElId(null)
+              }}
             >
-              {draft && (
+              {draft && totalScale > 0 && (
+                // Sizing wrapper: takes the scaled px dimensions so the parent's
+                // overflow-auto shows scrollbars only when zoomed in beyond fit.
                 <div
-                  ref={workspaceRef}
                   style={{
                     position: 'relative',
-                    width: `${draft.canvas.width + 60}mm`,
-                    height: `${draft.canvas.height + 60}mm`,
-                    minWidth: `${draft.canvas.width + 60}mm`,
-                    // Light grid background
-                    backgroundImage:
-                      'linear-gradient(rgba(148,163,184,0.15) 1px, transparent 1px),' +
-                      'linear-gradient(90deg, rgba(148,163,184,0.15) 1px, transparent 1px)',
-                    backgroundSize: '5mm 5mm',
+                    width: `${(draft.canvas.width + 60) * mmScale}px`,
+                    height: `${(draft.canvas.height + 60) * mmScale}px`,
                   }}
                 >
-                  {/* Red boundary box showing actual template size */}
+                  {/* Workspace (mm-based, visually scaled via transform) */}
                   <div
+                    ref={workspaceRef}
                     style={{
                       position: 'absolute',
-                      left: '30mm',
-                      top: '30mm',
-                      width: `${draft.canvas.width}mm`,
-                      height: `${draft.canvas.height}mm`,
-                      border: '2px dashed #ef4444',
-                      background: '#ffffff',
-                      overflow: draft.overflow === 'visible' ? 'visible' : 'hidden',
-                      boxSizing: 'border-box',
+                      top: 0,
+                      left: 0,
+                      width: `${draft.canvas.width + 60}mm`,
+                      height: `${draft.canvas.height + 60}mm`,
+                      transform: `scale(${totalScale})`,
+                      transformOrigin: 'top left',
+                      backgroundImage:
+                        'linear-gradient(rgba(148,163,184,0.15) 1px, transparent 1px),' +
+                        'linear-gradient(90deg, rgba(148,163,184,0.15) 1px, transparent 1px)',
+                      backgroundSize: '5mm 5mm',
                     }}
-                    onClick={(e) => { e.stopPropagation(); setSelectedElId(null) }}
+                    onMouseDown={(e) => {
+                      if (e.target === e.currentTarget) setSelectedElId(null)
+                    }}
                   >
-                    {/* White sticker container */}
+                    {/* Top ruler — mm markers every 10mm (Apps Script parity) */}
                     <div
                       style={{
                         position: 'absolute',
-                        inset: 0,
-                        background: '#ffffff',
-                      }}
-                    />
-                    {/* Elements */}
-                    {[...draft.elements]
-                      .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-                      .map((el) => (
-                        <WorkspaceElement
-                          key={el.id}
-                          el={el}
-                          selected={el.id === selectedElId}
-                          exceedsBounds={elementExceedsBounds(el, draft.canvas)}
-                          onMouseDown={onElementMouseDown}
-                          onResizeMouseDown={onResizeMouseDown}
-                        />
-                      ))}
-                    {/* Corner label showing dimensions */}
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: '-16px',
-                        left: 0,
-                        fontSize: '10px',
-                        color: '#ef4444',
-                        fontWeight: 600,
+                        left: '30mm',
+                        top: '12mm',
+                        width: `${draft.canvas.width}mm`,
+                        height: '14mm',
+                        fontSize: '8px',
+                        color: '#94a3b8',
                         fontFamily: 'monospace',
                         pointerEvents: 'none',
                       }}
                     >
-                      {draft.canvas.width} × {draft.canvas.height} mm
+                      {Array.from({ length: Math.floor(draft.canvas.width / 10) + 1 }).map((_, i) => (
+                        <span
+                          key={`rt-${i}`}
+                          style={{
+                            position: 'absolute',
+                            left: `${i * 10}mm`,
+                            top: 0,
+                            transform: 'translateX(-50%)',
+                          }}
+                        >
+                          {i * 10}
+                        </span>
+                      ))}
+                    </div>
+                    {/* Left ruler — mm markers every 10mm */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: '12mm',
+                        top: '30mm',
+                        height: `${draft.canvas.height}mm`,
+                        width: '14mm',
+                        fontSize: '8px',
+                        color: '#94a3b8',
+                        fontFamily: 'monospace',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {Array.from({ length: Math.floor(draft.canvas.height / 10) + 1 }).map((_, i) => (
+                        <span
+                          key={`rl-${i}`}
+                          style={{
+                            position: 'absolute',
+                            top: `${i * 10}mm`,
+                            left: 0,
+                            transform: 'translateY(-50%)',
+                          }}
+                        >
+                          {i * 10}
+                        </span>
+                      ))}
+                    </div>
+                    {/* Red boundary box showing actual template size */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: '30mm',
+                        top: '30mm',
+                        width: `${draft.canvas.width}mm`,
+                        height: `${draft.canvas.height}mm`,
+                        border: '2px dashed #ef4444',
+                        background: '#ffffff',
+                        overflow: draft.overflow === 'visible' ? 'visible' : 'hidden',
+                        boxSizing: 'border-box',
+                      }}
+                      // Bug 2 fix: only deselect when clicking the boundary
+                      // box directly (not bubbling up from an element).
+                      onMouseDown={(e) => {
+                        if (e.target === e.currentTarget) setSelectedElId(null)
+                      }}
+                    >
+                      {/* White sticker container */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          background: '#ffffff',
+                        }}
+                      />
+                      {/* Elements */}
+                      {[...draft.elements]
+                        .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+                        .map((el) => (
+                          <WorkspaceElement
+                            key={el.id}
+                            el={el}
+                            selected={el.id === selectedElId}
+                            exceedsBounds={elementExceedsBounds(el, draft.canvas)}
+                            onMouseDown={onElementMouseDown}
+                            onResizeMouseDown={onResizeMouseDown}
+                          />
+                        ))}
+                      {/* Alignment guides (dashed lines) — Apps Script parity */}
+                      {guides.x.map((gx, i) => (
+                        <div
+                          key={`gx-${i}-${gx}`}
+                          style={{
+                            position: 'absolute',
+                            left: `${gx}mm`,
+                            top: 0,
+                            bottom: 0,
+                            width: 0,
+                            borderLeft: '1px dashed #3b82f6',
+                            pointerEvents: 'none',
+                            zIndex: 9999,
+                          }}
+                        />
+                      ))}
+                      {guides.y.map((gy, i) => (
+                        <div
+                          key={`gy-${i}-${gy}`}
+                          style={{
+                            position: 'absolute',
+                            top: `${gy}mm`,
+                            left: 0,
+                            right: 0,
+                            height: 0,
+                            borderTop: '1px dashed #3b82f6',
+                            pointerEvents: 'none',
+                            zIndex: 9999,
+                          }}
+                        />
+                      ))}
+                      {/* Corner label showing dimensions */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '-16px',
+                          left: 0,
+                          fontSize: '10px',
+                          color: '#ef4444',
+                          fontWeight: 600,
+                          fontFamily: 'monospace',
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        {draft.canvas.width} × {draft.canvas.height} mm
+                      </div>
                     </div>
                   </div>
                 </div>
