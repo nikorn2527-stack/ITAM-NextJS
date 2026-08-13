@@ -99,6 +99,7 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: true,
             loading: false,
             initialized: true,
+            isBooting: false,
             error: null,
           })
           return { ok: true }

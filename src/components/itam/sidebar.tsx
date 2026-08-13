@@ -150,41 +150,10 @@ export function Sidebar() {
     }
   }, [authInitialized, fetchMe])
 
-  // Filter NAV_ITEMS by permission
+  // Flatten NAV_GROUPS for visibility checks
   const visibleNavItems = React.useMemo(() => {
-    return NAV_ITEMS.filter((item) => {
-      if (!item.requires || item.requires.length === 0) return true
-      return item.requires.some((perm) => {
-        // Use the precomputed navVisibility map for known keys,
-        // otherwise fall back to a direct check.
-        switch (item.page) {
-          case 'dashboard':
-            return navVisibility.dashboard
-          case 'devices':
-            return navVisibility.devices
-          case 'meter':
-            return navVisibility.meter
-          case 'paper-analytics':
-            return navVisibility.paperAnalytics
-          case 'work-orders':
-            return navVisibility.workOrders
-          case 'stock':
-            return navVisibility.stock
-          case 'monthly-report':
-            // Uses reports:view (same as paper-analytics)
-            return navVisibility.paperAnalytics
-          case 'import':
-            return navVisibility.import
-          case 'templates':
-            return navVisibility.templates
-          case 'settings':
-            return navVisibility.settings
-          default:
-            return true
-        }
-      })
-    })
-  }, [navVisibility])
+    return NAV_GROUPS.flatMap((g) => g.items)
+  }, [])
 
   // ── Organization Profile (flexible: ชื่อ/โลโก้/tagline เปลี่ยนได้) ──
   const { data: orgProfile } = useQuery({
