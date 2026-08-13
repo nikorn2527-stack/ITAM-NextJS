@@ -6939,3 +6939,46 @@ Stage Summary:
 - Admins can manage message templates per app/event
 - Templates support variable placeholders
 - Templates can be enabled/disabled per channel
+
+---
+Task ID: SIDEBAR-REDESIGN + NOTIFY-TEMPLATES
+Agent: orchestrator — Redesign sidebar + notification templates + answer Supabase questions
+
+Work Log:
+
+**1. เอาฟังก์ชัน theme/แอปกลับมา:**
+- ตรวจพบว่า customize tab มีอยู่แล้วใน itam-settings.tsx (AppCustomizeTab)
+- settings-page-v2.tsx มี color pickers + logo URL
+- OrganizationProfile API ทำงาน
+- ไม่ได้หายไป — แค่ sidebar ไม่เปลี่ยนตาม theme (bug ข้อ 2)
+
+**2. แก้ Dark mode sidebar:**
+- เดิม: `bg-[#0f172a] text-white` hardcoded → มืดเสมอ
+- ใหม่: `bg-white dark:bg-[#0f172a] text-slate-900 dark:text-white` + theme-aware classes ทุก element
+- ลบ inline styles ที่ไม่ responsive ต่อ theme ทั้งหมด
+
+**3. Sidebar แบบ Supabase (hover expand):**
+- Default: 56px (icon-only) + tooltip
+- Hover: 240px (full) + shadow + overlay
+- Mobile: drawer เหมือนเดิม
+- Main content: md:ml-14 (ไม่เลื่อนตอน expand)
+- Transition: 200ms ease-out
+
+**6. Notification template management:**
+- API: /api/settings/notification-templates (GET/PUT)
+- Component: notification-templates-section.tsx
+- 15 event types: wo_created, wo_assigned, wo_completed, wo_cancelled, wo_message, parts_requested, parts_approved, stock_low, stock_out, deviceAdded, deviceUpdated, transfer, meter, meter_reminder
+- Variable placeholders: {woNumber}, {subject}, {assetCode}, etc.
+- Per-channel toggle: LINE OA, Telegram, Email
+- Live preview + variable hint cards
+- Tab "📨 เทมเพลตข้อความ" ใน settings
+
+Verification (production, commit 560e2fb):
+✅ Home: HTTP 200
+✅ Login: OK
+✅ Build: Compiled successfully
+
+Stage Summary:
+- Sidebar เปลี่ยนตาม theme แล้ว + hover expand แบบ Supabase
+- Notification template management พร้อมใช้
+- พร้อมตอบคำถามเรื่อง Supabase Auth + tools
