@@ -7155,3 +7155,72 @@ Stage Summary:
 - แอดมินอนุมัติ: settings → 👥 รออนุมัติ → approve/reject
 - ส่งอีเมลจริงผ่าน nodemailer (ต้องตั้ง SMTP ใน settings)
 - Fallback: ถ้าไม่มี SMTP → return testLink สำหรับทดสอบ
+
+---
+Task ID: LOGIN-DEVICE-LICENSE
+Agent: full-stack-developer — Fix login branding + device lifecycle actions + license UI
+
+Work Log:
+- Login page: dynamic appName/logo/colors from OrganizationProfile
+- Device detail: lifecycle action buttons (9 actions based on status)
+- License: prominent section with count badge + add/edit/delete
+
+Stage Summary:
+- Login page changes with app customization settings
+- Device actions match Apps Script (ย้าย/ส่งซ่อม/ถอน/จำหน่าย/ติดตั้งใหม่/คืนเครื่อง)
+- License management visible and usable
+
+Implementation details:
+
+**Issue 1 — Login page (src/components/itam/itam-login.tsx):**
+- Added `useQuery` import + `OrgProfile` interface
+- Fetch `/api/settings/org-profile` on mount (staleTime 5 min)
+- Replaced hardcoded "Asset Mgmt" → `profile?.appName || 'ระบบจัดการสินทรัพย์'`
+- Replaced "IT Asset Management" → `profile?.appTagline || 'Asset Management System'`
+- Replaced hardcoded 📦 with `LogoMark` (URL→<img>, emoji→text, fallback 📦)
+- Replaced `from-[#f97316]/95 to-[#c2410c]` gradient with inline
+  `linear-gradient(...)` using `primaryColor` + `darkenHex(primaryColor, 0.22)`
+- All #f97316 ring/border/bg classes replaced with `[var(--brand)]` +
+  inline `style={{ ['--brand']: primaryColor }}`
+- Ambient glow uses `${primaryColor}33` and `${accentColor}1f`
+
+**Issue 2 — Device detail lifecycle actions (device-detail-sheet.tsx):**
+- Added `buildDeviceActions(status, isMeterable)` returning 9 actions:
+  transfer / send_repair / receive_repair / uninstall / mark_ready /
+  dispose / reinstall / return_device / other_status
+- Visibility filtered by current device.status (matches Apps Script
+  `buildDeviceActionButtons()`)
+- New "การจัดการอุปกรณ์" section with 2–3 column grid of action buttons,
+  color-coded per action (amber=repair, emerald=ready, rose=dispose,
+  teal=reinstall, purple=return)
+- Single unified action dialog (`actionOpen`) with conditional fields:
+  - needLoc → site/dept/deptCode/building/floor/location
+  - needMeter → BW + optional color (only when device.meterRequired)
+  - needStatusSelect → custom status select (8 lifecycle statuses)
+  - Common: date + reason/remark
+- `confirmAction()` flow:
+  1. POST /api/meter (if meterable + BW provided)
+  2. POST /api/devices/[id]/transfer (for transfer action)
+     OR PUT /api/devices/[id] with status + location + remark
+  3. Invalidate all related queries (device-detail, transfers, meter,
+     devices, dashboard, audit)
+- Disposal warning banner for dispose action
+
+**Issue 3 — License UI improvements (device-detail-sheet.tsx):**
+- License section wrapped in card with border + bg
+- Count badge next to heading (only shown when > 0)
+- "เพิ่ม License" button: changed from outline to filled teal
+- License Key masked by default (`maskKey()` keeps last 4 chars),
+  eye/eye-off toggle to reveal per-license
+- Expiry badges: "หมดอายุ" (rose) / "อีก N วัน" (amber ≤30 days)
+- Edit button (Pencil icon) per license → opens same dialog with
+  existing values, switches to PUT method
+- Added `editingLicenseId` state + PUT handler in
+  `/api/devices/[id]/licenses/route.ts`
+
+**API additions:**
+- `PUT /api/devices/[id]/licenses?licenseId=xxx` — update existing
+  license (software, licenseId, licenseType, licenseKey, quantity,
+  expiryDate, remark — all optional)
+
+Build verification: ✓ Compiled successfully in 28.7s

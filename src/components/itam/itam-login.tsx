@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import {
   Loader2,
   Lock,
@@ -35,6 +36,34 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
+interface OrgProfile {
+  appName?: string
+  appTagline?: string
+  logoUrl?: string | null
+  primaryColor?: string
+  accentColor?: string
+}
+
+/** Decide whether logoUrl is an emoji (single short string) or a URL/path. */
+function isEmoji(s: string): boolean {
+  // Heuristic: short length, no '/' or 'http' — treat as emoji/text
+  return s.length <= 4 && !/https?:|\//i.test(s)
+}
+
+/** Darken a hex color by a percentage (for gradient end). */
+function darkenHex(hex: string, pct = 0.18): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return hex
+  const num = parseInt(m[1], 16)
+  let r = (num >> 16) & 0xff
+  let g = (num >> 8) & 0xff
+  let b = num & 0xff
+  r = Math.max(0, Math.round(r * (1 - pct)))
+  g = Math.max(0, Math.round(g * (1 - pct)))
+  b = Math.max(0, Math.round(b * (1 - pct)))
+  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`
+}
+
 /**
  * itam-login.tsx — full-screen login page.
  *
@@ -65,6 +94,41 @@ export function ItamLogin() {
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [lockedUntil, setLockedUntil] = React.useState<number | null>(null)
+
+  // ── Organization profile (dynamic branding) ───────────────────────
+  const { data: profile } = useQuery<OrgProfile>({
+    queryKey: ['org-profile'],
+    queryFn: () =>
+      fetch('/api/settings/org-profile')
+        .then((r) => r.json())
+        .then((d) => d.profile as OrgProfile),
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const appName = profile?.appName || 'ระบบจัดการสินทรัพย์'
+  const appTagline = profile?.appTagline || 'Asset Management System'
+  const primaryColor = profile?.primaryColor || '#f97316'
+  const accentColor = profile?.accentColor || '#0d9488'
+  const brandGradientFrom = primaryColor
+  const brandGradientTo = darkenHex(primaryColor, 0.22)
+
+  // Logo: URL/path → render <img>; emoji/short → render text; null → fallback 📦
+  const rawLogo = profile?.logoUrl
+  const logoIsUrl = !!rawLogo && !isEmoji(rawLogo)
+  const logoEmoji = rawLogo && isEmoji(rawLogo) ? rawLogo : '📦'
+  const LogoMark = (
+    <>
+      {logoIsUrl ? (
+        <img
+          src={rawLogo as string}
+          alt={appName}
+          className="h-full w-full rounded-xl object-cover"
+        />
+      ) : (
+        <span className="text-2xl">{logoEmoji}</span>
+      )}
+    </>
+  )
 
   // ── Dialogs ──────────────────────────────────────────────────────
   const [registerOpen, setRegisterOpen] = React.useState(false)
@@ -131,11 +195,13 @@ export function ItamLogin() {
       {/* Ambient glow */}
       <div
         aria-hidden
-        className="pointer-events-none absolute -top-32 -right-32 h-96 w-96 rounded-full bg-[#f97316]/20 blur-3xl"
+        className="pointer-events-none absolute -top-32 -right-32 h-96 w-96 rounded-full blur-3xl"
+        style={{ backgroundColor: `${primaryColor}33` }}
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute -bottom-32 -left-32 h-96 w-96 rounded-full bg-teal-500/10 blur-3xl"
+        className="pointer-events-none absolute -bottom-32 -left-32 h-96 w-96 rounded-full blur-3xl"
+        style={{ backgroundColor: `${accentColor}1f` }}
       />
 
       <motion.div
@@ -145,21 +211,27 @@ export function ItamLogin() {
         className="relative grid w-full max-w-4xl overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur-md md:grid-cols-2"
       >
         {/* Left brand panel */}
-        <div className="relative hidden flex-col justify-between bg-gradient-to-br from-[#f97316]/95 to-[#c2410c] p-8 text-white md:flex">
+        <div
+          className="relative hidden flex-col justify-between p-8 text-white md:flex"
+          style={{
+            backgroundImage: `linear-gradient(to bottom right, ${brandGradientFrom}F2, ${brandGradientTo}F2)`,
+          }}
+        >
           <div>
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/15 text-2xl backdrop-blur">
-                📦
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-white/15 backdrop-blur">
+                {LogoMark}
               </div>
               <div>
-                <div className="text-xl font-bold">Asset Mgmt</div>
-                <div className="text-xs text-white/80">IT Asset Management</div>
+                <div className="text-xl font-bold">{appName}</div>
+                <div className="text-xs text-white/80">{appTagline}</div>
               </div>
             </div>
           </div>
           <div className="space-y-4">
             <h2 className="text-2xl font-bold leading-snug">
-              ระบบจัดการสินทรัพย์ไอที<br />ครบวงจร ปลอดภัย
+              {appName}
+              <br />ครบวงจร ปลอดภัย
             </h2>
             <ul className="space-y-2 text-sm text-white/85">
               <li className="flex items-center gap-2"><span>✓</span> ควบคุมสิทธิ์ 5 ระดับ (RBAC)</li>
@@ -176,12 +248,15 @@ export function ItamLogin() {
         {/* Right form panel */}
         <div className="flex flex-col justify-center bg-white p-8 dark:bg-slate-900">
           <div className="mb-6 flex items-center gap-3 md:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#f97316] text-xl text-white">
-              📦
+            <div
+              className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg text-xl text-white"
+              style={{ backgroundColor: primaryColor }}
+            >
+              {LogoMark}
             </div>
             <div>
-              <div className="text-base font-bold text-slate-800 dark:text-slate-100">Asset Mgmt</div>
-              <div className="text-xs text-slate-500">IT Asset Management</div>
+              <div className="text-base font-bold text-slate-800 dark:text-slate-100">{appName}</div>
+              <div className="text-xs text-slate-500">{appTagline}</div>
             </div>
           </div>
 
@@ -206,7 +281,8 @@ export function ItamLogin() {
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={loading || lockedUntil != null}
                   placeholder="username หรือ email@example.com"
-                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-800 transition-colors placeholder:text-slate-400 focus:border-[#f97316] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#f97316]/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-800"
+                  style={{ ['--brand' as string]: primaryColor }}
+                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-800 transition-colors placeholder:text-slate-400 focus:border-[var(--brand)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-800"
                 />
               </div>
             </div>
@@ -226,13 +302,14 @@ export function ItamLogin() {
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading || lockedUntil != null}
                   placeholder="••••••••"
-                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-800 transition-colors placeholder:text-slate-400 focus:border-[#f97316] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#f97316]/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-800"
+                  style={{ ['--brand' as string]: primaryColor }}
+                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-800 transition-colors placeholder:text-slate-400 focus:border-[var(--brand)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-800"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPwd((s) => !s)}
                   aria-label={showPwd ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
-                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316]/40"
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none"
                 >
                   {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -269,7 +346,12 @@ export function ItamLogin() {
             <button
               type="submit"
               disabled={loading || lockedUntil != null}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#f97316] text-sm font-semibold text-white shadow-lg shadow-[#f97316]/20 transition-all hover:bg-[#ea580c] hover:shadow-[#f97316]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316]/50 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-slate-900"
+              style={{
+                backgroundColor: primaryColor,
+                ['--brand' as string]: primaryColor,
+                boxShadow: `0 10px 25px -5px ${primaryColor}40`,
+              }}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg text-sm font-semibold text-white shadow-lg transition-all hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/50 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-slate-900"
             >
               {loading ? (
                 <>
@@ -292,7 +374,13 @@ export function ItamLogin() {
             <button
               type="button"
               onClick={() => setRegisterOpen(true)}
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#f97316]/40 bg-[#f97316]/5 text-sm font-medium text-[#f97316] transition-colors hover:bg-[#f97316]/10"
+              style={{
+                ['--brand' as string]: primaryColor,
+                borderColor: `${primaryColor}66`,
+                backgroundColor: `${primaryColor}0d`,
+                color: primaryColor,
+              }}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors hover:brightness-95"
             >
               <UserPlus className="h-4 w-4" />
               ขอเข้าใช้งาน
@@ -301,7 +389,8 @@ export function ItamLogin() {
               <button
                 type="button"
                 onClick={() => setForgotOpen(true)}
-                className="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-[#f97316] dark:text-slate-400"
+                style={{ ['--brand' as string]: primaryColor }}
+                className="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-[var(--brand)] dark:text-slate-400"
               >
                 <KeyRound className="h-3.5 w-3.5" />
                 ลืมรหัสผ่าน
@@ -309,7 +398,8 @@ export function ItamLogin() {
               <button
                 type="button"
                 onClick={() => setInviteOpen(true)}
-                className="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-[#f97316] dark:text-slate-400"
+                style={{ ['--brand' as string]: primaryColor }}
+                className="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-[var(--brand)] dark:text-slate-400"
               >
                 <Mail className="h-3.5 w-3.5" />
                 รับลิงก์ลงทะเบียนทางอีเมล
