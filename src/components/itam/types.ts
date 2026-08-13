@@ -377,6 +377,7 @@ export const MASTER_CATEGORIES = [
   'Department',
   'Status',
   'DeviceGroup',
+  'Site',
 ] as const
 
 export function statusBadgeClass(status: string): string {

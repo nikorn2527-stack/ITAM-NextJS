@@ -1,0 +1,252 @@
+/home/z/my-project/src/components/ui/chart.tsx:195:              {formatter && item?.value !== undefined && item.name ? (
+/home/z/my-project/src/components/ui/chart.tsx:196:                formatter(item.value, item.name, item, index, item.payload)
+/home/z/my-project/src/components/ui/chart.tsx:235:                    {item.value && (
+/home/z/my-project/src/components/ui/chart.tsx:237:                        {item.value.toLocaleString()}
+/home/z/my-project/src/components/ui/chart.tsx:284:            key={item.value}
+/home/z/my-project/src/components/itam/qr-scanner.tsx:399:                  onChange={(e) => setManualInput(e.target.value)}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:911:                    onChange={(e) => draft && setDraft({ ...draft, name: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:923:                      onChange={(e) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, width: Number(e.target.value) || 10 } })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:932:                      onChange={(e) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, height: Number(e.target.value) || 10 } })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:988:                        onChange={(e) => updateSelectedElement({ content: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1022:                            onChange={(e) => updateSelectedElement({ color: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1027:                            onChange={(e) => updateSelectedElement({ color: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1060:                          onChange={(e) => updateSelectedElement({ background: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1065:                          onChange={(e) => updateSelectedElement({ background: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1075:                        onChange={(e) => updateSelectedElement({ border: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1089:                      onChange={(e) => updateSelectedElement({ source: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1101:                      onChange={(e) => updateSelectedElement({ content: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1200:                  onChange={(e) => setSettingsForm({ ...settingsForm, companyName: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1208:                  onChange={(e) => setSettingsForm({ ...settingsForm, hospitalName: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1216:                  onChange={(e) => setSettingsForm({ ...settingsForm, hotline: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1224:                  onChange={(e) => setSettingsForm({ ...settingsForm, lineOALink: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1232:                  onChange={(e) => setSettingsForm({ ...settingsForm, footerNote: e.target.value })}
+/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1276:          const n = Number(e.target.value)
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:428:      if (inputRef.current) inputRef.current.value = ''
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:767:              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:777:              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:786:            onChange={(e) => setSearch(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:1529:          onChange={(e) => setText(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:1665:                onChange={(e) => setAssetNo(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:1698:                onChange={(e) => setCustomSubject(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:1712:                onChange={(e) => setBuilding(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:1726:                onChange={(e) => setLocation(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:1738:              onChange={(e) => setDetails(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:1777:                onChange={(e) => setReporterName(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:1786:                onChange={(e) => setTel(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:1896:                onChange={(e) => setTechnician(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:1919:              onChange={(e) => setNote(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:2006:              onChange={(e) => setDetailsAdmin(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:2113:              onChange={(e) => setComment(e.target.value)}
+/home/z/my-project/src/components/itam/itam-work-orders.tsx:2196:              onChange={(e) => setReason(e.target.value)}
+/home/z/my-project/src/components/itam/meter-page.tsx:594:                  onChange={(e) => setNewReading(e.target.value)}
+/home/z/my-project/src/components/itam/meter-page.tsx:625:                  onChange={(e) => setReadingDate(e.target.value)}
+/home/z/my-project/src/components/itam/meter-page.tsx:635:                  onChange={(e) => setRemark(e.target.value)}
+/home/z/my-project/src/components/itam/bulk-meter-dialog.tsx:231:                onChange={(e) => setReadingDate(e.target.value)}
+/home/z/my-project/src/components/itam/bulk-meter-dialog.tsx:294:                              updateRow(d.id, { newReading: e.target.value })
+/home/z/my-project/src/components/itam/bulk-meter-dialog.tsx:336:                                  updateRow(d.id, { remark: e.target.value })
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:519:              <Input value={assignForm.assignee} onChange={(e) => setAssignForm({ ...assignForm, assignee: e.target.value })} placeholder="ชื่อ-นามสกุล" className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:523:              <Input value={assignForm.assigneeRole} onChange={(e) => setAssignForm({ ...assignForm, assigneeRole: e.target.value })} placeholder="เช่น เจ้าหน้าที่" className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:527:              <Input value={assignForm.department} onChange={(e) => setAssignForm({ ...assignForm, department: e.target.value })} placeholder="เช่น ไอที" className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:531:              <Input type="date" value={assignForm.checkoutDate} onChange={(e) => setAssignForm({ ...assignForm, checkoutDate: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:581:                <Input type="date" value={mntForm.startDate} onChange={(e) => setMntForm({ ...mntForm, startDate: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:585:                <Input type="number" value={mntForm.cost} onChange={(e) => setMntForm({ ...mntForm, cost: e.target.value })} placeholder="0" className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:590:              <Input value={mntForm.vendor} onChange={(e) => setMntForm({ ...mntForm, vendor: e.target.value })} placeholder="เช่น ABC Service" className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:594:              <Textarea value={mntForm.description} onChange={(e) => setMntForm({ ...mntForm, description: e.target.value })} rows={2} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:919:                      onChange={(e) => setForm({ ...form, toBuilding: e.target.value, toFloor: '', toDepartment: '' })}
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:932:                      onChange={(e) => setForm({ ...form, toFloor: e.target.value, toDepartment: '' })}
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:947:                      onChange={(e) => setForm({ ...form, toDepartment: e.target.value })}
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:959:                      onChange={(e) => setForm({ ...form, toDepartmentCode: e.target.value })}
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:970:                      onChange={(e) => setForm({ ...form, toLocation: e.target.value })}
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:979:                      onChange={(e) => setForm({ ...form, toAssetSiteCode: e.target.value })}
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:1043:                          onChange={(e) => setForm({ ...form, meterBw: e.target.value })}
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:1055:                            onChange={(e) => setForm({ ...form, meterColor: e.target.value })}
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:1065:                      onChange={(e) => setForm({ ...form, meterRemark: e.target.value })}
+/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:1076:                    onChange={(e) => setForm({ ...form, skipMeterReason: e.target.value })}
+/home/z/my-project/src/components/itam/itam-settings.tsx:119:    setForm({ categoryKey: item.categoryKey, value: item.value, displayLabel: item.displayLabel || '', departmentCode: item.departmentCode || '' })
+/home/z/my-project/src/components/itam/itam-settings.tsx:124:    if (!form.categoryKey || !form.value) { toast.error('กรุณากรอกหมวดหมู่และค่า'); return }
+/home/z/my-project/src/components/itam/itam-settings.tsx:147:    if (!confirm(`ลบ "${item.value}"?`)) return
+/home/z/my-project/src/components/itam/itam-settings.tsx:235:                          <TableCell className="text-sm font-medium">{item.value}</TableCell>
+/home/z/my-project/src/components/itam/itam-settings.tsx:310:            <div className="space-y-1.5"><Label className="text-xs">ค่า *</Label><Input value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
+/home/z/my-project/src/components/itam/itam-settings.tsx:311:            <div className="space-y-1.5"><Label className="text-xs">Display Label</Label><Input value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
+/home/z/my-project/src/components/itam/itam-settings.tsx:312:            <div className="space-y-1.5"><Label className="text-xs">รหัสแผนก</Label><Input value={form.departmentCode} onChange={(e) => setForm({ ...form, departmentCode: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
+/home/z/my-project/src/components/itam/itam-settings.tsx:405:                      onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, notifyEmails: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-settings.tsx:415:                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, telegramBotToken: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-settings.tsx:424:                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, telegramChatId: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-settings.tsx:433:                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, lineNotifyToken: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-settings.tsx:442:                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, lineOaChannelAccessToken: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-settings.tsx:451:                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, lineOaToUserId: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-settings.tsx:492:      for (const s of j.settings ?? []) map[s.key] = s.value ?? ''
+/home/z/my-project/src/components/itam/itam-settings.tsx:530:          body: JSON.stringify({ key: e.key, value: e.value }),
+/home/z/my-project/src/components/itam/itam-settings.tsx:556:            onChange={(e) => setForm({ ...form, appName: e.target.value })}
+/home/z/my-project/src/components/itam/itam-settings.tsx:565:            onChange={(e) => setForm({ ...form, appLogoUrl: e.target.value })}
+/home/z/my-project/src/components/itam/itam-settings.tsx:577:            onChange={(e) => setForm({ ...form, appTagline: e.target.value })}
+/home/z/my-project/src/components/itam/itam-settings.tsx:586:            onChange={(e) => setForm({ ...form, searchFields: e.target.value })}
+/home/z/my-project/src/components/itam/master-data-modal.tsx:160:              onChange={(e) => setForm({ ...form, code: e.target.value })}
+/home/z/my-project/src/components/itam/master-data-modal.tsx:168:              onChange={(e) => setForm({ ...form, label: e.target.value })}
+/home/z/my-project/src/components/itam/master-data-modal.tsx:179:                  setForm({ ...form, parentRef: e.target.value })
+/home/z/my-project/src/components/itam/master-data-modal.tsx:190:                onChange={(e) => setForm({ ...form, siteCode: e.target.value })}
+/home/z/my-project/src/components/itam/master-data-modal.tsx:202:                setForm({ ...form, displayLabel: e.target.value })
+/home/z/my-project/src/components/itam/paper-analytics-page.tsx:209:    () => (byDevice ?? []).filter((d) => d.value > 0).slice(0, 8),
+/home/z/my-project/src/components/itam/paper-analytics-page.tsx:217:    .reduce((sum, m) => sum + m.value, 0)
+/home/z/my-project/src/components/itam/paper-analytics-page.tsx:218:  const totalSheets = (monthly ?? []).reduce((sum, m) => sum + m.value, 0)
+/home/z/my-project/src/components/itam/paper-analytics-page.tsx:219:  const activeDeviceCount = (byDevice ?? []).filter((d) => d.value > 0).length
+/home/z/my-project/src/components/itam/paper-analytics-page.tsx:234:  const lineData = monthlyData.map((d) => ({ name: d.label, value: d.value }))
+/home/z/my-project/src/components/itam/paper-analytics-page.tsx:235:  const barData = topDevices.map((d) => ({ name: d.assetCode, value: d.value, full: d.name }))
+/home/z/my-project/src/components/itam/paper-analytics-page.tsx:258:    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'เดือนนี้'
+/home/z/my-project/src/components/itam/paper-analytics-page.tsx:425:                <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/paper-analytics-page.tsx:709:                  <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/notifications-popover.tsx:250:              key={t.value}
+/home/z/my-project/src/components/itam/notifications-popover.tsx:252:              onClick={() => setFilter(t.value)}
+/home/z/my-project/src/components/itam/notifications-popover.tsx:255:                filter === t.value
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:52:  const rangeOpt = DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:69:        <td class="num">${s.value.toLocaleString()}</td>
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:70:        <td class="num">${total > 0 ? Math.round((s.value / total) * 100) : 0}%</td>
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:79:        <td class="num">${t.value.toLocaleString()}</td>
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:80:        <td class="num">${total > 0 ? Math.round((t.value / total) * 100) : 0}%</td>
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:86:    .filter((d) => d.value > 0)
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:93:        <td class="num">${d.value.toLocaleString()}</td>
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:112:    (sum, s) => sum + s.value,
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:116:    (sum, t) => sum + t.value,
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:192:  .kpi .value { font-size: 22px; font-weight: 700; color: #0f172a; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:195:  .kpi.t-active .value { color: #10b981; }
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:197:  .kpi.t-spare .value { color: #d97706; }
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:199:  .kpi.t-repair .value { color: #ea580c; }
+/home/z/my-project/src/components/itam/dashboard-pdf-export.tsx:201:  .kpi.t-paper .value { color: #0d9488; }
+/home/z/my-project/src/components/itam/settings-page.tsx:119:  return USER_ROLE_OPTIONS.find((o) => o.value === role)?.label ?? role
+/home/z/my-project/src/components/itam/settings-page.tsx:278:              onChange={(e) => setForm({ ...form, orgName: e.target.value })}
+/home/z/my-project/src/components/itam/settings-page.tsx:373:                      Math.max(7, Number(e.target.value) || 30),
+/home/z/my-project/src/components/itam/settings-page.tsx:756:            onChange={(e) => setCode(e.target.value)}
+/home/z/my-project/src/components/itam/settings-page.tsx:761:            onChange={(e) => setName(e.target.value)}
+/home/z/my-project/src/components/itam/settings-page.tsx:1162:                onChange={(e) => setBwRate(e.target.value)}
+/home/z/my-project/src/components/itam/settings-page.tsx:1174:                onChange={(e) => setColorRate(e.target.value)}
+/home/z/my-project/src/components/itam/settings-page.tsx:1488:                  onChange={(e) => setEmail(e.target.value)}
+/home/z/my-project/src/components/itam/settings-page.tsx:1512:                  onChange={(e) => setName(e.target.value)}
+/home/z/my-project/src/components/itam/settings-page.tsx:1525:                      <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/settings-page.tsx:1527:                          <Badge variant="outline" className={roleBadgeClass(o.value)}>
+/home/z/my-project/src/components/itam/settings-page.tsx:2001:              onChange={(e) => setQ(e.target.value)}
+/home/z/my-project/src/components/itam/itam-devices.tsx:1057:    e.target.value = ''
+/home/z/my-project/src/components/itam/itam-devices.tsx:1227:            onChange={(e) => onSearch(e.target.value)}
+/home/z/my-project/src/components/itam/itam-devices.tsx:1571:              <Input value={form.assetNo} onChange={(e) => setForm({ ...form, assetNo: e.target.value })} disabled={!!editAssetNo} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1575:              <Input value={form.deviceType} onChange={(e) => setForm({ ...form, deviceType: e.target.value })} placeholder="เช่น PRINTER" className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1579:              <Input value={form.deviceGroup} onChange={(e) => setForm({ ...form, deviceGroup: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1583:              <Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1587:              <Input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1591:              <Input value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1613:              <Input value={form.assetSiteCode} onChange={(e) => setForm({ ...form, assetSiteCode: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1619:                onChange={(e) => setForm({ ...form, building: e.target.value, floor: '', department: '', location: '' })}
+/home/z/my-project/src/components/itam/itam-devices.tsx:1632:                onChange={(e) => setForm({ ...form, floor: e.target.value, department: '', location: '' })}
+/home/z/my-project/src/components/itam/itam-devices.tsx:1645:                onChange={(e) => setForm({ ...form, department: e.target.value, location: '' })}
+/home/z/my-project/src/components/itam/itam-devices.tsx:1656:              <Input value={form.departmentCode} onChange={(e) => setForm({ ...form, departmentCode: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1662:                onChange={(e) => setForm({ ...form, location: e.target.value })}
+/home/z/my-project/src/components/itam/itam-devices.tsx:1673:              <Input value={form.costCenter} onChange={(e) => setForm({ ...form, costCenter: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1677:              <Input value={form.contractNo} onChange={(e) => setForm({ ...form, contractNo: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1681:              <Input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1685:              <Input value={form.ip} onChange={(e) => setForm({ ...form, ip: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1689:              <Input value={form.mac} onChange={(e) => setForm({ ...form, mac: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1693:              <Input value={form.remoteId} onChange={(e) => setForm({ ...form, remoteId: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1697:              <Input type="date" value={form.installDate} onChange={(e) => setForm({ ...form, installDate: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1701:              <Input type="date" value={form.warrantyEnd} onChange={(e) => setForm({ ...form, warrantyEnd: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1719:              <Textarea value={form.remark} onChange={(e) => setForm({ ...form, remark: e.target.value })} rows={2} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-devices.tsx:1846:                onChange={(e) => setImportText(e.target.value)}
+/home/z/my-project/src/components/itam/itam-devices.tsx:1949:                onChange={(e) => setBulkEditForm({ ...bulkEditForm, building: e.target.value, floor: '', department: '' })}
+/home/z/my-project/src/components/itam/itam-devices.tsx:1962:                onChange={(e) => setBulkEditForm({ ...bulkEditForm, floor: e.target.value, department: '' })}
+/home/z/my-project/src/components/itam/itam-devices.tsx:1975:                onChange={(e) => setBulkEditForm({ ...bulkEditForm, department: e.target.value })}
+/home/z/my-project/src/components/itam/saved-filters.tsx:261:                onChange={(e) => setNewName(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1029:                  onChange={(e) => setTDept(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1039:                  onChange={(e) => setTDeptCode(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1051:                onChange={(e) => setTDate(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1060:                onChange={(e) => setTReason(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1111:                onChange={(e) => setAAssignee(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1122:                  onChange={(e) => setARole(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1132:                  onChange={(e) => setADept(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1145:                  onChange={(e) => setACheckout(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1155:                  onChange={(e) => setAExpectedReturn(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1165:                onChange={(e) => setANotes(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1220:                onChange={(e) => setRReturnDate(e.target.value)}
+/home/z/my-project/src/components/itam/device-detail-sheet.tsx:1229:                onChange={(e) => setRNotes(e.target.value)}
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:532:    const typeRows = byType.map(t => `<tr><td>${esc(t.name)}</td><td class="num">${t.value.toLocaleString()}</td><td class="num">${total > 0 ? Math.round((t.value / total) * 100) : 0}%</td></tr>`).join('')
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:555:.kpi .value { font-size: 22px; font-weight: 700; color: #0f172a; line-height: 1.1; margin-top: 4px; font-variant-numeric: tabular-nums; }
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:557:.kpi.t-active { border-top-color: #10b981; } .kpi.t-active .value { color: #10b981; }
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:558:.kpi.t-spare { border-top-color: #f59e0b; } .kpi.t-spare .value { color: #d97706; }
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:559:.kpi.t-repair { border-top-color: #f97316; } .kpi.t-repair .value { color: #ea580c; }
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:560:.kpi.t-paper { border-top-color: #0d9488; } .kpi.t-paper .value { color: #0d9488; }
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:611:    ].filter(d => d.value > 0)
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:614:  const donutTotal = donutData.reduce((sum, d) => sum + d.value, 0)
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:665:    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'เดือนนี้'
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:667:    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.kpiLabel ?? 'กระดาษเดือนนี้'
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:996:                    {d.name} <span className="font-semibold tabular-nums">{d.value.toLocaleString()}</span>
+/home/z/my-project/src/components/itam/itam-dashboard.tsx:1267:                <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/sidebar.tsx:124:        for (const s of j.settings ?? []) map[s.key] = s.value ?? ''
+/home/z/my-project/src/components/itam/itam-audit.tsx:150:              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+/home/z/my-project/src/components/itam/itam-audit.tsx:157:          onChange={(e) => { setUser(e.target.value); setPage(1) }}
+/home/z/my-project/src/components/itam/itam-audit.tsx:165:            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+/home/z/my-project/src/components/itam/cycle-manage-dialog.tsx:431:                      onChange={(e) => setCycleName(e.target.value)}
+/home/z/my-project/src/components/itam/cycle-manage-dialog.tsx:439:                      <Input type="date" value={cycleStart} onChange={(e) => setCycleStart(e.target.value)} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/cycle-manage-dialog.tsx:443:                      <Input type="date" value={cycleEnd} onChange={(e) => setCycleEnd(e.target.value)} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/utilization-section.tsx:179:              <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/itam-login.tsx:148:                  onChange={(e) => setUsername(e.target.value)}
+/home/z/my-project/src/components/itam/itam-login.tsx:168:                  onChange={(e) => setPassword(e.target.value)}
+/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:245:.kpi .value { font-size: 20px; font-weight: 700; color: #0f172a; margin-top: 4px; font-variant-numeric: tabular-nums; }
+/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:246:.kpi.t-bw { border-top-color: #0d9488; } .kpi.t-bw .value { color: #0d9488; }
+/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:247:.kpi.t-color { border-top-color: #f59e0b; } .kpi.t-color .value { color: #d97706; }
+/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:248:.kpi.t-cur { border-top-color: #10b981; } .kpi.t-cur .value { color: #10b981; }
+/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:249:.kpi.t-mom { border-top-color: #ef4444; } .kpi.t-mom .value { color: #ef4444; }
+/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:250:.kpi.t-avg { border-top-color: #6366f1; } .kpi.t-avg .value { color: #6366f1; }
+/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:315:              <Input type="month" value={monthStart} onChange={(e) => setMonthStart(e.target.value || monthsAgoStr(5))} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:319:              <Input type="month" value={monthEnd} onChange={(e) => setMonthEnd(e.target.value || currentMonthStr())} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:333:              <Input value={building} onChange={(e) => setBuilding(e.target.value)} placeholder="ทุกอาคาร" className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:337:              <Input value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="ทุกแผนก" className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-repairs.tsx:495:              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+/home/z/my-project/src/components/itam/itam-repairs.tsx:505:              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+/home/z/my-project/src/components/itam/itam-repairs.tsx:514:            onChange={(e) => setSearch(e.target.value)}
+/home/z/my-project/src/components/itam/itam-repairs.tsx:739:                onChange={(e) => setCreateForm((f) => ({ ...f, description: e.target.value }))}
+/home/z/my-project/src/components/itam/itam-repairs.tsx:751:                onChange={(e) => setCreateForm((f) => ({ ...f, vendor: e.target.value }))}
+/home/z/my-project/src/components/itam/itam-repairs.tsx:765:                onChange={(e) => setCreateForm((f) => ({ ...f, startDate: e.target.value }))}
+/home/z/my-project/src/components/itam/itam-repairs.tsx:845:                      onChange={(e) => setEditForm((f) => ({ ...f, endDate: e.target.value }))}
+/home/z/my-project/src/components/itam/itam-repairs.tsx:899:                      onChange={(e) => setEditForm((f) => ({ ...f, cost: e.target.value }))}
+/home/z/my-project/src/components/itam/itam-repairs.tsx:919:                    onChange={(e) => setEditForm((f) => ({ ...f, resolvedNote: e.target.value }))}
+/home/z/my-project/src/components/itam/devices-page.tsx:583:                  onChange={(e) => setSearch(e.target.value)}
+/home/z/my-project/src/components/itam/devices-page.tsx:594:                    <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/devices-page.tsx:619:                    <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/devices-page.tsx:631:                    <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/devices-page.tsx:720:                        <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/devices-page.tsx:1052:                  setForm({ ...form, assetCode: e.target.value })
+/home/z/my-project/src/components/itam/devices-page.tsx:1060:                onChange={(e) => setForm({ ...form, name: e.target.value })}
+/home/z/my-project/src/components/itam/devices-page.tsx:1074:                onChange={(e) => setForm({ ...form, model: e.target.value })}
+/home/z/my-project/src/components/itam/devices-page.tsx:1089:                  setForm({ ...form, serialNumber: e.target.value })
+/home/z/my-project/src/components/itam/devices-page.tsx:1103:                    <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/devices-page.tsx:1142:                  setForm({ ...form, departmentCode: e.target.value })
+/home/z/my-project/src/components/itam/devices-page.tsx:1150:                  setForm({ ...form, parentRef: e.target.value })
+/home/z/my-project/src/components/itam/devices-page.tsx:1159:                  setForm({ ...form, displayLabel: e.target.value })
+/home/z/my-project/src/components/itam/devices-page.tsx:1166:                onChange={(e) => setForm({ ...form, location: e.target.value })}
+/home/z/my-project/src/components/itam/devices-page.tsx:1174:                  setForm({ ...form, purchaseDate: e.target.value })
+/home/z/my-project/src/components/itam/devices-page.tsx:1186:                  setForm({ ...form, warrantyMonths: e.target.value })
+/home/z/my-project/src/components/itam/devices-page.tsx:1205:                    setForm({ ...form, purchasePrice: e.target.value })
+/home/z/my-project/src/components/itam/devices-page.tsx:1217:                    setForm({ ...form, salvageValue: e.target.value })
+/home/z/my-project/src/components/itam/devices-page.tsx:1230:                    setForm({ ...form, usefulLife: e.target.value })
+/home/z/my-project/src/components/itam/devices-page.tsx:1347:        onChange={(e) => onChange(e.target.value)}
+/home/z/my-project/src/components/itam/devices-page.tsx:1356:              key={o.value}
+/home/z/my-project/src/components/itam/devices-page.tsx:1361:                onChange(o.value)
+/home/z/my-project/src/components/itam/sticker-print-dialog.tsx:182:  const sizeOption = SIZE_OPTIONS.find((s) => s.value === size)!
+/home/z/my-project/src/components/itam/sticker-print-dialog.tsx:315:                    <SelectItem key={o.value} value={o.value}>
+/home/z/my-project/src/components/itam/sticker-print-dialog.tsx:415:                onChange={(e) => setSearch(e.target.value)}
+/home/z/my-project/src/components/itam/csv-import-dialog.tsx:255:    if (inputRef.current) inputRef.current.value = ''
+/home/z/my-project/src/components/itam/itam-meter.tsx:188:              <Input value={assetNo} onChange={(e) => setAssetNo(e.target.value)} placeholder="เช่น 100" className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-meter.tsx:192:              <Input type="number" value={meterBw} onChange={(e) => setMeterBw(e.target.value)} placeholder="เช่น 5000" className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-meter.tsx:196:              <Textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={2} className="dark:bg-slate-800 dark:border-slate-700" />
+/home/z/my-project/src/components/itam/itam-meter.tsx:365:                onChange={(e) => setReadingDate(e.target.value)}
+/home/z/my-project/src/components/itam/itam-meter.tsx:418:                            onChange={(e) => updateRow(m.assetNo, { newReading: e.target.value })}
+/home/z/my-project/src/components/itam/itam-meter.tsx:449:                              onChange={(e) => updateRow(m.assetNo, { remark: e.target.value })}
+/home/z/my-project/src/components/itam/itam-meter.tsx:462:                              onChange={(e) => updateRow(m.assetNo, { remark: e.target.value })}
+/home/z/my-project/src/components/itam/itam-document-editor.tsx:1033:                    onChange={(e) => draft && setDraft({ ...draft, name: e.target.value })}
+/home/z/my-project/src/components/itam/itam-document-editor.tsx:1075:                          onChange={(e) => draft && setDraft({ ...draft, table: { ...draft.table, headerColor: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-document-editor.tsx:1080:                          onChange={(e) => draft && setDraft({ ...draft, table: { ...draft.table, headerColor: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-document-editor.tsx:1091:                          onChange={(e) => draft && setDraft({ ...draft, table: { ...draft.table, headerTextColor: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-document-editor.tsx:1096:                          onChange={(e) => draft && setDraft({ ...draft, table: { ...draft.table, headerTextColor: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-document-editor.tsx:1135:                          onChange={(e) => updateColumn(i, { label: e.target.value })}
+/home/z/my-project/src/components/itam/itam-document-editor.tsx:1141:                          onChange={(e) => updateColumn(i, { width: Number(e.target.value) || 5 })}
+/home/z/my-project/src/components/itam/itam-document-editor.tsx:1214:                      onChange={(e) => draft && setDraft({ ...draft, footer: { ...draft.footer, content: e.target.value } })}
+/home/z/my-project/src/components/itam/itam-document-editor.tsx:1266:                        onChange={(e) => updateSelectedElement({ content: e.target.value })}
+/home/z/my-project/src/components/itam/itam-document-editor.tsx:1300:                            onChange={(e) => updateSelectedElement({ color: e.target.value })}
+
+[Showing results with pagination = limit: 250]

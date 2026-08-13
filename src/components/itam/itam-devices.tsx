@@ -34,8 +34,8 @@ import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
 
 interface Device {
-  id: string; assetNo: string; deviceType: string | null; brand: string | null
-  model: string | null; serial: string | null; status: string; site: string | null
+  id: string; assetCode: string; type: string | null; brand: string | null
+  model: string | null; serialNumber: string | null; status: string; site: string | null
   department: string | null; building: string | null; floor: string | null
   location: string | null; meterRequired: boolean; _count?: { meterReadings: number; locationHistories: number; assignments: number; maintenanceLogs: number }
   /** client-only flag: optimistic row in flight */
@@ -97,27 +97,27 @@ function useSitesList(): string[] {
 }
 
 type DeviceForm = {
-  assetNo: string; deviceType: string; brand: string; model: string; serial: string
+  assetCode: string; type: string; brand: string; model: string; serialNumber: string
   building: string; floor: string; department: string; location: string; departmentCode: string
   status: string; site: string; contractNo: string; ip: string; mac: string; remoteId: string
-  vendor: string; installDate: string; warrantyEnd: string; deviceGroup: string; costCenter: string
+  vendor: string; purchaseDate: string; warrantyEnd: string; deviceGroup: string; costCenter: string
   meterRequired: boolean; meterMode: string; assetSiteCode: string; remark: string
 }
 
 const EMPTY_FORM: DeviceForm = {
-  assetNo: '', deviceType: '', brand: '', model: '', serial: '',
+  assetCode: '', type: '', brand: '', model: '', serialNumber: '',
   building: '', floor: '', department: '', location: '', departmentCode: '',
   status: 'Active', site: '', contractNo: '', ip: '', mac: '', remoteId: '',
-  vendor: '', installDate: '', warrantyEnd: '', deviceGroup: '', costCenter: '',
+  vendor: '', purchaseDate: '', warrantyEnd: '', deviceGroup: '', costCenter: '',
   meterRequired: false, meterMode: 'TOTAL', assetSiteCode: '', remark: '',
 }
 
 const CSV_HEADERS = [
-  { key: 'assetNo', label: 'รหัสสินทรัพย์' },
-  { key: 'deviceType', label: 'ประเภท' },
+  { key: 'assetCode', label: 'รหัสสินทรัพย์' },
+  { key: 'type', label: 'ประเภท' },
   { key: 'brand', label: 'แบรนด์' },
   { key: 'model', label: 'รุ่น' },
-  { key: 'serial', label: 'Serial' },
+  { key: 'serialNumber', label: 'Serial' },
   { key: 'status', label: 'สถานะ' },
   { key: 'site', label: 'สาขา' },
   { key: 'building', label: 'อาคาร' },
@@ -132,7 +132,7 @@ const CSV_HEADERS = [
   { key: 'ip', label: 'IP' },
   { key: 'mac', label: 'MAC' },
   { key: 'remoteId', label: 'Remote ID' },
-  { key: 'installDate', label: 'วันติดตั้ง' },
+  { key: 'purchaseDate', label: 'วันติดตั้ง' },
   { key: 'warrantyEnd', label: 'วันหมดประกัน' },
   { key: 'meterRequired', label: 'ต้องจดมิเตอร์' },
   { key: 'meterMode', label: 'โหมดมิเตอร์' },
@@ -255,29 +255,29 @@ export function ItamDevices() {
   }, [pendingDeviceType, pendingDeviceStatus, clearPendingDeviceType, clearPendingDeviceStatus])
 
   // Detail sheet
-  const [detailAssetNo, setDetailAssetNo] = React.useState<string | null>(null)
+  const [detailAssetCode, setDetailAssetCode] = React.useState<string | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(false)
 
   // CRUD dialog
   const [crudOpen, setCrudOpen] = React.useState(false)
-  const [editAssetNo, setEditAssetNo] = React.useState<string | null>(null)
+  const [editAssetCode, setEditAssetCode] = React.useState<string | null>(null)
   const [form, setForm] = React.useState<DeviceForm>(EMPTY_FORM)
 
   // Delete confirm
-  const [deleteAssetNo, setDeleteAssetNo] = React.useState<string | null>(null)
+  const [deleteAssetCode, setDeleteAssetCode] = React.useState<string | null>(null)
 
   // Track rows that just saved (for the "✓ บันทึกแล้ว" badge)
-  const [savedAssetNos, setSavedAssetNos] = React.useState<Set<string>>(new Set())
-  function flashSaved(assetNo: string) {
-    setSavedAssetNos((prev) => {
+  const [savedAssetCodes, setSavedAssetCodes] = React.useState<Set<string>>(new Set())
+  function flashSaved(assetCode: string) {
+    setSavedAssetCodes((prev) => {
       const next = new Set(prev)
-      next.add(assetNo)
+      next.add(assetCode)
       return next
     })
     setTimeout(() => {
-      setSavedAssetNos((prev) => {
+      setSavedAssetCodes((prev) => {
         const next = new Set(prev)
-        next.delete(assetNo)
+        next.delete(assetCode)
         return next
       })
     }, 2000)
@@ -287,7 +287,7 @@ export function ItamDevices() {
   const [exporting, setExporting] = React.useState(false)
 
   // Sticker selection state (for bulk print)
-  const [selectedAssetNos, setSelectedAssetNos] = React.useState<Set<string>>(new Set())
+  const [selectedAssetCodes, setSelectedAssetCodes] = React.useState<Set<string>>(new Set())
   const [stickerPrinting, setStickerPrinting] = React.useState(false)
 
   // Import dialog state
@@ -334,22 +334,22 @@ export function ItamDevices() {
   const bulkFloorOptions = useCascadingOptions('floor', { site: bulkEditForm.site, building: bulkEditForm.building })
   const bulkDepartmentOptions = useCascadingOptions('department', { site: bulkEditForm.site, building: bulkEditForm.building, floor: bulkEditForm.floor })
 
-  function toggleSelectAssetNo(assetNo: string) {
-    setSelectedAssetNos((prev) => {
+  function toggleSelectAssetCode(assetCode: string) {
+    setSelectedAssetCodes((prev) => {
       const next = new Set(prev)
-      if (next.has(assetNo)) next.delete(assetNo)
-      else next.add(assetNo)
+      if (next.has(assetCode)) next.delete(assetCode)
+      else next.add(assetCode)
       return next
     })
   }
 
   function toggleSelectAllOnPage(checked: boolean) {
-    setSelectedAssetNos((prev) => {
+    setSelectedAssetCodes((prev) => {
       const next = new Set(prev)
       if (checked) {
-        for (const d of devices) next.add(d.assetNo)
+        for (const d of devices) next.add(d.assetCode)
       } else {
-        for (const d of devices) next.delete(d.assetNo)
+        for (const d of devices) next.delete(d.assetCode)
       }
       return next
     })
@@ -357,14 +357,14 @@ export function ItamDevices() {
 
   // Reset selection when search/filter changes
   React.useEffect(() => {
-    setSelectedAssetNos(new Set())
+    setSelectedAssetCodes(new Set())
   }, [debouncedSearch, status, deviceType, page])
 
-  async function handleSingleStickerPrint(assetNo: string) {
+  async function handleSingleStickerPrint(assetCode: string) {
     setStickerPrinting(true)
     try {
-      await printSingleSticker(assetNo)
-      toast.success(`เตรียมสติกเกอร์สำหรับ ${assetNo} แล้ว`)
+      await printSingleSticker(assetCode)
+      toast.success(`เตรียมสติกเกอร์สำหรับ ${assetCode} แล้ว`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'พิมพ์สติกเกอร์ไม่สำเร็จ')
     } finally {
@@ -373,14 +373,14 @@ export function ItamDevices() {
   }
 
   async function handleBulkStickerPrint() {
-    if (selectedAssetNos.size === 0) {
+    if (selectedAssetCodes.size === 0) {
       toast.error('กรุณาเลือกอุปกรณ์อย่างน้อย 1 เครื่อง')
       return
     }
     setStickerPrinting(true)
     try {
-      const assetNos = Array.from(selectedAssetNos)
-      const n = await printBulkStickers(assetNos)
+      const assetCodes = Array.from(selectedAssetCodes)
+      const n = await printBulkStickers(assetCodes)
       toast.success(`เตรียมสติกเกอร์ ${n} ใบแล้ว`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'พิมพ์สติกเกอร์ไม่สำเร็จ')
@@ -427,26 +427,26 @@ export function ItamDevices() {
   }
 
   function openAdd() {
-    setEditAssetNo(null)
+    setEditAssetCode(null)
     setForm(EMPTY_FORM)
     setCrudOpen(true)
   }
 
-  function openEdit(assetNo: string) {
-    setEditAssetNo(assetNo)
-    fetch(`/api/itam/devices/${assetNo}`)
+  function openEdit(assetCode: string) {
+    setEditAssetCode(assetCode)
+    fetch(`/api/itam/devices/${assetCode}`)
       .then(r => r.ok ? r.json() : Promise.reject(r))
       .then((j: { device: Device & Record<string, unknown> }) => {
         const d = j.device
         setForm({
-          assetNo: d.assetNo, deviceType: d.deviceType || '', brand: d.brand || '', model: d.model || '',
-          serial: d.serial || '', building: d.building || '', floor: d.floor || '',
+          assetCode: d.assetCode, type: d.type || '', brand: d.brand || '', model: d.model || '',
+          serialNumber: d.serialNumber || '', building: d.building || '', floor: d.floor || '',
           department: d.department || '', location: d.location || '', departmentCode: d.departmentCode || '',
           status: d.status, site: d.site || '', contractNo: (d as { contractNo?: string }).contractNo || '',
           ip: (d as { ip?: string }).ip || '', mac: (d as { mac?: string }).mac || '',
           remoteId: (d as { remoteId?: string }).remoteId || '',
           vendor: (d as { vendor?: string }).vendor || '',
-          installDate: (d as { installDate?: string }).installDate || '',
+          purchaseDate: (d as { purchaseDate?: string }).purchaseDate || '',
           warrantyEnd: (d as { warrantyEnd?: string }).warrantyEnd || '',
           deviceGroup: (d as { deviceGroup?: string }).deviceGroup || '',
           costCenter: (d as { costCenter?: string }).costCenter || '',
@@ -477,11 +477,11 @@ export function ItamDevices() {
       const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       const optimisticDevice: Device = {
         id: tempId,
-        assetNo: payload.assetNo,
-        deviceType: payload.deviceType || null,
+        assetCode: payload.assetCode,
+        type: payload.type || null,
         brand: payload.brand || null,
         model: payload.model || null,
-        serial: payload.serial || null,
+        serialNumber: payload.serialNumber || null,
         status: payload.status || 'Active',
         site: payload.site || null,
         department: payload.department || null,
@@ -516,15 +516,15 @@ export function ItamDevices() {
     onSettled: (_d, _e, payload) => {
       qc.invalidateQueries({ queryKey: ['itam-devices'] })
       qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
-      flashSaved(payload.assetNo)
+      flashSaved(payload.assetCode)
       toast.success('เพิ่มอุปกรณ์แล้ว')
     },
   })
 
   // === EDIT mutation (optimistic, in-place update) ===
   const editMutation = useMutation({
-    mutationFn: async ({ assetNo, payload }: { assetNo: string; payload: DeviceForm }) => {
-      const res = await fetch(`/api/itam/devices/${assetNo}`, {
+    mutationFn: async ({ assetCode, payload }: { assetCode: string; payload: DeviceForm }) => {
+      const res = await fetch(`/api/itam/devices/${assetCode}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
@@ -534,7 +534,7 @@ export function ItamDevices() {
       }
       return res.json() as Promise<{ device: Device }>
     },
-    onMutate: async ({ assetNo, payload }) => {
+    onMutate: async ({ assetCode, payload }) => {
       await qc.cancelQueries({ queryKey: ['itam-devices'] })
       const snapshots = qc.getQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] })
       qc.setQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] }, (old) => {
@@ -542,10 +542,10 @@ export function ItamDevices() {
         return {
           ...old,
           devices: old.devices.map((d) =>
-            d.assetNo === assetNo
+            d.assetCode === assetCode
               ? {
                   ...d,
-                  deviceType: payload.deviceType || d.deviceType,
+                  type: payload.type || d.type,
                   brand: payload.brand || d.brand,
                   model: payload.model || d.model,
                   status: payload.status || d.status,
@@ -568,32 +568,32 @@ export function ItamDevices() {
       }
       toast.error(err instanceof Error ? err.message : 'แก้ไขไม่สำเร็จ')
     },
-    onSettled: (_d, _e, { assetNo }) => {
+    onSettled: (_d, _e, { assetCode }) => {
       qc.invalidateQueries({ queryKey: ['itam-devices'] })
       qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
-      flashSaved(assetNo)
+      flashSaved(assetCode)
       toast.success('แก้ไขอุปกรณ์แล้ว')
     },
   })
 
   // === DELETE mutation (optimistic, fade out + remove) ===
   const deleteMutation = useMutation({
-    mutationFn: async (assetNo: string) => {
-      const res = await fetch(`/api/itam/devices/${assetNo}`, { method: 'DELETE' })
+    mutationFn: async (assetCode: string) => {
+      const res = await fetch(`/api/itam/devices/${assetCode}`, { method: 'DELETE' })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error || 'Failed')
       }
-      return { assetNo }
+      return { assetCode }
     },
-    onMutate: async (assetNo) => {
+    onMutate: async (assetCode) => {
       await qc.cancelQueries({ queryKey: ['itam-devices'] })
       const snapshots = qc.getQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] })
       qc.setQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] }, (old) => {
         if (!old) return old
         return {
           ...old,
-          devices: old.devices.filter((d) => d.assetNo !== assetNo),
+          devices: old.devices.filter((d) => d.assetCode !== assetCode),
           pagination: { ...old.pagination, total: Math.max(0, old.pagination.total - 1) },
         }
       })
@@ -607,23 +607,23 @@ export function ItamDevices() {
       }
       toast.error(err instanceof Error ? err.message : 'ลบไม่สำเร็จ')
     },
-    onSettled: (_d, _e, assetNo) => {
+    onSettled: (_d, _e, assetCode) => {
       qc.invalidateQueries({ queryKey: ['itam-devices'] })
       qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
-      toast.success(`ลบ ${assetNo} แล้ว`)
+      toast.success(`ลบ ${assetCode} แล้ว`)
     },
   })
 
   async function saveDevice() {
-    if (!form.assetNo.trim()) {
+    if (!form.assetCode.trim()) {
       toast.error('กรุณากรอกรหัสสินทรัพย์')
       return
     }
     const payload = { ...form }
     setCrudOpen(false)
     try {
-      if (editAssetNo) {
-        editMutation.mutate({ assetNo: editAssetNo, payload })
+      if (editAssetCode) {
+        editMutation.mutate({ assetCode: editAssetCode, payload })
       } else {
         addMutation.mutate(payload)
       }
@@ -633,9 +633,9 @@ export function ItamDevices() {
   }
 
   function confirmDelete() {
-    if (!deleteAssetNo) return
-    const an = deleteAssetNo
-    setDeleteAssetNo(null)
+    if (!deleteAssetCode) return
+    const an = deleteAssetCode
+    setDeleteAssetCode(null)
     deleteMutation.mutate(an)
   }
 
@@ -657,12 +657,12 @@ export function ItamDevices() {
       if (!res.ok) throw new Error('Failed')
       const j: DevicesResponse = await res.json()
       const rows = j.devices.map(d => ({
-        assetNo: d.assetNo, deviceType: d.deviceType || '', brand: d.brand || '',
-        model: d.model || '', serial: d.serial || '', status: d.status,
+        assetCode: d.assetCode, type: d.type || '', brand: d.brand || '',
+        model: d.model || '', serialNumber: d.serialNumber || '', status: d.status,
         site: d.site || '', building: d.building || '', floor: d.floor || '',
         department: d.department || '', departmentCode: '', location: d.location || '',
         deviceGroup: '', costCenter: '', contractNo: '', vendor: '',
-        ip: '', mac: '', remoteId: '', installDate: '', warrantyEnd: '',
+        ip: '', mac: '', remoteId: '', purchaseDate: '', warrantyEnd: '',
         meterRequired: d.meterRequired ? 'Yes' : 'No', meterMode: '', assetSiteCode: '',
         remark: '',
       }))
@@ -717,7 +717,7 @@ export function ItamDevices() {
       no: idx + 1,
       brand: d.brand ?? '',
       model: d.model ?? '',
-      serial: d.serial ?? '',
+      serial: d.serialNumber ?? '',
       buildingFloor: `${d.building ?? ''}/${d.floor ?? ''}`,
       building: d.building ?? '',
       floor: d.floor ?? '',
@@ -819,10 +819,10 @@ export function ItamDevices() {
       .map((h) => `<th>${esc(h)}</th>`).join('')
     const bodyRows = rows.map((d) => {
       return `<tr>
-        <td class="mono">${esc(d.assetNo)}</td>
-        <td>${esc(d.deviceType || '')}</td>
+        <td class="mono">${esc(d.assetCode)}</td>
+        <td>${esc(d.type || '')}</td>
         <td>${esc(d.brand || '')} ${esc(d.model || '')}</td>
-        <td class="mono">${esc(d.serial || '')}</td>
+        <td class="mono">${esc(d.serialNumber || '')}</td>
         <td>${esc(d.status)}</td>
         <td>${esc(d.site || '')}</td>
         <td>${esc(d.building || '')}</td>
@@ -1097,7 +1097,7 @@ tr:nth-child(even) td{background:#fafbfc}
 
   // ── Bulk edit
   function openBulkEdit() {
-    if (selectedAssetNos.size === 0) {
+    if (selectedAssetCodes.size === 0) {
       toast.error('กรุณาเลือกอุปกรณ์อย่างน้อย 1 เครื่อง')
       return
     }
@@ -1117,20 +1117,20 @@ tr:nth-child(even) td{background:#fafbfc}
       toast.error('กรุณาเลือกฟิลด์อย่างน้อย 1 ฟิลด์เพื่ออัปเดต')
       return
     }
-    const assetNos = Array.from(selectedAssetNos)
+    const assetCodes = Array.from(selectedAssetCodes)
     setBulkSaving(true)
-    setBulkProgress({ done: 0, total: assetNos.length })
+    setBulkProgress({ done: 0, total: assetCodes.length })
     try {
       const res = await fetch('/api/itam/devices/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assetNos, patch }),
+        body: JSON.stringify({ assetNos: assetCodes, patch }),
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Failed')
       toast.success(`อัปเดต ${j.updated} เครื่องสำเร็จ${j.skipped ? ` · ข้าม ${j.skipped}` : ''}`)
       setBulkEditOpen(false)
-      setSelectedAssetNos(new Set())
+      setSelectedAssetCodes(new Set())
       await qc.invalidateQueries({ queryKey: ['itam-devices'] })
       await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
     } catch (e) {
@@ -1148,7 +1148,7 @@ tr:nth-child(even) td{background:#fafbfc}
   // Build a unique-type list for the type filter from current data
   const typeOptions = React.useMemo(() => {
     const s = new Set<string>()
-    for (const d of devices) if (d.deviceType) s.add(d.deviceType)
+    for (const d of devices) if (d.type) s.add(d.type)
     return Array.from(s).sort()
   }, [devices])
 
@@ -1188,20 +1188,20 @@ tr:nth-child(even) td{background:#fafbfc}
               <Upload className="h-4 w-4" /> นำเข้า CSV
             </Button>
           )}
-          {canEdit && selectedAssetNos.size > 0 && (
+          {canEdit && selectedAssetCodes.size > 0 && (
             <Button variant="outline" onClick={openBulkEdit} className="border-[#f97316] text-[#f97316] dark:bg-orange-950/30">
-              <Edit3 className="h-4 w-4" /> แก้ไขหลายรายการ ({selectedAssetNos.size})
+              <Edit3 className="h-4 w-4" /> แก้ไขหลายรายการ ({selectedAssetCodes.size})
             </Button>
           )}
           <Button
             variant="outline"
             onClick={handleBulkStickerPrint}
-            disabled={stickerPrinting || selectedAssetNos.size === 0}
+            disabled={stickerPrinting || selectedAssetCodes.size === 0}
             className="dark:border-slate-700 dark:bg-slate-800"
-            title={selectedAssetNos.size === 0 ? 'เลือกอุปกรณ์ด้วย checkbox ก่อน' : `พิมพ์สติกเกอร์ ${selectedAssetNos.size} ใบ`}
+            title={selectedAssetCodes.size === 0 ? 'เลือกอุปกรณ์ด้วย checkbox ก่อน' : `พิมพ์สติกเกอร์ ${selectedAssetCodes.size} ใบ`}
           >
             {stickerPrinting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-            พิมพ์สติกเกอร์ {selectedAssetNos.size > 0 ? `(${selectedAssetNos.size})` : ''}
+            พิมพ์สติกเกอร์ {selectedAssetCodes.size > 0 ? `(${selectedAssetCodes.size})` : ''}
           </Button>
           <Button
             variant="outline"
@@ -1334,17 +1334,17 @@ tr:nth-child(even) td{background:#fafbfc}
             <VirtualDevicesTable
               devices={devices}
               query={debouncedSearch}
-              selectedAssetNos={selectedAssetNos}
-              savedAssetNos={savedAssetNos}
+              selectedAssetCodes={selectedAssetCodes}
+              savedAssetCodes={savedAssetCodes}
               stickerPrinting={stickerPrinting}
               canEdit={canEdit}
-              onRowClick={(assetNo) => { setDetailAssetNo(assetNo); setDetailOpen(true) }}
-              onToggle={(assetNo) => toggleSelectAssetNo(assetNo)}
+              onRowClick={(assetCode) => { setDetailAssetCode(assetCode); setDetailOpen(true) }}
+              onToggle={(assetCode) => toggleSelectAssetCode(assetCode)}
               onSelectAll={(checked) => toggleSelectAllOnPage(checked)}
-              onView={(assetNo) => { setDetailAssetNo(assetNo); setDetailOpen(true) }}
-              onPrintSticker={(assetNo) => handleSingleStickerPrint(assetNo)}
-              onEdit={(assetNo) => openEdit(assetNo)}
-              onDelete={(assetNo) => setDeleteAssetNo(assetNo)}
+              onView={(assetCode) => { setDetailAssetCode(assetCode); setDetailOpen(true) }}
+              onPrintSticker={(assetCode) => handleSingleStickerPrint(assetCode)}
+              onEdit={(assetCode) => openEdit(assetCode)}
+              onDelete={(assetCode) => setDeleteAssetCode(assetCode)}
             />
           ) : (
           <div className="itam-scroll max-h-[60vh] overflow-auto">
@@ -1353,7 +1353,7 @@ tr:nth-child(even) td{background:#fafbfc}
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
-                      checked={devices.length > 0 && devices.every((d) => selectedAssetNos.has(d.assetNo))}
+                      checked={devices.length > 0 && devices.every((d) => selectedAssetCodes.has(d.assetCode))}
                       onCheckedChange={(c) => toggleSelectAllOnPage(!!c)}
                       aria-label="เลือกทั้งหน้า"
                     />
@@ -1414,7 +1414,7 @@ tr:nth-child(even) td{background:#fafbfc}
                     {devices.map((d) => {
                       const isSaving = d.__optimistic === 'add' || d.__optimistic === 'edit'
                       const isDeleting = d.__optimistic === 'delete'
-                      const justSaved = savedAssetNos.has(d.assetNo)
+                      const justSaved = savedAssetCodes.has(d.assetCode)
                       return (
                         <motion.tr
                           key={d.id}
@@ -1427,20 +1427,20 @@ tr:nth-child(even) td{background:#fafbfc}
                             'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50',
                             isSaving ? 'itam-saving-row' : '',
                           ].join(' ')}
-                          onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}
+                          onClick={() => { setDetailAssetCode(d.assetCode); setDetailOpen(true) }}
                         >
                           <TableCell onClick={(e) => e.stopPropagation()}>
                             <Checkbox
-                              checked={selectedAssetNos.has(d.assetNo)}
-                              onCheckedChange={() => toggleSelectAssetNo(d.assetNo)}
-                              aria-label={`เลือก ${d.assetNo}`}
+                              checked={selectedAssetCodes.has(d.assetCode)}
+                              onCheckedChange={() => toggleSelectAssetCode(d.assetCode)}
+                              aria-label={`เลือก ${d.assetCode}`}
                             />
                           </TableCell>
                           <TableCell className="whitespace-nowrap font-mono text-xs font-medium text-slate-700 dark:text-slate-300">
-                            <Highlight text={d.assetNo} query={debouncedSearch} />
+                            <Highlight text={d.assetCode} query={debouncedSearch} />
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-xs text-slate-600 dark:text-slate-400">
-                            <Highlight text={d.deviceType || ''} query={debouncedSearch} />
+                            <Highlight text={d.type || ''} query={debouncedSearch} />
                           </TableCell>
                           <TableCell className="text-sm">
                             <span className="text-slate-700 dark:text-slate-200">
@@ -1449,7 +1449,7 @@ tr:nth-child(even) td{background:#fafbfc}
                             </span>
                           </TableCell>
                           <TableCell className="whitespace-nowrap font-mono text-xs text-slate-600 dark:text-slate-400">
-                            <Highlight text={d.serial || '—'} query={debouncedSearch} />
+                            <Highlight text={d.serialNumber || '—'} query={debouncedSearch} />
                           </TableCell>
                           <TableCell>
                             <Badge className={STATUS_BADGE[d.status] || 'bg-slate-100 text-slate-600'}>{d.status}</Badge>
@@ -1475,7 +1475,7 @@ tr:nth-child(even) td{background:#fafbfc}
                                   <CheckCheck className="h-3 w-3" /> บันทึกแล้ว
                                 </motion.span>
                               )}
-                              <Button size="sm" variant="ghost" title="ดู" onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}>
+                              <Button size="sm" variant="ghost" title="ดู" onClick={() => { setDetailAssetCode(d.assetCode); setDetailOpen(true) }}>
                                 <Eye className="h-3.5 w-3.5" />
                               </Button>
                               <Button
@@ -1483,12 +1483,12 @@ tr:nth-child(even) td{background:#fafbfc}
                                 variant="ghost"
                                 title="พิมพ์สติกเกอร์"
                                 className="text-[#f97316] hover:bg-orange-50 dark:hover:bg-orange-950/30"
-                                onClick={() => handleSingleStickerPrint(d.assetNo)}
+                                onClick={() => handleSingleStickerPrint(d.assetCode)}
                                 disabled={stickerPrinting}
                               >
                                 <Tag className="h-3.5 w-3.5" />
                               </Button>
-                              <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => openEdit(d.assetNo)} disabled={isSaving}>
+                              <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => openEdit(d.assetCode)} disabled={isSaving}>
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
                               <Button
@@ -1496,7 +1496,7 @@ tr:nth-child(even) td{background:#fafbfc}
                                 variant="ghost"
                                 title="ลบ"
                                 className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                                onClick={() => setDeleteAssetNo(d.assetNo)}
+                                onClick={() => setDeleteAssetCode(d.assetCode)}
                                 disabled={isSaving || isDeleting}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -1547,7 +1547,7 @@ tr:nth-child(even) td{background:#fafbfc}
 
       {/* Detail Sheet */}
       <ItamDeviceDetailSheet
-        assetNo={detailAssetNo}
+        assetNo={detailAssetCode}
         open={detailOpen}
         onOpenChange={setDetailOpen}
         onEdit={(an) => {
@@ -1562,17 +1562,17 @@ tr:nth-child(even) td{background:#fafbfc}
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <Package className="h-5 w-5 text-[#f97316]" />
-              {editAssetNo ? `แก้ไขอุปกรณ์: ${editAssetNo}` : 'เพิ่มอุปกรณ์ใหม่'}
+              {editAssetCode ? `แก้ไขอุปกรณ์: ${editAssetCode}` : 'เพิ่มอุปกรณ์ใหม่'}
             </DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             <div className="space-y-1.5">
               <Label className="text-xs">รหัสสินทรัพย์ *</Label>
-              <Input value={form.assetNo} onChange={(e) => setForm({ ...form, assetNo: e.target.value })} disabled={!!editAssetNo} className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input value={form.assetCode} onChange={(e) => setForm({ ...form, assetCode: e.target.value })} disabled={!!editAssetCode} className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">ประเภท</Label>
-              <Input value={form.deviceType} onChange={(e) => setForm({ ...form, deviceType: e.target.value })} placeholder="เช่น PRINTER" className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} placeholder="เช่น PRINTER" className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">กลุ่มอุปกรณ์</Label>
@@ -1588,7 +1588,7 @@ tr:nth-child(even) td{background:#fafbfc}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Serial</Label>
-              <Input value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">สถานะ</Label>
@@ -1694,7 +1694,7 @@ tr:nth-child(even) td{background:#fafbfc}
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">วันติดตั้ง</Label>
-              <Input type="date" value={form.installDate} onChange={(e) => setForm({ ...form, installDate: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input type="date" value={form.purchaseDate} onChange={(e) => setForm({ ...form, purchaseDate: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">วันหมดประกัน</Label>
@@ -1726,19 +1726,19 @@ tr:nth-child(even) td{background:#fafbfc}
               disabled={addMutation.isPending || editMutation.isPending}
               className="bg-[#f97316] text-white hover:bg-[#ea580c]"
             >
-              {(addMutation.isPending || editMutation.isPending) ? 'กำลังบันทึก...' : editAssetNo ? 'บันทึกการแก้ไข' : 'เพิ่มอุปกรณ์'}
+              {(addMutation.isPending || editMutation.isPending) ? 'กำลังบันทึก...' : editAssetCode ? 'บันทึกการแก้ไข' : 'เพิ่มอุปกรณ์'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Delete confirm */}
-      <AlertDialog open={!!deleteAssetNo} onOpenChange={(o) => !o && setDeleteAssetNo(null)}>
+      <AlertDialog open={!!deleteAssetCode} onOpenChange={(o) => !o && setDeleteAssetCode(null)}>
         <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle>ยืนยันการลบ?</AlertDialogTitle>
             <AlertDialogDescription>
-              จะลบอุปกรณ์ <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">{deleteAssetNo}</span> และประวัติที่เกี่ยวข้องทั้งหมด (มิเตอร์, มอบหมาย, ซ่อม) การกระทำนี้ย้อนกลับไม่ได้
+              จะลบอุปกรณ์ <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">{deleteAssetCode}</span> และประวัติที่เกี่ยวข้องทั้งหมด (มิเตอร์, มอบหมาย, ซ่อม) การกระทำนี้ย้อนกลับไม่ได้
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1915,7 +1915,7 @@ tr:nth-child(even) td{background:#fafbfc}
         <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900 p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
-              <Edit3 className="h-5 w-5 text-[#f97316]" /> แก้ไขหลายรายการ ({selectedAssetNos.size} เครื่อง)
+              <Edit3 className="h-5 w-5 text-[#f97316]" /> แก้ไขหลายรายการ ({selectedAssetCodes.size} เครื่อง)
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
@@ -2029,24 +2029,24 @@ const GRID_COLS = 'grid-cols-[40px_80px_112px_minmax(140px,1fr)_128px_128px_128p
 interface VirtualDevicesTableProps {
   devices: Device[]
   query: string
-  selectedAssetNos: Set<string>
-  savedAssetNos: Set<string>
+  selectedAssetCodes: Set<string>
+  savedAssetCodes: Set<string>
   stickerPrinting: boolean
   canEdit: boolean
-  onRowClick: (assetNo: string) => void
-  onToggle: (assetNo: string) => void
+  onRowClick: (assetCode: string) => void
+  onToggle: (assetCode: string) => void
   onSelectAll: (checked: boolean) => void
-  onView: (assetNo: string) => void
-  onPrintSticker: (assetNo: string) => void
-  onEdit: (assetNo: string) => void
-  onDelete: (assetNo: string) => void
+  onView: (assetCode: string) => void
+  onPrintSticker: (assetCode: string) => void
+  onEdit: (assetCode: string) => void
+  onDelete: (assetCode: string) => void
 }
 
 function VirtualDevicesTable({
   devices,
   query,
-  selectedAssetNos,
-  savedAssetNos,
+  selectedAssetCodes,
+  savedAssetCodes,
   stickerPrinting,
   onRowClick,
   onToggle,
@@ -2068,7 +2068,7 @@ function VirtualDevicesTable({
 
   const totalSize = rowVirtualizer.getTotalSize()
   const virtualRows = rowVirtualizer.getVirtualItems()
-  const allSelected = devices.length > 0 && devices.every((d) => selectedAssetNos.has(d.assetNo))
+  const allSelected = devices.length > 0 && devices.every((d) => selectedAssetCodes.has(d.assetCode))
 
   return (
     <div
@@ -2106,8 +2106,8 @@ function VirtualDevicesTable({
           const d = devices[virtualRow.index]
           if (!d) return null
           const isSaving = d.__optimistic === 'add' || d.__optimistic === 'edit'
-          const justSaved = savedAssetNos.has(d.assetNo)
-          const isSelected = selectedAssetNos.has(d.assetNo)
+          const justSaved = savedAssetCodes.has(d.assetCode)
+          const isSelected = selectedAssetCodes.has(d.assetCode)
           return (
             <div
               key={d.id}
@@ -2121,7 +2121,7 @@ function VirtualDevicesTable({
                 width: '100%',
                 transform: `translateY(${virtualRow.start}px)`,
               }}
-              onClick={() => onRowClick(d.assetNo)}
+              onClick={() => onRowClick(d.assetCode)}
               className={[
                 `grid ${GRID_COLS} cursor-pointer items-center gap-2 border-b border-slate-100 px-3 text-xs transition-colors dark:border-slate-800`,
                 'hover:bg-slate-50 dark:hover:bg-slate-800/50',
@@ -2133,22 +2133,22 @@ function VirtualDevicesTable({
               <div onClick={(e) => e.stopPropagation()} className="flex items-center" role="cell">
                 <Checkbox
                   checked={isSelected}
-                  onCheckedChange={() => onToggle(d.assetNo)}
-                  aria-label={`เลือก ${d.assetNo}`}
+                  onCheckedChange={() => onToggle(d.assetCode)}
+                  aria-label={`เลือก ${d.assetCode}`}
                 />
               </div>
               <div role="cell" className="whitespace-nowrap font-mono font-medium text-slate-700 dark:text-slate-300">
-                <Highlight text={d.assetNo} query={query} />
+                <Highlight text={d.assetCode} query={query} />
               </div>
               <div role="cell" className="whitespace-nowrap text-slate-600 dark:text-slate-400">
-                <Highlight text={d.deviceType || ''} query={query} />
+                <Highlight text={d.type || ''} query={query} />
               </div>
               <div role="cell" className="truncate text-slate-700 dark:text-slate-200">
                 <Highlight text={d.brand || ''} query={query} />{' '}
                 <Highlight text={d.model || ''} query={query} />
               </div>
               <div role="cell" className="whitespace-nowrap font-mono text-slate-600 dark:text-slate-400">
-                <Highlight text={d.serial || '—'} query={query} />
+                <Highlight text={d.serialNumber || '—'} query={query} />
               </div>
               <div role="cell">
                 <Badge className={STATUS_BADGE[d.status] || 'bg-slate-100 text-slate-600'}>{d.status}</Badge>
@@ -2173,7 +2173,7 @@ function VirtualDevicesTable({
                       <CheckCheck className="h-3 w-3" /> บันทึกแล้ว
                     </span>
                   )}
-                  <Button size="sm" variant="ghost" title="ดู" onClick={() => onView(d.assetNo)} className="h-7 w-7 p-0">
+                  <Button size="sm" variant="ghost" title="ดู" onClick={() => onView(d.assetCode)} className="h-7 w-7 p-0">
                     <Eye className="h-3.5 w-3.5" />
                   </Button>
                   <Button
@@ -2181,12 +2181,12 @@ function VirtualDevicesTable({
                     variant="ghost"
                     title="พิมพ์สติกเกอร์"
                     className="h-7 w-7 p-0 text-[#f97316] hover:bg-orange-50 dark:hover:bg-orange-950/30"
-                    onClick={() => onPrintSticker(d.assetNo)}
+                    onClick={() => onPrintSticker(d.assetCode)}
                     disabled={stickerPrinting}
                   >
                     <Tag className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => onEdit(d.assetNo)} disabled={isSaving} className="h-7 w-7 p-0">
+                  <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => onEdit(d.assetCode)} disabled={isSaving} className="h-7 w-7 p-0">
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
                   <Button
@@ -2194,7 +2194,7 @@ function VirtualDevicesTable({
                     variant="ghost"
                     title="ลบ"
                     className="h-7 w-7 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                    onClick={() => onDelete(d.assetNo)}
+                    onClick={() => onDelete(d.assetCode)}
                     disabled={isSaving}
                   >
                     <Trash2 className="h-3.5 w-3.5" />

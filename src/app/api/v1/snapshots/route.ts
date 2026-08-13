@@ -30,31 +30,41 @@ export async function GET(req: NextRequest) {
   const where = buildWhere(query, FIELD_MAP)
   const orderBy = buildOrderBy(query, FIELD_MAP, { createdAt: 'desc' })
 
-  const [total, snapshots] = await Promise.all([
-    db.meterReportSnapshot.count({ where }),
-    db.meterReportSnapshot.findMany({
-      where,
-      orderBy,
-      skip: (query.page - 1) * query.limit,
-      take: query.limit,
-      // Include row count summary (already stored on snapshot.rowCount)
-      select: {
-        id: true,
-        snapshotId: true,
-        cycleMonth: true,
-        revision: true,
-        status: true,
-        ruleVersion: true,
-        rowCount: true,
-        totalPagesBw: true,
-        totalPagesColor: true,
-        totalCost: true,
-        contentHash: true,
-        createdBy: true,
-        createdAt: true,
-      },
-    }),
-  ])
+  let total = 0
+  let snapshots: unknown[] = []
+  try {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    const [t, s] = await Promise.all([
+      db.meterReportSnapshot.count({ where }),
+      db.meterReportSnapshot.findMany({
+        where,
+        orderBy,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        // Include row count summary (already stored on snapshot.rowCount)
+        select: {
+          id: true,
+          snapshotId: true,
+          cycleMonth: true,
+          revision: true,
+          status: true,
+          ruleVersion: true,
+          rowCount: true,
+          totalPagesBw: true,
+          totalPagesColor: true,
+          totalCost: true,
+          contentHash: true,
+          createdBy: true,
+          createdAt: true,
+        },
+      }),
+    ])
+    total = t
+    snapshots = s
+  } catch {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    return list([], { page: query.page, limit: query.limit, total: 0 })
+  }
 
   return list(snapshots, { page: query.page, limit: query.limit, total })
 }

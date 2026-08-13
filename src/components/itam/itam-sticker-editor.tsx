@@ -530,13 +530,13 @@ export function ItamStickerEditor() {
       try {
         const devRes = await fetch('/api/itam/devices?limit=1')
         if (devRes.ok) {
-          const devJson = (await devRes.json()) as { devices: { assetNo: string }[] }
-          assetNo = devJson.devices[0]?.assetNo ?? null
+          const devJson = (await devRes.json()) as { devices: { assetCode: string }[] }
+          assetNo = devJson.devices[0]?.assetCode ?? null
         }
       } catch {
         /* ignore — fall through to sample */
       }
-      if (!assetNo) assetNo = SAMPLE_DEVICE.assetNo
+      if (!assetNo) assetNo = SAMPLE_DEVICE.assetCode
 
       const res = await fetch('/api/itam/sticker/render', {
         method: 'POST',
@@ -1138,7 +1138,7 @@ export function ItamStickerEditor() {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              ตัวอย่างสติกเกอร์สำหรับอุปกรณ์ <span className="font-mono font-semibold">{SAMPLE_DEVICE.assetNo}</span> ({SAMPLE_DEVICE.brand} {SAMPLE_DEVICE.model})
+              ตัวอย่างสติกเกอร์สำหรับอุปกรณ์ <span className="font-mono font-semibold">{SAMPLE_DEVICE.assetCode}</span> ({SAMPLE_DEVICE.brand} {SAMPLE_DEVICE.model})
             </p>
             <div
               className="overflow-auto rounded-md border border-slate-200 bg-slate-100 p-8 dark:border-slate-700 dark:bg-slate-950"

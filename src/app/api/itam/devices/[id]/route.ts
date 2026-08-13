@@ -14,10 +14,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params
     const device = await db.device.findUnique({
-      where: { assetNo: id },
+      where: { assetCode: id },
       include: {
         meterReadings: { take: 10, orderBy: { readingDate: 'desc' } },
-        locationHistories: { take: 10, orderBy: { moveDate: 'desc' } },
+        transfers: { take: 10, orderBy: { moveDate: 'desc' } },
         assignments: { take: 10, orderBy: { checkoutDate: 'desc' } },
         maintenanceLogs: { take: 10, orderBy: { startDate: 'desc' } },
         _count: true,
@@ -44,7 +44,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id } = await params
     const body = await req.json()
-    const existing = await db.device.findUnique({ where: { assetNo: id } })
+    const existing = await db.device.findUnique({ where: { assetCode: id } })
     if (!existing) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
 
     // Site access — both for the existing device and any new site being set
@@ -56,12 +56,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const updated = await db.device.update({
-      where: { assetNo: id },
+      where: { assetCode: id },
       data: {
-        deviceType: body.deviceType ?? existing.deviceType,
+        name: body.name ?? existing.name,
+        type: body.deviceType ?? existing.type,
         brand: body.brand ?? existing.brand,
         model: body.model ?? existing.model,
-        serial: body.serial ?? existing.serial,
+        serialNumber: body.serial ?? existing.serialNumber,
         building: body.building ?? existing.building,
         floor: body.floor ?? existing.floor,
         department: body.department ?? existing.department,
@@ -75,7 +76,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         remoteId: body.remoteId ?? existing.remoteId,
         remark: body.remark ?? existing.remark,
         vendor: body.vendor ?? existing.vendor,
-        installDate: body.installDate ?? existing.installDate,
+        purchaseDate: body.installDate ?? existing.purchaseDate,
         uninstallDate: body.uninstallDate ?? existing.uninstallDate,
         warrantyEnd: body.warrantyEnd ?? existing.warrantyEnd,
         deviceGroup: body.deviceGroup ?? existing.deviceGroup,
@@ -90,17 +91,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'UPDATE_DEVICE',
-          user: user.email,
-          details: JSON.stringify({ assetNo: id, changes: Object.keys(body) }),
+          entity: 'Device',
+          entityId: updated.id,
+          summary: `แก้ไขอุปกรณ์ ${updated.assetCode}`,
+          actor: user.email,
+          detail: JSON.stringify({ assetCode: id, changes: Object.keys(body) }),
         },
       })
     } catch { /* ignore */ }
 
     // Best-effort notification
     void notifyDeviceUpdated(
-      { assetNo: id, brand: updated.brand, model: updated.model },
+      { assetNo: updated.assetCode, brand: updated.brand, model: updated.model },
       user.username || user.email,
       Object.keys(body),
     )
@@ -108,7 +111,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     // Push SSE event — other tabs refetch this device + the list
     publishRealtimeEvent({
       type: 'device-updated',
-      assetNo: id,
+      assetNo: updated.assetCode,
       site: updated.site ?? null,
       payload: { changedFields: Object.keys(body) },
     })
@@ -128,20 +131,22 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const user = auth.row
 
     const { id } = await params
-    const existing = await db.device.findUnique({ where: { assetNo: id } })
+    const existing = await db.device.findUnique({ where: { assetCode: id } })
     if (!existing) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     if (!canAccessSite(user, existing.site)) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์ลบอุปกรณ์ในสาขานี้' }, { status: 403 })
     }
 
-    await db.device.delete({ where: { assetNo: id } })
+    await db.device.delete({ where: { assetCode: id } })
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'DELETE_DEVICE',
-          user: user.email,
-          details: JSON.stringify({ assetNo: id, site: existing.site }),
+          entity: 'Device',
+          entityId: existing.id,
+          summary: `ลบอุปกรณ์ ${existing.assetCode}`,
+          actor: user.email,
+          detail: JSON.stringify({ assetCode: id, site: existing.site }),
         },
       })
     } catch { /* ignore */ }
@@ -149,7 +154,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     // Push SSE event — other tabs remove the row from their list
     publishRealtimeEvent({
       type: 'device-deleted',
-      assetNo: id,
+      assetNo: existing.assetCode,
       site: existing.site ?? null,
     })
 

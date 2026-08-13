@@ -1,0 +1,252 @@
+     1→/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:534:          assetNo = devJson.devices[0]?.assetNo ?? null
+     2→/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:539:      if (!assetNo) assetNo = SAMPLE_DEVICE.assetNo
+     3→/home/z/my-project/src/components/itam/itam-sticker-editor.tsx:1141:              ตัวอย่างสติกเกอร์สำหรับอุปกรณ์ <span className="font-mono font-semibold">{SAMPLE_DEVICE.assetNo}</span> ({SAMPLE_DEVICE.brand} {SAMPLE_DEVICE.model})
+     4→/home/z/my-project/src/lib/meter-snapshot.ts:78:        r.assetNo,
+     5→/home/z/my-project/src/lib/meter-snapshot.ts:114:  const existing = await db.meterReportSnapshot.findFirst({
+     6→/home/z/my-project/src/lib/meter-snapshot.ts:147:      assetNo: r.assetNo,
+     7→/home/z/my-project/src/lib/meter-snapshot.ts:180:    await db.meterReportSnapshot.updateMany({
+     8→/home/z/my-project/src/lib/meter-snapshot.ts:190:    db.meterReportSnapshot.create({
+     9→/home/z/my-project/src/lib/meter-snapshot.ts:206:    db.meterReportSnapshotRow.createMany({
+    10→/home/z/my-project/src/lib/meter-snapshot.ts:209:        assetNo: r.assetNo,
+    11→/home/z/my-project/src/lib/meter-snapshot.ts:254:  const snapshot = await db.meterReportSnapshot.findFirst({
+    12→/home/z/my-project/src/lib/meter-snapshot.ts:262:  const rows = await db.meterReportSnapshotRow.findMany({
+    13→/home/z/my-project/src/lib/meter-snapshot.ts:269:      assetNo: r.assetNo,
+    14→/home/z/my-project/src/lib/asset-site-code.ts:184:  if (reuse && options?.assetNo) {
+    15→/home/z/my-project/src/lib/asset-site-code.ts:187:        assetCode: options.assetNo,
+    16→/home/z/my-project/src/lib/sticker-template.ts:337:    '{{AssetNo}}': device?.assetNo || '',
+    17→/home/z/my-project/src/lib/sticker-template.ts:340:    '{{Type}}': device?.deviceType || '',
+    18→/home/z/my-project/src/lib/sticker-template.ts:410:    const data = substituteVariables(el.content ?? '', device, settings) || device?.assetNo || ''
+    19→/home/z/my-project/src/lib/sticker-template.ts:432:    const data = substituteVariables(el.content ?? '', device, settings) || device?.assetNo || ''
+    20→/home/z/my-project/src/components/itam/itam-work-orders.tsx:1194:          <InfoRow label="รหัสอุปกรณ์" value={order.assetNo} mono />
+    21→/home/z/my-project/src/lib/notifications.ts:235:    message: `เพิ่ม ${device.assetNo} (${[device.brand, device.model].filter(Boolean).join(' ') || '-'}) สาขา ${device.site || '-'} โดย ${by}`,
+    22→/home/z/my-project/src/lib/notifications.ts:246:    message: `แก้ไข ${device.assetNo} (${[device.brand, device.model].filter(Boolean).join(' ') || '-'}) โดย ${by} — ${changes.join(', ')}`,
+    23→/home/z/my-project/src/lib/notifications.ts:257:    message: `ย้าย ${info.assetNo} จาก ${info.fromSite || '-'} → ${info.toSite} โดย ${info.by}`,
+    24→/home/z/my-project/src/lib/notifications.ts:268:    message: `จดมิเตอร์ ${info.assetNo}: BW=${info.pagesBw} สี=${info.pagesColor} โดย ${info.by}`,
+    25→/home/z/my-project/src/lib/notifications.ts:279:    message: `${info.assetNo}: ${info.fromStatus || '-'} → ${info.toStatus} โดย ${info.by}`,
+    26→/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:248:                <Button size="sm" variant="outline" onClick={() => onEdit(device.assetNo)} className="dark:bg-slate-800 dark:border-slate-700">
+    27→/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:262:              <Field label="Asset No" value={device.assetNo} />
+    28→/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:263:              <Field label="ประเภท" value={device.deviceType} />
+    29→/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:280:              <Field label="ติดตั้ง" value={fmtDate(device.installDate)} />
+    30→/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:699:  }, [open, device.assetNo])
+    31→/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:765:          assetNo: device.assetNo,
+    32→/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:810:      const res = await fetch(`/api/itam/devices/${device.assetNo}/transfer`, {
+    33→/home/z/my-project/src/components/itam/itam-device-detail-sheet.tsx:858:            รหัส {device.assetNo} · {device.brand || ''} {device.model || ''}
+    34→/home/z/my-project/src/components/itam/itam-settings.tsx:18:interface MasterItem { id: string; itemId: string | null; categoryKey: string; value: string; displayLabel: string | null; active: boolean; departmentCode: string | null }
+    35→/home/z/my-project/src/components/itam/itam-settings.tsx:33:  const [form, setForm] = React.useState({ categoryKey: '', value: '', displayLabel: '', departmentCode: '' })
+    36→/home/z/my-project/src/components/itam/itam-settings.tsx:113:    setForm({ categoryKey: 'Brand', value: '', displayLabel: '', departmentCode: '' })
+    37→/home/z/my-project/src/components/itam/itam-settings.tsx:119:    setForm({ categoryKey: item.categoryKey, value: item.value, displayLabel: item.displayLabel || '', departmentCode: item.departmentCode || '' })
+    38→/home/z/my-project/src/components/itam/itam-settings.tsx:124:    if (!form.categoryKey || !form.value) { toast.error('กรุณากรอกหมวดหมู่และค่า'); return }
+    39→/home/z/my-project/src/components/itam/itam-settings.tsx:234:                          <TableCell><Badge className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{item.categoryKey}</Badge></TableCell>
+    40→/home/z/my-project/src/components/itam/itam-settings.tsx:298:              <Select value={form.categoryKey} onValueChange={(v) => setForm({ ...form, categoryKey: v })}>
+    41→/home/z/my-project/src/components/itam/itam-repairs.tsx:284:          l.assetNo.toLowerCase().includes(q) ||
+    42→/home/z/my-project/src/components/itam/itam-repairs.tsx:319:          assetNo: input.assetNo,
+    43→/home/z/my-project/src/components/itam/itam-repairs.tsx:386:    if (!createForm.assetNo) {
+    44→/home/z/my-project/src/components/itam/itam-repairs.tsx:574:                          {log.assetNo}
+    45→/home/z/my-project/src/components/itam/itam-repairs.tsx:660:                    {createForm.assetNo ? (
+    46→/home/z/my-project/src/components/itam/itam-repairs.tsx:662:                        <span className="font-mono text-xs">{createForm.assetNo}</span>
+    47→/home/z/my-project/src/components/itam/itam-repairs.tsx:664:                          const d = devices.find((x) => x.assetNo === createForm.assetNo)
+    48→/home/z/my-project/src/components/itam/itam-repairs.tsx:688:                            value={`${d.assetNo} ${d.brand ?? ''} ${d.model ?? ''}`}
+    49→/home/z/my-project/src/components/itam/itam-repairs.tsx:690:                              setCreateForm((f) => ({ ...f, assetNo: d.assetNo }))
+    50→/home/z/my-project/src/components/itam/itam-repairs.tsx:697:                                createForm.assetNo === d.assetNo ? 'opacity-100' : 'opacity-0'
+    51→/home/z/my-project/src/components/itam/itam-repairs.tsx:701:                              <span className="font-mono text-xs font-semibold">{d.assetNo}</span>
+    52→/home/z/my-project/src/components/itam/itam-repairs.tsx:777:              disabled={createMutation.isPending || !createForm.assetNo}
+    53→/home/z/my-project/src/components/itam/itam-repairs.tsx:861:                    {detailLog.assetNo}
+    54→/home/z/my-project/src/app/api/notifications/route.ts:93:      d.brand && d.model ? `${d.brand} ${d.model}`.trim() : d.assetNo
+    55→/home/z/my-project/src/app/api/notifications/route.ts:113:          subtitle: `${d.assetNo} · หมด ${expiryISO} (${Math.abs(days)} วันที่แล้ว)`,
+    56→/home/z/my-project/src/app/api/notifications/route.ts:116:          assetCode: d.assetNo,
+    57→/home/z/my-project/src/app/api/notifications/route.ts:128:          subtitle: `${d.assetNo} · จะหมดใน ${days} วัน (${expiryISO})`,
+    58→/home/z/my-project/src/app/api/notifications/route.ts:131:          assetCode: d.assetNo,
+    59→/home/z/my-project/src/app/api/notifications/route.ts:148:        METERABLE_TYPES.has((d.deviceType ?? '').toUpperCase()),
+    60→/home/z/my-project/src/app/api/notifications/route.ts:164:        if (!readAssetMap.has(r.assetNo)) {
+    61→/home/z/my-project/src/app/api/notifications/route.ts:165:          readAssetMap.set(r.assetNo, { date: r.readingDate, createdAt: r.createdAt })
+    62→/home/z/my-project/src/app/api/notifications/route.ts:171:        if (readAssetMap.has(d.assetNo)) continue
+    63→/home/z/my-project/src/app/api/notifications/route.ts:173:        const referenceDate = d.installDate ?? d.updatedAt.toISOString().slice(0, 10)
+    64→/home/z/my-project/src/app/api/notifications/route.ts:186:          subtitle: `${d.assetNo} · รอบ "${activeCycle.name}" · ${daysSince} วัน`,
+    65→/home/z/my-project/src/app/api/notifications/route.ts:189:          assetCode: d.assetNo,
+    66→/home/z/my-project/src/components/itam/itam-meter.tsx:139:                      <TableCell className="font-mono text-xs font-medium">{r.assetNo}</TableCell>
+    67→/home/z/my-project/src/components/itam/itam-meter.tsx:252:        fetch(`/api/itam/meter-readings?assetNo=${encodeURIComponent(d.assetNo)}&limit=1`)
+    68→/home/z/my-project/src/components/itam/itam-meter.tsx:256:            lastReadingsMap.current[d.assetNo] = r ? r.meterBw : 0
+    69→/home/z/my-project/src/components/itam/itam-meter.tsx:258:          .catch(() => { lastReadingsMap.current[d.assetNo] = 0 }),
+    70→/home/z/my-project/src/components/itam/itam-meter.tsx:264:        const prev = lastReadingsMap.current[d.assetNo] ?? 0
+    71→/home/z/my-project/src/components/itam/itam-meter.tsx:265:        init[d.assetNo] = {
+    72→/home/z/my-project/src/components/itam/itam-meter.tsx:269:          name: `${d.brand || ''} ${d.model || ''}`.trim() || d.assetNo,
+    73→/home/z/my-project/src/components/itam/itam-meter.tsx:285:      const r = rows[d.assetNo]
+    74→/home/z/my-project/src/components/itam/itam-meter.tsx:294:      arr.push({ assetNo: d.assetNo, name: r.name, prev: r.prev, next, delta, changed, valid, isReset })
+    75→/home/z/my-project/src/components/itam/itam-meter.tsx:314:              assetNo: m.assetNo,
+    76→/home/z/my-project/src/components/itam/itam-meter.tsx:318:              remark: rows[m.assetNo]?.remark?.trim() || null,
+    77→/home/z/my-project/src/components/itam/itam-meter.tsx:409:                      <TableRow key={m.assetNo} className={rowBg}>
+    78→/home/z/my-project/src/components/itam/itam-meter.tsx:410:                        <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">{m.assetNo}</TableCell>
+    79→/home/z/my-project/src/components/itam/itam-meter.tsx:417:                            value={rows[m.assetNo]?.newReading ?? ''}
+    80→/home/z/my-project/src/components/itam/itam-meter.tsx:418:                            onChange={(e) => updateRow(m.assetNo, { newReading: e.target.value })}
+    81→/home/z/my-project/src/components/itam/itam-meter.tsx:448:                              value={rows[m.assetNo]?.remark ?? ''}
+    82→/home/z/my-project/src/components/itam/itam-meter.tsx:449:                              onChange={(e) => updateRow(m.assetNo, { remark: e.target.value })}
+    83→/home/z/my-project/src/components/itam/itam-meter.tsx:454:                                (!rows[m.assetNo]?.remark?.trim()
+    84→/home/z/my-project/src/components/itam/itam-meter.tsx:461:                              value={rows[m.assetNo]?.remark ?? ''}
+    85→/home/z/my-project/src/components/itam/itam-meter.tsx:462:                              onChange={(e) => updateRow(m.assetNo, { remark: e.target.value })}
+    86→/home/z/my-project/src/app/api/v1/devices/route.ts:84:    if (!body.assetNo) {
+    87→/home/z/my-project/src/app/api/v1/devices/route.ts:91:        assetNo: String(body.assetNo).trim(),
+    88→/home/z/my-project/src/app/api/v1/devices/route.ts:92:        deviceType: body.deviceType ?? null,
+    89→/home/z/my-project/src/app/api/v1/devices/route.ts:104:        installDate: body.installDate ?? null,
+    90→/home/z/my-project/src/app/api/v1/devices/route.ts:118:        details: JSON.stringify({ entity: 'Device', assetNo: created.assetNo, ...body }),
+    91→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:98:  return name || d.assetNo
+    92→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:155:    const idx = devices.findIndex((d) => d.assetNo === pendingDeviceId)
+    93→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:187:  }, [selected?.assetNo])
+    94→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:205:  }, [focus, selected?.assetNo])
+    95→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:297:          assetNo: selected.assetNo,
+    96→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:318:            assetNo: selected.assetNo,
+    97→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:331:        `บันทึกมิเตอร์ ${selected.assetNo} · +${(pagesBw + pagesColor).toLocaleString()} แผ่น`,
+    98→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:368:      assetNo: d.assetNo,
+    99→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:510:                                {d.assetNo}
+   100→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:558:                  key={selected.assetNo}
+   101→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:570:                          {selected.assetNo}
+   102→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:747:                  key={`${r.assetNo}-${r.at}-${i}`}
+   103→/home/z/my-project/src/components/itam/itam-meter-keyboard.tsx:751:                    <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">{r.assetNo}</span>
+   104→/home/z/my-project/src/components/itam/itam-stock.tsx:1052:                            const d = devices.find((x) => x.assetNo === txnForm.relatedAssetNo)
+   105→/home/z/my-project/src/components/itam/itam-stock.tsx:1076:                              value={`${d.assetNo} ${d.brand ?? ''} ${d.model ?? ''}`}
+   106→/home/z/my-project/src/components/itam/itam-stock.tsx:1078:                                setTxnForm((f) => ({ ...f, relatedAssetNo: d.assetNo }))
+   107→/home/z/my-project/src/components/itam/itam-stock.tsx:1085:                                  txnForm.relatedAssetNo === d.assetNo ? 'opacity-100' : 'opacity-0'
+   108→/home/z/my-project/src/components/itam/itam-stock.tsx:1089:                                <span className="font-mono text-xs font-semibold">{d.assetNo}</span>
+   109→/home/z/my-project/src/app/api/v1/work-orders/route.ts:200:        assetNo: body.assetNo ? String(body.assetNo).trim() : null,
+   110→/home/z/my-project/src/app/api/v1/work-orders/route.ts:218:        assetNo: order.assetNo,
+   111→/home/z/my-project/src/app/api/v1/snapshots/[id]/rows/route.ts:32:  const snapshot = await db.meterReportSnapshot.findFirst({
+   112→/home/z/my-project/src/app/api/v1/snapshots/[id]/rows/route.ts:42:    db.meterReportSnapshotRow.count({ where }),
+   113→/home/z/my-project/src/app/api/v1/snapshots/[id]/rows/route.ts:43:    db.meterReportSnapshotRow.findMany({
+   114→/home/z/my-project/src/app/api/v1/snapshots/[id]/verify/route.ts:28:    const snapshot = await db.meterReportSnapshot.findFirst({
+   115→/home/z/my-project/src/app/api/v1/snapshots/[id]/route.ts:28:  const snapshot = await db.meterReportSnapshot.findFirst({
+   116→/home/z/my-project/src/app/api/v1/snapshots/[id]/route.ts:38:    rows = await db.meterReportSnapshotRow.findMany({
+   117→/home/z/my-project/src/app/api/v1/snapshots/route.ts:34:    db.meterReportSnapshot.count({ where }),
+   118→/home/z/my-project/src/app/api/v1/snapshots/route.ts:35:    db.meterReportSnapshot.findMany({
+   119→/home/z/my-project/src/components/itam/snapshot-viewer.tsx:783:                      {r.assetNo}
+   120→/home/z/my-project/src/app/api/v1/meter-readings/route.ts:134:    if (!body?.assetNo || body.meterBw === undefined || body.meterBw === null) {
+   121→/home/z/my-project/src/app/api/v1/meter-readings/route.ts:139:    const device = await db.device.findUnique({ where: { assetNo: String(body.assetNo).trim() } })
+   122→/home/z/my-project/src/app/api/v1/meter-readings/route.ts:157:        where: { assetNo: device.assetNo },
+   123→/home/z/my-project/src/app/api/v1/meter-readings/route.ts:196:        assetNo: device.assetNo,
+   124→/home/z/my-project/src/app/api/v1/meter-readings/route.ts:225:            assetNo: device.assetNo,
+   125→/home/z/my-project/src/app/api/v1/meter-readings/route.ts:244:      assetNo: device.assetNo,
+   126→/home/z/my-project/src/app/api/v1/meter-readings/route.ts:251:      assetNo: device.assetNo,
+   127→/home/z/my-project/src/components/itam/itam-devices.tsx:350:        for (const d of devices) next.add(d.assetNo)
+   128→/home/z/my-project/src/components/itam/itam-devices.tsx:352:        for (const d of devices) next.delete(d.assetNo)
+   129→/home/z/my-project/src/components/itam/itam-devices.tsx:442:          assetNo: d.assetNo, deviceType: d.deviceType || '', brand: d.brand || '', model: d.model || '',
+   130→/home/z/my-project/src/components/itam/itam-devices.tsx:449:          installDate: (d as { installDate?: string }).installDate || '',
+   131→/home/z/my-project/src/components/itam/itam-devices.tsx:480:        assetNo: payload.assetNo,
+   132→/home/z/my-project/src/components/itam/itam-devices.tsx:481:        deviceType: payload.deviceType || null,
+   133→/home/z/my-project/src/components/itam/itam-devices.tsx:519:      flashSaved(payload.assetNo)
+   134→/home/z/my-project/src/components/itam/itam-devices.tsx:545:            d.assetNo === assetNo
+   135→/home/z/my-project/src/components/itam/itam-devices.tsx:548:                  deviceType: payload.deviceType || d.deviceType,
+   136→/home/z/my-project/src/components/itam/itam-devices.tsx:596:          devices: old.devices.filter((d) => d.assetNo !== assetNo),
+   137→/home/z/my-project/src/components/itam/itam-devices.tsx:618:    if (!form.assetNo.trim()) {
+   138→/home/z/my-project/src/components/itam/itam-devices.tsx:660:        assetNo: d.assetNo, deviceType: d.deviceType || '', brand: d.brand || '',
+   139→/home/z/my-project/src/components/itam/itam-devices.tsx:822:        <td class="mono">${esc(d.assetNo)}</td>
+   140→/home/z/my-project/src/components/itam/itam-devices.tsx:823:        <td>${esc(d.deviceType || '')}</td>
+   141→/home/z/my-project/src/components/itam/itam-devices.tsx:1151:    for (const d of devices) if (d.deviceType) s.add(d.deviceType)
+   142→/home/z/my-project/src/components/itam/itam-devices.tsx:1356:                      checked={devices.length > 0 && devices.every((d) => selectedAssetNos.has(d.assetNo))}
+   143→/home/z/my-project/src/components/itam/itam-devices.tsx:1417:                      const justSaved = savedAssetNos.has(d.assetNo)
+   144→/home/z/my-project/src/components/itam/itam-devices.tsx:1430:                          onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}
+   145→/home/z/my-project/src/components/itam/itam-devices.tsx:1434:                              checked={selectedAssetNos.has(d.assetNo)}
+   146→/home/z/my-project/src/components/itam/itam-devices.tsx:1435:                              onCheckedChange={() => toggleSelectAssetNo(d.assetNo)}
+   147→/home/z/my-project/src/components/itam/itam-devices.tsx:1436:                              aria-label={`เลือก ${d.assetNo}`}
+   148→/home/z/my-project/src/components/itam/itam-devices.tsx:1440:                            <Highlight text={d.assetNo} query={debouncedSearch} />
+   149→/home/z/my-project/src/components/itam/itam-devices.tsx:1443:                            <Highlight text={d.deviceType || ''} query={debouncedSearch} />
+   150→/home/z/my-project/src/components/itam/itam-devices.tsx:1478:                              <Button size="sm" variant="ghost" title="ดู" onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}>
+   151→/home/z/my-project/src/components/itam/itam-devices.tsx:1486:                                onClick={() => handleSingleStickerPrint(d.assetNo)}
+   152→/home/z/my-project/src/components/itam/itam-devices.tsx:1491:                              <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => openEdit(d.assetNo)} disabled={isSaving}>
+   153→/home/z/my-project/src/components/itam/itam-devices.tsx:1499:                                onClick={() => setDeleteAssetNo(d.assetNo)}
+   154→/home/z/my-project/src/components/itam/itam-devices.tsx:1571:              <Input value={form.assetNo} onChange={(e) => setForm({ ...form, assetNo: e.target.value })} disabled={!!editAssetNo} className="dark:bg-slate-800 dark:border-slate-700" />
+   155→/home/z/my-project/src/components/itam/itam-devices.tsx:1575:              <Input value={form.deviceType} onChange={(e) => setForm({ ...form, deviceType: e.target.value })} placeholder="เช่น PRINTER" className="dark:bg-slate-800 dark:border-slate-700" />
+   156→/home/z/my-project/src/components/itam/itam-devices.tsx:1697:              <Input type="date" value={form.installDate} onChange={(e) => setForm({ ...form, installDate: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+   157→/home/z/my-project/src/components/itam/itam-devices.tsx:1895:                        แถว {e.row} ({e.assetNo || '-'}): {e.error}
+   158→/home/z/my-project/src/components/itam/itam-devices.tsx:2071:  const allSelected = devices.length > 0 && devices.every((d) => selectedAssetNos.has(d.assetNo))
+   159→/home/z/my-project/src/components/itam/itam-devices.tsx:2109:          const justSaved = savedAssetNos.has(d.assetNo)
+   160→/home/z/my-project/src/components/itam/itam-devices.tsx:2110:          const isSelected = selectedAssetNos.has(d.assetNo)
+   161→/home/z/my-project/src/components/itam/itam-devices.tsx:2124:              onClick={() => onRowClick(d.assetNo)}
+   162→/home/z/my-project/src/components/itam/itam-devices.tsx:2136:                  onCheckedChange={() => onToggle(d.assetNo)}
+   163→/home/z/my-project/src/components/itam/itam-devices.tsx:2137:                  aria-label={`เลือก ${d.assetNo}`}
+   164→/home/z/my-project/src/components/itam/itam-devices.tsx:2141:                <Highlight text={d.assetNo} query={query} />
+   165→/home/z/my-project/src/components/itam/itam-devices.tsx:2144:                <Highlight text={d.deviceType || ''} query={query} />
+   166→/home/z/my-project/src/components/itam/itam-devices.tsx:2176:                  <Button size="sm" variant="ghost" title="ดู" onClick={() => onView(d.assetNo)} className="h-7 w-7 p-0">
+   167→/home/z/my-project/src/components/itam/itam-devices.tsx:2184:                    onClick={() => onPrintSticker(d.assetNo)}
+   168→/home/z/my-project/src/components/itam/itam-devices.tsx:2189:                  <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => onEdit(d.assetNo)} disabled={isSaving} className="h-7 w-7 p-0">
+   169→/home/z/my-project/src/components/itam/itam-devices.tsx:2197:                    onClick={() => onDelete(d.assetNo)}
+   170→/home/z/my-project/src/app/api/devices/warranty/route.ts:54:  return d.assetNo
+   171→/home/z/my-project/src/app/api/devices/warranty/route.ts:105:        assetCode: d.assetNo, // keep legacy field name for frontend compat
+   172→/home/z/my-project/src/app/api/devices/warranty/route.ts:112:        purchaseDate: d.installDate,
+   173→/home/z/my-project/src/components/itam/itam-dashboard.tsx:1199:                    <div className="text-xs text-slate-400">{a.assetNo} · {a.readingDate}</div>
+   174→/home/z/my-project/src/components/itam/itam-dashboard.tsx:1417:                    <tr key={row.assetNo}>
+   175→/home/z/my-project/src/components/itam/itam-dashboard.tsx:1419:                        <span className="font-mono text-[10px] text-slate-400">{row.assetNo}</span>
+   176→/home/z/my-project/src/components/itam/itam-dashboard.tsx:1430:                            title={`${row.assetNo} · ${c.month}: ${c.pages.toLocaleString()} แผ่น`}
+   177→/home/z/my-project/src/app/api/devices/lifecycle/route.ts:54:  return d.assetNo
+   178→/home/z/my-project/src/app/api/devices/lifecycle/route.ts:146:      const ageInMonths = computeAgeInMonths(d.installDate)
+   179→/home/z/my-project/src/app/api/devices/lifecycle/route.ts:176:        assetCode: d.assetNo, // legacy field name for frontend compat
+   180→/home/z/my-project/src/app/api/devices/lifecycle/route.ts:182:        deviceType: d.deviceType,
+   181→/home/z/my-project/src/app/api/devices/lifecycle/route.ts:185:        purchaseDate: d.installDate,
+   182→/home/z/my-project/src/app/api/devices/lifecycle/route.ts:218:      const typeKey = g.deviceType ?? 'ไม่ระบุ'
+   183→/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:436:                          <div key={d.assetNo}>
+   184→/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:439:                                {i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}.`} <span className="font-mono">{d.assetNo}</span>
+   185→/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:472:                <Button variant="outline" size="sm" onClick={() => exportExcelFromRows(rankingQuery.data!.devices.map((d) => ({ assetNo: d.assetNo, brand: d.brand ?? '', model: d.model ?? '', site: d.site ?? '', department: d.department ?? '', bw: d.bw, color: d.color, total: d.total })), [{ key: 'assetNo', label: 'รหัส' }, { key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }, { key: 'site', label: 'สาขา' }, { key: 'department', label: 'แผนก' }, { key: 'bw', label: 'ขาวดำ' }, { key: 'color', label: 'สี' }, { key: 'total', label: 'รวม' }], `paper-ranking-devices-${dateStamp()}.xls`)}>
+   186→/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:479:                <RankingCard title="10 เครื่องพิมพ์ใช้กระดาษสูงสุด" rows={rankingQuery.data.devices.map((d) => ({ name: `${d.assetNo} · ${d.brand ?? ''} ${d.model ?? ''}`.trim(), bw: d.bw, color: d.color, total: d.total, deviceCount: 1 }))} accent="#f59e0b" nameKey="name" />
+   187→/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:520:                        <TableRow key={r.assetNo} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+   188→/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:521:                          <TableCell className="font-mono text-xs">{r.assetNo}</TableCell>
+   189→/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:571:                  assetNo: r.assetNo, brand: r.brand ?? '', model: r.model ?? '', site: r.site ?? '',
+   190→/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:604:                        <TableRow key={r.assetNo} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50" title={`ดูรายละเอียด ${r.assetNo}`}>
+   191→/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:605:                          <TableCell className="font-mono text-xs">{r.assetNo}</TableCell>
+   192→/home/z/my-project/src/components/itam/itam-paper-analytics.tsx:608:                            {r.deviceType && <div className="text-[10px] text-slate-400">{r.deviceType}</div>}
+   193→/home/z/my-project/src/app/api/itam/maintenance/route.ts:50:    if (!body.assetNo || !body.type || !body.startDate) {
+   194→/home/z/my-project/src/app/api/itam/maintenance/route.ts:53:    const device = await db.device.findUnique({ where: { assetNo: body.assetNo } })
+   195→/home/z/my-project/src/app/api/itam/maintenance/route.ts:61:        assetNo: body.assetNo,
+   196→/home/z/my-project/src/app/api/itam/maintenance/route.ts:78:          details: JSON.stringify({ assetNo: body.assetNo, type: body.type }),
+   197→/home/z/my-project/src/app/api/meter/reminders/route.ts:12: *   - `Device.type`             → `Device.deviceType`
+   198→/home/z/my-project/src/app/api/meter/reminders/route.ts:13: *   - `Device.assetCode`        → `Device.assetNo`
+   199→/home/z/my-project/src/app/api/meter/reminders/route.ts:16: *   - `MeterReading.deviceId`   → `MeterReading.assetNo`
+   200→/home/z/my-project/src/app/api/meter/reminders/route.ts:53:  return d.assetNo
+   201→/home/z/my-project/src/app/api/meter/reminders/route.ts:129:      if (!readAssetMap.has(r.assetNo)) {
+   202→/home/z/my-project/src/app/api/meter/reminders/route.ts:130:        readAssetMap.set(r.assetNo, r.readingDate ?? '')
+   203→/home/z/my-project/src/app/api/meter/reminders/route.ts:138:      .filter((d) => !readAssetMap.has(d.assetNo))
+   204→/home/z/my-project/src/app/api/meter/reminders/route.ts:148:          (d.installDate && DATE_RE.test(d.installDate)
+   205→/home/z/my-project/src/app/api/meter/reminders/route.ts:149:            ? d.installDate!.slice(0, 10)
+   206→/home/z/my-project/src/app/api/meter/reminders/route.ts:157:            assetCode: d.assetNo, // legacy field name for frontend compat
+   207→/home/z/my-project/src/app/api/meter/reminders/route.ts:159:            type: d.deviceType, // legacy field name for frontend compat
+   208→/home/z/my-project/src/app/api/itam/search/route.ts:50:        select: { id: true, categoryKey: true, value: true, displayLabel: true },
+   209→/home/z/my-project/src/app/api/itam/search/route.ts:81:      devices: devices.map((d) => ({ type: 'device', id: d.id, title: `${d.assetNo} — ${d.brand || ''} ${d.model || ''}`, subtitle: `${d.deviceType || ''} · ${d.site || ''}`, icon: '💻' })),
+   210→/home/z/my-project/src/app/api/itam/search/route.ts:82:      master: masterItems.map((m) => ({ type: 'master', id: m.id, title: m.value, subtitle: m.categoryKey, icon: '📊' })),
+   211→/home/z/my-project/src/app/api/itam/sticker/render/route.ts:27:    const assetNo = String(body.assetNo ?? '').trim()
+   212→/home/z/my-project/src/app/api/itam/sticker/render/route.ts:65:      assetNo: device.assetNo,
+   213→/home/z/my-project/src/app/api/itam/sticker/render/route.ts:68:      deviceType: device.deviceType,
+   214→/home/z/my-project/src/app/api/itam/sticker/render/route.ts:86:      device.assetNo,
+   215→/home/z/my-project/src/app/api/itam/sticker/render/route.ts:87:      `เรนเดอร์สติกเกอร์สำหรับ ${device.assetNo} ด้วยเทมเพลต "${template.name}"`,
+   216→/home/z/my-project/src/app/api/itam/sticker/bulk-render/route.ts:73:    const byNo = new Map(devices.map((d) => [d.assetNo, d] as const))
+   217→/home/z/my-project/src/app/api/itam/sticker/bulk-render/route.ts:82:          assetNo: d.assetNo, assetSiteCode: d.assetSiteCode, serial: d.serial,
+   218→/home/z/my-project/src/app/api/itam/sticker/bulk-render/route.ts:83:          deviceType: d.deviceType, brand: d.brand, model: d.model,
+   219→/home/z/my-project/src/app/api/itam/sticker/bulk-render/route.ts:88:        const data = substituteVariables(el.content ?? '', deviceData, settings) || d.assetNo
+   220→/home/z/my-project/src/app/api/itam/sticker/bulk-render/route.ts:119:        assetNo: d.assetNo, assetSiteCode: d.assetSiteCode, serial: d.serial,
+   221→/home/z/my-project/src/app/api/itam/sticker/bulk-render/route.ts:120:        deviceType: d.deviceType, brand: d.brand, model: d.model,
+   222→/home/z/my-project/src/app/api/itam/dashboard/insights/route.ts:123:      let d = perDevice.get(r.assetNo)
+   223→/home/z/my-project/src/app/api/itam/dashboard/insights/route.ts:126:          assetNo: r.assetNo,
+   224→/home/z/my-project/src/app/api/itam/dashboard/insights/route.ts:133:        perDevice.set(r.assetNo, d)
+   225→/home/z/my-project/src/app/api/itam/dashboard/insights/route.ts:167:          assetNo: d.assetNo,
+   226→/home/z/my-project/src/app/api/itam/dashboard/insights/route.ts:169:            assetNo: d.assetNo,
+   227→/home/z/my-project/src/app/api/itam/dashboard/insights/route.ts:178:          message: `${d.assetNo} ใช้กระดาษ ${curTotal.toLocaleString()} แผ่น (เฉลี่ย ${Math.round(avg).toLocaleString()} แผ่น) — สูงผิดปกติ`,
+   228→/home/z/my-project/src/app/api/itam/dashboard/insights/route.ts:188:            assetNo: d.assetNo,
+   229→/home/z/my-project/src/app/api/itam/dashboard/insights/route.ts:190:              assetNo: d.assetNo,
+   230→/home/z/my-project/src/app/api/itam/dashboard/insights/route.ts:200:            message: `${d.assetNo} ใช้สี ${Math.round(colorPct)}% (${cur.color.toLocaleString()}/${curTotal.toLocaleString()} แผ่น)`,
+   231→/home/z/my-project/src/app/api/itam/dashboard/route.ts:130:      .map((g) => ({ name: g.deviceType || 'ไม่ระบุ', value: g._count.deviceType }))
+   232→/home/z/my-project/src/app/api/itam/dashboard/route.ts:152:      assetNo: r.assetNo,
+   233→/home/z/my-project/src/app/api/itam/dashboard/route.ts:153:      deviceName: r.device ? `${r.device.brand || ''} ${r.device.model || ''}`.trim() : r.assetNo,
+   234→/home/z/my-project/src/app/api/itam/dashboard/route.ts:213:      for (const d of devicesForSiteMap) assetToSite.set(d.assetNo, d.site || '')
+   235→/home/z/my-project/src/app/api/itam/dashboard/route.ts:218:        const site = assetToSite.get(r.assetNo) || ''
+   236→/home/z/my-project/src/app/api/itam/dashboard/route.ts:252:          assetNo: { in: topDevices.map((d) => d.assetNo) },
+   237→/home/z/my-project/src/app/api/itam/dashboard/route.ts:259:        if (!byDeviceMonth[r.assetNo]) byDeviceMonth[r.assetNo] = {}
+   238→/home/z/my-project/src/app/api/itam/dashboard/route.ts:261:        byDeviceMonth[r.assetNo][key] =
+   239→/home/z/my-project/src/app/api/itam/dashboard/route.ts:262:          (byDeviceMonth[r.assetNo][key] || 0) + (r._sum.pagesBw ?? 0) + (r._sum.pagesColor ?? 0)
+   240→/home/z/my-project/src/app/api/itam/dashboard/route.ts:265:        assetNo: d.assetNo,
+   241→/home/z/my-project/src/app/api/itam/dashboard/route.ts:266:        deviceName: `${d.brand || ''} ${d.model || ''}`.trim() || d.assetNo,
+   242→/home/z/my-project/src/app/api/itam/dashboard/route.ts:267:        months: trendMonthKeys.map((m) => ({ month: m, pages: byDeviceMonth[d.assetNo]?.[m] || 0 })),
+   243→/home/z/my-project/src/app/api/itam/license-records/route.ts:16:    if (assetNo) where.assetNo = assetNo
+   244→/home/z/my-project/src/app/api/itam/license-records/route.ts:44:    if (body.assetNo) {
+   245→/home/z/my-project/src/app/api/itam/license-records/route.ts:45:      const device = await db.device.findUnique({ where: { assetNo: body.assetNo }, select: { site: true } })
+   246→/home/z/my-project/src/app/api/itam/license-records/route.ts:54:        assetNo: body.assetNo || null,
+   247→/home/z/my-project/src/app/api/itam/license-records/route.ts:70:          details: JSON.stringify({ software: body.software, assetNo: body.assetNo || null }),
+   248→/home/z/my-project/src/app/api/itam/paper-analytics/route.ts:130:        const cur = byDevice.get(r.assetNo) ?? { sheets: 0, brand: r.device?.brand ?? null, model: r.device?.model ?? null }
+   249→/home/z/my-project/src/app/api/itam/paper-analytics/route.ts:132:        byDevice.set(r.assetNo, cur)
+   250→/home/z/my-project/src/app/api/itam/paper-analytics/route.ts:181:        const dKey = r.assetNo
+   251→
+   252→[Showing results with pagination = limit: 250]

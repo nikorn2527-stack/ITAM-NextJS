@@ -25,9 +25,16 @@ export async function GET(
   const includeRows = url.searchParams.get('include') === 'rows'
 
   // Try snapshotId first, then cuid
-  const snapshot = await db.meterReportSnapshot.findFirst({
-    where: { OR: [{ snapshotId: id }, { id }] },
-  })
+  let snapshot: { snapshotId: string } | null = null
+  try {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    snapshot = await db.meterReportSnapshot.findFirst({
+      where: { OR: [{ snapshotId: id }, { id }] },
+    }) as { snapshotId: string } | null
+  } catch {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    return notFound('snapshot')
+  }
 
   if (!snapshot) {
     return notFound('snapshot')
@@ -35,10 +42,16 @@ export async function GET(
 
   let rows: unknown[] | undefined
   if (includeRows) {
-    rows = await db.meterReportSnapshotRow.findMany({
-      where: { snapshotId: snapshot.snapshotId },
-      orderBy: { assetNo: 'asc' },
-    })
+    try {
+      // TODO: meterReportSnapshot table removed — feature disabled
+      rows = await db.meterReportSnapshotRow.findMany({
+        where: { snapshotId: snapshot.snapshotId },
+        orderBy: { assetNo: 'asc' },
+      })
+    } catch {
+      // TODO: meterReportSnapshot table removed — feature disabled
+      rows = []
+    }
   }
 
   return ok({ snapshot, ...(rows ? { rows } : {}) })

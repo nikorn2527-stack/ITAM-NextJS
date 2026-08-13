@@ -94,13 +94,13 @@ export async function GET(req: NextRequest) {
 
       // 2) Device counts by type — single groupBy
       db.device.groupBy({
-        by: ['deviceType'],
-        _count: { deviceType: true },
+        by: ['type'],
+        _count: { type: true },
       }),
 
       // 3) Top usage per asset in range — groupBy, USAGE_TYPES only
       db.meterReading.groupBy({
-        by: ['assetNo'],
+        by: ['assetCode'],
         where: usageWhere,
         _sum: { pagesBw: true, pagesColor: true },
       }),
@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
         take: 8,
         include: {
           device: {
-            select: { id: true, brand: true, model: true, assetNo: true },
+            select: { id: true, brand: true, model: true, assetCode: true },
           },
         },
       }),
@@ -130,33 +130,33 @@ export async function GET(req: NextRequest) {
     )
 
     // ── Process type groups ─────────────────────────────────────────────────
-    const byType = (typeGroups as { deviceType: string | null; _count: { deviceType: number } }[])
-      .map((g) => ({ name: g.deviceType || 'Unknown', value: g._count.deviceType }))
+    const byType = (typeGroups as { type: string | null; _count: { type: number } }[])
+      .map((g) => ({ name: g.type || 'Unknown', value: g._count.type }))
       .sort((a, b) => b.value - a.value)
 
-    // ── Top usage (need device names — fetch top 5 assetNos only) ──────────
+    // ── Top usage (need device names — fetch top 5 assetCodes only) ──────────
     const usageMap = new Map<string, number>()
-    for (const r of usageByAsset as { assetNo: string; _sum: { pagesBw: number | null; pagesColor: number | null } }[]) {
-      usageMap.set(r.assetNo, (r._sum.pagesBw ?? 0) + (r._sum.pagesColor ?? 0))
+    for (const r of usageByAsset as { assetCode: string; _sum: { pagesBw: number | null; pagesColor: number | null } }[]) {
+      usageMap.set(r.assetCode, (r._sum.pagesBw ?? 0) + (r._sum.pagesColor ?? 0))
     }
-    const topAssetNos = Array.from(usageMap.entries())
+    const topAssetCodes = Array.from(usageMap.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
-      .map(([assetNo]) => assetNo)
-    const topDevices = topAssetNos.length > 0
+      .map(([assetCode]) => assetCode)
+    const topDevices = topAssetCodes.length > 0
       ? await db.device.findMany({
-          where: { assetNo: { in: topAssetNos } },
-          select: { id: true, assetNo: true, brand: true, model: true },
+          where: { assetCode: { in: topAssetCodes } },
+          select: { id: true, assetCode: true, brand: true, model: true },
         })
       : []
-    const deviceMap = new Map(topDevices.map((d) => [d.assetNo, d]))
-    const topUsage = topAssetNos.map((assetNo) => {
-      const d = deviceMap.get(assetNo)
+    const deviceMap = new Map(topDevices.map((d) => [d.assetCode, d]))
+    const topUsage = topAssetCodes.map((assetCode) => {
+      const d = deviceMap.get(assetCode)
       return {
-        id: d?.id ?? assetNo,
-        name: d?.brand && d?.model ? `${d.brand} ${d.model}`.trim() : assetNo,
-        assetCode: assetNo,
-        value: usageMap.get(assetNo) ?? 0,
+        id: d?.id ?? assetCode,
+        name: d?.brand && d?.model ? `${d.brand} ${d.model}`.trim() : assetCode,
+        assetCode: assetCode,
+        value: usageMap.get(assetCode) ?? 0,
       }
     })
 
@@ -165,8 +165,8 @@ export async function GET(req: NextRequest) {
       id: r.id,
       deviceName: r.device?.brand && r.device?.model
         ? `${r.device.brand} ${r.device.model}`.trim()
-        : (r.device?.assetNo ?? '-'),
-      assetCode: r.device?.assetNo ?? '-',
+        : (r.device?.assetCode ?? '-'),
+      assetCode: r.device?.assetCode ?? '-',
       reading: r.meterBw,
       delta: (r.pagesBw ?? 0) + (r.pagesColor ?? 0),
       date: r.readingDate,

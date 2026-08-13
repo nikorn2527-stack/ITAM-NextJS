@@ -7,16 +7,15 @@ import { db } from '@/lib/db'
  * Finds meter-required devices (`Device.meterRequired = true`) that have NOT
  * been read in the currently active cycle.
  *
- * NOTE: The legacy route referenced several fields that don't exist on the
- * Prisma schema:
- *   - `Device.type`             → `Device.deviceType`
- *   - `Device.assetCode`        → `Device.assetNo`
- *   - `Device.name`             → `Device.brand` + `Device.model`
- *   - `Device.lastMeterReading` → not a stored field (computed from readings)
- *   - `MeterReading.deviceId`   → `MeterReading.assetNo`
- *   - `MeterReading.date`       → `MeterReading.readingDate`
- *   - `MeterReading.cycleId`    → not a stored field; associate via the
- *                                 cycle's [startDate, endDate] window.
+ * NOTE: Schema field renames applied to match the actual PostgreSQL DB:
+ *   - `Device.assetCode`       (was assetNo)
+ *   - `Device.type`             (was deviceType)
+ *   - `Device.name`             (now a stored field; was brand+model)
+ *   - `Device.purchaseDate`     (was installDate)
+ *   - `MeterReading.assetCode`  (was assetNo)
+ *   - `MeterReading.readingDate` (was date)
+ *   - cycleId is not stored on MeterReading; associate via the cycle's
+ *     [startDate, endDate] window.
  *
  * The response preserves the legacy shape used by both `meter-page.tsx` and
  * `dashboard-page.tsx` (`hasActiveCycle`, `cycle`, `reminders`,
@@ -41,16 +40,16 @@ interface ReminderEntry {
   daysOverdue: number
 }
 
-/** Build a display name from brand + model (falls back to assetNo). */
+/** Build a display name from brand + model (falls back to assetCode). */
 function deviceName(d: {
   brand: string | null
   model: string | null
-  assetNo: string
+  assetCode: string
 }): string {
   if (d.brand && d.model) return `${d.brand} ${d.model}`.trim()
   if (d.brand) return d.brand
   if (d.model) return d.model
-  return d.assetNo
+  return d.assetCode
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}/
@@ -98,15 +97,15 @@ export async function GET() {
     const [devices, readings] = await Promise.all([
       db.device.findMany({
         where: { meterRequired: true },
-        orderBy: { assetNo: 'asc' },
+        orderBy: { assetCode: 'asc' },
         select: {
           id: true,
-          assetNo: true,
-          deviceType: true,
+          assetCode: true,
+          type: true,
           brand: true,
           model: true,
           site: true,
-          installDate: true,
+          purchaseDate: true,
           updatedAt: true,
         },
       }),
@@ -117,17 +116,18 @@ export async function GET() {
             lte: activeCycle.endDate,
           },
         },
-        select: { assetNo: true, readingDate: true },
+        select: { assetCode: true, readingDate: true },
         orderBy: { readingDate: 'desc' },
       }),
     ])
 
-    // Map assetNo → most-recent readingDate seen in this cycle (readings are
-    // already ordered desc, so the first occurrence per assetNo is the latest).
+    // Map assetCode → most-recent readingDate seen in this cycle (readings are
+    // already ordered desc, so the first occurrence per assetCode is the latest).
     const readAssetMap = new Map<string, string>()
     for (const r of readings) {
-      if (!readAssetMap.has(r.assetNo)) {
-        readAssetMap.set(r.assetNo, r.readingDate ?? '')
+      const code = r.assetCode
+      if (code && !readAssetMap.has(code)) {
+        readAssetMap.set(code, r.readingDate ?? '')
       }
     }
 
@@ -135,18 +135,18 @@ export async function GET() {
     //    in `readAssetMap` is "unread this cycle".
     const todayISO = new Date().toISOString().slice(0, 10)
     const reminders: ReminderEntry[] = devices
-      .filter((d) => !readAssetMap.has(d.assetNo))
+      .filter((d) => !readAssetMap.has(d.assetCode))
       .map((d) => {
         // Reference date for "days overdue": use the cycle's start date if
         // known (the cycle has been open since then) — fall back to the
-        // device's installDate / updatedAt. This matches the spirit of the
+        // device's purchaseDate / updatedAt. This matches the spirit of the
         // original route (which used createdAt) while being cycle-aware.
         const referenceDate =
           (activeCycle.startDate && DATE_RE.test(activeCycle.startDate)
             ? activeCycle.startDate.slice(0, 10)
             : null) ??
-          (d.installDate && DATE_RE.test(d.installDate)
-            ? d.installDate!.slice(0, 10)
+          (d.purchaseDate && DATE_RE.test(d.purchaseDate)
+            ? d.purchaseDate!.slice(0, 10)
             : null) ??
           d.updatedAt.toISOString().slice(0, 10)
 
@@ -154,9 +154,9 @@ export async function GET() {
         return {
           device: {
             id: d.id,
-            assetCode: d.assetNo, // legacy field name for frontend compat
+            assetCode: d.assetCode,
             name: deviceName(d),
-            type: d.deviceType, // legacy field name for frontend compat
+            type: d.type,
             brand: d.brand,
             model: d.model,
             site: d.site,

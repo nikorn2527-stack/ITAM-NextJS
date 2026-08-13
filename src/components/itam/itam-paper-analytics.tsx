@@ -33,7 +33,7 @@ interface OverviewKpi {
   momPct: number
   avgPerMonth: number
   topDept: { name: string; sheets: number } | null
-  topDevice: { assetNo: string; sheets: number; brand: string | null; model: string | null } | null
+  topDevice: { assetCode: string; sheets: number; brand: string | null; model: string | null } | null
 }
 interface MonthlyRow { month: string; bw: number; color: number; total: number }
 interface OverviewResp {
@@ -42,11 +42,11 @@ interface OverviewResp {
   kpi: OverviewKpi
   monthly: MonthlyRow[]
   topDept: Array<{ name: string; sheets: number }>
-  topDevice: Array<{ assetNo: string; sheets: number; brand: string | null; model: string | null }>
+  topDevice: Array<{ assetCode: string; sheets: number; brand: string | null; model: string | null }>
 }
 interface RankingRow { name: string; bw: number; color: number; total: number; deviceCount: number }
 interface DeviceRow {
-  assetNo: string; brand: string | null; model: string | null; site: string | null
+  assetCode: string; brand: string | null; model: string | null; site: string | null
   department: string | null; bw: number; color: number; total: number
 }
 interface RankingResp {
@@ -60,7 +60,7 @@ interface Compare3Resp {
   view: 'compare3'
   months: string[]
   rows: Array<{
-    assetNo: string
+    assetCode: string
     brand: string | null
     model: string | null
     site: string | null
@@ -71,7 +71,7 @@ interface Compare3Resp {
   }>
 }
 interface DetailRow {
-  assetNo: string
+  assetCode: string
   brand: string | null
   model: string | null
   site: string | null
@@ -79,7 +79,7 @@ interface DetailRow {
   floor: string | null
   department: string | null
   departmentCode: string | null
-  deviceType: string | null
+  type: string | null
   bw: number
   color: number
   total: number
@@ -433,10 +433,10 @@ ${kpiHtml}
                         const max = overviewQuery.data?.topDevice[0]?.sheets ?? 1
                         const pct = Math.max(2, (d.sheets / max) * 100)
                         return (
-                          <div key={d.assetNo}>
+                          <div key={d.assetCode}>
                             <div className="mb-1 flex justify-between text-xs">
                               <span className="font-medium text-slate-700 dark:text-slate-200">
-                                {i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}.`} <span className="font-mono">{d.assetNo}</span>
+                                {i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}.`} <span className="font-mono">{d.assetCode}</span>
                                 <span className="ml-1 text-slate-400">{d.brand} {d.model}</span>
                               </span>
                               <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-300">{d.sheets.toLocaleString()}</span>
@@ -469,14 +469,14 @@ ${kpiHtml}
                 <Button variant="outline" size="sm" onClick={() => exportCsvFromRows(rankingQuery.data!.departments.map((d) => ({ name: d.name, bw: d.bw, color: d.color, total: d.total, deviceCount: d.deviceCount })), `paper-ranking-dept-${dateStamp()}.csv`, [{ key: 'name', label: 'แผนก' }, { key: 'bw', label: 'ขาวดำ' }, { key: 'color', label: 'สี' }, { key: 'total', label: 'รวม' }, { key: 'deviceCount', label: 'จำนวนเครื่อง' }])}>
                   <FileSpreadsheet className="h-3.5 w-3.5" /> CSV แผนก
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => exportExcelFromRows(rankingQuery.data!.devices.map((d) => ({ assetNo: d.assetNo, brand: d.brand ?? '', model: d.model ?? '', site: d.site ?? '', department: d.department ?? '', bw: d.bw, color: d.color, total: d.total })), [{ key: 'assetNo', label: 'รหัส' }, { key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }, { key: 'site', label: 'สาขา' }, { key: 'department', label: 'แผนก' }, { key: 'bw', label: 'ขาวดำ' }, { key: 'color', label: 'สี' }, { key: 'total', label: 'รวม' }], `paper-ranking-devices-${dateStamp()}.xls`)}>
+                <Button variant="outline" size="sm" onClick={() => exportExcelFromRows(rankingQuery.data!.devices.map((d) => ({ assetCode: d.assetCode, brand: d.brand ?? '', model: d.model ?? '', site: d.site ?? '', department: d.department ?? '', bw: d.bw, color: d.color, total: d.total })), [{ key: 'assetCode', label: 'รหัส' }, { key: 'brand', label: 'แบรนด์' }, { key: 'model', label: 'รุ่น' }, { key: 'site', label: 'สาขา' }, { key: 'department', label: 'แผนก' }, { key: 'bw', label: 'ขาวดำ' }, { key: 'color', label: 'สี' }, { key: 'total', label: 'รวม' }], `paper-ranking-devices-${dateStamp()}.xls`)}>
                   <FileSpreadsheet className="h-3.5 w-3.5" /> Excel เครื่อง
                 </Button>
               </div>
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <RankingCard title="10 แผนกใช้กระดาษสูงสุด" rows={rankingQuery.data.departments} accent="#f97316" nameKey="name" />
                 <RankingCard title="10 อาคาร-ชั้น ใช้กระดาษสูงสุด" rows={rankingQuery.data.buildingFloors} accent="#0d9488" nameKey="name" />
-                <RankingCard title="10 เครื่องพิมพ์ใช้กระดาษสูงสุด" rows={rankingQuery.data.devices.map((d) => ({ name: `${d.assetNo} · ${d.brand ?? ''} ${d.model ?? ''}`.trim(), bw: d.bw, color: d.color, total: d.total, deviceCount: 1 }))} accent="#f59e0b" nameKey="name" />
+                <RankingCard title="10 เครื่องพิมพ์ใช้กระดาษสูงสุด" rows={rankingQuery.data.devices.map((d) => ({ name: `${d.assetCode} · ${d.brand ?? ''} ${d.model ?? ''}`.trim(), bw: d.bw, color: d.color, total: d.total, deviceCount: 1 }))} accent="#f59e0b" nameKey="name" />
               </div>
             </>
           ) : (
@@ -517,8 +517,8 @@ ${kpiHtml}
                       {compareQuery.data.rows.length === 0 ? (
                         <TableRow><TableCell colSpan={6 + compareQuery.data.months.length} className="py-8 text-center text-slate-400">ไม่มีข้อมูล</TableCell></TableRow>
                       ) : compareQuery.data.rows.map((r) => (
-                        <TableRow key={r.assetNo} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <TableCell className="font-mono text-xs">{r.assetNo}</TableCell>
+                        <TableRow key={r.assetCode} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <TableCell className="font-mono text-xs">{r.assetCode}</TableCell>
                           <TableCell className="text-xs">{r.brand} {r.model}</TableCell>
                           <TableCell className="text-xs">{r.site || '—'}</TableCell>
                           <TableCell className="text-xs">{r.department || '—'}</TableCell>
@@ -568,7 +568,7 @@ ${kpiHtml}
                   </span>
                 </CardTitle>
                 <Button variant="outline" size="sm" onClick={() => exportCsvFromRows(detailQuery.data!.rows.map((r) => ({
-                  assetNo: r.assetNo, brand: r.brand ?? '', model: r.model ?? '', site: r.site ?? '',
+                  assetNo: r.assetCode, brand: r.brand ?? '', model: r.model ?? '', site: r.site ?? '',
                   building: r.building ?? '', floor: r.floor ?? '', department: r.department ?? '',
                   bw: r.bw, color: r.color, total: r.total, monthCount: r.monthCount,
                 })), `paper-detail-${dateStamp()}.csv`, [
@@ -601,11 +601,11 @@ ${kpiHtml}
                       {detailQuery.data.rows.length === 0 ? (
                         <TableRow><TableCell colSpan={10} className="py-8 text-center text-slate-400">ไม่มีข้อมูล</TableCell></TableRow>
                       ) : detailQuery.data.rows.map((r) => (
-                        <TableRow key={r.assetNo} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50" title={`ดูรายละเอียด ${r.assetNo}`}>
-                          <TableCell className="font-mono text-xs">{r.assetNo}</TableCell>
+                        <TableRow key={r.assetCode} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50" title={`ดูรายละเอียด ${r.assetCode}`}>
+                          <TableCell className="font-mono text-xs">{r.assetCode}</TableCell>
                           <TableCell className="text-xs">
                             <div className="font-medium text-slate-700 dark:text-slate-200">{r.brand} {r.model}</div>
-                            {r.deviceType && <div className="text-[10px] text-slate-400">{r.deviceType}</div>}
+                            {r.type && <div className="text-[10px] text-slate-400">{r.type}</div>}
                           </TableCell>
                           <TableCell className="text-xs">{r.site || '—'}</TableCell>
                           <TableCell className="text-xs">{r.building || '—'}</TableCell>

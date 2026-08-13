@@ -49,8 +49,8 @@ export async function GET(req: NextRequest) {
     })
     const readThisMonth = await db.meterReading.findMany({
       where: { readingMonth: currentMonth, device: siteFilter },
-      select: { assetNo: true },
-      distinct: ['assetNo'],
+      select: { assetCode: true },
+      distinct: ['assetCode'],
     })
     const readCount = readThisMonth.length
     const notReadCount = Math.max(0, meterRequiredActive - readCount)
@@ -101,7 +101,7 @@ export async function GET(req: NextRequest) {
         device: siteFilter,
       },
       select: {
-        assetNo: true,
+        assetCode: true,
         readingMonth: true,
         pagesBw: true,
         pagesColor: true,
@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
 
     // Per-device aggregation
     interface DevAgg {
-      assetNo: string
+      assetCode: string
       brand: string | null
       model: string | null
       site: string | null
@@ -120,17 +120,18 @@ export async function GET(req: NextRequest) {
     }
     const perDevice = new Map<string, DevAgg>()
     for (const r of recentReadings) {
-      let d = perDevice.get(r.assetNo)
+      const code = r.assetCode || ''
+      let d = perDevice.get(code)
       if (!d) {
         d = {
-          assetNo: r.assetNo,
+          assetCode: code,
           brand: r.device?.brand ?? null,
           model: r.device?.model ?? null,
           site: r.device?.site ?? null,
           department: r.device?.department ?? null,
           byMonth: {},
         }
-        perDevice.set(r.assetNo, d)
+        perDevice.set(code, d)
       }
       const m = r.readingMonth || ''
       if (!d.byMonth[m]) d.byMonth[m] = { bw: 0, color: 0 }
@@ -164,9 +165,9 @@ export async function GET(req: NextRequest) {
       if (avg > 0 && curTotal > 2 * avg && curTotal >= 500) {
         highUsageList.push({
           type: 'high_usage',
-          assetNo: d.assetNo,
+          assetNo: d.assetCode,
           device: {
-            assetNo: d.assetNo,
+            assetNo: d.assetCode,
             brand: d.brand,
             model: d.model,
             site: d.site,
@@ -175,7 +176,7 @@ export async function GET(req: NextRequest) {
           value: curTotal,
           avg: Math.round(avg),
           month: currentMonth,
-          message: `${d.assetNo} ใช้กระดาษ ${curTotal.toLocaleString()} แผ่น (เฉลี่ย ${Math.round(avg).toLocaleString()} แผ่น) — สูงผิดปกติ`,
+          message: `${d.assetCode} ใช้กระดาษ ${curTotal.toLocaleString()} แผ่น (เฉลี่ย ${Math.round(avg).toLocaleString()} แผ่น) — สูงผิดปกติ`,
         })
       }
 
@@ -185,9 +186,9 @@ export async function GET(req: NextRequest) {
         if (colorPct >= 50 && cur.color >= 200) {
           colorHeavyList.push({
             type: 'color_heavy',
-            assetNo: d.assetNo,
+            assetNo: d.assetCode,
             device: {
-              assetNo: d.assetNo,
+              assetNo: d.assetCode,
               brand: d.brand,
               model: d.model,
               site: d.site,
@@ -197,7 +198,7 @@ export async function GET(req: NextRequest) {
             colorSheets: cur.color,
             totalSheets: curTotal,
             month: currentMonth,
-            message: `${d.assetNo} ใช้สี ${Math.round(colorPct)}% (${cur.color.toLocaleString()}/${curTotal.toLocaleString()} แผ่น)`,
+            message: `${d.assetCode} ใช้สี ${Math.round(colorPct)}% (${cur.color.toLocaleString()}/${curTotal.toLocaleString()} แผ่น)`,
           })
         }
       }

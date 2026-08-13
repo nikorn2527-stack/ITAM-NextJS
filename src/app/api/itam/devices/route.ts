@@ -37,19 +37,19 @@ export async function GET(req: NextRequest) {
     if (search) {
       (where.AND as unknown[]).push({
         OR: [
-          { assetNo: { contains: search } },
-          { deviceType: { contains: search } },
+          { assetCode: { contains: search } },
+          { type: { contains: search } },
           { brand: { contains: search } },
           { model: { contains: search } },
-          { serial: { contains: search } },
+          { serialNumber: { contains: search } },
           { department: { contains: search } },
         ],
       })
     }
     if (status) (where.AND as unknown[]).push({ status })
-    if (deviceType) (where.AND as unknown[]).push({ deviceType: { contains: deviceType } })
+    if (deviceType) (where.AND as unknown[]).push({ type: { contains: deviceType } })
     // Exact-match assetNo (takes precedence over search if both are given)
-    if (assetNoExact) (where.AND as unknown[]).push({ assetNo: assetNoExact })
+    if (assetNoExact) (where.AND as unknown[]).push({ assetCode: assetNoExact })
     // Collapse empty AND
     if (Array.isArray(where.AND) && where.AND.length === 0) delete where.AND
 
@@ -58,9 +58,9 @@ export async function GET(req: NextRequest) {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        orderBy: { assetNo: 'asc' },
+        orderBy: { assetCode: 'asc' },
         include: {
-          _count: { select: { meterReadings: true, locationHistories: true, assignments: true, maintenanceLogs: true } },
+          _count: { select: { meterReadings: true, transfers: true, assignments: true, maintenanceLogs: true } },
         },
       }),
       db.device.count({ where }),
@@ -94,11 +94,12 @@ export async function POST(req: NextRequest) {
 
     const created = await db.device.create({
       data: {
-        assetNo: String(body.assetNo).trim(),
-        deviceType: body.deviceType || null,
+        assetCode: String(body.assetNo).trim(),
+        name: body.name || String(body.assetNo).trim(),
+        type: body.deviceType || null,
         brand: body.brand || null,
         model: body.model || null,
-        serial: body.serial || null,
+        serialNumber: body.serial || null,
         building: body.building || null,
         floor: body.floor || null,
         department: body.department || null,
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest) {
         remoteId: body.remoteId || null,
         remark: body.remark || null,
         vendor: body.vendor || null,
-        installDate: body.installDate || null,
+        purchaseDate: body.installDate || null,
         uninstallDate: body.uninstallDate || null,
         warrantyEnd: body.warrantyEnd || null,
         deviceGroup: body.deviceGroup || null,
@@ -128,23 +129,28 @@ export async function POST(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'CREATE_DEVICE',
-          user: user.email,
-          details: JSON.stringify({ assetNo: created.assetNo, site: created.site }),
+          entity: 'Device',
+          entityId: created.id,
+          summary: `เพิ่มอุปกรณ์ ${created.assetCode}`,
+          actor: user.email,
+          detail: JSON.stringify({ assetCode: created.assetCode, site: created.site }),
         },
       })
     } catch { /* ignore */ }
 
     // Best-effort notification
-    void notifyDeviceAdded(created, user.username || user.email)
+    void notifyDeviceAdded(
+      { assetNo: created.assetCode, brand: created.brand, model: created.model, site: created.site },
+      user.username || user.email,
+    )
 
     // Push SSE event — other tabs/clients refetch their device list instantly
     publishRealtimeEvent({
       type: 'device-added',
-      assetNo: created.assetNo,
+      assetNo: created.assetCode,
       site: created.site ?? null,
-      payload: { deviceType: created.deviceType, status: created.status },
+      payload: { deviceType: created.type, status: created.status },
     })
 
     return NextResponse.json({ device: created }, { status: 201 })

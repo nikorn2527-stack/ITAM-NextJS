@@ -29,24 +29,41 @@ export async function GET(
   const query = parseQuery(url)
 
   // Resolve snapshotId from snapshotId or cuid
-  const snapshot = await db.meterReportSnapshot.findFirst({
-    where: { OR: [{ snapshotId: id }, { id }] },
-    select: { snapshotId: true },
-  })
+  let snapshot: { snapshotId: string } | null = null
+  try {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    snapshot = await db.meterReportSnapshot.findFirst({
+      where: { OR: [{ snapshotId: id }, { id }] },
+      select: { snapshotId: true },
+    })
+  } catch {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    return list([], { page: query.page, limit: query.limit, total: 0 })
+  }
   if (!snapshot) return notFound('snapshot')
 
   const where = { ...buildWhere(query, FIELD_MAP), snapshotId: snapshot.snapshotId }
   const orderBy = buildOrderBy(query, FIELD_MAP, { assetNo: 'asc' })
 
-  const [total, rows] = await Promise.all([
-    db.meterReportSnapshotRow.count({ where }),
-    db.meterReportSnapshotRow.findMany({
-      where,
-      orderBy,
-      skip: (query.page - 1) * query.limit,
-      take: query.limit,
-    }),
-  ])
+  let total = 0
+  let rows: unknown[] = []
+  try {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    const [t, r] = await Promise.all([
+      db.meterReportSnapshotRow.count({ where }),
+      db.meterReportSnapshotRow.findMany({
+        where,
+        orderBy,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ])
+    total = t
+    rows = r
+  } catch {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    return list([], { page: query.page, limit: query.limit, total: 0 })
+  }
 
   return list(rows, { page: query.page, limit: query.limit, total })
 }

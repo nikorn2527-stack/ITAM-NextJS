@@ -8,7 +8,7 @@
  *   │ Progress bar  จดแล้ว X / ทั้งหมด Y (เหลือ Z)         [⌨️ keyboard hints]│
  *   ├─────────────────────────────┬──────────────────────────────────────┤
  *   │ Search box (large)          │  Selected device card                │
- *   │   type → Enter to search    │  · assetNo / brand / model / serial  │
+ *   │   type → Enter to search    │  · assetCode / brand / model / serial  │
  *   │                             │  · last meter (BW/Color)             │
  *   │ Filtered device list        │  · meter mode badge (TOTAL/BW_COLOR)  │
  *   │   ↑↓ to navigate            │                                       │
@@ -48,11 +48,11 @@ import { useAppStore } from '@/store/app-store'
 
 interface UnreadDevice {
   id: string
-  assetNo: string
-  deviceType: string | null
+  assetCode: string
+  type: string | null
   brand: string | null
   model: string | null
-  serial: string | null
+  serialNumber: string | null
   site: string | null
   building: string | null
   floor: string | null
@@ -79,7 +79,7 @@ interface UnreadResponse {
 }
 
 interface RecentlyKeyed {
-  assetNo: string
+  assetCode: string
   name: string
   meterBw: number
   meterColor: number
@@ -93,9 +93,9 @@ function fmtTime(ts: number): string {
   return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-function deviceLabel(d: { brand: string | null; model: string | null; assetNo: string }): string {
+function deviceLabel(d: { brand: string | null; model: string | null; assetCode: string }): string {
   const name = `${d.brand || ''} ${d.model || ''}`.trim()
-  return name || d.assetNo
+  return name || d.assetCode
 }
 
 export function ItamMeterKeyboard() {
@@ -152,7 +152,7 @@ export function ItamMeterKeyboard() {
   // (page loads) → device already selected → just type meter → Enter.
   React.useEffect(() => {
     if (!pendingDeviceId || devices.length === 0) return
-    const idx = devices.findIndex((d) => d.assetNo === pendingDeviceId)
+    const idx = devices.findIndex((d) => d.assetCode === pendingDeviceId)
     if (idx >= 0) {
       setSelectedIndex(idx)
       setFocus('meter')
@@ -184,7 +184,7 @@ export function ItamMeterKeyboard() {
     setBwInput(String(selected.lastMeterBw || ''))
     setColorInput(String(selected.lastMeterColor || ''))
     setRemark('')
-  }, [selected?.assetNo])
+  }, [selected?.assetCode])
 
   // When focus target flips to "meter", jump into the BW input.
   React.useEffect(() => {
@@ -202,7 +202,7 @@ export function ItamMeterKeyboard() {
       const t = setTimeout(() => searchInputRef.current?.focus(), 30)
       return () => clearTimeout(t)
     }
-  }, [focus, selected?.assetNo])
+  }, [focus, selected?.assetCode])
 
   // Scroll the selected row into view in the list.
   React.useEffect(() => {
@@ -294,7 +294,7 @@ export function ItamMeterKeyboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          assetNo: selected.assetNo,
+          assetCode: selected.assetCode,
           meterBw: bwNum,
           meterColor: colorNum,
           prevMeterBw: selected.lastMeterBw,
@@ -315,7 +315,7 @@ export function ItamMeterKeyboard() {
       setRecent((prev) =>
         [
           {
-            assetNo: selected.assetNo,
+            assetCode: selected.assetCode,
             name: deviceLabel(selected),
             meterBw: bwNum,
             meterColor: colorNum,
@@ -328,7 +328,7 @@ export function ItamMeterKeyboard() {
       )
 
       toast.success(
-        `บันทึกมิเตอร์ ${selected.assetNo} · +${(pagesBw + pagesColor).toLocaleString()} แผ่น`,
+        `บันทึกมิเตอร์ ${selected.assetCode} · +${(pagesBw + pagesColor).toLocaleString()} แผ่น`,
         { description: isReset ? '⚠️ RESET' : undefined },
       )
 
@@ -338,7 +338,7 @@ export function ItamMeterKeyboard() {
       await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
 
       // Optimistically advance — after the query refetches, the new "selected"
-      // may be a different assetNo; we use the current selectedIndex which
+      // may be a different assetCode; we use the current selectedIndex which
       // (because the just-read device drops out of the unread list) naturally
       // points to the next device.
       setSelectedIndex((i) => Math.min(i, Math.max(0, devices.length - 2)))
@@ -365,10 +365,10 @@ export function ItamMeterKeyboard() {
       return
     }
     const rows = devices.map((d) => ({
-      assetNo: d.assetNo,
+      assetCode: d.assetCode,
       brand: d.brand || '',
       model: d.model || '',
-      serial: d.serial || '',
+      serialNumber: d.serialNumber || '',
       site: d.site || '',
       building: d.building || '',
       floor: d.floor || '',
@@ -507,7 +507,7 @@ export function ItamMeterKeyboard() {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className={`font-mono text-xs font-semibold ${active ? 'text-[#f97316]' : 'text-slate-700 dark:text-slate-200'}`}>
-                                {d.assetNo}
+                                {d.assetCode}
                               </span>
                               {d.readThisMonth && (
                                 <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px]">
@@ -555,7 +555,7 @@ export function ItamMeterKeyboard() {
                 </motion.div>
               ) : (
                 <motion.div
-                  key={selected.assetNo}
+                  key={selected.assetCode}
                   initial={{ opacity: 0, x: 8 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -8 }}
@@ -567,7 +567,7 @@ export function ItamMeterKeyboard() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="rounded-md bg-[#f97316] px-2 py-0.5 font-mono text-sm font-bold text-white">
-                          {selected.assetNo}
+                          {selected.assetCode}
                         </span>
                         {selected.assetSiteCode && (
                           <span className="font-mono text-xs text-slate-500">{selected.assetSiteCode}</span>
@@ -591,7 +591,7 @@ export function ItamMeterKeyboard() {
                       <div>แผนก: {selected.department || '—'}</div>
                       <div>อาคาร/ชั้น: {selected.building || '—'} / {selected.floor || '—'}</div>
                       <div>ที่ตั้ง: {selected.location || '—'}</div>
-                      <div>Serial: <span className="font-mono">{selected.serial || '—'}</span></div>
+                      <div>Serial: <span className="font-mono">{selected.serialNumber || '—'}</span></div>
                       <div>เดือน: <span className="font-mono">{data?.month || '—'}</span></div>
                     </div>
                   </div>
@@ -744,11 +744,11 @@ export function ItamMeterKeyboard() {
             <div className="flex gap-2 overflow-x-auto pb-1">
               {recent.map((r, i) => (
                 <div
-                  key={`${r.assetNo}-${r.at}-${i}`}
+                  key={`${r.assetCode}-${r.at}-${i}`}
                   className="min-w-[180px] flex-shrink-0 rounded-md border border-slate-200 bg-slate-50/60 p-2 dark:border-slate-800 dark:bg-slate-800/40"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">{r.assetNo}</span>
+                    <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">{r.assetCode}</span>
                     <span className="text-[10px] text-slate-400">{fmtTime(r.at)}</span>
                   </div>
                   <div className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">{r.name}</div>

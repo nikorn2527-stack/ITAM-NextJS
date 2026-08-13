@@ -42,22 +42,22 @@ interface LifecycleDevice {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}/
 
-/** Build a display name from brand + model (falls back to assetNo). */
+/** Build a display name from brand + model (falls back to assetCode). */
 function deviceName(d: {
   brand: string | null
   model: string | null
-  assetNo: string
+  assetCode: string
 }): string {
   if (d.brand && d.model) return `${d.brand} ${d.model}`.trim()
   if (d.brand) return d.brand
   if (d.model) return d.model
-  return d.assetNo
+  return d.assetCode
 }
 
-/** Compute age in months from a YYYY-MM-DD install date. 0 if invalid. */
-function computeAgeInMonths(installDate: string | null | undefined): number {
-  if (!installDate || !DATE_RE.test(installDate)) return 0
-  const start = new Date(installDate.slice(0, 10) + 'T00:00:00')
+/** Compute age in months from a YYYY-MM-DD purchase date. 0 if invalid. */
+function computeAgeInMonths(purchaseDate: string | null | undefined): number {
+  if (!purchaseDate || !DATE_RE.test(purchaseDate)) return 0
+  const start = new Date(purchaseDate.slice(0, 10) + 'T00:00:00')
   if (Number.isNaN(start.getTime())) return 0
   const now = new Date()
   let months =
@@ -114,25 +114,25 @@ export async function GET() {
       db.device.findMany({
         select: {
           id: true,
-          assetNo: true,
-          deviceType: true,
+          assetCode: true,
+          type: true,
           brand: true,
           model: true,
           site: true,
           status: true,
-          installDate: true,
+          purchaseDate: true,
           warrantyEnd: true,
         },
-        orderBy: { assetNo: 'asc' },
+        orderBy: { assetCode: 'asc' },
       }),
-      // Group by deviceType × status to build the byType analytics without a
+      // Group by type × status to build the byType analytics without a
       // second findMany + JS loop. Prisma can group by multiple columns.
       db.device.groupBy({
-        by: ['deviceType', 'status'],
+        by: ['type', 'status'],
         _count: { _all: true },
       }),
       // Group by status alone (used to fill the active/inactive totals when
-      // a deviceType has no rows for a given status).
+      // a type has no rows for a given status).
       db.device.groupBy({
         by: ['status'],
         _count: { _all: true },
@@ -143,7 +143,7 @@ export async function GET() {
       const { status: warrantyStatus, expiryISO } = computeWarrantyStatus(
         d.warrantyEnd,
       )
-      const ageInMonths = computeAgeInMonths(d.installDate)
+      const ageInMonths = computeAgeInMonths(d.purchaseDate)
 
       // Replacement score (0-100):
       //   - base by age: ramps from 0 at 0 months → 60 at 60 months (5y).
@@ -173,16 +173,14 @@ export async function GET() {
 
       return {
         id: d.id,
-        assetCode: d.assetNo, // legacy field name for frontend compat
+        assetCode: d.assetCode,
         name: deviceName(d),
         brand: d.brand,
         model: d.model,
         site: d.site,
         status: d.status,
-        deviceType: d.deviceType,
-        // No `purchaseDate` field — surface `installDate` so the frontend's
-        // type (which expects `purchaseDate: string | null`) keeps working.
-        purchaseDate: d.installDate,
+        deviceType: d.type,
+        purchaseDate: d.purchaseDate,
         ageInMonths,
         warrantyStatus,
         warrantyExpiry: expiryISO,
@@ -215,7 +213,7 @@ export async function GET() {
       { total: number; active: number; inactive: number }
     >()
     for (const g of byTypeGroups) {
-      const typeKey = g.deviceType ?? 'ไม่ระบุ'
+      const typeKey = g.type ?? 'ไม่ระบุ'
       const count = g._count._all
       const entry = typeMap.get(typeKey) ?? { total: 0, active: 0, inactive: 0 }
       entry.total += count

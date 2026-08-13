@@ -5,11 +5,11 @@
  *
  * Behavior mirrors the Apps Script version (SettingsService.gs +
  * DeviceService.gs `getNextAssetSiteCode`):
- *   • Look up the SiteAttribute.siteCode for the given siteName.
- *   • Find the MAX existing AssetSiteCode for that site in the devices table.
- *   • If the device was previously at this site (per Location_History),
- *     REUSE the old AssetSiteCode (the Apps Script version says
- *     "ใช้ทะเบียน Site เดิมเมื่อย้ายกลับ Site ที่เคยอยู่").
+ *   • Look up the SiteAttribute.SiteCode prefix for the given site.
+ *   • Find the MAX existing AssetSiteCode for that site in the devices table
+ *     (and in DeviceTransfer history, if any).
+ *   • If the device was previously at this site (per DeviceTransfer),
+ *     REUSE the old AssetSiteCode.
  *   • Otherwise increment + format.
  *
  * This module imports `db`, so it is SERVER-ONLY. Do not import from
@@ -31,6 +31,16 @@ export function parseAssetSiteCodeSeed(code: string | null | undefined): number 
   if (!m) return 0
   const n = parseInt(m[1], 10)
   return Number.isFinite(n) ? n : 0
+}
+
+/**
+ * Extract the alphabetic prefix from an AssetSiteCode like `UDH-00001` → `UDH`.
+ * Returns empty string if the value is null/empty/malformed.
+ */
+export function extractSitePrefix(code: string | null | undefined): string {
+  if (!code) return ''
+  const m = String(code).trim().toUpperCase().match(/^([A-Z]+)/)
+  return m ? m[1] : ''
 }
 
 /**
@@ -59,16 +69,62 @@ export function normalizeAssetSiteCodeForCompare(code: string | null | undefined
 }
 
 /**
- * Look up the SiteCode prefix for a given siteName (e.g. "โรงพยาบาลศูนย์อุดรธานี" → "UDH").
- * Returns null if the site is not found in SiteAttribute.
+ * Look up the SiteCode prefix for a given siteName or siteCode.
+ *
+ * Resolution order:
+ *   1. SiteAttribute table — match by SiteCode (exact) or SiteName (exact).
+ *   2. MasterItem category "Site" — match by code or label.
+ *   3. Derive from existing devices at that site (extract prefix from assetSiteCode).
+ *   4. Fallback: first 3-6 uppercase alphanumeric chars of the input.
  */
-export async function getSiteCodeForName(siteName: string | null | undefined): Promise<string | null> {
-  if (!siteName) return null
-  const site = await db.siteAttribute.findFirst({
-    where: { siteName: { equals: siteName } },
-    select: { siteCode: true },
+export async function getSiteCodeForName(siteInput: string | null | undefined): Promise<string | null> {
+  if (!siteInput) return null
+  const input = siteInput.trim()
+  const upper = input.toUpperCase()
+
+  // 1. SiteAttribute — match by SiteCode or SiteName
+  const sa = await db.siteAttribute.findFirst({
+    where: {
+      OR: [
+        { SiteCode: upper },
+        { SiteName: input },
+      ],
+    },
+    select: { SiteCode: true },
   })
-  return site?.siteCode ?? null
+  if (sa?.SiteCode) return sa.SiteCode.toUpperCase()
+
+  // 2. MasterItem category "Site"
+  const masterSite = await db.masterItem.findFirst({
+    where: {
+      category: 'Site',
+      OR: [{ code: upper }, { label: input }],
+    },
+    select: { code: true, siteCode: true },
+  })
+  if (masterSite?.siteCode) return masterSite.siteCode.toUpperCase()
+  if (masterSite?.code) return masterSite.code.toUpperCase()
+
+  // 3. Derive from existing devices — find any device whose site matches OR
+  //    whose assetSiteCode starts with the input prefix
+  const sample = await db.device.findFirst({
+    where: {
+      OR: [
+        { site: input, assetSiteCode: { not: null } },
+        { assetSiteCode: { startsWith: upper + '-' } },
+      ],
+    },
+    select: { assetSiteCode: true },
+  })
+  const derived = extractSitePrefix(sample?.assetSiteCode)
+  if (derived) return derived
+
+  // 4. Fallback — first uppercase alphanumeric chars of the input (3-6 chars)
+  const fallback = input
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 6) || null
+  return fallback
 }
 
 /**
@@ -76,70 +132,79 @@ export async function getSiteCodeForName(siteName: string | null | undefined): P
  */
 export async function getSiteNameForCode(siteCode: string | null | undefined): Promise<string | null> {
   if (!siteCode) return null
-  const site = await db.siteAttribute.findUnique({
-    where: { siteCode },
-    select: { siteName: true },
+  const code = siteCode.toUpperCase()
+
+  const sa = await db.siteAttribute.findUnique({
+    where: { SiteCode: code },
+    select: { SiteName: true },
   })
-  return site?.siteName ?? null
+  if (sa?.SiteName) return sa.SiteName
+
+  const masterSite = await db.masterItem.findFirst({
+    where: { category: 'Site', OR: [{ code }, { siteCode: code }] },
+    select: { label: true },
+  })
+  if (masterSite?.label) return masterSite.label
+
+  // Derive from devices
+  const sample = await db.device.findFirst({
+    where: { assetSiteCode: { startsWith: code + '-' } },
+    select: { site: true },
+  })
+  return sample?.site ?? null
 }
 
 /**
- * Compute the NEXT AssetSiteCode for a device being moved to `targetSiteName`.
+ * Compute the NEXT AssetSiteCode for a device being moved to `targetSite`.
  *
  * Algorithm (matches Apps Script):
- *   1. If `assetNo` already has a history entry with `toSite === targetSiteName`
- *      (i.e. the device has lived at this site before), REUSE the AssetSiteCode
- *      from that historical record (`toAssetSiteCode`).
- *   2. Otherwise find MAX(AssetSiteCode) for the target site among ALL devices
- *      and return PREFIX-(MAX+1).
+ *   1. If `assetNo` (assetCode) already has a DeviceTransfer entry with
+ *      `toSite === targetSite`, REUSE the AssetSiteCode from that record.
+ *   2. Otherwise find MAX(assetSiteCode) for the target site across all
+ *      devices + DeviceTransfer history, and return PREFIX-(MAX+1).
  *   3. If no device exists at the target site yet, start at PREFIX-00001.
- *
- * The caller is responsible for actually persisting the new code on the device
- * row (the transfer endpoint does this inside its transaction).
  */
 export async function getNextAssetSiteCode(
-  targetSiteName: string,
+  targetSite: string,
   options?: { assetNo?: string | null; reuseFromHistory?: boolean },
 ): Promise<string | null> {
-  const prefix = await getSiteCodeForName(targetSiteName)
-  if (!prefix) {
-    // No SiteAttribute row → fall back to the raw site name (uppercased) so
-    // the transfer still works even if the admin hasn't configured SiteCode.
-    const fallback = (targetSiteName || '').trim().toUpperCase().slice(0, 6) || null
-    if (!fallback) return null
-    return continueWithPrefix(fallback, targetSiteName, options)
-  }
-  return continueWithPrefix(prefix, targetSiteName, options)
+  const prefix = await getSiteCodeForName(targetSite)
+  if (!prefix) return null
+  return continueWithPrefix(prefix, targetSite, options)
 }
 
 async function continueWithPrefix(
   prefix: string,
-  targetSiteName: string,
+  targetSite: string,
   options?: { assetNo?: string | null; reuseFromHistory?: boolean },
 ): Promise<string> {
   const reuse = options?.reuseFromHistory !== false
 
-  // 1. Reuse from history if applicable
+  // 1. Reuse from DeviceTransfer history if applicable
   if (reuse && options?.assetNo) {
-    const hist = await db.locationHistory.findFirst({
+    const hist = await db.deviceTransfer.findFirst({
       where: {
-        assetNo: options.assetNo,
-        toSite: targetSiteName,
+        assetCode: options.assetNo,
+        toSite: targetSite,
         toAssetSiteCode: { not: null },
       },
-      orderBy: { moveDate: 'desc' },
+      orderBy: { transferDate: 'desc' },
       select: { toAssetSiteCode: true },
     })
     if (hist?.toAssetSiteCode) {
-      // Reuse the exact prior code — matches GAS behavior.
       return hist.toAssetSiteCode
     }
   }
 
-  // 2. Find MAX assetSiteCode across all devices currently at this site
-  //    (and also any historical references, to avoid collisions).
+  // 2. Find MAX assetSiteCode across all devices — match by site name OR
+  //    by assetSiteCode prefix (handles both site code & site name input).
   const devicesAtSite = await db.device.findMany({
-    where: { site: targetSiteName, assetSiteCode: { not: null } },
+    where: {
+      OR: [
+        { site: targetSite, assetSiteCode: { not: null } },
+        { assetSiteCode: { startsWith: prefix + '-' } },
+      ],
+    },
     select: { assetSiteCode: true },
     orderBy: { assetSiteCode: 'desc' },
     take: 1,
@@ -148,9 +213,15 @@ async function continueWithPrefix(
   if (devicesAtSite.length > 0 && devicesAtSite[0].assetSiteCode) {
     maxSeed = parseAssetSiteCodeSeed(devicesAtSite[0].assetSiteCode)
   }
-  // Also probe Location_History for any higher historical code we should not collide with.
-  const histMax = await db.locationHistory.findFirst({
-    where: { toSite: targetSiteName, toAssetSiteCode: { not: null } },
+
+  // Also probe DeviceTransfer for any higher historical code.
+  const histMax = await db.deviceTransfer.findFirst({
+    where: {
+      OR: [
+        { toSite: targetSite, toAssetSiteCode: { not: null } },
+        { toAssetSiteCode: { startsWith: prefix + '-' } },
+      ],
+    },
     orderBy: { toAssetSiteCode: 'desc' },
     select: { toAssetSiteCode: true },
     take: 1,

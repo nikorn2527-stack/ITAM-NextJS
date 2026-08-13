@@ -62,20 +62,20 @@ export async function GET(req: NextRequest) {
       device: { ...siteFilter },
     }
     if (site) readingWhere.device = { ...siteFilter, site }
-    if (building) readingWhere.device = { ...readingWhere.device, building }
-    if (department) readingWhere.device = { ...readingWhere.device, department }
+    if (building) readingWhere.device = { ...(readingWhere.device as Record<string, unknown>), building }
+    if (department) readingWhere.device = { ...(readingWhere.device as Record<string, unknown>), department }
 
     // Pull all matching readings (with device info for grouping)
     const readings = await db.meterReading.findMany({
       where: readingWhere,
       select: {
-        assetNo: true,
+        assetCode: true,
         readingMonth: true,
         pagesBw: true,
         pagesColor: true,
         device: {
           select: {
-            assetNo: true,
+            assetCode: true,
             brand: true,
             model: true,
             site: true,
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
             floor: true,
             department: true,
             departmentCode: true,
-            deviceType: true,
+            type: true,
           },
         },
       },
@@ -127,9 +127,9 @@ export async function GET(req: NextRequest) {
         const dept = r.device?.department || 'ไม่ระบุ'
         const sheets = r.pagesBw + r.pagesColor
         byDept.set(dept, (byDept.get(dept) ?? 0) + sheets)
-        const cur = byDevice.get(r.assetNo) ?? { sheets: 0, brand: r.device?.brand ?? null, model: r.device?.model ?? null }
+        const cur = byDevice.get(r.assetCode || '') ?? { sheets: 0, brand: r.device?.brand ?? null, model: r.device?.model ?? null }
         cur.sheets += sheets
-        byDevice.set(r.assetNo, cur)
+        byDevice.set(r.assetCode || '', cur)
       }
       const topDept = Array.from(byDept.entries())
         .sort((a, b) => b[1] - a[1])
@@ -178,15 +178,15 @@ export async function GET(req: NextRequest) {
         const bld = r.device?.building || 'ไม่ระบุ'
         const flr = r.device?.floor || 'ไม่ระบุ'
         const bfKey = `${bld} | ${flr}`
-        const dKey = r.assetNo
+        const dKey = r.assetCode || ''
 
         if (!byDept.has(dept)) byDept.set(dept, { bw: 0, color: 0, devices: new Set() })
         const d = byDept.get(dept)!
-        d.bw += r.pagesBw; d.color += r.pagesColor; d.devices.add(r.assetNo)
+        d.bw += r.pagesBw; d.color += r.pagesColor; d.devices.add(r.assetCode || '')
 
         if (!byBuildingFloor.has(bfKey)) byBuildingFloor.set(bfKey, { bw: 0, color: 0, devices: new Set() })
         const bf = byBuildingFloor.get(bfKey)!
-        bf.bw += r.pagesBw; bf.color += r.pagesColor; bf.devices.add(r.assetNo)
+        bf.bw += r.pagesBw; bf.color += r.pagesColor; bf.devices.add(r.assetCode || '')
 
         if (!byDevice.has(dKey)) byDevice.set(dKey, {
           bw: 0, color: 0,
@@ -261,9 +261,9 @@ export async function GET(req: NextRequest) {
 
       for (const r of readings) {
         if (!last3.includes(r.readingMonth || '')) continue
-        if (!byDevice.has(r.assetNo)) {
-          byDevice.set(r.assetNo, {
-            assetNo: r.assetNo,
+        if (!byDevice.has(r.assetCode || '')) {
+          byDevice.set(r.assetCode || '', {
+            assetNo: r.assetCode || '',
             brand: r.device?.brand ?? null,
             model: r.device?.model ?? null,
             site: r.device?.site ?? null,
@@ -272,7 +272,7 @@ export async function GET(req: NextRequest) {
           })
         }
         const m = r.readingMonth || ''
-        const d = byDevice.get(r.assetNo)!
+        const d = byDevice.get(r.assetCode || '')!
         if (!d.months[m]) d.months[m] = { bw: 0, color: 0 }
         d.months[m].bw += r.pagesBw
         d.months[m].color += r.pagesColor
@@ -319,9 +319,9 @@ export async function GET(req: NextRequest) {
       }>()
 
       for (const r of readings) {
-        if (!byDevice.has(r.assetNo)) {
-          byDevice.set(r.assetNo, {
-            assetNo: r.assetNo,
+        if (!byDevice.has(r.assetCode || '')) {
+          byDevice.set(r.assetCode || '', {
+            assetNo: r.assetCode || '',
             brand: r.device?.brand ?? null,
             model: r.device?.model ?? null,
             site: r.device?.site ?? null,
@@ -329,13 +329,13 @@ export async function GET(req: NextRequest) {
             floor: r.device?.floor ?? null,
             department: r.device?.department ?? null,
             departmentCode: r.device?.departmentCode ?? null,
-            deviceType: r.device?.deviceType ?? null,
+            deviceType: r.device?.type ?? null,
             bw: 0,
             color: 0,
             months: new Set(),
           })
         }
-        const d = byDevice.get(r.assetNo)!
+        const d = byDevice.get(r.assetCode || '')!
         d.bw += r.pagesBw
         d.color += r.pagesColor
         d.months.add(r.readingMonth || '')

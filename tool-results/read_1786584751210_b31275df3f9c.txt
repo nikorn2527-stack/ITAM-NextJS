@@ -1,0 +1,612 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     7→import { Button } from '@/components/ui/button'
+     8→import { Input } from '@/components/ui/input'
+     9→import { Label } from '@/components/ui/label'
+    10→import { Badge } from '@/components/ui/badge'
+    11→import { Skeleton } from '@/components/ui/skeleton'
+    12→import { Switch } from '@/components/ui/switch'
+    13→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    14→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    15→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+    16→import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette } from 'lucide-react'
+    17→import { type MasterItem } from './types'
+    18→
+    19→interface Site { id: string; siteCode: string; siteName: string | null; lineOa: string | null; hotline: string | null; paperRateBw: number | null; paperRateColor: number | null; deviceCount?: number; activeCount?: number }
+    20→
+    21→interface NotifySettings {
+    22→  channels: { email: boolean; telegram: boolean; lineNotify: boolean; lineOA: boolean }
+    23→  events: { deviceAdded: boolean; deviceUpdated: boolean; transfer: boolean; lifecycle: boolean; meter: boolean }
+    24→  credentials: Record<string, string>
+    25→}
+    26→
+    27→export function ItamSettings() {
+    28→  const qc = useQueryClient()
+    29→  const [tab, setTab] = React.useState<'master' | 'sites' | 'notifications' | 'customize'>('master')
+    30→  const [category, setCategory] = React.useState('all')
+    31→  const [dialogOpen, setDialogOpen] = React.useState(false)
+    32→  const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
+    33→  const [form, setForm] = React.useState({ category: '', code: '', label: '', displayLabel: '' })
+    34→
+    35→  // Master items
+    36→  const { data: masterData, isLoading: masterLoading } = useQuery({
+    37→    queryKey: ['itam-master', category],
+    38→    queryFn: async () => {
+    39→      const params = category !== 'all' ? `?category=${category}` : ''
+    40→      const res = await fetch(`/api/itam/master-items${params}`)
+    41→      if (!res.ok) throw new Error('Failed')
+    42→      return res.json() as Promise<{ items: MasterItem[] }>
+    43→    },
+    44→  })
+    45→
+    46→  // Notification settings (only fetched when tab === 'notifications')
+    47→  const { data: notifyData, isLoading: notifyLoading } = useQuery<NotifySettings>({
+    48→    queryKey: ['itam-notify-settings'],
+    49→    queryFn: async () => {
+    50→      const res = await fetch('/api/itam/notifications/settings')
+    51→      if (!res.ok) throw new Error('Failed')
+    52→      return res.json()
+    53→    },
+    54→    enabled: tab === 'notifications',
+    55→  })
+    56→  const [notifyDraft, setNotifyDraft] = React.useState<NotifySettings | null>(null)
+    57→  React.useEffect(() => {
+    58→    if (notifyData) setNotifyDraft(JSON.parse(JSON.stringify(notifyData)) as NotifySettings)
+    59→  }, [notifyData])
+    60→
+    61→  async function saveNotify() {
+    62→    if (!notifyDraft) return
+    63→    try {
+    64→      const res = await fetch('/api/itam/notifications/settings', {
+    65→        method: 'PUT',
+    66→        headers: { 'Content-Type': 'application/json' },
+    67→        body: JSON.stringify({
+    68→          channels: notifyDraft.channels,
+    69→          events: notifyDraft.events,
+    70→          notifyEmails: notifyDraft.credentials.notifyEmails,
+    71→          telegramBotToken: notifyDraft.credentials.telegramBotToken,
+    72→          telegramChatId: notifyDraft.credentials.telegramChatId,
+    73→          lineNotifyToken: notifyDraft.credentials.lineNotifyToken,
+    74→          lineOaChannelAccessToken: notifyDraft.credentials.lineOaChannelAccessToken,
+    75→          lineOaToUserId: notifyDraft.credentials.lineOaToUserId,
+    76→        }),
+    77→      })
+    78→      if (!res.ok) throw new Error('Failed')
+    79→      toast.success('บันทึกการตั้งค่าการแจ้งเตือนแล้ว')
+    80→      await qc.invalidateQueries({ queryKey: ['itam-notify-settings'] })
+    81→    } catch {
+    82→      toast.error('บันทึกไม่สำเร็จ')
+    83→    }
+    84→  }
+    85→
+    86→  async function sendTestNotify() {
+    87→    try {
+    88→      const res = await fetch('/api/itam/notifications/test', {
+    89→        method: 'POST',
+    90→        headers: { 'Content-Type': 'application/json' },
+    91→        body: JSON.stringify({ message: '🔔 ทดสอบการแจ้งเตือนจาก ITAM' }),
+    92→      })
+    93→      const j = await res.json()
+    94→      if (!res.ok) throw new Error(j.error || 'Failed')
+    95→      toast.success('ส่งการแจ้งเตือนทดสอบแล้ว — ตรวจสอบ logs / ช่องทางที่เปิดใช้')
+    96→    } catch (e) {
+    97→      toast.error(e instanceof Error ? e.message : 'ส่งไม่สำเร็จ')
+    98→    }
+    99→  }
+   100→
+   101→  // Sites
+   102→  const { data: sitesData, isLoading: sitesLoading } = useQuery({
+   103→    queryKey: ['itam-sites'],
+   104→    queryFn: async () => {
+   105→      const res = await fetch('/api/itam/sites')
+   106→      if (!res.ok) throw new Error('Failed')
+   107→      return res.json() as Promise<{ sites: Site[] }>
+   108→    },
+   109→  })
+   110→
+   111→  function openAdd() {
+   112→    setEditItem(null)
+   113→    setForm({ category: 'Brand', code: '', label: '', displayLabel: '' })
+   114→    setDialogOpen(true)
+   115→  }
+   116→
+   117→  function openEdit(item: MasterItem) {
+   118→    setEditItem(item)
+   119→    setForm({ category: item.category, code: item.code, label: item.label, displayLabel: item.displayLabel || '' })
+   120→    setDialogOpen(true)
+   121→  }
+   122→
+   123→  async function saveItem() {
+   124→    if (!form.category || !form.label) { toast.error('กรุณากรอกหมวดหมู่และค่า'); return }
+   125→    try {
+   126→      if (editItem) {
+   127→        const res = await fetch(`/api/itam/master-items/${editItem.id}`, {
+   128→          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+   129→          body: JSON.stringify(form),
+   130→        })
+   131→        if (!res.ok) throw new Error('Failed')
+   132→        toast.success('แก้ไขแล้ว')
+   133→      } else {
+   134→        const res = await fetch('/api/itam/master-items', {
+   135→          method: 'POST', headers: { 'Content-Type': 'application/json' },
+   136→          body: JSON.stringify(form),
+   137→        })
+   138→        if (!res.ok) throw new Error('Failed')
+   139→        toast.success('เพิ่มแล้ว')
+   140→      }
+   141→      setDialogOpen(false)
+   142→      await qc.invalidateQueries({ queryKey: ['itam-master'] })
+   143→    } catch (e) { toast.error('บันทึกไม่สำเร็จ') }
+   144→  }
+   145→
+   146→  async function deleteItem(item: MasterItem) {
+   147→    if (!confirm(`ลบ "${item.label}"?`)) return
+   148→    try {
+   149→      await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE' })
+   150→      toast.success('ลบแล้ว')
+   151→      await qc.invalidateQueries({ queryKey: ['itam-master'] })
+   152→    } catch { toast.error('ลบไม่สำเร็จ') }
+   153→  }
+   154→
+   155→  const items = masterData?.items ?? []
+   156→  const sites = sitesData?.sites ?? []
+   157→
+   158→  return (
+   159→    <div className="space-y-4 p-4 md:p-6">
+   160→      <div>
+   161→        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ตั้งค่า (Real DB)</h1>
+   162→        <p className="text-sm text-slate-500 dark:text-slate-400">ข้อมูลมาตรฐาน + สาขา</p>
+   163→      </div>
+   164→
+   165→      {/* Tabs */}
+   166→      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
+   167→        <button onClick={() => setTab('master')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'master' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+   168→          <Database className="mr-1 inline h-4 w-4" /> ข้อมูลมาตรฐาน
+   169→        </button>
+   170→        <button onClick={() => setTab('sites')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'sites' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+   171→          <Building2 className="mr-1 inline h-4 w-4" /> สาขา
+   172→        </button>
+   173→        <button onClick={() => setTab('notifications')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'notifications' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+   174→          <Bell className="mr-1 inline h-4 w-4" /> การแจ้งเตือน
+   175→        </button>
+   176→        <button onClick={() => setTab('customize')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'customize' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+   177→          <Palette className="mr-1 inline h-4 w-4" /> ปรับแต่งแอป
+   178→        </button>
+   179→      </div>
+   180→
+   181→      {tab === 'master' && (
+   182→        <>
+   183→          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+   184→            <Select value={category} onValueChange={setCategory}>
+   185→              <SelectTrigger className="w-full sm:w-48 dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
+   186→              <SelectContent>
+   187→                <SelectItem value="all">หมวดทั้งหมด</SelectItem>
+   188→                <SelectItem value="Brand">Brand</SelectItem>
+   189→                <SelectItem value="DeviceType">ประเภทอุปกรณ์</SelectItem>
+   190→                <SelectItem value="Model">Model</SelectItem>
+   191→                <SelectItem value="Department">แผนก</SelectItem>
+   192→                <SelectItem value="Status">สถานะ</SelectItem>
+   193→                <SelectItem value="DeviceGroup">กลุ่มอุปกรณ์</SelectItem>
+   194→              </SelectContent>
+   195→            </Select>
+   196→            <div className="flex gap-2 sm:ml-auto">
+   197→              <Button variant="outline" size="sm" onClick={openAdd} className="flex-1 sm:flex-none"><Plus className="h-4 w-4" /> เพิ่ม</Button>
+   198→              <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ['itam-master'] })}><RefreshCw className="h-4 w-4" /></Button>
+   199→            </div>
+   200→          </div>
+   201→
+   202→          <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   203→            <CardContent className="p-0">
+   204→              <div className="itam-scroll max-h-[55vh] overflow-auto">
+   205→                <Table>
+   206→                  <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+   207→                    <TableRow>
+   208→                      <TableHead>หมวดหมู่</TableHead>
+   209→                      <TableHead>ค่า</TableHead>
+   210→                      <TableHead>Display Label</TableHead>
+   211→                      <TableHead>รหัสแผนก</TableHead>
+   212→                      <TableHead className="text-center">สถานะ</TableHead>
+   213→                      <TableHead className="text-right">จัดการ</TableHead>
+   214→                    </TableRow>
+   215→                  </TableHeader>
+   216→                  <TableBody>
+   217→                    {masterLoading ? (
+   218→                      // Skeleton rows matching column widths
+   219→                      Array.from({ length: 6 }).map((_, i) => (
+   220→                        <TableRow key={`sk-${i}`}>
+   221→                          <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
+   222→                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+   223→                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+   224→                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+   225→                          <TableCell><Skeleton className="h-5 w-8 rounded-full mx-auto" /></TableCell>
+   226→                          <TableCell><Skeleton className="h-6 w-20 ml-auto" /></TableCell>
+   227→                        </TableRow>
+   228→                      ))
+   229→                    ) : items.length === 0 ? (
+   230→                      <TableRow><TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">ไม่มีข้อมูล</TableCell></TableRow>
+   231→                    ) : (
+   232→                      items.map((item) => (
+   233→                        <TableRow key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+   234→                          <TableCell><Badge className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{item.category}</Badge></TableCell>
+   235→                          <TableCell className="text-sm font-medium">{item.label}</TableCell>
+   236→                          <TableCell className="text-xs text-slate-400">{item.displayLabel || '—'}</TableCell>
+   237→                          <TableCell className="text-xs">{item.code || '—'}</TableCell>
+   238→                          <TableCell className="text-center">{(item as { active?: boolean }).active ? <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">✓</Badge> : <Badge className="bg-slate-50 text-slate-400">—</Badge>}</TableCell>
+   239→                          <TableCell className="text-right">
+   240→                            <Button size="sm" variant="ghost" onClick={() => openEdit(item)}><Pencil className="h-3 w-3" /></Button>
+   241→                            <Button size="sm" variant="ghost" onClick={() => deleteItem(item)} className="text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /></Button>
+   242→                          </TableCell>
+   243→                        </TableRow>
+   244→                      ))
+   245→                    )}
+   246→                  </TableBody>
+   247→                </Table>
+   248→              </div>
+   249→            </CardContent>
+   250→          </Card>
+   251→        </>
+   252→      )}
+   253→
+   254→      {tab === 'sites' && (
+   255→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+   256→          {sitesLoading ? (
+   257→            Array.from({ length: 6 }).map((_, i) => (
+   258→              <Card key={i} className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   259→                <CardHeader><Skeleton className="h-5 w-20" /></CardHeader>
+   260→                <CardContent className="space-y-2">
+   261→                  <Skeleton className="h-4 w-28" />
+   262→                  <Skeleton className="h-3 w-32" />
+   263→                  <Skeleton className="h-3 w-32" />
+   264→                </CardContent>
+   265→              </Card>
+   266→            ))
+   267→          ) : sites.length === 0 ? (
+   268→            <div className="col-span-full py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูลสาขา</div>
+   269→          ) : (
+   270→            sites.map((s) => (
+   271→              <Card key={s.id} className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   272→                <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4 text-[#f97316]" /> {s.siteCode}</CardTitle></CardHeader>
+   273→                <CardContent className="space-y-2">
+   274→                  <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{s.siteName}</div>
+   275→                  <div className="flex gap-4 text-xs text-slate-500">
+   276→                    <span>📦 {s.deviceCount ?? 0} เครื่อง</span>
+   277→                    <span>✅ {s.activeCount ?? 0} ใช้งาน</span>
+   278→                  </div>
+   279→                  <div className="flex gap-4 text-xs text-slate-400">
+   280→                    <span>📄 ขาวดำ: ฿{s.paperRateBw ?? 0.5}/แผ่น</span>
+   281→                    <span>🎨 สี: ฿{s.paperRateColor ?? 2}/แผ่น</span>
+   282→                  </div>
+   283→                  {s.hotline && <div className="text-xs text-slate-400">📞 {s.hotline}</div>}
+   284→                </CardContent>
+   285→              </Card>
+   286→            ))
+   287→          )}
+   288→        </div>
+   289→      )}
+   290→
+   291→      {/* Add/Edit Dialog */}
+   292→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   293→        <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
+   294→          <DialogHeader><DialogTitle>{editItem ? 'แก้ไข' : 'เพิ่ม'} ข้อมูลมาตรฐาน</DialogTitle></DialogHeader>
+   295→          <div className="space-y-3">
+   296→            <div className="space-y-1.5">
+   297→              <Label className="text-xs">หมวดหมู่ *</Label>
+   298→              <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+   299→                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
+   300→                <SelectContent>
+   301→                  <SelectItem value="Brand">Brand</SelectItem>
+   302→                  <SelectItem value="DeviceType">ประเภทอุปกรณ์</SelectItem>
+   303→                  <SelectItem value="Model">Model</SelectItem>
+   304→                  <SelectItem value="Department">แผนก</SelectItem>
+   305→                  <SelectItem value="Status">สถานะ</SelectItem>
+   306→                  <SelectItem value="DeviceGroup">กลุ่มอุปกรณ์</SelectItem>
+   307→                </SelectContent>
+   308→              </Select>
+   309→            </div>
+   310→            <div className="space-y-1.5"><Label className="text-xs">ค่า *</Label><Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
+   311→            <div className="space-y-1.5"><Label className="text-xs">Display Label</Label><Input value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
+   312→            <div className="space-y-1.5"><Label className="text-xs">รหัส</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
+   313→          </div>
+   314→          <DialogFooter>
+   315→            <Button variant="outline" onClick={() => setDialogOpen(false)}>ยกเลิก</Button>
+   316→            <Button onClick={saveItem} className="bg-[#f97316] text-white hover:bg-[#ea580c]">บันทึก</Button>
+   317→          </DialogFooter>
+   318→        </DialogContent>
+   319→      </Dialog>
+   320→
+   321→      {/* Notifications tab */}
+   322→      {tab === 'notifications' && (
+   323→        <div className="space-y-4">
+   324→          {notifyLoading || !notifyDraft ? (
+   325→            <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   326→              <CardContent className="p-6">
+   327→                <Skeleton className="h-64 w-full rounded" />
+   328→              </CardContent>
+   329→            </Card>
+   330→          ) : (
+   331→            <>
+   332→              <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   333→                <CardHeader>
+   334→                  <CardTitle className="flex items-center gap-2 text-base">
+   335→                    <Bell className="h-4 w-4 text-[#f97316]" /> ช่องทางการแจ้งเตือน (Channels)
+   336→                  </CardTitle>
+   337→                  <p className="text-xs text-slate-500 dark:text-slate-400">
+   338→                    เลือกช่องทางที่ต้องการส่ง — Email (log), Telegram (Bot API), LINE Notify, LINE OA
+   339→                  </p>
+   340→                </CardHeader>
+   341→                <CardContent className="space-y-3">
+   342→                  <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+   343→                    <div>
+   344→                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">📧 Email</div>
+   345→                      <div className="text-xs text-slate-400">บันทึกใน server log (sandbox ไม่ส่งจริง)</div>
+   346→                    </div>
+   347→                    <Switch checked={notifyDraft.channels.email} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, email: v } })} />
+   348→                  </div>
+   349→                  <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+   350→                    <div>
+   351→                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">✈️ Telegram</div>
+   352→                      <div className="text-xs text-slate-400">ส่งผ่าน Telegram Bot API</div>
+   353→                    </div>
+   354→                    <Switch checked={notifyDraft.channels.telegram} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, telegram: v } })} />
+   355→                  </div>
+   356→                  <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+   357→                    <div>
+   358→                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">💬 LINE Notify</div>
+   359→                      <div className="text-xs text-slate-400">ส่งผ่าน LINE Notify API</div>
+   360→                    </div>
+   361→                    <Switch checked={notifyDraft.channels.lineNotify} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, lineNotify: v } })} />
+   362→                  </div>
+   363→                  <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+   364→                    <div>
+   365→                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">🎯 LINE OA</div>
+   366→                      <div className="text-xs text-slate-400">ส่งผ่าน LINE Messaging API</div>
+   367→                    </div>
+   368→                    <Switch checked={notifyDraft.channels.lineOA} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, lineOA: v } })} />
+   369→                  </div>
+   370→                </CardContent>
+   371→              </Card>
+   372→
+   373→              <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   374→                <CardHeader>
+   375→                  <CardTitle className="text-base">เหตุการณ์ที่แจ้งเตือน (Events)</CardTitle>
+   376→                </CardHeader>
+   377→                <CardContent className="space-y-3">
+   378→                  {[
+   379→                    { key: 'deviceAdded' as const, label: '➕ เพิ่มอุปกรณ์ใหม่' },
+   380→                    { key: 'deviceUpdated' as const, label: '✏️ แก้ไขอุปกรณ์' },
+   381→                    { key: 'transfer' as const, label: '🔄 ย้ายตำแหน่งอุปกรณ์' },
+   382→                    { key: 'lifecycle' as const, label: '🔁 เปลี่ยนสถานะ' },
+   383→                    { key: 'meter' as const, label: '📈 จดมิเตอร์' },
+   384→                  ].map((ev) => (
+   385→                    <div key={ev.key} className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+   386→                      <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{ev.label}</div>
+   387→                      <Switch checked={notifyDraft.events[ev.key]} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, events: { ...notifyDraft.events, [ev.key]: v } })} />
+   388→                    </div>
+   389→                  ))}
+   390→                </CardContent>
+   391→              </Card>
+   392→
+   393→              <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+   394→                <CardHeader>
+   395→                  <CardTitle className="text-base">ข้อมูลประจำตัว (Credentials)</CardTitle>
+   396→                  <p className="text-xs text-slate-500 dark:text-slate-400">
+   397→                    Token จะถูก mask หลังบันทึก — พิมพ์ค่าใหม่เพื่อเขียนทับ
+   398→                  </p>
+   399→                </CardHeader>
+   400→                <CardContent className="space-y-3">
+   401→                  <div className="space-y-1.5">
+   402→                    <Label className="text-xs">อีเมลผู้รับ (คั่นด้วยจุลภาค)</Label>
+   403→                    <Input
+   404→                      value={notifyDraft.credentials.notifyEmails || ''}
+   405→                      onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, notifyEmails: e.target.value } })}
+   406→                      placeholder="admin@example.com, ops@example.com"
+   407→                      className="dark:bg-slate-800 dark:border-slate-700"
+   408→                    />
+   409→                  </div>
+   410→                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+   411→                    <div className="space-y-1.5">
+   412→                      <Label className="text-xs">Telegram Bot Token</Label>
+   413→                      <Input
+   414→                        value={notifyDraft.credentials.telegramBotToken || ''}
+   415→                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, telegramBotToken: e.target.value } })}
+   416→                        placeholder="123456:ABC-DEF..."
+   417→                        className="dark:bg-slate-800 dark:border-slate-700 font-mono text-xs"
+   418→                      />
+   419→                    </div>
+   420→                    <div className="space-y-1.5">
+   421→                      <Label className="text-xs">Telegram Chat ID</Label>
+   422→                      <Input
+   423→                        value={notifyDraft.credentials.telegramChatId || ''}
+   424→                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, telegramChatId: e.target.value } })}
+   425→                        placeholder="-1001234567890"
+   426→                        className="dark:bg-slate-800 dark:border-slate-700 font-mono text-xs"
+   427→                      />
+   428→                    </div>
+   429→                    <div className="space-y-1.5">
+   430→                      <Label className="text-xs">LINE Notify Token</Label>
+   431→                      <Input
+   432→                        value={notifyDraft.credentials.lineNotifyToken || ''}
+   433→                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, lineNotifyToken: e.target.value } })}
+   434→                        placeholder="abcXYZ..."
+   435→                        className="dark:bg-slate-800 dark:border-slate-700 font-mono text-xs"
+   436→                      />
+   437→                    </div>
+   438→                    <div className="space-y-1.5">
+   439→                      <Label className="text-xs">LINE OA Channel Access Token</Label>
+   440→                      <Input
+   441→                        value={notifyDraft.credentials.lineOaChannelAccessToken || ''}
+   442→                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, lineOaChannelAccessToken: e.target.value } })}
+   443→                        placeholder="abcXYZ..."
+   444→                        className="dark:bg-slate-800 dark:border-slate-700 font-mono text-xs"
+   445→                      />
+   446→                    </div>
+   447→                    <div className="space-y-1.5 sm:col-span-2">
+   448→                      <Label className="text-xs">LINE OA Target User ID</Label>
+   449→                      <Input
+   450→                        value={notifyDraft.credentials.lineOaToUserId || ''}
+   451→                        onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, lineOaToUserId: e.target.value } })}
+   452→                        placeholder="U1234567890abcdef..."
+   453→                        className="dark:bg-slate-800 dark:border-slate-700 font-mono text-xs"
+   454→                      />
+   455→                    </div>
+   456→                  </div>
+   457→                </CardContent>
+   458→              </Card>
+   459→
+   460→              <div className="flex flex-wrap gap-2">
+   461→                <Button onClick={saveNotify} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+   462→                  บันทึกการตั้งค่า
+   463→                </Button>
+   464→                <Button variant="outline" onClick={sendTestNotify} className="dark:bg-slate-800 dark:border-slate-700">
+   465→                  <Send className="h-4 w-4" /> ส่งทดสอบ
+   466→                </Button>
+   467→                <Button variant="outline" onClick={() => qc.invalidateQueries({ queryKey: ['itam-notify-settings'] })} className="dark:bg-slate-800 dark:border-slate-700">
+   468→                  <RefreshCw className="h-4 w-4" /> รีเฟรช
+   469→                </Button>
+   470→              </div>
+   471→            </>
+   472→          )}
+   473→        </div>
+   474→      )}
+   475→
+   476→      {/* ── ปรับแต่งแอป tab — appName, logo, tagline, search fields ── */}
+   477→      {tab === 'customize' && <AppCustomizeTab />}
+   478→    </div>
+   479→  )
+   480→}
+   481→
+   482→// ── AppCustomizeTab — ปรับแต่งชื่อแอป, โลโก้, tagline, ฟิลด์ค้นหา ────────
+   483→function AppCustomizeTab() {
+   484→  const qc = useQueryClient()
+   485→  const { data: settings, isLoading } = useQuery<Record<string, string>>({
+   486→    queryKey: ['app-customization'],
+   487→    queryFn: async () => {
+   488→      const res = await fetch('/api/itam/settings')
+   489→      if (!res.ok) return {}
+   490→      const j = await res.json()
+   491→      const map: Record<string, string> = {}
+   492→      for (const s of j.settings ?? []) map[s.key] = s.value ?? ''
+   493→      return map
+   494→    },
+   495→  })
+   496→
+   497→  const [form, setForm] = React.useState({
+   498→    appName: '',
+   499→    appLogoUrl: '',
+   500→    appTagline: '',
+   501→    searchFields: '', // comma-separated: assetNo,serial,brand,model
+   502→  })
+   503→  const [saving, setSaving] = React.useState(false)
+   504→
+   505→  React.useEffect(() => {
+   506→    if (settings) {
+   507→      setForm({
+   508→        appName: settings.appName || 'Asset Mgmt',
+   509→        appLogoUrl: settings.appLogoUrl || '',
+   510→        appTagline: settings.appTagline || 'IT Asset Management',
+   511→        searchFields: settings.searchFields || 'assetNo,serial,brand,model',
+   512→      })
+   513→    }
+   514→  }, [settings])
+   515→
+   516→  async function save() {
+   517→    setSaving(true)
+   518→    try {
+   519→      // Save each setting via the settings API (upsert pattern)
+   520→      const entries = [
+   521→        { key: 'appName', value: form.appName },
+   522→        { key: 'appLogoUrl', value: form.appLogoUrl },
+   523→        { key: 'appTagline', value: form.appTagline },
+   524→        { key: 'searchFields', value: form.searchFields },
+   525→      ]
+   526→      for (const e of entries) {
+   527→        await fetch('/api/itam/settings', {
+   528→          method: 'POST',
+   529→          headers: { 'Content-Type': 'application/json' },
+   530→          body: JSON.stringify({ key: e.key, value: e.value }),
+   531→        })
+   532→      }
+   533→      toast.success('บันทึกการตั้งค่าแอปแล้ว')
+   534→      qc.invalidateQueries({ queryKey: ['app-customization'] })
+   535→    } catch (e) {
+   536→      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+   537→    } finally {
+   538→      setSaving(false)
+   539→    }
+   540→  }
+   541→
+   542→  if (isLoading) return <Skeleton className="h-64 w-full" />
+   543→
+   544→  return (
+   545→    <Card className="dark:border-slate-800 dark:bg-slate-900">
+   546→      <CardHeader>
+   547→        <CardTitle className="flex items-center gap-2 text-base">
+   548→          <Palette className="h-4 w-4 text-[#f97316]" /> ปรับแต่งหน้าตาแอป
+   549→        </CardTitle>
+   550→      </CardHeader>
+   551→      <CardContent className="space-y-4">
+   552→        <div className="space-y-1.5">
+   553→          <Label className="text-xs">ชื่อแอป (แสดงใน sidebar)</Label>
+   554→          <Input
+   555→            value={form.appName}
+   556→            onChange={(e) => setForm({ ...form, appName: e.target.value })}
+   557→            placeholder="Asset Mgmt"
+   558→            className="dark:bg-slate-800 dark:border-slate-700"
+   559→          />
+   560→        </div>
+   561→        <div className="space-y-1.5">
+   562→          <Label className="text-xs">โลโก้ (emoji หรือ URL รูปภาพ)</Label>
+   563→          <Input
+   564→            value={form.appLogoUrl}
+   565→            onChange={(e) => setForm({ ...form, appLogoUrl: e.target.value })}
+   566→            placeholder="📦 หรือ https://example.com/logo.png"
+   567→            className="dark:bg-slate-800 dark:border-slate-700"
+   568→          />
+   569→          <p className="text-[11px] text-slate-500">
+   570→            💡 ใช้ emoji (เช่น 📦 🖨️ 💻) หรือวาง URL รูปภาพ (PNG/SVG, แนะนำขนาด 32×32px)
+   571→          </p>
+   572→        </div>
+   573→        <div className="space-y-1.5">
+   574→          <Label className="text-xs">แท็กไลน์ (ใต้ชื่อแอป)</Label>
+   575→          <Input
+   576→            value={form.appTagline}
+   577→            onChange={(e) => setForm({ ...form, appTagline: e.target.value })}
+   578→            placeholder="IT Asset Management"
+   579→            className="dark:bg-slate-800 dark:border-slate-700"
+   580→          />
+   581→        </div>
+   582→        <div className="space-y-1.5">
+   583→          <Label className="text-xs">ฟิลด์ที่ใช้ค้นหา (คั่นด้วยจุลภาค)</Label>
+   584→          <Input
+   585→            value={form.searchFields}
+   586→            onChange={(e) => setForm({ ...form, searchFields: e.target.value })}
+   587→            placeholder="assetNo,serial,brand,model"
+   588→            className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
+   589→          />
+   590→          <p className="text-[11px] text-slate-500">
+   591→            💡 ฟิลด์ที่รองรับ: assetNo, serial, brand, model, deviceType, department, location, site —
+   592→            ลำดับแรกจะถูกค้นหาก่อน (ตัวอย่าง: &quot;serial,assetNo,brand&quot; จะค้น Serial ก่อน)
+   593→          </p>
+   594→        </div>
+   595→        <div className="flex gap-2 pt-2">
+   596→          <Button onClick={save} disabled={saving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+   597→            {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
+   598→            บันทึก
+   599→          </Button>
+   600→          <Button
+   601→            variant="outline"
+   602→            onClick={() => qc.invalidateQueries({ queryKey: ['app-customization'] })}
+   603→            className="dark:bg-slate-800 dark:border-slate-700"
+   604→          >
+   605→            <RefreshCw className="h-4 w-4" /> รีเฟรช
+   606→          </Button>
+   607→        </div>
+   608→      </CardContent>
+   609→    </Card>
+   610→  )
+   611→}
+   612→
