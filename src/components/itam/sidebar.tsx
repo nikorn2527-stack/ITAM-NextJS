@@ -55,6 +55,9 @@ const NAV_GROUPS: NavGroupDef[] = [
     items: [
       { page: 'itam-sticker-editor', icon: '🎨', label: 'สติกเกอร์', desc: 'ออกแบบสติกเกอร์' },
       { page: 'itam-document-editor', icon: '📑', label: 'เอกสาร PDF', desc: 'ออกแบบเอกสาร' },
+      { page: 'templates', icon: '📄', label: 'เทมเพลต', desc: 'จัดการเทมเพลตเอกสาร' },
+      { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล', desc: 'Import CSV/Excel' },
+      { page: 'monthly-report', icon: '📅', label: 'รายงานรายเดือน', desc: 'สรุปการใช้งานรายเดือน' },
       { page: 'itam-snapshot-viewer', icon: '🔒', label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์' },
     ],
   },

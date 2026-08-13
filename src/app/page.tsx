@@ -71,6 +71,34 @@ const ItamWorkOrders = dynamic(() =>
 const ItamStock = dynamic(() =>
   import('@/components/itam/itam-stock').then((m) => m.ItamStock),
 )
+// ── Additional pages restored from feat branch (were missing from main) ──
+const ImportPage = dynamic(() =>
+  import('@/components/itam/import-page').then((m) => m.ImportPage),
+)
+const TemplatesPage = dynamic(() =>
+  import('@/components/itam/templates-page').then((m) => m.TemplatesPage),
+)
+const MonthlyReport = dynamic(() =>
+  import('@/components/itam/monthly-report').then((m) => m.MonthlyReport),
+)
+const SettingsPageV2 = dynamic(() =>
+  import('@/components/itam/settings-page-v2').then((m) => m.SettingsPageV2),
+)
+const WorkOrdersPage = dynamic(() =>
+  import('@/components/itam/work-orders-page').then((m) => m.WorkOrdersPage),
+)
+const StockPage = dynamic(() =>
+  import('@/components/itam/stock-page').then((m) => m.StockPage),
+)
+const DevicesPage = dynamic(() =>
+  import('@/components/itam/devices-page').then((m) => m.DevicesPage),
+)
+const MeterPage = dynamic(() =>
+  import('@/components/itam/meter-page').then((m) => m.MeterPage),
+)
+const PaperAnalyticsPage = dynamic(() =>
+  import('@/components/itam/paper-analytics-page').then((m) => m.PaperAnalyticsPage),
+)
 
 export default function Home() {
   const activePage = useAppStore((s) => s.activePage)
@@ -188,6 +216,16 @@ export default function Home() {
                 {activePage === 'itam-repairs' && <ItamRepairs />}
                 {activePage === 'itam-work-orders' && <ItamWorkOrders />}
                 {activePage === 'itam-stock' && <ItamStock />}
+                {/* ── Restored pages (were missing from main) ── */}
+                {activePage === 'import' && <ImportPage />}
+                {activePage === 'templates' && <TemplatesPage />}
+                {activePage === 'monthly-report' && <MonthlyReport />}
+                {activePage === 'settings-v2' && <SettingsPageV2 />}
+                {activePage === 'work-orders' && <WorkOrdersPage />}
+                {activePage === 'stock' && <StockPage />}
+                {activePage === 'devices-page' && <DevicesPage />}
+                {activePage === 'meter-page' && <MeterPage />}
+                {activePage === 'paper-analytics-page' && <PaperAnalyticsPage />}
               </motion.div>
             </AnimatePresence>
           </main>
