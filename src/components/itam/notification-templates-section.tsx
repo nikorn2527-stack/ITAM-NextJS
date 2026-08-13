@@ -176,11 +176,11 @@ function eventDef(event: string): EventDef | undefined {
 function appBadgeClass(app: AppKey): string {
   switch (app) {
     case 'itam':
-      return 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900'
+      return 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900'
     case 'services':
-      return 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900'
+      return 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900'
     case 'stock':
-      return 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900'
+      return 'bg-violet-100 text-violet-800 border-violet-300 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-900'
     default:
       return 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
   }
@@ -370,13 +370,13 @@ export function NotificationTemplatesSection() {
       </div>
 
       {/* Templates table */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Bell className="h-4 w-4 text-teal-600 dark:text-teal-400" />
             เทมเพลตข้อความแจ้งเตือน
             {templates.length > 0 && (
-              <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-900">
+              <Badge className="bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-900">
                 {templates.length} รายการ
               </Badge>
             )}
@@ -385,7 +385,7 @@ export function NotificationTemplatesSection() {
         <CardContent className="p-0">
           <div className="itam-scroll max-h-[60vh] overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 bg-slate-50/80 backdrop-blur dark:bg-slate-900/80 z-10">
+              <TableHeader className="sticky top-0 bg-slate-100/95 backdrop-blur dark:bg-slate-900/95 z-10">
                 <TableRow>
                   <TableHead className="min-w-[110px]">แอป</TableHead>
                   <TableHead className="min-w-[140px]">เหตุการณ์</TableHead>
@@ -471,7 +471,7 @@ export function NotificationTemplatesSection() {
                           />
                           <div className="mt-1">
                             {t.enabled ? (
-                              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900">
+                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900">
                                 <Check className="mr-0.5 h-3 w-3" /> เปิด
                               </Badge>
                             ) : (
@@ -718,7 +718,7 @@ export function NotificationTemplatesSection() {
 
       {/* ── Delete Confirm ─────────────────────────────────── */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
-        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+        <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle>ลบเทมเพลตนี้?</AlertDialogTitle>
             <AlertDialogDescription>

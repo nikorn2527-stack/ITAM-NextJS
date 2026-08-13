@@ -296,7 +296,7 @@ function CycleProgressWidget({
               <span className="font-mono">
                 📅 {activeCycle.startDate} → {activeCycle.endDate}
               </span>
-              <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:scale-105 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+              <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 transition-colors hover:scale-105 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                 กำลังดำเนินการ
               </Badge>
             </div>
@@ -776,7 +776,7 @@ ${kpiHtml}
 
       {/* Paper-this-month mini card under the warranty bar */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="flex items-center justify-between p-3 sm:p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-500/15 text-teal-600 dark:text-teal-400">
@@ -802,7 +802,7 @@ ${kpiHtml}
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="flex items-center justify-between p-3 sm:p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-500/15 text-orange-600 dark:text-orange-400">
@@ -854,7 +854,7 @@ ${kpiHtml}
   )
 
   const insightsWidget = (
-    <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <CircleAlert className="h-4 w-4 text-[#f97316]" /> Smart Insights
@@ -930,7 +930,7 @@ ${kpiHtml}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: 'easeOut' }}
       >
-        <Card className="h-full shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="h-full shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardHeader>
             <CardTitle className="text-base">สัดส่วนสถานะอุปกรณ์</CardTitle>
             <p className="text-xs text-slate-500 dark:text-slate-400">คลิกเซกเตอร์เพื่อดูรายการ</p>
@@ -1008,7 +1008,7 @@ ${kpiHtml}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35, ease: 'easeOut', delay: 0.05 }}
       >
-        <Card className="h-full shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="h-full shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardHeader>
             <CardTitle className="text-base">จำนวนอุปกรณ์ตามประเภท (Top 8)</CardTitle>
             <p className="text-xs text-slate-500 dark:text-slate-400">คลิกแท่งเพื่อกรองหน้าอุปกรณ์</p>
@@ -1076,7 +1076,7 @@ ${kpiHtml}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: 'easeOut', delay: 0.1 }}
     >
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="text-base">แนวโน้มการใช้กระดาษ (6 เดือนล่าสุด)</CardTitle>
           <p className="text-xs text-slate-500 dark:text-slate-400">รวมขาวดำ + สี · หน่วย: แผ่น</p>
@@ -1128,7 +1128,7 @@ ${kpiHtml}
   )
 
   const bySiteWidget = (
-    <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Building2 className="h-4 w-4 text-[#f97316]" /> อุปกรณ์ตามสาขา
@@ -1154,7 +1154,7 @@ ${kpiHtml}
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{s.siteCode}</span>
                   <span className="ml-2 text-xs text-slate-400">{s.siteName}</span>
                 </div>
-                <Badge className="border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
+                <Badge className="border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
                   {s.deviceCount} เครื่อง
                 </Badge>
               </div>
@@ -1166,7 +1166,7 @@ ${kpiHtml}
   )
 
   const recentActivityWidget = (
-    <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <History className="h-4 w-4 text-[#f97316]" /> มิเตอร์ล่าสุด
@@ -1198,7 +1198,7 @@ ${kpiHtml}
                     <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{a.deviceName}</div>
                     <div className="text-xs text-slate-400">{a.assetCode} · {a.readingDate}</div>
                   </div>
-                  <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                     {(a.pagesBw + a.pagesColor).toLocaleString()} แผ่น
                   </Badge>
                 </motion.div>
@@ -1361,7 +1361,7 @@ ${kpiHtml}
                         <span className="font-semibold text-slate-700 dark:text-slate-200">{s.siteCode}</span>
                         <span className="text-xs text-slate-400">{s.siteName}</span>
                       </div>
-                      <Badge className="border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
+                      <Badge className="border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
                         {s.deviceCount} เครื่อง
                       </Badge>
                     </div>
@@ -1406,7 +1406,7 @@ ${kpiHtml}
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>
-                    <th className="sticky left-0 z-10 bg-slate-50/80 px-2 py-1.5 text-left text-slate-600 dark:bg-slate-900/80 dark:text-slate-300">อุปกรณ์</th>
+                    <th className="sticky left-0 z-10 bg-slate-100/95 px-2 py-1.5 text-left text-slate-600 dark:bg-slate-900/80 dark:text-slate-300">อุปกรณ์</th>
                     {heatMonths.map(m => (
                       <th key={m} className="px-2 py-1.5 text-center font-mono text-slate-500">{m}</th>
                     ))}
@@ -1415,7 +1415,7 @@ ${kpiHtml}
                 <tbody>
                   {heat.map(row => (
                     <tr key={row.assetCode}>
-                      <td className="sticky left-0 z-10 max-w-[180px] truncate bg-slate-50/80 px-2 py-1 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200" title={row.deviceName}>
+                      <td className="sticky left-0 z-10 max-w-[180px] truncate bg-slate-100/95 px-2 py-1 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200" title={row.deviceName}>
                         <span className="font-mono text-[10px] text-slate-400">{row.assetCode}</span>
                         <div className="truncate">{row.deviceName}</div>
                       </td>

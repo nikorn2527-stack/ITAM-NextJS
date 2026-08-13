@@ -83,12 +83,12 @@ function useCountUp(target: number, duration = 500) {
 function recBadgeClass(rec: string): string {
   switch (rec) {
     case 'replace':
-      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
+      return 'border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
     case 'monitor':
-      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+      return 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
     case 'ok':
     default:
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+      return 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
   }
 }
 
@@ -318,7 +318,7 @@ export function LifecycleDashboard() {
                               <Badge
                                 className={
                                   d.ageInMonths > 36
-                                    ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                    ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
                                     : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                                 }
                               >
@@ -391,7 +391,7 @@ export function LifecycleDashboard() {
           </DialogHeader>
           <div className="itam-scroll max-h-[70vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
@@ -431,7 +431,7 @@ export function LifecycleDashboard() {
                         <Badge
                           className={
                             d.ageInMonths > 36
-                              ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
                               : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                           }
                         >

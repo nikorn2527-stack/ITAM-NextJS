@@ -781,7 +781,7 @@ export function ItamDocumentEditor() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_1fr_320px]">
         {/* ── Left: Template Library ────────────────────────────────── */}
-        <Card className="dark:border-slate-800 dark:bg-slate-900">
+        <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm text-slate-700 dark:text-slate-200">
               📚 คลังเทมเพลต
@@ -815,7 +815,7 @@ export function ItamDocumentEditor() {
                         </div>
                         <div className="mt-0.5 flex flex-wrap items-center gap-1">
                           {t.isDefault && (
-                            <Badge className="bg-teal-50 text-teal-700 border-teal-200 text-[9px] dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800">
+                            <Badge className="bg-teal-100 text-teal-800 border-teal-300 text-[9px] dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800">
                               [เริ่มต้น]
                             </Badge>
                           )}
@@ -878,7 +878,7 @@ export function ItamDocumentEditor() {
         </Card>
 
         {/* ── Center: Workspace ─────────────────────────────────────── */}
-        <Card className="dark:border-slate-800 dark:bg-slate-900">
+        <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <CardHeader className="pb-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle className="text-sm text-slate-700 dark:text-slate-200">
@@ -1299,7 +1299,7 @@ export function ItamDocumentEditor() {
         </Card>
 
         {/* ── Right: Property Panel ─────────────────────────────────── */}
-        <Card className="dark:border-slate-800 dark:bg-slate-900">
+        <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm text-slate-700 dark:text-slate-200">
               ⚙️ คุณสมบัติ
@@ -1726,7 +1726,7 @@ export function ItamDocumentEditor() {
 
       {/* ── Delete confirm ───────────────────────────────────────────── */}
       <AlertDialog open={!!deleteTplId} onOpenChange={(o) => !o && setDeleteTplId(null)}>
-        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+        <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle>ยืนยันการลบเทมเพลต?</AlertDialogTitle>
             <AlertDialogDescription>

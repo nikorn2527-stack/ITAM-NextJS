@@ -168,7 +168,7 @@ export function DocumentTemplatePicker({
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px]">
                         {t.isDefault && (
-                          <Badge className="bg-teal-50 text-teal-700 border-teal-200 text-[9px] dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800">
+                          <Badge className="bg-teal-100 text-teal-800 border-teal-300 text-[9px] dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800">
                             เริ่มต้น
                           </Badge>
                         )}

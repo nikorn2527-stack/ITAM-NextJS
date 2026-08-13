@@ -223,3 +223,30 @@ body {
 .itam-rt-dot {
   animation: itam-rt-pulse 1.6s ease-in-out infinite;
 }
+
+/* Deadline-day pulse — red heartbeat for "ถึงกำหนดจดมิเตอร์แล้ว!" state
+   (Issue 1: FIX-COUNTDOWN-LAYOUT-SETTINGS) — Phase 2 visual emphasis. */
+@keyframes itam-deadline-pulse {
+  0%, 100% {
+    background-color: rgba(244, 63, 94, 0.18);
+    box-shadow: 0 0 0 0 rgba(225, 29, 72, 0.45);
+  }
+  50% {
+    background-color: rgba(244, 63, 94, 0.32);
+    box-shadow: 0 0 0 6px rgba(225, 29, 72, 0);
+  }
+}
+.itam-deadline-pulse {
+  animation: itam-deadline-pulse 1.8s ease-in-out infinite;
+}
+.dark .itam-deadline-pulse {
+  animation-name: itam-deadline-pulse-dark;
+}
+@keyframes itam-deadline-pulse-dark {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(244, 63, 94, 0);
+  }
+}

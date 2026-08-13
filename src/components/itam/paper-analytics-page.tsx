@@ -325,7 +325,7 @@ export function PaperAnalyticsPage() {
       </div>
 
       {/* Line chart */}
-      <Card className="dark:border-slate-800 dark:bg-slate-900">
+      <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="text-base text-slate-800 dark:text-slate-100">แนวโน้มการใช้กระดาษรายเดือน</CardTitle>
         </CardHeader>
@@ -365,7 +365,7 @@ export function PaperAnalyticsPage() {
       </Card>
 
       {/* Bar chart - top devices by sheets */}
-      <Card className="dark:border-slate-800 dark:bg-slate-900">
+      <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="text-base text-slate-800 dark:text-slate-100">อุปกรณ์ที่ใช้กระดาษมากที่สุด</CardTitle>
         </CardHeader>

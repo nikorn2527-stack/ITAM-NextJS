@@ -409,11 +409,11 @@ export function StockPurchaseOrders() {
       </div>
 
       {/* PO table */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-0">
           <div className="itam-scroll max-h-[55vh] overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="w-36">เลขที่ PO</TableHead>
                   <TableHead className="w-32">วันที่สั่ง</TableHead>
@@ -796,7 +796,7 @@ export function StockPurchaseOrders() {
                               </TableCell>
                               <TableCell className="text-right">
                                 {fullyReceived ? (
-                                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+                                  <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px]">
                                     <Check className="h-3 w-3 mr-1" /> ครบ
                                   </Badge>
                                 ) : canReceive ? (

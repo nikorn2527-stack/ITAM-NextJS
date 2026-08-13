@@ -45,7 +45,7 @@ export function QuickActionsBar({
 
   return (
     <div
-      className="flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900 md:overflow-visible"
+      className="flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900 md:overflow-visible"
       role="toolbar"
       aria-label="Quick actions"
     >

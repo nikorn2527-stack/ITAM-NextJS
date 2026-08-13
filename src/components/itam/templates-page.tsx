@@ -1755,11 +1755,11 @@ export function TemplatesPage() {
               มี Visual Editor ฝังในหน้านี้
             </li>
             <li>
-              เทมเพลต <Badge variant="outline" className="mx-1 px-1 py-0 text-[10px] border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300">ระบบ</Badge>
+              เทมเพลต <Badge variant="outline" className="mx-1 px-1 py-0 text-[10px] border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300">ระบบ</Badge>
               คือค่าเริ่มต้นที่ระบบสร้างไว้ — แก้ไขได้ แต่ไม่สามารถลบได้ (คัดลอกได้)
             </li>
             <li>
-              เทมเพลต <Badge variant="outline" className="mx-1 px-1 py-0 text-[10px] border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">กำหนดเอง</Badge>
+              เทมเพลต <Badge variant="outline" className="mx-1 px-1 py-0 text-[10px] border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">กำหนดเอง</Badge>
               คือเทมเพลตที่ผู้ใช้สร้างขึ้น — ลบได้ตามต้องการ
             </li>
             <li>

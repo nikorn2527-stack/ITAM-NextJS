@@ -206,7 +206,7 @@ export function StockSummary() {
       </div>
 
       {/* Date range filter */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:gap-4">
           <div className="space-y-1.5 sm:w-48">
             <Label htmlFor="sum-from" className="text-xs">จากวันที่</Label>
@@ -245,7 +245,7 @@ export function StockSummary() {
 
       {/* Aggregate stat cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-emerald-600">
               <TrendingUp className="h-4 w-4" />
@@ -256,7 +256,7 @@ export function StockSummary() {
             </div>
           </CardContent>
         </Card>
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-amber-600">
               <TrendingDown className="h-4 w-4" />
@@ -267,7 +267,7 @@ export function StockSummary() {
             </div>
           </CardContent>
         </Card>
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-[#0d9488]">
               <Banknote className="h-4 w-4" />
@@ -278,7 +278,7 @@ export function StockSummary() {
             </div>
           </CardContent>
         </Card>
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-[#f97316]">
               <Users className="h-4 w-4" />
@@ -292,7 +292,7 @@ export function StockSummary() {
       </div>
 
       {/* Summary by product */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm">
             <Package className="h-4 w-4 text-[#0d9488]" />
@@ -302,7 +302,7 @@ export function StockSummary() {
         <CardContent className="p-0">
           <div className="itam-scroll max-h-[50vh] overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="w-28">รหัสสินค้า</TableHead>
                   <TableHead className="min-w-[180px]">ชื่อสินค้า</TableHead>
@@ -361,7 +361,7 @@ export function StockSummary() {
       </Card>
 
       {/* Summary by person */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm">
             <Users className="h-4 w-4 text-[#f97316]" />
@@ -371,7 +371,7 @@ export function StockSummary() {
         <CardContent className="p-0">
           <div className="itam-scroll max-h-[40vh] overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="min-w-[180px]">ผู้ทำรายการ</TableHead>
                   <TableHead className="w-24 text-right">รับเข้า</TableHead>

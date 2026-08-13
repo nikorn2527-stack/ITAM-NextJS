@@ -818,8 +818,8 @@ export function DevicesPage() {
         </div>
       </div>
 
-      <Card className="dark:border-slate-800 dark:bg-slate-900">
-        <CardContent className="p-4">
+      <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <CardContent className="flex min-h-0 flex-1 flex-col p-4">
           {/* Toolbar */}
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
@@ -1042,9 +1042,10 @@ export function DevicesPage() {
           </AnimatePresence>
 
           {/* Table */}
-          <div className="itam-scroll mt-4 max-h-[calc(100vh-320px)] min-h-[320px] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
+          {/* Table — fills remaining height of the Card (Issue 3: heights fill available space) */}
+          <div className="itam-scroll mt-4 min-h-0 flex-1 overflow-auto rounded-md border border-slate-300 bg-white dark:border-slate-800 dark:bg-slate-900">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   {hasDevices && (
                     <TableHead className="w-10">
@@ -1281,7 +1282,7 @@ export function DevicesPage() {
           </div>
 
           {/* Pagination footer — shows range, total, per-page selector, prev/next, page input */}
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-3 flex flex-shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
               <span>
                 แสดง <span className="font-semibold text-slate-700 dark:text-slate-200">{startIdx}-{endIdx}</span>
@@ -1380,7 +1381,7 @@ export function DevicesPage() {
         open={bulkDeleteOpen}
         onOpenChange={(o) => !o && setBulkDeleteOpen(false)}
       >
-        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+        <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-slate-800 dark:text-slate-100">
               ยืนยันการลบอุปกรณ์หลายเครื่อง

@@ -153,7 +153,7 @@ export function StockDashboard() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Low stock alert list */}
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -168,7 +168,7 @@ export function StockDashboard() {
             </div>
             <div className="itam-scroll max-h-96 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-700">
               <Table>
-                <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+                <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                   <TableRow>
                     <TableHead className="h-8 text-xs">รหัส</TableHead>
                     <TableHead className="h-8 text-xs">ชื่อสินค้า</TableHead>
@@ -221,7 +221,7 @@ export function StockDashboard() {
         </Card>
 
         {/* Recent transactions */}
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -236,7 +236,7 @@ export function StockDashboard() {
             </div>
             <div className="itam-scroll max-h-96 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-700">
               <Table>
-                <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+                <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                   <TableRow>
                     <TableHead className="h-8 text-xs">เลขที่</TableHead>
                     <TableHead className="h-8 text-xs">วันที่</TableHead>
@@ -327,7 +327,7 @@ function KpiCard({
   loading?: boolean
 }) {
   return (
-    <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardContent className="p-4">
         <div className={`flex items-center gap-2 ${iconClass ?? 'text-slate-500'}`}>
           {icon}

@@ -171,7 +171,7 @@ export function StockHistory() {
   }, [allTxns, typeFilter, productCodeFilter, search, fromDate, toDate])
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-full flex-col gap-4">
       {/* Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
@@ -203,7 +203,7 @@ export function StockHistory() {
       </div>
 
       {/* Filters */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
           <div className="space-y-1.5">
             <Label htmlFor="his-from" className="text-xs">จากวันที่</Label>
@@ -265,12 +265,12 @@ export function StockHistory() {
         </CardContent>
       </Card>
 
-      {/* History table */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <CardContent className="p-0">
-          <div className="itam-scroll max-h-[55vh] overflow-auto">
+      {/* History table — fills remaining height (Issue 3) */}
+      <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <CardContent className="min-h-0 flex-1 p-0">
+          <div className="itam-scroll min-h-0 flex-1 overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="w-36">เลขที่เอกสาร</TableHead>
                   <TableHead className="w-32">วันที่</TableHead>

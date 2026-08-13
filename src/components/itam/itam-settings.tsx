@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle } from 'lucide-react'
 import { type MasterItem } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
@@ -32,6 +32,63 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
   return h
 }
 
+// ── Settings tab groups (Issue 5: organize 12 tabs into 4 groups) ──
+// Each tab is now nested under a category header in the sidebar-style nav.
+// Order: ข้อมูล → ระบบ → การแจ้งเตือน → ปรับแต่ง
+type SettingsTab =
+  | 'master'
+  | 'site-attributes'
+  | 'sites'
+  | 'notifications'
+  | 'notification-templates'
+  | 'customize'
+  | 'contacts'
+  | 'wo-options'
+  | 'pending'
+  | 'users'
+  | 'permissions'
+  | 'oauth'
+
+interface SettingsTabGroup {
+  title: string
+  items: { value: SettingsTab; label: string; icon: React.ComponentType<{ className?: string }> }[]
+}
+
+const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
+  {
+    title: 'ข้อมูล',
+    items: [
+      { value: 'master', label: 'ข้อมูลมาตรฐาน', icon: Database },
+      { value: 'site-attributes', label: 'จัดการสาขา', icon: Building2 },
+      { value: 'contacts', label: 'สมุดผู้ติดต่อ', icon: BookUser },
+      { value: 'wo-options', label: 'ตัวเลือกใบงาน', icon: ListChecks },
+      { value: 'sites', label: 'สาขา (ภาพรวม)', icon: Building2 },
+    ],
+  },
+  {
+    title: 'ระบบ',
+    items: [
+      { value: 'users', label: 'จัดการผู้ใช้', icon: Users },
+      { value: 'permissions', label: 'สิทธิ์ผู้ใช้', icon: Shield },
+      { value: 'pending', label: 'รออนุมัติ', icon: Users },
+    ],
+  },
+  {
+    title: 'การแจ้งเตือน',
+    items: [
+      { value: 'notifications', label: 'การแจ้งเตือน', icon: Bell },
+      { value: 'notification-templates', label: 'เทมเพลตข้อความ', icon: MessageSquare },
+    ],
+  },
+  {
+    title: 'ปรับแต่ง',
+    items: [
+      { value: 'customize', label: 'ปรับแต่งแอป', icon: Palette },
+      { value: 'oauth', label: 'OAuth/External Login', icon: KeyRound },
+    ],
+  },
+]
+
 interface Site { id: string; siteCode: string; siteName: string | null; lineOa: string | null; hotline: string | null; paperRateBw: number | null; paperRateColor: number | null; deviceCount?: number; activeCount?: number }
 
 interface NotifySettings {
@@ -42,7 +99,7 @@ interface NotifySettings {
 
 export function ItamSettings() {
   const qc = useQueryClient()
-  const [tab, setTab] = React.useState<'master' | 'site-attributes' | 'sites' | 'notifications' | 'notification-templates' | 'customize' | 'contacts' | 'wo-options' | 'pending' | 'users' | 'permissions' | 'oauth'>('master')
+  const [tab, setTab] = React.useState<SettingsTab>('master')
   const [category, setCategory] = React.useState('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
@@ -59,22 +116,56 @@ export function ItamSettings() {
     },
   })
 
-  // Notification settings (only fetched when tab === 'notifications')
-  const { data: notifyData, isLoading: notifyLoading } = useQuery<NotifySettings>({
+  // Notification settings — fetched whenever the user is on the notifications tab.
+  // The query is enabled regardless of auth state so the form is always visible;
+  // on error (e.g. 401/403) we fall back to defaults (Issue 4: tab empty fix).
+  const {
+    data: notifyData,
+    isLoading: notifyLoading,
+    error: notifyError,
+  } = useQuery<NotifySettings>({
     queryKey: ['itam-notify-settings'],
     queryFn: async () => {
       const res = await fetch('/api/itam/notifications/settings', {
         headers: authHeaders(),
       })
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) {
+        // Throw a structured error so we can show a useful message in the UI.
+        throw new Error(`โหลดการตั้งค่าไม่สำเร็จ (HTTP ${res.status})`)
+      }
       return res.json()
     },
     enabled: tab === 'notifications',
+    // Fall back to safe defaults if the API errors out — keeps the form visible.
+    retry: false,
   })
   const [notifyDraft, setNotifyDraft] = React.useState<NotifySettings | null>(null)
   React.useEffect(() => {
-    if (notifyData) setNotifyDraft(JSON.parse(JSON.stringify(notifyData)) as NotifySettings)
-  }, [notifyData])
+    if (notifyData) {
+      setNotifyDraft(JSON.parse(JSON.stringify(notifyData)) as NotifySettings)
+    } else if (notifyError) {
+      // Fall back to safe defaults so the form stays visible even when the
+      // API errors out (e.g. 401/403 — admin without SYSTEM_CONFIG permission).
+      setNotifyDraft({
+        channels: { email: false, telegram: false, lineNotify: false, lineOA: false },
+        events: {
+          deviceAdded: false,
+          deviceUpdated: false,
+          transfer: false,
+          lifecycle: false,
+          meter: false,
+        },
+        credentials: {
+          notifyEmails: '',
+          telegramBotToken: '',
+          telegramChatId: '',
+          lineNotifyToken: '',
+          lineOaChannelAccessToken: '',
+          lineOaToUserId: '',
+        },
+      })
+    }
+  }, [notifyData, notifyError])
 
   async function saveNotify() {
     if (!notifyDraft) return
@@ -178,57 +269,71 @@ export function ItamSettings() {
   const sites = sitesData?.sites ?? []
 
   return (
-    <div className="h-full overflow-y-auto p-3 md:p-4">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ตั้งค่า (Real DB)</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">ข้อมูลมาตรฐาน + สาขา</p>
+    <div className="flex h-full flex-col p-3 md:p-4">
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ตั้งค่าระบบ</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            ข้อมูลมาตรฐาน · สาขา · ผู้ใช้ · การแจ้งเตือน · ปรับแต่งแอป — แบ่งตามกลุ่มเพื่อให้หาง่าย
+          </p>
+        </div>
+        {tab !== 'master' && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setTab('master')}
+            className="self-start dark:bg-slate-800 dark:border-slate-700"
+          >
+            ← กลับหน้าหลัก
+          </Button>
+        )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto">
-        <button onClick={() => setTab('master')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'master' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <Database className="mr-1 inline h-4 w-4" /> ข้อมูลมาตรฐาน
-        </button>
-        <button onClick={() => setTab('pending')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'pending' ? 'border-amber-500 text-amber-600 dark:text-amber-300' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <Users className="mr-1 inline h-4 w-4" /> รออนุมัติ
-        </button>
-        <button onClick={() => setTab('users')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'users' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <Users className="mr-1 inline h-4 w-4" /> 👥 จัดการผู้ใช้
-        </button>
-        <button onClick={() => setTab('permissions')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'permissions' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <Shield className="mr-1 inline h-4 w-4" /> 🔐 สิทธิ์ผู้ใช้
-        </button>
-        <button onClick={() => setTab('wo-options')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'wo-options' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <ListChecks className="mr-1 inline h-4 w-4" /> ตัวเลือกใบงาน
-        </button>
-        <button onClick={() => setTab('contacts')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'contacts' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <BookUser className="mr-1 inline h-4 w-4" /> สมุดผู้ติดต่อ
-        </button>
-        <button onClick={() => setTab('site-attributes')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'site-attributes' ? 'border-teal-500 text-teal-600 dark:text-teal-300' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <Building2 className="mr-1 inline h-4 w-4" /> จัดการสาขา
-        </button>
-        <button onClick={() => setTab('sites')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'sites' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <Building2 className="mr-1 inline h-4 w-4" /> สาขา (ภาพรวม)
-        </button>
-        <button onClick={() => setTab('notifications')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'notifications' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <Bell className="mr-1 inline h-4 w-4" /> การแจ้งเตือน
-        </button>
-        <button onClick={() => setTab('notification-templates')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'notification-templates' ? 'border-teal-500 text-teal-600 dark:text-teal-300' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <MessageSquare className="mr-1 inline h-4 w-4" /> เทมเพลตข้อความ
-        </button>
-        <button onClick={() => setTab('customize')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'customize' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <Palette className="mr-1 inline h-4 w-4" /> ปรับแต่งแอป
-        </button>
-        <button onClick={() => setTab('oauth')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'oauth' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <KeyRound className="mr-1 inline h-4 w-4" /> 🔑 OAuth/External Login
-        </button>
-      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+        {/* Grouped tab navigation (Issue 5: organize 12 tabs into 4 groups) */}
+        <nav
+          aria-label="Settings sections"
+          className="flex flex-shrink-0 flex-col gap-3 rounded-md border border-slate-300 bg-white p-2 shadow-sm lg:w-56 dark:border-slate-800 dark:bg-slate-900"
+        >
+          {SETTINGS_TAB_GROUPS.map((group) => (
+            <div key={group.title}>
+              <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                {group.title}
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {group.items.map((item) => {
+                  const active = tab === item.value
+                  const Icon = item.icon
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => setTab(item.value)}
+                      aria-current={active ? 'page' : undefined}
+                      className={[
+                        'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors',
+                        active
+                          ? 'bg-[#f97316]/10 text-[#f97316] dark:bg-[#f97316]/20 dark:text-[#fb923c]'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white',
+                      ].join(' ')}
+                    >
+                      <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
 
-      {tab === 'pending' && <PendingUsersSection />}
+        {/* Tab content — scrolls internally (Issue 3: heights fill space) */}
+        <div className="itam-scroll min-h-0 flex-1 overflow-y-auto rounded-md border border-slate-200 bg-white p-3 shadow-sm md:p-4 dark:border-slate-800 dark:bg-slate-900">
+          {tab === 'pending' && <PendingUsersSection />}
 
-      {tab === 'users' && <UserManagementSection />}
+          {tab === 'users' && <UserManagementSection />}
 
-      {tab === 'permissions' && <UserManagementSection />}
+          {tab === 'permissions' && <UserManagementSection />}
 
       {tab === 'master' && (
         <>
@@ -251,11 +356,11 @@ export function ItamSettings() {
             </div>
           </div>
 
-          <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
             <CardContent className="p-0">
               <div className="itam-scroll max-h-[55vh] overflow-auto">
                 <Table>
-                  <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+                  <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
                     <TableRow>
                       <TableHead>หมวดหมู่</TableHead>
                       <TableHead>ค่า</TableHead>
@@ -287,7 +392,7 @@ export function ItamSettings() {
                           <TableCell className="text-sm font-medium">{item.label}</TableCell>
                           <TableCell className="text-xs text-slate-400">{item.displayLabel || '—'}</TableCell>
                           <TableCell className="text-xs">{item.code || '—'}</TableCell>
-                          <TableCell className="text-center">{(item as { active?: boolean }).active ? <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">✓</Badge> : <Badge className="bg-slate-50 text-slate-400">—</Badge>}</TableCell>
+                          <TableCell className="text-center">{(item as { active?: boolean }).active ? <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">✓</Badge> : <Badge className="bg-slate-50 text-slate-400">—</Badge>}</TableCell>
                           <TableCell className="text-right">
                             <Button size="sm" variant="ghost" onClick={() => openEdit(item)}><Pencil className="h-3 w-3" /></Button>
                             <Button size="sm" variant="ghost" onClick={() => deleteItem(item)} className="text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /></Button>
@@ -313,7 +418,7 @@ export function ItamSettings() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sitesLoading ? (
             Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i} className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <Card key={i} className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader><Skeleton className="h-5 w-20" /></CardHeader>
                 <CardContent className="space-y-2">
                   <Skeleton className="h-4 w-28" />
@@ -326,7 +431,7 @@ export function ItamSettings() {
             <div className="col-span-full py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูลสาขา</div>
           ) : (
             sites.map((s) => (
-              <Card key={s.id} className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <Card key={s.id} className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4 text-[#f97316]" /> {s.siteCode}</CardTitle></CardHeader>
                 <CardContent className="space-y-2">
                   <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{s.siteName}</div>
@@ -376,18 +481,32 @@ export function ItamSettings() {
         </DialogContent>
       </Dialog>
 
-      {/* Notifications tab */}
+      {/* Notifications tab — Issue 4: render form even on API error (with defaults) */}
       {tab === 'notifications' && (
         <div className="space-y-4">
+          {notifyError && (
+            <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+              <div>
+                <div className="font-medium text-amber-800 dark:text-amber-200">
+                  ไม่สามารถโหลดการตั้งค่าการแจ้งเตือนจาก server ได้
+                </div>
+                <div className="mt-0.5 text-xs text-amber-700/80 dark:text-amber-300/80">
+                  {notifyError instanceof Error ? notifyError.message : 'Unknown error'} —
+                  แสดงค่าเริ่มต้นเพื่อให้กรอกได้ทันที กดปุ่ม &quot;บันทึก&quot; เพื่อบันทึกค่าใหม่
+                </div>
+              </div>
+            </div>
+          )}
           {notifyLoading || !notifyDraft ? (
-            <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
               <CardContent className="p-6">
                 <Skeleton className="h-64 w-full rounded" />
               </CardContent>
             </Card>
           ) : (
             <>
-              <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Bell className="h-4 w-4 text-[#f97316]" /> ช่องทางการแจ้งเตือน (Channels)
@@ -428,7 +547,7 @@ export function ItamSettings() {
                 </CardContent>
               </Card>
 
-              <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader>
                   <CardTitle className="text-base">เหตุการณ์ที่แจ้งเตือน (Events)</CardTitle>
                 </CardHeader>
@@ -448,7 +567,7 @@ export function ItamSettings() {
                 </CardContent>
               </Card>
 
-              <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader>
                   <CardTitle className="text-base">ข้อมูลประจำตัว (Credentials)</CardTitle>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -537,6 +656,8 @@ export function ItamSettings() {
       {tab === 'oauth' && <OauthSection />}
 
       {tab === 'customize' && <AppCustomizeTab />}
+        </div>
+      </div>
     </div>
   )
 }
@@ -719,7 +840,7 @@ function AppCustomizeTab() {
         </CardContent>
       </Card>
 
-      <Card className="dark:border-slate-800 dark:bg-slate-900">
+      <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Palette className="h-4 w-4 text-[#f97316]" /> ปรับแต่งหน้าตาแอป

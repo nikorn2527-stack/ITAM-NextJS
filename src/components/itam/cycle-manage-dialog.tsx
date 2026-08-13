@@ -91,7 +91,7 @@ function statusBadge(status: string): { className: string; label: string; icon: 
   switch (status) {
     case 'active':
       return {
-        className: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+        className: 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
         label: 'กำลังดำเนินการ',
         icon: <Gauge className="h-3 w-3" />,
       }
@@ -403,7 +403,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
                     </span>
                     รอบปัจจุบัน
                   </span>
-                  <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                     กำลังดำเนินการ
                   </Badge>
                 </div>
@@ -413,11 +413,11 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
                 <div className="mt-1 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                   <span>📅 {activeCycle.startDate} → {activeCycle.endDate}</span>
                   {activeCycle.site ? (
-                    <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                    <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                       🏢 {activeCycle.site}
                     </Badge>
                   ) : (
-                    <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                    <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                       🌐 ทุกสาขา
                     </Badge>
                   )}
@@ -644,7 +644,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
 
       {/* Confirm action dialog */}
       <AlertDialog open={!!actionTarget} onOpenChange={(o) => !o && setActionTarget(null)}>
-        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+        <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-slate-800 dark:text-slate-100">
               {actionTarget ? actionText[actionTarget.action].title : ''}
