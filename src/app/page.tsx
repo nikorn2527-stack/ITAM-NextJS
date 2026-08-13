@@ -193,7 +193,7 @@ export default function Home() {
     <RealtimeProvider>
       <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
         <Sidebar />
-        <div className="flex min-w-0 flex-1 flex-col md:ml-[240px]">
+        <div className="flex min-w-0 flex-1 flex-col md:ml-14">
           <main className="flex-1 pt-14 md:pt-0">
             <AnimatePresence mode="wait">
               <motion.div
