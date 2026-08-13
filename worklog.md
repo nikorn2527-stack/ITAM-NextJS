@@ -6982,3 +6982,17 @@ Stage Summary:
 - Sidebar เปลี่ยนตาม theme แล้ว + hover expand แบบ Supabase
 - Notification template management พร้อมใช้
 - พร้อมตอบคำถามเรื่อง Supabase Auth + tools
+
+---
+Task ID: FIX-5-UIUX
+Agent: full-stack-developer — Fix 5 UI/UX issues
+
+Work Log:
+- Issue 1: Sidebar collapsed icons centered + visible
+- Issue 2: Sidebar compact, no scroll needed
+- Issue 3: Settings customize works (save + apply)
+- Issue 4: Device pagination + taller table
+- Issue 5: Pages fit in one screen
+
+Stage Summary:
+- All 5 UI/UX issues resolved
