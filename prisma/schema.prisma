@@ -404,7 +404,7 @@ model MasterItem {
 // ============================================================
 model StockItem {
   id                String   @id @default(cuid())
-  productCode       String
+  productCode       String   @unique
   productName       String
   category          String?
   brand             String?
@@ -563,7 +563,7 @@ model AuditLog {
 // ============================================================
 model AppSetting {
   id       String   @id @default(cuid())
-  key      String
+  key      String   @unique
   value    String
   updatedAt DateTime @updatedAt
 }
