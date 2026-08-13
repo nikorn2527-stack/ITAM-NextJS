@@ -99,6 +99,13 @@ const MeterPage = dynamic(() =>
 const PaperAnalyticsPage = dynamic(() =>
   import('@/components/itam/paper-analytics-page').then((m) => m.PaperAnalyticsPage),
 )
+// ── Auth pages (from email links: ?token={token}) ──
+const AuthRegisterPage = dynamic(() =>
+  import('@/components/itam/auth-register-page').then((m) => m.AuthRegisterPage),
+)
+const AuthResetPage = dynamic(() =>
+  import('@/components/itam/auth-reset-page').then((m) => m.AuthResetPage),
+)
 
 export default function Home() {
   const activePage = useAppStore((s) => s.activePage)
@@ -106,6 +113,18 @@ export default function Home() {
   const isBooting = useAuthStore((s) => s.isBooting)
   const checkAuth = useAuthStore((s) => s.checkAuth)
   const [bootDone, setBootDone] = React.useState(false)
+
+  // ── Detect ?token= from email links (register/reset) ──
+  // When present, we render the appropriate auth page directly (bypassing
+  // the normal auth check) so the user can complete registration or
+  // password reset without being redirected to login first.
+  const [authToken, setAuthToken] = React.useState<string | null>(null)
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const t = params.get('token')
+    if (t) setAuthToken(t)
+  }, [])
 
   // Boot: hydrate from localStorage then verify token validity with /me
   React.useEffect(() => {
@@ -183,6 +202,14 @@ export default function Home() {
     )
   }
 
+  // ── If URL has ?token=xxx → render the appropriate auth page ──
+  // This takes priority over both "not authenticated" (login) and
+  // "authenticated" (app shell) — the user clicked an email link and
+  // should land on the register/reset form, not be redirected away.
+  if (authToken) {
+    return <TokenRouter token={authToken} />
+  }
+
   // Not authenticated → show login
   if (!isAuthenticated) {
     return <ItamLogin />
@@ -248,4 +275,68 @@ export default function Home() {
       </div>
     </RealtimeProvider>
   )
+}
+
+// ─── TokenRouter ─────────────────────────────────────────────────────
+// Fetches the token type from /api/auth/verify-token and renders either
+// AuthRegisterPage (for 'invite'/'register' tokens) or AuthResetPage
+// (for 'reset' tokens). Falls back to login on any error.
+function TokenRouter({ token }: { token: string }) {
+  const [route, setRoute] = React.useState<'register' | 'reset' | 'loading' | 'error'>('loading')
+
+  React.useEffect(() => {
+    let cancelled = false
+    async function check() {
+      try {
+        const res = await fetch(
+          `/api/auth/verify-token?token=${encodeURIComponent(token)}`,
+        )
+        const j = (await res.json().catch(() => ({}))) as {
+          valid?: boolean
+          type?: string
+        }
+        if (cancelled) return
+        if (!j.valid) {
+          setRoute('error')
+          return
+        }
+        if (j.type === 'reset') {
+          setRoute('reset')
+        } else if (j.type === 'invite' || j.type === 'register') {
+          setRoute('register')
+        } else {
+          setRoute('error')
+        }
+      } catch {
+        if (!cancelled) setRoute('error')
+      }
+    }
+    void check()
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  if (route === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-[#f97316]" />
+          <div className="text-sm text-slate-400">กำลังตรวจสอบลิงก์...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (route === 'register') return <AuthRegisterPage token={token} />
+  if (route === 'reset') return <AuthResetPage token={token} />
+
+  // Error → fall back to login (which shows its own error UI)
+  // Clear the broken token from the URL first.
+  if (typeof window !== 'undefined') {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('token')
+    window.history.replaceState({}, '', url.toString())
+  }
+  return <ItamLogin />
 }

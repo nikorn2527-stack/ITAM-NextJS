@@ -2,8 +2,38 @@
 
 import * as React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Loader2, Lock, User as UserIcon, Eye, EyeOff, AlertCircle, ShieldAlert } from 'lucide-react'
+import {
+  Loader2,
+  Lock,
+  User as UserIcon,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  ShieldAlert,
+  UserPlus,
+  KeyRound,
+  Mail,
+} from 'lucide-react'
+import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth-store'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 /**
  * itam-login.tsx — full-screen login page.
@@ -11,6 +41,13 @@ import { useAuthStore } from '@/store/auth-store'
  * Layout:
  *   - Left: branded gradient panel (hidden on mobile)
  *   - Right: card with username/password + เข้าสู่ระบบ button
+ *   - Below the form: 3 action buttons
+ *       1. "ขอเข้าใช้งาน" → opens registration dialog (Method 1)
+ *       2. "ลืมรหัสผ่าน" → opens forgot-password dialog
+ *       3. "รับลิงก์ลงทะเบียนทางอีเมล" → opens invite request dialog (Method 2)
+ *
+ * URL params:
+ *   - ?register=1 → auto-open the registration dialog on mount
  *
  * Features:
  *   - Enter-to-submit
@@ -28,6 +65,27 @@ export function ItamLogin() {
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [lockedUntil, setLockedUntil] = React.useState<number | null>(null)
+
+  // ── Dialogs ──────────────────────────────────────────────────────
+  const [registerOpen, setRegisterOpen] = React.useState(false)
+  const [inviteOpen, setInviteOpen] = React.useState(false)
+  const [forgotOpen, setForgotOpen] = React.useState(false)
+
+  // Auto-open registration dialog when ?register=1 is in the URL
+  React.useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('register') === '1') {
+        setRegisterOpen(true)
+        // Clean the URL so the dialog doesn't reopen on refresh
+        const url = new URL(window.location.href)
+        url.searchParams.delete('register')
+        window.history.replaceState({}, '', url.toString())
+      }
+    } catch {
+      /* SSR / no window */
+    }
+  }, [])
 
   // Countdown for lockout
   const [remaining, setRemaining] = React.useState(0)
@@ -229,18 +287,574 @@ export function ItamLogin() {
             </button>
           </form>
 
+          {/* Action buttons — register / forgot / invite link */}
+          <div className="mt-4 space-y-2">
+            <button
+              type="button"
+              onClick={() => setRegisterOpen(true)}
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#f97316]/40 bg-[#f97316]/5 text-sm font-medium text-[#f97316] transition-colors hover:bg-[#f97316]/10"
+            >
+              <UserPlus className="h-4 w-4" />
+              ขอเข้าใช้งาน
+            </button>
+            <div className="flex items-center justify-between text-xs">
+              <button
+                type="button"
+                onClick={() => setForgotOpen(true)}
+                className="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-[#f97316] dark:text-slate-400"
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+                ลืมรหัสผ่าน
+              </button>
+              <button
+                type="button"
+                onClick={() => setInviteOpen(true)}
+                className="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-[#f97316] dark:text-slate-400"
+              >
+                <Mail className="h-3.5 w-3.5" />
+                รับลิงก์ลงทะเบียนทางอีเมล
+              </button>
+            </div>
+          </div>
+
           {/* Footer hint */}
           <div className="mt-6 space-y-1.5 border-t border-slate-100 pt-4 text-xs text-slate-400 dark:border-slate-800">
             <div className="flex items-center justify-between">
               <span>🔒 ระบบบันทึกทุกการเข้าใช้งาน</span>
               <span>ล็อก 5 ครั้ง / รอ 5 นาที</span>
             </div>
-            <div className="text-center">
-              ติดต่อผู้ดูแลระบบหากลืมรหัสผ่าน
-            </div>
           </div>
         </div>
       </motion.div>
+
+      {/* ── Dialogs ─────────────────────────────────────────────── */}
+      <RegisterDialog open={registerOpen} onOpenChange={setRegisterOpen} />
+      <InviteDialog open={inviteOpen} onOpenChange={setInviteOpen} />
+      <ForgotPasswordDialog open={forgotOpen} onOpenChange={setForgotOpen} />
     </div>
+  )
+}
+
+// ─── Register dialog (Method 1) ─────────────────────────────────
+function RegisterDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+}) {
+  const [form, setForm] = React.useState({
+    name: '',
+    email: '',
+    phone: '',
+    department: '',
+    roleRequest: 'viewer',
+    password: '',
+    confirmPassword: '',
+  })
+  const [loading, setLoading] = React.useState(false)
+  const [done, setDone] = React.useState(false)
+
+  function reset() {
+    setForm({
+      name: '',
+      email: '',
+      phone: '',
+      department: '',
+      roleRequest: 'viewer',
+      password: '',
+      confirmPassword: '',
+    })
+    setDone(false)
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (loading) return
+    if (!form.name.trim() || !form.email.trim() || !form.password) {
+      toast.error('กรุณากรอกชื่อ, อีเมล และรหัสผ่าน')
+      return
+    }
+    if (form.password.length < 6) {
+      toast.error('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร')
+      return
+    }
+    if (form.password !== form.confirmPassword) {
+      toast.error('รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน')
+      return
+    }
+    setLoading(true)
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          email: form.email.trim().toLowerCase(),
+          phone: form.phone.trim() || undefined,
+          department: form.department.trim() || undefined,
+          roleRequest: form.roleRequest,
+          password: form.password,
+        }),
+      })
+      const j = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+        testLink?: string
+      }
+      if (!res.ok || !j.ok) {
+        throw new Error(j.error || 'ส่งคำขอไม่สำเร็จ')
+      }
+      setDone(true)
+      toast.success('ส่งคำขอแล้ว รอผู้ดูแลอนุมัติ')
+      if (j.testLink) {
+        toast.info(`SMTP ไม่ได้ตั้งค่า — ทดสอบได้ที่ลิงก์ (เช็ค console)`)
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ส่งคำขอไม่สำเร็จ')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) reset()
+        onOpenChange(v)
+      }}
+    >
+      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>ขอเข้าใช้งานระบบ ITAM</DialogTitle>
+          <DialogDescription>
+            กรอกข้อมูลด้านล่างเพื่อส่งคำขอใช้งาน — รอผู้ดูแลอนุมัติ
+          </DialogDescription>
+        </DialogHeader>
+
+        {done ? (
+          <div className="py-6 text-center">
+            <div className="mb-3 text-5xl">✅</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+              ส่งคำขอแล้ว รอผู้ดูแลอนุมัติ
+            </div>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              ทางเราจะส่งอีเมลแจ้งเตือนไปยัง {form.email} เมื่อบัญชีของคุณได้รับการอนุมัติ
+            </p>
+            <Button className="mt-4" onClick={() => onOpenChange(false)}>
+              ปิด
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-name">
+                ชื่อ-นามสกุล <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                id="reg-name"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                disabled={loading}
+                placeholder="สมชาย ใจดี"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-email">
+                อีเมล <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                id="reg-email"
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                disabled={loading}
+                placeholder="you@example.com"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="reg-phone">เบอร์โทร</Label>
+                <Input
+                  id="reg-phone"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  disabled={loading}
+                  placeholder="081-234-5678"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="reg-dept">แผนก</Label>
+                <Input
+                  id="reg-dept"
+                  value={form.department}
+                  onChange={(e) =>
+                    setForm({ ...form, department: e.target.value })
+                  }
+                  disabled={loading}
+                  placeholder="ไอที"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>สิทธิ์ที่ขอ</Label>
+              <Select
+                value={form.roleRequest}
+                onValueChange={(v) => setForm({ ...form, roleRequest: v })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="viewer">ผู้ดูรายงาน (Viewer)</SelectItem>
+                  <SelectItem value="staff">เจ้าหน้าที่ (Staff)</SelectItem>
+                  <SelectItem value="coordinator">ประสานงาน (Coordinator)</SelectItem>
+                  <SelectItem value="manager">ผู้จัดการ (Manager)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-pwd">
+                รหัสผ่าน <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                id="reg-pwd"
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                disabled={loading}
+                placeholder="อย่างน้อย 6 ตัวอักษร"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="reg-confirm">
+                ยืนยันรหัสผ่าน <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                id="reg-confirm"
+                type="password"
+                value={form.confirmPassword}
+                onChange={(e) =>
+                  setForm({ ...form, confirmPassword: e.target.value })
+                }
+                disabled={loading}
+                placeholder="ยืนยันรหัสผ่าน"
+              />
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={loading}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    กำลังส่ง...
+                  </>
+                ) : (
+                  'ส่งคำขอ'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Invite request dialog (Method 2) ───────────────────────────
+function InviteDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+}) {
+  const [email, setEmail] = React.useState('')
+  const [loading, setLoading] = React.useState(false)
+  const [done, setDone] = React.useState(false)
+  const [testLink, setTestLink] = React.useState<string | null>(null)
+
+  function reset() {
+    setEmail('')
+    setDone(false)
+    setTestLink(null)
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (loading) return
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast.error('กรุณาระบุอีเมลที่ถูกต้อง')
+      return
+    }
+    setLoading(true)
+    setTestLink(null)
+    try {
+      const res = await fetch('/api/auth/request-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      })
+      const j = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+        testLink?: string
+      }
+      if (!res.ok || !j.ok) {
+        throw new Error(j.error || 'ส่งลิงก์ไม่สำเร็จ')
+      }
+      setDone(true)
+      toast.success('ส่งลิงก์ไปยังอีเมลแล้ว กรุณาตรวจสอบกล่องอีเมล')
+      if (j.testLink) {
+        setTestLink(j.testLink)
+        toast.warning(`SMTP ไม่ได้ตั้งค่า — ลิงก์สำหรับทดสอบ: ${j.testLink}`, {
+          duration: 8000,
+        })
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ส่งลิงก์ไม่สำเร็จ')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) reset()
+        onOpenChange(v)
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>รับลิงก์ลงทะเบียนทางอีเมล</DialogTitle>
+          <DialogDescription>
+            สำหรับผู้ใช้ใหม่ที่ยังไม่มีบัญชี — เราจะส่งลิงก์ลงทะเบียนไปยังอีเมลของคุณ (หมดอายุใน 24 ชั่วโมง)
+          </DialogDescription>
+        </DialogHeader>
+
+        {done ? (
+          <div className="py-6 text-center">
+            <div className="mb-3 text-5xl">📧</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+              ส่งลิงก์ไปยังอีเมลแล้ว
+            </div>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              กรุณาตรวจสอบกล่องอีเมล {email} และคลิกลิงก์เพื่อลงทะเบียน
+            </p>
+            {testLink && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-left text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+                <div className="mb-1 font-semibold">
+                  ⚠️ SMTP ยังไม่ได้ตั้งค่า — ลิงก์สำหรับทดสอบ:
+                </div>
+                <a
+                  href={testLink}
+                  className="break-all underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {testLink}
+                </a>
+              </div>
+            )}
+            <Button className="mt-4" onClick={() => onOpenChange(false)}>
+              ปิด
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="invite-email">
+                อีเมล <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                id="invite-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+                placeholder="you@example.com"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={loading}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    กำลังส่ง...
+                  </>
+                ) : (
+                  'ส่งลิงก์'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Forgot password dialog ─────────────────────────────────────
+function ForgotPasswordDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+}) {
+  const [email, setEmail] = React.useState('')
+  const [loading, setLoading] = React.useState(false)
+  const [done, setDone] = React.useState(false)
+  const [testLink, setTestLink] = React.useState<string | null>(null)
+
+  function reset() {
+    setEmail('')
+    setDone(false)
+    setTestLink(null)
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (loading) return
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      toast.error('กรุณาระบุอีเมลที่ถูกต้อง')
+      return
+    }
+    setLoading(true)
+    setTestLink(null)
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      })
+      const j = (await res.json().catch(() => ({}))) as {
+        ok?: boolean
+        error?: string
+        testLink?: string
+      }
+      if (!res.ok || !j.ok) {
+        throw new Error(j.error || 'ส่งลิงก์รีเซ็ตไม่สำเร็จ')
+      }
+      setDone(true)
+      toast.success('หากอีเมลมีอยู่ในระบบ เราจะส่งลิงก์รีเซ็ตรหัสผ่านให้')
+      if (j.testLink) {
+        setTestLink(j.testLink)
+        toast.warning(`SMTP ไม่ได้ตั้งค่า — ลิงก์สำหรับทดสอบ: ${j.testLink}`, {
+          duration: 8000,
+        })
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ส่งลิงก์รีเซ็ตไม่สำเร็จ')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) reset()
+        onOpenChange(v)
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>ลืมรหัสผ่าน</DialogTitle>
+          <DialogDescription>
+            กรอกอีเมลที่ใช้สมัคร — เราจะส่งลิงก์รีเซ็ตรหัสผ่านให้ (หมดอายุใน 1 ชั่วโมง)
+          </DialogDescription>
+        </DialogHeader>
+
+        {done ? (
+          <div className="py-6 text-center">
+            <div className="mb-3 text-5xl">🔐</div>
+            <div className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+              ตรวจสอบอีเมลของคุณ
+            </div>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              หากอีเมล {email} มีอยู่ในระบบ เราจะส่งลิงก์รีเซ็ตรหัสผ่านให้
+            </p>
+            {testLink && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-left text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+                <div className="mb-1 font-semibold">
+                  ⚠️ SMTP ยังไม่ได้ตั้งค่า — ลิงก์สำหรับทดสอบ:
+                </div>
+                <a
+                  href={testLink}
+                  className="break-all underline"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {testLink}
+                </a>
+              </div>
+            )}
+            <Button className="mt-4" onClick={() => onOpenChange(false)}>
+              ปิด
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="forgot-email">
+                อีเมล <span className="text-rose-500">*</span>
+              </Label>
+              <Input
+                id="forgot-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading}
+                placeholder="you@example.com"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={loading}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    กำลังส่ง...
+                  </>
+                ) : (
+                  'ส่งลิงก์รีเซ็ต'
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }

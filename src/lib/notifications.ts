@@ -33,6 +33,7 @@
  *       email_from                 → อีเมลผู้ส่งเริ่มต้น
  */
 
+import nodemailer from 'nodemailer'
 import { db } from '@/lib/db'
 
 // ============================================================
@@ -449,27 +450,45 @@ export async function sendTelegram(
 }
 
 /**
- * Send an email. For now this just logs; when SMTP settings are
- * configured it would perform a real send (e.g. via nodemailer).
+ * Send an email via nodemailer when SMTP settings are configured,
+ * otherwise log to console. Returns true if SMTP was attempted
+ * (regardless of success), false if logged only.
  */
 export async function sendEmail(
   to: string,
   subject: string,
   body: string,
-): Promise<void> {
+): Promise<boolean> {
   const settings = await loadSettings()
   if (!settings.smtpHost || !settings.notifyEnabled) {
     console.log(
       `[notifications][email] (log only) → ${to}\nSubject: ${subject}\n${body}`,
     )
-    return
+    return false
   }
 
-  // ── Real SMTP send would go here ──
-  // (Implementation deferred — requires a nodemailer dependency.)
-  console.log(
-    `[notifications][email] SMTP configured but not implemented → ${to}\nSubject: ${subject}\n${body}`,
-  )
+  try {
+    const transporter = nodemailer.createTransport({
+      host: settings.smtpHost,
+      port: parseInt(settings.smtpPort || '587', 10),
+      secure: parseInt(settings.smtpPort || '587', 10) === 465,
+      auth: {
+        user: settings.smtpUser,
+        pass: settings.smtpPass,
+      },
+    })
+    await transporter.sendMail({
+      from: settings.emailFrom || settings.smtpUser,
+      to,
+      subject,
+      html: body,
+    })
+    console.log(`[notifications][email] sent → ${to} (${subject})`)
+    return true
+  } catch (err) {
+    console.error('[notifications][email] send failed:', err)
+    return false
+  }
 }
 
 // ============================================================
