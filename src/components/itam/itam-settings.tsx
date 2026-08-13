@@ -13,11 +13,12 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare } from 'lucide-react'
 import { type MasterItem } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
 import { WoOptionsSection } from './wo-options-section'
+import { NotificationTemplatesSection } from './notification-templates-section'
 import { useAuthStore } from '@/store/auth-store'
 
 /** Build fetch headers with the user's JWT (if logged in). */
@@ -38,7 +39,7 @@ interface NotifySettings {
 
 export function ItamSettings() {
   const qc = useQueryClient()
-  const [tab, setTab] = React.useState<'master' | 'site-attributes' | 'sites' | 'notifications' | 'customize' | 'contacts' | 'wo-options'>('master')
+  const [tab, setTab] = React.useState<'master' | 'site-attributes' | 'sites' | 'notifications' | 'notification-templates' | 'customize' | 'contacts' | 'wo-options'>('master')
   const [category, setCategory] = React.useState('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
@@ -199,6 +200,9 @@ export function ItamSettings() {
         </button>
         <button onClick={() => setTab('notifications')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'notifications' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <Bell className="mr-1 inline h-4 w-4" /> การแจ้งเตือน
+        </button>
+        <button onClick={() => setTab('notification-templates')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'notification-templates' ? 'border-teal-500 text-teal-600 dark:text-teal-300' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <MessageSquare className="mr-1 inline h-4 w-4" /> เทมเพลตข้อความ
         </button>
         <button onClick={() => setTab('customize')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'customize' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <Palette className="mr-1 inline h-4 w-4" /> ปรับแต่งแอป
@@ -507,6 +511,8 @@ export function ItamSettings() {
       )}
 
       {/* ── ปรับแต่งแอป tab — appName, logo, tagline, search fields ── */}
+      {tab === 'notification-templates' && <NotificationTemplatesSection />}
+
       {tab === 'customize' && <AppCustomizeTab />}
     </div>
   )

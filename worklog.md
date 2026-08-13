@@ -6910,3 +6910,32 @@ Stage Summary:
 - Work Orders เปลี่ยนเป็น table แล้ว
 - Meter countdown + cycle management กลับมา
 - Notification settings ใช้งานได้
+
+---
+Task ID: SIDEBAR-REDESIGN
+Agent: full-stack-developer — Redesign sidebar (Supabase-style + dark mode fix)
+
+Work Log:
+- Fixed dark mode: theme-aware classes throughout sidebar
+- Implemented hover-expand (56px → 240px) like Supabase
+- Mobile drawer behavior preserved
+- Updated page.tsx margin to ml-14
+
+Stage Summary:
+- Sidebar changes with dark/light theme
+- Collapsed by default, expands on hover
+- All existing functionality preserved
+
+---
+Task ID: NOTIFY-TEMPLATES
+Agent: full-stack-developer — Create notification template management page
+
+Work Log:
+- Created /api/settings/notification-templates (GET/PUT)
+- Created notification-templates-section.tsx component
+- Added "📨 เทมเพลตข้อความ" tab to itam-settings.tsx
+
+Stage Summary:
+- Admins can manage message templates per app/event
+- Templates support variable placeholders
+- Templates can be enabled/disabled per channel
