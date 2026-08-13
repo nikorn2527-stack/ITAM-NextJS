@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import * as React from 'react'
+     4→import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+     5→import { useVirtualizer } from '@tanstack/react-virtual'
+     6→import { toast } from 'sonner'
+     7→import { motion, AnimatePresence } from 'framer-motion'
+     8→import { Card, CardContent } from '@/components/ui/card'
+     9→import { Button } from '@/components/ui/button'
+    10→import { Input } from '@/components/ui/input'
+    11→import { Label } from '@/components/ui/label'
+    12→import { Textarea } from '@/components/ui/textarea'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import { Skeleton } from '@/components/ui/skeleton'
+    15→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+    16→import { Switch } from '@/components/ui/switch'
+    17→import { Checkbox } from '@/components/ui/checkbox'
+    18→import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+    19→import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+    20→import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+    21→import { Search, RefreshCw, ChevronLeft, ChevronRight, Package, Plus, Pencil, Trash2, Download, Eye, X, History, CheckCheck, Printer, Tag, Upload, FileSpreadsheet, FileText, Edit3, QrCode, Zap, List } from 'lucide-react'
+    22→import { downloadCsv, dateStamp, parseCsv } from '@/lib/csv'
+    23→import { ItamDeviceDetailSheet } from './itam-device-detail-sheet'
+    24→import { printSingleSticker, printBulkStickers } from './sticker-print-helpers'
+    25→import { SavedFilters, type FilterCombo } from './saved-filters'
+    26→import {
+    27→  DocumentTemplatePicker,
+    28→  getDocumentTemplateMode,
+    29→  getActiveDocumentTemplateIdForExport,
+    30→  type DocumentTemplatePickerResult,
+    31→} from './document-template-picker'
+    32→import type { DocumentRenderRow } from '@/lib/document-template'
+    33→import { useAppStore } from '@/store/app-store'
+    34→import { useAuthStore } from '@/store/auth-store'
+    35→
+    36→interface Device {
+    37→  id: string; assetNo: string; deviceType: string | null; brand: string | null
+    38→  model: string | null; serial: string | null; status: string; site: string | null
+    39→  department: string | null; building: string | null; floor: string | null
+    40→  location: string | null; meterRequired: boolean; _count?: { meterReadings: number; locationHistories: number; assignments: number; maintenanceLogs: number }
+    41→  /** client-only flag: optimistic row in flight */
+    42→  __optimistic?: 'add' | 'edit' | 'delete' | null
+    43→  /** client-only: timestamp when this row was last successfully saved */
+    44→  __savedAt?: number
+    45→}
+    46→interface DevicesResponse {
+    47→  devices: Device[]; pagination: { page: number; limit: number; total: number; totalPages: number }
+    48→}
+    49→
+    50→const STATUS_BADGE: Record<string, string> = {
+    51→  Active: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800',
+    52→  Inactive: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300',
+    53→  'In Stock': 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800',
+    54→  'Pending Repair': 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800',
+    55→  Retired: 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800',
+    56→}
+    57→
+    58→const STATUS_OPTIONS = ['Active', 'In Stock', 'Pending Repair', 'Inactive', 'Retired']
+    59→
+    60→// ============ Cascading dropdown hook ============
+    61→// Fetches distinct values for a location field, filtered by previous selections.
+    62→function useCascadingOptions(
+    63→  field: 'building' | 'floor' | 'department' | 'location',
+    64→  parents: { site?: string; building?: string; floor?: string; department?: string },
+    65→): string[] {
+    66→  const [values, setValues] = React.useState<string[]>([])
+    67→  const { site, building, floor, department } = parents
+    68→  React.useEffect(() => {
+    69→    let cancelled = false
+    70→    const params = new URLSearchParams({ field })
+    71→    if (site) params.set('site', site)
+    72→    if (building) params.set('building', building)
+    73→    if (floor) params.set('floor', floor)
+    74→    if (department) params.set('department', department)
+    75→    fetch(`/api/itam/devices/cascading?${params}`)
+    76→      .then((r) => r.ok ? r.json() : Promise.reject(r))
+    77→      .then((j: { values: string[] }) => { if (!cancelled) setValues(j.values ?? []) })
+    78→      .catch(() => { if (!cancelled) setValues([]) })
+    79→    return () => { cancelled = true }
+    80→  }, [field, site, building, floor, department])
+    81→  return values
+    82→}
+    83→
+    84→// ============ Sites list hook ============
+    85→function useSitesList(): string[] {
+    86→  const [sites, setSites] = React.useState<string[]>([])
+    87→  React.useEffect(() => {
+    88→    fetch('/api/itam/sites')
+    89→      .then((r) => r.ok ? r.json() : Promise.reject(r))
+    90→      .then((j: { sites: Array<{ siteName: string | null }> }) => {
+    91→        const names = j.sites.map((s) => s.siteName).filter((s): s is string => !!s)
+    92→        setSites(names)
+    93→      })
+    94→      .catch(() => setSites([]))
+    95→  }, [])
+    96→  return sites
+    97→}
+    98→
+    99→type DeviceForm = {
+   100→  assetNo: string; deviceType: string; brand: string; model: string; serial: string
+   101→  building: string; floor: string; department: string; location: string; departmentCode: string
+   102→  status: string; site: string; contractNo: string; ip: string; mac: string; remoteId: string
+   103→  vendor: string; installDate: string; warrantyEnd: string; deviceGroup: string; costCenter: string
+   104→  meterRequired: boolean; meterMode: string; assetSiteCode: string; remark: string
+   105→}
+   106→
+   107→const EMPTY_FORM: DeviceForm = {
+   108→  assetNo: '', deviceType: '', brand: '', model: '', serial: '',
+   109→  building: '', floor: '', department: '', location: '', departmentCode: '',
+   110→  status: 'Active', site: '', contractNo: '', ip: '', mac: '', remoteId: '',
+   111→  vendor: '', installDate: '', warrantyEnd: '', deviceGroup: '', costCenter: '',
+   112→  meterRequired: false, meterMode: 'TOTAL', assetSiteCode: '', remark: '',
+   113→}
+   114→
+   115→const CSV_HEADERS = [
+   116→  { key: 'assetNo', label: 'รหัสสินทรัพย์' },
+   117→  { key: 'deviceType', label: 'ประเภท' },
+   118→  { key: 'brand', label: 'แบรนด์' },
+   119→  { key: 'model', label: 'รุ่น' },
+   120→  { key: 'serial', label: 'Serial' },
+   121→  { key: 'status', label: 'สถานะ' },
+   122→  { key: 'site', label: 'สาขา' },
+   123→  { key: 'building', label: 'อาคาร' },
+   124→  { key: 'floor', label: 'ชั้น' },
+   125→  { key: 'department', label: 'แผนก' },
+   126→  { key: 'departmentCode', label: 'รหัสแผนก' },
+   127→  { key: 'location', label: 'ที่ตั้ง' },
+   128→  { key: 'deviceGroup', label: 'กลุ่ม' },
+   129→  { key: 'costCenter', label: 'Cost Center' },
+   130→  { key: 'contractNo', label: 'เลขสัญญา' },
+   131→  { key: 'vendor', label: 'ผู้ขาย' },
+   132→  { key: 'ip', label: 'IP' },
+   133→  { key: 'mac', label: 'MAC' },
+   134→  { key: 'remoteId', label: 'Remote ID' },
+   135→  { key: 'installDate', label: 'วันติดตั้ง' },
+   136→  { key: 'warrantyEnd', label: 'วันหมดประกัน' },
+   137→  { key: 'meterRequired', label: 'ต้องจดมิเตอร์' },
+   138→  { key: 'meterMode', label: 'โหมดมิเตอร์' },
+   139→  { key: 'assetSiteCode', label: 'Asset Site Code' },
+   140→  { key: 'remark', label: 'หมายเหตุ' },
+   141→]
+   142→
+   143→// ============ Search debounce hook (200ms) ============
+   144→function useDebounced<T>(value: T, delayMs = 200): [T, boolean] {
+   145→  const [debounced, setDebounced] = React.useState<T>(value)
+   146→  const [isPending, setIsPending] = React.useState(false)
+   147→  React.useEffect(() => {
+   148→    setIsPending(true)
+   149→    const t = setTimeout(() => {
+   150→      setDebounced(value)
+   151→      setIsPending(false)
+   152→    }, delayMs)
+   153→    return () => clearTimeout(t)
+   154→  }, [value, delayMs])
+   155→  return [debounced, isPending]
+   156→}
+   157→
+   158→// ============ Highlight matched text ============
+   159→function Highlight({ text, query }: { text: string; query: string }) {
+   160→  if (!query.trim()) return <>{text || '—'}</>
+   161→  const q = query.trim()
+   162→  // Escape regex special chars
+   163→  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+   164→  const parts = (text || '').split(new RegExp(`(${esc})`, 'ig'))
+   165→  return (
+   166→    <>
+   167→      {parts.map((p, i) =>
+   168→        p.toLowerCase() === q.toLowerCase()
+   169→          ? <mark key={i} className="rounded bg-orange-200 px-0.5 text-slate-900 dark:bg-orange-500/60 dark:text-white">{p}</mark>
+   170→          : <React.Fragment key={i}>{p}</React.Fragment>,
+   171→      )}
+   172→    </>
+   173→  )
+   174→}
+   175→
+   176→// ============ Recent searches (localStorage) ============
+   177→const RECENT_KEY = 'itam-recent-searches'
+   178→function loadRecent(): string[] {
+   179→  if (typeof window === 'undefined') return []
+   180→  try {
+   181→    const raw = window.localStorage.getItem(RECENT_KEY)
+   182→    if (!raw) return []
+   183→    const arr = JSON.parse(raw)
+   184→    return Array.isArray(arr) ? arr.filter((x) => typeof x === 'string').slice(0, 6) : []
+   185→  } catch {
+   186→    return []
+   187→  }
+   188→}
+   189→function saveRecent(q: string) {
+   190→  if (typeof window === 'undefined' || !q.trim()) return
+   191→  try {
+   192→    const cur = loadRecent()
+   193→    const next = [q.trim(), ...cur.filter((x) => x !== q.trim())].slice(0, 6)
+   194→    window.localStorage.setItem(RECENT_KEY, JSON.stringify(next))
+   195→  } catch { /* ignore */ }
+   196→}
+   197→
+   198→export function ItamDevices() {
+   199→  const qc = useQueryClient()
+   200→  const [search, setSearch] = React.useState('')
+   201→  const [debouncedSearch, searchPending] = useDebounced(search, 200)
+   202→  const [status, setStatus] = React.useState('all')
+   203→  const [deviceType, setDeviceType] = React.useState('all')
+   204→  const [page, setPage] = React.useState(1)
+   205→  // Virtual scroll toggle — when ON, fetch 500 rows in one shot and virtualize
+   206→  // (so 2,378+ devices scroll smoothly). Persisted in localStorage.
+   207→  const [virtualScroll, setVirtualScroll] = React.useState<boolean>(() => {
+   208→    if (typeof window === 'undefined') return false
+   209→    try { return window.localStorage.getItem('itam.virtual-scroll') === '1' } catch { return false }
+   210→  })
+   211→  React.useEffect(() => {
+   212→    try { window.localStorage.setItem('itam.virtual-scroll', virtualScroll ? '1' : '0') } catch { /* ignore */ }
+   213→  }, [virtualScroll])
+   214→  // Adaptive limit: virtual mode → 2000 rows in one shot (handles the full
+   215→  // 2,378-device dataset); standard mode → 20 with pagination.
+   216→  const limit = React.useMemo(() => virtualScroll ? 2000 : 20, [virtualScroll])
+   217→  // Reset page when toggling virtual mode (different page sizes)
+   218→  React.useEffect(() => { setPage(1) }, [virtualScroll])
+   219→
+   220→  // QR scanner trigger (singleton dialog mounted at the app shell)
+   221→  const setQrScannerOpen = useAppStore((s) => s.setQrScannerOpen)
+   222→
+   223→  // Search metrics (Yms)
+   224→  const [searchStartedAt, setSearchStartedAt] = React.useState<number | null>(null)
+   225→  const [searchMs, setSearchMs] = React.useState<number | null>(null)
+   226→  React.useEffect(() => {
+   227→    if (search) setSearchStartedAt(Date.now())
+   228→    else { setSearchStartedAt(null); setSearchMs(null) }
+   229→  }, [search])
+   230→
+   231→  // Recent searches
+   232→  const [recent, setRecent] = React.useState<string[]>([])
+   233→  React.useEffect(() => { setRecent(loadRecent()) }, [])
+   234→  function commitRecent(q: string) {
+   235→    saveRecent(q)
+   236→    setRecent(loadRecent())
+   237→  }
+   238→
+   239→  // Drill-down from dashboard
+   240→  const pendingDeviceType = useAppStore((s) => s.pendingDeviceType)
+   241→  const pendingDeviceStatus = useAppStore((s) => s.pendingDeviceStatus)
+   242→  const clearPendingDeviceType = useAppStore((s) => s.clearPendingDeviceType)
+   243→  const clearPendingDeviceStatus = useAppStore((s) => s.clearPendingDeviceStatus)
+   244→  React.useEffect(() => {
+   245→    if (pendingDeviceType) {
+   246→      setDeviceType(pendingDeviceType)
+   247→      setPage(1)
+   248→      clearPendingDeviceType()
+   249→    }
+   250→    if (pendingDeviceStatus) {
+   251→      setStatus(pendingDeviceStatus)
+   252→      setPage(1)
+   253→      clearPendingDeviceStatus()
+   254→    }
+   255→  }, [pendingDeviceType, pendingDeviceStatus, clearPendingDeviceType, clearPendingDeviceStatus])
+   256→
+   257→  // Detail sheet
+   258→  const [detailAssetNo, setDetailAssetNo] = React.useState<string | null>(null)
+   259→  const [detailOpen, setDetailOpen] = React.useState(false)
+   260→
+   261→  // CRUD dialog
+   262→  const [crudOpen, setCrudOpen] = React.useState(false)
+   263→  const [editAssetNo, setEditAssetNo] = React.useState<string | null>(null)
+   264→  const [form, setForm] = React.useState<DeviceForm>(EMPTY_FORM)
+   265→
+   266→  // Delete confirm
+   267→  const [deleteAssetNo, setDeleteAssetNo] = React.useState<string | null>(null)
+   268→
+   269→  // Track rows that just saved (for the "✓ บันทึกแล้ว" badge)
+   270→  const [savedAssetNos, setSavedAssetNos] = React.useState<Set<string>>(new Set())
+   271→  function flashSaved(assetNo: string) {
+   272→    setSavedAssetNos((prev) => {
+   273→      const next = new Set(prev)
+   274→      next.add(assetNo)
+   275→      return next
+   276→    })
+   277→    setTimeout(() => {
+   278→      setSavedAssetNos((prev) => {
+   279→        const next = new Set(prev)
+   280→        next.delete(assetNo)
+   281→        return next
+   282→      })
+   283→    }, 2000)
+   284→  }
+   285→
+   286→  // CSV export
+   287→  const [exporting, setExporting] = React.useState(false)
+   288→
+   289→  // Sticker selection state (for bulk print)
+   290→  const [selectedAssetNos, setSelectedAssetNos] = React.useState<Set<string>>(new Set())
+   291→  const [stickerPrinting, setStickerPrinting] = React.useState(false)
+   292→
+   293→  // Import dialog state
+   294→  const [importOpen, setImportOpen] = React.useState(false)
+   295→  const [importText, setImportText] = React.useState('')
+   296→  const [importMode, setImportMode] = React.useState<'upsert' | 'create_only' | 'update_only'>('upsert')
+   297→  const [importing, setImporting] = React.useState(false)
+   298→  const [importResult, setImportResult] = React.useState<{
+   299→    inserted: number; updated: number; errors: Array<{ row: number; assetNo: string; error: string }>; total: number
+   300→  } | null>(null)
+   301→
+   302→  // Bulk-edit dialog state
+   303→  const [bulkEditOpen, setBulkEditOpen] = React.useState(false)
+   304→  const [bulkEditForm, setBulkEditForm] = React.useState<{
+   305→    status: string; site: string; building: string; floor: string; department: string
+   306→  }>({ status: '', site: '', building: '', floor: '', department: '' })
+   307→  const [bulkSaving, setBulkSaving] = React.useState(false)
+   308→  const [bulkProgress, setBulkProgress] = React.useState<{ done: number; total: number } | null>(null)
+   309→
+   310→  // Excel/PDF export status
+   311→  const [excelExporting, setExcelExporting] = React.useState(false)
+   312→  const [pdfExporting, setPdfExporting] = React.useState(false)
+   313→
+   314→  // Document Template Picker state
+   315→  const [docTplPickerOpen, setDocTplPickerOpen] = React.useState(false)
+   316→  const [docTplPickerTarget, setDocTplPickerTarget] = React.useState<'export' | 'custom' | null>(null)
+   317→  // Cached devices fetched before showing the picker — used to render after the user picks a template
+   318→  const docTplPendingDevicesRef = React.useRef<Device[] | null>(null)
+   319→  // Cached columns (for custom export)
+   320→  const docTplPendingColumnsRef = React.useRef<typeof CSV_HEADERS | null>(null)
+   321→
+   322→  // Auth-driven permissions
+   323→  const authUser = useAuthStore((s) => s.user)
+   324→  const canEdit = !!authUser && ['DEVICE_EDIT', 'DEVICE_DELETE', 'DEVICE_TRANSFER'].some((p) => authUser.permissions.includes(p as never))
+   325→
+   326→  // Cascading dropdown options — re-fetch when parent selections change
+   327→  const sites = useSitesList()
+   328→  const buildingOptions = useCascadingOptions('building', { site: form.site })
+   329→  const floorOptions = useCascadingOptions('floor', { site: form.site, building: form.building })
+   330→  const departmentOptions = useCascadingOptions('department', { site: form.site, building: form.building, floor: form.floor })
+   331→  const locationOptions = useCascadingOptions('location', { site: form.site, building: form.building, floor: form.floor, department: form.department })
+   332→  // Bulk-edit dialog also uses cascading dropdowns
+   333→  const bulkBuildingOptions = useCascadingOptions('building', { site: bulkEditForm.site })
+   334→  const bulkFloorOptions = useCascadingOptions('floor', { site: bulkEditForm.site, building: bulkEditForm.building })
+   335→  const bulkDepartmentOptions = useCascadingOptions('department', { site: bulkEditForm.site, building: bulkEditForm.building, floor: bulkEditForm.floor })
+   336→
+   337→  function toggleSelectAssetNo(assetNo: string) {
+   338→    setSelectedAssetNos((prev) => {
+   339→      const next = new Set(prev)
+   340→      if (next.has(assetNo)) next.delete(assetNo)
+   341→      else next.add(assetNo)
+   342→      return next
+   343→    })
+   344→  }
+   345→
+   346→  function toggleSelectAllOnPage(checked: boolean) {
+   347→    setSelectedAssetNos((prev) => {
+   348→      const next = new Set(prev)
+   349→      if (checked) {
+   350→        for (const d of devices) next.add(d.assetNo)
+   351→      } else {
+   352→        for (const d of devices) next.delete(d.assetNo)
+   353→      }
+   354→      return next
+   355→    })
+   356→  }
+   357→
+   358→  // Reset selection when search/filter changes
+   359→  React.useEffect(() => {
+   360→    setSelectedAssetNos(new Set())
+   361→  }, [debouncedSearch, status, deviceType, page])
+   362→
+   363→  async function handleSingleStickerPrint(assetNo: string) {
+   364→    setStickerPrinting(true)
+   365→    try {
+   366→      await printSingleSticker(assetNo)
+   367→      toast.success(`เตรียมสติกเกอร์สำหรับ ${assetNo} แล้ว`)
+   368→    } catch (e) {
+   369→      toast.error(e instanceof Error ? e.message : 'พิมพ์สติกเกอร์ไม่สำเร็จ')
+   370→    } finally {
+   371→      setStickerPrinting(false)
+   372→    }
+   373→  }
+   374→
+   375→  async function handleBulkStickerPrint() {
+   376→    if (selectedAssetNos.size === 0) {
+   377→      toast.error('กรุณาเลือกอุปกรณ์อย่างน้อย 1 เครื่อง')
+   378→      return
+   379→    }
+   380→    setStickerPrinting(true)
+   381→    try {
+   382→      const assetNos = Array.from(selectedAssetNos)
+   383→      const n = await printBulkStickers(assetNos)
+   384→      toast.success(`เตรียมสติกเกอร์ ${n} ใบแล้ว`)
+   385→    } catch (e) {
+   386→      toast.error(e instanceof Error ? e.message : 'พิมพ์สติกเกอร์ไม่สำเร็จ')
+   387→    } finally {
+   388→      setStickerPrinting(false)
+   389→    }
+   390→  }
+   391→
+   392→  // Unique types from current page data (for filter dropdown)
+   393→  const queryKey = React.useMemo(
+   394→    () => ['itam-devices', debouncedSearch, status, deviceType, page, limit] as const,
+   395→    [debouncedSearch, status, deviceType, page, limit],
+   396→  )
+   397→
+   398→  const { data, isLoading, isFetching } = useQuery<DevicesResponse>({
+   399→    queryKey,
+   400→    queryFn: async () => {
+   401→      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+   402→      if (debouncedSearch) params.set('search', debouncedSearch)
+   403→      if (status !== 'all') params.set('status', status)
+   404→      if (deviceType !== 'all') params.set('type', deviceType)
+   405→      const res = await fetch(`/api/itam/devices?${params}`)
+   406→      if (!res.ok) throw new Error('Failed')
+   407→      return res.json()
+   408→    },
+   409→    placeholderData: keepPreviousData,
+   410→  })
+   411→
+   412→  // Compute search duration when data arrives
+   413→  React.useEffect(() => {
+   414→    if (searchStartedAt !== null && data) {
+   415→      setSearchMs(Date.now() - searchStartedAt)
+   416→    }
+   417→  }, [data, searchStartedAt])
+   418→
+   419→  // ===== Mutations with optimistic UI =====
+   420→
+   421→  // Helper: cast query data for cache manipulation
+   422→  type DevicesQueryData = DevicesResponse
+   423→
+   424→  function onSearch(val: string) {
+   425→    setSearch(val)
+   426→    setPage(1)
+   427→  }
+   428→
+   429→  function openAdd() {
+   430→    setEditAssetNo(null)
+   431→    setForm(EMPTY_FORM)
+   432→    setCrudOpen(true)
+   433→  }
+   434→
+   435→  function openEdit(assetNo: string) {
+   436→    setEditAssetNo(assetNo)
+   437→    fetch(`/api/itam/devices/${assetNo}`)
+   438→      .then(r => r.ok ? r.json() : Promise.reject(r))
+   439→      .then((j: { device: Device & Record<string, unknown> }) => {
+   440→        const d = j.device
+   441→        setForm({
+   442→          assetNo: d.assetNo, deviceType: d.deviceType || '', brand: d.brand || '', model: d.model || '',
+   443→          serial: d.serial || '', building: d.building || '', floor: d.floor || '',
+   444→          department: d.department || '', location: d.location || '', departmentCode: d.departmentCode || '',
+   445→          status: d.status, site: d.site || '', contractNo: (d as { contractNo?: string }).contractNo || '',
+   446→          ip: (d as { ip?: string }).ip || '', mac: (d as { mac?: string }).mac || '',
+   447→          remoteId: (d as { remoteId?: string }).remoteId || '',
+   448→          vendor: (d as { vendor?: string }).vendor || '',
+   449→          installDate: (d as { installDate?: string }).installDate || '',
+   450→          warrantyEnd: (d as { warrantyEnd?: string }).warrantyEnd || '',
+   451→          deviceGroup: (d as { deviceGroup?: string }).deviceGroup || '',
+   452→          costCenter: (d as { costCenter?: string }).costCenter || '',
+   453→          meterRequired: d.meterRequired, meterMode: (d as { meterMode?: string }).meterMode || 'TOTAL',
+   454→          assetSiteCode: (d as { assetSiteCode?: string }).assetSiteCode || '',
+   455→          remark: d.remark || '',
+   456→        })
+   457→        setCrudOpen(true)
+   458→      })
+   459→      .catch(() => toast.error('โหลดข้อมูลไม่สำเร็จ'))
+   460→  }
+   461→
+   462→  // === ADD mutation (optimistic) ===
+   463→  const addMutation = useMutation({
+   464→    mutationFn: async (payload: DeviceForm) => {
+   465→      const res = await fetch('/api/itam/devices', {
+   466→        method: 'POST', headers: { 'Content-Type': 'application/json' },
+   467→        body: JSON.stringify(payload),
+   468→      })
+   469→      if (!res.ok) {
+   470→        const j = await res.json().catch(() => ({}))
+   471→        throw new Error(j.error || 'Failed')
+   472→      }
+   473→      return res.json() as Promise<{ device: Device }>
+   474→    },
+   475→    onMutate: async (payload) => {
+   476→      await qc.cancelQueries({ queryKey: ['itam-devices'] })
+   477→      const tempId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+   478→      const optimisticDevice: Device = {
+   479→        id: tempId,
+   480→        assetNo: payload.assetNo,
+   481→        deviceType: payload.deviceType || null,
+   482→        brand: payload.brand || null,
+   483→        model: payload.model || null,
+   484→        serial: payload.serial || null,
+   485→        status: payload.status || 'Active',
+   486→        site: payload.site || null,
+   487→        department: payload.department || null,
+   488→        building: payload.building || null,
+   489→        floor: payload.floor || null,
+   490→        location: payload.location || null,
+   491→        meterRequired: payload.meterRequired,
+   492→        _count: { meterReadings: 0, locationHistories: 0, assignments: 0, maintenanceLogs: 0 },
+   493→        __optimistic: 'add',
+   494→      }
+   495→      // Snapshot for rollback
+   496→      const snapshots = qc.getQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] })
+   497→      qc.setQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] }, (old) => {
+   498→        if (!old) return old
+   499→        return {
+   500→          ...old,
+   501→          devices: [optimisticDevice, ...old.devices],
+   502→          pagination: { ...old.pagination, total: old.pagination.total + 1 },
+   503→        }
+   504→      })
+   505→      return { snapshots }
+   506→    },
+   507→    onError: (err, _payload, ctx) => {
+   508→      // Rollback
+   509→      if (ctx?.snapshots) {
+   510→        for (const [key, val] of ctx.snapshots) {
+   511→          qc.setQueryData(key, val)
+   512→        }
+   513→      }
+   514→      toast.error(err instanceof Error ? err.message : 'เพิ่มไม่สำเร็จ')
+   515→    },
+   516→    onSettled: (_d, _e, payload) => {
+   517→      qc.invalidateQueries({ queryKey: ['itam-devices'] })
+   518→      qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+   519→      flashSaved(payload.assetNo)
+   520→      toast.success('เพิ่มอุปกรณ์แล้ว')
+   521→    },
+   522→  })
+   523→
+   524→  // === EDIT mutation (optimistic, in-place update) ===
+   525→  const editMutation = useMutation({
+   526→    mutationFn: async ({ assetNo, payload }: { assetNo: string; payload: DeviceForm }) => {
+   527→      const res = await fetch(`/api/itam/devices/${assetNo}`, {
+   528→        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+   529→        body: JSON.stringify(payload),
+   530→      })
+   531→      if (!res.ok) {
+   532→        const j = await res.json().catch(() => ({}))
+   533→        throw new Error(j.error || 'Failed')
+   534→      }
+   535→      return res.json() as Promise<{ device: Device }>
+   536→    },
+   537→    onMutate: async ({ assetNo, payload }) => {
+   538→      await qc.cancelQueries({ queryKey: ['itam-devices'] })
+   539→      const snapshots = qc.getQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] })
+   540→      qc.setQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] }, (old) => {
+   541→        if (!old) return old
+   542→        return {
+   543→          ...old,
+   544→          devices: old.devices.map((d) =>
+   545→            d.assetNo === assetNo
+   546→              ? {
+   547→                  ...d,
+   548→                  deviceType: payload.deviceType || d.deviceType,
+   549→                  brand: payload.brand || d.brand,
+   550→                  model: payload.model || d.model,
+   551→                  status: payload.status || d.status,
+   552→                  site: payload.site || d.site,
+   553→                  department: payload.department || d.department,
+   554→                  meterRequired: payload.meterRequired,
+   555→                  __optimistic: 'edit',
+   556→                }
+   557→              : d,
+   558→          ),
+   559→        }
+   560→      })
+   561→      return { snapshots }
+   562→    },
+   563→    onError: (err, _v, ctx) => {
+   564→      if (ctx?.snapshots) {
+   565→        for (const [key, val] of ctx.snapshots) {
+   566→          qc.setQueryData(key, val)
+   567→        }
+   568→      }
+   569→      toast.error(err instanceof Error ? err.message : 'แก้ไขไม่สำเร็จ')
+   570→    },
+   571→    onSettled: (_d, _e, { assetNo }) => {
+   572→      qc.invalidateQueries({ queryKey: ['itam-devices'] })
+   573→      qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+   574→      flashSaved(assetNo)
+   575→      toast.success('แก้ไขอุปกรณ์แล้ว')
+   576→    },
+   577→  })
+   578→
+   579→  // === DELETE mutation (optimistic, fade out + remove) ===
+   580→  const deleteMutation = useMutation({
+   581→    mutationFn: async (assetNo: string) => {
+   582→      const res = await fetch(`/api/itam/devices/${assetNo}`, { method: 'DELETE' })
+   583→      if (!res.ok) {
+   584→        const j = await res.json().catch(() => ({}))
+   585→        throw new Error(j.error || 'Failed')
+   586→      }
+   587→      return { assetNo }
+   588→    },
+   589→    onMutate: async (assetNo) => {
+   590→      await qc.cancelQueries({ queryKey: ['itam-devices'] })
+   591→      const snapshots = qc.getQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] })
+   592→      qc.setQueriesData<DevicesQueryData>({ queryKey: ['itam-devices'] }, (old) => {
+   593→        if (!old) return old
+   594→        return {
+   595→          ...old,
+   596→          devices: old.devices.filter((d) => d.assetNo !== assetNo),
+   597→          pagination: { ...old.pagination, total: Math.max(0, old.pagination.total - 1) },
+   598→        }
+   599→      })
+   600→      return { snapshots }
+   601→    },
+   602→    onError: (err, _v, ctx) => {
+   603→      if (ctx?.snapshots) {
+   604→        for (const [key, val] of ctx.snapshots) {
+   605→          qc.setQueryData(key, val)
+   606→        }
+   607→      }
+   608→      toast.error(err instanceof Error ? err.message : 'ลบไม่สำเร็จ')
+   609→    },
+   610→    onSettled: (_d, _e, assetNo) => {
+   611→      qc.invalidateQueries({ queryKey: ['itam-devices'] })
+   612→      qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+   613→      toast.success(`ลบ ${assetNo} แล้ว`)
+   614→    },
+   615→  })
+   616→
+   617→  async function saveDevice() {
+   618→    if (!form.assetNo.trim()) {
+   619→      toast.error('กรุณากรอกรหัสสินทรัพย์')
+   620→      return
+   621→    }
+   622→    const payload = { ...form }
+   623→    setCrudOpen(false)
+   624→    try {
+   625→      if (editAssetNo) {
+   626→        editMutation.mutate({ assetNo: editAssetNo, payload })
+   627→      } else {
+   628→        addMutation.mutate(payload)
+   629→      }
+   630→    } catch (e) {
+   631→      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+   632→    }
+   633→  }
+   634→
+   635→  function confirmDelete() {
+   636→    if (!deleteAssetNo) return
+   637→    const an = deleteAssetNo
+   638→    setDeleteAssetNo(null)
+   639→    deleteMutation.mutate(an)
+   640→  }
+   641→
+   642→  // Commit recent search when search is non-empty AND user blurs / presses Enter
+   643→  function onSearchKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+   644→    if (e.key === 'Enter' && search.trim()) {
+   645→      commitRecent(search.trim())
+   646→    }
+   647→  }
+   648→  function onSearchBlur() {
+   649→    if (search.trim()) commitRecent(search.trim())
+   650→  }
+   651→
+   652→  async function exportCsv() {
+   653→    try {
+   654→      setExporting(true)
+   655→      toast.info('กำลังดึงข้อมูลทั้งหมด...')
+   656→      const res = await fetch('/api/itam/devices?limit=100')
+   657→      if (!res.ok) throw new Error('Failed')
+   658→      const j: DevicesResponse = await res.json()
+   659→      const rows = j.devices.map(d => ({
+   660→        assetNo: d.assetNo, deviceType: d.deviceType || '', brand: d.brand || '',
+   661→        model: d.model || '', serial: d.serial || '', status: d.status,
+   662→        site: d.site || '', building: d.building || '', floor: d.floor || '',
+   663→        department: d.department || '', departmentCode: '', location: d.location || '',
+   664→        deviceGroup: '', costCenter: '', contractNo: '', vendor: '',
+   665→        ip: '', mac: '', remoteId: '', installDate: '', warrantyEnd: '',
+   666→        meterRequired: d.meterRequired ? 'Yes' : 'No', meterMode: '', assetSiteCode: '',
+   667→        remark: '',
+   668→      }))
+   669→      downloadCsv(`devices-${dateStamp()}.csv`, rows, CSV_HEADERS)
+   670→      toast.success(`ส่งออก ${rows.length} เครื่อง`)
+   671→    } catch (e) {
+   672→      toast.error(e instanceof Error ? e.message : 'ส่งออกไม่สำเร็จ')
+   673→    } finally {
+   674→      setExporting(false)
+   675→    }
+   676→  }
+   677→
+   678→  // ── Excel export: builds an HTML table and exports as .xls (Excel opens it natively)
+   679→  async function exportExcel() {
+   680→    try {
+   681→      setExcelExporting(true)
+   682→      toast.info('กำลังดึงข้อมูลทั้งหมด...')
+   683→      const res = await fetch('/api/itam/devices?limit=100')
+   684→      if (!res.ok) throw new Error('Failed')
+   685→      const j: DevicesResponse = await res.json()
+   686→      const rows = j.devices
+   687→      const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+   688→      const headerHtml = CSV_HEADERS.map((h) => `<th style="background:#f97316;color:#fff;padding:6px;border:1px solid #ddd;font-weight:600">${esc(h.label)}</th>`).join('')
+   689→      const bodyHtml = rows.map((d) => {
+   690→        const cells = CSV_HEADERS.map((h) => {
+   691→          const v = (d as Record<string, unknown>)[h.key]
+   692→          const text = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
+   693→          return `<td style="padding:5px;border:1px solid #e2e8f0;mso-number-format:'\\@'">${esc(text)}</td>`
+   694→        }).join('')
+   695→        return `<tr>${cells}</tr>`
+   696→      }).join('')
+   697→      const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body><table style="border-collapse:collapse;font-family:'Tahoma',sans-serif;font-size:11px"><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></body></html>`
+   698→      const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+   699→      const url = URL.createObjectURL(blob)
+   700→      const a = document.createElement('a')
+   701→      a.href = url
+   702→      a.download = `devices-${dateStamp()}.xls`
+   703→      a.click()
+   704→      URL.revokeObjectURL(url)
+   705→      toast.success(`ส่งออก Excel ${rows.length} เครื่อง`)
+   706→    } catch (e) {
+   707→      toast.error(e instanceof Error ? e.message : 'ส่งออก Excel ไม่สำเร็จ')
+   708→    } finally {
+   709→      setExcelExporting(false)
+   710→    }
+   711→  }
+   712→
+   713→  // ── Map Device → DocumentRenderRow (for the document-template renderer)
+   714→  function deviceToRenderRow(d: Device, idx: number): DocumentRenderRow {
+   715→    const dev = d as Device & { vendor?: string | null; contractNo?: string | null; remark?: string | null }
+   716→    return {
+   717→      no: idx + 1,
+   718→      brand: d.brand ?? '',
+   719→      model: d.model ?? '',
+   720→      serial: d.serial ?? '',
+   721→      buildingFloor: `${d.building ?? ''}/${d.floor ?? ''}`,
+   722→      building: d.building ?? '',
+   723→      floor: d.floor ?? '',
+   724→      department: d.department ?? '',
+   725→      location: d.location ?? '',
+   726→      site: d.site ?? '',
+   727→      status: d.status,
+   728→      vendor: dev.vendor ?? '',
+   729→      remark: dev.remark ?? '',
+   730→    }
+   731→  }
+   732→
+   733→  // ── Render PDF using a Document Template (calls /api/itam/document-templates/render)
+   734→  async function exportPdfWithTemplate(
+   735→    devices: Device[],
+   736→    templateId: string,
+   737→    title: string,
+   738→  ): Promise<void> {
+   739→    const rows = devices.map((d, i) => deviceToRenderRow(d, i))
+   740→    const res = await fetch('/api/itam/document-templates/render', {
+   741→      method: 'POST',
+   742→      headers: { 'Content-Type': 'application/json' },
+   743→      body: JSON.stringify({
+   744→        templateId,
+   745→        data: {
+   746→          title,
+   747→          rows,
+   748→          siteName: devices[0]?.site ?? '',
+   749→        },
+   750→      }),
+   751→    })
+   752→    if (!res.ok) {
+   753→      const j = await res.json().catch(() => ({}))
+   754→      throw new Error(j.error || 'Render failed')
+   755→    }
+   756→    const j = (await res.json()) as { html: string; totalPages: number }
+   757→    const win = window.open('', '_blank', 'width=1000,height=1200')
+   758→    if (!win) {
+   759→      toast.warning('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัปแล้วลองอีกครั้ง')
+   760→      return
+   761→    }
+   762→    win.document.open()
+   763→    win.document.write(j.html)
+   764→    win.document.close()
+   765→    toast.success(`กำลังเปิดหน้าพิมพ์รายงาน PDF (${j.totalPages} หน้า)...`)
+   766→  }
+   767→
+   768→  // ── PDF export: opens a print window with a professional table layout.
+   769→  // If document templates are enabled, shows the template picker first.
+   770→  async function exportPdf() {
+   771→    try {
+   772→      setPdfExporting(true)
+   773→      toast.info('กำลังดึงข้อมูลทั้งหมด...')
+   774→      const res = await fetch('/api/itam/devices?limit=100')
+   775→      if (!res.ok) throw new Error('Failed')
+   776→      const j: DevicesResponse = await res.json()
+   777→      const rows = j.devices
+   778→
+   779→      // ── Check if document templates are enabled ────────────────────
+   780→      const tplMode = await getDocumentTemplateMode()
+   781→      if (tplMode === 'single') {
+   782→        // Only 1 template → use it directly (no picker)
+   783→        const tplId = await getActiveDocumentTemplateIdForExport()
+   784→        if (tplId) {
+   785→          await exportPdfWithTemplate(rows, tplId, 'รายงานอุปกรณ์ ITAM')
+   786→          return
+   787→        }
+   788→      } else if (tplMode === 'multi') {
+   789→        // Multiple templates → show the picker — actual render happens in
+   790→        // handleDocTplPickerSelect after the user picks a template.
+   791→        docTplPendingDevicesRef.current = rows
+   792→        docTplPendingColumnsRef.current = null
+   793→        setDocTplPickerTarget('export')
+   794→        setDocTplPickerOpen(true)
+   795→        toast.info('เลือกเทมเพลตเอกสาร PDF')
+   796→        return
+   797→      }
+   798→
+   799→      // ── Standard layout (no template) ──────────────────────────────
+   800→      await exportPdfStandard(rows)
+   801→    } catch (e) {
+   802→      toast.error(e instanceof Error ? e.message : 'ส่งออก PDF ไม่สำเร็จ')
+   803→    } finally {
+   804→      setPdfExporting(false)
+   805→    }
+   806→  }
+   807→
+   808→  // Standard PDF layout (legacy behavior — used when templates disabled
+   809→  // OR when the user explicitly picks "Use standard layout" in the picker)
+   810→  async function exportPdfStandard(rows: Device[]) {
+   811→    const win = window.open('', '_blank', 'width=1000,height=1200')
+   812→    if (!win) {
+   813→      toast.warning('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัปแล้วลองอีกครั้ง')
+   814→      return
+   815→    }
+   816→    const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+   817→    const generatedAt = new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
+   818→    const headCells = ['รหัส', 'ประเภท', 'แบรนด์/รุ่น', 'Serial', 'สถานะ', 'สาขา', 'อาคาร', 'ชั้น', 'แผนก', 'ที่ตั้ง', 'มิเตอร์']
+   819→      .map((h) => `<th>${esc(h)}</th>`).join('')
+   820→    const bodyRows = rows.map((d) => {
+   821→      return `<tr>
+   822→        <td class="mono">${esc(d.assetNo)}</td>
+   823→        <td>${esc(d.deviceType || '')}</td>
+   824→        <td>${esc(d.brand || '')} ${esc(d.model || '')}</td>
+   825→        <td class="mono">${esc(d.serial || '')}</td>
+   826→        <td>${esc(d.status)}</td>
+   827→        <td>${esc(d.site || '')}</td>
+   828→        <td>${esc(d.building || '')}</td>
+   829→        <td>${esc(d.floor || '')}</td>
+   830→        <td>${esc(d.department || '')}</td>
+   831→        <td>${esc(d.location || '')}</td>
+   832→        <td class="ctr">${d.meterRequired ? '✓' : '—'}</td>
+   833→      </tr>`
+   834→    }).join('')
+   835→    const html = `<!doctype html><html lang="th"><head><meta charset="utf-8">
+   836→<meta name="viewport" content="width=device-width, initial-scale=1">
+   837→<title>ITAM Devices Report</title>
+   838→<style>
+   839→@page { size: A4 landscape; margin: 12mm; }
+   840→* { box-sizing: border-box; }
+   841→html, body { margin: 0; padding: 0; font-family: 'Sukhumvit Set', 'Thonburi', 'Tahoma', sans-serif; color: #1e293b; font-size: 11px; line-height: 1.4; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+   842→.header { border-bottom: 3px solid #f97316; padding-bottom: 10px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: flex-start; }
+   843→.header .org { font-size: 18px; font-weight: 700; color: #0f172a; }
+   844→.header .subtitle { font-size: 12px; color: #475569; margin-top: 2px; }
+   845→.header .meta { text-align: right; font-size: 11px; color: #64748b; }
+   846→table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+   847→th, td { border: 1px solid #e2e8f0; padding: 5px 6px; text-align: left; vertical-align: top; }
+   848→th { background: #f97316; color: white; font-weight: 600; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+   849→td.mono, th.mono { font-family: monospace; font-size: 10px; }
+   850→td.ctr, th.ctr { text-align: center; }
+   851→tr:nth-child(even) td { background: #fafbfc; }
+   852→.print-btn { position: fixed; top: 12px; right: 12px; background: #f97316; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+   853→.print-btn:hover { background: #ea580c; }
+   854→.footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #94a3b8; display: flex; justify-content: space-between; }
+   855→.footer .brand { color: #f97316; font-weight: 700; letter-spacing: 0.04em; }
+   856→@media print { .no-print { display: none; } table { page-break-inside: auto; } tr { page-break-inside: avoid; } thead { display: table-header-group; } }
+   857→</style></head><body>
+   858→<button class="print-btn no-print" onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button>
+   859→<div class="header">
+   860→  <div><div class="org">PNG TEAM</div><div class="subtitle">ITAM Devices Report — ${rows.length} เครื่อง</div></div>
+   861→  <div class="meta"><div>วันที่ออกรายงาน: ${esc(generatedAt)}</div></div>
+   862→</div>
+   863→<table><thead><tr>${headCells}</tr></thead><tbody>${bodyRows}</tbody></table>
+   864→<div class="footer"><div><span class="brand">PNG TEAM</span> — IT Asset Management</div><div>หน้า 1 · ${esc(generatedAt)}</div></div>
+   865→<script>window.addEventListener('load', function () { setTimeout(function () { try { window.print(); } catch (e) {} }, 250); });</script>
+   866→</body></html>`
+   867→    win.document.open()
+   868→    win.document.write(html)
+   869→    win.document.close()
+   870→    toast.success('กำลังเปิดหน้าพิมพ์รายงาน PDF...')
+   871→  }
+   872→
+   873→  // ── Handle the result from the document template picker ──────────────
+   874→  async function handleDocTplPickerSelect(result: DocumentTemplatePickerResult | null) {
+   875→    const devices = docTplPendingDevicesRef.current
+   876→    const target = docTplPickerTarget
+   877→    // Clear cached state
+   878→    docTplPendingDevicesRef.current = null
+   879→    docTplPendingColumnsRef.current = null
+   880→    setDocTplPickerTarget(null)
+   881→
+   882→    if (!result || !devices || !target) return
+   883→
+   884→    try {
+   885→      if (target === 'export') {
+   886→        setPdfExporting(true)
+   887→        if (result.mode === 'template' && result.templateId) {
+   888→          await exportPdfWithTemplate(devices, result.templateId, 'รายงานอุปกรณ์ ITAM')
+   889→        } else {
+   890→          await exportPdfStandard(devices)
+   891→        }
+   892→      } else if (target === 'custom') {
+   893→        setCustomExporting(true)
+   894→        if (result.mode === 'template' && result.templateId) {
+   895→          await exportPdfWithTemplate(devices, result.templateId, 'รายงานอุปกรณ์ ITAM (Custom)')
+   896→        } else {
+   897→          // Use the standard custom-export PDF (legacy behavior)
+   898→          await exportCustomPdfStandard(devices, docTplPendingColumnsRef.current ?? CSV_HEADERS)
+   899→        }
+   900→        setCustomExportOpen(false)
+   901→      }
+   902→    } catch (e) {
+   903→      toast.error(e instanceof Error ? e.message : 'ส่งออก PDF ไม่สำเร็จ')
+   904→    } finally {
+   905→      setPdfExporting(false)
+   906→      setCustomExporting(false)
+   907→    }
+   908→  }
+   909→
+   910→  // ── Custom Export (เลือกคอลัมน์เอง + เลือก format CSV/Excel/PDF)
+   911→  const [customExportOpen, setCustomExportOpen] = React.useState(false)
+   912→  const [selectedColumns, setSelectedColumns] = React.useState<string[]>(
+   913→    () => JSON.parse(localStorage.getItem('itam.customExportColumns') || 'null') || CSV_HEADERS.map(h => h.key)
+   914→  )
+   915→  const [customExporting, setCustomExporting] = React.useState(false)
+   916→
+   917→  function toggleColumn(key: string) {
+   918→    setSelectedColumns(prev =>
+   919→      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+   920→    )
+   921→  }
+   922→
+   923→  function selectAllColumns() { setSelectedColumns(CSV_HEADERS.map(h => h.key)) }
+   924→
+   925→  async function customExport(format: 'csv' | 'excel' | 'pdf') {
+   926→    if (selectedColumns.length === 0) { toast.error('กรุณาเลือกอย่างน้อย 1 คอลัมน์'); return }
+   927→    try {
+   928→      setCustomExporting(true)
+   929→      toast.info('กำลังดึงข้อมูลทั้งหมด...')
+   930→      const res = await fetch('/api/itam/devices?limit=2000')
+   931→      if (!res.ok) throw new Error('Failed')
+   932→      const j: DevicesResponse = await res.json()
+   933→      const rows = j.devices
+   934→      const cols = CSV_HEADERS.filter(h => selectedColumns.includes(h.key))
+   935→      localStorage.setItem('itam.customExportColumns', JSON.stringify(selectedColumns))
+   936→
+   937→      if (format === 'csv') {
+   938→        const exportRows = rows.map(d => {
+   939→          const row: Record<string, unknown> = {}
+   940→          cols.forEach(h => {
+   941→            const v = (d as Record<string, unknown>)[h.key]
+   942→            row[h.key] = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
+   943→          })
+   944→          return row
+   945→        })
+   946→        downloadCsv(`devices-custom-${dateStamp()}.csv`, exportRows, cols)
+   947→        toast.success(`ส่งออก CSV ${rows.length} เครื่อง (${cols.length} คอลัมน์)`)
+   948→      } else if (format === 'excel') {
+   949→        const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+   950→        const headerHtml = cols.map(h => `<th style="background:#f97316;color:#fff;padding:6px;border:1px solid #ddd;font-weight:600">${esc(h.label)}</th>`).join('')
+   951→        const bodyHtml = rows.map(d => {
+   952→          const cells = cols.map(h => {
+   953→            const v = (d as Record<string, unknown>)[h.key]
+   954→            const text = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
+   955→            return `<td style="padding:5px;border:1px solid #e2e8f0;mso-number-format:'\\@'">${esc(text)}</td>`
+   956→          }).join('')
+   957→          return `<tr>${cells}</tr>`
+   958→        }).join('')
+   959→        const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"></head><body><table style="border-collapse:collapse;font-family:'Tahoma',sans-serif;font-size:11px"><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table></body></html>`
+   960→        const blob = new Blob(['\uFEFF' + html], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+   961→        const url = URL.createObjectURL(blob)
+   962→        const a = document.createElement('a'); a.href = url; a.download = `devices-custom-${dateStamp()}.xls`; a.click()
+   963→        URL.revokeObjectURL(url)
+   964→        toast.success(`ส่งออก Excel ${rows.length} เครื่อง (${cols.length} คอลัมน์)`)
+   965→      } else if (format === 'pdf') {
+   966→        // ── Check if document templates are enabled ─────────────────
+   967→        const tplMode = await getDocumentTemplateMode()
+   968→        if (tplMode === 'single') {
+   969→          // Only 1 template → use it directly (no picker)
+   970→          const tplId = await getActiveDocumentTemplateIdForExport()
+   971→          if (tplId) {
+   972→            await exportPdfWithTemplate(rows, tplId, 'รายงานอุปกรณ์ ITAM (Custom)')
+   973→            setCustomExportOpen(false)
+   974→            return
+   975→          }
+   976→        } else if (tplMode === 'multi') {
+   977→          // Multiple templates → show the picker — actual render
+   978→          // happens in handleDocTplPickerSelect after the user picks.
+   979→          docTplPendingDevicesRef.current = rows
+   980→          docTplPendingColumnsRef.current = cols
+   981→          setDocTplPickerTarget('custom')
+   982→          setDocTplPickerOpen(true)
+   983→          toast.info('เลือกเทมเพลตเอกสาร PDF')
+   984→          return
+   985→        }
+   986→        // Standard custom-export PDF (legacy behavior)
+   987→        await exportCustomPdfStandard(rows, cols)
+   988→      }
+   989→      setCustomExportOpen(false)
+   990→    } catch (e) {
+   991→      toast.error(e instanceof Error ? e.message : 'ส่งออกไม่สำเร็จ')
+   992→    } finally {
+   993→      setCustomExporting(false)
+   994→    }
+   995→  }
+   996→
+   997→  // Standard custom-export PDF (legacy behavior — used when templates
+   998→  // disabled OR when the user picks "Use standard layout" in the picker)
+   999→  async function exportCustomPdfStandard(
+  1000→    rows: Device[],
+  1001→    cols: typeof CSV_HEADERS,
+  1002→  ): Promise<void> {
+  1003→    const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
+  1004→    const generatedAt = new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
+  1005→    const headCells = cols.map(h => `<th>${esc(h.label)}</th>`).join('')
+  1006→    const bodyRows = rows.map(d => {
+  1007→      const cells = cols.map(h => {
+  1008→        const v = (d as Record<string, unknown>)[h.key]
+  1009→        const text = h.key === 'meterRequired' ? (d.meterRequired ? '✓' : '—') : (v ?? '')
+  1010→        return `<td>${esc(text)}</td>`
+  1011→      }).join('')
+  1012→      return `<tr>${cells}</tr>`
+  1013→    }).join('')
+  1014→    const win = window.open('', '_blank', 'width=1000,height=1200')
+  1015→    if (!win) { toast.warning('เบราว์เซอร์บล็อกป๊อปอัป'); return }
+  1016→    win.document.open()
+  1017→    win.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ITAM Custom Report</title>
+  1018→<style>@page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:'Sukhumvit Set','Thonburi','Tahoma',sans-serif;color:#1e293b;font-size:10px;line-height:1.3;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  1019→.header{border-bottom:3px solid #f97316;padding-bottom:8px;margin-bottom:10px;display:flex;justify-content:space-between}
+  1020→.header .org{font-size:16px;font-weight:700}.header .meta{text-align:right;font-size:10px;color:#64748b}
+  1021→table{width:100%;border-collapse:collapse}th,td{border:1px solid #e2e8f0;padding:4px 5px;text-align:left}
+  1022→th{background:#f97316;color:#fff;font-weight:600;font-size:9px;text-transform:uppercase}
+  1023→tr:nth-child(even) td{background:#fafbfc}
+  1024→.print-btn{position:fixed;top:12px;right:12px;background:#f97316;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600}
+  1025→.footer{margin-top:10px;padding-top:6px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;display:flex;justify-content:space-between}
+  1026→@media print{.no-print{display:none}tr{page-break-inside:avoid}thead{display:table-header-group}}
+  1027→</style></head><body>
+  1028→<button class="print-btn no-print" onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button>
+  1029→<div class="header"><div><div class="org">PNG TEAM</div><div style="font-size:11px;color:#475569">ITAM Custom Report — ${rows.length} เครื่อง · ${cols.length} คอลัมน์</div></div><div class="meta">วันที่: ${esc(generatedAt)}</div></div>
+  1030→<table><thead><tr>${headCells}</tr></thead><tbody>${bodyRows}</tbody></table>
+  1031→<div class="footer"><div><span style="color:#f97316;font-weight:700">PNG TEAM</span> — IT Asset Management</div><div>${esc(generatedAt)}</div></div>
+  1032→<script>setTimeout(function(){try{window.print()}catch(e){}},300)</script>
+  1033→</body></html>`)
+  1034→    win.document.close()
+  1035→    toast.success(`กำลังเปิดหน้า PDF (${cols.length} คอลัมน์)...`)
+  1036→  }
+  1037→
+  1038→  // ── Import CSV
+  1039→  function openImport() {
+  1040→    setImportText('')
+  1041→    setImportMode('upsert')
+  1042→    setImportResult(null)
+  1043→    setImportOpen(true)
+  1044→  }
+  1045→
+  1046→  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  1047→    const file = e.target.files?.[0]
+  1048→    if (!file) return
+  1049→    const reader = new FileReader()
+  1050→    reader.onload = () => {
+  1051→      const text = String(reader.result ?? '')
+  1052→      setImportText(text)
+  1053→    }
+  1054→    reader.onerror = () => toast.error('อ่านไฟล์ไม่สำเร็จ')
+  1055→    reader.readAsText(file, 'utf-8')
+  1056→    // Reset input so the same file can be uploaded again later
+  1057→    e.target.value = ''
+  1058→  }
+  1059→
+  1060→  // Preview: first 5 data rows of the pasted/loaded CSV
+  1061→  const importPreview = React.useMemo(() => {
+  1062→    if (!importText.trim()) return null
+  1063→    try {
+  1064→      const rows = parseCsv(importText)
+  1065→      if (rows.length === 0) return null
+  1066→      return { header: rows[0], rows: rows.slice(1, 6) }
+  1067→    } catch {
+  1068→      return null
+  1069→    }
+  1070→  }, [importText])
+  1071→
+  1072→  async function runImport() {
+  1073→    if (!importText.trim()) {
+  1074→      toast.error('กรุณาวาง CSV หรืออัปโหลดไฟล์')
+  1075→      return
+  1076→    }
+  1077→    setImporting(true)
+  1078→    setImportResult(null)
+  1079→    try {
+  1080→      const res = await fetch('/api/itam/devices/import', {
+  1081→        method: 'POST',
+  1082→        headers: { 'Content-Type': 'application/json' },
+  1083→        body: JSON.stringify({ csv: importText, mode: importMode }),
+  1084→      })
+  1085→      const j = await res.json()
+  1086→      if (!res.ok) throw new Error(j.error || 'Failed')
+  1087→      setImportResult(j)
+  1088→      toast.success(`นำเข้าสำเร็จ — เพิ่ม ${j.inserted} · อัปเดต ${j.updated}${j.errors.length ? ` · ข้าม ${j.errors.length}` : ''}`)
+  1089→      await qc.invalidateQueries({ queryKey: ['itam-devices'] })
+  1090→      await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+  1091→    } catch (e) {
+  1092→      toast.error(e instanceof Error ? e.message : 'นำเข้าไม่สำเร็จ')
+  1093→    } finally {
+  1094→      setImporting(false)
+  1095→    }
+  1096→  }
+  1097→
+  1098→  // ── Bulk edit
+  1099→  function openBulkEdit() {
+  1100→    if (selectedAssetNos.size === 0) {
+  1101→      toast.error('กรุณาเลือกอุปกรณ์อย่างน้อย 1 เครื่อง')
+  1102→      return
+  1103→    }
+  1104→    setBulkEditForm({ status: '', site: '', building: '', floor: '', department: '' })
+  1105→    setBulkProgress(null)
+  1106→    setBulkEditOpen(true)
+  1107→  }
+  1108→
+  1109→  async function saveBulkEdit() {
+  1110→    const patch: Record<string, unknown> = {}
+  1111→    if (bulkEditForm.status) patch.status = bulkEditForm.status
+  1112→    if (bulkEditForm.site) patch.site = bulkEditForm.site
+  1113→    if (bulkEditForm.building) patch.building = bulkEditForm.building
+  1114→    if (bulkEditForm.floor) patch.floor = bulkEditForm.floor
+  1115→    if (bulkEditForm.department) patch.department = bulkEditForm.department
+  1116→    if (Object.keys(patch).length === 0) {
+  1117→      toast.error('กรุณาเลือกฟิลด์อย่างน้อย 1 ฟิลด์เพื่ออัปเดต')
+  1118→      return
+  1119→    }
+  1120→    const assetNos = Array.from(selectedAssetNos)
+  1121→    setBulkSaving(true)
+  1122→    setBulkProgress({ done: 0, total: assetNos.length })
+  1123→    try {
+  1124→      const res = await fetch('/api/itam/devices/bulk', {
+  1125→        method: 'POST',
+  1126→        headers: { 'Content-Type': 'application/json' },
+  1127→        body: JSON.stringify({ assetNos, patch }),
+  1128→      })
+  1129→      const j = await res.json()
+  1130→      if (!res.ok) throw new Error(j.error || 'Failed')
+  1131→      toast.success(`อัปเดต ${j.updated} เครื่องสำเร็จ${j.skipped ? ` · ข้าม ${j.skipped}` : ''}`)
+  1132→      setBulkEditOpen(false)
+  1133→      setSelectedAssetNos(new Set())
+  1134→      await qc.invalidateQueries({ queryKey: ['itam-devices'] })
+  1135→      await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+  1136→    } catch (e) {
+  1137→      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+  1138→    } finally {
+  1139→      setBulkSaving(false)
+  1140→      setBulkProgress(null)
+  1141→    }
+  1142→  }
+  1143→
+  1144→  const devices = data?.devices ?? []
+  1145→  const total = data?.pagination.total ?? 0
+  1146→  const totalPages = data?.pagination.totalPages ?? 0
+  1147→
+  1148→  // Build a unique-type list for the type filter from current data
+  1149→  const typeOptions = React.useMemo(() => {
+  1150→    const s = new Set<string>()
+  1151→    for (const d of devices) if (d.deviceType) s.add(d.deviceType)
+  1152→    return Array.from(s).sort()
+  1153→  }, [devices])
+  1154→
+  1155→  // Show skeleton rows when first loading (no cached data)
+  1156→  const showSkeletons = isLoading
+  1157→
+  1158→  return (
+  1159→    <div className="space-y-4 p-4 md:p-6">
+  1160→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+  1161→        <div>
+  1162→          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จัดการอุปกรณ์ (Real DB)</h1>
+  1163→          <p className="text-sm text-slate-500 dark:text-slate-400">ข้อมูลจริง {total.toLocaleString()} เครื่อง</p>
+  1164→        </div>
+  1165→        <div className="flex flex-wrap gap-2">
+  1166→          <Button
+  1167→            variant="outline"
+  1168→            onClick={() => setQrScannerOpen(true)}
+  1169→            className="border-[#f97316]/50 text-[#f97316] hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/30"
+  1170→            title="สแกน QR Code เพื่อค้นหาอุปกรณ์"
+  1171→          >
+  1172→            <QrCode className="h-4 w-4" /> สแกน
+  1173→          </Button>
+  1174→          <Button variant="outline" onClick={exportCsv} disabled={exporting} className="dark:bg-slate-800 dark:border-slate-700">
+  1175→            <Download className="h-4 w-4" /> CSV
+  1176→          </Button>
+  1177→          <Button variant="outline" onClick={exportExcel} disabled={excelExporting} className="dark:bg-slate-800 dark:border-slate-700">
+  1178→            {excelExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />} Excel
+  1179→          </Button>
+  1180→          <Button variant="outline" onClick={exportPdf} disabled={pdfExporting} className="dark:bg-slate-800 dark:border-slate-700">
+  1181→            {pdfExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} PDF
+  1182→          </Button>
+  1183→          <Button variant="outline" onClick={() => setCustomExportOpen(true)} className="border-[#f97316]/50 text-[#f97316] hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/30">
+  1184→            ⚙️ Custom
+  1185→          </Button>
+  1186→          {canEdit && (
+  1187→            <Button variant="outline" onClick={openImport} className="dark:bg-slate-800 dark:border-slate-700">
+  1188→              <Upload className="h-4 w-4" /> นำเข้า CSV
+  1189→            </Button>
+  1190→          )}
+  1191→          {canEdit && selectedAssetNos.size > 0 && (
+  1192→            <Button variant="outline" onClick={openBulkEdit} className="border-[#f97316] text-[#f97316] dark:bg-orange-950/30">
+  1193→              <Edit3 className="h-4 w-4" /> แก้ไขหลายรายการ ({selectedAssetNos.size})
+  1194→            </Button>
+  1195→          )}
+  1196→          <Button
+  1197→            variant="outline"
+  1198→            onClick={handleBulkStickerPrint}
+  1199→            disabled={stickerPrinting || selectedAssetNos.size === 0}
+  1200→            className="dark:border-slate-700 dark:bg-slate-800"
+  1201→            title={selectedAssetNos.size === 0 ? 'เลือกอุปกรณ์ด้วย checkbox ก่อน' : `พิมพ์สติกเกอร์ ${selectedAssetNos.size} ใบ`}
+  1202→          >
+  1203→            {stickerPrinting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+  1204→            พิมพ์สติกเกอร์ {selectedAssetNos.size > 0 ? `(${selectedAssetNos.size})` : ''}
+  1205→          </Button>
+  1206→          <Button
+  1207→            variant="outline"
+  1208→            onClick={() => qc.invalidateQueries({ queryKey: ['itam-devices'] })}
+  1209→            disabled={isFetching}
+  1210→            className="dark:bg-slate-800 dark:border-slate-700"
+  1211→          >
+  1212→            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> รีเฟรช
+  1213→          </Button>
+  1214→          <Button className="bg-[#f97316] text-white hover:bg-[#ea580c]" onClick={openAdd}>
+  1215→            <Plus className="h-4 w-4" /> เพิ่มอุปกรณ์
+  1216→          </Button>
+  1217→        </div>
+  1218→      </div>
+  1219→
+  1220→      {/* Toolbar — stacked on mobile */}
+  1221→      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+  1222→        <div className="relative flex-1">
+  1223→          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+  1224→          <Input
+  1225→            placeholder="ค้นหารหัส, แบรนด์, รุ่น, SN... (Enter เพื่อบันทึกคำค้น)"
+  1226→            value={search}
+  1227→            onChange={(e) => onSearch(e.target.value)}
+  1228→            onKeyDown={onSearchKeyDown}
+  1229→            onBlur={onSearchBlur}
+  1230→            className="pl-9 pr-9 dark:bg-slate-800 dark:border-slate-700"
+  1231→          />
+  1232→          {searchPending && (
+  1233→            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+  1234→              <RefreshCw className="h-3.5 w-3.5 animate-spin text-orange-500" />
+  1235→            </div>
+  1236→          )}
+  1237→          {!searchPending && search && (
+  1238→            <button
+  1239→              onClick={() => { setSearch(''); setPage(1) }}
+  1240→              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+  1241→              aria-label="ล้างคำค้นหา"
+  1242→            >
+  1243→              <X className="h-4 w-4" />
+  1244→            </button>
+  1245→          )}
+  1246→        </div>
+  1247→        <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1) }}>
+  1248→          <SelectTrigger className="w-full sm:w-48 dark:bg-slate-800 dark:border-slate-700">
+  1249→            <SelectValue placeholder="สถานะ" />
+  1250→          </SelectTrigger>
+  1251→          <SelectContent>
+  1252→            <SelectItem value="all">สถานะทั้งหมด</SelectItem>
+  1253→            <SelectItem value="Active">ใช้งานอยู่</SelectItem>
+  1254→            <SelectItem value="In Stock">สำรอง</SelectItem>
+  1255→            <SelectItem value="Pending Repair">ส่งซ่อม</SelectItem>
+  1256→            <SelectItem value="Inactive">ไม่ใช้งาน</SelectItem>
+  1257→            <SelectItem value="Retired">ตัดของออก</SelectItem>
+  1258→          </SelectContent>
+  1259→        </Select>
+  1260→        {deviceType !== 'all' && (
+  1261→          <Badge
+  1262→            className="inline-flex items-center gap-1 border-orange-300 bg-orange-50 text-orange-700 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-300"
+  1263→          >
+  1264→            ประเภท: {deviceType}
+  1265→            <button onClick={() => { setDeviceType('all'); setPage(1) }} aria-label="ล้างตัวกรองประเภท">
+  1266→              <X className="h-3 w-3" />
+  1267→            </button>
+  1268→          </Badge>
+  1269→        )}
+  1270→        {/* Virtual scroll toggle */}
+  1271→        <Button
+  1272→          type="button"
+  1273→          variant={virtualScroll ? 'default' : 'outline'}
+  1274→          size="sm"
+  1275→          onClick={() => setVirtualScroll((v) => !v)}
+  1276→          title={virtualScroll ? 'โหมดเลื่อนเสมือน — โหลด 500 รายการต่อหน้า, เลื่อนลื่น' : 'โหมดมาตรฐาน — 20 รายการต่อหน้า, มี pagination'}
+  1277→          className={
+  1278→            virtualScroll
+  1279→              ? 'h-9 bg-[#f97316] text-white hover:bg-[#ea580c]'
+  1280→              : 'h-9 dark:bg-slate-800 dark:border-slate-700'
+  1281→          }
+  1282→        >
+  1283→          {virtualScroll ? <Zap className="h-3.5 w-3.5" /> : <List className="h-3.5 w-3.5" />}
+  1284→          <span className="hidden sm:inline">{virtualScroll ? 'เลื่อนเสมือน' : 'มาตรฐาน'}</span>
+  1285→        </Button>
+  1286→      </div>
+  1287→
+  1288→      {/* Saved filters — named presets + last-used auto-restore */}
+  1289→      <SavedFilters
+  1290→        current={{ search, status, type: deviceType }}
+  1291→        onApply={(f) => {
+  1292→          setSearch(f.search || '')
+  1293→          setStatus(f.status || 'all')
+  1294→          setDeviceType(f.type || 'all')
+  1295→          setPage(1)
+  1296→        }}
+  1297→        onReset={() => {
+  1298→          setSearch('')
+  1299→          setStatus('all')
+  1300→          setDeviceType('all')
+  1301→          setPage(1)
+  1302→        }}
+  1303→      />
+  1304→
+  1305→      {/* Search metrics + recent searches */}
+  1306→      <div className="flex flex-col gap-2 text-xs text-slate-500 dark:text-slate-400">
+  1307→        {search && !showSkeletons && (
+  1308→          <div>
+  1309→            พบ <span className="font-semibold text-slate-700 dark:text-slate-200">{total.toLocaleString()}</span> ผล
+  1310→            {searchMs !== null && <span> ใน <span className="font-semibold text-emerald-600">{searchMs}ms</span></span>}
+  1311→          </div>
+  1312→        )}
+  1313→        {!search && recent.length > 0 && (
+  1314→          <div className="flex flex-wrap items-center gap-1.5">
+  1315→            <History className="h-3.5 w-3.5 text-slate-400" />
+  1316→            <span className="text-slate-400">ค้นหาล่าสุด:</span>
+  1317→            {recent.map((q) => (
+  1318→              <button
+  1319→                key={q}
+  1320→                onClick={() => { setSearch(q); setPage(1) }}
+  1321→                className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs text-slate-600 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-orange-700 dark:hover:bg-orange-950 dark:hover:text-orange-300"
+  1322→              >
+  1323→                {q}
+  1324→              </button>
+  1325→            ))}
+  1326→          </div>
+  1327→        )}
+  1328→      </div>
+  1329→
+  1330→      {/* Table — standard OR virtualized based on the toggle */}
+  1331→      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+  1332→        <CardContent className="p-0">
+  1333→          {virtualScroll && !showSkeletons && devices.length > 0 ? (
+  1334→            <VirtualDevicesTable
+  1335→              devices={devices}
+  1336→              query={debouncedSearch}
+  1337→              selectedAssetNos={selectedAssetNos}
+  1338→              savedAssetNos={savedAssetNos}
+  1339→              stickerPrinting={stickerPrinting}
+  1340→              canEdit={canEdit}
+  1341→              onRowClick={(assetNo) => { setDetailAssetNo(assetNo); setDetailOpen(true) }}
+  1342→              onToggle={(assetNo) => toggleSelectAssetNo(assetNo)}
+  1343→              onSelectAll={(checked) => toggleSelectAllOnPage(checked)}
+  1344→              onView={(assetNo) => { setDetailAssetNo(assetNo); setDetailOpen(true) }}
+  1345→              onPrintSticker={(assetNo) => handleSingleStickerPrint(assetNo)}
+  1346→              onEdit={(assetNo) => openEdit(assetNo)}
+  1347→              onDelete={(assetNo) => setDeleteAssetNo(assetNo)}
+  1348→            />
+  1349→          ) : (
+  1350→          <div className="itam-scroll max-h-[60vh] overflow-auto">
+  1351→            <Table>
+  1352→              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+  1353→                <TableRow>
+  1354→                  <TableHead className="w-10">
+  1355→                    <Checkbox
+  1356→                      checked={devices.length > 0 && devices.every((d) => selectedAssetNos.has(d.assetNo))}
+  1357→                      onCheckedChange={(c) => toggleSelectAllOnPage(!!c)}
+  1358→                      aria-label="เลือกทั้งหน้า"
+  1359→                    />
+  1360→                  </TableHead>
+  1361→                  <TableHead className="w-20">รหัส</TableHead>
+  1362→                  <TableHead className="w-28">ประเภท</TableHead>
+  1363→                  <TableHead>แบรนด์/รุ่น</TableHead>
+  1364→                  <TableHead className="w-32">Serial</TableHead>
+  1365→                  <TableHead className="w-32">สถานะ</TableHead>
+  1366→                  <TableHead className="w-32">สาขา</TableHead>
+  1367→                  <TableHead className="w-32">แผนก</TableHead>
+  1368→                  <TableHead className="w-16 text-center">มิเตอร์</TableHead>
+  1369→                  <TableHead className="w-48 text-right">จัดการ</TableHead>
+  1370→                </TableRow>
+  1371→              </TableHeader>
+  1372→              <TableBody>
+  1373→                {showSkeletons ? (
+  1374→                  // Skeleton rows matching column widths (10 cols: checkbox + 9 data + actions)
+  1375→                  Array.from({ length: 8 }).map((_, i) => (
+  1376→                    <TableRow key={`sk-${i}`}>
+  1377→                      <TableCell><Skeleton className="h-4 w-4" /></TableCell>
+  1378→                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+  1379→                      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+  1380→                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+  1381→                      <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+  1382→                      <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+  1383→                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+  1384→                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+  1385→                      <TableCell><Skeleton className="h-4 w-6 mx-auto" /></TableCell>
+  1386→                      <TableCell><Skeleton className="h-6 w-24 ml-auto" /></TableCell>
+  1387→                    </TableRow>
+  1388→                  ))
+  1389→                ) : devices.length === 0 ? (
+  1390→                  <TableRow>
+  1391→                    <TableCell colSpan={10} className="py-12">
+  1392→                      <div className="flex flex-col items-center gap-3 text-slate-400">
+  1393→                        <Package className="h-12 w-12 text-slate-300 dark:text-slate-700" />
+  1394→                        <div className="text-sm">
+  1395→                          {search || status !== 'all' || deviceType !== 'all'
+  1396→                            ? 'ไม่พบผลลัพธ์ที่ตรง'
+  1397→                            : 'ยังไม่มีอุปกรณ์ในระบบ'}
+  1398→                        </div>
+  1399→                        {(search || status !== 'all' || deviceType !== 'all') && (
+  1400→                          <Button
+  1401→                            variant="outline"
+  1402→                            size="sm"
+  1403→                            onClick={() => { setSearch(''); setStatus('all'); setDeviceType('all'); setPage(1) }}
+  1404→                            className="dark:bg-slate-800 dark:border-slate-700"
+  1405→                          >
+  1406→                            <X className="h-3.5 w-3.5" /> ลองค้นหาด้วยคำอื่น / ล้างตัวกรอง
+  1407→                          </Button>
+  1408→                        )}
+  1409→                      </div>
+  1410→                    </TableCell>
+  1411→                  </TableRow>
+  1412→                ) : (
+  1413→                  <AnimatePresence initial={false}>
+  1414→                    {devices.map((d) => {
+  1415→                      const isSaving = d.__optimistic === 'add' || d.__optimistic === 'edit'
+  1416→                      const isDeleting = d.__optimistic === 'delete'
+  1417→                      const justSaved = savedAssetNos.has(d.assetNo)
+  1418→                      return (
+  1419→                        <motion.tr
+  1420→                          key={d.id}
+  1421→                          layout
+  1422→                          initial={d.__optimistic === 'add' ? { opacity: 0, y: -10, backgroundColor: 'rgba(249, 115, 22, 0.15)' } : false}
+  1423→                          animate={{ opacity: 1, y: 0 }}
+  1424→                          exit={{ opacity: 0, x: -16, transition: { duration: 0.2 } }}
+  1425→                          transition={{ duration: 0.25 }}
+  1426→                          className={[
+  1427→                            'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50',
+  1428→                            isSaving ? 'itam-saving-row' : '',
+  1429→                          ].join(' ')}
+  1430→                          onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}
+  1431→                        >
+  1432→                          <TableCell onClick={(e) => e.stopPropagation()}>
+  1433→                            <Checkbox
+  1434→                              checked={selectedAssetNos.has(d.assetNo)}
+  1435→                              onCheckedChange={() => toggleSelectAssetNo(d.assetNo)}
+  1436→                              aria-label={`เลือก ${d.assetNo}`}
+  1437→                            />
+  1438→                          </TableCell>
+  1439→                          <TableCell className="whitespace-nowrap font-mono text-xs font-medium text-slate-700 dark:text-slate-300">
+  1440→                            <Highlight text={d.assetNo} query={debouncedSearch} />
+  1441→                          </TableCell>
+  1442→                          <TableCell className="whitespace-nowrap text-xs text-slate-600 dark:text-slate-400">
+  1443→                            <Highlight text={d.deviceType || ''} query={debouncedSearch} />
+  1444→                          </TableCell>
+  1445→                          <TableCell className="text-sm">
+  1446→                            <span className="text-slate-700 dark:text-slate-200">
+  1447→                              <Highlight text={d.brand || ''} query={debouncedSearch} />{' '}
+  1448→                              <Highlight text={d.model || ''} query={debouncedSearch} />
+  1449→                            </span>
+  1450→                          </TableCell>
+  1451→                          <TableCell className="whitespace-nowrap font-mono text-xs text-slate-600 dark:text-slate-400">
+  1452→                            <Highlight text={d.serial || '—'} query={debouncedSearch} />
+  1453→                          </TableCell>
+  1454→                          <TableCell>
+  1455→                            <Badge className={STATUS_BADGE[d.status] || 'bg-slate-100 text-slate-600'}>{d.status}</Badge>
+  1456→                          </TableCell>
+  1457→                          <TableCell className="text-xs">
+  1458→                            <Highlight text={(d.site || '').substring(0, 20)} query={debouncedSearch} />
+  1459→                          </TableCell>
+  1460→                          <TableCell className="text-xs">
+  1461→                            <Highlight text={(d.department || '').substring(0, 20)} query={debouncedSearch} />
+  1462→                          </TableCell>
+  1463→                          <TableCell className="text-center">
+  1464→                            {d.meterRequired ? <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300">✓</Badge> : '—'}
+  1465→                          </TableCell>
+  1466→                          <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+  1467→                            <div className="flex items-center justify-end gap-1">
+  1468→                              {justSaved && (
+  1469→                                <motion.span
+  1470→                                  initial={{ opacity: 0, scale: 0.85 }}
+  1471→                                  animate={{ opacity: 1, scale: 1 }}
+  1472→                                  exit={{ opacity: 0 }}
+  1473→                                  className="mr-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+  1474→                                >
+  1475→                                  <CheckCheck className="h-3 w-3" /> บันทึกแล้ว
+  1476→                                </motion.span>
+  1477→                              )}
+  1478→                              <Button size="sm" variant="ghost" title="ดู" onClick={() => { setDetailAssetNo(d.assetNo); setDetailOpen(true) }}>
+  1479→                                <Eye className="h-3.5 w-3.5" />
+  1480→                              </Button>
+  1481→                              <Button
+  1482→                                size="sm"
+  1483→                                variant="ghost"
+  1484→                                title="พิมพ์สติกเกอร์"
+  1485→                                className="text-[#f97316] hover:bg-orange-50 dark:hover:bg-orange-950/30"
+  1486→                                onClick={() => handleSingleStickerPrint(d.assetNo)}
+  1487→                                disabled={stickerPrinting}
+  1488→                              >
+  1489→                                <Tag className="h-3.5 w-3.5" />
+  1490→                              </Button>
+  1491→                              <Button size="sm" variant="ghost" title="แก้ไข" onClick={() => openEdit(d.assetNo)} disabled={isSaving}>
+  1492→                                <Pencil className="h-3.5 w-3.5" />
+  1493→                              </Button>
+  1494→                              <Button
+  1495→                                size="sm"
+  1496→                                variant="ghost"
+  1497→                                title="ลบ"
+  1498→                                className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+  1499→                                onClick={() => setDeleteAssetNo(d.assetNo)}
+  1500→                                disabled={isSaving || isDeleting}
+  1501→                              >
+  1502→                                <Trash2 className="h-3.5 w-3.5" />
+  1503→                              </Button>
+  1504→                            </div>
+  1505→                          </TableCell>
+  1506→                        </motion.tr>
+  1507→                      )
+  1508→                    })}
+  1509→                  </AnimatePresence>
+  1510→                )}
+  1511→              </TableBody>
+  1512→            </Table>
+  1513→          </div>
+  1514→          )}
+  1515→        </CardContent>
+  1516→      </Card>
+  1517→
+  1518→      {/* Virtual scroll hint */}
+  1519→      {virtualScroll && !showSkeletons && devices.length > 0 && (
+  1520→        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+  1521→          <span className="flex items-center gap-1">
+  1522→            <Zap className="h-3 w-3 text-[#f97316]" />
+  1523→            โหมดเลื่อนเสมือน — แสดง {devices.length.toLocaleString()} รายการในหน้านี้ (render เฉพาะแถวที่มองเห็น)
+  1524→          </span>
+  1525→          {total > devices.length && (
+  1526→            <span>ทั้งหมด {total.toLocaleString()} — ใช้ pagination เพื่อดูหน้าถัดไป</span>
+  1527→          )}
+  1528→        </div>
+  1529→      )}
+  1530→
+  1531→      {/* Pagination */}
+  1532→      {totalPages > 1 && (
+  1533→        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+  1534→          <span className="text-xs text-slate-500">
+  1535→            หน้า {page} / {totalPages} ({total.toLocaleString()} รายการ)
+  1536→          </span>
+  1537→          <div className="flex gap-2">
+  1538→            <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)} className="dark:bg-slate-800 dark:border-slate-700">
+  1539→              <ChevronLeft className="h-4 w-4" /> ก่อนหน้า
+  1540→            </Button>
+  1541→            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} className="dark:bg-slate-800 dark:border-slate-700">
+  1542→              ถัดไป <ChevronRight className="h-4 w-4" />
+  1543→            </Button>
+  1544→          </div>
+  1545→        </div>
+  1546→      )}
+  1547→
+  1548→      {/* Detail Sheet */}
+  1549→      <ItamDeviceDetailSheet
+  1550→        assetNo={detailAssetNo}
+  1551→        open={detailOpen}
+  1552→        onOpenChange={setDetailOpen}
+  1553→        onEdit={(an) => {
+  1554→          setDetailOpen(false)
+  1555→          openEdit(an)
+  1556→        }}
+  1557→      />
+  1558→
+  1559→      {/* CRUD Dialog — full screen on mobile */}
+  1560→      <Dialog open={crudOpen} onOpenChange={setCrudOpen}>
+  1561→        <DialogContent className="max-h-[100vh] overflow-y-auto sm:max-h-[92vh] sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900 p-4 sm:p-6">
+  1562→          <DialogHeader>
+  1563→            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+  1564→              <Package className="h-5 w-5 text-[#f97316]" />
+  1565→              {editAssetNo ? `แก้ไขอุปกรณ์: ${editAssetNo}` : 'เพิ่มอุปกรณ์ใหม่'}
+  1566→            </DialogTitle>
+  1567→          </DialogHeader>
+  1568→          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+  1569→            <div className="space-y-1.5">
+  1570→              <Label className="text-xs">รหัสสินทรัพย์ *</Label>
+  1571→              <Input value={form.assetNo} onChange={(e) => setForm({ ...form, assetNo: e.target.value })} disabled={!!editAssetNo} className="dark:bg-slate-800 dark:border-slate-700" />
+  1572→            </div>
+  1573→            <div className="space-y-1.5">
+  1574→              <Label className="text-xs">ประเภท</Label>
+  1575→              <Input value={form.deviceType} onChange={(e) => setForm({ ...form, deviceType: e.target.value })} placeholder="เช่น PRINTER" className="dark:bg-slate-800 dark:border-slate-700" />
+  1576→            </div>
+  1577→            <div className="space-y-1.5">
+  1578→              <Label className="text-xs">กลุ่มอุปกรณ์</Label>
+  1579→              <Input value={form.deviceGroup} onChange={(e) => setForm({ ...form, deviceGroup: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1580→            </div>
+  1581→            <div className="space-y-1.5">
+  1582→              <Label className="text-xs">แบรนด์</Label>
+  1583→              <Input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1584→            </div>
+  1585→            <div className="space-y-1.5">
+  1586→              <Label className="text-xs">รุ่น</Label>
+  1587→              <Input value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1588→            </div>
+  1589→            <div className="space-y-1.5">
+  1590→              <Label className="text-xs">Serial</Label>
+  1591→              <Input value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1592→            </div>
+  1593→            <div className="space-y-1.5">
+  1594→              <Label className="text-xs">สถานะ</Label>
+  1595→              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
+  1596→                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
+  1597→                <SelectContent>
+  1598→                  {STATUS_OPTIONS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+  1599→                </SelectContent>
+  1600→              </Select>
+  1601→            </div>
+  1602→            <div className="space-y-1.5">
+  1603→              <Label className="text-xs">สาขา</Label>
+  1604→              <Select value={form.site} onValueChange={(v) => setForm({ ...form, site: v, building: '', floor: '', department: '', location: '' })}>
+  1605→                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="เลือกสาขา" /></SelectTrigger>
+  1606→                <SelectContent>
+  1607→                  {sites.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+  1608→                </SelectContent>
+  1609→              </Select>
+  1610→            </div>
+  1611→            <div className="space-y-1.5">
+  1612→              <Label className="text-xs">Asset Site Code</Label>
+  1613→              <Input value={form.assetSiteCode} onChange={(e) => setForm({ ...form, assetSiteCode: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1614→            </div>
+  1615→            <div className="space-y-1.5">
+  1616→              <Label className="text-xs">อาคาร</Label>
+  1617→              <Input
+  1618→                value={form.building}
+  1619→                onChange={(e) => setForm({ ...form, building: e.target.value, floor: '', department: '', location: '' })}
+  1620→                list="dl-building"
+  1621→                placeholder="เลือกหรือพิมพ์"
+  1622→                className="dark:bg-slate-800 dark:border-slate-700"
+  1623→              />
+  1624→              <datalist id="dl-building">
+  1625→                {buildingOptions.map((v) => <option key={v} value={v} />)}
+  1626→              </datalist>
+  1627→            </div>
+  1628→            <div className="space-y-1.5">
+  1629→              <Label className="text-xs">ชั้น</Label>
+  1630→              <Input
+  1631→                value={form.floor}
+  1632→                onChange={(e) => setForm({ ...form, floor: e.target.value, department: '', location: '' })}
+  1633→                list="dl-floor"
+  1634→                placeholder="เลือกหรือพิมพ์"
+  1635→                className="dark:bg-slate-800 dark:border-slate-700"
+  1636→              />
+  1637→              <datalist id="dl-floor">
+  1638→                {floorOptions.map((v) => <option key={v} value={v} />)}
+  1639→              </datalist>
+  1640→            </div>
+  1641→            <div className="space-y-1.5">
+  1642→              <Label className="text-xs">แผนก</Label>
+  1643→              <Input
+  1644→                value={form.department}
+  1645→                onChange={(e) => setForm({ ...form, department: e.target.value, location: '' })}
+  1646→                list="dl-department"
+  1647→                placeholder="เลือกหรือพิมพ์"
+  1648→                className="dark:bg-slate-800 dark:border-slate-700"
+  1649→              />
+  1650→              <datalist id="dl-department">
+  1651→                {departmentOptions.map((v) => <option key={v} value={v} />)}
+  1652→              </datalist>
+  1653→            </div>
+  1654→            <div className="space-y-1.5">
+  1655→              <Label className="text-xs">รหัสแผนก</Label>
+  1656→              <Input value={form.departmentCode} onChange={(e) => setForm({ ...form, departmentCode: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1657→            </div>
+  1658→            <div className="space-y-1.5">
+  1659→              <Label className="text-xs">ที่ตั้ง</Label>
+  1660→              <Input
+  1661→                value={form.location}
+  1662→                onChange={(e) => setForm({ ...form, location: e.target.value })}
+  1663→                list="dl-location"
+  1664→                placeholder="เลือกหรือพิมพ์"
+  1665→                className="dark:bg-slate-800 dark:border-slate-700"
+  1666→              />
+  1667→              <datalist id="dl-location">
+  1668→                {locationOptions.map((v) => <option key={v} value={v} />)}
+  1669→              </datalist>
+  1670→            </div>
+  1671→            <div className="space-y-1.5">
+  1672→              <Label className="text-xs">Cost Center</Label>
+  1673→              <Input value={form.costCenter} onChange={(e) => setForm({ ...form, costCenter: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1674→            </div>
+  1675→            <div className="space-y-1.5">
+  1676→              <Label className="text-xs">เลขสัญญา</Label>
+  1677→              <Input value={form.contractNo} onChange={(e) => setForm({ ...form, contractNo: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1678→            </div>
+  1679→            <div className="space-y-1.5">
+  1680→              <Label className="text-xs">ผู้ขาย</Label>
+  1681→              <Input value={form.vendor} onChange={(e) => setForm({ ...form, vendor: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1682→            </div>
+  1683→            <div className="space-y-1.5">
+  1684→              <Label className="text-xs">IP</Label>
+  1685→              <Input value={form.ip} onChange={(e) => setForm({ ...form, ip: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1686→            </div>
+  1687→            <div className="space-y-1.5">
+  1688→              <Label className="text-xs">MAC</Label>
+  1689→              <Input value={form.mac} onChange={(e) => setForm({ ...form, mac: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1690→            </div>
+  1691→            <div className="space-y-1.5">
+  1692→              <Label className="text-xs">Remote ID</Label>
+  1693→              <Input value={form.remoteId} onChange={(e) => setForm({ ...form, remoteId: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1694→            </div>
+  1695→            <div className="space-y-1.5">
+  1696→              <Label className="text-xs">วันติดตั้ง</Label>
+  1697→              <Input type="date" value={form.installDate} onChange={(e) => setForm({ ...form, installDate: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1698→            </div>
+  1699→            <div className="space-y-1.5">
+  1700→              <Label className="text-xs">วันหมดประกัน</Label>
+  1701→              <Input type="date" value={form.warrantyEnd} onChange={(e) => setForm({ ...form, warrantyEnd: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" />
+  1702→            </div>
+  1703→            <div className="space-y-1.5">
+  1704→              <Label className="text-xs">โหมดมิเตอร์</Label>
+  1705→              <Select value={form.meterMode} onValueChange={(v) => setForm({ ...form, meterMode: v })}>
+  1706→                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
+  1707→                <SelectContent>
+  1708→                  <SelectItem value="TOTAL">TOTAL</SelectItem>
+  1709→                  <SelectItem value="BW_COLOR">BW_COLOR</SelectItem>
+  1710→                </SelectContent>
+  1711→              </Select>
+  1712→            </div>
+  1713→            <div className="flex items-center gap-3 rounded-md border border-slate-200 p-3 dark:border-slate-700 sm:col-span-1">
+  1714→              <Switch checked={form.meterRequired} onCheckedChange={(c) => setForm({ ...form, meterRequired: c })} />
+  1715→              <Label className="text-xs">ต้องจดมิเตอร์</Label>
+  1716→            </div>
+  1717→            <div className="space-y-1.5 sm:col-span-2 md:col-span-3">
+  1718→              <Label className="text-xs">หมายเหตุ</Label>
+  1719→              <Textarea value={form.remark} onChange={(e) => setForm({ ...form, remark: e.target.value })} rows={2} className="dark:bg-slate-800 dark:border-slate-700" />
+  1720→            </div>
+  1721→          </div>
+  1722→          <DialogFooter>
+  1723→            <Button variant="outline" onClick={() => setCrudOpen(false)}>ยกเลิก</Button>
+  1724→            <Button
+  1725→              onClick={saveDevice}
+  1726→              disabled={addMutation.isPending || editMutation.isPending}
+  1727→              className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+  1728→            >
+  1729→              {(addMutation.isPending || editMutation.isPending) ? 'กำลังบันทึก...' : editAssetNo ? 'บันทึกการแก้ไข' : 'เพิ่มอุปกรณ์'}
+  1730→            </Button>
+  1731→          </DialogFooter>
+  1732→        </DialogContent>
+  1733→      </Dialog>
+  1734→
+  1735→      {/* Delete confirm */}
+  1736→      <AlertDialog open={!!deleteAssetNo} onOpenChange={(o) => !o && setDeleteAssetNo(null)}>
+  1737→        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+  1738→          <AlertDialogHeader>
+  1739→            <AlertDialogTitle>ยืนยันการลบ?</AlertDialogTitle>
+  1740→            <AlertDialogDescription>
+  1741→              จะลบอุปกรณ์ <span className="font-mono font-semibold text-slate-800 dark:text-slate-100">{deleteAssetNo}</span> และประวัติที่เกี่ยวข้องทั้งหมด (มิเตอร์, มอบหมาย, ซ่อม) การกระทำนี้ย้อนกลับไม่ได้
+  1742→            </AlertDialogDescription>
+  1743→          </AlertDialogHeader>
+  1744→          <AlertDialogFooter>
+  1745→            <AlertDialogCancel disabled={deleteMutation.isPending}>ยกเลิก</AlertDialogCancel>
+  1746→            <AlertDialogAction
+  1747→              onClick={confirmDelete}
+  1748→              disabled={deleteMutation.isPending}
+  1749→              className="bg-rose-600 text-white hover:bg-rose-700"
+  1750→            >
+  1751→              {deleteMutation.isPending ? 'กำลังลบ...' : 'ลบ'}
+  1752→            </AlertDialogAction>
+  1753→          </AlertDialogFooter>
+  1754→        </AlertDialogContent>
+  1755→      </AlertDialog>
+  1756→
+  1757→      {/* Custom Export Dialog — เลือกคอลัมน์ + format */}
+  1758→      <Dialog open={customExportOpen} onOpenChange={setCustomExportOpen}>
+  1759→        <DialogContent className="sm:max-w-lg dark:border-slate-800 dark:bg-slate-900">
+  1760→          <DialogHeader>
+  1761→            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+  1762→              📋 เลือกคอลัมน์สำหรับ Export
+  1763→            </DialogTitle>
+  1764→          </DialogHeader>
+  1765→          <p className="text-xs text-slate-500 dark:text-slate-400">ติ๊กเลือกคอลัมน์ที่ต้องการส่งออก ({selectedColumns.length}/{CSV_HEADERS.length} เลือก)</p>
+  1766→          <div className="itam-scroll max-h-[50vh] overflow-y-auto space-y-1 pr-1">
+  1767→            {CSV_HEADERS.map((col) => (
+  1768→              <label key={col.key} className="flex items-center gap-3 rounded-md border border-slate-200 px-3 py-2 cursor-pointer hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50">
+  1769→                <Checkbox
+  1770→                  checked={selectedColumns.includes(col.key)}
+  1771→                  onCheckedChange={() => toggleColumn(col.key)}
+  1772→                  className="data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316]"
+  1773→                />
+  1774→                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{col.label}</span>
+  1775→                <span className="ml-auto text-xs text-slate-400">{col.key}</span>
+  1776→              </label>
+  1777→            ))}
+  1778→          </div>
+  1779→          <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+  1780→            <Button variant="outline" size="sm" onClick={selectAllColumns}>เลือกทั้งหมด</Button>
+  1781→            <div className="flex gap-2">
+  1782→              <Button variant="outline" size="sm" onClick={() => customExport('csv')} disabled={customExporting || selectedColumns.length === 0}>
+  1783→                📥 CSV
+  1784→              </Button>
+  1785→              <Button variant="outline" size="sm" onClick={() => customExport('excel')} disabled={customExporting || selectedColumns.length === 0}>
+  1786→                📊 Excel
+  1787→              </Button>
+  1788→              <Button size="sm" onClick={() => customExport('pdf')} disabled={customExporting || selectedColumns.length === 0} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+  1789→                📄 PDF
+  1790→              </Button>
+  1791→            </div>
+  1792→          </div>
+  1793→          <p className="text-[10px] text-slate-400">
+  1794→            💡 เมื่อกด PDF — ถ้าเปิดใช้งานเทมเพลตเอกสาร ระบบจะถามให้เลือกเทมเพลตก่อน (คอลัมน์ที่เลือกจะใช้เฉพาะเมื่อเลือก "layout มาตรฐาน")
+  1795→          </p>
+  1796→        </DialogContent>
+  1797→      </Dialog>
+  1798→
+  1799→      {/* Document Template Picker — shown when document templates are enabled */}
+  1800→      <DocumentTemplatePicker
+  1801→        open={docTplPickerOpen}
+  1802→        onOpenChange={setDocTplPickerOpen}
+  1803→        onSelect={handleDocTplPickerSelect}
+  1804→        title={docTplPickerTarget === 'custom' ? 'เลือกเทมเพลต (Custom Export)' : 'เลือกเทมเพลตเอกสาร PDF'}
+  1805→      />
+  1806→
+  1807→      {/* Import CSV dialog */}
+  1808→      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+  1809→        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900 p-4 sm:p-6">
+  1810→          <DialogHeader>
+  1811→            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+  1812→              <Upload className="h-5 w-5 text-[#f97316]" /> นำเข้า CSV
+  1813→            </DialogTitle>
+  1814→          </DialogHeader>
+  1815→          <div className="space-y-4">
+  1816→            <div className="rounded-md border border-dashed border-slate-300 bg-slate-50/60 p-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300">
+  1817→              รูปแบบ CSV: แถวแรกเป็น header ที่มีคอลัมน์ <code className="rounded bg-orange-100 px-1 text-orange-700 dark:bg-orange-950 dark:text-orange-300">assetNo</code> (จำเป็น)
+  1818→              คอลัมน์อื่น ๆ ที่รองรับ: <code>deviceType, brand, model, serial, status, site, building, floor, department, departmentCode, location, deviceGroup, costCenter, contractNo, vendor, ip, mac, remoteId, installDate, warrantyEnd, meterRequired, meterMode, assetSiteCode, remark</code>
+  1819→              <br />การจับคู่: ถ้ามี <code>assetNo</code> อยู่แล้ว → อัปเดต ถ้าไม่มี → สร้างใหม่
+  1820→            </div>
+  1821→
+  1822→            <div className="flex flex-wrap items-center gap-2">
+  1823→              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-orange-950/30">
+  1824→                <Upload className="h-3.5 w-3.5" /> เลือกไฟล์ CSV
+  1825→                <input
+  1826→                  type="file"
+  1827→                  accept=".csv,text/csv"
+  1828→                  className="hidden"
+  1829→                  onChange={handleFileUpload}
+  1830→                />
+  1831→              </label>
+  1832→              <Select value={importMode} onValueChange={(v) => setImportMode(v as typeof importMode)}>
+  1833→                <SelectTrigger className="h-8 w-44 dark:bg-slate-800 dark:border-slate-700 text-xs"><SelectValue /></SelectTrigger>
+  1834→                <SelectContent>
+  1835→                  <SelectItem value="upsert">เพิ่ม + อัปเดต</SelectItem>
+  1836→                  <SelectItem value="create_only">เพิ่มใหม่เท่านั้น</SelectItem>
+  1837→                  <SelectItem value="update_only">อัปเดตเท่านั้น</SelectItem>
+  1838→                </SelectContent>
+  1839→              </Select>
+  1840→            </div>
+  1841→
+  1842→            <div className="space-y-1.5">
+  1843→              <Label className="text-xs">หรือวาง CSV text ที่นี่</Label>
+  1844→              <Textarea
+  1845→                value={importText}
+  1846→                onChange={(e) => setImportText(e.target.value)}
+  1847→                rows={6}
+  1848→                placeholder={'assetNo,deviceType,brand,model,site,building,floor,department\n1,PRINTER,KYOCERA,FS-1041,โรงพยาบาล...,ตึก A,1,ธุรการ\n2,MONITOR,DELL,P2419H,...'}
+  1849→                className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
+  1850→              />
+  1851→            </div>
+  1852→
+  1853→            {/* Preview */}
+  1854→            {importPreview && (
+  1855→              <div className="space-y-1.5">
+  1856→                <Label className="text-xs">ตัวอย่าง 5 แถวแรก</Label>
+  1857→                <div className="itam-scroll max-h-56 overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
+  1858→                  <Table>
+  1859→                    <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+  1860→                      <TableRow>
+  1861→                        {importPreview.header.map((h, i) => (
+  1862→                          <TableHead key={i} className="text-[10px] whitespace-nowrap">{h}</TableHead>
+  1863→                        ))}
+  1864→                      </TableRow>
+  1865→                    </TableHeader>
+  1866→                    <TableBody>
+  1867→                      {importPreview.rows.map((r, i) => (
+  1868→                        <TableRow key={i}>
+  1869→                          {importPreview.header.map((_, j) => (
+  1870→                            <TableCell key={j} className="text-[10px] whitespace-nowrap text-slate-600 dark:text-slate-300">{r[j] ?? ''}</TableCell>
+  1871→                          ))}
+  1872→                        </TableRow>
+  1873→                      ))}
+  1874→                    </TableBody>
+  1875→                  </Table>
+  1876→                </div>
+  1877→              </div>
+  1878→            )}
+  1879→
+  1880→            {/* Result */}
+  1881→            {importResult && (
+  1882→              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs dark:border-emerald-800 dark:bg-emerald-950/30">
+  1883→                <div className="font-semibold text-emerald-700 dark:text-emerald-300">นำเข้าเสร็จสิ้น</div>
+  1884→                <div className="mt-1 text-slate-700 dark:text-slate-300">
+  1885→                  เพิ่มใหม่ <span className="font-semibold">{importResult.inserted}</span> ·
+  1886→                  อัปเดต <span className="font-semibold">{importResult.updated}</span> ·
+  1887→                  ข้าม/ผิดพลาด <span className="font-semibold">{importResult.errors.length}</span> ·
+  1888→                  ทั้งหมด <span className="font-semibold">{importResult.total}</span>
+  1889→                </div>
+  1890→                {importResult.errors.length > 0 && (
+  1891→                  <div className="mt-2 max-h-32 overflow-y-auto">
+  1892→                    <div className="font-medium text-rose-700 dark:text-rose-300">รายการที่ข้าม:</div>
+  1893→                    {importResult.errors.slice(0, 10).map((e, i) => (
+  1894→                      <div key={i} className="text-[10px] text-slate-600 dark:text-slate-400">
+  1895→                        แถว {e.row} ({e.assetNo || '-'}): {e.error}
+  1896→                      </div>
+  1897→                    ))}
+  1898→                    {importResult.errors.length > 10 && <div className="text-[10px] text-slate-400">…และอีก {importResult.errors.length - 10} รายการ</div>}
+  1899→                  </div>
+  1900→                )}
+  1901→              </div>
+  1902→            )}
+  1903→          </div>
+  1904→          <DialogFooter>
+  1905→            <Button variant="outline" onClick={() => setImportOpen(false)}>ปิด</Button>
+  1906→            <Button onClick={runImport} disabled={importing || !importText.trim()} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+  1907→              {importing ? 'กำลังนำเข้า...' : 'นำเข้า'}
+  1908→            </Button>
+  1909→          </DialogFooter>
+  1910→        </DialogContent>
+  1911→      </Dialog>
+  1912→
+  1913→      {/* Bulk Edit dialog */}
+  1914→      <Dialog open={bulkEditOpen} onOpenChange={setBulkEditOpen}>
+  1915→        <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900 p-4 sm:p-6">
+  1916→          <DialogHeader>
+  1917→            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+  1918→              <Edit3 className="h-5 w-5 text-[#f97316]" /> แก้ไขหลายรายการ ({selectedAssetNos.size} เครื่อง)
+  1919→            </DialogTitle>
+  1920→          </DialogHeader>
+  1921→          <div className="space-y-3">
+  1922→            <p className="text-xs text-slate-500 dark:text-slate-400">
+  1923→              ปล่อยว่าง = ไม่เปลี่ยนแปลงฟิลด์นั้น ๆ เฉพาะฟิลด์ที่กรอกจะถูกอัปเดตให้ทุกเครื่องที่เลือก
+  1924→            </p>
+  1925→            <div className="space-y-1.5">
+  1926→              <Label className="text-xs">สถานะ</Label>
+  1927→              <Select value={bulkEditForm.status} onValueChange={(v) => setBulkEditForm({ ...bulkEditForm, status: v === '__none' ? '' : v })}>
+  1928→                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="ไม่เปลี่ยนแปลง" /></SelectTrigger>
+  1929→                <SelectContent>
+  1930→                  <SelectItem value="__none">ไม่เปลี่ยนแปลง</SelectItem>
+  1931→                  {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+  1932→                </SelectContent>
+  1933→              </Select>
+  1934→            </div>
+  1935→            <div className="space-y-1.5">
+  1936→              <Label className="text-xs">สาขา</Label>
+  1937→              <Select value={bulkEditForm.site} onValueChange={(v) => setBulkEditForm({ ...bulkEditForm, site: v === '__none' ? '' : v, building: '', floor: '', department: '' })}>
+  1938→                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="ไม่เปลี่ยนแปลง" /></SelectTrigger>
+  1939→                <SelectContent>
+  1940→                  <SelectItem value="__none">ไม่เปลี่ยนแปลง</SelectItem>
+  1941→                  {sites.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+  1942→                </SelectContent>
+  1943→              </Select>
+  1944→            </div>
+  1945→            <div className="space-y-1.5">
+  1946→              <Label className="text-xs">อาคาร</Label>
+  1947→              <Input
+  1948→                value={bulkEditForm.building}
+  1949→                onChange={(e) => setBulkEditForm({ ...bulkEditForm, building: e.target.value, floor: '', department: '' })}
+  1950→                list="dl-bulk-building"
+  1951→                placeholder="ไม่เปลี่ยนแปลง"
+  1952→                className="dark:bg-slate-800 dark:border-slate-700"
+  1953→              />
+  1954→              <datalist id="dl-bulk-building">
+  1955→                {bulkBuildingOptions.map((v) => <option key={v} value={v} />)}
+  1956→              </datalist>
+  1957→            </div>
+  1958→            <div className="space-y-1.5">
+  1959→              <Label className="text-xs">ชั้น</Label>
+  1960→              <Input
+  1961→                value={bulkEditForm.floor}
+  1962→                onChange={(e) => setBulkEditForm({ ...bulkEditForm, floor: e.target.value, department: '' })}
+  1963→                list="dl-bulk-floor"
+  1964→                placeholder="ไม่เปลี่ยนแปลง"
+  1965→                className="dark:bg-slate-800 dark:border-slate-700"
+  1966→              />
+  1967→              <datalist id="dl-bulk-floor">
+  1968→                {bulkFloorOptions.map((v) => <option key={v} value={v} />)}
+  1969→              </datalist>
+  1970→            </div>
+  1971→            <div className="space-y-1.5">
+  1972→              <Label className="text-xs">แผนก</Label>
+  1973→              <Input
+  1974→                value={bulkEditForm.department}
+  1975→                onChange={(e) => setBulkEditForm({ ...bulkEditForm, department: e.target.value })}
+  1976→                list="dl-bulk-department"
+  1977→                placeholder="ไม่เปลี่ยนแปลง"
+  1978→                className="dark:bg-slate-800 dark:border-slate-700"
+  1979→              />
+  1980→              <datalist id="dl-bulk-department">
+  1981→                {bulkDepartmentOptions.map((v) => <option key={v} value={v} />)}
+  1982→              </datalist>
+  1983→            </div>
+  1984→            {bulkProgress && (
+  1985→              <div className="text-xs text-slate-500 dark:text-slate-400">
+  1986→                กำลังประมวลผล: {bulkProgress.done}/{bulkProgress.total}
+  1987→              </div>
+  1988→            )}
+  1989→          </div>
+  1990→          <DialogFooter>
+  1991→            <Button variant="outline" onClick={() => setBulkEditOpen(false)} disabled={bulkSaving}>ยกเลิก</Button>
+  1992→            <Button onClick={saveBulkEdit} disabled={bulkSaving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+  1993→              {bulkSaving ? 'กำลังบันทึก...' : 'บันทึก'}
+  1994→            </Button>
+  1995→          </DialogFooter>
+  1996→        </DialogContent>
+  1997→      </Dialog>
+  1998→    </div>
+  1999→  )
+  2000→}
+
+[showing lines 1-2000 of 2211; use offset=2001 with limit to continue reading]

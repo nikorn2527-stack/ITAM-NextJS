@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     // ?open=1 — กรองเฉพาะงานที่ยังไม่เสร็จ (open + in_progress) เหมือน getOpenMaintenanceLogs ใน Apps Script
     const openOnly = searchParams.get('open')?.trim() === '1'
     const where: Record<string, unknown> = { AND: [] as unknown[] }
-    if (assetNo) (where.AND as unknown[]).push({ assetNo })
+    if (assetNo) (where.AND as unknown[]).push({ device: { assetCode: assetNo } })
     if (openOnly) {
       // กรองทั้ง open และ in_progress (เหมือน Apps Script getOpenMaintenanceLogs)
       ;(where.AND as unknown[]).push({ status: { in: ['open', 'in_progress'] } })
@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     const logs = await db.maintenanceLog.findMany({
       where,
       orderBy: { startDate: 'desc' },
-      include: { device: { select: { assetNo: true, brand: true, model: true, site: true } } },
+      include: { device: { select: { assetCode: true, brand: true, model: true, site: true } } },
     })
     return NextResponse.json({ logs })
   } catch (err) {
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     if (!body.assetNo || !body.type || !body.startDate) {
       return NextResponse.json({ error: 'assetNo, type, startDate required' }, { status: 400 })
     }
-    const device = await db.device.findUnique({ where: { assetNo: body.assetNo } })
+    const device = await db.device.findUnique({ where: { assetCode: body.assetNo } })
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     if (!canAccessSite(user, device.site)) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์สร้างประวัติซ่อมบำรุงสำหรับอุปกรณ์ในสาขานี้' }, { status: 403 })
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     const created = await db.maintenanceLog.create({
       data: {
-        assetNo: body.assetNo,
+        deviceId: device.id,
         type: body.type,
         status: body.status || 'open',
         startDate: body.startDate,
@@ -72,10 +72,12 @@ export async function POST(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'MAINTENANCE',
-          user: user.email,
-          details: JSON.stringify({ assetNo: body.assetNo, type: body.type }),
+          entity: 'MaintenanceLog',
+          entityId: created.id,
+          summary: `เพิ่มประวัติซ่อมบำรุง ${body.assetNo}: ${body.type}`,
+          actor: user.email,
+          detail: JSON.stringify({ assetCode: body.assetNo, type: body.type }),
         },
       })
     } catch { /* ignore */ }

@@ -27,61 +27,61 @@ export async function GET(req: NextRequest) {
             sf,
             {
               OR: [
-                { assetNo: { contains: q } },
-                { deviceType: { contains: q } },
+                { assetCode: { contains: q } },
+                { type: { contains: q } },
                 { brand: { contains: q } },
                 { model: { contains: q } },
-                { serial: { contains: q } },
+                { serialNumber: { contains: q } },
               ],
             },
           ],
         },
         take: 8,
-        select: { id: true, assetNo: true, deviceType: true, brand: true, model: true, site: true, status: true },
+        select: { id: true, assetCode: true, type: true, brand: true, model: true, site: true, status: true },
       }),
       db.masterItem.findMany({
         where: {
           OR: [
-            { value: { contains: q } },
+            { label: { contains: q } },
             { displayLabel: { contains: q } },
           ],
         },
         take: 5,
-        select: { id: true, categoryKey: true, value: true, displayLabel: true },
+        select: { id: true, category: true, label: true, displayLabel: true },
       }),
       db.auditLog.findMany({
         where: {
           // Non-admin users only see their own audit entries
-          ...(user.role !== 'admin' && user.role !== 'superadmin' ? { user: user.email } : {}),
+          ...(user.role !== 'admin' && user.role !== 'superadmin' ? { actor: user.email } : {}),
           OR: [
             { action: { contains: q } },
-            { details: { contains: q } },
-            { user: { contains: q } },
+            { detail: { contains: q } },
+            { actor: { contains: q } },
           ],
         },
         take: 5,
-        orderBy: { timestamp: 'desc' },
-        select: { id: true, action: true, user: true, details: true, timestamp: true },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, action: true, actor: true, detail: true, createdAt: true },
       }),
       db.siteAttribute.findMany({
         where: isSiteFiltered
-          ? { siteName: { in: sf.site?.in ?? [] } }
+          ? { SiteName: { in: ((sf.site as { in: string[] } | undefined)?.in) ?? [] } }
           : {
               OR: [
-                { siteCode: { contains: q } },
-                { siteName: { contains: q } },
+                { SiteCode: { contains: q } },
+                { SiteName: { contains: q } },
               ],
             },
         take: 3,
-        select: { id: true, siteCode: true, siteName: true },
+        select: { id: true, SiteCode: true, SiteName: true },
       }),
     ])
 
     const results = {
-      devices: devices.map((d) => ({ type: 'device', id: d.id, title: `${d.assetNo} — ${d.brand || ''} ${d.model || ''}`, subtitle: `${d.deviceType || ''} · ${d.site || ''}`, icon: '💻' })),
-      master: masterItems.map((m) => ({ type: 'master', id: m.id, title: m.value, subtitle: m.categoryKey, icon: '📊' })),
-      audit: auditLogs.map((a) => ({ type: 'audit', id: a.id, title: `${a.action} — ${(a.details || '').substring(0, 60)}`, subtitle: `${a.user} · ${a.timestamp}`, icon: '📜' })),
-      sites: sites.map((s) => ({ type: 'site', id: s.id, title: `${s.siteCode} — ${s.siteName || ''}`, subtitle: 'สาขา', icon: '🏢' })),
+      devices: devices.map((d) => ({ type: 'device', id: d.id, title: `${d.assetCode} — ${d.brand || ''} ${d.model || ''}`, subtitle: `${d.type || ''} · ${d.site || ''}`, icon: '💻' })),
+      master: masterItems.map((m) => ({ type: 'master', id: m.id, title: m.label, subtitle: m.category, icon: '📊' })),
+      audit: auditLogs.map((a) => ({ type: 'audit', id: a.id, title: `${a.action} — ${(a.detail || '').substring(0, 60)}`, subtitle: `${a.actor} · ${a.createdAt}`, icon: '📜' })),
+      sites: sites.map((s) => ({ type: 'site', id: s.id, title: `${s.SiteCode} — ${s.SiteName || ''}`, subtitle: 'สาขา', icon: '🏢' })),
     }
     const total = results.devices.length + results.master.length + results.audit.length + results.sites.length
     return NextResponse.json({ results, total })

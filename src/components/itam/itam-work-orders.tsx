@@ -107,7 +107,7 @@ interface WorkOrder {
   closedAt: string | null
   canceledAt: string | null
   cancelReason: string | null
-  assetNo: string | null
+  assetCode: string | null
   createdAt: string
   updatedAt: string
 }
@@ -1191,7 +1191,7 @@ function DetailBody({
           <InfoRow label="ความเร่งด่วน" value={<PriorityBadge priority={order.priority} />} />
           <InfoRow label="อาคาร" value={order.building} />
           <InfoRow label="ตำแหน่ง" value={order.location} />
-          <InfoRow label="รหัสอุปกรณ์" value={order.assetNo} mono />
+          <InfoRow label="รหัสอุปกรณ์" value={order.assetCode} mono />
           <InfoRow label="รหัสพนักงาน" value={order.employeeCode} />
           <InfoRow label="ผู้แจ้ง" value={order.reporterName} />
           <InfoRow label="เบอร์โทร" value={order.tel} />

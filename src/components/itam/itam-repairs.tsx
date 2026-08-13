@@ -5,7 +5,7 @@
  *
  * ผู้ใช้สามารถ:
  *   1. ดู KPI สรุปจำนวนงานซ่อมแยกตามสถานะ + ค่าซ่อมรวมเดือนนี้
- *   2. กรองรายการตามสถานะ / ประเภท / คำค้น (assetNo หรือ description)
+ *   2. กรองรายการตามสถานะ / ประเภท / คำค้น (assetCode หรือ description)
  *   3. สร้างคำขอซ่อมใหม่ (เลือกอุปกรณ์จาก list, ระบุประเภท, อาการ, ร้านซ่อม, วันเริ่ม)
  *   4. คลิกแถวเพื่อดูรายละเอียดเต็ม + แก้ไขสถานะ / ค่าซ่อม / ผลการซ่อม
  *
@@ -85,17 +85,17 @@ import {
 
 interface DeviceLite {
   id: string
-  assetNo: string
+  assetCode: string
   brand: string | null
   model: string | null
-  deviceType: string | null
+  type: string | null
   site: string | null
 }
 
 interface MaintenanceLog {
   id: string
   logId: string | null
-  assetNo: string
+  assetCode: string
   type: string // repair | maintenance | inspection | upgrade
   status: string // open | in_progress | completed | cancelled
   startDate: string | null
@@ -106,7 +106,7 @@ interface MaintenanceLog {
   resolvedNote: string | null
   createdAt: string
   device?: {
-    assetNo: string
+    assetCode: string
     brand: string | null
     model: string | null
     site: string | null
@@ -221,7 +221,7 @@ export function ItamRepairs() {
   // Create dialog state
   const [createOpen, setCreateOpen] = React.useState(false)
   const [createForm, setCreateForm] = React.useState({
-    assetNo: '',
+    assetCode: '',
     type: 'repair',
     description: '',
     vendor: '',
@@ -281,7 +281,7 @@ export function ItamRepairs() {
     if (q) {
       arr = arr.filter(
         (l) =>
-          l.assetNo.toLowerCase().includes(q) ||
+          l.assetCode.toLowerCase().includes(q) ||
           (l.description ?? '').toLowerCase().includes(q) ||
           (l.logId ?? '').toLowerCase().includes(q) ||
           (l.vendor ?? '').toLowerCase().includes(q),
@@ -316,7 +316,7 @@ export function ItamRepairs() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          assetNo: input.assetNo,
+          assetCode: input.assetCode,
           type: input.type,
           status: 'open',
           startDate: input.startDate,
@@ -333,7 +333,7 @@ export function ItamRepairs() {
       qc.invalidateQueries({ queryKey: ['itam-maintenance'] })
       setCreateOpen(false)
       setCreateForm({
-        assetNo: '',
+        assetCode: '',
         type: 'repair',
         description: '',
         vendor: '',
@@ -383,7 +383,7 @@ export function ItamRepairs() {
   }
 
   function submitCreate() {
-    if (!createForm.assetNo) {
+    if (!createForm.assetCode) {
       toast.error('กรุณาเลือกอุปกรณ์')
       return
     }
@@ -571,7 +571,7 @@ export function ItamRepairs() {
                       </TableCell>
                       <TableCell>
                         <div className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
-                          {log.assetNo}
+                          {log.assetCode}
                         </div>
                         {(log.device?.brand || log.device?.model) && (
                           <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">
@@ -657,11 +657,11 @@ export function ItamRepairs() {
                     role="combobox"
                     className="w-full justify-between font-normal dark:bg-slate-800 dark:border-slate-700"
                   >
-                    {createForm.assetNo ? (
+                    {createForm.assetCode ? (
                       <span className="flex items-center gap-2 truncate">
-                        <span className="font-mono text-xs">{createForm.assetNo}</span>
+                        <span className="font-mono text-xs">{createForm.assetCode}</span>
                         {(() => {
-                          const d = devices.find((x) => x.assetNo === createForm.assetNo)
+                          const d = devices.find((x) => x.assetCode === createForm.assetCode)
                           if (!d) return null
                           return (
                             <span className="truncate text-xs text-slate-500">
@@ -685,20 +685,20 @@ export function ItamRepairs() {
                         {devices.map((d) => (
                           <CommandItem
                             key={d.id}
-                            value={`${d.assetNo} ${d.brand ?? ''} ${d.model ?? ''}`}
+                            value={`${d.assetCode} ${d.brand ?? ''} ${d.model ?? ''}`}
                             onSelect={() => {
-                              setCreateForm((f) => ({ ...f, assetNo: d.assetNo }))
+                              setCreateForm((f) => ({ ...f, assetCode: d.assetCode }))
                               setDevicePickerOpen(false)
                             }}
                             className="hover:bg-slate-100 dark:hover:bg-slate-800"
                           >
                             <Check
                               className={`mr-2 h-3.5 w-3.5 ${
-                                createForm.assetNo === d.assetNo ? 'opacity-100' : 'opacity-0'
+                                createForm.assetCode === d.assetCode ? 'opacity-100' : 'opacity-0'
                               }`}
                             />
                             <div className="flex flex-1 items-center gap-2 truncate">
-                              <span className="font-mono text-xs font-semibold">{d.assetNo}</span>
+                              <span className="font-mono text-xs font-semibold">{d.assetCode}</span>
                               <span className="truncate text-xs text-slate-500">
                                 {[d.brand, d.model].filter(Boolean).join(' · ')}
                               </span>
@@ -774,7 +774,7 @@ export function ItamRepairs() {
             </Button>
             <Button
               onClick={submitCreate}
-              disabled={createMutation.isPending || !createForm.assetNo}
+              disabled={createMutation.isPending || !createForm.assetCode}
               className="bg-[#f97316] hover:bg-[#ea580c]"
             >
               {createMutation.isPending ? (
@@ -858,7 +858,7 @@ export function ItamRepairs() {
                 <div className="text-[10px] uppercase text-slate-400">อุปกรณ์</div>
                 <div className="mt-1 flex items-center gap-2">
                   <span className="font-mono text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    {detailLog.assetNo}
+                    {detailLog.assetCode}
                   </span>
                   {(detailLog.device?.brand || detailLog.device?.model) && (
                     <span className="text-sm text-slate-500 dark:text-slate-400">

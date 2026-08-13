@@ -102,10 +102,10 @@ export const STICKER_VARIABLES: string[] = [
 
 // ─── Sample device used by the editor Preview modal ───────────────────────
 export const SAMPLE_DEVICE: StickerDeviceData = {
-  assetNo: 'IT-00001',
+  assetCode: 'IT-00001',
   assetSiteCode: 'UDH-00001',
-  serial: 'SN12345678',
-  deviceType: 'PRINTER',
+  serialNumber: 'SN12345678',
+  type: 'PRINTER',
   brand: 'HP',
   model: 'LaserJet Pro M404',
   building: 'ตึก 69 ปี',
@@ -120,10 +120,10 @@ export const SAMPLE_DEVICE: StickerDeviceData = {
 
 // ─── Device data shape used for variable substitution ────────────────────
 export interface StickerDeviceData {
-  assetNo: string
+  assetCode: string
   assetSiteCode: string | null
-  serial: string | null
-  deviceType: string | null
+  serialNumber: string | null
+  type: string | null
   brand: string | null
   model: string | null
   building: string | null
@@ -334,10 +334,10 @@ export function substituteVariables(
   const v: Record<string, string> = {
     '{{companyName}}': settings.companyName || '',
     '{{hospitalName}}': settings.hospitalName || '',
-    '{{AssetNo}}': device?.assetNo || '',
+    '{{AssetNo}}': device?.assetCode || '',
     '{{AssetSiteCode}}': device?.assetSiteCode || '',
-    '{{Serial}}': device?.serial || '',
-    '{{Type}}': device?.deviceType || '',
+    '{{Serial}}': device?.serialNumber || '',
+    '{{Type}}': device?.type || '',
     '{{Brand}}': device?.brand || '',
     '{{Model}}': device?.model || '',
     '{{Building}}': device?.building || '',
@@ -407,7 +407,7 @@ function renderElement(
 
   if (el.type === 'qr') {
     // QR data: substitute variables into the content (e.g. '{{AssetNo}}')
-    const data = substituteVariables(el.content ?? '', device, settings) || device?.assetNo || ''
+    const data = substituteVariables(el.content ?? '', device, settings) || device?.assetCode || ''
     const cached = qrCache.get(data)
     if (cached) {
       return `<img class="stk-el stk-qr" src="${cached}" alt="QR" style="${baseStyle};object-fit:contain" />`
@@ -429,7 +429,7 @@ export async function preGenerateQrCodes(
   const dataKeys = new Set<string>()
   for (const el of template.elements) {
     if (el.type !== 'qr') continue
-    const data = substituteVariables(el.content ?? '', device, settings) || device?.assetNo || ''
+    const data = substituteVariables(el.content ?? '', device, settings) || device?.assetCode || ''
     if (!data) continue
     dataKeys.add(data)
   }

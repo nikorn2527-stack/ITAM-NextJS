@@ -227,56 +227,56 @@ export async function sendNotification(payload: NotificationPayload): Promise<vo
 
 // Convenience helpers for common events
 export function notifyDeviceAdded(device: {
-  assetNo: string; brand?: string | null; model?: string | null; site?: string | null
+  assetCode: string; brand?: string | null; model?: string | null; site?: string | null
 }, by: string): Promise<void> {
   return sendNotification({
     event: 'deviceAdded',
     title: '➕ เพิ่มอุปกรณ์ใหม่',
-    message: `เพิ่ม ${device.assetNo} (${[device.brand, device.model].filter(Boolean).join(' ') || '-'}) สาขา ${device.site || '-'} โดย ${by}`,
+    message: `เพิ่ม ${device.assetCode} (${[device.brand, device.model].filter(Boolean).join(' ') || '-'}) สาขา ${device.site || '-'} โดย ${by}`,
     data: { device },
   })
 }
 
 export function notifyDeviceUpdated(device: {
-  assetNo: string; brand?: string | null; model?: string | null
+  assetCode: string; brand?: string | null; model?: string | null
 }, by: string, changes: string[]): Promise<void> {
   return sendNotification({
     event: 'deviceUpdated',
     title: '✏️ แก้ไขอุปกรณ์',
-    message: `แก้ไข ${device.assetNo} (${[device.brand, device.model].filter(Boolean).join(' ') || '-'}) โดย ${by} — ${changes.join(', ')}`,
+    message: `แก้ไข ${device.assetCode} (${[device.brand, device.model].filter(Boolean).join(' ') || '-'}) โดย ${by} — ${changes.join(', ')}`,
     data: { device, changes },
   })
 }
 
 export function notifyTransfer(info: {
-  assetNo: string; fromSite?: string | null; toSite: string; by: string
+  assetCode: string; fromSite?: string | null; toSite: string; by: string
 }): Promise<void> {
   return sendNotification({
     event: 'transfer',
     title: '🔄 ย้ายตำแหน่งอุปกรณ์',
-    message: `ย้าย ${info.assetNo} จาก ${info.fromSite || '-'} → ${info.toSite} โดย ${info.by}`,
+    message: `ย้าย ${info.assetCode} จาก ${info.fromSite || '-'} → ${info.toSite} โดย ${info.by}`,
     data: info,
   })
 }
 
 export function notifyMeter(info: {
-  assetNo: string; pagesBw: number; pagesColor: number; by: string
+  assetCode: string; pagesBw: number; pagesColor: number; by: string
 }): Promise<void> {
   return sendNotification({
     event: 'meter',
     title: '📈 จดมิเตอร์',
-    message: `จดมิเตอร์ ${info.assetNo}: BW=${info.pagesBw} สี=${info.pagesColor} โดย ${info.by}`,
+    message: `จดมิเตอร์ ${info.assetCode}: BW=${info.pagesBw} สี=${info.pagesColor} โดย ${info.by}`,
     data: info,
   })
 }
 
 export function notifyLifecycle(info: {
-  assetNo: string; fromStatus?: string | null; toStatus: string; by: string
+  assetCode: string; fromStatus?: string | null; toStatus: string; by: string
 }): Promise<void> {
   return sendNotification({
     event: 'lifecycle',
     title: '🔁 เปลี่ยนสถานะอุปกรณ์',
-    message: `${info.assetNo}: ${info.fromStatus || '-'} → ${info.toStatus} โดย ${info.by}`,
+    message: `${info.assetCode}: ${info.fromStatus || '-'} → ${info.toStatus} โดย ${info.by}`,
     data: info,
   })
 }

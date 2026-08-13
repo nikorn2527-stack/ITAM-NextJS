@@ -64,10 +64,10 @@ interface DashboardData {
   paperTrend: Array<{ month: string; sheets: number }>
   meterRequiredCount: number
   recentActivity: Array<{
-    id: string; assetNo: string; deviceName: string
+    id: string; assetCode: string; deviceName: string
     readingDate: string; pagesBw: number; pagesColor: number; remark: string | null
   }>
-  heatmap: Array<{ assetNo: string; deviceName: string; months: Array<{ month: string; pages: number }> }>
+  heatmap: Array<{ assetCode: string; deviceName: string; months: Array<{ month: string; pages: number }> }>
   heatmapMonths: string[]
   queryTimeMs: number
 }
@@ -1196,7 +1196,7 @@ ${kpiHtml}
                 >
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{a.deviceName}</div>
-                    <div className="text-xs text-slate-400">{a.assetNo} · {a.readingDate}</div>
+                    <div className="text-xs text-slate-400">{a.assetCode} · {a.readingDate}</div>
                   </div>
                   <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                     {(a.pagesBw + a.pagesColor).toLocaleString()} แผ่น
@@ -1414,9 +1414,9 @@ ${kpiHtml}
                 </thead>
                 <tbody>
                   {heat.map(row => (
-                    <tr key={row.assetNo}>
+                    <tr key={row.assetCode}>
                       <td className="sticky left-0 z-10 max-w-[180px] truncate bg-slate-50/80 px-2 py-1 text-slate-700 dark:bg-slate-900/80 dark:text-slate-200" title={row.deviceName}>
-                        <span className="font-mono text-[10px] text-slate-400">{row.assetNo}</span>
+                        <span className="font-mono text-[10px] text-slate-400">{row.assetCode}</span>
                         <div className="truncate">{row.deviceName}</div>
                       </td>
                       {row.months.map(c => {
@@ -1427,7 +1427,7 @@ ${kpiHtml}
                             key={c.month}
                             className={`px-2 py-1.5 text-center font-mono tabular-nums ${txtColor}`}
                             style={{ background: heatColor(intensity) }}
-                            title={`${row.assetNo} · ${c.month}: ${c.pages.toLocaleString()} แผ่น`}
+                            title={`${row.assetCode} · ${c.month}: ${c.pages.toLocaleString()} แผ่น`}
                           >
                             {c.pages > 0 ? c.pages.toLocaleString() : '·'}
                           </td>

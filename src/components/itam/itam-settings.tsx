@@ -14,8 +14,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette } from 'lucide-react'
+import { type MasterItem } from './types'
+import { SiteAttributesSection } from './site-attributes-section'
 
-interface MasterItem { id: string; itemId: string | null; categoryKey: string; value: string; displayLabel: string | null; active: boolean; departmentCode: string | null }
 interface Site { id: string; siteCode: string; siteName: string | null; lineOa: string | null; hotline: string | null; paperRateBw: number | null; paperRateColor: number | null; deviceCount?: number; activeCount?: number }
 
 interface NotifySettings {
@@ -26,11 +27,11 @@ interface NotifySettings {
 
 export function ItamSettings() {
   const qc = useQueryClient()
-  const [tab, setTab] = React.useState<'master' | 'sites' | 'notifications' | 'customize'>('master')
+  const [tab, setTab] = React.useState<'master' | 'site-attributes' | 'sites' | 'notifications' | 'customize'>('master')
   const [category, setCategory] = React.useState('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
-  const [form, setForm] = React.useState({ categoryKey: '', value: '', displayLabel: '', departmentCode: '' })
+  const [form, setForm] = React.useState({ category: '', code: '', label: '', displayLabel: '' })
 
   // Master items
   const { data: masterData, isLoading: masterLoading } = useQuery({
@@ -110,18 +111,18 @@ export function ItamSettings() {
 
   function openAdd() {
     setEditItem(null)
-    setForm({ categoryKey: 'Brand', value: '', displayLabel: '', departmentCode: '' })
+    setForm({ category: 'Brand', code: '', label: '', displayLabel: '' })
     setDialogOpen(true)
   }
 
   function openEdit(item: MasterItem) {
     setEditItem(item)
-    setForm({ categoryKey: item.categoryKey, value: item.value, displayLabel: item.displayLabel || '', departmentCode: item.departmentCode || '' })
+    setForm({ category: item.category, code: item.code, label: item.label, displayLabel: item.displayLabel || '' })
     setDialogOpen(true)
   }
 
   async function saveItem() {
-    if (!form.categoryKey || !form.value) { toast.error('กรุณากรอกหมวดหมู่และค่า'); return }
+    if (!form.category || !form.label) { toast.error('กรุณากรอกหมวดหมู่และค่า'); return }
     try {
       if (editItem) {
         const res = await fetch(`/api/itam/master-items/${editItem.id}`, {
@@ -144,7 +145,7 @@ export function ItamSettings() {
   }
 
   async function deleteItem(item: MasterItem) {
-    if (!confirm(`ลบ "${item.value}"?`)) return
+    if (!confirm(`ลบ "${item.label}"?`)) return
     try {
       await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE' })
       toast.success('ลบแล้ว')
@@ -163,17 +164,20 @@ export function ItamSettings() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800">
-        <button onClick={() => setTab('master')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'master' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto">
+        <button onClick={() => setTab('master')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'master' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <Database className="mr-1 inline h-4 w-4" /> ข้อมูลมาตรฐาน
         </button>
-        <button onClick={() => setTab('sites')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'sites' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-          <Building2 className="mr-1 inline h-4 w-4" /> สาขา
+        <button onClick={() => setTab('site-attributes')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'site-attributes' ? 'border-teal-500 text-teal-600 dark:text-teal-300' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <Building2 className="mr-1 inline h-4 w-4" /> จัดการสาขา
         </button>
-        <button onClick={() => setTab('notifications')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'notifications' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+        <button onClick={() => setTab('sites')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'sites' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <Building2 className="mr-1 inline h-4 w-4" /> สาขา (ภาพรวม)
+        </button>
+        <button onClick={() => setTab('notifications')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'notifications' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <Bell className="mr-1 inline h-4 w-4" /> การแจ้งเตือน
         </button>
-        <button onClick={() => setTab('customize')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition ${tab === 'customize' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+        <button onClick={() => setTab('customize')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'customize' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <Palette className="mr-1 inline h-4 w-4" /> ปรับแต่งแอป
         </button>
       </div>
@@ -231,11 +235,11 @@ export function ItamSettings() {
                     ) : (
                       items.map((item) => (
                         <TableRow key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <TableCell><Badge className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{item.categoryKey}</Badge></TableCell>
-                          <TableCell className="text-sm font-medium">{item.value}</TableCell>
+                          <TableCell><Badge className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{item.category}</Badge></TableCell>
+                          <TableCell className="text-sm font-medium">{item.label}</TableCell>
                           <TableCell className="text-xs text-slate-400">{item.displayLabel || '—'}</TableCell>
-                          <TableCell className="text-xs">{item.departmentCode || '—'}</TableCell>
-                          <TableCell className="text-center">{item.active ? <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">✓</Badge> : <Badge className="bg-slate-50 text-slate-400">—</Badge>}</TableCell>
+                          <TableCell className="text-xs">{item.code || '—'}</TableCell>
+                          <TableCell className="text-center">{(item as { active?: boolean }).active ? <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">✓</Badge> : <Badge className="bg-slate-50 text-slate-400">—</Badge>}</TableCell>
                           <TableCell className="text-right">
                             <Button size="sm" variant="ghost" onClick={() => openEdit(item)}><Pencil className="h-3 w-3" /></Button>
                             <Button size="sm" variant="ghost" onClick={() => deleteItem(item)} className="text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /></Button>
@@ -250,6 +254,8 @@ export function ItamSettings() {
           </Card>
         </>
       )}
+
+      {tab === 'site-attributes' && <SiteAttributesSection />}
 
       {tab === 'sites' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -295,7 +301,7 @@ export function ItamSettings() {
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label className="text-xs">หมวดหมู่ *</Label>
-              <Select value={form.categoryKey} onValueChange={(v) => setForm({ ...form, categoryKey: v })}>
+              <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
                 <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Brand">Brand</SelectItem>
@@ -307,9 +313,9 @@ export function ItamSettings() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5"><Label className="text-xs">ค่า *</Label><Input value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
+            <div className="space-y-1.5"><Label className="text-xs">ค่า *</Label><Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
             <div className="space-y-1.5"><Label className="text-xs">Display Label</Label><Input value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
-            <div className="space-y-1.5"><Label className="text-xs">รหัสแผนก</Label><Input value={form.departmentCode} onChange={(e) => setForm({ ...form, departmentCode: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
+            <div className="space-y-1.5"><Label className="text-xs">รหัส</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>ยกเลิก</Button>

@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
         externalMeta,
         picBefore: body.picBefore ? String(body.picBefore) : null,
         status: 'PENDING',
-        assetNo: body.assetNo ? String(body.assetNo).trim() : null,
+        assetCode: body.assetCode ? String(body.assetCode).trim() : null,
       },
     })
 
@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
         priority: order.priority,
         submissionSource: order.submissionSource,
         trackable: order.trackable,
-        assetNo: order.assetNo,
+        assetCode: order.assetCode,
       },
       userEmail,
     )

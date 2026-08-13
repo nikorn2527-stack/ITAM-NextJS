@@ -42,16 +42,16 @@ const STATUS_PRIORITY: Record<WarrantyStatus, number> = {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}/
 
-/** Build a display name from brand + model (falls back to assetNo). */
+/** Build a display name from brand + model (falls back to assetCode). */
 function deviceName(d: {
   brand: string | null
   model: string | null
-  assetNo: string
+  assetCode: string
 }): string {
   if (d.brand && d.model) return `${d.brand} ${d.model}`.trim()
   if (d.brand) return d.brand
   if (d.model) return d.model
-  return d.assetNo
+  return d.assetCode
 }
 
 /**
@@ -88,29 +88,26 @@ export async function GET() {
     const devices = await db.device.findMany({
       select: {
         id: true,
-        assetNo: true,
+        assetCode: true,
         brand: true,
         model: true,
         site: true,
-        installDate: true,
+        purchaseDate: true,
         warrantyEnd: true,
       },
-      orderBy: { assetNo: 'asc' },
+      orderBy: { assetCode: 'asc' },
     })
 
     const entries: WarrantyEntry[] = devices.map((d) => {
       const { status, daysUntilExpiry, expiryISO } = computeStatus(d.warrantyEnd)
       return {
         id: d.id,
-        assetCode: d.assetNo, // keep legacy field name for frontend compat
+        assetCode: d.assetCode,
         name: deviceName(d),
         brand: d.brand,
         model: d.model,
         site: d.site,
-        // No `purchaseDate` field on Device — expose `installDate` for the
-        // frontend's display column (the type allows null).
-        purchaseDate: d.installDate,
-        // No `warrantyMonths` field — surface 0 so the legacy type is happy.
+        purchaseDate: d.purchaseDate,
         warrantyMonths: 0,
         warrantyExpiry: expiryISO,
         status,

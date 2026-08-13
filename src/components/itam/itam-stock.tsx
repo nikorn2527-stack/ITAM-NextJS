@@ -138,10 +138,10 @@ interface StockDetailResponse {
 
 interface DeviceLite {
   id: string
-  assetNo: string
+  assetCode: string
   brand: string | null
   model: string | null
-  deviceType: string | null
+  type: string | null
   site: string | null
 }
 
@@ -1049,7 +1049,7 @@ export function ItamStock() {
                         <span className="flex items-center gap-2 truncate">
                           <span className="font-mono text-xs">{txnForm.relatedAssetNo}</span>
                           {(() => {
-                            const d = devices.find((x) => x.assetNo === txnForm.relatedAssetNo)
+                            const d = devices.find((x) => x.assetCode === txnForm.relatedAssetNo)
                             if (!d) return null
                             return (
                               <span className="truncate text-xs text-slate-500">
@@ -1073,20 +1073,20 @@ export function ItamStock() {
                           {devices.map((d) => (
                             <CommandItem
                               key={d.id}
-                              value={`${d.assetNo} ${d.brand ?? ''} ${d.model ?? ''}`}
+                              value={`${d.assetCode} ${d.brand ?? ''} ${d.model ?? ''}`}
                               onSelect={() => {
-                                setTxnForm((f) => ({ ...f, relatedAssetNo: d.assetNo }))
+                                setTxnForm((f) => ({ ...f, relatedAssetNo: d.assetCode }))
                                 setDevicePickerOpen(false)
                               }}
                               className="hover:bg-slate-100 dark:hover:bg-slate-800"
                             >
                               <Check
                                 className={`mr-2 h-3.5 w-3.5 ${
-                                  txnForm.relatedAssetNo === d.assetNo ? 'opacity-100' : 'opacity-0'
+                                  txnForm.relatedAssetNo === d.assetCode ? 'opacity-100' : 'opacity-0'
                                 }`}
                               />
                               <div className="flex flex-1 items-center gap-2 truncate">
-                                <span className="font-mono text-xs font-semibold">{d.assetNo}</span>
+                                <span className="font-mono text-xs font-semibold">{d.assetCode}</span>
                                 <span className="truncate text-xs text-slate-500">
                                   {[d.brand, d.model].filter(Boolean).join(' · ')}
                                 </span>

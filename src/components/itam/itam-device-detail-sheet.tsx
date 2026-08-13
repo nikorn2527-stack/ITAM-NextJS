@@ -18,11 +18,11 @@ import { Pencil, Wrench, Package, History, Gauge, ArrowLeftRight, AlertTriangle,
 
 interface DeviceDetail {
   id: string
-  assetNo: string
-  deviceType: string | null
+  assetCode: string
+  type: string | null
   brand: string | null
   model: string | null
-  serial: string | null
+  serialNumber: string | null
   building: string | null
   floor: string | null
   department: string | null
@@ -36,7 +36,7 @@ interface DeviceDetail {
   remoteId: string | null
   remark: string | null
   vendor: string | null
-  installDate: string | null
+  purchaseDate: string | null
   warrantyEnd: string | null
   deviceGroup: string | null
   costCenter: string | null
@@ -245,7 +245,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
             {/* Action bar */}
             <div className="flex flex-wrap gap-2">
               {onEdit && (
-                <Button size="sm" variant="outline" onClick={() => onEdit(device.assetNo)} className="dark:bg-slate-800 dark:border-slate-700">
+                <Button size="sm" variant="outline" onClick={() => onEdit(device.assetCode)} className="dark:bg-slate-800 dark:border-slate-700">
                   <Pencil className="h-3.5 w-3.5" /> แก้ไข
                 </Button>
               )}
@@ -259,11 +259,11 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
 
             {/* Info grid */}
             <div className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-800/40">
-              <Field label="Asset No" value={device.assetNo} />
-              <Field label="ประเภท" value={device.deviceType} />
+              <Field label="Asset No" value={device.assetCode} />
+              <Field label="ประเภท" value={device.type} />
               <Field label="แบรนด์" value={device.brand} />
               <Field label="รุ่น" value={device.model} />
-              <Field label="Serial" value={device.serial} />
+              <Field label="Serial" value={device.serialNumber} />
               <Field label="กลุ่ม" value={device.deviceGroup} />
               <Field label="สาขา" value={device.site} />
               <Field label="อาคาร" value={device.building} />
@@ -277,7 +277,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
               <Field label="สัญญา" value={device.contractNo} />
               <Field label="ผู้ขาย" value={device.vendor} />
               <Field label="Cost Center" value={device.costCenter} />
-              <Field label="ติดตั้ง" value={fmtDate(device.installDate)} />
+              <Field label="ติดตั้ง" value={fmtDate(device.purchaseDate)} />
               <Field label="หมดประกัน" value={fmtDate(device.warrantyEnd)} />
               <Field label="จดมิเตอร์" value={device.meterRequired ? <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300">✓ ต้องจด</Badge> : '—'} />
               <Field label="โหมดมิเตอร์" value={device.meterMode} />
@@ -696,7 +696,7 @@ function TransferDialog({ open, onOpenChange, device, onTransferred }: TransferD
       setMeterPath('none')
       setMeterReadingId(null)
     }
-  }, [open, device.assetNo])
+  }, [open, device.assetCode])
 
   // Compute cascading suggestions for the currently-chosen target site.
   const buildingsForSite = React.useMemo(() => {
@@ -762,7 +762,7 @@ function TransferDialog({ open, onOpenChange, device, onTransferred }: TransferD
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          assetNo: device.assetNo,
+          assetCode: device.assetCode,
           meterBw: Number(form.meterBw),
           meterColor: form.meterColor ? Number(form.meterColor) : 0,
           remark: form.meterRemark || 'จดมิเตอร์ก่อนย้าย',
@@ -807,7 +807,7 @@ function TransferDialog({ open, onOpenChange, device, onTransferred }: TransferD
 
     try {
       setSaving(true)
-      const res = await fetch(`/api/itam/devices/${device.assetNo}/transfer`, {
+      const res = await fetch(`/api/itam/devices/${device.id}/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -855,7 +855,7 @@ function TransferDialog({ open, onOpenChange, device, onTransferred }: TransferD
             🔄 ย้ายตำแหน่งอุปกรณ์
           </DialogTitle>
           <DialogDescription>
-            รหัส {device.assetNo} · {device.brand || ''} {device.model || ''}
+            รหัส {device.assetCode} · {device.brand || ''} {device.model || ''}
           </DialogDescription>
         </DialogHeader>
 

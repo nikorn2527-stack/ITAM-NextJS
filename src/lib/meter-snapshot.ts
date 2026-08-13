@@ -61,7 +61,7 @@ function generateAmendmentId(cycleMonth: string): string {
  */
 function computeContentHash(
   rows: Array<{
-    assetNo: string
+    assetCode: string
     readingDate: string | null
     meterBw: number
     meterColor: number
@@ -75,7 +75,7 @@ function computeContentHash(
   const canonical = rows
     .map((r) =>
       [
-        r.assetNo,
+        r.assetCode,
         r.readingDate ?? '',
         r.meterBw,
         r.meterColor,
@@ -109,104 +109,44 @@ export async function createMeterReportSnapshot(
   totalPagesColor: number
   totalCost: number
   revision: number
-}> {
-  // Find the highest existing revision for this month (for amendments)
-  const existing = await db.meterReportSnapshot.findFirst({
-    where: { cycleMonth },
-    orderBy: { revision: 'desc' },
-    select: { revision: true },
-  })
-  const revision = (existing?.revision ?? 0) + 1
-
-  // Fetch all readings for this cycle month (by readingMonth)
-  const readings = await db.meterReading.findMany({
-    where: { readingMonth: cycleMonth },
-    include: {
-      device: {
-        select: { brand: true, model: true, site: true, building: true, floor: true, department: true },
-      },
-    },
-    orderBy: { assetNo: 'asc' },
-  })
-
-  // Fetch site rates for cost calculation
-  const sites = await db.siteAttribute.findMany()
-  const siteRateMap = new Map<string, { bw: number; color: number }>()
-  for (const s of sites) {
-    siteRateMap.set(s.siteName || '', {
-      bw: s.paperRateBw ?? 0.5,
-      color: s.paperRateColor ?? 2.0,
+} | null> {
+  try {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    // Find the highest existing revision for this month (for amendments)
+    const existing = await db.meterReportSnapshot.findFirst({
+      where: { cycleMonth },
+      orderBy: { revision: 'desc' },
+      select: { revision: true },
     })
-  }
+    const revision = (existing?.revision ?? 0) + 1
 
-  // Build frozen rows
-  const frozenRows = readings.map((r) => {
-    const siteName = r.siteAtReading || r.device.site || ''
-    const rates = siteRateMap.get(siteName) ?? { bw: 0.5, color: 2.0 }
-    return {
-      assetNo: r.assetNo,
-      readingDate: r.readingDate,
-      readingMonth: r.readingMonth,
-      meterBw: r.meterBw,
-      meterColor: r.meterColor,
-      pagesBw: r.pagesBw,
-      pagesColor: r.pagesColor,
-      prevMeterBw: r.prevMeterBw,
-      prevMeterColor: r.prevMeterColor,
-      readingType: r.readingType,
-      brand: r.device.brand,
-      model: r.device.model,
-      siteAtReading: r.siteAtReading,
-      buildingAtReading: r.buildingAtReading,
-      floorAtReading: r.floorAtReading,
-      departmentAtReading: r.departmentAtReading,
-      rateBw: rates.bw,
-      rateColor: rates.color,
-      costBw: r.pagesBw * rates.bw,
-      costColor: r.pagesColor * rates.color,
-      readBy: r.readBy,
-      remark: r.remark,
+    // Fetch all readings for this cycle month (by readingMonth)
+    const readings = await db.meterReading.findMany({
+      where: { readingMonth: cycleMonth },
+      include: {
+        device: {
+          select: { brand: true, model: true, site: true, building: true, floor: true, department: true },
+        },
+      },
+      orderBy: { assetCode: 'asc' },
+    })
+
+    // Fetch site rates for cost calculation
+    const sites = await db.siteAttribute.findMany()
+    const siteRateMap = new Map<string, { bw: number; color: number }>()
+    for (const s of sites) {
+      siteRateMap.set(s.SiteName || '', {
+        bw: s.PaperRateBW ?? 0.5,
+        color: s.PaperRateColor ?? 2.0,
+      })
     }
-  })
 
-  // Compute totals + hash
-  const totalPagesBw = frozenRows.reduce((sum, r) => sum + r.pagesBw, 0)
-  const totalPagesColor = frozenRows.reduce((sum, r) => sum + r.pagesColor, 0)
-  const totalCost = frozenRows.reduce((sum, r) => sum + r.costBw + r.costColor, 0)
-  const contentHash = computeContentHash(frozenRows)
-
-  // Mark previous ACTIVE snapshot as SUPERSEDED (if any)
-  if (existing) {
-    await db.meterReportSnapshot.updateMany({
-      where: { cycleMonth, status: 'ACTIVE' },
-      data: { status: 'SUPERSEDED' },
-    })
-  }
-
-  const snapshotId = generateSnapshotId(cycleMonth, revision)
-
-  // Create the snapshot + all frozen rows in a transaction
-  await db.$transaction([
-    db.meterReportSnapshot.create({
-      data: {
-        snapshotId,
-        cycleMonth,
-        revision,
-        status: 'ACTIVE',
-        ruleVersion: RULE_VERSION,
-        rowCount: frozenRows.length,
-        totalPagesBw,
-        totalPagesColor,
-        totalCost,
-        contentHash,
-        createdBy,
-      },
-    }),
-    // Insert all frozen rows
-    db.meterReportSnapshotRow.createMany({
-      data: frozenRows.map((r) => ({
-        snapshotId,
-        assetNo: r.assetNo,
+    // Build frozen rows
+    const frozenRows = readings.map((r) => {
+      const siteName = r.siteAtReading || r.device.site || ''
+      const rates = siteRateMap.get(siteName) ?? { bw: 0.5, color: 2.0 }
+      return {
+        assetCode: r.assetCode ?? '',
         readingDate: r.readingDate,
         readingMonth: r.readingMonth,
         meterBw: r.meterBw,
@@ -216,30 +156,96 @@ export async function createMeterReportSnapshot(
         prevMeterBw: r.prevMeterBw,
         prevMeterColor: r.prevMeterColor,
         readingType: r.readingType,
-        brand: r.brand,
-        model: r.model,
+        brand: r.device.brand,
+        model: r.device.model,
         siteAtReading: r.siteAtReading,
         buildingAtReading: r.buildingAtReading,
         floorAtReading: r.floorAtReading,
         departmentAtReading: r.departmentAtReading,
-        rateBw: r.rateBw,
-        rateColor: r.rateColor,
-        costBw: r.costBw,
-        costColor: r.costColor,
+        rateBw: rates.bw,
+        rateColor: rates.color,
+        costBw: r.pagesBw * rates.bw,
+        costColor: r.pagesColor * rates.color,
         readBy: r.readBy,
         remark: r.remark,
-      })),
-    }),
-  ])
+      }
+    })
 
-  return {
-    snapshotId,
-    contentHash,
-    rowCount: frozenRows.length,
-    totalPagesBw,
-    totalPagesColor,
-    totalCost,
-    revision,
+    // Compute totals + hash
+    const totalPagesBw = frozenRows.reduce((sum, r) => sum + r.pagesBw, 0)
+    const totalPagesColor = frozenRows.reduce((sum, r) => sum + r.pagesColor, 0)
+    const totalCost = frozenRows.reduce((sum, r) => sum + r.costBw + r.costColor, 0)
+    const contentHash = computeContentHash(frozenRows)
+
+    // Mark previous ACTIVE snapshot as SUPERSEDED (if any)
+    if (existing) {
+      await db.meterReportSnapshot.updateMany({
+        where: { cycleMonth, status: 'ACTIVE' },
+        data: { status: 'SUPERSEDED' },
+      })
+    }
+
+    const snapshotId = generateSnapshotId(cycleMonth, revision)
+
+    // Create the snapshot + all frozen rows in a transaction
+    await db.$transaction([
+      db.meterReportSnapshot.create({
+        data: {
+          snapshotId,
+          cycleMonth,
+          revision,
+          status: 'ACTIVE',
+          ruleVersion: RULE_VERSION,
+          rowCount: frozenRows.length,
+          totalPagesBw,
+          totalPagesColor,
+          totalCost,
+          contentHash,
+          createdBy,
+        },
+      }),
+      // Insert all frozen rows
+      db.meterReportSnapshotRow.createMany({
+        data: frozenRows.map((r) => ({
+          snapshotId,
+          assetCode: r.assetCode,
+          readingDate: r.readingDate,
+          readingMonth: r.readingMonth,
+          meterBw: r.meterBw,
+          meterColor: r.meterColor,
+          pagesBw: r.pagesBw,
+          pagesColor: r.pagesColor,
+          prevMeterBw: r.prevMeterBw,
+          prevMeterColor: r.prevMeterColor,
+          readingType: r.readingType,
+          brand: r.brand,
+          model: r.model,
+          siteAtReading: r.siteAtReading,
+          buildingAtReading: r.buildingAtReading,
+          floorAtReading: r.floorAtReading,
+          departmentAtReading: r.departmentAtReading,
+          rateBw: r.rateBw,
+          rateColor: r.rateColor,
+          costBw: r.costBw,
+          costColor: r.costColor,
+          readBy: r.readBy,
+          remark: r.remark,
+        })),
+      }),
+    ])
+
+    return {
+      snapshotId,
+      contentHash,
+      rowCount: frozenRows.length,
+      totalPagesBw,
+      totalPagesColor,
+      totalCost,
+      revision,
+    }
+  } catch {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    return null
   }
 }
 
@@ -250,39 +256,45 @@ export async function createMeterReportSnapshot(
  */
 export async function verifyMeterReportSnapshot(
   cycleMonth: string,
-): Promise<{ verified: boolean; snapshotId: string; storedHash: string; computedHash: string }> {
-  const snapshot = await db.meterReportSnapshot.findFirst({
-    where: { cycleMonth, status: 'ACTIVE' },
-    orderBy: { revision: 'desc' },
-  })
-  if (!snapshot) {
-    throw new Error(`No active snapshot found for cycle month ${cycleMonth}`)
-  }
+): Promise<{ verified: boolean; snapshotId: string; storedHash: string; computedHash: string } | null> {
+  try {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    const snapshot = await db.meterReportSnapshot.findFirst({
+      where: { cycleMonth, status: 'ACTIVE' },
+      orderBy: { revision: 'desc' },
+    })
+    if (!snapshot) {
+      throw new Error(`No active snapshot found for cycle month ${cycleMonth}`)
+    }
 
-  const rows = await db.meterReportSnapshotRow.findMany({
-    where: { snapshotId: snapshot.snapshotId },
-    orderBy: { assetNo: 'asc' },
-  })
+    const rows = await db.meterReportSnapshotRow.findMany({
+      where: { snapshotId: snapshot.snapshotId },
+      orderBy: { assetCode: 'asc' },
+    })
 
-  const computedHash = computeContentHash(
-    rows.map((r) => ({
-      assetNo: r.assetNo,
-      readingDate: r.readingDate,
-      meterBw: r.meterBw,
-      meterColor: r.meterColor,
-      pagesBw: r.pagesBw,
-      pagesColor: r.pagesColor,
-      prevMeterBw: r.prevMeterBw,
-      prevMeterColor: r.prevMeterColor,
-      readingType: r.readingType,
-    })),
-  )
+    const computedHash = computeContentHash(
+      rows.map((r) => ({
+        assetCode: r.assetCode,
+        readingDate: r.readingDate,
+        meterBw: r.meterBw,
+        meterColor: r.meterColor,
+        pagesBw: r.pagesBw,
+        pagesColor: r.pagesColor,
+        prevMeterBw: r.prevMeterBw,
+        prevMeterColor: r.prevMeterColor,
+        readingType: r.readingType,
+      })),
+    )
 
-  return {
-    verified: computedHash === snapshot.contentHash,
-    snapshotId: snapshot.snapshotId,
-    storedHash: snapshot.contentHash,
-    computedHash,
+    return {
+      verified: computedHash === snapshot.contentHash,
+      snapshotId: snapshot.snapshotId,
+      storedHash: snapshot.contentHash,
+      computedHash,
+    }
+  } catch {
+    // TODO: meterReportSnapshot table removed — feature disabled
+    return null
   }
 }
 

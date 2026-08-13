@@ -67,13 +67,13 @@ import { publishRealtimeEvent } from '@/lib/realtime'
 
 // ── GET field map ──────────────────────────────────────────────────────
 const FIELD_MAP: Record<string, string> = {
-  assetNo: 'assetNo',
+  assetCode: 'assetCode',
   readingMonth: 'readingMonth',
   readingType: 'readingType',
   readBy: 'readBy',
 }
 
-const SEARCH_FIELDS = ['assetNo', 'remark', 'readBy']
+const SEARCH_FIELDS = ['assetCode', 'remark', 'readBy']
 
 // ── GET ────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -99,11 +99,11 @@ export async function GET(req: NextRequest) {
       ? {
           device: {
             select: {
-              assetNo: true,
+              assetCode: true,
               brand: true,
               model: true,
               site: true,
-              deviceType: true,
+              type: true,
             },
           },
         }
@@ -131,12 +131,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    if (!body?.assetNo || body.meterBw === undefined || body.meterBw === null) {
-      return badRequest('assetNo และ meterBw เป็นฟิลด์ที่ต้องการ', { field: 'assetNo' })
+    if (!body?.assetCode || body.meterBw === undefined || body.meterBw === null) {
+      return badRequest('assetCode และ meterBw เป็นฟิลด์ที่ต้องการ', { field: 'assetCode' })
     }
 
     // ── Validate device exists + site access ──────────────────────────
-    const device = await db.device.findUnique({ where: { assetNo: String(body.assetNo).trim() } })
+    const device = await db.device.findUnique({ where: { assetCode: String(body.assetCode).trim() } })
     if (!device) return notFound('device')
 
     if (!canAccessSite(user, device.site)) {
@@ -154,7 +154,7 @@ export async function POST(req: NextRequest) {
       prevMeterBw = Math.floor(Number(body.prevMeterBw))
     } else {
       const last = await db.meterReading.findFirst({
-        where: { assetNo: device.assetNo },
+        where: { assetCode: device.assetCode },
         orderBy: { readingDate: 'desc' },
         select: { meterBw: true, meterColor: true },
       })
@@ -193,7 +193,8 @@ export async function POST(req: NextRequest) {
     // ── Create the MeterReading record ────────────────────────────────
     const reading = await db.meterReading.create({
       data: {
-        assetNo: device.assetNo,
+        deviceId: device.id,
+        assetCode: device.assetCode,
         readingDate: body.readingDate || new Date().toISOString().slice(0, 10),
         readingMonth: finalReadingMonth,
         meterBw,
@@ -222,7 +223,7 @@ export async function POST(req: NextRequest) {
           action: 'METER_WRITE',
           user: user.email,
           details: JSON.stringify({
-            assetNo: device.assetNo,
+            assetCode: device.assetCode,
             meterBw,
             meterColor,
             prevMeterBw,
@@ -241,14 +242,14 @@ export async function POST(req: NextRequest) {
 
     // ── Best-effort: notification + realtime push ─────────────────────
     void notifyMeter({
-      assetNo: device.assetNo,
+      assetCode: device.assetCode,
       pagesBw,
       pagesColor,
       by: user.username || user.email,
     })
     publishRealtimeEvent({
       type: 'meter-written',
-      assetNo: device.assetNo,
+      assetCode: device.assetCode,
       site: device.site ?? null,
       payload: { pagesBw, pagesColor, reset: isReset },
     })

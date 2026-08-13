@@ -81,18 +81,19 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    if (!body.assetNo) {
+    if (!body.assetCode) {
       const { badRequest } = await import('@/lib/api/response')
-      return badRequest('assetNo เป็นฟิลด์ที่ต้องการ', { field: 'assetNo' })
+      return badRequest('assetCode เป็นฟิลด์ที่ต้องการ', { field: 'assetCode' })
     }
 
     const created = await db.device.create({
       data: {
-        assetNo: String(body.assetNo).trim(),
-        deviceType: body.deviceType ?? null,
+        assetCode: String(body.assetCode).trim(),
+        name: body.name || String(body.assetCode).trim(),
+        type: body.type ?? null,
         brand: body.brand ?? null,
         model: body.model ?? null,
-        serial: body.serial ?? null,
+        serialNumber: body.serialNumber ?? null,
         building: body.building ?? null,
         floor: body.floor ?? null,
         department: body.department ?? null,
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest) {
         site: body.site ?? null,
         meterRequired: Boolean(body.meterRequired),
         meterMode: body.meterMode ?? null,
-        installDate: body.installDate ?? null,
+        purchaseDate: body.purchaseDate ?? null,
         warrantyEnd: body.warrantyEnd ?? null,
         deviceGroup: body.deviceGroup ?? null,
         costCenter: body.costCenter ?? null,
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
         timestamp: new Date().toISOString(),
         action: 'CREATE',
         user: auth.ctx.user.email,
-        details: JSON.stringify({ entity: 'Device', assetNo: created.assetNo, ...body }),
+        details: JSON.stringify({ entity: 'Device', assetCode: created.assetCode, ...body }),
       },
     })
 
@@ -124,7 +125,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const { conflict, serverError } = await import('@/lib/api/response')
     if (err instanceof Error && err.message.includes('unique')) {
-      return conflict('assetNo นี้มีอยู่แล้วในระบบ', { code: 'DUPLICATE_ASSET_NO', field: 'assetNo' })
+      return conflict('assetCode นี้มีอยู่แล้วในระบบ', { code: 'DUPLICATE_ASSET_NO', field: 'assetCode' })
     }
     console.error('POST /api/v1/devices', err)
     return serverError()

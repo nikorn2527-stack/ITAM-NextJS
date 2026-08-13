@@ -15,16 +15,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Gauge, RefreshCw, ChevronLeft, ChevronRight, ClipboardList, Loader2, AlertTriangle } from 'lucide-react'
 
 interface Reading {
-  id: string; assetNo: string; readingDate: string | null; readingMonth: string | null
+  id: string; assetCode: string; readingDate: string | null; readingMonth: string | null
   meterBw: number; meterColor: number; pagesBw: number; pagesColor: number
   prevMeterBw: number; remark: string | null; readBy: string | null
-  device?: { assetNo: string; brand: string | null; model: string | null; site: string | null }
+  device?: { assetCode: string; brand: string | null; model: string | null; site: string | null }
 }
 interface ReadingsResponse {
   readings: Reading[]; pagination: { page: number; limit: number; total: number; totalPages: number }
 }
 interface Device {
-  id: string; assetNo: string; deviceType: string | null; brand: string | null; model: string | null
+  id: string; assetCode: string; type: string | null; brand: string | null; model: string | null
   site: string | null; meterRequired: boolean; status: string
 }
 interface DevicesResponse {
@@ -40,7 +40,7 @@ export function ItamMeter() {
   const [page, setPage] = React.useState(1)
   const [limit] = React.useState(20)
   const [dialogOpen, setDialogOpen] = React.useState(false)
-  const [assetNo, setAssetNo] = React.useState('')
+  const [assetCode, setAssetCode] = React.useState('')
   const [meterBw, setMeterBw] = React.useState('')
   const [remark, setRemark] = React.useState('')
   const [saving, setSaving] = React.useState(false)
@@ -58,20 +58,20 @@ export function ItamMeter() {
   })
 
   async function saveReading() {
-    if (!assetNo || !meterBw) { toast.error('กรุณากรอกรหัสอุปกรณ์และค่ามิเตอร์'); return }
+    if (!assetCode || !meterBw) { toast.error('กรุณากรอกรหัสอุปกรณ์และค่ามิเตอร์'); return }
     try {
       setSaving(true)
       const res = await fetch('/api/itam/meter-readings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assetNo, meterBw: Number(meterBw), remark: remark || null }),
+        body: JSON.stringify({ assetCode, meterBw: Number(meterBw), remark: remark || null }),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error || 'Failed')
       }
       toast.success('บันทึกมิเตอร์แล้ว')
-      setDialogOpen(false); setAssetNo(''); setMeterBw(''); setRemark('')
+      setDialogOpen(false); setAssetCode(''); setMeterBw(''); setRemark('')
       await qc.invalidateQueries({ queryKey: ['itam-readings'] })
       await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
     } catch (e) {
@@ -136,7 +136,7 @@ export function ItamMeter() {
                   readings.map((r) => (
                     <TableRow key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                       <TableCell className="text-xs text-slate-500">{r.readingDate?.substring(0, 16) || '—'}</TableCell>
-                      <TableCell className="font-mono text-xs font-medium">{r.assetNo}</TableCell>
+                      <TableCell className="font-mono text-xs font-medium">{r.assetCode}</TableCell>
                       <TableCell className="text-xs">{r.device ? `${r.device.brand || ''} ${r.device.model || ''}` : '—'}</TableCell>
                       <TableCell className="text-right font-mono text-xs tabular-nums">{r.meterBw.toLocaleString()}</TableCell>
                       <TableCell className="text-right">
@@ -185,7 +185,7 @@ export function ItamMeter() {
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label className="text-xs">รหัสอุปกรณ์ *</Label>
-              <Input value={assetNo} onChange={(e) => setAssetNo(e.target.value)} placeholder="เช่น 100" className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input value={assetCode} onChange={(e) => setAssetCode(e.target.value)} placeholder="เช่น 100" className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">ค่ามิเตอร์ (ขาวดำ) *</Label>
@@ -249,24 +249,24 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
     setLastReadingsLoaded(false)
     Promise.all(
       eligibleDevices.map(d =>
-        fetch(`/api/itam/meter-readings?assetNo=${encodeURIComponent(d.assetNo)}&limit=1`)
+        fetch(`/api/itam/meter-readings?assetCode=${encodeURIComponent(d.assetCode)}&limit=1`)
           .then(r => r.ok ? r.json() : null)
           .then(j => {
             const r = j?.readings?.[0]
-            lastReadingsMap.current[d.assetNo] = r ? r.meterBw : 0
+            lastReadingsMap.current[d.assetCode] = r ? r.meterBw : 0
           })
-          .catch(() => { lastReadingsMap.current[d.assetNo] = 0 }),
+          .catch(() => { lastReadingsMap.current[d.assetCode] = 0 }),
       ),
     ).then(() => {
       if (cancelled) return
       const init: Record<string, { newReading: string; remark: string; prev: number; name: string }> = {}
       for (const d of eligibleDevices) {
-        const prev = lastReadingsMap.current[d.assetNo] ?? 0
-        init[d.assetNo] = {
+        const prev = lastReadingsMap.current[d.assetCode] ?? 0
+        init[d.assetCode] = {
           newReading: String(prev),
           remark: '',
           prev,
-          name: `${d.brand || ''} ${d.model || ''}`.trim() || d.assetNo,
+          name: `${d.brand || ''} ${d.model || ''}`.trim() || d.assetCode,
         }
       }
       setRows(init)
@@ -275,14 +275,14 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
     return () => { cancelled = true }
   }, [open, eligibleDevices])
 
-  function updateRow(assetNo: string, patch: Partial<{ newReading: string; remark: string }>) {
-    setRows(prev => ({ ...prev, [assetNo]: { ...prev[assetNo], ...patch } }))
+  function updateRow(assetCode: string, patch: Partial<{ newReading: string; remark: string }>) {
+    setRows(prev => ({ ...prev, [assetCode]: { ...prev[assetCode], ...patch } }))
   }
 
   const rowMeta = React.useMemo(() => {
-    const arr: Array<{ assetNo: string; name: string; prev: number; next: number | null; delta: number; changed: boolean; valid: boolean; isReset: boolean }> = []
+    const arr: Array<{ assetCode: string; name: string; prev: number; next: number | null; delta: number; changed: boolean; valid: boolean; isReset: boolean }> = []
     for (const d of eligibleDevices) {
-      const r = rows[d.assetNo]
+      const r = rows[d.assetCode]
       if (!r) continue
       const trimmed = (r.newReading ?? '').trim()
       const nextNum = trimmed === '' ? null : Number(trimmed)
@@ -291,7 +291,7 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
       const isReset = next !== null && next < r.prev
       const changed = next !== null && next !== r.prev
       const valid = next !== null && !(isReset && !r.remark.trim())
-      arr.push({ assetNo: d.assetNo, name: r.name, prev: r.prev, next, delta, changed, valid, isReset })
+      arr.push({ assetCode: d.assetCode, name: r.name, prev: r.prev, next, delta, changed, valid, isReset })
     }
     return arr
   }, [eligibleDevices, rows])
@@ -311,11 +311,11 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              assetNo: m.assetNo,
+              assetCode: m.assetCode,
               meterBw: m.next,
               prevMeterBw: m.prev,
               readingDate,
-              remark: rows[m.assetNo]?.remark?.trim() || null,
+              remark: rows[m.assetCode]?.remark?.trim() || null,
             }),
           }).then(async res => {
             if (!res.ok) {
@@ -406,16 +406,16 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                         : 'bg-emerald-50/40 dark:bg-emerald-950/15'
                       : ''
                     return (
-                      <TableRow key={m.assetNo} className={rowBg}>
-                        <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">{m.assetNo}</TableCell>
+                      <TableRow key={m.assetCode} className={rowBg}>
+                        <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">{m.assetCode}</TableCell>
                         <TableCell className="max-w-[180px] truncate text-xs text-slate-700 dark:text-slate-200">{m.name}</TableCell>
                         <TableCell className="text-right font-mono tabular-nums text-xs text-slate-600 dark:text-slate-300">{m.prev.toLocaleString()}</TableCell>
                         <TableCell className="text-right">
                           <Input
                             type="number"
                             inputMode="numeric"
-                            value={rows[m.assetNo]?.newReading ?? ''}
-                            onChange={(e) => updateRow(m.assetNo, { newReading: e.target.value })}
+                            value={rows[m.assetCode]?.newReading ?? ''}
+                            onChange={(e) => updateRow(m.assetCode, { newReading: e.target.value })}
                             className={
                               'ml-auto w-28 text-right ' +
                               (m.isReset
@@ -445,21 +445,21 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                         <TableCell>
                           {m.isReset ? (
                             <Textarea
-                              value={rows[m.assetNo]?.remark ?? ''}
-                              onChange={(e) => updateRow(m.assetNo, { remark: e.target.value })}
+                              value={rows[m.assetCode]?.remark ?? ''}
+                              onChange={(e) => updateRow(m.assetCode, { remark: e.target.value })}
                               placeholder="เหตุผลที่ค่าลดลง (RESET) *"
                               rows={1}
                               className={
                                 'min-h-[36px] text-xs ' +
-                                (!rows[m.assetNo]?.remark?.trim()
+                                (!rows[m.assetCode]?.remark?.trim()
                                   ? 'border-amber-400 dark:border-amber-600'
                                   : 'dark:bg-slate-800 dark:border-slate-700')
                               }
                             />
                           ) : (
                             <Input
-                              value={rows[m.assetNo]?.remark ?? ''}
-                              onChange={(e) => updateRow(m.assetNo, { remark: e.target.value })}
+                              value={rows[m.assetCode]?.remark ?? ''}
+                              onChange={(e) => updateRow(m.assetCode, { remark: e.target.value })}
                               placeholder="หมายเหตุ (ถ้ามี)"
                               className="h-8 text-xs dark:bg-slate-800 dark:border-slate-700"
                             />

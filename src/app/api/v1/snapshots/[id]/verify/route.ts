@@ -25,10 +25,17 @@ export async function POST(
     // The verify function takes a cycleMonth, but we accept snapshotId/cuid here.
     // Resolve the cycleMonth from the snapshot first.
     const { db } = await import('@/lib/db')
-    const snapshot = await db.meterReportSnapshot.findFirst({
-      where: { OR: [{ snapshotId: id }, { id }] },
-      select: { cycleMonth: true },
-    })
+    let snapshot: { cycleMonth: string } | null = null
+    try {
+      // TODO: meterReportSnapshot table removed — feature disabled
+      snapshot = await db.meterReportSnapshot.findFirst({
+        where: { OR: [{ snapshotId: id }, { id }] },
+        select: { cycleMonth: true },
+      })
+    } catch {
+      // TODO: meterReportSnapshot table removed — feature disabled
+      return notFound('snapshot')
+    }
     if (!snapshot) return notFound('snapshot')
 
     const result = await verifyMeterReportSnapshot(snapshot.cycleMonth)
