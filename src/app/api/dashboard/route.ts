@@ -1,8 +1,27 @@
+// ============================================================
+// Dashboard API (Task ID: RBAC-DASHBOARD)
+// ============================================================
+// GET /api/dashboard
+//   คืนข้อมูลจริงรวมจากทั้ง 3 ระบบ (Devices / WorkOrders / Stock)
+//   บวก alert lists (low stock / pending WO / expiring warranty)
+//
+// Response shape (see task spec):
+//   {
+//     devices:    { total, active, byType[], bySite[] },
+//     workOrders: { total, pending, inProgress, waitingParts, completed,
+//                   cancelled, byPriority[], recent[], avgRating },
+//     stock:      { totalItems, lowStock, totalValue, pendingApprovals,
+//                   recentTransactions[] },
+//     alerts:     { lowStockItems[], pendingWOs[], expiringWarranties[] }
+//   }
+// ============================================================
+
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { bucketizeStatusGroups } from '@/lib/status-utils'
 
-type RangeKey = 'month' | '30d' | 'quarter' | 'all'
+// 30 days from now in ms — for "expiring warranty" + "pending > 24h" alerts
+const DAY_MS = 24 * 60 * 60 * 1000
 
 interface RangeInfo {
   key: RangeKey
@@ -70,11 +89,10 @@ function readingDateWhere(range: RangeInfo): Record<string, unknown> {
 //   6. Status classification uses shared status-utils.ts (consistent with ITAM dashboard)
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url)
-    const rawRange = (searchParams.get('range')?.trim() ?? 'month') as RangeKey
-    const range: RangeInfo = ['month', '30d', 'quarter', 'all'].includes(rawRange)
-      ? computeRange(rawRange)
-      : computeRange('month')
+    const now = Date.now()
+    const todayISO = new Date().toISOString().slice(0, 10)
+    const in30Days = new Date(now + 30 * DAY_MS).toISOString().slice(0, 10)
+    const yesterday = new Date(now - DAY_MS)
 
     const readingWhere = readingDateWhere(range)
 
@@ -177,18 +195,45 @@ export async function GET(req: NextRequest) {
     const paperUsage = (paperAgg._sum.pagesBw ?? 0) + (paperAgg._sum.pagesColor ?? 0)
 
     return NextResponse.json({
-      totals: { total, active, spare, repair },
-      byStatus,
-      byType,
-      topUsage,
-      recentActivity,
-      paperThisMonth: paperUsage,
-      range,
+      devices: {
+        total: devicesTotal,
+        active: devicesActive,
+        byType: devicesByType,
+        bySite: devicesBySite,
+      },
+      workOrders: {
+        total: woTotal,
+        pending: woPending,
+        inProgress: woInProgress,
+        waitingParts: woWaitingParts,
+        completed: woCompleted,
+        cancelled: woCancelled,
+        byPriority: woByPriority,
+        recent: woRecent,
+        avgRating: Number(avgRating.toFixed(2)),
+      },
+      stock: {
+        totalItems: stockTotalItems,
+        lowStock: stockLowStock,
+        totalValue: stockTotalValue,
+        pendingApprovals: stockPendingApprovals,
+        recentTransactions: stockRecentTransactions,
+      },
+      alerts: {
+        lowStockItems,
+        pendingWOs,
+        expiringWarranties,
+      },
+      meta: {
+        generatedAt: new Date().toISOString(),
+      },
     })
   } catch (err) {
     console.error('GET /api/dashboard', err)
     return NextResponse.json(
-      { error: 'Failed to fetch dashboard' },
+      {
+        error: err instanceof Error ? err.message : 'Failed to fetch dashboard',
+      },
       { status: 500 },
     )
   }

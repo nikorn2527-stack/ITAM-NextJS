@@ -25,6 +25,30 @@ function optInt(v: unknown): number | null {
   return Math.max(1, Math.round(n))
 }
 
+/** Trim a string field, returning null when empty/missing. */
+function optStr(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null
+  return String(v).trim()
+}
+
+/** Parse a boolean field; returns false when missing/invalid. */
+function optBool(v: unknown): boolean {
+  if (v === true || v === 'true' || v === 1 || v === 'TRUE' || v === 'True') return true
+  return false
+}
+
+/** Helper: write a string field only when present in body. */
+function setStr(field: string, body: Record<string, unknown>) {
+  if (body[field] === undefined) return undefined
+  return optStr(body[field])
+}
+
+/** Helper: write a boolean field only when present in body. */
+function setBool(field: string, body: Record<string, unknown>) {
+  if (body[field] === undefined) return undefined
+  return optBool(body[field])
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -56,8 +80,23 @@ const EDITABLE_FIELDS = [
   'parentRef',
   'displayLabel',
   'location',
+  'building',
+  'floor',
+  'room',
+  'ip',
+  'mac',
+  'remoteId',
   'purchaseDate',
   'warrantyMonths',
+  'warrantyEnd',
+  'vendor',
+  'contractNo',
+  'uninstallDate',
+  'meterRequired',
+  'meterMode',
+  'costCenter',
+  'deviceGroup',
+  'remark',
   'lastMeterReading',
   'purchasePrice',
   'salvageValue',
@@ -70,7 +109,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    const body = await req.json()
+    const body = (await req.json()) as Record<string, unknown>
     const before = await db.device.findUnique({ where: { id } })
     if (!before) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -83,54 +122,34 @@ export async function PUT(
         brand: body.brand !== undefined ? String(body.brand).trim() : undefined,
         model: body.model !== undefined ? String(body.model).trim() : undefined,
         type: body.type !== undefined ? String(body.type).trim() : undefined,
-        serialNumber:
-          body.serialNumber !== undefined
-            ? body.serialNumber
-              ? String(body.serialNumber).trim()
-              : null
-            : undefined,
+        serialNumber: setStr('serialNumber', body),
         status: body.status !== undefined ? String(body.status).trim() : undefined,
         site: body.site !== undefined ? String(body.site).trim() : undefined,
-        department:
-          body.department !== undefined
-            ? body.department
-              ? String(body.department).trim()
-              : null
-            : undefined,
-        departmentCode:
-          body.departmentCode !== undefined
-            ? body.departmentCode
-              ? String(body.departmentCode).trim()
-              : null
-            : undefined,
-        parentRef:
-          body.parentRef !== undefined
-            ? body.parentRef
-              ? String(body.parentRef).trim()
-              : null
-            : undefined,
-        displayLabel:
-          body.displayLabel !== undefined
-            ? body.displayLabel
-              ? String(body.displayLabel).trim()
-              : null
-            : undefined,
-        location:
-          body.location !== undefined
-            ? body.location
-              ? String(body.location).trim()
-              : null
-            : undefined,
-        purchaseDate:
-          body.purchaseDate !== undefined
-            ? body.purchaseDate
-              ? String(body.purchaseDate).trim()
-              : null
-            : undefined,
+        department: setStr('department', body),
+        departmentCode: setStr('departmentCode', body),
+        parentRef: setStr('parentRef', body),
+        displayLabel: setStr('displayLabel', body),
+        location: setStr('location', body),
+        building: setStr('building', body),
+        floor: setStr('floor', body),
+        room: setStr('room', body),
+        ip: setStr('ip', body),
+        mac: setStr('mac', body),
+        remoteId: setStr('remoteId', body),
+        purchaseDate: setStr('purchaseDate', body),
         warrantyMonths:
           body.warrantyMonths !== undefined
             ? clampWarrantyMonths(body.warrantyMonths)
             : undefined,
+        warrantyEnd: setStr('warrantyEnd', body),
+        vendor: setStr('vendor', body),
+        contractNo: setStr('contractNo', body),
+        uninstallDate: setStr('uninstallDate', body),
+        meterRequired: setBool('meterRequired', body),
+        meterMode: setStr('meterMode', body),
+        costCenter: setStr('costCenter', body),
+        deviceGroup: setStr('deviceGroup', body),
+        remark: setStr('remark', body),
         lastMeterReading:
           typeof body.lastMeterReading === 'number'
             ? body.lastMeterReading

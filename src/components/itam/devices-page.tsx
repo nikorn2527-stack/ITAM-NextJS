@@ -72,6 +72,7 @@ import {
 import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
+import { QrCode, ScanLine } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { useAppStore } from '@/store/app-store'
 
@@ -109,11 +110,31 @@ interface FormState {
   parentRef: string
   displayLabel: string
   location: string
+  // ── ข้อมูลที่ตั้ง ──
+  building: string
+  floor: string
+  room: string
+  // ── เครือข่าย ──
+  ip: string
+  mac: string
+  remoteId: string
+  // ── การซื้อ/รับประกัน ──
   purchaseDate: string
   warrantyMonths: string
   purchasePrice: string
   salvageValue: string
   usefulLife: string
+  warrantyEnd: string
+  vendor: string
+  contractNo: string
+  uninstallDate: string
+  // ── มิเตอร์ ──
+  meterRequired: boolean
+  meterMode: string
+  // ── อื่นๆ ──
+  costCenter: string
+  deviceGroup: string
+  remark: string
 }
 
 const EMPTY_FORM: FormState = {
@@ -130,12 +151,32 @@ const EMPTY_FORM: FormState = {
   parentRef: '',
   displayLabel: '',
   location: '',
+  building: '',
+  floor: '',
+  room: '',
+  ip: '',
+  mac: '',
+  remoteId: '',
   purchaseDate: '',
   warrantyMonths: '12',
   purchasePrice: '',
   salvageValue: '0',
   usefulLife: '60',
+  warrantyEnd: '',
+  vendor: '',
+  contractNo: '',
+  uninstallDate: '',
+  meterRequired: false,
+  meterMode: 'TOTAL',
+  costCenter: '',
+  deviceGroup: '',
+  remark: '',
 }
+
+const METER_MODE_OPTIONS = [
+  { value: 'TOTAL', label: 'TOTAL (รวม)' },
+  { value: 'BW_COLOR', label: 'BW_COLOR (ขาวดำ / สี)' },
+] as const
 
 const WARRANTY_FILTER_OPTIONS = [
   { value: 'all', label: 'รับประกันทั้งหมด' },
@@ -310,6 +351,12 @@ export function DevicesPage() {
       parentRef: d.parentRef ?? '',
       displayLabel: d.displayLabel ?? '',
       location: d.location ?? '',
+      building: d.building ?? '',
+      floor: d.floor ?? '',
+      room: d.room ?? '',
+      ip: d.ip ?? '',
+      mac: d.mac ?? '',
+      remoteId: d.remoteId ?? '',
       purchaseDate: d.purchaseDate ?? '',
       warrantyMonths: String(d.warrantyMonths ?? 12),
       purchasePrice:
@@ -324,6 +371,15 @@ export function DevicesPage() {
         d.usefulLife !== null && d.usefulLife !== undefined
           ? String(d.usefulLife)
           : '60',
+      warrantyEnd: d.warrantyEnd ?? '',
+      vendor: d.vendor ?? '',
+      contractNo: d.contractNo ?? '',
+      uninstallDate: d.uninstallDate ?? '',
+      meterRequired: Boolean(d.meterRequired),
+      meterMode: d.meterMode ?? 'TOTAL',
+      costCenter: d.costCenter ?? '',
+      deviceGroup: d.deviceGroup ?? '',
+      remark: d.remark ?? '',
     })
     setDialogOpen(true)
   }
@@ -343,6 +399,12 @@ export function DevicesPage() {
         parentRef: form.parentRef || null,
         displayLabel: form.displayLabel || null,
         location: form.location || null,
+        building: form.building || null,
+        floor: form.floor || null,
+        room: form.room || null,
+        ip: form.ip || null,
+        mac: form.mac || null,
+        remoteId: form.remoteId || null,
         purchaseDate: form.purchaseDate || null,
         warrantyMonths: Number(form.warrantyMonths) || 12,
         purchasePrice:
@@ -351,6 +413,15 @@ export function DevicesPage() {
           form.salvageValue === '' ? 0 : Number(form.salvageValue),
         usefulLife:
           form.usefulLife === '' ? null : Number(form.usefulLife),
+        warrantyEnd: form.warrantyEnd || null,
+        vendor: form.vendor || null,
+        contractNo: form.contractNo || null,
+        uninstallDate: form.uninstallDate || null,
+        meterRequired: Boolean(form.meterRequired),
+        meterMode: form.meterMode || null,
+        costCenter: form.costCenter || null,
+        deviceGroup: form.deviceGroup || null,
+        remark: form.remark || null,
       }
       const isEdit = Boolean(form.id)
       const url = isEdit ? `/api/devices/${form.id}` : '/api/devices'
@@ -578,11 +649,25 @@ export function DevicesPage() {
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
-                  placeholder="ค้นหารหัส / ชื่อ / SN / แบรนด์..."
+                  placeholder="ค้นหา Serial / รหัส / ตึก / ชั้น / หน่วยงาน / แบรนด์..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
+                  onKeyDown={(e) => {
+                    // Enter key triggers search (already debounced but this gives immediate feedback)
+                    if (e.key === 'Enter') setSearch((e.target as HTMLInputElement).value)
+                  }}
                 />
+                {/* Quick scan button — opens QR/barcode scanner */}
+                <button
+                  type="button"
+                  onClick={() => useAppStore.getState().setQrScannerOpen(true)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#f97316] dark:hover:bg-slate-800"
+                  title="สแกน QR / บาร์โค้ด"
+                  aria-label="สแกน QR / บาร์โค้ด"
+                >
+                  <ScanLine className="h-4 w-4" />
+                </button>
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-40">
@@ -795,6 +880,7 @@ export function DevicesPage() {
                     </TableHead>
                   )}
                   <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">Serial No.</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">แบรนด์</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">รุ่น</TableHead>
@@ -812,14 +898,14 @@ export function DevicesPage() {
                 {isLoading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <TableRow key={`sk-${i}`}>
-                      <TableCell colSpan={13}>
+                      <TableCell colSpan={14}>
                         <Skeleton className="h-6 w-full dark:bg-slate-800" />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (devices ?? []).length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={13} className="py-12">
+                    <TableCell colSpan={14} className="py-12">
                       <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
                         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
                           <PackageOpen className="h-7 w-7 text-slate-300 dark:text-slate-600" />
@@ -890,6 +976,9 @@ export function DevicesPage() {
                       </TableCell>
                       <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">
                         {d.assetCode}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
+                        {d.serialNumber || <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate text-slate-700 dark:text-slate-200">
                         {d.name}
@@ -1187,6 +1276,190 @@ export function DevicesPage() {
                 }
               />
             </Field>
+          </div>
+
+          {/* Location section — building/floor/room */}
+          <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/30">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+              📍 ข้อมูลที่ตั้ง
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="อาคาร (Building)">
+                <Input
+                  value={form.building}
+                  onChange={(e) =>
+                    setForm({ ...form, building: e.target.value })
+                  }
+                  placeholder="เช่น อาคาร A"
+                />
+              </Field>
+              <Field label="ชั้น (Floor)">
+                <Input
+                  value={form.floor}
+                  onChange={(e) => setForm({ ...form, floor: e.target.value })}
+                  placeholder="เช่น 3"
+                />
+              </Field>
+              <Field label="ห้อง (Room)">
+                <Input
+                  value={form.room}
+                  onChange={(e) => setForm({ ...form, room: e.target.value })}
+                  placeholder="เช่น 301"
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* Network section — ip / mac / remoteId */}
+          <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/30">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+              🌐 เครือข่าย
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="IP Address">
+                <Input
+                  value={form.ip}
+                  onChange={(e) => setForm({ ...form, ip: e.target.value })}
+                  placeholder="192.168.1.10"
+                />
+              </Field>
+              <Field label="MAC Address">
+                <Input
+                  value={form.mac}
+                  onChange={(e) => setForm({ ...form, mac: e.target.value })}
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                />
+              </Field>
+              <Field label="Remote ID (TeamViewer/AnyDesk)">
+                <Input
+                  value={form.remoteId}
+                  onChange={(e) =>
+                    setForm({ ...form, remoteId: e.target.value })
+                  }
+                  placeholder="เช่น 123 456 789"
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* Purchase / Warranty section */}
+          <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/30">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+              🧾 การซื้อ / รับประกัน
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="ผู้ขาย (Vendor)">
+                <Input
+                  value={form.vendor}
+                  onChange={(e) =>
+                    setForm({ ...form, vendor: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="เลขที่สัญญา (Contract No)">
+                <Input
+                  value={form.contractNo}
+                  onChange={(e) =>
+                    setForm({ ...form, contractNo: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="วันหมดประกัน (Warranty End)">
+                <Input
+                  type="date"
+                  value={form.warrantyEnd}
+                  onChange={(e) =>
+                    setForm({ ...form, warrantyEnd: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="วันที่ถอดถอน (Uninstall Date)">
+                <Input
+                  type="date"
+                  value={form.uninstallDate}
+                  onChange={(e) =>
+                    setForm({ ...form, uninstallDate: e.target.value })
+                  }
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* Meter section */}
+          <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/30">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+              ⚙️ มิเตอร์
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-center">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="meterRequired"
+                  checked={form.meterRequired}
+                  onCheckedChange={(v) =>
+                    setForm({ ...form, meterRequired: v === true })
+                  }
+                  className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600"
+                />
+                <Label
+                  htmlFor="meterRequired"
+                  className="text-xs font-medium text-slate-600 dark:text-slate-300"
+                >
+                  ต้องจดมิเตอร์ (Meter Required)
+                </Label>
+              </div>
+              <Field label="โหมดมิเตอร์ (Meter Mode)">
+                <Select
+                  value={form.meterMode}
+                  onValueChange={(v) => setForm({ ...form, meterMode: v })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {METER_MODE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+          </div>
+
+          {/* Other section — costCenter / deviceGroup / remark */}
+          <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/30">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+              📝 อื่นๆ
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="ศูนย์ต้นทุน (Cost Center)">
+                <Input
+                  value={form.costCenter}
+                  onChange={(e) =>
+                    setForm({ ...form, costCenter: e.target.value })
+                  }
+                />
+              </Field>
+              <Field label="กลุ่มอุปกรณ์ (Device Group)">
+                <Input
+                  value={form.deviceGroup}
+                  onChange={(e) =>
+                    setForm({ ...form, deviceGroup: e.target.value })
+                  }
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <Field label="หมายเหตุ (Remark)">
+                  <Input
+                    value={form.remark}
+                    onChange={(e) =>
+                      setForm({ ...form, remark: e.target.value })
+                    }
+                  />
+                </Field>
+              </div>
+            </div>
           </div>
 
           {/* Financial section — depreciation tracking */}

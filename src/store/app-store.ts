@@ -5,6 +5,10 @@ export type ActivePage =
   | 'devices'
   | 'meter'
   | 'paper-analytics'
+  | 'work-orders'
+  | 'stock'
+  | 'import'
+  | 'templates'
   | 'settings'
   | 'itam'
   | 'itam-devices'
@@ -33,14 +37,17 @@ interface AppState {
   pendingWarrantyFilter: 'expiring' | 'expired' | null
   /** A meter-page action to auto-run on mount (e.g. 'open-cycle' opens the cycle dialog). */
   pendingMeterAction: string | null
-  /** A device-type filter applied to the ITAM devices page on mount (set by dashboard chart click). */
-  pendingDeviceType: string | null
-  /** A status filter applied to the ITAM devices page on mount (set by dashboard donut click). */
-  pendingDeviceStatus: string | null
   /** Set true to open the global search palette from anywhere. */
   searchOpen: boolean
-  /** Set true to open the QR scanner dialog from anywhere. */
+  /** Set true to open the global QR/barcode scanner dialog. */
   qrScannerOpen: boolean
+  /**
+   * The last scanned QR/barcode value plus a monotonically-increasing
+   * `nonce` so consumers can react even when the same code is scanned twice
+   * in a row. Use `qrScanNonce` in deps to detect new scans.
+   */
+  lastQrScan: string | null
+  qrScanNonce: number
   setActivePage: (page: ActivePage) => void
   toggleSidebar: () => void
   closeSidebar: () => void
@@ -52,12 +59,12 @@ interface AppState {
   clearPendingWarrantyFilter: () => void
   setPendingMeterAction: (action: string | null) => void
   clearPendingMeterAction: () => void
-  setPendingDeviceType: (t: string | null) => void
-  clearPendingDeviceType: () => void
-  setPendingDeviceStatus: (s: string | null) => void
-  clearPendingDeviceStatus: () => void
   setSearchOpen: (open: boolean) => void
   setQrScannerOpen: (open: boolean) => void
+  /** Publish a scanned value (also bumps the nonce). */
+  publishQrScan: (value: string) => void
+  /** Clear the last scanned value (does not affect nonce). */
+  clearLastQrScan: () => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -67,10 +74,10 @@ export const useAppStore = create<AppState>((set) => ({
   pendingSettingsTab: null,
   pendingWarrantyFilter: null,
   pendingMeterAction: null,
-  pendingDeviceType: null,
-  pendingDeviceStatus: null,
   searchOpen: false,
   qrScannerOpen: false,
+  lastQrScan: null,
+  qrScanNonce: 0,
   setActivePage: (page) => set({ activePage: page }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   closeSidebar: () => set({ sidebarOpen: false }),
@@ -82,10 +89,13 @@ export const useAppStore = create<AppState>((set) => ({
   clearPendingWarrantyFilter: () => set({ pendingWarrantyFilter: null }),
   setPendingMeterAction: (action) => set({ pendingMeterAction: action }),
   clearPendingMeterAction: () => set({ pendingMeterAction: null }),
-  setPendingDeviceType: (t) => set({ pendingDeviceType: t }),
-  clearPendingDeviceType: () => set({ pendingDeviceType: null }),
-  setPendingDeviceStatus: (s) => set({ pendingDeviceStatus: s }),
-  clearPendingDeviceStatus: () => set({ pendingDeviceStatus: null }),
   setSearchOpen: (open) => set({ searchOpen: open }),
   setQrScannerOpen: (open) => set({ qrScannerOpen: open }),
+  publishQrScan: (value) =>
+    set((s) => ({
+      lastQrScan: value,
+      qrScanNonce: s.qrScanNonce + 1,
+      qrScannerOpen: false,
+    })),
+  clearLastQrScan: () => set({ lastQrScan: null }),
 }))
