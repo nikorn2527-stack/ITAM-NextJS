@@ -667,3 +667,22 @@ model Report {
   format   String   @default("json")
   createdAt DateTime @default(now())
 }
+
+// ============================================================
+// 29) PasswordResetToken — token สำหรับ register / reset / invite
+//     type: 'register' (Method 2 invite) | 'reset' (forgot password) | 'invite'
+//     data: JSON string with { name, phone, department, roleRequest } (for register)
+// ============================================================
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String   // user email
+  token     String   @unique // random UUID
+  type      String   // 'register' | 'reset' | 'invite'
+  data      String?  // JSON: { name, phone, department, roleRequest } for registration
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([token])
+}

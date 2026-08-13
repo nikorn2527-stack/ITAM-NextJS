@@ -7048,3 +7048,46 @@ Stage Summary:
 - ตั้งค่า/ตกแต่งแอป ใช้งานได้จริง
 - จัดการอุปกรณ์ มี pagination + สูงขึ้น
 - หน้าต่างๆ พอดีหน้าจอ
+
+---
+Task ID: AUTH-REGISTER-RESET
+Agent: full-stack-developer — Registration + password reset system
+
+Work Log:
+- Added PasswordResetToken model to Prisma (token, type register|reset|invite, expiresAt, used, data JSON)
+- Prisma db push + generate completed successfully
+- Installed nodemailer@9.0.5 + @types/nodemailer@8.0.1
+- Implemented real sendEmail() in src/lib/notifications.ts using nodemailer (SMTP from AppSetting: smtpHost/Port/User/Pass/emailFrom)
+- Created src/lib/auth-email-templates.ts with 4 HTML email templates (register received, invite link, password reset, account approved) + admin notify text for Telegram
+- Created 5 public auth API routes:
+  • POST /api/auth/register — Method 1 registration request (creates active=false user, sends confirmation email + Telegram admin notify)
+  • POST /api/auth/request-invite — Method 2 invite link (24h expiry, sends email with link)
+  • GET /api/auth/verify-token — verify token validity (returns email, type, data)
+  • POST /api/auth/forgot-password — request reset (1h expiry, always returns ok for security)
+  • POST /api/auth/reset-password — set new password with token (verifies + marks used + updates passwordHash/Salt)
+- Created 3 admin API routes (all require USER_MANAGE permission):
+  • GET /api/itam/auth/pending — list active=false users
+  • POST /api/itam/auth/approve/[id] — set active=true + send approval email
+  • POST /api/itam/auth/reject/[id] — delete pending user (safety: only if active=false)
+- Updated src/components/itam/itam-login.tsx with 3 dialogs:
+  • "ขอเข้าใช้งาน" → RegisterDialog (Method 1) with name/email/phone/department/roleRequest/password/confirm
+  • "ลืมรหัสผ่าน" → ForgotPasswordDialog
+  • "รับลิงก์ลงทะเบียนทางอีเมล" → InviteDialog (Method 2)
+  • Auto-opens register dialog when ?register=1 in URL
+- Created src/components/itam/auth-register-page.tsx — registration page from invite email link (?token=xxx)
+- Created src/components/itam/auth-reset-page.tsx — password reset page from email link (?token=xxx)
+- Created src/components/itam/pending-users-section.tsx — admin tab showing pending users with approve/reject buttons
+- Added "👥 รออนุมัติ" tab to itam-settings.tsx (between "ข้อมูลมาตรฐาน" and "ตัวเลือกใบงาน")
+- Updated src/app/page.tsx with TokenRouter component — when ?token=xxx present, fetches token type and renders AuthRegisterPage (invite/register) or AuthResetPage (reset) directly, bypassing normal auth check
+- Email templates use HTML email shell with branded orange gradient header, Thai copy, and explicit expiry notices
+- SMTP fallback: when smtpHost is null or notifyEnabled=false, sendEmail() logs to console and API returns testLink in response; UI shows amber banner with the link for admin testing
+
+Stage Summary:
+- Method 1: Direct registration form on login page → creates active=false user → admin approves in settings → user gets email
+- Method 2: Email invite link → registration form pre-filled with email → creates active=false user → admin approves
+- Password reset: forgot password → email link (1h expiry) → set new password
+- Admin approval: settings → "👥 รออนุมัติ" tab → approve (set active=true + email user) or reject (delete user)
+- Real email sending via nodemailer (SMTP config from AppSetting: smtpHost/Port/User/Pass/emailFrom)
+- Fallback: log to console + return testLink in API response + show amber banner in UI for testing without SMTP
+- Build: ✓ Compiled successfully (DATABASE_URL=postgres... NEXTAUTH_SECRET=test JWT_SECRET=test npx next build)
+- All 16 new/modified files pass ESLint (remaining lint errors are pre-existing in unrelated files)

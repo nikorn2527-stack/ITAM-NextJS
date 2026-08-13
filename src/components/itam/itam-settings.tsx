@@ -13,12 +13,13 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users } from 'lucide-react'
 import { type MasterItem } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
 import { WoOptionsSection } from './wo-options-section'
 import { NotificationTemplatesSection } from './notification-templates-section'
+import { PendingUsersSection } from './pending-users-section'
 import { useAuthStore } from '@/store/auth-store'
 
 /** Build fetch headers with the user's JWT (if logged in). */
@@ -39,7 +40,7 @@ interface NotifySettings {
 
 export function ItamSettings() {
   const qc = useQueryClient()
-  const [tab, setTab] = React.useState<'master' | 'site-attributes' | 'sites' | 'notifications' | 'notification-templates' | 'customize' | 'contacts' | 'wo-options'>('master')
+  const [tab, setTab] = React.useState<'master' | 'site-attributes' | 'sites' | 'notifications' | 'notification-templates' | 'customize' | 'contacts' | 'wo-options' | 'pending'>('master')
   const [category, setCategory] = React.useState('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
@@ -186,6 +187,9 @@ export function ItamSettings() {
         <button onClick={() => setTab('master')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'master' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <Database className="mr-1 inline h-4 w-4" /> ข้อมูลมาตรฐาน
         </button>
+        <button onClick={() => setTab('pending')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'pending' ? 'border-amber-500 text-amber-600 dark:text-amber-300' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <Users className="mr-1 inline h-4 w-4" /> รออนุมัติ
+        </button>
         <button onClick={() => setTab('wo-options')} className={`px-4 py-2 text-sm font-semibold border-b-2 transition whitespace-nowrap ${tab === 'wo-options' ? 'border-[#f97316] text-[#f97316]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
           <ListChecks className="mr-1 inline h-4 w-4" /> ตัวเลือกใบงาน
         </button>
@@ -208,6 +212,8 @@ export function ItamSettings() {
           <Palette className="mr-1 inline h-4 w-4" /> ปรับแต่งแอป
         </button>
       </div>
+
+      {tab === 'pending' && <PendingUsersSection />}
 
       {tab === 'master' && (
         <>
