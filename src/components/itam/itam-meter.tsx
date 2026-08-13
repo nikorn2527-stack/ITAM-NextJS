@@ -18,6 +18,7 @@ interface Reading {
   id: string; assetCode: string; readingDate: string | null; readingMonth: string | null
   meterBw: number; meterColor: number; pagesBw: number; pagesColor: number
   prevMeterBw: number; remark: string | null; readBy: string | null
+  readingType?: string | null
   device?: { assetCode: string; brand: string | null; model: string | null; site: string | null }
 }
 interface ReadingsResponse {
@@ -33,6 +34,35 @@ interface DevicesResponse {
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
+}
+
+// Reading type → Thai label + badge class
+const READING_TYPE_LABELS: Record<string, string> = {
+  MONTHLY: 'ประจำเดือน',
+  INITIAL: 'เริ่มต้น',
+  FINAL: 'สิ้นสุด',
+  RESET: 'RESET',
+  CHECKOUT: 'เช็คเอาท์',
+  SEND_REPAIR: 'ส่งซ่อม',
+  RETURN: 'คืนเครื่อง',
+}
+const READING_TYPE_BADGES: Record<string, string> = {
+  MONTHLY: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  INITIAL: 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300',
+  FINAL: 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300',
+  RESET: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300',
+  CHECKOUT: 'border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300',
+  SEND_REPAIR: 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300',
+  RETURN: 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300',
+}
+
+function readingTypeBadge(type: string | null | undefined): { label: string; cls: string } {
+  if (!type) return { label: '—', cls: 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400' }
+  const upper = type.toUpperCase()
+  return {
+    label: READING_TYPE_LABELS[upper] ?? type,
+    cls: READING_TYPE_BADGES[upper] ?? 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400',
+  }
 }
 
 export function ItamMeter() {
@@ -112,8 +142,11 @@ export function ItamMeter() {
                   <TableHead>วันที่</TableHead>
                   <TableHead>รหัส</TableHead>
                   <TableHead>อุปกรณ์</TableHead>
+                  <TableHead className="text-right">ก่อนหน้า</TableHead>
                   <TableHead className="text-right">ค่ามิเตอร์</TableHead>
+                  <TableHead className="text-right">ส่วนต่าง</TableHead>
                   <TableHead className="text-right">ใช้ไป</TableHead>
+                  <TableHead>ประเภท</TableHead>
                   <TableHead>หมายเหตุ</TableHead>
                 </TableRow>
               </TableHeader>
@@ -126,27 +159,58 @@ export function ItamMeter() {
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-16 rounded-full ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-16 rounded-full ml-auto" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                     </TableRow>
                   ))
                 ) : readings.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="py-12 text-center text-slate-400 text-sm">ยังไม่มีข้อมูล</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="py-12 text-center text-slate-400 text-sm">ยังไม่มีข้อมูล</TableCell></TableRow>
                 ) : (
-                  readings.map((r) => (
+                  readings.map((r) => {
+                    const delta = r.meterBw - r.prevMeterBw
+                    const rt = readingTypeBadge(r.readingType)
+                    return (
                     <TableRow key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                       <TableCell className="text-xs text-slate-500">{r.readingDate?.substring(0, 16) || '—'}</TableCell>
                       <TableCell className="font-mono text-xs font-medium">{r.assetCode}</TableCell>
                       <TableCell className="text-xs">{r.device ? `${r.device.brand || ''} ${r.device.model || ''}` : '—'}</TableCell>
+                      <TableCell className="text-right font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
+                        {r.prevMeterBw.toLocaleString()}
+                      </TableCell>
                       <TableCell className="text-right font-mono text-xs tabular-nums">{r.meterBw.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">
+                        <Badge
+                          variant="outline"
+                          className={
+                            'tabular-nums ' +
+                            (delta < 0
+                              ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              : delta > 0
+                                ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300'
+                                : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400')
+                          }
+                          title={`${r.prevMeterBw.toLocaleString()} → ${r.meterBw.toLocaleString()} = ${delta >= 0 ? '+' : ''}${delta.toLocaleString()}`}
+                        >
+                          {delta >= 0 ? '+' : ''}{delta.toLocaleString()}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-right">
                         <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                           {(r.pagesBw + r.pagesColor).toLocaleString()} แผ่น
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={rt.cls}>
+                          {rt.label}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-xs text-slate-400">{r.remark || '—'}</TableCell>
                     </TableRow>
-                  ))
+                    )
+                  })
                 )}
               </TableBody>
             </Table>

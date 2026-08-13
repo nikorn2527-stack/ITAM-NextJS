@@ -223,17 +223,17 @@ export function Sidebar() {
   // - Icons larger: text-lg when collapsed
   const renderContent = (expanded: boolean) => (
     <>
-      {/* ── Header ──
-          Compact header: logo (+ realtime dot when collapsed) + (appName/tagline when expanded).
-          Quick actions (Search + QR) live in the header row when expanded.
-          When collapsed, only the logo + a tiny realtime dot are shown to save space. */}
+      {/* ── Header (top section) ──
+          Logo + app name + bell (notifications) + theme toggle.
+          These are small icon buttons that fit nicely in 56px when collapsed.
+          When collapsed, icons stack vertically; when expanded they sit in a row. */}
       <div
         className={cn(
           'flex flex-col gap-2 border-b border-slate-200 dark:border-white/10',
           expanded ? 'px-3 py-3' : 'px-0 py-2',
         )}
       >
-        {/* Logo + app name row (+ realtime dot when collapsed) */}
+        {/* Logo + app name row */}
         <div
           className={cn(
             'flex items-center gap-2',
@@ -285,7 +285,7 @@ export function Sidebar() {
               'flex flex-shrink-0 items-center justify-center',
               expanded
                 ? 'h-8 w-8 rounded-md border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5'
-                : 'h-3 w-3',
+                : 'hidden',
             )}
           >
             <span
@@ -302,50 +302,38 @@ export function Sidebar() {
           </div>
         </div>
 
-        {/* Quick actions row — Search + QR (only when expanded; when collapsed,
-            the user hovers to expand and these appear). */}
-        {expanded && (
-          <div className="flex items-center gap-1.5">
-            {/* Global search button */}
-            <button
-              type="button"
-              onClick={() => {
-                closeSidebar()
-                setSearchOpen(true)
-              }}
-              aria-label="ค้นหาทั่วระบบ"
-              title="ค้นหาทั่วระบบ (Ctrl+K)"
-              className="group flex flex-1 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-white/20 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]"
-            >
-              <Search className="h-3.5 w-3.5 flex-shrink-0 text-slate-400 transition-colors group-hover:text-slate-900 dark:group-hover:text-white" />
-              <span className="flex-1 whitespace-nowrap text-left text-xs">ค้นหา...</span>
-              <kbd
-                className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-400 dark:border-white/10 dark:bg-white/5"
-                aria-hidden
-              >
-                ⌘K
-              </kbd>
-            </button>
-
-            {/* QR scanner */}
-            <button
-              type="button"
-              onClick={() => {
-                closeSidebar()
-                setQrScannerOpen(true)
-              }}
-              aria-label="สแกน QR Code"
-              title="สแกน QR Code"
-              className="group flex items-center gap-2 rounded-md border border-[#f97316]/40 bg-[#f97316]/10 px-2.5 py-1.5 text-xs font-medium text-[#fb923c] transition-colors hover:border-[#f97316]/70 hover:bg-[#f97316]/20 hover:text-orange-600 dark:hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]"
-            >
-              <QrCode className="h-3.5 w-3.5 flex-shrink-0" />
-              <span className="whitespace-nowrap text-left">📱 สแกน QR</span>
-            </button>
-          </div>
-        )}
+        {/* Quick action icons row — bell + theme toggle (small icon buttons
+            that fit nicely in 56px collapsed width). When expanded they sit
+            at the right side of the header; when collapsed they stack centered. */}
+        <div
+          className={cn(
+            'flex items-center gap-1.5',
+            expanded ? 'justify-end' : 'flex-col justify-center',
+          )}
+        >
+          <NotificationsPopover />
+          {/* Theme toggle — switches between light/dark (sidebar follows theme) */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
+            title={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]"
+          >
+            {mounted ? (
+              isDark ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )
+            ) : (
+              <span className="block h-4 w-4" />
+            )}
+          </button>
+        </div>
       </div>
 
-      {/* Nav menu — no scroll, fits all items in viewport */}
+      {/* Nav menu — navigation items only (no search/QR here anymore) */}
       <nav
         className="flex-1 overflow-y-auto overflow-x-hidden py-2"
         aria-label="Main navigation"
@@ -453,7 +441,87 @@ export function Sidebar() {
         </div>
       )}
 
-      {/* ── Current user — avatar + name + role + logout ── */}
+      {/* ── Bottom action section — Global Search + QR Scanner ──
+          Moved here from the top so wider buttons have room when expanded.
+          When collapsed: two small icon buttons stacked centered.
+          When expanded: full-width search input + QR button row. */}
+      <div
+        className={cn(
+          'border-t border-slate-200 dark:border-white/10',
+          expanded ? 'px-3 py-2.5' : 'px-0 py-2',
+        )}
+      >
+        {expanded ? (
+          <div className="flex flex-col gap-1.5">
+            {/* Global search button — full width */}
+            <button
+              type="button"
+              onClick={() => {
+                closeSidebar()
+                setSearchOpen(true)
+              }}
+              aria-label="ค้นหาทั่วระบบ"
+              title="ค้นหาทั่วระบบ (Ctrl+K)"
+              className="group flex w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-white/20 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]"
+            >
+              <Search className="h-3.5 w-3.5 flex-shrink-0 text-slate-400 transition-colors group-hover:text-slate-900 dark:group-hover:text-white" />
+              <span className="flex-1 whitespace-nowrap text-left text-xs">ค้นหา...</span>
+              <kbd
+                className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-400 dark:border-white/10 dark:bg-white/5"
+                aria-hidden
+              >
+                ⌘K
+              </kbd>
+            </button>
+
+            {/* QR scanner — full width */}
+            <button
+              type="button"
+              onClick={() => {
+                closeSidebar()
+                setQrScannerOpen(true)
+              }}
+              aria-label="สแกน QR Code"
+              title="สแกน QR Code"
+              className="group flex w-full items-center gap-2 rounded-md border border-[#f97316]/40 bg-[#f97316]/10 px-2.5 py-1.5 text-xs font-medium text-[#fb923c] transition-colors hover:border-[#f97316]/70 hover:bg-[#f97316]/20 hover:text-orange-600 dark:hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]"
+            >
+              <QrCode className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="whitespace-nowrap text-left">📱 สแกน QR</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-1.5">
+            {/* Search icon (collapsed) */}
+            <button
+              type="button"
+              onClick={() => {
+                closeSidebar()
+                setSearchOpen(true)
+              }}
+              aria-label="ค้นหาทั่วระบบ"
+              title="ค้นหาทั่วระบบ (Ctrl+K)"
+              className="group flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-white/20 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            {/* QR icon (collapsed) */}
+            <button
+              type="button"
+              onClick={() => {
+                closeSidebar()
+                setQrScannerOpen(true)
+              }}
+              aria-label="สแกน QR Code"
+              title="สแกน QR Code"
+              className="group flex h-9 w-9 items-center justify-center rounded-md border border-[#f97316]/40 bg-[#f97316]/10 text-[#fb923c] transition-colors hover:border-[#f97316]/70 hover:bg-[#f97316]/20 hover:text-orange-600 dark:hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]"
+            >
+              <QrCode className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Footer — current user: avatar + name + role + logout ── */}
       <div
         className={cn(
           'flex items-center gap-2 border-t border-slate-200 py-2 dark:border-white/10',
@@ -498,33 +566,6 @@ export function Sidebar() {
           )}
         >
           <LogOut className="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      {/* ── Footer — theme toggle + notifications only ── */}
-      <div
-        className={cn(
-          'flex items-center justify-center gap-1.5 border-t border-slate-200 px-3 py-2 dark:border-white/10',
-        )}
-      >
-        <NotificationsPopover />
-        {/* Theme toggle — switches between light/dark (sidebar follows theme) */}
-        <button
-          type="button"
-          onClick={toggleTheme}
-          aria-label={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
-          title={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]"
-        >
-          {mounted ? (
-            isDark ? (
-              <Sun className="h-4 w-4" />
-            ) : (
-              <Moon className="h-4 w-4" />
-            )
-          ) : (
-            <span className="block h-4 w-4" />
-          )}
         </button>
       </div>
     </>
