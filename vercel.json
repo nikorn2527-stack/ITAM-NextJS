@@ -1,7 +1,14 @@
 {
-  "buildCommand": "next build",
+  "buildCommand": "npx prisma generate && next build",
+  "installCommand": "bun install",
   "framework": "nextjs",
   "github": {
     "silent": true
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/stock-items/pending/auto-approve",
+      "schedule": "0 * * * *"
+    }
+  ]
 }

@@ -129,9 +129,7 @@ export function Sidebar() {
     },
     staleTime: 60_000,
   })
-  const appName = appSettings?.appName || 'Asset Mgmt'
   const appLogo = appSettings?.appLogoUrl || '' // emoji or image URL
-  const appTagline = appSettings?.appTagline || 'IT Asset Management'
 
   async function handleLogout() {
     await authLogout()
