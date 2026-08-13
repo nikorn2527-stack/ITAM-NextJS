@@ -7705,3 +7705,54 @@ Work Log:
 
 Stage Summary:
 - All 5 issues resolved
+
+---
+Task ID: FIX-COUNTDOWN-LAYOUT-SETTINGS
+Agent: orchestrator — แก้ countdown 2 phase + light mode + heights + notifications + settings groups
+
+Work Log:
+
+**1. Cycle countdown — 2 phase:**
+- Phase 1 (before deadline): "อีก X วัน ถึงกำหนดจดมิเตอร์" (เขียว >7d, ส้ม 3-7d, แดง <3d)
+- Phase 2 (deadline day): "⚠️ ถึงกำหนดจดมิเตอร์แล้ว! เหลือ X ชม. Y นาที" (แดง กระพริบ)
+- Overdue: "เลยกำหนดแล้ว X วัน" (แดง กระพริบ)
+- CSS animation: itam-deadline-pulse
+- Tick 30s ในวัน deadline (refresh ชม.)
+
+**2. Light mode contrast:**
+- 3-tier background hierarchy:
+  - Page: bg-slate-50 (อ่อนสุด)
+  - Cards: bg-white + shadow-sm (ขาว เด่น)
+  - Headers: bg-slate-100 (เข้มกว่า)
+- Sidebar: bg-slate-50 + border-slate-300 (แยกจาก content ชัด)
+- Badges: -100/-800/-300 (เข้มขึ้น)
+- Table headers: bg-slate-100/95 (แทน bg-slate-50)
+
+**3. Table heights — fill space:**
+- Pattern: `flex h-full flex-col` + `flex-1 min-h-0 overflow-auto` + `flex-shrink-0`
+- Applied to: devices-page, work-orders-page, stock-inventory, stock-history, stock-pending
+
+**4. Notifications tab — always shows:**
+- Error fallback with defaults (ไม่หายไปตอ API error)
+- Amber warning banner แสดง HTTP status
+- retry: false (ไม่ hammer server)
+
+**5. Settings — grouped sidebar nav:**
+- 4 groups:
+  - ข้อมูล: ข้อมูลมาตรฐาน, จัดการสาขา, ผู้ติดต่อ, ตัวเลือกใบงาน, สาขา
+  - ระบบ: จัดการผู้ใช้, สิทธิ์ผู้ใช้, รออนุมัติ
+  - การแจ้งเตือน: การแจ้งเตือน, เทมเพลตข้อความ
+  - ปรับแต่ง: ปรับแต่งแอป, OAuth
+- Left sidebar style (240px) แทน horizontal tabs
+- Content area scrolls internally
+
+Verification (production, commit b068294):
+✅ Home: HTTP 200
+✅ Build: Compiled successfully
+
+Stage Summary:
+- Countdown 2 phase ตามที่ผู้ใช้ต้องการ
+- Light mode มี contrast ชัดเจน
+- ตารางเต็มพื้นที่ ไม่เหลือว่าง
+- Notifications tab แสดงข้อมูลเสมอ
+- Settings แยกกลุ่ม ไม่อัดกัน
