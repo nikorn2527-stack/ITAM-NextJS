@@ -7224,3 +7224,43 @@ Implementation details:
   expiryDate, remark — all optional)
 
 Build verification: ✓ Compiled successfully in 28.7s
+
+---
+Task ID: LOGIN-DEVICE-LICENSE
+Agent: orchestrator — แก้ login branding + device lifecycle + license
+
+Work Log:
+
+**1. Login page — dynamic branding:**
+- ดึง OrganizationProfile จาก /api/settings/org-profile
+- เปลี่ยน "Asset Mgmt" → profile.appName
+- เปลี่ยน "IT Asset Management" → profile.appTagline
+- เปลี่ยน "📦" → profile.logoUrl (img/emoji/fallback)
+- ใช้ profile.primaryColor สำหรับ gradient + accents
+- ใช้ profile.accentColor สำหรับ ambient glow
+
+**2. Device detail — lifecycle action buttons (เหมือน Apps Script):**
+- 9 actions ตามสถานะปัจจุบัน:
+  🔄 ย้ายตำแหน่ง | 🔧 ส่งซ่อม | ✅ รับซ่อมกลับ | 📦 ถอนการติดตั้ง
+  ✅ เครื่องพร้อมใช้ | 🗑️ จำหน่าย | ♻️ ติดตั้งใหม่ | 🔙 คืนเครื่อง | ⚙️ เปลี่ยนสถานะอื่น
+- ฟิลด์เงื่อนไข: location (transfer/reinstall), meter (meterable), status select (other)
+- คำเตือนก่อนจำหน่าย
+- เรียก /api/devices/[id]/transfer หรือ PUT /api/devices/[id]
+
+**3. License management UI:**
+- Section โดดเด่น + count badge
+- License key masked + eye toggle
+- Expiry badges (หมดอายุ/ใกล้หมด)
+- Edit button per license (PUT handler เพิ่ม)
+
+Verification (production, commit b58ac02):
+✅ Home: HTTP 200
+✅ Login: OK (admin/admin123) — หลัง pool recovery
+✅ OrgProfile: "ระบบจัดการสินทรัพย์" | #f97316
+✅ Build: Compiled successfully
+⚠️ Supabase pool เต็มชั่วคราว (free plan limit 15) — รอ 2-3 นาทีแล้วใช้ได้
+
+Stage Summary:
+- Login page เปลี่ยนตาม app customization
+- Device actions เหมือน Apps Script (ย้าย/ส่งซ่อม/ถอน/จำหน่าย/ติดตั้งใหม่/คืนเครื่อง)
+- License management ใช้งานได้ชัดเจน
