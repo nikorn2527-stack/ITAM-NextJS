@@ -205,7 +205,7 @@ export default function Home() {
               >
                 {activePage === 'dashboard' && <ItamDashboard />}
                 {activePage === 'itam' && <ItamDashboard />}
-                {(activePage === 'itam-devices' || activePage === 'devices') && <ItamDevices />}
+                {(activePage === 'itam-devices' || activePage === 'devices' || activePage === 'devices-page') && <DevicesPage />}
                 {(activePage === 'itam-meter' || activePage === 'meter' || activePage === 'itam-meter-keyboard') && <ItamMeterUnified />}
                 {activePage === 'itam-sticker-editor' && <ItamStickerEditor />}
                 {activePage === 'itam-document-editor' && <ItamDocumentEditor />}
@@ -214,7 +214,7 @@ export default function Home() {
                 {activePage === 'itam-audit' && <ItamAudit />}
                 {activePage === 'itam-snapshot-viewer' && <SnapshotViewer />}
                 {activePage === 'itam-repairs' && <ItamRepairs />}
-                {activePage === 'itam-work-orders' && <ItamWorkOrders />}
+                {activePage === 'itam-work-orders' && <WorkOrdersPage />}
                 {activePage === 'itam-stock' && <ItamStock />}
                 {/* ── Restored pages (were missing from main) ── */}
                 {activePage === 'import' && <ImportPage />}
