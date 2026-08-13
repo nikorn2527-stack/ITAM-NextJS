@@ -58,6 +58,8 @@ import {
   ArrowRight,
   History,
   QrCode,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import {
   type Device,
@@ -216,6 +218,11 @@ export function DevicesPage() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false)
   const [bulkAction, setBulkAction] = React.useState(false)
 
+  // Pagination state (client-side slicing of the filtered `devices` array)
+  const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(50)
+  const [pageInput, setPageInput] = React.useState('1')
+
   // Read pendingDeviceId / pendingWarrantyFilter from store on mount
   const pendingDeviceId = useAppStore((s) => s.pendingDeviceId)
   const clearPendingDeviceId = useAppStore((s) => s.clearPendingDeviceId)
@@ -280,6 +287,30 @@ export function DevicesPage() {
     }
     return list
   }, [devicesRaw, warrantyFilter, assigneeFilter])
+
+  // ── Pagination: client-side slicing of the filtered `devices` array ──
+  // When search/filter changes, reset to page 1.
+  const totalCount = devices?.length ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const startIdx = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1
+  const endIdx = Math.min(currentPage * pageSize, totalCount)
+  const pagedDevices = React.useMemo<Device[]>(() => {
+    if (!devices) return []
+    const start = (currentPage - 1) * pageSize
+    return devices.slice(start, start + pageSize)
+  }, [devices, currentPage, pageSize])
+
+  // Reset to page 1 whenever the underlying filter inputs change
+  React.useEffect(() => {
+    setPage(1)
+    setPageInput('1')
+  }, [search, statusFilter, siteFilter, warrantyFilter, assigneeFilter, pageSize])
+
+  // Keep pageInput in sync when currentPage changes externally
+  React.useEffect(() => {
+    setPageInput(String(currentPage))
+  }, [currentPage])
 
   const { data: sites } = useQuery<Site[]>({
     queryKey: ['sites'],
@@ -474,11 +505,17 @@ export function DevicesPage() {
   }
 
   // ---- Bulk operations ----
+  // toggleSelectAll now operates on the current page only (matches what the
+  // user sees in the table header checkbox).
   function toggleSelectAll(checked: boolean) {
     if (checked) {
-      setSelectedIds(new Set((devices ?? []).map((d) => d.id)))
+      const next = new Set(selectedIds)
+      for (const d of pagedDevices) next.add(d.id)
+      setSelectedIds(next)
     } else {
-      setSelectedIds(new Set())
+      const next = new Set(selectedIds)
+      for (const d of pagedDevices) next.delete(d.id)
+      setSelectedIds(next)
     }
   }
   function toggleSelect(id: string, checked: boolean) {
@@ -611,9 +648,11 @@ export function DevicesPage() {
   }
 
   const hasDevices = (devices ?? []).length > 0
-  const allSelected =
-    hasDevices && selectedIds.size === (devices ?? []).length
-  const someSelected = selectedIds.size > 0 && !allSelected
+  // "all selected" reflects the CURRENT PAGE (since the header checkbox only
+  // affects visible rows).
+  const pageIds = pagedDevices.map((d) => d.id)
+  const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id))
+  const someSelected = pageIds.some((id) => selectedIds.has(id)) && !allSelected
 
   return (
     <div className="space-y-4 p-4 md:p-6">
@@ -850,7 +889,7 @@ export function DevicesPage() {
           </AnimatePresence>
 
           {/* Table */}
-          <div className="itam-scroll mt-4 max-h-[60vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
+          <div className="itam-scroll mt-4 max-h-[calc(100vh-320px)] min-h-[320px] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
                 <TableRow>
@@ -859,7 +898,7 @@ export function DevicesPage() {
                       <Checkbox
                         checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                         onCheckedChange={(v) => toggleSelectAll(v === true)}
-                        aria-label="เลือกทั้งหมด"
+                        aria-label="เลือกหน้านี้ทั้งหมด"
                         className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
                       />
                     </TableHead>
@@ -932,7 +971,7 @@ export function DevicesPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  (devices ?? []).map((d) => {
+                  pagedDevices.map((d) => {
                     const isSelected = selectedIds.has(d.id)
                     const lastMeterBw = (d as { lastMeterBw?: number }).lastMeterBw ?? 0
                     const lastMeterColor = (d as { lastMeterColor?: number }).lastMeterColor ?? 0
@@ -1088,13 +1127,97 @@ export function DevicesPage() {
             </Table>
           </div>
 
-          <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">
-            ทั้งหมด {(devices ?? []).length} รายการ
-            {selectedIds.size > 0 && (
-              <span className="ml-2 text-[#f97316] dark:text-[#fb923c]">
-                · เลือก {selectedIds.size} เครื่อง
+          {/* Pagination footer — shows range, total, per-page selector, prev/next, page input */}
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+              <span>
+                แสดง <span className="font-semibold text-slate-700 dark:text-slate-200">{startIdx}-{endIdx}</span>
+                {' '}จาก{' '}
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{totalCount.toLocaleString()}</span>
+                {' '}รายการ
               </span>
-            )}
+              {selectedIds.size > 0 && (
+                <span className="text-[#f97316] dark:text-[#fb923c]">
+                  · เลือก {selectedIds.size} เครื่อง
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Per-page selector */}
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                <span>หน้าละ</span>
+                <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
+                  <SelectTrigger className="h-8 w-[68px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage <= 1}
+                  aria-label="หน้าก่อนหน้า"
+                  className="h-8 gap-1 px-2 text-xs dark:bg-slate-800 dark:border-slate-700"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  ก่อนหน้า
+                </Button>
+
+                {/* Page input — type a page number to jump */}
+                <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                  <span className="hidden sm:inline">หน้า</span>
+                  <Input
+                    value={pageInput}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(/[^0-9]/g, '')
+                      setPageInput(v)
+                    }}
+                    onBlur={() => {
+                      const n = parseInt(pageInput, 10)
+                      if (!isNaN(n) && n >= 1 && n <= totalPages) {
+                        setPage(n)
+                      } else {
+                        setPageInput(String(currentPage))
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const n = parseInt(pageInput, 10)
+                        if (!isNaN(n) && n >= 1 && n <= totalPages) {
+                          setPage(n)
+                        } else {
+                          setPageInput(String(currentPage))
+                        }
+                      }
+                    }}
+                    className="h-8 w-14 text-center text-xs dark:bg-slate-800 dark:border-slate-700"
+                    aria-label="เลขหน้า"
+                    inputMode="numeric"
+                  />
+                  <span>/ {totalPages.toLocaleString()}</span>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage >= totalPages}
+                  aria-label="หน้าถัดไป"
+                  className="h-8 gap-1 px-2 text-xs dark:bg-slate-800 dark:border-slate-700"
+                >
+                  ถัดไป
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

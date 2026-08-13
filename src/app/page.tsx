@@ -188,13 +188,22 @@ export default function Home() {
     return <ItamLogin />
   }
 
-  // Authenticated → show app shell
+  // Authenticated → show app shell.
+  //
+  // Layout strategy (Issue 5): the whole app fits in one viewport.
+  // - Outer wrapper: `h-screen overflow-hidden` — clips at viewport height
+  // - Inner content wrapper: `flex-1 flex flex-col overflow-hidden` — column layout
+  // - <main>: `flex-1 overflow-y-auto` — page scrolls internally if too tall
+  // - <Footer>: `flex-shrink-0` — always pinned at the bottom of the viewport
+  //
+  // Pages with long content (2,378-row device table) scroll inside <main>;
+  // pages with short content fit in one screen without scrolling.
   return (
     <RealtimeProvider>
-      <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
+      <div className="flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
         <Sidebar />
-        <div className="flex min-w-0 flex-1 flex-col md:ml-14">
-          <main className="flex-1 pt-14 md:pt-0">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:ml-14">
+          <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activePage}

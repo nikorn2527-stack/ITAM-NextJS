@@ -518,59 +518,125 @@ export function ItamSettings() {
   )
 }
 
-// ── AppCustomizeTab — ปรับแต่งชื่อแอป, โลโก้, tagline, ฟิลด์ค้นหา ────────
+// ── AppCustomizeTab — ปรับแต่งชื่อแอป, โลโก้, tagline, สี, ฟิลด์ค้นหา ────────
+// Uses /api/settings/org-profile (PUT) — the same source the sidebar reads via
+// the ['org-profile'] query. Invalidating that query makes the sidebar update
+// immediately after save.
 function AppCustomizeTab() {
   const qc = useQueryClient()
-  const { data: settings, isLoading } = useQuery<Record<string, string>>({
+
+  // Fetch the org profile (singleton) — supplies appName, appTagline, logoUrl,
+  // primaryColor, accentColor, industryType, language, timezone, currency.
+  const { data: profile, isLoading } = useQuery<{
+    appName: string
+    appTagline: string
+    industryType: string
+    logoUrl: string | null
+    primaryColor: string
+    accentColor: string
+    language: string
+    timezone: string
+    currency: string
+    allowExcelImport: boolean
+  } | null>({
+    queryKey: ['org-profile'],
+    queryFn: async () => {
+      try {
+        const res = await fetch('/api/settings/org-profile')
+        if (!res.ok) return null
+        const j = await res.json()
+        return j.profile ?? null
+      } catch {
+        return null
+      }
+    },
+    staleTime: 60_000,
+  })
+
+  // searchFields lives in the separate itam settings table — load in parallel.
+  const { data: searchFields } = useQuery<string>({
     queryKey: ['app-customization'],
     queryFn: async () => {
-      const res = await fetch('/api/itam/settings')
-      if (!res.ok) return {}
-      const j = await res.json()
-      const map: Record<string, string> = {}
-      for (const s of j.settings ?? []) map[s.key] = s.value ?? ''
-      return map
+      try {
+        const res = await fetch('/api/settings')
+        if (!res.ok) return 'assetNo,serial,brand,model'
+        const j = await res.json()
+        // /api/settings returns { settings: { key: value, ... } }
+        const map: Record<string, string> = j.settings ?? {}
+        return map.searchFields ?? 'assetNo,serial,brand,model'
+      } catch {
+        return 'assetNo,serial,brand,model'
+      }
     },
   })
 
   const [form, setForm] = React.useState({
-    appName: '',
-    appLogoUrl: '',
-    appTagline: '',
-    searchFields: '', // comma-separated: assetNo,serial,brand,model
+    appName: 'ระบบจัดการสินทรัพย์',
+    logoUrl: '',
+    appTagline: 'Asset Management System',
+    primaryColor: '#f97316',
+    accentColor: '#0d9488',
+    industryType: 'general',
+    searchFields: 'assetNo,serial,brand,model',
   })
   const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
-    if (settings) {
-      setForm({
-        appName: settings.appName || 'Asset Mgmt',
-        appLogoUrl: settings.appLogoUrl || '',
-        appTagline: settings.appTagline || 'IT Asset Management',
-        searchFields: settings.searchFields || 'assetNo,serial,brand,model',
-      })
+    if (profile) {
+      setForm((prev) => ({
+        ...prev,
+        appName: profile.appName || 'ระบบจัดการสินทรัพย์',
+        logoUrl: profile.logoUrl || '',
+        appTagline: profile.appTagline || 'Asset Management System',
+        primaryColor: profile.primaryColor || '#f97316',
+        accentColor: profile.accentColor || '#0d9488',
+        industryType: profile.industryType || 'general',
+      }))
     }
-  }, [settings])
+  }, [profile])
+
+  React.useEffect(() => {
+    if (searchFields) {
+      setForm((prev) => ({ ...prev, searchFields }))
+    }
+  }, [searchFields])
 
   async function save() {
     setSaving(true)
     try {
-      // Save each setting via the settings API (upsert pattern)
-      const entries = [
-        { key: 'appName', value: form.appName },
-        { key: 'appLogoUrl', value: form.appLogoUrl },
-        { key: 'appTagline', value: form.appTagline },
-        { key: 'searchFields', value: form.searchFields },
-      ]
-      for (const e of entries) {
-        await fetch('/api/itam/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: e.key, value: e.value }),
-        })
+      // 1) Save org-profile fields via PUT /api/settings/org-profile
+      const res = await fetch('/api/settings/org-profile', {
+        method: 'PUT',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          appName: form.appName,
+          appTagline: form.appTagline,
+          logoUrl: form.logoUrl,
+          primaryColor: form.primaryColor,
+          accentColor: form.accentColor,
+          industryType: form.industryType,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed to save org profile')
       }
-      toast.success('บันทึกการตั้งค่าแอปแล้ว')
-      qc.invalidateQueries({ queryKey: ['app-customization'] })
+
+      // 2) Save searchFields via PUT /api/settings (object map upsert)
+      try {
+        await fetch('/api/settings', {
+          method: 'PUT',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ searchFields: form.searchFields }),
+        })
+      } catch {
+        // Non-fatal — searchFields is a secondary setting
+      }
+
+      toast.success('บันทึกการตั้งค่าแอปแล้ว — sidebar จะอัปเดตทันที')
+      // Invalidate both so the sidebar (reads org-profile) + this tab re-fetch
+      await qc.invalidateQueries({ queryKey: ['org-profile'] })
+      await qc.invalidateQueries({ queryKey: ['app-customization'] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     } finally {
@@ -580,71 +646,181 @@ function AppCustomizeTab() {
 
   if (isLoading) return <Skeleton className="h-64 w-full" />
 
+  // Live preview: show what the sidebar header will look like
+  const previewLogo = form.logoUrl
+  const previewIsImg = previewLogo && previewLogo.startsWith('http')
+
   return (
-    <Card className="dark:border-slate-800 dark:bg-slate-900">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Palette className="h-4 w-4 text-[#f97316]" /> ปรับแต่งหน้าตาแอป
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-1.5">
-          <Label className="text-xs">ชื่อแอป (แสดงใน sidebar)</Label>
-          <Input
-            value={form.appName}
-            onChange={(e) => setForm({ ...form, appName: e.target.value })}
-            placeholder="Asset Mgmt"
-            className="dark:bg-slate-800 dark:border-slate-700"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">โลโก้ (emoji หรือ URL รูปภาพ)</Label>
-          <Input
-            value={form.appLogoUrl}
-            onChange={(e) => setForm({ ...form, appLogoUrl: e.target.value })}
-            placeholder="📦 หรือ https://example.com/logo.png"
-            className="dark:bg-slate-800 dark:border-slate-700"
-          />
-          <p className="text-[11px] text-slate-500">
-            💡 ใช้ emoji (เช่น 📦 🖨️ 💻) หรือวาง URL รูปภาพ (PNG/SVG, แนะนำขนาด 32×32px)
-          </p>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">แท็กไลน์ (ใต้ชื่อแอป)</Label>
-          <Input
-            value={form.appTagline}
-            onChange={(e) => setForm({ ...form, appTagline: e.target.value })}
-            placeholder="IT Asset Management"
-            className="dark:bg-slate-800 dark:border-slate-700"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">ฟิลด์ที่ใช้ค้นหา (คั่นด้วยจุลภาค)</Label>
-          <Input
-            value={form.searchFields}
-            onChange={(e) => setForm({ ...form, searchFields: e.target.value })}
-            placeholder="assetNo,serial,brand,model"
-            className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
-          />
-          <p className="text-[11px] text-slate-500">
-            💡 ฟิลด์ที่รองรับ: assetNo, serial, brand, model, deviceType, department, location, site —
-            ลำดับแรกจะถูกค้นหาก่อน (ตัวอย่าง: &quot;serial,assetNo,brand&quot; จะค้น Serial ก่อน)
-          </p>
-        </div>
-        <div className="flex gap-2 pt-2">
-          <Button onClick={save} disabled={saving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
-            {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
-            บันทึก
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => qc.invalidateQueries({ queryKey: ['app-customization'] })}
-            className="dark:bg-slate-800 dark:border-slate-700"
-          >
-            <RefreshCw className="h-4 w-4" /> รีเฟรช
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      {/* Live preview card */}
+      <Card className="border-[#f97316]/30 bg-gradient-to-br from-orange-50/50 to-white dark:border-[#fb923c]/20 dark:from-orange-950/20 dark:to-slate-900">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <Palette className="h-4 w-4 text-[#f97316]" /> ตัวอย่างหน้าตา (Live Preview)
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+            {previewIsImg ? (
+              <img
+                src={previewLogo}
+                alt={form.appName}
+                className="h-9 w-9 flex-shrink-0 rounded object-contain"
+              />
+            ) : (
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded bg-slate-100 text-xl dark:bg-slate-800">
+                {previewLogo || '📦'}
+              </span>
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-sm font-bold text-slate-900 dark:text-white">
+                {form.appName || 'ระบบจัดการสินทรัพย์'}
+              </div>
+              <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                {form.appTagline || 'Asset Management System'}
+              </div>
+            </div>
+            <div className="ml-auto flex items-center gap-1.5">
+              <span
+                className="h-4 w-4 rounded-full ring-2 ring-slate-200 dark:ring-white/10"
+                style={{ background: form.primaryColor }}
+                aria-hidden
+              />
+              <span
+                className="h-4 w-4 rounded-full ring-2 ring-slate-200 dark:ring-white/10"
+                style={{ background: form.accentColor }}
+                aria-hidden
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="dark:border-slate-800 dark:bg-slate-900">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Palette className="h-4 w-4 text-[#f97316]" /> ปรับแต่งหน้าตาแอป
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">ชื่อแอป (แสดงใน sidebar)</Label>
+              <Input
+                value={form.appName}
+                onChange={(e) => setForm({ ...form, appName: e.target.value })}
+                placeholder="ระบบจัดการสินทรัพย์"
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">แท็กไลน์ (ใต้ชื่อแอป)</Label>
+              <Input
+                value={form.appTagline}
+                onChange={(e) => setForm({ ...form, appTagline: e.target.value })}
+                placeholder="Asset Management System"
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">โลโก้ (emoji หรือ URL รูปภาพ)</Label>
+            <Input
+              value={form.logoUrl}
+              onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
+              placeholder="📦 หรือ https://example.com/logo.png"
+              className="dark:bg-slate-800 dark:border-slate-700"
+            />
+            <p className="text-[11px] text-slate-500">
+              💡 ใช้ emoji (เช่น 📦 🖨️ 💻) หรือวาง URL รูปภาพ (PNG/SVG, แนะนำขนาด 32×32px)
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">สีหลัก (Primary)</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={form.primaryColor}
+                  onChange={(e) => setForm({ ...form, primaryColor: e.target.value })}
+                  className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-800"
+                  aria-label="เลือกสีหลัก"
+                />
+                <Input
+                  value={form.primaryColor}
+                  onChange={(e) => setForm({ ...form, primaryColor: e.target.value })}
+                  className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">สีเสริม (Accent)</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={form.accentColor}
+                  onChange={(e) => setForm({ ...form, accentColor: e.target.value })}
+                  className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-800"
+                  aria-label="เลือกสีเสริม"
+                />
+                <Input
+                  value={form.accentColor}
+                  onChange={(e) => setForm({ ...form, accentColor: e.target.value })}
+                  className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">ประเภทอุตสาหกรรม</Label>
+            <Select
+              value={form.industryType}
+              onValueChange={(v) => setForm({ ...form, industryType: v })}
+            >
+              <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="general">ทั่วไป</SelectItem>
+                <SelectItem value="hospital">โรงพยาบาล</SelectItem>
+                <SelectItem value="factory">โรงงาน</SelectItem>
+                <SelectItem value="office">สำนักงาน</SelectItem>
+                <SelectItem value="school">สถาบันการศึกษา</SelectItem>
+                <SelectItem value="government">หน่วยงานรัฐ</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">ฟิลด์ที่ใช้ค้นหา (คั่นด้วยจุลภาค)</Label>
+            <Input
+              value={form.searchFields}
+              onChange={(e) => setForm({ ...form, searchFields: e.target.value })}
+              placeholder="assetNo,serial,brand,model"
+              className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
+            />
+            <p className="text-[11px] text-slate-500">
+              💡 ฟิลด์ที่รองรับ: assetNo, serial, brand, model, deviceType, department, location, site —
+              ลำดับแรกจะถูกค้นหาก่อน (ตัวอย่าง: &quot;serial,assetNo,brand&quot; จะค้น Serial ก่อน)
+            </p>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button onClick={save} disabled={saving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+              {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
+              บันทึก
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                qc.invalidateQueries({ queryKey: ['org-profile'] })
+                qc.invalidateQueries({ queryKey: ['app-customization'] })
+              }}
+              className="dark:bg-slate-800 dark:border-slate-700"
+            >
+              <RefreshCw className="h-4 w-4" /> รีเฟรช
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   )
 }
