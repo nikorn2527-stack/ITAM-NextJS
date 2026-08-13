@@ -136,7 +136,7 @@ interface DetailResponse {
 
 function getAuthHeaders(): HeadersInit {
   if (typeof window !== 'undefined') {
-    const token = window.localStorage.getItem('itam.token')
+    const token = useAuthStore.getState()?.token
     if (token) {
       return {
         Authorization: `Bearer ${token}`,
