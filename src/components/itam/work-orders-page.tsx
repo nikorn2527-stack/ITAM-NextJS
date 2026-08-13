@@ -644,7 +644,7 @@ export function WorkOrdersPage() {
   }
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
+    <div className="flex h-full flex-col p-3 md:p-4">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>

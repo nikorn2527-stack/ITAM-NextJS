@@ -376,9 +376,9 @@ export function ItamMeterUnified() {
   }, [qc, refetchReminders])
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      {/* Sticky countdown bar */}
-      <div className="sticky top-0 z-20 -mx-4 bg-background/95 px-4 py-2 backdrop-blur-sm md:-mx-6 md:px-6">
+    <div className="flex h-full flex-col p-3 md:p-4">
+      {/* Countdown bar — compact, not sticky */}
+      <div className="mb-2">
         <CycleCountdownBar
           cycle={cycle}
           totalRead={totalRead}
@@ -388,7 +388,7 @@ export function ItamMeterUnified() {
         />
       </div>
 
-      <Tabs value={mode} onValueChange={(v) => setMode(v as 'entry' | 'history')}>
+      <Tabs value={mode} onValueChange={(v) => setMode(v as 'entry' | 'history')} className="flex min-h-0 flex-1 flex-col">
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="entry" className="gap-1.5">
             <PenLine className="h-4 w-4" />
@@ -399,10 +399,10 @@ export function ItamMeterUnified() {
             ประวัติมิเตอร์
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="entry" className="mt-4">
+        <TabsContent value="entry" className="mt-2 min-h-0 flex-1 overflow-auto">
           <ItamMeterKeyboard />
         </TabsContent>
-        <TabsContent value="history" className="mt-4">
+        <TabsContent value="history" className="mt-2 min-h-0 flex-1 overflow-auto">
           <ItamMeter />
         </TabsContent>
       </Tabs>
