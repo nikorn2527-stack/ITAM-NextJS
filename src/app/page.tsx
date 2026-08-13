@@ -199,8 +199,6 @@ export default function Home() {
         {/* PWA install prompt — floating, only shows when installable */}
         <PwaInstallButton />
       </div>
-      <GlobalSearch />
-      <QrScannerDialog />
-    </div>
+    </RealtimeProvider>
   )
 }
