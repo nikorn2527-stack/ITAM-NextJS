@@ -4,7 +4,7 @@ import { verifyPassword } from '@/lib/auth'
 
 export async function GET() {
   try {
-    const users = await db.userPermission.findMany({ select: { username: true, email: true, active: true, passwordHash: true, passwordSalt: true } })
+    const users = await db.user.findMany({ select: { username: true, email: true, active: true, passwordHash: true, passwordSalt: true } })
     const results = users.map(u => {
       const testPw = u.username === 'nikorn.p' ? 'P@ssw0rd!2025' : '1234'
       const verify = verifyPassword(testPw, u.passwordHash, u.passwordSalt)
