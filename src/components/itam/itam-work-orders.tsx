@@ -253,7 +253,7 @@ const PAGE_SIZE = 20
  */
 function getAuthHeaders(): HeadersInit {
   if (typeof window !== 'undefined') {
-    const token = window.localStorage.getItem('itam.token')
+    const token = useAuthStore.getState()?.token
     if (token) return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
   }
   return { 'Content-Type': 'application/json' }
