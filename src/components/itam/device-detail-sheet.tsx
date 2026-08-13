@@ -59,6 +59,10 @@ import {
   KeyRound,
   Plus,
   Trash2,
+  Settings2,
+  Eye,
+  EyeOff,
+  Building2,
 } from 'lucide-react'
 import type { Device, MeterReading, DeviceTransfer, Site, Assignment, LicenseRecord } from './types'
 import {
@@ -110,6 +114,83 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** Mask a license key, keeping the last 4 chars visible. */
+function maskKey(key: string): string {
+  if (!key) return ''
+  if (key.length <= 4) return '••••'
+  return '•'.repeat(Math.min(key.length - 4, 16)) + key.slice(-4)
+}
+
+/** Days from today until an ISO date (negative if past). Returns null on invalid. */
+function daysUntil(iso: string): number | null {
+  try {
+    const d = new Date(iso.slice(0, 10) + 'T00:00:00')
+    if (Number.isNaN(d.getTime())) return null
+    const now = new Date()
+    const today = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    )
+    const diff = d.getTime() - today.getTime()
+    return Math.round(diff / (1000 * 60 * 60 * 24))
+  } catch {
+    return null
+  }
+}
+
+/** Color tone (border + text) for each lifecycle action button. */
+function actionToneClass(id: string): { border: string; text: string } {
+  switch (id) {
+    case 'transfer':
+      return {
+        border: 'border-slate-200 hover:border-[#f97316]/50 dark:border-slate-700 dark:hover:border-[#f97316]/60',
+        text: 'text-slate-700 dark:text-slate-200',
+      }
+    case 'send_repair':
+      return {
+        border: 'border-amber-200 hover:border-amber-400 dark:border-amber-800/60 dark:hover:border-amber-600',
+        text: 'text-amber-700 dark:text-amber-300',
+      }
+    case 'receive_repair':
+    case 'mark_ready':
+      return {
+        border: 'border-emerald-200 hover:border-emerald-400 dark:border-emerald-800/60 dark:hover:border-emerald-600',
+        text: 'text-emerald-700 dark:text-emerald-300',
+      }
+    case 'uninstall':
+      return {
+        border: 'border-slate-300 hover:border-slate-400 dark:border-slate-700 dark:hover:border-slate-500',
+        text: 'text-slate-700 dark:text-slate-200',
+      }
+    case 'dispose':
+      return {
+        border: 'border-rose-200 hover:border-rose-400 dark:border-rose-800/60 dark:hover:border-rose-600',
+        text: 'text-rose-700 dark:text-rose-300',
+      }
+    case 'reinstall':
+      return {
+        border: 'border-teal-200 hover:border-teal-400 dark:border-teal-800/60 dark:hover:border-teal-600',
+        text: 'text-teal-700 dark:text-teal-300',
+      }
+    case 'return_device':
+      return {
+        border: 'border-purple-200 hover:border-purple-400 dark:border-purple-800/60 dark:hover:border-purple-600',
+        text: 'text-purple-700 dark:text-purple-300',
+      }
+    case 'other_status':
+      return {
+        border: 'border-slate-200 hover:border-slate-400 dark:border-slate-700 dark:hover:border-slate-500',
+        text: 'text-slate-700 dark:text-slate-200',
+      }
+    default:
+      return {
+        border: 'border-slate-200 hover:border-slate-400 dark:border-slate-700 dark:hover:border-slate-500',
+        text: 'text-slate-700 dark:text-slate-200',
+      }
+  }
+}
+
 export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const open = Boolean(deviceId)
   const qc = useQueryClient()
@@ -149,6 +230,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
 
   // License dialog state
   const [licenseOpen, setLicenseOpen] = React.useState(false)
+  const [editingLicenseId, setEditingLicenseId] = React.useState<string | null>(
+    null,
+  )
   const [lcSoftware, setLcSoftware] = React.useState('')
   const [lcLicenseId, setLcLicenseId] = React.useState('')
   const [lcLicenseType, setLcLicenseType] = React.useState('')
@@ -160,6 +244,30 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const [deletingLicenseId, setDeletingLicenseId] = React.useState<string | null>(
     null,
   )
+  // Track which license keys are revealed
+  const [revealedLicenseKeys, setRevealedLicenseKeys] = React.useState<
+    Record<string, boolean>
+  >({})
+
+  // Lifecycle action dialog state
+  const [actionOpen, setActionOpen] = React.useState(false)
+  const [actionId, setActionId] = React.useState<string>('')
+  // Location fields (for transfer / reinstall)
+  const [actSite, setActSite] = React.useState('')
+  const [actDept, setActDept] = React.useState('')
+  const [actDeptCode, setActDeptCode] = React.useState('')
+  const [actBuilding, setActBuilding] = React.useState('')
+  const [actFloor, setActFloor] = React.useState('')
+  const [actLocation, setActLocation] = React.useState('')
+  // Meter reading (if meterable)
+  const [actMeterBw, setActMeterBw] = React.useState('')
+  const [actMeterColor, setActMeterColor] = React.useState('')
+  // Status select (for other_status)
+  const [actCustomStatus, setActCustomStatus] = React.useState('')
+  // Common: reason / remark
+  const [actReason, setActReason] = React.useState('')
+  const [actionDate, setActionDate] = React.useState(todayISO())
+  const [actioning, setActioning] = React.useState(false)
 
   const LICENSE_TYPE_OPTIONS = [
     { value: 'OEM', label: 'OEM' },
@@ -168,6 +276,115 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     { value: 'Subscription', label: 'Subscription' },
     { value: 'Open License', label: 'Open License' },
   ]
+
+  // Available status options for "other status" select
+  const STATUS_OPTIONS_FOR_ACTION = [
+    { value: 'Active', label: 'Active — ใช้งานอยู่' },
+    { value: 'In Stock', label: 'In Stock — ในสต็อก' },
+    { value: 'In Repair', label: 'In Repair — ส่งซ่อม' },
+    { value: 'Inactive', label: 'Inactive — ถอนการติดตั้ง' },
+    { value: 'Retired', label: 'Retired — ปลดระวาง' },
+    { value: 'Returned', label: 'Returned — คืนแล้ว' },
+    { value: 'Disposed', label: 'Disposed — จำหน่ายแล้ว' },
+    { value: 'Spare', label: 'Spare — สำรอง' },
+  ]
+
+  /** Build the lifecycle action list based on the device's current status. */
+  function buildDeviceActions(statusRaw: string, isMeterable: boolean) {
+    const status = String(statusRaw || '').toLowerCase()
+    const list = [
+      {
+        id: 'transfer',
+        icon: '🔄',
+        label: 'ย้ายตำแหน่ง',
+        desc: 'ย้ายไปแผนก/Site/ตำแหน่งอื่น',
+        show: true,
+        needLoc: true,
+        needMeter: false,
+        targetStatus: null,
+      },
+      {
+        id: 'send_repair',
+        icon: '🔧',
+        label: 'ส่งซ่อม',
+        desc: 'เปลี่ยนสถานะ → In Repair',
+        show:
+          status !== 'in repair' &&
+          !['retired', 'returned', 'disposed', 'inactive'].includes(status),
+        needMeter: isMeterable,
+        targetStatus: 'In Repair',
+      },
+      {
+        id: 'receive_repair',
+        icon: '✅',
+        label: 'รับซ่อมกลับ',
+        desc: 'In Repair → Active',
+        show: status === 'in repair',
+        needMeter: isMeterable,
+        targetStatus: 'Active',
+        isReinstall: true,
+      },
+      {
+        id: 'uninstall',
+        icon: '📦',
+        label: 'ถอนการติดตั้ง',
+        desc: 'เอาออกมา ยังไม่ตัดสิน',
+        show: ['active', 'in repair'].includes(status),
+        needMeter: isMeterable,
+        targetStatus: 'Inactive',
+      },
+      {
+        id: 'mark_ready',
+        icon: '✅',
+        label: 'เครื่องพร้อมใช้',
+        desc: 'Inactive → In Stock',
+        show: status === 'inactive',
+        needMeter: false,
+        targetStatus: 'In Stock',
+      },
+      {
+        id: 'dispose',
+        icon: '🗑️',
+        label: 'จำหน่าย',
+        desc: 'ปิดงานจริง — ขาย/ทิ้ง/เลิกใช้',
+        show: ['active', 'in repair', 'inactive'].includes(status),
+        needMeter: isMeterable,
+        targetStatus: 'Disposed',
+      },
+      {
+        id: 'reinstall',
+        icon: '♻️',
+        label: 'ติดตั้งใหม่',
+        desc: 'นำเครื่องกลับมาใช้',
+        show: ['disposed', 'returned', 'inactive', 'in stock', 'retired'].includes(
+          status,
+        ),
+        needLoc: true,
+        needMeter: isMeterable,
+        targetStatus: 'Active',
+        isReinstall: true,
+      },
+      {
+        id: 'return_device',
+        icon: '🔙',
+        label: 'คืนเครื่อง',
+        desc: 'คืนเครื่องให้เจ้าของ/ผู้ขาย',
+        show: ['active', 'in repair', 'inactive'].includes(status),
+        needMeter: isMeterable,
+        targetStatus: 'Returned',
+      },
+      {
+        id: 'other_status',
+        icon: '⚙️',
+        label: 'เปลี่ยนสถานะอื่น',
+        desc: 'เลือกสถานะเอง',
+        show: true,
+        needStatusSelect: true,
+        targetStatus: null,
+      },
+    ]
+    return list.filter((a) => a.show)
+  }
 
   const { data: deviceData, isLoading: deviceLoading } = useQuery<{
     device: Device
@@ -239,14 +456,26 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     enabled: Boolean(deviceId),
   })
 
-  function openLicenseDialog() {
-    setLcSoftware('')
-    setLcLicenseId('')
-    setLcLicenseType('')
-    setLcLicenseKey('')
-    setLcQuantity('1')
-    setLcExpiryDate('')
-    setLcRemark('')
+  function openLicenseDialog(existing?: LicenseRecord) {
+    if (existing) {
+      setEditingLicenseId(existing.id)
+      setLcSoftware(existing.software || '')
+      setLcLicenseId(existing.licenseId || '')
+      setLcLicenseType(existing.licenseType || '')
+      setLcLicenseKey(existing.licenseKey || '')
+      setLcQuantity(String(existing.quantity ?? 1))
+      setLcExpiryDate(existing.expiryDate || '')
+      setLcRemark(existing.remark || '')
+    } else {
+      setEditingLicenseId(null)
+      setLcSoftware('')
+      setLcLicenseId('')
+      setLcLicenseType('')
+      setLcLicenseKey('')
+      setLcQuantity('1')
+      setLcExpiryDate('')
+      setLcRemark('')
+    }
     setLicenseOpen(true)
   }
 
@@ -258,25 +487,31 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     }
     try {
       setSavingLicense(true)
-      const res = await fetch(`/api/devices/${deviceId}/licenses`, {
-        method: 'POST',
+      const payload = {
+        licenseId: lcLicenseId || null,
+        software: lcSoftware.trim(),
+        licenseType: lcLicenseType || null,
+        licenseKey: lcLicenseKey || null,
+        quantity: Number(lcQuantity) || 1,
+        expiryDate: lcExpiryDate || null,
+        remark: lcRemark || null,
+      }
+      const isEditing = !!editingLicenseId
+      const url = isEditing
+        ? `/api/devices/${deviceId}/licenses?licenseId=${encodeURIComponent(editingLicenseId!)}`
+        : `/api/devices/${deviceId}/licenses`
+      const res = await fetch(url, {
+        method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          licenseId: lcLicenseId || null,
-          software: lcSoftware.trim(),
-          licenseType: lcLicenseType || null,
-          licenseKey: lcLicenseKey || null,
-          quantity: Number(lcQuantity) || 1,
-          expiryDate: lcExpiryDate || null,
-          remark: lcRemark || null,
-        }),
+        body: JSON.stringify(payload),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error ?? 'Save failed')
       }
-      toast.success('เพิ่ม License แล้ว')
+      toast.success(isEditing ? 'อัปเดต License แล้ว' : 'เพิ่ม License แล้ว')
       setLicenseOpen(false)
+      setEditingLicenseId(null)
       await qc.invalidateQueries({ queryKey: ['device-licenses', deviceId] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Save failed')
@@ -303,6 +538,182 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       toast.error(e instanceof Error ? e.message : 'Delete failed')
     } finally {
       setDeletingLicenseId(null)
+    }
+  }
+
+  // ── Lifecycle action handlers ─────────────────────────────────────
+  function openActionDialog(id: string) {
+    if (!device) return
+    setActionId(id)
+    setActSite(device.site || '')
+    setActDept(device.department || '')
+    setActDeptCode(device.departmentCode || '')
+    setActBuilding(device.building || '')
+    setActFloor(device.floor || '')
+    setActLocation(device.location || '')
+    setActMeterBw('')
+    setActMeterColor('')
+    setActCustomStatus('')
+    setActReason('')
+    setActionDate(todayISO())
+    setActionOpen(true)
+  }
+
+  /** Find the action config by id (from the full list, ignoring show filter). */
+  function findActionConfig(id: string) {
+    const all = buildDeviceActions('__all__', true).concat(
+      // ensure we can also resolve actions that would normally be hidden
+      // by re-running with a synthetic status that matches each action's
+      // visibility. Simpler: build a static map.
+      [] as ReturnType<typeof buildDeviceActions>,
+    )
+    const found = all.find((a) => a.id === id)
+    if (found) return found
+    // Fallback static map
+    const map: Record<
+      string,
+      {
+        id: string
+        icon: string
+        label: string
+        desc: string
+        targetStatus: string | null
+        needLoc?: boolean
+        needMeter?: boolean
+        needStatusSelect?: boolean
+        isReinstall?: boolean
+      }
+    > = {
+      transfer: { id: 'transfer', icon: '🔄', label: 'ย้ายตำแหน่ง', desc: 'ย้ายไปแผนก/Site/ตำแหน่งอื่น', targetStatus: null, needLoc: true },
+      send_repair: { id: 'send_repair', icon: '🔧', label: 'ส่งซ่อม', desc: 'เปลี่ยนสถานะ → In Repair', targetStatus: 'In Repair' },
+      receive_repair: { id: 'receive_repair', icon: '✅', label: 'รับซ่อมกลับ', desc: 'In Repair → Active', targetStatus: 'Active', isReinstall: true },
+      uninstall: { id: 'uninstall', icon: '📦', label: 'ถอนการติดตั้ง', desc: 'เอาออกมา ยังไม่ตัดสิน', targetStatus: 'Inactive' },
+      mark_ready: { id: 'mark_ready', icon: '✅', label: 'เครื่องพร้อมใช้', desc: 'Inactive → In Stock', targetStatus: 'In Stock' },
+      dispose: { id: 'dispose', icon: '🗑️', label: 'จำหน่าย', desc: 'ปิดงานจริง — ขาย/ทิ้ง/เลิกใช้', targetStatus: 'Disposed' },
+      reinstall: { id: 'reinstall', icon: '♻️', label: 'ติดตั้งใหม่', desc: 'นำเครื่องกลับมาใช้', targetStatus: 'Active', needLoc: true, isReinstall: true },
+      return_device: { id: 'return_device', icon: '🔙', label: 'คืนเครื่อง', desc: 'คืนเครื่องให้เจ้าของ/ผู้ขาย', targetStatus: 'Returned' },
+      other_status: { id: 'other_status', icon: '⚙️', label: 'เปลี่ยนสถานะอื่น', desc: 'เลือกสถานะเอง', targetStatus: null, needStatusSelect: true },
+    }
+    return map[id]
+  }
+
+  async function confirmAction() {
+    if (!device || !deviceId) return
+    const cfg = findActionConfig(actionId)
+    if (!cfg) {
+      toast.error('ไม่พบการกระทำที่เลือก')
+      return
+    }
+    // Validation
+    if (cfg.needLoc && !actSite.trim()) {
+      toast.error('กรุณาเลือกสาขาปลายทาง')
+      return
+    }
+    if (cfg.needStatusSelect && !actCustomStatus) {
+      toast.error('กรุณาเลือกสถานะใหม่')
+      return
+    }
+    if (
+      cfg.needMeter &&
+      device.meterRequired &&
+      actMeterBw.trim() !== '' &&
+      Number(actMeterBw) < (device.lastMeterReading ?? 0) &&
+      !actReason.trim()
+    ) {
+      toast.error('ค่ามิเตอร์ใหม่น้อยกว่าค่าเดิม กรุณาระบุหมายเหตุ (RESET)')
+      return
+    }
+
+    try {
+      setActioning(true)
+
+      // 1. If meter reading is provided, save it first
+      if (cfg.needMeter && device.meterRequired && actMeterBw.trim() !== '') {
+        const meterRemark = [
+          actReason.trim(),
+          `[${cfg.label}]`,
+        ]
+          .filter(Boolean)
+          .join(' — ')
+        const meterRes = await fetch('/api/meter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId,
+            reading: Number(actMeterBw),
+            date: actionDate,
+            remark: meterRemark || null,
+          }),
+        })
+        if (!meterRes.ok) {
+          const j = await meterRes.json().catch(() => ({}))
+          throw new Error(j.error ?? 'จดมิเตอร์ไม่สำเร็จ')
+        }
+      }
+
+      // 2. If action is transfer → call transfer API
+      if (actionId === 'transfer') {
+        const transferRes = await fetch(`/api/devices/${deviceId}/transfer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            toSite: actSite.trim(),
+            toDept: actDept.trim() || null,
+            toDeptCode: actDeptCode.trim() || null,
+            reason: actReason.trim() || null,
+            transferDate: actionDate,
+          }),
+        })
+        if (!transferRes.ok) {
+          const j = await transferRes.json().catch(() => ({}))
+          throw new Error(j.error ?? 'ย้ายอุปกรณ์ไม่สำเร็จ')
+        }
+      } else {
+        // 3. Status change → PUT /api/devices/[id]
+        const newStatus =
+          cfg.needStatusSelect && actCustomStatus
+            ? actCustomStatus
+            : cfg.targetStatus
+        const updateBody: Record<string, unknown> = {}
+        if (newStatus) updateBody.status = newStatus
+        // If action needs location (reinstall) → also update location fields
+        if (cfg.needLoc) {
+          updateBody.site = actSite.trim()
+          updateBody.department = actDept.trim() || null
+          updateBody.departmentCode = actDeptCode.trim() || null
+          updateBody.building = actBuilding.trim() || null
+          updateBody.floor = actFloor.trim() || null
+          updateBody.location = actLocation.trim() || null
+        }
+        // Append remark with action label
+        if (actReason.trim()) {
+          updateBody.remark = actReason.trim()
+        }
+        const putRes = await fetch(`/api/devices/${deviceId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updateBody),
+        })
+        if (!putRes.ok) {
+          const j = await putRes.json().catch(() => ({}))
+          throw new Error(j.error ?? 'อัปเดตสถานะไม่สำเร็จ')
+        }
+      }
+
+      toast.success(`${cfg.label} เรียบร้อยแล้ว`)
+      setActionOpen(false)
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['device-detail', deviceId] }),
+        qc.invalidateQueries({ queryKey: ['device-transfers', deviceId] }),
+        qc.invalidateQueries({ queryKey: ['device-meter', deviceId] }),
+        qc.invalidateQueries({ queryKey: ['devices'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard'] }),
+        qc.invalidateQueries({ queryKey: ['audit'] }),
+      ])
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Action failed')
+    } finally {
+      setActioning(false)
     }
   }
 
@@ -1061,21 +1472,76 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
             )}
           </section>
 
+          {/* ── Lifecycle action buttons (Apps Script parity) ── */}
+          {device && (() => {
+            const isMeterable = !!device.meterRequired
+            const actions = buildDeviceActions(device.status, isMeterable)
+            if (actions.length === 0) return null
+            return (
+              <section className="rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    <Settings2 className="h-3.5 w-3.5 text-[#f97316]" />
+                    การจัดการอุปกรณ์
+                  </h3>
+                  <Badge className="border-slate-200 bg-white text-[10px] text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                    {actions.length} การกระทำ
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {actions.map((a) => {
+                    const tone = actionToneClass(a.id)
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => openActionDialog(a.id)}
+                        className={
+                          'group flex flex-col items-start gap-1 rounded-md border bg-white px-2.5 py-2 text-left transition-all hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316]/40 dark:bg-slate-800/60 ' +
+                          tone.border
+                        }
+                      >
+                        <div className="flex w-full items-center gap-1.5">
+                          <span className="text-base leading-none">{a.icon}</span>
+                          <span className={'text-xs font-semibold ' + tone.text}>
+                            {a.label}
+                          </span>
+                        </div>
+                        <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                          {a.desc}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+                {isMeterable && (
+                  <p className="mt-2 text-[10px] text-slate-400 dark:text-slate-500">
+                    ℹ️ อุปกรณ์นี้บังคับจดมิเตอร์ — ระบบจะให้กรอกค่ามิเตอร์ก่อนเปลี่ยนสถานะ
+                  </p>
+                )}
+              </section>
+            )
+          })()}
+
           {/* License records section */}
-          <section>
+          <section className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                <KeyRound className="h-3.5 w-3.5 text-[#0d9488]" />
-                ลิขสิทธิ์ซอฟต์แวร์ ({licenses?.length ?? 0})
+              <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <KeyRound className="h-4 w-4 text-[#0d9488]" />
+                ลิขสิทธิ์ซอฟต์แวร์
+                {licenses && licenses.length > 0 && (
+                  <Badge className="border-[#0d9488]/30 bg-[#0d9488]/10 text-[#0d9488] dark:border-[#14b8a6]/30 dark:bg-[#14b8a6]/10 dark:text-[#14b8a6]">
+                    {licenses.length}
+                  </Badge>
+                )}
               </h3>
               <Button
                 size="sm"
-                variant="outline"
-                onClick={openLicenseDialog}
+                onClick={() => openLicenseDialog()}
                 disabled={!device}
-                className="h-7 border-[#0d9488]/40 text-[#0d9488] hover:bg-[#0d9488]/10 focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6]/40 dark:text-[#14b8a6] dark:focus-visible:ring-offset-slate-950"
+                className="h-8 border border-[#0d9488] bg-[#0d9488] text-white hover:bg-[#0f766e] focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6] dark:bg-[#14b8a6] dark:hover:bg-[#0d9488] dark:focus-visible:ring-offset-slate-950"
               >
-                <Plus className="h-3.5 w-3.5" />
+                <Plus className="h-4 w-4" />
                 เพิ่ม License
               </Button>
             </div>
@@ -1093,70 +1559,128 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
               </div>
             ) : (
               <ul className="space-y-2">
-                {licenses.map((lc) => (
-                  <li
-                    key={lc.id}
-                    className="rounded-md border border-slate-100 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-800/40"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-                            {lc.software}
-                          </span>
-                          {lc.licenseType && (
-                            <Badge className="border-[#0d9488]/30 bg-[#0d9488]/10 text-[#0d9488] dark:border-[#14b8a6]/30 dark:bg-[#14b8a6]/10 dark:text-[#14b8a6]">
-                              {lc.licenseType}
-                            </Badge>
-                          )}
-                          <Badge className="border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-                            จำนวน {lc.quantity}
-                          </Badge>
-                        </div>
-                        {lc.licenseId && (
-                          <div className="mt-0.5 font-mono text-[11px] text-slate-400 dark:text-slate-500">
-                            ID: {lc.licenseId}
-                          </div>
-                        )}
-                        {lc.licenseKey && (
-                          <div className="mt-1 font-mono text-xs text-slate-600 dark:text-slate-300">
-                            Key: <span className="break-all">{lc.licenseKey}</span>
-                          </div>
-                        )}
-                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
-                          {lc.expiryDate && (
-                            <span>
-                              หมดอายุ:{' '}
-                              <span className="font-medium">
-                                {formatThaiDate(lc.expiryDate)}
-                              </span>
+                {licenses.map((lc) => {
+                  const revealed = !!revealedLicenseKeys[lc.id]
+                  const masked = maskKey(lc.licenseKey || '')
+                  return (
+                    <li
+                      key={lc.id}
+                      className="rounded-md border border-slate-100 bg-white px-3 py-2.5 dark:border-slate-800 dark:bg-slate-800/40"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                              {lc.software}
                             </span>
+                            {lc.licenseType && (
+                              <Badge className="border-[#0d9488]/30 bg-[#0d9488]/10 text-[#0d9488] dark:border-[#14b8a6]/30 dark:bg-[#14b8a6]/10 dark:text-[#14b8a6]">
+                                {lc.licenseType}
+                              </Badge>
+                            )}
+                            <Badge className="border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                              จำนวน {lc.quantity}
+                            </Badge>
+                            {lc.expiryDate && (() => {
+                              const days = daysUntil(lc.expiryDate)
+                              if (days === null) return null
+                              if (days < 0) {
+                                return (
+                                  <Badge className="border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                    หมดอายุ
+                                  </Badge>
+                                )
+                              }
+                              if (days <= 30) {
+                                return (
+                                  <Badge className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                                    อีก {days} วัน
+                                  </Badge>
+                                )
+                              }
+                              return null
+                            })()}
+                          </div>
+                          {lc.licenseId && (
+                            <div className="mt-0.5 font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                              ID: {lc.licenseId}
+                            </div>
+                          )}
+                          {lc.licenseKey && (
+                            <div className="mt-1 flex items-center gap-1.5 font-mono text-xs text-slate-600 dark:text-slate-300">
+                              <span className="text-[10px] uppercase text-slate-400">
+                                Key:
+                              </span>
+                              <span className="break-all">
+                                {revealed ? lc.licenseKey : masked}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRevealedLicenseKeys((prev) => ({
+                                    ...prev,
+                                    [lc.id]: !prev[lc.id],
+                                  }))
+                                }
+                                aria-label={revealed ? 'ซ่อน License Key' : 'แสดง License Key'}
+                                title={revealed ? 'ซ่อน Key' : 'แสดง Key'}
+                                className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+                              >
+                                {revealed ? (
+                                  <EyeOff className="h-3 w-3" />
+                                ) : (
+                                  <Eye className="h-3 w-3" />
+                                )}
+                              </button>
+                            </div>
+                          )}
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+                            {lc.expiryDate && (
+                              <span>
+                                หมดอายุ:{' '}
+                                <span className="font-medium">
+                                  {formatThaiDate(lc.expiryDate)}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+                          {lc.remark && (
+                            <div className="mt-1.5 rounded bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                              📝 {lc.remark}
+                            </div>
                           )}
                         </div>
-                        {lc.remark && (
-                          <div className="mt-1.5 rounded bg-slate-50 px-2 py-1 text-xs text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
-                            📝 {lc.remark}
-                          </div>
-                        )}
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => openLicenseDialog(lc)}
+                            aria-label="แก้ไข License"
+                            title="แก้ไข License"
+                            className="h-7 w-7 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => deleteLicense(lc.id)}
+                            disabled={deletingLicenseId === lc.id}
+                            aria-label="ลบ License"
+                            title="ลบ License"
+                            className="h-7 w-7 text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
+                          >
+                            {deletingLicenseId === lc.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </div>
                       </div>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => deleteLicense(lc.id)}
-                        disabled={deletingLicenseId === lc.id}
-                        aria-label="ลบ License"
-                        title="ลบ License"
-                        className="h-7 w-7 shrink-0 text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/50"
-                      >
-                        {deletingLicenseId === lc.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </section>
@@ -1470,10 +1994,13 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <KeyRound className="h-4 w-4 text-[#0d9488]" />
-              🔑 เพิ่ม License ให้ {device?.assetCode}
+              {editingLicenseId ? '✏️ แก้ไข License' : '🔑 เพิ่ม License'}{' '}
+              ให้ {device?.assetCode}
             </DialogTitle>
             <DialogDescription>
-              บันทึกลิขสิทธิ์ซอฟต์แวร์ของอุปกรณ์นี้
+              {editingLicenseId
+                ? 'ปรับปรุงข้อมูลลิขสิทธิ์ซอฟต์แวร์ของอุปกรณ์นี้'
+                : 'บันทึกลิขสิทธิ์ซอฟต์แวร์ของอุปกรณ์นี้'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1583,11 +2110,284 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                   <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
                   กำลังบันทึก...
                 </>
+              ) : editingLicenseId ? (
+                'อัปเดต'
               ) : (
                 'บันทึก'
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lifecycle action sub-dialog */}
+      <Dialog open={actionOpen} onOpenChange={setActionOpen}>
+        <DialogContent className="sm:max-w-lg dark:border-slate-800 dark:bg-slate-900">
+          {(() => {
+            const cfg = findActionConfig(actionId)
+            if (!cfg) return null
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                    <span className="text-lg">{cfg.icon}</span>
+                    {cfg.label}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {device?.name} ({device?.assetCode}) —{' '}
+                    <span className="text-slate-600 dark:text-slate-300">
+                      {cfg.desc}
+                    </span>
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+                  {/* Date */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        วันที่ทำรายการ *
+                      </Label>
+                      <Input
+                        type="date"
+                        value={actionDate}
+                        onChange={(e) => setActionDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        สถานะปัจจุบัน
+                      </Label>
+                      <div className="flex h-9 items-center rounded-md border border-slate-200 bg-slate-50 px-3 dark:border-slate-700 dark:bg-slate-800">
+                        <Badge className={statusBadgeClass(device?.status ?? '')}>
+                          {statusLabel(device?.status ?? '')}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status select (other_status) */}
+                  {cfg.needStatusSelect && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                        เลือกสถานะใหม่ *
+                      </Label>
+                      <Select
+                        value={actCustomStatus}
+                        onValueChange={setActCustomStatus}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="เลือกสถานะ" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {STATUS_OPTIONS_FOR_ACTION.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Target status hint */}
+                  {!cfg.needStatusSelect && cfg.targetStatus && (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      เป้าหมาย: เปลี่ยนสถานะเป็น{' '}
+                      <Badge className={statusBadgeClass(cfg.targetStatus)}>
+                        {cfg.targetStatus}
+                      </Badge>
+                    </div>
+                  )}
+
+                  {/* Location fields (transfer / reinstall) */}
+                  {cfg.needLoc && (
+                    <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-800/40">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        <Building2 className="h-3.5 w-3.5 text-[#f97316]" />
+                        ตำแหน่งใหม่
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                          สาขา *
+                        </Label>
+                        <Select value={actSite} onValueChange={setActSite}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="เลือกสาขา" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(sites ?? []).map((s) => (
+                              <SelectItem key={s.code} value={s.code}>
+                                {s.name} ({s.code})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                            แผนก
+                          </Label>
+                          <Input
+                            value={actDept}
+                            onChange={(e) => setActDept(e.target.value)}
+                            placeholder="เช่น IT"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                            รหัสแผนก
+                          </Label>
+                          <Input
+                            value={actDeptCode}
+                            onChange={(e) => setActDeptCode(e.target.value)}
+                            placeholder="เช่น IT-001"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                            อาคาร
+                          </Label>
+                          <Input
+                            value={actBuilding}
+                            onChange={(e) => setActBuilding(e.target.value)}
+                            placeholder="เช่น อาคาร A"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                            ชั้น
+                          </Label>
+                          <Input
+                            value={actFloor}
+                            onChange={(e) => setActFloor(e.target.value)}
+                            placeholder="เช่น 3"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                          ตำแหน่ง/ห้อง
+                        </Label>
+                        <Input
+                          value={actLocation}
+                          onChange={(e) => setActLocation(e.target.value)}
+                          placeholder="เช่น ห้อง 301"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Meter reading (if meterable device) */}
+                  {cfg.needMeter && device?.meterRequired && (
+                    <div className="space-y-3 rounded-md border border-[#0d9488]/30 bg-[#0d9488]/5 p-3 dark:border-[#14b8a6]/30 dark:bg-[#14b8a6]/10">
+                      <div className="flex items-center gap-1.5 text-xs font-semibold text-[#0d9488] dark:text-[#14b8a6]">
+                        <Gauge className="h-3.5 w-3.5" />
+                        จดมิเตอร์ก่อนเปลี่ยนสถานะ
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                        ค่ามิเตอร์ล่าสุด:{' '}
+                        <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
+                          {(device.lastMeterReading ?? 0).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                            มิเตอร์ BW (ขาวดำ)
+                          </Label>
+                          <Input
+                            type="number"
+                            value={actMeterBw}
+                            onChange={(e) => setActMeterBw(e.target.value)}
+                            placeholder="0"
+                            className="font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                            มิเตอร์ Color (สี)
+                          </Label>
+                          <Input
+                            type="number"
+                            value={actMeterColor}
+                            onChange={(e) => setActMeterColor(e.target.value)}
+                            placeholder="0 (ถ้ามี)"
+                            className="font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reason / remark */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      หมายเหตุ / เหตุผล
+                    </Label>
+                    <Textarea
+                      value={actReason}
+                      onChange={(e) => setActReason(e.target.value)}
+                      placeholder={
+                        actionId === 'dispose'
+                          ? 'เช่น ขายให้บริษัท A / ทิ้ง / เลิกใช้'
+                          : actionId === 'send_repair'
+                            ? 'เช่น เครื่องพิมพ์ไม่ออก / จอดำ'
+                            : actionId === 'return_device'
+                              ? 'เช่น คืนลูกค้า / คืนผู้ขายหลังหมดสัญญา'
+                              : actionId === 'transfer'
+                                ? 'เช่น ย้ายไปใช้ที่แผนกใหม่'
+                                : 'หมายเหตุเพิ่มเติม'
+                      }
+                      rows={2}
+                    />
+                  </div>
+
+                  {/* Disposal warning */}
+                  {actionId === 'dispose' && (
+                    <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+                      ⚠️ การจำหน่ายเป็นการปิดงานถาวร — หลังจำหน่ายเครื่องจะไม่สามารถใช้งานได้อีก (ยกเว้นติดตั้งใหม่)
+                    </div>
+                  )}
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setActionOpen(false)}
+                    disabled={actioning}
+                  >
+                    ยกเลิก
+                  </Button>
+                  <Button
+                    onClick={confirmAction}
+                    disabled={
+                      actioning ||
+                      (cfg.needStatusSelect && !actCustomStatus) ||
+                      (cfg.needLoc && !actSite)
+                    }
+                    className={
+                      actionId === 'dispose'
+                        ? 'bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950'
+                        : actionId === 'send_repair'
+                          ? 'bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950'
+                          : 'bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950'
+                    }
+                  >
+                    {actioning ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        กำลังบันทึก...
+                      </>
+                    ) : (
+                      <>ยืนยัน — {cfg.label}</>
+                    )}
+                  </Button>
+                </DialogFooter>
+              </>
+            )
+          })()}
         </DialogContent>
       </Dialog>
     </Sheet>
