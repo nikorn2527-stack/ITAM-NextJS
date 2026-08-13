@@ -53,6 +53,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { CameraCapture } from './camera-capture'
 import {
   Wrench,
   Plus,
@@ -466,6 +467,11 @@ function ImageUploadField({
             <Camera className="h-4 w-4" />
             {value ? 'เปลี่ยนรูป' : 'ถ่ายรูป / เลือกไฟล์'}
           </Button>
+          <CameraCapture
+            onCapture={(dataUrl) => onChange(dataUrl)}
+            label="เปิดกล้องถ่าย"
+            className="h-9 w-full justify-start"
+          />
           {value && (
             <Button
               type="button"

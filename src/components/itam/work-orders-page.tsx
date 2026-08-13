@@ -48,6 +48,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { CameraCapture } from './camera-capture'
 import {
   Plus,
   RefreshCw,
@@ -1659,6 +1660,23 @@ function CreateWorkOrderDialog({
                   )}
                   เพิ่มรูปก่อนซ่อม
                 </Button>
+                <CameraCapture
+                  onCapture={(dataUrl) => {
+                    if (form.picBeforeImages.length >= MAX_IMAGES_PER_STAGE) {
+                      toast.error(`เพิ่มรูปได้สูงสุด ${MAX_IMAGES_PER_STAGE} รูป`)
+                      return
+                    }
+                    setForm((s) => ({
+                      ...s,
+                      picBeforeImages: [...s.picBeforeImages, dataUrl].slice(
+                        0,
+                        MAX_IMAGES_PER_STAGE,
+                      ),
+                    }))
+                  }}
+                  label="ถ่ายภาพกล้อง"
+                  className="min-h-11 w-full justify-center border-orange-300 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/40"
+                />
                 <p className="text-[11px] text-muted-foreground">
                   สูงสุด {MAX_IMAGES_PER_STAGE} รูป • บีบอัดอัตโนมัติ
                 </p>
@@ -2068,6 +2086,52 @@ function WorkOrderDetailContent({
       setImgBusy(false)
       setActiveStage(null)
       if (stageFileInputRef.current) stageFileInputRef.current.value = ''
+    }
+  }
+
+  // Camera capture for stage images — accepts a JPEG data URL already
+  // compressed by <CameraCapture /> (max 1024px). Uploads it to the same
+  // images endpoint as `handleStageImageChange` and refreshes the gallery.
+  async function handleStageImageFromCamera(
+    stage: 'before' | 'onsite' | 'after',
+    dataUrl: string,
+  ) {
+    const existingCount =
+      stage === 'before'
+        ? beforeImages.length
+        : stage === 'onsite'
+          ? onsiteImages.length
+          : afterImages.length
+    const remaining = MAX_IMAGES_PER_STAGE - existingCount
+    if (remaining <= 0) {
+      toast.error(`เพิ่มรูปได้สูงสุด ${MAX_IMAGES_PER_STAGE} รูปต่อขั้นตอน`)
+      return
+    }
+    try {
+      setImgBusy(true)
+      setActiveStage(stage)
+      const res = await fetch(`/api/work-orders/${wo.id}/images`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage,
+          image_data: dataUrl,
+          fileName: `camera-${Date.now()}.jpg`,
+          uploadedBy: 'admin',
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'อัปโหลดรูปไม่สำเร็จ')
+      }
+      toast.success(`เพิ่มรูป ${stage} จากกล้องแล้ว`)
+      qc.invalidateQueries({ queryKey: ['wo-images', wo.id] })
+      onMutated()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'อัปโหลดรูปไม่สำเร็จ')
+    } finally {
+      setImgBusy(false)
+      setActiveStage(null)
     }
   }
 
@@ -2926,6 +2990,7 @@ function WorkOrderDetailContent({
               stageKey="before"
               images={beforeImages}
               onAdd={() => triggerUpload('before')}
+              onCamera={(dataUrl) => handleStageImageFromCamera('before', dataUrl)}
               onView={(src) => setLightboxSrc(src)}
               onDelete={(img) => handleDeleteImage(img)}
               deletingId={deletingImgId}
@@ -2937,6 +3002,7 @@ function WorkOrderDetailContent({
               stageKey="onsite"
               images={onsiteImages}
               onAdd={() => triggerUpload('onsite')}
+              onCamera={(dataUrl) => handleStageImageFromCamera('onsite', dataUrl)}
               onView={(src) => setLightboxSrc(src)}
               onDelete={(img) => handleDeleteImage(img)}
               deletingId={deletingImgId}
@@ -2948,6 +3014,7 @@ function WorkOrderDetailContent({
               stageKey="after"
               images={afterImages}
               onAdd={() => triggerUpload('after')}
+              onCamera={(dataUrl) => handleStageImageFromCamera('after', dataUrl)}
               onView={(src) => setLightboxSrc(src)}
               onDelete={(img) => handleDeleteImage(img)}
               deletingId={deletingImgId}
@@ -3259,7 +3326,7 @@ function WorkOrderDetailContent({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="complete-pic-after">รูปหลังซ่อม (Optional)</Label>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <input
                   ref={picAfterInputRef}
                   id="complete-pic-after"
@@ -3277,6 +3344,10 @@ function WorkOrderDetailContent({
                   <ImageIcon className="h-4 w-4" />
                   {picAfter ? 'เปลี่ยนรูป' : 'เลือกรูป'}
                 </Button>
+                <CameraCapture
+                  onCapture={(dataUrl) => setPicAfter(dataUrl)}
+                  label="ถ่ายภาพ"
+                />
                 {picAfter && (
                   <div className="flex items-center gap-1">
                     <img
@@ -3783,6 +3854,7 @@ function WoImageStageGroup({
   stageKey,
   images,
   onAdd,
+  onCamera,
   onView,
   onDelete,
   deletingId,
@@ -3793,6 +3865,7 @@ function WoImageStageGroup({
   stageKey: 'before' | 'onsite' | 'after'
   images: WorkOrderImage[]
   onAdd: () => void
+  onCamera: (dataUrl: string) => void
   onView: (src: string) => void
   onDelete: (img: WorkOrderImage) => void
   deletingId: string | null
@@ -3802,7 +3875,7 @@ function WoImageStageGroup({
   const full = images.length >= MAX_IMAGES_PER_STAGE
   return (
     <div className="rounded-lg border bg-card p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs font-semibold">
           <span
             className={`inline-block h-2 w-2 rounded-full ${
@@ -3820,21 +3893,28 @@ function WoImageStageGroup({
           </span>
         </div>
         {canAdd && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={onAdd}
-            disabled={busy || full}
-            className="min-h-9 px-3 text-xs sm:min-h-7 sm:px-2 sm:text-[11px]"
-          >
-            {busy ? (
-              <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin sm:h-3 sm:w-3" />
-            ) : (
-              <Plus className="mr-1 h-3.5 w-3.5 sm:h-3 sm:w-3" />
-            )}
-            เพิ่มรูป
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={onAdd}
+              disabled={busy || full}
+              className="min-h-9 px-3 text-xs sm:min-h-7 sm:px-2 sm:text-[11px]"
+            >
+              {busy ? (
+                <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin sm:h-3 sm:w-3" />
+              ) : (
+                <Plus className="mr-1 h-3.5 w-3.5 sm:h-3 sm:w-3" />
+              )}
+              เพิ่มรูป
+            </Button>
+            <CameraCapture
+              onCapture={onCamera}
+              label="ถ่ายภาพ"
+              className="min-h-9 px-3 text-xs sm:min-h-7 sm:px-2 sm:text-[11px]"
+            />
+          </div>
         )}
       </div>
       {images.length === 0 ? (

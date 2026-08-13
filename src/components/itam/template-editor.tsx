@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { CameraCapture } from './camera-capture'
 import {
   Select,
   SelectContent,
@@ -1082,6 +1083,13 @@ function ImageProperties({
             <ImageIcon className="mr-1.5 h-3.5 w-3.5" />
             อัปโหลดรูป (สูงสุด 1.5 MB)
           </Button>
+          <CameraCapture
+            onCapture={(dataUrl) =>
+              onChange({ src: dataUrl } as Partial<TemplateElement>)
+            }
+            label="ถ่ายภาพจากกล้อง"
+            className="h-8 w-full"
+          />
           {el.src && (
             <Button
               type="button"

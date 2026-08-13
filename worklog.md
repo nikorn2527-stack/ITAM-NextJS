@@ -7264,3 +7264,72 @@ Stage Summary:
 - Login page เปลี่ยนตาม app customization
 - Device actions เหมือน Apps Script (ย้าย/ส่งซ่อม/ถอน/จำหน่าย/ติดตั้งใหม่/คืนเครื่อง)
 - License management ใช้งานได้ชัดเจน
+
+---
+Task ID: FIX-SIDEBAR-CAMERA-DATA
+Agent: full-stack-developer — Fix sidebar + camera + data audit
+
+Work Log:
+- Sidebar: moved search/QR to bottom, bell/theme to top
+  - Top section (header): logo + app name + NotificationsPopover (bell) + theme toggle
+    - Collapsed: bell + theme icon stack vertically below logo
+    - Expanded: bell + theme icon align right in header row
+  - Middle section: nav items only (no search/QR — cleaner)
+  - Bottom section (above user footer): Global Search button + QR Scanner button
+    - Collapsed: two small icon buttons (Search, QR) stacked
+    - Expanded: full-width search input + full-width QR button
+  - Footer: avatar + name + role + logout (unchanged)
+  - Realtime status dot hidden when collapsed (kept only in expanded header)
+
+- Camera: created CameraCapture component (src/components/itam/camera-capture.tsx)
+  - Uses getUserMedia with facingMode: 'environment' (rear camera)
+  - Captures at up to 1280×720, downscales to max 1024px JPEG @ 0.7
+  - Fullscreen overlay UI with capture + close buttons
+  - Stream cleanup on unmount
+  - Returns JPEG data URL via onCapture callback (feeds into existing handlers)
+  - Added to ALL image upload points:
+    1. work-orders-page.tsx — WoImageStageGroup (3 stages: before/onsite/after)
+       via new handleStageImageFromCamera() helper that POSTs to /images API
+    2. work-orders-page.tsx — New WO form "รูปก่อนซ่อม" (picBeforeImages state)
+    3. work-orders-page.tsx — Complete dialog "รูปหลังซ่อม" (picAfter state)
+    4. itam-work-orders.tsx — ImageUploadField component (used for picBefore/picOnsite/picAfter)
+    5. template-editor.tsx — ImageProperties panel (image element src)
+
+- Data audit: fixed [list of issues found]
+  - devices-page.tsx: ✅ all fields correct (assetCode, assetSiteCode, serialNumber,
+    purchaseDate, lastMeterBw + lastMeterColor + lastReadingMonth, status badges
+    with Thai labels via statusLabel/statusBadgeClass, updatedAt via formatDateTime)
+  - work-orders-page.tsx: ✅ all correct (woNumber, status mapping with Thai labels,
+    priority badges, formatDateTime using th-TH locale = Buddhist year)
+  - itam-dashboard.tsx: fixed API response field mismatch
+    - GET /api/itam/dashboard: recentActivity returned `assetNo` but frontend expected
+      `assetCode` → renamed API field to `assetCode` (matches DB column)
+    - heatmap rows: also renamed `assetNo` → `assetCode` to match frontend interface
+  - stock pages: ✅ all correct
+    - TYPE_LABELS: IN→รับเข้า, OUT→เบิกออก, ADJUST→ปรับปรุง
+    - stock-pending.tsx: pendingCount = txns.filter(approvalStatus === 'PENDING').length
+    - Thai status labels (รออนุมัติ/อนุมัติแล้ว/ปฏิเสธ) properly mapped
+  - itam-meter-unified.tsx → itam-meter.tsx (history tab): added missing columns
+    - Added "ก่อนหน้า" column showing prevMeterBw
+    - Added "ส่วนต่าง" column showing delta = meterBw - prevMeterBw with color-coded badge
+      (amber if negative=RESET, sky if positive, slate if zero)
+      with title="prev → new = delta" for tooltip
+    - Added "ประเภท" column with readingType badge (Thai labels):
+      MONTHLY→ประจำเดือน, INITIAL→เริ่มต้น, FINAL→สิ้นสุด, RESET→RESET,
+      CHECKOUT→เช็คเอาท์, SEND_REPAIR→ส่งซ่อม, RETURN→คืนเครื่อง
+    - Updated Reading interface to include readingType?: string | null
+    - Updated skeleton rows + colSpan (6 → 9) to match new column count
+  - itam-meter-keyboard.tsx: ✅ already shows lastMeterBw/lastMeterColor
+    ("ค่ามิเตอร์ล่าสุด") + RESET warning when new < old
+
+Verification:
+✅ Build: Compiled successfully in 28.1s (npx next build)
+✅ Dev server: GET / 200 (compile 9.9s)
+✅ No new lint errors introduced (existing pre-existing errors in scripts/*.js
+   and dashboard-page.tsx:796 unchanged)
+✅ Did not touch prisma schema
+
+Stage Summary:
+- Sidebar balanced layout (top: bell+theme, middle: nav, bottom: search+QR)
+- Camera capture available everywhere (5 image upload points across 3 components)
+- Data display accuracy improved (dashboard API field fix + meter history columns)

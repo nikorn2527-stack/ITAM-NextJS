@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
     // ── Recent activity ────────────────────────────────────────────────────
     const recentActivity = recentReadings.map((r) => ({
       id: r.id,
-      assetNo: r.assetCode,
+      assetCode: r.assetCode,
       deviceName: r.device ? `${r.device.brand || ''} ${r.device.model || ''}`.trim() : r.assetCode,
       readingDate: r.readingDate,
       pagesBw: r.pagesBw,
@@ -235,7 +235,7 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Heatmap (optional, only if extra=1) ────────────────────────────────
-    let heatmap: Array<{ assetNo: string; deviceName: string; months: Array<{ month: string; pages: number }> }> = []
+    let heatmap: Array<{ assetCode: string; deviceName: string; months: Array<{ month: string; pages: number }> }> = []
     let heatmapMonths: string[] = []
     if (includeExtra) {
       heatmapMonths = trendMonthKeys
@@ -263,7 +263,7 @@ export async function GET(req: NextRequest) {
           (byDeviceMonth[code][key] || 0) + (r._sum.pagesBw ?? 0) + (r._sum.pagesColor ?? 0)
       }
       heatmap = topDevices.map((d) => ({
-        assetNo: d.assetCode,
+        assetCode: d.assetCode,
         deviceName: `${d.brand || ''} ${d.model || ''}`.trim() || d.assetCode,
         months: trendMonthKeys.map((m) => ({ month: m, pages: byDeviceMonth[d.assetCode]?.[m] || 0 })),
       }))
