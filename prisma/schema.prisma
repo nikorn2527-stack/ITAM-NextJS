@@ -113,6 +113,8 @@ model MeterReading {
 
 // ============================================================
 // 3) Cycle — รอบจดมิเตอร์
+//    `site` is optional — null means "all sites" (a global cycle).
+//    When set, the cycle is scoped to that site code (e.g. "UDH").
 // ============================================================
 model Cycle {
   id        String   @id @default(cuid())
@@ -120,8 +122,12 @@ model Cycle {
   startDate String
   endDate   String
   status    String   @default("active")
+  site      String?  // nullable — null = all sites (global cycle)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([site])
 }
 
 // ============================================================

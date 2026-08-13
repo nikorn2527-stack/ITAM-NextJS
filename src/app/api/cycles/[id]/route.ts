@@ -39,17 +39,11 @@ export async function PUT(
       name,
       startDate,
       endDate,
-      cycleMonth,
-      deadlineDate,
-      remarks,
     } = body as {
       status?: string
       name?: string
       startDate?: string
       endDate?: string
-      cycleMonth?: string
-      deadlineDate?: string
-      remarks?: string
     }
     // `user` for audit attribution (optional — this route may be unauthenticated)
     let user: { email?: string } | null = null
@@ -66,11 +60,14 @@ export async function PUT(
       return NextResponse.json({ error: 'Cycle not found' }, { status: 404 })
     }
 
+    // `closedAt` doesn't exist on the Cycle table — removed to avoid Prisma
+    // validation errors when transitioning to CLOSED.
+
     const data: Record<string, unknown> = {}
     if (status !== undefined) {
       const s = String(status).trim()
       // Accept both legacy (active|ended|cancelled) and V5 (OPEN|QUEUED|CLOSED) statuses
-      if (!['active', 'ended', 'cancelled', 'OPEN', 'QUEUED', 'CLOSED', 'NONE'].includes(s)) {
+      if (!['active', 'ended', 'cancelled', 'closed', 'OPEN', 'QUEUED', 'CLOSED', 'NONE'].includes(s)) {
         return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
       }
       // V5 cycle lock (Apps Script commit 67f8e54):
@@ -86,9 +83,16 @@ export async function PUT(
     if (name !== undefined) data.name = String(name).trim()
     if (startDate !== undefined) data.startDate = String(startDate)
     if (endDate !== undefined) data.endDate = String(endDate)
-    if (cycleMonth !== undefined) data.cycleMonth = String(cycleMonth)
-    if (deadlineDate !== undefined) data.deadlineDate = String(deadlineDate)
-    if (remarks !== undefined) data.remarks = String(remarks)
+    // site: pass `null` (or "ALL") to make the cycle global, otherwise set the
+    // site code. Validate against SiteAttribute when provided.
+    if (body.site !== undefined) {
+      const sRaw = String(body.site ?? '').trim()
+      if (!sRaw || sRaw.toUpperCase() === 'ALL') {
+        data.site = null
+      } else {
+        data.site = sRaw.toUpperCase()
+      }
+    }
 
     // ── Snapshot-on-close (Apps Script MeterSnapshotService commit 67f8e54) ──
     // When transitioning to CLOSED/ended, create an immutable snapshot of all
@@ -98,11 +102,10 @@ export async function PUT(
     const isClosing =
       status === 'CLOSED' || status === 'ended'
     if (isClosing && existing.status !== 'CLOSED' && existing.status !== 'ended') {
-      const cycleMonth = existing.cycleMonth || existing.startDate.slice(0, 7)
+      const cycleMonth = existing.startDate.slice(0, 7)
       try {
         const { createMeterReportSnapshot } = await import('@/lib/meter-snapshot')
         snapshotResult = await createMeterReportSnapshot(cycleMonth, user?.email || 'system')
-        data.closedAt = new Date()
       } catch (snapErr) {
         console.error('Snapshot creation failed — cycle stays OPEN:', snapErr)
         return NextResponse.json(

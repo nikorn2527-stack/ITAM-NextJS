@@ -82,6 +82,7 @@ import {
 } from 'lucide-react'
 import { formatThaiDate, relativeTime } from './types'
 import { TemplatePrintDialog } from './template-print-dialog'
+import { Combobox } from './combobox'
 import { useAppStore } from '@/store/app-store'
 
 // ============================================================
@@ -1389,7 +1390,7 @@ function CreateWorkOrderDialog({
             {/* Conditional sections */}
             {form.isExternal ? (
               <div className="grid gap-3 rounded-lg border border-teal-200 bg-teal-50/50 p-3 dark:border-teal-800 dark:bg-teal-950/30">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
                   <div className="grid gap-1.5">
                     <Label htmlFor="wo-client">
                       ชื่อลูกค้า <span className="text-rose-500">*</span>
@@ -1481,29 +1482,20 @@ function CreateWorkOrderDialog({
               </div>
             ) : (
               <div className="grid gap-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
                   <div className="grid gap-1.5">
                     <Label htmlFor="wo-building">อาคาร / ฝ่าย</Label>
-                    <Input
-                      id="wo-building"
+                    <Combobox
                       value={form.building}
-                      onChange={(e) =>
-                        setForm((s) => ({ ...s, building: e.target.value }))
-                      }
-                      placeholder="เช่น อาคาร A, ฝ่ายบัญชี"
-                      list="wo-building-options"
-                      autoComplete="off"
+                      onChange={(v) => setForm((s) => ({ ...s, building: v }))}
+                      items={buildings.map((b) => ({ value: b.value, label: b.value }))}
+                      placeholder="เลือกหรือพิมพ์อาคาร / ฝ่าย"
+                      emptyText="ยังไม่มีอาคาร — พิมพ์เพื่อเพิ่มใหม่"
+                      inputId="wo-building"
                     />
-                    <datalist id="wo-building-options">
-                      {buildings.map((b) => (
-                        <option key={b.value} value={b.value}>
-                          {b.group}
-                        </option>
-                      ))}
-                    </datalist>
                     {buildings.length > 0 && (
                       <div className="text-[10px] text-muted-foreground">
-                        พิมพ์หรือเลือกจากรายการที่บันทึกไว้ ({buildings.length})
+                        เลือกจากรายการที่บันทึกไว้ ({buildings.length}) หรือพิมพ์ใหม่ได้
                       </div>
                     )}
                   </div>
@@ -1608,7 +1600,7 @@ function CreateWorkOrderDialog({
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="wo-priority">ความเร่งด่วน</Label>
                 <Select
@@ -1719,7 +1711,7 @@ function CreateWorkOrderDialog({
                   ? 'ผู้แจ้ง (ช่างที่รับงาน)'
                   : 'ผู้แจ้ง (ต้องยืนยันตัวตนกับสมุดผู้ติดต่อ)'}
               </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="wo-reporter">
                     ชื่อผู้แจ้ง
@@ -1731,6 +1723,12 @@ function CreateWorkOrderDialog({
                     onChange={(e) =>
                       setForm((s) => ({ ...s, reporterName: e.target.value }))
                     }
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        document.getElementById('wo-tel')?.focus()
+                      }
+                    }}
                     placeholder="ชื่อ-นามสกุล"
                   />
                 </div>
@@ -1739,26 +1737,46 @@ function CreateWorkOrderDialog({
                     เบอร์โทร
                     {!form.isExternal && <span className="text-rose-500"> *</span>}
                   </Label>
-                  <Input
-                    id="wo-tel"
-                    value={form.tel}
-                    onChange={(e) => setForm((s) => ({ ...s, tel: e.target.value }))}
-                    placeholder="08xxxxxxxx"
-                    inputMode="tel"
-                  />
+                  <div className="relative">
+                    <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="wo-tel"
+                      value={form.tel}
+                      onChange={(e) => setForm((s) => ({ ...s, tel: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          document.getElementById('wo-emp')?.focus()
+                        }
+                      }}
+                      placeholder="08xxxxxxxx"
+                      inputMode="tel"
+                      className="pl-8 font-mono text-xs"
+                    />
+                  </div>
                 </div>
               </div>
               {!form.isExternal && (
                 <div className="grid gap-1.5">
                   <Label htmlFor="wo-emp">รหัสพนักงาน (Optional)</Label>
-                  <Input
-                    id="wo-emp"
-                    value={form.employeeCode}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, employeeCode: e.target.value }))
-                    }
-                    placeholder="เช่น EMP001"
-                  />
+                  <div className="relative">
+                    <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="wo-emp"
+                      value={form.employeeCode}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, employeeCode: e.target.value }))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          document.getElementById('wo-details')?.focus()
+                        }
+                      }}
+                      placeholder="สแกนบัตรพนักงาน หรือพิมพ์รหัส เช่น EMP001"
+                      className="pl-8 font-mono text-xs"
+                    />
+                  </div>
                 </div>
               )}
               {!form.isExternal && (

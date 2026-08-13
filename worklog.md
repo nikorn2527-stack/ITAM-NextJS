@@ -7455,3 +7455,169 @@ Stage Summary:
 - เทมเพลต 3 ระบบ → 1 หน้า พร้อม type selector
 - แยก ระบบ/Custom + ตั้ง default ได้
 - นาฬิกา + วันที่ไทย แสดงใน sidebar + footer
+
+---
+Task ID: FIX-RBAC-AUDIT-CYCLE-SITE
+Agent: full-stack-developer — Fix RBAC + user mgmt + audit + cycle + site
+
+Work Log:
+- Issue 1: Granular permissions + permission management UI
+  • src/lib/auth-shared.ts — expanded Permission union (added WO_CREATE/VIEW_ALL/VIEW_SITE/VIEW_OWN/ASSIGN/COMPLETE/CANCEL, STOCK_VIEW/IN/OUT/APPROVE, TEMPLATES_MANAGE/IMPORT_DATA/VIEW_AUDIT). Added UserPermissionRow.permissions field. Added PERMISSION_GROUPS metadata + ALL_PERMISSION_KEYS. Added parseCustomPermissions() + getUserPermissions(role, custom) — merges role defaults with per-user grants (additive). Updated toAuthUser() to return merged perms.
+  • src/lib/auth-middleware.ts — requireAuth() now checks the user's MERGED permission list (hasResolvedPermission) instead of just ROLE_PERMISSIONS[role].
+  • src/lib/auth.ts — re-exports new symbols.
+  • src/lib/rbac.ts — computeNavVisibility() now accepts BOTH SCREAMING_SNAKE keys (VIEW_DASHBOARD, WO_VIEW_ALL) AND legacy colon-delimited keys (dashboard:view, wo:view:all). Added new `audit` nav visibility key for VIEW_AUDIT.
+  • src/components/itam/sidebar.tsx — added Badge import. Added pageToVisibilityKey map. Render now filters NAV_GROUPS → filteredNavGroups (hides items the user lacks permission to see). useCountdown() now takes (startDate, endDate) and computes progress over the actual cycle window + emits `warning` flag (≤3 days to deadline). Cycle countdown bar turns amber + shows ⚠️ when warning.
+  • src/components/itam/user-management-section.tsx (NEW) — UserManagementSection + PermissionManagementDialog. Table lists users with role/allowedSites/active toggles + key icon (per-user perms). Permission dialog renders PERMISSION_GROUPS as grouped checkboxes (disabled + greyed-out for role-default perms, enabled for custom grants). Saves to User.permissions via PUT /api/itam/auth/users/[id] { permissions: [] }.
+  • src/components/itam/itam-settings.tsx — added "👥 จัดการผู้ใช้" + "🔐 สิทธิ์ผู้ใช้" tabs (both render UserManagementSection).
+
+- Issue 2: User management UI
+  • Same UserManagementSection as above — Create dialog (email/username/name/password/role/allowedSites/active + custom perms matrix), Edit (password optional), Delete (confirm dialog w/ last-admin protection on the API), activate/deactivate Switch in the table row.
+  • src/app/api/itam/auth/users/route.ts — POST now accepts `permissions` (string[] | comma-separated | JSON) and stores as JSON string. Removed broken `remark` field (not on User schema). Added normalizePermissionsStorage() helper.
+  • src/app/api/itam/auth/users/[id]/route.ts — PUT now accepts `permissions` (optional; null clears). Removed broken `remark`.
+
+- Issue 3: Audit log field fixes + display
+  • src/lib/audit.ts — logAudit() now writes to { action, entity, entityId, summary, detail, actor } (was: timestamp/user/details — those don't exist on AuditLog schema).
+  • src/lib/bulk-audit.ts — same fix for logBulkAudit().
+  • src/app/api/itam/audit/route.ts — rewrote GET to use `actor`/`createdAt`/`summary`/`detail`/`entity` (was `user`/`timestamp`/`details`). Added date-range filters (startDate/endDate). Added action aggregation (db.auditLog.groupBy) so the client dropdown can show real DB actions. Non-admins only see their own entries (actor === email). Admins see all + can filter by actor.
+  • src/components/itam/itam-audit.tsx — rewrote UI. AuditLog interface now matches DB (createdAt, actor, summary, detail, entity, entityId). Filter bar: action dropdown (DB-driven), actor input, search (OR across summary/detail/actor), date-range. Table columns: วันที่ / การกระทำ (badge + raw key) / Entity / ผู้กระทำ / สรุป (+ detail tooltip). CSV export includes all columns. Empty state offers "ล้างตัวกรอง" when filters are active.
+  • src/app/api/v1/cycles/route.ts — fixed same broken auditLog.create call (was using timestamp/user/details + closedAt/cycleMonth/deadlineDate/remarks/startedAt which don't exist on Cycle). Now uses CYCLE_START + actor + summary.
+  • src/app/api/cycles/[id]/route.ts — removed broken `data.closedAt`, `cycleMonth`, `deadlineDate`, `remarks` writes (don't exist on Cycle). Added `site` field handling.
+
+- Issue 4: Cycle per site + countdown fix
+  • prisma/schema.prisma — added `site String?` to Cycle model + indexes on [status] and [site]. Ran `prisma db push` (verified DB column exists).
+  • src/components/itam/types.ts — added `site?: string | null` to Cycle interface.
+  • src/app/api/cycles/route.ts — GET auto-closes expired cycles (status='active' AND endDate < today → 'closed') every call. Supports ?site=UDH filter (returns cycles for that site OR null global cycles). POST accepts `site` field (null/ALL = global). When starting a new active cycle, only closes other active cycles at the SAME site (UDH + NKP can each have their own active cycle).
+  • src/app/api/cycles/[id]/route.ts — PUT accepts `site` field (null/ALL = global).
+  • src/components/itam/cycle-manage-dialog.tsx — added site picker ("🌐 ทุกสาขา" + sites from /api/sites) in create form. Cycle history list shows site badge (🏢 CODE or 🌐 ทุกสาขา). Active cycle highlight shows site badge. Auto-create-next-cycle suggestion carries the original cycle's site forward. Cycle duration displayed in history.
+  • src/components/itam/sidebar.tsx — useCountdown() updated to take (startDate, endDate) and compute pct over the actual cycle window. Warning state (≤3 days) turns bar amber with ⚠️ icon + shows site badge when cycle is site-scoped.
+
+- Issue 5: Site dropdown + assetSiteCode generation
+  • src/app/api/sites/route.ts — rewrote GET to read from SiteAttribute (4 rows: UDH/NKP/MECUD/PPIT) instead of legacy Site (0 rows). Returns flat shape { id, code, name, lineOa, hotline, paperRateBw, paperRateColor }. POST now upserts by SiteCode.
+  • src/components/itam/types.ts — Site interface: `createdAt` now optional, added optional lineOa/hotline/paperRateBw/paperRateColor.
+  • src/components/itam/devices-page.tsx — added assetSiteCode to FormState + EMPTY_FORM + openEdit() + save() payload. Site dropdown now uses visibleSites (filtered by user's allowedSites for non-admins) and shows "{code} — {name}" labels. Added "✨ สร้างรหัส" button next to assetSiteCode field — calls /api/devices/next-site-code?site={selectedSite}. Auto-fills assetSiteCode when site changes on CREATE (empty field). Bulk-transfer + site-filter dropdowns also use visibleSites.
+  • src/app/api/devices/route.ts — POST accepts assetSiteCode. Removed broken `lastMeterReading` field (not on Device schema).
+  • src/app/api/devices/[id]/route.ts — PUT accepts assetSiteCode + added to EDITABLE_FIELDS. Removed broken `lastMeterReading`.
+
+Verification:
+✅ TypeScript check clean (only pre-existing dashboard-page.tsx errors)
+✅ ESLint clean on all 22 modified/new files (only pre-existing dashboard-page.tsx + scripts/*.js require-import errors)
+✅ Prisma db push succeeded — Cycle table now has `site` column in DB
+✅ AuditLog table confirmed: { id, action, entity, entityId, summary, detail, actor, createdAt } — 9 existing rows match this schema
+
+Stage Summary:
+- All 5 issues resolved
+
+---
+Task ID: FIX-OAUTH-DROPDOWN-LAYOUT
+Agent: full-stack-developer — Fix OAuth + dropdowns + layout + barcode
+
+Work Log:
+- Issue 6: OAuth UI + settings + API structure
+  • NEW src/components/itam/oauth-section.tsx — OAuth/External Login tab in Settings.
+    Fields for Google (Client ID/Secret/Redirect URL), LINE (Channel ID/Secret/Redirect URL),
+    Telegram (Bot Token). Saves to AppSetting via PUT /api/settings with keys:
+    oauth_google_client_id, oauth_google_client_secret, oauth_google_redirect_url,
+    oauth_line_channel_id, oauth_line_channel_secret, oauth_line_redirect_url,
+    oauth_telegram_bot_token. Shows ✅ configured / ❌ not configured status +
+    step-by-step instructions + docs links for each provider.
+  • itam-settings.tsx — added new tab "🔑 OAuth/External Login" (renders OauthSection).
+  • itam-login.tsx — fetches /api/auth/oauth/status on mount. Renders divider
+    "หรือเข้าสู่ระบบด้วย" + branded buttons for Google/LINE/Telegram only when at
+    least one provider is configured. Disabled buttons show tooltip "ยังไม่ได้ตั้งค่า".
+    Handles ?oauth=success (hydrates session via setSession) / ?oauth=pending (toast)
+    / ?oauth_error=... (error toast) callbacks by parsing URL on mount + cleaning it.
+  • NEW src/app/api/auth/oauth/status/route.ts — public endpoint returning which
+    providers are configured (used by the login page).
+  • NEW src/app/api/auth/oauth/google/route.ts — initiates Google OAuth (redirect to
+    accounts.google.com consent with state cookie).
+  • NEW src/app/api/auth/oauth/google/callback/route.ts — verifies state, exchanges
+    code for tokens, decodes id_token, looks up user by email. Existing+active →
+    issue ITAM JWT + redirect /?oauth=success&token=...&user=...; existing+inactive
+    OR new → create pending user (active=false) + redirect /?oauth=pending. Stores
+    google:sub in User.lineUserId for future linking. Audit log written.
+  • NEW src/app/api/auth/oauth/line/route.ts + callback/route.ts — same pattern
+    using LINE Login v2.1 (access.line.me/oauth2/v2.1/authorize → api.line.me/oauth2/v2.1/token).
+    Falls back to /v2/profile when id_token doesn't carry email.
+  • NEW src/app/api/auth/oauth/telegram/route.ts — calls /getMe to fetch the bot
+    username so the login page can render the Telegram Login Widget (returns
+    { configured: bool, botUsername?: string }).
+
+- Issue 7: Combobox dropdowns on all form fields
+  • NEW src/components/itam/combobox.tsx — reusable searchable combobox using
+    shadcn Popover + Command. Supports BOTH typing free-form AND selecting from
+    a list. Optional icon (ScanLine), inputId (for focus chaining), autoFocus,
+    onKeyDown (forwarded only when popover is closed so Enter can move focus
+    to the next field), groupLabel, emptyText.
+  • devices-page.tsx:
+    - Brand → Combobox (MasterItem category=Brand)
+    - Type → Combobox (MasterItem category=Type)
+    - Model → Combobox (MasterItem category=Model, filtered by selected Brand
+      via parentRef matching — choosing a new Brand clears Model)
+    - Department → Combobox (MasterItem category=Department)
+    - DeviceGroup → Combobox (MasterItem category=DeviceGroup) — moved from
+      the "Other" section into the basic info grid
+    - Status → Select (existing fixed options)
+    - Site → Select (existing, but now resets building/floor/room on change)
+    - Building → Combobox (cascading from site via /api/itam/devices/cascading)
+    - Floor → Combobox (cascading from site+building)
+    - Location → Combobox (cascading from site+building+floor — was previously
+      a plain Input in the basic info section)
+    - All cascading comboboxes allow free-form typing when the list is empty
+      (so the user can be the first to add a value at a site/building/floor).
+    - Authenticated fetch wrapper added so the cascading endpoint (which
+      requires VIEW_DEVICES) accepts the Bearer JWT from auth-store.
+  • work-orders-page.tsx:
+    - Building → Combobox (from /api/settings/options buildings list — was
+      previously Input with datalist)
+    - Subject → Select (grouped, unchanged)
+    - Priority → Select (ปกติ/ปานกลาง/สูง/ด่วน, unchanged)
+    - Status → Select filter (unchanged)
+  • stock-in-form.tsx:
+    - Supplier → Combobox (MasterItem category=Vendor — admin manages list in
+      Master Data tab. Empty list = free-form typing still works.)
+    - ProductCode → existing Popover+Command picker (unchanged)
+  • stock-out-form.tsx:
+    - Department → Combobox (MasterItem category=Department)
+    - Purpose → Combobox (replaces Input+datalist with PURPOSE_OPTIONS list)
+    - ProductCode → existing Popover+Command picker (unchanged)
+
+- Issue 8: Layout alignment + barcode scanner support
+  • Field wrapper in devices-page.tsx — switched from `space-y-1.5` to
+    `flex flex-col gap-1.5` + added optional `hint` slot (so hints render
+    below the input consistently). All grid containers updated to use
+    `items-start` so labels in each row align at the top even when one row
+    has a hint paragraph below the input.
+  • All Buttons in form rows (e.g. "สร้างรหัส" next to assetSiteCode) bumped
+    from h-7 to h-9 so they match the Input height and no longer misalign.
+  • All Inputs that pair with the new Combobox share h-9 (default Input).
+  • Device form barcode scanner support:
+    - assetCode — autoFocus on dialog open, ScanLine icon, Enter → focus dev-name
+    - dev-name — Enter → focus dev-serialNumber
+    - dev-serialNumber — ScanLine icon, Enter → focus dev-mac (alphanumeric+specials OK)
+    - dev-mac — ScanLine icon + auto-formatter `formatMacInput()` that strips
+      non-hex chars, uppercases, and inserts ":" every 2 chars (max 12 hex →
+      AA:BB:CC:DD:EE:FF). Enter → focus dev-ip.
+    - dev-ip — ScanLine icon, Enter → focus dev-assetSiteCode.
+  • Work-order form barcode scanner support:
+    - wo-reporter — Enter → focus wo-tel
+    - wo-tel — ScanLine icon, Enter → focus wo-emp
+    - wo-emp — ScanLine icon, Enter → focus wo-details (textarea)
+  • All barcode fields use `font-mono text-xs` for clearer scan readability.
+
+Verification:
+✅ ESLint clean on all new + modified files (only pre-existing errors remain:
+  scripts/*.js require-imports, dashboard-page.tsx parsing error, lib/auth.ts
+  bcryptjs require)
+✅ next build: "✓ Compiled successfully in 29.7s" — no errors
+✅ OAuth status endpoint structure verified
+✅ Combobox supports both free-form typing + dropdown selection
+✅ Cascading dropdowns clear dependent fields on parent change
+
+Stage Summary:
+- OAuth login ready (admin configures credentials in Settings → OAuth; login
+  page auto-shows configured providers' branded buttons)
+- All form fields use searchable dropdowns (Brand/Type/Model/Department/
+  DeviceGroup/Building/Floor/Location in device form; Building in WO form;
+  Supplier/Department/Purpose in stock forms)
+- Forms aligned (items-start + flex flex-col gap-1.5 + h-9 inputs) +
+  barcode-ready (autoFocus + Enter→next-field + ScanLine icon + MAC auto-format)

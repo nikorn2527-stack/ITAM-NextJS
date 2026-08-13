@@ -15,7 +15,8 @@
  *   2. Verifies the JWT (signature + exp + blacklist).
  *   3. Loads the current user row from the DB (so role/allowedSites changes
  *      made by an admin are reflected without re-issuing the token).
- *   4. If `permission` is given, checks `hasPermission(role, permission)`.
+ *   4. If `permission` is given, checks the user's MERGED permission list
+ *      (role defaults + per-user custom grants stored in `User.permissions`).
  *   5. Returns `{ ok, user }` on success or `{ ok: false, status, error }`.
  */
 
@@ -23,7 +24,7 @@ import { db } from '@/lib/db'
 import {
   verifyToken,
   toAuthUser,
-  hasPermission,
+  hasResolvedPermission,
   type AuthUser,
   type Permission,
   type UserPermissionRow,
@@ -57,12 +58,14 @@ export async function requireAuth(
   if (!row || !row.active) {
     return { ok: false, status: 401, error: 'บัญชีถูกปิดใช้งานหรือไม่พบในระบบ' }
   }
-  if (permission && !hasPermission(row.role, permission)) {
+  const user = toAuthUser(row)
+  // Permission check: against the user's MERGED permission list (role + custom)
+  if (permission && !hasResolvedPermission(user.permissions, permission)) {
     return {
       ok: false,
       status: 403,
-      error: `ไม่มีสิทธิ์ (${permission}) สำหรับบทบาทนี้`,
+      error: `ไม่มีสิทธิ์ (${permission}) สำหรับบัญชีนี้`,
     }
   }
-  return { ok: true, user: toAuthUser(row), row }
+  return { ok: true, user, row }
 }

@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { logAudit } from '@/lib/audit'
+import { logAudit } from './audit'
 
 /**
  * Records a single audit log entry summarising a BULK operation.
@@ -10,14 +10,13 @@ import { logAudit } from '@/lib/audit'
  * Non-fatal — any DB error is swallowed so the calling mutation still
  * succeeds. All summaries should be in Thai.
  *
- * NOTE: The AuditLog table only has columns {action, user, details, timestamp}.
- * The legacy `entity`/`summary` parameters are merged into the `details` JSON.
+ * AuditLog table columns: { action, entity, entityId, summary, detail, actor, createdAt }
  *
  * @param action  Audit action key, e.g. 'BULK_UPDATE', 'BULK_TRANSFER', 'BULK_DELETE'
  * @param entity  Affected entity, e.g. 'Device'
  * @param summary One-line Thai summary
  * @param detail  Optional structured detail (counts, ids, from→to, etc.)
- * @param user    Optional user email (defaults to null)
+ * @param user    Optional user email (defaults to 'system')
  */
 export async function logBulkAudit(
   action: string,
@@ -27,18 +26,14 @@ export async function logBulkAudit(
   user?: string | null,
 ): Promise<void> {
   try {
-    const combined: Record<string, unknown> = {
-      ...(detail ?? {}),
-      entity,
-      entityId: null,
-      summary,
-    }
     await db.auditLog.create({
       data: {
-        timestamp: new Date().toISOString(),
         action,
-        user: user ?? null,
-        details: JSON.stringify(combined),
+        entity,
+        entityId: null,
+        summary,
+        detail: detail ? JSON.stringify(detail) : null,
+        actor: user ?? 'system',
       },
     })
   } catch (err) {

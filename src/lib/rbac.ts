@@ -279,6 +279,16 @@ export function toAuthUser(user: {
 /**
  * สร้าง object ที่บอกว่าแต่ละ nav item ควรแสดงหรือไม่ โดยอ้างอิงจาก permissions
  * ใช้ใน Sidebar component
+ *
+ * Each nav item maps to one or more required permission keys. The user's
+ * effective permission set (role defaults + per-user grants stored on
+ * `User.permissions`) is what we check against — so admins can grant/revoke
+ * individual menu items per user via the Permission Management UI.
+ *
+ * Permission keys mirror the values exported from `auth-shared.ts` (the
+ * SCREAMING_SNAKE form like 'VIEW_DASHBOARD' / 'WO_VIEW_ALL' — these are
+ * ALSO accepted here alongside the legacy colon-delimited form like
+ * 'dashboard:view' / 'wo:view:all' so both auth systems work).
  */
 export interface NavVisibility {
   dashboard: boolean
@@ -290,26 +300,77 @@ export interface NavVisibility {
   import: boolean
   templates: boolean
   settings: boolean
+  audit: boolean
+}
+
+function hasAnyPerm(perms: string[], keys: string[]): boolean {
+  if (!Array.isArray(perms) || perms.length === 0) return false
+  if (perms.includes('*')) return true
+  for (const k of keys) {
+    if (perms.includes(k)) return true
+    // prefix wildcard: e.g. "devices:*" matches "devices:view"
+    const [prefix] = k.split(':')
+    if (prefix && perms.includes(`${prefix}:*`)) return true
+  }
+  return false
 }
 
 export function computeNavVisibility(
   userPermissions: string[],
 ): NavVisibility {
   return {
-    dashboard: hasPermission(userPermissions, 'dashboard:view'),
-    devices: hasPermission(userPermissions, 'devices:view'),
-    meter: hasPermission(userPermissions, 'meter:write'),
-    paperAnalytics: hasPermission(userPermissions, 'reports:view'),
-    workOrders: hasAnyPermission(userPermissions, [
+    dashboard: hasAnyPerm(userPermissions, [
+      'VIEW_DASHBOARD',
+      'dashboard:view',
+    ]),
+    devices: hasAnyPerm(userPermissions, [
+      'VIEW_DEVICES',
+      'devices:view',
+    ]),
+    meter: hasAnyPerm(userPermissions, [
+      'METER_WRITE',
+      'meter:write',
+    ]),
+    paperAnalytics: hasAnyPerm(userPermissions, [
+      'VIEW_ANALYTICS',
+      'reports:view',
+    ]),
+    workOrders: hasAnyPerm(userPermissions, [
+      'WO_CREATE',
+      'WO_VIEW_ALL',
+      'WO_VIEW_SITE',
+      'WO_VIEW_OWN',
       'wo:create',
       'wo:view:own',
       'wo:view:site',
       'wo:view:all',
     ]),
-    stock: hasPermission(userPermissions, 'stock:view'),
-    import: hasPermission(userPermissions, 'import:data'),
-    templates: hasPermission(userPermissions, 'templates:manage'),
-    settings: hasPermission(userPermissions, 'settings:manage'),
+    stock: hasAnyPerm(userPermissions, [
+      'STOCK_VIEW',
+      'STOCK_IN',
+      'STOCK_OUT',
+      'STOCK_APPROVE',
+      'stock:view',
+    ]),
+    import: hasAnyPerm(userPermissions, [
+      'IMPORT_DATA',
+      'import:data',
+    ]),
+    templates: hasAnyPerm(userPermissions, [
+      'TEMPLATES_MANAGE',
+      'templates:manage',
+    ]),
+    settings: hasAnyPerm(userPermissions, [
+      'SYSTEM_CONFIG',
+      'USER_MANAGE',
+      'MASTER_DATA_EDIT',
+      'ADMIN',
+      'settings:manage',
+    ]),
+    audit: hasAnyPerm(userPermissions, [
+      'VIEW_AUDIT',
+      'ADMIN',
+    ]),
   }
 }
 
