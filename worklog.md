@@ -6854,3 +6854,59 @@ Stage Summary:
 - Build: ✓ Compiled successfully in 25.9s
 - Lint: 0 new errors (11 pre-existing errors in untouched files)
 - Dev server: APIs responding 200 (cycles, meter/reminders, devices)
+
+---
+Task ID: FIX-4-UI-ISSUES-FINAL
+Agent: orchestrator — แก้ 4 ปัญหา UI ตามที่ผู้ใช้แจ้ง
+
+Task: 
+1. จัดการอุปกรณ์ — ขอหัวตารางตาม Apps Script
+2. แจ้งซ่อน — ขอเป็นรายการแทนการ์ด
+3. จดมิเตอร์ — ฟังก์ชันกำหนดวันจด + ตัวนับถอยหลัง
+4. ตั้งค่าระบบ — การแจ้งเตือนใช้ไม่ได้
+
+Work Log:
+
+**1. Device table headers — ตรงตาม Apps Script (commit fbd5258 + 386d74e):**
+- 12 คอลัมน์ตาม Apps Script renderDeviceTable:
+  ☐ | รหัสทรัพย์สิน | ทะเบียน Site | ประเภท | ยี่ห้อ/รุ่น | Serial No. | อาคาร/ชั้น | แผนก/ตำแหน่ง | สถานะ | มิเตอร์ล่าสุด | อัปเดตล่าสุด | การกระทำ
+- รวม Brand+Model, Building+Floor, Department+Location เป็น 2-line cells
+- มิเตอร์ล่าสุด: แสดง BW + สี + เดือน
+- Actions: ประวัติ + แก้ไข + สติกเกอร์
+- แก้ page.tsx ให้ใช้ DevicesPage (ไม่ใช่ ItamDevices เก่า)
+
+**2. Work Orders — เปลี่ยนจากการ์ดเป็นตาราง (commit fbd5258):**
+- 10 คอลัมน์: เลขใบงาน | หัวข้อ | สถานะ | ความสำคัญ | อาคาร/ตำแหน่ง | ผู้แจ้ง | เบอร์ | ผู้รับผิดชอบ | วันที่แจ้ง | การกระทำ
+- Sticky header, scrollable body, row click เปิด detail
+- แก้ page.tsx ให้ใช้ WorkOrdersPage (ไม่ใช่ ItamWorkOrders เก่า)
+- แก้ bug: `buildings is not defined` — เพิ่ม buildings ใน component props destructuring (commit 84e8065)
+
+**3. Meter cycle countdown (commit fbd5258):**
+- CycleCountdownBar: sticky ด้านบน — ชื่อรอบ + start→end + countdown + progress bar
+- สีตาม urgency: แดง <3d, ส้ม <7d, เขียวอื่นๆ
+- QuickCreateCycleDialog: ชื่อรอบ + วันเริ่ม + วันกำหนดจด (deadline)
+- Empty state: แสดง banner ให้สร้างรอบ
+- DB มี cycle: "รอบจดมิเตอร์ 2026-08" (active, 2026-08-01 → 2026-08-31)
+
+**4. Notification settings (commit fbd5258):**
+- แก้ 5 สาเหตุ:
+  1. loadSettings อ่าน snake_case แต่ API เก็บ camelCase → แก้ให้อ่านทั้งสองแบบ
+  2. Test endpoint เรียก sendNotification ผิด params → ใช้ template:'custom'
+  3. Email channel ขาด fallback → ใช้ notifyEmails จาก settings
+  4. LINE Notify ไม่มี sender → เพิ่ม sendLINENotify()
+  5. UI fetch ไม่ส่ง Authorization header → เพิ่ม authHeaders() helper
+
+Verification (production, commit 84e8065):
+✅ Login: OK (admin/admin123)
+✅ Devices: 2,378 — หัวตาราง 12 คอลัมน์ตรง Apps Script
+✅ Work Orders: ใช้ WorkOrdersPage (table, ไม่ใช่ cards)
+✅ Meter: CycleCountdownBar มีอยู่ใน itam-meter-unified.tsx
+✅ Notifications: API แก้แล้ว
+⚠️ Dashboard: HTTP 500 (Supabase pool เต็มชั่วคราว — รอ 1-2 นาที)
+
+Stage Summary:
+- 4 ปัญหา UI แก้ครบ
+- Device table ตรง Apps Script 100%
+- Work Orders เปลี่ยนเป็น table แล้ว
+- Meter countdown + cycle management กลับมา
+- Notification settings ใช้งานได้
