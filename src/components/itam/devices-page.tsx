@@ -60,6 +60,8 @@ import {
   QrCode,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
+  ScanLine,
 } from 'lucide-react'
 import {
   type Device,
@@ -74,9 +76,37 @@ import {
 import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
-import { ScanLine } from 'lucide-react'
+import { Combobox } from './combobox'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { useAppStore } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
+
+/** Build fetch headers with the user's JWT (if logged in). */
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const h: Record<string, string> = { ...extra }
+  const t = useAuthStore.getState()?.token
+  if (t) h['Authorization'] = `Bearer ${t}`
+  return h
+}
+
+/** Authenticated fetch wrapper — forwards the Bearer token to the API. */
+async function authFetch<T>(url: string): Promise<T> {
+  const res = await fetch(url, { headers: authHeaders() })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return (await res.json()) as T
+}
+
+/**
+ * Auto-format a MAC address as the user types: strips everything but
+ * hex chars, uppercases, and inserts ":" every 2 chars (max 6 groups).
+ *   "aabbccddeeff"   → "AA:BB:CC:DD:EE:FF"
+ *   "aa:bb:cc-dd-ee" → "AA:BB:CC:DD:EE"
+ */
+function formatMacInput(raw: string): string {
+  const hex = raw.replace(/[^0-9a-fA-F]/g, '').toUpperCase().slice(0, 12)
+  if (!hex) return ''
+  return (hex.match(/.{1,2}/g) ?? []).join(':')
+}
 
 const DEVICE_CSV_HEADERS = [
   { key: 'assetCode', label: 'รหัสอุปกรณ์' },
@@ -100,6 +130,7 @@ const DEVICE_CSV_HEADERS = [
 interface FormState {
   id?: string
   assetCode: string
+  assetSiteCode: string
   name: string
   brand: string
   model: string
@@ -141,6 +172,7 @@ interface FormState {
 
 const EMPTY_FORM: FormState = {
   assetCode: '',
+  assetSiteCode: '',
   name: '',
   brand: '',
   model: '',
@@ -322,6 +354,23 @@ export function DevicesPage() {
     },
   })
 
+  // ── Filter the site dropdown by the current user's allowedSites ──
+  // (Non-admin users should only see their own sites in the form.)
+  const authUser = useAuthStore((s) => s.user)
+  const userAllowedSites = authUser?.allowedSites ?? 'ALL'
+  const userSitesArr = React.useMemo<string[] | null>(() => {
+    if (!userAllowedSites || userAllowedSites.toUpperCase() === 'ALL') return null
+    return userAllowedSites
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }, [userAllowedSites])
+  const visibleSites = React.useMemo<Site[]>(() => {
+    if (!sites) return []
+    if (!userSitesArr) return sites
+    return sites.filter((s) => userSitesArr.includes(s.code))
+  }, [sites, userSitesArr])
+
   const { data: masterItems } = useQuery<{
     category: string
     code: string
@@ -345,6 +394,70 @@ export function DevicesPage() {
   const departments = (masterItems ?? []).filter(
     (m) => m.category === 'Department',
   )
+  const deviceGroups = (masterItems ?? []).filter(
+    (m) => m.category === 'DeviceGroup',
+  )
+  // Models filtered by the currently selected brand (cascading).
+  const models = (masterItems ?? []).filter((m) => {
+    if (m.category !== 'Model') return false
+    if (!form.brand) return true // no brand selected → show all models
+    // MasterItem.parentRef is "Brand|Type" for Model rows; we match by Brand.
+    return !m.parentRef || m.parentRef === form.brand || m.parentRef.includes(`|${form.brand}|`)
+  })
+
+  // ── Cascading dropdowns: site → building → floor → location ──
+  // Pulls distinct values from existing devices via /api/itam/devices/cascading
+  // (which requires VIEW_DEVICES permission). Falls back to an empty list if
+  // the call fails so the user can still type a free-form value.
+  const { data: buildingOptions } = useQuery<string[]>({
+    queryKey: ['cascading', 'building', form.site],
+    queryFn: async () => {
+      try {
+        const j = await authFetch<{ values: string[] }>(
+          `/api/itam/devices/cascading?field=building${form.site ? `&site=${encodeURIComponent(form.site)}` : ''}`,
+        )
+        return j.values ?? []
+      } catch {
+        return []
+      }
+    },
+    enabled: dialogOpen && Boolean(form.site),
+  })
+  const { data: floorOptions } = useQuery<string[]>({
+    queryKey: ['cascading', 'floor', form.site, form.building],
+    queryFn: async () => {
+      try {
+        const params = new URLSearchParams({ field: 'floor' })
+        if (form.site) params.set('site', form.site)
+        if (form.building) params.set('building', form.building)
+        const j = await authFetch<{ values: string[] }>(
+          `/api/itam/devices/cascading?${params.toString()}`,
+        )
+        return j.values ?? []
+      } catch {
+        return []
+      }
+    },
+    enabled: dialogOpen && Boolean(form.building),
+  })
+  const { data: locationOptions } = useQuery<string[]>({
+    queryKey: ['cascading', 'location', form.site, form.building, form.floor],
+    queryFn: async () => {
+      try {
+        const params = new URLSearchParams({ field: 'location' })
+        if (form.site) params.set('site', form.site)
+        if (form.building) params.set('building', form.building)
+        if (form.floor) params.set('floor', form.floor)
+        const j = await authFetch<{ values: string[] }>(
+          `/api/itam/devices/cascading?${params.toString()}`,
+        )
+        return j.values ?? []
+      } catch {
+        return []
+      }
+    },
+    enabled: dialogOpen && Boolean(form.building) && Boolean(form.floor),
+  })
 
   function openAdd() {
     setForm({ ...EMPTY_FORM })
@@ -355,6 +468,7 @@ export function DevicesPage() {
     setForm({
       id: d.id,
       assetCode: d.assetCode,
+      assetSiteCode: d.assetSiteCode ?? '',
       name: d.name,
       brand: d.brand,
       model: d.model,
@@ -400,6 +514,44 @@ export function DevicesPage() {
     setDialogOpen(true)
   }
 
+  // ── Auto-generate assetSiteCode when the user picks a site ──
+  // Calls /api/devices/next-site-code?site=<code> and fills the field.
+  // Only auto-fills on CREATE (when the field is empty) — on edit, the
+  // user has to click the "✨ สร้างรหัส" button explicitly to avoid
+  // overwriting an existing code.
+  const generatingCodeRef = React.useRef(false)
+  const fetchNextSiteCode = React.useCallback(async (siteCode: string) => {
+    if (!siteCode || generatingCodeRef.current) return
+    generatingCodeRef.current = true
+    try {
+      const res = await fetch(
+        `/api/devices/next-site-code?site=${encodeURIComponent(siteCode)}`,
+      )
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        if (j.error) toast.warning(j.error)
+        return
+      }
+      const j = (await res.json()) as { code?: string | null }
+      if (j.code) {
+        setForm((prev) => ({ ...prev, assetSiteCode: j.code ?? '' }))
+      }
+    } catch {
+      /* non-fatal */
+    } finally {
+      generatingCodeRef.current = false
+    }
+  }, [])
+
+  async function generateSiteCodeNow() {
+    if (!form.site) {
+      toast.warning('กรุณาเลือกสาขาก่อน')
+      return
+    }
+    await fetchNextSiteCode(form.site)
+    toast.success('สร้างรหัสประจำ Site เรียบร้อย')
+  }
+
   async function save() {
     if (!form.assetCode || !form.name || !form.brand || !form.model || !form.type) {
       toast.error('กรุณากรอกข้อมูลที่จำเป็น (รหัส, ชื่อ, แบรนด์, รุ่น, ประเภท)')
@@ -409,6 +561,7 @@ export function DevicesPage() {
       setSaving(true)
       const payload = {
         ...form,
+        assetSiteCode: form.assetSiteCode || null,
         serialNumber: form.serialNumber || null,
         department: form.department || null,
         departmentCode: form.departmentCode || null,
@@ -712,9 +865,9 @@ export function DevicesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">สาขาทั้งหมด</SelectItem>
-                  {(sites ?? []).map((s) => (
+                  {(visibleSites ?? []).map((s) => (
                     <SelectItem key={s.code} value={s.code}>
-                      {s.name}
+                      {s.code} — {s.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -854,9 +1007,9 @@ export function DevicesPage() {
                       <SelectValue placeholder="ย้ายสาขา" />
                     </SelectTrigger>
                     <SelectContent>
-                      {(sites ?? []).map((s) => (
+                      {(visibleSites ?? []).map((s) => (
                         <SelectItem key={s.code} value={s.code}>
-                          {s.name}
+                          {s.code} — {s.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1265,51 +1418,100 @@ export function DevicesPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
             <Field label="รหัสอุปกรณ์ *">
-              <Input
-                value={form.assetCode}
-                onChange={(e) =>
-                  setForm({ ...form, assetCode: e.target.value })
-                }
-                placeholder="IT-PRT-001"
-              />
+              <div className="relative">
+                <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="dev-assetCode"
+                  value={form.assetCode}
+                  onChange={(e) =>
+                    setForm({ ...form, assetCode: e.target.value })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      document.getElementById('dev-name')?.focus()
+                    }
+                  }}
+                  placeholder="IT-PRT-001"
+                  autoFocus
+                  className="pl-8"
+                />
+              </div>
             </Field>
             <Field label="ชื่ออุปกรณ์ *">
               <Input
+                id="dev-name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-            </Field>
-            <Field label="แบรนด์ *">
-              <SelectValueInput
-                value={form.brand}
-                onChange={(v) => setForm({ ...form, brand: v })}
-                options={brands.map((b) => ({ value: b.code, label: b.label }))}
-                placeholder="เลือกหรือพิมพ์แบรนด์"
-              />
-            </Field>
-            <Field label="รุ่น *">
-              <Input
-                value={form.model}
-                onChange={(e) => setForm({ ...form, model: e.target.value })}
-              />
-            </Field>
-            <Field label="ประเภท *">
-              <SelectValueInput
-                value={form.type}
-                onChange={(v) => setForm({ ...form, type: v })}
-                options={types.map((t) => ({ value: t.code, label: t.label }))}
-                placeholder="เลือกหรือพิมพ์ประเภท"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    document.getElementById('dev-serialNumber')?.focus()
+                  }
+                }}
               />
             </Field>
             <Field label="Serial Number">
-              <Input
-                value={form.serialNumber}
-                onChange={(e) =>
-                  setForm({ ...form, serialNumber: e.target.value })
-                }
-              />
+              <div className="relative">
+                <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="dev-serialNumber"
+                  value={form.serialNumber}
+                  onChange={(e) =>
+                    setForm({ ...form, serialNumber: e.target.value })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      document.getElementById('dev-mac')?.focus()
+                    }
+                  }}
+                  placeholder="สแกนหรือพิมพ์ SN"
+                  className="pl-8 font-mono text-xs"
+                />
+              </div>
+            </Field>
+            <Field label="MAC Address">
+              <div className="relative">
+                <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="dev-mac"
+                  value={form.mac}
+                  onChange={(e) =>
+                    setForm({ ...form, mac: formatMacInput(e.target.value) })
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      document.getElementById('dev-ip')?.focus()
+                    }
+                  }}
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                  className="pl-8 font-mono text-xs"
+                  inputMode="text"
+                />
+              </div>
+            </Field>
+            <Field label="IP Address">
+              <div className="relative">
+                <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Input
+                  id="dev-ip"
+                  value={form.ip}
+                  onChange={(e) => setForm({ ...form, ip: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      document.getElementById('dev-assetSiteCode')?.focus()
+                    }
+                  }}
+                  placeholder="192.168.1.10"
+                  className="pl-8 font-mono text-xs"
+                  inputMode="decimal"
+                />
+              </div>
             </Field>
             <Field label="สถานะ *">
               <Select
@@ -1331,30 +1533,99 @@ export function DevicesPage() {
             <Field label="สาขา *">
               <Select
                 value={form.site}
-                onValueChange={(v) => setForm({ ...form, site: v })}
+                onValueChange={(v) => {
+                  setForm((prev) => ({ ...prev, site: v, building: '', floor: '', room: '' }))
+                  // Auto-generate assetSiteCode on CREATE (when the field is
+                  // empty). On edit, the user has to click the "✨ สร้างรหัส"
+                  // button explicitly to avoid overwriting an existing code.
+                  if (!form.id && !form.assetSiteCode) {
+                    void fetchNextSiteCode(v)
+                  }
+                }}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(sites ?? []).map((s) => (
+                  {(visibleSites ?? []).map((s) => (
                     <SelectItem key={s.code} value={s.code}>
-                      {s.name}
+                      {s.code} — {s.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
+            <Field label="แบรนด์ *">
+              <Combobox
+                value={form.brand}
+                onChange={(v) => setForm({ ...form, brand: v, model: '' })}
+                items={brands.map((b) => ({ value: b.code, label: b.label }))}
+                placeholder="เลือกหรือพิมพ์แบรนด์"
+                emptyText="ไม่พบแบรนด์"
+              />
+            </Field>
+            <Field label="รุ่น *">
+              <Combobox
+                value={form.model}
+                onChange={(v) => setForm({ ...form, model: v })}
+                items={models.map((m) => ({ value: m.code, label: m.label }))}
+                placeholder={form.brand ? 'เลือกรุ่นของแบรนด์ที่เลือก' : 'เลือกแบรนด์ก่อน หรือพิมพ์รุ่น'}
+                emptyText={form.brand ? 'ไม่พบรุ่นของแบรนด์นี้' : 'ไม่พบรุ่น'}
+                groupLabel={form.brand ? `รุ่นของ ${form.brand}` : 'ทั้งหมด'}
+              />
+            </Field>
+            <Field label="ประเภท *">
+              <Combobox
+                value={form.type}
+                onChange={(v) => setForm({ ...form, type: v })}
+                items={types.map((t) => ({ value: t.code, label: t.label }))}
+                placeholder="เลือกหรือพิมพ์ประเภท"
+                emptyText="ไม่พบประเภท"
+              />
+            </Field>
             <Field label="แผนก">
-              <SelectValueInput
+              <Combobox
                 value={form.department}
                 onChange={(v) => setForm({ ...form, department: v })}
-                options={departments.map((d) => ({
-                  value: d.label,
-                  label: d.label,
-                }))}
+                items={departments.map((d) => ({ value: d.label, label: d.label }))}
                 placeholder="เลือกหรือพิมพ์แผนก"
+                emptyText="ไม่พบแผนก"
               />
+            </Field>
+            <Field label="กลุ่มอุปกรณ์ (Device Group)">
+              <Combobox
+                value={form.deviceGroup}
+                onChange={(v) => setForm({ ...form, deviceGroup: v })}
+                items={deviceGroups.map((g) => ({ value: g.code, label: g.label }))}
+                placeholder="เลือกหรือพิมพ์กลุ่มอุปกรณ์"
+                emptyText="ไม่พบกลุ่มอุปกรณ์"
+              />
+            </Field>
+            <Field label="รหัสประจำ Site (AssetSiteCode)">
+              <div className="flex gap-2">
+                <Input
+                  id="dev-assetSiteCode"
+                  value={form.assetSiteCode}
+                  onChange={(e) => setForm({ ...form, assetSiteCode: e.target.value })}
+                  placeholder="เช่น UDH-00001"
+                  className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={generateSiteCodeNow}
+                  disabled={!form.site}
+                  className="h-9 shrink-0 border-[#f97316]/30 text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c]/30 dark:text-[#fb923c]"
+                  title="สร้าง/อัปเดตรหัสประจำ Site อัตโนมัติ"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  สร้างรหัส
+                </Button>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                รูปแบบ PREFIX-NNNNN (เช่น UDH-00001) — ระบบจะหาเลขถัดไปให้อัตโนมัติ
+              </p>
             </Field>
             <Field label="รหัสแผนก (DepartmentCode)">
               <Input
@@ -1381,12 +1652,6 @@ export function DevicesPage() {
                 }
               />
             </Field>
-            <Field label="สถานที่ตั้ง">
-              <Input
-                value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value })}
-              />
-            </Field>
             <Field label="วันที่ซื้อ">
               <Input
                 type="date"
@@ -1410,26 +1675,40 @@ export function DevicesPage() {
             </Field>
           </div>
 
-          {/* Location section — building/floor/room */}
+          {/* Location section — building → floor → location → room (cascading) */}
           <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/30">
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
               📍 ข้อมูลที่ตั้ง
+              <span className="text-[10px] font-normal text-slate-400">
+                (เลือกจากรายการที่เคยบันทึก หรือพิมพ์ใหม่ได้)
+              </span>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
               <Field label="อาคาร (Building)">
-                <Input
+                <Combobox
                   value={form.building}
-                  onChange={(e) =>
-                    setForm({ ...form, building: e.target.value })
-                  }
-                  placeholder="เช่น อาคาร A"
+                  onChange={(v) => setForm((prev) => ({ ...prev, building: v, floor: '', location: '', room: '' }))}
+                  items={(buildingOptions ?? []).map((b) => ({ value: b, label: b }))}
+                  placeholder={form.site ? 'เลือกหรือพิมพ์อาคาร' : 'เลือกสาขาก่อน'}
+                  emptyText="ยังไม่มีอาคารในสาขานี้ — พิมพ์เพื่อเพิ่มใหม่"
                 />
               </Field>
               <Field label="ชั้น (Floor)">
-                <Input
+                <Combobox
                   value={form.floor}
-                  onChange={(e) => setForm({ ...form, floor: e.target.value })}
-                  placeholder="เช่น 3"
+                  onChange={(v) => setForm((prev) => ({ ...prev, floor: v, location: '', room: '' }))}
+                  items={(floorOptions ?? []).map((f) => ({ value: f, label: f }))}
+                  placeholder={form.building ? 'เลือกหรือพิมพ์ชั้น' : 'เลือกอาคารก่อน'}
+                  emptyText={form.building ? 'ยังไม่มีชั้นในอาคารนี้ — พิมพ์เพื่อเพิ่มใหม่' : 'ไม่พบชั้น'}
+                />
+              </Field>
+              <Field label="ตำแหน่ง (Location)">
+                <Combobox
+                  value={form.location}
+                  onChange={(v) => setForm({ ...form, location: v })}
+                  items={(locationOptions ?? []).map((l) => ({ value: l, label: l }))}
+                  placeholder={form.floor ? 'เลือกหรือพิมพ์ตำแหน่ง' : 'เลือกชั้นก่อน'}
+                  emptyText={form.floor ? 'ยังไม่มีตำแหน่ง — พิมพ์เพื่อเพิ่มใหม่' : 'ไม่พบตำแหน่ง'}
                 />
               </Field>
               <Field label="ห้อง (Room)">
@@ -1442,26 +1721,12 @@ export function DevicesPage() {
             </div>
           </div>
 
-          {/* Network section — ip / mac / remoteId */}
+          {/* Network section — remote ID only (ip/mac moved to basic info for barcode support) */}
           <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/30">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
-              🌐 เครือข่าย
+              🌐 เครือข่าย (Remote ID)
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field label="IP Address">
-                <Input
-                  value={form.ip}
-                  onChange={(e) => setForm({ ...form, ip: e.target.value })}
-                  placeholder="192.168.1.10"
-                />
-              </Field>
-              <Field label="MAC Address">
-                <Input
-                  value={form.mac}
-                  onChange={(e) => setForm({ ...form, mac: e.target.value })}
-                  placeholder="AA:BB:CC:DD:EE:FF"
-                />
-              </Field>
+            <div className="grid grid-cols-1 items-start gap-3">
               <Field label="Remote ID (TeamViewer/AnyDesk)">
                 <Input
                   value={form.remoteId}
@@ -1469,6 +1734,7 @@ export function DevicesPage() {
                     setForm({ ...form, remoteId: e.target.value })
                   }
                   placeholder="เช่น 123 456 789"
+                  className="font-mono text-xs"
                 />
               </Field>
             </div>
@@ -1479,7 +1745,7 @@ export function DevicesPage() {
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
               🧾 การซื้อ / รับประกัน
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
               <Field label="ผู้ขาย (Vendor)">
                 <Input
                   value={form.vendor}
@@ -1522,8 +1788,8 @@ export function DevicesPage() {
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
               ⚙️ มิเตอร์
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:items-center">
-              <div className="flex items-center gap-2">
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+              <div className="flex h-9 items-center gap-2">
                 <Checkbox
                   id="meterRequired"
                   checked={form.meterRequired}
@@ -1559,12 +1825,12 @@ export function DevicesPage() {
             </div>
           </div>
 
-          {/* Other section — costCenter / deviceGroup / remark */}
+          {/* Other section — costCenter / remark (deviceGroup moved to basic info) */}
           <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/30">
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
               📝 อื่นๆ
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
               <Field label="ศูนย์ต้นทุน (Cost Center)">
                 <Input
                   value={form.costCenter}
@@ -1573,24 +1839,14 @@ export function DevicesPage() {
                   }
                 />
               </Field>
-              <Field label="กลุ่มอุปกรณ์ (Device Group)">
+              <Field label="หมายเหตุ (Remark)">
                 <Input
-                  value={form.deviceGroup}
+                  value={form.remark}
                   onChange={(e) =>
-                    setForm({ ...form, deviceGroup: e.target.value })
+                    setForm({ ...form, remark: e.target.value })
                   }
                 />
               </Field>
-              <div className="sm:col-span-2">
-                <Field label="หมายเหตุ (Remark)">
-                  <Input
-                    value={form.remark}
-                    onChange={(e) =>
-                      setForm({ ...form, remark: e.target.value })
-                    }
-                  />
-                </Field>
-              </div>
             </div>
           </div>
 
@@ -1599,7 +1855,7 @@ export function DevicesPage() {
             <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
               💰 การเงิน (สำหรับคำนวณค่าเสื่อมราคา)
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-3">
               <Field label="ราคาซื้อ (฿)">
                 <Input
                   type="number"
@@ -1718,14 +1974,19 @@ export function DevicesPage() {
 function Field({
   label,
   children,
+  hint,
 }: {
   label: string
   children: React.ReactNode
+  hint?: string
 }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs font-medium text-slate-600">{label}</Label>
+    <div className="flex flex-col gap-1.5">
+      <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">{label}</Label>
       {children}
+      {hint && (
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">{hint}</p>
+      )}
     </div>
   )
 }

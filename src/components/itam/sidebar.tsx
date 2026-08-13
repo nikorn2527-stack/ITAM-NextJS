@@ -8,6 +8,7 @@ import { useAppStore, type ActivePage } from '@/store/app-store'
 import { useAuthStore, useNavVisibility, useRole } from '@/store/auth-store'
 import { ROLE_LABELS, type Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 import { NotificationsPopover } from './notifications-popover'
 import { useRealtimeStatus } from '@/hooks/use-realtime-updates'
 import {
@@ -79,23 +80,26 @@ interface CycleInfo {
   startDate: string
   endDate: string
   status: string
+  site?: string | null
 }
 
-function useCountdown(endDate?: string) {
+function useCountdown(startDate?: string, endDate?: string) {
   return React.useMemo(() => {
     if (!endDate) return null
     const end = new Date(endDate).getTime()
+    const start = startDate ? new Date(startDate).getTime() : end - 30 * 24 * 60 * 60 * 1000
     const now = Date.now()
     const diff = end - now
-    if (diff <= 0) return { days: 0, hours: 0, pct: 100, ended: true }
+    // progress pct over the [start → end] window (0 → 100 as time passes)
+    const total = Math.max(1, end - start)
+    const pct = Math.min(100, Math.max(0, ((now - start) / total) * 100))
+    if (diff <= 0) return { days: 0, hours: 0, pct: 100, ended: true, warning: true }
     const days = Math.floor(diff / (1000 * 60 * 60 * 24))
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    // progress pct over a 30-day window for visual
-    const start = end - 30 * 24 * 60 * 60 * 1000
-    const total = end - start
-    const pct = Math.min(100, Math.max(0, ((now - start) / total) * 100))
-    return { days, hours, pct, ended: false }
-  }, [endDate])
+    // Warning when within 3 days of deadline (configurable downstream)
+    const warning = days <= 3
+    return { days, hours, pct, ended: false, warning }
+  }, [startDate, endDate])
 }
 
 export function Sidebar() {
@@ -140,10 +144,52 @@ export function Sidebar() {
     }
   }, [authInitialized, fetchMe])
 
-  // Flatten NAV_GROUPS for visibility checks
+  // Flatten NAV_GROUPS for visibility checks — and FILTER by the user's
+  // permissions (granular RBAC). Each `page` id maps to one or more
+  // navVisibility keys; the item is shown when ANY matches.
+  const pageToVisibilityKey: Partial<Record<ActivePage, keyof typeof navVisibility>> = {
+    dashboard: 'dashboard',
+    'itam-devices': 'devices',
+    'itam-meter-keyboard': 'meter',
+    'itam-meter': 'meter',
+    meter: 'meter',
+    'itam-work-orders': 'workOrders',
+    'work-orders': 'workOrders',
+    'itam-stock': 'stock',
+    stock: 'stock',
+    'itam-paper-analytics': 'paperAnalytics',
+    'paper-analytics': 'paperAnalytics',
+    templates: 'templates',
+    import: 'import',
+    'monthly-report': 'paperAnalytics',
+    'itam-snapshot-viewer': 'audit',
+    'itam-settings': 'settings',
+    settings: 'settings',
+    'itam-audit': 'audit',
+    audit: 'audit',
+  }
   const visibleNavItems = React.useMemo(() => {
-    return NAV_GROUPS.flatMap((g) => g.items)
-  }, [])
+    return NAV_GROUPS.flatMap((g) => g.items).filter((item) => {
+      const key = pageToVisibilityKey[item.page]
+      // Items without an explicit mapping default to visible (preserves
+      // existing behavior for any nav id not yet wired to a permission).
+      if (!key) return true
+      return Boolean(navVisibility[key])
+    })
+  }, [navVisibility])
+
+  // Filtered NAV_GROUPS — preserves group ordering/structure but hides items
+  // the user doesn't have permission to see. Empty groups are skipped.
+  const filteredNavGroups = React.useMemo(() => {
+    return NAV_GROUPS.map((g) => ({
+      ...g,
+      items: g.items.filter((item) => {
+        const key = pageToVisibilityKey[item.page]
+        if (!key) return true
+        return Boolean(navVisibility[key])
+      }),
+    })).filter((g) => g.items.length > 0)
+  }, [navVisibility])
 
   // ── Organization Profile (flexible: ชื่อ/โลโก้/tagline เปลี่ยนได้) ──
   const { data: orgProfile } = useQuery({
@@ -200,7 +246,7 @@ export function Sidebar() {
     staleTime: 60_000,
   })
 
-  const countdown = useCountdown(activeCycle?.endDate)
+  const countdown = useCountdown(activeCycle?.startDate, activeCycle?.endDate)
 
   const handleNav = (page: ActivePage) => {
     setActivePage(page)
@@ -370,7 +416,7 @@ export function Sidebar() {
         className="flex-1 overflow-y-auto overflow-x-hidden py-2"
         aria-label="Main navigation"
       >
-        {NAV_GROUPS.map((group, gi) => (
+        {filteredNavGroups.map((group, gi) => (
           <div key={group.title}>
             {/* Thin divider between groups instead of section title */}
             {gi > 0 && (
@@ -442,20 +488,33 @@ export function Sidebar() {
       </nav>
 
       {/* ── Cycle countdown — compact single-line bar (only when expanded) ──
-          When collapsed, hide entirely (the user can hover to see it). */}
+          When collapsed, hide entirely (the user can hover to see it).
+          Warning (amber/red bar) appears when within 3 days of deadline. */}
       {activeCycle && countdown && expanded && (
         <div
-          className="border-t border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200"
-          title={`${countdown.ended ? 'สิ้นสุดรอบ' : `เหลืออีก ${countdown.days} วัน ${countdown.hours} ชม.`} — ${activeCycle.name}`}
+          className={cn(
+            'border-t px-3 py-2 text-[11px] dark:border-white/10',
+            countdown.warning
+              ? 'border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+              : 'border-slate-200 bg-slate-50 text-slate-700 dark:bg-white/[0.04] dark:text-slate-200',
+          )}
+          title={`${countdown.ended ? 'สิ้นสุดรอบ' : `เหลืออีก ${countdown.days} วัน ${countdown.hours} ชม.`} — ${activeCycle.name}${activeCycle.site ? ` @ ${activeCycle.site}` : ''}`}
         >
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="flex items-center gap-1 truncate whitespace-nowrap">
-              <span aria-hidden>⏰</span>
+              <span aria-hidden>{countdown.warning ? '⚠️' : '⏰'}</span>
               <span className="truncate">
                 {countdown.ended
                   ? 'สิ้นสุดรอบ'
-                  : `เหลือ ${countdown.days} วัน ${countdown.hours} ชม.`}
+                  : countdown.warning
+                    ? `ใกล้หมดรอบ! ${countdown.days} วัน ${countdown.hours} ชม.`
+                    : `เหลือ ${countdown.days} วัน ${countdown.hours} ชม.`}
               </span>
+              {activeCycle.site && (
+                <Badge className="ml-1 shrink-0 border-slate-300 bg-white/60 px-1 text-[9px] text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                  {activeCycle.site}
+                </Badge>
+              )}
             </span>
             <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
               {Math.round(countdown.pct)}%
@@ -466,7 +525,7 @@ export function Sidebar() {
               className="h-full rounded-full transition-all"
               style={{
                 width: `${countdown.pct}%`,
-                background: '#f97316',
+                background: countdown.warning ? '#f59e0b' : '#f97316',
               }}
             />
           </div>

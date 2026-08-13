@@ -72,6 +72,7 @@ import {
   isLow,
   authFetch,
 } from './shared'
+import { Combobox } from '../combobox'
 
 interface StockListResponse {
   data: StockItem[]
@@ -142,6 +143,24 @@ export function StockOutForm() {
     staleTime: 60_000,
   })
   const products = data?.data ?? []
+
+  // Fetch MasterItem (category=Department) to drive the department combobox.
+  // The user can still type a free-form value.
+  const { data: deptItems } = useQuery<{ code: string; label: string }[]>({
+    queryKey: ['master-all-departments'],
+    queryFn: async () => {
+      try {
+        const res = await fetch('/api/master?category=Department')
+        if (!res.ok) return []
+        const j = await res.json()
+        return ((j.items ?? []) as { code: string; label: string }[])
+      } catch {
+        return []
+      }
+    },
+    staleTime: 60_000,
+  })
+  const deptOptions = (deptItems ?? []).map((d) => ({ value: d.label, label: d.label }))
 
   const submitMutation = useMutation({
     mutationFn: async (items: LineItem[]) => {
@@ -257,7 +276,7 @@ export function StockOutForm() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">ข้อมูลการเบิก</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <CardContent className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-1.5">
             <Label htmlFor="out-date">วันที่ <span className="text-rose-500">*</span></Label>
             <Input
@@ -280,29 +299,25 @@ export function StockOutForm() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="out-dept">แผนก</Label>
-            <Input
-              id="out-dept"
-              placeholder="เช่น ไอที, บัญชี, บุคคล..."
+            <Combobox
               value={form.department}
-              onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
-              className="dark:bg-slate-800 dark:border-slate-700"
+              onChange={(v) => setForm((f) => ({ ...f, department: v }))}
+              items={deptOptions}
+              placeholder="เลือกหรือพิมพ์แผนก"
+              emptyText="ยังไม่มีแผนก — พิมพ์เพื่อเพิ่มใหม่"
+              inputId="out-dept"
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="out-purpose">วัตถุประสงค์</Label>
-            <Input
-              id="out-purpose"
-              list="out-purpose-list"
-              placeholder="เลือกหรือพิมพ์เอง"
+            <Combobox
               value={form.purpose}
-              onChange={(e) => setForm((f) => ({ ...f, purpose: e.target.value }))}
-              className="dark:bg-slate-800 dark:border-slate-700"
+              onChange={(v) => setForm((f) => ({ ...f, purpose: v }))}
+              items={PURPOSE_OPTIONS.map((p) => ({ value: p, label: p }))}
+              placeholder="เลือกหรือพิมพ์วัตถุประสงค์"
+              emptyText="ไม่พบตัวเลือก"
+              inputId="out-purpose"
             />
-            <datalist id="out-purpose-list">
-              {PURPOSE_OPTIONS.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="out-wo">ใบสั่งซ่อมเลขที่ <span className="text-[10px] text-slate-400">(ไม่บังคับ)</span></Label>

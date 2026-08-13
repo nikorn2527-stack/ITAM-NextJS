@@ -3,24 +3,53 @@
  *
  * Safe to import from client components. Server-only code lives in
  * `auth.ts` which re-exports everything from here.
+ *
+ * Granular permissions (Task ID: FIX-RBAC-AUDIT-CYCLE-SITE):
+ *   Each user carries an optional `permissions` JSON string (a comma-separated
+ *   list, or a JSON array — both forms are parsed) that is MERGED with the
+ *   default permissions for their role. The result is the user's effective
+ *   permission set, surfaced via `toAuthUser()` / `getUserPermissions()`.
  */
 
 // ─── Types ────────────────────────────────────────────────────────────
 export type Permission =
+  // ── Dashboard / overview ──
   | 'VIEW_DASHBOARD'
   | 'VIEW_DEVICES'
   | 'VIEW_ANALYTICS'
+  // ── Meter ──
   | 'METER_WRITE'
+  // ── Device lifecycle ──
   | 'DEVICE_EDIT'
   | 'DEVICE_DELETE'
   | 'DEVICE_TRANSFER'
   | 'LIFECYCLE_EDIT'
+  // ── Master data ──
   | 'MASTER_DATA_EDIT'
+  // ── Print / Export ──
   | 'EXPORT_PRINT'
   | 'PRINT'
+  // ── Admin ──
   | 'ADMIN'
   | 'USER_MANAGE'
   | 'SYSTEM_CONFIG'
+  // ── Work orders (granular) ──
+  | 'WO_CREATE'
+  | 'WO_VIEW_ALL'
+  | 'WO_VIEW_SITE'
+  | 'WO_VIEW_OWN'
+  | 'WO_ASSIGN'
+  | 'WO_COMPLETE'
+  | 'WO_CANCEL'
+  // ── Stock (granular) ──
+  | 'STOCK_VIEW'
+  | 'STOCK_IN'
+  | 'STOCK_OUT'
+  | 'STOCK_APPROVE'
+  // ── Templates / Import / Audit ──
+  | 'TEMPLATES_MANAGE'
+  | 'IMPORT_DATA'
+  | 'VIEW_AUDIT'
 
 export type Role = 'superadmin' | 'admin' | 'editor' | 'meter' | 'viewer'
 
@@ -47,6 +76,8 @@ export interface UserPermissionRow {
   remark: string | null
   lastLoginAt: string | null
   allowedSites: string | null
+  /** Optional JSON string or comma-separated list of custom permissions. */
+  permissions?: string | null
 }
 
 // ─── Role ↔ permission map (mirror of Code.gs ROLE_PERMISSIONS) ───────
@@ -56,23 +87,34 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'DEVICE_EDIT', 'DEVICE_DELETE', 'DEVICE_TRANSFER', 'LIFECYCLE_EDIT',
     'MASTER_DATA_EDIT', 'EXPORT_PRINT', 'PRINT', 'ADMIN',
     'USER_MANAGE', 'SYSTEM_CONFIG',
+    'WO_CREATE', 'WO_VIEW_ALL', 'WO_ASSIGN', 'WO_COMPLETE', 'WO_CANCEL',
+    'STOCK_VIEW', 'STOCK_IN', 'STOCK_OUT', 'STOCK_APPROVE',
+    'TEMPLATES_MANAGE', 'IMPORT_DATA', 'VIEW_AUDIT',
   ],
   admin: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'METER_WRITE',
     'DEVICE_EDIT', 'DEVICE_DELETE', 'DEVICE_TRANSFER', 'LIFECYCLE_EDIT',
     'MASTER_DATA_EDIT', 'EXPORT_PRINT', 'PRINT', 'ADMIN',
+    'WO_CREATE', 'WO_VIEW_ALL', 'WO_ASSIGN', 'WO_COMPLETE', 'WO_CANCEL',
+    'STOCK_VIEW', 'STOCK_IN', 'STOCK_OUT', 'STOCK_APPROVE',
+    'TEMPLATES_MANAGE', 'IMPORT_DATA', 'VIEW_AUDIT',
   ],
   editor: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'METER_WRITE',
     'DEVICE_EDIT', 'DEVICE_TRANSFER', 'LIFECYCLE_EDIT',
     'EXPORT_PRINT', 'PRINT',
+    'WO_CREATE', 'WO_VIEW_ALL', 'WO_COMPLETE',
+    'STOCK_VIEW', 'STOCK_IN', 'STOCK_OUT',
+    'IMPORT_DATA',
   ],
   meter: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'METER_WRITE',
     'PRINT',
+    'WO_CREATE', 'WO_VIEW_OWN',
   ],
   viewer: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'PRINT',
+    'WO_VIEW_SITE', 'STOCK_VIEW',
   ],
 }
 
@@ -110,6 +152,84 @@ export const ROLE_LABELS: Record<Role, string> = {
   viewer: 'ผู้ดูรายงาน',
 }
 
+/** Permission metadata — used by the Permission Management UI to render
+ *  grouped checkboxes. Order = display order. */
+export interface PermissionMeta {
+  key: Permission
+  label: string
+  desc: string
+}
+export interface PermissionGroup {
+  title: string
+  icon: string
+  perms: PermissionMeta[]
+}
+export const PERMISSION_GROUPS: PermissionGroup[] = [
+  {
+    title: 'อุปกรณ์',
+    icon: '💻',
+    perms: [
+      { key: 'VIEW_DEVICES', label: 'ดูอุปกรณ์', desc: 'เปิดหน้าจัดการอุปกรณ์' },
+      { key: 'DEVICE_EDIT', label: 'แก้ไขอุปกรณ์', desc: 'สร้าง/แก้ไขข้อมูลอุปกรณ์' },
+      { key: 'DEVICE_DELETE', label: 'ลบอุปกรณ์', desc: 'ลบอุปกรณ์ออกจากระบบ' },
+      { key: 'DEVICE_TRANSFER', label: 'ย้ายอุปกรณ์', desc: 'ย้ายสาขา/ตำแหน่งอุปกรณ์' },
+      { key: 'LIFECYCLE_EDIT', label: 'เปลี่ยนสถานะ Lifecycle', desc: 'เปลี่ยนสถานะการใช้งาน' },
+      { key: 'MASTER_DATA_EDIT', label: 'ข้อมูลมาตรฐาน', desc: 'แก้ไข Brand/Type/Department' },
+    ],
+  },
+  {
+    title: 'มิเตอร์',
+    icon: '📈',
+    perms: [
+      { key: 'VIEW_ANALYTICS', label: 'ดู Analytics', desc: 'เปิดหน้าวิเคราะห์กระดาษ' },
+      { key: 'METER_WRITE', label: 'จดมิเตอร์', desc: 'บันทึกการจดมิเตอร์รายเดือน' },
+    ],
+  },
+  {
+    title: 'ใบงาน',
+    icon: '🔧',
+    perms: [
+      { key: 'WO_CREATE', label: 'สร้างใบงาน', desc: 'แจ้งซ่อมใหม่' },
+      { key: 'WO_VIEW_ALL', label: 'ดูใบงานทั้งหมด', desc: 'เห็นทุกใบงานในระบบ' },
+      { key: 'WO_VIEW_SITE', label: 'ดูใบงานสาขาตัวเอง', desc: 'เห็นเฉพาะใบงานของสาขา' },
+      { key: 'WO_VIEW_OWN', label: 'ดูใบงานที่ตัวเองแจ้ง', desc: 'เห็นเฉพาะใบงานที่แจ้งเอง' },
+      { key: 'WO_ASSIGN', label: 'มอบหมายใบงาน', desc: 'มอบหมายช่าง/เจ้าหน้าที่' },
+      { key: 'WO_COMPLETE', label: 'ปิดงาน', desc: 'ทำเครื่องหมายว่าเสร็จสิ้น' },
+      { key: 'WO_CANCEL', label: 'ยกเลิกใบงาน', desc: 'ยกเลิกใบงานที่ยังไม่เสร็จ' },
+    ],
+  },
+  {
+    title: 'สต็อก',
+    icon: '📦',
+    perms: [
+      { key: 'STOCK_VIEW', label: 'ดูสต็อก', desc: 'เปิดหน้าคลังสินค้า' },
+      { key: 'STOCK_IN', label: 'รับเข้า', desc: 'บันทึกการรับสินค้าเข้าคลัง' },
+      { key: 'STOCK_OUT', label: 'เบิกออก', desc: 'บันทึกการเบิกสินค้า' },
+      { key: 'STOCK_APPROVE', label: 'อนุมัติเบิก', desc: 'อนุมัติคำขอเบิกที่รออนุมัติ' },
+    ],
+  },
+  {
+    title: 'ระบบ',
+    icon: '⚙️',
+    perms: [
+      { key: 'VIEW_DASHBOARD', label: 'ดู Dashboard', desc: 'เปิดหน้าสรุปภาพรวม' },
+      { key: 'EXPORT_PRINT', label: 'ส่งออก/พิมพ์', desc: 'Export CSV + พิมพ์สติกเกอร์' },
+      { key: 'PRINT', label: 'พิมพ์', desc: 'พิมพ์เอกสาร/สติกเกอร์' },
+      { key: 'TEMPLATES_MANAGE', label: 'จัดการเทมเพลต', desc: 'สร้าง/แก้ไขเทมเพลต' },
+      { key: 'IMPORT_DATA', label: 'นำเข้าข้อมูล', desc: 'Import CSV/Excel' },
+      { key: 'VIEW_AUDIT', label: 'ดู Audit Log', desc: 'เปิดหน้าประวัติการใช้งาน' },
+      { key: 'USER_MANAGE', label: 'จัดการผู้ใช้', desc: 'สร้าง/แก้ไข/ลบ ผู้ใช้' },
+      { key: 'SYSTEM_CONFIG', label: 'ตั้งค่าระบบ', desc: 'ตั้งค่าการแจ้งเตือน/แอป' },
+      { key: 'ADMIN', label: 'ผู้ดูแล', desc: 'สิทธิ์ผู้ดูแลระบบทั่วไป' },
+    ],
+  },
+]
+
+/** All permission keys — flat list, useful for "select all" UIs. */
+export const ALL_PERMISSION_KEYS: Permission[] = PERMISSION_GROUPS.flatMap((g) =>
+  g.perms.map((p) => p.key),
+)
+
 export function normalizeRole(role: string | null | undefined): Role {
   const key = String(role ?? '').trim().toLowerCase()
   if (key in ROLE_PERMISSIONS) return key as Role
@@ -120,8 +240,81 @@ export function getRolePermissions(role: string | null | undefined): Permission[
   return ROLE_PERMISSIONS[normalizeRole(role)] ?? ROLE_PERMISSIONS.viewer
 }
 
+/**
+ * Parse the `permissions` field stored on the User row. Accepts BOTH:
+ *   • a JSON array string — e.g. `["WO_CREATE","PRINT"]`
+ *   • a comma-separated list — e.g. `"WO_CREATE,PRINT"`
+ * Returns `null` when the input is empty/invalid so callers can fall back
+ * to the role's default permission set.
+ */
+export function parseCustomPermissions(raw: string | null | undefined): Permission[] | null {
+  if (!raw) return null
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  // Try JSON array first
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) {
+        const arr = parsed
+          .map((p) => String(p ?? '').trim())
+          .filter(Boolean) as Permission[]
+        return arr.length ? arr : null
+      }
+    } catch {
+      // fall through to comma-split
+    }
+  }
+  // Comma-separated
+  const arr = trimmed
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean) as Permission[]
+  return arr.length ? arr : null
+}
+
+/**
+ * Merge a role's default permissions with a user's custom permissions.
+ * The custom list is treated as ADDITIVE — granting extra permissions on
+ * top of the role's defaults. (To revoke a permission, change the role.)
+ *
+ * Superadmins always get every permission.
+ */
+export function getUserPermissions(
+  role: string | null | undefined,
+  customPermissions?: string | string[] | null,
+): Permission[] {
+  const r = normalizeRole(role)
+  const rolePerms = getRolePermissions(r)
+  // Superadmins always get the full set (no further grants needed)
+  if (r === 'superadmin') return rolePerms
+
+  let custom: Permission[] | null = null
+  if (Array.isArray(customPermissions)) {
+    custom = customPermissions.length
+      ? (customPermissions.map((p) => String(p).trim()).filter(Boolean) as Permission[])
+      : null
+  } else if (typeof customPermissions === 'string') {
+    custom = parseCustomPermissions(customPermissions)
+  }
+
+  if (!custom || custom.length === 0) return rolePerms
+  // Merge + dedupe (preserve order: role perms first, then custom extras)
+  const set = new Set<Permission>(rolePerms)
+  for (const p of custom) set.add(p)
+  return Array.from(set)
+}
+
 export function hasPermission(role: string | null | undefined, permission: Permission): boolean {
   return getRolePermissions(role).includes(permission)
+}
+
+/**
+ * Check whether a permission list (already merged for a user) contains
+ * the given permission. Used by middleware that loads the row from DB.
+ */
+export function hasResolvedPermission(perms: Permission[], permission: Permission): boolean {
+  return Array.isArray(perms) && perms.includes(permission)
 }
 
 export function isAdminRole(role: string | null | undefined): boolean {
@@ -166,15 +359,17 @@ export function siteFilterForUser(
   return { [field]: { in: allowed } }
 }
 
-/** Convert a DB row → safe AuthUser (no hashes/salts leak). */
+/** Convert a DB row → safe AuthUser (no hashes/salts leak).
+ *  Merges role permissions + the user's custom permissions. */
 export function toAuthUser(row: UserPermissionRow): AuthUser {
   const role = normalizeRole(row.role)
+  const permissions = getUserPermissions(role, row.permissions)
   return {
     email: row.email,
     role,
     name: row.name,
     username: row.username,
     allowedSites: isSuperAdminRole(role) ? 'ALL' : (row.allowedSites ?? 'ALL'),
-    permissions: ROLE_PERMISSIONS[role],
+    permissions,
   }
 }

@@ -15,6 +15,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -121,12 +128,13 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
   const [cycleName, setCycleName] = React.useState('')
   const [cycleStart, setCycleStart] = React.useState(todayISO())
   const [cycleEnd, setCycleEnd] = React.useState(todayISO())
+  const [cycleSite, setCycleSite] = React.useState<string>('ALL')
   const [creating, setCreating] = React.useState(false)
   const [actionTarget, setActionTarget] = React.useState<{ cycle: Cycle; action: 'end' | 'cancel' | 'reopen' | 'delete' } | null>(null)
   const [acting, setActing] = React.useState(false)
   const [reportCycleId, setReportCycleId] = React.useState<string | null>(null)
   // Auto-create next cycle suggestion state
-  const [suggestNext, setSuggestNext] = React.useState<{ endedCycleName: string; nextName: string; nextStart: string; nextEnd: string; durationDays: number } | null>(null)
+  const [suggestNext, setSuggestNext] = React.useState<{ endedCycleName: string; nextName: string; nextStart: string; nextEnd: string; durationDays: number; site: string } | null>(null)
   const [creatingNext, setCreatingNext] = React.useState(false)
 
   // Fetch app settings (for cycleTemplate.autoCreate + durationDays)
@@ -188,8 +196,21 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
       setCycleName('')
       setCycleStart(todayISO())
       setCycleEnd(todayISO())
+      setCycleSite('ALL')
     }
   }, [open])
+
+  // Fetch sites from SiteAttribute (4 rows: UDH, NKP, MECUD, PPIT)
+  const { data: sites } = useQuery<{ code: string; name: string }[]>({
+    queryKey: ['sites'],
+    queryFn: async () => {
+      const res = await fetch('/api/sites')
+      if (!res.ok) return []
+      const json = await res.json()
+      return (json.sites ?? []) as { code: string; name: string }[]
+    },
+    enabled: open,
+  })
 
   async function createCycle() {
     if (!cycleName || !cycleStart || !cycleEnd) {
@@ -205,7 +226,13 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
       const res = await fetch('/api/cycles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: cycleName, startDate: cycleStart, endDate: cycleEnd, status: 'active' }),
+        body: JSON.stringify({
+          name: cycleName,
+          startDate: cycleStart,
+          endDate: cycleEnd,
+          status: 'active',
+          site: cycleSite === 'ALL' ? null : cycleSite,
+        }),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -214,6 +241,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
       toast.success('สร้างรอบจดมิเตอร์ใหม่แล้ว')
       setShowCreate(false)
       setCycleName('')
+      setCycleSite('ALL')
       await qc.invalidateQueries({ queryKey: ['active-cycle'] })
       await qc.invalidateQueries({ queryKey: ['all-cycles'] })
       await qc.invalidateQueries({ queryKey: ['meter-reminders'] })
@@ -270,6 +298,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
           nextStart: today,
           nextEnd,
           durationDays: cycleTemplateDurationDays,
+          site: cycle.site ?? 'ALL',
         })
       }
     } catch (e) {
@@ -291,6 +320,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
           startDate: suggestNext.nextStart,
           endDate: suggestNext.nextEnd,
           status: 'active',
+          site: suggestNext.site === 'ALL' ? null : suggestNext.site,
         }),
       })
       if (!res.ok) {
@@ -380,8 +410,17 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
                 <div className="text-base font-bold text-slate-800 dark:text-slate-100">
                   {activeCycle.name}
                 </div>
-                <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  📅 {activeCycle.startDate} → {activeCycle.endDate}
+                <div className="mt-1 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                  <span>📅 {activeCycle.startDate} → {activeCycle.endDate}</span>
+                  {activeCycle.site ? (
+                    <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                      🏢 {activeCycle.site}
+                    </Badge>
+                  ) : (
+                    <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                      🌐 ทุกสาขา
+                    </Badge>
+                  )}
                 </div>
                 <div className="mt-1 text-xs text-slate-400">
                   เหลือเวลา {daysBetween(todayISO(), activeCycle.endDate)} วัน
@@ -433,6 +472,25 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
                       className="dark:bg-slate-800 dark:border-slate-700"
                     />
                   </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">สาขา *</Label>
+                    <Select value={cycleSite} onValueChange={setCycleSite}>
+                      <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700">
+                        <SelectValue placeholder="เลือกสาขา" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">🌐 ทุกสาขา (Global)</SelectItem>
+                        {(sites ?? []).map((s) => (
+                          <SelectItem key={s.code} value={s.code}>
+                            {s.code} — {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      แต่ละสาขาสามารถมีรอบจดมิเตอร์ของตัวเองพร้อมกันได้ — เลือก "ทุกสาขา" สำหรับรอบรวม
+                    </p>
+                  </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">วันเริ่ม *</Label>
@@ -445,7 +503,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
                   </div>
                   {activeCycle && (
                     <p className="text-xs text-amber-600 dark:text-amber-400">
-                      ⚠️ รอบปัจจุบัน "{activeCycle.name}" จะถูกจบอัตโนมัติเมื่อสร้างรอบใหม่
+                      ⚠️ รอบปัจจุบัน "{activeCycle.name}" {activeCycle.site ? `@ ${activeCycle.site}` : '(ทุกสาขา)'} จะถูกจบอัตโนมัติเมื่อสร้างรอบใหม่{cycleSite === 'ALL' ? 'ทุกสาขา' : ` @ ${cycleSite}`}
                     </p>
                   )}
                   <Button
@@ -496,9 +554,21 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
                                 {sb.icon}
                                 <span className="ml-1">{sb.label}</span>
                               </Badge>
+                              {c.site ? (
+                                <Badge className="shrink-0 border-slate-300 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                  🏢 {c.site}
+                                </Badge>
+                              ) : (
+                                <Badge className="shrink-0 border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-500">
+                                  🌐 ทุกสาขา
+                                </Badge>
+                              )}
                             </div>
                             <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                               📅 {c.startDate} → {c.endDate}
+                              <span className="ml-2 text-slate-400 dark:text-slate-500">
+                                ({daysBetween(c.startDate, c.endDate) + 1} วัน)
+                              </span>
                             </div>
                             {stats && stats.count > 0 && (
                               <div className="mt-0.5 text-xs text-slate-400">

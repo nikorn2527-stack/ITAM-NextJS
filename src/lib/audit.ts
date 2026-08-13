@@ -4,10 +4,11 @@ import { db } from '@/lib/db'
  * Records an audit log entry. Non-fatal — any DB error is swallowed so
  * the calling mutation still succeeds. All summaries should be in Thai.
  *
- * NOTE: The AuditLog table only has columns {action, user, details, timestamp}.
- * The legacy `entity`/`entityId`/`summary` parameters are preserved for
- * backwards-compatibility with the existing call sites but are merged into
- * the `details` JSON column (so the information is not lost).
+ * AuditLog table columns (PostgreSQL camelCase):
+ *   id, action, entity, entityId, summary, detail, actor, createdAt
+ *
+ * `createdAt` has a DB default (`now()`) so we don't set it manually.
+ * `actor` defaults to 'system' when no user is supplied.
  */
 export async function logAudit(
   action: string,
@@ -18,18 +19,14 @@ export async function logAudit(
   user?: string | null,
 ): Promise<void> {
   try {
-    const combined: Record<string, unknown> = {
-      ...(detail ?? {}),
-      entity,
-      entityId,
-      summary,
-    }
     await db.auditLog.create({
       data: {
-        timestamp: new Date().toISOString(),
         action,
-        user: user ?? null,
-        details: JSON.stringify(combined),
+        entity,
+        entityId: entityId ?? null,
+        summary,
+        detail: detail ? JSON.stringify(detail) : null,
+        actor: user ?? 'system',
       },
     })
   } catch (err) {

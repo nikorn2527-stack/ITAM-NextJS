@@ -59,6 +59,7 @@ import {
   ChevronsUpDown,
   Loader2,
   Save,
+  ScanLine,
 } from 'lucide-react'
 import {
   type StockItem,
@@ -68,6 +69,7 @@ import {
   authFetch,
   PRIMARY_BTN,
 } from './shared'
+import { Combobox } from '../combobox'
 
 interface StockListResponse {
   data: StockItem[]
@@ -126,6 +128,24 @@ export function StockInForm() {
     staleTime: 60_000,
   })
   const products = data?.data ?? []
+
+  // Fetch MasterItem (category=Vendor) to drive the supplier combobox. The
+  // user can still type a free-form value if their supplier isn't in the list.
+  const { data: vendorItems } = useQuery<{ code: string; label: string }[]>({
+    queryKey: ['master-all-vendors'],
+    queryFn: async () => {
+      try {
+        const res = await fetch('/api/master?category=Vendor')
+        if (!res.ok) return []
+        const j = await res.json()
+        return ((j.items ?? []) as { code: string; label: string }[])
+      } catch {
+        return []
+      }
+    },
+    staleTime: 60_000,
+  })
+  const supplierOptions = (vendorItems ?? []).map((v) => ({ value: v.label, label: v.label }))
 
   // Submit — one POST per line. We use Promise.allSettled so that partial
   // failures are surfaced clearly to the user.
@@ -238,7 +258,7 @@ export function StockInForm() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">ข้อมูลเอกสาร</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-1.5">
             <Label htmlFor="in-date">วันที่ <span className="text-rose-500">*</span></Label>
             <Input
@@ -251,12 +271,13 @@ export function StockInForm() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="in-supplier">ผู้จำหน่าย</Label>
-            <Input
-              id="in-supplier"
-              placeholder="เช่น บจก. ออฟฟิศเมท..."
+            <Combobox
               value={form.supplier}
-              onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))}
-              className="dark:bg-slate-800 dark:border-slate-700"
+              onChange={(v) => setForm((f) => ({ ...f, supplier: v }))}
+              items={supplierOptions}
+              placeholder="เลือกหรือพิมพ์ผู้จำหน่าย"
+              emptyText="ยังไม่มีผู้จำหน่าย — พิมพ์เพื่อเพิ่มใหม่"
+              inputId="in-supplier"
             />
           </div>
           <div className="space-y-1.5">

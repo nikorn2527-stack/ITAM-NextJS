@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { hashNewPassword, toAuthUser, isAdminRole } from '@/lib/auth'
-import { assertNotLastAdmin } from '../route'
+import { assertNotLastAdmin, normalizePermissionsStorage } from '../route'
 
 const ROLE_CHOICES = ['superadmin', 'admin', 'editor', 'meter', 'viewer'] as const
 
@@ -40,7 +40,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (body.name != null) data.name = String(body.name).trim() || null
   if (body.username != null) data.username = String(body.username).trim().toLowerCase() || null
   if (body.allowedSites != null) data.allowedSites = String(body.allowedSites).trim() || 'ALL'
-  if (body.remark != null) data.remark = String(body.remark).trim() || null
+  // `permissions` is optional — only updated when the field is explicitly
+  // present in the body. Pass `null` to clear custom grants.
+  if (body.permissions !== undefined) {
+    data.permissions = normalizePermissionsStorage(body.permissions)
+  }
 
   if (typeof body.password === 'string' && body.password.trim()) {
     const { hash, salt } = hashNewPassword(body.password)

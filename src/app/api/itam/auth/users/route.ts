@@ -1,15 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { hashNewPassword, toAuthUser, isAdminRole } from '@/lib/auth'
+import { hashNewPassword, toAuthUser, isAdminRole, ALL_PERMISSION_KEYS } from '@/lib/auth'
 
 /**
- * /api/itam/auth/users — admin user-management endpoint (requires ADMIN
+ * /api/itam/auth/users — admin user-management endpoint (requires USER_MANAGE
  * permission). Supports GET (list), POST (create) and the [id] route supports
  * PUT/DELETE with "last admin" protection.
+ *
+ * Body fields (POST/PUT):
+ *   • email, username, name, role, active, allowedSites, password
+ *   • permissions: string[] — list of permission keys to MERGE with the role's
+ *     defaults. Stored on User.permissions as a JSON array string.
  */
 
 const ROLE_CHOICES = ['superadmin', 'admin', 'editor', 'meter', 'viewer'] as const
+
+/** Normalize the incoming `permissions` value into a JSON string suitable
+ *  for storage on User.permissions. Returns `null` for "no custom grants"
+ *  (so the role defaults apply). */
+function normalizePermissionsStorage(raw: unknown): string | null {
+  if (raw == null) return null
+  let arr: string[] = []
+  if (Array.isArray(raw)) {
+    arr = raw.map((p) => String(p ?? '').trim()).filter(Boolean)
+  } else if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) {
+          arr = parsed.map((p) => String(p ?? '').trim()).filter(Boolean)
+        }
+      } catch {
+        arr = trimmed.split(',').map((s) => s.trim()).filter(Boolean)
+      }
+    } else {
+      arr = trimmed.split(',').map((s) => s.trim()).filter(Boolean)
+    }
+  }
+  if (arr.length === 0) return null
+  // Filter to known permission keys (silently drop unknown ones)
+  const valid = new Set<string>(ALL_PERMISSION_KEYS)
+  const filtered = arr.filter((p) => valid.has(p))
+  if (filtered.length === 0) return null
+  return JSON.stringify(filtered)
+}
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req, 'USER_MANAGE')
@@ -34,7 +71,7 @@ export async function POST(req: NextRequest) {
   const active = body.active !== false
   const allowedSites = String(body.allowedSites || '').trim() || 'ALL'
   const password = String(body.password || '')
-  const remark = String(body.remark || '').trim() || null
+  const permissions = normalizePermissionsStorage(body.permissions)
 
   if (!email) return NextResponse.json({ error: 'email is required' }, { status: 400 })
   if (!ROLE_CHOICES.includes(role as (typeof ROLE_CHOICES)[number])) {
@@ -69,8 +106,8 @@ export async function POST(req: NextRequest) {
       username,
       passwordHash,
       passwordSalt,
-      remark,
       allowedSites,
+      permissions,
     },
   })
   return NextResponse.json({ user: toAuthUser(created) }, { status: 201 })
@@ -98,3 +135,6 @@ export async function assertNotLastAdmin(targetId: string): Promise<{ ok: true }
   }
   return { ok: true }
 }
+
+// Re-export the storage normalizer for the [id] PUT route.
+export { normalizePermissionsStorage }

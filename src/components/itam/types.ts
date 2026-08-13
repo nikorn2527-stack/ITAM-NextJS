@@ -111,6 +111,8 @@ export interface Cycle {
   startDate: string
   endDate: string
   status: string
+  /** Optional site code — null means "all sites" (a global cycle). */
+  site?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -119,7 +121,13 @@ export interface Site {
   id: string
   code: string
   name: string
-  createdAt: string
+  /** Optional — only present when reading from the legacy `Site` table. */
+  createdAt?: string
+  /** Optional — populated when reading from SiteAttribute. */
+  lineOa?: string | null
+  hotline?: string | null
+  paperRateBw?: number | null
+  paperRateColor?: number | null
 }
 
 export interface SiteRate {

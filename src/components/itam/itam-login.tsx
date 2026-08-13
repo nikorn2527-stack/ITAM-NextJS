@@ -29,6 +29,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -134,6 +140,58 @@ export function ItamLogin() {
   const [registerOpen, setRegisterOpen] = React.useState(false)
   const [inviteOpen, setInviteOpen] = React.useState(false)
   const [forgotOpen, setForgotOpen] = React.useState(false)
+
+  // ── OAuth providers status (Google / LINE / Telegram) ───────────────
+  // Fetches /api/auth/oauth/status on mount. Only render provider buttons
+  // that have been configured by the admin in Settings → OAuth.
+  const { data: oauthStatus } = useQuery<{
+    providers: { google: boolean; line: boolean; telegram: boolean }
+    botUsername?: string
+  }>({
+    queryKey: ['oauth-status'],
+    queryFn: async () => {
+      const res = await fetch('/api/auth/oauth/status')
+      if (!res.ok) return { providers: { google: false, line: false, telegram: false } }
+      return res.json()
+    },
+    staleTime: 60_000,
+  })
+  const providers = oauthStatus?.providers ?? { google: false, line: false, telegram: false }
+  const hasAnyOauth = providers.google || providers.line || providers.telegram
+
+  // Handle the OAuth callback redirect: when the SPA boots with ?oauth=success
+  // or ?oauth=pending in the URL, hydrate the session / show a toast.
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const oauthParam = params.get('oauth')
+    if (!oauthParam) return
+    const token = params.get('token')
+    const userJson = params.get('user')
+    if (oauthParam === 'success' && token && userJson) {
+      try {
+        const user = JSON.parse(decodeURIComponent(userJson))
+        useAuthStore.getState().setSession(token, user)
+        toast.success('เข้าสู่ระบบด้วย OAuth สำเร็จ')
+      } catch {
+        /* ignore parse errors */
+      }
+    } else if (oauthParam === 'pending') {
+      toast.info('บัญชีของคุณถูกสร้างแล้ว — รอผู้ดูแลอนุมัติ', { duration: 8000 })
+    } else if (oauthParam && oauthParam.startsWith('error')) {
+      toast.error('เข้าสู่ระบบด้วย OAuth ไม่สำเร็จ — กรุณาลองอีกครั้ง')
+    }
+    // Clean the URL.
+    try {
+      const url = new URL(window.location.href)
+      url.searchParams.delete('oauth')
+      url.searchParams.delete('token')
+      url.searchParams.delete('user')
+      window.history.replaceState({}, '', url.toString())
+    } catch {
+      /* ignore */
+    }
+  }, [])
 
   // Auto-open registration dialog when ?register=1 is in the URL
   React.useEffect(() => {
@@ -368,6 +426,36 @@ export function ItamLogin() {
               )}
             </button>
           </form>
+
+          {/* ── OAuth / External login buttons ─────────────────────────── */}
+          {/* Only render the divider + buttons if at least one provider is configured. */}
+          {hasAnyOauth && (
+            <div className="mt-5">
+              <div className="relative my-3 text-center">
+                <div className="absolute inset-x-0 top-1/2 border-t border-slate-200 dark:border-slate-700" />
+                <span className="relative bg-white px-3 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:bg-slate-900 dark:text-slate-500">
+                  หรือเข้าสู่ระบบด้วย
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <OauthButton
+                  provider="google"
+                  enabled={providers.google}
+                  href="/api/auth/oauth/google"
+                />
+                <OauthButton
+                  provider="line"
+                  enabled={providers.line}
+                  href="/api/auth/oauth/line"
+                />
+                <OauthButton
+                  provider="telegram"
+                  enabled={providers.telegram}
+                  href="/api/auth/oauth/telegram"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Action buttons — register / forgot / invite link */}
           <div className="mt-4 space-y-2">
@@ -947,4 +1035,99 @@ function ForgotPasswordDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+// ─── OAuth provider button ────────────────────────────────────────────
+// Renders a branded login button for Google / LINE / Telegram. When the
+// provider isn't configured by the admin yet, the button is disabled with
+// a tooltip explaining why.
+function OauthButton({
+  provider,
+  enabled,
+  href,
+}: {
+  provider: 'google' | 'line' | 'telegram'
+  enabled: boolean
+  href: string
+}) {
+  const config = {
+    google: {
+      label: 'Google',
+      bg: 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50',
+      dark: 'dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:hover:bg-slate-700',
+      icon: (
+        <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
+          <path
+            fill="#4285F4"
+            d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+          />
+          <path
+            fill="#34A853"
+            d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+          />
+          <path
+            fill="#FBBC05"
+            d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+          />
+          <path
+            fill="#EA4335"
+            d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+          />
+        </svg>
+      ),
+    },
+    line: {
+      label: 'LINE',
+      bg: 'bg-[#06C755] text-white border-transparent hover:bg-[#05b04c]',
+      dark: '',
+      icon: (
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+          <path d="M19.365 9.863c.349 0 .63.285.63.631 0 .345-.281.63-.63.63H17.61v1.125h1.755c.349 0 .63.283.63.63 0 .344-.281.629-.63.629h-2.386c-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63h2.386c.349 0 .63.285.63.63 0 .349-.281.63-.63.63H17.61v1.125h1.755zm-3.855 3.016c0 .27-.174.51-.432.596-.064.021-.133.032-.199.032-.211 0-.391-.09-.51-.25l-2.443-3.317v2.94c0 .344-.279.629-.631.629-.346 0-.626-.285-.626-.629V8.108c0-.27.173-.51.43-.595.06-.023.136-.033.194-.033.195 0 .375.104.495.254l2.462 3.33V8.108c0-.345.282-.63.63-.63.345 0 .63.285.63.63v4.771zm-5.741 0c0 .344-.282.629-.631.629-.345 0-.627-.285-.627-.629V8.108c0-.345.282-.63.63-.63.346 0 .628.285.628.63v4.771zm-2.466.629H4.917c-.345 0-.63-.285-.63-.629V8.108c0-.345.285-.63.63-.63.348 0 .63.285.63.63v4.141h1.756c.348 0 .629.283.629.63 0 .344-.282.629-.629.629M24 10.314C24 4.943 18.615.572 12 .572S0 4.943 0 10.314c0 4.811 4.27 8.842 10.035 9.608.391.082.923.252 1.058.58.12.301.078.775.038 1.082l-.164 1.02c-.05.301-.23 1.186 1.035.645 1.27-.541 6.854-4.053 9.342-6.936C23.176 14.531 24 12.49 24 10.314" />
+        </svg>
+      ),
+    },
+    telegram: {
+      label: 'Telegram',
+      bg: 'bg-[#0088CC] text-white border-transparent hover:bg-[#0077b3]',
+      dark: '',
+      icon: (
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
+          <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.324-.437.89-.663 3.478-1.429 5.795-2.307 6.953-2.635 3.313-.943 3.998-1.107 4.451-1.114z" />
+        </svg>
+      ),
+    },
+  }[provider]
+
+  const button = (
+    <a
+      href={enabled ? href : undefined}
+      aria-disabled={!enabled}
+      onClick={(e) => {
+        if (!enabled) {
+          e.preventDefault()
+          toast.warning('ผู้ดูแลยังไม่ได้ตั้งค่า OAuth สำหรับผู้ให้บริการนี้')
+        }
+      }}
+      className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors ${config.bg} ${config.dark} ${
+        !enabled ? 'cursor-not-allowed opacity-60' : ''
+      }`}
+    >
+      {config.icon}
+      <span>{config.label}</span>
+    </a>
+  )
+
+  if (!enabled) {
+    return (
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>{button}</TooltipTrigger>
+          <TooltipContent side="top">
+            <span className="text-xs">ยังไม่ได้ตั้งค่า — ผู้ดูแลต้องกรอกข้อมูลใน Settings → OAuth</span>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+  return button
 }

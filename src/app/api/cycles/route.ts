@@ -2,12 +2,42 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 
+/**
+ * GET /api/cycles?status=active&site=UDH
+ *
+ * When `status=active` is passed, also auto-closes any cycles whose endDate
+ * is in the past — this ensures the "active" cycle list always reflects
+ * reality (the countdown reset fix from Issue 4).
+ */
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')?.trim() ?? ''
+    const site = searchParams.get('site')?.trim() ?? ''
+
+    // ── Auto-close expired active cycles ──
+    // Any cycle with status='active' AND endDate < today → mark 'closed'.
+    // Non-fatal: if this fails (e.g. race with another request), the next
+    // GET will retry.
+    try {
+      const todayISO = new Date().toISOString().slice(0, 10)
+      await db.cycle.updateMany({
+        where: {
+          status: 'active',
+          endDate: { lt: todayISO },
+        },
+        data: { status: 'closed' },
+      })
+    } catch (e) {
+      console.error('auto-close expired cycles failed:', e)
+    }
+
     const where: Record<string, unknown> = {}
     if (status) where.status = status
+    if (site) {
+      // Match either the exact site OR null (all-sites / global cycles)
+      where.OR = [{ site }, { site: null }]
+    }
     const cycles = await db.cycle.findMany({
       where,
       orderBy: { startDate: 'desc' },
@@ -25,11 +55,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, startDate, endDate, status } = body as {
+    const { name, startDate, endDate, status, site } = body as {
       name?: string
       startDate?: string
       endDate?: string
       status?: string
+      site?: string | null
     }
     if (!name || !startDate || !endDate) {
       return NextResponse.json(
@@ -38,11 +69,18 @@ export async function POST(req: NextRequest) {
       )
     }
     const finalStatus = (status ?? 'active').trim()
+    // Normalize site: empty string / "ALL" / "all" → null (global cycle)
+    let siteValue: string | null = null
+    if (typeof site === 'string' && site.trim() && site.trim().toUpperCase() !== 'ALL') {
+      siteValue = site.trim().toUpperCase()
+    }
 
-    // If creating an active cycle, mark other active cycles as ended
+    // If creating an active cycle, mark other active cycles as ended —
+    // SCOPED to the same site (or both global when siteValue is null).
+    // This way, UDH and NKP can each have their own active cycle simultaneously.
     if (finalStatus === 'active') {
       await db.cycle.updateMany({
-        where: { status: 'active' },
+        where: { status: 'active', ...(siteValue ? { site: siteValue } : { site: null }) },
         data: { status: 'ended' },
       })
     }
@@ -53,14 +91,15 @@ export async function POST(req: NextRequest) {
         startDate: String(startDate),
         endDate: String(endDate),
         status: finalStatus,
+        site: siteValue,
       },
     })
     await logAudit(
       'CYCLE_START',
       'Cycle',
       created.id,
-      `สร้างรอบจดมิเตอร์ ${created.name} (${created.startDate} → ${created.endDate})`,
-      { name: created.name, startDate: created.startDate, endDate: created.endDate },
+      `สร้างรอบจดมิเตอร์ ${created.name} (${created.startDate} → ${created.endDate})${created.site ? ` @ ${created.site}` : ' (ทุกสาขา)'}`,
+      { name: created.name, startDate: created.startDate, endDate: created.endDate, site: created.site },
     )
     return NextResponse.json({ cycle: created }, { status: 201 })
   } catch (err) {

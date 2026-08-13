@@ -121,6 +121,7 @@ export async function POST(req: NextRequest) {
         serialNumber: optStr(body.serialNumber),
         status: String(body.status).trim(),
         site: String(body.site).trim(),
+        assetSiteCode: optStr(body.assetSiteCode),
         department: optStr(body.department),
         departmentCode: optStr(body.departmentCode),
         parentRef: optStr(body.parentRef),
@@ -134,10 +135,6 @@ export async function POST(req: NextRequest) {
         remoteId: optStr(body.remoteId),
         purchaseDate: optStr(body.purchaseDate),
         warrantyMonths: clampWarrantyMonths(body.warrantyMonths),
-        lastMeterReading:
-          typeof body.lastMeterReading === 'number'
-            ? body.lastMeterReading
-            : 0,
         purchasePrice: optFloat(body.purchasePrice),
         salvageValue: optFloat(body.salvageValue) ?? 0,
         usefulLife: optInt(body.usefulLife),

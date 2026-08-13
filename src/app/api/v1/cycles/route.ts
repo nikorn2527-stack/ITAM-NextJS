@@ -50,7 +50,7 @@ import { requireApiAuth } from '@/lib/api/auth'
 // ── GET field map ──────────────────────────────────────────────────────
 const FIELD_MAP: Record<string, string> = {
   status: 'status',
-  cycleMonth: 'cycleMonth',
+  site: 'site',
 }
 
 // ── GET ────────────────────────────────────────────────────────────────
@@ -61,7 +61,17 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url)
   const query = parseQuery(url)
 
-  // No site filter — cycles are global
+  // Auto-close expired active cycles so the list reflects reality.
+  try {
+    const todayISO = new Date().toISOString().slice(0, 10)
+    await db.cycle.updateMany({
+      where: { status: 'active', endDate: { lt: todayISO } },
+      data: { status: 'closed' },
+    })
+  } catch (e) {
+    console.error('auto-close expired cycles (v1) failed:', e)
+  }
+
   const where = buildWhere(query, FIELD_MAP)
   const orderBy = buildOrderBy(query, FIELD_MAP, { startDate: 'desc' })
 
@@ -98,20 +108,24 @@ export async function POST(req: NextRequest) {
       return badRequest('endDate เป็นฟิลด์ที่ต้องการ', { field: 'endDate' })
     }
 
-    // ── Normalize status (default OPEN) ───────────────────────────────
-    const status = String(body.status ?? 'OPEN').trim()
+    // ── Normalize status (default active) ────────────────────────────
+    const status = String(body.status ?? 'active').trim()
 
-    // ── If starting an OPEN/active cycle, close any existing ones ──────
-    // Apps Script invariant: only one OPEN cycle at a time.
+    // ── Normalize site ───────────────────────────────────────────────
+    let siteValue: string | null = null
+    if (typeof body.site === 'string' && body.site.trim() && body.site.trim().toUpperCase() !== 'ALL') {
+      siteValue = body.site.trim().toUpperCase()
+    }
+
+    // ── If starting an active cycle, close any existing ones (same site) ──
     const isActive = status === 'OPEN' || status === 'active'
     if (isActive) {
-      // Flip OPEN → CLOSED AND active → ended (covers both V5 + legacy)
       await db.cycle.updateMany({
-        where: { status: { in: ['OPEN', 'active'] } },
-        data: {
-          status: 'CLOSED',
-          closedAt: new Date(),
+        where: {
+          status: { in: ['OPEN', 'active'] },
+          ...(siteValue ? { site: siteValue } : { site: null }),
         },
+        data: { status: 'ended' },
       })
     }
 
@@ -122,28 +136,27 @@ export async function POST(req: NextRequest) {
         startDate: String(body.startDate),
         endDate: String(body.endDate),
         status,
-        cycleMonth: body.cycleMonth ? String(body.cycleMonth) : null,
-        deadlineDate: body.deadlineDate ? String(body.deadlineDate) : null,
-        remarks: body.remarks ? String(body.remarks) : null,
-        startedAt: isActive ? new Date() : null,
+        site: siteValue,
       },
     })
 
-    // ── Audit log (best-effort) ───────────────────────────────────────
+    // ── Audit log (best-effort, uses correct schema fields) ──────────
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'CYCLE_START',
-          user: user.email,
-          details: JSON.stringify({
+          entity: 'Cycle',
+          entityId: cycle.id,
+          summary: `สร้างรอบจดมิเตอร์ ${cycle.name} (${cycle.startDate} → ${cycle.endDate})${cycle.site ? ` @ ${cycle.site}` : ''}`,
+          detail: JSON.stringify({
             name: cycle.name,
             startDate: cycle.startDate,
             endDate: cycle.endDate,
-            cycleMonth: cycle.cycleMonth,
             status: cycle.status,
+            site: cycle.site,
             cycleId: cycle.id,
           }),
+          actor: user.email,
         },
       })
     } catch {

@@ -75,6 +75,7 @@ const EDITABLE_FIELDS = [
   'serialNumber',
   'status',
   'site',
+  'assetSiteCode',
   'department',
   'departmentCode',
   'parentRef',
@@ -123,6 +124,7 @@ export async function PUT(
       serialNumber: setStr('serialNumber', body),
       status: body.status !== undefined ? String(body.status).trim() : undefined,
       site: body.site !== undefined ? String(body.site).trim() : undefined,
+      assetSiteCode: setStr('assetSiteCode', body),
       department: setStr('department', body),
       departmentCode: setStr('departmentCode', body),
       parentRef: setStr('parentRef', body),
@@ -148,10 +150,6 @@ export async function PUT(
       costCenter: setStr('costCenter', body),
       deviceGroup: setStr('deviceGroup', body),
       remark: setStr('remark', body),
-      lastMeterReading:
-        typeof body.lastMeterReading === 'number'
-          ? body.lastMeterReading
-          : undefined,
       purchasePrice:
         body.purchasePrice !== undefined
           ? optFloat(body.purchasePrice)
