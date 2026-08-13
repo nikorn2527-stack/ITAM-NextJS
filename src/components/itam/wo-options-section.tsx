@@ -160,7 +160,7 @@ export function WoOptionsSection() {
   return (
     <div className="space-y-4">
       {/* Subjects */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Wrench className="h-4 w-4 text-[#f97316]" /> หัวข้อปัญหา
@@ -227,7 +227,7 @@ export function WoOptionsSection() {
       </Card>
 
       {/* Buildings */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Building2 className="h-4 w-4 text-teal-500" /> อาคาร / ฝ่าย
@@ -274,7 +274,7 @@ export function WoOptionsSection() {
       </Card>
 
       {/* Resolutions */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <CheckCircle2 className="h-4 w-4 text-emerald-500" /> ผลการแก้ไข

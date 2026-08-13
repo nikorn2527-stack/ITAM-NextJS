@@ -88,7 +88,11 @@ function CycleCountdownBar({
   onManage: () => void
   onCreate: () => void
 }) {
-  const now = useNowTick(60_000)
+  // Tick every 60s normally; every 30s on deadline day so the
+  // hours/minutes countdown stays fresh (Phase 2).
+  const todayStr0 = new Date().toISOString().slice(0, 10)
+  const isDeadlinePhase0 = cycle ? todayStr0 === cycle.endDate : false
+  const now = useNowTick(isDeadlinePhase0 ? 30_000 : 60_000)
   if (!cycle) {
     return (
       <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-800 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
@@ -119,42 +123,81 @@ function CycleCountdownBar({
     )
   }
 
-  const deadline = new Date(cycle.endDate + 'T23:59:59')
-  const diffMs = deadline.getTime() - now
+  // ── Two-phase countdown (Issue 1: FIX-COUNTDOWN-LAYOUT-SETTINGS) ──
+  // Phase 1 (before deadline day): "อีก X วัน ถึงกำหนดจดมิเตอร์" (count UP to deadline)
+  //   green  : > 7 days remaining
+  //   orange : 3-7 days remaining
+  //   red    : < 3 days remaining
+  // Phase 2 (deadline day / overdue):
+  //   same-day → "⚠️ ถึงกำหนดจดมิเตอร์แล้ว! เหลือ X ชม. Y นาที" (red, pulsing)
+  //   overdue  → "เลยกำหนดแล้ว X วัน" (red, pulsing)
+  const todayStr = new Date(now).toISOString().slice(0, 10)
+  const endDate = cycle.endDate
+  const deadlineEndOfDay = new Date(endDate + 'T23:59:59')
+  const diffMs = deadlineEndOfDay.getTime() - now
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
   const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+  const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
+  const isDeadlineDay = todayStr === endDate
+  const isOverdue = diffMs < 0 && !isDeadlineDay
+  // Phase: 'before' (Phase 1) | 'deadline' (Phase 2 same-day) | 'overdue' (Phase 2 past)
+  const phase: 'before' | 'deadline' | 'overdue' =
+    isOverdue ? 'overdue' : isDeadlineDay ? 'deadline' : 'before'
+
   const total = totalRead + totalUnread
   const pct = total > 0 ? Math.round((totalRead / total) * 100) : 0
 
-  // Color: red if <3 days, orange if <7 days, green otherwise
+  // Days overdue (positive integer when past endDate)
+  const overdueDays = isOverdue
+    ? Math.floor((now - deadlineEndOfDay.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    : 0
+
+  // Color + text mapping per phase
   let colorClass: string
   let textClass: string
   let barClass: string
   let countdownText: string
-  if (diffMs <= 0) {
-    colorClass = 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40'
-    textClass = 'text-rose-700 dark:text-rose-300'
-    barClass = 'bg-rose-500'
-    countdownText = '⏰ หมดเวลาแล้ว!'
+  let pulsing = false
+
+  if (phase === 'overdue') {
+    // Phase 2 — past deadline
+    colorClass = 'border-rose-400 bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40'
+    textClass = 'text-rose-800 dark:text-rose-300'
+    barClass = 'bg-rose-600'
+    pulsing = true
+    countdownText = `เลยกำหนดแล้ว ${overdueDays} วัน`
+  } else if (phase === 'deadline') {
+    // Phase 2 — deadline day (countdown hours)
+    colorClass = 'border-rose-400 bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40'
+    textClass = 'text-rose-800 dark:text-rose-300'
+    barClass = 'bg-rose-600'
+    pulsing = true
+    countdownText =
+      diffMs > 0
+        ? `⚠️ ถึงกำหนดจดมิเตอร์แล้ว! เหลือ ${diffHours} ชม. ${diffMinutes} นาที`
+        : `⚠️ ถึงกำหนดจดมิเตอร์แล้ว! ปิดรอบได้เลย`
   } else if (diffDays < 3) {
+    // Phase 1 — red zone (< 3 days)
     colorClass = 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40'
     textClass = 'text-rose-700 dark:text-rose-300'
     barClass = 'bg-rose-500'
-    countdownText = `เหลืออีก ${diffDays} วัน ${diffHours} ชม.`
+    countdownText = `อีก ${diffDays} วัน ${diffHours} ชม. ถึงกำหนดจดมิเตอร์`
   } else if (diffDays < 7) {
+    // Phase 1 — orange zone (3-7 days)
     colorClass = 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40'
     textClass = 'text-amber-700 dark:text-amber-300'
     barClass = 'bg-amber-500'
-    countdownText = `เหลืออีก ${diffDays} วัน ${diffHours} ชม.`
+    countdownText = `อีก ${diffDays} วัน ${diffHours} ชม. ถึงกำหนดจดมิเตอร์`
   } else {
+    // Phase 1 — green zone (> 7 days)
     colorClass = 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40'
     textClass = 'text-emerald-700 dark:text-emerald-300'
     barClass = 'bg-emerald-500'
-    countdownText = `เหลืออีก ${diffDays} วัน`
+    countdownText = `อีก ${diffDays} วัน ถึงกำหนดจดมิเตอร์`
   }
 
   return (
-    <div className={`rounded-lg border p-3 ${colorClass}`}>
+    <div className={`rounded-lg border p-3 ${colorClass}${pulsing ? ' itam-deadline-pulse' : ''}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/80 dark:bg-slate-900/70">
@@ -170,7 +213,7 @@ function CycleCountdownBar({
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <div className={`text-sm font-bold ${textClass}`}>
+          <div className={`text-right text-sm font-bold leading-tight ${textClass}`}>
             {countdownText}
           </div>
           <Button size="sm" variant="outline" onClick={onManage} className="dark:bg-slate-800 dark:border-slate-700">
@@ -269,7 +312,7 @@ function QuickCreateCycleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="dark:border-slate-800 dark:bg-slate-900">
+      <DialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <DialogHeader>
           <DialogTitle>สร้างรอบจดมิเตอร์ใหม่</DialogTitle>
           <DialogDescription>
@@ -307,8 +350,8 @@ function QuickCreateCycleDialog({
             </div>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            ⏰ ตัวนับถอยหลังจะแสดงที่ด้านบนของหน้าจดมิเตอร์ — สีแดงหากเหลือ &lt; 3 วัน,
-            สีส้มหากเหลือ &lt; 7 วัน
+            ⏰ ระยะแรก: แสดง <span className="font-medium">&quot;อีก X วัน ถึงกำหนดจดมิเตอร์&quot;</span> (นับไปถึงวันกำหนด)<br />
+            ⚠️ ระยะ 2: พอถึงวันกำหนด → แสดง <span className="font-medium">&quot;ถึงกำหนดจดมิเตอร์แล้ว!&quot;</span> พร้อมนับถอยหลังเป็นชั่วโมง — สีแดงหากเหลือ &lt; 3 วัน, สีส้มหากเหลือ &lt; 7 วัน
           </p>
         </div>
         <DialogFooter>

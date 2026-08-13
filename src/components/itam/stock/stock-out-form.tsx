@@ -272,7 +272,7 @@ export function StockOutForm() {
       </div>
 
       {/* Top form */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">ข้อมูลการเบิก</CardTitle>
         </CardHeader>
@@ -343,7 +343,7 @@ export function StockOutForm() {
       </Card>
 
       {/* Line items */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm">รายการสินค้าที่เบิก</CardTitle>
@@ -355,7 +355,7 @@ export function StockOutForm() {
         <CardContent className="p-0">
           <div className="itam-scroll max-h-[50vh] overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="w-40">รหัสสินค้า</TableHead>
                   <TableHead className="min-w-[180px]">ชื่อสินค้า</TableHead>

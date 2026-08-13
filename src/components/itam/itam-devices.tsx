@@ -1328,7 +1328,7 @@ tr:nth-child(even) td{background:#fafbfc}
       </div>
 
       {/* Table — standard OR virtualized based on the toggle */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-0">
           {virtualScroll && !showSkeletons && devices.length > 0 ? (
             <VirtualDevicesTable
@@ -1349,7 +1349,7 @@ tr:nth-child(even) td{background:#fafbfc}
           ) : (
           <div className="itam-scroll max-h-[60vh] overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
@@ -1461,7 +1461,7 @@ tr:nth-child(even) td{background:#fafbfc}
                             <Highlight text={(d.department || '').substring(0, 20)} query={debouncedSearch} />
                           </TableCell>
                           <TableCell className="text-center">
-                            {d.meterRequired ? <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300">✓</Badge> : '—'}
+                            {d.meterRequired ? <Badge className="bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300">✓</Badge> : '—'}
                           </TableCell>
                           <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
@@ -1734,7 +1734,7 @@ tr:nth-child(even) td{background:#fafbfc}
 
       {/* Delete confirm */}
       <AlertDialog open={!!deleteAssetCode} onOpenChange={(o) => !o && setDeleteAssetCode(null)}>
-        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+        <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle>ยืนยันการลบ?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1856,7 +1856,7 @@ tr:nth-child(even) td{background:#fafbfc}
                 <Label className="text-xs">ตัวอย่าง 5 แถวแรก</Label>
                 <div className="itam-scroll max-h-56 overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
                   <Table>
-                    <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+                    <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
                       <TableRow>
                         {importPreview.header.map((h, i) => (
                           <TableHead key={i} className="text-[10px] whitespace-nowrap">{h}</TableHead>
@@ -2079,7 +2079,7 @@ function VirtualDevicesTable({
     >
       {/* Sticky header — same grid as the rows */}
       <div
-        className={`sticky top-0 z-10 grid ${GRID_COLS} gap-2 border-b border-slate-200 bg-slate-50/95 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-300`}
+        className={`sticky top-0 z-10 grid ${GRID_COLS} gap-2 border-b border-slate-200 bg-slate-100/95 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-300`}
         role="row"
       >
         <div className="flex items-center" role="columnheader">
@@ -2161,7 +2161,7 @@ function VirtualDevicesTable({
               </div>
               <div role="cell" className="text-center">
                 {d.meterRequired ? (
-                  <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300">✓</Badge>
+                  <Badge className="bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300">✓</Badge>
                 ) : (
                   <span className="text-slate-400">—</span>
                 )}

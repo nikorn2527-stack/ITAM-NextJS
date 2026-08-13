@@ -93,12 +93,40 @@ function useCountdown(startDate?: string, endDate?: string) {
     // progress pct over the [start → end] window (0 → 100 as time passes)
     const total = Math.max(1, end - start)
     const pct = Math.min(100, Math.max(0, ((now - start) / total) * 100))
-    if (diff <= 0) return { days: 0, hours: 0, pct: 100, ended: true, warning: true }
+
+    // ── Two-phase detection (Issue 1) ──
+    // 'before'   : today is before endDate (Phase 1 — count UP to deadline)
+    // 'deadline' : today is exactly endDate (Phase 2 — countdown hours)
+    // 'overdue'  : today is past endDate (Phase 2 — past due)
+    const todayStr = new Date(now).toISOString().slice(0, 10)
+    const isDeadlineDay = todayStr === endDate
+    const isOverdue = diff < 0 && !isDeadlineDay
+    const phase: 'before' | 'deadline' | 'overdue' = isOverdue
+      ? 'overdue'
+      : isDeadlineDay
+        ? 'deadline'
+        : 'before'
+
+    if (diff <= 0) {
+      const overdueDays = isOverdue
+        ? Math.floor((now - end) / (1000 * 60 * 60 * 24)) + 1
+        : 0
+      return {
+        days: 0,
+        hours: 0,
+        pct: 100,
+        ended: true,
+        warning: true,
+        phase,
+        overdueDays,
+      }
+    }
     const days = Math.floor(diff / (1000 * 60 * 60 * 24))
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    // Warning when within 3 days of deadline (configurable downstream)
-    const warning = days <= 3
-    return { days, hours, pct, ended: false, warning }
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    // Warning when within 3 days of deadline, OR on deadline day, OR overdue
+    const warning = days <= 3 || phase !== 'before'
+    return { days, hours, minutes, pct, ended: false, warning, phase, overdueDays: 0 }
   }, [startDate, endDate])
 }
 
@@ -488,27 +516,44 @@ export function Sidebar() {
       </nav>
 
       {/* ── Cycle countdown — compact single-line bar (only when expanded) ──
-          When collapsed, hide entirely (the user can hover to see it).
-          Warning (amber/red bar) appears when within 3 days of deadline. */}
+          Two-phase display (Issue 1: FIX-COUNTDOWN-LAYOUT-SETTINGS):
+            • before   → "อีก X วัน ถึงกำหนดจดมิเตอร์" (green/orange/red)
+            • deadline → "⚠️ ถึงกำหนดจดมิเตอร์แล้ว! เหลือ X ชม." (red, pulsing)
+            • overdue  → "เลยกำหนดแล้ว X วัน" (red, pulsing) */}
       {activeCycle && countdown && expanded && (
         <div
           className={cn(
             'border-t px-3 py-2 text-[11px] dark:border-white/10',
-            countdown.warning
-              ? 'border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
-              : 'border-slate-200 bg-slate-50 text-slate-700 dark:bg-white/[0.04] dark:text-slate-200',
+            countdown.phase === 'overdue' || countdown.phase === 'deadline'
+              ? 'border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200'
+              : countdown.warning
+                ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+                : 'border-slate-200 bg-slate-100 text-slate-700 dark:bg-white/[0.04] dark:text-slate-200',
+            (countdown.phase === 'overdue' || countdown.phase === 'deadline') && 'itam-deadline-pulse',
           )}
-          title={`${countdown.ended ? 'สิ้นสุดรอบ' : `เหลืออีก ${countdown.days} วัน ${countdown.hours} ชม.`} — ${activeCycle.name}${activeCycle.site ? ` @ ${activeCycle.site}` : ''}`}
+          title={
+            countdown.phase === 'overdue'
+              ? `เลยกำหนดแล้ว ${countdown.overdueDays} วัน — ${activeCycle.name}${activeCycle.site ? ` @ ${activeCycle.site}` : ''}`
+              : countdown.phase === 'deadline'
+                ? `ถึงกำหนดจดมิเตอร์แล้ว! เหลือ ${countdown.hours} ชม. ${countdown.minutes ?? 0} นาที — ${activeCycle.name}${activeCycle.site ? ` @ ${activeCycle.site}` : ''}`
+                : `เหลืออีก ${countdown.days} วัน ${countdown.hours} ชม. ถึงกำหนดจดมิเตอร์ — ${activeCycle.name}${activeCycle.site ? ` @ ${activeCycle.site}` : ''}`
+          }
         >
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="flex items-center gap-1 truncate whitespace-nowrap">
-              <span aria-hidden>{countdown.warning ? '⚠️' : '⏰'}</span>
+              <span aria-hidden>
+                {countdown.phase === 'overdue' || countdown.phase === 'deadline' ? '⚠️' : '⏰'}
+              </span>
               <span className="truncate">
-                {countdown.ended
-                  ? 'สิ้นสุดรอบ'
-                  : countdown.warning
-                    ? `ใกล้หมดรอบ! ${countdown.days} วัน ${countdown.hours} ชม.`
-                    : `เหลือ ${countdown.days} วัน ${countdown.hours} ชม.`}
+                {countdown.phase === 'overdue'
+                  ? `เลยกำหนดแล้ว ${countdown.overdueDays} วัน`
+                  : countdown.phase === 'deadline'
+                    ? countdown.ended
+                      ? 'ถึงกำหนดจดมิเตอร์แล้ว! ปิดรอบได้เลย'
+                      : `ถึงกำหนดจดมิเตอร์! เหลือ ${countdown.hours} ชม. ${countdown.minutes ?? 0} นาที`
+                    : countdown.warning
+                      ? `อีก ${countdown.days} วัน ${countdown.hours} ชม. ถึงกำหนด`
+                      : `อีก ${countdown.days} วัน ถึงกำหนดจดมิเตอร์`}
               </span>
               {activeCycle.site && (
                 <Badge className="ml-1 shrink-0 border-slate-300 bg-white/60 px-1 text-[9px] text-slate-600 dark:bg-white/10 dark:text-slate-300">
@@ -525,7 +570,12 @@ export function Sidebar() {
               className="h-full rounded-full transition-all"
               style={{
                 width: `${countdown.pct}%`,
-                background: countdown.warning ? '#f59e0b' : '#f97316',
+                background:
+                  countdown.phase === 'overdue' || countdown.phase === 'deadline'
+                    ? '#e11d48'
+                    : countdown.warning
+                      ? '#f59e0b'
+                      : '#f97316',
               }}
             />
           </div>
@@ -684,13 +734,15 @@ export function Sidebar() {
       )}
 
       {/* Desktop sidebar — collapsed (56px) by default, expands to 240px on hover.
-          Overlays content (fixed + z-100); main content keeps md:ml-14. */}
+          Overlays content (fixed + z-100); main content keeps md:ml-14.
+          Light mode: bg-slate-50 with border-slate-300 (3-tier hierarchy — page bg slate-50,
+          sidebar slate-50, cards white). */}
       <aside
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         aria-label="Main navigation (desktop)"
         className={cn(
-          'fixed bottom-0 left-0 top-0 z-[100] hidden flex-col overflow-hidden border-r border-slate-200 bg-white text-slate-900 transition-all duration-200 ease-out md:flex dark:border-white/10 dark:bg-[#0f172a] dark:text-white',
+          'fixed bottom-0 left-0 top-0 z-[100] hidden flex-col overflow-hidden border-r border-slate-300 bg-slate-50 text-slate-900 transition-all duration-200 ease-out md:flex dark:border-white/10 dark:bg-[#0f172a] dark:text-white',
           hovered ? 'w-60 shadow-2xl' : 'w-14',
         )}
       >
@@ -702,7 +754,7 @@ export function Sidebar() {
       <aside
         aria-label="Main navigation (mobile)"
         className={cn(
-          'fixed bottom-0 left-0 top-0 z-[100] flex w-60 flex-col border-r border-slate-200 bg-white text-slate-900 transition-transform duration-300 md:hidden dark:border-white/10 dark:bg-[#0f172a] dark:text-white',
+          'fixed bottom-0 left-0 top-0 z-[100] flex w-60 flex-col border-r border-slate-300 bg-slate-50 text-slate-900 transition-transform duration-300 md:hidden dark:border-white/10 dark:bg-[#0f172a] dark:text-white',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >

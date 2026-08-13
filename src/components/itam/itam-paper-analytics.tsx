@@ -307,7 +307,7 @@ ${kpiHtml}
       </div>
 
       {/* Filter bar */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-3 sm:p-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1.5">
@@ -369,7 +369,7 @@ ${kpiHtml}
               </div>
 
               {/* Monthly bar chart */}
-              <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader>
                   <CardTitle className="text-base">การใช้กระดาษรายเดือน (ขาวดำ vs สี)</CardTitle>
                   <p className="text-xs text-slate-500 dark:text-slate-400">คลิกที่แท่งเพื่อดูรายละเอียดเพิ่มเติม</p>
@@ -393,7 +393,7 @@ ${kpiHtml}
 
               {/* Top department + Top device */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base"><Trophy className="h-4 w-4 text-[#f97316]" /> 5 แผนกใช้กระดาษสูงสุด</CardTitle>
                   </CardHeader>
@@ -421,7 +421,7 @@ ${kpiHtml}
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base"><FileBarChart className="h-4 w-4 text-[#0d9488]" /> 5 เครื่องพิมพ์ใช้กระดาษสูงสุด</CardTitle>
                   </CardHeader>
@@ -491,7 +491,7 @@ ${kpiHtml}
           {compareQuery.isLoading ? (
             <Skeleton className="h-96 w-full rounded-md" />
           ) : compareQuery.data ? (
-            <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
               <CardHeader>
                 <CardTitle className="text-base">เปรียบเทียบการใช้กระดาษ 3 เดือนล่าสุด</CardTitle>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -501,7 +501,7 @@ ${kpiHtml}
               <CardContent className="p-0">
                 <div className="itam-scroll max-h-[70vh] overflow-auto">
                   <Table>
-                    <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+                    <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
                       <TableRow>
                         <TableHead className="w-16">รหัส</TableHead>
                         <TableHead>เครื่อง</TableHead>
@@ -559,7 +559,7 @@ ${kpiHtml}
           {detailQuery.isLoading ? (
             <Skeleton className="h-96 w-full rounded-md" />
           ) : detailQuery.data ? (
-            <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-base">
                   รายละเอียดการใช้กระดาษ
@@ -583,7 +583,7 @@ ${kpiHtml}
               <CardContent className="p-0">
                 <div className="itam-scroll max-h-[65vh] overflow-auto">
                   <Table>
-                    <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+                    <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
                       <TableRow>
                         <TableHead className="w-16">รหัส</TableHead>
                         <TableHead>เครื่อง</TableHead>
@@ -655,7 +655,7 @@ function KpiCard({
   title: string; value: number; suffix?: string; accent: string; icon: React.ReactNode
 }) {
   return (
-    <Card className="relative overflow-hidden shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <Card className="relative overflow-hidden shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: accent }} />
       <CardContent className="p-3 sm:p-4">
         <div className="flex items-center gap-3">
@@ -685,7 +685,7 @@ function RankingCard({
 }) {
   const max = rows.length > 0 ? Number(rows[0].total ?? 0) : 1
   return (
-    <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="text-sm" style={{ color: accent }}>{title}</CardTitle>
       </CardHeader>

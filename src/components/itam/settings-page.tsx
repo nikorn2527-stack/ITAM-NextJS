@@ -251,7 +251,7 @@ function AppTab() {
 
   if (isLoading) {
     return (
-      <Card className="dark:border-slate-800 dark:bg-slate-900">
+      <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-6">
           <Skeleton className="h-64 w-full dark:bg-slate-800" />
         </CardContent>
@@ -260,7 +260,7 @@ function AppTab() {
   }
 
   return (
-    <Card className="dark:border-slate-800 dark:bg-slate-900">
+    <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <SettingsIcon className="h-4 w-4 text-[#f97316]" />
@@ -488,7 +488,7 @@ function MasterTab() {
   }
 
   return (
-    <Card className="dark:border-slate-800 dark:bg-slate-900">
+    <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <Database className="h-4 w-4 text-[#f97316]" />
@@ -565,7 +565,7 @@ function MasterTab() {
         {/* Table */}
         <div className="itam-scroll max-h-[55vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+            <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
               <TableRow>
                 <TableHead className="text-slate-600 dark:text-slate-300">หมวดหมู่</TableHead>
                 <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
@@ -669,7 +669,7 @@ function MasterTab() {
         open={Boolean(deleteTarget)}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
       >
-        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+        <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-slate-800 dark:text-slate-100">ยืนยันการลบรายการ</AlertDialogTitle>
             <AlertDialogDescription>
@@ -741,7 +741,7 @@ function SitesTab() {
   }
 
   return (
-    <Card className="dark:border-slate-800 dark:bg-slate-900">
+    <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <Building2 className="h-4 w-4 text-[#f97316]" />
@@ -875,7 +875,7 @@ function RatesTab() {
   }
 
   return (
-    <Card className="dark:border-slate-800 dark:bg-slate-900">
+    <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <Coins className="h-4 w-4 text-[#f97316]" />
@@ -913,7 +913,7 @@ function RatesTab() {
 
         <div className="rounded-md border border-slate-200 dark:border-slate-800">
           <Table>
-            <TableHeader className="sticky top-0 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+            <TableHeader className="sticky top-0 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
               <TableRow>
                 <TableHead className="text-slate-600 dark:text-slate-300">สาขา</TableHead>
                 <TableHead className="text-right text-slate-600 dark:text-slate-300">อัตราขาวดำ (฿/แผ่น)</TableHead>
@@ -1006,7 +1006,7 @@ function RatesTab() {
         open={Boolean(deleteTarget)}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
       >
-        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+        <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-slate-800 dark:text-slate-100">ยืนยันการลบอัตราค่ากระดาษ</AlertDialogTitle>
             <AlertDialogDescription>
@@ -1346,7 +1346,7 @@ function UsersTab() {
     u.role === 'admin' && u.active && activeAdminCount <= 1
 
   return (
-    <Card className="dark:border-slate-800 dark:bg-slate-900">
+    <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <Users className="h-4 w-4 text-[#f97316]" />
@@ -1642,41 +1642,41 @@ function actionBadgeClass(action: string): string {
   const base = ' transition-colors hover:scale-105'
   switch (action) {
     case 'CREATE':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' + base
+      return 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' + base
     case 'UPDATE':
-      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
+      return 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
     case 'DELETE':
-      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
+      return 'border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
     case 'METER_READING':
       return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
     case 'SYNC':
-      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
+      return 'border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
     case 'SEED':
       return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300' + base
     case 'CYCLE_START':
-      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300' + base
+      return 'border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300' + base
     case 'CYCLE_END':
-      return 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300' + base
+      return 'border-violet-300 bg-violet-100 text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300' + base
     case 'CYCLE_CANCEL':
-      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
+      return 'border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
     case 'CYCLE_REOPEN':
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' + base
+      return 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' + base
     case 'IMPORT':
-      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
+      return 'border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
     case 'TRANSFER':
-      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
+      return 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
     case 'PRINT':
       return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
     case 'ASSIGN':
-      return 'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
+      return 'border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300' + base
     case 'RETURN':
-      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
+      return 'border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
     case 'BULK_UPDATE':
       return 'border-[#f97316]/30 bg-[#f97316]/10 text-[#f97316]' + base
     case 'BULK_TRANSFER':
-      return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
+      return 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300' + base
     case 'BULK_DELETE':
-      return 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
+      return 'border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300' + base
     default:
       return 'border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300' + base
   }
@@ -1957,7 +1957,7 @@ function AuditTab() {
   }
 
   return (
-    <Card className="dark:border-slate-800 dark:bg-slate-900">
+    <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <History className="h-4 w-4 text-[#f97316]" />
@@ -2037,7 +2037,7 @@ function AuditTab() {
         {/* Table */}
         <div className="itam-scroll max-h-[60vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
           <Table>
-            <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+            <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
               <TableRow>
                 <TableHead className="w-44 text-slate-600 dark:text-slate-300">วันที่เวลา</TableHead>
                 <TableHead className="w-36 text-slate-600 dark:text-slate-300">การกระทำ</TableHead>

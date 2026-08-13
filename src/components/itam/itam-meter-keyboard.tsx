@@ -510,7 +510,7 @@ export function ItamMeterKeyboard() {
                                 {d.assetCode}
                               </span>
                               {d.readThisMonth && (
-                                <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px]">
+                                <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px]">
                                   ✓ จดแล้ว
                                 </Badge>
                               )}
@@ -576,7 +576,7 @@ export function ItamMeterKeyboard() {
                       <Badge
                         className={
                           isColorMode
-                            ? 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300'
+                            ? 'bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300'
                             : 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300'
                         }
                       >
@@ -760,8 +760,8 @@ export function ItamMeterKeyboard() {
                     <Badge
                       className={
                         r.reset
-                          ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 text-[10px]'
-                          : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px]'
+                          ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 text-[10px]'
+                          : 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px]'
                       }
                     >
                       {r.reset ? 'RESET' : `+${r.delta.toLocaleString()}`}

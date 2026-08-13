@@ -981,7 +981,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                         <h3 className="text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-300">
                           ผู้ใช้งานปัจจุบัน
                         </h3>
-                        <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                           active
                         </Badge>
                       </div>
@@ -1329,10 +1329,10 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                           className={
                             'tabular-nums transition-colors hover:scale-105 ' +
                             (r.delta < 0
-                              ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                              ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
                               : r.delta === 0
                                 ? 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                                : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300')
+                                : 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300')
                           }
                         >
                           {r.delta >= 0 ? '+' : ''}
@@ -1428,7 +1428,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                         <Badge
                           className={
                             a.status === 'active'
-                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              ? 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               : 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                           }
                         >
@@ -1586,14 +1586,14 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                               if (days === null) return null
                               if (days < 0) {
                                 return (
-                                  <Badge className="border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                                  <Badge className="border-rose-300 bg-rose-100 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
                                     หมดอายุ
                                   </Badge>
                                 )
                               }
                               if (days <= 30) {
                                 return (
-                                  <Badge className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                                  <Badge className="border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
                                     อีก {days} วัน
                                   </Badge>
                                 )

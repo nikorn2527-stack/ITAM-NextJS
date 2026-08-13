@@ -300,7 +300,7 @@ export function UserManagementSection() {
 
   return (
     <div className="space-y-4">
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-4">
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -333,7 +333,7 @@ export function UserManagementSection() {
 
           <div className="itam-scroll max-h-[55vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
             <Table>
-              <TableHeader className="sticky top-0 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead>ชื่อ / อีเมล</TableHead>
                   <TableHead>Username</TableHead>
@@ -380,7 +380,7 @@ export function UserManagementSection() {
                       </TableCell>
                       <TableCell className="text-xs text-slate-600 dark:text-slate-300">
                         {u.allowedSites === 'ALL' || !u.allowedSites ? (
-                          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800">
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800">
                             ทั้งหมด
                           </Badge>
                         ) : (
@@ -650,7 +650,7 @@ export function UserManagementSection() {
         open={Boolean(deleteTarget)}
         onOpenChange={(o) => !o && setDeleteTarget(null)}
       >
-        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+        <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle>ยืนยันการลบผู้ใช้</AlertDialogTitle>
             <AlertDialogDescription>

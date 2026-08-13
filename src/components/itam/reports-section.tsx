@@ -71,7 +71,7 @@ const TYPE_ICON_MAP: Record<
     icon: <LayoutDashboard className="h-4 w-4" />,
     accent: '#0d9488',
     badgeClass:
-      'border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300',
+      'border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300',
   },
   cycle: {
     icon: <Gauge className="h-4 w-4" />,
@@ -89,7 +89,7 @@ const TYPE_ICON_MAP: Record<
     icon: <Activity className="h-4 w-4" />,
     accent: '#10b981',
     badgeClass:
-      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+      'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
   },
 }
 
@@ -505,7 +505,7 @@ export function ReportsSection() {
           open={Boolean(deleteTarget)}
           onOpenChange={(o) => !o && setDeleteTarget(null)}
         >
-          <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+          <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-slate-800 dark:text-slate-100">
                 ยืนยันการลบรายงาน
@@ -690,7 +690,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
             {data.byType.map((s) => (
               <Badge
                 key={s.name}
-                className="border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
+                className="border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300"
               >
                 {s.name}: {s.value}
               </Badge>
@@ -704,7 +704,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
             {data.byAction.map((s) => (
               <Badge
                 key={s.action}
-                className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                className="border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
               >
                 {s.action}: {s.count}
               </Badge>
@@ -896,7 +896,7 @@ function SimpleRows({
   return (
     <div className="itam-scroll max-h-72 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800">
       <table className="w-full text-xs">
-        <thead className="sticky top-0 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+        <thead className="sticky top-0 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
           <tr className="text-left text-slate-500 dark:text-slate-400">
             {columns.map((c) => (
               <th key={c} className="px-2 py-1.5 font-medium">

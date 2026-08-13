@@ -323,7 +323,7 @@ export function DepreciationSection() {
               </div>
               <div className="itam-scroll max-h-[50vh] overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800">
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+                  <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                     <tr className="text-left text-xs text-slate-500 dark:text-slate-400">
                       <th className="px-3 py-2 font-medium">อุปกรณ์</th>
                       <th className="px-3 py-2 text-right font-medium">

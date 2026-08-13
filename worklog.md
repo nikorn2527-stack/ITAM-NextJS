@@ -7691,3 +7691,17 @@ Verification (production, commit 9cf787b):
 Stage Summary:
 - 8 ปัญหาทั้งหมดแก้ครบ
 - สิทธิ์ granular + user management + audit + cycle per site + OAuth ready + combobox + barcode
+
+---
+Task ID: FIX-COUNTDOWN-LAYOUT-SETTINGS
+Agent: full-stack-developer — Fix countdown + light mode + heights + notifications + settings
+
+Work Log:
+- Issue 1: Two-phase countdown (before deadline / on deadline / overdue)
+- Issue 2: Light mode contrast (3-tier background hierarchy)
+- Issue 3: Table heights fill available space
+- Issue 4: Notification settings tab content
+- Issue 5: Settings tabs reorganized into groups
+
+Stage Summary:
+- All 5 issues resolved

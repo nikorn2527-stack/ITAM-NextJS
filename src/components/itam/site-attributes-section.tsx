@@ -300,7 +300,7 @@ export function SiteAttributesSection() {
       </Card>
 
       {/* Sites table */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-0">
           <div className="itam-scroll max-h-[60vh] overflow-auto">
             <Table>
@@ -581,7 +581,7 @@ export function SiteAttributesSection() {
           if (!deleting) setDeleteTarget(open ? deleteTarget : null)
         }}
       >
-        <AlertDialogContent className="dark:border-slate-800 dark:bg-slate-900">
+        <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-rose-700 dark:text-rose-400">
               <Trash2 className="h-5 w-5" />

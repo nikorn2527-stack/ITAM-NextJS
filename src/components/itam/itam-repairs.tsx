@@ -438,7 +438,7 @@ export function ItamRepairs() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
               <AlertCircle className="h-4 w-4" />
@@ -449,7 +449,7 @@ export function ItamRepairs() {
             </div>
           </CardContent>
         </Card>
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-sky-600 dark:text-sky-400">
               <Clock className="h-4 w-4" />
@@ -460,7 +460,7 @@ export function ItamRepairs() {
             </div>
           </CardContent>
         </Card>
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
               <CheckCheck className="h-4 w-4" />
@@ -471,7 +471,7 @@ export function ItamRepairs() {
             </div>
           </CardContent>
         </Card>
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-[#f97316]">
               <Banknote className="h-4 w-4" />
@@ -518,11 +518,11 @@ export function ItamRepairs() {
       </div>
 
       {/* Table */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-0">
           <div className="itam-scroll max-h-[60vh] overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="w-28">เลขที่</TableHead>
                   <TableHead className="min-w-[180px]">รหัสอุปกรณ์</TableHead>

@@ -41,7 +41,7 @@ export function StockTabs() {
   const [tab, setTab] = React.useState('dashboard')
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
+    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
       {/* Page header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
@@ -53,7 +53,7 @@ export function StockTabs() {
         </p>
       </div>
 
-      <Tabs value={tab} onValueChange={setTab} className="w-full">
+      <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-4">
         <TabsList className="flex w-full flex-wrap justify-start gap-1 h-auto p-1 dark:bg-slate-900 dark:border dark:border-slate-800">
           <TabsTrigger value="dashboard" className="gap-1.5">
             <LayoutDashboard className="h-3.5 w-3.5" /> ภาพรวม
@@ -81,28 +81,28 @@ export function StockTabs() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="dashboard" className="mt-4">
+        <TabsContent value="dashboard" className="mt-0 min-h-0 flex-1 overflow-auto">
           <StockDashboard />
         </TabsContent>
-        <TabsContent value="inventory" className="mt-4">
+        <TabsContent value="inventory" className="mt-0 min-h-0 flex-1 overflow-hidden">
           <StockInventory />
         </TabsContent>
-        <TabsContent value="in" className="mt-4">
+        <TabsContent value="in" className="mt-0 min-h-0 flex-1 overflow-auto">
           <StockInForm />
         </TabsContent>
-        <TabsContent value="out" className="mt-4">
+        <TabsContent value="out" className="mt-0 min-h-0 flex-1 overflow-auto">
           <StockOutForm />
         </TabsContent>
-        <TabsContent value="pending" className="mt-4">
+        <TabsContent value="pending" className="mt-0 min-h-0 flex-1 overflow-hidden">
           <StockPending />
         </TabsContent>
-        <TabsContent value="po" className="mt-4">
+        <TabsContent value="po" className="mt-0 min-h-0 flex-1 overflow-auto">
           <StockPurchaseOrders />
         </TabsContent>
-        <TabsContent value="history" className="mt-4">
+        <TabsContent value="history" className="mt-0 min-h-0 flex-1 overflow-hidden">
           <StockHistory />
         </TabsContent>
-        <TabsContent value="summary" className="mt-4">
+        <TabsContent value="summary" className="mt-0 min-h-0 flex-1 overflow-auto">
           <StockSummary />
         </TabsContent>
       </Tabs>

@@ -385,7 +385,7 @@ function StatCard({
     amber: 'text-amber-600 dark:text-amber-400',
   }
   return (
-    <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardContent className="p-4">
         <div className={`flex items-center gap-2 ${toneCls[tone]}`}>
           {icon}
@@ -811,7 +811,7 @@ export function ItamWorkOrders() {
       ) : isLoading ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={`sk-${i}`} className="dark:border-slate-800 dark:bg-slate-900">
+            <Card key={`sk-${i}`} className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <CardContent className="space-y-3 p-4">
                 <Skeleton className="h-5 w-2/3" />
                 <Skeleton className="h-4 w-1/2" />
@@ -822,7 +822,7 @@ export function ItamWorkOrders() {
           ))}
         </div>
       ) : orders.length === 0 ? (
-        <Card className="dark:border-slate-800 dark:bg-slate-900">
+        <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950">
               <Wrench className="h-7 w-7 text-orange-600 dark:text-orange-400" />

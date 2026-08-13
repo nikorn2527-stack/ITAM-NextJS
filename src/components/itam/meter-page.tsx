@@ -321,7 +321,7 @@ export function MeterPage() {
                 </div>
                 <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 dark:text-slate-400">
                   <span>📅 {activeCycle.startDate} → {activeCycle.endDate}</span>
-                  <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:scale-105 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                  <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 transition-colors hover:scale-105 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                     {activeCycle.status === 'active' ? 'กำลังดำเนินการ' : activeCycle.status}
                   </Badge>
                 </div>
@@ -447,7 +447,7 @@ export function MeterPage() {
       )}
 
       {/* Devices table */}
-      <Card className="dark:border-slate-800 dark:bg-slate-900" >
+      <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900" >
         <CardHeader>
           <CardTitle className="text-base text-slate-800 dark:text-slate-100">รายการอุปกรณ์ที่ต้องจดมิเตอร์</CardTitle>
         </CardHeader>
@@ -457,7 +457,7 @@ export function MeterPage() {
             className="itam-scroll max-h-[55vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800"
           >
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
@@ -531,11 +531,11 @@ export function MeterPage() {
                           {remindersData?.hasActiveCycle === false ? (
                             <span className="text-xs text-slate-400 dark:text-slate-500">—</span>
                           ) : unread ? (
-                            <Badge className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                            <Badge className="border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
                               ⏳ ยังไม่จด
                             </Badge>
                           ) : (
-                            <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                            <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                               ✓ จดแล้ว
                             </Badge>
                           )}

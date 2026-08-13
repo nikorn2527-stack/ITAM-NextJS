@@ -279,7 +279,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
               <Field label="Cost Center" value={device.costCenter} />
               <Field label="ติดตั้ง" value={fmtDate(device.purchaseDate)} />
               <Field label="หมดประกัน" value={fmtDate(device.warrantyEnd)} />
-              <Field label="จดมิเตอร์" value={device.meterRequired ? <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300">✓ ต้องจด</Badge> : '—'} />
+              <Field label="จดมิเตอร์" value={device.meterRequired ? <Badge className="bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300">✓ ต้องจด</Badge> : '—'} />
               <Field label="โหมดมิเตอร์" value={device.meterMode} />
               <Field label="Asset Site Code" value={device.assetSiteCode} />
               <Field label="หมายเหตุ" value={device.remark} />
@@ -307,7 +307,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
                 <div className="rounded-md border border-slate-200 dark:border-slate-800">
                   <div className="itam-scroll max-h-72 overflow-y-auto">
                     <Table>
-                      <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+                      <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
                         <TableRow>
                           <TableHead className="text-xs">วันที่</TableHead>
                           <TableHead className="text-right text-xs">มิเตอร์</TableHead>
@@ -331,7 +331,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
                                 )}
                               </TableCell>
                               <TableCell className="text-right">
-                                <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                                <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                                   {(r.pagesBw + r.pagesColor).toLocaleString()}
                                 </Badge>
                               </TableCell>
@@ -355,7 +355,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
                 <div className="rounded-md border border-slate-200 dark:border-slate-800">
                   <div className="itam-scroll max-h-72 overflow-y-auto">
                     <Table>
-                      <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+                      <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
                         <TableRow>
                           <TableHead className="text-xs">ผู้รับ</TableHead>
                           <TableHead className="text-xs">ตำแหน่ง</TableHead>
@@ -378,7 +378,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
                               <TableCell className="font-mono text-xs">{fmtDate(a.checkoutDate)}</TableCell>
                               <TableCell>
                                 <Badge className={a.status === 'active'
-                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                  ? 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                                   : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}>
                                   {a.status === 'active' ? 'ใช้งาน' : 'คืนแล้ว'}
                                 </Badge>
@@ -402,7 +402,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
                 <div className="rounded-md border border-slate-200 dark:border-slate-800">
                   <div className="itam-scroll max-h-72 overflow-y-auto">
                     <Table>
-                      <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+                      <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
                         <TableRow>
                           <TableHead className="text-xs">ประเภท</TableHead>
                           <TableHead className="text-xs">วันที่</TableHead>
@@ -430,9 +430,9 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
                               <TableCell className="text-right font-mono text-xs">{m.cost != null ? `฿${m.cost.toLocaleString()}` : '—'}</TableCell>
                               <TableCell>
                                 <Badge className={m.status === 'completed'
-                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                  ? 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                                   : m.status === 'open'
-                                    ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                    ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
                                     : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}>
                                   {m.status}
                                 </Badge>
@@ -452,7 +452,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
                 <div className="rounded-md border border-slate-200 dark:border-slate-800">
                   <div className="itam-scroll max-h-72 overflow-y-auto">
                     <Table>
-                      <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+                      <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
                         <TableRow>
                           <TableHead className="text-xs">วันที่</TableHead>
                           <TableHead className="text-xs">การกระทำ</TableHead>
@@ -472,7 +472,7 @@ export function ItamDeviceDetailSheet({ assetNo, open, onOpenChange, onEdit }: P
                             <TableRow key={h.id}>
                               <TableCell className="font-mono text-xs">{h.moveDate?.substring(0, 16) || '—'}</TableCell>
                               <TableCell>
-                                <Badge className="bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800">
+                                <Badge className="bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800">
                                   {h.action || 'TRANSFER'}
                                 </Badge>
                               </TableCell>

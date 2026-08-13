@@ -144,7 +144,7 @@ export function PendingUsersSection() {
   }
 
   return (
-    <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardContent className="p-0">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
@@ -153,7 +153,7 @@ export function PendingUsersSection() {
             <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               ผู้ใช้รออนุมัติ
             </span>
-            <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/50">
+            <Badge className="bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-900/50">
               {data?.count ?? 0} คน
             </Badge>
           </div>
@@ -171,7 +171,7 @@ export function PendingUsersSection() {
         {/* Table */}
         <div className="itam-scroll max-h-[55vh] overflow-auto">
           <Table>
-            <TableHeader className="sticky top-0 bg-slate-50/80 dark:bg-slate-900/80">
+            <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
               <TableRow>
                 <TableHead>ชื่อ</TableHead>
                 <TableHead>อีเมล</TableHead>

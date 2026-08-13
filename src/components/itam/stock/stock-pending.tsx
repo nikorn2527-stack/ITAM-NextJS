@@ -259,7 +259,7 @@ export function StockPending() {
   const allSelected = txns.length > 0 && selected.size === txns.length
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-full flex-col gap-4">
       {/* Header + actions */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
@@ -292,7 +292,7 @@ export function StockPending() {
 
       {/* Settings summary card */}
       {settingsData?.settings && (
-        <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 p-3 text-xs">
             <div className="flex items-center gap-2">
               <span className="text-slate-400">โหมดอนุมัติ:</span>
@@ -384,12 +384,12 @@ export function StockPending() {
         </div>
       )}
 
-      {/* Pending table */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <CardContent className="p-0">
-          <div className="itam-scroll max-h-[55vh] overflow-auto">
+      {/* Pending table — fills remaining height (Issue 3) */}
+      <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <CardContent className="min-h-0 flex-1 p-0">
+          <div className="itam-scroll min-h-0 flex-1 overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox

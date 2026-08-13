@@ -788,10 +788,10 @@ export function WorkOrdersPage() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="overflow-hidden py-0">
-          <div className="itam-scroll max-h-[calc(100vh-280px)] overflow-auto">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200 py-0 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="itam-scroll min-h-0 flex-1 overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="text-xs">เลขใบงาน</TableHead>
                   <TableHead className="text-xs">หัวข้อ</TableHead>
@@ -896,7 +896,7 @@ export function WorkOrdersPage() {
 
       {/* Pagination */}
       {pagination && pagination.totalPages > 1 && (
-        <div className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
+        <div className="mt-2 flex flex-shrink-0 flex-col items-center gap-2 sm:flex-row sm:justify-between">
           <p className="text-sm text-muted-foreground">
             ทั้งหมด {pagination.total} รายการ • หน้า {pagination.page} / {pagination.totalPages}
           </p>

@@ -372,7 +372,7 @@ export function StockInventory() {
   // ── Render ───────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-full flex-col gap-4">
       {/* Action bar */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
@@ -437,12 +437,12 @@ export function StockInventory() {
         </div>
       </div>
 
-      {/* Product table */}
-      <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <CardContent className="p-0">
-          <div className="itam-scroll max-h-[60vh] overflow-auto">
+      {/* Product table — fills remaining height (Issue 3) */}
+      <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <CardContent className="min-h-0 flex-1 p-0">
+          <div className="itam-scroll min-h-0 flex-1 overflow-auto">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/80 backdrop-blur-sm dark:bg-slate-900/80">
+              <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="w-28">รหัสสินค้า</TableHead>
                   <TableHead className="min-w-[200px]">ชื่อสินค้า</TableHead>

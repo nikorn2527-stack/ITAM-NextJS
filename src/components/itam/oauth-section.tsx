@@ -294,7 +294,7 @@ function ProviderCard({
   fields: React.ReactNode
 }) {
   return (
-    <Card className="dark:border-slate-800 dark:bg-slate-900">
+    <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center justify-between text-base">
           <span className="flex items-center gap-2">
@@ -302,7 +302,7 @@ function ProviderCard({
             {title}
           </span>
           {configured ? (
-            <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+            <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
               <CheckCircle2 className="mr-1 h-3 w-3" /> ตั้งค่าแล้ว
             </Badge>
           ) : (

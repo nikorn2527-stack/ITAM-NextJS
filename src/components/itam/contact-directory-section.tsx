@@ -176,7 +176,7 @@ export function ContactDirectorySection() {
   }
 
   return (
-    <Card className="shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <BookUser className="h-4 w-4 text-[#f97316]" /> สมุดผู้ติดต่อ
@@ -271,7 +271,7 @@ export function ContactDirectorySection() {
                     <TableCell className="text-xs">{e.department ?? '—'}</TableCell>
                     <TableCell className="text-center">
                       {e.active ? (
-                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">✓</Badge>
+                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">✓</Badge>
                       ) : (
                         <Badge className="bg-slate-50 text-slate-400">—</Badge>
                       )}
