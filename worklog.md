@@ -6996,3 +6996,55 @@ Work Log:
 
 Stage Summary:
 - All 5 UI/UX issues resolved
+
+---
+Task ID: FIX-5-UIUX
+Agent: orchestrator — แก้ 5 ปัญหา UI/UX
+
+Work Log:
+
+**1. Sidebar ยุบ — icons ไม่ชัดเจน:**
+- เดิม: icon span w-5 (20px) เล็กเกิน + ไม่กึ่งกลาง
+- แก้: nav buttons h-10, icon spans h-7 w-7 text-lg (28px ใหญ่ขึ้น)
+- ทุก element ใช้ justify-center px-0 เมื่อยุบ
+- icons กึ่งกลาง 56px พอดี
+
+**2. Sidebar กระชับ — ไม่ต้องเลื่อน:**
+- ลบ section group titles (ภาพรวม/การทำงาน/เครื่องมือ/ระบบ) → ใช้ thin divider แทน
+- ลด nav padding: py-2.5 → py-1.5
+- ย้าย Global Search + QR Scanner ไป header area
+- ย้าย Realtime dot ไปข้าง logo
+- Cycle countdown: compact single-line bar
+- Footer: เหลือ theme toggle + notifications (ลบ "Powered by PNG TEAM" เมื่อยุบ)
+- ลบ /api/itam/settings query ที่ 404
+
+**3. ตั้งค่า/ตกแต่งแอป — ใช้งานได้แล้ว:**
+- สาเหตุ: เรียก /api/itam/settings (POST) ซึ่งไม่มีอยู่ → 404
+- แก้: ใช้ /api/settings/org-profile (PUT) ที่มีอยู่และทำงาน
+- Fields: appName, appTagline, logoUrl, primaryColor, accentColor, industryType
+- เพิ่ม live preview + color pickers + industry select
+- Invalidate ['org-profile'] query → sidebar อัปเดตทันทีหลังบันทึก
+
+**4. จัดการอุปกรณ์ — pagination + ความสูง:**
+- เพิ่ม client-side pagination: page, pageSize (default 50)
+- Per-page selector: 20/50/100
+- Pagination footer: "แสดง X-Y จาก Z รายการ" + Prev/Next + page input
+- Table height: max-h-[60vh] → max-h-[calc(100vh-320px)] min-h-[320px]
+
+**5. หน้าต่างๆ มองเห็นทั้งหมดในหน้าเดียว:**
+- page.tsx: min-h-screen → h-screen overflow-hidden
+- main: flex-1 overflow-y-auto (เลื่อนภายในถ้า content ยาว)
+- Footer: flex-shrink-0 (ติดล่างเสมอ)
+
+Verification (production, commit 2501132):
+✅ Home: HTTP 200
+✅ Login: OK
+✅ OrgProfile: "ระบบจัดการสินทรัพย์ไอที"
+✅ Build: Compiled successfully
+
+Stage Summary:
+- Sidebar ยุบเหลือแค่ icons ชัดเจน
+- Sidebar กระชับ ไม่ต้องเลื่อน
+- ตั้งค่า/ตกแต่งแอป ใช้งานได้จริง
+- จัดการอุปกรณ์ มี pagination + สูงขึ้น
+- หน้าต่างๆ พอดีหน้าจอ
