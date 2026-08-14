@@ -84,6 +84,23 @@ import { formatThaiDate, relativeTime } from './types'
 import { TemplatePrintDialog } from './template-print-dialog'
 import { Combobox } from './combobox'
 import { useAppStore } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
+
+// ============================================================
+// Auth headers helper — every fetch() in this file MUST pass
+// `headers: getAuthHeaders()` (or merge with Content-Type) so the
+// API can verify the JWT session via `requireAuth()`. Without the
+// Bearer token the endpoints return 401/403 and the dialogs never
+// load their data.
+// ============================================================
+function getAuthHeaders(
+  extra: Record<string, string> = {},
+): Record<string, string> {
+  const h: Record<string, string> = { ...extra }
+  const token = useAuthStore.getState()?.token
+  if (token) h['Authorization'] = `Bearer ${token}`
+  return h
+}
 
 // ============================================================
 // Types
@@ -520,7 +537,9 @@ export function WorkOrdersPage() {
   const optionsQuery = useQuery<OptionsResponse>({
     queryKey: ['wo-options'],
     queryFn: async () => {
-      const res = await fetch('/api/settings/options')
+      const res = await fetch('/api/settings/options', {
+        headers: getAuthHeaders(),
+      })
       if (!res.ok) throw new Error('Failed to load options')
       return res.json()
     },
@@ -556,7 +575,9 @@ export function WorkOrdersPage() {
       if (priorityFilter !== 'all') params.set('priority', priorityFilter)
       params.set('page', String(page))
       params.set('pageSize', String(PAGE_SIZE))
-      const res = await fetch(`/api/work-orders?${params.toString()}`)
+      const res = await fetch(`/api/work-orders?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      })
       if (!res.ok) throw new Error('Failed to load work orders')
       return res.json()
     },
@@ -624,7 +645,7 @@ export function WorkOrdersPage() {
       }
       const res = await fetch('/api/work-orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
@@ -874,16 +895,30 @@ export function WorkOrdersPage() {
                         {formatDateTime(wo.createdAt)}
                       </TableCell>
                       <TableCell className="py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setDetailId(wo.id)}
-                          aria-label="ดูรายละเอียดใบงาน"
-                          title="ดูรายละเอียด"
-                          className="h-7 px-2 text-[11px]"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setDetailId(wo.id)}
+                            aria-label="ดูรายละเอียดใบงาน"
+                            title="ดูรายละเอียด"
+                            className="h-7 px-2 text-[11px]"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              window.open(`/api/work-orders/${wo.id}/print-sheet`, '_blank')
+                            }
+                            aria-label="พิมพ์ใบงาน"
+                            title="พิมพ์ใบงาน"
+                            className="h-7 px-2 text-[11px]"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
@@ -1173,7 +1208,9 @@ function CreateWorkOrderDialog({
     const t = setTimeout(async () => {
       try {
         const params = new URLSearchParams({ search: form.deviceSearch.trim() })
-        const res = await fetch(`/api/devices?${params.toString()}`)
+        const res = await fetch(`/api/devices?${params.toString()}`, {
+          headers: getAuthHeaders(),
+        })
         if (!res.ok) return
         const json = await res.json()
         if (!cancelled) setDeviceResults((json.devices ?? []).slice(0, 8))
@@ -1836,7 +1873,9 @@ function WorkOrderDetailDialog({
   const detailQuery = useQuery<WorkOrderDetail>({
     queryKey: ['work-order', id],
     queryFn: async () => {
-      const res = await fetch(`/api/work-orders/${id}`)
+      const res = await fetch(`/api/work-orders/${id}`, {
+        headers: getAuthHeaders(),
+      })
       if (!res.ok) throw new Error('Failed to load work order')
       const json = await res.json()
       return json.data as WorkOrderDetail
@@ -1956,7 +1995,9 @@ function WorkOrderDetailContent({
   const partsQuery = useQuery<PartsListResponse>({
     queryKey: ['wo-parts', wo.id],
     queryFn: async () => {
-      const res = await fetch(`/api/work-orders/${wo.id}/parts`)
+      const res = await fetch(`/api/work-orders/${wo.id}/parts`, {
+        headers: getAuthHeaders(),
+      })
       if (!res.ok) throw new Error('Failed to load parts')
       return res.json()
     },
@@ -1968,7 +2009,9 @@ function WorkOrderDetailContent({
   const imagesQuery = useQuery<ImagesGroupedResponse>({
     queryKey: ['wo-images', wo.id],
     queryFn: async () => {
-      const res = await fetch(`/api/work-orders/${wo.id}/images`)
+      const res = await fetch(`/api/work-orders/${wo.id}/images`, {
+        headers: getAuthHeaders(),
+      })
       if (!res.ok) throw new Error('Failed to load images')
       return res.json()
     },
@@ -2076,7 +2119,7 @@ function WorkOrderDetailContent({
           const dataUrl = await compressImage(f)
           const res = await fetch(`/api/work-orders/${wo.id}/images`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({
               stage,
               image_data: dataUrl,
@@ -2130,7 +2173,7 @@ function WorkOrderDetailContent({
       setActiveStage(stage)
       const res = await fetch(`/api/work-orders/${wo.id}/images`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           stage,
           image_data: dataUrl,
@@ -2165,7 +2208,7 @@ function WorkOrderDetailContent({
       setDeletingImgId(img.id)
       const res = await fetch(
         `/api/work-orders/${wo.id}/images?imageId=${encodeURIComponent(img.id)}`,
-        { method: 'DELETE' },
+        { method: 'DELETE', headers: getAuthHeaders() },
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -2202,7 +2245,9 @@ function WorkOrderDetailContent({
     const t = setTimeout(async () => {
       try {
         const params = new URLSearchParams({ search: partsSearch.trim(), pageSize: '20' })
-        const res = await fetch(`/api/stock-items?${params.toString()}`)
+        const res = await fetch(`/api/stock-items?${params.toString()}`, {
+          headers: getAuthHeaders(),
+        })
         if (!res.ok) return
         const json: PartsListApiResponse = await res.json()
         if (!cancelled) setPartsSearchResults(json.data ?? [])
@@ -2271,7 +2316,7 @@ function WorkOrderDetailContent({
       setAssigning(true)
       const res = await fetch(`/api/work-orders/${wo.id}/assign`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           assignedTo: techName.trim(),
           assignmentNote: assignNote.trim() || null,
@@ -2316,7 +2361,7 @@ function WorkOrderDetailContent({
       }
       const res = await fetch(`/api/work-orders/${wo.id}/complete`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           note: completeNote.trim() || null,
           resolution: resolutionValue || null,
@@ -2349,7 +2394,7 @@ function WorkOrderDetailContent({
       setCanceling(true)
       const res = await fetch(`/api/work-orders/${wo.id}/cancel`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           reason: cancelReason.trim(),
           actor: 'admin',
@@ -2379,7 +2424,7 @@ function WorkOrderDetailContent({
       setReporterEditSaving(true)
       const res = await fetch(`/api/work-orders/${wo.id}/reporter-edit`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           verifyName: reporterEdit.verifyName.trim(),
           verifyPhone: reporterEdit.verifyPhone.trim(),
@@ -2412,7 +2457,7 @@ function WorkOrderDetailContent({
       setSendingMsg(true)
       const res = await fetch(`/api/work-orders/${wo.id}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           message: text,
           author: 'admin',
@@ -2473,7 +2518,7 @@ function WorkOrderDetailContent({
       setPartsSaving(true)
       const res = await fetch(`/api/work-orders/${wo.id}/parts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           requester: partsRequester.trim() || undefined,
           items: valid.map((l) => ({
@@ -2509,7 +2554,7 @@ function WorkOrderDetailContent({
       setApprovingTxnId(txnId)
       const res = await fetch(`/api/work-orders/${wo.id}/parts/${txnId}/approve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ approver: 'admin' }),
       })
       if (!res.ok) {
@@ -2540,7 +2585,7 @@ function WorkOrderDetailContent({
         `/api/stock-items/${txn.stockItemId}/pending/${txn.id}/reject`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             approver: 'admin',
             reason: rejectReason.trim(),
@@ -2597,6 +2642,20 @@ function WorkOrderDetailContent({
             >
               {statusLabel(wo.status)}
             </Badge>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                window.open(`/api/work-orders/${wo.id}/print-sheet`, '_blank')
+              }
+              aria-label="พิมพ์ใบงาน"
+              title="พิมพ์ใบงาน"
+              className="h-8 gap-1 px-2.5 text-xs"
+            >
+              <Printer className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">พิมพ์ใบงาน</span>
+            </Button>
             <DialogClose
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 sm:hidden"
               aria-label="ปิด"
