@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
 import { Sun, Moon, Search, LogOut, QrCode } from 'lucide-react'
 import { useAppStore, type ActivePage } from '@/store/app-store'
+import { useClock, formatThaiTime, formatThaiDate } from '@/hooks/use-clock'
 import { useAuthStore, useNavVisibility, useRole } from '@/store/auth-store'
 import { ROLE_LABELS, type Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
@@ -267,6 +268,7 @@ export function Sidebar() {
   })
 
   const countdown = useCountdown(activeCycle?.startDate, activeCycle?.endDate)
+  const clockNow = useClock()
 
   const handleNav = (page: ActivePage) => {
     setActivePage(page)
@@ -339,6 +341,15 @@ export function Sidebar() {
           <div className="truncate text-[10px] leading-tight text-slate-500 dark:text-slate-400">
             {appTagline}
           </div>
+          {/* Clock — compact, below tagline */}
+          {clockNow && (
+            <div className="mt-1 flex items-center gap-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">
+              <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-[#f97316]" />
+              <span>{formatThaiTime(clockNow)}</span>
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <span>{formatThaiDate(clockNow)}</span>
+            </div>
+          )}
         </div>
       </div>
 
