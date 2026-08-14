@@ -8142,3 +8142,91 @@ Stage Summary:
 - schema.prisma ยังเป็น sqlite สำหรับ sandbox — เปลี่ยนเป็น postgresql ก่อน deploy
 - Site-Based RBAC Phase 0 ยังเป็น dual-read — ต้องเพิ่ม UI จัดการ UserSiteGrant ใน Phase ถัดไป
 - ควรเพิ่ม cross-Site regression tests ตาม §9 ของ guidance document
+
+---
+Task ID: PHASE1-AUTH-FOUNDATION
+Agent: orchestrator — Phase 1 Authorization Foundation (PR #2)
+
+Task: สร้าง authorization foundation ตาม ITAM Shared Platform §4.3-4.4 — Role/Permission catalog + UserSiteGrant upgrade + policy helper + API + seed/backfill scripts ส่งเป็น GitHub PR
+
+Work Log:
+
+**1. สร้าง feature branch:**
+- `git checkout -b feature/phase1-authorization-foundation`
+- Branch แยกจาก main (commit d570769)
+
+**2. Schema changes (prisma/schema.prisma):**
+- เพิ่ม `Role` model: code (PK), name, description, isSystem, active
+- เพิ่ม `Permission` model: code (PK), resource, action, description, active
+- เพิ่ม `RolePermission` join table: roleCode + permissionCode (composite PK)
+- ปรับ `UserSiteGrant`: `role` String → `roleCode` String FK → Role
+  + เพิ่ม `validFrom`, `validUntil`, `createdBy` สำหรับ time-bound grants + audit
+  + เพิ่ม @@index([roleCode, active])
+
+**3. New library (src/lib/authorization-context.ts):**
+- `buildAuthorizationContext(user, userId, legacyAllowedSites)` — แกนหลักของ Phase 1
+  - superadmin → all sites, all permissions (bypass)
+  - อ่าน UserSiteGrant ก่อน (active, within validFrom/validUntil)
+  - ถ้าไม่มี grants → fall back ไป allowedSites (dual-read) พร้อม audit warning
+  - คำนวณ effective permissions = global role ∪ per-site permissions
+  - คำนวณ site scope (all / sites / none)
+- Catalog cache (5 min TTL, in-process) สำหรับ Role/Permission lookups
+- `invalidateCatalogCache()` — เรียกหลังแก้ catalog
+- `requirePermissionAndSite()` — convenience wrapper สำหรับ API routes
+- Helpers: `can(perm)`, `canAccessSite(siteCode)`, `siteWhere(field)`, `roleAtSite(siteCode)`
+
+**4. Seed + backfill scripts:**
+- `scripts/seed-authorization-catalog.ts` (idempotent)
+  - Seed 5 roles (superadmin, admin, editor, meter, viewer) — isSystem=true
+  - Seed 28 permissions (จาก PERMISSION_GROUPS) — แยก resource + action
+  - Seed 79 role-permission mappings (จาก ROLE_PERMISSIONS)
+  - ผล: 5 roles, 28 permissions, 79 mappings
+- `scripts/backfill-user-site-grants.ts` (idempotent)
+  - แปลง allowedSites → UserSiteGrant สำหรับ non-superadmin users
+  - ข้าม superadmin (global access via policy)
+  - ข้าม allowedSites='ALL' (ควรแปลงเป็น explicit grants หรือ superadmin role)
+  - รายงาน unmapped site codes
+  - ผล: 11 users — 10 skip (no allowedSites), 1 skip (ALL)
+
+**5. New API endpoints (all require USER_MANAGE):**
+- `GET /api/itam/auth/roles` — list roles + permissions (authenticated)
+- `GET /api/itam/auth/permissions` — list permission catalog grouped by resource
+- `GET /api/itam/auth/site-grants` — list Site grants (scoped to caller's Sites)
+- `POST /api/itam/auth/site-grants` — create/update grant (validates user, site, role)
+- `PATCH /api/itam/auth/site-grants/[id]` — update grant
+- `DELETE /api/itam/auth/site-grants/[id]` — delete grant
+- ทุก grant change ถูก audit พร้อม actor, previous + new values
+
+**6. Verification:**
+- ✅ Lint: 0 errors บนไฟล์ใหม่ทั้งหมด
+- ✅ Seed: 5 roles, 28 permissions, 79 mappings สร้างสำเร็จ
+- ✅ Backfill: idempotent, รายงาน users ที่ skip + unmapped codes
+- ✅ API manual test (superadmin token):
+  - GET /roles → 200 (5 roles with permissions array)
+  - GET /permissions → 200 (28 permissions, 5 resources)
+  - GET /site-grants → 200 (empty list initially)
+  - POST /site-grants → 201 (create grant with audit log)
+- ✅ Auth enforcement: admin role (without USER_MANAGE) → 403 บน grant endpoints
+
+**7. PR creation:**
+- Push branch → `git push -u origin feature/phase1-authorization-foundation`
+- สร้าง PR ผ่าน GitHub REST API (ไม่มี gh CLI)
+- PR #2: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/2
+- Title: [Ready for Review] — Phase 1: Authorization Foundation
+- Label: SECURITY REVIEW REQUIRED
+- PR body ครบตามรูปแบบ: Branch, Commit, Scope, Database/Migration, API/Permission, Tested, Review focus, Known limitation/rollback
+
+Stage Summary:
+- Phase 1 authorization foundation เสร็จสมบูรณ์ — ส่งเป็น PR #2
+- Role/Permission/RolePermission catalog พร้อมใช้ (seeded)
+- UserSiteGrant อัปเกรดเป็น FK + time-bound + audit
+- buildAuthorizationContext() เป็น single source of truth สำหรับ authorization
+- Dual-read fallback รักษา backward compatibility
+- API endpoints สำหรับจัดการ catalog + grants
+- ⚠️ ยังขาด: UI, regression tests (cross-Site test matrix), cache invalidation สำหรับ multi-instance
+
+Next steps (Phase 2+):
+- Phase 2: WorkOrder scope — backfill siteCode, add version/lastMutationId, move images to object storage
+- Phase 3: Technician Workspace — IndexedDB + outbox + sync protocol
+- เพิ่ม cross-Site regression tests ก่อน Phase 2
+- เพิ่ม UI จัดการ grants ใน Settings → User Management
