@@ -61,6 +61,8 @@ export interface AuthUser {
   username: string | null
   allowedSites: string | 'ALL'
   permissions: Permission[]
+  /** Demo user flag — surfaced so the UI can show the demo banner. */
+  isDemo: boolean
 }
 
 /** Internal — the user record as stored in `user_permissions`. */
@@ -78,6 +80,8 @@ export interface UserPermissionRow {
   allowedSites: string | null
   /** Optional JSON string or comma-separated list of custom permissions. */
   permissions?: string | null
+  /** Demo user flag — present when the User row carries `isDemo`. */
+  isDemo?: boolean | null
 }
 
 // ─── Role ↔ permission map (mirror of Code.gs ROLE_PERMISSIONS) ───────
@@ -371,5 +375,6 @@ export function toAuthUser(row: UserPermissionRow): AuthUser {
     username: row.username,
     allowedSites: isSuperAdminRole(role) ? 'ALL' : (row.allowedSites ?? 'ALL'),
     permissions,
+    isDemo: row.isDemo === true,
   }
 }

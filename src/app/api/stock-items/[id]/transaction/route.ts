@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { requireAuth } from '@/lib/auth-middleware'
+import { demoTag } from '@/lib/demo-mode'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -49,6 +51,11 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+    // ── Demo mode: detect demo caller (optional auth — endpoint currently
+    //    accepts unauthenticated requests for compatibility) ──
+    const auth = await requireAuth(req).catch(() => null)
+    const demo = auth?.ok ? auth : null
+
     const body = await req.json()
     const type = String(body.type ?? '').toUpperCase()
     if (!VALID_TYPES.has(type)) {
@@ -156,6 +163,7 @@ export async function POST(
           txnDate,
           performedBy: body.performedBy ? String(body.performedBy).trim() : null,
           remark: body.remark ? String(body.remark).trim() : null,
+          ...demoTag(demo?.user ?? null),
         },
       })
 

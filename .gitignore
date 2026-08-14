@@ -54,3 +54,8 @@ skills/
 
 # Tool results / temp
 tool-results/
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
