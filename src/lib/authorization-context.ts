@@ -395,7 +395,8 @@ export async function buildAuthorizationContext(
       return grantsBySite.has(normalized)
     },
     siteWhere: (field = 'site') => {
-      if (siteScope.kind === 'all') return {}
+      // At this point, siteScope can only be 'none' or 'sites' (never 'all')
+      // because the 'all' case is handled by an early return above.
       if (siteScope.kind === 'none') return { [field]: { in: [] } }
       return { [field]: { in: siteCodes } }
     },
