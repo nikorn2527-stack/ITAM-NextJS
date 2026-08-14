@@ -297,11 +297,22 @@ export async function POST(req: NextRequest) {
   const rawBody = Buffer.from(await req.arrayBuffer())
 
   // 2. Verify signature.
+  // SECURITY FIX: Previously, if line_channel_secret was not configured,
+  // the webhook accepted requests without signature verification (fail-open).
+  // Now, in production, missing secret = reject. In development
+  // (NODE_ENV !== 'production'), we allow it with a warning for local testing.
   const settings = await loadLineSettings()
   const signature = req.headers.get('x-line-signature') ?? ''
   if (!settings.channelSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[line-webhook] line_channel_secret not configured — rejecting request (production mode)')
+      return NextResponse.json(
+        { error: 'Webhook secret not configured' },
+        { status: 503 },
+      )
+    }
     console.warn(
-      '[line-webhook] line_channel_secret not configured — accepting request without verification (dev mode)',
+      '[line-webhook] line_channel_secret not configured — accepting request without verification (DEV MODE ONLY)',
     )
   } else {
     if (!signature) {

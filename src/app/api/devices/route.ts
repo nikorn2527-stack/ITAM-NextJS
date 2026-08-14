@@ -145,13 +145,18 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    // ── Demo mode: tag created devices as isDemo when the caller is a demo user ──
-    // requireAuth() is optional here (real/guest flows still work without a
-    // session), so we tolerate 401 and just skip the demo tag in that case.
-    const auth = await requireAuth(req).catch(() => null)
-    const demo = auth?.ok ? auth : null
+  // ── Authentication: require DEVICE_EDIT permission ──
+  // Previously this route treated auth as optional (fail-open), allowing
+  // unauthenticated device creation. This is a Blocker security fix.
+  // Demo mode is still supported: if the authenticated user is a demo user,
+  // the created device is tagged with isDemo=true.
+  const auth = await requireAuth(req, 'DEVICE_EDIT')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+  const demo = auth
 
+  try {
     const body = await req.json()
     const required = ['assetCode', 'name', 'brand', 'model', 'type', 'status', 'site']
     for (const k of required) {

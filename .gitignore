@@ -59,3 +59,5 @@ tool-results/
 /test-results/
 /playwright-report/
 /playwright/.cache/
+db/custom.db
+db/*.db
