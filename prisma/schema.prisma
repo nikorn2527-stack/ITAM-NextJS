@@ -10,7 +10,10 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  // ⚠️ LOCAL SANDBOX: provider = "sqlite" (DATABASE_URL=file:.../custom.db)
+  // ⚠️ PRODUCTION (Vercel): change back to provider = "postgresql"
+  //     before deploying — DATABASE_URL=postgresql://...supabase.co...
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 

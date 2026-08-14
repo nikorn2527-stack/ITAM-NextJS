@@ -23,6 +23,7 @@ export type ActivePage =
   | 'itam-settings'
   | 'itam-audit'
   | 'itam-snapshot-viewer'
+  | 'reports-hub'
 
 export type SettingsTab = 'app' | 'master' | 'sites' | 'rates' | 'users' | 'audit'
 
