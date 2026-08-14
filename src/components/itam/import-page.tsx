@@ -433,10 +433,10 @@ export function ImportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-6xl space-y-6">
+    <div className="flex h-full flex-col bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6">
         {/* Header */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-shrink-0 flex-col gap-1">
           <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-800 dark:text-slate-100">
             <span aria-hidden>📥</span>
             นำเข้าข้อมูล
@@ -447,8 +447,8 @@ export function ImportPage() {
         </div>
 
         {/* Tab switcher: manual import vs legacy Apps Script import */}
-        <Tabs defaultValue="manual" className="w-full">
-          <TabsList className="bg-slate-100 dark:bg-slate-800">
+        <Tabs defaultValue="manual" className="flex min-h-0 w-full flex-1 flex-col gap-6">
+          <TabsList className="flex-shrink-0 bg-slate-100 dark:bg-slate-800">
             <TabsTrigger value="manual" className="gap-1.5">
               <Upload className="h-3.5 w-3.5" />
               นำเข้าใหม่ (Manual)
@@ -460,7 +460,7 @@ export function ImportPage() {
           </TabsList>
 
           {/* ─── Manual import tab ─── */}
-          <TabsContent value="manual" className="space-y-6">
+          <TabsContent value="manual" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
         {/* Import type selector */}
         <div>
           <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
@@ -639,13 +639,13 @@ export function ImportPage() {
           </TabsContent>
 
           {/* ─── Legacy Apps Script import tab ─── */}
-          <TabsContent value="legacy">
+          <TabsContent value="legacy" className="min-h-0 flex-1 overflow-y-auto">
             <LegacyImportSection />
           </TabsContent>
         </Tabs>
 
         {/* Import history (shared between both tabs) */}
-        <Card className="border-slate-200 dark:border-slate-800">
+        <Card className="flex flex-shrink-0 flex-col border-slate-200 dark:border-slate-800">
           <CardHeader>
             <CardTitle className="flex items-center justify-between text-slate-800 dark:text-slate-100">
               <span className="flex items-center gap-2">

@@ -227,40 +227,42 @@ export function SnapshotViewer() {
   const [open, setOpen] = React.useState(false)
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 md:px-6 md:py-8">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Lock className="h-5 w-5 text-[#f97316]" />
-            ตรวจสอบ Snapshot มิเตอร์
-          </CardTitle>
-          <CardDescription>
-            ดูและตรวจสอบความถูกต้องของ snapshot มิเตอร์ที่ถูกสร้างเมื่อปิดรอบการจด
-            (Immutable — ไม่สามารถแก้ไขได้หลังสร้าง)
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-start gap-4">
-            <div className="max-w-xl flex-1 text-sm text-slate-600 dark:text-slate-300">
-              <p className="mb-2">
-                Snapshot เก็บข้อมูลมิเตอร์ทั้งหมดในรอบเดือนนั้น พร้อม hash SHA-256
-                เพื่อใช้ตรวจจับการแก้ไขภายหลัง ระบบจะสร้าง snapshot อัตโนมัติเมื่อ
-                <span className="font-medium"> ปิดรอบจดมิเตอร์</span>
-                (CLOSED cycle)
-              </p>
-              <p className="text-xs text-slate-500">
-                สิทธิ์: ผู้ดูแล (ADMIN) เท่านั้นที่กดตรวจสอบความถูกต้องได้
-              </p>
+    <div className="flex h-full flex-col p-4 md:p-6">
+      <div className="mx-auto w-full max-w-5xl">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Lock className="h-5 w-5 text-[#f97316]" />
+              ตรวจสอบ Snapshot มิเตอร์
+            </CardTitle>
+            <CardDescription>
+              ดูและตรวจสอบความถูกต้องของ snapshot มิเตอร์ที่ถูกสร้างเมื่อปิดรอบการจด
+              (Immutable — ไม่สามารถแก้ไขได้หลังสร้าง)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-start gap-4">
+              <div className="max-w-xl flex-1 text-sm text-slate-600 dark:text-slate-300">
+                <p className="mb-2">
+                  Snapshot เก็บข้อมูลมิเตอร์ทั้งหมดในรอบเดือนนั้น พร้อม hash SHA-256
+                  เพื่อใช้ตรวจจับการแก้ไขภายหลัง ระบบจะสร้าง snapshot อัตโนมัติเมื่อ
+                  <span className="font-medium"> ปิดรอบจดมิเตอร์</span>
+                  (CLOSED cycle)
+                </p>
+                <p className="text-xs text-slate-500">
+                  สิทธิ์: ผู้ดูแล (ADMIN) เท่านั้นที่กดตรวจสอบความถูกต้องได้
+                </p>
+              </div>
+              <Button size="lg" onClick={() => setOpen(true)} className="gap-2">
+                <Lock className="h-4 w-4" />
+                🔒 Snapshots
+              </Button>
             </div>
-            <Button size="lg" onClick={() => setOpen(true)} className="gap-2">
-              <Lock className="h-4 w-4" />
-              🔒 Snapshots
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <SnapshotDialog open={open} onOpenChange={setOpen} />
+        <SnapshotDialog open={open} onOpenChange={setOpen} />
+      </div>
     </div>
   )
 }

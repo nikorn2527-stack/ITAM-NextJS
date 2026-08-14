@@ -288,8 +288,8 @@ ${kpiHtml}
   }
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
+      <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ITAM กระดาษ</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -307,7 +307,7 @@ ${kpiHtml}
       </div>
 
       {/* Filter bar */}
-      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+      <Card className="flex-shrink-0 border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-3 sm:p-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1.5">
@@ -340,8 +340,8 @@ ${kpiHtml}
         </CardContent>
       </Card>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="flex min-h-0 flex-1 flex-col gap-4">
+        <TabsList className="grid w-full flex-shrink-0 grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="overview" className="gap-1"><LayoutGrid className="h-3.5 w-3.5" /> ภาพรวม</TabsTrigger>
           <TabsTrigger value="ranking" className="gap-1"><Trophy className="h-3.5 w-3.5" /> จัดอันดับ</TabsTrigger>
           <TabsTrigger value="compare3" className="gap-1"><TrendingUp className="h-3.5 w-3.5" /> 3 เดือน</TabsTrigger>
@@ -351,7 +351,7 @@ ${kpiHtml}
         {/* ───────────────────────────────────────────────────────────────── */}
         {/* OVERVIEW */}
         {/* ───────────────────────────────────────────────────────────────── */}
-        <TabsContent value="overview" className="mt-4 space-y-4">
+        <TabsContent value="overview" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto">
           {overviewQuery.isLoading ? (
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-md" />)}
@@ -460,7 +460,7 @@ ${kpiHtml}
         {/* ───────────────────────────────────────────────────────────────── */}
         {/* RANKING */}
         {/* ───────────────────────────────────────────────────────────────── */}
-        <TabsContent value="ranking" className="mt-4 space-y-4">
+        <TabsContent value="ranking" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto">
           {rankingQuery.isLoading ? (
             <Skeleton className="h-96 w-full rounded-md" />
           ) : rankingQuery.data ? (
@@ -487,7 +487,7 @@ ${kpiHtml}
         {/* ───────────────────────────────────────────────────────────────── */}
         {/* COMPARE 3 MONTHS */}
         {/* ───────────────────────────────────────────────────────────────── */}
-        <TabsContent value="compare3" className="mt-4 space-y-4">
+        <TabsContent value="compare3" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto">
           {compareQuery.isLoading ? (
             <Skeleton className="h-96 w-full rounded-md" />
           ) : compareQuery.data ? (
@@ -555,7 +555,7 @@ ${kpiHtml}
         {/* ───────────────────────────────────────────────────────────────── */}
         {/* DETAIL */}
         {/* ───────────────────────────────────────────────────────────────── */}
-        <TabsContent value="detail" className="mt-4 space-y-4">
+        <TabsContent value="detail" className="mt-0 min-h-0 flex-1 space-y-4 overflow-y-auto">
           {detailQuery.isLoading ? (
             <Skeleton className="h-96 w-full rounded-md" />
           ) : detailQuery.data ? (

@@ -809,7 +809,7 @@ export function DevicesPage() {
 
   return (
     <div className="flex h-full flex-col p-3 md:p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จัดการอุปกรณ์</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">

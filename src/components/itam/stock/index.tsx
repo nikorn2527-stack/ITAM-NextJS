@@ -42,8 +42,8 @@ export function StockTabs() {
 
   return (
     <div className="flex h-full flex-col gap-4 p-4 md:p-6">
-      {/* Page header */}
-      <div>
+      {/* Page header — FIXED */}
+      <div className="flex-shrink-0">
         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
           📦 คลังสต็อก
         </h1>
@@ -54,7 +54,7 @@ export function StockTabs() {
       </div>
 
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-4">
-        <TabsList className="flex w-full flex-wrap justify-start gap-1 h-auto p-1 dark:bg-slate-900 dark:border dark:border-slate-800">
+        <TabsList className="flex h-auto w-full flex-shrink-0 flex-wrap justify-start gap-1 p-1 dark:bg-slate-900 dark:border dark:border-slate-800">
           <TabsTrigger value="dashboard" className="gap-1.5">
             <LayoutDashboard className="h-3.5 w-3.5" /> ภาพรวม
           </TabsTrigger>

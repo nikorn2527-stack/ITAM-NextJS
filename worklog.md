@@ -7770,3 +7770,33 @@ Stage Summary:
 - Properties panel uses tabs (no long scroll)
 - Clock visible at top-right
 - Sidebar buttons organized
+
+---
+Task ID: FIX-SCROLL-ALL-PAGES
+Agent: full-stack-developer — Fix scroll behavior on all pages
+
+Work Log:
+- page.tsx: main changed to overflow-hidden (pages handle own scroll); added h-full to motion.div wrapper so children can use h-full
+- itam-dashboard.tsx: flex h-full flex-col + flex-shrink-0 header + flex-1 overflow-y-auto content (QuickActionsBar + WidgetLayout in scroll area; Dialogs remain outside)
+- devices-page.tsx: header marked flex-shrink-0 (Card already had flex min-h-0 flex-1 + table min-h-0 flex-1 overflow-auto + pagination flex-shrink-0)
+- work-orders-page.tsx: header/KPI/filter all flex-shrink-0; loading & empty states given flex min-h-0 flex-1; table card flex min-h-0 flex-1 flex-col with sticky thead
+- itam-meter-unified.tsx: countdown bar wrapper flex-shrink-0; TabsList flex-shrink-0; TabsContent min-h-0 flex-1 overflow-auto (already had pattern, added explicit flex-shrink-0)
+- itam-settings.tsx: header flex-shrink-0 (right content area already had min-h-0 flex-1 overflow-y-auto)
+- stock/index.tsx: page header + TabsList both flex-shrink-0; TabsContent already had min-h-0 flex-1 overflow-auto/hidden
+- wo-options-section.tsx: converted 3 stacked cards → Tabs (หัวข้อปัญหา / อาคาร-ฝ่าย / ผลการแก้ไข); refresh toolbar moved to top (flex-shrink-0); each tab content has internal scroll (subjects & resolutions use Card with overflow-hidden + table h-full overflow-auto; buildings uses overflow-auto on TabsContent)
+- itam-paper-analytics.tsx: root flex h-full flex-col gap-4; header + filter card + TabsList flex-shrink-0; all 4 TabsContent (overview/ranking/compare3/detail) → min-h-0 flex-1 overflow-y-auto
+- itam-repairs.tsx: header + KPI + filter flex-shrink-0; table Card flex min-h-0 flex-1 flex-col with sticky thead; table container h-full overflow-auto
+- itam-audit.tsx: header + filter card + pagination flex-shrink-0; table Card flex min-h-0 flex-1 flex-col with sticky thead
+- monthly-report.tsx: root flex h-full flex-col gap-4 (kept print-area class); header Card flex-shrink-0; report content motion.div min-h-0 flex-1 overflow-y-auto
+- import-page.tsx: removed min-h-screen → flex h-full flex-col; inner wrapper flex h-full flex-col gap-6; header + TabsList + history card flex-shrink-0; both TabsContent (manual/legacy) min-h-0 flex-1 overflow-y-auto
+- templates-page.tsx: root flex h-full flex-col gap-6; header + tab buttons + description + hint card flex-shrink-0; tab content motion.div min-h-0 flex-1 overflow-y-auto
+- snapshot-viewer.tsx: root flex h-full flex-col p-4 md:p-6 with inner max-w-5xl wrapper (snapshot dialog already had its own h-[92vh] flex layout)
+
+Build verification: `npx next build` → ✓ Compiled successfully in 29.9s (no errors)
+Lint: 12 pre-existing errors in unrelated files (dashboard-page.tsx, template-editor.tsx, lib/auth.ts) — none in files modified
+
+Stage Summary:
+- Header always visible, content scrolls internally on every page
+- Consistent pattern: flex h-full flex-col + flex-shrink-0 header + min-h-0 flex-1 overflow-y-auto content
+- wo-options-section: 3 stacked sections → Tabs (visible in one screen, each tab scrolls internally)
+- motion.div in page.tsx now has h-full so children using h-full fill viewport height correctly

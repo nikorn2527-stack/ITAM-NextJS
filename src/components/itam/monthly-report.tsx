@@ -370,9 +370,9 @@ export function MonthlyReport() {
   const devices = data?.devices ?? null
 
   return (
-    <div className="print-area space-y-4 p-4 md:p-6">
+    <div className="print-area flex h-full flex-col gap-4 p-4 md:p-6">
       {/* === Header / Controls === */}
-      <Card className="print-hide shadow-sm">
+      <Card className="print-hide flex-shrink-0 shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -487,9 +487,11 @@ export function MonthlyReport() {
       </Card>
 
       {isLoading ? (
-        <ReportSkeleton />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <ReportSkeleton />
+        </div>
       ) : !data ? (
-        <Card>
+        <Card className="min-h-0 flex-1">
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
             ไม่สามารถโหลดรายงานได้
           </CardContent>
@@ -499,7 +501,7 @@ export function MonthlyReport() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
-          className="space-y-4"
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto"
         >
           {/* === Summary cards === */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

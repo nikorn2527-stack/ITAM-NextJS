@@ -647,7 +647,7 @@ export function WorkOrdersPage() {
   return (
     <div className="flex h-full flex-col p-3 md:p-4">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-bold md:text-2xl">
             <Wrench className="h-6 w-6 text-orange-500" />
@@ -678,7 +678,7 @@ export function WorkOrdersPage() {
       </div>
 
       {/* KPI stats bar */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid flex-shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiCard
           label="รอดำเนินการ"
           value={stats.PENDING ?? 0}
@@ -706,7 +706,7 @@ export function WorkOrdersPage() {
       </div>
 
       {/* Filter bar */}
-      <Card className="gap-3 py-3">
+      <Card className="flex-shrink-0 gap-3 py-3">
         <CardContent className="flex flex-col gap-3 px-3 md:flex-row md:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -764,7 +764,7 @@ export function WorkOrdersPage() {
 
       {/* List — table layout (replaces card grid per user request) */}
       {listQuery.isLoading ? (
-        <Card className="py-3">
+        <Card className="flex min-h-0 flex-1 flex-col py-3">
           <CardContent className="space-y-2 px-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <Skeleton key={i} className="h-10 w-full rounded-md" />
@@ -772,7 +772,7 @@ export function WorkOrdersPage() {
           </CardContent>
         </Card>
       ) : items.length === 0 ? (
-        <Card className="py-12">
+        <Card className="flex min-h-0 flex-1 flex-col items-center justify-center py-12">
           <CardContent className="flex flex-col items-center justify-center gap-3 text-center">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-950">
               <Wrench className="h-7 w-7 text-orange-500" />
