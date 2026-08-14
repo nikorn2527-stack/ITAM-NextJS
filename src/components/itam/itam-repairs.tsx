@@ -410,9 +410,9 @@ export function ItamRepairs() {
   // ── Render ───────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
+    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
       {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
             🔧 แจ้งซ่อม / ซ่อมบำรุง
@@ -437,7 +437,7 @@ export function ItamRepairs() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid flex-shrink-0 grid-cols-2 gap-3 md:grid-cols-4">
         <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
@@ -485,7 +485,7 @@ export function ItamRepairs() {
       </div>
 
       {/* Filter bar */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-full sm:w-44 dark:bg-slate-800 dark:border-slate-700">
             <SelectValue placeholder="สถานะ" />
@@ -518,9 +518,9 @@ export function ItamRepairs() {
       </div>
 
       {/* Table */}
-      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <CardContent className="p-0">
-          <div className="itam-scroll max-h-[60vh] overflow-auto">
+      <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <CardContent className="min-h-0 flex-1 p-0">
+          <div className="itam-scroll h-full overflow-auto">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>

@@ -1233,8 +1233,9 @@ ${kpiHtml}
   }
 
   return (
-    <div className="h-full overflow-y-auto p-3 md:p-4">
-      {/* Page header */}
+    <div className="flex h-full flex-col p-3 md:p-4">
+      {/* Page header — FIXED, never scrolls away */}
+      <div className="flex-shrink-0">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dashboard</h1>
@@ -1319,6 +1320,10 @@ ${kpiHtml}
           </Button>
         </div>
       </div>
+      </div>
+
+      {/* Content — scrolls internally, header stays visible */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
 
       {/* Quick Actions bar — 1-click access to the 4 most common tasks */}
       <QuickActionsBar
@@ -1332,6 +1337,8 @@ ${kpiHtml}
 
       {/* Widget layout — drag-to-reorder + show/hide via "ปรับแต่ง" popover */}
       <DashboardWidgetLayout renderWidget={renderWidget} />
+
+      </div>
 
       {/* Site comparison modal */}
       <Dialog open={sitesOpen} onOpenChange={setSitesOpen}>

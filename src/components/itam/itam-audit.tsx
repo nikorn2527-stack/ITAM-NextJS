@@ -220,8 +220,8 @@ export function ItamAudit() {
     endDate !== ''
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
+      <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
             📜 ประวัติการใช้งาน (Audit Log)
@@ -249,7 +249,7 @@ export function ItamAudit() {
       </div>
 
       {/* Filter bar */}
-      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+      <Card className="flex-shrink-0 border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="w-full sm:w-48">
@@ -317,9 +317,9 @@ export function ItamAudit() {
       </Card>
 
       {/* Table */}
-      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <CardContent className="p-0">
-          <div className="itam-scroll max-h-[60vh] overflow-auto">
+      <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <CardContent className="min-h-0 flex-1 p-0">
+          <div className="itam-scroll h-full overflow-auto">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
@@ -391,7 +391,7 @@ export function ItamAudit() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-shrink-0 items-center justify-between">
           <span className="text-xs text-slate-500">หน้า {page} / {totalPages} ({total.toLocaleString()} รายการ)</span>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>

@@ -238,10 +238,11 @@ export default function Home() {
           <TopBarClock />
         </div>
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:ml-14">
-          <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
+          <main className="flex-1 overflow-hidden pt-14 md:pt-0">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activePage}
+                className="h-full"
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -10 }}

@@ -35,6 +35,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { ListChecks, Plus, RefreshCw, Trash2, Building2, Wrench, CheckCircle2 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -158,189 +159,12 @@ export function WoOptionsSection() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Subjects */}
-      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Wrench className="h-4 w-4 text-[#f97316]" /> หัวข้อปัญหา
-            <Badge variant="outline" className="ml-1 text-[10px]">{subjects.length} รายการ</Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              className="ml-auto"
-              onClick={() => openAdd('subject')}
-            >
-              <Plus className="h-4 w-4" /> เพิ่ม
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="itam-scroll max-h-[40vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
-                <tr>
-                  <th className="h-8 px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">หมวด</th>
-                  <th className="h-8 px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">หัวข้อ</th>
-                  <th className="h-8 px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">ความเร่งด่วน</th>
-                  <th className="h-8 w-12"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={`s-${i}`}>
-                      <td className="px-3 py-2"><Skeleton className="h-4 w-20" /></td>
-                      <td className="px-3 py-2"><Skeleton className="h-4 w-40" /></td>
-                      <td className="px-3 py-2"><Skeleton className="h-4 w-16" /></td>
-                      <td className="px-3 py-2"><Skeleton className="h-6 w-8" /></td>
-                    </tr>
-                  ))
-                ) : subjects.length === 0 ? (
-                  <tr><td colSpan={4} className="py-6 text-center text-xs text-slate-400">ไม่มีข้อมูล</td></tr>
-                ) : (
-                  subjects.map((s) => (
-                    <tr key={s.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                      <td className="px-3 py-2 text-xs">
-                        <Badge variant="outline" className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{s.group}</Badge>
-                      </td>
-                      <td className="px-3 py-2 text-sm">{s.value}</td>
-                      <td className="px-3 py-2 text-xs text-slate-500">{s.default_priority}</td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDelete(s.id, s.value)}
-                          className="text-rose-500 hover:bg-rose-50"
-                          aria-label={`ลบ ${s.value}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Buildings */}
-      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Building2 className="h-4 w-4 text-teal-500" /> อาคาร / ฝ่าย
-            <Badge variant="outline" className="ml-1 text-[10px]">{buildings.length} รายการ</Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              className="ml-auto"
-              onClick={() => openAdd('building')}
-            >
-              <Plus className="h-4 w-4" /> เพิ่ม
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {isLoading ? (
-              Array.from({ length: 6 }).map((_, i) => <Skeleton key={`b-${i}`} className="h-7 w-28 rounded-full" />)
-            ) : buildings.length === 0 ? (
-              <div className="text-xs text-slate-400">ไม่มีข้อมูล</div>
-            ) : (
-              buildings.map((b) => (
-                <Badge
-                  key={b.id}
-                  variant="outline"
-                  className="gap-1 bg-teal-50 px-3 py-1.5 text-xs text-teal-700 dark:bg-teal-950 dark:text-teal-300"
-                >
-                  <Building2 className="h-3 w-3" />
-                  <span className="text-[10px] text-slate-400">{b.group}:</span>
-                  {b.value}
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(b.id, b.value)}
-                    className="ml-1 rounded-full p-0.5 hover:bg-teal-100 dark:hover:bg-teal-900"
-                    aria-label={`ลบ ${b.value}`}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Resolutions */}
-      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" /> ผลการแก้ไข
-            <Badge variant="outline" className="ml-1 text-[10px]">{resolutions.length} รายการ</Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              className="ml-auto"
-              onClick={() => openAdd('resolution')}
-            >
-              <Plus className="h-4 w-4" /> เพิ่ม
-            </Button>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="itam-scroll max-h-[40vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
-                <tr>
-                  <th className="h-8 px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">หมวด</th>
-                  <th className="h-8 px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">ผลการแก้ไข</th>
-                  <th className="h-8 w-12"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={`r-${i}`}>
-                      <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
-                      <td className="px-3 py-2"><Skeleton className="h-4 w-48" /></td>
-                      <td className="px-3 py-2"><Skeleton className="h-6 w-8" /></td>
-                    </tr>
-                  ))
-                ) : resolutions.length === 0 ? (
-                  <tr><td colSpan={3} className="py-6 text-center text-xs text-slate-400">ไม่มีข้อมูล</td></tr>
-                ) : (
-                  resolutions.map((r) => (
-                    <tr key={r.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                      <td className="px-3 py-2 text-xs">
-                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{r.group}</Badge>
-                      </td>
-                      <td className="px-3 py-2 text-sm">{r.value}</td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDelete(r.id, r.value)}
-                          className="text-rose-500 hover:bg-rose-50"
-                          aria-label={`ลบ ${r.value}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
+    <div className="flex h-full flex-col gap-3">
+      {/* Toolbar — FIXED */}
+      <div className="flex flex-shrink-0 items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
         <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
           <ListChecks className="h-4 w-4 text-[#f97316]" />
-          ตัวเลือกทั้งหมดถูกใช้ในหน้า "แจ้งซ่อม" และ "พิมพ์ใบงาน"
+          ตัวเลือกทั้งหมดถูกใช้ในหน้า &quot;แจ้งซ่อม&quot; และ &quot;พิมพ์ใบงาน&quot;
         </div>
         <Button
           size="sm"
@@ -352,6 +176,205 @@ export function WoOptionsSection() {
           <span className="hidden sm:inline">รีเฟรช</span>
         </Button>
       </div>
+
+      {/* Tabs — 3 sections in tabs (instead of stacking vertically) */}
+      <Tabs defaultValue="subjects" className="flex min-h-0 flex-1 flex-col gap-3">
+        <TabsList className="flex flex-shrink-0 flex-wrap gap-1 sm:grid sm:grid-cols-3">
+          <TabsTrigger value="subjects" className="gap-1.5">
+            <Wrench className="h-3.5 w-3.5 text-[#f97316]" /> หัวข้อปัญหา
+            <Badge variant="outline" className="ml-1 text-[10px]">{subjects.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="buildings" className="gap-1.5">
+            <Building2 className="h-3.5 w-3.5 text-teal-500" /> อาคาร/ฝ่าย
+            <Badge variant="outline" className="ml-1 text-[10px]">{buildings.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="resolutions" className="gap-1.5">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> ผลการแก้ไข
+            <Badge variant="outline" className="ml-1 text-[10px]">{resolutions.length}</Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Subjects tab */}
+        <TabsContent value="subjects" className="mt-0 min-h-0 flex-1 overflow-hidden">
+          <Card className="flex h-full flex-col overflow-hidden border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <CardHeader className="flex flex-shrink-0 flex-row items-center justify-between space-y-0">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Wrench className="h-4 w-4 text-[#f97316]" /> หัวข้อปัญหา
+                <Badge variant="outline" className="ml-1 text-[10px]">{subjects.length} รายการ</Badge>
+              </CardTitle>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openAdd('subject')}
+              >
+                <Plus className="h-4 w-4" /> เพิ่ม
+              </Button>
+            </CardHeader>
+            <CardContent className="min-h-0 flex-1 overflow-hidden">
+              <div className="itam-scroll h-full overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
+                    <tr>
+                      <th className="h-8 px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">หมวด</th>
+                      <th className="h-8 px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">หัวข้อ</th>
+                      <th className="h-8 px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">ความเร่งด่วน</th>
+                      <th className="h-8 w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoading ? (
+                      Array.from({ length: 5 }).map((_, i) => (
+                        <tr key={`s-${i}`}>
+                          <td className="px-3 py-2"><Skeleton className="h-4 w-20" /></td>
+                          <td className="px-3 py-2"><Skeleton className="h-4 w-40" /></td>
+                          <td className="px-3 py-2"><Skeleton className="h-4 w-16" /></td>
+                          <td className="px-3 py-2"><Skeleton className="h-6 w-8" /></td>
+                        </tr>
+                      ))
+                    ) : subjects.length === 0 ? (
+                      <tr><td colSpan={4} className="py-6 text-center text-xs text-slate-400">ไม่มีข้อมูล</td></tr>
+                    ) : (
+                      subjects.map((s) => (
+                        <tr key={s.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <td className="px-3 py-2 text-xs">
+                            <Badge variant="outline" className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{s.group}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-sm">{s.value}</td>
+                          <td className="px-3 py-2 text-xs text-slate-500">{s.default_priority}</td>
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDelete(s.id, s.value)}
+                              className="text-rose-500 hover:bg-rose-50"
+                              aria-label={`ลบ ${s.value}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Buildings tab */}
+        <TabsContent value="buildings" className="mt-0 min-h-0 flex-1 overflow-auto">
+          <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Building2 className="h-4 w-4 text-teal-500" /> อาคาร / ฝ่าย
+                <Badge variant="outline" className="ml-1 text-[10px]">{buildings.length} รายการ</Badge>
+              </CardTitle>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openAdd('building')}
+              >
+                <Plus className="h-4 w-4" /> เพิ่ม
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {isLoading ? (
+                  Array.from({ length: 6 }).map((_, i) => <Skeleton key={`b-${i}`} className="h-7 w-28 rounded-full" />)
+                ) : buildings.length === 0 ? (
+                  <div className="text-xs text-slate-400">ไม่มีข้อมูล</div>
+                ) : (
+                  buildings.map((b) => (
+                    <Badge
+                      key={b.id}
+                      variant="outline"
+                      className="gap-1 bg-teal-50 px-3 py-1.5 text-xs text-teal-700 dark:bg-teal-950 dark:text-teal-300"
+                    >
+                      <Building2 className="h-3 w-3" />
+                      <span className="text-[10px] text-slate-400">{b.group}:</span>
+                      {b.value}
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(b.id, b.value)}
+                        className="ml-1 rounded-full p-0.5 hover:bg-teal-100 dark:hover:bg-teal-900"
+                        aria-label={`ลบ ${b.value}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Resolutions tab */}
+        <TabsContent value="resolutions" className="mt-0 min-h-0 flex-1 overflow-hidden">
+          <Card className="flex h-full flex-col overflow-hidden border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <CardHeader className="flex flex-shrink-0 flex-row items-center justify-between space-y-0">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CheckCircle2 className="h-4 w-4 text-emerald-500" /> ผลการแก้ไข
+                <Badge variant="outline" className="ml-1 text-[10px]">{resolutions.length} รายการ</Badge>
+              </CardTitle>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openAdd('resolution')}
+              >
+                <Plus className="h-4 w-4" /> เพิ่ม
+              </Button>
+            </CardHeader>
+            <CardContent className="min-h-0 flex-1 overflow-hidden">
+              <div className="itam-scroll h-full overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
+                    <tr>
+                      <th className="h-8 px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">หมวด</th>
+                      <th className="h-8 px-3 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">ผลการแก้ไข</th>
+                      <th className="h-8 w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoading ? (
+                      Array.from({ length: 5 }).map((_, i) => (
+                        <tr key={`r-${i}`}>
+                          <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
+                          <td className="px-3 py-2"><Skeleton className="h-4 w-48" /></td>
+                          <td className="px-3 py-2"><Skeleton className="h-6 w-8" /></td>
+                        </tr>
+                      ))
+                    ) : resolutions.length === 0 ? (
+                      <tr><td colSpan={3} className="py-6 text-center text-xs text-slate-400">ไม่มีข้อมูล</td></tr>
+                    ) : (
+                      resolutions.map((r) => (
+                        <tr key={r.id} className="border-t border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <td className="px-3 py-2 text-xs">
+                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">{r.group}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-sm">{r.value}</td>
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDelete(r.id, r.value)}
+                              className="text-rose-500 hover:bg-rose-50"
+                              aria-label={`ลบ ${r.value}`}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {/* Add Dialog */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>

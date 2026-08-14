@@ -1676,13 +1676,13 @@ export function TemplatesPage() {
   const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0]
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 p-4 md:p-6">
+    <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-6 p-4 md:p-6">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-        className="space-y-1"
+        className="flex-shrink-0 space-y-1"
       >
         <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
           📄 เทมเพลต
@@ -1694,7 +1694,7 @@ export function TemplatesPage() {
       </motion.div>
 
       {/* Type tabs — sticker / document / work-order */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-shrink-0 flex-wrap gap-2">
         {TABS.map((t) => {
           const active = tab === t.key
           return (
@@ -1719,7 +1719,7 @@ export function TemplatesPage() {
       </div>
 
       {/* Active tab description */}
-      <p className="text-xs text-muted-foreground">
+      <p className="flex-shrink-0 text-xs text-muted-foreground">
         <span className="font-medium text-foreground">{activeTab.icon} {activeTab.label}:</span>{' '}
         {activeTab.description}
       </p>
@@ -1730,6 +1730,7 @@ export function TemplatesPage() {
         initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18, ease: 'easeOut' }}
+        className="min-h-0 flex-1 overflow-y-auto"
       >
         {tab === 'sticker' && <StickerTab />}
         {tab === 'document' && <DocumentTab />}
@@ -1737,7 +1738,7 @@ export function TemplatesPage() {
       </motion.div>
 
       {/* Hint card */}
-      <Card>
+      <Card className="flex-shrink-0">
         <CardContent className="space-y-2 p-4 text-sm text-muted-foreground">
           <p className="font-medium text-foreground">
             💡 วิธีใช้งานเทมเพลต

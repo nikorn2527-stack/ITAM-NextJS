@@ -420,8 +420,8 @@ export function ItamMeterUnified() {
 
   return (
     <div className="flex h-full flex-col p-3 md:p-4">
-      {/* Countdown bar — compact, not sticky */}
-      <div className="mb-2">
+      {/* Countdown bar — FIXED, never scrolls away */}
+      <div className="mb-2 flex-shrink-0">
         <CycleCountdownBar
           cycle={cycle}
           totalRead={totalRead}
@@ -432,7 +432,7 @@ export function ItamMeterUnified() {
       </div>
 
       <Tabs value={mode} onValueChange={(v) => setMode(v as 'entry' | 'history')} className="flex min-h-0 flex-1 flex-col">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="grid w-full max-w-md grid-cols-2 flex-shrink-0">
           <TabsTrigger value="entry" className="gap-1.5">
             <PenLine className="h-4 w-4" />
             จดมิเตอร์
