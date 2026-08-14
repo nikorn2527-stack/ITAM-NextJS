@@ -16,7 +16,7 @@
  *
  * The Prisma `SiteAttribute` model uses PascalCase fields, so the JSON keys
  * returned by the API are also PascalCase (SiteCode, SiteName, LineOA,
- * Hotline, PaperRateBW, PaperRateColor).
+ * Hotline, TelegramChatId, EmailAddress, PaperRateBW, PaperRateColor).
  */
 
 import * as React from 'react'
@@ -62,6 +62,8 @@ import {
   RefreshCw,
   Phone,
   MessageCircle,
+  Send,
+  Mail,
 } from 'lucide-react'
 
 /** Raw SiteAttribute row as returned by GET /api/site-attributes */
@@ -71,6 +73,8 @@ interface SiteAttribute {
   SiteName: string | null
   LineOA: string | null
   Hotline: string | null
+  TelegramChatId: string | null
+  EmailAddress: string | null
   PaperRateBW: number | null
   PaperRateColor: number | null
   created_at?: string
@@ -90,6 +94,8 @@ const EMPTY_FORM = {
   siteName: '',
   lineOa: '',
   hotline: '',
+  telegramChatId: '',
+  emailAddress: '',
   paperRateBw: 0.5,
   paperRateColor: 2.0,
 }
@@ -137,6 +143,8 @@ export function SiteAttributesSection() {
       siteName: site.SiteName ?? '',
       lineOa: site.LineOA ?? '',
       hotline: site.Hotline ?? '',
+      telegramChatId: site.TelegramChatId ?? '',
+      emailAddress: site.EmailAddress ?? '',
       paperRateBw:
         typeof site.PaperRateBW === 'number' ? site.PaperRateBW : 0.5,
       paperRateColor:
@@ -165,6 +173,8 @@ export function SiteAttributesSection() {
         siteName,
         lineOa: form.lineOa.trim() || undefined,
         hotline: form.hotline.trim() || undefined,
+        telegramChatId: form.telegramChatId.trim() || undefined,
+        emailAddress: form.emailAddress.trim() || undefined,
         paperRateBw: Number(form.paperRateBw) || 0,
         paperRateColor: Number(form.paperRateColor) || 0,
       }
@@ -310,6 +320,8 @@ export function SiteAttributesSection() {
                   <TableHead>ชื่อสาขา</TableHead>
                   <TableHead className="hidden md:table-cell">LINE OA</TableHead>
                   <TableHead className="hidden md:table-cell">Hotline</TableHead>
+                  <TableHead className="hidden md:table-cell">Telegram</TableHead>
+                  <TableHead className="hidden md:table-cell">Email</TableHead>
                   <TableHead className="text-right whitespace-nowrap">ขาวดำ (฿/แผ่น)</TableHead>
                   <TableHead className="text-right whitespace-nowrap">สี (฿/แผ่น)</TableHead>
                   <TableHead className="text-right">จัดการ</TableHead>
@@ -323,6 +335,8 @@ export function SiteAttributesSection() {
                       <TableCell><Skeleton className="h-4 w-48" /></TableCell>
                       <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="hidden md:table-cell"><Skeleton className="h-4 w-32" /></TableCell>
                       <TableCell className="text-right"><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
                       <TableCell className="text-right"><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
                       <TableCell className="text-right"><Skeleton className="h-7 w-20 ml-auto" /></TableCell>
@@ -330,7 +344,7 @@ export function SiteAttributesSection() {
                   ))
                 ) : sites.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-12 text-center text-sm text-slate-400">
+                    <TableCell colSpan={9} className="py-12 text-center text-sm text-slate-400">
                       <Building2 className="mx-auto mb-2 h-8 w-8 opacity-40" />
                       ยังไม่มีข้อมูลสาขา — กด &quot;เพิ่มสาขา&quot; เพื่อเริ่มต้น
                     </TableCell>
@@ -368,6 +382,30 @@ export function SiteAttributesSection() {
                           <span className="inline-flex items-center gap-1">
                             <Phone className="h-3 w-3 text-emerald-500" />
                             {site.Hotline}
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-xs text-slate-500 dark:text-slate-400">
+                        {site.TelegramChatId ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Send className="h-3 w-3 text-sky-500" />
+                            <span className="truncate max-w-[140px] font-mono" title={site.TelegramChatId}>
+                              {site.TelegramChatId}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-xs text-slate-500 dark:text-slate-400">
+                        {site.EmailAddress ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Mail className="h-3 w-3 text-amber-500" />
+                            <span className="truncate max-w-[200px]" title={site.EmailAddress}>
+                              {site.EmailAddress}
+                            </span>
                           </span>
                         ) : (
                           <span className="text-slate-300">—</span>
@@ -506,6 +544,39 @@ export function SiteAttributesSection() {
                 value={form.hotline}
                 onChange={(e) => setForm({ ...form, hotline: e.target.value })}
                 placeholder="เช่น 0-4221-XXXX"
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+            </div>
+
+            {/* TelegramChatId */}
+            <div className="space-y-1.5 sm:col-span-1">
+              <Label htmlFor="sa-telegram" className="text-xs">
+                Telegram Chat ID <span className="text-slate-400">(ถ้ามี)</span>
+              </Label>
+              <Input
+                id="sa-telegram"
+                value={form.telegramChatId}
+                onChange={(e) =>
+                  setForm({ ...form, telegramChatId: e.target.value })
+                }
+                placeholder="เช่น -1001234567890"
+                className="font-mono dark:bg-slate-800 dark:border-slate-700"
+              />
+            </div>
+
+            {/* EmailAddress */}
+            <div className="space-y-1.5 sm:col-span-1">
+              <Label htmlFor="sa-email" className="text-xs">
+                Email Address <span className="text-slate-400">(ถ้ามี)</span>
+              </Label>
+              <Input
+                id="sa-email"
+                type="email"
+                value={form.emailAddress}
+                onChange={(e) =>
+                  setForm({ ...form, emailAddress: e.target.value })
+                }
+                placeholder="เช่น it-udh@hospital.go.th"
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
             </div>

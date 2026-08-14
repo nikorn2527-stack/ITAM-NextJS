@@ -359,6 +359,8 @@ model SiteAttribute {
   Hotline        String?  // เบอร์ติดต่อ
   PaperRateBW    Float?   @default(0.5) // ฿/แผ่น ขาวดำ
   PaperRateColor Float?   @default(2.0) // ฿/แผ่น สี
+  TelegramChatId String?  @map("TelegramChatId") // Telegram chat ID สำหรับสาขา
+  EmailAddress   String?  @map("EmailAddress") // อีเมลสาขาสำหรับรับแจ้งเตือน
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 

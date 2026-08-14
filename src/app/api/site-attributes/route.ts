@@ -69,6 +69,8 @@ export async function POST(req: NextRequest) {
         SiteName: siteName,
         LineOA: body.lineOa ? String(body.lineOa).trim() : null,
         Hotline: body.hotline ? String(body.hotline).trim() : null,
+        TelegramChatId: body.telegramChatId ? String(body.telegramChatId).trim() : null,
+        EmailAddress: body.emailAddress ? String(body.emailAddress).trim() : null,
         PaperRateBW: typeof body.paperRateBw === 'number' ? body.paperRateBw : 0.5,
         PaperRateColor: typeof body.paperRateColor === 'number' ? body.paperRateColor : 2.0,
       },
