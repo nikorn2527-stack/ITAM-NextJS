@@ -116,6 +116,7 @@ const EDITABLE_FIELDS = [
   'picOnsite',
   'picAfter',
   'deviceId',
+  'isSpecialFee',
 ] as const
 
 export async function PUT(
@@ -184,6 +185,9 @@ export async function PUT(
         typeof body.deviceId === 'string' && body.deviceId.trim()
           ? body.deviceId.trim()
           : null
+    if (body.isSpecialFee !== undefined) {
+      data.isSpecialFee = body.isSpecialFee === true
+    }
 
     const updated = await db.workOrder.update({ where: { id }, data })
 

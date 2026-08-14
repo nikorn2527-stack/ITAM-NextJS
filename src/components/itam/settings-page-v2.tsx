@@ -48,6 +48,7 @@ import {
   Eye,
   Palette,
   Sparkles,
+  FileText,
 } from 'lucide-react'
 
 // ────────────────────────────────────────────────────────────
@@ -877,6 +878,403 @@ function CreatePatternDialog({
             <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-[#0d9488]">
               <Eye className="h-3.5 w-3.5" />
               ตัวอย่างเลขทะเบียนที่จะได้
+            </div>
+            <code className="font-mono text-lg font-bold text-[#0d9488]">
+              {preview || '—'}
+            </code>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            ยกเลิก
+          </Button>
+          <Button
+            onClick={() => createMutation.mutate()}
+            disabled={createMutation.isPending || !name || !pattern}
+            className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+          >
+            <Save className="mr-2 h-4 w-4" />
+            {createMutation.isPending ? 'กำลังสร้าง...' : 'สร้างรูปแบบ'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ────────────────────────────────────────────────────────────
+// Tab 2b: WoNumberPattern — รูปแบบเลขใบงาน (Task ID: SPECIALFEE-WOPATTERN-APPROVAL)
+// ────────────────────────────────────────────────────────────
+
+interface WoPatternRow {
+  id: string
+  name: string
+  pattern: string
+  description: string | null
+  isActive: boolean
+  defaultPrefix: string | null
+  seqPadding: number
+  seqStart: number
+}
+
+const WO_SEGMENT_HELP: { seg: string; desc: string; example: string }[] = [
+  { seg: '{prefix}', desc: 'คำนำหน้า', example: 'PPIT' },
+  { seg: '{seq:N}', desc: 'เลขลำดับ N หลัก', example: '{seq:4} → 0001' },
+  { seg: '{year:2|4}', desc: 'ปี', example: '{year:2} → 26' },
+  { seg: '{month:2}', desc: 'เดือน', example: '08' },
+]
+
+export function WoPatternTab() {
+  const queryClient = useQueryClient()
+  const [createOpen, setCreateOpen] = React.useState(false)
+
+  const { data, isLoading } = useQuery<{
+    patterns: WoPatternRow[]
+    active: WoPatternRow | null
+  }>({
+    queryKey: ['wo-patterns'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings/wo-patterns')
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+  })
+
+  const activateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(
+        `/api/settings/wo-patterns/${id}/activate`,
+        { method: 'POST' },
+      )
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+    onSuccess: () => {
+      toast.success('เปลี่ยนรูปแบบเลขใบงานเรียบร้อยแล้ว')
+      queryClient.invalidateQueries({ queryKey: ['wo-patterns'] })
+    },
+    onError: () => {
+      toast.error('เปลี่ยนรูปแบบไม่สำเร็จ')
+    },
+  })
+
+  const patterns = data?.patterns ?? []
+  const activePattern = data?.active ?? null
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-[#f97316]" />
+              รูปแบบเลขใบงาน
+            </CardTitle>
+            <CardDescription>
+              เลือกรูปแบบเลขใบงานที่ใช้งาน — ระบบจะใช้รูปแบบนี้เมื่อสร้างใบแจ้งซ่อมใหม่
+              (เช่น PPIT0001 หรือ PPIT-0001)
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => setCreateOpen(true)}
+            className="border-[#f97316] text-[#f97316] hover:bg-[#fff7ed]"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            สร้างรูปแบบใหม่
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {Array.from({ length: 2 }).map((_, i) => (
+                <Skeleton key={i} className="h-32 w-full" />
+              ))}
+            </div>
+          ) : patterns.length === 0 ? (
+            <div className="rounded-md border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">
+              ยังไม่มีรูปแบบเลขใบงาน — คลิก &quot;สร้างรูปแบบใหม่&quot; เพื่อเริ่ม
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {patterns.map((p) => {
+                const isActive = !!activePattern && activePattern.id === p.id
+                const preview = previewAssetNumber(p.pattern, p.defaultPrefix)
+                return (
+                  <div
+                    key={p.id}
+                    className={`rounded-lg border p-4 transition-colors ${
+                      isActive
+                        ? 'border-[#f97316] bg-[#fff7ed] dark:bg-[#fff7ed]/10'
+                        : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900'
+                    }`}
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="truncate font-semibold">
+                            {p.name}
+                          </h4>
+                          {isActive && (
+                            <Badge className="bg-[#f97316] text-white hover:bg-[#f97316]">
+                              <Check className="mr-1 h-3 w-3" />
+                              ใช้งานอยู่
+                            </Badge>
+                          )}
+                        </div>
+                        {p.description && (
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {p.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mb-3 rounded-md bg-slate-50 px-3 py-2 dark:bg-slate-800/50">
+                      <div className="mb-0.5 text-[10px] uppercase tracking-wide text-slate-400">
+                        รูปแบบ
+                      </div>
+                      <code className="font-mono text-sm text-slate-700 dark:text-slate-200">
+                        {p.pattern}
+                      </code>
+                    </div>
+
+                    <div className="mb-3 flex items-center gap-2 text-xs">
+                      <Eye className="h-3.5 w-3.5 text-[#0d9488]" />
+                      <span className="text-slate-500">ตัวอย่าง:</span>
+                      <code className="rounded bg-[#0d9488]/10 px-2 py-0.5 font-mono text-sm font-semibold text-[#0d9488]">
+                        {preview}
+                      </code>
+                    </div>
+
+                    <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                      {p.defaultPrefix && (
+                        <span>
+                          prefix: <code className="font-mono">{p.defaultPrefix}</code>
+                        </span>
+                      )}
+                      <span>
+                        seq padding: <code className="font-mono">{p.seqPadding}</code>
+                      </span>
+                      <span>
+                        seq start: <code className="font-mono">{p.seqStart}</code>
+                      </span>
+                    </div>
+
+                    {isActive ? (
+                      <Button
+                        variant="outline"
+                        disabled
+                        className="w-full border-[#f97316] text-[#f97316]"
+                      >
+                        <Check className="mr-2 h-4 w-4" />
+                        รูปแบบปัจจุบัน
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => activateMutation.mutate(p.id)}
+                        disabled={activateMutation.isPending}
+                      >
+                        ใช้รูปแบบนี้
+                      </Button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <CreateWoPatternDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ['wo-patterns'] })
+        }}
+      />
+    </div>
+  )
+}
+
+function CreateWoPatternDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onCreated: () => void
+}) {
+  const [name, setName] = React.useState('')
+  const [pattern, setPattern] = React.useState('{prefix}{seq:4}')
+  const [description, setDescription] = React.useState('')
+  const [defaultPrefix, setDefaultPrefix] = React.useState('PPIT')
+  const [seqPadding, setSeqPadding] = React.useState(4)
+  const [seqStart, setSeqStart] = React.useState(1)
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/settings/wo-patterns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          pattern,
+          description,
+          defaultPrefix,
+          seqPadding,
+          seqStart,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+    onSuccess: () => {
+      toast.success('สร้างรูปแบบเลขใบงานใหม่เรียบร้อยแล้ว')
+      setName('')
+      setPattern('{prefix}{seq:4}')
+      setDescription('')
+      setDefaultPrefix('PPIT')
+      setSeqPadding(4)
+      setSeqStart(1)
+      onOpenChange(false)
+      onCreated()
+    },
+    onError: () => {
+      toast.error('สร้างรูปแบบไม่สำเร็จ')
+    },
+  })
+
+  const preview = previewAssetNumber(pattern, defaultPrefix)
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5 text-[#f97316]" />
+            สร้างรูปแบบเลขใบงานใหม่
+          </DialogTitle>
+          <DialogDescription>
+            กำหนดรูปแบบเลขใบงาน — ใช้ segment ในวงเล็บปีกกา {'{ }'} เพื่อสร้างรูปแบบ
+            (เช่น {'{prefix}{seq:4}'} → PPIT0001)
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="wopat-name" className="text-sm font-medium">
+                ชื่อรูปแบบ *
+              </Label>
+              <Input
+                id="wopat-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="เช่น PPIT (ไม่มี dash), PPIT-ปี-ลำดับ"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="wopat-defaultPrefix" className="text-sm font-medium">
+                คำนำหน้า (defaultPrefix)
+              </Label>
+              <Input
+                id="wopat-defaultPrefix"
+                value={defaultPrefix}
+                onChange={(e) => setDefaultPrefix(e.target.value)}
+                placeholder="PPIT"
+                className="font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="wopat-pattern" className="text-sm font-medium">
+              รูปแบบ (Pattern) *
+            </Label>
+            <Input
+              id="wopat-pattern"
+              value={pattern}
+              onChange={(e) => setPattern(e.target.value)}
+              placeholder="{prefix}{seq:4}"
+              className="font-mono"
+            />
+            <p className="text-xs text-slate-500">
+              ตัวอย่าง: <code className="font-mono">{`{prefix}{seq:4}`}</code> → PPIT0001
+              {' หรือ '}
+              <code className="font-mono">{`{prefix}-{seq:4}`}</code> → PPIT-0001
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Segment ที่รองรับ</Label>
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+              <ul className="grid gap-1.5 text-xs sm:grid-cols-2">
+                {WO_SEGMENT_HELP.map((s) => (
+                  <li key={s.seg} className="flex flex-col">
+                    <code className="font-mono font-semibold text-[#f97316]">
+                      {s.seg}
+                    </code>
+                    <span className="text-slate-600 dark:text-slate-300">
+                      {s.desc}
+                    </span>
+                    <span className="text-slate-400">เช่น {s.example}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="wopat-seqPadding" className="text-sm font-medium">
+                จำนวนหลักเลขลำดับ (seqPadding)
+              </Label>
+              <Input
+                id="wopat-seqPadding"
+                type="number"
+                min={1}
+                max={10}
+                value={seqPadding}
+                onChange={(e) => setSeqPadding(parseInt(e.target.value) || 4)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="wopat-seqStart" className="text-sm font-medium">
+                เลขเริ่มต้น (seqStart)
+              </Label>
+              <Input
+                id="wopat-seqStart"
+                type="number"
+                min={1}
+                value={seqStart}
+                onChange={(e) => setSeqStart(parseInt(e.target.value) || 1)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="wopat-desc" className="text-sm font-medium">
+              คำอธิบาย
+            </Label>
+            <Textarea
+              id="wopat-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="รายละเอียดสั้นๆ ของรูปแบบนี้"
+              className="min-h-[60px]"
+            />
+          </div>
+
+          {/* Live preview */}
+          <div className="rounded-md border border-[#0d9488]/30 bg-[#0d9488]/5 p-3">
+            <div className="mb-1 flex items-center gap-1.5 text-xs font-medium text-[#0d9488]">
+              <Eye className="h-3.5 w-3.5" />
+              ตัวอย่างเลขใบงานที่จะได้
             </div>
             <code className="font-mono text-lg font-bold text-[#0d9488]">
               {preview || '—'}

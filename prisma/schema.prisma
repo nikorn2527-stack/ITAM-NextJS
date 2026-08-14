@@ -262,6 +262,7 @@ model WorkOrder {
   cancelReason     String?
   deviceId         String?
   isDemo           Boolean  @default(false)
+  isSpecialFee     Boolean  @default(false) // งานพิเศษ (มีค่าใช้จ่าย) — แอปอื่นดึงผ่าน API
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -274,6 +275,7 @@ model WorkOrder {
   @@index([assignedTo])
   @@index([deviceId])
   @@index([isDemo])
+  @@index([isSpecialFee])
 }
 
 // ============================================================
@@ -596,6 +598,22 @@ model AssetNumberPattern {
   isActive      Boolean  @default(false)
   defaultPrefix String?
   seqPadding    Int      @default(5)
+  seqStart      Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ============================================================
+// 23b) WoNumberPattern — รูปแบบเลขใบงาน (เหมือน AssetNumberPattern)
+// ============================================================
+model WoNumberPattern {
+  id            String   @id @default(cuid())
+  name          String
+  pattern       String   // เช่น {prefix}-{seq:4} → PPIT-0001
+  description   String?
+  isActive      Boolean  @default(false)
+  defaultPrefix String?  // เช่น PPIT
+  seqPadding    Int      @default(4)
   seqStart      Int      @default(1)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

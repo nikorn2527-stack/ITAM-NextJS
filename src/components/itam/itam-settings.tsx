@@ -13,12 +13,12 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText } from 'lucide-react'
 import { type MasterItem } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
 import { WoOptionsSection } from './wo-options-section'
-import { AssetPatternTab } from './settings-page-v2'
+import { AssetPatternTab, WoPatternTab } from './settings-page-v2'
 import { NotificationTemplatesSection } from './notification-templates-section'
 import { PendingUsersSection } from './pending-users-section'
 import { UserManagementSection } from './user-management-section'
@@ -51,6 +51,7 @@ type SettingsTab =
   | 'permissions'
   | 'oauth'
   | 'number-patterns'
+  | 'wo-patterns'
   | 'demo'
 
 interface SettingsTabGroup {
@@ -67,6 +68,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'contacts', label: 'สมุดผู้ติดต่อ', icon: BookUser },
       { value: 'wo-options', label: 'ตัวเลือกใบงาน', icon: ListChecks },
       { value: 'number-patterns', label: 'รูปแบบเลขทะเบียน', icon: Hash },
+      { value: 'wo-patterns', label: 'เลขใบงาน', icon: FileText },
       { value: 'sites', label: 'สาขา (ภาพรวม)', icon: Building2 },
     ],
   },
@@ -664,6 +666,8 @@ export function ItamSettings() {
       {tab === 'customize' && <AppCustomizeTab />}
 
       {tab === 'number-patterns' && <AssetPatternTab />}
+
+      {tab === 'wo-patterns' && <WoPatternTab />}
 
       {tab === 'demo' && <DemoManagementSection />}
         </div>
