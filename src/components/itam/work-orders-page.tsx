@@ -242,9 +242,11 @@ interface DeviceLookupItem {
   name: string
   brand: string
   model: string
+  type?: string
   site: string
   building: string | null
   location: string | null
+  department?: string | null
   serialNumber: string | null
 }
 
@@ -1198,6 +1200,7 @@ function CreateWorkOrderDialog({
   // Device lookup (internal mode only)
   const [deviceResults, setDeviceResults] = React.useState<DeviceLookupItem[]>([])
   const [deviceLoading, setDeviceLoading] = React.useState(false)
+  const [deviceResultsCache, setDeviceResultsCache] = React.useState<DeviceLookupItem | null>(null)
   React.useEffect(() => {
     if (!form.deviceSearch.trim() || form.isExternal) {
       setDeviceResults([])
@@ -1590,7 +1593,9 @@ function CreateWorkOrderDialog({
                               deviceSearch: `${d.assetCode} — ${d.name}`,
                               building: s.building || d.building || '',
                               location: s.location || d.location || '',
+                              department: s.department || d.department || '',
                             }))
+                            setDeviceResultsCache(d)
                             setDeviceResults([])
                           }}
                           className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-2 text-left text-xs last:border-b-0 hover:bg-muted"
@@ -1604,24 +1609,41 @@ function CreateWorkOrderDialog({
                       ))}
                     </div>
                   )}
-                  {form.deviceId && (
-                    <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400">
-                      <CheckCircle2 className="h-3 w-3" /> เลือกอุปกรณ์แล้ว
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setForm((s) => ({
-                            ...s,
-                            deviceId: null,
-                            deviceSearch: '',
-                          }))
-                        }
-                        className="ml-1 underline"
-                      >
-                        ล้าง
-                      </button>
+                  {form.deviceId && (() => {
+                    const selected = deviceResults.find(d => d.id === form.deviceId) || deviceResultsCache
+                    return (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-[11px] dark:border-emerald-800 dark:bg-emerald-950/30">
+                      <div className="flex items-center gap-1 font-medium text-emerald-700 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3 w-3" /> เลือกอุปกรณ์แล้ว
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm((s) => ({
+                              ...s,
+                              deviceId: null,
+                              deviceSearch: '',
+                            }))
+                          }
+                          className="ml-auto underline"
+                        >
+                          ล้าง
+                        </button>
+                      </div>
+                      {selected && (
+                        <div className="mt-1 grid grid-cols-2 gap-x-2 gap-y-0.5 text-slate-600 dark:text-slate-400">
+                          <span>รหัส: <strong className="font-mono">{selected.assetCode}</strong></span>
+                          <span>Site: {selected.site || '-'}</span>
+                          <span>แบรนด์: {selected.brand || '-'}</span>
+                          <span>รุ่น: {selected.model || '-'}</span>
+                          <span>SN: <span className="font-mono">{selected.serialNumber || '-'}</span></span>
+                          <span>ประเภท: {selected.type || '-'}</span>
+                          <span>อาคาร: {selected.building || '-'}</span>
+                          <span>แผนก: {selected.department || '-'}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
+                    )
+                  })()}
                 </div>
               </div>
             )}
