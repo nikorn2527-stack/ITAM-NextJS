@@ -574,9 +574,7 @@ export async function GET(
   <script>
     (function() {
       function tryPrint() {
-        if (window.opener) {
-          setTimeout(function() { window.print(); }, 500);
-        }
+        // Do NOT auto-print — show preview first, user clicks the print button
       }
       var imgs = document.querySelectorAll('img');
       var pending = imgs.length;

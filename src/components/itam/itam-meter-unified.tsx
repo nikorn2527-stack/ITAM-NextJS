@@ -141,7 +141,7 @@ function CycleCountdownBar({
   const todayDate = new Date(todayStr + 'T00:00:00')
   const endDateObj = new Date(endDate + 'T00:00:00')
   const dayDiffMs = endDateObj.getTime() - todayDate.getTime()
-  const daysRemaining = Math.round(dayDiffMs / (1000 * 60 * 60 * 24))
+  const daysRemaining = Math.round(dayDiffMs / (1000 * 60 * 60 * 24)) + 1
 
   // For hours/minutes on deadline day, use Bangkok time end-of-day
   const deadlineEndOfDay = new Date(endDate + 'T23:59:59+07:00')

@@ -40,8 +40,15 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const wo = await db.workOrder.findUnique({
-      where: { id },
+    // Support both Prisma id (cuid) AND requestId/woNumber (e.g. "PPIT4505")
+    const wo = await db.workOrder.findFirst({
+      where: {
+        OR: [
+          { id },
+          { requestId: id },
+          { woNumber: id },
+        ],
+      },
       include: {
         device: {
           select: {

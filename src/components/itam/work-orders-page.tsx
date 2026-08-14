@@ -910,7 +910,7 @@ export function WorkOrdersPage() {
                             size="sm"
                             variant="ghost"
                             onClick={() =>
-                              window.open(`/api/work-orders/${wo.id}/print-sheet`, '_blank')
+                              window.open(`/api/work-orders/${wo.id}/print-sheet`, '_blank', 'noopener,noreferrer')
                             }
                             aria-label="พิมพ์ใบงาน"
                             title="พิมพ์ใบงาน"
@@ -2647,7 +2647,7 @@ function WorkOrderDetailContent({
               variant="outline"
               size="sm"
               onClick={() =>
-                window.open(`/api/work-orders/${wo.id}/print-sheet`, '_blank')
+                window.open(`/api/work-orders/${wo.id}/print-sheet`, '_blank', 'noopener,noreferrer')
               }
               aria-label="พิมพ์ใบงาน"
               title="พิมพ์ใบงาน"
