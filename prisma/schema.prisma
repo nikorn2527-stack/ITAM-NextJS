@@ -576,6 +576,66 @@ model User {
 }
 
 // ============================================================
+// 20a) Role — Role catalog (Phase 1: authorization foundation)
+// ============================================================
+// Canonical role definitions stored in DB so they can be audited and
+// managed through the admin UI. Seeded from auth-shared.ts ROLE_PERMISSIONS.
+//
+// `isSystem` marks roles that cannot be deleted (superadmin, admin, etc).
+// Custom roles can be created by admins with USER_MANAGE permission.
+//
+// See: ITAM Shared Platform §4.3
+// ============================================================
+model Role {
+  code        String   @id // superadmin, site_manager, coordinator, technician, requester, viewer
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  grants      UserSiteGrant[]
+  permissions RolePermission[]
+}
+
+// ============================================================
+// 20a.2) Permission — Permission catalog (Phase 1)
+// ============================================================
+// Canonical permission definitions. The `code` matches the Permission
+// union type in auth-shared.ts so the type system and DB stay in sync.
+// `resource` + `action` enable future UI grouping and audit queries.
+// ============================================================
+model Permission {
+  code        String   @id // VIEW_DASHBOARD, WO_CREATE, DEVICE_EDIT, ...
+  resource    String   // dashboard, device, work_order, stock, ...
+  action      String   // view, create, edit, delete, assign, ...
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  roles       RolePermission[]
+}
+
+// ============================================================
+// 20a.3) RolePermission — many-to-many join (Phase 1)
+// ============================================================
+// Maps which permissions each role has. Seeded from ROLE_PERMISSIONS
+// in auth-shared.ts. Changes must be audited.
+// ============================================================
+model RolePermission {
+  roleCode       String
+  permissionCode String
+  createdAt      DateTime @default(now())
+
+  role       Role       @relation(fields: [roleCode], references: [code], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionCode], references: [code], onDelete: Cascade)
+
+  @@id([roleCode, permissionCode])
+  @@index([permissionCode])
+}
+
+// ============================================================
 // 20b) UserSiteGrant — Site-level role grants (target design)
 // ============================================================
 // Allows the same user to have different roles at different Sites
@@ -583,21 +643,30 @@ model User {
 // phase, the auth layer reads from UserSiteGrant first, then falls
 // back to User.allowedSites with an audit warning.
 //
-// See: Site-Based Access Control Guidance for ITAM-NextJS.md §4.2
+// `roleCode` now references the Role catalog (Phase 1).
+// `validFrom`/`validUntil` support time-bound grants (e.g. temp coverage).
+// `createdBy` tracks who issued the grant for audit.
+//
+// See: ITAM Shared Platform §4.4
 // ============================================================
 model UserSiteGrant {
-  userId    String
-  siteCode  String
-  role      String   @default("viewer") // admin | editor | meter | viewer
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  userId     String
+  siteCode   String
+  roleCode   String   @default("viewer")
+  active     Boolean  @default(true)
+  validFrom  DateTime?
+  validUntil DateTime?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleCode], references: [code], onDelete: Restrict)
 
   @@id([userId, siteCode])
   @@index([siteCode, active])
   @@index([userId, active])
+  @@index([roleCode, active])
 }
 
 // ============================================================
