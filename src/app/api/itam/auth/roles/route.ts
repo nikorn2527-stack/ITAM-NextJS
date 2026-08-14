@@ -17,7 +17,11 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { hasResolvedPermission } from '@/lib/auth'
 
 export async function GET(req: NextRequest) {
-  const auth = await requireAuth(req)
+  // ── Authentication: require VIEW_DASHBOARD (any authenticated user can
+  // see the role list for UI labels, but only USER_MANAGE sees permission details) ──
+  // Previously the comment said VIEW_DASHBOARD but the code only called
+  // requireAuth(req) without a permission, which was inconsistent.
+  const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }

@@ -80,14 +80,46 @@ export async function PATCH(
           { status: 400 },
         )
       }
+      // ── Privilege escalation guard (same as POST) ──
+      const PRIVILEGED_ROLES = new Set(['admin', 'superadmin'])
+      if (!ctx.isSuperAdmin && PRIVILEGED_ROLES.has(body.roleCode.trim())) {
+        return NextResponse.json(
+          { error: `ไม่มีสิทธิ์มอบหมาย Role '${body.roleCode.trim()}' — เฉพาะ superadmin เท่านั้น` },
+          { status: 403 },
+        )
+      }
       data.roleCode = body.roleCode.trim()
     }
     if (typeof body.active === 'boolean') data.active = body.active
     if (body.validFrom !== undefined) {
-      data.validFrom = body.validFrom ? new Date(body.validFrom) : null
+      const vf = body.validFrom ? new Date(body.validFrom) : null
+      if (vf && isNaN(vf.getTime())) {
+        return NextResponse.json(
+          { error: 'วันที่ validFrom ไม่ถูกต้อง' },
+          { status: 400 },
+        )
+      }
+      data.validFrom = vf
     }
     if (body.validUntil !== undefined) {
-      data.validUntil = body.validUntil ? new Date(body.validUntil) : null
+      const vu = body.validUntil ? new Date(body.validUntil) : null
+      if (vu && isNaN(vu.getTime())) {
+        return NextResponse.json(
+          { error: 'วันที่ validUntil ไม่ถูกต้อง' },
+          { status: 400 },
+        )
+      }
+      data.validUntil = vu
+    }
+
+    // ── Validate validFrom <= validUntil after merge ──
+    const finalValidFrom = (data.validFrom as Date | null) ?? existing.validFrom
+    const finalValidUntil = (data.validUntil as Date | null) ?? existing.validUntil
+    if (finalValidFrom && finalValidUntil && finalValidFrom > finalValidUntil) {
+      return NextResponse.json(
+        { error: 'validFrom ต้องเป็นวันที่ก่อนหรือเท่ากับ validUntil' },
+        { status: 400 },
+      )
     }
 
     const updated = await db.userSiteGrant.update({

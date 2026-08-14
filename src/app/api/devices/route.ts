@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { requireAuth } from '@/lib/auth-middleware'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag } from '@/lib/demo-mode'
 
 /** Clamp warrantyMonths to 1..120, default 12. */
@@ -48,11 +50,19 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
+  // ── Build authorization context for Site scope ──
+  // Uses buildAuthorizationContext() instead of reading auth.user.allowedSites
+  // directly, so that UserSiteGrant is consulted first (dual-read).
+  const ctx = await buildAuthorizationContext(
+    auth.user,
+    auth.row.id,
+    auth.row.allowedSites,
+  )
   try {
     const { searchParams } = new URL(req.url)
     const search = searchParams.get('search')?.trim() ?? ''
     const status = searchParams.get('status')?.trim() ?? ''
-    const site = searchParams.get('site')?.trim() ?? ''
+    const siteParam = searchParams.get('site')?.trim() ?? ''
     // ── Pagination: default limit 100, max 500 (previously unbounded) ──
     const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1)
     const limit = Math.min(
@@ -82,22 +92,32 @@ export async function GET(req: NextRequest) {
       ]
     }
     if (status) where.status = status
-    if (site) where.site = site
 
-    // ── Site scope: non-superadmin users see only their authorized sites ──
-    // This mirrors the pattern used in /api/itam/devices route.
-    if (auth.user.allowedSites !== 'ALL') {
-      const allowed = (auth.user.allowedSites ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-      if (allowed.length > 0) {
-        // If the user passed an explicit `site` filter, intersect with allowed
-        if (site && !allowed.includes(site)) {
-          return NextResponse.json({ devices: [], total: 0, page, limit })
-        }
-        where.site = where.site ? { in: allowed } : { in: allowed }
+    // ── Site scope enforcement via authorization context ──
+    // superadmin → all sites (no filter, or explicit site filter if provided)
+    // non-superadmin with specific Sites → filter to those Sites
+    // non-superadmin with no Sites → return empty
+    // explicit site=CODE → validate against user's scope (404 if out-of-scope)
+    if (ctx.isSuperAdmin) {
+      if (siteParam) {
+        where.site = normalizeSiteCode(siteParam) ?? siteParam
       }
+    } else if (ctx.siteScope.kind === 'sites' && ctx.siteScope.siteCodes.length > 0) {
+      const allowed = ctx.siteScope.siteCodes
+      if (siteParam) {
+        const normalized = normalizeSiteCode(siteParam)
+        if (!normalized || !allowed.includes(normalized)) {
+          // Out-of-scope Site requested — return empty (don't reveal existence)
+          return NextResponse.json({ devices: [], total: 0, page, limit, totalPages: 0 })
+        }
+        where.site = normalized
+      } else {
+        where.site = { in: allowed }
+      }
+    } else {
+      // kind === 'none' or legacy 'all' fallback — non-superadmin with no
+      // explicit grants. Return empty (fail-closed).
+      return NextResponse.json({ devices: [], total: 0, page, limit, totalPages: 0 })
     }
 
     // Run count + page in parallel for efficiency
@@ -155,6 +175,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
   const demo = auth
+  // ── Build authorization context for Site scope validation ──
+  const ctx = await buildAuthorizationContext(
+    auth.user,
+    auth.row.id,
+    auth.row.allowedSites,
+  )
 
   try {
     const body = await req.json()
@@ -167,6 +193,24 @@ export async function POST(req: NextRequest) {
         )
       }
     }
+
+    // ── Validate that the caller can create devices at body.site ──
+    // Non-superadmin must have an active Site grant for the target Site.
+    // This prevents creating devices at Sites the user cannot access.
+    const targetSite = normalizeSiteCode(body.site)
+    if (!targetSite) {
+      return NextResponse.json(
+        { error: 'site ไม่ถูกต้อง' },
+        { status: 400 },
+      )
+    }
+    if (!ctx.isSuperAdmin && !ctx.canAccessSite(targetSite)) {
+      return NextResponse.json(
+        { error: `คุณไม่มีสิทธิ์สร้างอุปกรณ์ที่ Site '${targetSite}'` },
+        { status: 403 },
+      )
+    }
+
     const created = await db.device.create({
       data: {
         assetCode: String(body.assetCode).trim(),
@@ -176,7 +220,7 @@ export async function POST(req: NextRequest) {
         type: String(body.type).trim(),
         serialNumber: optStr(body.serialNumber),
         status: String(body.status).trim(),
-        site: String(body.site).trim(),
+        site: targetSite,
         assetSiteCode: optStr(body.assetSiteCode),
         department: optStr(body.department),
         departmentCode: optStr(body.departmentCode),
