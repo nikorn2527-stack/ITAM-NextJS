@@ -1,7 +1,7 @@
 'use client'
 
 // ============================================================
-// WoPrintForm — ใบแจ้งซ่อนรายจ๊อบ (Task ID: PRINT-REPORT, PART 1)
+// WoPrintForm — ใบแจ้งซ่อมรายจ๊อบ (Task ID: PRINT-REPORT, PART 1)
 // ============================================================
 // Print-ready form for a single work order. Lets the user pick
 // a paper size (A4 portrait / A4 landscape / A5 portrait) and
@@ -321,7 +321,7 @@ export function WoPrintForm({ workOrderId }: { workOrderId: string }) {
       <div className="print-hide flex flex-wrap items-center justify-between gap-3 border-b bg-card px-4 py-3">
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-orange-500" />
-          <span className="text-sm font-semibold">พิมพ์ใบแจ้งซ่อน</span>
+          <span className="text-sm font-semibold">พิมพ์ใบแจ้งซ่อม</span>
           <Badge variant="outline" className="ml-1 font-mono text-[11px]">
             {wo.woNumber ?? '—'}
           </Badge>
@@ -387,7 +387,7 @@ export function WoPrintForm({ workOrderId }: { workOrderId: string }) {
               ซ
             </div>
             <div className="flex-1 text-center">
-              <h1 className="text-xl font-bold text-slate-900">ใบแจ้งซ่อน</h1>
+              <h1 className="text-xl font-bold text-slate-900">ใบแจ้งซ่อม</h1>
               <div className="text-[11px] text-slate-500">
                 Work Order Form • ระบบจัดการสินทรัพย์
               </div>

@@ -266,6 +266,13 @@ model WorkOrder {
   deviceId         String?
   isDemo           Boolean  @default(false)
   isSpecialFee     Boolean  @default(false) // งานพิเศษ (มีค่าใช้จ่าย) — แอปอื่นดึงผ่าน API
+  // ── Site-based access control (Phase 0: transitional) ──
+  // Direct Site reference so work orders without a device can still be
+  // scoped. For work orders with a device, the server derives siteCode
+  // from Device.site on create/update. Null = external/unassigned (uses
+  // a separate authorization flow — never means "all sites").
+  // See: Site-Based Access Control Guidance for ITAM-NextJS.md §5.1
+  siteCode         String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -279,6 +286,7 @@ model WorkOrder {
   @@index([deviceId])
   @@index([isDemo])
   @@index([isSpecialFee])
+  @@index([siteCode, status, createdAt])
 }
 
 // ============================================================
@@ -545,6 +553,9 @@ model User {
   role         String   @default("viewer")
   department   String?
   permissions  String?  // JSON string
+  // Legacy: comma-separated site codes or 'ALL'. Retained during Phase 0
+  // dual-read/dual-write migration. Will be retired after UserSiteGrant
+  // is fully validated. See Site-Based Access Control Guidance §5.1.
   allowedSites String?  // comma-separated or ALL
   active       Boolean  @default(true)
   passwordHash String?
@@ -557,9 +568,36 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  siteGrants UserSiteGrant[]
+
   @@index([email])
   @@index([role])
   @@index([isDemo])
+}
+
+// ============================================================
+// 20b) UserSiteGrant — Site-level role grants (target design)
+// ============================================================
+// Allows the same user to have different roles at different Sites
+// (e.g. editor at Site A, viewer at Site B). During the transitional
+// phase, the auth layer reads from UserSiteGrant first, then falls
+// back to User.allowedSites with an audit warning.
+//
+// See: Site-Based Access Control Guidance for ITAM-NextJS.md §4.2
+// ============================================================
+model UserSiteGrant {
+  userId    String
+  siteCode  String
+  role      String   @default("viewer") // admin | editor | meter | viewer
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, siteCode])
+  @@index([siteCode, active])
+  @@index([userId, active])
 }
 
 // ============================================================

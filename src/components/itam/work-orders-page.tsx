@@ -2060,7 +2060,7 @@ function WorkOrderDetailContent({
   const [rejectingTxnId, setRejectingTxnId] = React.useState<string | null>(null)
   const [rejectReason, setRejectReason] = React.useState('')
 
-  // ── Print form (ใบแจ้งซ่อน) ──
+  // ── Print form (ใบแจ้งซ่อม) ──
   const [printOpen, setPrintOpen] = React.useState(false)
 
   // Parts list query (always on for the detail view)
@@ -3892,7 +3892,7 @@ function WorkOrderDetailContent({
         </DialogContent>
       </Dialog>
 
-      {/* ── Print form dialog (ใบแจ้งซ่อน) ── */}
+      {/* ── Print form dialog (ใบแจ้งซ่อม) ── */}
       {/* Use the new Visual Template Editor-driven print flow.
           If WO has a printTemplateId, the dialog uses that template
           automatically (with a "เปลี่ยนเทมเพลต" option). */}

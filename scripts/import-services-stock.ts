@@ -1,5 +1,5 @@
 /**
- * Import Services (แจ้งซ่อน) + Stock (สต็อก) — ดึงจาก Google Sheets xlsx
+ * Import Services (แจ้งซ่อม) + Stock (สต็อก) — ดึงจาก Google Sheets xlsx
  */
 
 import { db } from '@/lib/db'
@@ -9,7 +9,7 @@ import * as path from 'path'
 import { STATUS_MAPPINGS } from '@/lib/csv-mapping'
 
 async function importServices() {
-  console.log('\n🔧 === Importing Services (แจ้งซ่อน) ===')
+  console.log('\n🔧 === Importing Services (แจ้งซ่อม) ===')
   const xlsxPath = '/tmp/sheet-exports/services-all.xlsx'
   const wb = XLSX.readFile(xlsxPath)
   console.log('Sheets:', wb.SheetNames)

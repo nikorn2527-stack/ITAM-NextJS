@@ -324,7 +324,7 @@ export function LegacyImportSection() {
       id: 'apps-script-services',
       icon: '🔧',
       title: 'Services',
-      desc: 'ดึงใบงานแจ้งซ่อนจากระบบเก่า',
+      desc: 'ดึงใบงานแจ้งซ่อมจากระบบเก่า',
       color: '#0d9488',
     },
     {

@@ -23,7 +23,7 @@ export const PERMISSIONS = {
   METER_WRITE: 'meter:write',
 
   // Work Orders (แจ้งซ่อม)
-  WO_CREATE: 'wo:create', // แจ้งซ่อนได้ (ทุกคน)
+  WO_CREATE: 'wo:create', // แจ้งซ่อมได้ (ทุกคน)
   WO_VIEW_ALL: 'wo:view:all', // เห็นทุกใบงาน
   WO_VIEW_SITE: 'wo:view:site', // เห็นเฉพาะสาขาตัวเอง
   WO_VIEW_OWN: 'wo:view:own', // เห็นเฉพาะที่ตัวเองแจ้ง

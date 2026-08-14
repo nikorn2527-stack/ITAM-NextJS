@@ -5,7 +5,7 @@
 //
 // Returns a full, self-contained HTML page (text/html) ready to open
 // in a new tab/window and print directly. The page contains:
-//   • Header (Logo + "ใบแจ้งซ่อน" + WO number + date)
+//   • Header (Logo + "ใบแจ้งซ่อม" + WO number + date)
 //   • Info section (reporter, phone, building, location, subject, etc.)
 //   • Device section (if linked)
 //   • External section (if externalMeta)
@@ -203,7 +203,7 @@ export async function GET(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ใบแจ้งซ่อน ${esc(woNumber)}</title>
+  <title>ใบแจ้งซ่อม ${esc(woNumber)}</title>
   <style>
     @page {
       size: ${paper.size};
@@ -493,7 +493,7 @@ export async function GET(
     <div class="header">
       <div class="logo">ซ</div>
       <div class="title-block">
-        <h1>ใบแจ้งซ่อน</h1>
+        <h1>ใบแจ้งซ่อม</h1>
         <div class="subtitle">Work Order Form • ระบบจัดการสินทรัพย์</div>
       </div>
       <div class="meta">
