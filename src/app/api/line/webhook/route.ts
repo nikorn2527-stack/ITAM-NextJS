@@ -395,6 +395,22 @@ export async function POST(req: NextRequest) {
         if (!text) continue
         const messageId = String(msg.id ?? '')
 
+        // ── Deduplicate LINE messages by messageId ──
+        // LINE may retry webhook delivery if it doesn't receive a 200 in time,
+        // which can cause duplicate WorkOrder creation. We check if a WO with
+        // this lineMessageId already exists before processing.
+        if (messageId) {
+          const existing = await db.workOrder.findFirst({
+            where: { lineMessageId: messageId },
+            select: { id: true, woNumber: true },
+          })
+          if (existing) {
+            // Already processed — skip silently (LINE expects 200)
+            console.log(`[line-webhook] skipping duplicate messageId=${messageId} (WO ${existing.woNumber ?? existing.id})`)
+            continue
+          }
+        }
+
         // Persist LineBinding (so we know this user exists)
         await upsertLineBinding(lineUserId)
 
