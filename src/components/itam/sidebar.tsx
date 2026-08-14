@@ -97,7 +97,7 @@ function useCountdown(startDate?: string, endDate?: string) {
     const todayDate = new Date(todayStr + 'T00:00:00')
     const endDateObj = new Date(endDate + 'T00:00:00')
     const dayDiffMs = endDateObj.getTime() - todayDate.getTime()
-    const daysRemaining = Math.round(dayDiffMs / (1000 * 60 * 60 * 24))
+    const daysRemaining = Math.round(dayDiffMs / (1000 * 60 * 60 * 24)) + 1
 
     const isDeadlineDay = daysRemaining === 0
     const isOverdue = daysRemaining < 0
