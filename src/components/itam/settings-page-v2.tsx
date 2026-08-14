@@ -529,7 +529,7 @@ function OrgProfileTab({ profile }: { profile: OrgProfile | undefined }) {
 // Tab 2: Asset Number Patterns
 // ────────────────────────────────────────────────────────────
 
-function AssetPatternTab() {
+export function AssetPatternTab() {
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = React.useState(false)
 

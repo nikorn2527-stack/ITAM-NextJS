@@ -13,11 +13,12 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash } from 'lucide-react'
 import { type MasterItem } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
 import { WoOptionsSection } from './wo-options-section'
+import { AssetPatternTab } from './settings-page-v2'
 import { NotificationTemplatesSection } from './notification-templates-section'
 import { PendingUsersSection } from './pending-users-section'
 import { UserManagementSection } from './user-management-section'
@@ -48,6 +49,7 @@ type SettingsTab =
   | 'users'
   | 'permissions'
   | 'oauth'
+  | 'number-patterns'
 
 interface SettingsTabGroup {
   title: string
@@ -62,6 +64,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'site-attributes', label: 'จัดการสาขา', icon: Building2 },
       { value: 'contacts', label: 'สมุดผู้ติดต่อ', icon: BookUser },
       { value: 'wo-options', label: 'ตัวเลือกใบงาน', icon: ListChecks },
+      { value: 'number-patterns', label: 'รูปแบบเลขทะเบียน', icon: Hash },
       { value: 'sites', label: 'สาขา (ภาพรวม)', icon: Building2 },
     ],
   },
@@ -656,6 +659,8 @@ export function ItamSettings() {
       {tab === 'oauth' && <OauthSection />}
 
       {tab === 'customize' && <AppCustomizeTab />}
+
+      {tab === 'number-patterns' && <AssetPatternTab />}
         </div>
       </div>
     </div>
