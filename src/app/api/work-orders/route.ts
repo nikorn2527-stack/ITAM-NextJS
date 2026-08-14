@@ -47,29 +47,51 @@ async function logAudit(
 }
 
 /**
- * Generates the next WO-YYYYMMDD-NNN number for today, retrying on unique
- * collisions. Returns null if no slot could be claimed in 5 attempts.
+ * Generates the next WO number using PPIT-NNNN format (aligned with Apps Script).
+ * Finds MAX existing PPIT number and returns MAX+1.
+ * Falls back to WO-YYYYMMDD-NNN if no PPIT numbers exist (new system).
  */
 async function generateWoNumber(): Promise<string | null> {
+  // ── Try PPIT-NNNN format first (original Apps Script format) ──
+  const ppitPrefix = 'PPIT-'
+  const lastPpit = await db.workOrder.findFirst({
+    where: { woNumber: { startsWith: ppitPrefix } },
+    orderBy: { woNumber: 'desc' },
+    select: { woNumber: true },
+  })
+  let nextSeq = 1
+  if (lastPpit?.woNumber) {
+    const m = lastPpit.woNumber.match(/(\d+)$/)
+    if (m) nextSeq = parseInt(m[1], 10) + 1
+  }
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = `${ppitPrefix}${String(nextSeq + attempt).padStart(4, '0')}`
+    const exists = await db.workOrder.findUnique({
+      where: { woNumber: candidate },
+      select: { id: true },
+    })
+    if (!exists) return candidate
+  }
+  // ── Fallback: WO-YYYYMMDD-NNN ──
   const now = new Date()
   const ymd =
     `${now.getFullYear()}` +
     `${String(now.getMonth() + 1).padStart(2, '0')}` +
     `${String(now.getDate()).padStart(2, '0')}`
-  const prefix = `WO-${ymd}-`
+  const fallbackPrefix = `WO-${ymd}-`
   for (let attempt = 0; attempt < 5; attempt++) {
     const last = await db.workOrder.findFirst({
-      where: { woNumber: { startsWith: prefix } },
+      where: { woNumber: { startsWith: fallbackPrefix } },
       orderBy: { woNumber: 'desc' },
       select: { woNumber: true },
     })
-    let nextSeq = 1
+    let fbSeq = 1
     if (last?.woNumber) {
       const m = last.woNumber.match(/(\d+)$/)
-      if (m) nextSeq = parseInt(m[1], 10) + 1
+      if (m) fbSeq = parseInt(m[1], 10) + 1
     }
-    nextSeq += attempt // bump on retry
-    const candidate = `${prefix}${pad3(nextSeq)}`
+    fbSeq += attempt
+    const candidate = `${fallbackPrefix}${pad3(fbSeq)}`
     const exists = await db.workOrder.findUnique({
       where: { woNumber: candidate },
       select: { id: true },
