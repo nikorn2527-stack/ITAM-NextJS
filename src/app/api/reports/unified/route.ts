@@ -1205,6 +1205,10 @@ export async function GET(req: NextRequest) {
     // If the user is not superadmin and has specific Site grants:
     //   - site=all → use the user's authorized Sites (not ALL sites)
     //   - site=CODE → validate that CODE is in the user's scope (404 if not)
+    // For multi-site users, we restrict to the FIRST site for now (Phase 1).
+    // A proper multi-site aggregate requires passing siteCodes[] to each
+    // builder — that will be done in Phase 1.5. Returning null (no filter)
+    // for multi-site users would leak cross-Site data, so we don't do that.
     let site: string | null
     if (ctx.isSuperAdmin) {
       site = siteParam === 'all' ? null : siteParam
@@ -1221,34 +1225,32 @@ export async function GET(req: NextRequest) {
     } else if (ctx.siteScope.kind === 'sites') {
       const allowed = ctx.siteScope.siteCodes
       if (siteParam === 'all') {
-        // Non-superadmin with specific grants: "all" means all their Sites
-        // For simplicity in Phase 1, we pass the first site code.
-        // A proper multi-site aggregate would need OR clauses in each builder.
-        // For now, if the user has multiple sites, we filter to just those.
-        site = allowed.length === 1 ? allowed[0] : null // null = no filter, but we need to handle this
-        // Actually, for multi-site users, we should pass the allowed list
-        // to the builders. For Phase 1, we'll use the first site if only one,
-        // or return a note if multiple. This is a known limitation.
-        if (allowed.length > 1) {
-          // For multi-site, we don't filter (show all their sites)
-          // This is acceptable because the builders already filter by site
-          // when it's non-null, and the user's grants limit what they should see.
-          // A future improvement would be to pass siteCodes[] to builders.
-          site = null // will be refined in Phase 1.5
+        if (allowed.length === 1) {
+          // Single Site — pass it as the filter
+          site = allowed[0]
+        } else {
+          // Multi-site — for Phase 1, restrict to the first Site only.
+          // This is a known limitation. Phase 1.5 will pass siteCodes[]
+          // to each builder for a proper multi-site aggregate.
+          // We do NOT pass null (would leak all Sites).
+          site = allowed[0]
         }
       } else {
         // Explicit site=CODE — validate against scope
-        if (!allowed.includes(siteParam.toUpperCase())) {
+        const requested = siteParam.toUpperCase()
+        if (!allowed.includes(requested)) {
           // Return 404 to avoid revealing the existence of out-of-scope Sites
           return NextResponse.json(
             { error: 'ไม่พบรายการที่ระบุ หรือคุณไม่มีสิทธิ์เข้าถึง' },
             { status: 404 },
           )
         }
-        site = siteParam.toUpperCase()
+        site = requested
       }
     } else {
-      // siteScope.kind === 'all' (e.g. legacy ALL fallback)
+      // siteScope.kind === 'all' (legacy ALL fallback for non-superadmin)
+      // This is the dual-read fallback. We treat it the same as superadmin
+      // for now, but this path should disappear after migration.
       site = siteParam === 'all' ? null : siteParam
     }
 

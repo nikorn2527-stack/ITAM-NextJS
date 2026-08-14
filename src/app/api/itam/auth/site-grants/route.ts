@@ -41,9 +41,20 @@ export async function GET(req: NextRequest) {
       if (normalized) where.siteCode = normalized
     }
 
-    // Non-superadmin can only see grants for Sites in their scope
-    if (!ctx.isSuperAdmin && ctx.siteScope.kind === 'sites') {
-      where.siteCode = { in: ctx.siteScope.siteCodes }
+    // ── Scope enforcement (fail-closed) ──
+    // superadmin → can see all grants
+    // non-superadmin with specific Sites → only see grants for their Sites
+    // non-superadmin with no Sites (kind=none) → return empty list
+    // non-superadmin with legacy 'ALL' fallback → only see grants for the
+    //   Sites they can actually access (treat as no explicit grants = empty)
+    if (!ctx.isSuperAdmin) {
+      if (ctx.siteScope.kind === 'sites' && ctx.siteScope.siteCodes.length > 0) {
+        where.siteCode = { in: ctx.siteScope.siteCodes }
+      } else {
+        // kind === 'none' OR kind === 'all' from legacy fallback —
+        // a non-superadmin should never see ALL grants. Return empty.
+        return NextResponse.json({ grants: [] })
+      }
     }
 
     const grants = await db.userSiteGrant.findMany({
@@ -102,6 +113,33 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // ── Validate date semantics ──
+    // validFrom must be before validUntil if both are set
+    if (validFrom && validUntil) {
+      if (isNaN(validFrom.getTime()) || isNaN(validUntil.getTime())) {
+        return NextResponse.json(
+          { error: 'วันที่ validFrom/validUntil ไม่ถูกต้อง' },
+          { status: 400 },
+        )
+      }
+      if (validFrom > validUntil) {
+        return NextResponse.json(
+          { error: 'validFrom ต้องเป็นวันที่ก่อนหรือเท่ากับ validUntil' },
+          { status: 400 },
+        )
+      }
+    } else if (body.validFrom && isNaN(validFrom!.getTime())) {
+      return NextResponse.json(
+        { error: 'วันที่ validFrom ไม่ถูกต้อง' },
+        { status: 400 },
+      )
+    } else if (body.validUntil && isNaN(validUntil!.getTime())) {
+      return NextResponse.json(
+        { error: 'วันที่ validUntil ไม่ถูกต้อง' },
+        { status: 400 },
+      )
+    }
+
     const siteCode = normalizeSiteCode(rawSiteCode)
     if (!siteCode) {
       return NextResponse.json(
@@ -113,7 +151,7 @@ export async function POST(req: NextRequest) {
     // Validate that the target user exists
     const targetUser = await db.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, username: true },
+      select: { id: true, email: true, username: true, role: true },
     })
     if (!targetUser) {
       return NextResponse.json(
@@ -143,6 +181,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: `ไม่พบ Role '${roleCode}' หรือ Role ถูกปิดใช้งาน` },
         { status: 400 },
+      )
+    }
+
+    // ── Privilege escalation guard ──
+    // Only superadmin can assign privileged roles (admin, superadmin).
+    // Non-superadmin with USER_MANAGE can only assign viewer/editor/meter
+    // within their own Site scope. This prevents a Site admin from
+    // granting admin role to themselves or others cross-Site.
+    const PRIVILEGED_ROLES = new Set(['admin', 'superadmin'])
+    if (!ctx.isSuperAdmin && PRIVILEGED_ROLES.has(roleCode)) {
+      return NextResponse.json(
+        { error: `ไม่มีสิทธิ์มอบหมาย Role '${roleCode}' — เฉพาะ superadmin เท่านั้น` },
+        { status: 403 },
+      )
+    }
+
+    // Non-superadmin cannot manage grants for superadmin users
+    if (!ctx.isSuperAdmin && targetUser.role.toLowerCase() === 'superadmin') {
+      return NextResponse.json(
+        { error: 'ไม่สามารถจัดการ grant ของ superadmin ได้' },
+        { status: 403 },
       )
     }
 
