@@ -239,25 +239,26 @@ function WorkspaceElement({
       borderRadius: el.borderRadius ? `${el.borderRadius}mm` : undefined,
     })
   } else if (el.type === 'image') {
-    Object.assign(style, { objectFit: 'contain' as const })
+    Object.assign(style, { objectFit: 'contain' as const, overflow: 'hidden' })
     const src = el.source || el.content
     if (src) {
-      return (
+      // Image with src — render inside the wrapper div (below) so drag/resize works
+      content = (
         <img
           src={src}
           alt=""
-          style={style}
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
           draggable={false}
-          onMouseDown={(e) => onMouseDown(e, el.id)}
         />
       )
+    } else {
+      Object.assign(style, {
+        background: '#f1f5f9', border: '1px dashed #cbd5e1',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#94a3b8', fontSize: '6pt',
+      })
+      content = '(image)'
     }
-    Object.assign(style, {
-      background: '#f1f5f9', border: '1px dashed #cbd5e1',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: '#94a3b8', fontSize: '6pt',
-    })
-    content = '(image)'
   } else if (el.type === 'qr') {
     Object.assign(style, {
       background: '#f8fafc', border: '1px solid #e2e8f0',
