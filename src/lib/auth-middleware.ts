@@ -29,8 +29,9 @@ import {
   type Permission,
   type UserPermissionRow,
 } from '@/lib/auth'
+import { isDemoUser } from '@/lib/demo-mode'
 
-export type RequireAuthOk = { ok: true; user: AuthUser; row: UserPermissionRow }
+export type RequireAuthOk = { ok: true; user: AuthUser; row: UserPermissionRow; isDemo: boolean }
 export type RequireAuthErr = { ok: false; status: number; error: string }
 export type RequireAuthResult = RequireAuthOk | RequireAuthErr
 
@@ -67,5 +68,5 @@ export async function requireAuth(
       error: `ไม่มีสิทธิ์ (${permission}) สำหรับบัญชีนี้`,
     }
   }
-  return { ok: true, user, row }
+  return { ok: true, user, row, isDemo: isDemoUser(user) }
 }

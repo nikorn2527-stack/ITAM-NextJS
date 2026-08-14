@@ -29,6 +29,8 @@ export interface CurrentUser {
   allowedSites: string | null
   active: boolean
   avatarUrl?: string | null
+  /** Demo user flag — drives the demo banner + demo-aware UI behaviour. */
+  isDemo?: boolean
 }
 
 interface AuthState {
@@ -231,6 +233,7 @@ function makePreviewUser(): CurrentUser {
     permissions: DEFAULT_PREVIEW_PERMISSIONS,
     allowedSites: 'ALL',
     active: true,
+    isDemo: false,
   }
 }
 

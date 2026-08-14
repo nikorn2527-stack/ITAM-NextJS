@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, canAccessSite } from '@/lib/auth'
 import { notifyMeter } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { demoTag } from '@/lib/demo-mode'
 import {
   findValidPrevReading,
   findSameMonthBaseline,
@@ -211,6 +212,7 @@ export async function POST(req: NextRequest) {
       floorAtReading: body.floorAtReading || null,
       departmentAtReading: body.departmentAtReading || null,
       departmentCodeAtReading: body.departmentCodeAtReading || null,
+      ...demoTag(user),
     }
 
     let saved

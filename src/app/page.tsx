@@ -16,6 +16,7 @@ import {
   hydrateAuthFromStorage,
 } from '@/store/auth-store'
 import { Loader2 } from 'lucide-react'
+import { DemoBanner } from '@/components/itam/demo-banner'
 
 // Capture the native fetch ONCE and store it on globalThis so it survives
 // Fast Refresh module re-evaluations. Without this, each Fast Refresh would
@@ -229,6 +230,7 @@ export default function Home() {
   return (
     <RealtimeProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
+        <DemoBanner />
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:ml-14">
           <main className="flex-1 overflow-hidden pt-14 md:pt-0">

@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical } from 'lucide-react'
 import { type MasterItem } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
@@ -23,6 +23,7 @@ import { NotificationTemplatesSection } from './notification-templates-section'
 import { PendingUsersSection } from './pending-users-section'
 import { UserManagementSection } from './user-management-section'
 import { OauthSection } from './oauth-section'
+import { DemoManagementSection } from './demo-management-section'
 import { useAuthStore } from '@/store/auth-store'
 
 /** Build fetch headers with the user's JWT (if logged in). */
@@ -50,6 +51,7 @@ type SettingsTab =
   | 'permissions'
   | 'oauth'
   | 'number-patterns'
+  | 'demo'
 
 interface SettingsTabGroup {
   title: string
@@ -74,6 +76,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'users', label: 'จัดการผู้ใช้', icon: Users },
       { value: 'permissions', label: 'สิทธิ์ผู้ใช้', icon: Shield },
       { value: 'pending', label: 'รออนุมัติ', icon: Users },
+      { value: 'demo', label: '🧪 สาธิตระบบ', icon: FlaskConical },
     ],
   },
   {
@@ -661,6 +664,8 @@ export function ItamSettings() {
       {tab === 'customize' && <AppCustomizeTab />}
 
       {tab === 'number-patterns' && <AssetPatternTab />}
+
+      {tab === 'demo' && <DemoManagementSection />}
         </div>
       </div>
     </div>

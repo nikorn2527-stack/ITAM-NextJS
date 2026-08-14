@@ -57,6 +57,7 @@ model Device {
   remark          String?
   costCenter      String?
   deviceGroup     String?
+  isDemo          Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   updatedBy       String?  @default("System")
@@ -103,12 +104,14 @@ model MeterReading {
   departmentCodeAtReading  String?
   eventType                String?
   eventId                  String?
+  isDemo                   Boolean  @default(false)
   createdAt                DateTime @default(now())
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   @@index([deviceId])
   @@index([readingMonth])
+  @@index([isDemo])
 }
 
 // ============================================================
@@ -258,6 +261,7 @@ model WorkOrder {
   canceledAt       DateTime?
   cancelReason     String?
   deviceId         String?
+  isDemo           Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -269,6 +273,7 @@ model WorkOrder {
   @@index([status])
   @@index([assignedTo])
   @@index([deviceId])
+  @@index([isDemo])
 }
 
 // ============================================================
@@ -474,6 +479,7 @@ model StockTransaction {
   approvalMode    String?
   autoApproveAt   String?
   rejectReason    String?
+  isDemo          Boolean  @default(false)
   createdAt       DateTime @default(now())
 
   stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
@@ -482,6 +488,7 @@ model StockTransaction {
   @@index([stockItemId])
   @@index([type])
   @@index([approvalStatus])
+  @@index([isDemo])
 }
 
 // ============================================================
@@ -539,11 +546,13 @@ model User {
   phone        String?
   lineUserId   String?
   lastLoginAt  String?
+  isDemo       Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   @@index([email])
   @@index([role])
+  @@index([isDemo])
 }
 
 // ============================================================

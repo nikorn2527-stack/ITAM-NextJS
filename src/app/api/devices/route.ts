@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { requireAuth } from '@/lib/auth-middleware'
+import { demoTag } from '@/lib/demo-mode'
 
 /** Clamp warrantyMonths to 1..120, default 12. */
 function clampWarrantyMonths(v: unknown): number {
@@ -101,6 +103,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    // ── Demo mode: tag created devices as isDemo when the caller is a demo user ──
+    // requireAuth() is optional here (real/guest flows still work without a
+    // session), so we tolerate 401 and just skip the demo tag in that case.
+    const auth = await requireAuth(req).catch(() => null)
+    const demo = auth?.ok ? auth : null
+
     const body = await req.json()
     const required = ['assetCode', 'name', 'brand', 'model', 'type', 'status', 'site']
     for (const k of required) {
@@ -147,6 +155,7 @@ export async function POST(req: NextRequest) {
         costCenter: optStr(body.costCenter),
         deviceGroup: optStr(body.deviceGroup),
         remark: optStr(body.remark),
+        ...demoTag(demo?.user ?? null),
       },
     })
     await logAudit(

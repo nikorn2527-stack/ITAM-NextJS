@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { validateGuestContact } from '@/lib/guest-validation'
 import { notifyWorkOrderCreated } from '@/lib/notifications'
+import { requireAuth } from '@/lib/auth-middleware'
+import { demoTag } from '@/lib/demo-mode'
 
 // Allowed status values
 const VALID_STATUSES = new Set([
@@ -215,6 +217,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    // ── Demo mode: detect demo caller (optional auth — guest flow still works) ──
+    const auth = await requireAuth(req).catch(() => null)
+    const demo = auth?.ok ? auth : null
+
     const body = await req.json()
     const {
       subject,
@@ -347,6 +353,7 @@ export async function POST(req: NextRequest) {
         picBefore: picBefore ? String(picBefore) : null,
         externalMeta: externalMetaString,
         status: 'PENDING',
+        ...demoTag(demo?.user ?? null),
       },
     })
 
