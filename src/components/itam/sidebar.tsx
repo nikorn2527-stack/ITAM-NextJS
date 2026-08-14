@@ -86,31 +86,41 @@ function useCountdown(startDate?: string, endDate?: string) {
     const start = startDate ? new Date(startDate).getTime() : end - 30 * 24 * 60 * 60 * 1000
     const now = Date.now()
     const diff = end - now
-    // progress pct over the [start → end] window (0 → 100 as time passes)
     const total = Math.max(1, end - start)
     const pct = Math.min(100, Math.max(0, ((now - start) / total) * 100))
 
-    // ── Use Bangkok timezone (UTC+7) for date comparison ──
     const bangkokNow = new Date(now + 7 * 60 * 60 * 1000)
     const todayStr = bangkokNow.toISOString().slice(0, 10)
-    // Calculate days using date-only comparison (not time-based)
     const todayDate = new Date(todayStr + 'T00:00:00')
+    const startDateObj = startDate ? new Date(startDate + 'T00:00:00') : todayDate
     const endDateObj = new Date(endDate + 'T00:00:00')
-    const dayDiffMs = endDateObj.getTime() - todayDate.getTime()
-    const daysRemaining = Math.round(dayDiffMs / (1000 * 60 * 60 * 24)) + 1
 
-    const isDeadlineDay = daysRemaining === 0
-    const isOverdue = daysRemaining < 0
-    const phase: 'before' | 'deadline' | 'overdue' = isOverdue
-      ? 'overdue'
-      : isDeadlineDay
-        ? 'deadline'
-        : 'before'
+    const startDiffMs = startDateObj.getTime() - todayDate.getTime()
+    const daysUntilStart = Math.round(startDiffMs / (1000 * 60 * 60 * 24))
 
-    if (daysRemaining <= 0) {
-      const overdueDays = isOverdue
-        ? Math.abs(daysRemaining)
-        : 0
+    const endDiffMs = endDateObj.getTime() - todayDate.getTime()
+    const daysUntilEnd = Math.round(endDiffMs / (1000 * 60 * 60 * 24)) + 1
+
+    const isPending = daysUntilStart > 0
+    const isOverdue = daysUntilEnd < 0
+    const isDeadlineDay = daysUntilEnd === 0
+    const phase: 'pending' | 'active' | 'deadline' | 'overdue' =
+      isPending ? 'pending' : isOverdue ? 'overdue' : isDeadlineDay ? 'deadline' : 'active'
+
+    if (phase === 'pending') {
+      return {
+        days: daysUntilStart,
+        hours: 0,
+        pct: 0,
+        ended: false,
+        warning: false,
+        phase,
+        overdueDays: 0,
+      }
+    }
+
+    if (isOverdue || isDeadlineDay) {
+      const overdueDays = isOverdue ? Math.abs(daysUntilEnd) : 0
       return {
         days: 0,
         hours: 0,
@@ -121,11 +131,11 @@ function useCountdown(startDate?: string, endDate?: string) {
         overdueDays,
       }
     }
+
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-    // Warning when within 3 days of deadline, OR on deadline day, OR overdue
-    const warning = daysRemaining <= 3 || phase !== 'before'
-    return { days: daysRemaining, hours, minutes, pct, ended: false, warning, phase, overdueDays: 0 }
+    const warning = daysUntilEnd <= 3
+    return { days: daysUntilEnd, hours, minutes, pct, ended: false, warning, phase, overdueDays: 0 }
   }, [startDate, endDate])
 }
 

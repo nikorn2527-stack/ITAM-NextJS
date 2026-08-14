@@ -34,6 +34,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { KeyRound, CheckCircle2, XCircle, Save, RefreshCw, ExternalLink } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -149,115 +150,138 @@ export function OauthSection() {
         </CardContent>
       </Card>
 
-      <ProviderCard
-        title="Google (Gmail)"
-        emoji="🔴"
-        instructions={[
-          'ไปที่ https://console.cloud.google.com/apis/credentials',
-          'สร้าง OAuth 2.0 Client ID (Web application)',
-          'เพิ่ม Authorized Redirect URI ตามที่แสดงด้านล่าง',
-        ]}
-        docsUrl="https://console.cloud.google.com/apis/credentials"
-        configured={Boolean(form.oauth_google_client_id && form.oauth_google_client_secret)}
-        fields={
-          <>
-            <FieldInput
-              label="Client ID"
-              value={form.oauth_google_client_id}
-              onChange={(v) => set('oauth_google_client_id', v)}
-              placeholder="123456789-abc.apps.googleusercontent.com"
-              mono
-            />
-            <FieldInput
-              label="Client Secret"
-              value={form.oauth_google_client_secret}
-              onChange={(v) => set('oauth_google_client_secret', v)}
-              placeholder="GOCSPX-xxxxxxxxxxxxx"
-              mono
-              type="password"
-            />
-            <FieldInput
-              label="Redirect URL"
-              value={form.oauth_google_redirect_url}
-              onChange={(v) => set('oauth_google_redirect_url', v)}
-              placeholder={GOOGLE_REDIRECT}
-              mono
-              readOnly
-              hint="ตั้งค่า URL นี้ใน Google Console → Authorized Redirect URIs"
-            />
-          </>
-        }
-      />
+      <Tabs defaultValue="google" className="w-full">
+        <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:inline-flex">
+          <TabsTrigger value="google" className="gap-1.5">
+            <span>🔴</span>
+            <span className="hidden sm:inline">Google</span>
+          </TabsTrigger>
+          <TabsTrigger value="line" className="gap-1.5">
+            <span>🟢</span>
+            <span className="hidden sm:inline">LINE</span>
+          </TabsTrigger>
+          <TabsTrigger value="telegram" className="gap-1.5">
+            <span>🔵</span>
+            <span className="hidden sm:inline">Telegram</span>
+          </TabsTrigger>
+        </TabsList>
 
-      <ProviderCard
-        title="LINE"
-        emoji="🟢"
-        instructions={[
-          'ไปที่ https://developers.line.biz/console/',
-          'สร้าง LINE Login Channel (provider type: web)',
-          'ตั้งค่า Callback URL ตามที่แสดงด้านล่าง',
-        ]}
-        docsUrl="https://developers.line.biz/console/"
-        configured={Boolean(form.oauth_line_channel_id && form.oauth_line_channel_secret)}
-        fields={
-          <>
-            <FieldInput
-              label="Channel ID"
-              value={form.oauth_line_channel_id}
-              onChange={(v) => set('oauth_line_channel_id', v)}
-              placeholder="1234567890"
-              mono
-            />
-            <FieldInput
-              label="Channel Secret"
-              value={form.oauth_line_channel_secret}
-              onChange={(v) => set('oauth_line_channel_secret', v)}
-              placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
-              mono
-              type="password"
-            />
-            <FieldInput
-              label="Redirect URL (Callback)"
-              value={form.oauth_line_redirect_url}
-              onChange={(v) => set('oauth_line_redirect_url', v)}
-              placeholder={LINE_REDIRECT}
-              mono
-              readOnly
-              hint="ตั้งค่า URL นี้ใน LINE Console → Callback URL"
-            />
-          </>
-        }
-      />
+        <TabsContent value="google" className="mt-4">
+          <ProviderCard
+            title="Google (Gmail)"
+            emoji="🔴"
+            instructions={[
+              'ไปที่ https://console.cloud.google.com/apis/credentials',
+              'สร้าง OAuth 2.0 Client ID (Web application)',
+              'เพิ่ม Authorized Redirect URI ตามที่แสดงด้านล่าง',
+            ]}
+            docsUrl="https://console.cloud.google.com/apis/credentials"
+            configured={Boolean(form.oauth_google_client_id && form.oauth_google_client_secret)}
+            fields={
+              <>
+                <FieldInput
+                  label="Client ID"
+                  value={form.oauth_google_client_id}
+                  onChange={(v) => set('oauth_google_client_id', v)}
+                  placeholder="123456789-abc.apps.googleusercontent.com"
+                  mono
+                />
+                <FieldInput
+                  label="Client Secret"
+                  value={form.oauth_google_client_secret}
+                  onChange={(v) => set('oauth_google_client_secret', v)}
+                  placeholder="GOCSPX-xxxxxxxxxxxxx"
+                  mono
+                  type="password"
+                />
+                <FieldInput
+                  label="Redirect URL"
+                  value={form.oauth_google_redirect_url}
+                  onChange={(v) => set('oauth_google_redirect_url', v)}
+                  placeholder={GOOGLE_REDIRECT}
+                  mono
+                  readOnly
+                  hint="ตั้งค่า URL นี้ใน Google Console → Authorized Redirect URIs"
+                />
+              </>
+            }
+          />
+        </TabsContent>
 
-      <ProviderCard
-        title="Telegram"
-        emoji="🔵"
-        instructions={[
-          'คุยกับ @BotFather → /newbot สร้าง Bot ใหม่',
-          'ตั้งค่า Login Widget domain กับ @BotFather ด้วยคำสั่ง /setdomain',
-          'วาง Bot Token ด้านล่าง — ระบบจะ render Telegram Login Widget ในหน้า Login',
-        ]}
-        docsUrl="https://core.telegram.org/bots/tutorial#obtain-your-bot-token"
-        configured={Boolean(form.oauth_telegram_bot_token)}
-        fields={
-          <>
-            <FieldInput
-              label="Bot Token"
-              value={form.oauth_telegram_bot_token}
-              onChange={(v) => set('oauth_telegram_bot_token', v)}
-              placeholder="123456789:ABC-DEF..."
-              mono
-              type="password"
-            />
-            <div className="sm:col-span-2">
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                💡 Telegram Login Widget ต้องการการตั้งค่า domain ที่ @BotFather
-                — domain ของระบบนี้คือ <span className="font-mono">{typeof window !== 'undefined' ? window.location.hostname : 'itam-next-js-png-team.vercel.app'}</span>
-              </p>
-            </div>
-          </>
-        }
-      />
+        <TabsContent value="line" className="mt-4">
+          <ProviderCard
+            title="LINE"
+            emoji="🟢"
+            instructions={[
+              'ไปที่ https://developers.line.biz/console/',
+              'สร้าง LINE Login Channel (provider type: web)',
+              'ตั้งค่า Callback URL ตามที่แสดงด้านล่าง',
+            ]}
+            docsUrl="https://developers.line.biz/console/"
+            configured={Boolean(form.oauth_line_channel_id && form.oauth_line_channel_secret)}
+            fields={
+              <>
+                <FieldInput
+                  label="Channel ID"
+                  value={form.oauth_line_channel_id}
+                  onChange={(v) => set('oauth_line_channel_id', v)}
+                  placeholder="1234567890"
+                  mono
+                />
+                <FieldInput
+                  label="Channel Secret"
+                  value={form.oauth_line_channel_secret}
+                  onChange={(v) => set('oauth_line_channel_secret', v)}
+                  placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
+                  mono
+                  type="password"
+                />
+                <FieldInput
+                  label="Redirect URL (Callback)"
+                  value={form.oauth_line_redirect_url}
+                  onChange={(v) => set('oauth_line_redirect_url', v)}
+                  placeholder={LINE_REDIRECT}
+                  mono
+                  readOnly
+                  hint="ตั้งค่า URL นี้ใน LINE Console → Callback URL"
+                />
+              </>
+            }
+          />
+        </TabsContent>
+
+        <TabsContent value="telegram" className="mt-4">
+          <ProviderCard
+            title="Telegram"
+            emoji="🔵"
+            instructions={[
+              'คุยกับ @BotFather → /newbot สร้าง Bot ใหม่',
+              'ตั้งค่า Login Widget domain กับ @BotFather ด้วยคำสั่ง /setdomain',
+              'วาง Bot Token ด้านล่าง — ระบบจะ render Telegram Login Widget ในหน้า Login',
+            ]}
+            docsUrl="https://core.telegram.org/bots/tutorial#obtain-your-bot-token"
+            configured={Boolean(form.oauth_telegram_bot_token)}
+            fields={
+              <>
+                <FieldInput
+                  label="Bot Token"
+                  value={form.oauth_telegram_bot_token}
+                  onChange={(v) => set('oauth_telegram_bot_token', v)}
+                  placeholder="123456789:ABC-DEF..."
+                  mono
+                  type="password"
+                />
+                <div className="sm:col-span-2">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    💡 Telegram Login Widget ต้องการการตั้งค่า domain ที่ @BotFather
+                    — domain ของระบบนี้คือ <span className="font-mono">{typeof window !== 'undefined' ? window.location.hostname : 'itam-next-js-png-team.vercel.app'}</span>
+                  </p>
+                </div>
+              </>
+            }
+          />
+        </TabsContent>
+      </Tabs>
 
       <div className="flex gap-2">
         <Button onClick={save} disabled={saving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">

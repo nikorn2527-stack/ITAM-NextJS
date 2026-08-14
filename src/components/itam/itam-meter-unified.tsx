@@ -123,25 +123,42 @@ function CycleCountdownBar({
     )
   }
 
-  // ── Two-phase countdown ──
-  // Phase 1 (before deadline day): "อีก X วัน ถึงกำหนดจดมิเตอร์" (count to deadline)
+  // ── Three-phase countdown ──
+  // Phase 'pending' (before start): "อีก X วัน ถึงวันเริ่มจดมิเตอร์" — count to startDate
+  //   blue: waiting to start
+  // Phase 'active' (between start and end): "อีก X วัน ถึงกำหนดจดมิเตอร์" — count to endDate
   //   green  : > 7 days remaining
   //   orange : 3-7 days remaining
   //   red    : < 3 days remaining
-  // Phase 2 (deadline day / overdue):
-  //   same-day → "⚠️ ถึงกำหนดจดมิเตอร์แล้ว! เหลือ X ชม. Y นาที" (red, pulsing)
-  //   overdue  → "เลยกำหนดแล้ว X วัน" (red, pulsing)
+  // Phase 'deadline' (deadline day): "⚠️ ถึงกำหนดจดมิเตอร์แล้ว! เหลือ X ชม." (red, pulsing)
+  // Phase 'overdue' (past end): "เลยกำหนดแล้ว X วัน" (red, pulsing)
 
   // Use Bangkok timezone (UTC+7) for all date calculations
   const bangkokNow = new Date(now + 7 * 60 * 60 * 1000)
   const todayStr = bangkokNow.toISOString().slice(0, 10)
+  const startDate = cycle.startDate
   const endDate = cycle.endDate
-  // Calculate days remaining using date-only comparison (not time-based)
-  // This avoids timezone issues where diffMs includes partial days
+
   const todayDate = new Date(todayStr + 'T00:00:00')
+  const startDateObj = new Date(startDate + 'T00:00:00')
   const endDateObj = new Date(endDate + 'T00:00:00')
-  const dayDiffMs = endDateObj.getTime() - todayDate.getTime()
-  const daysRemaining = Math.round(dayDiffMs / (1000 * 60 * 60 * 24)) + 1
+
+  // Days until start (before cycle starts)
+  const startDiffMs = startDateObj.getTime() - todayDate.getTime()
+  const daysUntilStart = Math.round(startDiffMs / (1000 * 60 * 60 * 24))
+
+  // Days until end (after cycle starts)
+  const endDiffMs = endDateObj.getTime() - todayDate.getTime()
+  const daysUntilEnd = Math.round(endDiffMs / (1000 * 60 * 60 * 24)) + 1 // include end date
+
+  // Determine phase
+  const isPending = daysUntilStart > 0  // today is before startDate
+  const isOverdue = daysUntilEnd < 0     // today is after endDate
+  const isDeadlineDay = daysUntilEnd === 0 // today is endDate
+  const isActive = !isPending && !isOverdue && !isDeadlineDay // between start and end
+
+  const phase: 'pending' | 'active' | 'deadline' | 'overdue' =
+    isPending ? 'pending' : isOverdue ? 'overdue' : isDeadlineDay ? 'deadline' : 'active'
 
   // For hours/minutes on deadline day, use Bangkok time end-of-day
   const deadlineEndOfDay = new Date(endDate + 'T23:59:59+07:00')
@@ -149,16 +166,10 @@ function CycleCountdownBar({
   const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
   const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
 
-  const isDeadlineDay = daysRemaining === 0
-  const isOverdue = daysRemaining < 0
-  // Phase: 'before' (Phase 1) | 'deadline' (Phase 2 same-day) | 'overdue' (Phase 2 past)
-  const phase: 'before' | 'deadline' | 'overdue' =
-    isOverdue ? 'overdue' : isDeadlineDay ? 'deadline' : 'before'
-
   const total = totalRead + totalUnread
   const pct = total > 0 ? Math.round((totalRead / total) * 100) : 0
 
-  // Days overdue (positive integer when past endDate)
+  // Days overdue
   const overdueDays = isOverdue
     ? Math.floor((now - deadlineEndOfDay.getTime()) / (1000 * 60 * 60 * 24)) + 1
     : 0
@@ -170,8 +181,14 @@ function CycleCountdownBar({
   let countdownText: string
   let pulsing = false
 
-  if (phase === 'overdue') {
-    // Phase 2 — past deadline
+  if (phase === 'pending') {
+    // Before start — waiting
+    colorClass = 'border-sky-300 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/40'
+    textClass = 'text-sky-700 dark:text-sky-300'
+    barClass = 'bg-sky-500'
+    countdownText = `อีก ${daysUntilStart} วัน ถึงวันเริ่มจดมิเตอร์`
+  } else if (phase === 'overdue') {
+    // Past deadline
     colorClass = 'border-rose-400 bg-rose-100 dark:border-rose-800 dark:bg-rose-950/40'
     textClass = 'text-rose-800 dark:text-rose-300'
     barClass = 'bg-rose-600'
@@ -187,24 +204,24 @@ function CycleCountdownBar({
       diffMs > 0
         ? `⚠️ ถึงกำหนดจดมิเตอร์แล้ว! เหลือ ${diffHours} ชม. ${diffMinutes} นาที`
         : `⚠️ ถึงกำหนดจดมิเตอร์แล้ว! ปิดรอบได้เลย`
-  } else if (daysRemaining < 3) {
+  } else if (daysUntilEnd < 3) {
     // Phase 1 — red zone (< 3 days)
     colorClass = 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/40'
     textClass = 'text-rose-700 dark:text-rose-300'
     barClass = 'bg-rose-500'
-    countdownText = `อีก ${daysRemaining} วัน ${diffHours} ชม. ถึงกำหนดจดมิเตอร์`
-  } else if (daysRemaining < 7) {
+    countdownText = `อีก ${daysUntilEnd} วัน ${diffHours} ชม. ถึงกำหนดจดมิเตอร์`
+  } else if (daysUntilEnd < 7) {
     // Phase 1 — orange zone (3-7 days)
     colorClass = 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40'
     textClass = 'text-amber-700 dark:text-amber-300'
     barClass = 'bg-amber-500'
-    countdownText = `อีก ${daysRemaining} วัน ${diffHours} ชม. ถึงกำหนดจดมิเตอร์`
+    countdownText = `อีก ${daysUntilEnd} วัน ${diffHours} ชม. ถึงกำหนดจดมิเตอร์`
   } else {
     // Phase 1 — green zone (> 7 days)
     colorClass = 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/40'
     textClass = 'text-emerald-700 dark:text-emerald-300'
     barClass = 'bg-emerald-500'
-    countdownText = `อีก ${daysRemaining} วัน ถึงกำหนดจดมิเตอร์`
+    countdownText = `อีก ${daysUntilEnd} วัน ถึงกำหนดจดมิเตอร์`
   }
 
   return (
