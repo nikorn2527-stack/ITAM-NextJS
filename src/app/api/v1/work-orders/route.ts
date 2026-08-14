@@ -2,8 +2,10 @@
  * Work Orders API — list + create.
  *
  * GET /api/v1/work-orders
- *   Auth: VIEW_DEVICES
+ *   Auth: VIEW_DEVICES  (or Bearer token for specialFee=true public filter)
  *   Query: ?status=&priority=&assignedTo=&q=search&page=1&limit=20
+ *          ?specialFee=true&from=YYYY-MM-DD&to=YYYY-MM-DD  (public filter for
+ *            งานพิเศษ — returns minimal projection for external apps)
  *          (also supports standard v1: ?sort=, ?filter[...]=, ?include=)
  *   Search fields: subject, building, location, reporterName, woNumber
  *   Response: { data: WorkOrder[], pagination, meta }
@@ -12,7 +14,8 @@
  *   Auth: DEVICE_EDIT — OR guest submission (no auth) if reporterName + tel provided.
  *   Body: { subject, building?, location?, details?, priority?,
  *           reporterName?, tel?, employeeCode?, assetNo?,
- *           externalMeta?, picBefore?, requestId? }
+ *           externalMeta?, picBefore?, requestId?,
+ *           isSpecialFee?: boolean }
  *   - Auto-generates woNumber: WO-YYYYMMDD-NNN (sequential per day)
  *   - submissionSource = 'session' if authenticated, 'guest' otherwise
  *   - trackable = !!tel
@@ -64,15 +67,91 @@ const SEARCH_FIELDS = [
 
 // ── GET ─────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const url = new URL(req.url)
+  const sp = url.searchParams
+
+  // ── Public งานพิเศษ endpoint (Bearer token auth) ──
+  // GET /api/v1/work-orders?specialFee=true&from=YYYY-MM-DD&to=YYYY-MM-DD
+  // Returns a minimal projection of WOs where isSpecialFee=true, suitable for
+  // external apps (e.g. billing/finance) to pull a list of paid work.
+  const specialFeeParam = sp.get('specialFee')?.trim().toLowerCase()
+  const wantsSpecialFee =
+    specialFeeParam === 'true' || specialFeeParam === '1'
+  if (wantsSpecialFee) {
+    // Bearer token auth — any valid user token is accepted.
+    const auth = await requireApiAuth(req).catch(() => null)
+    if (!auth || !auth.ok) {
+      return auth?.response ?? serverError('auth failed')
+    }
+
+    const from = sp.get('from')?.trim() || null
+    const to = sp.get('to')?.trim() || null
+    const page = Math.max(1, Number(sp.get('page') ?? '1') || 1)
+    const limit = Math.min(
+      500,
+      Math.max(1, Number(sp.get('limit') ?? '200') || 200),
+    )
+
+    const where: Record<string, unknown> = { isSpecialFee: true }
+    if (from || to) {
+      const range: Record<string, Date> = {}
+      if (from) range.gte = new Date(`${from}T00:00:00+07:00`)
+      if (to) range.lte = new Date(`${to}T23:59:59+07:00`)
+      where.createdAt = range
+    }
+
+    const [total, rows] = await Promise.all([
+      db.workOrder.count({ where }),
+      db.workOrder.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          woNumber: true,
+          subject: true,
+          status: true,
+          assignedTo: true,
+          building: true,
+          location: true,
+          createdAt: true,
+          closedAt: true,
+          workCompletedAt: true,
+          isSpecialFee: true,
+        },
+      }),
+    ])
+
+    // Compose a `site` field from building/location so external apps get a
+    // single column. (Real site data lives on the device relation.)
+    const data = rows.map((r) => {
+      const site = r.building ?? r.location ?? null
+      const closedAt = r.closedAt ?? r.workCompletedAt ?? null
+      return {
+        id: r.id,
+        woNumber: r.woNumber,
+        subject: r.subject,
+        status: r.status,
+        assignedTo: r.assignedTo,
+        site,
+        createdAt: r.createdAt,
+        closedAt,
+        isSpecialFee: r.isSpecialFee,
+      }
+    })
+
+    return list(data, { page, limit, total })
+  }
+
+  // ── Standard authenticated list ──
   const auth = await requireApiAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) return auth.response
 
-  const url = new URL(req.url)
   const query = parseQuery(url)
 
   // Merge the shortcut query params (?status=&priority=&assignedTo=) into
   // the standard filter[] mechanism so buildWhere can process them.
-  const sp = url.searchParams
   const mergedFilters: Record<string, string> = { ...query.filters }
   const statusParam = sp.get('status')?.trim()
   if (statusParam && !mergedFilters.status) mergedFilters.status = statusParam
@@ -198,6 +277,7 @@ export async function POST(req: NextRequest) {
         picBefore: body.picBefore ? String(body.picBefore) : null,
         status: 'PENDING',
         assetCode: body.assetCode ? String(body.assetCode).trim() : null,
+        isSpecialFee: body.isSpecialFee === true,
       },
     })
 

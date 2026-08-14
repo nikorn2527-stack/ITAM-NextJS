@@ -4,6 +4,11 @@ import { validateGuestContact } from '@/lib/guest-validation'
 import { notifyWorkOrderCreated } from '@/lib/notifications'
 import { requireAuth } from '@/lib/auth-middleware'
 import { demoTag } from '@/lib/demo-mode'
+import {
+  getActiveWoPattern,
+  generateWoNumberFromPattern,
+  ensureDefaultWoPatterns,
+} from '@/lib/wo-number-pattern'
 
 // Allowed status values
 const VALID_STATUSES = new Set([
@@ -49,12 +54,25 @@ async function logAudit(
 }
 
 /**
- * Generates the next WO number using PPIT-NNNN format (aligned with Apps Script).
- * Finds MAX existing PPIT number and returns MAX+1.
- * Falls back to WO-YYYYMMDD-NNN if no PPIT numbers exist (new system).
+ * Generates the next WO number.
+ *
+ * Priority:
+ *   1. If there is an active WoNumberPattern in the DB → use it.
+ *      - `{prefix}{seq:4}`   → PPIT0001 (no dash)
+ *      - `{prefix}-{seq:4}`  → PPIT-0001
+ *   2. Fallback: legacy PPIT logic — find MAX existing PPIT id + 1.
+ *      Falls back to WO-YYYYMMDD-NNN if no PPIT numbers exist (new system).
  */
 async function generateWoNumber(): Promise<string | null> {
-  // ── Use original ID format (PPIT + sequence) ──
+  // ── 1. Try the active WoNumberPattern from the settings DB ──
+  await ensureDefaultWoPatterns().catch(() => {})
+  const activePattern = await getActiveWoPattern().catch(() => null)
+  if (activePattern) {
+    const generated = await generateWoNumberFromPattern(activePattern).catch(() => null)
+    if (generated) return generated
+  }
+
+  // ── 2. Fallback: original PPIT format (PPIT + sequence) ──
   // Find MAX id that starts with PPIT (e.g. PPIT3888)
   const lastPpit = await db.workOrder.findFirst({
     where: { id: { startsWith: 'PPIT' } },
@@ -135,6 +153,13 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status')?.trim() ?? ''
     const priority = searchParams.get('priority')?.trim() ?? ''
     const assignedTo = searchParams.get('assignedTo')?.trim() ?? ''
+    const specialFeeParam = searchParams.get('specialFee')?.trim().toLowerCase()
+    const specialFee =
+      specialFeeParam === 'true' || specialFeeParam === '1'
+        ? true
+        : specialFeeParam === 'false' || specialFeeParam === '0'
+          ? false
+          : null
     const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1)
     const pageSize = Math.min(
       100,
@@ -160,6 +185,7 @@ export async function GET(req: NextRequest) {
     if (status && VALID_STATUSES.has(status)) where.status = status
     if (priority && VALID_PRIORITIES.has(priority)) where.priority = priority
     if (assignedTo) where.assignedTo = assignedTo
+    if (specialFee !== null) where.isSpecialFee = specialFee
 
     const [items, total] = await Promise.all([
       db.workOrder.findMany({
@@ -230,6 +256,7 @@ export async function POST(req: NextRequest) {
       externalMeta,
       isExternal,
       skipGuestValidation,
+      isSpecialFee,
     } = body as Record<string, unknown>
 
     if (!subject || !String(subject).trim()) {
@@ -325,6 +352,8 @@ export async function POST(req: NextRequest) {
         ? priority
         : 'ปกติ'
 
+    const specialFeeFlag = isSpecialFee === true
+
     const created = await db.workOrder.create({
       data: {
         id: woNumber,       // Use PPIT format as the primary id (like original data)
@@ -343,6 +372,7 @@ export async function POST(req: NextRequest) {
           typeof deviceId === 'string' && deviceId.trim() ? deviceId.trim() : null,
         picBefore: picBefore ? String(picBefore) : null,
         externalMeta: externalMetaString,
+        isSpecialFee: specialFeeFlag,
         status: 'PENDING',
         ...demoTag(demo?.user ?? null),
       },
@@ -403,6 +433,7 @@ export async function POST(req: NextRequest) {
         reporterName: created.reporterName,
         submissionSource: created.submissionSource,
         external: externalFlag,
+        isSpecialFee: specialFeeFlag,
         department,
       },
       actorName,

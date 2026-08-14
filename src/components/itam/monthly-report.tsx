@@ -297,6 +297,412 @@ function escHtml(input: unknown): string {
     .replace(/'/g, '&#39;')
 }
 
+/**
+ * Build a self-contained printable A4 HTML report for งานพิเศษ (อนุมัติ).
+ *
+ * Task ID: SPECIALFEE-WOPATTERN-APPROVAL
+ *
+ * Layout:
+ *   • Header — title + month + site + generated timestamp
+ *   • Summary KPIs — total cases, # staff, # sites
+ *   • Grouped table — by ช่าง (assignedTo) → สาขา (site)
+ *   • Per-staff case count + grand total
+ *
+ * Page is print-friendly (A4) and reuses the same CSS pattern as the main
+ * monthly print HTML.
+ */
+function buildSpecialFeeApprovalHTML(opts: {
+  rows: Array<{
+    id: string
+    woNumber: string | null
+    subject: string
+    status: string
+    assignedTo: string | null
+    site: string | null
+    createdAt: string
+    closedAt: string | null
+    isSpecialFee: boolean
+  }>
+  monthLabel: string
+  siteLabel: string
+}): string {
+  const { rows, monthLabel, siteLabel } = opts
+  const todayLabel = new Date().toLocaleString('th-TH')
+
+  const statusLabel = (s: string): string =>
+    STATUS_LABELS[s] ?? s
+
+  // Group by assignedTo (then by site within each staff member).
+  const byStaff = new Map<
+    string,
+    Map<string, typeof rows>
+  >()
+  for (const r of rows) {
+    const staff = r.assignedTo?.trim() || '— ยังไม่มอบหมาย'
+    const site = r.site?.trim() || '—'
+    if (!byStaff.has(staff)) byStaff.set(staff, new Map())
+    const siteMap = byStaff.get(staff)!
+    if (!siteMap.has(site)) siteMap.set(site, [])
+    siteMap.get(site)!.push(r)
+  }
+
+  // Sort staff by total case count desc.
+  const staffEntries = Array.from(byStaff.entries())
+    .map(([staff, siteMap]) => {
+      const siteList = Array.from(siteMap.entries()).map(([site, list]) => ({
+        site,
+        list,
+      }))
+      const total = siteList.reduce((s, x) => s + x.list.length, 0)
+      return { staff, siteList, total }
+    })
+    .sort((a, b) => b.total - a.total)
+
+  const totalCases = rows.length
+  const totalStaff = staffEntries.length
+  const totalSites = new Set(rows.map((r) => r.site?.trim() || '—')).size
+
+  // Build the grouped body HTML.
+  const bodyHtml: string[] = []
+  if (staffEntries.length === 0) {
+    bodyHtml.push(
+      `<div class="empty">ไม่มีงานพิเศษ (มีค่าใช้จ่าย) ในเดือนที่เลือก</div>`,
+    )
+  } else {
+    for (const s of staffEntries) {
+      bodyHtml.push(
+        `<div class="block staff-group">` +
+          `<h3 class="staff-h">👷 ${escHtml(s.staff)} <span class="badge-count">${s.total} เคส</span></h3>`,
+      )
+      for (const sl of s.siteList) {
+        bodyHtml.push(
+          `<div class="site-group">` +
+            `<h4 class="site-h">🏢 สาขา: ${escHtml(sl.site)} <span class="badge-count">${sl.list.length} เคส</span></h4>` +
+            `<table class="data-table">` +
+            `<thead><tr>` +
+            `<th style="width:90px">เลขใบงาน</th>` +
+            `<th>หัวข้อ</th>` +
+            `<th style="width:120px">วันที่</th>` +
+            `<th style="width:100px">สถานะ</th>` +
+            `</tr></thead><tbody>`,
+        )
+        for (const r of sl.list) {
+          const dateLabel = r.createdAt
+            ? new Date(r.createdAt).toLocaleDateString('th-TH', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+              })
+            : '—'
+          bodyHtml.push(
+            `<tr>` +
+              `<td class="mono">${escHtml(r.woNumber ?? '—')}</td>` +
+              `<td>${escHtml(r.subject)}</td>` +
+              `<td>${escHtml(dateLabel)}</td>` +
+              `<td><span class="status-pill">${escHtml(statusLabel(r.status))}</span></td>` +
+              `</tr>`,
+          )
+        }
+        bodyHtml.push(`</tbody></table></div>`)
+      }
+      bodyHtml.push(`</div>`)
+    }
+  }
+
+  // Per-staff summary table (separate page-break-avoid block).
+  const summaryRowsHtml =
+    staffEntries.length === 0
+      ? '<tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>'
+      : staffEntries
+          .map(
+            (s) =>
+              `<tr><td>${escHtml(s.staff)}</td>` +
+              `<td style="text-align:right">${s.total}</td>` +
+              `<td style="text-align:right">${Math.round((s.total / Math.max(totalCases, 1)) * 100)}%</td></tr>`,
+          )
+          .join('')
+
+  return `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<title>รายงานงานพิเศษ (อนุมัติ) ${escHtml(monthLabel)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'IBM Plex Sans Thai', 'Sarabun', 'Segoe UI', sans-serif;
+    background: #f1f5f9;
+    margin: 0;
+    color: #0f172a;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .sheet {
+    background: #fff;
+    max-width: 800px;
+    margin: 24px auto;
+    padding: 32px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    border-radius: 8px;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 3px solid #f97316;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+  }
+  .logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #f97316, #ea580c);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 700;
+  }
+  .title-block { flex: 1; }
+  .title-block h1 {
+    font-size: 20px;
+    margin: 0;
+    color: #0f172a;
+  }
+  .title-block .subtitle {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 2px;
+  }
+  .meta {
+    font-size: 12px;
+    color: #475569;
+    text-align: right;
+    line-height: 1.6;
+  }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .kpi {
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .kpi-label {
+    font-size: 11px;
+    color: #c2410c;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .kpi-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: #9a3412;
+    margin-top: 2px;
+  }
+  .kpi-unit {
+    font-size: 11px;
+    color: #c2410c;
+  }
+  h2.section-h {
+    font-size: 14px;
+    margin: 24px 0 12px;
+    color: #0f172a;
+    border-left: 4px solid #f97316;
+    padding-left: 8px;
+  }
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+  .data-table thead th {
+    background: #f1f5f9;
+    color: #475569;
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 2px solid #e2e8f0;
+    font-weight: 600;
+  }
+  .data-table tbody td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+  .data-table tbody tr:nth-child(even) td { background: #fafafa; }
+  .mono { font-family: 'JetBrains Mono', 'Consolas', monospace; }
+  .staff-group {
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    background: #fffbeb;
+    page-break-inside: avoid;
+  }
+  .staff-h {
+    font-size: 14px;
+    margin: 0 0 8px;
+    color: #9a3412;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .site-group {
+    margin-bottom: 10px;
+    page-break-inside: avoid;
+  }
+  .site-h {
+    font-size: 12px;
+    margin: 8px 0 4px;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .badge-count {
+    display: inline-block;
+    background: #f97316;
+    color: #fff;
+    font-size: 10px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .status-pill {
+    display: inline-block;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 10px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .empty {
+    padding: 32px;
+    text-align: center;
+    color: #94a3b8;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+  }
+  .muted { color: #94a3b8; }
+  .footer {
+    margin-top: 24px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #94a3b8;
+  }
+  .print-btn-bar {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+  }
+  .print-btn-bar button {
+    background: #f97316;
+    color: #fff;
+    border: 0;
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+  }
+  .print-btn-bar button.secondary { background: #64748b; }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .sheet { box-shadow: none; border-radius: 0; padding: 0; max-width: 100%; }
+    .print-btn-bar { display: none !important; }
+    .staff-group, .site-group { page-break-inside: avoid; }
+    .data-table thead th { background: #f1f5f9 !important; }
+  }
+  @media (max-width: 640px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="header">
+      <div class="logo">💰</div>
+      <div class="title-block">
+        <h1>รายงานงานพิเศษ (อนุมัติ)</h1>
+        <div class="subtitle">Special Fee Work Orders • ระบบจัดการสินทรัพย์ไอที</div>
+      </div>
+      <div class="meta">
+        <strong>เดือน: ${escHtml(monthLabel)}</strong><br/>
+        สาขา: ${escHtml(siteLabel)}<br/>
+        พิมพ์เมื่อ: ${escHtml(todayLabel)}
+      </div>
+    </div>
+
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">เคสทั้งหมด</div>
+        <div class="kpi-value">${totalCases}</div>
+        <div class="kpi-unit">เคส</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">จำนวนช่าง</div>
+        <div class="kpi-value">${totalStaff}</div>
+        <div class="kpi-unit">คน</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">จำนวนสาขา</div>
+        <div class="kpi-value">${totalSites}</div>
+        <div class="kpi-unit">สาขา</div>
+      </div>
+    </div>
+
+    <h2 class="section-h">รายละเอียดงานพิเศษ แยกตามช่าง/สาขา</h2>
+    ${bodyHtml.join('')}
+
+    <h2 class="section-h">สรุปจำนวนเคสต่อช่าง</h2>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ช่าง</th>
+          <th style="text-align:right">จำนวนเคส</th>
+          <th style="text-align:right">% ของทั้งหมด</th>
+        </tr>
+      </thead>
+      <tbody>${summaryRowsHtml}</tbody>
+      <tfoot>
+        <tr style="border-top:2px solid #f97316">
+          <td style="font-weight:700">รวมทั้งหมด</td>
+          <td style="text-align:right;font-weight:700">${totalCases}</td>
+          <td style="text-align:right;font-weight:700">100%</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <div class="footer">
+      <span>เอกสารสร้างโดยระบบจัดการสินทรัพย์ — งานพิเศษ (มีค่าใช้จ่าย)</span>
+      <span>พิมพ์เมื่อ ${escHtml(todayLabel)}</span>
+    </div>
+  </div>
+
+  <div class="print-btn-bar">
+    <button type="button" onclick="window.print()">🖨 พิมพ์</button>
+    <button type="button" class="secondary" onclick="window.close()">ปิด</button>
+  </div>
+</body>
+</html>`
+}
+
 // ── Component ──────────────────────────────────────────
 export function MonthlyReport() {
   const { resolvedTheme } = useTheme()
@@ -378,6 +784,82 @@ export function MonthlyReport() {
   // ── Print ──
   function handlePrint() {
     window.print()
+  }
+
+  // ── รายงานงานพิเศษ (อนุมัติ) — Task ID: SPECIALFEE-WOPATTERN-APPROVAL ──
+  // Fetches all isSpecialFee=true WOs in the selected month and opens a
+  // standalone printable A4 page grouped by ช่าง/สาขา.
+  const [approvalBusy, setApprovalBusy] = React.useState(false)
+
+  async function openSpecialFeeApprovalReport() {
+    if (!month) {
+      toast.error('กรุณาเลือกเดือน')
+      return
+    }
+    setApprovalBusy(true)
+    try {
+      // Compute from/to range from the YYYY-MM month value.
+      const [yStr, mStr] = month.split('-')
+      const year = parseInt(yStr, 10)
+      const mon = parseInt(mStr, 10)
+      if (!year || !mon) {
+        toast.error('รูปแบบเดือนไม่ถูกต้อง')
+        return
+      }
+      const from = `${yStr}-${mStr}-01`
+      // Last day of month
+      const lastDay = new Date(year, mon, 0).getDate()
+      const to = `${yStr}-${mStr}-${String(lastDay).padStart(2, '0')}`
+
+      const url =
+        `/api/v1/work-orders?specialFee=true` +
+        `&from=${encodeURIComponent(from)}` +
+        `&to=${encodeURIComponent(to)}` +
+        `&limit=500`
+      const res = await fetch(url, { headers: getAuthHeaders() })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j?.error?.message ?? 'โหลดข้อมูลไม่สำเร็จ')
+      }
+      const json = await res.json()
+      const rows = (json?.data ?? []) as Array<{
+        id: string
+        woNumber: string | null
+        subject: string
+        status: string
+        assignedTo: string | null
+        site: string | null
+        createdAt: string
+        closedAt: string | null
+        isSpecialFee: boolean
+      }>
+
+      // Optional site filter (same UI selector as the main report).
+      const filtered =
+        site === 'all'
+          ? rows
+          : rows.filter((r) => (r.site ?? '') === site)
+
+      const html = buildSpecialFeeApprovalHTML({
+        rows: filtered,
+        monthLabel: formatMonthLabel(month),
+        siteLabel: site === 'all' ? 'ทุกสาขา' : `สาขา ${site}`,
+      })
+      const win = window.open('', '_blank', 'width=1024,height=768')
+      if (!win) {
+        toast.error('เบราว์เซอร์บล็อกการเปิดหน้าต่าง กรุณาอนุญาตป๊อปอัป')
+        return
+      }
+      win.document.open()
+      win.document.write(html)
+      win.document.close()
+      toast.success('เปิดหน้ารายงานงานพิเศษเรียบร้อย — กดปุ่ม “พิมพ์” เพื่อพิมพ์')
+    } catch (err) {
+      console.error('openSpecialFeeApprovalReport', err)
+      toast.error(err instanceof Error ? err.message : 'เปิดรายงานไม่สำเร็จ')
+    } finally {
+      setApprovalBusy(false)
+    }
   }
 
   // ── CSV export ──
@@ -1189,6 +1671,22 @@ export function MonthlyReport() {
                       <span>รายงานมิเตอร์</span>
                       <span className="text-[10px] text-muted-foreground">
                         การจดมิเตอร์ของเดือน
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                  {/* รายงานงานพิเศษ (อนุมัติ) — Task ID: SPECIALFEE-WOPATTERN-APPROVAL */}
+                  <DropdownMenuItem
+                    onSelect={() => openSpecialFeeApprovalReport()}
+                    disabled={approvalBusy}
+                    className="cursor-pointer gap-2"
+                  >
+                    <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-200">
+                      💰
+                    </Badge>
+                    <div className="flex flex-col">
+                      <span>รายงานงานพิเศษ (อนุมัติ)</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        เฉพาะใบงานที่มีค่าใช้จ่าย — แยกตามช่าง/สาขา
                       </span>
                     </div>
                   </DropdownMenuItem>

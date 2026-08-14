@@ -179,6 +179,8 @@ export interface WorkOrder {
   deviceId: string | null
   // ── VISUAL-TEMPLATE-EDITOR: เทมเพลตพิมพ์ที่ Fix ไว้ ──
   printTemplateId: string | null
+  // งานพิเศษ (มีค่าใช้จ่าย) — Task ID: SPECIALFEE-WOPATTERN-APPROVAL
+  isSpecialFee?: boolean
   createdAt: string
   updatedAt: string
   device?: {
@@ -426,6 +428,8 @@ interface NewFormState {
   deviceSearch: string
   // Multi-image (before stage) — up to 9 base64 data URLs
   picBeforeImages: string[]
+  // งานพิเศษ (มีค่าใช้จ่าย) — Task ID: SPECIALFEE-WOPATTERN-APPROVAL
+  isSpecialFee: boolean
 }
 
 const EMPTY_FORM: NewFormState = {
@@ -447,6 +451,7 @@ const EMPTY_FORM: NewFormState = {
   deviceId: null,
   deviceSearch: '',
   picBeforeImages: [],
+  isSpecialFee: false,
 }
 
 // 9 images per stage (matches user requirement)
@@ -624,6 +629,7 @@ export function WorkOrdersPage() {
         priority: form.priority,
         picBeforeImages: form.picBeforeImages,
         submissionSource: 'guest',
+        isSpecialFee: form.isSpecialFee === true,
       }
       if (form.isExternal) {
         payload.isExternal = true
@@ -838,7 +844,18 @@ export function WorkOrdersPage() {
                       onClick={() => setDetailId(wo.id)}
                     >
                       <TableCell className="whitespace-nowrap py-2.5 font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
-                        {wo.woNumber ?? '—'}
+                        <span className="inline-flex items-center gap-1">
+                          {wo.woNumber ?? '—'}
+                          {wo.isSpecialFee && (
+                            <span
+                              title="งานพิเศษ (มีค่าใช้จ่าย)"
+                              aria-label="งานพิเศษ (มีค่าใช้จ่าย)"
+                              className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-amber-100 text-[10px] dark:bg-amber-950"
+                            >
+                              💰
+                            </span>
+                          )}
+                        </span>
                       </TableCell>
                       <TableCell className="max-w-[260px] py-2.5">
                         <div className="flex items-start gap-1.5">
@@ -1050,8 +1067,17 @@ function WorkOrderCard({
       <CardContent className="space-y-3 p-4">
         {/* Top row: WO number + status badges (status badge larger for readability) */}
         <div className="flex items-start justify-between gap-2">
-          <span className="truncate font-mono text-xs font-semibold text-muted-foreground">
+          <span className="inline-flex items-center gap-1 truncate font-mono text-xs font-semibold text-muted-foreground">
             {wo.woNumber ?? '—'}
+            {wo.isSpecialFee && (
+              <span
+                title="งานพิเศษ (มีค่าใช้จ่าย)"
+                aria-label="งานพิเศษ (มีค่าใช้จ่าย)"
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] dark:bg-amber-950"
+              >
+                💰
+              </span>
+            )}
           </span>
           <div className="flex flex-wrap items-center justify-end gap-1">
             {external && (
@@ -1760,6 +1786,30 @@ function CreateWorkOrderDialog({
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* งานพิเศษ (มีค่าใช้จ่าย) — Task ID: SPECIALFEE-WOPATTERN-APPROVAL */}
+            <div className="flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50/60 px-3 py-2.5 dark:border-amber-700 dark:bg-amber-950/30">
+              <div className="flex items-start gap-2">
+                <span className="mt-0.5 text-base leading-none" aria-hidden>
+                  💰
+                </span>
+                <div>
+                  <div className="text-sm font-medium">
+                    งานพิเศษ (มีค่าใช้จ่าย)
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    ใช้สำหรับงานที่มีการเรียกเก็บค่าใช้จ่าย — แอปอื่นดึงผ่าน API
+                  </div>
+                </div>
+              </div>
+              <Switch
+                checked={form.isSpecialFee}
+                onCheckedChange={(v) =>
+                  setForm((s) => ({ ...s, isSpecialFee: v }))
+                }
+                aria-label="งานพิเศษ (มีค่าใช้จ่าย)"
+              />
             </div>
 
             {/* Reporter block */}
@@ -2656,6 +2706,14 @@ function WorkOrderDetailContent({
                 variant="outline"
               >
                 งานนอก
+              </Badge>
+            )}
+            {wo.isSpecialFee && (
+              <Badge
+                className="border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+                variant="outline"
+              >
+                💰 งานพิเศษ (มีค่าใช้จ่าย)
               </Badge>
             )}
             <Badge

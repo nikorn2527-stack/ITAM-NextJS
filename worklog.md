@@ -7949,3 +7949,15 @@ Prisma schema untouched (already updated). Work record: `agent-ctx/SITE-ATTR-TEL
 5. `Printer` icon was already imported — no new lucide import needed.
 
 Work record: `agent-ctx/FIX-WO-AUTH-PRINT-full-stack-developer.md`
+
+---
+Task ID: SPECIALFEE-WOPATTERN-APPROVAL
+Agent: full-stack-developer — งานพิเศษ + เลขใบงาน + รายงานอนุมัติ
+
+Work Log:
+- isSpecialFee: field + checkbox + badge + API filter + external API
+- WoNumberPattern: model + API + settings tab + generateWoNumber integration
+- Approval report: monthly report dropdown option
+
+Stage Summary:
+- 3 features complete
