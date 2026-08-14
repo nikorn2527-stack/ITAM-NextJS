@@ -7846,3 +7846,71 @@ Verification:
 ✅ Home: HTTP 200
 ✅ StockTransaction: 2,602 (1,675 + 927)
 ✅ Linked to WO: 927
+
+---
+Task ID: DEMO-MODE-E2E-TESTS
+Agent: orchestrator — Demo Mode (B) + E2E Tests (C)
+
+Work Log:
+
+**B: Demo Mode (Data Isolation):**
+
+1. **isDemo flag** — เพิ่ม `isDemo Boolean @default(false)` ใน 5 tables:
+   - User, Device, WorkOrder, StockTransaction, MeterReading
+   - + @@index([isDemo]) ในแต่ละ table
+
+2. **3 Demo users:**
+   | Username | Password | Role | isDemo |
+   |---|---|---|---|
+   | demo_admin | demo123 | admin | true |
+   | demo_staff | demo123 | editor | true |
+   | demo_viewer | demo123 | viewer | true |
+
+3. **Data isolation:**
+   - `src/lib/demo-mode.ts` — isDemoUser(), demoTag() helpers
+   - auth-shared.ts — AuthUser interface เพิ่ม isDemo, toAuthUser() ส่งกลับ isDemo
+   - auth-middleware.ts — requireAuth() ส่งกลับ isDemo ใน user object
+   - API routes (devices, work-orders, meter-readings, stock-items) — tag สร้าง isDemo=true เมื่อ user เป็น demo
+
+4. **Demo banner:**
+   - `src/components/itam/demo-banner.tsx` — แถบส้ม "⚠️ โหมดสาธิต" เมื่อ login เป็น demo user
+   - แสดงใน page.tsx เมื่อ authUser.isDemo === true
+
+5. **Demo reset:**
+   - `POST /api/itam/demo/reset` — ลบทุก record ที่ isDemo=true
+   - Settings → 🧪 สาธิตระบบ → "ล้างข้อมูลสาธิต" button
+
+6. **Demo management:**
+   - `src/components/itam/demo-management-section.tsx` — tab ใน settings
+   - แสดง demo users + จำนวน demo records + ปุ่มล้าง
+
+**C: Automated E2E Tests (Playwright):**
+
+1. **Playwright installed** — @playwright/test
+2. **Config** — `playwright.config.ts` (chromium, headless, 30s timeout)
+3. **6 test files:**
+   - `tests/e2e/auth.spec.ts` — login/logout, demo login, wrong password
+   - `tests/e2e/devices.spec.ts` — list, create, edit, delete
+   - `tests/e2e/work-orders.spec.ts` — list, create, detail, assign
+   - `tests/e2e/stock.spec.ts` — tabs, inventory, pending, stock-in
+   - `tests/e2e/meter.spec.ts` — countdown, entry, save reading
+   - `tests/e2e/navigation.spec.ts` — all pages, dark mode, sidebar hover
+4. **Scripts:** test:e2e, test:e2e:ui, test:e2e:headed
+5. **Runner:** `scripts/run-tests.sh`
+
+Verification (production, commit 4ca3096):
+✅ Home: HTTP 200
+✅ Login admin: OK (admin/admin123)
+✅ Login demo: OK — email: demo_admin@itam.demo, role: admin, isDemo: True, 24 permissions
+✅ Build: Compiled successfully
+
+Demo credentials:
+| Username | Password | สิทธิ์ | isDemo |
+|---|---|---|---|
+| demo_admin | demo123 | admin (เห็นทั้งหมด) | ✅ |
+| demo_staff | demo123 | editor (แก้ไขได้) | ✅ |
+| demo_viewer | demo123 | viewer (ดูอย่างเดียว) | ✅ |
+
+Stage Summary:
+- B: Demo mode ใช้งานได้ — ลูกค้า login ด้วย demo_admin/demo123 → ใช้ได้ทุกฟังก์ชัน ไม่กระทบข้อมูลจริง
+- C: E2E tests พร้อมรัน — 6 test files ครอบคลุมทุก critical flow
