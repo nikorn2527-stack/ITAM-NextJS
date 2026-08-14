@@ -130,7 +130,7 @@ export function UserManagementSection() {
   const qc = useQueryClient()
 
   // ── Users list ──
-  const { data: usersData, isLoading } = useQuery<{ users: UserRow[]; count: number }>({
+  const { data: usersData, isLoading, isError, error } = useQuery<{ users: UserRow[]; count: number }>({
     queryKey: ['itam-users'],
     queryFn: async () => {
       const res = await fetch('/api/itam/auth/users', { headers: authHeaders() })
@@ -140,17 +140,21 @@ export function UserManagementSection() {
       }
       return res.json()
     },
+    staleTime: 60_000,
+    retry: 1,
   })
 
   // ── Sites list (for the allowedSites picker) ──
   const { data: sites } = useQuery<SiteOption[]>({
     queryKey: ['sites'],
     queryFn: async () => {
-      const res = await fetch('/api/sites')
+      const res = await fetch('/api/sites', { headers: authHeaders() })
       if (!res.ok) return []
       const json = await res.json()
       return (json.sites ?? []) as SiteOption[]
     },
+    staleTime: 120_000,
+    retry: 1,
   })
 
   // ── Dialog state ──
@@ -350,6 +354,22 @@ export function UserManagementSection() {
                       <TableCell colSpan={6}><Skeleton className="h-8 w-full" /></TableCell>
                     </TableRow>
                   ))
+                ) : isError ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-10 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <span className="text-sm text-rose-600 dark:text-rose-400">
+                          ⚠️ โหลดข้อมูลไม่สำเร็จ
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {error instanceof Error ? error.message : 'เกิดข้อผิดพลาด'}
+                        </span>
+                        <Button size="sm" variant="outline" onClick={() => qc.invalidateQueries({ queryKey: ['itam-users'] })}>
+                          ลองอีกครั้ง
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ) : users.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="py-10 text-center text-sm text-slate-400">
