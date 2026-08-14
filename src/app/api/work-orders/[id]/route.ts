@@ -56,7 +56,7 @@ export async function GET(
           },
         },
         messages: { orderBy: { createdAt: 'asc' } },
-        review: true,
+        reviews: true,
       },
     })
     // Fallback: try by woNumber or requestId
@@ -80,7 +80,7 @@ export async function GET(
             },
           },
           messages: { orderBy: { createdAt: 'asc' } },
-          review: true,
+          reviews: true,
         },
       })
     }
