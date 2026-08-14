@@ -22,6 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 
 type PaperKey = 'a4-portrait' | 'a4-landscape' | 'a5-portrait'
 
@@ -111,15 +112,34 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  // ── Authentication: require WO_VIEW_ALL or WO_VIEW_OWN ──
+  // ── Authentication ──
   // Previously this route had NO auth check — anyone with a WO ID could
   // access work order details, linked stock transactions, device data,
   // and embedded images. This is a Blocker security fix.
-  const auth = await requireAuth(req, 'WO_VIEW_ALL')
+  // We accept any of: WO_VIEW_ALL, WO_VIEW_SITE, WO_VIEW_OWN.
+  // The Site/ownership check is done AFTER loading the WO (below).
+  const auth = await requireAuth(req)
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.error },
       { status: auth.status },
+    )
+  }
+  // Build authorization context for Site scope
+  const ctx = await buildAuthorizationContext(
+    auth.user,
+    auth.row.id,
+    auth.row.allowedSites,
+  )
+  // Check that the user has at least one WO view permission
+  const hasWoViewPerm =
+    ctx.can('WO_VIEW_ALL') ||
+    ctx.can('WO_VIEW_SITE') ||
+    ctx.can('WO_VIEW_OWN')
+  if (!hasWoViewPerm) {
+    return NextResponse.json(
+      { error: 'ไม่มีสิทธิ์ดูใบงาน (WO_VIEW_ALL/WO_VIEW_SITE/WO_VIEW_OWN)' },
+      { status: 403 },
     )
   }
   try {
@@ -151,6 +171,40 @@ export async function GET(
         status: 404,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       })
+    }
+
+    // ── Site/ownership authorization (after loading the WO) ──
+    // - WO_VIEW_ALL (or superadmin) → can see any WO
+    // - WO_VIEW_SITE → can see if WO's siteCode (or device.site) is in scope
+    // - WO_VIEW_OWN → can see if the WO was created by this user
+    //   (matched by reporterEmail or reporterName == user.email/name)
+    if (!ctx.isSuperAdmin && !ctx.can('WO_VIEW_ALL')) {
+      const woSite = wo.siteCode ?? wo.device?.site ?? null
+      const isOwn =
+        (wo.reporterEmail && wo.reporterEmail === auth.user.email) ||
+        (wo.reporterName && wo.reporterName === auth.user.name)
+      if (ctx.can('WO_VIEW_SITE')) {
+        if (!woSite || !ctx.canAccessSite(woSite)) {
+          // Not in user's Site scope — return 404 (don't reveal existence)
+          return new NextResponse('<h1>ไม่พบใบงาน</h1>', {
+            status: 404,
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          })
+        }
+      } else if (ctx.can('WO_VIEW_OWN')) {
+        if (!isOwn) {
+          return new NextResponse('<h1>ไม่พบใบงาน</h1>', {
+            status: 404,
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          })
+        }
+      } else {
+        // No WO view permission that matches — deny
+        return new NextResponse('<h1>ไม่พบใบงาน</h1>', {
+          status: 404,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        })
+      }
     }
 
     // Linked parts
