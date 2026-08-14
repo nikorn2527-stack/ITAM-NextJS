@@ -7800,3 +7800,49 @@ Stage Summary:
 - Consistent pattern: flex h-full flex-col + flex-shrink-0 header + min-h-0 flex-1 overflow-y-auto content
 - wo-options-section: 3 stacked sections → Tabs (visible in one screen, each tab scrolls internally)
 - motion.div in page.tsx now has h-full so children using h-full fill viewport height correctly
+
+---
+Task ID: IMPORT-STOCK-PENDING
+Agent: orchestrator — Import StockOutPending + แก้ WO number + ย้ายนาฬิกา
+
+Work Log:
+
+**1. WO number — ใช้รูปแบบเดิม PPIT-NNNN:**
+- เปลี่ยน generateWoNumber() ให้หา MAX PPIT-XXXX แล้วคืน PPIT-(MAX+1)
+- Fallback: WO-YYYYMMDD-NNN ถ้าไม่มี PPIT เลย
+- ข้อมูลเดิม (001, 002, WO-20250826-001) ไม่ถูกแตะ
+
+**2. นาฬิกา — ย้ายจากขวาบนไป sidebar header:**
+- ลบ TopBarClock จาก fixed right-3 top-2 (บังเนื้อหา)
+- ย้ายไปใต้ appTagline ใน sidebar header (เมื่อ expanded)
+- รูปแบบ: HH:MM:SS · วันพุธ ที่ 13 ส.ค. 2568 + จุดส้มกระพริบ
+
+**3. Import StockOutPending — ข้อมูลรออนุมัติ/อนุมัติแล้ว:**
+- ดึงจาก Google Sheet "StockOutPending" (1,111 rows)
+- แต่ละ row มี: RequestNo, Requester, WorkOrderNo, ProductCode, Quantity, Status, Approver
+- Import เข้า StockTransaction:
+  - Status "อนุมัติแล้ว" → approvalStatus = "APPROVED" (923 rows)
+  - Status "ไม่อนุมัติ" → approvalStatus = "REJECTED" (4 rows)
+  - ทั้งหมด linked กับ WorkOrderNo (PPITxxxx)
+- ผล:
+  - Inserted: 927
+  - Skipped: 184 (duplicates หรือ productCode ไม่มี)
+  - Errors: 0
+
+Final StockTransaction counts:
+- approvalStatus "approved" (import เดิม): 1,675
+- approvalStatus "APPROVED" (import ใหม่): 923
+- approvalStatus "REJECTED": 4
+- รวม: 2,602 transactions
+- Linked to WO (workOrderNo): 927
+
+**สมพันธ์กับแจ้งซ่อน:**
+- 927 transactions มี workOrderNo (เช่น PPIT3104) → linked กับใบงาน
+- เมื่อเปิดใบงาน → เห็นประวัติการเบิกอะไหล่
+- เมื่ออนุมัติเบิกอะไหล่ → ลดสต็อก + auto-close ใบงาน (ถ้า WAITING_PARTS)
+
+Verification:
+✅ Build: Compiled successfully
+✅ Home: HTTP 200
+✅ StockTransaction: 2,602 (1,675 + 927)
+✅ Linked to WO: 927
