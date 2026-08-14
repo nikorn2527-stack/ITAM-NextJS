@@ -40,15 +40,10 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    // Support both Prisma id (cuid) AND requestId/woNumber (e.g. "PPIT4505")
-    const wo = await db.workOrder.findFirst({
-      where: {
-        OR: [
-          { id },
-          { requestId: id },
-          { woNumber: id },
-        ],
-      },
+    // Use findUnique (lighter query — single column, no OR scan)
+    // Try by id first (most common — PPIT format)
+    let wo = await db.workOrder.findUnique({
+      where: { id },
       include: {
         device: {
           select: {
@@ -64,6 +59,31 @@ export async function GET(
         review: true,
       },
     })
+    // Fallback: try by woNumber or requestId
+    if (!wo) {
+      wo = await db.workOrder.findFirst({
+        where: {
+          OR: [
+            { woNumber: id },
+            { requestId: id },
+          ],
+        },
+        include: {
+          device: {
+            select: {
+              id: true,
+              assetCode: true,
+              name: true,
+              brand: true,
+              model: true,
+              site: true,
+            },
+          },
+          messages: { orderBy: { createdAt: 'asc' } },
+          review: true,
+        },
+      })
+    }
     if (!wo) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
