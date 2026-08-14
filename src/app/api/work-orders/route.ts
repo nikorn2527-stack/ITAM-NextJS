@@ -54,51 +54,41 @@ async function logAudit(
  * Falls back to WO-YYYYMMDD-NNN if no PPIT numbers exist (new system).
  */
 async function generateWoNumber(): Promise<string | null> {
-  // ── Try PPIT-NNNN format first (original Apps Script format) ──
-  const ppitPrefix = 'PPIT-'
+  // ── Use original ID format (PPIT + sequence) ──
+  // Find MAX id that starts with PPIT (e.g. PPIT3888)
   const lastPpit = await db.workOrder.findFirst({
-    where: { woNumber: { startsWith: ppitPrefix } },
-    orderBy: { woNumber: 'desc' },
-    select: { woNumber: true },
+    where: { id: { startsWith: 'PPIT' } },
+    orderBy: { id: 'desc' },
+    select: { id: true },
   })
   let nextSeq = 1
-  if (lastPpit?.woNumber) {
-    const m = lastPpit.woNumber.match(/(\d+)$/)
+  if (lastPpit?.id) {
+    const m = lastPpit.id.match(/(\d+)$/)
     if (m) nextSeq = parseInt(m[1], 10) + 1
   }
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const candidate = `${ppitPrefix}${String(nextSeq + attempt).padStart(4, '0')}`
-    const exists = await db.workOrder.findUnique({
-      where: { woNumber: candidate },
-      select: { id: true },
-    })
-    if (!exists) return candidate
+  // Also check numeric ids (e.g. 001, 281) — fetch all and filter in JS
+  // (Prisma doesn't support regex in where clause)
+  const allIds = await db.workOrder.findMany({
+    where: { id: { not: { startsWith: 'PPIT' } } },
+    select: { id: true },
+  })
+  const numericIds = allIds
+    .map(r => parseInt(r.id, 10))
+    .filter(n => !isNaN(n) && n > 0)
+  if (numericIds.length > 0) {
+    const maxNumeric = Math.max(...numericIds)
+    if (maxNumeric >= nextSeq) nextSeq = maxNumeric + 1
   }
-  // ── Fallback: WO-YYYYMMDD-NNN ──
-  const now = new Date()
-  const ymd =
-    `${now.getFullYear()}` +
-    `${String(now.getMonth() + 1).padStart(2, '0')}` +
-    `${String(now.getDate()).padStart(2, '0')}`
-  const fallbackPrefix = `WO-${ymd}-`
   for (let attempt = 0; attempt < 5; attempt++) {
-    const last = await db.workOrder.findFirst({
-      where: { woNumber: { startsWith: fallbackPrefix } },
-      orderBy: { woNumber: 'desc' },
-      select: { woNumber: true },
-    })
-    let fbSeq = 1
-    if (last?.woNumber) {
-      const m = last.woNumber.match(/(\d+)$/)
-      if (m) fbSeq = parseInt(m[1], 10) + 1
-    }
-    fbSeq += attempt
-    const candidate = `${fallbackPrefix}${pad3(fbSeq)}`
+    const candidate = `PPIT${String(nextSeq + attempt).padStart(4, '0')}`
     const exists = await db.workOrder.findUnique({
-      where: { woNumber: candidate },
+      where: { id: candidate },
       select: { id: true },
     })
-    if (!exists) return candidate
+    if (!exists) {
+      // Use PPIT format as both id AND woNumber
+      return candidate
+    }
   }
   return null
 }
@@ -337,7 +327,8 @@ export async function POST(req: NextRequest) {
 
     const created = await db.workOrder.create({
       data: {
-        woNumber,
+        id: woNumber,       // Use PPIT format as the primary id (like original data)
+        woNumber,           // Also set as woNumber for display
         subject: String(subject).trim(),
         building: building ? String(building).trim() : null,
         location: location ? String(location).trim() : null,
