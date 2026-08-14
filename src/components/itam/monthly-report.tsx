@@ -9,7 +9,10 @@
 //   • Summary cards (total WO / completed / avg rating / stock moves)
 //   • Charts (status pie, priority bar, subject bar, staff bar)
 //   • Tables (top items, low stock, staff performance)
-//   • Print button + CSV export
+//   • "พิมพ์รายงาน" dropdown → Dialog w/ section checkboxes
+//     → opens new window w/ formatted HTML (paper usage / devices /
+//       work-orders / stock / meters) — Task ID: MONTHLY-REPORT-PRINT
+//   • Quick Print button (in-page) + CSV export
 // ============================================================
 
 import * as React from 'react'
@@ -60,7 +63,25 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/store/auth-store'
 import {
   Wrench,
   CheckCircle2,
@@ -76,6 +97,11 @@ import {
   AlertTriangle,
   Users,
   Cpu,
+  ChevronDown,
+  FileText,
+  FileSpreadsheet,
+  Gauge,
+  Layers,
 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────
@@ -133,6 +159,49 @@ interface Site {
   name: string
 }
 
+// ── Print-section flags (Task ID: MONTHLY-REPORT-PRINT) ──
+type PrintSectionKey =
+  | 'paper'
+  | 'devices'
+  | 'workOrders'
+  | 'stock'
+  | 'meters'
+
+type PrintSections = Record<PrintSectionKey, boolean>
+
+interface MeterReadingRow {
+  id: string
+  assetCode: string | null
+  deviceName: string | null
+  brand: string | null
+  model: string | null
+  site: string | null
+  readingDate: string
+  readingMonth: string | null
+  meterBw: number
+  meterColor: number
+  pagesBw: number
+  pagesColor: number
+  readingType: string | null
+  readBy: string | null
+  remark: string | null
+}
+
+interface DeviceRow {
+  id: string
+  assetCode: string
+  name: string
+  brand: string
+  model: string
+  type: string
+  status: string
+  site: string
+  department: string | null
+  location: string | null
+  lastMeterBw: number
+  lastMeterColor: number
+}
+
 // ── Constants ──────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
   PENDING: 'รอดำเนินการ',
@@ -173,6 +242,24 @@ const DEVICE_STATUS_COLORS: Record<string, string> = {
   Inactive: '#ef4444',
 }
 
+const DEVICE_TYPE_LABELS: Record<string, string> = {
+  PRINTER: 'เครื่องพิมพ์',
+  SCANNER: 'สแกนเนอร์',
+  COMPUTER: 'คอมพิวเตอร์',
+  NETWORK: 'อุปกรณ์เครือข่าย',
+  OTHER: 'อื่น ๆ',
+}
+
+const READING_TYPE_LABELS: Record<string, string> = {
+  MONTHLY: 'รายเดือน',
+  INITIAL: 'เริ่มต้น',
+  FINAL: 'สิ้นสุด',
+  RESET: 'รีเซ็ต',
+  CHECKOUT: 'ส่งมอบ',
+  SEND_REPAIR: 'ส่งซ่อม',
+  RETURN: 'รับคืน',
+}
+
 function currentMonthValue(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -198,6 +285,18 @@ function formatBaht(value: number): string {
   })}`
 }
 
+/** Escape a value for safe insertion into HTML (used by the print HTML builder). */
+function escHtml(input: unknown): string {
+  if (input === null || input === undefined) return ''
+  const s = String(input)
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 // ── Component ──────────────────────────────────────────
 export function MonthlyReport() {
   const { resolvedTheme } = useTheme()
@@ -208,6 +307,26 @@ export function MonthlyReport() {
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
   const [reportType, setReportType] = React.useState<ReportType>('all')
+
+  // ── Print dialog state (Task ID: MONTHLY-REPORT-PRINT) ──
+  const [printDialogOpen, setPrintDialogOpen] = React.useState(false)
+  const [printSections, setPrintSections] = React.useState<PrintSections>({
+    paper: true,
+    devices: false,
+    workOrders: true,
+    stock: true,
+    meters: false,
+  })
+  const [printBusy, setPrintBusy] = React.useState(false)
+
+  function getAuthHeaders(
+    extra: Record<string, string> = {},
+  ): Record<string, string> {
+    const h: Record<string, string> = { ...extra }
+    const token = useAuthStore.getState()?.token
+    if (token) h['Authorization'] = `Bearer ${token}`
+    return h
+  }
 
   // ── Fetch sites for the filter ──
   const { data: sitesData } = useQuery<Site[]>({
@@ -365,6 +484,598 @@ export function MonthlyReport() {
     toast.success('ส่งออก CSV เรียบร้อย')
   }
 
+  // ============================================================
+  // Print report (Task ID: MONTHLY-REPORT-PRINT)
+  // ============================================================
+
+  /** Open the print dialog with sections pre-selected per report type. */
+  function openPrintDialog(kind: 'paper' | 'devices' | 'workOrders' | 'stock' | 'meters') {
+    const presets: Record<typeof kind, PrintSections> = {
+      paper:       { paper: true,  devices: false, workOrders: false, stock: false, meters: true  },
+      devices:     { paper: false, devices: true,  workOrders: false, stock: false, meters: false },
+      workOrders:  { paper: false, devices: false, workOrders: true,  stock: false, meters: false },
+      stock:       { paper: false, devices: false, workOrders: false, stock: true,  meters: false },
+      meters:      { paper: false, devices: false, workOrders: false, stock: false, meters: true  },
+    }
+    setPrintSections(presets[kind])
+    setPrintDialogOpen(true)
+  }
+
+  function togglePrintSection(key: PrintSectionKey) {
+    setPrintSections((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  /** Fetch meter readings for the selected month from the authed endpoint. */
+  async function fetchMeterReadingsForMonth(targetMonth: string): Promise<MeterReadingRow[]> {
+    try {
+      const url = `/api/itam/meter-readings?month=${encodeURIComponent(targetMonth)}&limit=100`
+      const res = await fetch(url, { headers: getAuthHeaders() })
+      if (!res.ok) return []
+      const json = await res.json()
+      const readings = (json?.readings ?? []) as Array<Record<string, unknown>>
+      return readings.map((r) => {
+        const dev = (r.device as Record<string, unknown> | null) ?? null
+        return {
+          id: String(r.id ?? ''),
+          assetCode: (r.assetCode as string) ?? dev?.assetCode ?? null,
+          deviceName: (dev?.brand as string)
+            ? `${dev.brand} ${dev.model ?? ''}`.trim()
+            : null,
+          brand: (dev?.brand as string) ?? null,
+          model: (dev?.model as string) ?? null,
+          site: (dev?.site as string) ?? null,
+          readingDate: String(r.readingDate ?? ''),
+          readingMonth: (r.readingMonth as string) ?? null,
+          meterBw: Number(r.meterBw ?? 0),
+          meterColor: Number(r.meterColor ?? 0),
+          pagesBw: Number(r.pagesBw ?? 0),
+          pagesColor: Number(r.pagesColor ?? 0),
+          readingType: (r.readingType as string) ?? null,
+          readBy: (r.readBy as string) ?? null,
+          remark: (r.remark as string) ?? null,
+        }
+      })
+    } catch {
+      return []
+    }
+  }
+
+  /** Fetch the full device list for the print report. */
+  async function fetchDevicesForPrint(): Promise<DeviceRow[]> {
+    try {
+      const res = await fetch('/api/devices', { headers: getAuthHeaders() })
+      if (!res.ok) return []
+      const json = await res.json()
+      const list = (json?.devices ?? []) as Array<Record<string, unknown>>
+      return list.map((d) => ({
+        id: String(d.id ?? ''),
+        assetCode: String(d.assetCode ?? ''),
+        name: String(d.name ?? ''),
+        brand: String(d.brand ?? ''),
+        model: String(d.model ?? ''),
+        type: String(d.type ?? 'OTHER'),
+        status: String(d.status ?? 'Active'),
+        site: String(d.site ?? ''),
+        department: (d.department as string) ?? null,
+        location: (d.location as string) ?? null,
+        lastMeterBw: Number(d.lastMeterBw ?? 0),
+        lastMeterColor: Number(d.lastMeterColor ?? 0),
+      }))
+    } catch {
+      return []
+    }
+  }
+
+  /** Build the self-contained printable HTML page (string). */
+  function buildPrintHTML(opts: {
+    sections: PrintSections
+    report: MonthlyReportData
+    meterRows: MeterReadingRow[]
+    deviceRows: DeviceRow[]
+    siteLabel: string
+  }): string {
+    const { sections, report, meterRows, deviceRows, siteLabel } = opts
+    const monthLabel = formatMonthLabel(report.month)
+    const generatedLabel = new Date(report.generatedAt).toLocaleString('th-TH')
+    const todayLabel = new Date().toLocaleString('th-TH')
+
+    // Group helpers
+    function groupCount<T extends Record<string, unknown>>(
+      rows: T[],
+      key: keyof T,
+    ): Array<{ key: string; count: number }> {
+      const m = new Map<string, number>()
+      for (const r of rows) {
+        const k = String(r[key] ?? '—')
+        m.set(k, (m.get(k) ?? 0) + 1)
+      }
+      return Array.from(m.entries())
+        .map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.count - a.count)
+    }
+
+    function tableRows(rows: Array<Array<string | number>>, aligns?: Array<'l' | 'r' | 'c'>): string {
+      return rows
+        .map(
+          (r) =>
+            `<tr>${r
+              .map((c, j) => {
+                const a = aligns?.[j] ?? 'l'
+                const style = a === 'r'
+                  ? 'text-align:right;'
+                  : a === 'c'
+                    ? 'text-align:center;'
+                    : ''
+                return `<td style="${style}">${escHtml(c)}</td>`
+              })
+              .join('')}</tr>`,
+        )
+        .join('')
+    }
+
+    // ── Section: Paper Usage Summary ──
+    let paperSection = ''
+    if (sections.paper) {
+      const totalBw = meterRows.reduce((s, r) => s + (r.pagesBw || 0), 0)
+      const totalColor = meterRows.reduce((s, r) => s + (r.pagesColor || 0), 0)
+      const totalPages = totalBw + totalColor
+      const byDevice = new Map<string, { bw: number; color: number; name: string }>()
+      for (const r of meterRows) {
+        const k = r.assetCode ?? r.deviceName ?? '—'
+        const prev = byDevice.get(k) ?? { bw: 0, color: 0, name: r.deviceName ?? k }
+        prev.bw += r.pagesBw || 0
+        prev.color += r.pagesColor || 0
+        byDevice.set(k, prev)
+      }
+      const deviceRowsHtml = Array.from(byDevice.entries())
+        .sort((a, b) => (b[1].bw + b[1].color) - (a[1].bw + a[1].color))
+        .slice(0, 20)
+        .map(([k, v]) =>
+          `<tr><td>${escHtml(k)}</td><td>${escHtml(v.name)}</td><td style="text-align:right">${v.bw.toLocaleString()}</td><td style="text-align:right">${v.color.toLocaleString()}</td><td style="text-align:right"><strong>${(v.bw + v.color).toLocaleString()}</strong></td></tr>`,
+        )
+        .join('')
+
+      paperSection = `
+        <section class="block">
+          <h2>① รายงานสรุปการใช้กระดาษ</h2>
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-label">การใช้กระดาษขาว</div><div class="kpi-value">${totalBw.toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">การใช้กระดาษสี</div><div class="kpi-value">${totalColor.toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">รวมทั้งหมด</div><div class="kpi-value accent">${totalPages.toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">จำนวนเครื่องที่จดมิเตอร์</div><div class="kpi-value">${meterRows.length}</div><div class="kpi-unit">เครื่อง</div></div>
+          </div>
+          ${deviceRowsHtml ? `
+            <table class="data-table">
+              <thead><tr><th>Asset Code</th><th>อุปกรณ์</th><th style="text-align:right">ขาว (แผ่น)</th><th style="text-align:right">สี (แผ่น)</th><th style="text-align:right">รวม</th></tr></thead>
+              <tbody>${deviceRowsHtml}</tbody>
+            </table>` : '<p class="muted">ไม่มีข้อมูลการจดมิเตอร์ในเดือนนี้</p>'}
+        </section>`
+    }
+
+    // ── Section: Device Status ──
+    let deviceSection = ''
+    if (sections.devices) {
+      const byStatus = groupCount(deviceRows, 'status')
+      const byType = groupCount(deviceRows, 'type')
+      const bySite = groupCount(deviceRows, 'site')
+      const total = deviceRows.length
+
+      const statusRows = tableRows(
+        byStatus.map((r) => [
+          STATUS_LABELS_DEV[r.key] ?? r.key,
+          r.count,
+          total > 0 ? `${Math.round((r.count / total) * 100)}%` : '0%',
+        ]),
+        ['l', 'r', 'r'],
+      )
+      const typeRows = tableRows(
+        byType.map((r) => [
+          DEVICE_TYPE_LABELS[r.key] ?? r.key,
+          r.count,
+          total > 0 ? `${Math.round((r.count / total) * 100)}%` : '0%',
+        ]),
+        ['l', 'r', 'r'],
+      )
+      const siteRowsHtml = tableRows(
+        bySite.map((r) => [r.key, r.count, total > 0 ? `${Math.round((r.count / total) * 100)}%` : '0%']),
+        ['l', 'r', 'r'],
+      )
+
+      const newDevices = report.devices?.newDevices ?? 0
+      deviceSection = `
+        <section class="block">
+          <h2>② รายงานสถานะอุปกรณ์</h2>
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-label">อุปกรณ์ทั้งหมด</div><div class="kpi-value">${total}</div><div class="kpi-unit">เครื่อง</div></div>
+            <div class="kpi"><div class="kpi-label">เพิ่มใหม่ในเดือนนี้</div><div class="kpi-value accent">${newDevices}</div><div class="kpi-unit">เครื่อง</div></div>
+            <div class="kpi"><div class="kpi-label">สถานะที่พบ</div><div class="kpi-value">${byStatus.length}</div><div class="kpi-unit">ประเภท</div></div>
+            <div class="kpi"><div class="kpi-label">สาขาที่พบ</div><div class="kpi-value">${bySite.length}</div><div class="kpi-unit">สาขา</div></div>
+          </div>
+          <div class="two-col">
+            <div>
+              <h3 class="sub-h">แยกตามสถานะ</h3>
+              <table class="data-table">
+                <thead><tr><th>สถานะ</th><th style="text-align:right">จำนวน</th><th style="text-align:right">%</th></tr></thead>
+                <tbody>${statusRows || '<tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
+              </table>
+            </div>
+            <div>
+              <h3 class="sub-h">แยกตามประเภท</h3>
+              <table class="data-table">
+                <thead><tr><th>ประเภท</th><th style="text-align:right">จำนวน</th><th style="text-align:right">%</th></tr></thead>
+                <tbody>${typeRows || '<tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
+              </table>
+            </div>
+          </div>
+          <h3 class="sub-h">แยกตามสาขา</h3>
+          <table class="data-table">
+            <thead><tr><th>สาขา</th><th style="text-align:right">จำนวน</th><th style="text-align:right">%</th></tr></thead>
+            <tbody>${siteRowsHtml || '<tr><td colspan="3" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
+          </table>
+        </section>`
+    }
+
+    // ── Section: Work Orders ──
+    let woSection = ''
+    if (sections.workOrders && report.workOrders) {
+      const wo = report.workOrders
+      const statusRows = tableRows(
+        Object.entries(wo.byStatus).map(([k, v]) => [STATUS_LABELS[k] ?? k, v]),
+        ['l', 'r'],
+      )
+      const priorityRows = tableRows(
+        Object.entries(wo.byPriority).map(([k, v]) => [k, v]),
+        ['l', 'r'],
+      )
+      const staffRows = tableRows(
+        wo.byStaff.map((s) => [
+          s.name,
+          s.count,
+          s.completed,
+          s.count > 0 ? `${Math.round((s.completed / s.count) * 100)}%` : '0%',
+        ]),
+        ['l', 'r', 'r', 'r'],
+      )
+      const subjectRows = tableRows(
+        wo.bySubject.slice(0, 15).map((s) => [s.subject, s.count]),
+        ['l', 'r'],
+      )
+      woSection = `
+        <section class="block">
+          <h2>③ รายงานใบงานแจ้งซ่อน</h2>
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-label">ใบงานทั้งหมด</div><div class="kpi-value">${wo.total}</div><div class="kpi-unit">ใบ</div></div>
+            <div class="kpi"><div class="kpi-label">เสร็จแล้ว</div><div class="kpi-value accent">${wo.byStatus.COMPLETED ?? 0}</div><div class="kpi-unit">ใบ</div></div>
+            <div class="kpi"><div class="kpi-label">คะแนนเฉลี่ย</div><div class="kpi-value">${wo.avgRating !== null ? wo.avgRating.toFixed(2) : '—'}</div><div class="kpi-unit">ดาว</div></div>
+            <div class="kpi"><div class="kpi-label">เวลาตอบเฉลี่ย</div><div class="kpi-value" style="font-size:18px">${escHtml(report.meta.avgResponseTimeLabel)}</div><div class="kpi-unit">แจ้ง → มอบหมาย</div></div>
+          </div>
+          <div class="two-col">
+            <div>
+              <h3 class="sub-h">แยกตามสถานะ</h3>
+              <table class="data-table">
+                <thead><tr><th>สถานะ</th><th style="text-align:right">จำนวน</th></tr></thead>
+                <tbody>${statusRows || '<tr><td colspan="2" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
+              </table>
+            </div>
+            <div>
+              <h3 class="sub-h">แยกตามความเร่งด่วน</h3>
+              <table class="data-table">
+                <thead><tr><th>ความเร่งด่วน</th><th style="text-align:right">จำนวน</th></tr></thead>
+                <tbody>${priorityRows || '<tr><td colspan="2" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
+              </table>
+            </div>
+          </div>
+          <h3 class="sub-h">ผลงานช่าง</h3>
+          <table class="data-table">
+            <thead><tr><th>ช่าง</th><th style="text-align:right">รับ</th><th style="text-align:right">เสร็จ</th><th style="text-align:right">%เสร็จ</th></tr></thead>
+            <tbody>${staffRows || '<tr><td colspan="4" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
+          </table>
+          <h3 class="sub-h">หัวข้อยอดนิยม (Top 15)</h3>
+          <table class="data-table">
+            <thead><tr><th>หัวข้อ</th><th style="text-align:right">จำนวน</th></tr></thead>
+            <tbody>${subjectRows || '<tr><td colspan="2" class="muted">ไม่มีข้อมูล</td></tr>'}</tbody>
+          </table>
+        </section>`
+    }
+
+    // ── Section: Stock ──
+    let stockSection = ''
+    if (sections.stock && report.stock) {
+      const st = report.stock
+      const topRows = tableRows(
+        st.topItems.slice(0, 20).map((t) => [
+          t.productName,
+          t.productCode ?? '—',
+          t.type === 'IN' ? 'รับเข้า' : t.type === 'OUT' ? 'เบิกออก' : t.type === 'ADJUST' ? 'ปรับปรุง' : t.type,
+          t.quantity,
+        ]),
+        ['l', 'l', 'c', 'r'],
+      )
+      const lowRows = tableRows(
+        st.lowStockItems.map((l) => [
+          l.productName,
+          l.productCode,
+          l.quantity,
+          l.minQuantity,
+          l.unit,
+        ]),
+        ['l', 'l', 'r', 'r', 'c'],
+      )
+      stockSection = `
+        <section class="block">
+          <h2>④ รายงานสต็อก</h2>
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-label">รับเข้า</div><div class="kpi-value accent">${st.totalIn}</div><div class="kpi-unit">หน่วย</div></div>
+            <div class="kpi"><div class="kpi-label">เบิกออก</div><div class="kpi-value">${st.totalOut}</div><div class="kpi-unit">หน่วย</div></div>
+            <div class="kpi"><div class="kpi-label">มูลค่ารวม</div><div class="kpi-value" style="font-size:18px">${escHtml(formatBaht(st.totalValue))}</div><div class="kpi-unit">บาท</div></div>
+            <div class="kpi"><div class="kpi-label">ของเหลือน้อย</div><div class="kpi-value" style="color:#ef4444">${st.lowStockItems.length}</div><div class="kpi-unit">รายการ</div></div>
+          </div>
+          <h3 class="sub-h">รายการสต็อกยอดนิยม (Top 20)</h3>
+          <table class="data-table">
+            <thead><tr><th>สินค้า</th><th>รหัส</th><th style="text-align:center">ประเภท</th><th style="text-align:right">จำนวน</th></tr></thead>
+            <tbody>${topRows || '<tr><td colspan="4" class="muted">ไม่มีรายการ</td></tr>'}</tbody>
+          </table>
+          <h3 class="sub-h">รายการของเหลือน้อย (ต่ำกว่าขั้นต่ำ)</h3>
+          <table class="data-table">
+            <thead><tr><th>สินค้า</th><th>รหัส</th><th style="text-align:right">คงเหลือ</th><th style="text-align:right">ขั้นต่ำ</th><th style="text-align:center">หน่วย</th></tr></thead>
+            <tbody>${lowRows || '<tr><td colspan="5" class="muted">ไม่มีรายการ — เยี่ยม!</td></tr>'}</tbody>
+          </table>
+        </section>`
+    }
+
+    // ── Section: Meter Readings ──
+    let meterSection = ''
+    if (sections.meters) {
+      const meterRowsHtml = meterRows
+        .slice(0, 200)
+        .map((r) => {
+          const dateLabel = r.readingDate
+            ? new Date(r.readingDate).toLocaleDateString('th-TH')
+            : '—'
+          const typeLabel = r.readingType
+            ? (READING_TYPE_LABELS[r.readingType] ?? r.readingType)
+            : '—'
+          return `<tr>
+            <td>${escHtml(r.assetCode ?? '—')}</td>
+            <td>${escHtml(r.deviceName ?? '—')}</td>
+            <td>${escHtml(r.site ?? '—')}</td>
+            <td>${escHtml(dateLabel)}</td>
+            <td style="text-align:right">${r.meterBw.toLocaleString()}</td>
+            <td style="text-align:right">${r.meterColor.toLocaleString()}</td>
+            <td style="text-align:right"><strong>${(r.pagesBw + r.pagesColor).toLocaleString()}</strong></td>
+            <td style="text-align:center">${escHtml(typeLabel)}</td>
+            <td>${escHtml(r.readBy ?? '—')}</td>
+          </tr>`
+        })
+        .join('')
+      const totalBw = meterRows.reduce((s, r) => s + (r.pagesBw || 0), 0)
+      const totalColor = meterRows.reduce((s, r) => s + (r.pagesColor || 0), 0)
+      meterSection = `
+        <section class="block">
+          <h2>⑤ รายงานมิเตอร์</h2>
+          <div class="kpi-grid">
+            <div class="kpi"><div class="kpi-label">จำนวนรายการจดมิเตอร์</div><div class="kpi-value">${meterRows.length}</div><div class="kpi-unit">รายการ</div></div>
+            <div class="kpi"><div class="kpi-label">กระดาษขาวรวม</div><div class="kpi-value">${totalBw.toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">กระดาษสีรวม</div><div class="kpi-value">${totalColor.toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">รวมทั้งหมด</div><div class="kpi-value accent">${(totalBw + totalColor).toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
+          </div>
+          <table class="data-table">
+            <thead><tr>
+              <th>Asset Code</th><th>อุปกรณ์</th><th>สาขา</th><th>วันที่จด</th>
+              <th style="text-align:right">มิเตอร์ ข/ส</th>
+              <th style="text-align:right">มิเตอร์ สี</th>
+              <th style="text-align:right">แผ่นที่ใช้</th>
+              <th style="text-align:center">ประเภท</th>
+              <th>ผู้จด</th>
+            </tr></thead>
+            <tbody>${meterRowsHtml || '<tr><td colspan="9" class="muted">ไม่มีข้อมูลมิเตอร์ในเดือนนี้</td></tr>'}</tbody>
+          </table>
+        </section>`
+    }
+
+    return `<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>รายงานรายเดือน ${escHtml(monthLabel)}</title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: 'Segoe UI', 'Thonburi', 'Tahoma', sans-serif;
+    color: #1e293b; background: #f1f5f9;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  body { padding: 16px; display: flex; justify-content: center; }
+  .sheet {
+    background: #fff; width: 100%; max-width: 210mm;
+    padding: 14mm 12mm; border-radius: 8px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+  }
+  .header {
+    display: flex; align-items: flex-start; gap: 14px;
+    padding-bottom: 10px; border-bottom: 2px solid #0f172a;
+  }
+  .logo {
+    width: 50px; height: 50px;
+    background: #f97316; color: #fff;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; font-weight: 700; flex-shrink: 0;
+  }
+  .header .title-block { flex: 1; }
+  .header h1 { margin: 0; font-size: 20px; color: #0f172a; }
+  .header .subtitle { font-size: 11px; color: #64748b; margin-top: 2px; }
+  .header .meta { text-align: right; font-size: 11px; color: #475569; line-height: 1.55; }
+  .header .meta strong { color: #0f172a; font-size: 12px; }
+
+  .block { margin-top: 14px; page-break-inside: avoid; }
+  .block h2 {
+    font-size: 14px; color: #0f172a;
+    border-left: 4px solid #f97316;
+    padding: 4px 0 4px 10px; margin: 0 0 8px 0;
+    background: #fff7ed; border-radius: 0 4px 4px 0;
+  }
+  .sub-h {
+    font-size: 12px; color: #475569; font-weight: 600;
+    margin: 12px 0 4px 0;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 8px; margin: 8px 0;
+  }
+  .kpi {
+    background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 6px; padding: 8px 10px;
+  }
+  .kpi-label {
+    font-size: 10px; color: #64748b;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .kpi-value { font-size: 22px; font-weight: 700; color: #0f172a; line-height: 1.2; }
+  .kpi-value.accent { color: #f97316; }
+  .kpi-unit { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+
+  .two-col {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .data-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 11px; margin-top: 4px;
+  }
+  .data-table thead th {
+    background: #f1f5f9; color: #475569;
+    text-align: left; padding: 6px 8px;
+    border: 1px solid #e2e8f0; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.03em; font-size: 10px;
+  }
+  .data-table tbody td {
+    padding: 5px 8px; border: 1px solid #e2e8f0;
+    vertical-align: top;
+  }
+  .data-table tbody tr:nth-child(even) td { background: #fafbfc; }
+  .muted { color: #94a3b8; font-style: italic; text-align: center; padding: 8px !important; }
+
+  .footer {
+    margin-top: 18px; padding-top: 8px;
+    border-top: 1px solid #e2e8f0;
+    display: flex; justify-content: space-between;
+    font-size: 10px; color: #94a3b8;
+  }
+
+  .print-btn-bar {
+    position: fixed; bottom: 16px; right: 16px;
+    display: flex; gap: 8px; z-index: 99;
+  }
+  .print-btn-bar button {
+    padding: 9px 16px; border-radius: 6px; border: none;
+    background: #f97316; color: #fff;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .print-btn-bar button.secondary { background: #64748b; }
+
+  @media print {
+    body { background: #fff; padding: 0; }
+    .sheet { box-shadow: none; border-radius: 0; padding: 0; max-width: 100%; }
+    .print-btn-bar { display: none !important; }
+    .block { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+    .data-table thead th { background: #f1f5f9 !important; }
+  }
+  @media (max-width: 640px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .two-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="header">
+      <div class="logo">ซ</div>
+      <div class="title-block">
+        <h1>รายงานรายเดือน</h1>
+        <div class="subtitle">Monthly Report • ระบบจัดการสินทรัพย์ไอที</div>
+      </div>
+      <div class="meta">
+        <strong>เดือน: ${escHtml(monthLabel)}</strong><br/>
+        สาขา: ${escHtml(siteLabel)}<br/>
+        สร้างเมื่อ: ${escHtml(generatedLabel)}
+      </div>
+    </div>
+
+    ${paperSection}
+    ${deviceSection}
+    ${woSection}
+    ${stockSection}
+    ${meterSection}
+
+    <div class="footer">
+      <span>เอกสารสร้างโดยระบบจัดการสินทรัพย์</span>
+      <span>พิมพ์เมื่อ ${escHtml(todayLabel)}</span>
+    </div>
+  </div>
+
+  <div class="print-btn-bar">
+    <button type="button" onclick="window.print()">🖨 พิมพ์</button>
+    <button type="button" class="secondary" onclick="window.close()">ปิด</button>
+  </div>
+</body>
+</html>`
+  }
+
+  /** Open the generated print HTML in a new window. */
+  async function handlePrintReport() {
+    if (!data) {
+      toast.error('ยังไม่มีข้อมูลรายงาน กรุณารอโหลดเสร็จก่อน')
+      return
+    }
+    const hasAny = Object.values(printSections).some(Boolean)
+    if (!hasAny) {
+      toast.error('กรุณาเลือกอย่างน้อย 1 ส่วนที่จะพิมพ์')
+      return
+    }
+    setPrintBusy(true)
+    try {
+      let meterRows: MeterReadingRow[] = []
+      let deviceRows: DeviceRow[] = []
+      if (printSections.paper || printSections.meters) {
+        meterRows = await fetchMeterReadingsForMonth(data.month)
+      }
+      if (printSections.devices) {
+        deviceRows = await fetchDevicesForPrint()
+      }
+      const siteLabel = site === 'all' ? 'ทุกสาขา' : `สาขา ${site}`
+      const html = buildPrintHTML({
+        sections: printSections,
+        report: data,
+        meterRows,
+        deviceRows,
+        siteLabel,
+      })
+      const win = window.open('', '_blank', 'width=1024,height=768')
+      if (!win) {
+        toast.error('เบราว์เซอร์บล็อกการเปิดหน้าต่าง กรุณาอนุญาตป๊อปอัป')
+        return
+      }
+      win.document.open()
+      win.document.write(html)
+      win.document.close()
+      setPrintDialogOpen(false)
+      toast.success('เปิดหน้าพิมพ์เรียบร้อย — กดปุ่ม “พิมพ์” เพื่อพิมพ์')
+    } catch (err) {
+      console.error('handlePrintReport', err)
+      toast.error('เปิดหน้าพิมพ์ไม่สำเร็จ')
+    } finally {
+      setPrintBusy(false)
+    }
+  }
+
   const wo = data?.workOrders ?? null
   const stock = data?.stock ?? null
   const devices = data?.devices ?? null
@@ -384,7 +1095,7 @@ export function MonthlyReport() {
                 สรุปผลการทำงานรายเดือน — ใบงาน, สต็อก, และอุปกรณ์
               </p>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <Button
                 size="sm"
                 variant="outline"
@@ -399,21 +1110,121 @@ export function MonthlyReport() {
                 />
                 รีเฟรช
               </Button>
+
+              {/* พิมพ์รายงาน — Task ID: MONTHLY-REPORT-PRINT */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    disabled={!data}
+                    className="h-8 bg-orange-500 hover:bg-orange-600"
+                  >
+                    <Printer className="mr-1 h-3.5 w-3.5" />
+                    พิมพ์รายงาน
+                    <ChevronDown className="ml-1 h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-64"
+                >
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    เลือกประเภทรายงานที่จะพิมพ์
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => openPrintDialog('paper')}
+                    className="cursor-pointer gap-2"
+                  >
+                    <FileText className="h-4 w-4 text-orange-500" />
+                    <div className="flex flex-col">
+                      <span>รายงานสรุปการใช้กระดาษ</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        สรุปยอดพิมพ์รายเดือน
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => openPrintDialog('devices')}
+                    className="cursor-pointer gap-2"
+                  >
+                    <Layers className="h-4 w-4 text-indigo-500" />
+                    <div className="flex flex-col">
+                      <span>รายงานสถานะอุปกรณ์</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        แยกตามสถานะ/ประเภท/สาขา
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => openPrintDialog('workOrders')}
+                    className="cursor-pointer gap-2"
+                  >
+                    <Wrench className="h-4 w-4 text-amber-500" />
+                    <div className="flex flex-col">
+                      <span>รายงานใบงานแจ้งซ่อน</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        สถานะ/ความเร่งด่วน/ช่าง
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => openPrintDialog('stock')}
+                    className="cursor-pointer gap-2"
+                  >
+                    <Package className="h-4 w-4 text-emerald-500" />
+                    <div className="flex flex-col">
+                      <span>รายงานสต็อก</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        ระดับสต็อก + เตือนของเหลือน้อย
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => openPrintDialog('meters')}
+                    className="cursor-pointer gap-2"
+                  >
+                    <Gauge className="h-4 w-4 text-cyan-500" />
+                    <div className="flex flex-col">
+                      <span>รายงานมิเตอร์</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        การจดมิเตอร์ของเดือน
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => handleExportCSV()}
+                    className="cursor-pointer gap-2"
+                  >
+                    <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                    <div className="flex flex-col">
+                      <span>ส่งออก CSV</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        ดาวน์โหลดข้อมูลรายงานปัจจุบัน
+                      </span>
+                    </div>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
               <Button
                 size="sm"
                 variant="outline"
                 onClick={handlePrint}
                 disabled={!data}
                 className="h-8"
+                title="พิมพ์หน้านี้ทันที"
               >
                 <Printer className="mr-1 h-3.5 w-3.5" />
-                พิมพ์
+                พิมพ์หน้านี้
               </Button>
               <Button
                 size="sm"
                 onClick={handleExportCSV}
                 disabled={!data}
                 className="h-8 bg-orange-500 hover:bg-orange-600"
+                title="ส่งออก CSV"
               >
                 <Download className="mr-1 h-3.5 w-3.5" />
                 CSV
@@ -1139,6 +1950,113 @@ export function MonthlyReport() {
           display: none;
         }
       `}</style>
+
+      {/* === Print Report Dialog (Task ID: MONTHLY-REPORT-PRINT) === */}
+      <Dialog open={printDialogOpen} onOpenChange={setPrintDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Printer className="h-5 w-5 text-orange-500" />
+              พิมพ์รายงาน
+            </DialogTitle>
+            <DialogDescription>
+              เลือกส่วนที่ต้องการรวมในรายงาน แล้วกด “พิมพ์” เพื่อเปิดหน้าต่างพิมพ์
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {data && (
+              <div className="rounded-md border bg-muted/30 p-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">เดือน:</span>
+                  <span className="font-medium">
+                    {formatMonthLabel(data.month)}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-center justify-between">
+                  <span className="text-muted-foreground">สาขา:</span>
+                  <span className="font-medium">
+                    {site === 'all' ? 'ทุกสาขา' : `สาขา ${site}`}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <PrintSectionCheckbox
+                checked={printSections.paper}
+                onToggle={() => togglePrintSection('paper')}
+                icon={<FileText className="h-4 w-4 text-orange-500" />}
+                title="รายงานสรุปการใช้กระดาษ"
+                desc="ยอดพิมพ์ขาว/สี รวมและแยกตามเครื่อง (Top 20)"
+              />
+              <PrintSectionCheckbox
+                checked={printSections.devices}
+                onToggle={() => togglePrintSection('devices')}
+                icon={<Layers className="h-4 w-4 text-indigo-500" />}
+                title="รายงานสถานะอุปกรณ์"
+                desc="แยกตามสถานะ/ประเภท/สาขา"
+              />
+              <PrintSectionCheckbox
+                checked={printSections.workOrders}
+                onToggle={() => togglePrintSection('workOrders')}
+                icon={<Wrench className="h-4 w-4 text-amber-500" />}
+                title="รายงานใบงานแจ้งซ่อน"
+                desc="สถานะ/ความเร่งด่วน/ผลงานช่าง/หัวข้อ"
+              />
+              <PrintSectionCheckbox
+                checked={printSections.stock}
+                onToggle={() => togglePrintSection('stock')}
+                icon={<Package className="h-4 w-4 text-emerald-500" />}
+                title="รายงานสต็อก"
+                desc="รายการยอดนิยม + ของเหลือน้อย"
+              />
+              <PrintSectionCheckbox
+                checked={printSections.meters}
+                onToggle={() => togglePrintSection('meters')}
+                icon={<Gauge className="h-4 w-4 text-cyan-500" />}
+                title="รายงานมิเตอร์"
+                desc="รายการจดมิเตอร์ทั้งหมดของเดือน"
+              />
+            </div>
+
+            {!Object.values(printSections).some(Boolean) && (
+              <p className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                ⚠ กรุณาเลือกอย่างน้อย 1 ส่วนที่จะพิมพ์
+              </p>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPrintDialogOpen(false)}
+              disabled={printBusy}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              size="sm"
+              onClick={handlePrintReport}
+              disabled={printBusy || !Object.values(printSections).some(Boolean)}
+              className="bg-orange-500 hover:bg-orange-600"
+            >
+              {printBusy ? (
+                <>
+                  <RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  กำลังเตรียม…
+                </>
+              ) : (
+                <>
+                  <Printer className="mr-1 h-3.5 w-3.5" />
+                  พิมพ์
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1188,6 +2106,45 @@ function EmptyHint({ label }: { label: string }) {
     <div className="flex h-32 items-center justify-center rounded-md border border-dashed text-xs text-muted-foreground">
       {label}
     </div>
+  )
+}
+
+function PrintSectionCheckbox({
+  checked,
+  onToggle,
+  icon,
+  title,
+  desc,
+}: {
+  checked: boolean
+  onToggle: () => void
+  icon: React.ReactNode
+  title: string
+  desc: string
+}) {
+  return (
+    <label
+      htmlFor={`ps-${title}`}
+      className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors ${
+        checked
+          ? 'border-orange-400 bg-orange-50 dark:border-orange-700 dark:bg-orange-950/40'
+          : 'border-border hover:bg-muted/40'
+      }`}
+    >
+      <Checkbox
+        id={`ps-${title}`}
+        checked={checked}
+        onCheckedChange={onToggle}
+        className="mt-0.5"
+      />
+      <div className="flex min-w-0 flex-1 items-start gap-2">
+        <span className="mt-0.5 shrink-0">{icon}</span>
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{title}</div>
+          <div className="text-[11px] text-muted-foreground">{desc}</div>
+        </div>
+      </div>
+    </label>
   )
 }
 
