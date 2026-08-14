@@ -331,12 +331,17 @@ export function isSuperAdminRole(role: string | null | undefined): boolean {
 }
 
 // ─── Site access (mirror of Auth.gs parseAllowedSitesValue + canAccessSite) ─
+// SECURITY FIX: Previously, a non-superadmin user with empty/null allowedSites
+// was treated as 'ALL' (fail-open). This is incompatible with the Phase 1
+// "no grant = no access" policy. Now, empty/null allowedSites for non-superadmin
+// returns an empty array (fail-closed). Existing users without allowedSites
+// must be granted explicit access via UserSiteGrant or allowedSites.
 export function getAllowedSites(user: Pick<UserPermissionRow, 'role' | 'allowedSites'>): string[] | 'ALL' {
   if (isSuperAdminRole(user.role)) return 'ALL'
   const raw = String(user.allowedSites ?? '').trim()
-  if (!raw || raw.toUpperCase() === 'ALL') return 'ALL'
+  if (raw.toUpperCase() === 'ALL') return 'ALL'
   const arr = raw.split(',').map((s) => s.trim()).filter(Boolean)
-  return arr.length ? arr : 'ALL'
+  return arr // empty array = no sites (fail-closed)
 }
 
 export function canAccessSite(
@@ -364,7 +369,9 @@ export function siteFilterForUser(
 }
 
 /** Convert a DB row → safe AuthUser (no hashes/salts leak).
- *  Merges role permissions + the user's custom permissions. */
+ *  Merges role permissions + the user's custom permissions.
+ *  SECURITY FIX: null allowedSites for non-superadmin now returns '' (no sites)
+ *  instead of 'ALL' (fail-closed). */
 export function toAuthUser(row: UserPermissionRow): AuthUser {
   const role = normalizeRole(row.role)
   const permissions = getUserPermissions(role, row.permissions)
@@ -373,7 +380,7 @@ export function toAuthUser(row: UserPermissionRow): AuthUser {
     role,
     name: row.name,
     username: row.username,
-    allowedSites: isSuperAdminRole(role) ? 'ALL' : (row.allowedSites ?? 'ALL'),
+    allowedSites: isSuperAdminRole(role) ? 'ALL' : (row.allowedSites ?? ''),
     permissions,
     isDemo: row.isDemo === true,
   }

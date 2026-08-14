@@ -21,6 +21,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-middleware'
 
 type PaperKey = 'a4-portrait' | 'a4-landscape' | 'a5-portrait'
 
@@ -110,6 +111,17 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // ── Authentication: require WO_VIEW_ALL or WO_VIEW_OWN ──
+  // Previously this route had NO auth check — anyone with a WO ID could
+  // access work order details, linked stock transactions, device data,
+  // and embedded images. This is a Blocker security fix.
+  const auth = await requireAuth(req, 'WO_VIEW_ALL')
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.error },
+      { status: auth.status },
+    )
+  }
   try {
     const { id } = await params
     const { searchParams } = new URL(req.url)

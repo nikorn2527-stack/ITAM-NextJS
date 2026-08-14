@@ -10,10 +10,11 @@ generator client {
 }
 
 datasource db {
-  // ⚠️ LOCAL SANDBOX: provider = "sqlite" (DATABASE_URL=file:.../custom.db)
-  // ⚠️ PRODUCTION (Vercel): change back to provider = "postgresql"
-  //     before deploying — DATABASE_URL=postgresql://...supabase.co...
-  provider = "sqlite"
+  // Production uses PostgreSQL (Supabase). The local sandbox may use
+  // SQLite for testing by setting DATABASE_URL=file:.../custom.db and
+  // temporarily switching provider to "sqlite", but the committed
+  // schema must always target the production provider.
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
