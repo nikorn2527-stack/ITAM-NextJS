@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Sidebar } from '@/components/itam/sidebar'
 import { Footer } from '@/components/itam/footer'
 import { GlobalSearch } from '@/components/itam/global-search'
+import { TopBarClock } from '@/components/itam/top-bar-clock'
 import { RealtimeProvider } from '@/hooks/use-realtime-updates'
 import { PwaInstallButton } from '@/components/itam/pwa-registration'
 import { QrScannerDialog } from '@/components/itam/qr-scanner'
@@ -229,6 +230,13 @@ export default function Home() {
     <RealtimeProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
         <Sidebar />
+        {/* Top-right floating clock (desktop only) — always visible at the
+            top of the viewport so users can see the time without scrolling
+            to the footer. Renders nothing on mobile (the sidebar drawer
+            covers the screen there anyway). */}
+        <div className="pointer-events-none fixed right-3 top-2 z-[80] hidden md:block">
+          <TopBarClock />
+        </div>
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:ml-14">
           <main className="flex-1 overflow-y-auto pt-14 md:pt-0">
             <AnimatePresence mode="wait">

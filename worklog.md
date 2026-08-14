@@ -7756,3 +7756,17 @@ Stage Summary:
 - ตารางเต็มพื้นที่ ไม่เหลือว่าง
 - Notifications tab แสดงข้อมูลเสมอ
 - Settings แยกกลุ่ม ไม่อัดกัน
+
+---
+Task ID: FIX-TEMPLATE-PROPS-TOPBAR
+Agent: full-stack-developer — Fix template properties tabs + top bar clock + sidebar layout
+
+Work Log:
+- Template properties: converted to tabs (ตำแหน่ง/สไตล์/ขั้นสูง/ตาราง/ข้อมูล)
+- Clock: moved to top-right (desktop), compact format
+- Sidebar: bell+theme at bottom, search+QR above user, clean top
+
+Stage Summary:
+- Properties panel uses tabs (no long scroll)
+- Clock visible at top-right
+- Sidebar buttons organized

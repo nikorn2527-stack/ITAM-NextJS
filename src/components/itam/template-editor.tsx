@@ -22,9 +22,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from '@/components/ui/tabs'
 import { CameraCapture } from './camera-capture'
 import {
   Select,
@@ -634,27 +639,18 @@ function PropertiesPanel({
     )
   }
 
-  // Type-specific editor
-  function renderTypeSpecific() {
-    switch (el.type) {
-      case 'text':
-        return (
-          <TextProperties el={el} onChange={onChange} />
-        )
-      case 'image':
-        return <ImageProperties el={el} onChange={onChange} />
-      case 'qr':
-        return <QrProperties el={el} onChange={onChange} />
-      case 'table':
-        return <TableProperties el={el} onChange={onChange} />
-      case 'rectangle':
-        return <RectangleProperties el={el} onChange={onChange} />
-      case 'line':
-        return <LineProperties el={el} onChange={onChange} />
-      default:
-        return null
-    }
-  }
+  // Type-specific tab sections.
+  const tabs = buildTypeTabs(el, onChange)
+  // Build the list of visible tab triggers (always show ตำแหน่ง first).
+  const tabList: { value: string; label: string }[] = [
+    { value: 'position', label: 'ตำแหน่ง' },
+  ]
+  if (tabs.style) tabList.push({ value: 'style', label: 'สไตล์' })
+  if (tabs.data) tabList.push({ value: 'data', label: 'ข้อมูล' })
+  if (tabs.table) tabList.push({ value: 'table', label: 'ตาราง' })
+  if (tabs.advanced) tabList.push({ value: 'advanced', label: 'ขั้นสูง' })
+  // Grid columns = number of visible tabs (cap at 5 for compactness).
+  const colCount = Math.min(tabList.length, 5)
 
   return (
     <div className="flex h-full flex-col">
@@ -710,38 +706,214 @@ function PropertiesPanel({
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="space-y-4 p-3">
-          {/* Position & size */}
-          <Section title="ตำแหน่ง & ขนาด">
-            <div className="grid grid-cols-2 gap-2">
-              <NumberField
-                label="X (มม.)"
-                value={el.x}
-                onChange={(v) => onChange({ x: v } as Partial<TemplateElement>)}
+      {/* Tabs — always visible; only the active tab content scrolls. */}
+      <Tabs
+        defaultValue="position"
+        className="flex min-h-0 flex-1 flex-col gap-0"
+      >
+        <div className="border-b bg-card px-2 py-2">
+          <TabsList
+            className="grid h-8 w-full"
+            style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}
+          >
+            {tabList.map((t) => (
+              <TabsTrigger
+                key={t.value}
+                value={t.value}
+                className="text-[11px] leading-none"
+              >
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="space-y-4 p-3">
+            <TabsContent value="position" className="mt-0 space-y-4">
+              <PositionSection el={el} onChange={onChange} />
+            </TabsContent>
+            {tabs.style && (
+              <TabsContent value="style" className="mt-0 space-y-4">
+                {tabs.style}
+              </TabsContent>
+            )}
+            {tabs.data && (
+              <TabsContent value="data" className="mt-0 space-y-4">
+                {tabs.data}
+              </TabsContent>
+            )}
+            {tabs.table && (
+              <TabsContent value="table" className="mt-0 space-y-4">
+                {tabs.table}
+              </TabsContent>
+            )}
+            {tabs.advanced && (
+              <TabsContent value="advanced" className="mt-0 space-y-4">
+                {tabs.advanced}
+              </TabsContent>
+            )}
+          </div>
+        </ScrollArea>
+      </Tabs>
+    </div>
+  )
+}
+
+// Position + size — shown in the "ตำแหน่ง" tab for every element type.
+function PositionSection({
+  el,
+  onChange,
+}: {
+  el: TemplateElement
+  onChange: (patch: Partial<TemplateElement>) => void
+}) {
+  return (
+    <Section title="ตำแหน่ง & ขนาด">
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField
+          label="X (มม.)"
+          value={el.x}
+          onChange={(v) => onChange({ x: v } as Partial<TemplateElement>)}
+        />
+        <NumberField
+          label="Y (มม.)"
+          value={el.y}
+          onChange={(v) => onChange({ y: v } as Partial<TemplateElement>)}
+        />
+        <NumberField
+          label="กว้าง (มม.)"
+          value={el.w}
+          onChange={(v) => onChange({ w: v } as Partial<TemplateElement>)}
+        />
+        <NumberField
+          label="สูง (มม.)"
+          value={el.h}
+          onChange={(v) => onChange({ h: v } as Partial<TemplateElement>)}
+        />
+        <NumberField
+          label="หมุน (องศา)"
+          value={el.rotation ?? 0}
+          step={1}
+          min={-180}
+          max={180}
+          onChange={(v) =>
+            onChange({ rotation: v } as Partial<TemplateElement>)
+          }
+        />
+      </div>
+    </Section>
+  )
+}
+
+// Build the type-specific tab sections ({ style?, data?, table?, advanced? }).
+// Each returned ReactNode is rendered inside its own TabsContent. Tabs with no
+// content (e.g. a Text element has no "ตาราง" tab) are simply omitted from the
+// tab list above.
+function buildTypeTabs(
+  el: TemplateElement,
+  onChange: (patch: Partial<TemplateElement>) => void,
+): {
+  style?: React.ReactNode
+  data?: React.ReactNode
+  table?: React.ReactNode
+  advanced?: React.ReactNode
+} {
+  switch (el.type) {
+    case 'text':
+      return {
+        style: <TextStyle el={el} onChange={onChange} />,
+        data: (
+          <>
+            <Section title="เนื้อหา">
+              <Textarea
+                value={el.content}
+                onChange={(e) =>
+                  onChange({ content: e.target.value } as Partial<TemplateElement>)
+                }
+                className="min-h-[72px] text-xs"
+                placeholder="พิมพ์ข้อความ… (รองรับ {variable})"
               />
-              <NumberField
-                label="Y (มม.)"
-                value={el.y}
-                onChange={(v) => onChange({ y: v } as Partial<TemplateElement>)}
-              />
-              <NumberField
-                label="กว้าง (มม.)"
-                value={el.w}
-                onChange={(v) => onChange({ w: v } as Partial<TemplateElement>)}
-              />
-              <NumberField
-                label="สูง (มม.)"
-                value={el.h}
-                onChange={(v) => onChange({ h: v } as Partial<TemplateElement>)}
-              />
+            </Section>
+            <VariablePicker />
+          </>
+        ),
+      }
+    case 'image':
+      return {
+        style: (
+          <Section title="การแสดงผล">
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground">
+                วิธีจัดวาง (Fit)
+              </Label>
+              <Select
+                value={el.fit}
+                onValueChange={(v) =>
+                  onChange({
+                    fit: v as 'contain' | 'cover' | 'fill',
+                  } as Partial<TemplateElement>)
+                }
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="contain">Contain (อยู่ในกรอบ)</SelectItem>
+                  <SelectItem value="cover">Cover (เต็มกรอบ)</SelectItem>
+                  <SelectItem value="fill">Fill (ยืดเต็ม)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </Section>
-
-          {renderTypeSpecific()}
-
-          {el.type === 'text' && <VariablePicker />}
-          {el.type === 'qr' && (
+        ),
+        data: <ImageSource el={el} onChange={onChange} />,
+        advanced: (
+          <Section title="ขั้นสูง">
+            <NumberField
+              label="ความโปร่งแสง (0-1)"
+              value={el.opacity}
+              step={0.1}
+              min={0}
+              max={1}
+              onChange={(v) =>
+                onChange({ opacity: v } as Partial<TemplateElement>)
+              }
+            />
+          </Section>
+        ),
+      }
+    case 'qr':
+      return {
+        style: (
+          <Section title="สี">
+            <ColorField
+              label="สีจุด QR"
+              value={el.fgColor}
+              onChange={(v) =>
+                onChange({ fgColor: v } as Partial<TemplateElement>)
+              }
+            />
+            <ColorField
+              label="สีพื้นหลัง"
+              value={el.bgColor}
+              onChange={(v) =>
+                onChange({ bgColor: v } as Partial<TemplateElement>)
+              }
+            />
+          </Section>
+        ),
+        data: (
+          <>
+            <Section title="เนื้อหา QR">
+              <Textarea
+                value={el.content}
+                onChange={(e) =>
+                  onChange({ content: e.target.value } as Partial<TemplateElement>)
+                }
+                className="min-h-[60px] text-xs"
+                placeholder="เช่น {woNumber} หรือข้อความ"
+              />
+            </Section>
             <VariablePicker
               onPick={(v) =>
                 onChange({
@@ -749,11 +921,123 @@ function PropertiesPanel({
                 } as Partial<TemplateElement>)
               }
             />
-          )}
-        </div>
-      </ScrollArea>
-    </div>
-  )
+          </>
+        ),
+      }
+    case 'table':
+      return {
+        style: <TableStyle el={el} onChange={onChange} />,
+        data: (
+          <Section title="แหล่งข้อมูล">
+            <Select
+              value={el.dataSource}
+              onValueChange={(v) =>
+                onChange({
+                  dataSource: v as TableDataSource,
+                } as Partial<TemplateElement>)
+              }
+            >
+              <SelectTrigger className="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="work-order-items">
+                  รายการอะไหล่ในใบงาน
+                </SelectItem>
+                <SelectItem value="stock-transactions">
+                  รายการเบิก/รับสต็อก
+                </SelectItem>
+                <SelectItem value="devices">รายการอุปกรณ์</SelectItem>
+                <SelectItem value="custom">กำหนดเอง</SelectItem>
+              </SelectContent>
+            </Select>
+          </Section>
+        ),
+        table: <TableColumns el={el} onChange={onChange} />,
+      }
+    case 'rectangle':
+      return {
+        style: (
+          <Section title="สไตล์กรอบ">
+            <div className="grid grid-cols-2 gap-2">
+              <NumberField
+                label="ความหนา (px)"
+                value={el.borderWidth}
+                min={0}
+                max={10}
+                onChange={(v) =>
+                  onChange({ borderWidth: v } as Partial<TemplateElement>)
+                }
+              />
+              <NumberField
+                label="มุมมน (px)"
+                value={el.radius}
+                min={0}
+                max={50}
+                onChange={(v) =>
+                  onChange({ radius: v } as Partial<TemplateElement>)
+                }
+              />
+            </div>
+            <ColorField
+              label="สีเส้นขอบ"
+              value={el.borderColor}
+              onChange={(v) =>
+                onChange({ borderColor: v } as Partial<TemplateElement>)
+              }
+            />
+            <ColorField
+              label="สีพื้นหลัง"
+              value={el.bgColor}
+              allowTransparent
+              onChange={(v) => onChange({ bgColor: v } as Partial<TemplateElement>)}
+            />
+          </Section>
+        ),
+      }
+    case 'line':
+      return {
+        style: (
+          <Section title="สไตล์เส้น">
+            <div className="space-y-1">
+              <Label className="text-[11px] text-muted-foreground">ทิศทาง</Label>
+              <Select
+                value={el.direction}
+                onValueChange={(v) =>
+                  onChange({
+                    direction: v as 'horizontal' | 'vertical',
+                  } as Partial<TemplateElement>)
+                }
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="horizontal">แนวนอน</SelectItem>
+                  <SelectItem value="vertical">แนวตั้ง</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <NumberField
+              label="ความหนา (px)"
+              value={el.thickness}
+              min={1}
+              max={10}
+              onChange={(v) =>
+                onChange({ thickness: v } as Partial<TemplateElement>)
+              }
+            />
+            <ColorField
+              label="สี"
+              value={el.color}
+              onChange={(v) => onChange({ color: v } as Partial<TemplateElement>)}
+            />
+          </Section>
+        ),
+      }
+    default:
+      return {}
+  }
 }
 
 function Section({
@@ -909,7 +1193,13 @@ function VariablePicker({
   )
 }
 
-function TextProperties({
+// ─────────────────────────────────────────────────
+// Type-specific tab section helpers (rendered inside TabsContent).
+// The "ตำแหน่ง" tab + content/data are inlined in buildTypeTabs above; the
+// functions below cover the heavier style/table/source sections.
+// ─────────────────────────────────────────────────
+
+function TextStyle({
   el,
   onChange,
 }: {
@@ -917,120 +1207,108 @@ function TextProperties({
   onChange: (patch: Partial<TemplateElement>) => void
 }) {
   return (
-    <>
-      <Section title="เนื้อหา">
-        <Textarea
-          value={el.content}
-          onChange={(e) =>
-            onChange({ content: e.target.value } as Partial<TemplateElement>)
+    <Section title="ฟอนต์">
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField
+          label="ขนาด (px)"
+          value={el.fontSize}
+          min={8}
+          max={72}
+          onChange={(v) =>
+            onChange({ fontSize: v } as Partial<TemplateElement>)
           }
-          className="min-h-[72px] text-xs"
-          placeholder="พิมพ์ข้อความ… (รองรับ {variable})"
         />
-      </Section>
-      <Section title="ฟอนต์">
-        <div className="grid grid-cols-2 gap-2">
-          <NumberField
-            label="ขนาด (px)"
-            value={el.fontSize}
-            min={8}
-            max={72}
-            onChange={(v) =>
-              onChange({ fontSize: v } as Partial<TemplateElement>)
-            }
-          />
-          <div className="space-y-1">
-            <Label className="text-[11px] text-muted-foreground">
-              น้ำหนัก / รูปแบบ
-            </Label>
-            <div className="flex gap-1">
-              <Button
-                type="button"
-                size="sm"
-                variant={el.fontWeight === 'bold' ? 'default' : 'outline'}
-                className="h-8 w-8 p-0"
-                onClick={() =>
-                  onChange({
-                    fontWeight:
-                      el.fontWeight === 'bold' ? 'normal' : 'bold',
-                  } as Partial<TemplateElement>)
-                }
-              >
-                <Bold className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={el.italic ? 'default' : 'outline'}
-                className="h-8 w-8 p-0"
-                onClick={() =>
-                  onChange({
-                    italic: !el.italic,
-                  } as Partial<TemplateElement>)
-                }
-              >
-                <Italic className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={el.underline ? 'default' : 'outline'}
-                className="h-8 w-8 p-0"
-                onClick={() =>
-                  onChange({
-                    underline: !el.underline,
-                  } as Partial<TemplateElement>)
-                }
-              >
-                <Underline className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-        </div>
         <div className="space-y-1">
           <Label className="text-[11px] text-muted-foreground">
-            การจัดวาง
+            น้ำหนัก / รูปแบบ
           </Label>
           <div className="flex gap-1">
-            {(['left', 'center', 'right'] as FontAlign[]).map((a) => (
-              <Button
-                key={a}
-                type="button"
-                size="sm"
-                variant={el.align === a ? 'default' : 'outline'}
-                className="h-8 flex-1"
-                onClick={() =>
-                  onChange({ align: a } as Partial<TemplateElement>)
-                }
-              >
-                {a === 'left' && <AlignLeft className="h-3.5 w-3.5" />}
-                {a === 'center' && <AlignCenter className="h-3.5 w-3.5" />}
-                {a === 'right' && <AlignRight className="h-3.5 w-3.5" />}
-              </Button>
-            ))}
+            <Button
+              type="button"
+              size="sm"
+              variant={el.fontWeight === 'bold' ? 'default' : 'outline'}
+              className="h-8 w-8 p-0"
+              onClick={() =>
+                onChange({
+                  fontWeight:
+                    el.fontWeight === 'bold' ? 'normal' : 'bold',
+                } as Partial<TemplateElement>)
+              }
+            >
+              <Bold className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={el.italic ? 'default' : 'outline'}
+              className="h-8 w-8 p-0"
+              onClick={() =>
+                onChange({
+                  italic: !el.italic,
+                } as Partial<TemplateElement>)
+              }
+            >
+              <Italic className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={el.underline ? 'default' : 'outline'}
+              className="h-8 w-8 p-0"
+              onClick={() =>
+                onChange({
+                  underline: !el.underline,
+                } as Partial<TemplateElement>)
+              }
+            >
+              <Underline className="h-3.5 w-3.5" />
+            </Button>
           </div>
         </div>
-        <ColorField
-          label="สีตัวอักษร"
-          value={el.color}
-          onChange={(v) => onChange({ color: v } as Partial<TemplateElement>)}
-        />
-        <NumberField
-          label="ระยะบรรทัด (×)"
-          value={el.lineHeight ?? 1.3}
-          step={0.1}
-          min={0.8}
-          max={3}
-          onChange={(v) =>
-            onChange({ lineHeight: v } as Partial<TemplateElement>)
-          }
-        />
-      </Section>
-    </>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-[11px] text-muted-foreground">
+          การจัดวาง
+        </Label>
+        <div className="flex gap-1">
+          {(['left', 'center', 'right'] as FontAlign[]).map((a) => (
+            <Button
+              key={a}
+              type="button"
+              size="sm"
+              variant={el.align === a ? 'default' : 'outline'}
+              className="h-8 flex-1"
+              onClick={() =>
+                onChange({ align: a } as Partial<TemplateElement>)
+              }
+            >
+              {a === 'left' && <AlignLeft className="h-3.5 w-3.5" />}
+              {a === 'center' && <AlignCenter className="h-3.5 w-3.5" />}
+              {a === 'right' && <AlignRight className="h-3.5 w-3.5" />}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <ColorField
+        label="สีตัวอักษร"
+        value={el.color}
+        onChange={(v) => onChange({ color: v } as Partial<TemplateElement>)}
+      />
+      <NumberField
+        label="ระยะบรรทัด (×)"
+        value={el.lineHeight ?? 1.3}
+        step={0.1}
+        min={0.8}
+        max={3}
+        onChange={(v) =>
+          onChange({ lineHeight: v } as Partial<TemplateElement>)
+        }
+      />
+    </Section>
   )
 }
 
-function ImageProperties({
+function ImageSource({
   el,
   onChange,
 }: {
@@ -1054,134 +1332,123 @@ function ImageProperties({
   }
 
   return (
-    <>
-      <Section title="แหล่งรูป">
-        <div className="space-y-2">
-          <Input
-            type="text"
-            placeholder="URL หรือ base64…"
-            value={el.src.startsWith('data:') ? '' : el.src}
-            onChange={(e) =>
-              onChange({ src: e.target.value } as Partial<TemplateElement>)
-            }
-            className="h-8 text-xs"
-          />
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleUpload}
-          />
+    <Section title="แหล่งรูป">
+      <div className="space-y-2">
+        <Input
+          type="text"
+          placeholder="URL หรือ base64…"
+          value={el.src.startsWith('data:') ? '' : el.src}
+          onChange={(e) =>
+            onChange({ src: e.target.value } as Partial<TemplateElement>)
+          }
+          className="h-8 text-xs"
+        />
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleUpload}
+        />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8 w-full"
+          onClick={() => fileRef.current?.click()}
+        >
+          <ImageIcon className="mr-1.5 h-3.5 w-3.5" />
+          อัปโหลดรูป (สูงสุด 1.5 MB)
+        </Button>
+        <CameraCapture
+          onCapture={(dataUrl) =>
+            onChange({ src: dataUrl } as Partial<TemplateElement>)
+          }
+          label="ถ่ายภาพจากกล้อง"
+          className="h-8 w-full"
+        />
+        {el.src && (
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            className="h-8 w-full"
-            onClick={() => fileRef.current?.click()}
+            variant="ghost"
+            className="h-8 w-full text-rose-600"
+            onClick={() =>
+              onChange({ src: '' } as Partial<TemplateElement>)
+            }
           >
-            <ImageIcon className="mr-1.5 h-3.5 w-3.5" />
-            อัปโหลดรูป (สูงสุด 1.5 MB)
+            <X className="mr-1.5 h-3.5 w-3.5" />
+            ล้างรูป
           </Button>
-          <CameraCapture
-            onCapture={(dataUrl) =>
-              onChange({ src: dataUrl } as Partial<TemplateElement>)
-            }
-            label="ถ่ายภาพจากกล้อง"
-            className="h-8 w-full"
-          />
-          {el.src && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-8 w-full text-rose-600"
-              onClick={() =>
-                onChange({ src: '' } as Partial<TemplateElement>)
-              }
-            >
-              <X className="mr-1.5 h-3.5 w-3.5" />
-              ล้างรูป
-            </Button>
-          )}
-        </div>
-      </Section>
-      <Section title="การแสดงผล">
-        <div className="space-y-1">
-          <Label className="text-[11px] text-muted-foreground">
-            วิธีจัดวาง (Fit)
-          </Label>
-          <Select
-            value={el.fit}
-            onValueChange={(v) =>
-              onChange({ fit: v as 'contain' | 'cover' | 'fill' } as Partial<TemplateElement>)
-            }
-          >
-            <SelectTrigger className="h-8">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="contain">Contain (อยู่ในกรอบ)</SelectItem>
-              <SelectItem value="cover">Cover (เต็มกรอบ)</SelectItem>
-              <SelectItem value="fill">Fill (ยืดเต็ม)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <NumberField
-          label="ความโปร่งแสง (0-1)"
-          value={el.opacity}
-          step={0.1}
-          min={0}
-          max={1}
-          onChange={(v) =>
-            onChange({ opacity: v } as Partial<TemplateElement>)
-          }
-        />
-      </Section>
-    </>
+        )}
+      </div>
+    </Section>
   )
 }
 
-function QrProperties({
+function TableStyle({
   el,
   onChange,
 }: {
-  el: Extract<TemplateElement, { type: 'qr' }>
+  el: Extract<TemplateElement, { type: 'table' }>
   onChange: (patch: Partial<TemplateElement>) => void
 }) {
   return (
-    <>
-      <Section title="เนื้อหา QR">
-        <Textarea
-          value={el.content}
-          onChange={(e) =>
-            onChange({ content: e.target.value } as Partial<TemplateElement>)
-          }
-          className="min-h-[60px] text-xs"
-          placeholder="เช่น {woNumber} หรือข้อความ"
-        />
-      </Section>
-      <Section title="สี">
-        <ColorField
-          label="สีจุด QR"
-          value={el.fgColor}
+    <Section title="สไตล์">
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField
+          label="ความสูงแถว (มม.)"
+          value={el.rowHeight}
+          min={3}
           onChange={(v) =>
-            onChange({ fgColor: v } as Partial<TemplateElement>)
+            onChange({ rowHeight: v } as Partial<TemplateElement>)
           }
         />
-        <ColorField
-          label="สีพื้นหลัง"
-          value={el.bgColor}
+        <NumberField
+          label="ขนาดฟอนต์ (px)"
+          value={el.fontSize}
+          min={8}
+          max={24}
           onChange={(v) =>
-            onChange({ bgColor: v } as Partial<TemplateElement>)
+            onChange({ fontSize: v } as Partial<TemplateElement>)
           }
         />
-      </Section>
-    </>
+        <NumberField
+          label="ความหนาเส้น (px)"
+          value={el.borderWidth}
+          min={0}
+          max={5}
+          onChange={(v) =>
+            onChange({ borderWidth: v } as Partial<TemplateElement>)
+          }
+        />
+      </div>
+      <ColorField
+        label="สีพื้นหัวตาราง"
+        value={el.headerBg}
+        onChange={(v) =>
+          onChange({ headerBg: v } as Partial<TemplateElement>)
+        }
+      />
+      <ColorField
+        label="สีตัวอักษรหัวตาราง"
+        value={el.headerColor}
+        onChange={(v) =>
+          onChange({ headerColor: v } as Partial<TemplateElement>)
+        }
+      />
+      <ColorField
+        label="สีเส้นขอบ"
+        value={el.borderColor}
+        onChange={(v) =>
+          onChange({ borderColor: v } as Partial<TemplateElement>)
+        }
+      />
+    </Section>
   )
 }
 
-function TableProperties({
+function TableColumns({
   el,
   onChange,
 }: {
@@ -1212,269 +1479,98 @@ function TableProperties({
   }
 
   return (
-    <>
-      <Section title="แหล่งข้อมูล">
-        <Select
-          value={el.dataSource}
-          onValueChange={(v) =>
-            onChange({
-              dataSource: v as TableDataSource,
-            } as Partial<TemplateElement>)
-          }
-        >
-          <SelectTrigger className="h-8">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="work-order-items">
-              รายการอะไหล่ในใบงาน
-            </SelectItem>
-            <SelectItem value="stock-transactions">
-              รายการเบิก/รับสต็อก
-            </SelectItem>
-            <SelectItem value="devices">รายการอุปกรณ์</SelectItem>
-            <SelectItem value="custom">กำหนดเอง</SelectItem>
-          </SelectContent>
-        </Select>
-      </Section>
-
-      <Section title="คอลัมน์">
-        <div className="space-y-2">
-          {el.columns.map((c, i) => (
-            <div
-              key={c.id}
-              className="space-y-1 rounded border border-border bg-muted/30 p-2"
-            >
-              <div className="flex items-center gap-1">
-                <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+    <Section title="คอลัมน์">
+      <div className="space-y-2">
+        {el.columns.map((c, i) => (
+          <div
+            key={c.id}
+            className="space-y-1 rounded border border-border bg-muted/30 p-2"
+          >
+            <div className="flex items-center gap-1">
+              <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                type="text"
+                value={c.label}
+                onChange={(e) =>
+                  updateColumn(i, { label: e.target.value })
+                }
+                placeholder="ชื่อหัวตาราง"
+                className="h-7 flex-1 text-xs"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                onClick={() => moveColumn(i, -1)}
+                disabled={i === 0}
+              >
+                <ChevronUp className="h-3 w-3" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                onClick={() => moveColumn(i, 1)}
+                disabled={i === el.columns.length - 1}
+              >
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-rose-600"
+                onClick={() => removeColumn(i)}
+                disabled={el.columns.length <= 1}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="space-y-0.5">
+                <Label className="text-[10px] text-muted-foreground">
+                  ฟิลด์ข้อมูล
+                </Label>
                 <Input
                   type="text"
-                  value={c.label}
+                  value={c.field ?? ''}
                   onChange={(e) =>
-                    updateColumn(i, { label: e.target.value })
+                    updateColumn(i, { field: e.target.value })
                   }
-                  placeholder="ชื่อหัวตาราง"
-                  className="h-7 flex-1 text-xs"
+                  placeholder="เช่น productName"
+                  className="h-7 text-xs"
                 />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 w-7 p-0"
-                  onClick={() => moveColumn(i, -1)}
-                  disabled={i === 0}
-                >
-                  <ChevronUp className="h-3 w-3" />
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 w-7 p-0"
-                  onClick={() => moveColumn(i, 1)}
-                  disabled={i === el.columns.length - 1}
-                >
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 w-7 p-0 text-rose-600"
-                  onClick={() => removeColumn(i)}
-                  disabled={el.columns.length <= 1}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className="space-y-0.5">
-                  <Label className="text-[10px] text-muted-foreground">
-                    ฟิลด์ข้อมูล
-                  </Label>
-                  <Input
-                    type="text"
-                    value={c.field ?? ''}
-                    onChange={(e) =>
-                      updateColumn(i, { field: e.target.value })
-                    }
-                    placeholder="เช่น productName"
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-0.5">
-                  <Label className="text-[10px] text-muted-foreground">
-                    ความกว้าง (มม.)
-                  </Label>
-                  <Input
-                    type="number"
-                    value={c.width}
-                    min={5}
-                    onChange={(e) =>
-                      updateColumn(i, { width: Number(e.target.value) })
-                    }
-                    className="h-7 text-xs"
-                  />
-                </div>
+              <div className="space-y-0.5">
+                <Label className="text-[10px] text-muted-foreground">
+                  ความกว้าง (มม.)
+                </Label>
+                <Input
+                  type="number"
+                  value={c.width}
+                  min={5}
+                  onChange={(e) =>
+                    updateColumn(i, { width: Number(e.target.value) })
+                  }
+                  className="h-7 text-xs"
+                />
               </div>
             </div>
-          ))}
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-8 w-full"
-            onClick={addColumn}
-          >
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            เพิ่มคอลัมน์
-          </Button>
-        </div>
-      </Section>
-
-      <Section title="สไตล์">
-        <div className="grid grid-cols-2 gap-2">
-          <NumberField
-            label="ความสูงแถว (มม.)"
-            value={el.rowHeight}
-            min={3}
-            onChange={(v) =>
-              onChange({ rowHeight: v } as Partial<TemplateElement>)
-            }
-          />
-          <NumberField
-            label="ขนาดฟอนต์ (px)"
-            value={el.fontSize}
-            min={8}
-            max={24}
-            onChange={(v) =>
-              onChange({ fontSize: v } as Partial<TemplateElement>)
-            }
-          />
-          <NumberField
-            label="ความหนาเส้น (px)"
-            value={el.borderWidth}
-            min={0}
-            max={5}
-            onChange={(v) =>
-              onChange({ borderWidth: v } as Partial<TemplateElement>)
-            }
-          />
-        </div>
-        <ColorField
-          label="สีพื้นหัวตาราง"
-          value={el.headerBg}
-          onChange={(v) =>
-            onChange({ headerBg: v } as Partial<TemplateElement>)
-          }
-        />
-        <ColorField
-          label="สีตัวอักษรหัวตาราง"
-          value={el.headerColor}
-          onChange={(v) =>
-            onChange({ headerColor: v } as Partial<TemplateElement>)
-          }
-        />
-        <ColorField
-          label="สีเส้นขอบ"
-          value={el.borderColor}
-          onChange={(v) =>
-            onChange({ borderColor: v } as Partial<TemplateElement>)
-          }
-        />
-      </Section>
-    </>
-  )
-}
-
-function RectangleProperties({
-  el,
-  onChange,
-}: {
-  el: Extract<TemplateElement, { type: 'rectangle' }>
-  onChange: (patch: Partial<TemplateElement>) => void
-}) {
-  return (
-    <Section title="สไตล์กรอบ">
-      <div className="grid grid-cols-2 gap-2">
-        <NumberField
-          label="ความหนา (px)"
-          value={el.borderWidth}
-          min={0}
-          max={10}
-          onChange={(v) =>
-            onChange({ borderWidth: v } as Partial<TemplateElement>)
-          }
-        />
-        <NumberField
-          label="มุมมน (px)"
-          value={el.radius}
-          min={0}
-          max={50}
-          onChange={(v) =>
-            onChange({ radius: v } as Partial<TemplateElement>)
-          }
-        />
-      </div>
-      <ColorField
-        label="สีเส้นขอบ"
-        value={el.borderColor}
-        onChange={(v) =>
-          onChange({ borderColor: v } as Partial<TemplateElement>)
-        }
-      />
-      <ColorField
-        label="สีพื้นหลัง"
-        value={el.bgColor}
-        allowTransparent
-        onChange={(v) => onChange({ bgColor: v } as Partial<TemplateElement>)}
-      />
-    </Section>
-  )
-}
-
-function LineProperties({
-  el,
-  onChange,
-}: {
-  el: Extract<TemplateElement, { type: 'line' }>
-  onChange: (patch: Partial<TemplateElement>) => void
-}) {
-  return (
-    <Section title="สไตล์เส้น">
-      <div className="space-y-1">
-        <Label className="text-[11px] text-muted-foreground">ทิศทาง</Label>
-        <Select
-          value={el.direction}
-          onValueChange={(v) =>
-            onChange({
-              direction: v as 'horizontal' | 'vertical',
-            } as Partial<TemplateElement>)
-          }
+          </div>
+        ))}
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8 w-full"
+          onClick={addColumn}
         >
-          <SelectTrigger className="h-8">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="horizontal">แนวนอน</SelectItem>
-            <SelectItem value="vertical">แนวตั้ง</SelectItem>
-          </SelectContent>
-        </Select>
+          <Plus className="mr-1 h-3.5 w-3.5" />
+          เพิ่มคอลัมน์
+        </Button>
       </div>
-      <NumberField
-        label="ความหนา (px)"
-        value={el.thickness}
-        min={1}
-        max={10}
-        onChange={(v) =>
-          onChange({ thickness: v } as Partial<TemplateElement>)
-        }
-      />
-      <ColorField
-        label="สี"
-        value={el.color}
-        onChange={(v) => onChange({ color: v } as Partial<TemplateElement>)}
-      />
     </Section>
   )
 }

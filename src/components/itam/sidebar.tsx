@@ -11,11 +11,6 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { NotificationsPopover } from './notifications-popover'
 import { useRealtimeStatus } from '@/hooks/use-realtime-updates'
-import {
-  useClock,
-  formatThaiTime,
-  formatThaiDate,
-} from '@/hooks/use-clock'
 
 // Map of role → Thai label (the auth store returns a normalized role string)
 function roleLabel(role: string | undefined | null): string {
@@ -238,12 +233,9 @@ export function Sidebar() {
   const appTagline = orgProfile?.appTagline || 'Asset Management System'
   const logoUrl = orgProfile?.logoUrl || ''
 
-  // Live clock — updates every second. Used by the expanded sidebar header
-  // to show a "HH:MM:SS · วันพุท ที่ 13 สิงหาคม 2568" line below the app tagline.
-  // Renders nothing until mounted (avoids hydration mismatch).
-  const now = useClock()
-  const timeStr = formatThaiTime(now)
-  const dateStr = formatThaiDate(now)
+  // Live clock moved to a fixed TopBarClock at the top-right of the screen
+  // (see src/app/page.tsx + src/components/itam/top-bar-clock.tsx). The
+  // sidebar header is now a clean logo + app name + tagline only.
 
   const isDark = mounted && theme === 'dark'
   function toggleTheme() {
@@ -308,134 +300,45 @@ export function Sidebar() {
   const renderContent = (expanded: boolean) => (
     <>
       {/* ── Header (top section) ──
-          Logo + app name + bell (notifications) + theme toggle.
-          These are small icon buttons that fit nicely in 56px when collapsed.
-          When collapsed, icons stack vertically; when expanded they sit in a row. */}
+          Clean top: just logo + app name + tagline.
+          The live clock moved to a fixed TopBarClock (top-right of screen).
+          The bell + theme toggle moved to the bottom (above the user section)
+          so the top stays uncluttered and the nav items get more room. */}
       <div
         className={cn(
-          'flex flex-col gap-2 border-b border-slate-200 dark:border-white/10',
-          expanded ? 'px-3 py-3' : 'px-0 py-2',
+          'flex items-center gap-2 border-b border-slate-200 dark:border-white/10',
+          expanded ? 'px-3 py-3' : 'justify-center px-0 py-2',
         )}
       >
-        {/* Logo + app name row */}
+        {logoUrl && logoUrl.startsWith('http') ? (
+          <img
+            src={logoUrl}
+            alt={appName}
+            className="h-7 w-7 flex-shrink-0 rounded object-contain"
+          />
+        ) : (
+          <span
+            className={cn(
+              'flex-shrink-0',
+              expanded ? 'text-lg' : 'text-xl',
+            )}
+            aria-hidden
+          >
+            {logoUrl || '📦'}
+          </span>
+        )}
         <div
           className={cn(
-            'flex items-center gap-2',
-            expanded ? '' : 'justify-center',
+            'min-w-0 flex-1 transition-opacity duration-150',
+            expanded ? 'opacity-100' : 'pointer-events-none absolute opacity-0',
           )}
         >
-          {logoUrl && logoUrl.startsWith('http') ? (
-            <img
-              src={logoUrl}
-              alt={appName}
-              className="h-7 w-7 flex-shrink-0 rounded object-contain"
-            />
-          ) : (
-            <span
-              className={cn(
-                'flex-shrink-0',
-                expanded ? 'text-lg' : 'text-xl',
-              )}
-              aria-hidden
-            >
-              {logoUrl || '📦'}
-            </span>
-          )}
-          <div
-            className={cn(
-              'min-w-0 flex-1 transition-opacity duration-150',
-              expanded ? 'opacity-100' : 'pointer-events-none absolute opacity-0',
-            )}
-          >
-            <div className="truncate text-sm font-bold leading-tight text-slate-900 dark:text-white">
-              {appName}
-            </div>
-            <div className="truncate text-[10px] leading-tight text-slate-500 dark:text-slate-400">
-              {appTagline}
-            </div>
-            {/* Live clock + Thai Buddhist date — visible only when sidebar is
-                expanded. Shows "HH:MM:SS" prominently with the date below.
-                Helps users see the current time without leaving the app. */}
-            {timeStr && (
-              <div
-                className="mt-1.5 rounded-md bg-slate-100 px-2 py-1 text-slate-700 dark:bg-white/5 dark:text-slate-200"
-                aria-label={`ขณะนี้เวลา ${timeStr} วันที่ ${dateStr}`}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span
-                    aria-hidden
-                    className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-[#f97316]"
-                  />
-                  <span className="font-mono text-sm font-semibold tabular-nums tracking-tight">
-                    {timeStr}
-                  </span>
-                </div>
-                <div className="mt-0.5 truncate text-[10px] leading-tight text-slate-500 dark:text-slate-400">
-                  {dateStr}
-                </div>
-              </div>
-            )}
+          <div className="truncate text-sm font-bold leading-tight text-slate-900 dark:text-white">
+            {appName}
           </div>
-          {/* Realtime status dot — small indicator next to logo (always visible) */}
-          <div
-            role="status"
-            aria-label={`สถานะการเชื่อมต่อสด: ${realtimeStatus === 'open' ? 'เชื่อมต่อแล้ว' : realtimeStatus === 'connecting' ? 'กำลังเชื่อมต่อ' : 'ตัดการเชื่อมต่อ'}`}
-            title={
-              realtimeStatus === 'open'
-                ? '🟢 เชื่อมต่อสด — ข้อมูลอัปเดตทันที'
-                : realtimeStatus === 'connecting'
-                  ? '🟡 กำลังเชื่อมต่อ...'
-                  : '🔴 ออฟไลน์ — ข้อมูลจะอัปเดตเมื่อรีเฟรช'
-            }
-            className={cn(
-              'flex flex-shrink-0 items-center justify-center',
-              expanded
-                ? 'h-8 w-8 rounded-md border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5'
-                : 'hidden',
-            )}
-          >
-            <span
-              className={[
-                'rounded-full',
-                expanded ? 'h-2 w-2' : 'h-2.5 w-2.5',
-                realtimeStatus === 'open'
-                  ? 'bg-emerald-400 itam-rt-dot'
-                  : realtimeStatus === 'connecting'
-                    ? 'bg-amber-400 animate-pulse'
-                    : 'bg-slate-500',
-              ].join(' ')}
-            />
+          <div className="truncate text-[10px] leading-tight text-slate-500 dark:text-slate-400">
+            {appTagline}
           </div>
-        </div>
-
-        {/* Quick action icons row — bell + theme toggle (small icon buttons
-            that fit nicely in 56px collapsed width). When expanded they sit
-            at the right side of the header; when collapsed they stack centered. */}
-        <div
-          className={cn(
-            'flex items-center gap-1.5',
-            expanded ? 'justify-end' : 'flex-col justify-center',
-          )}
-        >
-          <NotificationsPopover />
-          {/* Theme toggle — switches between light/dark (sidebar follows theme) */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
-            title={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]"
-          >
-            {mounted ? (
-              isDark ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )
-            ) : (
-              <span className="block h-4 w-4" />
-            )}
-          </button>
         </div>
       </div>
 
@@ -660,6 +563,70 @@ export function Sidebar() {
             </button>
           </div>
         )}
+      </div>
+
+      {/* ── Quick controls section — bell (notifications) + theme toggle +
+          realtime status dot. Moved here (above the user section) so the
+          top header stays clean with just the logo + app name.
+          When collapsed: three small icon-sized elements stacked centered.
+          When expanded: a single row with all three side by side. */}
+      <div
+        className={cn(
+          'flex items-center gap-1.5 border-t border-slate-200 dark:border-white/10',
+          expanded ? 'justify-between px-3 py-2' : 'flex-col justify-center px-0 py-2',
+        )}
+      >
+        <NotificationsPopover />
+        <div
+          className={cn(
+            'flex items-center gap-1.5',
+            expanded ? '' : '',
+          )}
+        >
+          {/* Theme toggle — switches between light/dark (sidebar follows theme) */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
+            title={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]"
+          >
+            {mounted ? (
+              isDark ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )
+            ) : (
+              <span className="block h-4 w-4" />
+            )}
+          </button>
+          {/* Realtime status dot — small indicator (always visible) */}
+          <div
+            role="status"
+            aria-label={`สถานะการเชื่อมต่อสด: ${realtimeStatus === 'open' ? 'เชื่อมต่อแล้ว' : realtimeStatus === 'connecting' ? 'กำลังเชื่อมต่อ' : 'ตัดการเชื่อมต่อ'}`}
+            title={
+              realtimeStatus === 'open'
+                ? '🟢 เชื่อมต่อสด — ข้อมูลอัปเดตทันที'
+                : realtimeStatus === 'connecting'
+                  ? '🟡 กำลังเชื่อมต่อ...'
+                  : '🔴 ออฟไลน์ — ข้อมูลจะอัปเดตเมื่อรีเฟรช'
+            }
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5"
+          >
+            <span
+              className={[
+                'rounded-full',
+                expanded ? 'h-2 w-2' : 'h-2.5 w-2.5',
+                realtimeStatus === 'open'
+                  ? 'bg-emerald-400 itam-rt-dot'
+                  : realtimeStatus === 'connecting'
+                    ? 'bg-amber-400 animate-pulse'
+                    : 'bg-slate-500',
+              ].join(' ')}
+            />
+          </div>
+        </div>
       </div>
 
       {/* ── Footer — current user: avatar + name + role + logout ── */}

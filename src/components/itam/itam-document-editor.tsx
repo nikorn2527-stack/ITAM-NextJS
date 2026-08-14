@@ -15,6 +15,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import {
+  Tabs, TabsList, TabsTrigger, TabsContent,
+} from '@/components/ui/tabs'
+import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import {
@@ -1307,46 +1310,55 @@ export function ItamDocumentEditor() {
           </CardHeader>
           <CardContent className="space-y-3 p-3 pt-0">
             {!selectedEl ? (
-              <div className="space-y-3">
-                <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
-                  คลิกที่องค์ประกอบใน workspace เพื่อแก้ไข หรือกดปุ่ม +Text/+Image/+Rect เพื่อเพิ่มใหม่
-                </div>
-
-                {/* Template name */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs">ชื่อเทมเพลต</Label>
-                  <Input
-                    value={draft?.name ?? ''}
-                    onChange={(e) => draft && setDraft({ ...draft, name: e.target.value })}
-                    className="text-xs dark:bg-slate-800 dark:border-slate-700"
-                  />
-                </div>
-
-                {/* Canvas custom size */}
-                <div className="grid grid-cols-2 gap-2">
-                  <NumInput label="กว้าง (mm)" value={draft?.canvas.width ?? 0} onChange={(v) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, width: v } })} step={1} min={50} max={600} />
-                  <NumInput label="สูง (mm)" value={draft?.canvas.height ?? 0} onChange={(v) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, height: v } })} step={1} min={50} max={600} />
-                  <NumInput label="Margin (mm)" value={draft?.canvas.margin ?? 0} onChange={(v) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, margin: v } })} step={0.5} min={0} max={30} />
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">การวาง</Label>
-                    <Select
-                      value={draft?.canvas.orientation ?? 'landscape'}
-                      onValueChange={(v) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, orientation: v as 'portrait' | 'landscape' } })}
-                    >
-                      <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="landscape">แนวนอน</SelectItem>
-                        <SelectItem value="portrait">แนวตั้ง</SelectItem>
-                      </SelectContent>
-                    </Select>
+              <Tabs defaultValue="template" className="gap-0">
+                <div className="pb-2">
+                  <div className="mb-2 rounded-md border border-slate-200 bg-slate-50 p-2.5 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
+                    คลิกที่องค์ประกอบใน workspace เพื่อแก้ไข หรือกดปุ่ม +Text/+Image/+Rect เพื่อเพิ่มใหม่
                   </div>
+                  <TabsList className="grid h-8 w-full grid-cols-3 sm:grid-cols-6">
+                    <TabsTrigger value="template" className="text-[10px] leading-none sm:text-[11px]">เทมเพลต</TabsTrigger>
+                    <TabsTrigger value="table" className="text-[10px] leading-none sm:text-[11px]">ตาราง</TabsTrigger>
+                    <TabsTrigger value="columns" className="text-[10px] leading-none sm:text-[11px]">คอลัมน์</TabsTrigger>
+                    <TabsTrigger value="summary" className="text-[10px] leading-none sm:text-[11px]">สรุปยอด</TabsTrigger>
+                    <TabsTrigger value="footer" className="text-[10px] leading-none sm:text-[11px]">Footer</TabsTrigger>
+                    <TabsTrigger value="variables" className="text-[10px] leading-none sm:text-[11px]">ตัวแปร</TabsTrigger>
+                  </TabsList>
                 </div>
+
+                {/* Template + canvas settings */}
+                <TabsContent value="template" className="mt-0 space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">ชื่อเทมเพลต</Label>
+                    <Input
+                      value={draft?.name ?? ''}
+                      onChange={(e) => draft && setDraft({ ...draft, name: e.target.value })}
+                      className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <NumInput label="กว้าง (mm)" value={draft?.canvas.width ?? 0} onChange={(v) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, width: v } })} step={1} min={50} max={600} />
+                    <NumInput label="สูง (mm)" value={draft?.canvas.height ?? 0} onChange={(v) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, height: v } })} step={1} min={50} max={600} />
+                    <NumInput label="Margin (mm)" value={draft?.canvas.margin ?? 0} onChange={(v) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, margin: v } })} step={0.5} min={0} max={30} />
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">การวาง</Label>
+                      <Select
+                        value={draft?.canvas.orientation ?? 'landscape'}
+                        onValueChange={(v) => draft && setDraft({ ...draft, canvas: { ...draft.canvas, orientation: v as 'portrait' | 'landscape' } })}
+                      >
+                        <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="landscape">แนวนอน</SelectItem>
+                          <SelectItem value="portrait">แนวตั้ง</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </TabsContent>
 
                 {/* Table settings */}
-                <div className="space-y-1.5 border-t border-slate-200 pt-2 dark:border-slate-700">
-                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">ตาราง</Label>
+                <TabsContent value="table" className="mt-0 space-y-2">
                   <div className="grid grid-cols-3 gap-2">
                     <NumInput label="Y (mm)" value={draft?.table.y ?? 40} onChange={(v) => draft && setDraft({ ...draft, table: { ...draft.table, y: v } })} step={0.5} min={0} />
                     <NumInput label="สูงแถว" value={draft?.table.rowHeight ?? 7} onChange={(v) => draft && setDraft({ ...draft, table: { ...draft.table, rowHeight: v } })} step={0.5} min={3} />
@@ -1386,10 +1398,10 @@ export function ItamDocumentEditor() {
                       </div>
                     </div>
                   </div>
-                </div>
+                </TabsContent>
 
                 {/* Column picker */}
-                <div className="space-y-1.5 border-t border-slate-200 pt-2 dark:border-slate-700">
+                <TabsContent value="columns" className="mt-0 space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
                     คอลัมน์ตาราง ({draft?.table.columns.length ?? 0})
                   </Label>
@@ -1440,7 +1452,6 @@ export function ItamDocumentEditor() {
                       </div>
                     ))}
                   </div>
-                  {/* Available columns not yet selected */}
                   <div className="mt-2">
                     <div className="mb-1 text-[10px] text-slate-500">เพิ่มคอลัมน์:</div>
                     <div className="flex flex-wrap gap-1">
@@ -1458,10 +1469,10 @@ export function ItamDocumentEditor() {
                         ))}
                     </div>
                   </div>
-                </div>
+                </TabsContent>
 
                 {/* Summary picker */}
-                <div className="space-y-1.5 border-t border-slate-200 pt-2 dark:border-slate-700">
+                <TabsContent value="summary" className="mt-0 space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
                     สรุปยอด
                   </Label>
@@ -1485,10 +1496,10 @@ export function ItamDocumentEditor() {
                       )
                     })}
                   </div>
-                </div>
+                </TabsContent>
 
                 {/* Footer settings */}
-                <div className="space-y-1.5 border-t border-slate-200 pt-2 dark:border-slate-700">
+                <TabsContent value="footer" className="mt-0 space-y-2">
                   <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">Footer</Label>
                   <div className="grid grid-cols-2 gap-2">
                     <NumInput label="ความสูง (mm)" value={draft?.footer.height ?? 18} onChange={(v) => draft && setDraft({ ...draft, footer: { ...draft.footer, height: v } })} step={1} min={5} />
@@ -1499,14 +1510,14 @@ export function ItamDocumentEditor() {
                     <Textarea
                       value={draft?.footer.content ?? ''}
                       onChange={(e) => draft && setDraft({ ...draft, footer: { ...draft.footer, content: e.target.value } })}
-                      rows={2}
+                      rows={4}
                       className="text-xs dark:bg-slate-800 dark:border-slate-700"
                     />
                   </div>
-                </div>
+                </TabsContent>
 
                 {/* Available variables */}
-                <div className="space-y-1.5 border-t border-slate-200 pt-2 dark:border-slate-700">
+                <TabsContent value="variables" className="mt-0 space-y-1.5">
                   <Label className="text-xs">ตัวแปรที่ใช้ได้</Label>
                   <div className="flex flex-wrap gap-1">
                     {DOCUMENT_VARIABLES.map((v) => (
@@ -1525,153 +1536,184 @@ export function ItamDocumentEditor() {
                       </button>
                     ))}
                   </div>
-                </div>
-              </div>
+                </TabsContent>
+              </Tabs>
             ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Badge className="bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800">
-                    {selectedEl.type.toUpperCase()}
-                  </Badge>
+              <Tabs defaultValue="position" className="gap-0">
+                <div className="pb-2">
+                  <div className="mb-2 flex items-center justify-between">
+                    <Badge className="bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800">
+                      {selectedEl.type.toUpperCase()}
+                    </Badge>
+                  </div>
+                  <TabsList className="grid h-8 w-full grid-cols-4">
+                    <TabsTrigger value="position" className="text-[11px]">ตำแหน่ง</TabsTrigger>
+                    <TabsTrigger value="style" className="text-[11px]">สไตล์</TabsTrigger>
+                    <TabsTrigger value="data" className="text-[11px]">ข้อมูล</TabsTrigger>
+                    <TabsTrigger value="advanced" className="text-[11px]">ขั้นสูง</TabsTrigger>
+                  </TabsList>
                 </div>
 
                 {/* Position & Size */}
-                <div className="grid grid-cols-2 gap-2">
-                  <NumInput label="X (mm)" value={selectedEl.x} onChange={(v) => updateSelectedElement({ x: v })} step={0.5} />
-                  <NumInput label="Y (mm)" value={selectedEl.y} onChange={(v) => updateSelectedElement({ y: v })} step={0.5} />
-                  <NumInput label="W (mm)" value={selectedEl.width} onChange={(v) => updateSelectedElement({ width: v })} step={0.5} />
-                  <NumInput label="H (mm)" value={selectedEl.height} onChange={(v) => updateSelectedElement({ height: v })} step={0.5} />
-                </div>
+                <TabsContent value="position" className="mt-0 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <NumInput label="X (mm)" value={selectedEl.x} onChange={(v) => updateSelectedElement({ x: v })} step={0.5} />
+                    <NumInput label="Y (mm)" value={selectedEl.y} onChange={(v) => updateSelectedElement({ y: v })} step={0.5} />
+                    <NumInput label="W (mm)" value={selectedEl.width} onChange={(v) => updateSelectedElement({ width: v })} step={0.5} />
+                    <NumInput label="H (mm)" value={selectedEl.height} onChange={(v) => updateSelectedElement({ height: v })} step={0.5} />
+                  </div>
+                </TabsContent>
 
-                {/* Type-specific */}
-                {selectedEl.type === 'text' && (
-                  <>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">ข้อความ (รองรับ {'{{ตัวแปร}}'})</Label>
-                      <Textarea
-                        value={selectedEl.content ?? ''}
-                        onChange={(e) => updateSelectedElement({ content: e.target.value })}
-                        rows={2}
-                        className="text-xs dark:bg-slate-800 dark:border-slate-700"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <NumInput label="ขนาด (pt)" value={selectedEl.fontSize ?? 10} onChange={(v) => updateSelectedElement({ fontSize: v })} step={0.5} min={2} max={48} />
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">น้ำหนัก</Label>
-                        <Select
-                          value={String(selectedEl.fontWeight ?? 500)}
-                          onValueChange={(v) => updateSelectedElement({ fontWeight: Number(v) })}
-                        >
-                          <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="300">300 (บาง)</SelectItem>
-                            <SelectItem value="400">400 (ปกติ)</SelectItem>
-                            <SelectItem value="500">500</SelectItem>
-                            <SelectItem value="600">600</SelectItem>
-                            <SelectItem value="700">700 (หนา)</SelectItem>
-                            <SelectItem value="800">800 (หนามาก)</SelectItem>
-                          </SelectContent>
-                        </Select>
+                {/* Type-specific style */}
+                <TabsContent value="style" className="mt-0 space-y-2">
+                  {selectedEl.type === 'text' && (
+                    <>
+                      <div className="grid grid-cols-2 gap-2">
+                        <NumInput label="ขนาด (pt)" value={selectedEl.fontSize ?? 10} onChange={(v) => updateSelectedElement({ fontSize: v })} step={0.5} min={2} max={48} />
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">น้ำหนัก</Label>
+                          <Select
+                            value={String(selectedEl.fontWeight ?? 500)}
+                            onValueChange={(v) => updateSelectedElement({ fontWeight: Number(v) })}
+                          >
+                            <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="300">300 (บาง)</SelectItem>
+                              <SelectItem value="400">400 (ปกติ)</SelectItem>
+                              <SelectItem value="500">500</SelectItem>
+                              <SelectItem value="600">600</SelectItem>
+                              <SelectItem value="700">700 (หนา)</SelectItem>
+                              <SelectItem value="800">800 (หนามาก)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">สี</Label>
+                          <div className="flex gap-1.5">
+                            <input
+                              type="color"
+                              value={selectedEl.color ?? '#1e293b'}
+                              onChange={(e) => updateSelectedElement({ color: e.target.value })}
+                              className="h-8 w-10 cursor-pointer rounded border border-slate-200 dark:border-slate-700"
+                            />
+                            <Input
+                              value={selectedEl.color ?? ''}
+                              onChange={(e) => updateSelectedElement({ color: e.target.value })}
+                              className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">จัดวาง</Label>
+                          <Select
+                            value={selectedEl.align ?? 'left'}
+                            onValueChange={(v) => updateSelectedElement({ align: v as 'left' | 'center' | 'right' })}
+                          >
+                            <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="left">ซ้าย</SelectItem>
+                              <SelectItem value="center">กลาง</SelectItem>
+                              <SelectItem value="right">ขวา</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {selectedEl.type === 'rect' && (
+                    <>
                       <div className="space-y-1.5">
-                        <Label className="text-xs">สี</Label>
+                        <Label className="text-xs">สีพื้น</Label>
                         <div className="flex gap-1.5">
                           <input
                             type="color"
-                            value={selectedEl.color ?? '#1e293b'}
-                            onChange={(e) => updateSelectedElement({ color: e.target.value })}
+                            value={selectedEl.background && selectedEl.background !== 'transparent' ? selectedEl.background : '#f97316'}
+                            onChange={(e) => updateSelectedElement({ background: e.target.value })}
                             className="h-8 w-10 cursor-pointer rounded border border-slate-200 dark:border-slate-700"
                           />
                           <Input
-                            value={selectedEl.color ?? ''}
-                            onChange={(e) => updateSelectedElement({ color: e.target.value })}
+                            value={selectedEl.background ?? ''}
+                            onChange={(e) => updateSelectedElement({ background: e.target.value })}
+                            placeholder="transparent หรือ #f97316"
                             className="text-xs dark:bg-slate-800 dark:border-slate-700"
                           />
                         </div>
                       </div>
                       <div className="space-y-1.5">
-                        <Label className="text-xs">จัดวาง</Label>
-                        <Select
-                          value={selectedEl.align ?? 'left'}
-                          onValueChange={(v) => updateSelectedElement({ align: v as 'left' | 'center' | 'right' })}
-                        >
-                          <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="left">ซ้าย</SelectItem>
-                            <SelectItem value="center">กลาง</SelectItem>
-                            <SelectItem value="right">ขวา</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {selectedEl.type === 'rect' && (
-                  <>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">สีพื้น</Label>
-                      <div className="flex gap-1.5">
-                        <input
-                          type="color"
-                          value={selectedEl.background && selectedEl.background !== 'transparent' ? selectedEl.background : '#f97316'}
-                          onChange={(e) => updateSelectedElement({ background: e.target.value })}
-                          className="h-8 w-10 cursor-pointer rounded border border-slate-200 dark:border-slate-700"
-                        />
+                        <Label className="text-xs">ขอบ (border CSS)</Label>
                         <Input
-                          value={selectedEl.background ?? ''}
-                          onChange={(e) => updateSelectedElement({ background: e.target.value })}
-                          placeholder="transparent หรือ #f97316"
+                          value={selectedEl.border ?? ''}
+                          onChange={(e) => updateSelectedElement({ border: e.target.value })}
+                          placeholder="เช่น 1px solid #000 หรือ none"
                           className="text-xs dark:bg-slate-800 dark:border-slate-700"
                         />
                       </div>
+                      <NumInput label="รัศมี (mm)" value={selectedEl.borderRadius ?? 0} onChange={(v) => updateSelectedElement({ borderRadius: v })} step={0.5} min={0} />
+                    </>
+                  )}
+
+                  {selectedEl.type !== 'text' && selectedEl.type !== 'rect' && (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
+                      ประเภท {selectedEl.type.toUpperCase()} ไม่มีคุณสมบัติสไตล์เพิ่มเติม
                     </div>
+                  )}
+                </TabsContent>
+
+                {/* Type-specific data (content / source) */}
+                <TabsContent value="data" className="mt-0 space-y-2">
+                  {selectedEl.type === 'text' && (
                     <div className="space-y-1.5">
-                      <Label className="text-xs">ขอบ (border CSS)</Label>
-                      <Input
-                        value={selectedEl.border ?? ''}
-                        onChange={(e) => updateSelectedElement({ border: e.target.value })}
-                        placeholder="เช่น 1px solid #000 หรือ none"
+                      <Label className="text-xs">ข้อความ (รองรับ {'{{ตัวแปร}}'})</Label>
+                      <Textarea
+                        value={selectedEl.content ?? ''}
+                        onChange={(e) => updateSelectedElement({ content: e.target.value })}
+                        rows={4}
                         className="text-xs dark:bg-slate-800 dark:border-slate-700"
                       />
                     </div>
-                    <NumInput label="รัศมี (mm)" value={selectedEl.borderRadius ?? 0} onChange={(v) => updateSelectedElement({ borderRadius: v })} step={0.5} min={0} />
-                  </>
-                )}
+                  )}
+                  {selectedEl.type === 'image' && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">URL รูปภาพ</Label>
+                      <Input
+                        value={selectedEl.content ?? ''}
+                        onChange={(e) => updateSelectedElement({ content: e.target.value })}
+                        placeholder="https://..."
+                        className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                      />
+                    </div>
+                  )}
+                  {selectedEl.type !== 'text' && selectedEl.type !== 'image' && (
+                    <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
+                      ประเภท {selectedEl.type.toUpperCase()} ไม่มีคุณสมบัติข้อมูลเพิ่มเติม
+                    </div>
+                  )}
+                </TabsContent>
 
-                {selectedEl.type === 'image' && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">URL รูปภาพ</Label>
-                    <Input
-                      value={selectedEl.content ?? ''}
-                      onChange={(e) => updateSelectedElement({ content: e.target.value })}
-                      placeholder="https://..."
-                      className="text-xs dark:bg-slate-800 dark:border-slate-700"
-                    />
+                {/* Advanced — opacity, z-index */}
+                <TabsContent value="advanced" className="mt-0 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <NumInput label="Opacity (0-1)" value={selectedEl.opacity ?? 1} onChange={(v) => updateSelectedElement({ opacity: Math.min(1, Math.max(0, v)) })} step={0.1} min={0} max={1} />
+                    <NumInput label="Z-Index" value={selectedEl.zIndex ?? 0} onChange={(v) => updateSelectedElement({ zIndex: v })} step={1} />
                   </div>
-                )}
-
-                {/* Common props */}
-                <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-2 dark:border-slate-700">
-                  <NumInput label="Opacity (0-1)" value={selectedEl.opacity ?? 1} onChange={(v) => updateSelectedElement({ opacity: Math.min(1, Math.max(0, v)) })} step={0.1} min={0} max={1} />
-                  <NumInput label="Z-Index" value={selectedEl.zIndex ?? 0} onChange={(v) => updateSelectedElement({ zIndex: v })} step={1} />
-                </div>
-
-                <Button
-                  size="sm" variant="outline"
-                  onClick={deleteSelectedElement}
-                  className="w-full border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:hover:bg-rose-950/30"
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> ลบองค์ประกอบนี้
-                </Button>
-              </div>
+                </TabsContent>
+              </Tabs>
+            )}
+            {selectedEl && (
+              <Button
+                size="sm" variant="outline"
+                onClick={deleteSelectedElement}
+                className="w-full border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900 dark:hover:bg-rose-950/30"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> ลบองค์ประกอบนี้
+              </Button>
             )}
           </CardContent>
         </Card>
