@@ -7934,3 +7934,18 @@ Stage Summary:
 10. Added `Send`, `Mail` to lucide-react imports
 
 Prisma schema untouched (already updated). Work record: `agent-ctx/SITE-ATTR-TELEGRAM-EMAIL-full-stack-developer.md`
+
+---
+## FIX-WO-AUTH-PRINT — Work Orders: Auth headers + Print button
+
+**File:** `src/components/itam/work-orders-page.tsx`
+**Status:** ✅ Completed — Build: `✓ Compiled successfully in 31.7s`
+
+### Changes
+1. Added `import { useAuthStore } from '@/store/auth-store'` + `getAuthHeaders(extra)` helper (reads `useAuthStore.getState().token`, merges with `Content-Type` when needed).
+2. Updated all 18 `fetch()` calls to pass `headers: getAuthHeaders()` (GET/DELETE) or `headers: getAuthHeaders({ 'Content-Type': 'application/json' })` (POST/PUT) — fixes 401/403 on detail dialog (parts, images, assign, complete, cancel, reporter-edit, messages, parts approve/reject, device lookup, options, list, create).
+3. Detail dialog header: new outline `Button` (Printer icon + "พิมพ์ใบงาน", icon-only on mobile) → `window.open('/api/work-orders/[id]/print-sheet', '_blank')`.
+4. List table actions column: wrapped Eye button in `flex gap-1` div + added matching ghost `Button` with Printer icon (same print-sheet URL). Preserved `stopPropagation` on the cell.
+5. `Printer` icon was already imported — no new lucide import needed.
+
+Work record: `agent-ctx/FIX-WO-AUTH-PRINT-full-stack-developer.md`
