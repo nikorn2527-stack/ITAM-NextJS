@@ -1084,7 +1084,7 @@ function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) 
               onChange={(e) =>
                 setForm((s) => ({ ...s, name: e.target.value }))
               }
-              placeholder="เช่น ใบแจ้งซ่อนมาตรฐาน"
+              placeholder="เช่น ใบแจ้งซ่อมมาตรฐาน"
               className="h-8"
             />
           </div>

@@ -267,7 +267,6 @@ export default function Home() {
                 {activePage === 'settings-v2' && <SettingsPageV2 />}
                 {activePage === 'work-orders' && <WorkOrdersPage />}
                 {activePage === 'stock' && <StockPage />}
-                {activePage === 'devices-page' && <DevicesPage />}
                 {activePage === 'meter-page' && <MeterPage />}
                 {activePage === 'paper-analytics-page' && <PaperAnalyticsPage />}
               </motion.div>

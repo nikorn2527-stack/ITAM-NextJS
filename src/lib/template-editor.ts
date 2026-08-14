@@ -390,7 +390,7 @@ export function makeDefaultContent(
         y: 12,
         w: 170,
         h: 12,
-        content: type === 'work-order' ? 'ใบแจ้งซ่อน {woNumber}' : 'เอกสาร',
+        content: type === 'work-order' ? 'ใบแจ้งซ่อม {woNumber}' : 'เอกสาร',
         fontSize: 20,
         fontWeight: 'bold',
         color: '#0f172a',

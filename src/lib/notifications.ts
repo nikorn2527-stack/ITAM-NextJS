@@ -43,7 +43,7 @@ import { db } from '@/lib/db'
 export type NotificationChannel = 'line-oa' | 'line-notify' | 'telegram' | 'email'
 
 export type NotificationTemplate =
-  | 'wo_created' // แจ้งซ่อนใหม่
+  | 'wo_created' // แจ้งซ่อมใหม่
   | 'wo_assigned' // มอบหมายงาน
   | 'wo_completed' // ปิดงานแล้ว
   | 'wo_cancelled' // ยกเลิกงาน
@@ -191,8 +191,8 @@ function interpolate(tpl: string, data: Record<string, unknown>): string {
 
 const TEMPLATES: Record<NotificationTemplate, { title: string; body: string }> = {
   wo_created: {
-    title: 'แจ้งซ่อนใหม่',
-    body: '🔧 แจ้งซ่อนใหม่ {woNumber}\nหัวข้อ: {subject}\nสถานที่: {building} {location}\nผู้แจ้ง: {reporterName}\nเบอร์: {tel}\nความเร่งด่วน: {priority}',
+    title: 'แจ้งซ่อมใหม่',
+    body: '🔧 แจ้งซ่อมใหม่ {woNumber}\nหัวข้อ: {subject}\nสถานที่: {building} {location}\nผู้แจ้ง: {reporterName}\nเบอร์: {tel}\nความเร่งด่วน: {priority}',
   },
   wo_assigned: {
     title: 'มอบหมายงาน',

@@ -78,7 +78,7 @@ interface EventDef {
 
 const EVENT_DEFINITIONS = [
   // Services (Work Orders)
-  { event: 'wo_created', app: 'services', label: 'แจ้งซ่อนใหม่', vars: ['woNumber', 'subject', 'building', 'location', 'reporterName', 'tel', 'priority'] },
+  { event: 'wo_created', app: 'services', label: 'แจ้งซ่อมใหม่', vars: ['woNumber', 'subject', 'building', 'location', 'reporterName', 'tel', 'priority'] },
   { event: 'wo_assigned', app: 'services', label: 'มอบหมายงาน', vars: ['woNumber', 'subject', 'assignedTo', 'assignedBy'] },
   { event: 'wo_completed', app: 'services', label: 'ปิดงานแล้ว', vars: ['woNumber', 'subject', 'closedAt', 'resolution'] },
   { event: 'wo_cancelled', app: 'services', label: 'ยกเลิกงาน', vars: ['woNumber', 'subject', 'cancelReason'] },

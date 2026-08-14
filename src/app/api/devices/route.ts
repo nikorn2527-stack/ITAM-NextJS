@@ -40,11 +40,26 @@ function optBool(v: unknown): boolean {
 }
 
 export async function GET(req: NextRequest) {
+  // ── Authentication: require VIEW_DEVICES permission ──
+  // Previously this route returned full device records (including
+  // serialNumber, IP/MAC, vendor/contract info) with no auth check.
+  // Now it enforces authentication and Site scope.
+  const auth = await requireAuth(req, 'VIEW_DEVICES')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { searchParams } = new URL(req.url)
     const search = searchParams.get('search')?.trim() ?? ''
     const status = searchParams.get('status')?.trim() ?? ''
     const site = searchParams.get('site')?.trim() ?? ''
+    // ── Pagination: default limit 100, max 500 (previously unbounded) ──
+    const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1)
+    const limit = Math.min(
+      500,
+      Math.max(1, Number(searchParams.get('limit') ?? '100') || 100),
+    )
+    const skip = (page - 1) * limit
 
     const where: Record<string, unknown> = {}
     if (search) {
@@ -69,17 +84,39 @@ export async function GET(req: NextRequest) {
     if (status) where.status = status
     if (site) where.site = site
 
-    const devices = await db.device.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        meterReadings: {
-          orderBy: { readingDate: 'desc' },
-          take: 1,
-          select: { readingMonth: true, readingDate: true },
+    // ── Site scope: non-superadmin users see only their authorized sites ──
+    // This mirrors the pattern used in /api/itam/devices route.
+    if (auth.user.allowedSites !== 'ALL') {
+      const allowed = (auth.user.allowedSites ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      if (allowed.length > 0) {
+        // If the user passed an explicit `site` filter, intersect with allowed
+        if (site && !allowed.includes(site)) {
+          return NextResponse.json({ devices: [], total: 0, page, limit })
+        }
+        where.site = where.site ? { in: allowed } : { in: allowed }
+      }
+    }
+
+    // Run count + page in parallel for efficiency
+    const [devices, total] = await Promise.all([
+      db.device.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        include: {
+          meterReadings: {
+            orderBy: { readingDate: 'desc' },
+            take: 1,
+            select: { readingMonth: true, readingDate: true },
+          },
         },
-      },
-    })
+      }),
+      db.device.count({ where }),
+    ])
     // Annotate each device with `lastReadingMonth` derived from its latest
     // MeterReading record (matches Apps Script's `lastReadingMonth` column).
     const devicesWithMeter = devices.map((d) => {
@@ -91,7 +128,13 @@ export async function GET(req: NextRequest) {
           latest?.readingMonth ?? latest?.readingDate?.slice(0, 7) ?? null,
       }
     })
-    return NextResponse.json({ devices: devicesWithMeter })
+    return NextResponse.json({
+      devices: devicesWithMeter,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    })
   } catch (err) {
     console.error('GET /api/devices', err)
     return NextResponse.json(

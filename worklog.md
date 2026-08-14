@@ -1490,7 +1490,7 @@ Phase A4: Template Editor (subagent A4-TEMPLATES)
 - src/app/api/templates/route.ts: GET + POST
 - src/app/api/templates/[id]/route.ts: GET + PUT + DELETE (block default deletion)
 - src/components/itam/templates-page.tsx:
-  • 6 type cards (สติกเกอร์/PDF/ใบแจ้งซ่อน/ใบเบิก/ใบรับ/ใบสั่งซื้อ)
+  • 6 type cards (สติกเกอร์/PDF/ใบแจ้งซ่อม/ใบเบิก/ใบรับ/ใบสั่งซื้อ)
   • Template list table (name, category, active/default badges, actions)
   • Editor dialog (JSON textarea with validation)
   • Auto-seed 6 default templates on first load
@@ -2046,7 +2046,7 @@ view showing all fields.
 
 ---
 Task ID: WO-COMPLETE-VERIFY
-Agent: orchestrator — ตรวจสอบ + ทดสอบฟีเจอร์แจ้งซ่อนที่เพิ่ม
+Agent: orchestrator — ตรวจสอบ + ทดสอบฟีเจอร์แจ้งซ่อมที่เพิ่ม
 
 Work Log:
 - ตรวจสอบ Services App ทุกฟังก์ชัน (173 functions)
@@ -2198,7 +2198,7 @@ Verification (agent-browser):
 ✅ Lint: 0 errors
 
 Stage Summary:
-- 3 ระบบเชื่อมกันสมบูรณ์: แจ้งซ่อน → เบิกอะไหล่ → ลดสต็อก
+- 3 ระบบเชื่อมกันสมบูรณ์: แจ้งซ่อม → เบิกอะไหล่ → ลดสต็อก
 - Stock pending approval: สร้าง + อนุมัติ + ปฏิเสธ
 - WO บล็อกปิดงานเมื่อมีอะไหล่รออนุมัติ
 - พร้อมสำหรับการปรับ Dashboard ต่อไป
@@ -2242,7 +2242,7 @@ Work Log:
     - Parses `events[]` and handles `message` (text), `follow`, and `postback` types
     - Message branching:
       1. text starts with `ติดตาม` / `สถานะ` / `status` → finds the user's latest WO (by `lineUserId`) and replies with `formatWoStatus()` (Thai status labels + assignedTo + resolution)
-      2. text is `แจ้งซ่อน` / `แจ้ง` → replies with a quick-reply menu explaining how to report
+      2. text is `แจ้งซ่อม` / `แจ้ง` → replies with a quick-reply menu explaining how to report
       3. text matches a `Device.assetCode` (findUnique) or `Device.serialNumber` (findFirst) → creates a WorkOrder with device info pre-filled (subject/building/location/details/deviceId/lineUserId/lineMessageId) + WorkOrderMessage, replies "✅ สร้างใบงานแล้ว WO-YYYYMMDD-NNN"
       4. default → creates a WorkOrder with the text as subject, replies with the WO number
     - `follow` event → upserts LineBinding, replies with a Thai welcome message describing the available commands
@@ -2286,7 +2286,7 @@ PART 2: LINE OA Webhook ✅
 - Schema: WorkOrder.lineUserId + WorkOrder.lineMessageId + LineBinding model
 - /api/line/webhook: 
   • "ติดตาม"/"สถานะ" → แสดงสถานะงานล่าสุด
-  • "แจ้งซ่อน"/"แจ้ง" → quick reply menu
+  • "แจ้งซ่อม"/"แจ้ง" → quick reply menu
   • Serial number → ค้นหา Device → เปิดงานอัตโนมัติ
   • ข้อความทั่วไป → สร้างใบงาน
   • follow event → ยินดีต้อนรับ
@@ -2307,7 +2307,7 @@ Verification:
 
 Stage Summary:
 - แจ้งเตือน 3 channels (LINE OA + Telegram + Email) พร้อม 10 templates
-- LINE OA webhook รับแจ้งซ่อน + ตอบแชท + พบ Serial เปิดงานได้
+- LINE OA webhook รับแจ้งซ่อม + ตอบแชท + พบ Serial เปิดงานได้
 - Single User: 1 login ทุกระบบ (พร้อมสำหรับ NextAuth)
 - พร้อมเชื่อม LINEOA จริงเมื่อตั้งค่า API keys
 
@@ -6115,7 +6115,7 @@ Work Log:
    - OrganizationProfile: appName="ระบบจัดการสินทรัพย์ไอที", appTagline="IT Asset Management — PNG TEAM", primaryColor=#f97316, accentColor=#0d9488
    - 6 AppSettings (appName, appTagline, notifyEnabled, stockApprovalMode, etc.)
    - 1 Cycle (รอบจดมิเตอร์ 2026-08, active)
-   - 1 DocumentTemplate (ใบแจ้งซ่อน default, isFixed=true)
+   - 1 DocumentTemplate (ใบแจ้งซ่อม default, isFixed=true)
 
 Final data counts in Supabase:
 | Table | Count |
@@ -6861,7 +6861,7 @@ Agent: orchestrator — แก้ 4 ปัญหา UI ตามที่ผู�
 
 Task: 
 1. จัดการอุปกรณ์ — ขอหัวตารางตาม Apps Script
-2. แจ้งซ่อน — ขอเป็นรายการแทนการ์ด
+2. แจ้งซ่อม — ขอเป็นรายการแทนการ์ด
 3. จดมิเตอร์ — ฟังก์ชันกำหนดวันจด + ตัวนับถอยหลัง
 4. ตั้งค่าระบบ — การแจ้งเตือนใช้ไม่ได้
 
@@ -7363,7 +7363,7 @@ Verification (production, commit 2126b7e):
 ✅ Build: Compiled successfully
 
 **ข้อ 3: Mobile Work Order — Proposal:**
-แนวทาง: สร้างหน้า "แจ้งซ่อนด่วน" สำหรับมือถือ ที่ผู้ใช้ทั่วไปเข้าได้โดยไม่ต้อง login:
+แนวทาง: สร้างหน้า "แจ้งซ่อมด่วน" สำหรับมือถือ ที่ผู้ใช้ทั่วไปเข้าได้โดยไม่ต้อง login:
 - URL: /mobile/repair หรือ ?page=mobile-repair
 - ไม่ต้อง login — กรอกชื่อ + เบอร์ + เลือกปัญหา → ส่ง
 - รองรับ: ถ่ายรูป, สแกน QR, เลือกอาคาร/ตำแหน่ง
@@ -7836,7 +7836,7 @@ Final StockTransaction counts:
 - รวม: 2,602 transactions
 - Linked to WO (workOrderNo): 927
 
-**สมพันธ์กับแจ้งซ่อน:**
+**สมพันธ์กับแจ้งซ่อม:**
 - 927 transactions มี workOrderNo (เช่น PPIT3104) → linked กับใบงาน
 - เมื่อเปิดใบงาน → เห็นประวัติการเบิกอะไหล่
 - เมื่ออนุมัติเบิกอะไหล่ → ลดสต็อก + auto-close ใบงาน (ถ้า WAITING_PARTS)
@@ -8031,3 +8031,114 @@ Stage Summary:
 - ส่งออก CSV ได้ทุกกลุ่ม
 - แยกไฟล์เป็น sub-components เพื่อลด memory ตอน compile
 - Note: schema.prisma เปลี่ยนเป็น sqlite สำหรับ local testing — ต้องเปลี่ยนกลับเป็น postgresql ก่อน deploy ไป Vercel
+
+---
+Task ID: AUDIT-FIXES-PHASE-1
+Agent: orchestrator — แก้ไขปัญหาตาม audit notes + Site-based RBAC Phase 0
+
+Task: ปรับปรุงระบบตามรายงาน audit notes (itam-audit-notes.md) และ Site-Based Access Control Guidance — แก้คำผิด "แจ้งซ่อน" → "แจ้งซ่อม", build blockers, security holes, และวางรากฐาน UserSiteGrant
+
+Work Log:
+
+**1. แก้คำผิด "แจ้งซ่อน" → "แจ้งซ่อม" (16 ไฟล์, 28 จุด):**
+- ใช้ sed แทนที่ทั้งหมดใน src/ + scripts/ + worklog.md
+- ไฟล์ที่ได้รับผล: work-orders-page.tsx, monthly-report.tsx, wo-print-form.tsx, templates-page.tsx, rbac.ts, notifications.ts, templates.ts, csv-field-mapping.ts, ฯลฯ
+- ตรวจสอบด้วย agent-browser: "แจ้งซ่อม in DOM: true, แจ้งซ่อน in DOM: false" ✅
+
+**2. แก้ build blocker ใน dashboard-page.tsx:**
+- บรรทัด 778 ปิด Card ของ WO Status Pie แต่ยังไม่ได้ปิด div grid container (เปิดที่ 715)
+- เพิ่ม Card ที่สอง (Device Types Bar) ที่หายไป + ปิด div grid
+- เพิ่ม import Cpu, Printer, Settings2 จาก lucide-react
+- ผล: dashboard render สำเร็จ ไม่มี client-side error
+
+**3. แก้ auth.ts security issues:**
+- `require('bcryptjs')` → `import * as bcrypt from 'bcryptjs'` (ES module style, แก้ lint error)
+- JWT fallback secret: ใน production ถ้าไม่มี JWT_SECRET จะ throw error ทันที (fail closed)
+- JWT blacklist: เปลี่ยนจาก Set (clear ทุก 10 นาทีทั้งก้อน) → Map พร้อม per-token expiry
+  - ก่อนหน้านี้: token ที่ logout ไปแล้วกลับมาใช้ได้อีกหลัง 10 นาที (เพราะ Set ถูก clear)
+  - ตอนนี้: แต่ละ token เก็บ expiresAt จาก JWT exp, prune เฉพาะ entries ที่หมดอายุจริง
+
+**4. แก้ page.tsx duplicate devices-page condition:**
+- เดิม: `{activePage === 'devices-page' && <DevicesPage />}` ปรากฏ 2 ครั้ง (บรรทัด 248 และ 266)
+- ผล: อาจ mount สอง copies ของหน้า → duplicate queries/effects/subscriptions
+- แก้: ลบบรรทัด 270 (duplicate) ออก — เหลือเพียงการ render ครั้งเดียวที่บรรทัด 251
+
+**5. เพิ่ม requireAuth ใน work-orders images route:**
+- เดิม: GET/POST/DELETE ไม่มี auth เลย — ใครก็เห็น/เพิ่ม/ลบรูปได้
+- ใหม่: GET ต้องมี WO_VIEW_ALL, POST/DELETE ต้องมี WO_ASSIGN
+- ใช้ authenticated user identity แทน client-supplied uploadedBy/x-actor header
+- ทดสอบ: ไม่มี token → HTTP 401 ✅
+
+**6. เพิ่ม pagination + auth + site scope ใน /api/devices route:**
+- เดิม: ไม่มี auth, ไม่มี pagination, ส่งทั้ง 2,378 rows พร้อม IP/MAC/vendor/contract
+- ใหม่:
+  - requireAuth(req, 'VIEW_DEVICES')
+  - Server-side pagination: page + limit (default 100, max 500)
+  - Site scope: ถ้า user.allowedSites !== 'ALL' → filter by site IN allowed
+  - Response: { devices, total, page, limit, totalPages }
+- อัปเดต devices-page.tsx ให้ส่ง authHeaders + limit=500
+- ทดสอบ: page=1&limit=3 → ส่งกลับ 3 devices, total=2378, totalPages=793 ✅
+- ทดสอบ: ไม่มี token → HTTP 401 ✅
+
+**7. Site-Based Access Control Phase 0 (ตาม Site-Based Access Control Guidance):**
+
+Schema changes (prisma/schema.prisma):
+- เพิ่ม `UserSiteGrant` model (userId, siteCode, role, active) — รองรับ per-Site role
+  - ทำให้ user คนเดียวเป็น editor ที่ Site A แต่ viewer ที่ Site B ได้
+  - @@id([userId, siteCode]) composite primary key
+  - @@index([siteCode, active]) + @@index([userId, active])
+- เพิ่ม `WorkOrder.siteCode` field (nullable) + @@index([siteCode, status, createdAt])
+  - แก้ปัญหา: work order ไม่มี device ไม่สามารถ scope ตาม Site ได้
+  - null = external/unassigned (ไม่ใช่ "all sites")
+- อนุรักษ์ `User.allowedSites` ชั่วคราว (Phase 0 dual-read/dual-write)
+
+ไลบรารีใหม่ `src/lib/site-scope.ts`:
+- `getSiteScope(userId, role, allowedSites)` — dual-read pattern
+  1. อ่าน UserSiteGrant ก่อน
+  2. ถ้าไม่มี → fall back ไป allowedSites (พร้อม audit warning)
+  3. superadmin → all sites
+- `normalizeSiteCode(raw)` — trim + uppercase
+- `parseAllowedSites(raw)` — แปลง 'UDH, NKP' → ['UDH', 'NKP'], 'ALL' → isAll=true
+- `canAccessSite(scope, siteCode)` — ตรวจสอบสิทธิ์เข้าถึง site
+- `siteWhereClause(scope, field)` — สร้าง Prisma where fragment
+- `normalizeAllowedSitesInput(raw)` — สำหรับ user-management API
+
+**8. ปรับ lib/db.ts ปิด query log default:**
+- เดิม: `log: ['query']` ใน dev → ทุก Prisma query ถูก log (I/O overhead)
+- ใหม่: `log: ['error', 'warn']` เป็น default; ตั้ง PRISMA_LOG_QUERIES=1 เพื่อเปิดอีกครั้ง
+
+**9. ปรับ dashboard polling intervals (ลด DB/network load):**
+- Primary dashboard: 30s → 60s + staleTime 60s
+- Smart insights: 60s → 180s + staleTime 120s
+- Active cycle: 120s → 300s + staleTime 120s (cycles change daily)
+- Meter reminders: 60s → 120s + staleTime 60s
+- ผล: ลด periodic API calls ~50-67%
+
+**10. Lint ผลลัพธ์:**
+- เดิม: 95 errors
+- หลังแก้: 15 errors (ทั้งหมดเป็น pre-existing ในไฟล์อื่น — scripts/*.js require imports, template-editor.tsx paper access)
+- ไฟล์ที่เราแก้ทั้งหมด: 0 errors ✅
+
+**Verification สรุป:**
+- ✅ Root page: HTTP 200
+- ✅ Login: admin/admin123 → 285 char token
+- ✅ /api/devices?page=1&limit=3 → 3 devices, total=2378, totalPages=793
+- ✅ /api/devices (no auth) → HTTP 401
+- ✅ /api/work-orders/test/images (no auth) → HTTP 401
+- ✅ Dashboard render สำเร็จ ไม่มี client-side error
+- ✅ "แจ้งซ่อม" ใน DOM, "แจ้งซ่อน" ไม่มี
+- ✅ Schema pushed สำเร็จ (UserSiteGrant + WorkOrder.siteCode)
+
+Stage Summary:
+- แก้คำผิด "แจ้งซ่อน" → "แจ้งซ่อม" ครบทุกไฟล์
+- แก้ build blocker ใน dashboard-page.tsx (missing </Card> + missing Device Types Bar chart)
+- ปิด security holes: /api/devices ไม่มี auth, /api/work-orders/[id]/images ไม่มี auth
+- วางรากฐาน Site-based RBAC Phase 0: UserSiteGrant model + WorkOrder.siteCode + site-scope.ts helper
+- ปรับ performance: pagination, ลด polling, ปิด query log
+- แก้ JWT blacklist bug (token กลับมาใช้ได้หลัง logout)
+- แก้ JWT fallback secret (fail closed ใน production)
+
+⚠️ หมายเหตุสำหรับ deploy:
+- schema.prisma ยังเป็น sqlite สำหรับ sandbox — เปลี่ยนเป็น postgresql ก่อน deploy
+- Site-Based RBAC Phase 0 ยังเป็น dual-read — ต้องเพิ่ม UI จัดการ UserSiteGrant ใน Phase ถัดไป
+- ควรเพิ่ม cross-Site regression tests ตาม §9 ของ guidance document
