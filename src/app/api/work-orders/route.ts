@@ -257,6 +257,8 @@ export async function POST(req: NextRequest) {
       isExternal,
       skipGuestValidation,
       isSpecialFee,
+      requestId,
+      clientMutationId,
     } = body as Record<string, unknown>
 
     if (!subject || !String(subject).trim()) {
@@ -264,6 +266,41 @@ export async function POST(req: NextRequest) {
         { error: 'กรุณาระบุประเภทปัญหา (subject)' },
         { status: 400 },
       )
+    }
+
+    // ── Idempotency: check requestId/clientMutationId for replay protection ──
+    // If the caller sends a requestId (legacy) or clientMutationId (new),
+    // we check if a WO with that idempotency key already exists. If so,
+    // return the existing WO as a duplicate success (matching legacy
+    // Apps Script behavior). This prevents duplicate WO creation on retry.
+    const idempotencyKey =
+      (typeof clientMutationId === 'string' && clientMutationId.trim()) ||
+      (typeof requestId === 'string' && requestId.trim()) ||
+      null
+    if (idempotencyKey) {
+      const existing = await db.workOrder.findFirst({
+        where: {
+          OR: [
+            { requestId: idempotencyKey },
+          ],
+        },
+        select: {
+          id: true,
+          woNumber: true,
+          subject: true,
+          status: true,
+          createdAt: true,
+        },
+      })
+      if (existing) {
+        // Return the existing WO as a duplicate success — the caller
+        // should treat this as the result of their original request.
+        return NextResponse.json({
+          data: existing,
+          duplicate: true,
+          message: `พบใบงานที่สร้างด้วย requestId '${idempotencyKey}' แล้ว — ส่งคืนข้อมูลเดิม`,
+        })
+      }
     }
 
     const source =
@@ -358,6 +395,7 @@ export async function POST(req: NextRequest) {
       data: {
         id: woNumber,       // Use PPIT format as the primary id (like original data)
         woNumber,           // Also set as woNumber for display
+        requestId: idempotencyKey, // Store for future replay detection
         subject: String(subject).trim(),
         building: building ? String(building).trim() : null,
         location: location ? String(location).trim() : null,

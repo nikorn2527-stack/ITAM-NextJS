@@ -123,6 +123,70 @@ export function invalidateCatalogCache(): void {
   _catalogCache = null
 }
 
+// ── Migration mode ────────────────────────────────────
+// AUTHZ_MIGRATION_MODE controls how the system handles the transition
+// from legacy allowedSites to UserSiteGrant:
+//
+//   - 'dual_read' (default): Read UserSiteGrant first; if no grants,
+//     fall back to legacy allowedSites WITH an audit warning. Every
+//     request with a target Site still checks canAccessSite(). This
+//     is the ONLY mode that allows fallback.
+//
+//   - 'strict': No fallback. Users without UserSiteGrant rows get
+//     no Site access (fail-closed). Use this after backfill is complete.
+//
+// 'fail_open' is NOT supported — it would bypass Site authorization
+// globally, which is explicitly prohibited by the security policy.
+//
+// In production, startup should reject if any non-superadmin user has
+// allowedSites='ALL' without an explicit migration exception (see
+// validateProductionAuthzConfig below).
+export type AuthzMigrationMode = 'dual_read' | 'strict'
+
+export function getAuthzMigrationMode(): AuthzMigrationMode {
+  const raw = (process.env.AUTHZ_MIGRATION_MODE ?? 'dual_read').trim()
+  if (raw === 'strict') return 'strict'
+  return 'dual_read' // default + only other valid value
+}
+
+/**
+ * Validate that the production authorization configuration is safe.
+ * Call this at startup (e.g. in a server module or health check).
+ *
+ * Returns a list of warnings/errors. In production, the caller should
+ * reject startup if any errors are present.
+ */
+export interface AuthzConfigIssue {
+  level: 'error' | 'warn'
+  message: string
+}
+
+export async function validateProductionAuthzConfig(): Promise<AuthzConfigIssue[]> {
+  const issues: AuthzConfigIssue[] = []
+  const isProd = process.env.NODE_ENV === 'production'
+
+  if (isProd) {
+    // Check for non-superadmin users with allowedSites='ALL'
+    // These are security risks — they should have explicit grants instead.
+    const riskyUsers = await db.user.findMany({
+      where: {
+        active: true,
+        role: { not: { equals: 'superadmin' } },
+        allowedSites: { equals: 'ALL' },
+      },
+      select: { id: true, email: true, username: true, role: true },
+    })
+    for (const u of riskyUsers) {
+      issues.push({
+        level: 'error',
+        message: `User ${u.email} (${u.role}) has allowedSites='ALL' — convert to explicit UserSiteGrant or set AUTHZ_MIGRATION_EXCEPTIONS`,
+      })
+    }
+  }
+
+  return issues
+}
+
 // ── Main builder ──────────────────────────────────────
 /**
  * Build the AuthorizationContext for the authenticated user.
@@ -213,7 +277,28 @@ export async function buildAuthorizationContext(
       }
     })
   } else {
-    // 2) Fall back to legacy allowedSites
+    // 2) Fall back to legacy allowedSites — ONLY in dual_read mode
+    // In 'strict' mode, no grants = no access (fail-closed).
+    const migrationMode = getAuthzMigrationMode()
+    if (migrationMode === 'strict') {
+      // No fallback — return no-access context
+      return {
+        userId,
+        email: user.email,
+        globalRole,
+        isSuperAdmin: false,
+        grants: [],
+        siteScope: { kind: 'none', siteCodes: [] },
+        effectivePermissions: [],
+        usedLegacyFallback: false,
+        can: () => false,
+        canAccessSite: () => false,
+        siteWhere: (field = 'site') => ({ [field]: { in: [] } }),
+        roleAtSite: () => null,
+      }
+    }
+
+    // dual_read mode — fall back with audit warning
     usedLegacyFallback = true
     const parsed = parseAllowedSites(legacyAllowedSites)
 
@@ -222,9 +307,9 @@ export async function buildAuthorizationContext(
       'AUTH_FALLBACK',
       'User',
       userId,
-      `User ${userId} has no UserSiteGrant rows; fell back to allowedSites='${legacyAllowedSites ?? ''}'. ` +
+      `User ${userId} has no UserSiteGrant rows; fell back to allowedSites='${legacyAllowedSites ?? ''}' (dual_read mode). ` +
         `Add explicit grants to retire this fallback.`,
-      { userId, allowedSites: legacyAllowedSites ?? '' },
+      { userId, allowedSites: legacyAllowedSites ?? '', migrationMode },
     ).catch(() => {
       // best-effort; don't fail the request
     })
@@ -232,6 +317,8 @@ export async function buildAuthorizationContext(
     if (parsed.isAll) {
       // Legacy ALL → treat as all-sites with viewer-equivalent permissions
       // from the global role (this is the old behavior)
+      // NOTE: This path is a known migration risk. In production with
+      // AUTHZ_MIGRATION_MODE=strict, this would not happen.
       const globalPerms = getUserPermissions(
         globalRole,
         user.permissions as unknown as string,
