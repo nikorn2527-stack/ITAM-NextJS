@@ -28,6 +28,8 @@ export async function PUT(
         SiteName: body.siteName !== undefined ? (body.siteName ? String(body.siteName).trim() : null) : undefined,
         LineOA: body.lineOa !== undefined ? (body.lineOa ? String(body.lineOa).trim() : null) : undefined,
         Hotline: body.hotline !== undefined ? (body.hotline ? String(body.hotline).trim() : null) : undefined,
+        TelegramChatId: body.telegramChatId !== undefined ? (body.telegramChatId ? String(body.telegramChatId).trim() : null) : undefined,
+        EmailAddress: body.emailAddress !== undefined ? (body.emailAddress ? String(body.emailAddress).trim() : null) : undefined,
         PaperRateBW: typeof body.paperRateBw === 'number' ? body.paperRateBw : undefined,
         PaperRateColor: typeof body.paperRateColor === 'number' ? body.paperRateColor : undefined,
       },

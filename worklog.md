@@ -7914,3 +7914,23 @@ Demo credentials:
 Stage Summary:
 - B: Demo mode ใช้งานได้ — ลูกค้า login ด้วย demo_admin/demo123 → ใช้ได้ทุกฟังก์ชัน ไม่กระทบข้อมูลจริง
 - C: E2E tests พร้อมรัน — 6 test files ครอบคลุมทุก critical flow
+
+---
+## SITE-ATTR-TELEGRAM-EMAIL — SiteAttributesSection: Telegram & Email fields
+
+**File:** `src/components/itam/site-attributes-section.tsx` (UI only)
+**Status:** ✅ Completed — Build: `✓ Compiled successfully in 29.8s`
+
+### Changes
+1. `SiteAttribute` interface → added `TelegramChatId` + `EmailAddress` (string|null)
+2. `EMPTY_FORM` → added `telegramChatId: ''`, `emailAddress: ''`
+3. `openEdit()` → pre-populate from `site.TelegramChatId` / `site.EmailAddress`
+4. `saveSite()` payload → `telegramChatId` + `emailAddress` (undefined when blank)
+5. Table headers → new `Telegram` + `Email` columns (`hidden md:table-cell`)
+6. Table body cells → `Send` (sky-500) + `Mail` (amber-500) icons, truncated text + tooltip, `—` fallback
+7. Skeleton rows → +2 hidden cells to match new columns
+8. Empty-state `colSpan` 7 → 9
+9. Dialog form → new `Telegram Chat ID` (mono input, placeholder `เช่น -1001234567890`) and `Email Address` (`type=email`, placeholder `เช่น it-udh@hospital.go.th`) inputs after Hotline
+10. Added `Send`, `Mail` to lucide-react imports
+
+Prisma schema untouched (already updated). Work record: `agent-ctx/SITE-ATTR-TELEGRAM-EMAIL-full-stack-developer.md`
