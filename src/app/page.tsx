@@ -83,6 +83,9 @@ const TemplatesPage = dynamic(() =>
 const MonthlyReport = dynamic(() =>
   import('@/components/itam/monthly-report').then((m) => m.MonthlyReport),
 )
+const ReportsHub = dynamic(() =>
+  import('@/components/itam/reports-hub').then((m) => m.ReportsHub),
+)
 const SettingsPageV2 = dynamic(() =>
   import('@/components/itam/settings-page-v2').then((m) => m.SettingsPageV2),
 )
@@ -260,6 +263,7 @@ export default function Home() {
                 {activePage === 'import' && <ImportPage />}
                 {activePage === 'templates' && <TemplatesPage />}
                 {activePage === 'monthly-report' && <MonthlyReport />}
+                {activePage === 'reports-hub' && <ReportsHub />}
                 {activePage === 'settings-v2' && <SettingsPageV2 />}
                 {activePage === 'work-orders' && <WorkOrdersPage />}
                 {activePage === 'stock' && <StockPage />}

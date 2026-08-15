@@ -57,6 +57,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     items: [
       { page: 'templates', icon: '📄', label: 'เทมเพลต', desc: 'จัดการเทมเพลต (สติกเกอร์/เอกสาร/ใบงาน)' },
       { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล', desc: 'Import CSV/Excel' },
+      { page: 'reports-hub', icon: '📊', label: 'ศูนย์รายงาน', desc: 'รายงาน 5 กลุ่ม + อนุมัติ' },
       { page: 'monthly-report', icon: '📅', label: 'รายงานรายเดือน', desc: 'สรุปการใช้งานรายเดือน' },
       { page: 'itam-snapshot-viewer', icon: '🔒', label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์' },
     ],
