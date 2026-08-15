@@ -9,6 +9,7 @@ async function logAudit(
   summary: string,
   detail: Record<string, unknown> | null,
   actor: string,
+  siteCode?: string | null,
 ): Promise<void> {
   try {
     await db.auditLog.create({
@@ -19,6 +20,7 @@ async function logAudit(
         summary,
         detail: detail ? JSON.stringify(detail) : null,
         actor,
+        siteCode: siteCode ?? null,
       },
     })
   } catch (err) {
@@ -142,6 +144,7 @@ export async function POST(
         resolutionGroup: resolutionGroupTrim || null,
       },
       actorName,
+      result.woSite,
     )
 
     // ── Notification trigger (Task ID: NOTIFY-LINE) ──
