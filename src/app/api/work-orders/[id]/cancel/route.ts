@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notifyWorkOrderCancelled } from '@/lib/notifications'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 async function logAudit(
   action: string,
@@ -31,10 +32,17 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+
+    // Authenticate + authorize — cancelling a WO requires WO_CANCEL at its Site
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_CANCEL')
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    const { wo, auth } = result
+
     const body = await req.json()
-    const { reason, actor } = body as {
+    const { reason } = body as {
       reason?: string
-      actor?: string
     }
 
     if (!reason || !String(reason).trim()) {
@@ -44,10 +52,6 @@ export async function POST(
       )
     }
 
-    const wo = await db.workOrder.findUnique({ where: { id } })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
     if (wo.status === 'COMPLETED') {
       return NextResponse.json(
         { error: 'ใบงานนี้ปิดไปแล้ว ไม่สามารถยกเลิกได้' },
@@ -61,15 +65,14 @@ export async function POST(
       )
     }
 
-    const actorName =
-      typeof actor === 'string' && actor.trim() ? actor.trim() : 'system'
-    // NOTE (PART 3 — Single User System): replace the 'system' fallback
-    // with the authenticated user's email/id once NextAuth is wired in.
+    // Use the authenticated user's email as the actor — never trust
+    // a body-supplied `actor` field, which could be spoofed.
+    const actorName = auth.user.email
     const reasonStr = String(reason).trim()
     const now = new Date()
 
     const updated = await db.workOrder.update({
-      where: { id },
+      where: { id: wo.id },
       data: {
         status: 'CANCELLED',
         canceledAt: now,
@@ -79,7 +82,7 @@ export async function POST(
 
     await db.workOrderMessage.create({
       data: {
-        workOrderId: id,
+        workOrderId: wo.id,
         message: `ยกเลิกใบงาน — ${reasonStr}`,
         author: actorName,
         authorRole: 'admin',
@@ -88,15 +91,14 @@ export async function POST(
 
     await logAudit(
       'WO_CANCEL',
-      id,
-      `ยกเลิก ${updated.woNumber ?? id}`,
+      wo.id,
+      `ยกเลิก ${updated.woNumber ?? wo.id}`,
       { reason: reasonStr },
       actorName,
     )
 
     // ── Notification trigger (Task ID: NOTIFY-LINE) ──
     // Send 'wo_cancelled' to reporter (LINE if lineUserId is known).
-    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
     try {
       await notifyWorkOrderCancelled(
         {

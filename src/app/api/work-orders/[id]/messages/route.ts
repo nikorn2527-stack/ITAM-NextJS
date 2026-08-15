@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notifyWorkOrderMessage } from '@/lib/notifications'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 async function logAudit(
   action: string,
@@ -8,6 +9,7 @@ async function logAudit(
   summary: string,
   detail: Record<string, unknown> | null,
   actor: string,
+  siteCode?: string | null,
 ): Promise<void> {
   try {
     await db.auditLog.create({
@@ -18,6 +20,7 @@ async function logAudit(
         summary,
         detail: detail ? JSON.stringify(detail) : null,
         actor,
+        siteCode: siteCode ?? null,
       },
     })
   } catch (err) {
@@ -26,20 +29,23 @@ async function logAudit(
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params
-    const wo = await db.workOrder.findUnique({
-      where: { id },
-      select: { id: true },
+
+    // Authenticate + authorize — viewing messages requires WO_VIEW_ALL
+    // (allowOwn so a reporter can see their own WO's chat)
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_VIEW_ALL', {
+      allowOwn: true,
     })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
     }
+
     const messages = await db.workOrderMessage.findMany({
-      where: { workOrderId: id },
+      where: { workOrderId: result.wo.id },
       orderBy: { createdAt: 'asc' },
     })
     return NextResponse.json({ data: messages })
@@ -58,12 +64,21 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+
+    // Authenticate + authorize — posting a message requires the same
+    // view permission (anyone who can view the WO can chat on it).
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_VIEW_ALL', {
+      allowOwn: true,
+    })
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    const { wo, auth } = result
+
     const body = await req.json()
-    const { message, author, authorRole, actor } = body as {
+    const { message, authorRole } = body as {
       message?: string
-      author?: string | null
       authorRole?: string | null
-      actor?: string
     }
 
     if (!message || !String(message).trim()) {
@@ -73,13 +88,6 @@ export async function POST(
       )
     }
 
-    const wo = await db.workOrder.findUnique({
-      where: { id },
-      select: { id: true, woNumber: true, status: true },
-    })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
     if (wo.status === 'CANCELLED' || wo.status === 'COMPLETED') {
       return NextResponse.json(
         { error: 'ใบงานนี้ปิด/ยกเลิกแล้ว ไม่สามารถส่งข้อความได้' },
@@ -87,10 +95,9 @@ export async function POST(
       )
     }
 
-    const authorName =
-      typeof author === 'string' && author.trim()
-        ? author.trim()
-        : (typeof actor === 'string' && actor.trim() ? actor.trim() : 'system')
+    // Author identity comes from the authenticated session — never trust
+    // a body-supplied `author`/`actor` field.
+    const authorName = auth.user.email
     const role =
       typeof authorRole === 'string' && authorRole.trim()
         ? authorRole.trim()
@@ -98,7 +105,7 @@ export async function POST(
 
     const created = await db.workOrderMessage.create({
       data: {
-        workOrderId: id,
+        workOrderId: wo.id,
         message: String(message).trim(),
         author: authorName,
         authorRole: role,
@@ -107,26 +114,26 @@ export async function POST(
 
     await logAudit(
       'WO_MESSAGE',
-      id,
-      `เพิ่มข้อความใน ${wo.woNumber ?? id}`,
+      wo.id,
+      `เพิ่มข้อความใน ${wo.woNumber ?? wo.id}`,
       { message: String(message).trim(), author: authorName },
       authorName,
+      result.woSite,
     )
 
     // ── Notification trigger (Task ID: NOTIFY-LINE) ──
     // Send 'wo_message' to the OTHER party (admin↔reporter).
     // If author is staff/admin → notify the reporter (LINE if lineUserId is known).
     // If author is reporter → notify staff (LINE admin group / Telegram).
-    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
     try {
       const woForNotify = await db.workOrder.findUnique({
-        where: { id },
+        where: { id: wo.id },
         select: { lineUserId: true, reporterEmail: true },
       })
       const isFromReporter = role === 'reporter'
       await notifyWorkOrderMessage(
         {
-          id,
+          id: wo.id,
           woNumber: wo.woNumber,
           author: authorName,
           message: String(message).trim(),

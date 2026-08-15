@@ -227,7 +227,7 @@ model MaintenanceLog {
 model WorkOrder {
   id               String   @id @default(cuid())
   woNumber         String?  @unique
-  requestId        String?
+  requestId        String?  @unique
   subject          String
   building         String?
   location         String?
@@ -240,7 +240,7 @@ model WorkOrder {
   submissionSource String   @default("guest")
   trackable        Boolean  @default(false)
   lineUserId       String?
-  lineMessageId    String?
+  lineMessageId    String?  @unique
   printTemplateId  String?
   externalMeta     String?
   picBefore        String?
@@ -274,6 +274,11 @@ model WorkOrder {
   // a separate authorization flow — never means "all sites").
   // See: Site-Based Access Control Guidance for ITAM-NextJS.md §5.1
   siteCode         String?
+  // B4 FIX: Optimistic concurrency version field.
+  // Incremented on every update. Callers can send `expectedVersion` in
+  // PUT/PATCH to detect concurrent modification (409 Conflict).
+  // Used with serializable transaction for device reassignment.
+  version          Int      @default(1)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -288,6 +293,7 @@ model WorkOrder {
   @@index([isDemo])
   @@index([isSpecialFee])
   @@index([siteCode, status, createdAt])
+  @@index([version])
 }
 
 // ============================================================
@@ -681,11 +687,18 @@ model AuditLog {
   summary   String
   detail    String?  // JSON string
   actor     String   @default("system")
+  // NF-2 FIX: Canonical Site FK for audit entries.
+  // Populated by logAudit() when the action is Site-scoped.
+  // Null = global action (e.g., LOGIN, AUTH_FALLBACK) or legacy entry
+  // that predates this field. Site-scoped queries filter on this column
+  // instead of resolving entityId → entity → Site (eliminates N+1).
+  siteCode  String?
   createdAt DateTime @default(now())
 
   @@index([entity, entityId])
   @@index([action])
   @@index([createdAt])
+  @@index([siteCode, createdAt])
 }
 
 // ============================================================

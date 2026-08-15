@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import QRCode from 'qrcode'
 
 // ============================================================
@@ -125,8 +126,25 @@ export async function GET(
     // Optional: override the public base URL (defaults to current origin).
     const publicBaseUrl = searchParams.get('baseUrl')?.trim() || ''
 
+    // Authenticate + authorize — printing a job sheet requires WO_VIEW_ALL
+    // (allowOwn so the original reporter can print their own WO sheet).
+    const authz = await loadAuthorizedWorkOrder(req, id, 'WO_VIEW_ALL', {
+      allowOwn: true,
+    })
+    if (!authz.ok) {
+      // For an HTML endpoint we return a small HTML error page so the
+      // browser renders something sensible instead of a JSON blob.
+      return new NextResponse(
+        `<h1>${esc(authz.error)}</h1>`,
+        {
+          status: authz.status,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        },
+      )
+    }
+
     const wo = await db.workOrder.findUnique({
-      where: { id },
+      where: { id: authz.wo.id },
       include: {
         device: {
           select: {
