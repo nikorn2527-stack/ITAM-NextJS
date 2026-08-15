@@ -8,7 +8,7 @@
  * Usage:
  *   const { result, attempts, p2034Count } = await withSerializableRetry(async (tx) => {
  *     // transaction logic
- *   }, { maxRetries: 3 })
+ *   }, { maxAttempts: 3 })
  *
  * Task ID: B4-RETRY-P2034
  */
@@ -17,8 +17,11 @@ import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 
 export interface RetryOptions {
-  maxRetries?: number
+  /** Maximum number of attempts (1 = no retry, 3 = up to 3 tries). Default: 3 */
+  maxAttempts?: number
+  /** Base delay for exponential backoff in ms. Default: 50 */
   baseDelayMs?: number
+  /** Maximum delay cap in ms. Default: 500 */
   maxDelayMs?: number
 }
 
@@ -32,15 +35,14 @@ export interface RetryResult<T> {
 
 /**
  * Check if an error is a Prisma P2034 serialization conflict.
+ * Only matches the official Prisma error code P2034 — does NOT use
+ * message matching (which was too broad and could match unrelated errors
+ * containing "serialization" in their message text).
  */
 export function isP2034Error(err: unknown): boolean {
   return (
-    (err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === 'P2034') ||
-    (err instanceof Error &&
-      (err.message.includes('could not serialize') ||
-        err.message.includes('P2034') ||
-        err.message.includes('serialization')))
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === 'P2034'
   )
 }
 
@@ -73,7 +75,7 @@ export async function withSerializableRetryTracked<T>(
   fn: (tx: Prisma.TransactionClient) => Promise<T>,
   options?: RetryOptions,
 ): Promise<RetryResult<T>> {
-  const maxRetries = options?.maxRetries ?? 3
+  const maxAttempts = options?.maxAttempts ?? 3
   const baseDelayMs = options?.baseDelayMs ?? 50
   const maxDelayMs = options?.maxDelayMs ?? 500
 
@@ -81,7 +83,7 @@ export async function withSerializableRetryTracked<T>(
   let attempts = 0
   let p2034Count = 0
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     attempts++
     try {
       const result = await db.$transaction(fn, {
@@ -95,7 +97,7 @@ export async function withSerializableRetryTracked<T>(
         p2034Count++
 
         // Last attempt — don't wait, just re-throw
-        if (attempt === maxRetries - 1) {
+        if (attempt === maxAttempts - 1) {
           break
         }
 
