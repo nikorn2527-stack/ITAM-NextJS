@@ -204,7 +204,15 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
-    if (!ctx.isSuperAdmin && !ctx.canAccessSite(targetSite)) {
+    // ── B1 FIX (audit round 2): use canAtSite(targetSite, 'DEVICE_EDIT')
+    // instead of canAccessSite(targetSite).
+    // canAccessSite only checks that the user has ANY grant at the Site
+    // (even a viewer grant). That allows privilege escalation via the
+    // effective-permissions union: a user with admin role at UDH (which
+    // grants DEVICE_EDIT) and viewer role at NKP would pass canAccessSite
+    // ('NKP') even though viewer does NOT include DEVICE_EDIT. canAtSite
+    // checks the role AT the target Site only, closing the leak.
+    if (!ctx.isSuperAdmin && !ctx.canAtSite(targetSite, 'DEVICE_EDIT')) {
       return NextResponse.json(
         { error: `คุณไม่มีสิทธิ์สร้างอุปกรณ์ที่ Site '${targetSite}'` },
         { status: 403 },

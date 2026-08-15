@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { notifyPartsRequested } from '@/lib/notifications'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -12,68 +13,26 @@ function optInt(v: unknown, fallback = 0): number {
 }
 
 /**
- * Generate the next pending-request number: SP-YYYYMMDD-NNN.
- */
-async function nextPendingNumber(txnDate: string): Promise<string> {
-  const ymd = txnDate.replace(/-/g, '').slice(0, 8)
-  const prefix = `SP-${ymd}-`
-  const txns = await db.stockTransaction.findMany({
-    where: { txnNumber: { startsWith: prefix } },
-    select: { txnNumber: true },
-  })
-  let max = 0
-  for (const t of txns) {
-    if (!t.txnNumber) continue
-    const m = /^SP-\d{8}-(\d+)$/.exec(t.txnNumber)
-    if (m) {
-      const n = parseInt(m[1], 10)
-      if (Number.isFinite(n) && n > max) max = n
-    }
-  }
-  return `${prefix}${String(max + 1).padStart(3, '0')}`
-}
-
-async function logWoAudit(
-  action: string,
-  entityId: string | null,
-  summary: string,
-  detail: Record<string, unknown> | null,
-  actor: string,
-): Promise<void> {
-  try {
-    await db.auditLog.create({
-      data: {
-        action,
-        entity: 'WorkOrder',
-        entityId,
-        summary,
-        detail: detail ? JSON.stringify(detail) : null,
-        actor,
-      },
-    })
-  } catch (err) {
-    console.error('logAudit failed:', err)
-  }
-}
-
-/**
  * GET /api/work-orders/[id]/parts
  * List all stock transactions linked to this work order
  * (where workOrderNo = woNumber).
+ *
+ * Auth: requires WO_VIEW_ALL (allowOwn so reporters can see their WO's parts).
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     const { id } = await params
-    const wo = await db.workOrder.findUnique({
-      where: { id },
-      select: { id: true, woNumber: true, status: true },
+
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_VIEW_ALL', {
+      allowOwn: true,
     })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
     }
+    const { wo } = result
 
     // Find transactions linked via workOrderNo (preferred) or workOrderId
     const where = wo.woNumber
@@ -123,11 +82,13 @@ export async function GET(
 /**
  * POST /api/work-orders/[id]/parts
  * Request parts for this work order.
- * Body: { items: [{ productCode, quantity, remark? }], requester?, actor? }
+ * Body: { items: [{ productCode, quantity, remark? }], requester? }
  *
  * For each item: create a StockTransaction with type='OUT',
  * approvalStatus='PENDING', workOrderNo=woNumber.
  * If WorkOrder status is not IN_PROGRESS or WAITING_PARTS, set it to WAITING_PARTS.
+ *
+ * Auth: requires WO_ASSIGN at the WO's Site (technician/manager role).
  *
  * Returns: { created: N, workOrderStatus: 'WAITING_PARTS' | '<current>', transactions: [...] }
  */
@@ -137,6 +98,14 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+
+    // Authenticate + authorize — requesting parts requires WO_ASSIGN
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_ASSIGN')
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    const { wo, auth } = result
+
     const body = await req.json()
     const items = Array.isArray(body.items) ? body.items : []
     if (items.length === 0) {
@@ -146,22 +115,12 @@ export async function POST(
       )
     }
 
+    // Actor identity comes from the authenticated session.
+    const actorName = auth.user.email
     const requester =
       typeof body.requester === 'string' && body.requester.trim()
         ? body.requester.trim()
-        : null
-    const actorName =
-      typeof body.actor === 'string' && body.actor.trim()
-        ? body.actor.trim()
-        : 'system'
-
-    const wo = await db.workOrder.findUnique({
-      where: { id },
-      select: { id: true, woNumber: true, status: true, subject: true },
-    })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
+        : actorName
 
     // Validate all items first (fail fast)
     const validated: Array<{
@@ -295,8 +254,9 @@ export async function POST(
       return txns
     })
 
-    await logWoAudit(
+    await logAudit(
       'WO_PARTS_REQUEST',
+      'WorkOrder',
       wo.id,
       `เบิกอะไหล่ใบงาน ${wo.woNumber ?? wo.id} — ${created.length} รายการ`,
       {
@@ -310,12 +270,12 @@ export async function POST(
         newStatus,
       },
       actorName,
+      result.woSite,
     )
 
     // ── Notification trigger (Task ID: NOTIFY-LINE) ──
     // Send 'parts_requested' to the stock admin (LINE admin group + Telegram).
     // Send one notification per requested item, so the admin sees each part.
-    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
     try {
       for (const t of created) {
         await notifyPartsRequested(

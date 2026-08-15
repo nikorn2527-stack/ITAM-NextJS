@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 /**
  * POST /api/work-orders/[id]/parts/[txnId]/approve
@@ -9,7 +10,9 @@ import { db } from '@/lib/db'
  * - Reduces StockItem.quantity
  * - Sets balanceAfter
  *
- * Body: { approver?: string, note?: string }
+ * Auth: requires STOCK_APPROVE at the WO's Site.
+ *
+ * Body: { note?: string }
  */
 export async function POST(
   req: NextRequest,
@@ -17,25 +20,25 @@ export async function POST(
 ) {
   try {
     const { id, txnId } = await params
+
+    // Authenticate + authorize — approving parts requires STOCK_APPROVE
+    const result = await loadAuthorizedWorkOrder(req, id, 'STOCK_APPROVE')
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    const { wo, auth } = result
+
+    // Approver identity comes from the authenticated session — never trust
+    // a body-supplied `approver` field, which could be spoofed.
+    const approverName = auth.user.email
+
     const body = await req.json().catch(() => ({} as Record<string, unknown>))
-    const approverName =
-      typeof body.approver === 'string' && body.approver.trim()
-        ? body.approver.trim()
-        : 'admin'
     const note =
       typeof body.note === 'string' && body.note.trim()
         ? body.note.trim()
         : null
 
-    const wo = await db.workOrder.findUnique({
-      where: { id },
-      select: { id: true, woNumber: true, status: true },
-    })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
-
-    const result = await db.$transaction(async (tx) => {
+    const resultTxn = await db.$transaction(async (tx) => {
       const txn = await tx.stockTransaction.findUnique({
         where: { id: txnId },
       })
@@ -146,18 +149,20 @@ export async function POST(
           action: 'WO_PARTS_APPROVE',
           entity: 'WorkOrder',
           entityId: wo.id,
-          summary: `อนุมัติเบิกอะไหล่ ${result.item.productCode} × ${result.txn.quantity} ${result.item.unit} สำหรับ ${wo.woNumber ?? wo.id}`,
+          summary: `อนุมัติเบิกอะไหล่ ${resultTxn.item.productCode} × ${resultTxn.txn.quantity} ${resultTxn.item.unit} สำหรับ ${wo.woNumber ?? wo.id}`,
           detail: JSON.stringify({
             woNumber: wo.woNumber,
-            productCode: result.item.productCode,
-            quantity: result.txn.quantity,
-            balanceAfter: result.item.quantity,
-            txnNumber: result.txn.txnNumber,
+            productCode: resultTxn.item.productCode,
+            quantity: resultTxn.txn.quantity,
+            balanceAfter: resultTxn.item.quantity,
+            txnNumber: resultTxn.txn.txnNumber,
             approver: approverName,
             note,
-            remainingPending: result.remainingPending,
+            remainingPending: resultTxn.remainingPending,
           }),
           actor: approverName,
+          // NF-2: pass canonical siteCode from WorkOrder
+          siteCode: wo.siteCode ?? result.woSite,
         },
       })
     } catch (e) {
@@ -166,11 +171,11 @@ export async function POST(
 
     return NextResponse.json({
       data: {
-        transaction: result.txn,
-        stockItem: result.item,
-        remainingPending: result.remainingPending,
-        allPartsApproved: result.remainingPending === 0,
-        autoClosed: result.autoClosed,
+        transaction: resultTxn.txn,
+        stockItem: resultTxn.item,
+        remainingPending: resultTxn.remainingPending,
+        allPartsApproved: resultTxn.remainingPending === 0,
+        autoClosed: resultTxn.autoClosed,
       },
     })
   } catch (err) {

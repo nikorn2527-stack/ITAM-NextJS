@@ -4,6 +4,9 @@
 // ============================================================
 // Saves the user's "remember this template for this WO" choice.
 //
+// Auth: requires WO_VIEW_ALL at the WO's Site (allowOwn so reporters
+// can pin a template on their own WO).
+//
 // Body: { printTemplateId: string | null, setAsDefault?: boolean }
 //   • printTemplateId — null clears the saved choice
 //   • setAsDefault=true — also mark this template as the default
@@ -15,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 export async function PATCH(
   req: NextRequest,
@@ -22,20 +26,23 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
+
+    // Authenticate + authorize — saving the per-WO print template
+    // choice requires WO_VIEW_ALL (allowOwn for reporters).
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_VIEW_ALL', {
+      allowOwn: true,
+    })
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    const { wo, auth } = result
+
     const body = await req.json()
     const printTemplateId =
       typeof body.printTemplateId === 'string' && body.printTemplateId
         ? body.printTemplateId
         : null
     const setAsDefault = body.setAsDefault === true
-
-    const wo = await db.workOrder.findUnique({ where: { id } })
-    if (!wo) {
-      return NextResponse.json(
-        { error: 'ไม่พบใบงาน' },
-        { status: 404 },
-      )
-    }
 
     // Validate that the template exists (if a non-null id is provided)
     let template = null
@@ -52,7 +59,7 @@ export async function PATCH(
     }
 
     const updated = await db.workOrder.update({
-      where: { id },
+      where: { id: wo.id },
       data: { printTemplateId },
     })
 
@@ -72,14 +79,17 @@ export async function PATCH(
       })
     }
 
+    // Actor identity comes from the authenticated session.
     await logAudit(
       'UPDATE',
       'WorkOrder',
-      id,
+      wo.id,
       printTemplateId
-        ? `ตั้งเทมเพลตพิมพ์ "${template?.name ?? ''}" สำหรับใบงาน ${wo.woNumber ?? id}`
-        : `ล้างการจำเทมเพลตพิมพ์ของใบงาน ${wo.woNumber ?? id}`,
+        ? `ตั้งเทมเพลตพิมพ์ "${template?.name ?? ''}" สำหรับใบงาน ${wo.woNumber ?? wo.id}`
+        : `ล้างการจำเทมเพลตพิมพ์ของใบงาน ${wo.woNumber ?? wo.id}`,
       { printTemplateId, setAsDefault },
+      auth.user.email,
+      result.woSite,
     )
 
     return NextResponse.json({ workOrder: updated, template })

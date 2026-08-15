@@ -32,9 +32,11 @@ export async function GET(req: NextRequest) {
       include: {
         permissions: {
           include: {
-            permission: canManageUsers
-              ? { select: { code: true, resource: true, action: true, description: true } }
-              : { select: { code: true } },
+            // Always select all fields to avoid TS union type issues;
+            // we filter the output in the map() below based on canManageUsers
+            permission: {
+              select: { code: true, resource: true, action: true, description: true },
+            },
           },
         },
       },

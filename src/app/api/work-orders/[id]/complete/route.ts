@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notifyWorkOrderCompleted } from '@/lib/notifications'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 async function logAudit(
   action: string,
@@ -31,27 +32,29 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+
+    // Authenticate + authorize — completing a WO requires WO_COMPLETE at its Site
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_COMPLETE')
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    const { wo, auth } = result
+
     const body = await req.json()
     const {
       note,
       picAfter,
       picOnsite,
-      actor,
       resolution,
       resolutionGroup,
     } = body as {
       note?: string | null
       picAfter?: string | null
       picOnsite?: string | null
-      actor?: string
       resolution?: string | null
       resolutionGroup?: string | null
     }
 
-    const wo = await db.workOrder.findUnique({ where: { id } })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
     if (wo.status === 'COMPLETED') {
       return NextResponse.json(
         { error: 'ใบงานนี้ปิดไปแล้ว ไม่สามารถทำเครื่องหมายเสร็จได้อีก' },
@@ -70,11 +73,11 @@ export async function POST(
     const pendingPartsWhere = wo.woNumber
       ? {
           approvalStatus: 'PENDING',
-          OR: [{ workOrderId: id }, { workOrderNo: wo.woNumber }],
+          OR: [{ workOrderId: wo.id }, { workOrderNo: wo.woNumber }],
         }
       : {
           approvalStatus: 'PENDING',
-          workOrderId: id,
+          workOrderId: wo.id,
         }
     const pendingPartsCount = await db.stockTransaction.count({
       where: pendingPartsWhere,
@@ -90,10 +93,9 @@ export async function POST(
       )
     }
 
-    const actorName =
-      typeof actor === 'string' && actor.trim() ? actor.trim() : 'system'
-    // NOTE (PART 3 — Single User System): replace the 'system' fallback
-    // with the authenticated user's email/id once NextAuth is wired in.
+    // Use the authenticated user's email as the actor — never trust
+    // a body-supplied `actor` field, which could be spoofed.
+    const actorName = auth.user.email
     const now = new Date()
 
     const resolutionTrim =
@@ -102,7 +104,7 @@ export async function POST(
       typeof resolutionGroup === 'string' ? resolutionGroup.trim() : ''
 
     const updated = await db.workOrder.update({
-      where: { id },
+      where: { id: wo.id },
       data: {
         status: 'COMPLETED',
         workCompletedAt: now,
@@ -123,7 +125,7 @@ export async function POST(
 
     await db.workOrderMessage.create({
       data: {
-        workOrderId: id,
+        workOrderId: wo.id,
         message: completionMsg,
         author: actorName,
         authorRole: 'admin',
@@ -132,8 +134,8 @@ export async function POST(
 
     await logAudit(
       'WO_COMPLETE',
-      id,
-      `ปิดงาน ${updated.woNumber ?? id}`,
+      wo.id,
+      `ปิดงาน ${updated.woNumber ?? wo.id}`,
       {
         note: note ?? null,
         resolution: resolutionTrim || null,
@@ -145,7 +147,6 @@ export async function POST(
     // ── Notification trigger (Task ID: NOTIFY-LINE) ──
     // Send 'wo_completed' to the reporter (LINE if lineUserId is known,
     // otherwise fall back to admin channels).
-    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
     try {
       await notifyWorkOrderCompleted(
         {
