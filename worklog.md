@@ -8535,3 +8535,57 @@ Stage Summary:
 - AuditLog approval history is filtered by summary-contains-Site-code for site-scoped users (coarse but leak-proof; superadmin still sees everything).
 - Legacy `allowedSites='ALL'` for non-superadmin is now fail-closed — a stale 'ALL' string in the DB no longer grants all-Sites access. The break-glass flag `AUTHZ_LEGACY_ALL_FAIL_OPEN=1` exists for emergency rollback; production should set `AUTHZ_MIGRATION_MODE=strict` AND convert all 'ALL' users to explicit grants.
 - Authorization matrix tests now have 18 scenarios: 13 unit (executes) + 1 unit on legacy ALL (Test 18, executes) + 4 documented integration scenarios (Tests 14-17) for the route-level contracts that aren't unit-testable without a running server.
+
+---
+Task ID: AUDIT-PRODUCERS-FINAL-CLOSURE
+Agent: orchestrator (main)
+Branch: pr-c/authz-foundation
+Task: Close the last 4 audit producers that still used the old `logAudit(action, entityId, summary, detail, actor)` signature — cancel, complete, edit-unlock (2 call sites), and reporter-edit. These routes already used `loadAuthorizedWorkOrder` (so authorization was correct), but their audit-log rows were missing `siteCode`, which broke Site-scoped AuditLog filtering in the Reports Hub.
+
+Work Log:
+
+**Pattern applied (identical to assign/messages/images):**
+- Add `siteCode?: string | null` as the LAST parameter of the local `logAudit` function.
+- Add `siteCode: siteCode ?? null` to the `db.auditLog.create` `data` object.
+- At every `await logAudit(...)` call site, append `result.woSite` as the last argument (so the AuditLog row records the Site of the WO being mutated, not just the actor's session).
+
+**File 1 — `src/app/api/work-orders/[id]/cancel/route.ts` (1 call site):**
+- `logAudit` signature: `(action, entityId, summary, detail, actor, siteCode?)`.
+- `db.auditLog.create` data gets `siteCode: siteCode ?? null`.
+- The single `await logAudit('WO_CANCEL', wo.id, ...)` call now passes `result.woSite` (the Site of the WO being cancelled).
+
+**File 2 — `src/app/api/work-orders/[id]/complete/route.ts` (1 call site):**
+- Same signature + data change.
+- The `await logAudit('WO_COMPLETE', wo.id, ..., { note, resolution, resolutionGroup }, actorName, ...)` call now passes `result.woSite`.
+
+**File 3 — `src/app/api/work-orders/[id]/edit-unlock/route.ts` (2 call sites):**
+- Same signature + data change.
+- The unlock branch (`active === true`) passes `result.woSite`.
+- The re-lock branch (`active === false`) ALSO passes `result.woSite` — both terminal-state transitions record the WO's Site so the Reports Hub's AuditLog filter (which uses `summary contains code` as a coarse Site filter, but `siteCode` is the canonical column) works for both directions.
+
+**File 4 — `src/app/api/work-orders/[id]/reporter-edit/route.ts` (1 call site):**
+- Same signature + data change.
+- The `await logAudit('WO_REPORTER_EDIT', wo.id, ..., { before, after, verifiedReporter }, auth.user.email, ...)` call now passes `result.woSite`.
+
+**Why `result.woSite` (not `result.wo.siteCode` directly):**
+- `loadAuthorizedWorkOrder` returns `woSite` (a normalized canonical Site code via `normalizeSiteCode`) as a top-level field on the success result — see `src/lib/wo-authz.ts` line 39 (`woSite: string | null`) and line 110 (`return { ok: true, wo, ctx, auth, woSite }`).
+- Using `result.woSite` (the normalized value) is consistent with the existing assign/messages/images routes and avoids the caller having to re-normalize the raw `wo.siteCode` / `wo.device?.site` themselves.
+
+**Verification:**
+- `npx eslint` on all 4 modified files → 0 errors, 0 warnings ✅
+- `npx tsc --noEmit` → no errors in any of the 4 modified files (grep for `work-orders/[id]/(cancel|complete|edit-unlock|reporter-edit)` returned no matches; pre-existing errors in unrelated files like `print/route.ts`, `[id]/parts/route.ts`, `scripts/*`, `cycles/*`, etc. remain unchanged).
+- Grep verification (count of `siteCode: siteCode ?? null` in the `db.auditLog.create` data block per file):
+  - `cancel/route.ts` — 1 ✅
+  - `complete/route.ts` — 1 ✅
+  - `edit-unlock/route.ts` — 1 ✅
+  - `reporter-edit/route.ts` — 1 ✅
+- Grep verification (count of `result.woSite` references at the call sites per file):
+  - `cancel/route.ts` — 1 (1 call site) ✅
+  - `complete/route.ts` — 1 (1 call site) ✅
+  - `edit-unlock/route.ts` — 2 (2 call sites — both unlock and re-lock) ✅
+  - `reporter-edit/route.ts` — 1 (1 call site) ✅
+
+Stage Summary:
+- All 4 remaining audit producers now stamp `siteCode` on the AuditLog row, matching the pattern established for assign/messages/images.
+- Combined with the prior RESIDUAL-BLOCKERS-ROUND-4 commit, every Work Order mutation endpoint that writes to AuditLog now records the Site of the WO being mutated — enabling the Reports Hub to filter AuditLog rows by `siteCode` canonically (rather than relying solely on `summary contains code`).
+- No authorization changes — all 4 routes already used `loadAuthorizedWorkOrder` correctly. This commit only closes the data-quality gap on the audit-log rows themselves.
