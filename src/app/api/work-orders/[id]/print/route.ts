@@ -5,7 +5,7 @@
 //
 // Returns a full, self-contained HTML page (text/html) ready to open
 // in a new tab/window and print directly. The page contains:
-//   • Header (Logo + "ใบแจ้งซ่อน" + WO number + date)
+//   • Header (Logo + "ใบแจ้งซ่อม" + WO number + date)
 //   • Info section (reporter, phone, building, location, subject, etc.)
 //   • Device section (if linked)
 //   • External section (if externalMeta)
@@ -21,6 +21,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-middleware'
 
 type PaperKey = 'a4-portrait' | 'a4-landscape' | 'a5-portrait'
 
@@ -110,6 +111,17 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // ── Authentication: require WO_VIEW_ALL or WO_VIEW_OWN ──
+  // Previously this route had NO auth check — anyone with a WO ID could
+  // access work order details, linked stock transactions, device data,
+  // and embedded images. This is a Blocker security fix.
+  const auth = await requireAuth(req, 'WO_VIEW_ALL')
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.error },
+      { status: auth.status },
+    )
+  }
   try {
     const { id } = await params
     const { searchParams } = new URL(req.url)
@@ -203,7 +215,7 @@ export async function GET(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ใบแจ้งซ่อน ${esc(woNumber)}</title>
+  <title>ใบแจ้งซ่อม ${esc(woNumber)}</title>
   <style>
     @page {
       size: ${paper.size};
@@ -493,7 +505,7 @@ export async function GET(
     <div class="header">
       <div class="logo">ซ</div>
       <div class="title-block">
-        <h1>ใบแจ้งซ่อน</h1>
+        <h1>ใบแจ้งซ่อม</h1>
         <div class="subtitle">Work Order Form • ระบบจัดการสินทรัพย์</div>
       </div>
       <div class="meta">

@@ -17,7 +17,7 @@ import { db } from '@/lib/db'
  *            create a WorkOrder with device info, reply with confirmation.
  *          • If text starts with "ติดตาม" or "สถานะ" → find the user's latest
  *            WorkOrder (by lineUserId), reply with its status.
- *          • If text is "แจ้งซ่อน" / "แจ้ง" → reply with a quick-reply
+ *          • If text is "แจ้งซ่อม" / "แจ้ง" → reply with a quick-reply
  *            menu asking for the problem description.
  *          • Otherwise → create a WorkOrder with subject=text, reply
  *            "สร้างใบงานแล้ว WO-XXXX".
@@ -188,7 +188,7 @@ async function bumpLineBindingWoCount(lineUserId: string): Promise<void> {
 // ============================================================
 
 const STATUS_KEYWORDS = ['ติดตาม', 'สถานะ', 'status', 'Status', 'STATUS']
-const REPORT_KEYWORDS = ['แจ้งซ่อน', 'แจ้ง']
+const REPORT_KEYWORDS = ['แจ้งซ่อม', 'แจ้ง']
 
 function startsWithAny(text: string, prefixes: string[]): boolean {
   return prefixes.some((p) => text.startsWith(p))
@@ -297,11 +297,22 @@ export async function POST(req: NextRequest) {
   const rawBody = Buffer.from(await req.arrayBuffer())
 
   // 2. Verify signature.
+  // SECURITY FIX: Previously, if line_channel_secret was not configured,
+  // the webhook accepted requests without signature verification (fail-open).
+  // Now, in production, missing secret = reject. In development
+  // (NODE_ENV !== 'production'), we allow it with a warning for local testing.
   const settings = await loadLineSettings()
   const signature = req.headers.get('x-line-signature') ?? ''
   if (!settings.channelSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[line-webhook] line_channel_secret not configured — rejecting request (production mode)')
+      return NextResponse.json(
+        { error: 'Webhook secret not configured' },
+        { status: 503 },
+      )
+    }
     console.warn(
-      '[line-webhook] line_channel_secret not configured — accepting request without verification (dev mode)',
+      '[line-webhook] line_channel_secret not configured — accepting request without verification (DEV MODE ONLY)',
     )
   } else {
     if (!signature) {
@@ -352,7 +363,7 @@ export async function POST(req: NextRequest) {
         const welcome =
           'ยินดีต้อนรับสู่ระบบแจ้งซ่อม 🙌\n\n' +
           'คุณสามารถ:\n' +
-          '• พิมพ์ "แจ้งซ่อน" เพื่อเริ่มแจ้งงานใหม่\n' +
+          '• พิมพ์ "แจ้งซ่อม" เพื่อเริ่มแจ้งงานใหม่\n' +
           '• พิมพ์ "ติดตาม" หรือ "สถานะ" เพื่อดูสถานะใบงานล่าสุด\n' +
           '• พิมพ์รหัสทรัพย์สิน (เช่น ASSET-00001) เพื่อแจ้งซ่อมเฉพาะเครื่อง\n' +
           '• หรือพิมพ์ปัญหาตรง ๆ ระบบจะสร้างใบงานให้ทันที'
@@ -384,6 +395,22 @@ export async function POST(req: NextRequest) {
         if (!text) continue
         const messageId = String(msg.id ?? '')
 
+        // ── Deduplicate LINE messages by messageId ──
+        // LINE may retry webhook delivery if it doesn't receive a 200 in time,
+        // which can cause duplicate WorkOrder creation. We check if a WO with
+        // this lineMessageId already exists before processing.
+        if (messageId) {
+          const existing = await db.workOrder.findFirst({
+            where: { lineMessageId: messageId },
+            select: { id: true, woNumber: true },
+          })
+          if (existing) {
+            // Already processed — skip silently (LINE expects 200)
+            console.log(`[line-webhook] skipping duplicate messageId=${messageId} (WO ${existing.woNumber ?? existing.id})`)
+            continue
+          }
+        }
+
         // Persist LineBinding (so we know this user exists)
         await upsertLineBinding(lineUserId)
 
@@ -403,7 +430,7 @@ export async function POST(req: NextRequest) {
           })
           if (!latestWo) {
             const reply =
-              'คุณยังไม่มีใบงานในระบบ\nพิมพ์ "แจ้งซ่อน" หรือบอกอาการเครื่องเพื่อเริ่มแจ้งซ่อมได้เลยครับ'
+              'คุณยังไม่มีใบงานในระบบ\nพิมพ์ "แจ้งซ่อม" หรือบอกอาการเครื่องเพื่อเริ่มแจ้งซ่อมได้เลยครับ'
             if (replyToken) {
               await replyMessage(
                 replyToken,

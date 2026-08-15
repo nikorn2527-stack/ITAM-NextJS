@@ -72,6 +72,9 @@ import {
   Clock,
   ShieldAlert,
   Inbox,
+  Cpu,
+  Printer,
+  Settings2,
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
 import { exportDashboardPdf } from './dashboard-pdf-export'
@@ -776,6 +779,47 @@ export function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Device Types Bar */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Cpu className="h-4 w-4 text-[#0d9488]" />
+              ประเภทอุปกรณ์
+            </CardTitle>
+            <CardDescription className="text-xs">
+              จำนวนอุปกรณ์แยกตามประเภท
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[260px] w-full dark:bg-slate-800" />
+            ) : deviceTypeBar.length === 0 ? (
+              <EmptyState message="ยังไม่มีอุปกรณ์ในระบบ" />
+            ) : (
+              <div className="h-[260px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={deviceTypeBar} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={axisTickColor} />
+                    <XAxis dataKey="name" tick={{ fill: axisTickColor, fontSize: 11 }} />
+                    <YAxis tick={{ fill: axisTickColor, fontSize: 12 }} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{
+                        background: tooltipBg,
+                        border: `1px solid ${tooltipBorder}`,
+                        borderRadius: 8,
+                        color: tooltipFg,
+                        fontSize: 12,
+                      }}
+                    />
+                    <Bar dataKey="value" name="จำนวน" radius={[6, 6, 0, 0]} fill="#0d9488" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* ── Quick Actions bar — 1-click access to the 4 most common tasks ──
           Designed from the USER's perspective: open the app, see what to do,

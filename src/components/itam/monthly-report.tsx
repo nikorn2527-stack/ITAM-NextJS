@@ -1224,7 +1224,7 @@ export function MonthlyReport() {
       )
       woSection = `
         <section class="block">
-          <h2>③ รายงานใบงานแจ้งซ่อน</h2>
+          <h2>③ รายงานใบงานแจ้งซ่อม</h2>
           <div class="kpi-grid">
             <div class="kpi"><div class="kpi-label">ใบงานทั้งหมด</div><div class="kpi-value">${wo.total}</div><div class="kpi-unit">ใบ</div></div>
             <div class="kpi"><div class="kpi-label">เสร็จแล้ว</div><div class="kpi-value accent">${wo.byStatus.COMPLETED ?? 0}</div><div class="kpi-unit">ใบ</div></div>
@@ -1644,7 +1644,7 @@ export function MonthlyReport() {
                   >
                     <Wrench className="h-4 w-4 text-amber-500" />
                     <div className="flex flex-col">
-                      <span>รายงานใบงานแจ้งซ่อน</span>
+                      <span>รายงานใบงานแจ้งซ่อม</span>
                       <span className="text-[10px] text-muted-foreground">
                         สถานะ/ความเร่งด่วน/ช่าง
                       </span>
@@ -2499,7 +2499,7 @@ export function MonthlyReport() {
                 checked={printSections.workOrders}
                 onToggle={() => togglePrintSection('workOrders')}
                 icon={<Wrench className="h-4 w-4 text-amber-500" />}
-                title="รายงานใบงานแจ้งซ่อน"
+                title="รายงานใบงานแจ้งซ่อม"
                 desc="สถานะ/ความเร่งด่วน/ผลงานช่าง/หัวข้อ"
               />
               <PrintSectionCheckbox

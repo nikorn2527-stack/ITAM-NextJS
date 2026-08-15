@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-middleware'
 
 // ============================================================
 // /api/work-orders/[id]/images
@@ -13,6 +14,10 @@ import { db } from '@/lib/db'
 //   POST   /api/work-orders/:id/images           → add one image
 //        body: { stage, image_data, fileName?, uploadedBy? }
 //   DELETE /api/work-orders/:id/images?imageId=… → delete one image
+//
+// Security: All handlers require authentication (WO_VIEW_ALL for GET,
+// WO_ASSIGN for POST/DELETE). The parent work order is loaded first
+// and authorized before any child record is read or modified.
 // ============================================================
 
 const VALID_STAGES = new Set(['before', 'onsite', 'after'])
@@ -45,9 +50,13 @@ async function logAudit(
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'WO_VIEW_ALL')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const wo = await db.workOrder.findUnique({
@@ -96,6 +105,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'WO_ASSIGN')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const wo = await db.workOrder.findUnique({
@@ -113,10 +126,12 @@ export async function POST(
       typeof body.fileName === 'string' && body.fileName.trim()
         ? body.fileName.trim().slice(0, 255)
         : null
+    // Prefer authenticated user's email/name as uploader; fall back to body
     const uploadedBy =
-      typeof body.uploadedBy === 'string' && body.uploadedBy.trim()
+      auth.user.email || auth.user.name || auth.user.username ||
+      (typeof body.uploadedBy === 'string' && body.uploadedBy.trim()
         ? body.uploadedBy.trim().slice(0, 120)
-        : null
+        : null)
 
     if (!VALID_STAGES.has(stage)) {
       return NextResponse.json(
@@ -186,6 +201,10 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'WO_ASSIGN')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const { searchParams } = new URL(req.url)
@@ -211,11 +230,8 @@ export async function DELETE(
 
     await db.workOrderImage.delete({ where: { id: imageId } })
 
-    const actorHeader = req.headers.get('x-actor')
-    const actor =
-      typeof actorHeader === 'string' && actorHeader.trim()
-        ? actorHeader.trim()
-        : 'system'
+    // Use authenticated user's identity rather than trusting a client header
+    const actor = auth.user.email || auth.user.name || auth.user.username || 'system'
 
     await logAudit(
       'WO_IMAGE_DELETE',

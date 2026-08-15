@@ -40,7 +40,15 @@ if (
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === 'production' ? ['error'] : ['query'],
+    // In production, only log errors. In development, default to ['error']
+    // (was ['query'] which produced excessive I/O on every request).
+    // Set PRISMA_LOG_QUERIES=1 to re-enable query logging for debugging.
+    log:
+      process.env.NODE_ENV === 'production'
+        ? ['error']
+        : process.env.PRISMA_LOG_QUERIES === '1'
+          ? ['query', 'error', 'warn']
+          : ['error', 'warn'],
   })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db

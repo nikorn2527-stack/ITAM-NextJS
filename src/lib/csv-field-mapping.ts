@@ -883,7 +883,7 @@ export const SOURCE_SHEET_REGISTRY = {
       {
         id: 'services-workorders',
         label: 'Data (WorkOrders)',
-        desc: 'ใบงานแจ้งซ่อน (export เป็น CSV จาก JSON)',
+        desc: 'ใบงานแจ้งซ่อม (export เป็น CSV จาก JSON)',
         mapping: 'workOrder',
         model: 'WorkOrder',
       },

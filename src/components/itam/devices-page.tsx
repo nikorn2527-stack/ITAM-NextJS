@@ -295,7 +295,13 @@ export function DevicesPage() {
       if (search) params.set('search', search)
       if (statusFilter !== 'all') params.set('status', statusFilter)
       if (siteFilter !== 'all') params.set('site', siteFilter)
-      const res = await fetch(`/api/devices?${params.toString()}`)
+      // Server-side pagination: request up to 500 rows per page so the
+      // browser doesn't have to hold all 2,378 devices in memory.
+      // The legacy client-side pagination is kept as a fallback.
+      params.set('limit', '500')
+      const res = await fetch(`/api/devices?${params.toString()}`, {
+        headers: authHeaders(),
+      })
       if (!res.ok) throw new Error('Failed to load devices')
       const json = await res.json()
       return json.devices as Device[]
@@ -644,7 +650,11 @@ export function DevicesPage() {
       if (search) params.set('search', search)
       if (statusFilter !== 'all') params.set('status', statusFilter)
       if (siteFilter !== 'all') params.set('site', siteFilter)
-      const res = await fetch(`/api/devices?${params.toString()}`)
+      // For CSV export, request the maximum page size (500) and include auth
+      params.set('limit', '500')
+      const res = await fetch(`/api/devices?${params.toString()}`, {
+        headers: authHeaders(),
+      })
       if (!res.ok) throw new Error('Failed to export')
       const json = await res.json()
       const rows = (json.devices ?? []) as Device[]

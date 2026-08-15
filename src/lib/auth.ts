@@ -16,6 +16,7 @@
 
 import crypto from 'node:crypto'
 import { SignJWT, jwtVerify, type JWTPayload } from 'jose'
+import * as bcrypt from 'bcryptjs'
 
 // Re-export everything that's safe for both server + client
 export {
@@ -92,7 +93,7 @@ export function verifyPassword(
   // bcrypt (starts with $2b$ or $2a$)
   if (target.startsWith('$2b$') || target.startsWith('$2a$')) {
     try {
-      return require('bcryptjs').compareSync(password, target)
+      return bcrypt.compareSync(password, target)
     } catch {
       return false
     }
@@ -106,10 +107,19 @@ export function verifyPassword(
 }
 
 // ─── JWT token management ────────────────────────────────────────────
-const JWT_SECRET_RAW =
-  process.env.JWT_SECRET ||
-  process.env.NEXTAUTH_SECRET ||
-  'itam-dev-secret-change-me-in-production-please-32bytes'
+// In production, JWT_SECRET must be set explicitly — fail closed if missing.
+// In development (NODE_ENV !== 'production'), fall back to a dev-only secret
+// so the sandbox/preview still works without env configuration.
+const JWT_SECRET_RAW = (() => {
+  const envSecret = process.env.JWT_SECRET || process.env.NEXTAUTH_SECRET
+  if (envSecret) return envSecret
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: JWT_SECRET is not set in production. Refusing to start with a predictable secret.')
+    throw new Error('JWT_SECRET is required in production. Set it in your environment variables.')
+  }
+  console.warn('WARNING: Using fallback dev JWT secret. Set JWT_SECRET in production.')
+  return 'itam-dev-secret-change-me-in-production-please-32bytes'
+})()
 // jose expects a Uint8Array secret for HS256
 const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_RAW)
 export const TOKEN_TTL_SECONDS = 6 * 60 * 60 // 6 hours — matches Apps Script CONFIG.AUTH_TOKEN_TTL
@@ -163,24 +173,62 @@ export async function verifyToken(token: string | null | undefined): Promise<Ita
   }
 }
 
-// ─── Token blacklist (logout) — in-memory Set, pruned every 10 min ───
-const _blacklist = new Set<string>()
+// ─── Token blacklist (logout) — in-memory Map with per-token expiry ───
+// Tokens are stored with their expiration timestamp so they can be safely
+// pruned only after their natural JWT exp has passed (TTL = 6 hours).
+// This prevents the previous bug where the entire Set was cleared every
+// 10 minutes, allowing logged-out tokens to become valid again.
+interface BlacklistEntry {
+  token: string
+  expiresAt: number // ms epoch — derived from JWT exp
+}
+const _blacklist = new Map<string, BlacklistEntry>()
 let _lastPrune = Date.now()
+const PRUNE_INTERVAL_MS = 10 * 60 * 1000 // prune scan every 10 min (NOT clear)
 
 export function blacklistToken(token: string): void {
   const t = token.trim()
   if (!t) return
-  _blacklist.add(t)
-  // Prune every 10 minutes — tokens past their JWT exp are useless anyway,
-  // but the Set can grow unbounded if many users log out.
-  if (Date.now() - _lastPrune > 10 * 60 * 1000) {
-    _blacklist.clear()
-    _lastPrune = Date.now()
+  // Try to decode exp from the JWT payload (middle base64 segment).
+  // If decoding fails, default to 6 hours from now (TOKEN_TTL_SECONDS).
+  let expiresAt = Date.now() + TOKEN_TTL_SECONDS * 1000
+  try {
+    const parts = t.split('.')
+    if (parts.length === 3) {
+      const payload = JSON.parse(
+        Buffer.from(parts[1], 'base64url').toString('utf8'),
+      ) as { exp?: number }
+      if (payload.exp) {
+        expiresAt = payload.exp * 1000
+      }
+    }
+  } catch {
+    // keep default
+  }
+  _blacklist.set(t, { token: t, expiresAt })
+  // Prune expired entries every 10 minutes — only removes tokens past their exp
+  if (Date.now() - _lastPrune > PRUNE_INTERVAL_MS) {
+    const now = Date.now()
+    for (const [key, entry] of _blacklist) {
+      if (entry.expiresAt <= now) {
+        _blacklist.delete(key)
+      }
+    }
+    _lastPrune = now
   }
 }
 
 export function isTokenBlacklisted(token: string): boolean {
-  return _blacklist.has(token.trim())
+  const t = token.trim()
+  if (!t) return false
+  const entry = _blacklist.get(t)
+  if (!entry) return false
+  // If the entry has expired, remove it lazily and return false
+  if (entry.expiresAt <= Date.now()) {
+    _blacklist.delete(t)
+    return false
+  }
+  return true
 }
 
 // ─── Rate limiting (login) — 5 fails → 5 min lockout per username+IP ─

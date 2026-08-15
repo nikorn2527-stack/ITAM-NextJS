@@ -29,7 +29,7 @@ export const DEFAULT_TEMPLATES: Record<TemplateType, DefaultTemplateDef> = {
     content: '{"format":"A4","orientation":"landscape"}',
   },
   'work-order': {
-    name: 'ใบแจ้งซ่อนมาตรฐาน',
+    name: 'ใบแจ้งซ่อมมาตรฐาน',
     content: '{"sections":["header","details","images","timeline"]}',
   },
   'stock-out': {

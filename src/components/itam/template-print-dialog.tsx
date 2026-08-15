@@ -420,7 +420,7 @@ export function TemplatePrintDialog({
                     <span>
                       ใช้เทมเพลตนี้สำหรับใบงานทั้งหมด
                       <span className="ml-1 text-xs text-muted-foreground">
-                        (ตั้งเป็นค่าเริ่มต้นของประเภทใบแจ้งซ่อน)
+                        (ตั้งเป็นค่าเริ่มต้นของประเภทใบแจ้งซ่อม)
                       </span>
                     </span>
                   </label>

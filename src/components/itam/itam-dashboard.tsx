@@ -379,8 +379,13 @@ export function ItamDashboard() {
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: true,
+    // Polling: 60s instead of 30s to reduce DB/network load.
+    // The dashboard is also invalidated by SSE events on device/wo/stock
+    // changes, so users still see updates quickly.
+    refetchInterval: 60_000,
+    // Only refetch on window focus if data is older than 2 minutes
+    refetchOnWindowFocus: 'always',
+    staleTime: 60_000,
     placeholderData: (prev) => prev,
   })
 
@@ -449,7 +454,9 @@ export function ItamDashboard() {
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
-    refetchInterval: 60_000,
+    // Insights: 3 min instead of 1 min — they don't change quickly
+    refetchInterval: 180_000,
+    staleTime: 120_000,
   })
   const insights = insightsData?.insights ?? []
 
@@ -462,8 +469,9 @@ export function ItamDashboard() {
       const json = await res.json()
       return (json.cycles?.[0] as Cycle | undefined) ?? null
     },
-    staleTime: 60_000,
-    refetchInterval: 120_000,
+    staleTime: 120_000,
+    // Cycle info: 5 min instead of 2 min — cycles change daily, not minute-by-minute
+    refetchInterval: 300_000,
   })
 
   // Reading progress for the active cycle
@@ -479,8 +487,9 @@ export function ItamDashboard() {
         totalUnread: Number(json.totalUnread ?? 0),
       }
     },
-    staleTime: 30_000,
-    refetchInterval: 60_000,
+    staleTime: 60_000,
+    // Reminders: 2 min instead of 1 min
+    refetchInterval: 120_000,
   })
 
   // Warranty summary
