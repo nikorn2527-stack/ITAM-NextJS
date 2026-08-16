@@ -100,13 +100,18 @@ export function redacted(obj: Record<string, unknown> | null | undefined): Recor
  * - Missing/unknown → null (caller must quarantine)
  */
 export async function deriveSiteCode(record: SyncSourceRecord): Promise<SiteMappingResult> {
+  const allowlist = await getSiteAllowlist()
+
+  // FAIL-CLOSED: empty/unavailable allowlist = no sites allowed
+  if (allowlist.size === 0) {
+    return { siteCode: null, reason: 'unknown' }
+  }
+
   // Direct siteCode from source
   if (record.siteCode && typeof record.siteCode === 'string') {
     const code = record.siteCode.trim()
     if (code) {
-      // Validate against allowlist
-      const allowlist = await getSiteAllowlist()
-      if (allowlist.size > 0 && !allowlist.has(code)) {
+      if (!allowlist.has(code)) {
         return { siteCode: null, reason: 'unknown' }
       }
       return { siteCode: code, reason: 'mapped' }
@@ -117,13 +122,6 @@ export async function deriveSiteCode(record: SyncSourceRecord): Promise<SiteMapp
   if (record.site && typeof record.site === 'string') {
     const site = record.site.trim()
     if (!site) return { siteCode: null, reason: 'missing' }
-
-    const allowlist = await getSiteAllowlist()
-
-    // FAIL-CLOSED: empty allowlist = no sites allowed
-    if (allowlist.size === 0) {
-      return { siteCode: null, reason: 'unknown' }
-    }
 
     if (allowlist.has(site)) {
       return { siteCode: site, reason: 'mapped' }
