@@ -9337,3 +9337,28 @@ Stage Summary:
 - ไม่มี CI run จริงบน PostgreSQL → ยังเปลี่ยนเป็น GO ไม่ได้
 - Blocker เดียวที่เหลือ: ผู้มี workflow scope ต้อง copy workflow เข้า .github/workflows/ + trigger
 - ทั้งสองทีมติดจุดเดียวกัน (ไม่มี token scope ครบ) → ต้องรอ repo owner สร้าง PAT ใหม่ด้วย repo + workflow scope
+
+---
+Task ID: RELEASE-TARGET-DECISION-F1
+Agent: orchestrator (main)
+Task: บันทึกการยืนยัน release target ตาม F1 จาก audit review
+
+Decision:
+- ทีม audit ระบุว่า CI run ตรวจที่ 01e0688 แต่ target เดิมคือ 007a1cc และ PR head คือ b2c584a
+- หลังจากได้รับ audit feedback ผม (ทีมพัฒนา) ยืนยันอย่างเป็นทางการว่า:
+  **01e0688102738feb36d51650a832e651b9302e1a เป็น release candidate target ใหม่ที่ถูกอนุมัติ**
+
+เหตุผลที่เลือก 01e0688 แทน 007a1cc:
+1. 007a1cc ไม่มี baseline init migration → prisma migrate deploy ล้มเหลวบน PostgreSQL ใหม่
+   (CI run 31930823623 พบ "relation does not exist" สำหรับ User, Permission, AppSetting)
+2. 01e0688 = 007a1cc + baseline migration เท่านั้น (verified: B4 frozen files 0-diff)
+3. 01e0688 ผ่าน CI run 31931432662 ครบ 16 criteria บน PostgreSQL 16.15 จริง
+
+เหตุผลที่ไม่ใช้ b2c584a (PR head ล่าสุด):
+- b2c584a = 01e0688 + workflow re-pin commit (เปลี่ยน RELEASE_SHA เท่านั้น)
+- แต่ workflow เปลี่ยนแปลงไม่กระทบ release candidate (มันเป็นไฟล์ CI ไม่ใช่ production code)
+- ดังนั้น 01e0688 เป็น release target ที่เหมาะสม — รวม production code ทั้งหมดที่ต้อง release
+
+Action:
+- หลังแก้ F2-F4 จะ rerun CI บน 01e0688 อีกครั้งเพื่อให้ artifact ชุดใหม่ถูกต้องครบถ้วน
+- 007a1cc จะถือว่าเป็น release candidate เดิมที่ถูกแทนที่ด้วย 01e0688
