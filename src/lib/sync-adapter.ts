@@ -199,7 +199,7 @@ export async function fetchFromAppsScript(options: {
         { requestId: 'TEST-MOCK-001', subject: 'Test WO 1', status: '🟠รอดำเนินการ', siteCode: 'HQ', building: 'B1', location: 'L1', reporter_name: 'Test User', tel: '0812345678' },
         { requestId: 'TEST-MOCK-002', subject: 'Test WO 2', status: '🔵สำรวจหน้างาน/แก้ไข', siteCode: 'UDH', building: 'B2', location: 'L2', reporter_name: 'Test User 2', tel: '0898765432' },
       ],
-      metadata: { totalFetched: 2, cursor: null, unmappedColumns: [] },
+      metadata: { totalFetched: 2, unmappedColumns: [] },
     }
   }
 
