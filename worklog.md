@@ -9362,3 +9362,56 @@ Decision:
 Action:
 - หลังแก้ F2-F4 จะ rerun CI บน 01e0688 อีกครั้งเพื่อให้ artifact ชุดใหม่ถูกต้องครบถ้วน
 - 007a1cc จะถือว่าเป็น release candidate เดิมที่ถูกแทนที่ด้วย 01e0688
+
+---
+Task ID: CI-RUN-2-F2F3F4-FIXED
+Agent: orchestrator (main)
+Task: แก้ F2-F4 จาก audit evidence review + rerun CI + ส่ง artifact ชุดใหม่
+
+Work Log:
+- รับ audit review (PR #6 — PostgreSQL CI Evidence Final Review) ระบุ 4 findings:
+  - F1: release target ไม่ตรง (01e0688 vs 007a1cc vs b2c584a)
+  - F2: P2034 parser รายงาน TOTAL_P2034=2034 แทนที่จะเป็น 1
+  - F3: TSC gate ผ่านแต่ package ไม่มี baseline/release counts แยก
+  - F4: login_only.log (isolated log window) ไม่อยู่ใน artifact
+
+- F1 (release target decision):
+  - บันทึกใน worklog อย่างเป็นทางการ: 01e0688 = release target ใหม่
+  - เหตุผล: 007a1cc ไม่มี baseline migration (CI ล้มเหลว); 01e0688 = 007a1cc + baseline migration; b2c584a เป็นแค่ workflow change
+
+- F2 (P2034 parser fix):
+  - เดิม: grep -oE "[0-9]+" | head -1 ดึง "2034" จาก "totalP2034=1" (digits ใน field name)
+  - ใหม่: grep -oE 'totalP2034=[0-9]+' | head -1 | sed -E 's/.*=([0-9]+)/\1/'
+  - ผล: TOTAL_P2034=1 ถูกต้องแล้ว ✅
+
+- F3 (TSC counts files):
+  - เพิ่ม 3 ไฟล์ใน artifact: BASELINE_TSC_ERRORS.txt, RELEASE_TSC_ERRORS.txt, TSC_COMPARISON.txt
+  - ผล: baseline=343, release=340, new_errors=-3 (release ลด errors ลง 3 ตัว!) → PASS ✅
+
+- F4 (login_only.log + metadata):
+  - เพิ่ม login_only.log + login_check_metadata.txt ใน artifact
+  - metadata ระบุ: log_size_before=7536, log_size_after=7672, login_only_size=136, grep_target=prisma:error
+  - ผล: audit ตรวจซ้ำได้โดยอิสระ ✅
+
+- commit 0179512 push + trigger CI run 31932299078
+- CI run สำเร็จ: conclusion=success, ทุก 33 steps ✓
+- artifact ใหม่ดาวน์โหลด + ตรวจ F2-F4 ครบ:
+
+Evidence (CI run 31932299078):
+- CI URL: https://github.com/nikorn2527-stack/ITAM-NextJS/actions/runs/31932299078
+- Commit SHA: 01e0688102738feb36d51650a832e651b9302e1a (= EXPECTED_SHA, match)
+- PostgreSQL: 16.15 (Debian 16.15-1.pgdg13+2)
+- SHA-256: 9de6e7264d0d1d726ca467d49f37b10bc9ec787e3983f59cd729f1b42fe839cf
+- FINAL_VERDICT: CONDITIONAL_GO
+- 16/16 criteria PASS
+
+F2-F4 verification (from new artifact):
+- F2: TOTAL_P2034=1 ✅ (was 2034)
+- F3: BASELINE_TSC_ERRORS=343, RELEASE_TSC_ERRORS=340, new_errors=-3, result=PASS ✅
+- F4: login_only.log (136 bytes) + login_check_metadata.txt อยู่ใน artifact ✅
+
+Stage Summary:
+- แก้ครบ 4 findings จาก audit review
+- CI run ใหม่ผ่านครบ 16 criteria บน PostgreSQL 16.15 จริง
+- artifact ชุดใหม่มีไฟล์ครบสำหรับ audit ตรวจซ้ำได้โดยอิสระ
+- สถานะ: CONDITIONAL_GO — รอทีม audit ตรวจ artifact ชุดใหม่และเปลี่ยนเป็น GO
