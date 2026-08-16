@@ -40,10 +40,25 @@ const SYNC_PREVIEW_MAX_ROWS = Number(process.env.SYNC_PREVIEW_MAX_ROWS) || 1000
 // In production this should be loaded from DB or config.
 // For MVP, derive from known Site codes in the system.
 
-function getSiteAllowlist(): Set<string> {
-  // TODO: Load from DB Site table in production
-  // For now, return empty set — all sites will be derived from source data
-  return new Set<string>()
+let _siteAllowlistCache: Set<string> | null = null
+
+/**
+ * Load Site allowlist from DB.
+ * FAIL-CLOSED: empty/unavailable = no sites allowed.
+ */
+async function getSiteAllowlist(): Promise<Set<string>> {
+  if (_siteAllowlistCache) return _siteAllowlistCache
+
+  try {
+    const { db } = await import('@/lib/db')
+    const sites = await db.site.findMany({ select: { code: true } })
+    _siteAllowlistCache = new Set(sites.map((s) => s.code))
+  } catch {
+    // DB unavailable — fail closed
+    _siteAllowlistCache = new Set()
+  }
+
+  return _siteAllowlistCache
 }
 
 // ── Redaction allowlist ───────────────────────────────────────
@@ -84,11 +99,18 @@ export function redacted(obj: Record<string, unknown> | null | undefined): Recor
  * - If source has site field → map via allowlist
  * - Missing/unknown → null (caller must quarantine)
  */
-export function deriveSiteCode(record: SyncSourceRecord): SiteMappingResult {
+export async function deriveSiteCode(record: SyncSourceRecord): Promise<SiteMappingResult> {
   // Direct siteCode from source
   if (record.siteCode && typeof record.siteCode === 'string') {
     const code = record.siteCode.trim()
-    if (code) return { siteCode: code, reason: 'mapped' }
+    if (code) {
+      // Validate against allowlist
+      const allowlist = await getSiteAllowlist()
+      if (allowlist.size > 0 && !allowlist.has(code)) {
+        return { siteCode: null, reason: 'unknown' }
+      }
+      return { siteCode: code, reason: 'mapped' }
+    }
   }
 
   // Derive from site field
@@ -96,10 +118,11 @@ export function deriveSiteCode(record: SyncSourceRecord): SiteMappingResult {
     const site = record.site.trim()
     if (!site) return { siteCode: null, reason: 'missing' }
 
-    const allowlist = getSiteAllowlist()
+    const allowlist = await getSiteAllowlist()
+
+    // FAIL-CLOSED: empty allowlist = no sites allowed
     if (allowlist.size === 0) {
-      // No allowlist configured — accept site as-is but flag as mapped
-      return { siteCode: site, reason: 'mapped' }
+      return { siteCode: null, reason: 'unknown' }
     }
 
     if (allowlist.has(site)) {
@@ -323,7 +346,7 @@ export async function computePreviewItems(
     }
 
     // Site mapping (fail-closed)
-    const siteResult = deriveSiteCode(record)
+    const siteResult = await deriveSiteCode(record)
 
     if (siteResult.reason === 'missing') {
       items.push({

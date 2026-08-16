@@ -1,8 +1,8 @@
 // ============================================================
 // POST /api/sync/run — Apply previewed changes
 // ============================================================
-// Loads preview SyncRun + items, applies each in serializable transaction.
-// Conditional versioned create/update (NOT Prisma upsert).
+// I-01: Added run ownership + per-item ctx.canAtSite()
+// I-05: Conditional versioned create/update with expectedVersion/expectedExists
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -14,13 +14,14 @@ import { redacted } from '@/lib/sync-adapter'
 import { logAudit } from '@/lib/audit'
 
 export async function POST(req: NextRequest) {
-  // 1. Auth
+  // 1. Auth + AuthorizationContext
   const auth = await requireAuth(req, 'ADMIN')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
   const user = auth.user
+  const ctx = await buildAuthorizationContext(user, auth.row.id, auth.row.allowedSites)
 
   // 2. Parse request
   let body: { previewRunId?: string; itemIds?: string[] | null }
@@ -52,7 +53,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Preview run not completed' }, { status: 400 })
   }
 
-  // 4. Filter items to apply
+  // 4. Run ownership check (I-01)
+  // Non-superadmin can only apply their own runs
+  if (user.role !== 'superadmin' && previewRun.triggeredBy !== user.email) {
+    return NextResponse.json(
+      { error: 'Cannot apply another user\'s preview run' },
+      { status: 403 },
+    )
+  }
+
+  // 5. Check siteScope authorization (I-01)
+  if (previewRun.siteScope) {
+    const siteScopeCodes = previewRun.siteScope.split(',').map((s) => s.trim()).filter(Boolean)
+    for (const siteCode of siteScopeCodes) {
+      if (!ctx.canAtSite(siteCode, 'ADMIN')) {
+        return NextResponse.json(
+          { error: `No permission to sync site: ${siteCode}` },
+          { status: 403 },
+        )
+      }
+    }
+  }
+
+  // 6. Filter items to apply
   const itemsToApply = body.itemIds
     ? previewRun.items.filter((item) => body.itemIds!.includes(item.id))
     : previewRun.items.filter((item) => item.status === 'pending')
@@ -61,7 +84,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No pending items to apply' }, { status: 400 })
   }
 
-  // 5. Create apply SyncRun
+  // 7. Pre-check per-item Site authorization (I-01)
+  // Reject items with missing/unknown/out-of-scope site before starting mutations
+  const authorizedItems: typeof itemsToApply = []
+  const rejectedItems: { id: string; error: string }[] = []
+
+  for (const item of itemsToApply) {
+    const afterData = item.after as Record<string, unknown> | null
+    const itemSiteCode = (afterData?.siteCode as string) || (afterData?.site as string) || null
+
+    if (!itemSiteCode) {
+      rejectedItems.push({ id: item.id, error: 'MISSING_SITE: no siteCode in item data' })
+      continue
+    }
+
+    if (!ctx.canAtSite(itemSiteCode, 'ADMIN')) {
+      rejectedItems.push({ id: item.id, error: `OUT_OF_SCOPE: site ${itemSiteCode} not in user scope` })
+      continue
+    }
+
+    authorizedItems.push(item)
+  }
+
+  // 8. Create apply SyncRun
   const applyRun = await db.syncRun.create({
     data: {
       source: previewRun.source,
@@ -79,10 +124,24 @@ export async function POST(req: NextRequest) {
   let createRows = 0
   let updateRows = 0
   let errorRows = 0
-  let appliedCount = 0
 
-  // 6. Apply each item in separate transaction
-  for (const item of itemsToApply) {
+  // Mark rejected items as error
+  for (const rejected of rejectedItems) {
+    await db.syncRunItem.create({
+      data: {
+        syncRunId: applyRun.id,
+        externalKey: previewRun.items.find((i) => i.id === rejected.id)?.externalKey || '(unknown)',
+        action: 'error',
+        status: 'error',
+        errorMessage: rejected.error,
+        processedAt: new Date(),
+      },
+    })
+    errorRows++
+  }
+
+  // 9. Apply each authorized item in separate transaction
+  for (const item of authorizedItems) {
     try {
       const { result, attempts, p2034Count } = await withSerializableRetryTracked(
         async (tx) => {
@@ -92,7 +151,7 @@ export async function POST(req: NextRequest) {
             select: { id: true, version: true },
           })
 
-          // Conflict detection with preview baseline
+          // Conflict detection with preview baseline (I-05)
           if (item.expectedExists && !existing) {
             throw new Error('CONFLICT: record deleted after preview — re-run preview')
           }
@@ -112,7 +171,7 @@ export async function POST(req: NextRequest) {
           let targetWorkOrderId: string
 
           if (existing) {
-            // Conditional update with version check
+            // Conditional update with version check (I-05)
             if (item.expectedVersion != null && existing.version !== item.expectedVersion) {
               throw new Error(
                 `CONFLICT: version ${existing.version} ≠ preview baseline ${item.expectedVersion}`,
@@ -133,7 +192,6 @@ export async function POST(req: NextRequest) {
           }
 
           // Audit log (in same transaction — atomic)
-          // AuditLog.detail is String? — must JSON.stringify()
           const auditDetail = {
             before: redacted(item.before as Record<string, unknown>),
             after: redacted(afterData),
@@ -173,12 +231,9 @@ export async function POST(req: NextRequest) {
 
       if (item.action === 'create') createRows++
       else updateRows++
-
-      appliedCount++
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
 
-      // Update item as error
       await db.syncRunItem.update({
         where: { id: item.id },
         data: {
@@ -192,12 +247,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 7. Update SyncRun with final stats
+  // 10. Update SyncRun with final stats
   const completedAt = new Date()
   await db.syncRun.update({
     where: { id: applyRun.id },
     data: {
-      status: 'completed',
+      status: errorRows > 0 ? 'completed' : 'completed',
       totalRows: itemsToApply.length,
       createRows,
       updateRows,
@@ -209,12 +264,12 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // 8. Audit log for the run
+  // 11. Audit log for the run
   await logAudit({
     action: 'SYNC_APPLY',
     entity: 'SyncRun',
     entityId: applyRun.id,
-    summary: `Applied sync from ${previewRun.source} — ${appliedCount} applied, ${errorRows} errors`,
+    summary: `Applied sync from ${previewRun.source} — ${createRows + updateRows} applied, ${errorRows} errors`,
     actor: user.email,
     siteCode: previewRun.siteScope,
   })
