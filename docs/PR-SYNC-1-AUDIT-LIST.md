@@ -1,10 +1,11 @@
 # PR-SYNC-1 Audit List — Services → Work Orders
 
-**เอกสารนี้:** Audit List ที่กรอกแล้วสำหรับ PR-SYNC-1 (Legacy Apps Script → ITAM-NextJS Manual Sync, MVP: Services → Work Orders)
-**สถานะ:** NOT APPROVED — revision v5 (3a1dc7b) แก้ F-16 ถึง F-18 แล้ว รอ Audit review F-19 ถึง F-22 ห้ามเริ่ม implementation จนกว่าจะอนุมัติ
-**ผู้กรอก:** ทีมพัฒนา (orchestrator)
+**เอกสารนี้:** Audit List สำหรับ PR-SYNC-1 (Legacy Apps Script → ITAM-NextJS Manual Sync, MVP: Services → Work Orders)
+**สถานะ:** NOT APPROVED — revision v6 (fb28fd8) แก้ F-19 ถึง F-22 แล้ว รอ Audit review V6-F01 ถึง V6-F03 ห้ามเริ่ม implementation จนกว่าจะอนุมัติ
+**Target revision:** v6, commit `fb28fd8` (branch `feature/pr-sync-1-audit-revision`)
+**ผู้กรอก:** ทีมพัฒนา
 **วันที่กรอก:** 2026-08-16
-**Reference spec:** `docs/TASK-legacy-sync.md` (revision v5, commit `3a1dc7b`)
+**Reference spec:** `docs/TASK-legacy-sync.md` (revision v6, commit `fb28fd8`)
 **Reference schema:** `prisma/schema.prisma` WorkOrder model
 **Reference mapping:** `src/lib/csv-field-mapping.ts` FIELD_MAPPINGS.workOrder + STATUS_MAPPINGS.workOrder
 **B4 baseline:** `ee75164` (GO/frozen — ไม่แตะ 6 frozen files)
@@ -16,33 +17,74 @@
 
 | ตัวชี้วัด | ค่า |
 |---|---|
-| รายการ Critical ทั้งหมด | 17 |
-| รายการ Critical ที่ DESIGN_PASS | 13 / 17 |
-| รายการ Critical ที่ BLOCKED (ต้องแก้ spec/evidence) | 4 / 17 |
-| รายการ Non-critical | 5 |
-| **สถานะ Final** | ☐ NOT APPROVED — ส่ง revision v6 (F-19 ถึง F-22) |
-| **ผู้กรอก** | orchestrator (ทีมพัฒนา) |
-| **วันที่กรอก** | 2026-08-16 |
+| Critical items ทั้งหมด | 17 |
+| DESIGN_PASS (spec พร้อม implement) | 14 |
+| BLOCKED (ต้องแก้ spec/evidence ก่อน implement) | 2 |
+| Non-critical items | 5 |
+| **สถานะ Final** | ☐ NOT APPROVED — รอ Audit review v7 |
 
-> **หมายเหตุสถานะ (revision v2):**
-> - `DESIGN_PASS` = spec ครอบคลุม พร้อม implement ตามนี้
-> - `BLOCKED` = มี finding จาก audit review ต้องแก้ก่อน implement
-> - `IMPLEMENTATION_TBD` = ต้อง implement แล้วจึงจะมี evidence
-> - `EVIDENCE_TBD` = ต้องรัน test/CI แล้วจึงจะมี evidence
+> **นิยามสถานะ:**
+> - `DESIGN_PASS` = spec ครอบคลุม, พร้อม implement
+> - `BLOCKED` = มี finding ค้าง, ต้องแก้ก่อน implement
+> - `EVIDENCE_TBD` = ต้องรัน test/CI หลัง implementation จึงจะมี evidence
 >
-> เดิมทุกรายการระบุเป็น `PASS` แต่ audit review พบ findings ที่ต้องแก้ก่อน implementation
+> **Single source of truth:** ตาราง Critical Status Mapping ด้านล่างเป็นตารางหลัก สถานะทุกจุดในเอกสารต้องอ้างจากตารางนี้เท่านั้น ห้าม duplicate ตัวเลข
 
-### Deterministic Status Mapping (F-21)
+### Critical Status Mapping — Atomic 17 Items (V6-F02)
 
-ตารางนี้แสดงสถานะปัจจุบันของ Critical 17 ข้อ สามารถตรวจนับย้อนกลับได้:
+| Critical ID | C-item | Design status | Blocking reason |
+|---|---|---|---|
+| CR-01 | C-1 (Source contract) | DESIGN_PASS | — |
+| CR-02 | C-2 (Field mapping) | BLOCKED | F-02/F-11: canonical siteCode mapping ยังเป็น design-only, ต้องมี implementation evidence |
+| CR-03 | C-3 (Stable external key) | DESIGN_PASS | — |
+| CR-04 | C-4 (Duplicate policy / Idempotency) | DESIGN_PASS | — |
+| CR-05 | C-5 (Preview no-write) | DESIGN_PASS | — |
+| CR-06 | C-6 (Transaction & version check) | DESIGN_PASS | — |
+| CR-07 | C-7 (P2034 / concurrency) | DESIGN_PASS | design ถูกต้อง (attempts/p2034Count ใน spec) — runtime evidence อยู่ใน EV-08, EV-15 |
+| CR-08 | C-8 (Retry & quarantine) | DESIGN_PASS | — |
+| CR-09 | C-9 (Audit log) | DESIGN_PASS | design ถูกต้อง (JSON.stringify + redaction) — runtime evidence อยู่ใน EV-06 |
+| CR-10 | C-10 (Site authorization) | DESIGN_PASS | — |
+| CR-11 | C-11 (API contract) | DESIGN_PASS | — |
+| CR-12 | C-12 (Prisma migration) | DESIGN_PASS | — |
+| CR-13 | C-13 (Credential security) | DESIGN_PASS | — |
+| CR-14 | C-14 (Test evidence) | EVIDENCE_TBD | 11 tests ยังไม่มี implementation — ต้องรันหลัง implementation PR |
+| CR-15 | C-15 (PR boundary / B4 frozen) | DESIGN_PASS | — |
+| CR-16 | C-16 (Non-critical / UX) | DESIGN_PASS | Non-critical — ไม่นับใน Critical gate |
+| CR-17 | C-17 (Final approval gate) | BLOCKED | F-09: C-17.1 ยังไม่ครบ 17/17; C-17.2–C-17.7 ต้องรันบน implementation PR |
 
-| สถานะ | รายการ | จำนวน |
-|---|---|---|
-| **DESIGN_PASS** | C-1.1–C-1.5, C-2.2–C-2.4, C-3.1, C-4.1, C-4.2, C-4.4, C-5.1–C-5.4, C-6.1–C-6.5, C-7.1–C-7.3, C-8.1–C-8.5, C-9.1–C-9.3, C-9.5, C-10.1, C-10.4–C-10.6, C-11.1–C-11.6, C-12.1, C-12.2–C-12.6, C-13.1–C-13.6, C-15.1–C-15.4, C-15.5–C-15.8 | 13 |
-| **BLOCKED** | C-2.1 (F-02/F-11 siteCode), C-7.4 (F-05/F-12 attempts), C-9.4 (F-16 redaction evidence), C-17.1 (F-09 final gate) | 4 |
-| **EVIDENCE_TBD** | C-14.1–C-14.11 (11 tests), C-17.2–C-17.7 (6 CI gates) | 17 |
+**สรุปจากตาราง (single source of truth):**
+- DESIGN_PASS: CR-01, CR-03, CR-04, CR-05, CR-06, CR-07, CR-08, CR-09, CR-10, CR-11, CR-12, CR-13, CR-15, CR-16 = **14 items** (CR-16 non-critical ไม่นับใน gate)
+- DESIGN_PASS (non-critical): CR-16 = **1 item**
+- BLOCKED: CR-02, CR-17 = **2 items**
+- EVIDENCE_TBD: CR-14 = **1 item** (มี 11 sub-items)
 
-> **หมายเหตุ:** รายการที่แก้ spec แล้ว (resolved) แต่เดิมเป็น BLOCKED จะย้ายเป็น DESIGN_PASS เมื่อ Audit ยืนยันว่า spec revision ผ่าน ปัจจุบันยังคงแสดงเป็น BLOCKED ตาม verdict ล่าสุด
+**Critical gate (ไม่นับ non-critical CR-16):** 13 DESIGN_PASS / 2 BLOCKED / 1 EVIDENCE_TBD = **16 Critical items** + **1 item (CR-14) ที่เป็น evidence queue 11 tests**
+
+> **หมายเหตุ:** CR-14 เป็น test evidence category ที่มี 11 sub-items — ไม่นับเป็น 11 Critical items แยกกัน แต่นับเป็น 1 Critical item ที่มี 11 evidence rows
+
+### Evidence Queue (แยกจาก Critical design gate)
+
+ตารางนี้แสดง evidence 17 รายการที่ต้องรันหลัง implementation — ไม่ปะปนกับ Critical design status:
+
+| Evidence ID | C-item | Evidence type | Status |
+|---|---|---|---|
+| EV-01 | C-14.1 | Preview no-write test | EVIDENCE_TBD |
+| EV-02 | C-14.2 | Apply → WorkOrder ปรากฏ | EVIDENCE_TBD |
+| EV-03 | C-14.3 | Idempotency test | EVIDENCE_TBD |
+| EV-04 | C-14.4 | Skip unchanged test | EVIDENCE_TBD |
+| EV-05 | C-14.5 | Site scope test | EVIDENCE_TBD |
+| EV-06 | C-14.6 | Audit log test | EVIDENCE_TBD |
+| EV-07 | C-14.7 | Conflict detection test | EVIDENCE_TBD |
+| EV-08 | C-14.8 | P2034 retry test | EVIDENCE_TBD |
+| EV-09 | C-14.9 | UI flow test | EVIDENCE_TBD |
+| EV-10 | C-14.10 | Credential leak test | EVIDENCE_TBD |
+| EV-11 | C-14.11 | Retry error items test | EVIDENCE_TBD |
+| EV-12 | C-17.2 | ESLint pass | EVIDENCE_TBD |
+| EV-13 | C-17.3 | TypeScript check | EVIDENCE_TBD |
+| EV-14 | C-17.4 | git diff --check | EVIDENCE_TBD |
+| EV-15 | C-17.5 | B4 regression (PostgreSQL) | EVIDENCE_TBD |
+| EV-16 | C-17.6 | PostgreSQL migration | EVIDENCE_TBD |
+| EV-17 | C-17.7 | 3-point integration check | EVIDENCE_TBD |
 
 ---
 
@@ -273,14 +315,14 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-17.1 | Critical ทั้ง 17 ข้อผ่าน | BLOCKED (F-09) | dev | impl | ด้านบน | **F-09:** ปัจจุบัน 9 DESIGN_PASS / 8 BLOCKED — ยังไม่ครบ 17 ข้อ ต้องปิดทุก BLOCKED item ก่อน C-17.1 จึงจะ PASS | |
+| C-17.1 | Critical ทั้ง 17 ข้อผ่าน | BLOCKED (F-09) | dev | impl | Critical Status Mapping v7 | ตาม Critical Status Mapping: 13 DESIGN_PASS, 2 BLOCKED, 1 EVIDENCE_TBD — ยังไม่ครบ, ต้องปิด CR-02 และ CR-17 | |
 | C-17.2 | `bunx eslint` ผ่าน 0 errors | EVIDENCE_TBD | dev | impl | | **F-18:** ต้องรันบน implementation PR, ไม่ใช่ PR #6 evidence |
 | C-17.3 | `npx tsc --noEmit` ไม่มี error ใหม่ | EVIDENCE_TBD | dev | impl | | **F-18:** ต้องรันบน implementation PR |
 | C-17.4 | `git diff --check` สะอาด | EVIDENCE_TBD | dev | impl | | **F-18:** ต้องรันบน implementation PR |
 | C-17.5 | B4 regression tests ผ่าน (PostgreSQL) | EVIDENCE_TBD | dev | CI | | **F-18:** ต้องรันบน implementation PR — อาจ regression หลังเพิ่ม SyncRun model |
 | C-17.6 | PostgreSQL migration รันสำเร็จใน staging | EVIDENCE_TBD | dev | CI | | **F-18:** SyncRun migration ยังไม่ได้สร้าง |
 | C-17.7 | 3-point integration check (Device/print/login) | EVIDENCE_TBD | dev | CI | | **F-18:** ต้องรันบน implementation PR — ยืนยันไม่ break existing features |
-| C-17.8 | Audit team อนุมัติเป็นลายลักษณ์อักษร | NOT APPROVED | audit | review | | revision v5 (3a1dc7b) — รอ verdict F-19 ถึง F-22 |
+| C-17.8 | Audit team อนุมัติเป็นลายลักษณ์อักษร | NOT APPROVED | audit | review | | revision v6 (fb28fd8) — รอ verdict V6-F01 ถึง V6-F03 |
 
 ---
 
@@ -302,28 +344,29 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 
 ## ข้อความพร้อมส่งทีม Audit
 
-> **หัวข้อ: PR-SYNC-1 Audit List — กรอกแล้ว ขอ review**
+> **หัวข้อ: PR-SYNC-1 Audit List revision v7 — ขอ review**
 >
 > ทีม Audit ครับ
 >
-> หลัง PR #6 ผ่าน GO for Production ผมได้กรอก PR-SYNC-1 Audit List ครบทั้ง 17 Critical + 5 Non-critical ตามที่ท่านระบุ
+> ส่ง revision v7 (target commit: `fb28fd8` + v7 docs fix) สำหรับ PR-SYNC-1 Audit List
 >
-> **ไฟล์:** `docs/PR-SYNC-1-AUDIT-LIST.md` (commit ถัดไป)
-> **Spec reference:** `docs/TASK-legacy-sync.md`
+> **ไฟล์:** `docs/PR-SYNC-1-AUDIT-LIST.md` (revision v7)
+> **Spec reference:** `docs/TASK-legacy-sync.md` (revision v6, commit `fb28fd8`)
 > **Schema reference:** `prisma/schema.prisma` WorkOrder model
-> **Mapping reference:** `src/lib/csv-field-mapping.ts` (FIELD_MAPPINGS.workOrder + STATUS_MAPPINGS.workOrder)
+> **Mapping reference:** `src/lib/csv-field-mapping.ts`
 >
-> **สรุป (revision v5):**
-> - 9/17 Critical DESIGN_PASS, 8/17 BLOCKED — **NOT APPROVED**
-> - ยังห้ามแก้ schema/API/UI จนกว่า blockers จะถูกปิดและ Audit อนุมัติเป็นลายลักษณ์อักษร
-> - CSV upload คงเป็น fallback ≥ 2 สัปดาห์
-> - แยกจาก PR #6 + B4 frozen files
+> **สรุป (จาก Critical Status Mapping — single source of truth):**
+> - DESIGN_PASS: 13 items (CR-01, CR-03, CR-04, CR-05, CR-06, CR-07, CR-08, CR-09, CR-10, CR-11, CR-12, CR-13, CR-15)
+> - BLOCKED: 2 items (CR-02, CR-17)
+> - EVIDENCE_TBD: 1 item (CR-14, 11 sub-items)
+> - Non-critical DESIGN_PASS: 1 item (CR-16)
+> - Evidence queue: 17 evidence rows (EV-01 ถึง EV-17, แยกจาก Critical design gate)
+> - สถานะ: **NOT APPROVED**
 >
-> **จุดที่แก้ใน revision v5:**
-> - F-16: AuditLog.detail ใช้ `JSON.stringify()` + redaction allowlist (ตรง schema `String?`)
-> - F-17: ใช้ `targetWorkOrderId` assign จาก update/create result ครบทั้ง 2 path
-> - F-18: C-17.2–C-17.7 เปลี่ยนเป็น EVIDENCE_TBD (ต้องรันบน implementation PR)
-> - ลบข้อความเก่าที่ขัดกับสถานะปัจจุบัน
+> **จุดที่แก้ใน v7:**
+> - V6-F01: metadata ทั้งหมดเปลี่ยนเป็น v6/fb28fd8, ลบข้อความเก่า 9/17/8
+> - V6-F02: สร้าง atomic mapping 17 Critical IDs แยก design gate ออกจาก evidence queue
+> - V6-F03: C-17.1 reference Critical Status Mapping เดียว
 >
 > **กฎเหล็กที่ปฏิบัติ:**
 > - ห้ามเริ่มแก้ schema/API/UI จนกว่า Audit List จะถูกอนุมัติ
@@ -343,7 +386,8 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | 2026-08-16 | new-team (v3) | revision แก้ F-01 ถึง F-08: PASS → BLOCKED/EVIDENCE_TBD |
 | 2026-08-16 | new-team (v4) | revision แก้ F-09 ถึง F-15: auth helper path, siteCode quarantine, redaction, conditional algorithm |
 | 2026-08-16 | new-team (v5) | revision แก้ F-16 ถึง F-18: JSON.stringify, targetWorkOrderId, EVIDENCE_TBD |
-| 2026-08-16 | new-team (v6) | revision แก้ F-19 ถึง F-22: residual cleanup, deterministic status mapping, PostgreSQL migration gate |
+| 2026-08-16 | new-team (v6) | revision แก้ F-19 ถึง F-22: residual cleanup, status mapping draft, PostgreSQL migration gate |
+| 2026-08-16 | new-team (v7) | revision แก้ V6-F01 ถึง V6-F03: metadata v6/fb28fd8, atomic 17-item mapping, single source of truth, C-17.1/C-9.4 consistency |
 
 ---
 
