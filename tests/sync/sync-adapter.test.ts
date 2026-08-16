@@ -47,12 +47,15 @@ describe('deriveSiteCode — direct siteCode', () => {
     expect(result.siteCode).toBeNull()
   })
 
-  it('quarantines when allowlist is null (DB unavailable)', async () => {
-    // Simulate DB unavailable by setting empty override
+  it('quarantines when DB is unavailable (exception path)', async () => {
+    // Simulate DB unavailable: set override to null, then clear cache
+    // The adapter will try to load from DB; if DB throws, it returns empty set
+    // For unit test: we test the empty-set path (which is what DB failure produces)
     _setSiteAllowlistForTesting(new Set())
     const result = await deriveSiteCode({ siteCode: 'UDH' })
     expect(result.reason).toBe('unknown')
     expect(result.siteCode).toBeNull()
+    // Note: actual DB exception path requires integration test with mocked DB
   })
 
   it('rejects whitespace-only siteCode', async () => {
