@@ -59,7 +59,14 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        # B-03 fix: use npm ci for deterministic installs. Generate lockfile
+        # first if it doesn't exist (first run only).
+        run: |
+          if [ ! -f package-lock.json ]; then
+            echo "Generating package-lock.json (first run)..."
+            npm install --legacy-peer-deps --package-lock-only
+          fi
+          npm ci --legacy-peer-deps
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -74,42 +81,50 @@ jobs:
           set -o pipefail
           npx tsx prisma/seed.ts 2>&1 | tee seed-output.log
 
-      - name: TypeScript check (baseline comparison)
-        # F-06: fail-closed for NEW errors only. Pre-existing tsc errors in
-        # examples/, scripts/, next.config.ts exist at baseline ee75164 and
-        # are NOT caused by PR-SYNC-1. This step fails only if PR-SYNC-1
-        # INTRODUCES new tsc errors vs baseline (same pattern as PR #6).
+      - name: TypeScript check (PR-SYNC-1 files strict + baseline comparison)
+        # B-02 fix: two-part check:
+        # Part 1: PR-SYNC-1 files (src/lib/sync-adapter.ts, src/app/api/sync/)
+        #   must have 0 tsc errors (strict).
+        # Part 2: Full project tsc — fails only if release > baseline
+        #   (pre-existing errors in examples/, scripts/ are allowed).
         run: |
           set -o pipefail
-          echo "=== tsc at release ===" 
-          npx tsc --noEmit 2>&1 | tee tsc-output.log || true
-          RELEASE_ERRORS=$(grep -c "error TS" tsc-output.log || true)
+          echo "=== Part 1: tsc on PR-SYNC-1 files (strict, 0 errors required) ==="
+          npx tsc --noEmit 2>&1 | tee tsc-full-output.log || true
+          SYNC_ERRORS=$(grep -E "sync-adapter|api/sync" tsc-full-output.log | grep -c "error TS" || echo "0")
+          SYNC_ERRORS=${SYNC_ERRORS:-0}
+          echo "PR-SYNC-1 tsc errors: $SYNC_ERRORS"
+          if [ "$SYNC_ERRORS" -gt 0 ]; then
+            echo "FAIL: PR-SYNC-1 files have $SYNC_ERRORS tsc errors (must be 0)"
+            grep -E "sync-adapter|api/sync" tsc-full-output.log | grep "error TS"
+            exit 1
+          fi
+          echo "PASS: PR-SYNC-1 files have 0 tsc errors"
+          echo ""
+          echo "=== Part 2: baseline comparison (pre-existing errors allowed) ==="
+          RELEASE_ERRORS=$(grep -c "error TS" tsc-full-output.log || echo "0")
           RELEASE_ERRORS=${RELEASE_ERRORS:-0}
-          echo "Release tsc errors: $RELEASE_ERRORS"
-          echo "=== checkout baseline to count pre-existing errors ==="
+          echo "Release total tsc errors: $RELEASE_ERRORS"
+          # Count baseline errors
           git stash -u 2>/dev/null || true
           git checkout ee75164 -- prisma/schema.prisma 2>/dev/null || true
           npx prisma generate 2>/dev/null || true
           npx tsc --noEmit 2>&1 | tee tsc-baseline-output.log || true
-          BASELINE_ERRORS=$(grep -c "error TS" tsc-baseline-output.log || true)
+          BASELINE_ERRORS=$(grep -c "error TS" tsc-baseline-output.log || echo "0")
           BASELINE_ERRORS=${BASELINE_ERRORS:-0}
-          echo "Baseline tsc errors: $BASELINE_ERRORS"
-          # Restore release schema
           git checkout HEAD -- prisma/schema.prisma 2>/dev/null || true
           npx prisma generate 2>/dev/null || true
           git stash pop 2>/dev/null || true
-          echo "=== comparison ===" 
-          echo "Baseline: $BASELINE_ERRORS"
-          echo "Release:  $RELEASE_ERRORS"
-          echo "New:      $((RELEASE_ERRORS - BASELINE_ERRORS))"
+          echo "Baseline total tsc errors: $BASELINE_ERRORS"
+          echo "New errors: $((RELEASE_ERRORS - BASELINE_ERRORS))"
+          cp tsc-full-output.log tsc-output.log
           echo "$BASELINE_ERRORS" > BASELINE_TSC_ERRORS.txt
           echo "$RELEASE_ERRORS" > RELEASE_TSC_ERRORS.txt
           if [ "$RELEASE_ERRORS" -gt "$BASELINE_ERRORS" ]; then
             echo "FAIL: release introduces $((RELEASE_ERRORS - BASELINE_ERRORS)) new tsc errors"
             exit 1
-          else
-            echo "PASS: no new tsc errors (release=$RELEASE_ERRORS <= baseline=$BASELINE_ERRORS)"
           fi
+          echo "PASS: no new tsc errors (release=$RELEASE_ERRORS <= baseline=$BASELINE_ERRORS)"
 
       - name: ESLint
         run: |

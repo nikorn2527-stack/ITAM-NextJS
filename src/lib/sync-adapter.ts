@@ -378,6 +378,13 @@ export async function computePreviewItems(
     // Site mapping (fail-closed)
     const siteResult = await deriveSiteCode(record)
 
+    // B-01 fix: inject canonical siteCode into mapped payload so it appears
+    // in `after` (via redacted(mapped)). Without this, apply route sees
+    // after.siteCode = undefined → rejects with MISSING_SITE.
+    if (siteResult.siteCode) {
+      mapped.siteCode = siteResult.siteCode
+    }
+
     if (siteResult.reason === 'missing') {
       items.push({
         externalKey: requestId,
