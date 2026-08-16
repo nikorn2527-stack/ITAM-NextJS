@@ -146,6 +146,14 @@ model SyncRunItem {
   // ── ข้อมูลก่อน/หลัง (JSON) ──
   before          String?  // JSON string ของ record เดิม (null สำหรับ create)
   after           String?  // JSON string ของ record ใหม่ (null สำหรับ delete — ยังไม่รองรับ)
+  // ── Preview baseline (P1 fix: conflict detection) ──
+  // Persisted at preview time so apply can detect intervening edits.
+  // Without these, preview→apply is a TOCTOU window: a user could edit
+  // the WO (or another sync could create the external key) between
+  // preview and apply, and the apply would silently overwrite it.
+  expectedVersion Int?     // WorkOrder.version ที่บันทึกตอน preview (null สำหรับ create/skip)
+  expectedExists  Boolean  // true = preview เห็น record อยู่; false = preview ไม่เห็น (create)
+                           // apply ตรวจ: ถ้า expectedExists=false แต่พบ record จริง → CONFLICT
   // ── ผลลัพธ์ ──
   status          String   // 'pending' | 'applied' | 'skipped' | 'error'
   errorMessage    String?
@@ -335,10 +343,24 @@ await withSerializableRetryTracked(async (tx) => {
     select: { id: true, version: true },
   })
 
-  // 2. Upsert พร้อม version check (เฉพาะ update)
+  // 2. Conflict detection ด้วย preview baseline (P1 fix: TOCTOU window)
+  //    expectedExists + expectedVersion persist ตอน preview (ใน SyncRunItem)
+  //    ตอน apply ต้องตรวจสอบว่าสถานะยังตรงกับ baseline:
+  //      a) preview คาดว่าจะ update (expectedExists=true) แต่ record หายไป → CONFLICT (deleted)
+  //      b) preview คาดว่าจะ create (expectedExists=false) แต่ record ปรากฏ → CONFLICT (created by someone else)
+  //      c) record ยังอยู่ แต่ version เปลี่ยน → CONFLICT (edited after preview)
+  if (item.expectedExists && !existing) {
+    throw new ConflictError('record deleted after preview — re-run preview')
+  }
+  if (!item.expectedExists && existing) {
+    throw new ConflictError('record created by another source after preview — re-run preview')
+  }
+
+  // 3. Upsert พร้อม version check (เฉพาะ update)
   if (existing) {
-    if (item.expectedVersion && existing.version !== item.expectedVersion) {
-      throw new StaleVersionError(existing.version)
+    // expectedVersion guaranteed non-null when expectedExists=true (preview set it)
+    if (item.expectedVersion != null && existing.version !== item.expectedVersion) {
+      throw new ConflictError(`version ${existing.version} ≠ preview baseline ${item.expectedVersion}`)
     }
     await tx.workOrder.update({
       where: { id: existing.id, version: existing.version },

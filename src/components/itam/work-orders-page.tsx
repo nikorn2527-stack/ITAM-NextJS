@@ -3374,7 +3374,12 @@ function WorkOrderDetailContent({
             <span className="sm:hidden">แก้ไข</span>
           </Button>
         )}
-        <div className="flex-1" />
+        {/* Spacer: order-8 puts it AFTER the action buttons (order-1..order-7)
+            and BEFORE the Close button (order-last). P2 fix: previously the
+            spacer had default order=0, so it landed before all positive-order
+            actions — on mobile with a full-width primary button, the spacer
+            could expand across a blank first flex line. */}
+        <div className="order-8 flex-1" />
         <Button size="sm" variant="ghost" onClick={onClose} className="order-last min-h-11">
           ปิด
         </Button>

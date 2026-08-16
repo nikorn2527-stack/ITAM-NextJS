@@ -676,53 +676,49 @@ export function ImportPage() {
             Shared between both tabs. */}
         <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} className="flex flex-shrink-0 flex-col">
           <Card className="border-slate-200 dark:border-slate-800">
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-2 px-6 py-4 text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:bg-slate-900 dark:hover:bg-slate-800/50 dark:focus-visible:ring-offset-slate-950"
-              >
-                <span className="flex items-center gap-2">
+            {/* Header row: trigger button (left) + refresh button (right) as
+                SIBLINGS, not nested. P2 fix: nested <button> is invalid HTML
+                and breaks keyboard/AT access to the refresh action. */}
+            <div className="flex w-full items-center justify-between gap-2 px-6 py-4 dark:bg-slate-900">
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex flex-1 items-center gap-2 rounded-md text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:hover:bg-slate-800/50 dark:focus-visible:ring-offset-slate-950"
+                  aria-expanded={historyOpen}
+                >
                   <span aria-hidden>📋</span>
                   <span className="text-base font-semibold text-slate-800 dark:text-slate-100">
                     ประวัติการนำเข้า
                   </span>
                   {jobs && jobs.length > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="text-xs"
-                    >
+                    <Badge variant="secondary" className="text-xs">
                       {jobs.length}
                     </Badge>
                   )}
-                </span>
-                <span className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      refetchJobs()
-                    }}
-                    disabled={jobsFetching}
-                    className="border-slate-300 dark:border-slate-700"
-                  >
-                    <RefreshCw
-                      className={cn(
-                        'mr-1.5 h-3.5 w-3.5',
-                        jobsFetching && 'animate-spin',
-                      )}
-                    />
-                    <span className="hidden sm:inline">รีเฟรช</span>
-                  </Button>
                   {historyOpen ? (
-                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                    <ChevronDown className="ml-1 h-4 w-4 text-slate-400" />
                   ) : (
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                    <ChevronRight className="ml-1 h-4 w-4 text-slate-400" />
                   )}
-                </span>
-              </button>
-            </CollapsibleTrigger>
+                </button>
+              </CollapsibleTrigger>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => refetchJobs()}
+                disabled={jobsFetching}
+                className="border-slate-300 dark:border-slate-700"
+              >
+                <RefreshCw
+                  className={cn(
+                    'mr-1.5 h-3.5 w-3.5',
+                    jobsFetching && 'animate-spin',
+                  )}
+                />
+                <span className="hidden sm:inline">รีเฟรช</span>
+              </Button>
+            </div>
             <CollapsibleContent>
           <CardContent className="border-t border-slate-100 pt-4 dark:border-slate-800">
             {jobsLoading ? (
