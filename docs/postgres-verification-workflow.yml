@@ -47,11 +47,13 @@ permissions:
 
 env:
   # Pinned release candidate — operator cannot override.
-  # v2 (0e010fe): includes baseline init migration that was missing in v1 (007a1cc).
-  # The baseline migration creates all 34 tables; without it, prisma migrate deploy
-  # failed on fresh PostgreSQL with "relation does not exist".
-  # 0e010fe = 007a1cc + baseline migration only (no other changes).
-  RELEASE_SHA: 0e010fedb57c261c7e1db5e7d0c326eafd46adda
+  # v3 (01e0688): v2 + fixes for 3 false-positive CI failures:
+  #   - trailing whitespace in docs/migration
+  #   - TSC_CHECK now compares baseline vs release (not absolute count)
+  #   - LOGIN_CHECK now isolates login-only log lines (excludes P2034 from concurrency test)
+  # v2 (0e010fe): v1 + baseline init migration (creates all 34 tables).
+  # v1 (007a1cc): original release candidate (B4 closure + integration fixes + UX).
+  RELEASE_SHA: 01e0688102738feb36d51650a832e651b9302e1a
   B4_BASELINE_SHA: ee75164
 
 jobs:
