@@ -8920,3 +8920,25 @@ Stage Summary:
 - base = PR #5 head (f433c6f) → diff แสดงเฉพาะงานหลัง B4 closure
 - ทีม audit สามารถตรวจ diff ของ PR #6 เทียบกับ B4 baseline ได้โดยตรง
 - สถานะยังคง CONDITIONAL STAGING ONLY — รอ PostgreSQL verification ใน CI/staging
+
+---
+Task ID: SYNC-SPEC-APPROVED
+Agent: orchestrator (main)
+Task: บันทึกการอนุมัติ sync spec จากทีม audit และสถานะ handoff
+
+Work Log:
+- ทีม audit ยืนยันว่าข้อความเปิดงาน PR-SYNC-1 พร้อมส่งทีมพัฒนา
+- ยืนยันกฎความปลอดภัยครบ: Preview no-write, Apply transaction + optimistic version check, credential server-side, phased PRs, CSV fallback ≥ 2 สัปดาห์
+- ยืนยันว่าการให้ทีมส่ง audit list ก่อน implementation เป็นลำดับที่ถูกต้อง (ตรวจ mapping / Site scope / external key / idempotency / edge cases ก่อนแก้ schema หรือสร้าง API)
+
+Stage Summary:
+- Sync spec: APPROVED — พร้อมส่งทีมพัฒนาเปิด PR-SYNC-1
+- ขั้นตอนถัดไป (รอทีมพัฒนา): ส่ง audit list ก่อน implementation
+- ขั้นตอนถัดไป (รอทีม audit): PostgreSQL verification ใน CI/staging สำหรับ release candidate b4dea18 (3 integration checks + B4 regression)
+
+Current status (unchanged):
+- B4 Final Closure: GO at ee75164 (frozen)
+- Release candidate: b4dea18 (PR #6, CONDITIONAL STAGING ONLY)
+- prisma.provider: postgresql (committed)
+- B4 baseline: 0 diff (verified)
+- Sandbox: ไม่มี PostgreSQL — DB tests ต้องรันใน CI/staging เท่านั้น
