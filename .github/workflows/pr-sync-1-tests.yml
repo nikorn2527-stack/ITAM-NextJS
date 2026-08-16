@@ -59,9 +59,8 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        # B-03: npm install with legacy-peer-deps (prisma postinstall requires
-        # this). package-lock.json committed for reproducibility.
-        run: npm install --legacy-peer-deps
+        # R-01 fix: npm ci for deterministic installs (package-lock.json committed).
+        run: npm ci --legacy-peer-deps
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -137,9 +136,9 @@ jobs:
           set -o pipefail
           npx tsx tests/auth/authorization-matrix.test.ts 2>&1 | tee b4-auth-output.log
 
-      - name: Start dev server for B4 integration + concurrency tests
-        # F-04 fix: B4 integration + concurrency tests use HTTP fetch
-        # to localhost:3000 — must start dev server before running them
+      - name: Start dev server for route integration + B4 tests
+        # F-04 + R-04: dev server needed for sync route integration tests
+        # AND B4 integration/concurrency tests (both use HTTP fetch)
         run: |
           nohup npx next dev --webpack -p 3000 > /tmp/next-dev.log 2>&1 &
           echo $! > /tmp/next-dev.pid
@@ -156,10 +155,20 @@ jobs:
             fi
             sleep 2
           done
-          # Warm login route (concurrency test uses it)
+          # Warm login route
           curl -s -o /dev/null -X POST -H "Content-Type: application/json" \
             -d '{"username":"admin","password":"test1234"}' \
             http://localhost:3000/api/itam/auth/login --max-time 60 || true
+
+      - name: Run sync route integration tests (R-04)
+        # R-04: route-level integration tests that call HTTP routes via fetch.
+        # Proves: authorization, no-write, conditional apply, audit atomicity,
+        # retry semantics, idempotency, cross-site access control.
+        env:
+          API_BASE_URL: http://localhost:3000
+        run: |
+          set -o pipefail
+          npx tsx tests/sync/route-integration.test.ts 2>&1 | tee sync-route-test-output.log
 
       - name: Run B4 integration tests
         env:
@@ -211,8 +220,8 @@ jobs:
           tail -3 seed-output.log 2>/dev/null || echo "(no log)"
           echo "--- TSC ---"
           tail -3 tsc-output.log 2>/dev/null || echo "(no log)"
-          echo "--- Sync tests ---"
-          tail -5 sync-test-output.log 2>/dev/null || echo "(no log)"
+          echo "--- Sync route tests ---"
+          tail -5 sync-route-test-output.log 2>/dev/null || echo "(no log)"
           echo "--- B4 auth ---"
           tail -5 b4-auth-output.log 2>/dev/null || echo "(no log)"
           echo "--- B4 integration ---"
@@ -237,6 +246,7 @@ jobs:
             tsc-output.log \
             eslint-output.log \
             sync-test-output.log \
+            sync-route-test-output.log \
             b4-auth-output.log \
             b4-integration-output.log \
             b4-concurrency-output.log \
