@@ -301,12 +301,31 @@ function StatusBadge({ status }: { status: string }) {
 
 export function ImportPage() {
   const qc = useQueryClient()
-  const [selectedType, setSelectedType] = React.useState<JobType | null>(null)
+  // Default to 'device' so the upload area renders immediately on first
+  // load. Previously defaulted to null which hid the primary action (Upload)
+  // until the user picked a type — the reported Critical UX issue.
+  const [selectedType, setSelectedType] = React.useState<JobType>('device')
   const [file, setFile] = React.useState<File | null>(null)
   const [dragOver, setDragOver] = React.useState(false)
   const [errorDialog, setErrorDialog] = React.useState<ImportJob | null>(null)
   const [instructionsOpen, setInstructionsOpen] = React.useState(false)
+  // History is collapsed by default so the upload area gets the viewport.
+  // Auto-expands when a new upload completes (see uploadMutation.onSuccess).
+  const [historyOpen, setHistoryOpen] = React.useState(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
+  const uploadCardRef = React.useRef<HTMLDivElement>(null)
+
+  // Auto-scroll the upload card into view when the user picks a type —
+  // ensures the primary action (drop zone + Upload button) is visible on
+  // mobile without the user having to hunt for it.
+  React.useEffect(() => {
+    if (selectedType && uploadCardRef.current) {
+      uploadCardRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      })
+    }
+  }, [selectedType])
 
   // ---- History list ----
   const {
@@ -347,6 +366,9 @@ export function ImportPage() {
       )
       setFile(null)
       if (inputRef.current) inputRef.current.value = ''
+      // Auto-open the history panel so the user immediately sees the
+      // result of their upload (processed/error counts) without hunting.
+      setHistoryOpen(true)
       qc.invalidateQueries({ queryKey: ['import-jobs'] })
       // Also invalidate the per-type data so other pages refresh.
       if (job.jobType === 'device') {
@@ -466,7 +488,9 @@ export function ImportPage() {
           <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
             1. เลือกประเภทข้อมูลที่จะนำเข้า
           </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* On mobile: horizontal scrollable row of compact cards so the
+              upload area below stays in the viewport. On sm+: 2-4 col grid. */}
+          <div className="flex gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-4">
             {IMPORT_TYPES.map((t) => {
               const active = selectedType === t.id
               return (
@@ -479,19 +503,19 @@ export function ImportPage() {
                     if (inputRef.current) inputRef.current.value = ''
                   }}
                   className={cn(
-                    'group relative flex flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950',
+                    'group relative flex min-w-[180px] flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 sm:min-w-0',
                     active
                       ? 'border-[#f97316] bg-[#f97316]/5 shadow-sm'
                       : 'border-slate-200 bg-white hover:border-[#f97316]/40 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-[#fb923c]/40 dark:hover:bg-slate-800',
                   )}
                 >
-                  <span className="text-3xl" aria-hidden>
+                  <span className="text-2xl sm:text-3xl" aria-hidden>
                     {t.icon}
                   </span>
-                  <span className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 sm:text-base">
                     {t.title}
                   </span>
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                  <span className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">
                     {t.desc}
                   </span>
                   <span className="mt-1 font-mono text-[10px] text-slate-400 dark:text-slate-500">
@@ -511,6 +535,7 @@ export function ImportPage() {
         {/* Upload area + template */}
         {selectedTypeDef && (
           <motion.div
+            ref={uploadCardRef}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
@@ -541,13 +566,13 @@ export function ImportPage() {
                     }
                   }}
                   className={cn(
-                    'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-10 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950',
+                    'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 sm:gap-3 sm:py-10',
                     dragOver
                       ? 'border-[#f97316] bg-[#f97316]/5'
                       : 'border-slate-300 bg-slate-50 hover:border-[#f97316] hover:bg-[#f97316]/5 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-[#fb923c]',
                   )}
                 >
-                  <Upload className="h-10 w-10 text-slate-400 dark:text-slate-500" />
+                  <Upload className="h-8 w-8 text-slate-400 dark:text-slate-500 sm:h-10 sm:w-10" />
                   <div className="space-y-1">
                     <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
                       {file ? (
@@ -575,7 +600,9 @@ export function ImportPage() {
                   />
                 </div>
 
-                {/* Action buttons */}
+                {/* Action buttons — Upload is the primary CTA: full-width on
+                    mobile (order-last) so it's the obvious action; auto-
+                    width right-aligned on sm+. */}
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
                     type="button"
@@ -599,7 +626,7 @@ export function ImportPage() {
                     type="button"
                     onClick={onUpload}
                     disabled={!file || uploadMutation.isPending}
-                    className="ml-auto bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+                    className="order-last w-full bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950 sm:order-none sm:ml-auto sm:w-auto"
                   >
                     {uploadMutation.isPending ? (
                       <>
@@ -644,36 +671,60 @@ export function ImportPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Import history (shared between both tabs) */}
-        <Card className="flex flex-shrink-0 flex-col border-slate-200 dark:border-slate-800">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between text-slate-800 dark:text-slate-100">
-              <span className="flex items-center gap-2">
-                <span aria-hidden>📋</span>
-                3. ประวัติการนำเข้า
-              </span>
-              <Button
+        {/* Import history — collapsed by default so the upload area gets
+            the viewport; auto-expands on successful upload (see onSuccess).
+            Shared between both tabs. */}
+        <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} className="flex flex-shrink-0 flex-col">
+          <Card className="border-slate-200 dark:border-slate-800">
+            <CollapsibleTrigger asChild>
+              <button
                 type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => refetchJobs()}
-                disabled={jobsFetching}
-                className="border-slate-300 dark:border-slate-700"
+                className="flex w-full items-center justify-between gap-2 px-6 py-4 text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:bg-slate-900 dark:hover:bg-slate-800/50 dark:focus-visible:ring-offset-slate-950"
               >
-                <RefreshCw
-                  className={cn(
-                    'mr-1.5 h-3.5 w-3.5',
-                    jobsFetching && 'animate-spin',
+                <span className="flex items-center gap-2">
+                  <span aria-hidden>📋</span>
+                  <span className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                    ประวัติการนำเข้า
+                  </span>
+                  {jobs && jobs.length > 0 && (
+                    <Badge
+                      variant="secondary"
+                      className="text-xs"
+                    >
+                      {jobs.length}
+                    </Badge>
                   )}
-                />
-                รีเฟรช
-              </Button>
-            </CardTitle>
-            <CardDescription>
-              รายการ ImportJob ล่าสุด — คลิกที่แถวเพื่อดูรายละเอียดข้อผิดพลาด
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+                </span>
+                <span className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      refetchJobs()
+                    }}
+                    disabled={jobsFetching}
+                    className="border-slate-300 dark:border-slate-700"
+                  >
+                    <RefreshCw
+                      className={cn(
+                        'mr-1.5 h-3.5 w-3.5',
+                        jobsFetching && 'animate-spin',
+                      )}
+                    />
+                    <span className="hidden sm:inline">รีเฟรช</span>
+                  </Button>
+                  {historyOpen ? (
+                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-slate-400" />
+                  )}
+                </span>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+          <CardContent className="border-t border-slate-100 pt-4 dark:border-slate-800">
             {jobsLoading ? (
               <div className="space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
@@ -772,12 +823,15 @@ export function ImportPage() {
               </div>
             )}
           </CardContent>
-        </Card>
+            </CollapsibleContent>
+          </Card>
+        </Collapsible>
 
         {/* Instructions (collapsible) */}
         <Collapsible
           open={instructionsOpen}
           onOpenChange={setInstructionsOpen}
+          className="flex flex-shrink-0 flex-col"
         >
           <Card className="border-slate-200 dark:border-slate-800">
             <CollapsibleTrigger asChild>
@@ -787,7 +841,7 @@ export function ImportPage() {
               >
                 <CardTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
                   <span aria-hidden>❓</span>
-                  4. วิธีใช้งาน
+                  วิธีใช้งาน
                 </CardTitle>
                 {instructionsOpen ? (
                   <ChevronDown className="h-4 w-4 text-slate-400" />

@@ -304,7 +304,7 @@ export function ItamLogin() {
         </div>
 
         {/* Right form panel */}
-        <div className="flex flex-col justify-center bg-white p-8 dark:bg-slate-900">
+        <div className="flex flex-col justify-center bg-white p-5 dark:bg-slate-900 sm:p-8">
           <div className="mb-6 flex items-center gap-3 md:hidden">
             <div
               className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg text-xl text-white"
@@ -437,7 +437,7 @@ export function ItamLogin() {
                   หรือเข้าสู่ระบบด้วย
                 </span>
               </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-3 gap-2">
                 <OauthButton
                   provider="google"
                   enabled={providers.google}
@@ -468,7 +468,7 @@ export function ItamLogin() {
                 backgroundColor: `${primaryColor}0d`,
                 color: primaryColor,
               }}
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors hover:brightness-95"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors hover:brightness-95"
             >
               <UserPlus className="h-4 w-4" />
               ขอเข้าใช้งาน
