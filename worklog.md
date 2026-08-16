@@ -8992,3 +8992,35 @@ Stage Summary:
 - หมายเหตุ: ทีม audit ควรตรวจ PR #6 head ใหม่ (193225e) แทน b4dea18 เดิม เพราะมี fixes เพิ่ม
 - PostgreSQL verification ยังต้องรันใน CI/staging (sandbox ไม่มี PostgreSQL)
 - PR-SYNC-1: ทีมพัฒนายังไม่ได้ส่ง audit list (ไม่มี branch ใหม่) — แต่ spec อัปเดตแล้วด้วย expectedVersion/expectedExists
+
+---
+Task ID: PR-SYNC-1-AUDIT-LIST-FORM
+Agent: orchestrator (main)
+Task: จัดทำแบบฟอร์ม PR-SYNC-1 Audit List ให้ทีมพัฒนากรอกก่อนเริ่ม implementation + แจ้งทีม audit เกี่ยวกับ PR #6 head ใหม่
+
+Work Log:
+- ตรวจสถานะจริงก่อนส่งข้อความทีม audit:
+  - `git diff --check b4dea18..7f99503` → exit 0 (clean, no whitespace/conflict errors)
+  - tsc error count at b4dea18 = 342, at 7f99503 = 342 (เท่ากัน — การแก้ไม่ได้เพิ่ม error ใหม่)
+  - B4 baseline `ee75164..7f99503`: 0 diff ใน 6 lib files (txn, wo-authz, authorization-context, auth-middleware, auth-shared, audit)
+  - changed files b4dea18..7f99503: 6 files (docs, migration, 3 components, worklog)
+
+- สร้าง `docs/PR-SYNC-1-AUDIT-LIST.md` (342 บรรทัด):
+  - 17 Critical (C-1 ถึง C-17) + 5 Non-critical (NC-16)
+  - 8 หมวด: Source contract/Field mapping, External key/Idempotency, Preview no-write/Transaction/P2034, Retry/Quarantine/Audit, Site authz/API contract, Migration/Credential, Test evidence/PR boundary, Final approval gate
+  - ตาราง: Status (PASS/FAIL/TBD/NA/BLOCKED) + Owner + Due date + Evidence path + Notes
+  - กฎเหล็ก: ห้ามเริ่ม migration/API/UI หากมี Critical (C-*) ที่ FAIL/BLOCKED
+  - Non-critical (NC-*) สามารถเป็น TBD ได้ขณะเริ่ม implementation แต่ต้องปิดก่อน merge
+  - ข้อความพร้อมส่งทีมพัฒนา (submit instructions + rule + reference)
+  - เน้นเป็นพิเศษ: expectedVersion/expectedExists (P1 #5 fix), migration PostgreSQL, credential server-side
+
+- commit `8a9f640` "Add PR-SYNC-1 Audit List form" → push main + release branch
+- PR #6 head อัปเดต: 7f99503 → 8a9f640 (9 commits)
+- ทีม audit ควรตรวจจาก head `8a9f640` (ล่าสุด) แต่ commit สำคัญที่แก้ bot review คือ `7f99503` — ต้องตรวจ diff `b4dea18..7f99503` เป็นพิเศษ
+
+Stage Summary:
+- Audit list form พร้อมใช้: `docs/PR-SYNC-1-AUDIT-LIST.md` (commit 8a9f640)
+- PR #6 head ล่าสุด: `8a9f640` (9 commits) — https://github.com/nikorn2527-stack/ITAM-NextJS/pull/6
+- สถานะ release candidate: ยังคง CONDITIONAL STAGING ONLY (รอ PostgreSQL verification ที่ head ล่าสุด)
+- ทีม audit คำแนะนำ: ตรวจ static review ที่ 8a9f640 ก่อน → รัน PostgreSQL verification ที่ 8a9f640 → ส่ง evidence ชุดเดียว
+- PR-SYNC-1: ทีมพัฒนามี audit list form แล้ว สามารถกรอกและส่งกลับเพื่อตรวจก่อน implementation
