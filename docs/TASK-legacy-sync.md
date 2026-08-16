@@ -179,7 +179,7 @@ model SyncRunItem {
 }
 ```
 
-### 3.2.1 Serialization & Redaction Boundary (F-13)
+### 3.2.1 Serialization & Redaction Boundary (F-13/F-16)
 
 **SyncRunItem.before / after (Json?):**
 - Prisma `Json` type — stored as JSONB in PostgreSQL
@@ -187,11 +187,15 @@ model SyncRunItem {
 - Redaction allowlist: เก็บเฉพาะ field ที่อยู่ใน `FIELD_MAPPINGS.workOrder` + `siteCode` + `status`
 - `null` สำหรับ create action (before) / delete action (after, ยังไม่รองรับ)
 
-**AuditLog.detail:**
+**AuditLog.detail (String?):**
 - Current architecture: `AuditLog.detail` เป็น `String` (JSON string) ไม่ใช่ Prisma `Json`
-- Implementation ต้อง `JSON.stringify(detail)` ก่อนเขียน
+- Implementation ต้อง `JSON.stringify(detail)` ก่อนเขียน — ห้ามส่ง object ตรงๆ
 - Detail structure: `{ before, after, syncRunId, externalKey }` — ใช้ค่าจาก SyncRunItem (redacted แล้ว)
 - ห้ามเก็บ credential/PII ใน AuditLog.detail
+- Helper: `redacted(obj)` ควรเป็น pure function ที่:
+  1. รับ object (Json? จาก SyncRunItem)
+  2. clone + ลบ key ที่อยู่นอก allowlist
+  3. คืน redacted object (ยังเป็น object — stringify ตอนเขียน AuditLog)
 
 **Preview response:**
 - API response (`before`/`after` ใน items) ส่งค่า redacted เดียวกับที่บันทึกใน DB
@@ -394,36 +398,49 @@ await withSerializableRetryTracked(async (tx) => {
 
   // 3. Conditional versioned create/update (NOT Prisma upsert — F-07/F-14)
   //    Algorithm: re-read → check baseline → conditional update/create → unique conflict = CONFLICT
+  let targetWorkOrderId: string
+
   if (existing) {
     // expectedVersion guaranteed non-null when expectedExists=true (preview set it)
     if (item.expectedVersion != null && existing.version !== item.expectedVersion) {
       throw new ConflictError(`version ${existing.version} ≠ preview baseline ${item.expectedVersion}`)
     }
-    await tx.workOrder.update({
+    const updated = await tx.workOrder.update({
       where: { id: existing.id, version: existing.version },
       data: { ...patch, version: { increment: 1 } },
     })
+    targetWorkOrderId = updated.id
   } else {
-    await tx.workOrder.create({ data: { ...newData } })
+    const created = await tx.workOrder.create({ data: { ...newData } })
+    targetWorkOrderId = created.id
   }
 
-  // 3. Audit log ใน transaction เดียวกัน (atomic)
+  // 4. Audit log ใน transaction เดียวกัน (atomic)
+  //    AuditLog.detail เป็น String? — ต้อง JSON.stringify()
+  //    before/after ผ่าน redaction allowlist ก่อน (ห้ามเก็บ credential/PII)
+  const auditDetail = {
+    before: redacted(item.before),   // redacted = ลบ PII/credential ตาม allowlist
+    after: redacted(item.after),
+    syncRunId: runId,
+    externalKey: item.externalKey,
+  }
+
   await tx.auditLog.create({
     data: {
       action: 'SYNC_APPLY',
       entity: 'WorkOrder',
-      entityId: existing?.id ?? created.id,
+      entityId: targetWorkOrderId,
       summary: `Sync ${item.action} from ${source} (key=${item.externalKey})`,
-      detail: { before: item.before, after: item.after, syncRunId: runId },
+      detail: JSON.stringify(auditDetail),  // String, not object
       actor: triggeredBy,
       siteCode: derivedSite,
     },
   })
 
-  // 4. อัปเดต SyncRunItem ใน transaction เดียวกัน
+  // 5. อัปเดต SyncRunItem ใน transaction เดียวกัน
   await tx.syncRunItem.update({
     where: { id: item.id },
-    data: { status: 'applied', entityId: existing?.id ?? created.id, processedAt: new Date() },
+    data: { status: 'applied', entityId: targetWorkOrderId, processedAt: new Date() },
   })
 })
 ```

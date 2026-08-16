@@ -20,7 +20,7 @@
 | รายการ Critical ที่ DESIGN_PASS | 9 / 17 |
 | รายการ Critical ที่ BLOCKED (ต้องแก้) | 8 / 17 |
 | รายการ Non-critical | 5 |
-| **สถานะ Final** | ☐ NOT APPROVED — ต้องแก้ revision |
+| **สถานะ Final** | ☐ NOT APPROVED — ส่ง revision v5 |
 | **ผู้กรอก** | orchestrator (ทีมพัฒนา) |
 | **วันที่กรอก** | 2026-08-16 |
 
@@ -114,7 +114,8 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | C-6.3 | Apply ตรวจ 3 conflict cases | PASS | dev | impl | spec §7 step 2 (a/b/c) | deleted-after-preview / created-by-another / version-changed |
 | C-6.4 | Conflict → `status=error` + `errorMessage=CONFLICT` ไม่ override | PASS | dev | impl | spec §7, §10.3 | `SyncRunItem.status='error'`, `errorMessage='CONFLICT: ...'` |
 | C-6.5 | แต่ละ item แยก transaction | PASS | dev | impl | spec §7 note | ไม่ wrap batch (lock นาน) |
-| C-6.6 | Audit log ใน transaction เดียวกับ apply | PASS | dev | impl | spec §7 step 3 | `tx.auditLog.create` ใน transaction |
+| C-6.6 | Audit log ใน transaction เดียวกับ apply | DESIGN_PASS (F-16, F-17) | dev | impl | spec §7 step 4 | **F-16:** ใช้ `JSON.stringify()` สำหรับ detail
+**F-17:** ใช้ `targetWorkOrderId` ที่ assign จาก update/create result |
 
 ### C-7 P2034 / concurrency
 
@@ -151,7 +152,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | C-9.1 | `AuditLog.action='SYNC_APPLY'` สำหรับทุก item applied | PASS | dev | impl | spec §8.4, §7 step 3 | |
 | C-9.2 | `AuditLog.siteCode` populate | PASS | dev | impl | spec §8.4 | สอดคล้องกับ B4 audit producers |
 | C-9.3 | `AuditLog.summary` ภาษาไทย + externalKey | PASS | dev | impl | spec §7 step 3 | `Sync ${action} from ${source} (key=${externalKey})` |
-| C-9.4 | `AuditLog.detail` เก็บ before/after + syncRunId | PASS | dev | impl | spec §7 step 3 | JSON |
+| C-9.4 | `AuditLog.detail` เก็บ before/after + syncRunId | DESIGN_PASS (F-16) | dev | impl | spec §7 step 4 | **F-16:** detail เป็น `String?` — ต้อง `JSON.stringify(auditDetail)` ก่อนบันทึก, redacted ก่อน stringify |
 | C-9.5 | `AuditLog.actor` = user ที่กด sync | PASS | dev | impl | spec §8.4 | `triggeredBy` |
 
 ---
@@ -269,12 +270,12 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
 | C-17.1 | Critical ทั้ง 17 ข้อผ่าน | BLOCKED (F-09) | dev | impl | ด้านบน | **F-09:** ปัจจุบัน 9 DESIGN_PASS / 8 BLOCKED — ยังไม่ครบ 17 ข้อ ต้องปิดทุก BLOCKED item ก่อน C-17.1 จึงจะ PASS | |
-| C-17.2 | `bunx eslint` ผ่าน 0 errors | PASS | dev | impl | | |
-| C-17.3 | `npx tsc --noEmit` ไม่มี error ใหม่ | PASS | dev | impl | | baseline comparison (เหมือน PR #6) |
-| C-17.4 | `git diff --check` สะอาด | PASS | dev | impl | | |
-| C-17.5 | B4 regression tests ผ่าน (PostgreSQL) | PASS | dev | CI | | reuse PR #6 workflow pattern |
-| C-17.6 | PostgreSQL migration รันสำเร็จใน staging | PASS | dev | CI | | |
-| C-17.7 | 3-point integration check (Device/print/login) | PASS | dev | CI | | จาก PR #6 — ต้องไม่ break |
+| C-17.2 | `bunx eslint` ผ่าน 0 errors | EVIDENCE_TBD | dev | impl | | **F-18:** ต้องรันบน implementation PR, ไม่ใช่ PR #6 evidence |
+| C-17.3 | `npx tsc --noEmit` ไม่มี error ใหม่ | EVIDENCE_TBD | dev | impl | | **F-18:** ต้องรันบน implementation PR |
+| C-17.4 | `git diff --check` สะอาด | EVIDENCE_TBD | dev | impl | | **F-18:** ต้องรันบน implementation PR |
+| C-17.5 | B4 regression tests ผ่าน (PostgreSQL) | EVIDENCE_TBD | dev | CI | | **F-18:** ต้องรันบน implementation PR — อาจ regression หลังเพิ่ม SyncRun model |
+| C-17.6 | PostgreSQL migration รันสำเร็จใน staging | EVIDENCE_TBD | dev | CI | | **F-18:** SyncRun migration ยังไม่ได้สร้าง |
+| C-17.7 | 3-point integration check (Device/print/login) | EVIDENCE_TBD | dev | CI | | **F-18:** ต้องรันบน implementation PR — ยืนยันไม่ break existing features |
 | C-17.8 | Audit team อนุมัติเป็นลายลักษณ์อักษร | NOT APPROVED | audit | review | | ส่ง revision v2 แล้ว — รอ verdict |
 
 ---
@@ -308,20 +309,22 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 > **Schema reference:** `prisma/schema.prisma` WorkOrder model
 > **Mapping reference:** `src/lib/csv-field-mapping.ts` (FIELD_MAPPINGS.workOrder + STATUS_MAPPINGS.workOrder)
 >
-> **สรุป:**
-> - 17/17 Critical PASS (spec พร้อม implement)
-> - 0 FAIL / 0 BLOCKED
+> **สรุป (revision v5):**
+> - 9/17 Critical DESIGN_PASS, 8/17 BLOCKED — **NOT APPROVED**
+> - ยังห้ามแก้ schema/API/UI จนกว่า blockers จะถูกปิดและ Audit อนุมัติเป็นลายลักษณ์อักษร
 > - CSV upload คงเป็น fallback ≥ 2 สัปดาห์
 > - แยกจาก PR #6 + B4 frozen files
 >
-> **จุดที่ขอ review เป็นพิเศษ:**
-> - C-15.5: `src/lib/auth-shared.ts` จะเพิ่ม `SYNC_RUN` permission (เป็นการเพิ่ม ไม่ใช่แก้ของเดิม — แต่อยู่ใน B4 frozen list จึงขอยืนยัน)
-> - C-10.1: `SYNC_RUN` permission ใหม่ — role mapping (admin เท่านั้น)
-> - C-6.2: `expectedVersion` + `expectedExists` ใน SyncRunItem (P1 #5 fix จาก sync spec)
+> **จุดที่แก้ใน revision v5:**
+> - F-16: AuditLog.detail ใช้ `JSON.stringify()` + redaction allowlist (ตรง schema `String?`)
+> - F-17: ใช้ `targetWorkOrderId` assign จาก update/create result ครบทั้ง 2 path
+> - F-18: C-17.2–C-17.7 เปลี่ยนเป็น EVIDENCE_TBD (ต้องรันบน implementation PR)
+> - ลบข้อความเก่าที่ขัดกับสถานะปัจจุบัน
 >
 > **กฎเหล็กที่ปฏิบัติ:**
 > - ห้ามเริ่มแก้ schema/API/UI จนกว่า Audit List จะถูกอนุมัติ
 > - PR-SYNC-1 แยกจาก PR #6 + B4 frozen files
+> - MVP ใช้ `requireAuth(req, 'ADMIN')` + `ctx.canAtSite(siteCode, 'ADMIN')` — ไม่เพิ่ม `SYNC_RUN` ใน frozen file
 >
 > ขอ review เป็น APPROVED / APPROVED WITH CONDITIONS / NOT APPROVED พร้อมแนวทางแก้ไขครับ
 
