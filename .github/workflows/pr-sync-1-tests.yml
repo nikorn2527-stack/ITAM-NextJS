@@ -84,7 +84,16 @@ jobs:
         run: |
           set -o pipefail
           echo "=== Part 1: tsc on PR-SYNC-1 files (strict, 0 errors required) ==="
-          npx tsc --noEmit 2>&1 | tee tsc-full-output.log || true
+          # W-01 fix: use PIPESTATUS to capture tsc exit code, NOT || true.
+          # || true would mask compiler process failures (e.g. crash, OOM).
+          npx tsc --noEmit 2>&1 | tee tsc-full-output.log
+          TSC_EXIT=${PIPESTATUS[0]}
+          echo "tsc exit code: $TSC_EXIT"
+          # tsc exit 0 = no errors; exit 1 = has errors; exit 2+ = process failure
+          if [ "$TSC_EXIT" -ge 2 ]; then
+            echo "FAIL: tsc process failed (exit $TSC_EXIT) — not just type errors"
+            exit 1
+          fi
           SYNC_ERRORS=$(grep -E "sync-adapter|api/sync" tsc-full-output.log | grep -c "error TS" || echo "0")
           SYNC_ERRORS=${SYNC_ERRORS:-0}
           echo "PR-SYNC-1 tsc errors: $SYNC_ERRORS"
@@ -99,11 +108,16 @@ jobs:
           RELEASE_ERRORS=$(grep -c "error TS" tsc-full-output.log || echo "0")
           RELEASE_ERRORS=${RELEASE_ERRORS:-0}
           echo "Release total tsc errors: $RELEASE_ERRORS"
-          # Count baseline errors
+          # Count baseline errors (stash + checkout + tsc + restore)
           git stash -u 2>/dev/null || true
           git checkout ee75164 -- prisma/schema.prisma 2>/dev/null || true
           npx prisma generate 2>/dev/null || true
-          npx tsc --noEmit 2>&1 | tee tsc-baseline-output.log || true
+          # W-01 fix: capture baseline tsc exit code too
+          npx tsc --noEmit 2>&1 | tee tsc-baseline-output.log
+          BASELINE_TSC_EXIT=${PIPESTATUS[0]}
+          if [ "$BASELINE_TSC_EXIT" -ge 2 ]; then
+            echo "WARN: baseline tsc process failed (exit $BASELINE_TSC_EXIT) — using error count only"
+          fi
           BASELINE_ERRORS=$(grep -c "error TS" tsc-baseline-output.log || echo "0")
           BASELINE_ERRORS=${BASELINE_ERRORS:-0}
           git checkout HEAD -- prisma/schema.prisma 2>/dev/null || true
@@ -114,6 +128,7 @@ jobs:
           cp tsc-full-output.log tsc-output.log
           echo "$BASELINE_ERRORS" > BASELINE_TSC_ERRORS.txt
           echo "$RELEASE_ERRORS" > RELEASE_TSC_ERRORS.txt
+          echo "$TSC_EXIT" > tsc.exit
           if [ "$RELEASE_ERRORS" -gt "$BASELINE_ERRORS" ]; then
             echo "FAIL: release introduces $((RELEASE_ERRORS - BASELINE_ERRORS)) new tsc errors"
             exit 1
