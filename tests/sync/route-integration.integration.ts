@@ -86,7 +86,7 @@ async function createTestUser(opts: { role: string; siteCode: string; grants?: A
     body: JSON.stringify({ username, password: TEST_PASSWORD }),
   })
   const json = await res.json()
-  return { id: user.id, token: json.token, cleanup: async () => { await db.userSiteGrant.deleteMany({ where: { userId: user.id } }).catch(() => {}); await db.user.delete({ where: { id: user.id } }).catch(() => {}) } }
+  return { id: user.id, email: user.email, token: json.token, cleanup: async () => { await db.userSiteGrant.deleteMany({ where: { userId: user.id } }).catch(() => {}); await db.user.delete({ where: { id: user.id } }).catch(() => {}) } }
 }
 
 async function runTests() {
@@ -250,7 +250,7 @@ async function runTests() {
 
       // Create a preview run with expectedVersion=1 (stale)
       const syncRun = await db.syncRun.create({
-        data: { source: 'test-mock', target: 'work-order', mode: 'preview', status: 'completed', totalRows: 1, createRows: 0, updateRows: 1, skipRows: 0, errorRows: 0, triggeredBy: 'test@admin.local', siteScope: 'HQ' },
+        data: { source: 'test-mock', target: 'work-order', mode: 'preview', status: 'completed', totalRows: 1, createRows: 0, updateRows: 1, skipRows: 0, errorRows: 0, triggeredBy: admin.email, siteScope: 'HQ' },
       })
       await db.syncRunItem.create({
         data: {
@@ -295,7 +295,7 @@ async function runTests() {
       // Create a run with an error item
       await db.workOrder.deleteMany({ where: { requestId: 'RETRY-TEST-001' } }).catch(() => {})
       const syncRun = await db.syncRun.create({
-        data: { source: 'test-mock', target: 'work-order', mode: 'apply', status: 'completed', totalRows: 1, createRows: 0, updateRows: 0, errorRows: 1, triggeredBy: admin.id, siteScope: 'HQ' },
+        data: { source: 'test-mock', target: 'work-order', mode: 'apply', status: 'completed', totalRows: 1, createRows: 0, updateRows: 0, errorRows: 1, triggeredBy: admin.email, siteScope: 'HQ' },
       })
       await db.syncRunItem.create({
         data: {
@@ -377,6 +377,7 @@ async function runTests() {
     failures.forEach(f => console.log(`  ✗ ${f}`))
   }
   console.log(failed === 0 ? '\n✅ All route integration tests passed!' : '\n❌ Some tests failed')
+  if (failed > 0) process.exit(1)
 }
 
 runTests()
