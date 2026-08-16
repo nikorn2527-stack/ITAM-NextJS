@@ -9218,3 +9218,35 @@ Stage Summary:
 - ยืนยัน: ไม่แก้ B4 production files, ไม่เปลี่ยน DB เป็น SQLite
 - สถานะ: READY TO TRIGGER — รอผู้มี workflow scope copy ไป .github/workflows/ แล้ว trigger ด้วย pinned SHA 007a1cc4854fbd9f243b74fd8e181b85a7d82d9f
 - หลัง trigger: รอ ~10-15 นาที → download artifact → audit ตรวจ 16 criteria → ตัดสิน GO/CONDITIONAL
+
+---
+Task ID: WORKFLOW-V4-FROZEN-PATH-FIX
+Agent: orchestrator (main)
+Task: แก้ B4 frozen-file path ตาม audit review ของ d94daa7 (txn.ts → retry-transaction.ts)
+
+Work Log:
+- รับ audit review (ไฟล์แนบ PR #6 PostgreSQL Verification Workflow — Review_ (2).md):
+  - Blocker: B4_FILES ใช้ 'src/lib/txn.ts' แต่ไฟล์นี้ไม่มีใน source tree → gate ตรวจไฟล์ที่ไม่มี (git diff คืน empty = PASS) และไม่ได้ตรวจ helper จริง
+  - ไฟล์จริงคือ 'src/lib/retry-transaction.ts' (ที่ withSerializableRetryTracked + isP2034Error อยู่)
+
+- ตรวจ source tree จริง:
+  - ls src/lib/txn.ts → NOT FOUND
+  - ls src/lib/retry-transaction.ts → มีอยู่ (3620 bytes)
+  - grep withSerializableRetryTracked → src/lib/retry-transaction.ts:74
+  - grep isP2034Error → src/lib/retry-transaction.ts:42
+
+- แก้ 2 จุดใน workflow (commit 96f4e23):
+  1. B4_FILES array (บรรทัด 185): 'src/lib/txn.ts' → 'src/lib/retry-transaction.ts'
+  2. Summary 'B4 Frozen Files Check' section (บรรทัด 592): path เดียวกัน
+
+- Verify:
+  - grep 'txn\.ts' → ไม่พบ (clean)
+  - grep 'retry-transaction\.ts' → พบ 2 จุด (B4_FILES + summary)
+  - ไฟล์ทั้ง 6 มีอยู่จริงใน source tree
+  - git diff --name-only ee75164..007a1cc สำหรับ 6 ไฟล์ → empty (all 0-diff = gate จะ PASS เมื่อ trigger)
+
+Stage Summary:
+- workflow v4 พร้อม: docs/postgres-verification-workflow.yml (commit 96f4e23, full SHA 96f4e23f91be515ebac58ec7a9dd255b45261378)
+- แก้ blocker เดียวที่เหลือจาก audit review รอบที่แล้ว
+- ยืนยัน: ไม่แก้ B4 production files, ไม่เปลี่ยน DB เป็น SQLite
+- สถานะ: READY TO TRIGGER — รอผู้มี workflow scope copy ไป .github/workflows/ แล้ว trigger ด้วย pinned SHA 007a1cc4854fbd9f243b74fd8e181b85a7d82d9f
