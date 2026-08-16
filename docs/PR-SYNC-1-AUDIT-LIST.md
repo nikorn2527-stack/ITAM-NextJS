@@ -1,8 +1,8 @@
 # PR-SYNC-1 Audit List — Services → Work Orders
 
 **เอกสารนี้:** Audit List สำหรับ PR-SYNC-1 (Legacy Apps Script → ITAM-NextJS Manual Sync, MVP: Services → Work Orders)
-**สถานะ:** NOT APPROVED — revision v7 (855f390) แก้ V6-F01 ถึง V6-F03 แล้ว รอ Audit review V7-F01 ถึง V7-F05 ห้ามเริ่ม implementation จนกว่าจะอนุมัติ
-**Audit List target:** revision v7, commit `855f390` (branch `feature/pr-sync-1-audit-revision`)
+**สถานะ:** NOT APPROVED — revision v8 (5b3e782) แก้ V7-F01 ถึง V7-F05 แล้ว รอ Audit review V8-F01 ถึง V8-F02 ห้ามเริ่ม implementation จนกว่าจะอนุมัติ
+**Audit List target:** revision v8, commit `5b3e782` (branch `feature/pr-sync-1-audit-revision`)
 **Spec baseline:** revision v6, commit `fb28fd8` (`docs/TASK-legacy-sync.md`) — แยกจาก Audit List target
 **ผู้กรอก:** ทีมพัฒนา
 **วันที่กรอก:** 2026-08-16
@@ -315,14 +315,14 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-17.1 | Final gate ผ่านเมื่อ Critical ทุก DESIGN_PASS + evidence ครบ + Audit verdict | BLOCKED (V7-F05) | dev | impl | Status Mapping | 16 Critical: 13 DESIGN_PASS, 2 BLOCKED (CR-02, CR-16), 1 EVIDENCE_TBD (CR-14); ต้องปิด BLOCKED ทั้งหมด + evidence 17 รายการครบ + Audit verdict เป็นลายลักษณ์อักษร | |
+| C-17.1 | Final gate ผ่านเมื่อ Critical ทุก DESIGN_PASS + evidence ครบ + Audit verdict | BLOCKED | dev | impl | Status Mapping | 16 Critical: 13 DESIGN_PASS, 2 BLOCKED (CR-02, CR-16), 1 EVIDENCE_TBD (CR-14); ต้องปิด BLOCKED ทั้งหมด + evidence 17 รายการครบ + Audit verdict เป็นลายลักษณ์อักษร | |
 | C-17.2 | `bunx eslint` ผ่าน 0 errors | EVIDENCE_TBD | dev | impl | | **F-18:** ต้องรันบน implementation PR, ไม่ใช่ PR #6 evidence |
 | C-17.3 | `npx tsc --noEmit` ไม่มี error ใหม่ | EVIDENCE_TBD | dev | impl | | **F-18:** ต้องรันบน implementation PR |
 | C-17.4 | `git diff --check` สะอาด | EVIDENCE_TBD | dev | impl | | **F-18:** ต้องรันบน implementation PR |
 | C-17.5 | B4 regression tests ผ่าน (PostgreSQL) | EVIDENCE_TBD | dev | CI | | **F-18:** ต้องรันบน implementation PR — อาจ regression หลังเพิ่ม SyncRun model |
 | C-17.6 | PostgreSQL migration รันสำเร็จใน staging | EVIDENCE_TBD | dev | CI | | **F-18:** SyncRun migration ยังไม่ได้สร้าง |
 | C-17.7 | 3-point integration check (Device/print/login) | EVIDENCE_TBD | dev | CI | | **F-18:** ต้องรันบน implementation PR — ยืนยันไม่ break existing features |
-| C-17.8 | Audit team อนุมัติเป็นลายลักษณ์อักษร | NOT APPROVED | audit | review | | รอ Audit verdict สำหรับ revision v7, commit `855f390` |
+| C-17.8 | Audit team อนุมัติเป็นลายลักษณ์อักษร | NOT APPROVED | audit | review | | รอ Audit verdict สำหรับ revision v8, commit `5b3e782` |
 
 ---
 
@@ -350,7 +350,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 >
 > ส่ง revision v8 สำหรับ PR-SYNC-1 Audit List
 >
-> **Audit List target:** revision v8, commit `855f390` (branch `feature/pr-sync-1-audit-revision`)
+> **Audit List target:** revision v8, commit `5b3e782` (branch `feature/pr-sync-1-audit-revision`)
 > **Spec baseline:** revision v6, commit `fb28fd8` (`docs/TASK-legacy-sync.md`) — แยกจาก Audit List target
 > **Schema reference:** `prisma/schema.prisma` WorkOrder model
 >
