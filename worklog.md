@@ -9415,3 +9415,47 @@ Stage Summary:
 - CI run ใหม่ผ่านครบ 16 criteria บน PostgreSQL 16.15 จริง
 - artifact ชุดใหม่มีไฟล์ครบสำหรับ audit ตรวจซ้ำได้โดยอิสระ
 - สถานะ: CONDITIONAL_GO — รอทีม audit ตรวจ artifact ชุดใหม่และเปลี่ยนเป็น GO
+
+---
+Task ID: RELEASE-GO-OFFICIAL
+Agent: orchestrator (main)
+Task: บันทึกการตัดสิน GO สำหรับ Production อย่างเป็นทางการ
+
+🎉 RELEASE GATE: GO FOR PRODUCTION 🎉
+
+ทีม Audit ตรวจ Evidence Package ชุดใหม่จาก CI run 31932299078 เสร็จแล้ว
+ยืนยันเงื่อนไขเดิมปิดครบ (F1-F4) และเปลี่ยน release gate ของ PR #6 เป็น GO
+
+Final Decision:
+- PR #6 (01e0688): ✅ GO สำหรับ Production
+- B4 (ee75164): ✅ GO / frozen
+
+Evidence Summary (CI run 31932299078):
+- PostgreSQL 16.15 จริง
+- Commit SHA 01e0688102738feb36d51650a832e651b9302e1a ตรง expected
+- TOTAL_P2034=1, totalAttempts=3 > successCount=2
+- TSC: baseline 343, release 340, new_errors=-3
+- login_only.log ตรวจได้, ไม่พบ prisma:error
+- PostgreSQL tests skipped=0
+- Auth 88 / Integration 33 / Concurrency 27 ผ่านทั้งหมด
+- Device 401 / Print 401 / Login 200 ตามเกณฑ์
+- B4 frozen files 6 ไฟล์ 0 diff จาก ee75164
+- Artifact SHA-256: 9de6e7264d0d1d726ca467d49f37b10bc9ec787e3983f59cd729f1b42fe839cf
+
+Traceability Note:
+- FINAL_VERDICT.txt ใน artifact เขียน CONDITIONAL_GO (automated workflow format)
+- แต่ทีม Audit เปลี่ยน release gate เป็น GO หลังปิด F1-F4 ครบ
+- Runtime evidence รันที่ 01e0688; PR head หลังจากนั้นเปลี่ยนเฉพาะ workflow/docs
+- ไม่ได้เปลี่ยน production code (src/, prisma/, package, lock, config)
+- หากมีการแก้ production code เพิ่ม ต้อง rerun verification ใหม่
+
+Release evidence บันทึกถาวรที่: docs/PR6-FINAL-REVIEW-GO.md
+
+Workstreams ที่เหลือ (แยกจาก release):
+- PR-SYNC-1: รอ Audit List จากทีมพัฒนาก่อน implementation
+- Mobile Repair Request: แยก workstream ทำต่อหลัง release
+
+Action items post-release:
+- Merge PR #6 เข้า main (หลัง audit อนุมัติ)
+- Revoke temporary GitHub PAT (ghp_... ที่ใช้ trigger CI) เพื่อ security
+- แจ้งทีม operations เรื่อง production deploy
