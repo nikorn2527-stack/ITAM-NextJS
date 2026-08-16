@@ -60,7 +60,7 @@ let testCounter = 0
 async function createTestUser(opts: { role: string; siteCode: string; grants?: Array<{ siteCode: string; roleCode: string }> }) {
   testCounter++
   const username = `testsync${testCounter}`
-  const { hash, salt } = hashNewPassword(TEST_PASSWORD, 'testsalt')
+  const { hash, salt } = hashNewPassword(TEST_PASSWORD)
   const user = await db.user.create({
     data: {
       email: `${username}@test.local`,
@@ -275,7 +275,7 @@ async function runTests() {
       const items = await db.syncRunItem.findMany({ where: { syncRunId: syncRun.id } })
       const errorItems = items.filter(i => i.status === 'error')
       assert(errorItems.length > 0, `SyncRunItem has error status (${errorItems.length} errors)`)
-      assert(errorItems[0]?.errorMessage?.includes('CONFLICT') || errorItems[0]?.errorMessage?.includes('version'), `Error message mentions conflict/version (got: ${errorItems[0]?.errorMessage})`)
+      assert(errorItems[0]?.errorMessage?.includes('CONFLICT') === true || errorItems[0]?.errorMessage?.includes('version') === true, `Error message mentions conflict/version (got: ${errorItems[0]?.errorMessage})`)
 
       // Cleanup
       await db.workOrder.deleteMany({ where: { requestId: 'CONFLICT-TEST-001' } }).catch(() => {})
@@ -302,7 +302,7 @@ async function runTests() {
           syncRunId: syncRun.id,
           externalKey: 'RETRY-TEST-001',
           action: 'create',
-          before: null,
+          before: undefined,
           after: { subject: 'Retry Test WO', siteCode: 'HQ', status: 'PENDING' },
           expectedVersion: null,
           expectedExists: false,
