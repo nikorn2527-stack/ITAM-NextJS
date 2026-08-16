@@ -59,14 +59,9 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        # B-03 fix: npm install with legacy-peer-deps (prisma postinstall
-        # requires this). Lockfile generated on first run for reproducibility.
-        run: |
-          if [ ! -f package-lock.json ]; then
-            echo "Generating package-lock.json (first run)..."
-            npm install --legacy-peer-deps --package-lock-only
-          fi
-          npm install --legacy-peer-deps
+        # B-03: npm install with legacy-peer-deps (prisma postinstall requires
+        # this). package-lock.json committed for reproducibility.
+        run: npm install --legacy-peer-deps
 
       - name: Generate Prisma client
         run: npx prisma generate
