@@ -9459,3 +9459,42 @@ Action items post-release:
 - Merge PR #6 เข้า main (หลัง audit อนุมัติ)
 - Revoke temporary GitHub PAT (ghp_... ที่ใช้ trigger CI) เพื่อ security
 - แจ้งทีม operations เรื่อง production deploy
+
+---
+Task ID: RELEASE-MILESTONE-CLOSURE
+Agent: orchestrator (main)
+Task: ปิด release milestone อย่างเป็นทางการ + บันทึกลำดับงานถัดไป
+
+🎉 RELEASE MILESTONE: COMPLETE 🎉
+
+ทีม Audit และทีมพัฒนาร่วมกันแก้ findings จนได้หลักฐาน PostgreSQL จริงครบถ้วนภายในเวลาประมาณ 3 ชั่วโมง — เป็นความสำเร็จร่วมกัน
+
+Milestone closure:
+- PR #6 (01e0688): ✅ GO for Production
+- B4 (ee75164): ✅ GO / frozen
+- Release evidence ถาวร: docs/PR6-FINAL-REVIEW-GO.md (commit 1004126)
+- การตัดสินอ้างอิงหลักฐาน runtime จริงจาก PostgreSQL 16.15 ไม่ใช่ SQLite
+
+คำแนะนำจากทีม Audit (บันทึกเพื่อปฏิบัติ):
+- หยุดพักที่จุดนี้สำหรับ release PR #6
+- เก็บหลักฐาน Final Review ให้เรียบร้อย
+- ไม่ควรเปิดงานใหม่มาปนกับ production release ทันที
+
+ลำดับงานถัดไป (เมื่อพร้อม):
+1. PR-SYNC-1 Audit List — เริ่มก่อน
+   - มี spec อนุมัติแล้ว (docs/TASK-legacy-sync.md)
+   - ต้องตรวจ mapping, Site scope, external key, idempotency, preview no-write, transaction
+   - Audit List form พร้อม: docs/PR-SYNC-1-AUDIT-LIST.md
+   - หลัง Audit List ผ่าน → เปิด PR-SYNC-1 implementation แยกจาก PR #6
+2. Mobile Repair Request — เปิดเป็น workstream ถัดไป
+   - เริ่มจาก Mobile-first Web/PWA
+   - reuse Work Order API กับ Site authorization เดิม
+   - ไม่จำเป็นต้องเริ่มพร้อมกัน — จะกระจาย scope และเพิ่มความเสี่ยงหลังเพิ่งปิด release
+
+สถานะปัจจุบัน: ปิด release milestone แล้ว — หยุดพัก
+ไม่เริ่มงานใหม่จนกว่าทีมจะพร้อมรับ Audit List ของ PR-SYNC-1
+
+Action items (optional, post-release):
+- Merge PR #6 เข้า main (หลัง audit อนุมัติขั้นสุดท้าย)
+- Revoke temporary GitHub PAT (ghp_...) ที่ใช้ trigger CI → https://github.com/settings/tokens
+- แจ้งทีม operations เรื่อง production deploy
