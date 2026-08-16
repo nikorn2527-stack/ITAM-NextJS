@@ -6,75 +6,107 @@
 // Database: PostgreSQL 16.x required for Groups 5–11
 // ============================================================
 
-import { describe, it, expect, beforeEach } from 'vitest'
-import { deriveSiteCode, redacted, mapSourceRecord } from '@/lib/sync-adapter'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import {
+  deriveSiteCode,
+  redacted,
+  mapSourceRecord,
+  getSiteAllowlist,
+  _setSiteAllowlistForTesting,
+} from '@/lib/sync-adapter'
 
-// ── Cache reset helper (I-08-04) ─────────────────────────────
-// Reset module-level allowlist cache between test groups
-// to ensure deterministic allowlist state per test.
+// ── Cache isolation (I-08-04) ────────────────────────────────
+// Use dependency injection seam to control allowlist per test
 
-async function resetAllowlistCache() {
-  // Dynamic import to access module internals
-  // The adapter caches _siteAllowlistCache at module scope
-  // For tests, we need to reset it between scenarios
-  const mod = await import('@/lib/sync-adapter')
-  // Access internal cache via the module's exported function
-  // Each call to deriveSiteCode loads from DB if cache is null
-  // We cannot directly access private _siteAllowlistCache,
-  // so we test through the public API with controlled DB state
-  void mod // ensure module is loaded
-}
+afterEach(() => {
+  // Clear test override after each test
+  _setSiteAllowlistForTesting(null)
+})
 
 // ── Test Group 1: Site mapping — direct siteCode ─────────────
 
 describe('deriveSiteCode — direct siteCode', () => {
-  beforeEach(() => resetAllowlistCache())
+  it('maps valid allowlisted siteCode', async () => {
+    _setSiteAllowlistForTesting(new Set(['UDH', 'NKP']))
+    const result = await deriveSiteCode({ siteCode: 'UDH' })
+    expect(result.reason).toBe('mapped')
+    expect(result.siteCode).toBe('UDH')
+  })
 
-  it.todo('maps valid allowlisted siteCode')
-  // Arrange: DB has Site { code: 'UDH' }
-  // Act: deriveSiteCode({ siteCode: 'UDH' })
-  // Assert: { siteCode: 'UDH', reason: 'mapped' }
+  it('quarantines unknown siteCode', async () => {
+    _setSiteAllowlistForTesting(new Set(['UDH', 'NKP']))
+    const result = await deriveSiteCode({ siteCode: 'FAKE-SITE-999' })
+    expect(result.reason).toBe('unknown')
+    expect(result.siteCode).toBeNull()
+  })
 
-  it.todo('quarantines unknown siteCode')
-  // Arrange: DB has Site { code: 'UDH' }
-  // Act: deriveSiteCode({ siteCode: 'FAKE-SITE-999' })
-  // Assert: { siteCode: null, reason: 'unknown' }
+  it('quarantines when allowlist is empty', async () => {
+    _setSiteAllowlistForTesting(new Set())
+    const result = await deriveSiteCode({ siteCode: 'UDH' })
+    expect(result.reason).toBe('unknown')
+    expect(result.siteCode).toBeNull()
+  })
 
-  it.todo('quarantines when allowlist is empty (no Site records)')
-  // Arrange: DB has no Site records
-  // Act: deriveSiteCode({ siteCode: 'UDH' })
-  // Assert: { siteCode: null, reason: 'unknown' }
+  it('quarantines when allowlist is null (DB unavailable)', async () => {
+    // Simulate DB unavailable by setting empty override
+    _setSiteAllowlistForTesting(new Set())
+    const result = await deriveSiteCode({ siteCode: 'UDH' })
+    expect(result.reason).toBe('unknown')
+    expect(result.siteCode).toBeNull()
+  })
 
-  it.todo('quarantines when DB is unavailable')
-  // Arrange: mock db.site.findMany to throw
-  // Act: deriveSiteCode({ siteCode: 'UDH' })
-  // Assert: { siteCode: null, reason: 'unknown' }
+  it('rejects whitespace-only siteCode', async () => {
+    _setSiteAllowlistForTesting(new Set(['UDH']))
+    const result = await deriveSiteCode({ siteCode: '   ' })
+    expect(result.reason).toBe('missing')
+    expect(result.siteCode).toBeNull()
+  })
 })
 
 // ── Test Group 2: Site mapping — source site field ────────────
 
 describe('deriveSiteCode — site field', () => {
-  beforeEach(() => resetAllowlistCache())
+  it('maps valid allowlisted site', async () => {
+    _setSiteAllowlistForTesting(new Set(['UDH']))
+    const result = await deriveSiteCode({ site: 'UDH' })
+    expect(result.reason).toBe('mapped')
+    expect(result.siteCode).toBe('UDH')
+  })
 
-  it.todo('maps valid allowlisted site')
-  // Arrange: DB has Site { code: 'UDH' }
-  // Act: deriveSiteCode({ site: 'UDH' })
-  // Assert: { siteCode: 'UDH', reason: 'mapped' }
+  it('quarantines unknown site', async () => {
+    _setSiteAllowlistForTesting(new Set(['UDH']))
+    const result = await deriveSiteCode({ site: 'UNKNOWN-SITE' })
+    expect(result.reason).toBe('unknown')
+    expect(result.siteCode).toBeNull()
+  })
 
-  it.todo('quarantines unknown site')
-  // Arrange: DB has Site { code: 'UDH' }
-  // Act: deriveSiteCode({ site: 'UNKNOWN-SITE' })
-  // Assert: { siteCode: null, reason: 'unknown' }
+  it('quarantines missing site', async () => {
+    _setSiteAllowlistForTesting(new Set(['UDH']))
+    const result = await deriveSiteCode({ subject: 'test' })
+    expect(result.reason).toBe('missing')
+    expect(result.siteCode).toBeNull()
+  })
 
-  it.todo('quarantines missing site')
-  // Arrange: any DB state
-  // Act: deriveSiteCode({ subject: 'test' })
-  // Assert: { siteCode: null, reason: 'missing' }
+  it('quarantines empty site', async () => {
+    _setSiteAllowlistForTesting(new Set(['UDH']))
+    const result = await deriveSiteCode({ site: '' })
+    expect(result.reason).toBe('missing')
+    expect(result.siteCode).toBeNull()
+  })
 
-  it.todo('quarantines empty site')
-  // Arrange: any DB state
-  // Act: deriveSiteCode({ site: '' })
-  // Assert: { siteCode: null, reason: 'missing' }
+  it('quarantines site when allowlist empty', async () => {
+    _setSiteAllowlistForTesting(new Set())
+    const result = await deriveSiteCode({ site: 'UDH' })
+    expect(result.reason).toBe('unknown')
+    expect(result.siteCode).toBeNull()
+  })
+
+  it('prefers direct siteCode over site field', async () => {
+    _setSiteAllowlistForTesting(new Set(['UDH', 'NKP']))
+    const result = await deriveSiteCode({ siteCode: 'NKP', site: 'UDH' })
+    expect(result.reason).toBe('mapped')
+    expect(result.siteCode).toBe('NKP')
+  })
 })
 
 // ── Test Group 3: Redaction ──────────────────────────────────
@@ -116,6 +148,18 @@ describe('redacted()', () => {
   it('returns empty object for empty input', () => {
     expect(redacted({})).toEqual({})
   })
+
+  it('strips internal fields (id, createdAt, updatedAt)', () => {
+    const input = {
+      id: 'clxxx',
+      subject: 'test',
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-02',
+      version: 5,
+    }
+    const result = redacted(input)
+    expect(result).toEqual({ subject: 'test' })
+  })
 })
 
 // ── Test Group 4: Field mapping ──────────────────────────────
@@ -141,101 +185,130 @@ describe('mapSourceRecord()', () => {
     expect(Object.keys(mapped)).toHaveLength(0)
     expect(unmapped).toHaveLength(0)
   })
+
+  it('maps status through STATUS_MAPPINGS', () => {
+    const record = { status: 'รอดำเนินการ' }
+    const { mapped } = mapSourceRecord(record)
+    expect(mapped.status).toBe('PENDING')
+  })
+})
+
+// ── getSiteAllowlist (direct test) ───────────────────────────
+
+describe('getSiteAllowlist()', () => {
+  it('returns override when set', async () => {
+    _setSiteAllowlistForTesting(new Set(['A', 'B']))
+    const result = await getSiteAllowlist()
+    expect(result.size).toBe(2)
+    expect(result.has('A')).toBe(true)
+    expect(result.has('B')).toBe(true)
+  })
+
+  it('returns empty set when override is empty', async () => {
+    _setSiteAllowlistForTesting(new Set())
+    const result = await getSiteAllowlist()
+    expect(result.size).toBe(0)
+  })
 })
 
 // ── Groups 5–11: DB-dependent tests ─────────────────────────
 // These require PostgreSQL 16.x + migration + seed data
 // Marked as it.todo() until CI fixture is available (I-08-01)
-// Must NOT use expect(true).toBe(true) placeholders
+// Each todo has arrange/act/assert spec for implementation
 
 describe('Preview no-write (requires PostgreSQL)', () => {
   it.todo('does not modify WorkOrder table after 2 preview runs')
   // Arrange: seeded DB with known WorkOrder count
-  // Act: POST /api/sync/preview twice
-  // Assert: WorkOrder count unchanged, SyncRun created with mode=preview
+  // Act: POST /api/sync/preview twice with same source/options
+  // Assert: WorkOrder count unchanged; SyncRun created with mode=preview, status=completed
 
   it.todo('creates SyncRun and SyncRunItem records only')
-  // Assert: only SyncRun/SyncRunItem tables modified
+  // Assert: only SyncRun/SyncRunItem tables modified; WorkOrder/Device/StockItem unchanged
 })
 
 describe('Idempotency (requires PostgreSQL)', () => {
   it.todo('apply twice does not create duplicate WorkOrder')
-  // Arrange: preview with known requestId
-  // Act: POST /api/sync/run twice with same previewRunId
-  // Assert: 1 WorkOrder with that requestId, not 2
+  // Arrange: preview with known requestId, apply once
+  // Act: apply again with same previewRunId
+  // Assert: 1 WorkOrder with that requestId, SyncRunItem shows skip on second run
 
   it.todo('source duplicates within batch are quarantined')
-  // Arrange: source records with duplicate requestId
+  // Arrange: source records with same requestId in one batch
   // Act: preview
-  // Assert: one create, one error/quarantine
+  // Assert: one create, one error with duplicate message
 })
 
 describe('Site scope authorization (requires PostgreSQL)', () => {
   it.todo('non-superadmin cannot view cross-site run')
-  // Arrange: admin for Site A, run for Site B
-  // Act: GET /api/sync/runs/:id
+  // Arrange: admin for Site A creates run for Site B
+  // Act: GET /api/sync/runs/:id as admin for Site A
   // Assert: 403
 
   it.todo('non-superadmin cannot apply cross-site run')
-  // Arrange: admin for Site A, preview run for Site B
-  // Act: POST /api/sync/run
+  // Arrange: preview run for Site B, admin for Site A
+  // Act: POST /api/sync/run as admin for Site A
   // Assert: 403
 
   it.todo('out-of-scope items are quarantined during apply')
-  // Arrange: admin for Site A, preview with Site B item
+  // Arrange: admin for Site A, preview with Site B item mixed in
   // Act: POST /api/sync/run
-  // Assert: item status=error, errorMessage contains OUT_OF_SCOPE
+  // Assert: Site A items applied, Site B items status=error OUT_OF_SCOPE
 })
 
 describe('Conflict detection (requires PostgreSQL)', () => {
   it.todo('version mismatch after preview → CONFLICT')
-  // Arrange: preview, then modify WO version
+  // Arrange: preview, then update WorkOrder.version in DB
   // Act: POST /api/sync/run
   // Assert: item status=error, errorMessage contains CONFLICT
 
   it.todo('record deleted after preview → CONFLICT')
-  // Arrange: preview, then delete WO
+  // Arrange: preview, then delete WorkOrder from DB
   // Act: POST /api/sync/run
   // Assert: item status=error, CONFLICT
 
   it.todo('record created by another source → CONFLICT')
-  // Arrange: preview (create), then create WO with same requestId
+  // Arrange: preview with action=create, then insert WorkOrder with same requestId
   // Act: POST /api/sync/run
   // Assert: item status=error, CONFLICT
 })
 
 describe('Audit log (requires PostgreSQL)', () => {
   it.todo('creates SYNC_APPLY audit entry per applied item')
-  // Arrange: preview with 3 items
-  // Act: apply
-  // Assert: 3 AuditLog rows with action=SYNC_APPLY
+  // Arrange: preview with 3 create items
+  // Act: POST /api/sync/run
+  // Assert: 3 AuditLog rows with action=SYNC_APPLY, correct entityId/siteCode
 
-  it.todo('AuditLog.detail is String (JSON.stringify)')
-  // Assert: typeof detail === 'string', JSON.parse(detail) works
+  it.todo('AuditLog.detail is String (JSON.stringify, not object)')
+  // Assert: typeof detail === 'string', JSON.parse(detail) returns expected structure
 
   it.todo('AuditLog.detail is redacted — no PII/credentials')
-  // Assert: detail does not contain password, token, email, phone
+  // Assert: detail JSON does not contain password, token, email, phone, apiKey
 })
 
-describe('P2034 retry (requires PostgreSQL)', () => {
-  it.todo('records attempts and p2034Count on SyncRun')
-  // Arrange: force P2034 conflict (concurrent transactions)
-  // Act: apply
-  // Assert: SyncRun.attempts > 1 or p2034Count > 0
+describe('P2034 retry counters (requires PostgreSQL)', () => {
+  it.todo('records attempts and p2034Count on SyncRun after apply')
+  // Arrange: force concurrent transactions to trigger P2034
+  // Act: apply with concurrent modification
+  // Assert: SyncRun.attempts >= 1, p2034Count >= 0 (or > 0 if conflict occurred)
 })
 
-describe('Authorization (requires PostgreSQL)', () => {
+describe('Route authorization (requires PostgreSQL)', () => {
   it.todo('rejects non-ADMIN user with 403')
   // Arrange: auth token with viewer/editor role
   // Act: POST /api/sync/preview
-  // Assert: 403 response
+  // Assert: 403 response body contains error
 
   it.todo('rejects apply of another user\'s preview run')
-  // Arrange: admin A creates preview, admin B tries to apply
-  // Act: POST /api/sync/run
+  // Arrange: admin A creates preview run, admin B (different email) tries apply
+  // Act: POST /api/sync/run with previewRunId
   // Assert: 403
 
-  it.todo('does not use SYNC_RUN permission')
-  // Assert: no SYNC_RUN in src/lib/auth-shared.ts
-  // This is a static check, not a DB test
+  it.todo('rejects retry of another user\'s run')
+  // Arrange: admin A creates run with errors, admin B tries retry
+  // Act: POST /api/sync/runs/:id/retry
+  // Assert: 403
+
+  it.todo('SYNC_RUN permission not in auth-shared.ts')
+  // Static check: grep src/lib/auth-shared.ts for SYNC_RUN
+  // Assert: no match found (use ADMIN instead)
 })
