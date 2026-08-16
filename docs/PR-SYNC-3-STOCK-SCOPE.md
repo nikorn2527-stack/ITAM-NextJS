@@ -149,7 +149,7 @@ model StockItem {
   // ... existing fields ...
   site              String?  // → เปลี่ยนเป็น String (required) — ต้อง backfill null ก่อน
   assetSiteCode     String?  // เพิ่มใหม่ (เหมือน Device)
-  
+
   @@index([productCode])
   @@index([category])
   @@index([site])           // เพิ่มใหม่ — สำหรับ Site-scoped queries
@@ -163,7 +163,7 @@ model StockTransaction {
   // ... existing fields ...
   site          String   // เพิ่มใหม่ (required) — Site ที่ txn เกิด
   sourceKey     String?  @unique  // เพิ่ม @unique (ตาม spec §4)
-  
+
   @@index([stockItemId])
   @@index([type])
   @@index([approvalStatus])
@@ -180,7 +180,7 @@ model PurchaseOrder {
   // ... existing fields ...
   poNumber   String?  // → เปลี่ยนเป็น String @unique (required) — external key
   site       String   // เพิ่มใหม่ (required)
-  
+
   @@index([status])
   @@index([site, status])   // เพิ่มใหม่
 }
