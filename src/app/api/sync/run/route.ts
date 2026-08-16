@@ -6,12 +6,21 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { withSerializableRetryTracked } from '@/lib/retry-transaction'
 import { redacted } from '@/lib/sync-adapter'
 import { logAudit } from '@/lib/audit'
+
+// Helper: convert JsonValue | null to Prisma Json? input type
+function toJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+  if (value === null || value === undefined) {
+    return Prisma.JsonNull
+  }
+  return value as Prisma.InputJsonValue
+}
 
 export async function POST(req: NextRequest) {
   // 1. Auth + AuthorizationContext
@@ -165,6 +174,14 @@ export async function POST(req: NextRequest) {
             throw new Error('No after data to apply')
           }
 
+          // B-02 fix: extract subject explicitly — WorkOrder.subject is required.
+          // Fail-closed: if subject is missing, reject the item rather than
+          // creating an incomplete WorkOrder.
+          const subject = afterData.subject as string | undefined
+          if (!subject || typeof subject !== 'string' || subject.trim() === '') {
+            throw new Error('VALIDATION: subject is required but missing from after payload')
+          }
+
           // Remove metadata fields from apply data
           const { id: _id, createdAt: _ca, updatedAt: _ua, version: _v, ...patch } = afterData as Record<string, unknown>
 
@@ -184,9 +201,9 @@ export async function POST(req: NextRequest) {
             })
             targetWorkOrderId = updated.id
           } else {
-            // Create
+            // Create — subject is guaranteed non-empty (checked above)
             const created = await tx.workOrder.create({
-              data: { ...patch, requestId: item.externalKey },
+              data: { ...patch, requestId: item.externalKey, subject },
             })
             targetWorkOrderId = created.id
           }
@@ -265,14 +282,15 @@ export async function POST(req: NextRequest) {
   })
 
   // 11. Audit log for the run
-  await logAudit({
-    action: 'SYNC_APPLY',
-    entity: 'SyncRun',
-    entityId: applyRun.id,
-    summary: `Applied sync from ${previewRun.source} — ${createRows + updateRows} applied, ${errorRows} errors`,
-    actor: user.email,
-    siteCode: previewRun.siteScope,
-  })
+  await logAudit(
+    'SYNC_APPLY',
+    'SyncRun',
+    applyRun.id,
+    `Applied sync from ${previewRun.source} — ${createRows + updateRows} applied, ${errorRows} errors`,
+    undefined,
+    user.email,
+    previewRun.siteScope,
+  )
 
   return NextResponse.json({
     syncRun: {

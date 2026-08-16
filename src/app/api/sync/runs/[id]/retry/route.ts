@@ -8,12 +8,21 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { withSerializableRetryTracked } from '@/lib/retry-transaction'
 import { redacted } from '@/lib/sync-adapter'
 import { logAudit } from '@/lib/audit'
+
+// Helper: convert JsonValue | null to Prisma Json? input type
+function toJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+  if (value === null || value === undefined) {
+    return Prisma.JsonNull
+  }
+  return value as Prisma.InputJsonValue
+}
 
 export async function POST(
   req: NextRequest,
@@ -98,8 +107,8 @@ export async function POST(
           syncRunId: retryRun.id,
           externalKey: item.externalKey,
           action: item.action,
-          before: item.before,
-          after: item.after,
+          before: toJsonInput(item.before),
+          after: toJsonInput(item.after),
           expectedVersion: item.expectedVersion,
           expectedExists: item.expectedExists,
           status: 'error',
@@ -117,8 +126,8 @@ export async function POST(
           syncRunId: retryRun.id,
           externalKey: item.externalKey,
           action: item.action,
-          before: item.before,
-          after: item.after,
+          before: toJsonInput(item.before),
+          after: toJsonInput(item.after),
           expectedVersion: item.expectedVersion,
           expectedExists: item.expectedExists,
           status: 'error',
@@ -152,6 +161,12 @@ export async function POST(
             throw new Error('No after data to apply')
           }
 
+          // B-02 fix: extract subject explicitly — WorkOrder.subject is required.
+          const subject = afterData.subject as string | undefined
+          if (!subject || typeof subject !== 'string' || subject.trim() === '') {
+            throw new Error('VALIDATION: subject is required but missing from after payload')
+          }
+
           const { id: _id, createdAt: _ca, updatedAt: _ua, version: _v, ...patch } = afterData as Record<string, unknown>
 
           let targetWorkOrderId: string
@@ -171,7 +186,7 @@ export async function POST(
             targetWorkOrderId = updated.id
           } else {
             const created = await tx.workOrder.create({
-              data: { ...patch, requestId: item.externalKey },
+              data: { ...patch, requestId: item.externalKey, subject },
             })
             targetWorkOrderId = created.id
           }
@@ -201,8 +216,8 @@ export async function POST(
               syncRunId: retryRun.id,
               externalKey: item.externalKey,
               action: item.action,
-              before: item.before,
-              after: item.after,
+              before: toJsonInput(item.before),
+              after: toJsonInput(item.after),
               expectedVersion: item.expectedVersion,
               expectedExists: item.expectedExists,
               status: 'applied',
@@ -227,8 +242,8 @@ export async function POST(
           syncRunId: retryRun.id,
           externalKey: item.externalKey,
           action: item.action,
-          before: item.before,
-          after: item.after,
+          before: toJsonInput(item.before),
+          after: toJsonInput(item.after),
           expectedVersion: item.expectedVersion,
           expectedExists: item.expectedExists,
           status: 'error',
@@ -257,13 +272,15 @@ export async function POST(
     },
   })
 
-  await logAudit({
-    action: 'SYNC_APPLY',
-    entity: 'SyncRun',
-    entityId: retryRun.id,
-    summary: `Retry sync from ${originalRun.source} — ${appliedCount} applied, ${errorCount} errors`,
-    actor: user.email,
-  })
+  await logAudit(
+    'SYNC_APPLY',
+    'SyncRun',
+    retryRun.id,
+    `Retry sync from ${originalRun.source} — ${appliedCount} applied, ${errorCount} errors`,
+    undefined,
+    user.email,
+    originalRun.siteScope,
+  )
 
   return NextResponse.json({
     syncRun: {
