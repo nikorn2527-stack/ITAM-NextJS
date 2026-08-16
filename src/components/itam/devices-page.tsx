@@ -920,6 +920,7 @@ export function DevicesPage() {
               <Button
                 variant="outline"
                 onClick={() => setImportOpen(true)}
+                aria-label="นำเข้า CSV"
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Upload className="h-4 w-4" />
@@ -929,6 +930,7 @@ export function DevicesPage() {
                 variant="outline"
                 onClick={exportCsv}
                 disabled={exporting}
+                aria-label={exporting ? 'กำลังส่งออก' : 'ส่งออก CSV'}
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Download className="h-4 w-4" />
@@ -938,6 +940,7 @@ export function DevicesPage() {
                 variant="outline"
                 onClick={() => setStickerOpen(true)}
                 disabled={(devices ?? []).length === 0}
+                aria-label="พิมพ์สติกเกอร์"
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Tag className="h-4 w-4" />
@@ -946,6 +949,7 @@ export function DevicesPage() {
               <Button
                 variant="outline"
                 onClick={() => qc.invalidateQueries({ queryKey: ['devices'] })}
+                aria-label="รีเฟรช"
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <RefreshCw className="h-4 w-4" />
