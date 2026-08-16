@@ -6,11 +6,20 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { fetchFromAppsScript, computePreviewItems, redacted } from '@/lib/sync-adapter'
 import { logAudit } from '@/lib/audit'
+
+// Helper: convert JsonValue | null to Prisma Json? input type
+function toJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
+  if (value === null || value === undefined) {
+    return Prisma.JsonNull
+  }
+  return value as Prisma.InputJsonValue
+}
 
 export async function POST(req: NextRequest) {
   // 1. Auth — use ADMIN (not SYNC_RUN, B4 frozen rule)
@@ -99,8 +108,8 @@ export async function POST(req: NextRequest) {
         syncRunId: syncRun.id,
         externalKey: item.externalKey,
         action: item.action,
-        before: item.before ? JSON.parse(JSON.stringify(item.before)) : null,
-        after: item.after ? JSON.parse(JSON.stringify(item.after)) : null,
+        before: toJsonInput(item.before),
+        after: toJsonInput(item.after),
         expectedVersion: item.expectedVersion,
         expectedExists: item.expectedExists,
         status: item.action === 'error' ? 'error' : 'pending',
@@ -126,14 +135,15 @@ export async function POST(req: NextRequest) {
     })
 
     // 12. Audit log
-    await logAudit({
-      action: 'SYNC_PREVIEW',
-      entity: 'SyncRun',
-      entityId: syncRun.id,
-      summary: `Preview sync from ${source} — ${previewItems.length} rows (${createRows} create, ${updateRows} update, ${skipRows} skip, ${errorRows} error)`,
-      actor: user.email,
-      siteCode: options.siteFilter || null,
-    })
+    await logAudit(
+      'SYNC_PREVIEW',
+      'SyncRun',
+      syncRun.id,
+      `Preview sync from ${source} — ${previewItems.length} rows (${createRows} create, ${updateRows} update, ${skipRows} skip, ${errorRows} error)`,
+      undefined,
+      user.email,
+      options.siteFilter || null,
+    )
 
     // 13. Return result
     const items = await db.syncRunItem.findMany({
