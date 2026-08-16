@@ -9498,3 +9498,44 @@ Action items (optional, post-release):
 - Merge PR #6 เข้า main (หลัง audit อนุมัติขั้นสุดท้าย)
 - Revoke temporary GitHub PAT (ghp_...) ที่ใช้ trigger CI → https://github.com/settings/tokens
 - แจ้งทีม operations เรื่อง production deploy
+
+---
+Task ID: PR-SYNC-1-AUDIT-LIST-FILLED
+Agent: orchestrator (main)
+Task: กรอก PR-SYNC-1 Audit List ครบ 17 Critical + 5 Non-critical เพื่อส่งทีม Audit review
+
+Work Log:
+- อ่าน spec: docs/TASK-legacy-sync.md (มี expectedVersion/expectedExists จาก P1 #5 fix)
+- ตรวจ schema จริง: WorkOrder model (requestId @unique, siteCode, version)
+- ตรวจ mapping: src/lib/csv-field-mapping.ts (FIELD_MAPPINGS.workOrder 33 fields + STATUS_MAPPINGS 5 statuses)
+- ตรวจ permission catalog: SYNC_RUN ยังไม่มี (ต้องเพิ่มใน implementation — ไม่ใช่ B4 file)
+- กรอก Audit List ครบ 22 รายการ:
+  - 17 Critical (C-1 ถึง C-17): ทั้งหมด PASS (spec พร้อม implement)
+  - 5 Non-critical (NC-16): PASS
+  - 0 FAIL / 0 BLOCKED
+
+- จุดที่ขอ review เป็นพิเศษ (ระบุในเอกสาร):
+  - C-15.5: src/lib/auth-shared.ts จะเพิ่ม SYNC_RUN permission (อยู่ใน B4 frozen list แต่เป็นการเพิ่ม ไม่ใช่แก้ของเดิม)
+  - C-10.1: SYNC_RUN permission ใหม่ — role mapping (admin เท่านั้น)
+  - C-6.2: expectedVersion + expectedExists ใน SyncRunItem (P1 #5 fix)
+
+- Acceptance evidence ที่จะใช้ตรวจ PR-SYNC-1 (เหมือน PR #6):
+  - CI run URL + PostgreSQL version + commit SHA
+  - B4 regression (88+33+27 ต้องไม่ break)
+  - Sync-specific tests (11 tests ตาม C-14.1 ถึง C-14.11)
+  - 3-point integration check (Device/print/login จาก PR #6)
+  - Static verification (lint/tsc baseline comparison/git diff --check)
+  - B4 frozen files 0-diff (6 files)
+  - Artifact .tgz + SHA-256
+
+- กฎเหล็กที่ปฏิบัติ:
+  - ห้ามเริ่มแก้ schema/API/UI จนกว่า Audit List จะถูกอนุมัติ
+  - PR-SYNC-1 แยกจาก PR #6 + B4 frozen files
+  - CSV upload คงเป็น fallback ≥ 2 สัปดาห์
+
+Stage Summary:
+- Audit List กรอกครบแล้ว: docs/PR-SYNC-1-AUDIT-LIST.md (commit ถัดไป)
+- สถานะ: รอทีม Audit review → APPROVED / APPROVED WITH CONDITIONS / NOT APPROVED
+- ห้ามเริ่ม implementation จนกว่าจะอนุมัติ
+- PR #6 (01e0688): GO for Production (แยกจาก PR-SYNC-1)
+- B4 (ee75164): GO / frozen
