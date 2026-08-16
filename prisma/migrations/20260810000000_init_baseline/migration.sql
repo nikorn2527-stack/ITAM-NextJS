@@ -906,4 +906,3 @@ ALTER TABLE "UserSiteGrant" ADD CONSTRAINT "UserSiteGrant_userId_fkey" FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE "UserSiteGrant" ADD CONSTRAINT "UserSiteGrant_roleCode_fkey" FOREIGN KEY ("roleCode") REFERENCES "Role"("code") ON DELETE RESTRICT ON UPDATE CASCADE;
-
