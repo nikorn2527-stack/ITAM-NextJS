@@ -8782,3 +8782,41 @@ Stage Summary:
 - **Separation maintained:** B4 baseline untouched; integration defects and UX fixes are in separate files/concerns for separate PRs.
 - **Sandbox note:** prisma provider is `sqlite` for local testing — switch back to `postgresql` before production merge.
 - **Remaining Polish (not blocking):** touch targets in a few more places, dead code cleanup (itam-work-orders.tsx), mobile dialog pattern standardization (devices/stock dialogs → match WO full-screen pattern). These can be follow-up.
+
+---
+Task ID: LEGACY-SYNC-SPEC
+Agent: orchestrator (main)
+Task: จัดทำโจทย์งาน Legacy Apps Script → ITAM-NextJS Manual Sync ให้พร้อมส่งทีม — Server-side Pull Adapter (Preview Changes / Sync Now), phased MVP (Services → WO → IT-Asset → Devices → Stock)
+
+Work Log:
+- อ่าน `src/components/itam/legacy-import-section.tsx` เพื่อเข้าใจ CSV upload legacy path ปัจจุบัน (3 แอป Apps Script: IT-Asset, Services, Stock)
+- อ่าน `src/lib/csv-field-mapping.ts` เพื่อดู FIELD_MAPPINGS / STATUS_MAPPINGS / TEMPLATE_HEADERS ที่มีอยู่ — adapter ใหม่ต้อง reuse ชุด mapping นี้ ไม่เขียนใหม่
+- ตรวจ external key fields ใน Prisma schema: WorkOrder.requestId (@unique), Device.assetCode (@unique), StockItem.productCode (@unique), StockTransaction.sourceKey (มีแต่ไม่ @unique), MeterReading (ต้องเพิ่ม readingId @unique)
+- ตรวจ ImportJob model (มีอยู่แล้ว แต่ไม่มี preview/diff concept → สร้าง SyncRun + SyncRunItem แยก)
+- ตรวจ B4 helpers ที่จะ reuse: `withSerializableRetryTracked`, `loadAuthorizedWorkOrder`, `buildAuthorizationContext`, `logAudit`
+- เขียนเอกสารฉบับเต็ม `docs/TASK-legacy-sync.md` — 17 ส่วน ครอบคลุม:
+  1. บทสรุป + phased delivery
+  2. สถาปัตยกรรม (4 ทางเลือก + เลือก Server-side Pull Adapter) + 2 โหมดเรียก (Apps Script Web App / Google Sheets API v4)
+  3. Data model: SyncRun + SyncRunItem (Prisma) + migration plan
+  4. Stable external key ต่อ target + งานเตรียม schema (@unique backfill)
+  5. API contract: preview / run / list / detail / retry
+  6. Idempotency (upsert + skip + version check)
+  7. Transaction & concurrency (reuse B4 withSerializableRetryTracked + per-item transaction)
+  8. Site authorization (SYNC_RUN permission + canAtSite + OUT_OF_SCOPE)
+  9. Preview no-write guarantee (กฎเหล็ก + การทดสอบ)
+  10. Retry & error handling (3 levels + quarantine + 6 error categories)
+  11. UI/UX (sync-page.tsx + mobile + states)
+  12. Configuration & secrets (env vars ฝั่ง server เท่านั้น)
+  13. Phased PRs (PR-SYNC-1 ถึง 4)
+  14. Acceptance criteria (13 Phase-1 + 5 cross-cutting)
+  15. ความเสี่ยง & mitigation (7 รายการ)
+  16. ไฟล์ที่คาดว่าจะสร้าง/แก้ (Phase 1)
+  17. ข้อความพร้อมส่งทีมพัฒนา (copy-paste ได้)
+
+Stage Summary:
+- เอกสาร `docs/TASK-legacy-sync.md` พร้อมส่งทีมแล้ว (17 ส่วน, ครอบคลุมทุกหัวข้อที่ user ระบุ)
+- แยกจาก B4 baseline (ไม่แตะ retry/transaction/authz) และแยกจาก UX/UI PR
+- คง CSV upload ไว้เป็น fallback จนกว่า sync จะ stable ≥ 2 สัปดาห์
+- เริ่มจาก MVP: Services → Work Orders (PR-SYNC-1) ก่อน
+- กฎเหล็ก 3 ข้อ: Preview no-write / transaction+version check (ไม่ override) / credential server-side only
+- ทีมยังไม่ได้เริ่ม implement — รอ review โจทย์งานก่อน
