@@ -94,7 +94,10 @@ jobs:
           set -e
           cat tsc-full-output.log
           echo "tsc exit code: $TSC_EXIT"
-          if [ "$TSC_EXIT" -ge 2 ]; then
+          # W-01: tsc exit 0 = no errors, exit 1 = type errors (expected),
+          # exit 2 = diagnostic errors (still type errors, expected).
+          # Only exit > 2 (e.g. 127=command not found, 137=OOM) = process failure.
+          if [ "$TSC_EXIT" -gt 2 ]; then
             echo "FAIL: tsc process failed (exit $TSC_EXIT) — not just type errors"
             exit 1
           fi
@@ -121,7 +124,7 @@ jobs:
           npx tsc --noEmit > tsc-baseline-output.log 2>&1
           BASELINE_TSC_EXIT=$?
           set -e
-          if [ "$BASELINE_TSC_EXIT" -ge 2 ]; then
+          if [ "$BASELINE_TSC_EXIT" -gt 2 ]; then
             echo "WARN: baseline tsc process failed (exit $BASELINE_TSC_EXIT) — using error count only"
           fi
           BASELINE_ERRORS=$(grep -c "error TS" tsc-baseline-output.log || echo "0")
