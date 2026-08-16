@@ -9024,3 +9024,41 @@ Stage Summary:
 - สถานะ release candidate: ยังคง CONDITIONAL STAGING ONLY (รอ PostgreSQL verification ที่ head ล่าสุด)
 - ทีม audit คำแนะนำ: ตรวจ static review ที่ 8a9f640 ก่อน → รัน PostgreSQL verification ที่ 8a9f640 → ส่ง evidence ชุดเดียว
 - PR-SYNC-1: ทีมพัฒนามี audit list form แล้ว สามารถกรอกและส่งกลับเพื่อตรวจก่อน implementation
+
+---
+Task ID: OFFICIAL-HANDOFF-FINAL
+Agent: orchestrator (main)
+Task: บันทึกสรุปงานที่ต้องดำเนินการต่ออย่างเป็นทางการ — PR #6 + PR-SYNC-1 (ตามที่ทีม audit ยืนยัน)
+
+Work Log:
+- ทีม audit ยืนยันสถานะและ SHA ทั้ง 4 ตำแหน่งเป็นทางการ:
+  - b4dea18 — release candidate เดิม
+  - 7f99503 — แก้ migration + expectedVersion/expectedExists + P2 a11y/flex (bot review fixes)
+  - 8a9f640 — เพิ่มแบบฟอร์ม PR-SYNC-1 Audit List
+  - 007a1cc — head ล่าสุด ใช้เป็น commit อ้างอิงสำหรับ PostgreSQL verification
+
+Stage Summary — งานที่ 1: PR #6 / Release candidate
+- B4 implementation คง frozen baseline ee75164 (ห้ามแก้ retry/transaction/authz snapshot/concurrency guard)
+- ทีมเตรียม PostgreSQL CI/staging verification โดยใช้ commit 007a1cc เท่านั้น
+- evidence package ต้องครบ: PostgreSQL version + commit SHA ที่รันจริง + B4 regression results (P2034 เกิดจริง, retry ทำงาน, audit rollback ผ่าน, concurrent route ไม่มี HTTP 500, PostgreSQL tests ไม่ถูก skip) + integration checks 3 รายการ (Device POST ไม่ 500, print unauthenticated ได้ 401, login ไม่มี prisma:error) + static verification (lint/tsc/git diff --check)
+- สถานะ: CONDITIONAL STAGING ONLY จนกว่าจะมี evidence ครบ — ยังไม่ merge/deploy Production
+
+Stage Summary — งานที่ 2: PR-SYNC-1
+- ก่อนเริ่มแก้ schema/API/UI ทีมต้องกรอกและส่ง PR-SYNC-1 Audit List ก่อน
+- ใช้แบบฟอร์มจาก commit 8a9f640 (docs/PR-SYNC-1-AUDIT-LIST.md)
+- ใช้ specification ฉบับล่าสุดที่มี expectedVersion + expectedExists (commit 7f99503+)
+- Audit List ต้องระบุให้ครบอย่างน้อย 10 หัวข้อ: field mapping, external key+unique constraint, Site scope+permission, Preview no-write, idempotency+duplicate policy, expectedVersion/expectedExists, transaction+retry+concurrency, error/quarantine policy, audit log, secret/credential server-side, edge cases+test plan
+- ส่ง Audit List มา review ก่อนเริ่ม implementation จริง
+- เมื่อผ่านแล้วจึงค่อยเปิด PR-SYNC-1 implementation แยกจาก PR #6 และไม่แก้ปนกับ B4 baseline
+
+Conclusion:
+- PR #6 รอ PostgreSQL evidence จาก commit 007a1cc
+- PR-SYNC-1 รอ Audit List ก่อนเริ่ม implementation
+- ทั้งสองงานแยกจากกัน ดำเนินการควบคู่กันได้
+- B4 baseline ee75164: GO (frozen) — ไม่แก้ไขเพิ่ม
+
+Reference artifacts (commit 007a1cc):
+- docs/TASK-legacy-sync.md (spec with expectedVersion/expectedExists)
+- docs/PR-SYNC-1-AUDIT-LIST.md (17 Critical + 5 Non-critical checks)
+- prisma/migrations/20260816000001_add_device_displaylabel/migration.sql
+- src/lib/txn.ts, wo-authz.ts, authorization-context.ts, auth-middleware.ts, auth-shared.ts, audit.ts (0 diff — B4 frozen)
