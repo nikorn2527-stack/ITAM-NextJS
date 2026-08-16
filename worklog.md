@@ -8942,3 +8942,53 @@ Current status (unchanged):
 - prisma.provider: postgresql (committed)
 - B4 baseline: 0 diff (verified)
 - Sandbox: ไม่มี PostgreSQL — DB tests ต้องรันใน CI/staging เท่านั้น
+
+---
+Task ID: PR6-REVIEW-FIXES
+Agent: orchestrator (main)
+Task: ตอบคำถามทีม audit "งานขึ้นไหม" — ตรวจพบว่ามี automated bot review บน PR #6 ชี้ปัญหา 5 จุด (2 P1, 3 P2) จึงแก้ทันที
+
+Work Log:
+- ตรวจ PR #6 state: พบ review จาก chatgpt-codex-connector[bot] ชี้ 5 ปัญหา:
+  - P1 #4: missing migration สำหรับ Device.displayLabel (schema เพิ่ม field แล้วใน 508ac1d แต่ไม่มี migration SQL → production จะขาด physical column)
+  - P1 #5: SyncRunItem spec ไม่มี expectedVersion field ทั้งที่ apply algorithm อ้างถึง → TOCTOU window ระหว่าง preview→apply
+  - P2 #1: import-page history header มี nested <button> (CollapsibleTrigger + refresh Button) → invalid HTML
+  - P2 #2: devices-page mobile toolbar 4 ปุ่มซ่อน label แต่ไม่มี aria-label → screen-reader อ่านไม่ได้
+  - P2 #3: work-orders-page footer spacer มี default order=0 → ไปอยู่หน้า action buttons ทั้งหมด
+
+**P1 #4 fix — Migration:**
+- สร้าง prisma/migrations/20260816000001_add_device_displaylabel/migration.sql
+- ALTER TABLE "Device" ADD COLUMN IF NOT EXISTS "displayLabel" TEXT (additive, no data loss)
+- Production ที่ build ด้วย prisma generate เท่านั้นจะได้ physical column หลัง migrate deploy
+
+**P1 #5 fix — SyncRunItem spec:**
+- เพิ่ม expectedVersion Int? + expectedExists Boolean ใน SyncRunItem model (docs/TASK-legacy-sync.md section 3.2)
+- อัปเดต apply algorithm (section 7) ให้ตรวจ 3 conflict cases:
+  a) expectedExists=true แต่ record หาย → CONFLICT (deleted after preview)
+  b) expectedExists=false แต่ record ปรากฏ → CONFLICT (created by another source)
+  c) version เปลี่ยน → CONFLICT (edited after preview)
+- ปิด TOCTOU window: preview baseline persist แน่นอน, apply ตรวจก่อนเขียน
+
+**P2 #1 fix — Nested button:**
+- import-page.tsx: แยก CollapsibleTrigger (left) + refresh Button (right) เป็น siblings ใน flex row
+- ลบ stopPropagation hack (ไม่จำเป็นแล้วเพราะไม่ nested)
+
+**P2 #2 fix — aria-label:**
+- devices-page.tsx: เพิ่ม aria-label ให้ 4 ปุ่ม (Import/Export/Sticker/Refresh) สำหรับ mobile icon-only state
+
+**P2 #3 fix — Flex spacer order:**
+- work-orders-page.tsx: เพิ่ม order-8 ให้ spacer (หลัง actions order-1..7, ก่อน Close order-last)
+
+**Verification:**
+- Lint 3 ไฟล์ที่แก้ → 0 errors
+- B4 baseline ยัง 0 diff (f433c6f..193225e ทั้ง 6 lib files)
+- commit: 193225e "Address PR #6 review: P1 migration + expectedVersion, P2 a11y/flex"
+- push ทั้ง main + release/conditional-staging-b4dea18
+
+Stage Summary:
+- PR #6 head อัปเดต: b4dea18 → 193225e (4 commits รวมงานแก้)
+- ตอบคำถามทีม audit: มีความเคลื่อนไหว — bot review ชี้ปัญหาจริง 2 P1 + 3 P2, แก้ครบแล้ว
+- Release candidate ใหม่: 193225e (แทน b4dea18) — แต่สถานะยัง CONDITIONAL STAGING ONLY
+- หมายเหตุ: ทีม audit ควรตรวจ PR #6 head ใหม่ (193225e) แทน b4dea18 เดิม เพราะมี fixes เพิ่ม
+- PostgreSQL verification ยังต้องรันใน CI/staging (sandbox ไม่มี PostgreSQL)
+- PR-SYNC-1: ทีมพัฒนายังไม่ได้ส่ง audit list (ไม่มี branch ใหม่) — แต่ spec อัปเดตแล้วด้วย expectedVersion/expectedExists
