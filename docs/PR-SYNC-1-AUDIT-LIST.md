@@ -54,7 +54,15 @@ Adapter จะ reuse `FIELD_MAPPINGS.workOrder` + `STATUS_MAPPINGS.workOrder` �
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-2.1 | Services → WorkOrder mapping ใช้ `FIELD_MAPPINGS.workOrder` | DESIGN_PASS (F-02 แจ้งเพิ่ม) | dev | impl | `src/lib/csv-field-mapping.ts:223-258` | 33 fields mapped — **F-02:** ยังไม่มี canonical `siteCode` ต่อ record — ต้องเพิ่ม source `siteCode` หรือ server-side mapping แบบ fail-closed (allowlist/version/audit); missing/unknown Site → quarantine ห้าม Apply |
+| C-2.1 | Services → WorkOrder mapping ใช้ `FIELD_MAPPINGS.workOrder` | BLOCKED (F-02, F-11) | dev | impl | `src/lib/csv-field-mapping.ts:223-258` | 33 fields mapped
+**F-02 + F-11:** canonical `siteCode` ยังเป็น design-only — implementation ต้องพิสูจน์:
+1. Source contract มี `siteCode` field หรือ server-side derivation จาก `site` field
+2. Derivation ใช้ versioned allowlist + audit (ไม่ใช่ `siteFilter` ของผู้ใช้)
+3. Missing `siteCode` → quarantine (item status=`error`, errorMessage=`MISSING_SITE`)
+4. Unknown `siteCode` (ไม่อยู่ใน allowlist) → quarantine (errorMessage=`UNKNOWN_SITE`)
+5. Cross-site item ที่ผู้ใช้ไม่มีสิทธิ์ → `OUT_OF_SCOPE` error
+6. Per-item `siteCode` บันทึกใน `SyncRunItem` เพื่อ audit
+7. Test cases: missing site, unknown site, cross-site → ต้องมี evidence |
 | C-2.2 | Status conversion ใช้ `STATUS_MAPPINGS.workOrder` (emoji Thai → enum) | PASS | dev | impl | `src/lib/csv-field-mapping.ts:265-287` | 5 statuses: PENDING/IN_PROGRESS/WAITING_PARTS/COMPLETED/CANCELLED |
 | C-2.3 | ทุก field ที่ legacy export มี adapter รู้จัก map | PASS | dev | impl | `src/lib/csv-field-mapping.ts:223` | unmapped columns → warning log (ไม่ silent drop) |
 | C-2.4 | Fields ที่ไม่ map ถูก log เป็น warning | PASS | dev | impl | spec §5.1 `unmappedColumns[]` | `SyncRun.errorMessage` บันทึก |
@@ -115,7 +123,12 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | C-7.1 | P2034 → retry ผ่าน `withSerializableRetryTracked` | PASS | dev | impl | spec §7, §10.1 | reuse B4 (exponential backoff) |
 | C-7.2 | Non-P2034 error ไม่ retry (attempts=1) | PASS | dev | test | B4 test 8 pattern, C-14.8 | จะเขียน test |
 | C-7.3 | Test: จำลอง P2034 → sync ไม่ตอบ 500 | PASS | dev | test | spec §14.1 #8, C-14.8 | |
-| C-7.4 | `SyncRun.attempts` / `p2034Count` บันทึกไว้ตรวจได้ | BLOCKED (F-05) | dev | impl | spec §3.1 + implementation | **F-05:** SyncRun model ใน spec §3.1 ยังไม่มี `attempts` และ `p2034Count` field — ต้องเพิ่ม field ใน model หรือแก้ evidence contract ให้ชัดว่าเก็บที่ไหน |
+| C-7.4 | `SyncRun.attempts` / `p2034Count` บันทึกไว้ตรวจได้ | BLOCKED (F-05, F-12) | dev | impl | spec §3.1 + implementation | **F-05:** เพิ่ม field ใน SyncRun model แล้ว (design)
+**F-12:** ยังไม่มี schema migration/runtime evidence — ต้อง:
+1. สร้าง migration file + `prisma migrate deploy` บน PostgreSQL
+2. ยืนยัน `withSerializableRetryTracked` return `{result, attempts, p2034Count}` จริง
+3. ยืนยัน SyncRun row บันทึกค่า attempts/p2034Count จริงหลัง apply
+เก็บเป็น IMPLEMENTATION_TBD จนกว่าจะมี evidence |
 
 ---
 
@@ -149,9 +162,15 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-10.1 | Permission สำหรับ Sync — ใช้ `ADMIN` + `canAtSite()` แทน `SYNC_RUN` ใน frozen file | BLOCKED (F-01) | dev | impl | spec §8.3 | **F-01:** `auth-shared.ts` เป็น B4 frozen file — ห้ามเพิ่ม `SYNC_RUN` permission ใน MVP ให้ใช้ `requireAuth(req, 'ADMIN')` + `canAtSite(siteFilter, 'ADMIN')` แทน หากต้องการ `SYNC_RUN` จริง ต้องขอ freeze exception แยก |
-| C-10.2 | `requireAuth(req, 'ADMIN')` ในทุก `/api/sync/*` route | DESIGN_PASS | dev | impl | spec §8.1 | ใช้ ADMIN แทน SYNC_RUN (F-01) |
-| C-10.3 | `buildAuthorizationContext` + `canAtSite(siteFilter, 'ADMIN')` | DESIGN_PASS | dev | impl | spec §8.1, §8.2 | reuse B4 helper (frozen) |
+| C-10.1 | Permission สำหรับ Sync — ใช้ `ADMIN` + site helper จาก B4 แทน `SYNC_RUN` | BLOCKED (F-01, F-10) | dev | impl | spec §8.3 | **F-01:** `auth-shared.ts` เป็น B4 frozen file — ห้ามเพิ่ม `SYNC_RUN` ใน MVP
+**F-10:** ใช้ helper จริงจาก target SHA:
+- `requireAuth()` จาก `src/lib/auth-middleware.ts`
+- `buildAuthorizationContext()` จาก `src/lib/authorization-context.ts`
+- `ctx.canAtSite(siteCode, 'ADMIN')` จาก `AuthorizationContext` interface
+- `canAccessSite()` จาก `src/lib/auth-shared.ts` (B4 frozen, import เท่านั้น)
+ห้ามแก้ B4 frozen files |
+| C-10.2 | `requireAuth(req, 'ADMIN')` ในทุก `/api/sync/*` route | DESIGN_PASS (F-10) | dev | impl | spec §8.1 | ใช้ helper จริง: `requireAuth()` จาก `src/lib/auth-middleware.ts`, `buildAuthorizationContext()` จาก `src/lib/authorization-context.ts` |
+| C-10.3 | `buildAuthorizationContext` + `ctx.canAtSite(siteCode, 'ADMIN')` | DESIGN_PASS (F-10) | dev | impl | spec §8.1, §8.2 | helper จริง: `buildAuthorizationContext()` จาก `src/lib/authorization-context.ts`, `ctx.canAtSite()` จาก `AuthorizationContext` interface, `canAccessSite()` จาก `src/lib/auth-shared.ts` (import เท่านั้น ไม่แก้) |
 | C-10.4 | Non-superadmin sync เฉพาะ Site ใน `ctx.siteScope.siteCodes` | PASS | dev | impl | spec §8.2 | |
 | C-10.5 | Item ที่มี Site นอก scope → `OUT_OF_SCOPE` error | PASS | dev | impl | spec §8.2, §10.3 | |
 | C-10.6 | superadmin sync ได้ทุก Site + `siteScope` บันทึก multi-site | PASS | dev | impl | spec §8.4 | `SyncRun.siteScope` nullable |
@@ -221,7 +240,12 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | C-15.2 | `src/lib/wo-authz.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | reuse ผ่าน import |
 | C-15.3 | `src/lib/authorization-context.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | reuse ผ่าน import |
 | C-15.4 | `src/lib/auth-middleware.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | |
-| C-15.5 | `src/lib/auth-shared.ts` — **ห้ามแก้** ใน MVP | BLOCKED (F-01) | dev | impl | B4 frozen list | **F-01:** เป็น B4 frozen file — ห้ามเพิ่ม permission ใน MVP ใช้ `ADMIN` แทน; หากจำเป็นต้องเพิ่ม `SYNC_RUN` ต้องขอ freeze exception แยก |
+| C-15.5 | `src/lib/auth-shared.ts` — **ห้ามแก้** ใน MVP | BLOCKED (F-01, F-10) | dev | impl | B4 frozen list | **F-01 + F-10:** B4 frozen file — ห้ามเพิ่ม permission; ใช้ `ADMIN` + helper จริงดังนี้:
+- Import: `canAccessSite`, `siteFilterForUser` จาก `src/lib/auth-shared.ts`
+- Context: `buildAuthorizationContext()` จาก `src/lib/authorization-context.ts`
+- Site check: `ctx.canAtSite(siteCode, 'ADMIN')` จาก `AuthorizationContext`
+- Scope: `requirePermissionAndScope()` จาก `src/lib/authorization-context.ts`
+ต้องยืนยันด้วย target SHA diff ว่าไม่แตะ frozen files |
 | C-15.6 | `src/lib/audit.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | reuse `logAudit()` |
 | C-15.7 | `tests/auth/concurrency.test.ts` ไม่ถูกแก้ | PASS | dev | impl | | sync tests แยกใน `tests/sync/` |
 | C-15.8 | PR-SYNC-1 แยกจาก PR #6 + UX/UI PR | PASS | dev | impl | | branch `pr-sync-1/...` แยก |
@@ -233,7 +257,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | NC-16.1 | UI: ปุ่ม "ดูตัวอย่าง"/"ยืนยัน" visible viewport แรก | PASS | dev | impl | spec §11, §14.1 #10 | |
 | NC-16.2 | UI: states ครบ (idle/loading/done/error/empty) | PASS | dev | impl | spec §11.3 | |
 | NC-16.3 | UI: ประวัติ SyncRun filter | PASS | dev | impl | spec §14.1 #12 | |
-| NC-16.4 | `SYNC_PREVIEW_MAX_ROWS=1000` cap + paginate | PASS | dev | impl | spec §12, §15 | |
+| NC-16.4 | `SYNC_PREVIEW_MAX_ROWS=1000` cap + paginate | DESIGN_PASS | dev | impl | spec §12, §15 | |
 | NC-16.5 | CSV upload ยังคงเป็น fallback | PASS | dev | impl | spec §1, §13 | คงไว้ ≥ 2 สัปดาห์ |
 
 ---
@@ -244,7 +268,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-17.1 | Critical ทั้ง 17 ข้อ PASS | PASS | dev | impl | ด้านบน | |
+| C-17.1 | Critical ทั้ง 17 ข้อผ่าน | BLOCKED (F-09) | dev | impl | ด้านบน | **F-09:** ปัจจุบัน 9 DESIGN_PASS / 8 BLOCKED — ยังไม่ครบ 17 ข้อ ต้องปิดทุก BLOCKED item ก่อน C-17.1 จึงจะ PASS | |
 | C-17.2 | `bunx eslint` ผ่าน 0 errors | PASS | dev | impl | | |
 | C-17.3 | `npx tsc --noEmit` ไม่มี error ใหม่ | PASS | dev | impl | | baseline comparison (เหมือน PR #6) |
 | C-17.4 | `git diff --check` สะอาด | PASS | dev | impl | | |
@@ -310,6 +334,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | 2026-08-16 | orchestrator (v1) | สร้าง audit list v1 (17 Critical + 5 Non-critical) |
 | 2026-08-16 | orchestrator (v2) | กรอกครบทั้ง 22 รายการ + evidence path + ข้อความส่ง audit |
 | 2026-08-16 | new-team (v3) | revision แก้ 8 findings (F-01 ถึง F-08): เปลี่ยน PASS → BLOCKED/EVIDENCE_TBD สำหรับรายการที่มีปัญหา, เพิ่ม F-02 siteCode mapping note ใน C-2.1 |
+| 2026-08-16 | new-team (v4) | revision แก้ 7 findings (F-09 ถึง F-15): แก้ C-17.1 ขัดแย้ง, ระบุ auth helper path จริง, เพิ่ม siteCode quarantine spec, เพิ่ม serialization/redaction boundary, แก้ upsert comment เป็น conditional algorithm |
 
 ---
 

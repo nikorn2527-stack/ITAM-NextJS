@@ -179,6 +179,25 @@ model SyncRunItem {
 }
 ```
 
+### 3.2.1 Serialization & Redaction Boundary (F-13)
+
+**SyncRunItem.before / after (Json?):**
+- Prisma `Json` type — stored as JSONB in PostgreSQL
+- Adapter ต้อง redact ก่อนบันทึก: ลบ PII (email, phone, password), credential (token, API key), internal fields (id, createdAt)
+- Redaction allowlist: เก็บเฉพาะ field ที่อยู่ใน `FIELD_MAPPINGS.workOrder` + `siteCode` + `status`
+- `null` สำหรับ create action (before) / delete action (after, ยังไม่รองรับ)
+
+**AuditLog.detail:**
+- Current architecture: `AuditLog.detail` เป็น `String` (JSON string) ไม่ใช่ Prisma `Json`
+- Implementation ต้อง `JSON.stringify(detail)` ก่อนเขียน
+- Detail structure: `{ before, after, syncRunId, externalKey }` — ใช้ค่าจาก SyncRunItem (redacted แล้ว)
+- ห้ามเก็บ credential/PII ใน AuditLog.detail
+
+**Preview response:**
+- API response (`before`/`after` ใน items) ส่งค่า redacted เดียวกับที่บันทึกใน DB
+- ไม่ echo token/URL/credential ใน response body
+```
+
 ### 3.3 Migration
 
 - สร้าง `prisma/migrations/{timestamp}_add_sync_run_tables/migration.sql`
@@ -373,7 +392,8 @@ await withSerializableRetryTracked(async (tx) => {
     throw new ConflictError('record created by another source after preview — re-run preview')
   }
 
-  // 3. Upsert พร้อม version check (เฉพาะ update)
+  // 3. Conditional versioned create/update (NOT Prisma upsert — F-07/F-14)
+  //    Algorithm: re-read → check baseline → conditional update/create → unique conflict = CONFLICT
   if (existing) {
     // expectedVersion guaranteed non-null when expectedExists=true (preview set it)
     if (item.expectedVersion != null && existing.version !== item.expectedVersion) {
@@ -422,11 +442,16 @@ Sync ต้องเคารพ Site scope ของผู้ใช้ที่
 ### 8.1 การตรวจสอบสิทธิ์
 
 ```typescript
+// Auth helpers (target SHA — ไม่แก้ B4 frozen files):
+// - requireAuth()              → src/lib/auth-middleware.ts
+// - buildAuthorizationContext() → src/lib/authorization-context.ts
+// - ctx.canAtSite()            → AuthorizationContext interface (authorization-context.ts)
+// - canAccessSite()            → src/lib/auth-shared.ts (import only, frozen)
 const auth = await requireAuth(req, 'ADMIN')  // ใช้ ADMIN แทน SYNC_RUN (B4 frozen rule)
 const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
-// superadmin → sync ได้ทุก Site
-// non-superadmin → sync ได้เฉพาะ Site ที่มี grant
+// superadmin → sync ได้ทุก Site (ctx.canAtSite always true)
+// non-superadmin → sync ได้เฉพาะ Site ที่ ctx.canAtSite(siteCode, 'ADMIN') = true
 ```
 
 ### 8.2 การกรอง Site
