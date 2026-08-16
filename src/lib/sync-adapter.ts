@@ -429,7 +429,7 @@ export async function computePreviewItems(
     // Look up existing record
     const existing = await tx.workOrder.findUnique({
       where: { requestId },
-      select: { id: true, version: true, requestId: true, subject: true, status: true, site: true },
+      select: { id: true, version: true, requestId: true, subject: true, status: true, siteCode: true },
     })
 
     if (!existing) {
