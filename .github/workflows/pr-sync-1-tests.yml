@@ -258,6 +258,13 @@ jobs:
       - name: Generate artifact
         if: always()
         run: |
+          # R-02 fix: patch checklist with ACTUAL CI run metadata BEFORE
+          # creating the artifact. This ensures the checklist inside the ZIP
+          # matches the CI run that produced it — no stale values.
+          RUN_ID="${{ github.run_id }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          COMMIT_SHA="${{ github.sha }}"
+          # Create artifact first to compute its checksum
           tar czf pr-sync-1-artifact.tgz \
             prisma/migrations/ \
             prisma/seed.ts \
@@ -276,9 +283,40 @@ jobs:
             b4-concurrency-output.log \
             next-dev-output.log \
             2>/dev/null || true
-          sha256sum pr-sync-1-artifact.tgz | tee checksum.txt
+          ARTIFACT_SHA256=$(sha256sum pr-sync-1-artifact.tgz | awk '{print $1}')
+          echo "$ARTIFACT_SHA256  pr-sync-1-artifact.tgz" | tee checksum.txt
+          # Now patch the checklist with actual values
+          # Use # as sed delimiter to avoid conflict with | in markdown tables
+          sed -i "s#| CI Run ID | .*#| CI Run ID | $RUN_ID |#" docs/PR-SYNC-1-EVIDENCE-CHECKLIST.md
+          sed -i "s#| CI Run URL | .*#| CI Run URL | $RUN_URL |#" docs/PR-SYNC-1-EVIDENCE-CHECKLIST.md
+          sed -i "s#| Commit SHA | .*#| Commit SHA | $COMMIT_SHA |#" docs/PR-SYNC-1-EVIDENCE-CHECKLIST.md
+          sed -i "s#| Artifact SHA-256 | .*#| Artifact SHA-256 | $ARTIFACT_SHA256 |#" docs/PR-SYNC-1-EVIDENCE-CHECKLIST.md
+          # Re-create artifact with patched checklist
+          tar czf pr-sync-1-artifact.tgz \
+            prisma/migrations/ \
+            prisma/seed.ts \
+            src/lib/sync-adapter.ts \
+            src/app/api/sync/ \
+            tests/sync/ \
+            docs/PR-SYNC-1-EVIDENCE-CHECKLIST.md \
+            migration-output.log \
+            seed-output.log \
+            tsc-output.log \
+            eslint-output.log \
+            sync-test-output.log \
+            sync-route-test-output.log \
+            b4-auth-output.log \
+            b4-integration-output.log \
+            b4-concurrency-output.log \
+            next-dev-output.log \
+            2>/dev/null || true
+          # Recompute checksum (artifact changed after patching checklist)
+          ARTIFACT_SHA256=$(sha256sum pr-sync-1-artifact.tgz | awk '{print $1}')
+          echo "$ARTIFACT_SHA256  pr-sync-1-artifact.tgz" | tee checksum.txt
           echo "=== artifact ==="
           ls -la pr-sync-1-artifact.tgz
+          echo "=== patched checklist CI Run Evidence section ==="
+          grep -A 6 "## CI Run Evidence" docs/PR-SYNC-1-EVIDENCE-CHECKLIST.md
 
       - name: Upload artifact
         if: always()
