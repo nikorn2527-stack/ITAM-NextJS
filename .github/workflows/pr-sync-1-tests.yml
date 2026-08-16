@@ -7,6 +7,7 @@
 # F-02: This file must be at .github/workflows/ (not docs/)
 # F-03: No continue-on-error on critical gates
 # F-04: Seed script exists at prisma/seed.ts
+# F-06: Critical steps fail-closed (set -o pipefail, no || true)
 # F-08: Artifact includes test logs and migration output
 # F-10: Assert commit SHA matches target
 # ============================================================
@@ -38,6 +39,8 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/itam_test
+      JWT_SECRET: ci-test-jwt-secret-not-for-production
+      NODE_ENV: test
 
     steps:
       - name: Checkout
@@ -54,7 +57,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          # cache: 'npm' disabled until package-lock.json is committed
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps
@@ -63,39 +65,98 @@ jobs:
         run: npx prisma generate
 
       - name: Run migrations
-        run: npx prisma migrate deploy | tee migration-output.log
+        run: |
+          set -o pipefail
+          npx prisma migrate deploy 2>&1 | tee migration-output.log
 
       - name: Seed test data
-        run: npx tsx prisma/seed.ts
+        run: |
+          set -o pipefail
+          npx tsx prisma/seed.ts 2>&1 | tee seed-output.log
 
       - name: TypeScript check
-        run: npx tsc --noEmit 2>&1 | tee tsc-output.log
+        # F-06: fail-closed — tsc errors must fail the step
+        run: |
+          set -o pipefail
+          npx tsc --noEmit 2>&1 | tee tsc-output.log
 
       - name: ESLint
-        run: npx eslint src/lib/sync-adapter.ts src/app/api/sync/ 2>&1 | tee eslint-output.log
+        run: |
+          set -o pipefail
+          npx eslint src/lib/sync-adapter.ts src/app/api/sync/ 2>&1 | tee eslint-output.log
 
       - name: Run sync tests
-        run: npx vitest run tests/sync/ --reporter=verbose 2>&1 | tee sync-test-output.log
+        # F-06: fail-closed — test failures must fail the step
+        run: |
+          set -o pipefail
+          npx vitest run tests/sync/ --reporter=verbose 2>&1 | tee sync-test-output.log
 
       - name: Run B4 auth tests
-        run: npx tsx tests/auth/authorization-matrix.test.ts 2>&1 | tee b4-auth-output.log
+        run: |
+          set -o pipefail
+          npx tsx tests/auth/authorization-matrix.test.ts 2>&1 | tee b4-auth-output.log
+
+      - name: Start dev server for B4 integration + concurrency tests
+        # F-04 fix: B4 integration + concurrency tests use HTTP fetch
+        # to localhost:3000 — must start dev server before running them
+        run: |
+          nohup npx next dev --webpack -p 3000 > /tmp/next-dev.log 2>&1 &
+          echo $! > /tmp/next-dev.pid
+          for i in $(seq 1 90); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ 2>/dev/null || echo "000")
+            if [ "$CODE" = "200" ]; then
+              echo "dev server ready after ${i}s"
+              break
+            fi
+            if [ $i -eq 90 ]; then
+              echo "ERROR: dev server did not become ready"
+              tail -30 /tmp/next-dev.log
+              exit 1
+            fi
+            sleep 2
+          done
+          # Warm login route (concurrency test uses it)
+          curl -s -o /dev/null -X POST -H "Content-Type: application/json" \
+            -d '{"username":"admin","password":"test1234"}' \
+            http://localhost:3000/api/itam/auth/login --max-time 60 || true
 
       - name: Run B4 integration tests
-        run: npx tsx tests/auth/route-integration.test.ts 2>&1 | tee b4-integration-output.log
+        env:
+          API_BASE_URL: http://localhost:3000
+        run: |
+          set -o pipefail
+          npx tsx tests/auth/route-integration.test.ts 2>&1 | tee b4-integration-output.log
 
       - name: Run B4 concurrency tests
-        run: npx tsx tests/auth/concurrency.test.ts 2>&1 | tee b4-concurrency-output.log
+        env:
+          API_BASE_URL: http://localhost:3000
+          PGTEST_FORCE_POSTGRES: "1"
+        run: |
+          set -o pipefail
+          npx tsx tests/auth/concurrency.test.ts 2>&1 | tee b4-concurrency-output.log
+
+      - name: Stop dev server
+        if: always()
+        run: |
+          if [ -f /tmp/next-dev.pid ]; then
+            kill $(cat /tmp/next-dev.pid) 2>/dev/null || true
+          fi
+          cp /tmp/next-dev.log next-dev-output.log 2>/dev/null || true
 
       - name: B4 frozen files check
         run: |
           echo "=== B4 Frozen Files Diff Check ==="
+          FAIL=0
           for f in src/lib/retry-transaction.ts src/lib/wo-authz.ts src/lib/authorization-context.ts src/lib/auth-middleware.ts src/lib/auth-shared.ts src/lib/audit.ts; do
             diff=$(git diff ee75164...HEAD -- "$f")
             if [ -n "$diff" ]; then
               echo "FAIL: $f has diff from baseline"
-              exit 1
+              FAIL=1
             fi
           done
+          if [ $FAIL -eq 1 ]; then
+            exit 1
+          fi
           echo "PASS: All 6 B4 frozen files have 0 diff"
 
       - name: Final gate
@@ -103,28 +164,46 @@ jobs:
         run: |
           echo "=== Final Gate ==="
           echo "Commit: $(git rev-parse --short HEAD)"
-          echo "Migration: $(cat migration-output.log | tail -3)"
-          echo "TSC: $(cat tsc-output.log | tail -3)"
-          echo "Sync tests: $(cat sync-test-output.log | tail -5)"
-          echo "B4 frozen: PASS (checked above)"
+          echo "--- Migration ---"
+          tail -3 migration-output.log 2>/dev/null || echo "(no log)"
+          echo "--- Seed ---"
+          tail -3 seed-output.log 2>/dev/null || echo "(no log)"
+          echo "--- TSC ---"
+          tail -3 tsc-output.log 2>/dev/null || echo "(no log)"
+          echo "--- Sync tests ---"
+          tail -5 sync-test-output.log 2>/dev/null || echo "(no log)"
+          echo "--- B4 auth ---"
+          tail -5 b4-auth-output.log 2>/dev/null || echo "(no log)"
+          echo "--- B4 integration ---"
+          tail -5 b4-integration-output.log 2>/dev/null || echo "(no log)"
+          echo "--- B4 concurrency ---"
+          tail -5 b4-concurrency-output.log 2>/dev/null || echo "(no log)"
+          echo "--- B4 frozen ---"
+          echo "PASS (checked above)"
 
       - name: Generate artifact
         if: always()
         run: |
           tar czf pr-sync-1-artifact.tgz \
             prisma/migrations/ \
+            prisma/seed.ts \
             src/lib/sync-adapter.ts \
             src/app/api/sync/ \
             tests/sync/ \
             docs/PR-SYNC-1-EVIDENCE-CHECKLIST.md \
             migration-output.log \
+            seed-output.log \
             tsc-output.log \
             eslint-output.log \
             sync-test-output.log \
             b4-auth-output.log \
             b4-integration-output.log \
-            b4-concurrency-output.log
+            b4-concurrency-output.log \
+            next-dev-output.log \
+            2>/dev/null || true
           sha256sum pr-sync-1-artifact.tgz | tee checksum.txt
+          echo "=== artifact ==="
+          ls -la pr-sync-1-artifact.tgz
 
       - name: Upload artifact
         if: always()
@@ -135,4 +214,9 @@ jobs:
             pr-sync-1-artifact.tgz
             checksum.txt
             migration-output.log
+            seed-output.log
+            tsc-output.log
             sync-test-output.log
+            b4-auth-output.log
+            b4-integration-output.log
+            b4-concurrency-output.log
