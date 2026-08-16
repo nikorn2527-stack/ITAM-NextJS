@@ -681,7 +681,7 @@ SYNC_PREVIEW_MAX_ROWS=1000
 | 14 | `bunx eslint` ผ่าน 0 error ทุกไฟล์ใหม่ |
 | 15 | `npx tsc --noEmit` ไม่มี error ใหม่ในไฟล์ที่แก้ |
 | 16 | ไม่ break test เดิม (authorization-matrix, route-integration, concurrency) |
-| 17 | migration รันได้ทั้ง SQLite (sandbox) และ PostgreSQL (production) |
+| 17 | migration ผ่าน PostgreSQL จริง (production gate) — SQLite ใช้เฉพาะ local development/testing เท่านั้น ไม่ใช่ evidence |
 | 18 | ไม่แก้ B4 baseline — ใช้ `withSerializableRetryTracked` / `loadAuthorizedWorkOrder` / `buildAuthorizationContext` ผ่าน import เท่านั้น |
 
 ---

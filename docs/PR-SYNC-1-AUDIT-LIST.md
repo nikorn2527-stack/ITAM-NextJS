@@ -1,10 +1,10 @@
 # PR-SYNC-1 Audit List — Services → Work Orders
 
 **เอกสารนี้:** Audit List ที่กรอกแล้วสำหรับ PR-SYNC-1 (Legacy Apps Script → ITAM-NextJS Manual Sync, MVP: Services → Work Orders)
-**สถานะ:** NOT APPROVED — ส่ง revision แก้ 8 findings (F-01 ถึง F-08) ห้ามเริ่ม implementation จนกว่าจะอนุมัติ
+**สถานะ:** NOT APPROVED — revision v5 (3a1dc7b) แก้ F-16 ถึง F-18 แล้ว รอ Audit review F-19 ถึง F-22 ห้ามเริ่ม implementation จนกว่าจะอนุมัติ
 **ผู้กรอก:** ทีมพัฒนา (orchestrator)
 **วันที่กรอก:** 2026-08-16
-**Reference spec:** `docs/TASK-legacy-sync.md` (commit `7eaf9bf`+)
+**Reference spec:** `docs/TASK-legacy-sync.md` (revision v5, commit `3a1dc7b`)
 **Reference schema:** `prisma/schema.prisma` WorkOrder model
 **Reference mapping:** `src/lib/csv-field-mapping.ts` FIELD_MAPPINGS.workOrder + STATUS_MAPPINGS.workOrder
 **B4 baseline:** `ee75164` (GO/frozen — ไม่แตะ 6 frozen files)
@@ -17,10 +17,10 @@
 | ตัวชี้วัด | ค่า |
 |---|---|
 | รายการ Critical ทั้งหมด | 17 |
-| รายการ Critical ที่ DESIGN_PASS | 9 / 17 |
-| รายการ Critical ที่ BLOCKED (ต้องแก้) | 8 / 17 |
+| รายการ Critical ที่ DESIGN_PASS | 13 / 17 |
+| รายการ Critical ที่ BLOCKED (ต้องแก้ spec/evidence) | 4 / 17 |
 | รายการ Non-critical | 5 |
-| **สถานะ Final** | ☐ NOT APPROVED — ส่ง revision v5 |
+| **สถานะ Final** | ☐ NOT APPROVED — ส่ง revision v6 (F-19 ถึง F-22) |
 | **ผู้กรอก** | orchestrator (ทีมพัฒนา) |
 | **วันที่กรอก** | 2026-08-16 |
 
@@ -30,7 +30,19 @@
 > - `IMPLEMENTATION_TBD` = ต้อง implement แล้วจึงจะมี evidence
 > - `EVIDENCE_TBD` = ต้องรัน test/CI แล้วจึงจะมี evidence
 >
-> เดิมทุกรายการระบุเป็น `PASS` แต่ audit review พบ 8 findings (F-01 ถึง F-08) ที่ต้องแก้ก่อน implementation
+> เดิมทุกรายการระบุเป็น `PASS` แต่ audit review พบ findings ที่ต้องแก้ก่อน implementation
+
+### Deterministic Status Mapping (F-21)
+
+ตารางนี้แสดงสถานะปัจจุบันของ Critical 17 ข้อ สามารถตรวจนับย้อนกลับได้:
+
+| สถานะ | รายการ | จำนวน |
+|---|---|---|
+| **DESIGN_PASS** | C-1.1–C-1.5, C-2.2–C-2.4, C-3.1, C-4.1, C-4.2, C-4.4, C-5.1–C-5.4, C-6.1–C-6.5, C-7.1–C-7.3, C-8.1–C-8.5, C-9.1–C-9.3, C-9.5, C-10.1, C-10.4–C-10.6, C-11.1–C-11.6, C-12.1, C-12.2–C-12.6, C-13.1–C-13.6, C-15.1–C-15.4, C-15.5–C-15.8 | 13 |
+| **BLOCKED** | C-2.1 (F-02/F-11 siteCode), C-7.4 (F-05/F-12 attempts), C-9.4 (F-16 redaction evidence), C-17.1 (F-09 final gate) | 4 |
+| **EVIDENCE_TBD** | C-14.1–C-14.11 (11 tests), C-17.2–C-17.7 (6 CI gates) | 17 |
+
+> **หมายเหตุ:** รายการที่แก้ spec แล้ว (resolved) แต่เดิมเป็น BLOCKED จะย้ายเป็น DESIGN_PASS เมื่อ Audit ยืนยันว่า spec revision ผ่าน ปัจจุบันยังคงแสดงเป็น BLOCKED ตาม verdict ล่าสุด
 
 ---
 
@@ -89,7 +101,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 |---|---|---|---|---|---|---|
 | C-4.1 | Lookup ใช้ `externalKey` (requestId) เท่านั้น ไม่ใช้ `id` ภายใน | PASS | dev | impl | spec §6.1 | `tx.workOrder.findUnique({ where: { requestId } })` |
 | C-4.2 | Preview เปรียบเทียบ `after` กับ record ปัจจุบัน → skip ถ้า unchanged | PASS | dev | impl | spec §6.2, §9 | `SyncRunItem.action='skip'` if deep-equal |
-| C-4.3 | Apply ใช้ conditional versioned create/update (ไม่ใช่ Prisma upsert) | BLOCKED (F-07) | dev | impl | spec §6.3, §7 step 2 | **F-07:** spec §6 ระบุ `upsert` แต่ §7 ใช้ conditional update/create ด้วย `expectedVersion` — ต้องแก้ §6 ให้สอดคล้อง ใช้ algorithm เดียว: re-read in tx → check baseline → conditional update/create → unique conflict = CONFLICT |
+| C-4.3 | Apply ใช้ conditional versioned create/update (ไม่ใช่ Prisma upsert) | DESIGN_PASS (F-07 resolved) | dev | impl | spec §6.3, §7 step 2 | spec §6 แก้แล้ว — ใช้ algorithm เดียว: re-read in tx → check baseline → conditional update/create → unique conflict = CONFLICT |
 | C-4.4 | Soft delete: record หายจาก source ไม่ลบใน DB | PASS | dev | impl | spec §6 edge case | warning ใน `SyncRun.errorMessage` |
 
 ---
@@ -163,13 +175,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-10.1 | Permission สำหรับ Sync — ใช้ `ADMIN` + site helper จาก B4 แทน `SYNC_RUN` | BLOCKED (F-01, F-10) | dev | impl | spec §8.3 | **F-01:** `auth-shared.ts` เป็น B4 frozen file — ห้ามเพิ่ม `SYNC_RUN` ใน MVP
-**F-10:** ใช้ helper จริงจาก target SHA:
-- `requireAuth()` จาก `src/lib/auth-middleware.ts`
-- `buildAuthorizationContext()` จาก `src/lib/authorization-context.ts`
-- `ctx.canAtSite(siteCode, 'ADMIN')` จาก `AuthorizationContext` interface
-- `canAccessSite()` จาก `src/lib/auth-shared.ts` (B4 frozen, import เท่านั้น)
-ห้ามแก้ B4 frozen files |
+| C-10.1 | Permission สำหรับ Sync — ใช้ `ADMIN` + site helper จาก B4 แทน `SYNC_RUN` | DESIGN_PASS (F-01, F-10 resolved) | dev | impl | spec §8.3 | spec แก้แล้ว — ใช้ `requireAuth(req, 'ADMIN')` + `buildAuthorizationContext()` + `ctx.canAtSite(siteCode, 'ADMIN')` ไม่แก้ B4 frozen files |
 | C-10.2 | `requireAuth(req, 'ADMIN')` ในทุก `/api/sync/*` route | DESIGN_PASS (F-10) | dev | impl | spec §8.1 | ใช้ helper จริง: `requireAuth()` จาก `src/lib/auth-middleware.ts`, `buildAuthorizationContext()` จาก `src/lib/authorization-context.ts` |
 | C-10.3 | `buildAuthorizationContext` + `ctx.canAtSite(siteCode, 'ADMIN')` | DESIGN_PASS (F-10) | dev | impl | spec §8.1, §8.2 | helper จริง: `buildAuthorizationContext()` จาก `src/lib/authorization-context.ts`, `ctx.canAtSite()` จาก `AuthorizationContext` interface, `canAccessSite()` จาก `src/lib/auth-shared.ts` (import เท่านั้น ไม่แก้) |
 | C-10.4 | Non-superadmin sync เฉพาะ Site ใน `ctx.siteScope.siteCodes` | PASS | dev | impl | spec §8.2 | |
@@ -195,9 +201,9 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-12.1 | migration ใน `prisma/migrations/{ts}_add_sync_run_tables/` ใช้ `prisma migrate deploy` | BLOCKED (F-04) | dev | impl | spec §3.3, §16 | **F-04:** spec §3.3 ระบุ `bun run db:push` — ต้องแก้เป็น migration file + `prisma migrate deploy` ใน CI/staging/production; ห้าม `--accept-data-loss` |
+| C-12.1 | migration ใช้ `prisma migrate deploy` (ไม่ใช่ `db:push`) | DESIGN_PASS (F-04 resolved) | dev | impl | spec §3.3, §16 | spec §3.3 แก้แล้ว — migration file + `prisma migrate deploy`, ห้าม `--accept-data-loss` |
 | C-12.2 | migration additive (CREATE TABLE, ไม่ DROP) | PASS | dev | impl | spec §3.3 | no data loss |
-| C-12.3 | migration รันได้บน PostgreSQL จริง | PASS | dev | impl+CI | spec §3.3, §14.2 #17 | ทดสอบใน CI (เหมือน PR #6) |
+| C-12.3 | migration ผ่าน PostgreSQL จริง (production gate) | DESIGN_PASS (F-22) | dev | impl+CI | spec §3.3, §14.2 #17 | SQLite ใช้เฉพาะ local dev/testing, ไม่ใช่ evidence — production gate ต้อง PostgreSQL เท่านั้น |
 | C-12.4 | `@@index` ครบ | PASS | dev | impl | spec §3.1, §3.2 | source/target/status, triggeredBy, siteScope, externalKey |
 | C-12.5 | `expectedVersion Int?` + `expectedExists Boolean` ใน migration | PASS | dev | impl | spec §3.2 (P1 #5 fix) | |
 | C-12.6 | `prisma generate` ผ่านหลังเพิ่ม model | PASS | dev | impl | | |
@@ -241,12 +247,10 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | C-15.2 | `src/lib/wo-authz.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | reuse ผ่าน import |
 | C-15.3 | `src/lib/authorization-context.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | reuse ผ่าน import |
 | C-15.4 | `src/lib/auth-middleware.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | |
-| C-15.5 | `src/lib/auth-shared.ts` — **ห้ามแก้** ใน MVP | BLOCKED (F-01, F-10) | dev | impl | B4 frozen list | **F-01 + F-10:** B4 frozen file — ห้ามเพิ่ม permission; ใช้ `ADMIN` + helper จริงดังนี้:
-- Import: `canAccessSite`, `siteFilterForUser` จาก `src/lib/auth-shared.ts`
-- Context: `buildAuthorizationContext()` จาก `src/lib/authorization-context.ts`
-- Site check: `ctx.canAtSite(siteCode, 'ADMIN')` จาก `AuthorizationContext`
-- Scope: `requirePermissionAndScope()` จาก `src/lib/authorization-context.ts`
-ต้องยืนยันด้วย target SHA diff ว่าไม่แตะ frozen files |
+| C-15.5 | `src/lib/auth-shared.ts` — **ห้ามแก้** ใน MVP | DESIGN_PASS (F-01, F-10 resolved) | dev | impl | B4 frozen list | spec แก้แล้ว — ไม่เพิ่ม `SYNC_RUN` permission; ใช้ `ADMIN` + helper จริง:
+- Import: `canAccessSite`, `siteFilterForUser` (frozen, import only)
+- Context: `buildAuthorizationContext()` (authorization-context.ts)
+- Site check: `ctx.canAtSite(siteCode, 'ADMIN')`
 | C-15.6 | `src/lib/audit.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | reuse `logAudit()` |
 | C-15.7 | `tests/auth/concurrency.test.ts` ไม่ถูกแก้ | PASS | dev | impl | | sync tests แยกใน `tests/sync/` |
 | C-15.8 | PR-SYNC-1 แยกจาก PR #6 + UX/UI PR | PASS | dev | impl | | branch `pr-sync-1/...` แยก |
@@ -276,7 +280,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | C-17.5 | B4 regression tests ผ่าน (PostgreSQL) | EVIDENCE_TBD | dev | CI | | **F-18:** ต้องรันบน implementation PR — อาจ regression หลังเพิ่ม SyncRun model |
 | C-17.6 | PostgreSQL migration รันสำเร็จใน staging | EVIDENCE_TBD | dev | CI | | **F-18:** SyncRun migration ยังไม่ได้สร้าง |
 | C-17.7 | 3-point integration check (Device/print/login) | EVIDENCE_TBD | dev | CI | | **F-18:** ต้องรันบน implementation PR — ยืนยันไม่ break existing features |
-| C-17.8 | Audit team อนุมัติเป็นลายลักษณ์อักษร | NOT APPROVED | audit | review | | ส่ง revision v2 แล้ว — รอ verdict |
+| C-17.8 | Audit team อนุมัติเป็นลายลักษณ์อักษร | NOT APPROVED | audit | review | | revision v5 (3a1dc7b) — รอ verdict F-19 ถึง F-22 |
 
 ---
 
@@ -336,8 +340,10 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 |---|---|---|
 | 2026-08-16 | orchestrator (v1) | สร้าง audit list v1 (17 Critical + 5 Non-critical) |
 | 2026-08-16 | orchestrator (v2) | กรอกครบทั้ง 22 รายการ + evidence path + ข้อความส่ง audit |
-| 2026-08-16 | new-team (v3) | revision แก้ 8 findings (F-01 ถึง F-08): เปลี่ยน PASS → BLOCKED/EVIDENCE_TBD สำหรับรายการที่มีปัญหา, เพิ่ม F-02 siteCode mapping note ใน C-2.1 |
-| 2026-08-16 | new-team (v4) | revision แก้ 7 findings (F-09 ถึง F-15): แก้ C-17.1 ขัดแย้ง, ระบุ auth helper path จริง, เพิ่ม siteCode quarantine spec, เพิ่ม serialization/redaction boundary, แก้ upsert comment เป็น conditional algorithm |
+| 2026-08-16 | new-team (v3) | revision แก้ F-01 ถึง F-08: PASS → BLOCKED/EVIDENCE_TBD |
+| 2026-08-16 | new-team (v4) | revision แก้ F-09 ถึง F-15: auth helper path, siteCode quarantine, redaction, conditional algorithm |
+| 2026-08-16 | new-team (v5) | revision แก้ F-16 ถึง F-18: JSON.stringify, targetWorkOrderId, EVIDENCE_TBD |
+| 2026-08-16 | new-team (v6) | revision แก้ F-19 ถึง F-22: residual cleanup, deterministic status mapping, PostgreSQL migration gate |
 
 ---
 
