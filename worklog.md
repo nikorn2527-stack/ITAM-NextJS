@@ -9539,3 +9539,38 @@ Stage Summary:
 - ห้ามเริ่ม implementation จนกว่าจะอนุมัติ
 - PR #6 (01e0688): GO for Production (แยกจาก PR-SYNC-1)
 - B4 (ee75164): GO / frozen
+
+---
+Task ID: PR-SYNC-1-MERGED
+Agent: orchestrator (main)
+Task: ยืนยันการ merge PR #7 + บันทึก staging/canary deployment plan
+
+Merge Verification:
+- PR #7: Merged (merge commit, NOT squash)
+- Merge commit: dfb5e3fc3b496f14036c221a3c662f4a2dc49569
+- Head merged: 0085dbd2d8b1f9230aa4b1d95e8a75982fa3af63
+- Evidence commit df87bf256e21830892c50b55a14489a5242c8f1c ยังอยู่ใน history ✅
+- B4 frozen files 6 ไฟล์ 0-diff จาก ee75164 ✅ (verified post-merge)
+
+Status Summary (all workstreams):
+- B4 baseline ee75164: GO / frozen (0 diff verified post-merge)
+- PR #6 (01e0688): GO for Production (merged, deployed)
+- PR-SYNC-1 (df87bf2): APPROVED WITH CONDITIONS (merged into main via dfb5e3f)
+  - NOT production deployed yet
+  - Next: staging/canary only
+
+Staging/Canary Deployment Plan (per Audit conditions):
+1. Deploy to staging — จำกัด site หรือกลุ่มผู้ใช้
+2. เตรียม rollback plan
+3. เปิด monitoring:
+   - conflict (CONFLICT errors in SyncRunItem)
+   - quarantine (error/quarantine items)
+   - retry/P2034 (SyncRun.attempts, p2034Count)
+   - authorization denial (403 responses on /api/sync/*)
+   - audit-log completeness (SYNC_APPLY entries with siteCode)
+4. คง CSV upload เป็น fallback อย่างน้อย 2 สัปดาห์
+5. Final production go/no-go — พิจารณาจาก staging metrics
+
+Constraints (must maintain):
+- ห้ามแก้ B4 frozen files (6 ไฟล์)
+- ห้ามเพิ่ม SYNC_RUN permission ใน MVP โดยไม่มี Audit review ใหม่
