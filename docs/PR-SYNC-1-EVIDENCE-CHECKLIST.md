@@ -40,20 +40,20 @@
 |---|---|---|
 | CODE REVIEWED | 6 | E-03, E-04, E-07, E-08, E-09, E-11 |
 | CODE REVIEWED + TESTED | 1 | E-10 |
-| TODO (needs PostgreSQL fixture) | 4 | E-02, E-05, E-06 |
+| TODO (needs PostgreSQL fixture) | 3 | E-02, E-05, E-06 |
 | VERIFIED | 1 | E-14 |
 | OPERATIONAL | 1 | E-18 |
-| PENDING (CI required) | 5 | E-01, E-12, E-13, E-15, E-16, E-17 |
+| PENDING (CI required) | 6 | E-01, E-12, E-13, E-15, E-16, E-17 |
 | **Total** | **18** | |
-
-> **Note:** CODE REVIEWED = code verified in audit but runtime test evidence still required.
-> PENDING count = 6 (E-01, E-12, E-13, E-15, E-16, E-17). Previous version said 5 — corrected.
 
 ---
 
 ## CI Steps Required
 
 ```bash
+# 0. Generate lockfile (first run only)
+npm install --legacy-peer-deps
+
 # 1. Install dependencies (pinned)
 npm ci --legacy-peer-deps
 
@@ -63,21 +63,24 @@ npx prisma generate
 # 3. Run migration on PostgreSQL 16.x
 DATABASE_URL="postgresql://..." npx prisma migrate deploy
 
-# 4. TypeScript check
+# 4. Seed test data
+DATABASE_URL="postgresql://..." npx tsx prisma/seed.ts
+
+# 5. TypeScript check
 npx tsc --noEmit
 
-# 5. ESLint
+# 6. ESLint
 npx eslint src/
 
-# 6. Run sync tests (requires PostgreSQL)
+# 7. Run sync tests (requires PostgreSQL)
 DATABASE_URL="postgresql://..." npx vitest run tests/sync/
 
-# 7. Run B4 regression
+# 8. Run B4 regression
 npx tsx tests/auth/authorization-matrix.test.ts
 npx tsx tests/auth/route-integration.test.ts
 npx tsx tests/auth/concurrency.test.ts
 
-# 8. Generate artifact
+# 9. Generate artifact
 tar czf pr-sync-1-artifact.tgz ...
 sha256sum pr-sync-1-artifact.tgz
 ```

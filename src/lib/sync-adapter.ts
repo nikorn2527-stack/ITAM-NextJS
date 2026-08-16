@@ -46,8 +46,15 @@ let _siteAllowlistOverride: Set<string> | null = null
 /**
  * Override allowlist for testing (I-08-04 cache isolation).
  * Pass null to clear override and restore DB-backed loading.
+ *
+ * GUARD: Only available in test/CI environments.
+ * In production, this function is a no-op.
  */
 export function _setSiteAllowlistForTesting(allowlist: Set<string> | null): void {
+  if (process.env.NODE_ENV === 'production') {
+    // Never allow test overrides in production
+    return
+  }
   _siteAllowlistOverride = allowlist
   _siteAllowlistCache = null // force reload on next getSiteAllowlist() call
 }
