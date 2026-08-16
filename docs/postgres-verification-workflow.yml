@@ -182,7 +182,7 @@ jobs:
           set -Eeuo pipefail
           echo "=== B4 frozen files 0-diff check ($B4_BASELINE_SHA..$RELEASE_SHA) ==="
           B4_FILES=(
-            "src/lib/txn.ts"
+            "src/lib/retry-transaction.ts"
             "src/lib/wo-authz.ts"
             "src/lib/authorization-context.ts"
             "src/lib/auth-middleware.ts"
@@ -589,7 +589,7 @@ jobs:
           ## B4 Frozen Files Check
 
           ไฟล์ B4 production ที่ตรวจสอบ (6 ไฟล์):
-          - src/lib/txn.ts
+          - src/lib/retry-transaction.ts
           - src/lib/wo-authz.ts
           - src/lib/authorization-context.ts
           - src/lib/auth-middleware.ts
