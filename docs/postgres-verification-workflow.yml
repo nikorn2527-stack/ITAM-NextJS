@@ -8,7 +8,7 @@
 # `workflow` scope and cannot push files under .github/workflows/.
 # The audit team (or any user with workflow scope) should copy this
 # file to .github/workflows/postgres-verification.yml and commit it,
-# then trigger via the Actions tab with commit SHA 007a1cc.
+# then trigger via the Actions tab.
 #
 # Copy command (run locally with a token that has workflow scope):
 #   mkdir -p .github/workflows
@@ -18,20 +18,37 @@
 #   git push origin main
 #
 # Then trigger: Actions tab → "PostgreSQL Verification (Release Candidate)"
-# → Run workflow → enter commit SHA (default 007a1cc).
+# → Run workflow (no SHA input — release candidate is pinned to
+# 007a1cc4854fbd9f243b74fd8e181b85a7d82d9f).
+#
+# Revision v2 (audit review fixes):
+#   [Blocker] Start dev server BEFORE test:integration (not just before
+#             test:concurrency). Both tests use HTTP fetch to localhost:3000.
+#   [High]    Replace grep "⊘ P2034" skip detection (false positive) with
+#             direct check of "Database: PostgreSQL" + "Skipped: 0".
+#   [High]    Add strict gate step that fails the workflow if
+#             totalP2034 == 0 OR totalAttempts <= successCount.
+#   [High]    Remove `||` exit-code swallowing on seed/ESLint/tsc — use
+#             continue-on-error at step level so logs still generate but
+#             failures are captured in the final gate.
+#   [Medium]  git diff --check now uses ee75164..007a1cc (release range),
+#             not the empty working tree.
+#   [Medium]  Pin release candidate SHA to full
+#             007a1cc4854fbd9f243b74fd8e181b85a7d82d9f — input is
+#             removed so the operator cannot trigger against another SHA.
 # ============================================================
 name: PostgreSQL Verification (Release Candidate)
 
 on:
   workflow_dispatch:
-    inputs:
-      commit_sha:
-        description: 'Commit SHA to verify (default: 007a1cc)'
-        required: true
-        default: '007a1cc'
 
 permissions:
   contents: read
+
+env:
+  # Pinned release candidate — operator cannot override.
+  RELEASE_SHA: 007a1cc4854fbd9f243b74fd8e181b85a7d82d9f
+  B4_BASELINE_SHA: ee75164
 
 jobs:
   verify:
@@ -59,25 +76,24 @@ jobs:
       NODE_ENV: test
 
     steps:
-      - name: Checkout commit ${{ github.event.inputs.commit_sha }}
+      - name: Checkout pinned release candidate ${{ env.RELEASE_SHA }}
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.commit_sha }}
+          ref: ${{ env.RELEASE_SHA }}
           fetch-depth: 0
 
-      - name: Verify checked-out commit SHA
+      - name: Verify checked-out commit SHA (must match pinned release)
         run: |
           echo "=== checked-out commit ==="
           git rev-parse HEAD
-          echo "=== requested commit ==="
-          echo "${{ github.event.inputs.commit_sha }}"
-          SHORT_HEAD=$(git rev-parse --short HEAD)
-          SHORT_REQ=$(echo "${{ github.event.inputs.commit_sha }}" | cut -c1-7)
-          if [ "$SHORT_HEAD" != "$SHORT_REQ" ]; then
-            echo "ERROR: checked-out commit ($SHORT_HEAD) does not match requested SHA ($SHORT_REQ)"
+          echo "=== pinned release SHA ==="
+          echo "$RELEASE_SHA"
+          if [ "$(git rev-parse HEAD)" != "$RELEASE_SHA" ]; then
+            echo "ERROR: checked-out commit does not match pinned release SHA"
+            echo "This workflow may only run against the release candidate."
             exit 1
           fi
-          echo "OK: commit SHA matches"
+          echo "OK: commit SHA matches pinned release candidate"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -90,8 +106,8 @@ jobs:
           PGPASSWORD=itam_pass psql -h localhost -U itam -d itam_test -c "SELECT version();" 2>&1 | tee pg_version.txt
           echo "=== pg_isready ==="
           PGPASSWORD=itam_pass pg_isready -h localhost -U itam -d itam_test
-          echo "=== PostgreSQL version (short) ==="
-          PGPASSWORD=itam_pass psql -h localhost -U itam -d itam_test -t -c "SHOW server_version;" 2>&1 | tee pg_version_short.txt
+          echo "=== PostgreSQL version (short, trimmed) ==="
+          PGPASSWORD=itam_pass psql -h localhost -U itam -d itam_test -t -A -c "SHOW server_version;" 2>&1 | tr -d '[:space:]' | tee pg_version_short.txt
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -107,117 +123,256 @@ jobs:
           bunx prisma migrate status 2>&1 | tee migrate_status.log
 
       - name: Seed authorization catalog
+        # No `|| echo` — if seed fails, the workflow must stop here because
+        # all downstream tests depend on the catalog.
         run: |
           echo "=== seed authorization catalog ==="
-          bunx tsx scripts/seed-authorization-catalog.ts 2>&1 | tee seed_auth.log || echo "seed_auth: exit $?"
+          bunx tsx scripts/seed-authorization-catalog.ts 2>&1 | tee seed_auth.log
 
       - name: Create demo users (for integration tests)
         run: |
           echo "=== create demo users ==="
           node scripts/create-demo-users.js 2>&1 | tee demo_users.log
 
-      - name: Static check — git diff --check
+      - name: Static check — git diff --check (release range ee75164..RELEASE_SHA)
         run: |
-          echo "=== git diff --check (whitespace/conflict) ==="
-          git diff --check 2>&1 | tee git_diff_check.log
-          echo "git diff --check exit: $?"
+          echo "=== git diff --check $B4_BASELINE_SHA..$RELEASE_SHA ==="
+          git diff --check "$B4_BASELINE_SHA..$RELEASE_SHA" 2>&1 | tee git_diff_check.log
+          DIFF_EXIT=$?
+          echo "git diff --check exit: $DIFF_EXIT"
+          if [ $DIFF_EXIT -ne 0 ]; then
+            echo "FAIL: whitespace/conflict markers found in release diff"
+            echo "GIT_DIFF_CHECK=FAIL" >> $GITHUB_ENV
+          else
+            echo "PASS: clean"
+            echo "GIT_DIFF_CHECK=PASS" >> $GITHUB_ENV
+          fi
 
-      - name: Static check — targeted ESLint
+      - name: Static check — targeted ESLint (changed files since baseline)
+        # continue-on-error so logs still generate; final gate enforces.
+        continue-on-error: true
         run: |
-          echo "=== ESLint on changed files (since ee75164) ==="
-          CHANGED=$(git diff --name-only ee75164..HEAD -- 'src/**/*.ts' 'src/**/*.tsx' | grep -v '\.test\.' || true)
+          echo "=== ESLint on changed files ($B4_BASELINE_SHA..$RELEASE_SHA) ==="
+          CHANGED=$(git diff --name-only "$B4_BASELINE_SHA..$RELEASE_SHA" -- 'src/**/*.ts' 'src/**/*.tsx' | grep -v '\.test\.' || true)
           echo "Changed files to lint:"
           echo "$CHANGED"
           if [ -n "$CHANGED" ]; then
-            bunx eslint $CHANGED 2>&1 | tee eslint.log || echo "eslint found issues (exit $?)"
+            bunx eslint $CHANGED 2>&1 | tee eslint.log
+            ESLINT_EXIT=${PIPESTATUS[0]}
+            echo "ESLint exit: $ESLINT_EXIT"
+            if [ $ESLINT_EXIT -ne 0 ]; then
+              echo "ESLINT_CHECK=FAIL" >> $GITHUB_ENV
+            else
+              echo "ESLINT_CHECK=PASS" >> $GITHUB_ENV
+            fi
           else
             echo "No changed TS/TSX files to lint" | tee eslint.log
+            echo "ESLINT_CHECK=PASS" >> $GITHUB_ENV
           fi
 
-      - name: Static check — TypeScript (changed files)
+      - name: Static check — TypeScript (changed files since baseline)
+        # continue-on-error so logs still generate; final gate enforces.
+        continue-on-error: true
         run: |
           echo "=== tsc --noEmit (full project) ==="
-          bunx tsc --noEmit 2>&1 | tee tsc_full.log || true
-          TOTAL=$(grep -c "error TS" tsc_full.log || echo "0")
+          bunx tsc --noEmit 2>&1 | tee tsc_full.log
+          TSC_EXIT=${PIPESTATUS[0]}
+          echo "tsc exit: $TSC_EXIT"
+          TOTAL=$(grep -c "error TS" tsc_full.log || true)
+          TOTAL=${TOTAL:-0}
           echo "Total tsc errors: $TOTAL"
-          echo "=== tsc errors in changed files (since ee75164) ==="
-          CHANGED=$(git diff --name-only ee75164..HEAD -- 'src/**/*.ts' 'src/**/*.tsx' | tr '\n' '|' | sed 's/|$//')
+          echo "=== tsc errors in changed files ($B4_BASELINE_SHA..$RELEASE_SHA) ==="
+          CHANGED=$(git diff --name-only "$B4_BASELINE_SHA..$RELEASE_SHA" -- 'src/**/*.ts' 'src/**/*.tsx' | tr '\n' '|' | sed 's/|$//')
           if [ -n "$CHANGED" ]; then
-            grep -E "$CHANGED" tsc_full.log > tsc_changed.log || echo "0 tsc errors in changed files" > tsc_changed.log
+            grep -E "$CHANGED" tsc_full.log > tsc_changed.log 2>/dev/null || true
+            CHANGED_ERRS=$(wc -l < tsc_changed.log 2>/dev/null || echo 0)
+            CHANGED_ERRS=$(echo $CHANGED_ERRS | tr -d '[:space:]')
+            echo "tsc errors in changed files: $CHANGED_ERRS"
+            echo "TSC_CHANGED_ERRORS=$CHANGED_ERRS" >> $GITHUB_ENV
+            if [ "$CHANGED_ERRS" -gt 0 ]; then
+              echo "TSC_CHECK=FAIL" >> $GITHUB_ENV
+            else
+              echo "TSC_CHECK=PASS" >> $GITHUB_ENV
+            fi
           else
             echo "0 changed files" > tsc_changed.log
+            echo "TSC_CHANGED_ERRORS=0" >> $GITHUB_ENV
+            echo "TSC_CHECK=PASS" >> $GITHUB_ENV
           fi
           cat tsc_changed.log
 
-      - name: B4 regression — authorization matrix (88 assertions)
+      - name: Start dev server (port 3000) for test:integration + test:concurrency
+        # Blocker fix: start the server BEFORE both HTTP-based test suites.
+        # test:auth is unit-style (direct DB) and does not need the server,
+        # but starting it earlier is harmless and keeps the order simple.
         run: |
-          echo "=== test:auth (authorization-matrix) ==="
-          bun run test:auth 2>&1 | tee test_auth.log
-          echo "test:auth exit: $?"
-
-      - name: B4 regression — route integration (33 assertions)
-        run: |
-          echo "=== test:integration (route-integration) ==="
-          bun run test:integration 2>&1 | tee test_integration.log
-          echo "test:integration exit: $?"
-
-      - name: Start dev server for concurrency test (port 3000)
-        run: |
-          echo "=== start dev server on port 3000 for concurrency test ==="
-          nohup bun next dev --webpack -p 3000 > /tmp/next-conc.log 2>&1 &
-          echo $! > /tmp/next-conc.pid
-          for i in $(seq 1 60); do
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ 2>/dev/null | grep -q "200"; then
-              echo "dev server ready after ${i}s"
+          echo "=== start dev server on port 3000 ==="
+          nohup bun next dev --webpack -p 3000 > /tmp/next-dev.log 2>&1 &
+          echo $! > /tmp/next-dev.pid
+          for i in $(seq 1 90); do
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/ 2>/dev/null || echo "000")
+            if [ "$CODE" = "200" ]; then
+              echo "dev server ready after ${i}s (HTTP $CODE)"
               break
+            fi
+            if [ $i -eq 90 ]; then
+              echo "ERROR: dev server did not become ready in 180s"
+              echo "=== last 30 lines of dev log ==="
+              tail -30 /tmp/next-dev.log
+              exit 1
             fi
             sleep 2
           done
-          curl -s -o /dev/null http://localhost:3000/ --max-time 60
-          curl -s -o /dev/null -X POST -H "Content-Type: application/json" -d '{"username":"demo_admin","password":"demo123"}' http://localhost:3000/api/itam/auth/login --max-time 60
+          # Warm the routes the tests will hit (compiles them ahead of time).
+          curl -s -o /dev/null http://localhost:3000/ --max-time 90
+          curl -s -o /dev/null -X POST -H "Content-Type: application/json" \
+            -d '{"username":"demo_admin","password":"demo123"}' \
+            http://localhost:3000/api/itam/auth/login --max-time 90
+          echo "=== dev server warmed ==="
+
+      - name: B4 regression — authorization matrix (88 assertions)
+        env:
+          API_BASE_URL: http://localhost:3000
+        # continue-on-error so downstream logs still generate.
+        continue-on-error: true
+        run: |
+          echo "=== test:auth (authorization-matrix) ==="
+          bun run test:auth 2>&1 | tee test_auth.log
+          EXIT=${PIPESTATUS[0]}
+          echo "test:auth exit: $EXIT"
+          if [ $EXIT -eq 0 ]; then
+            echo "TEST_AUTH=PASS" >> $GITHUB_ENV
+          else
+            echo "TEST_AUTH=FAIL" >> $GITHUB_ENV
+          fi
+
+      - name: B4 regression — route integration (33 assertions)
+        env:
+          API_BASE_URL: http://localhost:3000
+        continue-on-error: true
+        run: |
+          echo "=== test:integration (route-integration) ==="
+          bun run test:integration 2>&1 | tee test_integration.log
+          EXIT=${PIPESTATUS[0]}
+          echo "test:integration exit: $EXIT"
+          if [ $EXIT -eq 0 ]; then
+            echo "TEST_INTEGRATION=PASS" >> $GITHUB_ENV
+          else
+            echo "TEST_INTEGRATION=FAIL" >> $GITHUB_ENV
+          fi
 
       - name: B4 regression — concurrency (27 tests, P2034 + retry)
         env:
           PGTEST_FORCE_POSTGRES: "1"
           API_BASE_URL: http://localhost:3000
+        continue-on-error: true
         run: |
           echo "=== test:concurrency (P2034 + retry + audit rollback) ==="
           bun run test:concurrency 2>&1 | tee test_concurrency.log
-          echo "test:concurrency exit: $?"
+          EXIT=${PIPESTATUS[0]}
+          echo "test:concurrency exit: $EXIT"
+          if [ $EXIT -eq 0 ]; then
+            echo "TEST_CONCURRENCY=PASS" >> $GITHUB_ENV
+          else
+            echo "TEST_CONCURRENCY=FAIL" >> $GITHUB_ENV
+          fi
 
       - name: Stop dev server
         if: always()
         run: |
-          if [ -f /tmp/next-conc.pid ]; then
-            kill $(cat /tmp/next-conc.pid) 2>/dev/null || true
+          if [ -f /tmp/next-dev.pid ]; then
+            kill $(cat /tmp/next-dev.pid) 2>/dev/null || true
           fi
 
-      - name: Verify PostgreSQL tests not skipped
+      - name: Verify PostgreSQL tests not skipped (direct check)
+        # High fix: check "Database: PostgreSQL" AND "Skipped: 0" directly.
+        # The previous grep "⊘ P2034" matched the valid test-3 log line
+        # ("⊘ P2034 requires PostgreSQL" only prints when isPG=false; when
+        # isPG=true the test RUNS and prints "✓ P2034 verified"). So the
+        # old grep produced false positives. Now we require BOTH:
+        #   (a) the test detected PostgreSQL (isPG=true), AND
+        #   (b) the final "Skipped: N" line shows N=0.
         run: |
-          echo "=== check for skipped PostgreSQL tests ==="
-          if grep -qiE "skip.*postgres|postgres.*skip|SKIP.*PG|PG.*SKIP|⊘.*P2034|⊘.*PostgreSQL" test_concurrency.log test_auth.log test_integration.log; then
-            echo "WARNING: found skip patterns mentioning postgres:"
-            grep -iE "skip.*postgres|postgres.*skip|SKIP.*PG|PG.*SKIP|⊘.*P2034|⊘.*PostgreSQL" test_concurrency.log test_auth.log test_integration.log
-            echo "SKIPPED_POSTGRES_TESTS=1" >> $GITHUB_ENV
+          echo "=== check 1: did concurrency test detect PostgreSQL? ==="
+          if grep -q "Database: PostgreSQL" test_concurrency.log; then
+            echo "PASS: isPG=true (PostgreSQL detected by test harness)"
+            echo "IS_PG_DETECTED=true" >> $GITHUB_ENV
           else
-            echo "OK: no PostgreSQL tests skipped"
-            echo "SKIPPED_POSTGRES_TESTS=0" >> $GITHUB_ENV
+            echo "FAIL: test did not detect PostgreSQL (isPG=false → tests skipped)"
+            grep -i "Database:" test_concurrency.log || echo "(no Database: line found)"
+            echo "IS_PG_DETECTED=false" >> $GITHUB_ENV
           fi
-          echo "=== also verify isPG=true was detected ==="
-          grep -i "Database: PostgreSQL" test_concurrency.log && echo "isPG=true confirmed" || echo "WARNING: isPG not detected as PostgreSQL"
+          echo ""
+          echo "=== check 2: Skipped count in concurrency test ==="
+          SKIPPED_LINE=$(grep -E "^Skipped: [0-9]+" test_concurrency.log || true)
+          echo "Skipped line: $SKIPPED_LINE"
+          if [ -n "$SKIPPED_LINE" ]; then
+            SKIPPED_COUNT=$(echo "$SKIPPED_LINE" | grep -oE "[0-9]+" | head -1)
+            echo "Skipped count: $SKIPPED_COUNT"
+            if [ "$SKIPPED_COUNT" = "0" ]; then
+              echo "PASS: Skipped: 0 (no PostgreSQL tests skipped)"
+              echo "SKIPPED_POSTGRES_TESTS=0" >> $GITHUB_ENV
+            else
+              echo "FAIL: $SKIPPED_COUNT tests were skipped"
+              echo "SKIPPED_POSTGRES_TESTS=$SKIPPED_COUNT" >> $GITHUB_ENV
+            fi
+          else
+            echo "WARN: could not find 'Skipped: N' line — checking for skip markers"
+            if grep -qE "⊘.*\(skipped\)" test_concurrency.log; then
+              SKIP_COUNT=$(grep -cE "⊘.*\(skipped\)" test_concurrency.log)
+              echo "FAIL: found $SKIP_COUNT skip markers"
+              echo "SKIPPED_POSTGRES_TESTS=$SKIP_COUNT" >> $GITHUB_ENV
+            else
+              echo "PASS: no skip markers found"
+              echo "SKIPPED_POSTGRES_TESTS=0" >> $GITHUB_ENV
+            fi
+          fi
+
+      - name: Strict gate — P2034 evidence (totalP2034 > 0 AND totalAttempts > successCount)
+        # High fix: enforce release criteria. Previous workflow only logged
+        # the numbers; this step FAILS the workflow if the evidence is
+        # incomplete, so the audit team can trust a green run.
+        continue-on-error: true
+        run: |
+          echo "=== extract P2034 evidence from test_concurrency.log ==="
+          # The test logs lines like:
+          #   "    totalAttempts=3, totalP2034=1"
+          #   "    success=2, p2034=1, versionConflict=0, other=0"
+          TOTAL_P2034=$(grep -oE "totalP2034=[0-9]+" test_concurrency.log | grep -oE "[0-9]+" | head -1)
+          TOTAL_ATTEMPTS=$(grep -oE "totalAttempts=[0-9]+" test_concurrency.log | grep -oE "[0-9]+" | head -1)
+          SUCCESS_COUNT=$(grep -oE "success=[0-9]+" test_concurrency.log | grep -oE "[0-9]+" | head -1)
+          echo "totalP2034 = ${TOTAL_P2034:-not found}"
+          echo "totalAttempts = ${TOTAL_ATTEMPTS:-not found}"
+          echo "successCount = ${SUCCESS_COUNT:-not found}"
+          echo "TOTAL_P2034=${TOTAL_P2034:-none}" >> $GITHUB_ENV
+          echo "TOTAL_ATTEMPTS=${TOTAL_ATTEMPTS:-none}" >> $GITHUB_ENV
+          echo "SUCCESS_COUNT=${SUCCESS_COUNT:-none}" >> $GITHUB_ENV
+          P2034_GATE=PASS
+          if [ -z "$TOTAL_P2034" ] || [ "$TOTAL_P2034" -le 0 ]; then
+            echo "FAIL: totalP2034 must be > 0 (got ${TOTAL_P2034:-none})"
+            P2034_GATE=FAIL
+          fi
+          if [ -z "$TOTAL_ATTEMPTS" ] || [ -z "$SUCCESS_COUNT" ] || [ "$TOTAL_ATTEMPTS" -le "$SUCCESS_COUNT" ]; then
+            echo "FAIL: totalAttempts (${TOTAL_ATTEMPTS:-none}) must be > successCount (${SUCCESS_COUNT:-none})"
+            P2034_GATE=FAIL
+          fi
+          if [ "$P2034_GATE" = "PASS" ]; then
+            echo "PASS: P2034 evidence complete (totalP2034=$TOTAL_P2034, attempts=$TOTAL_ATTEMPTS > success=$SUCCESS_COUNT)"
+          fi
+          echo "P2034_GATE=$P2034_GATE" >> $GITHUB_ENV
+          # Do NOT exit 1 here — let the final gate decide so all logs
+          # still land in the artifact. The final gate step will fail.
 
       - name: Integration check 1 — POST /api/devices must not return 500
+        continue-on-error: true
         run: |
           echo "=== check 1: POST /api/devices (unauthenticated, must NOT be 500) ==="
-          nohup bun next dev --webpack -p 3001 > /tmp/next-dev.log 2>&1 &
-          NEXT_PID=$!
-          for i in $(seq 1 60); do
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3001/ 2>/dev/null | grep -q "200"; then break; fi
-            sleep 2
-          done
-          curl -s -o /dev/null http://localhost:3001/ --max-time 60
-          HTTP_CODE=$(curl -s -o /tmp/devices-resp.txt -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{"assetCode":"TEST-CHECK","name":"Test","brand":"b","model":"m","type":"COMPUTER","status":"Active","site":"UDH","displayLabel":"check"}' http://localhost:3001/api/devices)
+          # Reuse the already-running dev server on port 3000 (started earlier).
+          # Warm the devices route.
+          curl -s -o /dev/null http://localhost:3000/api/devices --max-time 60 || true
+          HTTP_CODE=$(curl -s -o /tmp/devices-resp.txt -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{"assetCode":"TEST-CHECK","name":"Test","brand":"b","model":"m","type":"COMPUTER","status":"Active","site":"UDH","displayLabel":"check"}' http://localhost:3000/api/devices)
           echo "POST /api/devices HTTP code: $HTTP_CODE"
+          echo "$HTTP_CODE" > device_check_code.txt
           if [ "$HTTP_CODE" = "500" ]; then
             echo "FAIL: got 500"
             echo "DEVICE_CHECK=FAIL" >> $GITHUB_ENV
@@ -225,21 +380,15 @@ jobs:
             echo "PASS: not 500 (got $HTTP_CODE — expected 401)"
             echo "DEVICE_CHECK=PASS" >> $GITHUB_ENV
           fi
-          kill $NEXT_PID 2>/dev/null || true
-          echo "$HTTP_CODE" > device_check_code.txt
 
       - name: Integration check 2 — unauthenticated print must return 401
+        continue-on-error: true
         run: |
           echo "=== check 2: GET /api/work-orders/test-id/print (unauthenticated, must be 401) ==="
-          nohup bun next dev --webpack -p 3002 > /tmp/next-dev2.log 2>&1 &
-          NEXT_PID=$!
-          for i in $(seq 1 60); do
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3002/ 2>/dev/null | grep -q "200"; then break; fi
-            sleep 2
-          done
-          curl -s -o /dev/null http://localhost:3002/ --max-time 60
-          HTTP_CODE=$(curl -s -o /tmp/print-resp.html -w "%{http_code}" http://localhost:3002/api/work-orders/test-id/print)
+          curl -s -o /dev/null http://localhost:3000/ --max-time 30 || true
+          HTTP_CODE=$(curl -s -o /tmp/print-resp.html -w "%{http_code}" http://localhost:3000/api/work-orders/test-id/print)
           echo "GET /api/work-orders/test-id/print HTTP code: $HTTP_CODE"
+          echo "$HTTP_CODE" > print_check_code.txt
           if [ "$HTTP_CODE" = "401" ]; then
             echo "PASS: got 401 (contract met)"
             echo "PRINT_CHECK=PASS" >> $GITHUB_ENV
@@ -247,87 +396,126 @@ jobs:
             echo "FAIL: expected 401, got $HTTP_CODE"
             echo "PRINT_CHECK=FAIL" >> $GITHUB_ENV
           fi
-          kill $NEXT_PID 2>/dev/null || true
-          echo "$HTTP_CODE" > print_check_code.txt
 
       - name: Integration check 3 — login must not produce prisma:error
+        continue-on-error: true
         run: |
           echo "=== check 3: login flow, check for prisma:error ==="
-          nohup bun next dev --webpack -p 3003 > /tmp/next-dev3.log 2>&1 &
-          NEXT_PID=$!
-          for i in $(seq 1 60); do
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3003/ 2>/dev/null | grep -q "200"; then break; fi
-            sleep 2
-          done
-          curl -s -o /dev/null http://localhost:3003/ --max-time 60
-          LOGIN_RESP=$(curl -s -X POST -H "Content-Type: application/json" -d '{"username":"demo_admin","password":"demo123"}' http://localhost:3003/api/itam/auth/login)
-          echo "Login response (first 200 chars): ${LOGIN_RESP:0:200}"
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{"username":"demo_admin","password":"demo123"}' http://localhost:3003/api/itam/auth/login)
+          LOGIN_RESP=$(curl -s -X POST -H "Content-Type: application/json" -d '{"username":"demo_admin","password":"demo123"}' http://localhost:3000/api/itam/auth/login)
+          echo "Login response (first 200 chars): ${LOGIN_RESP:0,200}"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{"username":"demo_admin","password":"demo123"}' http://localhost:3000/api/itam/auth/login)
           echo "Login HTTP code: $HTTP_CODE"
+          echo "$HTTP_CODE" > login_check_code.txt
           sleep 2
-          if grep -q "prisma:error" /tmp/next-dev3.log; then
-            echo "FAIL: found prisma:error in log"
-            grep -A3 "prisma:error" /tmp/next-dev3.log | head -10
+          # Copy the dev log (accumulated since start) for the artifact.
+          cp /tmp/next-dev.log login_dev.log
+          if grep -q "prisma:error" login_dev.log; then
+            echo "FAIL: found prisma:error in dev log"
+            grep -A3 "prisma:error" login_dev.log | head -10
             echo "LOGIN_CHECK=FAIL" >> $GITHUB_ENV
           else
-            echo "PASS: no prisma:error in log"
+            echo "PASS: no prisma:error in dev log"
             echo "LOGIN_CHECK=PASS" >> $GITHUB_ENV
           fi
-          kill $NEXT_PID 2>/dev/null || true
-          echo "$HTTP_CODE" > login_check_code.txt
-          cp /tmp/next-dev3.log login_dev.log
+
+      - name: Final gate — all release criteria must pass
+        # This is the single decision point. If any criterion failed,
+        # this step exits 1 and the workflow is marked failed — but all
+        # previous steps already wrote their logs (continue-on-error),
+        # so the artifact is still complete for audit review.
+        run: |
+          echo "=== Final gate: release criteria check ==="
+          PASS_ALL=true
+          check() {
+            local name="$1"
+            local val="$2"
+            if [ "$val" = "PASS" ] || [ "$val" = "0" ] || [ "$val" = "true" ]; then
+              echo "  ✓ $name = $val"
+            else
+              echo "  ✗ $name = $val"
+              PASS_ALL=false
+            fi
+          }
+          check "GIT_DIFF_CHECK"    "${GIT_DIFF_CHECK:-MISSING}"
+          check "ESLINT_CHECK"      "${ESLINT_CHECK:-MISSING}"
+          check "TSC_CHECK"         "${TSC_CHECK:-MISSING}"
+          check "TEST_AUTH"         "${TEST_AUTH:-MISSING}"
+          check "TEST_INTEGRATION"  "${TEST_INTEGRATION:-MISSING}"
+          check "TEST_CONCURRENCY"  "${TEST_CONCURRENCY:-MISSING}"
+          check "IS_PG_DETECTED"    "${IS_PG_DETECTED:-MISSING}"
+          check "SKIPPED_POSTGRES_TESTS" "${SKIPPED_POSTGRES_TESTS:-MISSING}"
+          check "P2034_GATE"        "${P2034_GATE:-MISSING}"
+          check "DEVICE_CHECK"      "${DEVICE_CHECK:-MISSING}"
+          check "PRINT_CHECK"       "${PRINT_CHECK:-MISSING}"
+          check "LOGIN_CHECK"       "${LOGIN_CHECK:-MISSING}"
+          echo ""
+          if [ "$PASS_ALL" = "true" ]; then
+            echo "=== ALL CRITERIA PASS — release candidate meets evidence requirements ==="
+            echo "FINAL_VERDICT=CONDITIONAL_GO" >> $GITHUB_ENV
+          else
+            echo "=== ONE OR MORE CRITERIA FAILED — see above ==="
+            echo "FINAL_VERDICT=CONDITIONAL_STAGING_ONLY" >> $GITHUB_ENV
+            exit 1
+          fi
 
       - name: Generate summary report
         if: always()
         run: |
+          PG_VER=$(cat pg_version_short.txt 2>/dev/null || echo "unknown")
           cat > VERIFICATION_SUMMARY.md <<SUMMARY
           # PostgreSQL Verification Summary
 
-          **Commit SHA:** ${{ github.event.inputs.commit_sha }}
+          **Commit SHA (verified):** $RELEASE_SHA
           **Verified SHA:** $(git rev-parse HEAD)
           **Run URL:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          **PostgreSQL version:** $(cat pg_version_short.txt 2>/dev/null || head -3 pg_version.txt | tail -1)
+          **PostgreSQL version:** $PG_VER
           **Date:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          ## B4 Regression Results
+          ## Release Criteria (Final Gate)
 
-          | Test suite | Result |
-          |---|---|
-          | authorization-matrix (88 assertions) | $(grep -qiE "passed.*88|88.*passed|All.*passed" test_auth.log && echo "PASS" || echo "CHECK LOG") |
-          | route-integration (33 assertions) | $(grep -qiE "passed.*33|33.*passed|All.*passed" test_integration.log && echo "PASS" || echo "CHECK LOG") |
-          | concurrency (27 tests, P2034 + retry) | $(grep -qiE "passed.*2[0-9]|2[0-9].*passed" test_concurrency.log && echo "PASS" || echo "CHECK LOG") |
-
-          ## P2034 / Retry Evidence
-
-          \`\`\`
-          $(grep -iE "p2034|totalP2034|totalAttempts|successCount|retry|attempts" test_concurrency.log 2>/dev/null | head -20)
-          \`\`\`
-
-          ## PostgreSQL Tests Skipped Check
-
-          - SKIPPED_POSTGRES_TESTS = ${SKIPPED_POSTGRES_TESTS:-unknown}
-          - isPG detection: $(grep -i "Database:" test_concurrency.log || echo "not found in log")
-          - (SKIPPED_POSTGRES_TESTS must be 0 for GO)
-
-          ## Integration Checks
-
-          | # | Check | Expected | Actual | Result |
+          | # | Criterion | Expected | Actual | Result |
           |---|---|---|---|---|
-          | 1 | POST /api/devices (unauth) | not 500 | $(cat device_check_code.txt 2>/dev/null) | ${DEVICE_CHECK:-UNKNOWN} |
-          | 2 | GET /api/work-orders/test-id/print (unauth) | 401 | $(cat print_check_code.txt 2>/dev/null) | ${PRINT_CHECK:-UNKNOWN} |
-          | 3 | login no prisma:error | no prisma:error | see login_dev.log | ${LOGIN_CHECK:-UNKNOWN} |
+          | 1 | git diff --check (ee75164..RELEASE) | clean | — | ${GIT_DIFF_CHECK:-MISSING} |
+          | 2 | ESLint (changed files) | 0 errors | — | ${ESLINT_CHECK:-MISSING} |
+          | 3 | tsc (changed files) | 0 new errors | ${TSC_CHANGED_ERRORS:-?} errors | ${TSC_CHECK:-MISSING} |
+          | 4 | test:auth (88 assertions) | pass | — | ${TEST_AUTH:-MISSING} |
+          | 5 | test:integration (33 assertions) | pass | — | ${TEST_INTEGRATION:-MISSING} |
+          | 6 | test:concurrency (27 tests) | pass | — | ${TEST_CONCURRENCY:-MISSING} |
+          | 7 | PostgreSQL detected (isPG) | true | — | ${IS_PG_DETECTED:-MISSING} |
+          | 8 | PostgreSQL tests skipped | 0 | ${SKIPPED_POSTGRES_TESTS:-?} | $([ "${SKIPPED_POSTGRES_TESTS:-1}" = "0" ] && echo PASS || echo FAIL) |
+          | 9 | totalP2034 > 0 | >0 | ${TOTAL_P2034:-none} | $([ "${P2034_GATE:-FAIL}" = "PASS" ] && echo PASS || echo FAIL) |
+          | 10 | totalAttempts > successCount | true | attempts=${TOTAL_ATTEMPTS:-?} > success=${SUCCESS_COUNT:-?} | $([ "${P2034_GATE:-FAIL}" = "PASS" ] && echo PASS || echo FAIL) |
+          | 11 | POST /api/devices (unauth) | not 500 | $(cat device_check_code.txt 2>/dev/null) | ${DEVICE_CHECK:-MISSING} |
+          | 12 | GET print (unauth) | 401 | $(cat print_check_code.txt 2>/dev/null) | ${PRINT_CHECK:-MISSING} |
+          | 13 | login no prisma:error | no prisma:error | see login_dev.log | ${LOGIN_CHECK:-MISSING} |
+
+          ## P2034 / Retry Evidence (from test_concurrency.log)
+
+          \`\`\`
+          $(grep -iE "totalP2034|totalAttempts|success=|p2034=|P2034 verified|attempts" test_concurrency.log 2>/dev/null | head -20)
+          \`\`\`
+
+          ## PostgreSQL Detection
+
+          \`\`\`
+          $(grep -i "Database:" test_concurrency.log 2>/dev/null)
+          $(grep -E "^Skipped: " test_concurrency.log 2>/dev/null)
+          \`\`\`
 
           ## Static Verification
 
           | Check | Result |
           |---|---|
-          | git diff --check | $(grep -q "" git_diff_check.log 2>/dev/null && echo "issues found" || echo "clean") |
-          | ESLint (changed files) | $(grep -qiE "error|warning" eslint.log 2>/dev/null && echo "issues" || echo "clean") |
-          | tsc errors in changed files | $(wc -l < tsc_changed.log 2>/dev/null || echo 0) |
+          | git diff --check | ${GIT_DIFF_CHECK:-MISSING} |
+          | ESLint (changed files) | ${ESLINT_CHECK:-MISSING} |
+          | tsc errors in changed files | ${TSC_CHANGED_ERRORS:-?} |
 
           ## Overall Verdict
 
-          $(if [ "${SKIPPED_POSTGRES_TESTS:-1}" = "0" ] && [ "${DEVICE_CHECK:-}" = "PASS" ] && [ "${PRINT_CHECK:-}" = "PASS" ] && [ "${LOGIN_CHECK:-}" = "PASS" ]; then echo "**CONDITIONAL GO** — all checks pass, audit team to confirm"; else echo "**CONDITIONAL STAGING ONLY** — see failures above"; fi)
+          ${FINAL_VERDICT:-UNKNOWN}
+
+          - If **CONDITIONAL_GO**: all release criteria pass — audit team to confirm GO for production.
+          - If **CONDITIONAL_STAGING_ONLY**: one or more criteria failed — see table above.
 
           SUMMARY
           cat VERIFICATION_SUMMARY.md
@@ -355,10 +543,10 @@ jobs:
           cp login_check_code.txt evidence-package/ 2>/dev/null || true
           cp login_dev.log evidence-package/ 2>/dev/null || true
           git rev-parse HEAD > evidence-package/COMMIT_SHA.txt
+          echo "$RELEASE_SHA" > evidence-package/EXPECTED_SHA.txt
           echo "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" > evidence-package/CI_URL.txt
-          SHA="${{ github.event.inputs.commit_sha }}"
-          tar -czf itam-postgres-verification-${SHA}.tgz evidence-package/
-          sha256sum itam-postgres-verification-${SHA}.tgz > itam-postgres-verification-${SHA}.tgz.sha256
+          tar -czf "itam-postgres-verification-${RELEASE_SHA}.tgz" evidence-package/
+          sha256sum "itam-postgres-verification-${RELEASE_SHA}.tgz" > "itam-postgres-verification-${RELEASE_SHA}.tgz.sha256"
           echo "=== artifact ==="
           ls -la itam-postgres-verification-*.tgz*
           echo "=== SHA-256 ==="
@@ -368,7 +556,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: itam-postgres-verification-${{ github.event.inputs.commit_sha }}
+          name: itam-postgres-verification-${{ env.RELEASE_SHA }}
           path: |
             itam-postgres-verification-*.tgz
             itam-postgres-verification-*.tgz.sha256
