@@ -1,0 +1,440 @@
+// ============================================================
+// Sync Adapter — Server-side Pull from Legacy Apps Script
+// ============================================================
+// ดึงข้อมูลจาก Apps Script Web App ฝั่ง server เท่านั้น
+// Browser ไม่เห็น credential ใดๆ
+//
+// Reuse: FIELD_MAPPINGS.workOrder + STATUS_MAPPINGS.workOrder
+// จาก src/lib/csv-field-mapping.ts
+// ============================================================
+
+import { FIELD_MAPPINGS, STATUS_MAPPINGS, normalizeKey } from '@/lib/csv-field-mapping'
+
+// ── Types ─────────────────────────────────────────────────────
+
+export interface SyncSourceRecord {
+  [key: string]: unknown
+}
+
+export interface SyncAdapterResult {
+  records: SyncSourceRecord[]
+  metadata: {
+    totalFetched: number
+    unmappedColumns: string[]
+    cursor?: string
+  }
+}
+
+export interface SiteMappingResult {
+  siteCode: string | null
+  reason: 'mapped' | 'missing' | 'unknown'
+}
+
+// ── Constants ─────────────────────────────────────────────────
+
+const SYNC_SOURCE_TIMEOUT_MS = Number(process.env.SYNC_SOURCE_TIMEOUT_MS) || 30000
+const SYNC_SOURCE_MAX_RETRIES = Number(process.env.SYNC_SOURCE_MAX_RETRIES) || 3
+const SYNC_PREVIEW_MAX_ROWS = Number(process.env.SYNC_PREVIEW_MAX_ROWS) || 1000
+
+// ── Site allowlist (versioned, server-side) ───────────────────
+// In production this should be loaded from DB or config.
+// For MVP, derive from known Site codes in the system.
+
+function getSiteAllowlist(): Set<string> {
+  // TODO: Load from DB Site table in production
+  // For now, return empty set — all sites will be derived from source data
+  return new Set<string>()
+}
+
+// ── Redaction allowlist ───────────────────────────────────────
+// Only fields in FIELD_MAPPINGS.workOrder + siteCode + status
+// are kept. Everything else is stripped.
+
+function getRedactionAllowlist(): Set<string> {
+  const allowlist = new Set<string>()
+  for (const prismaField of Object.values(FIELD_MAPPINGS.workOrder)) {
+    allowlist.add(prismaField)
+  }
+  allowlist.add('siteCode')
+  allowlist.add('site')
+  allowlist.add('status')
+  return allowlist
+}
+
+/**
+ * Redact an object: keep only allowlisted keys, strip PII/credentials.
+ */
+export function redacted(obj: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  if (!obj) return null
+  const allowlist = getRedactionAllowlist()
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(obj)) {
+    if (allowlist.has(key)) {
+      result[key] = value
+    }
+  }
+  return result
+}
+
+// ── Site mapping (fail-closed) ────────────────────────────────
+
+/**
+ * Derive canonical siteCode from a source record.
+ * - If source has siteCode field → use it
+ * - If source has site field → map via allowlist
+ * - Missing/unknown → null (caller must quarantine)
+ */
+export function deriveSiteCode(record: SyncSourceRecord): SiteMappingResult {
+  // Direct siteCode from source
+  if (record.siteCode && typeof record.siteCode === 'string') {
+    const code = record.siteCode.trim()
+    if (code) return { siteCode: code, reason: 'mapped' }
+  }
+
+  // Derive from site field
+  if (record.site && typeof record.site === 'string') {
+    const site = record.site.trim()
+    if (!site) return { siteCode: null, reason: 'missing' }
+
+    const allowlist = getSiteAllowlist()
+    if (allowlist.size === 0) {
+      // No allowlist configured — accept site as-is but flag as mapped
+      return { siteCode: site, reason: 'mapped' }
+    }
+
+    if (allowlist.has(site)) {
+      return { siteCode: site, reason: 'mapped' }
+    }
+
+    return { siteCode: null, reason: 'unknown' }
+  }
+
+  return { siteCode: null, reason: 'missing' }
+}
+
+// ── Apps Script Web App adapter ───────────────────────────────
+
+interface AppsScriptResponse {
+  records?: SyncSourceRecord[]
+  metadata?: {
+    total?: number
+    cursor?: string
+    [key: string]: unknown
+  }
+  error?: string
+}
+
+/**
+ * Fetch records from Apps Script Web App endpoint.
+ * Uses server-side credential only — never exposed to browser.
+ */
+export async function fetchFromAppsScript(options: {
+  source: string
+  since?: string
+  siteFilter?: string
+  limit?: number
+  cursor?: string
+}): Promise<SyncAdapterResult> {
+  const { source, since, siteFilter, limit, cursor } = options
+
+  // Get source URL and token from environment
+  const urlEnvKey = `APPS_SCRIPT_${source.toUpperCase().replace(/-/g, '_')}_URL`
+  const tokenEnvKey = `APPS_SCRIPT_${source.toUpperCase().replace(/-/g, '_')}_TOKEN`
+
+  const baseUrl = process.env[urlEnvKey]
+  const token = process.env[tokenEnvKey]
+
+  if (!baseUrl) {
+    throw new Error(`Source URL not configured: ${urlEnvKey}`)
+  }
+  if (!token) {
+    throw new Error(`Source token not configured: ${tokenEnvKey}`)
+  }
+
+  // Build request URL with pagination
+  const requestUrl = new URL(baseUrl)
+  if (since) requestUrl.searchParams.set('since', since)
+  if (siteFilter) requestUrl.searchParams.set('site', siteFilter)
+  if (limit) requestUrl.searchParams.set('limit', String(Math.min(limit, SYNC_PREVIEW_MAX_ROWS)))
+  if (cursor) requestUrl.searchParams.set('cursor', cursor)
+
+  // Fetch with retry (source-level retry: 3 attempts, exponential backoff)
+  let lastError: Error | null = null
+  for (let attempt = 0; attempt < SYNC_SOURCE_MAX_RETRIES; attempt++) {
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), SYNC_SOURCE_TIMEOUT_MS)
+
+      const response = await fetch(requestUrl.toString(), {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ source, options: { since, siteFilter, limit, cursor } }),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeout)
+
+      if (!response.ok) {
+        throw new Error(`Source responded ${response.status}: ${response.statusText}`)
+      }
+
+      const data: AppsScriptResponse = await response.json()
+
+      if (data.error) {
+        throw new Error(`Source error: ${data.error}`)
+      }
+
+      const records = data.records || []
+      const unmappedColumns = detectUnmappedColumns(records)
+
+      return {
+        records: records.slice(0, SYNC_PREVIEW_MAX_ROWS),
+        metadata: {
+          totalFetched: records.length,
+          unmappedColumns,
+          cursor: data.metadata?.cursor,
+        },
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err))
+
+      if (attempt < SYNC_SOURCE_MAX_RETRIES - 1) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, attempt) * 1000
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+  }
+
+  throw lastError || new Error('Source fetch failed after retries')
+}
+
+// ── Field mapping ─────────────────────────────────────────────
+
+/**
+ * Map a source record to Prisma WorkOrder fields using FIELD_MAPPINGS.
+ * Returns mapped data and list of unmapped columns.
+ */
+export function mapSourceRecord(record: SyncSourceRecord): {
+  mapped: Record<string, unknown>
+  unmapped: string[]
+} {
+  const mapped: Record<string, unknown> = {}
+  const unmapped: string[] = []
+  const fieldMap = FIELD_MAPPINGS.workOrder as Record<string, string>
+  const statusMap = STATUS_MAPPINGS.workOrder as Record<string, string>
+
+  for (const [key, value] of Object.entries(record)) {
+    const normalizedKey = normalizeKey(key)
+
+    // Try exact match first, then normalized
+    const prismaField = fieldMap[key] || fieldMap[normalizedKey]
+
+    if (prismaField) {
+      // Special handling for status field
+      if (prismaField === 'status' && typeof value === 'string') {
+        mapped[prismaField] = statusMap[value] || statusMap[normalizeKey(value)] || value
+      } else {
+        mapped[prismaField] = value
+      }
+    } else {
+      unmapped.push(key)
+    }
+  }
+
+  return { mapped, unmapped }
+}
+
+/**
+ * Detect unmapped columns across all records.
+ */
+function detectUnmappedColumns(records: SyncSourceRecord[]): string[] {
+  if (records.length === 0) return []
+
+  const allKeys = new Set<string>()
+  for (const record of records) {
+    for (const key of Object.keys(record)) {
+      allKeys.add(key)
+    }
+  }
+
+  const fieldMap = FIELD_MAPPINGS.workOrder as Record<string, string>
+  const unmapped: string[] = []
+
+  for (const key of allKeys) {
+    const normalizedKey = normalizeKey(key)
+    if (!fieldMap[key] && !fieldMap[normalizedKey]) {
+      unmapped.push(key)
+    }
+  }
+
+  return unmapped
+}
+
+// ── Preview logic ─────────────────────────────────────────────
+
+export interface PreviewItem {
+  externalKey: string
+  action: 'create' | 'update' | 'skip' | 'error'
+  before: Record<string, unknown> | null
+  after: Record<string, unknown> | null
+  expectedVersion: number | null
+  expectedExists: boolean
+  siteCode: string | null
+  siteMappingReason: 'mapped' | 'missing' | 'unknown'
+  errorMessage?: string
+}
+
+/**
+ * Compute preview items by comparing source records against DB.
+ * Read-only — does NOT write to any business table.
+ */
+export async function computePreviewItems(
+  records: SyncSourceRecord[],
+  tx: {
+    workOrder: {
+      findUnique: (args: { where: { requestId: string }; select?: Record<string, unknown> }) => Promise<Record<string, unknown> | null>
+    }
+  },
+  siteScope?: string[],
+): Promise<PreviewItem[]> {
+  const items: PreviewItem[] = []
+
+  for (const record of records) {
+    const { mapped, unmapped } = mapSourceRecord(record)
+    const requestId = String(mapped.requestId || record.requestId || '')
+
+    if (!requestId) {
+      items.push({
+        externalKey: '(unknown)',
+        action: 'error',
+        before: null,
+        after: redacted(mapped),
+        expectedVersion: null,
+        expectedExists: false,
+        siteCode: null,
+        siteMappingReason: 'missing',
+        errorMessage: 'Missing requestId — cannot sync',
+      })
+      continue
+    }
+
+    // Site mapping (fail-closed)
+    const siteResult = deriveSiteCode(record)
+
+    if (siteResult.reason === 'missing') {
+      items.push({
+        externalKey: requestId,
+        action: 'error',
+        before: null,
+        after: redacted(mapped),
+        expectedVersion: null,
+        expectedExists: false,
+        siteCode: null,
+        siteMappingReason: 'missing',
+        errorMessage: 'MISSING_SITE: source record has no site/siteCode',
+      })
+      continue
+    }
+
+    if (siteResult.reason === 'unknown') {
+      items.push({
+        externalKey: requestId,
+        action: 'error',
+        before: null,
+        after: redacted(mapped),
+        expectedVersion: null,
+        expectedExists: false,
+        siteCode: null,
+        siteMappingReason: 'unknown',
+        errorMessage: 'UNKNOWN_SITE: site not in allowlist',
+      })
+      continue
+    }
+
+    // Per-item Site authorization check
+    if (siteScope && siteScope.length > 0 && siteResult.siteCode) {
+      if (!siteScope.includes(siteResult.siteCode)) {
+        items.push({
+          externalKey: requestId,
+          action: 'error',
+          before: null,
+          after: redacted(mapped),
+          expectedVersion: null,
+          expectedExists: false,
+          siteCode: siteResult.siteCode,
+          siteMappingReason: 'mapped',
+          errorMessage: `OUT_OF_SCOPE: site ${siteResult.siteCode} not in user scope`,
+        })
+        continue
+      }
+    }
+
+    // Look up existing record
+    const existing = await tx.workOrder.findUnique({
+      where: { requestId },
+      select: { id: true, version: true, requestId: true, subject: true, status: true, site: true },
+    })
+
+    if (!existing) {
+      // Create
+      items.push({
+        externalKey: requestId,
+        action: 'create',
+        before: null,
+        after: redacted(mapped),
+        expectedVersion: null,
+        expectedExists: false,
+        siteCode: siteResult.siteCode,
+        siteMappingReason: 'mapped',
+      })
+    } else {
+      // Check if changed
+      const isChanged = hasChanges(existing, mapped)
+
+      if (isChanged) {
+        items.push({
+          externalKey: requestId,
+          action: 'update',
+          before: redacted(existing as Record<string, unknown>),
+          after: redacted(mapped),
+          expectedVersion: (existing as Record<string, unknown>).version as number,
+          expectedExists: true,
+          siteCode: siteResult.siteCode,
+          siteMappingReason: 'mapped',
+        })
+      } else {
+        items.push({
+          externalKey: requestId,
+          action: 'skip',
+          before: redacted(existing as Record<string, unknown>),
+          after: redacted(mapped),
+          expectedVersion: (existing as Record<string, unknown>).version as number,
+          expectedExists: true,
+          siteCode: siteResult.siteCode,
+          siteMappingReason: 'mapped',
+        })
+      }
+    }
+  }
+
+  return items
+}
+
+/**
+ * Check if source data differs from existing record.
+ * Compares mapped fields only (not id, createdAt, updatedAt).
+ */
+function hasChanges(existing: Record<string, unknown>, mapped: Record<string, unknown>): boolean {
+  const skipFields = new Set(['id', 'createdAt', 'updatedAt', 'version'])
+
+  for (const [key, value] of Object.entries(mapped)) {
+    if (skipFields.has(key)) continue
+    if (existing[key] !== value) return true
+  }
+
+  return false
+}
