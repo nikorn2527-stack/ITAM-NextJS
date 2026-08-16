@@ -288,6 +288,20 @@ jobs:
           echo "New errors:      $((RELEASE_ERRORS - BASELINE_ERRORS))"
           echo "BASELINE_TSC_ERRORS=$BASELINE_ERRORS" >> $GITHUB_ENV
           echo "RELEASE_TSC_ERRORS=$RELEASE_ERRORS" >> $GITHUB_ENV
+          # F3 fix: write baseline/release counts to separate files in the
+          # artifact so audit can verify the comparison independently.
+          echo "$BASELINE_ERRORS" > BASELINE_TSC_ERRORS.txt
+          echo "$RELEASE_ERRORS" > RELEASE_TSC_ERRORS.txt
+          cat > TSC_COMPARISON.txt <<TSC
+          baseline_sha=$B4_BASELINE_SHA
+          baseline_tsc_errors=$BASELINE_ERRORS
+          release_sha=$RELEASE_SHA
+          release_tsc_errors=$RELEASE_ERRORS
+          new_errors=$((RELEASE_ERRORS - BASELINE_ERRORS))
+          policy=release_must_not_introduce_new_errors
+          result=$([ "$RELEASE_ERRORS" -le "$BASELINE_ERRORS" ] && echo PASS || echo FAIL)
+          TSC
+          cat TSC_COMPARISON.txt
           if [ "$RELEASE_ERRORS" -gt "$BASELINE_ERRORS" ]; then
             echo "FAIL: release introduces $((RELEASE_ERRORS - BASELINE_ERRORS)) new tsc errors"
             echo "TSC_CHECK=FAIL" >> $GITHUB_ENV
@@ -427,9 +441,12 @@ jobs:
         continue-on-error: true
         run: |
           echo "=== extract P2034 evidence from test_concurrency.log ==="
-          TOTAL_P2034=$(grep -oE "totalP2034=[0-9]+" test_concurrency.log | grep -oE "[0-9]+" | head -1)
-          TOTAL_ATTEMPTS=$(grep -oE "totalAttempts=[0-9]+" test_concurrency.log | grep -oE "[0-9]+" | head -1)
-          SUCCESS_COUNT=$(grep -oE "success=[0-9]+" test_concurrency.log | grep -oE "[0-9]+" | head -1)
+          # F2 fix: previous parser `grep -oE "[0-9]+" | head -1` extracted
+          # "2034" from "totalP2034=1" (the digits in the field NAME), not
+          # "1" (the value after =). Now use sed to extract the value after =.
+          TOTAL_P2034=$(grep -oE 'totalP2034=[0-9]+' test_concurrency.log | head -1 | sed -E 's/.*=([0-9]+)/\1/')
+          TOTAL_ATTEMPTS=$(grep -oE 'totalAttempts=[0-9]+' test_concurrency.log | head -1 | sed -E 's/.*=([0-9]+)/\1/')
+          SUCCESS_COUNT=$(grep -oE 'success=[0-9]+' test_concurrency.log | head -1 | sed -E 's/.*=([0-9]+)/\1/')
           echo "totalP2034 = ${TOTAL_P2034:-not found}"
           echo "totalAttempts = ${TOTAL_ATTEMPTS:-not found}"
           echo "successCount = ${SUCCESS_COUNT:-not found}"
@@ -509,13 +526,28 @@ jobs:
           LOG_SIZE_BEFORE=$(wc -c < /tmp/next-dev.log 2>/dev/null || echo 0)
           echo "dev log size before login: $LOG_SIZE_BEFORE bytes"
           LOGIN_RESP=$(curl -s -X POST -H "Content-Type: application/json" -d '{"username":"demo_admin","password":"demo123"}' http://localhost:3000/api/itam/auth/login)
-          echo "Login response (first 200 chars): ${LOGIN_RESP:0,200}"
+          echo "Login response (first 200 chars): ${LOGIN_RESP:0:200}"
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{"username":"demo_admin","password":"demo123"}' http://localhost:3000/api/itam/auth/login)
           echo "Login HTTP code: $HTTP_CODE"
           echo "$HTTP_CODE" > login_check_code.txt
           sleep 2
+          LOG_SIZE_AFTER=$(wc -c < /tmp/next-dev.log 2>/dev/null || echo 0)
+          echo "dev log size after login: $LOG_SIZE_AFTER bytes"
           # Extract only log lines produced AFTER the login request.
           tail -c +$((LOG_SIZE_BEFORE + 1)) /tmp/next-dev.log > login_only.log 2>/dev/null || cp /tmp/next-dev.log login_only.log
+          LOGIN_ONLY_SIZE=$(wc -c < login_only.log 2>/dev/null || echo 0)
+          # F4 fix: write metadata file so audit can verify the log window
+          # used for the LOGIN_CHECK grep.
+          cat > login_check_metadata.txt <<META
+          log_size_before_login=$LOG_SIZE_BEFORE
+          log_size_after_login=$LOG_SIZE_AFTER
+          login_only_log_size=$LOGIN_ONLY_SIZE
+          login_only_log_source=/tmp/next-dev.log (tail -c +$((LOG_SIZE_BEFORE + 1)))
+          grep_target=prisma:error
+          grep_target_file=login_only.log
+          rationale=isolates login endpoint output from P2034 concurrency test output
+          META
+          cat login_check_metadata.txt
           # Copy the full dev log (accumulated since start) for the artifact.
           cp /tmp/next-dev.log login_dev.log
           echo "=== login-only log (new lines after login request) ==="
@@ -700,6 +732,14 @@ jobs:
           cp print_check_code.txt evidence-package/ 2>/dev/null || true
           cp login_check_code.txt evidence-package/ 2>/dev/null || true
           cp login_dev.log evidence-package/ 2>/dev/null || true
+          # F4 fix: include login_only.log (the isolated log window used for
+          # LOGIN_CHECK) so audit can verify the grep target independently.
+          cp login_only.log evidence-package/ 2>/dev/null || true
+          cp login_check_metadata.txt evidence-package/ 2>/dev/null || true
+          # F3 fix: include baseline/release TSC counts for independent verification.
+          cp BASELINE_TSC_ERRORS.txt evidence-package/ 2>/dev/null || true
+          cp RELEASE_TSC_ERRORS.txt evidence-package/ 2>/dev/null || true
+          cp TSC_COMPARISON.txt evidence-package/ 2>/dev/null || true
           git rev-parse HEAD > evidence-package/COMMIT_SHA.txt
           echo "$RELEASE_SHA" > evidence-package/EXPECTED_SHA.txt
           echo "$B4_BASELINE_SHA" > evidence-package/B4_BASELINE_SHA.txt
