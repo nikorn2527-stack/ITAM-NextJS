@@ -168,7 +168,7 @@ jobs:
           API_BASE_URL: http://localhost:3000
         run: |
           set -o pipefail
-          npx tsx tests/sync/route-integration.test.ts 2>&1 | tee sync-route-test-output.log
+          npx tsx tests/sync/route-integration.integration.ts 2>&1 | tee sync-route-test-output.log
 
       - name: Run B4 integration tests
         env:
