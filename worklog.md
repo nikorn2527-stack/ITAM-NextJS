@@ -9179,3 +9179,42 @@ Stage Summary:
 - ยืนยัน: ไม่แก้ B4 production files, ไม่เปลี่ยน DB เป็น SQLite
 - Blocker ที่เหลือ: ผู้มี workflow scope ต้อง copy ไป .github/workflows/ แล้ว trigger
 - หลัง trigger: รอ ~10-15 นาที → download artifact → audit ตรวจ artifact ชุดเดียว → ตัดสิน GO/CONDITIONAL
+
+---
+Task ID: WORKFLOW-V3-AUDIT-FIXES
+Agent: orchestrator (main)
+Task: แก้ workflow ตาม 2 blockers + 3 improvements จาก audit review (d1488c9 → d94daa7)
+
+Work Log:
+- รับ audit review ของ workflow d1488c9 (จากไฟล์แนบ PR #6 PostgreSQL Verification Workflow — Review_.md):
+  - Blocker 1: Stop dev server อยู่ก่อน integration checks 1-3 → curl จะได้ HTTP 000
+  - Blocker 2: ไม่มี gate ตรวจ B4 frozen files 0-diff (มีแค่ whitespace check)
+  - Improvement 1: final gate มี 12 status vars แต่ summary 13 rows (P2034 แยก 2 subcriteria)
+  - Improvement 2: git diff --check ไม่มี continue-on-error (fail-fast ไม่ตรงหลักการ final gate)
+  - Improvement 3: artifact ยังไม่มี exit-code files แยก
+
+- ตรวจ step ordering จริงใน d1488c9 → ยืนยัน Stop dev server อยู่บรรทัด 343 ก่อน Integration check 1 (441) → blocker ชัดเจน
+
+- แก้ครบ 5 จุด (commit d94daa7):
+  - [Blocker 1] ย้าย 'Stop dev server' จากหลัง test:concurrency ไปหลัง Integration check 3 (ก่อน Final gate) — ลำดับใหม่: Start → tests → Verify → P2034 gate → Integration 1-3 → STOP → Final gate
+  - [Blocker 2] เพิ่ม step 'Static check — B4 frozen files 0-diff gate' ที่ตรวจ 6 frozen files (txn, wo-authz, authorization-context, auth-middleware, auth-shared, audit) ด้วย git diff --name-only ee75164..007a1cc → B4_FROZEN_CHECK + b4_frozen_diff.log
+  - [Imp 1] แยก P2034_GATE เป็น P2034_NONZERO (totalP2034 > 0) + RETRY_ATTEMPTS_GATE (totalAttempts > successCount) — ทั้งสอง checked ใน final gate
+  - [Imp 2] git diff --check ใช้ continue-on-error: true + PIPESTATUS[0] + git_diff_check.exit (เหมือน ESLint/TSC)
+  - [Imp 3] เพิ่ม exit-code files: git_diff_check.exit, eslint.exit, tsc.exit, migrate.exit, seed.exit, test_auth.exit, test_integration.exit, test_concurrency.exit + GATE_STATUSES.txt (21 vars) + FINAL_VERDICT.txt + B4_BASELINE_SHA.txt
+
+- สิ่งที่เปลี่ยนเพิ่ม:
+  - Migrate + Seed steps ใช้ continue-on-error (กัน stop workflow ก่อน evidence collection)
+  - MIGRATE_CHECK + SEED_CHECK เพิ่มใน final gate
+  - Final gate ตอนนี้ตรวจ 16 criteria (จาก 12): GIT_DIFF_CHECK, B4_FROZEN_CHECK, ESLint, TSC, MIGRATE, SEED, TEST_AUTH, TEST_INTEGRATION, TEST_CONCURRENCY, IS_PG_DETECTED, SKIPPED_POSTGRES_TESTS, P2034_NONZERO, RETRY_ATTEMPTS_GATE, DEVICE, PRINT, LOGIN
+  - Summary table ขยายเป็น 16 rows พร้อม exit codes ใน Actual column
+  - เพิ่ม B4 Frozen Files section ใน summary ที่แสดง 6 file paths
+
+- Validate: 27 steps, 699 lines, ทุก key marker อยู่ครบ, step ordering ถูกต้อง (Stop dev server อยู่หลัง Integration check 3)
+- commit d94daa7 push ไป main + release branch สำเร็จ
+
+Stage Summary:
+- workflow v3 พร้อม: docs/postgres-verification-workflow.yml (commit d94daa7, full SHA d94daa7fb08453fe4a9b179fa6252b88f54fad47)
+- แก้ครบ 2 blockers + 3 improvements ตาม audit review
+- ยืนยัน: ไม่แก้ B4 production files, ไม่เปลี่ยน DB เป็น SQLite
+- สถานะ: READY TO TRIGGER — รอผู้มี workflow scope copy ไป .github/workflows/ แล้ว trigger ด้วย pinned SHA 007a1cc4854fbd9f243b74fd8e181b85a7d82d9f
+- หลัง trigger: รอ ~10-15 นาที → download artifact → audit ตรวจ 16 criteria → ตัดสิน GO/CONDITIONAL
