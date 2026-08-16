@@ -9062,3 +9062,42 @@ Reference artifacts (commit 007a1cc):
 - docs/PR-SYNC-1-AUDIT-LIST.md (17 Critical + 5 Non-critical checks)
 - prisma/migrations/20260816000001_add_device_displaylabel/migration.sql
 - src/lib/txn.ts, wo-authz.ts, authorization-context.ts, auth-middleware.ts, auth-shared.ts, audit.ts (0 diff — B4 frozen)
+
+---
+Task ID: OFFICIAL-FOLLOWUP-RECEIVED + PR-SYNC-3-SCOPE
+Agent: orchestrator (main)
+Task: รับ Official Follow-up หลัง Handoff 7b348d9 + จัดทำ Stock Site scope สำหรับ PR-SYNC-3 (ข้อ 3 ของ follow-up)
+
+Work Log:
+- รับ Official Follow-up 3 ข้อ:
+  1. PR #6 — ย้ำให้ checkout และรันจาก 007a1cc เท่านั้น, evidence package ต้องครบ
+  2. PR-SYNC-1 — ย้ำให้กรอก audit list ก่อน, ส่งเป็น PR/commit แยก
+  3. Stock Site scope — ใหม่: บันทึก scope ของ PR-SYNC-3 ก่อน implementation (Site ของ Warehouse/Stock balance/Stock transaction/PO + permission STOCK_VIEW/RECEIVE/ISSUE/ADJUST/APPROVE/TRANSFER)
+
+- ตรวจ Prisma schema ของ Stock models:
+  - StockItem.site: มีแต่ nullable, ไม่มี @@index
+  - StockTransaction: ไม่มี site field เลย (derive จาก stockItem.site ทุกครั้ง → N+1 + race)
+  - StockTransaction.sourceKey: มีแต่ไม่ @unique
+  - PurchaseOrder: ไม่มี site field, poNumber nullable ไม่ @unique
+
+- ตรวจ permission catalog ที่มี: STOCK_VIEW, STOCK_IN, STOCK_OUT, STOCK_APPROVE (4 ตัว) — ต้องเปลี่ยนชื่อ + เพิ่มให้ครบ 6 ตามที่ audit ระบุ
+
+- สร้าง docs/PR-SYNC-3-STOCK-SCOPE.md (310 บรรทัด, commit 0832229) ครอบคลุม:
+  1. Site model ของ StockItem/StockTransaction/PurchaseOrder (field + index + NOT NULL)
+  2. Permission catalog 6 ตัว + mapping role × permission × Site
+  3. STOCK_TRANSFER พิเศษ: ต้องมีสิทธิ์ทั้ง Site ต้น + ปลาย (canAtSite(from) AND canAtSite(to))
+  4. Schema changes + migration plan (additive → backfill → NOT NULL + unique → indexes)
+  5. Edge cases 7 กรณี (orphan txn, duplicate poNumber, transfer same-site, etc.)
+  6. Test plan 10 กรณี
+  7. Audit checklist สำหรับทีม audit ตรวจก่อนเปิด Audit List
+  8. ข้อความพร้อมส่งทีม audit
+
+Stage Summary:
+- PR-SYNC-3 Stock Site Scope: DRAFT พร้อม review — docs/PR-SYNC-3-STOCK-SCOPE.md (commit 0832229)
+- หลัง audit ผ่าน scope นี้ จะนำไปทำ PR-SYNC-3 Audit List (คล้าย PR-SYNC-1) ก่อนเปิด implementation
+- ทั้ง 3 สายงานแยกกัน ดำเนินควบคู่ได้:
+  - PR #6: รอ PostgreSQL evidence จาก 007a1cc
+  - PR-SYNC-1: รอ Audit List จากทีมพัฒนา
+  - PR-SYNC-3: รอ audit review scope document นี้ → แล้วจะทำ Audit List
+- B4 baseline ee75164: GO (frozen) — ไม่แก้ไขเพิ่ม
+- สถานะ release candidate: ยังคง CONDITIONAL STAGING ONLY — ยังไม่ merge/deploy Production
