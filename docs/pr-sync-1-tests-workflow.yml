@@ -1,0 +1,110 @@
+# ============================================================
+# GitHub Actions: PR-SYNC-1 Sync Tests (PostgreSQL)
+# ============================================================
+# Runs sync-specific tests against real PostgreSQL 16.x
+# Trigger: push to feature/pr-sync-1-implementation branch
+# ============================================================
+name: PR-SYNC-1 Sync Tests
+
+on:
+  push:
+    branches: [feature/pr-sync-1-implementation]
+  workflow_dispatch:
+
+jobs:
+  sync-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: itam_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/itam_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed test data
+        run: npx tsx prisma/seed.ts
+        continue-on-error: true
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npx eslint src/lib/sync-adapter.ts src/app/api/sync/
+        continue-on-error: true
+
+      - name: Run sync tests
+        run: npx vitest run tests/sync/ --reporter=verbose
+
+      - name: Run B4 auth tests
+        run: npx tsx tests/auth/authorization-matrix.test.ts
+        continue-on-error: true
+
+      - name: Run B4 integration tests
+        run: npx tsx tests/auth/route-integration.test.ts
+        continue-on-error: true
+
+      - name: Run B4 concurrency tests
+        run: npx tsx tests/auth/concurrency.test.ts
+        continue-on-error: true
+
+      - name: B4 frozen files check
+        run: |
+          echo "=== B4 Frozen Files Diff Check ==="
+          for f in src/lib/retry-transaction.ts src/lib/wo-authz.ts src/lib/authorization-context.ts src/lib/auth-middleware.ts src/lib/auth-shared.ts src/lib/audit.ts; do
+            diff=$(git diff ee75164...HEAD -- "$f")
+            if [ -n "$diff" ]; then
+              echo "FAIL: $f has diff from baseline"
+              exit 1
+            fi
+          done
+          echo "PASS: All 6 B4 frozen files have 0 diff"
+
+      - name: Generate artifact
+        if: always()
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_ENV
+          tar czf pr-sync-1-artifact.tgz \
+            prisma/migrations/ \
+            src/lib/sync-adapter.ts \
+            src/app/api/sync/ \
+            tests/sync/ \
+            docs/PR-SYNC-1-EVIDENCE-CHECKLIST.md
+          sha256sum pr-sync-1-artifact.tgz
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-sync-1-evidence-${{ github.sha }}
+          path: pr-sync-1-artifact.tgz

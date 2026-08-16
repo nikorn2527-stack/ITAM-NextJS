@@ -41,12 +41,25 @@ const SYNC_PREVIEW_MAX_ROWS = Number(process.env.SYNC_PREVIEW_MAX_ROWS) || 1000
 // For MVP, derive from known Site codes in the system.
 
 let _siteAllowlistCache: Set<string> | null = null
+let _siteAllowlistOverride: Set<string> | null = null
+
+/**
+ * Override allowlist for testing (I-08-04 cache isolation).
+ * Pass null to clear override and restore DB-backed loading.
+ */
+export function _setSiteAllowlistForTesting(allowlist: Set<string> | null): void {
+  _siteAllowlistOverride = allowlist
+  _siteAllowlistCache = null // force reload on next getSiteAllowlist() call
+}
 
 /**
  * Load Site allowlist from DB.
  * FAIL-CLOSED: empty/unavailable = no sites allowed.
  */
-async function getSiteAllowlist(): Promise<Set<string>> {
+export async function getSiteAllowlist(): Promise<Set<string>> {
+  // Test override takes precedence
+  if (_siteAllowlistOverride !== null) return _siteAllowlistOverride
+
   if (_siteAllowlistCache) return _siteAllowlistCache
 
   try {
