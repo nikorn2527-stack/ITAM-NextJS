@@ -59,14 +59,14 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        # B-03 fix: use npm ci for deterministic installs. Generate lockfile
-        # first if it doesn't exist (first run only).
+        # B-03 fix: npm install with legacy-peer-deps (prisma postinstall
+        # requires this). Lockfile generated on first run for reproducibility.
         run: |
           if [ ! -f package-lock.json ]; then
             echo "Generating package-lock.json (first run)..."
             npm install --legacy-peer-deps --package-lock-only
           fi
-          npm ci --legacy-peer-deps
+          npm install --legacy-peer-deps
 
       - name: Generate Prisma client
         run: npx prisma generate
