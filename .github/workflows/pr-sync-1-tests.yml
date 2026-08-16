@@ -84,12 +84,14 @@ jobs:
         run: |
           set -o pipefail
           echo "=== Part 1: tsc on PR-SYNC-1 files (strict, 0 errors required) ==="
-          # W-01 fix: use PIPESTATUS to capture tsc exit code, NOT || true.
-          # || true would mask compiler process failures (e.g. crash, OOM).
-          npx tsc --noEmit 2>&1 | tee tsc-full-output.log
-          TSC_EXIT=${PIPESTATUS[0]}
+          # W-01 fix: redirect to file (not pipe) so tsc exit code is captured
+          # directly — no || true, no pipefail masking. tsc exit 0 = no errors,
+          # exit 1 = has type errors (expected for baseline comparison),
+          # exit 2+ = process failure (must fail the step).
+          npx tsc --noEmit > tsc-full-output.log 2>&1
+          TSC_EXIT=$?
+          cat tsc-full-output.log
           echo "tsc exit code: $TSC_EXIT"
-          # tsc exit 0 = no errors; exit 1 = has errors; exit 2+ = process failure
           if [ "$TSC_EXIT" -ge 2 ]; then
             echo "FAIL: tsc process failed (exit $TSC_EXIT) — not just type errors"
             exit 1
@@ -108,13 +110,13 @@ jobs:
           RELEASE_ERRORS=$(grep -c "error TS" tsc-full-output.log || echo "0")
           RELEASE_ERRORS=${RELEASE_ERRORS:-0}
           echo "Release total tsc errors: $RELEASE_ERRORS"
-          # Count baseline errors (stash + checkout + tsc + restore)
+          # Count baseline errors
           git stash -u 2>/dev/null || true
           git checkout ee75164 -- prisma/schema.prisma 2>/dev/null || true
           npx prisma generate 2>/dev/null || true
-          # W-01 fix: capture baseline tsc exit code too
-          npx tsc --noEmit 2>&1 | tee tsc-baseline-output.log
-          BASELINE_TSC_EXIT=${PIPESTATUS[0]}
+          # W-01 fix: redirect to file, capture exit code directly
+          npx tsc --noEmit > tsc-baseline-output.log 2>&1
+          BASELINE_TSC_EXIT=$?
           if [ "$BASELINE_TSC_EXIT" -ge 2 ]; then
             echo "WARN: baseline tsc process failed (exit $BASELINE_TSC_EXIT) — using error count only"
           fi
