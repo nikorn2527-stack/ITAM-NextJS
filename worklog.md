@@ -8820,3 +8820,79 @@ Stage Summary:
 - เริ่มจาก MVP: Services → Work Orders (PR-SYNC-1) ก่อน
 - กฎเหล็ก 3 ข้อ: Preview no-write / transaction+version check (ไม่ override) / credential server-side only
 - ทีมยังไม่ได้เริ่ม implement — รอ review โจทย์งานก่อน
+
+---
+Task ID: RELEASE-CANDIDATE-PREP
+Agent: orchestrator (main)
+Task: เตรียม release candidate ตามที่ทีม audit ระบุ — ส่ง commit SHA/PR head, เปลี่ยน prisma.provider กลับเป็น postgresql, ระบุ verification matrix และสิ่งที่ต้องรอ PostgreSQL จริง
+
+Work Log:
+
+**1. ตรวจ git state**
+- พบว่า integration + UX/UI fixes ถูก auto-commit ไปแล้วใน `508ac1d` (14 files) และ sync spec ใน `49046cf` (2 files) — อยู่บน branch `main`
+- local `main` อยู่ 14 commits ahead ของ remote ตอนเริ่ม → ต้อง push
+
+**2. ยืนยัน B4 baseline ไม่ถูกแตะ (critical)**
+- ตรวจ diff `ee75164..HEAD` สำหรับ B4-critical lib files:
+  - `src/lib/txn.ts` → **0 changed lines** ✅
+  - `src/lib/wo-authz.ts` → **0 changed lines** ✅
+  - `src/lib/authorization-context.ts` → **0 changed lines** ✅
+  - `src/lib/auth-middleware.ts` → **0 changed lines** ✅
+  - `src/lib/auth-shared.ts` → **0 changed lines** ✅
+  - `src/lib/audit.ts` → **0 changed lines** ✅
+- ตรวจ test files: commits ของผม (508ac1d, 49046cf, b4dea18) แตะ **0 test files**
+- `tests/auth/concurrency.test.ts` เปลี่ยนโดย `f433c6f` (B4 closure test fix "P2034 conditional assertion + multi-run") — เป็นส่วนของ B4 closure ที่ทีม audit ตรวจแล้ว ไม่ใช่ของผม
+
+**3. เปลี่ยน prisma.provider กลับเป็น postgresql**
+- commit `b4dea18` "Release candidate: prisma.provider = postgresql"
+- อัปเดต comment ใน schema ระบุชัด: "Release candidate (this file): provider = postgresql. Any sandbox test that used SQLite was a local, uncommitted exercise and its results are NOT production evidence"
+- ตรวจ `bunx prisma generate` กับ postgresql → สำเร็จ (schema valid สำหรับ production provider)
+
+**4. Push ไป remote**
+- `git push origin main` → สำเร็จ (`d14f6b2..b4dea18 main -> main`)
+- remote HEAD = `b4dea189a1b549f00ede9eddc09e1c11f40fa863`
+- local/remote สอดคล้องกัน (0 ahead, 0 behind)
+
+**5. ตรวจ lint + tsc**
+- `bunx eslint` บน 13 ไฟล์ที่แก้ → **0 errors, 0 warnings** ✅
+- `bunx tsc --noEmit`:
+  - login route: baseline ee75164 มี 2 errors (`toAuthUser` type mismatch + `timestamp` field bug) → หลังแก้ของผมเหลือ **1 error** (เฉพาะ `toAuthUser` ที่ pre-existing) — การแก้ login audit **ลด tsc error ลง 1** ไม่ได้เพิ่ม
+  - ไฟล์อื่นๆ ที่ผมแก้: 0 new tsc errors
+  - pre-existing errors ใน `licenses/route.ts`, `transfer/route.ts`, `utilization/route.ts`, `print-sheet/route.ts` ยังอยู่ (ไม่เกี่ยวกับการแก้ของผม)
+
+**6. ไม่สามารถรัน DB tests ใน sandbox (ซื่อสัตย์)**
+- `bun run test:auth` → ล้มเหลว: Prisma Validation Error (provider=postgresql แต่ DATABASE_URL=file:...sqlite)
+- สาเหตุ: sandbox ไม่มี PostgreSQL (ไม่มี sudo/docker)
+- **ไม่ใช้ผล SQLite เป็นหลักฐาน Production** ตามที่ทีม audit ระบุ — DB tests ต้องรันใน CI/staging ที่มี PostgreSQL จริง
+
+**7. หยุด dev server**
+- หลังเปลี่ยน provider เป็น postgresql, dev server ใน sandbox ใช้งานไม่ได้ (ไม่มี DB)
+- หยุดเพื่อไม่ให้สับสน — sandbox ไม่ใช่ production environment
+
+Stage Summary:
+
+**Release candidate:**
+- SHA: `b4dea189a1b549f00ede9eddc09e1c11f40fa863` (short: `b4dea18`)
+- Branch: `main` (pushed to origin)
+- Remote: https://github.com/nikorn2527-stack/ITAM-NextJS/commit/b4dea18
+
+**สิ่งที่ทีม audit สามารถตรวจได้ทันที (จาก SHA):**
+1. B4 baseline diff (ควรว่าง):
+   `git diff ee75164..b4dea18 -- src/lib/txn.ts src/lib/wo-authz.ts src/lib/authorization-context.ts src/lib/auth-middleware.ts src/lib/auth-shared.ts src/lib/audit.ts`
+2. Test files diff (ควรมีแค่ concurrency.test.ts จาก f433c6f):
+   `git diff ee75164..b4dea18 -- tests/`
+3. ไฟล์ทั้งหมดที่เปลี่ยน:
+   `git diff --stat ee75164..b4dea18`
+
+**สิ่งที่ต้องรอ PostgreSQL verification ใน CI/staging (ไม่ใช่ sandbox):**
+- `bun run test:auth` (authorization-matrix: 88 assertions)
+- `bun run test:integration` (route-integration: 33 assertions)
+- `bun run test:concurrency` (concurrency: 27 tests)
+- 3-point verification:
+  - Device POST ต้องไม่เป็น 500
+  - print unauthenticated ต้องได้ 401
+  - login ต้องไม่มี prisma:error
+
+**สถานะ: ยังคง CONDITIONAL STAGING ONLY**
+- ไม่ใช่ Production GO — รอผล PostgreSQL verification จาก CI/staging
+- cron webDevReview และพอร์ต 3000 เป็นเครื่องมือ/สภาพแวดล้อมตรวจสอบ ไม่ใช่หลักฐาน Production deploy
