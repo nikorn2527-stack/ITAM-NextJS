@@ -9138,3 +9138,44 @@ Stage Summary:
 
 - สถานะ release candidate: ยังคง CONDITIONAL STAGING ONLY — workflow พร้อมแต่ยังไม่ได้รัน (รอ trigger จากผู้มีสิทธิ์)
 - ไม่ได้ใช้ SQLite เป็น evidence ตามที่ audit ระบุ — workflow ใช้ PostgreSQL 16 จริงเท่านั้น
+
+---
+Task ID: WORKFLOW-V2-AUDIT-FIXES
+Agent: orchestrator (main)
+Task: แก้ workflow ตาม 6 จุดที่ทีม audit ระบุ (1 blocker + 3 high + 2 medium) ในรอบเดียว
+
+Work Log:
+- รับ 6 จุดจากทีม audit (ตาราง remediation):
+  1. Blocker: test:integration + test:concurrency ถูกเรียกก่อนเริ่ม Next server → ย้าย start server มาก่อนทั้งสอง test
+  2. High: grep '⊘ P2034' ถูกตีความเป็น skipped ทั้งที่เป็นผล valid ของ PostgreSQL → ตรวจจาก 'Database: PostgreSQL' + 'Skipped: 0' โดยตรง
+  3. High: workflow ยังไม่บังคับ totalP2034 > 0 และ totalAttempts > successCount → เพิ่ม strict gate
+  4. High: seed, ESLint และ TypeScript มี || ที่ swallow exit code → ใช้ continue-on-error + final gate
+  5. Medium: git diff --check ตรวจ working tree ว่าง ไม่ใช่ diff release → ใช้ ee75164..007a1cc
+  6. Medium: ผู้กดสามารถกรอก SHA อื่นได้ → บังคับ full SHA 007a1cc4854fbd9f243b74fd8e181b85a7d82d9f
+
+- ตรวจ test:integration → ยืนยันต้องการ dev server (ใช้ fetch localhost:3000) → blocker ชัดเจน
+- ตรวจ log format ของ concurrency test → พบ 'totalP2034=N', 'totalAttempts=N', 'success=N' สำหรับ strict gate
+- ได้ full SHA: 007a1cc4854fbd9f243b74fd8e181b85a7d82d9f
+
+- แก้ workflow ครบ 6 จุด (commit d1488c9):
+  - [Blocker] ย้าย 'Start dev server (port 3000)' มาก่อน test:auth (server รันตลอด 3 tests + integration checks)
+  - [High #2] แทนที่ grep '⊘ P2034' ด้วยการตรวจ 'Database: PostgreSQL' + 'Skipped: 0' โดยตรง + fallback นับ skip markers
+  - [High #3] เพิ่ม step 'Strict gate — P2034 evidence' ที่ extract totalP2034/totalAttempts/successCount แล้ว fail ถ้าไม่ผ่านเงื่อนไข
+  - [High #4] ลบ || echo / || true ออกจาก seed/ESLint/tsc; ใช้ continue-on-error: true ที่ step level + บันทึก exit code ลง GITHUB_ENV + final gate ตรวจ
+  - [Medium #5] เปลี่ยน git diff --check เป็น git diff --check ee75164..007a1cc (release range)
+  - [Medium #6] ลบ workflow_dispatch input; ใช้ env.RELEASE_SHA ที่ top-level บังคับ full SHA; verify step ตรวจ exact match
+
+- เพิ่ม 'Final gate — all release criteria must pass' step เป็นจุดตัดสินเดียว: ตรวจ 13 criteria (GIT_DIFF_CHECK, ESLINT_CHECK, TSC_CHECK, TEST_AUTH, TEST_INTEGRATION, TEST_CONCURRENCY, IS_PG_DETECTED, SKIPPED_POSTGRES_TESTS, P2034_GATE, DEVICE_CHECK, PRINT_CHECK, LOGIN_CHECK) → exit 1 ถ้าอันใด fail
+- Integration checks 1-3 ใช้ dev server ตัวเดียวที่รันอยู่แล้ว (port 3000) แทนการ start 3 servers แยก
+- VERIFICATION_SUMMARY.md ขยายเป็นตาราง 13 แถวพร้อม expected/actual/result
+- Artifact มี EXPECTED_SHA.txt คู่กับ COMMIT_SHA.txt
+
+- Validate YAML: 26 steps, 2 jobs, 565 lines, ทุก key marker อยู่ครบ
+- commit d1488c9 push ไป main + release branch สำเร็จ
+
+Stage Summary:
+- workflow v2 พร้อม: docs/postgres-verification-workflow.yml (commit d1488c9, full SHA d1488c9b1c5103f39e780b10cf5444dbe0b6e3e9)
+- แก้ครบ 6 จุดตาม audit review
+- ยืนยัน: ไม่แก้ B4 production files, ไม่เปลี่ยน DB เป็น SQLite
+- Blocker ที่เหลือ: ผู้มี workflow scope ต้อง copy ไป .github/workflows/ แล้ว trigger
+- หลัง trigger: รอ ~10-15 นาที → download artifact → audit ตรวจ artifact ชุดเดียว → ตัดสิน GO/CONDITIONAL
