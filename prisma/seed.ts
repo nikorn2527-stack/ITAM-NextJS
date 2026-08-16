@@ -19,15 +19,34 @@ async function main() {
     return
   }
 
-  // Sites
+  // Roles (F-03 fix: B4 auth tests create UserSiteGrant with roleCode
+  // referencing Role table — without Role records, P2003 foreign key
+  // violation occurs)
+  await prisma.role.createMany({
+    data: [
+      { code: 'superadmin', name: 'Super Admin', isSystem: true },
+      { code: 'admin', name: 'Administrator', isSystem: true },
+      { code: 'editor', name: 'Editor', isSystem: true },
+      { code: 'viewer', name: 'Viewer', isSystem: true },
+      { code: 'site_manager', name: 'Site Manager', isSystem: true },
+      { code: 'coordinator', name: 'Coordinator', isSystem: true },
+      { code: 'technician', name: 'Technician', isSystem: true },
+      { code: 'requester', name: 'Requester', isSystem: true },
+    ],
+  })
+  console.log('Created 8 roles')
+
+  // Sites (includes UDH + NKP which B4 auth tests expect)
   await prisma.site.createMany({
     data: [
       { code: 'HQ', name: 'สำนักงานใหญ่' },
       { code: 'BKK-1', name: 'สาขากรุงเทพ 1' },
       { code: 'CNX', name: 'สาขาเชียงใหม่' },
+      { code: 'UDH', name: 'Udon Thani' },
+      { code: 'NKP', name: 'Nakhon Pathom' },
     ],
   })
-  console.log('Created 3 sites')
+  console.log('Created 5 sites (incl. UDH + NKP for B4 tests)')
 
   // Users (admin for each site)
   const bcrypt = await import('bcryptjs')

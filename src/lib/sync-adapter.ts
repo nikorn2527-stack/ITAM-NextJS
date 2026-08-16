@@ -84,11 +84,23 @@ export async function getSiteAllowlist(): Promise<Set<string>> {
 // ── Redaction allowlist ───────────────────────────────────────
 // Only fields in FIELD_MAPPINGS.workOrder + siteCode + status
 // are kept. Everything else is stripped.
+// F-01 fix: internal fields (id, createdAt, updatedAt, version) must be
+// stripped even if they appear in FIELD_MAPPINGS — they are Prisma-managed
+// and should not leak into audit log detail.
+
+const INTERNAL_FIELDS_BLOCKLIST = new Set([
+  'id',
+  'createdAt',
+  'updatedAt',
+  'version',
+])
 
 function getRedactionAllowlist(): Set<string> {
   const allowlist = new Set<string>()
   for (const prismaField of Object.values(FIELD_MAPPINGS.workOrder)) {
-    allowlist.add(prismaField)
+    if (!INTERNAL_FIELDS_BLOCKLIST.has(prismaField)) {
+      allowlist.add(prismaField)
+    }
   }
   allowlist.add('siteCode')
   allowlist.add('site')
