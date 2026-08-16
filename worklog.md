@@ -9250,3 +9250,43 @@ Stage Summary:
 - แก้ blocker เดียวที่เหลือจาก audit review รอบที่แล้ว
 - ยืนยัน: ไม่แก้ B4 production files, ไม่เปลี่ยน DB เป็น SQLite
 - สถานะ: READY TO TRIGGER — รอผู้มี workflow scope copy ไป .github/workflows/ แล้ว trigger ด้วย pinned SHA 007a1cc4854fbd9f243b74fd8e181b85a7d82d9f
+
+---
+Task ID: WORKFLOW-FINAL-REVIEW-RECEIVED
+Agent: orchestrator (main)
+Task: รับ Final Review จากทีม audit สำหรับ workflow 96f4e23 — ยืนยัน READY TO TRIGGER
+
+Work Log:
+- รับรายงานตรวจฉบับเต็ม: "PR #6 PostgreSQL Verification Workflow — Final Review" สำหรับ commit 96f4e23
+- บันทึกเป็นหลักฐานถาวร: docs/PR6-WORKFLOW-FINAL-REVIEW.md (commit ถัดไป)
+- ทีม audit ยืนยัน verdict: **READY TO TRIGGER**
+
+- Verification matrix ที่ผ่านทั้งหมด:
+  - Exact release SHA pinned (007a1cc4854fbd9f243b74fd8e181b85a7d82d9f) ✓
+  - PostgreSQL service ใช้ postgres:16 ✓
+  - prisma migrate deploy (ไม่ใช่ db push/SQLite) ✓
+  - Start dev server ก่อน integration/concurrency tests ✓
+  - Stop server หลัง integration checks 1-3 + if: always() ✓
+  - Final gate ตรวจ 16 criteria ✓
+  - P2034 แยก P2034_NONZERO + RETRY_ATTEMPTS_GATE ✓
+  - Exit-code files + GATE_STATUSES.txt ใน artifact ✓
+  - B4 frozen list ใช้ retry-transaction.ts + อีก 5 ไฟล์จริง ✓
+  - ไม่มี src/lib/txn.ts reference เหลือ ✓
+
+- B4 frozen-file verification: ตรวจ source tree ของ 007a1cc → ทั้ง 6 ไฟล์มีอยู่จริง + 0-diff จาก ee75164 → gate จะรายงาน B4_FROZEN_CHECK=PASS เมื่อ CI รัน
+
+- Diff scope ของ 96f4e23: เปลี่ยน path ใน B4 frozen-file array + summary ให้ตรงกัน + worklog เท่านั้น — ไม่แก้ B4 production implementation
+
+Stage Summary — Remaining operational blocker (เหลือเพียงงานปฏิบัติการ):
+1. ผู้มี workflow scope: copy docs/postgres-verification-workflow.yml จาก commit 96f4e23 ไป .github/workflows/postgres-verification.yml + commit/push
+2. เปิด GitHub Actions + trigger workflow (workflow จะ checkout release SHA 007a1cc เอง ไม่ต้องกรอก)
+3. ดาวน์โหลด artifact จาก run เดียว + ส่ง CI URL, VERIFICATION_SUMMARY.md, FINAL_VERDICT.txt, GATE_STATUSES.txt, checksum ให้ Audit ตรวจ
+
+Release gate (ยังไม่เปลี่ยน):
+- B4 baseline ee75164: GO / frozen
+- Workflow 96f4e23: READY TO TRIGGER
+- PostgreSQL CI/staging evidence: ยังไม่มี run จริง
+- PR #6 release candidate: CONDITIONAL STAGING ONLY
+- หลัง artifact ผ่านทุก 16 criteria → พิจารณาเปลี่ยนเป็น GO
+
+การที่ workflow พร้อม trigger ยังไม่ใช่ Production GO — ต้องมีผล CI บน PostgreSQL จริงก่อน
