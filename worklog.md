@@ -9290,3 +9290,50 @@ Release gate (ยังไม่เปลี่ยน):
 - หลัง artifact ผ่านทุก 16 criteria → พิจารณาเปลี่ยนเป็น GO
 
 การที่ workflow พร้อม trigger ยังไม่ใช่ Production GO — ต้องมีผล CI บน PostgreSQL จริงก่อน
+
+---
+Task ID: HANDOFF-AWAITING-CI-RUN
+Agent: orchestrator (main)
+Task: บันทึกสถานะหลังทีม audit ตรวจ compare 96f4e23 vs 63eae44 — ยืนยัน READY TO TRIGGER แต่ operational ยังไม่เสร็จ
+
+Work Log:
+- ทีม audit ตรวจ compare 96f4e23 กับ 63eae44 → ยืนยัน:
+  - เพิ่มเฉพาะ docs/PR6-WORKFLOW-FINAL-REVIEW.md + ปรับ worklog.md
+  - workflow ไม่ได้ถูกย้ายเข้า .github/workflows/ บน PR head ปัจจุบัน
+  - สถานะ READY TO TRIGGER ถูกต้องในเชิง logic แต่ operational ยังไม่เสร็จ
+
+- ทีม audit ระบุสถานะปัจจุบัน:
+  - PR #6 head: 63eae440884b97b0a5c99ed8ac708734980864a2
+  - PR state: Open
+  - Workflow document: docs/postgres-verification-workflow.yml (ไม่เปลี่ยนจาก 96f4e23)
+  - Active workflow: ยังไม่มี ที่ .github/workflows/ บนหัว PR ปัจจุบัน
+  - PostgreSQL CI run: ยังไม่มีหลักฐาน run จริง
+  - Release gate: CONDITIONAL STAGING ONLY
+
+- ปัญหา token scope (บันทึกเพื่อความชัดเจน):
+  - account nikorn2527-stack (repo owner) มี token ปัจจุบันที่มี admin:true แต่ไม่มี workflow scope
+  - ทีมพัฒนาพยายามสร้าง PAT ใหม่: ติ๊ก workflow scope แล้ว แต่ยังไม่ติ๊ก repo scope → ยัง generate ไม่ได้
+  - ทั้งสองทีมติดจุดเดียวกัน: ไม่มี token ที่มี workflow scope + repo scope พร้อมกัน
+
+- สิ่งที่ผู้มี workflow scope ต้องทำต่อ (ตามทีม audit ระบุ):
+  1. mkdir -p .github/workflows
+  2. cp docs/postgres-verification-workflow.yml .github/workflows/postgres-verification.yml
+  3. git add .github/workflows/postgres-verification.yml
+  4. git commit -m "ci: add PostgreSQL verification workflow v4"
+  5. git push origin main
+  6. เปิด Actions → PostgreSQL Verification (Release Candidate) → Run workflow (ไม่ต้องกรอก SHA — workflow pin 007a1cc4854fbd9f243b74fd8e181b85a7d82d9f ไว้แล้ว)
+  7. รอ run เสร็จ → ส่งกลับเป็นชุดเดียว: CI run URL, VERIFICATION_SUMMARY.md, FINAL_VERDICT.txt, GATE_STATUSES.txt, COMMIT_SHA.txt + EXPECTED_SHA.txt, PostgreSQL version, checksum ของ artifact
+
+- หลังได้รับหลักฐาน ทีม audit จะตรวจ 16 criteria โดยเฉพาะ:
+  - P2034_NONZERO
+  - RETRY_ATTEMPTS_GATE
+  - SKIPPED_POSTGRES_TESTS=0
+  - integration checks ทั้ง 3 รายการ (Device POST, print 401, login no prisma:error)
+  - B4 frozen-file gate
+  แล้วสรุป GO / CONDITIONAL / NO-GO
+
+Stage Summary:
+- สถานะ release candidate: ยังคง CONDITIONAL STAGING ONLY
+- ไม่มี CI run จริงบน PostgreSQL → ยังเปลี่ยนเป็น GO ไม่ได้
+- Blocker เดียวที่เหลือ: ผู้มี workflow scope ต้อง copy workflow เข้า .github/workflows/ + trigger
+- ทั้งสองทีมติดจุดเดียวกัน (ไม่มี token scope ครบ) → ต้องรอ repo owner สร้าง PAT ใหม่ด้วย repo + workflow scope
