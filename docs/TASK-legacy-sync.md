@@ -84,6 +84,12 @@ Adapter ต้องรองรับทั้งสองโหมด (เล�
 - แปลง rows → records ด้วย `FIELD_MAPPINGS` ที่มีอยู่ใน `src/lib/csv-field-mapping.ts`
 
 > **หมายเหตุ:** โค้ด mapping/status conversion ที่มีอยู่ใน `csv-field-mapping.ts` ต้องนำมาใช้ซ้ำ ไม่เขียนใหม่ — adapter แค่เปลี่ยนแหล่งข้อมูลจาก "CSV file" เป็น "HTTP response"
+>
+> **F-02 fix — Canonical Site Code:** Legacy WorkOrder ไม่มี `siteCode` ต่อ record adapter ต้อง:
+> 1. เพิ่ม source `siteCode` จาก Apps Script response (ถ้ามี)
+> 2. ถ้าไม่มี: server-side mapping จาก `site` field → `siteCode` ด้วย allowlist + version + audit
+> 3. Missing/unknown Site → **quarantine** (item status=`error`, errorMessage=`MISSING_SITE`)
+> 4. ห้าม Apply record ที่ไม่มี `siteCode` ที่ถูกต้อง
 
 ---
 
@@ -118,6 +124,9 @@ model SyncRun {
   // ── error/retry ──
   errorMessage    String?
   retryOf         String?  // SyncRun.id ที่ retry มาจาก (null = รันครั้งแรก)
+  // ── retry metrics (from withSerializableRetryTracked) ──
+  attempts        Int      @default(1)   // total transaction attempts (including retries)
+  p2034Count      Int      @default(0)   // number of P2034 serialization conflicts encountered
   // ── pagination cursor (สำหรับ resume) ──
   sourceCursor    String?  // opaque cursor จาก Apps Script (เช่น last row id)
   // ── relations ──
@@ -138,14 +147,15 @@ model SyncRun {
 ```prisma
 model SyncRunItem {
   id              String   @id @default(cuid())
-  syncRunId       String   @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  syncRunId       String
+  syncRun         SyncRun  @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
   // ── stable external key (ดูส่วน 4) ──
   externalKey     String   // เช่น requestId (Services), assetCode (Device), productCode (Stock)
   // ── การกระทบ ──
   action          String   // 'create' | 'update' | 'skip' | 'error'
   // ── ข้อมูลก่อน/หลัง (JSON) ──
-  before          String?  // JSON string ของ record เดิม (null สำหรับ create)
-  after           String?  // JSON string ของ record ใหม่ (null สำหรับ delete — ยังไม่รองรับ)
+  before          Json?    // JSON object ของ record เดิม (null สำหรับ create)
+  after           Json?    // JSON object ของ record ใหม่ (null สำหรับ delete — ยังไม่รองรับ)
   // ── Preview baseline (P1 fix: conflict detection) ──
   // Persisted at preview time so apply can detect intervening edits.
   // Without these, preview→apply is a TOCTOU window: a user could edit
@@ -169,10 +179,35 @@ model SyncRunItem {
 }
 ```
 
+### 3.2.1 Serialization & Redaction Boundary (F-13/F-16)
+
+**SyncRunItem.before / after (Json?):**
+- Prisma `Json` type — stored as JSONB in PostgreSQL
+- Adapter ต้อง redact ก่อนบันทึก: ลบ PII (email, phone, password), credential (token, API key), internal fields (id, createdAt)
+- Redaction allowlist: เก็บเฉพาะ field ที่อยู่ใน `FIELD_MAPPINGS.workOrder` + `siteCode` + `status`
+- `null` สำหรับ create action (before) / delete action (after, ยังไม่รองรับ)
+
+**AuditLog.detail (String?):**
+- Current architecture: `AuditLog.detail` เป็น `String` (JSON string) ไม่ใช่ Prisma `Json`
+- Implementation ต้อง `JSON.stringify(detail)` ก่อนเขียน — ห้ามส่ง object ตรงๆ
+- Detail structure: `{ before, after, syncRunId, externalKey }` — ใช้ค่าจาก SyncRunItem (redacted แล้ว)
+- ห้ามเก็บ credential/PII ใน AuditLog.detail
+- Helper: `redacted(obj)` ควรเป็น pure function ที่:
+  1. รับ object (Json? จาก SyncRunItem)
+  2. clone + ลบ key ที่อยู่นอก allowlist
+  3. คืน redacted object (ยังเป็น object — stringify ตอนเขียน AuditLog)
+
+**Preview response:**
+- API response (`before`/`after` ใน items) ส่งค่า redacted เดียวกับที่บันทึกใน DB
+- ไม่ echo token/URL/credential ใน response body
+```
+
 ### 3.3 Migration
 
 - สร้าง `prisma/migrations/{timestamp}_add_sync_run_tables/migration.sql`
-- รัน `bun run db:push` เพื่อ sync schema
+- **ห้าม** `bun run db:push` — ใช้ migration file เท่านั้น
+- CI/staging/production: `bunx prisma migrate deploy`
+- **ห้าม** `--accept-data-loss` ใน release path
 - **ไม่ backfill** — SyncRun เริ่มจาก empty (ประวัติ CSV upload เก่ายังอยู่ใน ImportJob)
 
 ---
@@ -319,7 +354,12 @@ Retry เฉพาะ items ที่ `status=error` — สร้าง SyncRun
    - ถ้าเหมือนเป๊ะ → `action: 'skip'`, `status: 'skipped'`
    - ถ้าต่าง → `action: 'update'`
    - ถ้าไม่มีใน DB → `action: 'create'`
-3. Apply ใช้ `upsert` (Prisma) โดย `where: { requestId }` / `{ assetCode }` / `{ productCode }`
+3. Apply ใช้ conditional versioned create/update (ไม่ใช่ Prisma upsert):
+   - Re-read record ใน transaction
+   - ตรวจ baseline: `expectedExists` + `expectedVersion`
+   - Update ด้วย `where: { id, version: existing.version }` → `version: { increment: 1 }`
+   - Create ถ้าไม่มี
+   - Unique conflict จาก externalKey → `CONFLICT` error
 4. ถ้าภายใน transaction เจอว่า record ถูกแก้ระหว่าง preview→apply (เช่น `version` เปลี่ยน):
    - ใช้ optimistic concurrency (เหมือน B4 pattern) — ถ้า `version` ไม่ตรง → ทำเครื่องหมาย item เป็น `error` พร้อมข้อความ "stale — re-run preview"
    - **ไม่ override** การแก้ไขที่เกิดหลัง preview
@@ -333,7 +373,7 @@ Retry เฉพาะ items ที่ `status=error` — สร้าง SyncRun
 Apply แต่ละ item ทำภายใต้ **serializable transaction** + **optimistic concurrency** — reuse pattern ที่ B4 สร้างไว้:
 
 ```typescript
-import { withSerializableRetryTracked } from '@/lib/txn'
+import { withSerializableRetryTracked } from '@/lib/retry-transaction'
 import { db } from '@/lib/db'
 
 await withSerializableRetryTracked(async (tx) => {
@@ -356,37 +396,51 @@ await withSerializableRetryTracked(async (tx) => {
     throw new ConflictError('record created by another source after preview — re-run preview')
   }
 
-  // 3. Upsert พร้อม version check (เฉพาะ update)
+  // 3. Conditional versioned create/update (NOT Prisma upsert — F-07/F-14)
+  //    Algorithm: re-read → check baseline → conditional update/create → unique conflict = CONFLICT
+  let targetWorkOrderId: string
+
   if (existing) {
     // expectedVersion guaranteed non-null when expectedExists=true (preview set it)
     if (item.expectedVersion != null && existing.version !== item.expectedVersion) {
       throw new ConflictError(`version ${existing.version} ≠ preview baseline ${item.expectedVersion}`)
     }
-    await tx.workOrder.update({
+    const updated = await tx.workOrder.update({
       where: { id: existing.id, version: existing.version },
       data: { ...patch, version: { increment: 1 } },
     })
+    targetWorkOrderId = updated.id
   } else {
-    await tx.workOrder.create({ data: { ...newData } })
+    const created = await tx.workOrder.create({ data: { ...newData } })
+    targetWorkOrderId = created.id
   }
 
-  // 3. Audit log ใน transaction เดียวกัน (atomic)
+  // 4. Audit log ใน transaction เดียวกัน (atomic)
+  //    AuditLog.detail เป็น String? — ต้อง JSON.stringify()
+  //    before/after ผ่าน redaction allowlist ก่อน (ห้ามเก็บ credential/PII)
+  const auditDetail = {
+    before: redacted(item.before),   // redacted = ลบ PII/credential ตาม allowlist
+    after: redacted(item.after),
+    syncRunId: runId,
+    externalKey: item.externalKey,
+  }
+
   await tx.auditLog.create({
     data: {
       action: 'SYNC_APPLY',
       entity: 'WorkOrder',
-      entityId: existing?.id ?? created.id,
+      entityId: targetWorkOrderId,
       summary: `Sync ${item.action} from ${source} (key=${item.externalKey})`,
-      detail: { before: item.before, after: item.after, syncRunId: runId },
+      detail: JSON.stringify(auditDetail),  // String, not object
       actor: triggeredBy,
       siteCode: derivedSite,
     },
   })
 
-  // 4. อัปเดต SyncRunItem ใน transaction เดียวกัน
+  // 5. อัปเดต SyncRunItem ใน transaction เดียวกัน
   await tx.syncRunItem.update({
     where: { id: item.id },
-    data: { status: 'applied', entityId: existing?.id ?? created.id, processedAt: new Date() },
+    data: { status: 'applied', entityId: targetWorkOrderId, processedAt: new Date() },
   })
 })
 ```
@@ -405,24 +459,32 @@ Sync ต้องเคารพ Site scope ของผู้ใช้ที่
 ### 8.1 การตรวจสอบสิทธิ์
 
 ```typescript
-const auth = await requireAuth(req, 'SYNC_RUN')  // permission ใหม่
+// Auth helpers (target SHA — ไม่แก้ B4 frozen files):
+// - requireAuth()              → src/lib/auth-middleware.ts
+// - buildAuthorizationContext() → src/lib/authorization-context.ts
+// - ctx.canAtSite()            → AuthorizationContext interface (authorization-context.ts)
+// - canAccessSite()            → src/lib/auth-shared.ts (import only, frozen)
+const auth = await requireAuth(req, 'ADMIN')  // ใช้ ADMIN แทน SYNC_RUN (B4 frozen rule)
 const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
-// superadmin → sync ได้ทุก Site
-// non-superadmin → sync ได้เฉพาะ Site ที่มี grant
+// superadmin → sync ได้ทุก Site (ctx.canAtSite always true)
+// non-superadmin → sync ได้เฉพาะ Site ที่ ctx.canAtSite(siteCode, 'ADMIN') = true
 ```
 
 ### 8.2 การกรอง Site
 
-- ถ้า `options.siteFilter` ระบุ → ตรวจ `ctx.canAtSite(siteFilter, 'SYNC_RUN')` ก่อน
+- ถ้า `options.siteFilter` ระบุ → ตรวจ `ctx.canAtSite(siteFilter, 'ADMIN')` ก่อน
 - ถ้าไม่ระบุและ non-superadmin → sync เฉพาะ Site ใน `ctx.siteScope.siteCodes`
 - แต่ละ `SyncRunItem` ที่สร้างต้องมี Site ที่ผู้ใช้มีสิทธิ์ — ถ้า item ไหนมี Site นอก scope → ทำเครื่องหมายเป็น `error` พร้อมข้อความ "out of site scope"
 
-### 8.3 Permission ใหม่
+### 8.3 Permission
 
-เพิ่ม `SYNC_RUN` ใน permission catalog (`src/lib/auth-shared.ts`):
-- ให้ role `admin` ที่ Site ใดๆ มี `SYNC_RUN`
-- role `editor`/`viewer` ไม่มี (sync เป็น operation ที่กระทบข้อมูล ต้อง admin)
+**MVP (ไม่แก้ B4 frozen file):** ใช้ `ADMIN` permission ร่วมกับ `canAtSite()`:
+- `requireAuth(req, 'ADMIN')` — แทนการเพิ่ม `SYNC_RUN` permission ใน `auth-shared.ts` (ซึ่งเป็น B4 frozen file)
+- `canAtSite(siteFilter, 'ADMIN')` — reuse B4 helper สำหรับ Site scope
+- admin role มี `ADMIN` permission อยู่แล้ว ไม่ต้องแก้ seed
+
+**อนาคต (หลัง PR-SYNC-1 ผ่าน):** หากต้องการ `SYNC_RUN` permission แยกจาก `ADMIN` ต้องขอ freeze exception สำหรับ `auth-shared.ts` แยกต่างหาก
 
 ### 8.4 Audit
 
@@ -619,7 +681,7 @@ SYNC_PREVIEW_MAX_ROWS=1000
 | 14 | `bunx eslint` ผ่าน 0 error ทุกไฟล์ใหม่ |
 | 15 | `npx tsc --noEmit` ไม่มี error ใหม่ในไฟล์ที่แก้ |
 | 16 | ไม่ break test เดิม (authorization-matrix, route-integration, concurrency) |
-| 17 | migration รันได้ทั้ง SQLite (sandbox) และ PostgreSQL (production) |
+| 17 | migration ผ่าน PostgreSQL จริง (production gate) — SQLite ใช้เฉพาะ local development/testing เท่านั้น ไม่ใช่ evidence |
 | 18 | ไม่แก้ B4 baseline — ใช้ `withSerializableRetryTracked` / `loadAuthorizedWorkOrder` / `buildAuthorizationContext` ผ่าน import เท่านั้น |
 
 ---
@@ -658,14 +720,13 @@ SYNC_PREVIEW_MAX_ROWS=1000
 - `src/components/itam/sync-history.tsx`
 
 **แก้:**
-- `src/lib/auth-shared.ts` — เพิ่ม `SYNC_RUN` permission
-- `prisma/seed-authorization-catalog.ts` — เพิ่ม permission + role mapping
+- `src/lib/auth-shared.ts` — **ไม่แก้** (B4 frozen file) — ใช้ `ADMIN` แทน `SYNC_RUN` ใน MVP
 - `src/components/itam/sidebar.tsx` — เพิ่ม nav item "ซิงค์ข้อมูล"
 - `src/store/app-store.ts` — เพิ่ม `activePage: 'sync'`
 - `src/app/page.tsx` — route `sync` → `SyncPage`
 
 **ไม่แตะ (B4 baseline):**
-- `src/lib/txn.ts` (ใช้ผ่าน import)
+- `src/lib/retry-transaction.ts` (ใช้ผ่าน import)
 - `src/lib/wo-authz.ts` (ใช้ผ่าน import)
 - `src/lib/authorization-context.ts` (ใช้ผ่าน import)
 

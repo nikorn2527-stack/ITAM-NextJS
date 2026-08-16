@@ -851,3 +851,64 @@ model PasswordResetToken {
   @@index([email])
   @@index([token])
 }
+
+// ============================================================
+// 30) SyncRun — ประวัติการ sync จาก Legacy Apps Script
+//     mode: 'preview' (read-only diff) | 'apply' (write)
+//     status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+// ============================================================
+model SyncRun {
+  id              String   @id @default(cuid())
+  source          String   // 'services' | 'itam' | 'stock'
+  target          String   // 'work-order' | 'device' | 'meter' | 'stock-item' | 'stock-txn' | 'purchase-order'
+  mode            String   // 'preview' | 'apply'
+  status          String   // 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  totalRows       Int      @default(0)
+  createRows      Int      @default(0)
+  updateRows      Int      @default(0)
+  skipRows        Int      @default(0)
+  errorRows       Int      @default(0)
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  durationMs      Int?
+  triggeredBy     String   // user email
+  siteScope       String?
+  errorMessage    String?
+  retryOf         String?
+  sourceCursor    String?
+  attempts        Int      @default(1)
+  p2034Count      Int      @default(0)
+  items           SyncRunItem[]
+  createdAt       DateTime @default(now())
+
+  @@index([source, target, status])
+  @@index([triggeredBy])
+  @@index([siteScope, createdAt])
+  @@index([status, createdAt])
+}
+
+// ============================================================
+// 31) SyncRunItem — diff รายแถวจากการ sync
+//     action: 'create' | 'update' | 'skip' | 'error'
+//     status: 'pending' | 'applied' | 'skipped' | 'error'
+// ============================================================
+model SyncRunItem {
+  id              String   @id @default(cuid())
+  syncRunId       String
+  syncRun         SyncRun  @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  externalKey     String
+  action          String   // 'create' | 'update' | 'skip' | 'error'
+  before          Json?
+  after           Json?
+  expectedVersion Int?
+  expectedExists  Boolean  @default(false)
+  status          String   // 'pending' | 'applied' | 'skipped' | 'error'
+  errorMessage    String?
+  entityId        String?
+  entityType      String?
+  processedAt     DateTime?
+
+  @@index([syncRunId, action])
+  @@index([externalKey])
+  @@index([syncRunId, status])
+}
