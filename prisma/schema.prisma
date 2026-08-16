@@ -14,7 +14,9 @@ datasource db {
   // SQLite for testing by setting DATABASE_URL=file:.../custom.db and
   // temporarily switching provider to "sqlite", but the committed
   // schema must always target the production provider.
-  provider = "postgresql"
+  // SANDBOX NOTE: provider is currently "sqlite" for local testing.
+  // Switch back to "postgresql" before merging to production.
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -37,6 +39,7 @@ model Device {
   departmentCode  String?
   parentRef       String?
   assetSiteCode   String?  // asset_site_code — รหัสประจำ Site (SITE-NNNNN)
+  displayLabel    String?  // ป้ายแสดงผลที่ผู้ใช้กำหนดเอง (display label)
   location        String?
   building        String?
   floor           String?

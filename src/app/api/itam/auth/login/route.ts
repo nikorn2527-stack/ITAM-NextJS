@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 import {
   verifyPassword,
   createToken,
@@ -105,19 +106,19 @@ export async function POST(req: NextRequest) {
     })
     const user = toAuthUser(row)
 
-    // Audit log (best-effort)
-    try {
-      await db.auditLog.create({
-        data: {
-          timestamp: new Date().toISOString(),
-          action: 'LOGIN',
-          user: row.email,
-          details: JSON.stringify({ method: 'password', username: row.username }),
-        },
-      })
-    } catch {
-      /* audit failures must not break login */
-    }
+    // Audit log (best-effort) — uses logAudit() helper so the field names
+    // match the Prisma schema (action/entity/summary/detail/actor/siteCode).
+    // Previously called db.auditLog.create with wrong field names
+    // (timestamp/details/user) which don't exist on the AuditLog model,
+    // causing a Prisma error on every login.
+    await logAudit(
+      'LOGIN',
+      'User',
+      row.id,
+      `เข้าสู่ระบบ — ${row.email}`,
+      { method: 'password', username: row.username },
+      row.email,
+    )
 
     return NextResponse.json({ token, user })
   } catch (err) {

@@ -826,6 +826,15 @@ export function DevicesPage() {
             เพิ่ม / แก้ไข / ลบ อุปกรณ์ IT ในระบบ
           </p>
         </div>
+        {/* Primary CTA in the header — always visible without scrolling.
+            On mobile it's full-width; on sm+ it's right-aligned. */}
+        <Button
+          onClick={openAdd}
+          className="w-full bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950 sm:w-auto"
+        >
+          <Plus className="h-4 w-4" />
+          เพิ่มอุปกรณ์
+        </Button>
       </div>
 
       <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -909,19 +918,12 @@ export function DevicesPage() {
             </div>
             <div className="flex items-center gap-2">
               <Button
-                onClick={openAdd}
-                className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
-              >
-                <Plus className="h-4 w-4" />
-                เพิ่มอุปกรณ์
-              </Button>
-              <Button
                 variant="outline"
                 onClick={() => setImportOpen(true)}
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Upload className="h-4 w-4" />
-                นำเข้า CSV
+                <span className="hidden sm:inline">นำเข้า CSV</span>
               </Button>
               <Button
                 variant="outline"
@@ -930,7 +932,7 @@ export function DevicesPage() {
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Download className="h-4 w-4" />
-                {exporting ? 'กำลังส่งออก...' : 'ส่งออก CSV'}
+                <span className="hidden sm:inline">{exporting ? 'กำลังส่งออก...' : 'ส่งออก CSV'}</span>
               </Button>
               <Button
                 variant="outline"
@@ -939,7 +941,7 @@ export function DevicesPage() {
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Tag className="h-4 w-4" />
-                พิมพ์สติกเกอร์
+                <span className="hidden sm:inline">พิมพ์สติกเกอร์</span>
               </Button>
               <Button
                 variant="outline"
@@ -947,7 +949,7 @@ export function DevicesPage() {
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <RefreshCw className="h-4 w-4" />
-                รีเฟรช
+                <span className="hidden sm:inline">รีเฟรช</span>
               </Button>
             </div>
           </div>
@@ -1910,7 +1912,7 @@ export function DevicesPage() {
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="sticky bottom-0 -mx-6 border-t border-slate-200 bg-white px-6 pb-4 pt-3 dark:border-slate-800 dark:bg-slate-900">
             <Button
               variant="outline"
               onClick={() => setDialogOpen(false)}
