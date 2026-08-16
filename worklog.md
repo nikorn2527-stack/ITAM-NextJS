@@ -8896,3 +8896,27 @@ Stage Summary:
 **สถานะ: ยังคง CONDITIONAL STAGING ONLY**
 - ไม่ใช่ Production GO — รอผล PostgreSQL verification จาก CI/staging
 - cron webDevReview และพอร์ต 3000 เป็นเครื่องมือ/สภาพแวดล้อมตรวจสอบ ไม่ใช่หลักฐาน Production deploy
+
+---
+Task ID: PR6-CREATION
+Agent: orchestrator (main)
+Task: แก้ไขปัญหาทีม audit รายงาน — งานของผมไม่ได้อยู่ใน PR #5 (head f433c6f) แต่อยู่บน main หลัง f433c6f → สร้าง PR ใหม่แยก
+
+Work Log:
+- ตรวจ git state: พบว่า f433c6f (PR #5 head) เป็น ancestor ของ main → B4 อยู่ใน main แล้ว แต่ commits ของผม (508ac1d, 49046cf, b4dea18) อยู่หลัง f433c6f บน main ทีม audit ตรวจ PR #5 จึงไม่เห็นงานของผม
+- Push worklog commit 20864c1 ไป main (d14f6b2..20864c1)
+- สร้าง branch `release/conditional-staging-b4dea18` ที่ commit `b4dea18`
+- Push branch ไป remote
+- สร้าง PR #6 ผ่าน GitHub API (gh CLI ไม่มี ใช้ curl):
+  - title: "Release candidate b4dea18 — Integration defects + UX/UI + Sync spec (CONDITIONAL STAGING ONLY)"
+  - head: release/conditional-staging-b4dea18 @ b4dea18
+  - base: pr-c/authz-foundation @ f433c6f (B4 baseline = PR #5 head)
+  - 3 commits, 15 files, +1231/-149
+  - URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/6
+- PR body ระบุชัด: B4 baseline untouched (0 diff), 3 commits, integration defects, UX/UI, sync spec, PostgreSQL verification required
+
+Stage Summary:
+- PR #6 สร้างแล้ว: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/6
+- base = PR #5 head (f433c6f) → diff แสดงเฉพาะงานหลัง B4 closure
+- ทีม audit สามารถตรวจ diff ของ PR #6 เทียบกับ B4 baseline ได้โดยตรง
+- สถานะยังคง CONDITIONAL STAGING ONLY — รอ PostgreSQL verification ใน CI/staging
