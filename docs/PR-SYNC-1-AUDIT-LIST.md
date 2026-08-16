@@ -1,7 +1,7 @@
 # PR-SYNC-1 Audit List — Services → Work Orders
 
 **เอกสารนี้:** Audit List ที่กรอกแล้วสำหรับ PR-SYNC-1 (Legacy Apps Script → ITAM-NextJS Manual Sync, MVP: Services → Work Orders)
-**สถานะ:** ส่งให้ทีม Audit review — ห้ามเริ่ม implementation จนกว่าจะอนุมัติ
+**สถานะ:** NOT APPROVED — ส่ง revision แก้ 8 findings (F-01 ถึง F-08) ห้ามเริ่ม implementation จนกว่าจะอนุมัติ
 **ผู้กรอก:** ทีมพัฒนา (orchestrator)
 **วันที่กรอก:** 2026-08-16
 **Reference spec:** `docs/TASK-legacy-sync.md` (commit `7eaf9bf`+)
@@ -17,14 +17,20 @@
 | ตัวชี้วัด | ค่า |
 |---|---|
 | รายการ Critical ทั้งหมด | 17 |
-| รายการ Critical ที่ PASS (spec พร้อม) | 17 / 17 |
-| รายการ Critical ที่ FAIL/BLOCKED | 0 / 17 |
+| รายการ Critical ที่ DESIGN_PASS | 9 / 17 |
+| รายการ Critical ที่ BLOCKED (ต้องแก้) | 8 / 17 |
 | รายการ Non-critical | 5 |
-| **สถานะ Final** | ☑ READY FOR AUDIT REVIEW |
+| **สถานะ Final** | ☐ NOT APPROVED — ต้องแก้ revision |
 | **ผู้กรอก** | orchestrator (ทีมพัฒนา) |
 | **วันที่กรอก** | 2026-08-16 |
 
-> ทุกรายการ Critical ระบุเป็น `PASS` เพราะ spec ใน `docs/TASK-legacy-sync.md` ครอบคลุมครบ และมี evidence path ชัดเจน การ implementation ยังไม่เริ่ม (รอ audit approval) ดังนั้นค่า PASS หมายถึง "spec พร้อม implement ตามนี้" ไม่ใช่ "implement แล้วผ่าน"
+> **หมายเหตุสถานะ (revision v2):**
+> - `DESIGN_PASS` = spec ครอบคลุม พร้อม implement ตามนี้
+> - `BLOCKED` = มี finding จาก audit review ต้องแก้ก่อน implement
+> - `IMPLEMENTATION_TBD` = ต้อง implement แล้วจึงจะมี evidence
+> - `EVIDENCE_TBD` = ต้องรัน test/CI แล้วจึงจะมี evidence
+>
+> เดิมทุกรายการระบุเป็น `PASS` แต่ audit review พบ 8 findings (F-01 ถึง F-08) ที่ต้องแก้ก่อน implementation
 
 ---
 
@@ -48,7 +54,7 @@ Adapter จะ reuse `FIELD_MAPPINGS.workOrder` + `STATUS_MAPPINGS.workOrder` �
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-2.1 | Services → WorkOrder mapping ใช้ `FIELD_MAPPINGS.workOrder` | PASS | dev | impl | `src/lib/csv-field-mapping.ts:223-258` | 33 fields mapped |
+| C-2.1 | Services → WorkOrder mapping ใช้ `FIELD_MAPPINGS.workOrder` | DESIGN_PASS (F-02 แจ้งเพิ่ม) | dev | impl | `src/lib/csv-field-mapping.ts:223-258` | 33 fields mapped — **F-02:** ยังไม่มี canonical `siteCode` ต่อ record — ต้องเพิ่ม source `siteCode` หรือ server-side mapping แบบ fail-closed (allowlist/version/audit); missing/unknown Site → quarantine ห้าม Apply |
 | C-2.2 | Status conversion ใช้ `STATUS_MAPPINGS.workOrder` (emoji Thai → enum) | PASS | dev | impl | `src/lib/csv-field-mapping.ts:265-287` | 5 statuses: PENDING/IN_PROGRESS/WAITING_PARTS/COMPLETED/CANCELLED |
 | C-2.3 | ทุก field ที่ legacy export มี adapter รู้จัก map | PASS | dev | impl | `src/lib/csv-field-mapping.ts:223` | unmapped columns → warning log (ไม่ silent drop) |
 | C-2.4 | Fields ที่ไม่ map ถูก log เป็น warning | PASS | dev | impl | spec §5.1 `unmappedColumns[]` | `SyncRun.errorMessage` บันทึก |
@@ -75,7 +81,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 |---|---|---|---|---|---|---|
 | C-4.1 | Lookup ใช้ `externalKey` (requestId) เท่านั้น ไม่ใช้ `id` ภายใน | PASS | dev | impl | spec §6.1 | `tx.workOrder.findUnique({ where: { requestId } })` |
 | C-4.2 | Preview เปรียบเทียบ `after` กับ record ปัจจุบัน → skip ถ้า unchanged | PASS | dev | impl | spec §6.2, §9 | `SyncRunItem.action='skip'` if deep-equal |
-| C-4.3 | Apply ใช้ `upsert` ด้วย `where: { requestId }` | PASS | dev | impl | spec §6.3, §7 step 2 | Prisma upsert |
+| C-4.3 | Apply ใช้ conditional versioned create/update (ไม่ใช่ Prisma upsert) | BLOCKED (F-07) | dev | impl | spec §6.3, §7 step 2 | **F-07:** spec §6 ระบุ `upsert` แต่ §7 ใช้ conditional update/create ด้วย `expectedVersion` — ต้องแก้ §6 ให้สอดคล้อง ใช้ algorithm เดียว: re-read in tx → check baseline → conditional update/create → unique conflict = CONFLICT |
 | C-4.4 | Soft delete: record หายจาก source ไม่ลบใน DB | PASS | dev | impl | spec §6 edge case | warning ใน `SyncRun.errorMessage` |
 
 ---
@@ -109,7 +115,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | C-7.1 | P2034 → retry ผ่าน `withSerializableRetryTracked` | PASS | dev | impl | spec §7, §10.1 | reuse B4 (exponential backoff) |
 | C-7.2 | Non-P2034 error ไม่ retry (attempts=1) | PASS | dev | test | B4 test 8 pattern, C-14.8 | จะเขียน test |
 | C-7.3 | Test: จำลอง P2034 → sync ไม่ตอบ 500 | PASS | dev | test | spec §14.1 #8, C-14.8 | |
-| C-7.4 | `SyncRun.attempts` / `p2034Count` บันทึกไว้ตรวจได้ | PASS | dev | impl | spec §3.1 + implementation | `withSerializableRetryTracked` returns `{result, attempts, p2034Count}` |
+| C-7.4 | `SyncRun.attempts` / `p2034Count` บันทึกไว้ตรวจได้ | BLOCKED (F-05) | dev | impl | spec §3.1 + implementation | **F-05:** SyncRun model ใน spec §3.1 ยังไม่มี `attempts` และ `p2034Count` field — ต้องเพิ่ม field ใน model หรือแก้ evidence contract ให้ชัดว่าเก็บที่ไหน |
 
 ---
 
@@ -143,9 +149,9 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-10.1 | Permission ใหม่ `SYNC_RUN` เพิ่มใน `auth-shared.ts` + seed | PASS | dev | impl | spec §8.3 | ยังไม่มี (ต้องเพิ่ม — ไม่ใช่ B4 file, แก้ได้) |
-| C-10.2 | `requireAuth(req, 'SYNC_RUN')` ในทุก `/api/sync/*` route | PASS | dev | impl | spec §8.1 | |
-| C-10.3 | `buildAuthorizationContext` + `canAtSite(siteFilter, 'SYNC_RUN')` | PASS | dev | impl | spec §8.1, §8.2 | reuse B4 helper (frozen) |
+| C-10.1 | Permission สำหรับ Sync — ใช้ `ADMIN` + `canAtSite()` แทน `SYNC_RUN` ใน frozen file | BLOCKED (F-01) | dev | impl | spec §8.3 | **F-01:** `auth-shared.ts` เป็น B4 frozen file — ห้ามเพิ่ม `SYNC_RUN` permission ใน MVP ให้ใช้ `requireAuth(req, 'ADMIN')` + `canAtSite(siteFilter, 'ADMIN')` แทน หากต้องการ `SYNC_RUN` จริง ต้องขอ freeze exception แยก |
+| C-10.2 | `requireAuth(req, 'ADMIN')` ในทุก `/api/sync/*` route | DESIGN_PASS | dev | impl | spec §8.1 | ใช้ ADMIN แทน SYNC_RUN (F-01) |
+| C-10.3 | `buildAuthorizationContext` + `canAtSite(siteFilter, 'ADMIN')` | DESIGN_PASS | dev | impl | spec §8.1, §8.2 | reuse B4 helper (frozen) |
 | C-10.4 | Non-superadmin sync เฉพาะ Site ใน `ctx.siteScope.siteCodes` | PASS | dev | impl | spec §8.2 | |
 | C-10.5 | Item ที่มี Site นอก scope → `OUT_OF_SCOPE` error | PASS | dev | impl | spec §8.2, §10.3 | |
 | C-10.6 | superadmin sync ได้ทุก Site + `siteScope` บันทึก multi-site | PASS | dev | impl | spec §8.4 | `SyncRun.siteScope` nullable |
@@ -169,7 +175,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-12.1 | migration ใน `prisma/migrations/{ts}_add_sync_run_tables/` | PASS | dev | impl | spec §3.3, §16 | สร้างตอน implementation |
+| C-12.1 | migration ใน `prisma/migrations/{ts}_add_sync_run_tables/` ใช้ `prisma migrate deploy` | BLOCKED (F-04) | dev | impl | spec §3.3, §16 | **F-04:** spec §3.3 ระบุ `bun run db:push` — ต้องแก้เป็น migration file + `prisma migrate deploy` ใน CI/staging/production; ห้าม `--accept-data-loss` |
 | C-12.2 | migration additive (CREATE TABLE, ไม่ DROP) | PASS | dev | impl | spec §3.3 | no data loss |
 | C-12.3 | migration รันได้บน PostgreSQL จริง | PASS | dev | impl+CI | spec §3.3, §14.2 #17 | ทดสอบใน CI (เหมือน PR #6) |
 | C-12.4 | `@@index` ครบ | PASS | dev | impl | spec §3.1, §3.2 | source/target/status, triggeredBy, siteScope, externalKey |
@@ -195,17 +201,17 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 
 | # | Check item | Status | Owner | Due date | Evidence path | Notes |
 |---|---|---|---|---|---|---|
-| C-14.1 | Preview no-write test (2x → DB ไม่เปลี่ยน) | PASS | dev | test | spec §14.1 #1 | `tests/sync/preview-no-write.test.ts` |
-| C-14.2 | Apply → WorkOrder ปรากฏ | PASS | dev | test | spec §14.1 #2 | |
-| C-14.3 | Idempotency: apply 2x → ไม่ duplicate | PASS | dev | test | spec §14.1 #3 | requestId @unique |
-| C-14.4 | Skip: unchanged → skipRows > 0 | PASS | dev | test | spec §14.1 #4 | |
-| C-14.5 | Site scope: demo_staff → OUT_OF_SCOPE | PASS | dev | test | spec §14.1 #5 | |
-| C-14.6 | Audit: ทุก apply → AuditLog + siteCode | PASS | dev | test | spec §14.1 #6 | |
-| C-14.7 | Conflict: แก้ WO หลัง preview → CONFLICT | PASS | dev | test | spec §14.1 #7, C-6.3 | expectedVersion check |
-| C-14.8 | P2034: จำลอง conflict → ไม่ 500 | PASS | dev | test | spec §14.1 #8 | reuse B4 pattern |
-| C-14.9 | UI flow (agent-browser): preview → diff → confirm → result | PASS | dev | test | spec §14.1 #9 | |
-| C-14.10 | Credential leak test: DevTools ไม่เห็น | PASS | dev | test | spec §14.1 #11 | |
-| C-14.11 | Retry: error items ไม่กระทบ success | PASS | dev | test | spec §14.1 #13 | |
+| C-14.1 | Preview no-write test (2x → DB ไม่เปลี่ยน) | EVIDENCE_TBD | dev | test | spec §14.1 #1 | **F-08:** planned test — ยังไม่มี implementation, ห้ามระบุเป็น PASS |
+| C-14.2 | Apply → WorkOrder ปรากฏ | EVIDENCE_TBD | dev | test | spec §14.1 #2 | **F-08:** planned test |
+| C-14.3 | Idempotency: apply 2x → ไม่ duplicate | EVIDENCE_TBD | dev | test | spec §14.1 #3 | **F-08:** planned test |
+| C-14.4 | Skip: unchanged → skipRows > 0 | EVIDENCE_TBD | dev | test | spec §14.1 #4 | **F-08:** planned test |
+| C-14.5 | Site scope: demo_staff → OUT_OF_SCOPE | EVIDENCE_TBD | dev | test | spec §14.1 #5 | **F-08:** planned test |
+| C-14.6 | Audit: ทุก apply → AuditLog + siteCode | EVIDENCE_TBD | dev | test | spec §14.1 #6 | **F-08:** planned test |
+| C-14.7 | Conflict: แก้ WO หลัง preview → CONFLICT | EVIDENCE_TBD | dev | test | spec §14.1 #7, C-6.3 | **F-08:** planned test |
+| C-14.8 | P2034: จำลอง conflict → ไม่ 500 | EVIDENCE_TBD | dev | test | spec §14.1 #8 | **F-08:** planned test |
+| C-14.9 | UI flow (agent-browser): preview → diff → confirm → result | EVIDENCE_TBD | dev | test | spec §14.1 #9 | **F-08:** planned test |
+| C-14.10 | Credential leak test: DevTools ไม่เห็น | EVIDENCE_TBD | dev | test | spec §14.1 #11 | **F-08:** planned test |
+| C-14.11 | Retry: error items ไม่กระทบ success | EVIDENCE_TBD | dev | test | spec §14.1 #13 | **F-08:** planned test |
 
 ### C-15 PR boundary (B4 frozen)
 
@@ -215,7 +221,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | C-15.2 | `src/lib/wo-authz.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | reuse ผ่าน import |
 | C-15.3 | `src/lib/authorization-context.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | reuse ผ่าน import |
 | C-15.4 | `src/lib/auth-middleware.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | |
-| C-15.5 | `src/lib/auth-shared.ts` เพิ่ม `SYNC_RUN` permission (review ต้อง) | PASS | dev | impl | spec §8.3 | เป็นการเพิ่ม ไม่ใช่แก้ของเดิม — ต้อง review |
+| C-15.5 | `src/lib/auth-shared.ts` — **ห้ามแก้** ใน MVP | BLOCKED (F-01) | dev | impl | B4 frozen list | **F-01:** เป็น B4 frozen file — ห้ามเพิ่ม permission ใน MVP ใช้ `ADMIN` แทน; หากจำเป็นต้องเพิ่ม `SYNC_RUN` ต้องขอ freeze exception แยก |
 | C-15.6 | `src/lib/audit.ts` ไม่ถูกแก้ | PASS | dev | impl | B4 frozen list | reuse `logAudit()` |
 | C-15.7 | `tests/auth/concurrency.test.ts` ไม่ถูกแก้ | PASS | dev | impl | | sync tests แยกใน `tests/sync/` |
 | C-15.8 | PR-SYNC-1 แยกจาก PR #6 + UX/UI PR | PASS | dev | impl | | branch `pr-sync-1/...` แยก |
@@ -245,7 +251,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 | C-17.5 | B4 regression tests ผ่าน (PostgreSQL) | PASS | dev | CI | | reuse PR #6 workflow pattern |
 | C-17.6 | PostgreSQL migration รันสำเร็จใน staging | PASS | dev | CI | | |
 | C-17.7 | 3-point integration check (Device/print/login) | PASS | dev | CI | | จาก PR #6 — ต้องไม่ break |
-| C-17.8 | Audit team อนุมัติเป็นลายลักษณ์อักษร | TBD | audit | review | | รอ audit review Audit List นี้ |
+| C-17.8 | Audit team อนุมัติเป็นลายลักษณ์อักษร | NOT APPROVED | audit | review | | ส่ง revision v2 แล้ว — รอ verdict |
 
 ---
 
@@ -303,6 +309,7 @@ external key สำหรับ Work Orders = `WorkOrder.requestId` (`@unique`) 
 |---|---|---|
 | 2026-08-16 | orchestrator (v1) | สร้าง audit list v1 (17 Critical + 5 Non-critical) |
 | 2026-08-16 | orchestrator (v2) | กรอกครบทั้ง 22 รายการ + evidence path + ข้อความส่ง audit |
+| 2026-08-16 | new-team (v3) | revision แก้ 8 findings (F-01 ถึง F-08): เปลี่ยน PASS → BLOCKED/EVIDENCE_TBD สำหรับรายการที่มีปัญหา, เพิ่ม F-02 siteCode mapping note ใน C-2.1 |
 
 ---
 
