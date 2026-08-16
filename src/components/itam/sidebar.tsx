@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
-import { Sun, Moon, Search, LogOut, QrCode } from 'lucide-react'
+import { Sun, Moon, Search, LogOut, QrCode, Menu } from 'lucide-react'
 import { useAppStore, type ActivePage } from '@/store/app-store'
 import { useClock, formatThaiTime, formatThaiDate } from '@/hooks/use-clock'
 import { useAuthStore, useNavVisibility, useRole } from '@/store/auth-store'
@@ -153,6 +153,10 @@ export function Sidebar() {
   } = useAppStore()
   const authUser = useAuthStore((s) => s.user)
   const authLogout = useAuthStore((s) => s.logout)
+  // Demo banner (rendered in-flow at the top of the app shell in page.tsx)
+  // is ~30px tall. When it's showing, push the mobile hamburger down so it
+  // doesn't overlap the banner.
+  const isDemoBannerShowing = useAuthStore((s) => s.user?.isDemo === true)
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
@@ -396,8 +400,8 @@ export function Sidebar() {
                   className={cn(
                     'group relative flex w-full cursor-pointer items-center text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]',
                     expanded
-                      ? 'gap-3 px-4 py-1.5'
-                      : 'h-10 w-full justify-center px-0',
+                      ? 'gap-3 px-4 py-2.5'
+                      : 'h-11 w-full justify-center px-0',
                     active
                       ? 'bg-[#f97316]/10 text-[#f97316] dark:bg-[#f97316]/20'
                       : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white',
@@ -711,9 +715,15 @@ export function Sidebar() {
         type="button"
         aria-label="เปิดเมนู"
         onClick={toggleSidebar}
-        className="fixed left-3 top-3 z-[200] flex h-10 w-10 items-center justify-center rounded-md bg-[#0f172a] text-xl text-white shadow-md dark:bg-[#f97316] md:hidden"
+        className={cn(
+          'fixed left-3 z-[200] flex h-11 w-11 items-center justify-center rounded-md bg-[#0f172a] text-white shadow-md dark:bg-[#f97316] md:hidden',
+          // When the DemoBanner is showing (in-flow at the top of the app
+          // shell, ~30px tall), push the hamburger below it so they don't
+          // overlap. Without banner → top-3 (12px); with banner → top-12 (48px).
+          isDemoBannerShowing ? 'top-12' : 'top-3',
+        )}
       >
-        ☰
+        <Menu className="h-5 w-5" />
       </button>
 
       {/* Mobile backdrop */}

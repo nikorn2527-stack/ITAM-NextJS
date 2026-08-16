@@ -3290,39 +3290,19 @@ function WorkOrderDetailContent({
         </div>
       </div>
 
-      {/* Footer actions — sticky at bottom, all buttons ≥44px (min-h-11) */}
+      {/* Footer actions — sticky at bottom, all buttons ≥44px (min-h-11).
+          Order: PRIMARY workflow actions first (ปิดงาน, มอบหมาย, เบิกอะไหล่,
+          ยกเลิก) so they're visible on row 1 on mobile; secondary actions
+          (พิมพ์, ผู้แจ้งแก้ไข) come after since they're less time-critical. */}
       <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t bg-white px-3 py-3 dark:bg-slate-900 sm:px-5">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setPrintOpen(true)}
-          className="min-h-11 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
-        >
-          <Printer className="h-4 w-4" />
-          พิมพ์ใบงาน
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            if (!wo.id) return
-            window.open(`/api/work-orders/${wo.id}/print-sheet`, '_blank', 'noopener,noreferrer')
-          }}
-          className="min-h-11 border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-300 dark:hover:bg-teal-950"
-          title="พิมพ์ใบงานช่าง (compact sheet with QR code)"
-        >
-          <Printer className="h-4 w-4" />
-          ใบงานช่าง (QR)
-        </Button>
-        {canReporterEdit && (
+        {canComplete && (
           <Button
             size="sm"
-            variant="outline"
-            onClick={() => setReporterEditOpen(true)}
-            className="min-h-11 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950"
+            onClick={() => setCompleteOpen(true)}
+            className="order-1 min-h-11 w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto"
           >
-            <Edit3 className="h-4 w-4" />
-            ผู้แจ้งแก้ไข
+            <CheckCircle2 className="h-4 w-4" />
+            ปิดงาน
           </Button>
         )}
         {canAssign && (
@@ -3330,7 +3310,7 @@ function WorkOrderDetailContent({
             size="sm"
             variant="outline"
             onClick={() => setAssignOpen(true)}
-            className="min-h-11 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950"
+            className="order-2 min-h-11 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-950"
           >
             <User className="h-4 w-4" />
             {wo.assignedTo ? 'เปลี่ยนช่าง' : 'มอบหมายช่าง'}
@@ -3341,20 +3321,10 @@ function WorkOrderDetailContent({
             size="sm"
             variant="outline"
             onClick={() => setPartsOpen(true)}
-            className="min-h-11 border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950"
+            className="order-3 min-h-11 border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950"
           >
             <Package className="h-4 w-4" />
             เบิกอะไหล่
-          </Button>
-        )}
-        {canComplete && (
-          <Button
-            size="sm"
-            onClick={() => setCompleteOpen(true)}
-            className="min-h-11 bg-emerald-600 hover:bg-emerald-700"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            ปิดงาน
           </Button>
         )}
         {canCancel && (
@@ -3362,14 +3332,55 @@ function WorkOrderDetailContent({
             size="sm"
             variant="outline"
             onClick={() => setCancelOpen(true)}
-            className="min-h-11 border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950"
+            className="order-4 min-h-11 border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950"
           >
             <XCircle className="h-4 w-4" />
             ยกเลิก
           </Button>
         )}
-        <div className="flex-1" />
-        <Button size="sm" variant="ghost" onClick={onClose} className="min-h-11">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setPrintOpen(true)}
+          className="order-5 min-h-11 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
+        >
+          <Printer className="h-4 w-4" />
+          <span className="hidden sm:inline">พิมพ์ใบงาน</span>
+          <span className="sm:hidden">พิมพ์</span>
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            if (!wo.id) return
+            window.open(`/api/work-orders/${wo.id}/print-sheet`, '_blank', 'noopener,noreferrer')
+          }}
+          className="order-6 min-h-11 border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-300 dark:hover:bg-teal-950"
+          title="พิมพ์ใบงานช่าง (compact sheet with QR code)"
+        >
+          <Printer className="h-4 w-4" />
+          <span className="hidden sm:inline">ใบงานช่าง (QR)</span>
+          <span className="sm:hidden">QR</span>
+        </Button>
+        {canReporterEdit && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setReporterEditOpen(true)}
+            className="order-7 min-h-11 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950"
+          >
+            <Edit3 className="h-4 w-4" />
+            <span className="hidden sm:inline">ผู้แจ้งแก้ไข</span>
+            <span className="sm:hidden">แก้ไข</span>
+          </Button>
+        )}
+        {/* Spacer: order-8 puts it AFTER the action buttons (order-1..order-7)
+            and BEFORE the Close button (order-last). P2 fix: previously the
+            spacer had default order=0, so it landed before all positive-order
+            actions — on mobile with a full-width primary button, the spacer
+            could expand across a blank first flex line. */}
+        <div className="order-8 flex-1" />
+        <Button size="sm" variant="ghost" onClick={onClose} className="order-last min-h-11">
           ปิด
         </Button>
       </div>

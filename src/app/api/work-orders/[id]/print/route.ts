@@ -128,9 +128,20 @@ export async function GET(
       allowOwn: true,
     })
     if (!result.ok) {
-      // 404 HTML (not 403) — avoids revealing WO existence
-      return new NextResponse('<h1>ไม่พบใบงาน</h1>', {
-        status: 404,
+      // Respect the status from loadAuthorizedWorkOrder:
+      //   • 401 → caller is not authenticated (should log in first). Returning
+      //     404 here would hide the fact that authentication is required, so
+      //     the client could never recover. 401 is the correct HTTP contract
+      //     for "you must authenticate" — see RFC 7235.
+      //   • 404 → authenticated caller without access (or WO truly missing).
+      //     404 (not 403) avoids revealing WO existence to unauthorized users.
+      // This matches the pattern used by print-sheet/route.ts (status: result.status).
+      const html =
+        result.status === 401
+          ? '<h1>กรุณาเข้าสู่ระบบ</h1><p>ต้องเข้าสู่ระบบเพื่อพิมพ์ใบงาน</p>'
+          : '<h1>ไม่พบใบงาน</h1>'
+      return new NextResponse(html, {
+        status: result.status,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       })
     }

@@ -11,9 +11,14 @@ generator client {
 
 datasource db {
   // Production uses PostgreSQL (Supabase). The local sandbox may use
-  // SQLite for testing by setting DATABASE_URL=file:.../custom.db and
-  // temporarily switching provider to "sqlite", but the committed
-  // schema must always target the production provider.
+  // SQLite for ad-hoc testing by temporarily switching provider to
+  // "sqlite" and pointing DATABASE_URL at a local .db file, but the
+  // COMMITTED schema must always target the production provider.
+  //
+  // Release candidate (this file): provider = "postgresql".
+  // Any sandbox test that used SQLite was a local, uncommitted exercise
+  // and its results are NOT production evidence — PostgreSQL verification
+  // must happen in CI / staging against a real PostgreSQL instance.
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
@@ -37,6 +42,7 @@ model Device {
   departmentCode  String?
   parentRef       String?
   assetSiteCode   String?  // asset_site_code — รหัสประจำ Site (SITE-NNNNN)
+  displayLabel    String?  // ป้ายแสดงผลที่ผู้ใช้กำหนดเอง (display label)
   location        String?
   building        String?
   floor           String?
