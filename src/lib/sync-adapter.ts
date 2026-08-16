@@ -190,6 +190,19 @@ export async function fetchFromAppsScript(options: {
 }): Promise<SyncAdapterResult> {
   const { source, since, siteFilter, limit, cursor } = options
 
+  // R-04: test-mock source for route-level integration tests.
+  // Returns fixed test records without calling Apps Script — enables
+  // preview/run/retry route tests in CI without external dependencies.
+  if (source === 'test-mock') {
+    return {
+      records: [
+        { requestId: 'TEST-MOCK-001', subject: 'Test WO 1', status: '🟠รอดำเนินการ', siteCode: 'HQ', building: 'B1', location: 'L1', reporter_name: 'Test User', tel: '0812345678' },
+        { requestId: 'TEST-MOCK-002', subject: 'Test WO 2', status: '🔵สำรวจหน้างาน/แก้ไข', siteCode: 'UDH', building: 'B2', location: 'L2', reporter_name: 'Test User 2', tel: '0898765432' },
+      ],
+      metadata: { totalFetched: 2, cursor: null, unmappedColumns: [] },
+    }
+  }
+
   // Get source URL and token from environment
   const urlEnvKey = `APPS_SCRIPT_${source.toUpperCase().replace(/-/g, '_')}_URL`
   const tokenEnvKey = `APPS_SCRIPT_${source.toUpperCase().replace(/-/g, '_')}_TOKEN`
