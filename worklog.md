@@ -9574,3 +9574,141 @@ Staging/Canary Deployment Plan (per Audit conditions):
 Constraints (must maintain):
 - ห้ามแก้ B4 frozen files (6 ไฟล์)
 - ห้ามเพิ่ม SYNC_RUN permission ใน MVP โดยไม่มี Audit review ใหม่
+
+---
+Task ID: P9-03-R5
+Agent: orchestrator (main)
+Task: แก้ P9-03 audit blocker (PR #9 head 44e7848 NOT APPROVED) — แยก retry-delay control ออกจาก request-timeout timer และเพิ่ม assertion ว่า signal ยังไม่ถูก abort ก่อน fetch โดยห้ามลด retry count หรือยกเลิก timeout semantics
+
+Work Log:
+- อ่าน audit verdict: PR #9 head `44e7848` ผล targeted suite 8/8 ผ่าน แต่ Audit พบ reliability blocker — test mock `globalThis.setTimeout` ให้ callback ทำงานทันทีทุกชนิด ขณะที่ production ใช้ timer ตัวเดียวกันทั้ง retry backoff และ AbortController request-timeout → controller.abort() ถูกเรียกก่อน fetch() ทุกครั้ง แต่ mockFetch ไม่ตรวจ signal.aborted → false pass. Audit สร้าง probe ยืนยันพฤติกรรมนี้แล้ว
+- Root cause confirmation (sync-adapter.ts เดิม):
+  - line 232: `const timeout = setTimeout(() => controller.abort(), SYNC_SOURCE_TIMEOUT_MS)` (request-timeout)
+  - line 278: `await new Promise((resolve) => setTimeout(resolve, delay))` (retry backoff)
+  - ทั้งสองใช้ `globalThis.setTimeout` ตัวเดียวกัน → test ที่ mock global นี้กระทบทั้งคู่
+- Production fix (src/lib/sync-adapter.ts — ไม่ใช่ B4 frozen file):
+  - เพิ่ม injectable retry-delay seam `_retryDelayFn` + export `_setRetryDelayForTesting(fn|null)` (same pattern กับ `_setSiteAllowlistForTesting` ที่มีอยู่แล้ว, มี production guard no-op)
+  - retry loop: เปลี่ยน `await new Promise(r => setTimeout(r, delay))` → `await _retryDelayFn(delay)` (test override ได้โดยไม่แตะ globalThis.setTimeout)
+  - ใช้ `try/finally` ครอบ fetch block เพื่อ `clearTimeout(timeout)` ทุก path (success/throw) — ป้องกัน dangling timer และ preserve timeout semantics (timer จริงยัง schedule ที่ 30s และถูก cancel เมื่อ fetch สำเร็จ)
+  - คอมเมนต์อธิบาย P9-03 timer separation ครบ
+- Test fix (tests/sync/auth-contract.test.ts — ไฟล์ใหม่ใน PR #9):
+  - ลบ `globalThis.setTimeout = mockSetTimeout` (root cause ของ false pass) ทิ้งทั้งหมด
+  - ใช้ `_setRetryDelayForTesting(() => Promise.resolve())` ใน beforeEach — ทำ retry backoff ให้ instant โดยไม่แตะ globalThis.setTimeout
+  - เพิ่ม `signalStates` tracker + `recordSignal(init)` helper บันทึก `signal.aborted` ทุกครั้งที่ mock fetch ถูกเรียก
+  - เพิ่ม global afterEach guard: `expect(signalStates.every(s => s === false)).toBe(true)` — จับ false-pass ได้ทุก test ใน suite
+  - เพิ่ม 2 PROBE tests:
+    1. "PROBE: AbortController signal is NOT aborted when fetch is invoked" — assertion ตรงๆ ตาม audit requirement
+    2. "PROBE: request-timeout timer scheduled per attempt; retry backoff routed through the seam" — ใช้ `vi.spyOn(globalThis, 'setTimeout')` นับ calls: ต้องเป็น 3 (3 request-timeout timers) ไม่ใช่ 6 (3 timeouts + 3 backoffs) — พิสูจน์ว่า retry backoff ไม่ leak ผ่าน globalThis.setTimeout
+  - รักษา SYNC_SOURCE_MAX_RETRIES=3 (ไม่ลด retry count) — verify `toHaveBeenCalledTimes(3)` ใน retry tests
+  - รักษา timeout semantics (real timer ยัง schedule และ clear ใน finally)
+
+Verification Results:
+- vitest run tests/sync/auth-contract.test.ts → 10 passed (10) | exit 0 | duration 300ms | no hanging process (8 original + 2 PROBE)
+- vitest run tests/sync/ → 38 passed | 11 failed (ทั้งหมด dbDescribe PostgreSQL groups ล้มด้วย PrismaClientInitializationError เพราะ local DATABASE_URL=file:... เป็น SQLite ไม่ใช่ postgres:// — pre-existing env issue ไม่เกี่ยวกับ P9-03 fix)
+- eslint src/lib/sync-adapter.ts tests/sync/auth-contract.test.ts → exit 0 (clean, 0 errors)
+- B4 frozen files 0-diff จาก ee75164: retry-transaction.ts, wo-authz.ts, authorization-context.ts, auth-middleware.ts, auth-shared.ts, audit.ts → empty diff ✓
+- git diff --stat: เฉพาะ src/lib/sync-adapter.ts (+74) และ tests/sync/auth-contract.test.ts (+240) — ไม่แตะ frozen files
+- bun install ดึง vitest 3.2.7 ที่ประกาศใน devDependencies (bun.lock อัปเดต — artifact ของการ install test runner)
+- agent-browser QA: / route renders "IT Asset Management — PNG TEAM" login page (Thai localization), no page errors, no console errors, mobile 375x812 responsive ✓
+- dev.log: มีเฉพาะ PrismaClientInitializationError จาก /api/auth/oauth/status (pre-existing local DB env issue) — ไม่มี error จาก P9-03 changes
+
+How the fix defeats the false-pass:
+- หากมีคน reintroduce `globalThis.setTimeout = mockSetTimeout` (old approach) → `setTimeout(() => controller.abort(), 30000)` จะ fire ทันที → `signal.aborted === true` ตอน fetch → afterEach guard fail + PROBE test fail. Guard จับ regression ได้ทันที
+
+Stage Summary:
+- P9-03 ปิดได้แล้วในระดับ evidence: timer separation สมบูรณ์ (retry-delay seam ≠ request-timeout timer), signal-not-aborted assertion ครบ (global guard + 2 PROBE), retry count ไม่ลด (3), timeout semantics คงเดิม (real timer + try/finally cleanup)
+- PR #9 head ถัดไป (post-R5) ควรส่ง audit re-review พร้อม evidence: vitest output (10/10), afterEach guard text, spy count=3 proof, B4 0-diff
+- ข้อจำกัด local env: ไม่มี PostgreSQL จริง (DATABASE_URL=file SQLite) → dbDescribe tests ล้มใน sandbox — CI/staging ที่มี Supabase Postgres จะผ่าน. ไม่ใช่ regression
+- G2/G3 staging/canary: ยังห้ามดำเนินการจนกว่า audit จะอนุมัติ PR #9 head ใหม่นี้
+- Constraints ที่รักษา: B4 frozen 6 files 0-diff, ไม่เพิ่ม SYNC_RUN, ไม่ลด retry, ไม่ cancel timeout, ไม่ใส่ token ใน URL/header/query, CSV fallback คงอยู่
+
+---
+Task ID: P9-03-R5-PUSH
+Agent: orchestrator (main)
+Task: ส่ง PR head SHA ใหม่ + ลิงก์ PR + ผล clean-checkout test ให้ทีม Audit ตรวจรอบสุดท้าย (หลัง Audit ทักว่าข้อความก่อนหน้ายังไม่ระบุ SHA/PR link/evidence)
+
+Work Log:
+- ตรวจ git state: R5 fix อยู่ใน working tree บน main โดยมี sandbox auto-commit เป็น 5ff986b (ข้อความ UUID ไม่เหมาะสม)
+- พบว่า main เป็น fast-forward ของ feature branch (origin/feature/pr-sync-1-staging-gateway @ 44e7848) อย่างสะอาด: 5ff986b parent == 44e7848 == feature branch head → สามารถ push main:feature/pr-sync-1-staging-gateway ได้โดยไม่ต้อง rebase/merge
+- amend commit 5ff986b เพื่อเปลี่ยนข้อความจาก UUID เป็นข้อความ R5 ที่เหมาะสม → ได้ head SHA ใหม่: cc4b8addbf86c3fce6137b8510736c1ea93e3c1e (cc4b8ad)
+- git push origin main:feature/pr-sync-1-staging-gateway → fast-forward 44e7848..cc4b8ad สำเร็จ
+- ยืนยันผ่าน GitHub API: PR #9 ("PR-SYNC-1: authToken in POST body") head sha == cc4b8ad ✓
+- ตรวจ B4 frozen files 0-diff ที่ cc4b8ad vs ee75164 → empty diff ✓ (retry-transaction.ts, wo-authz.ts, authorization-context.ts, auth-middleware.ts, auth-shared.ts, audit.ts ทั้งหมดไม่เปลี่ยน)
+- CLEAN CHECKOUT EVIDENCE (ตามที่ Audit ขอ):
+  - git clone --branch feature/pr-sync-1-staging-gateway --depth 5 ไป /tmp/itam-pr9-clean
+  - head: cc4b8ad ✓
+  - verify R5 content: grep _setRetryDelayForTesting → sync-adapter.ts:3, auth-contract.test.ts:5 ✓
+  - bun install → 929 packages, vitest binary present ✓
+  - npx vitest run tests/sync/auth-contract.test.ts → 10 passed (10) | exit 0 | duration 301ms | no hanging process ✓
+  - npx vitest run -t "PROBE" → 2 passed (PROBE tests สำหรับ signal integrity + setTimeout spy count=3) ✓
+- บันทึก evidence ที่ docs/P9-03-R5-CLEAN-CHECKOUT-EVIDENCE.txt
+
+Stage Summary (ส่งให้ Audit):
+- PR #9: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/9
+- Head SHA ใหม่: cc4b8addbf86c3fce6137b8510736c1ea93e3c1e (cc4b8ad)
+- Commit message: "fix: P9-03 round 5 — separate retry-delay seam from request-timeout timer"
+- Clean checkout test: npx vitest run tests/sync/auth-contract.test.ts → 10/10 pass, exit 0, 301ms, 0 hanging process
+- Audit-critical assertions ที่ผ่าน:
+  - Global afterEach guard: signal.aborted === false ทุก fetch call (signalStates tracker)
+  - PROBE #1: "AbortController signal is NOT aborted when fetch is invoked"
+  - PROBE #2: "request-timeout timer scheduled per attempt; retry backoff routed through the seam" (vi.spyOn นับ setTimeout calls = 3 ไม่ใช่ 6 → พิสูจน์ timer separation)
+- Constraints ที่รักษา: SYNC_SOURCE_MAX_RETRIES=3, timeout semantics intact (try/finally), B4 frozen 0-diff, no token in URL/header/query, CSV fallback unchanged
+
+Next: รอ Audit re-review PR #9 head cc4b8ad. หากผ่าน → G2 staging / G3 canary สามารถเริ่มได้. หากไม่ผ่าน → แก้ใน R6.
+
+---
+Task ID: P9-03-R6-CI-EVIDENCE
+Agent: orchestrator (main)
+Task: ตอบ Audit "APPROVED WITH CONDITIONS" 2 ข้อ: (1) ส่ง CI evidence สำหรับ final head โดยตรง (2) ตรวจ scope ของ bun.lock + worklog.md ก่อน merge
+
+Work Log:
+- อ่าน audit conditions: PR #9 head cc4b8ad approved with conditions — ต้องมี CI evidence สำหรับ final head โดยตรง (workflow เดิม trigger เฉพาะ feature/pr-sync-1-implementation) + ต้อง review scope ของ bun.lock และ worklog.md (unrelated diff)
+- ตรวจ CI workflow files (.github/workflows/pr-sync-1-tests.yml): มี workflow_dispatch trigger + ใช้ npm ci (package-lock.json ไม่ใช่ bun.lock) + รัน npx vitest run tests/sync/ บน PostgreSQL 16 service container
+- ตรวจ PAT scopes: x-oauth-scopes: repo, workflow → trigger workflow_dispatch ได้
+- ตรวจ vitest/tsx ใน package-lock.json: vitest (2 entries) + tsx (4 entries) → npm ci resolve ได้โดยไม่ต้องใช้ bun.lock
+
+bun.lock scope analysis (190 lines ที่ R5 เพิ่ม):
+- Pure additions: platform binaries ของ devDependencies (vitest, tsx) ที่ประกาศใน package.json แล้วแต่ยังไม่ถูก lock + transitive deps (@esbuild/*, @rollup/*, tinyrainbow, vite, pathe)
+- 3 entries (fsevents, js-tokens, tinyexec) rewrite จาก registry-URL form เป็น inline hash form (bun lockfile v2 normalization)
+- ไม่มี production dependency version เปลี่ยน — ไม่มี version drift
+- ตัดสินใจ: REVERT bun.lock (CI ไม่ใช้ bun.lock เลย ใช้ package-lock.json ผ่าน npm ci; bun.lock เป็น local dev artifact จากการรัน bun install เพื่อ execute test locally)
+
+worklog.md scope analysis (47 lines ที่ R5 เพิ่ม):
+- ทั้งหมดอยู่ใต้ Task ID 'P9-03-R5' — เป็น change log ของ fix นี้เอง (root cause, production fix, test fix, verification)
+- RELATED documentation ไม่ใช่ unrelated diff
+- ตาม pattern ที่ PR-SYNC-1 merge (dfb5e3f) เคยรวม worklog entries ไว้ใน PR
+- ตัดสินใจ: KEEP worklog.md (justified)
+
+R6 commit:
+- git checkout 44e7848 -- bun.lock (revert to PR parent version)
+- commit "fix: P9-03 round 6 — revert bun.lock (unrelated diff)" พร้อม scope justification ใน commit message
+- push → feature/pr-sync-1-staging-gateway: cc4b8ad..9178237 fast-forward สำเร็จ
+- New head SHA: 9178237d3e7c22f965be52dfd2fc764a73aac76b
+
+CI evidence (Condition 1):
+- Triggered pr-sync-1-tests.yml via workflow_dispatch on feature/pr-sync-1-staging-gateway @ 9178237
+- Run ID: 32036293430
+- Run URL: https://github.com/nikorn2527-stack/ITAM-NextJS/actions/runs/32036293430
+- Head SHA: 9178237d3e7c22f965be52dfd2fc764a73aac76b ✓
+- Event: workflow_dispatch
+- Status: completed
+- Conclusion: SUCCESS ✓
+- Started: 2026-08-17T13:41:33Z
+- Completed: 2026-08-17T13:45:12Z (~3m39s)
+
+Clean-checkout verification at 9178237 (parallel):
+- git clone --branch feature/pr-sync-1-staging-gateway --depth 5 → HEAD 9178237 ✓
+- bun.lock ไม่มี vitest/tsx (reverted แล้ว) ✓
+- npm ci --legacy-peer-deps ทำงานได้โดยไม่ต้องใช้ bun.lock (proves revert is safe for CI) ✓
+- npx vitest run tests/sync/auth-contract.test.ts → 10 passed (10) | exit 0 | 436ms ✓
+- B4 frozen files 0-diff จาก ee75164 ✓ (empty diff ทั้ง 6 ไฟล์)
+
+Stage Summary (ส่งให้ Audit):
+- PR #9 new head: 9178237d3e7c22f965be52dfd2fc764a73aac76b (9178237)
+- PR #9 diff ตอนนี้เหลือ 3 ไฟล์: sync-adapter.ts (+74), auth-contract.test.ts (+240), worklog.md (+47) — bun.lock reverted
+- CI Run: https://github.com/nikorn2527-stack/ITAM-NextJS/actions/runs/32036293430 — conclusion: success บน 9178237 โดยตรง
+- Scope review: bun.lock reverted (justified ว่าเป็น local dev artifact, CI ไม่ใช้), worklog.md kept (justified ว่าเป็น fix's own documentation)
+- Evidence file: docs/P9-03-R6-CI-EVIDENCE.txt (committed ใน commit ถัดไป)
+- Constraints ที่รักษา: B4 frozen 0-diff, retry=3, timeout semantics intact, no token leak, CSV fallback unchanged
+
+Next: รอ Audit final verdict บน 9178237. หาก APPROVED (no conditions) → merge PR #9 + เริ่ม G2 staging / G3 canary.
