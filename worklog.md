@@ -9621,3 +9621,37 @@ Stage Summary:
 - ข้อจำกัด local env: ไม่มี PostgreSQL จริง (DATABASE_URL=file SQLite) → dbDescribe tests ล้มใน sandbox — CI/staging ที่มี Supabase Postgres จะผ่าน. ไม่ใช่ regression
 - G2/G3 staging/canary: ยังห้ามดำเนินการจนกว่า audit จะอนุมัติ PR #9 head ใหม่นี้
 - Constraints ที่รักษา: B4 frozen 6 files 0-diff, ไม่เพิ่ม SYNC_RUN, ไม่ลด retry, ไม่ cancel timeout, ไม่ใส่ token ใน URL/header/query, CSV fallback คงอยู่
+
+---
+Task ID: P9-03-R5-PUSH
+Agent: orchestrator (main)
+Task: ส่ง PR head SHA ใหม่ + ลิงก์ PR + ผล clean-checkout test ให้ทีม Audit ตรวจรอบสุดท้าย (หลัง Audit ทักว่าข้อความก่อนหน้ายังไม่ระบุ SHA/PR link/evidence)
+
+Work Log:
+- ตรวจ git state: R5 fix อยู่ใน working tree บน main โดยมี sandbox auto-commit เป็น 5ff986b (ข้อความ UUID ไม่เหมาะสม)
+- พบว่า main เป็น fast-forward ของ feature branch (origin/feature/pr-sync-1-staging-gateway @ 44e7848) อย่างสะอาด: 5ff986b parent == 44e7848 == feature branch head → สามารถ push main:feature/pr-sync-1-staging-gateway ได้โดยไม่ต้อง rebase/merge
+- amend commit 5ff986b เพื่อเปลี่ยนข้อความจาก UUID เป็นข้อความ R5 ที่เหมาะสม → ได้ head SHA ใหม่: cc4b8addbf86c3fce6137b8510736c1ea93e3c1e (cc4b8ad)
+- git push origin main:feature/pr-sync-1-staging-gateway → fast-forward 44e7848..cc4b8ad สำเร็จ
+- ยืนยันผ่าน GitHub API: PR #9 ("PR-SYNC-1: authToken in POST body") head sha == cc4b8ad ✓
+- ตรวจ B4 frozen files 0-diff ที่ cc4b8ad vs ee75164 → empty diff ✓ (retry-transaction.ts, wo-authz.ts, authorization-context.ts, auth-middleware.ts, auth-shared.ts, audit.ts ทั้งหมดไม่เปลี่ยน)
+- CLEAN CHECKOUT EVIDENCE (ตามที่ Audit ขอ):
+  - git clone --branch feature/pr-sync-1-staging-gateway --depth 5 ไป /tmp/itam-pr9-clean
+  - head: cc4b8ad ✓
+  - verify R5 content: grep _setRetryDelayForTesting → sync-adapter.ts:3, auth-contract.test.ts:5 ✓
+  - bun install → 929 packages, vitest binary present ✓
+  - npx vitest run tests/sync/auth-contract.test.ts → 10 passed (10) | exit 0 | duration 301ms | no hanging process ✓
+  - npx vitest run -t "PROBE" → 2 passed (PROBE tests สำหรับ signal integrity + setTimeout spy count=3) ✓
+- บันทึก evidence ที่ docs/P9-03-R5-CLEAN-CHECKOUT-EVIDENCE.txt
+
+Stage Summary (ส่งให้ Audit):
+- PR #9: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/9
+- Head SHA ใหม่: cc4b8addbf86c3fce6137b8510736c1ea93e3c1e (cc4b8ad)
+- Commit message: "fix: P9-03 round 5 — separate retry-delay seam from request-timeout timer"
+- Clean checkout test: npx vitest run tests/sync/auth-contract.test.ts → 10/10 pass, exit 0, 301ms, 0 hanging process
+- Audit-critical assertions ที่ผ่าน:
+  - Global afterEach guard: signal.aborted === false ทุก fetch call (signalStates tracker)
+  - PROBE #1: "AbortController signal is NOT aborted when fetch is invoked"
+  - PROBE #2: "request-timeout timer scheduled per attempt; retry backoff routed through the seam" (vi.spyOn นับ setTimeout calls = 3 ไม่ใช่ 6 → พิสูจน์ timer separation)
+- Constraints ที่รักษา: SYNC_SOURCE_MAX_RETRIES=3, timeout semantics intact (try/finally), B4 frozen 0-diff, no token in URL/header/query, CSV fallback unchanged
+
+Next: รอ Audit re-review PR #9 head cc4b8ad. หากผ่าน → G2 staging / G3 canary สามารถเริ่มได้. หากไม่ผ่าน → แก้ใน R6.
