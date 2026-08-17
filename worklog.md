@@ -9574,3 +9574,50 @@ Staging/Canary Deployment Plan (per Audit conditions):
 Constraints (must maintain):
 - ห้ามแก้ B4 frozen files (6 ไฟล์)
 - ห้ามเพิ่ม SYNC_RUN permission ใน MVP โดยไม่มี Audit review ใหม่
+
+---
+Task ID: P9-03-R5
+Agent: orchestrator (main)
+Task: แก้ P9-03 audit blocker (PR #9 head 44e7848 NOT APPROVED) — แยก retry-delay control ออกจาก request-timeout timer และเพิ่ม assertion ว่า signal ยังไม่ถูก abort ก่อน fetch โดยห้ามลด retry count หรือยกเลิก timeout semantics
+
+Work Log:
+- อ่าน audit verdict: PR #9 head `44e7848` ผล targeted suite 8/8 ผ่าน แต่ Audit พบ reliability blocker — test mock `globalThis.setTimeout` ให้ callback ทำงานทันทีทุกชนิด ขณะที่ production ใช้ timer ตัวเดียวกันทั้ง retry backoff และ AbortController request-timeout → controller.abort() ถูกเรียกก่อน fetch() ทุกครั้ง แต่ mockFetch ไม่ตรวจ signal.aborted → false pass. Audit สร้าง probe ยืนยันพฤติกรรมนี้แล้ว
+- Root cause confirmation (sync-adapter.ts เดิม):
+  - line 232: `const timeout = setTimeout(() => controller.abort(), SYNC_SOURCE_TIMEOUT_MS)` (request-timeout)
+  - line 278: `await new Promise((resolve) => setTimeout(resolve, delay))` (retry backoff)
+  - ทั้งสองใช้ `globalThis.setTimeout` ตัวเดียวกัน → test ที่ mock global นี้กระทบทั้งคู่
+- Production fix (src/lib/sync-adapter.ts — ไม่ใช่ B4 frozen file):
+  - เพิ่ม injectable retry-delay seam `_retryDelayFn` + export `_setRetryDelayForTesting(fn|null)` (same pattern กับ `_setSiteAllowlistForTesting` ที่มีอยู่แล้ว, มี production guard no-op)
+  - retry loop: เปลี่ยน `await new Promise(r => setTimeout(r, delay))` → `await _retryDelayFn(delay)` (test override ได้โดยไม่แตะ globalThis.setTimeout)
+  - ใช้ `try/finally` ครอบ fetch block เพื่อ `clearTimeout(timeout)` ทุก path (success/throw) — ป้องกัน dangling timer และ preserve timeout semantics (timer จริงยัง schedule ที่ 30s และถูก cancel เมื่อ fetch สำเร็จ)
+  - คอมเมนต์อธิบาย P9-03 timer separation ครบ
+- Test fix (tests/sync/auth-contract.test.ts — ไฟล์ใหม่ใน PR #9):
+  - ลบ `globalThis.setTimeout = mockSetTimeout` (root cause ของ false pass) ทิ้งทั้งหมด
+  - ใช้ `_setRetryDelayForTesting(() => Promise.resolve())` ใน beforeEach — ทำ retry backoff ให้ instant โดยไม่แตะ globalThis.setTimeout
+  - เพิ่ม `signalStates` tracker + `recordSignal(init)` helper บันทึก `signal.aborted` ทุกครั้งที่ mock fetch ถูกเรียก
+  - เพิ่ม global afterEach guard: `expect(signalStates.every(s => s === false)).toBe(true)` — จับ false-pass ได้ทุก test ใน suite
+  - เพิ่ม 2 PROBE tests:
+    1. "PROBE: AbortController signal is NOT aborted when fetch is invoked" — assertion ตรงๆ ตาม audit requirement
+    2. "PROBE: request-timeout timer scheduled per attempt; retry backoff routed through the seam" — ใช้ `vi.spyOn(globalThis, 'setTimeout')` นับ calls: ต้องเป็น 3 (3 request-timeout timers) ไม่ใช่ 6 (3 timeouts + 3 backoffs) — พิสูจน์ว่า retry backoff ไม่ leak ผ่าน globalThis.setTimeout
+  - รักษา SYNC_SOURCE_MAX_RETRIES=3 (ไม่ลด retry count) — verify `toHaveBeenCalledTimes(3)` ใน retry tests
+  - รักษา timeout semantics (real timer ยัง schedule และ clear ใน finally)
+
+Verification Results:
+- vitest run tests/sync/auth-contract.test.ts → 10 passed (10) | exit 0 | duration 300ms | no hanging process (8 original + 2 PROBE)
+- vitest run tests/sync/ → 38 passed | 11 failed (ทั้งหมด dbDescribe PostgreSQL groups ล้มด้วย PrismaClientInitializationError เพราะ local DATABASE_URL=file:... เป็น SQLite ไม่ใช่ postgres:// — pre-existing env issue ไม่เกี่ยวกับ P9-03 fix)
+- eslint src/lib/sync-adapter.ts tests/sync/auth-contract.test.ts → exit 0 (clean, 0 errors)
+- B4 frozen files 0-diff จาก ee75164: retry-transaction.ts, wo-authz.ts, authorization-context.ts, auth-middleware.ts, auth-shared.ts, audit.ts → empty diff ✓
+- git diff --stat: เฉพาะ src/lib/sync-adapter.ts (+74) และ tests/sync/auth-contract.test.ts (+240) — ไม่แตะ frozen files
+- bun install ดึง vitest 3.2.7 ที่ประกาศใน devDependencies (bun.lock อัปเดต — artifact ของการ install test runner)
+- agent-browser QA: / route renders "IT Asset Management — PNG TEAM" login page (Thai localization), no page errors, no console errors, mobile 375x812 responsive ✓
+- dev.log: มีเฉพาะ PrismaClientInitializationError จาก /api/auth/oauth/status (pre-existing local DB env issue) — ไม่มี error จาก P9-03 changes
+
+How the fix defeats the false-pass:
+- หากมีคน reintroduce `globalThis.setTimeout = mockSetTimeout` (old approach) → `setTimeout(() => controller.abort(), 30000)` จะ fire ทันที → `signal.aborted === true` ตอน fetch → afterEach guard fail + PROBE test fail. Guard จับ regression ได้ทันที
+
+Stage Summary:
+- P9-03 ปิดได้แล้วในระดับ evidence: timer separation สมบูรณ์ (retry-delay seam ≠ request-timeout timer), signal-not-aborted assertion ครบ (global guard + 2 PROBE), retry count ไม่ลด (3), timeout semantics คงเดิม (real timer + try/finally cleanup)
+- PR #9 head ถัดไป (post-R5) ควรส่ง audit re-review พร้อม evidence: vitest output (10/10), afterEach guard text, spy count=3 proof, B4 0-diff
+- ข้อจำกัด local env: ไม่มี PostgreSQL จริง (DATABASE_URL=file SQLite) → dbDescribe tests ล้มใน sandbox — CI/staging ที่มี Supabase Postgres จะผ่าน. ไม่ใช่ regression
+- G2/G3 staging/canary: ยังห้ามดำเนินการจนกว่า audit จะอนุมัติ PR #9 head ใหม่นี้
+- Constraints ที่รักษา: B4 frozen 6 files 0-diff, ไม่เพิ่ม SYNC_RUN, ไม่ลด retry, ไม่ cancel timeout, ไม่ใส่ token ใน URL/header/query, CSV fallback คงอยู่
