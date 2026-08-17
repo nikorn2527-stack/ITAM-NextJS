@@ -234,10 +234,10 @@ export async function fetchFromAppsScript(options: {
       const response = await fetch(requestUrl.toString(), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ source, options: { since, siteFilter, limit, cursor } }),
+        body: JSON.stringify({ authToken: token, source, options: { since, siteFilter, limit, cursor } }),
         signal: controller.signal,
       })
 
