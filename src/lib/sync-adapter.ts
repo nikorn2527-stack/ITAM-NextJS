@@ -235,7 +235,6 @@ export async function fetchFromAppsScript(options: {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Content-Type': 'application/json',
         },
         body: JSON.stringify({ authToken: token, source, options: { since, siteFilter, limit, cursor } }),
         signal: controller.signal,
@@ -247,6 +246,12 @@ export async function fetchFromAppsScript(options: {
         throw new Error(`Source responded ${response.status}: ${response.statusText}`)
       }
 
+      // P9-02: Apps Script ContentService.createTextOutput always returns
+      // HTTP 200, even for auth failures. Auth errors are indicated by
+      // JSON body: { error: 'Unauthorized: ...', code: 'UNAUTHORIZED' }
+      // The adapter checks data.error and throws, so auth failures are
+      // caught even though HTTP status is 200. This is a known Apps Script
+      // limitation — documented in the contract.
       const data: AppsScriptResponse = await response.json()
 
       if (data.error) {
