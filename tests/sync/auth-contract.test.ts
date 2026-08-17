@@ -1,16 +1,14 @@
 // ============================================================
 // PR-SYNC-1 Auth Contract Tests — authToken in POST body
 // ============================================================
-// P9-03: Regression tests for the new auth contract:
-//   1. Request body contains authToken
-//   2. No Authorization header sent
-//   3. Token not in URL/query string
-//   4. Apps Script error response → adapter throws
-//   5. Successful response → records + metadata returned
-//   6. Token not logged/echoed
+// P9-03: Regression tests for the new auth contract.
+// All tests run with default SYNC_SOURCE_MAX_RETRIES=3.
 //
-// These tests mock the fetch call to verify the adapter sends
-// the correct request format without needing a real Apps Script endpoint.
+// Key patterns:
+// - Success tests: mockResolvedValueOnce (returns once, no retry needed)
+// - Error tests: mockResolvedValue (returns on every retry attempt)
+// - Fake timers: vi.useFakeTimers + vi.advanceTimersByTime to skip
+//   the 1s/2s/4s exponential backoff delays without real waiting
 // ============================================================
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
@@ -20,9 +18,37 @@ import { fetchFromAppsScript, _setSiteAllowlistForTesting } from '@/lib/sync-ada
 const mockFetch = vi.fn()
 globalThis.fetch = mockFetch as unknown as typeof fetch
 
+// Helper: run an async function while advancing fake timers.
+// This is needed because the retry loop uses:
+//   await new Promise((resolve) => setTimeout(resolve, delay))
+// With fake timers, setTimeout never fires unless we advance time.
+// We poll and advance time in small steps until the promise resolves.
+async function runWithFakeTimers<T>(fn: () => Promise<T>): Promise<T> {
+  // Start the async operation
+  let resolved = false
+  let rejected = false
+  let result: T | undefined
+  let error: unknown
+
+  fn()
+    .then((r) => { resolved = true; result = r })
+    .catch((e) => { rejected = true; error = e })
+
+  // Advance timers until the promise settles
+  // Max 10 seconds of virtual time (covers 3 retries: 1s + 2s + 4s = 7s)
+  for (let i = 0; i < 100; i++) {
+    if (resolved || rejected) break
+    vi.advanceTimersByTime(100)
+    // Allow microtasks to run
+    await new Promise((r) => setImmediate(r))
+  }
+
+  if (rejected) throw error
+  return result as T
+}
+
 beforeEach(() => {
   mockFetch.mockReset()
-  // Use fake timers to skip the 1s/2s/4s retry delays
   vi.useFakeTimers()
   _setSiteAllowlistForTesting(new Set(['HQ', 'UDH']))
 })
@@ -45,7 +71,7 @@ describe('Auth contract: authToken in POST body', () => {
       }),
     })
 
-    await fetchFromAppsScript({ source: 'services', limit: 100 })
+    await runWithFakeTimers(() => fetchFromAppsScript({ source: 'services', limit: 100 }))
 
     const callArgs = mockFetch.mock.calls[0]
     const body = JSON.parse(callArgs[1].body)
@@ -61,7 +87,7 @@ describe('Auth contract: authToken in POST body', () => {
       json: async () => ({ records: [], metadata: { totalFetched: 0, cursor: null, unmappedColumns: [] } }),
     })
 
-    await fetchFromAppsScript({ source: 'services' })
+    await runWithFakeTimers(() => fetchFromAppsScript({ source: 'services' }))
 
     const callArgs = mockFetch.mock.calls[0]
     const headers = callArgs[1].headers
@@ -78,7 +104,7 @@ describe('Auth contract: authToken in POST body', () => {
       json: async () => ({ records: [], metadata: { totalFetched: 0, cursor: null, unmappedColumns: [] } }),
     })
 
-    await fetchFromAppsScript({ source: 'services' })
+    await runWithFakeTimers(() => fetchFromAppsScript({ source: 'services' }))
 
     const url = mockFetch.mock.calls[0][0] as string
     expect(url).not.toContain('token')
@@ -87,7 +113,7 @@ describe('Auth contract: authToken in POST body', () => {
     expect(url).not.toContain('auth')
   })
 
-  it('Apps Script error response → adapter throws', async () => {
+  it('Apps Script error response → adapter throws after 3 retries', async () => {
     process.env.APPS_SCRIPT_SERVICES_URL = 'https://example.com/exec'
     process.env.APPS_SCRIPT_SERVICES_TOKEN = 'test-token-123'
 
@@ -102,7 +128,7 @@ describe('Auth contract: authToken in POST body', () => {
       }),
     })
 
-    await expect(fetchFromAppsScript({ source: 'services' }))
+    await expect(runWithFakeTimers(() => fetchFromAppsScript({ source: 'services' })))
       .rejects.toThrow('Source error: Unauthorized')
 
     // Verify all 3 retry attempts were made
@@ -126,7 +152,7 @@ describe('Auth contract: authToken in POST body', () => {
       }),
     })
 
-    const result = await fetchFromAppsScript({ source: 'services', limit: 100 })
+    const result = await runWithFakeTimers(() => fetchFromAppsScript({ source: 'services', limit: 100 }))
 
     expect(result.records).toHaveLength(2)
     expect(result.records[0].requestId).toBe('WO-001')
@@ -138,8 +164,8 @@ describe('Auth contract: authToken in POST body', () => {
     process.env.APPS_SCRIPT_SERVICES_URL = 'https://example.com/exec'
     process.env.APPS_SCRIPT_SERVICES_TOKEN = 'super-secret-token-xyz'
 
-    // Simulate source error
-    mockFetch.mockResolvedValueOnce({
+    // Use mockResolvedValue (not Once) because adapter retries 3 times
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
         error: 'Unauthorized: missing or invalid token',
@@ -148,7 +174,7 @@ describe('Auth contract: authToken in POST body', () => {
     })
 
     try {
-      await fetchFromAppsScript({ source: 'services' })
+      await runWithFakeTimers(() => fetchFromAppsScript({ source: 'services' }))
       expect.fail('Should have thrown')
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err)
@@ -166,12 +192,11 @@ describe('Auth contract: authToken in POST body', () => {
       .rejects.toThrow('Source URL not configured')
   })
 
-  it('HTTP non-200 response → throws with status code', async () => {
+  it('HTTP non-200 response → throws with status code after 3 retries', async () => {
     process.env.APPS_SCRIPT_SERVICES_URL = 'https://example.com/exec'
     process.env.APPS_SCRIPT_SERVICES_TOKEN = 'test-token-123'
 
     // Use mockResolvedValue (not Once) because adapter retries 3 times.
-    // Each retry gets the same HTTP 500 error.
     mockFetch.mockResolvedValue({
       ok: false,
       status: 500,
@@ -179,7 +204,7 @@ describe('Auth contract: authToken in POST body', () => {
       json: async () => ({}),
     })
 
-    await expect(fetchFromAppsScript({ source: 'services' }))
+    await expect(runWithFakeTimers(() => fetchFromAppsScript({ source: 'services' })))
       .rejects.toThrow('Source responded 500')
 
     // Verify all 3 retry attempts were made
