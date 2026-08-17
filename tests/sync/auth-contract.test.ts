@@ -13,7 +13,7 @@
 // the correct request format without needing a real Apps Script endpoint.
 // ============================================================
 
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { fetchFromAppsScript, _setSiteAllowlistForTesting } from '@/lib/sync-adapter'
 
 // ── Mock fetch to inspect request format ───────────────────
@@ -22,7 +22,13 @@ globalThis.fetch = mockFetch as unknown as typeof fetch
 
 beforeEach(() => {
   mockFetch.mockReset()
+  // Use fake timers to skip the 1s/2s/4s retry delays
+  vi.useFakeTimers()
   _setSiteAllowlistForTesting(new Set(['HQ', 'UDH']))
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 describe('Auth contract: authToken in POST body', () => {
@@ -86,7 +92,9 @@ describe('Auth contract: authToken in POST body', () => {
     process.env.APPS_SCRIPT_SERVICES_TOKEN = 'test-token-123'
 
     // Apps Script returns HTTP 200 but JSON body has error (P9-02 contract)
-    mockFetch.mockResolvedValueOnce({
+    // Use mockResolvedValue (not Once) because adapter retries 3 times
+    // by default (SYNC_SOURCE_MAX_RETRIES=3). Each retry gets the same error.
+    mockFetch.mockResolvedValue({
       ok: true,
       json: async () => ({
         error: 'Unauthorized: missing or invalid token',
@@ -96,6 +104,9 @@ describe('Auth contract: authToken in POST body', () => {
 
     await expect(fetchFromAppsScript({ source: 'services' }))
       .rejects.toThrow('Source error: Unauthorized')
+
+    // Verify all 3 retry attempts were made
+    expect(mockFetch).toHaveBeenCalledTimes(3)
   })
 
   it('successful response returns records and metadata', async () => {
@@ -159,7 +170,9 @@ describe('Auth contract: authToken in POST body', () => {
     process.env.APPS_SCRIPT_SERVICES_URL = 'https://example.com/exec'
     process.env.APPS_SCRIPT_SERVICES_TOKEN = 'test-token-123'
 
-    mockFetch.mockResolvedValueOnce({
+    // Use mockResolvedValue (not Once) because adapter retries 3 times.
+    // Each retry gets the same HTTP 500 error.
+    mockFetch.mockResolvedValue({
       ok: false,
       status: 500,
       statusText: 'Internal Server Error',
@@ -168,5 +181,8 @@ describe('Auth contract: authToken in POST body', () => {
 
     await expect(fetchFromAppsScript({ source: 'services' }))
       .rejects.toThrow('Source responded 500')
+
+    // Verify all 3 retry attempts were made
+    expect(mockFetch).toHaveBeenCalledTimes(3)
   })
 })
