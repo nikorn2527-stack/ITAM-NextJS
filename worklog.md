@@ -9655,3 +9655,60 @@ Stage Summary (ส่งให้ Audit):
 - Constraints ที่รักษา: SYNC_SOURCE_MAX_RETRIES=3, timeout semantics intact (try/finally), B4 frozen 0-diff, no token in URL/header/query, CSV fallback unchanged
 
 Next: รอ Audit re-review PR #9 head cc4b8ad. หากผ่าน → G2 staging / G3 canary สามารถเริ่มได้. หากไม่ผ่าน → แก้ใน R6.
+
+---
+Task ID: P9-03-R6-CI-EVIDENCE
+Agent: orchestrator (main)
+Task: ตอบ Audit "APPROVED WITH CONDITIONS" 2 ข้อ: (1) ส่ง CI evidence สำหรับ final head โดยตรง (2) ตรวจ scope ของ bun.lock + worklog.md ก่อน merge
+
+Work Log:
+- อ่าน audit conditions: PR #9 head cc4b8ad approved with conditions — ต้องมี CI evidence สำหรับ final head โดยตรง (workflow เดิม trigger เฉพาะ feature/pr-sync-1-implementation) + ต้อง review scope ของ bun.lock และ worklog.md (unrelated diff)
+- ตรวจ CI workflow files (.github/workflows/pr-sync-1-tests.yml): มี workflow_dispatch trigger + ใช้ npm ci (package-lock.json ไม่ใช่ bun.lock) + รัน npx vitest run tests/sync/ บน PostgreSQL 16 service container
+- ตรวจ PAT scopes: x-oauth-scopes: repo, workflow → trigger workflow_dispatch ได้
+- ตรวจ vitest/tsx ใน package-lock.json: vitest (2 entries) + tsx (4 entries) → npm ci resolve ได้โดยไม่ต้องใช้ bun.lock
+
+bun.lock scope analysis (190 lines ที่ R5 เพิ่ม):
+- Pure additions: platform binaries ของ devDependencies (vitest, tsx) ที่ประกาศใน package.json แล้วแต่ยังไม่ถูก lock + transitive deps (@esbuild/*, @rollup/*, tinyrainbow, vite, pathe)
+- 3 entries (fsevents, js-tokens, tinyexec) rewrite จาก registry-URL form เป็น inline hash form (bun lockfile v2 normalization)
+- ไม่มี production dependency version เปลี่ยน — ไม่มี version drift
+- ตัดสินใจ: REVERT bun.lock (CI ไม่ใช้ bun.lock เลย ใช้ package-lock.json ผ่าน npm ci; bun.lock เป็น local dev artifact จากการรัน bun install เพื่อ execute test locally)
+
+worklog.md scope analysis (47 lines ที่ R5 เพิ่ม):
+- ทั้งหมดอยู่ใต้ Task ID 'P9-03-R5' — เป็น change log ของ fix นี้เอง (root cause, production fix, test fix, verification)
+- RELATED documentation ไม่ใช่ unrelated diff
+- ตาม pattern ที่ PR-SYNC-1 merge (dfb5e3f) เคยรวม worklog entries ไว้ใน PR
+- ตัดสินใจ: KEEP worklog.md (justified)
+
+R6 commit:
+- git checkout 44e7848 -- bun.lock (revert to PR parent version)
+- commit "fix: P9-03 round 6 — revert bun.lock (unrelated diff)" พร้อม scope justification ใน commit message
+- push → feature/pr-sync-1-staging-gateway: cc4b8ad..9178237 fast-forward สำเร็จ
+- New head SHA: 9178237d3e7c22f965be52dfd2fc764a73aac76b
+
+CI evidence (Condition 1):
+- Triggered pr-sync-1-tests.yml via workflow_dispatch on feature/pr-sync-1-staging-gateway @ 9178237
+- Run ID: 32036293430
+- Run URL: https://github.com/nikorn2527-stack/ITAM-NextJS/actions/runs/32036293430
+- Head SHA: 9178237d3e7c22f965be52dfd2fc764a73aac76b ✓
+- Event: workflow_dispatch
+- Status: completed
+- Conclusion: SUCCESS ✓
+- Started: 2026-08-17T13:41:33Z
+- Completed: 2026-08-17T13:45:12Z (~3m39s)
+
+Clean-checkout verification at 9178237 (parallel):
+- git clone --branch feature/pr-sync-1-staging-gateway --depth 5 → HEAD 9178237 ✓
+- bun.lock ไม่มี vitest/tsx (reverted แล้ว) ✓
+- npm ci --legacy-peer-deps ทำงานได้โดยไม่ต้องใช้ bun.lock (proves revert is safe for CI) ✓
+- npx vitest run tests/sync/auth-contract.test.ts → 10 passed (10) | exit 0 | 436ms ✓
+- B4 frozen files 0-diff จาก ee75164 ✓ (empty diff ทั้ง 6 ไฟล์)
+
+Stage Summary (ส่งให้ Audit):
+- PR #9 new head: 9178237d3e7c22f965be52dfd2fc764a73aac76b (9178237)
+- PR #9 diff ตอนนี้เหลือ 3 ไฟล์: sync-adapter.ts (+74), auth-contract.test.ts (+240), worklog.md (+47) — bun.lock reverted
+- CI Run: https://github.com/nikorn2527-stack/ITAM-NextJS/actions/runs/32036293430 — conclusion: success บน 9178237 โดยตรง
+- Scope review: bun.lock reverted (justified ว่าเป็น local dev artifact, CI ไม่ใช้), worklog.md kept (justified ว่าเป็น fix's own documentation)
+- Evidence file: docs/P9-03-R6-CI-EVIDENCE.txt (committed ใน commit ถัดไป)
+- Constraints ที่รักษา: B4 frozen 0-diff, retry=3, timeout semantics intact, no token leak, CSV fallback unchanged
+
+Next: รอ Audit final verdict บน 9178237. หาก APPROVED (no conditions) → merge PR #9 + เริ่ม G2 staging / G3 canary.
