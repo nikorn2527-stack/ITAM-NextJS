@@ -92,3 +92,23 @@ Final PR #9 diff at 9178237 vs parent 44e7848
  tests/sync/auth-contract.test.ts | 240 +++++++++++++++++++++++++++++----------
  worklog.md                       |  47 ++++++++
  3 files changed, 295 insertions(+), 66 deletions(-)
+
+================================================================================
+UPDATE: Second CI run on the final head 66c4a66 (docs-only commit on top of 9178237)
+================================================================================
+The R5 evidence file + R6 CI evidence file + worklog updates were committed
+on top of 9178237 as docs-only commits (no source-code changes). To provide
+point evidence on the exact final head, a second workflow_dispatch was
+triggered on 66c4a66.
+
+Run ID: 32036936893
+Run URL: https://github.com/nikorn2527-stack/ITAM-NextJS/actions/runs/32036936893
+Head SHA: 66c4a660761f7030c1a35f80dcb42d591694c167
+Event: workflow_dispatch
+Status: completed
+Conclusion: success
+Started: 2026-08-17T13:51:28Z
+Completed: 2026-08-17T13:54:59Z (~3m31s)
+
+Both CI runs (9178237 and 66c4a66) pass. PR #9 final head 66c4a66 is fully
+green on the pr-sync-1-tests.yml workflow against real PostgreSQL 16.
