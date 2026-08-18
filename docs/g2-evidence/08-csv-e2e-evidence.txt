@@ -1,0 +1,37 @@
+=== G2 CSV Fallback E2E Test (P1-R6 — HTTP /api/import route, fail-closed) ===
+Timestamp (UTC): 2026-08-18T00:32:41Z
+
+Test 1a: POST /api/import valid CSV → HTTP 201 + ImportJob status=completed, processedRows=2
+  → HTTP 201 (expected 201) | job.status=completed | processedRows=2/2 | errorRows=0
+  ✓ PASS
+
+Test 1b: WorkOrders created + requestId/siteCode populated (field mapping acceptance)
+  → found 2 WorkOrders | requestId populated: 0/2 | siteCode populated: 0/2
+  ✗ FAIL (field mapping gap is production-code concern, BLOCKING)
+
+Test 2: AuditLog created per WorkOrder (fail-closed — must have ≥1 per record)
+  → AuditLog entries: 0 (expected ≥ 2)
+  ✗ FAIL — route does not fire logAudit per-record (production-code gap, BLOCKING)
+
+Test 3: POST /api/import invalid CSV (missing requestId) → reject (400) OR errorRows>0 (fail-closed)
+  → HTTP 201 | route accepts silently
+  ✗ FAIL — validation gap (production-code concern, BLOCKING)
+
+Test 4: /api/import route structure (POST + logAudit + CSV parse + jobType validation)
+  → POST=true | logAudit=true | CSV parse=true | jobType validation=true
+  ✓ PASS
+
+=== Summary ===
+Passed: 2
+Failed: 2 (Test 1a + 4 pass; Test 1b/2/3 fail — production-code gaps documented as BLOCKING)
+
+❌ Some tests failed (production-code gaps documented)
+
+=== CSV E2E findings (production-code concerns, BLOCKING G2 full PASS) ===
+1. Field mapping: /api/import does not populate requestId/siteCode from CSV columns
+2. Per-record audit: /api/import does not fire logAudit per WorkOrder (batch path)
+3. Validation: /api/import accepts invalid CSV (missing requestId) silently
+
+These are production-code gaps that Dev cannot fix in G2 remediation scope (Dev was authorized
+to fix only test/evidence/documentation defects, not production code). Release Owner decision
+needed: fix production code (separate PR) or accept as known risk.

@@ -1,0 +1,22 @@
+=== G2 Real-Token Test Matrix ===
+Staging service: http://localhost:3030/exec
+Timestamp (UTC): 2026-08-18T09:10:05.218Z
+
+✓ Test 1: valid token → adapter returns records + metadata
+  → records=3, totalFetched=3, cursor=null
+✓ Test 2: wrong token → adapter throws "Source error: Unauthorized"
+  → error: Source error: Unauthorized: missing or invalid token
+✓ Test 3: missing token (client) → server returns UNAUTHORIZED (HTTP 200 + JSON error)
+  → HTTP 200, error=Unauthorized: missing or invalid token, code=UNAUTHORIZED
+✓ Test 4: server config error (no SYNC_API_TOKEN) → SERVER_CONFIG_ERROR
+  → HTTP 200, error=Server configuration error: SYNC_API_TOKEN not set, code=SERVER_CONFIG_ERROR
+✓ Test 5: response contract shape (records[], metadata.{totalFetched,cursor,unmappedColumns})
+  → records is array=true, metadata valid=true, record shape ok=true
+✓ Test 6: auth contract — token in body, NO Authorization header → authenticated
+  → HTTP 200, records=3
+
+=== Summary ===
+Passed: 6
+Failed: 0
+
+✅ All real-token tests passed!

@@ -1,0 +1,26 @@
+=== G2 Field-Level Contract Test (P1-R3 revised — exact parity) ===
+Staging service: http://localhost:3030/exec
+SyncApi.gs reference: ExternalApi.gs @ 7428eb2 (sanitizeRecordForExternal_ + isFiftyBahtJob_)
+Timestamp (UTC): 2026-08-18T09:10:09.753Z
+
+Fetched 3 records
+Record fields: id, subject, status, building, location, details, details_admin, priority, reporter_name, tel, employee_code, assigned_to, is_fifty_baht, pic_before, pic_onsite, pic_after, created_at, updated_at, work_completed_at, closed_at, canceled_at, requestId, site, siteCode
+SyncApi.gs allowlist (20 fields): id, subject, status, building, location, details, details_admin, priority, reporter_name, tel, employee_code, assigned_to, is_fifty_baht, pic_before, pic_onsite, pic_after, created_at, updated_at, work_completed_at, closed_at, canceled_at
+Staging extras (documented): requestId, site, siteCode
+
+✓ Test 1: all 20 SyncApi.gs allowlist fields present (no documented gaps; is_fifty_baht now derived)
+  → missing: (none) | extra (documented): requestId, site, siteCode | unexpected extra: (none)
+✓ Test 2: value parity for ALL 20 allowlist fields × 3 records (incl. is_fifty_baht derivation)
+  → all 63 field values match
+✓ Test 3: is_fifty_baht derivation matches isFiftyBahtJob_ regex (นอกเวลา|50 บ|50บ|50 b|50b|50 บาท)
+  → STG-WO-001: is_fifty_baht=true (expected true) ✓; STG-WO-002: is_fifty_baht=true (expected true) ✓; STG-WO-003: is_fifty_baht=false (expected false) ✓
+✓ Test 4: metadata shape (totalFetched: number, cursor: null|string, unmappedColumns: array)
+  → totalFetched=3, cursor=null, unmappedColumns=[]
+✓ Test 5: HTTP status semantics (Apps Script ContentService — all 200, errors in JSON body)
+  → valid=200, wrong=200 (error code=UNAUTHORIZED)
+
+=== Summary ===
+Passed: 5
+Failed: 0
+
+✅ All field-level contract tests passed (exact parity for all 20 fields)
