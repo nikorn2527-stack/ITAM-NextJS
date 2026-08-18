@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+
+# Production
+dist/
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Database
+db/*.db
+db/*.db-journal
+db/custom.db
+prisma/*.db
+prisma/*.db-journal
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+dev.log
+server.log
+
+# Uploads
+upload/
+
+# Agent context
+agent-ctx/
+
+# Scripts output
+scripts/output/
+
+# Skills (development tools)
+skills/
+
+# Tool results / temp
+tool-results/
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright/.cache/
+db/custom.db
+db/*.db
+g2-evidence/

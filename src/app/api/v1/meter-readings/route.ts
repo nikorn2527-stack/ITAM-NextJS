@@ -1,0 +1,262 @@
+/**
+ * /api/v1/meter-readings — list + create meter readings (v1 standardized shape).
+ *
+ * ════════════════════════════════════════════════════════════════════════
+ * GET /api/v1/meter-readings
+ * ════════════════════════════════════════════════════════════════════════
+ *   Auth: VIEW_DEVICES
+ *
+ *   Standard query params:
+ *     ?q=search                    — search assetNo, remark, readBy
+ *     ?page=1&limit=20             — pagination
+ *     ?sort=-readingDate           — sort (prefix - for desc)
+ *     ?filter[assetNo]=X           — exact match
+ *     ?filter[readingMonth]=2026-08
+ *     ?filter[readingType]=MONTHLY
+ *     ?filter[readBy]=someone
+ *     ?include=device              — expand device relation
+ *
+ *   Site-level filter: if the user's `allowedSites !== 'ALL'`, only readings
+ *   whose device.site ∈ allowedSites are returned.
+ *
+ *   Response: { data: MeterReading[], pagination, meta }
+ *
+ * ════════════════════════════════════════════════════════════════════════
+ * POST /api/v1/meter-readings
+ * ════════════════════════════════════════════════════════════════════════
+ *   Auth: METER_WRITE
+ *
+ *   Body: { assetNo, meterBw, meterColor?, prevMeterBw?, prevMeterColor?,
+ *           readingDate?, readingMonth?, readingType?, remark?,
+ *           locationAtReading?, siteAtReading?, buildingAtReading?,
+ *           floorAtReading?, departmentAtReading?, departmentCodeAtReading? }
+ *
+ *   • assetNo required (else 400 BAD_REQUEST).
+ *   • Device must exist (else 404 NOT_FOUND 'device').
+ *   • User must have site access to device.site (else 403 FORBIDDEN).
+ *   • If prevMeter* not provided → look up device's last reading.
+ *   • page-delta via calcPagesBw / calcPagesColor (lifecycle-reading-type).
+ *   • Auto-detect RESET: meter < prev and no explicit readingType → 'RESET'.
+ *   • Write-lock: assertMeterMonthWritable → 409 CONFLICT { code: 'CYCLE_CLOSED' }.
+ *   • Creates AuditLog (action='METER_WRITE').
+ *   • Best-effort: notifyMeter + publishRealtimeEvent (fire-and-forget).
+ *
+ *   Response: 201 { data: MeterReading, meta }
+ */
+
+import { NextRequest } from 'next/server'
+import { db } from '@/lib/db'
+import {
+  parseQuery,
+  buildWhere,
+  buildOrderBy,
+  list,
+  created,
+  badRequest,
+  notFound,
+  forbidden,
+  conflict,
+  serverError,
+} from '@/lib/api/response'
+import { requireApiAuth } from '@/lib/api/auth'
+import { canAccessSite } from '@/lib/auth'
+import { calcPagesBw, calcPagesColor } from '@/lib/lifecycle-reading-type'
+import { assertMeterMonthWritable } from '@/lib/meter-snapshot'
+import { notifyMeter } from '@/lib/notifications'
+import { publishRealtimeEvent } from '@/lib/realtime'
+
+// ── GET field map ──────────────────────────────────────────────────────
+const FIELD_MAP: Record<string, string> = {
+  assetCode: 'assetCode',
+  readingMonth: 'readingMonth',
+  readingType: 'readingType',
+  readBy: 'readBy',
+}
+
+const SEARCH_FIELDS = ['assetCode', 'remark', 'readBy']
+
+// ── GET ────────────────────────────────────────────────────────────────
+export async function GET(req: NextRequest) {
+  const auth = await requireApiAuth(req, 'VIEW_DEVICES')
+  if (!auth.ok) return auth.response
+
+  const url = new URL(req.url)
+  const query = parseQuery(url)
+
+  // Site-level filter: restrict to readings whose device belongs to one of
+  // the user's allowed sites. Admins (allowedSites === 'ALL') see everything.
+  const siteFilter =
+    auth.ctx.allowedSites === 'ALL'
+      ? {}
+      : { device: { site: { in: auth.ctx.allowedSites } } }
+
+  const where = { ...buildWhere(query, FIELD_MAP, SEARCH_FIELDS), ...siteFilter }
+  const orderBy = buildOrderBy(query, FIELD_MAP, { readingDate: 'desc' })
+
+  // Expand device relation when ?include=device
+  const include =
+    query.include.includes('device')
+      ? {
+          device: {
+            select: {
+              assetCode: true,
+              brand: true,
+              model: true,
+              site: true,
+              type: true,
+            },
+          },
+        }
+      : undefined
+
+  const [total, readings] = await Promise.all([
+    db.meterReading.count({ where }),
+    db.meterReading.findMany({
+      where,
+      orderBy,
+      skip: (query.page - 1) * query.limit,
+      take: query.limit,
+      include,
+    }),
+  ])
+
+  return list(readings, { page: query.page, limit: query.limit, total })
+}
+
+// ── POST ───────────────────────────────────────────────────────────────
+export async function POST(req: NextRequest) {
+  const auth = await requireApiAuth(req, 'METER_WRITE')
+  if (!auth.ok) return auth.response
+  const { user } = auth.ctx
+
+  try {
+    const body = await req.json()
+    if (!body?.assetCode || body.meterBw === undefined || body.meterBw === null) {
+      return badRequest('assetCode และ meterBw เป็นฟิลด์ที่ต้องการ', { field: 'assetCode' })
+    }
+
+    // ── Validate device exists + site access ──────────────────────────
+    const device = await db.device.findUnique({ where: { assetCode: String(body.assetCode).trim() } })
+    if (!device) return notFound('device')
+
+    if (!canAccessSite(user, device.site)) {
+      return forbidden('ไม่มีสิทธิ์เข้าถึงอุปกรณ์ในสาขานี้')
+    }
+
+    // ── Coerce meter values to integers ───────────────────────────────
+    const meterBw = Math.floor(Number(body.meterBw))
+    const meterColor = Math.floor(Number(body.meterColor || 0))
+
+    // ── Resolve prev values — fall back to device's last reading ──────
+    let prevMeterBw: number
+    let prevMeterColor: number
+    if (body.prevMeterBw !== undefined && body.prevMeterBw !== null) {
+      prevMeterBw = Math.floor(Number(body.prevMeterBw))
+    } else {
+      const last = await db.meterReading.findFirst({
+        where: { assetCode: device.assetCode },
+        orderBy: { readingDate: 'desc' },
+        select: { meterBw: true, meterColor: true },
+      })
+      prevMeterBw = last?.meterBw ?? 0
+      prevMeterColor = last?.meterColor ?? 0
+    }
+    if (body.prevMeterColor !== undefined && body.prevMeterColor !== null) {
+      prevMeterColor = Math.floor(Number(body.prevMeterColor))
+    } else if (body.prevMeterBw !== undefined && body.prevMeterBw !== null) {
+      // prevBw was explicitly provided but prevColor was not → default 0
+      // (don't re-probe; the explicit value signals the caller knows the
+      // device's meter mode).
+      prevMeterColor = 0
+    }
+    // (else: both were omitted → prevMeterColor already set from the probe above)
+
+    // ── Auto-detect RESET + page-delta calc (lifecycle-reading-type) ──
+    const isReset = meterBw < prevMeterBw || meterColor < prevMeterColor
+    const explicitType = body.readingType || null
+    const readingType = explicitType || (isReset ? 'RESET' : 'MONTHLY')
+    const pagesBw = calcPagesBw(meterBw, prevMeterBw, readingType)
+    const pagesColor = calcPagesColor(meterColor, prevMeterColor, readingType)
+
+    // ── Write-lock: reject writes to CLOSED-cycle months ──────────────
+    const finalReadingMonth =
+      body.readingMonth || new Date().toISOString().slice(0, 7)
+    try {
+      await assertMeterMonthWritable(finalReadingMonth, 'บันทึกมิเตอร์')
+    } catch (lockErr) {
+      return conflict(
+        lockErr instanceof Error ? lockErr.message : 'รอบจดมิเตอร์ถูกปิดแล้ว',
+        { code: 'CYCLE_CLOSED' },
+      )
+    }
+
+    // ── Create the MeterReading record ────────────────────────────────
+    const reading = await db.meterReading.create({
+      data: {
+        deviceId: device.id,
+        assetCode: device.assetCode,
+        readingDate: body.readingDate || new Date().toISOString().slice(0, 10),
+        readingMonth: finalReadingMonth,
+        meterBw,
+        meterColor,
+        pagesBw,
+        pagesColor,
+        prevMeterBw,
+        prevMeterColor,
+        readBy: user.username || user.email,
+        remark: body.remark || null,
+        readingType,
+        locationAtReading: body.locationAtReading || null,
+        siteAtReading: body.siteAtReading || device.site || null,
+        buildingAtReading: body.buildingAtReading || null,
+        floorAtReading: body.floorAtReading || null,
+        departmentAtReading: body.departmentAtReading || null,
+        departmentCodeAtReading: body.departmentCodeAtReading || null,
+      },
+    })
+
+    // ── Audit log (best-effort) ───────────────────────────────────────
+    try {
+      await db.auditLog.create({
+        data: {
+          timestamp: new Date().toISOString(),
+          action: 'METER_WRITE',
+          user: user.email,
+          details: JSON.stringify({
+            assetCode: device.assetCode,
+            meterBw,
+            meterColor,
+            prevMeterBw,
+            prevMeterColor,
+            pagesBw,
+            pagesColor,
+            readingType,
+            reset: isReset,
+            readingMonth: finalReadingMonth,
+          }),
+        },
+      })
+    } catch {
+      /* audit never blocks the mutation */
+    }
+
+    // ── Best-effort: notification + realtime push ─────────────────────
+    void notifyMeter({
+      assetCode: device.assetCode,
+      pagesBw,
+      pagesColor,
+      by: user.username || user.email,
+    })
+    publishRealtimeEvent({
+      type: 'meter-written',
+      assetCode: device.assetCode,
+      site: device.site ?? null,
+      payload: { pagesBw, pagesColor, reset: isReset },
+    })
+
+    return created(reading, { reset: isReset, pagesBw, pagesColor })
+  } catch (err) {
+    console.error('POST /api/v1/meter-readings', err)
+    return serverError()
+  }
+}

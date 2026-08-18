@@ -1,0 +1,177 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+
+/**
+ * POST /api/work-orders/[id]/edit-unlock
+ *
+ * Toggles the "edit unlock" flag on a terminal work order (COMPLETED/CANCELLED).
+ * Aligned with Apps Script `setWorkOrderEditUnlock`.
+ *
+ * Body:
+ *   { active: boolean, note?: string }
+ *
+ * Rules (Task ID: RESIDUAL-BLOCKERS-ROUND-4):
+ *   - Requires WO_ASSIGN at the WO's Site (NOT global ADMIN). The previous
+ *     `requireAuth(req, 'ADMIN')` check did not validate Site scope, so a
+ *     UDH=admin could unlock (and then edit) NKP WOs they have no Site
+ *     grant for. `loadAuthorizedWorkOrder` checks `canAtSite(woSite,
+ *     'WO_ASSIGN')` — preventing that escalation.
+ *   - Can only toggle on records with status COMPLETED or CANCELLED.
+ *   - active=true  → set editUnlockActive=true, editUnlockBy=user,
+ *                    editUnlockAt=now, editUnlockNote=note
+ *   - active=false → set editUnlockActive=false (keep other fields for audit)
+ *
+ * Response: { workOrder: updated }
+ */
+
+async function logAudit(
+  action: string,
+  entityId: string | null,
+  summary: string,
+  detail: Record<string, unknown> | null,
+  actor: string,
+  siteCode?: string | null,
+): Promise<void> {
+  try {
+    await db.auditLog.create({
+      data: {
+        action,
+        entity: 'WorkOrder',
+        entityId,
+        summary,
+        detail: detail ? JSON.stringify(detail) : null,
+        actor,
+        siteCode: siteCode ?? null,
+      },
+    })
+  } catch (err) {
+    console.error('logAudit failed:', err)
+  }
+}
+
+const TERMINAL_STATUSES = new Set(['COMPLETED', 'CANCELLED'])
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await params
+
+    // Authenticate + authorize the WO at its Site.
+    // allowOwn is NOT set — unlocking a terminal WO is an admin/assigner
+    // action, not something the original reporter should be able to do.
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_ASSIGN')
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error },
+        { status: result.status },
+      )
+    }
+    const { wo: before, auth } = result
+
+    // Audit-log actor is the authenticated session identity.
+    const user = auth.user
+    const actor: string =
+      user.email ?? user.username ?? user.name ?? 'system'
+
+    let body: { active?: unknown; note?: unknown } = {}
+    try {
+      body = (await req.json()) as { active?: unknown; note?: unknown }
+    } catch {
+      body = {}
+    }
+
+    const active =
+      body.active === true ||
+      body.active === 'true' ||
+      body.active === 1 ||
+      body.active === 'TRUE' ||
+      body.active === 'True'
+
+    const note =
+      typeof body.note === 'string' && body.note.trim()
+        ? body.note.trim()
+        : null
+
+    // Rule: only allow toggle on COMPLETED or CANCELLED records.
+    if (!TERMINAL_STATUSES.has(before.status)) {
+      return NextResponse.json(
+        {
+          error:
+            'สามารถปลดล็อกแก้ไขได้เฉพาะใบงานที่สถานะ COMPLETED หรือ CANCELLED เท่านั้น',
+        },
+        { status: 400 },
+      )
+    }
+
+    const previous = {
+      editUnlockActive: before.editUnlockActive,
+      editUnlockBy: before.editUnlockBy,
+      editUnlockAt: before.editUnlockAt,
+      editUnlockNote: before.editUnlockNote,
+    }
+
+    if (active) {
+      // Unlock for editing.
+      const updated = await db.workOrder.update({
+        where: { id: before.id },
+        data: {
+          editUnlockActive: true,
+          editUnlockBy: actor,
+          editUnlockAt: new Date(),
+          editUnlockNote: note,
+        },
+      })
+
+      await logAudit(
+        'UPDATE',
+        before.id,
+        `ปลดล็อกแก้ไขใบแจ้งซ่อม ${updated.woNumber ?? before.id}`,
+        {
+          editUnlock: {
+            active: true,
+            by: actor,
+            note,
+            previous,
+          },
+        },
+        actor,
+        result.woSite,
+      )
+
+      return NextResponse.json({ workOrder: updated })
+    }
+
+    // Re-lock (keep other fields for audit per Apps Script setWorkOrderEditUnlock).
+    const updated = await db.workOrder.update({
+      where: { id: before.id },
+      data: {
+        editUnlockActive: false,
+      },
+    })
+
+    await logAudit(
+      'UPDATE',
+      before.id,
+      `ล็อกการแก้ไขใบแจ้งซ่อม ${updated.woNumber ?? before.id} อีกครั้ง`,
+      {
+        editUnlock: {
+          active: false,
+          by: actor,
+          previous,
+        },
+      },
+      actor,
+      result.woSite,
+    )
+
+    return NextResponse.json({ workOrder: updated })
+  } catch (err) {
+    console.error('POST /api/work-orders/[id]/edit-unlock', err)
+    const message =
+      err instanceof Error ? err.message : 'Failed to set edit unlock'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}

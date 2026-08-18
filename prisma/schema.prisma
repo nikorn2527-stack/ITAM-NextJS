@@ -1,0 +1,914 @@
+// ============================================================
+// ITAM Database Schema — ตรงกับ PostgreSQL (Supabase) จริง
+// ============================================================
+// Schema นี้สอดคล้องกับ DB จริงที่ import ข้อมูลจาก Apps Script
+// ทุก table ใช้ camelCase column names ตรงกับ DB (ไม่ใช้ @map/@@map ที่ไม่จำเป็น)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // Production uses PostgreSQL (Supabase). The local sandbox may use
+  // SQLite for ad-hoc testing by temporarily switching provider to
+  // "sqlite" and pointing DATABASE_URL at a local .db file, but the
+  // COMMITTED schema must always target the production provider.
+  //
+  // Release candidate (this file): provider = "postgresql".
+  // Any sandbox test that used SQLite was a local, uncommitted exercise
+  // and its results are NOT production evidence — PostgreSQL verification
+  // must happen in CI / staging against a real PostgreSQL instance.
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 1) Device — อุปกรณ์ IT หลัก (2,378 รายการ)
+//    assetCode = asset_no (เลขสินทรัพย์รวม ห้ามแก้ไขหลังสร้าง)
+//    assetSiteCode = asset_site_code (รหัสประจำ Site เช่น UDH-00001)
+// ============================================================
+model Device {
+  id              String   @id @default(cuid())
+  assetCode       String   @unique // asset_no — เลขสินทรัพย์รวม ห้ามแก้ไข
+  name            String   // ชื่ออุปกรณ์
+  brand           String
+  model           String
+  type            String   // ประเภท: PRINTER | SCANNER | COMPUTER | NETWORK | OTHER
+  serialNumber    String?  // serial
+  status          String   @default("Active")
+  site            String   // สาขา/ที่ตั้ง
+  department      String?
+  departmentCode  String?
+  parentRef       String?
+  assetSiteCode   String?  // asset_site_code — รหัสประจำ Site (SITE-NNNNN)
+  displayLabel    String?  // ป้ายแสดงผลที่ผู้ใช้กำหนดเอง (display label)
+  location        String?
+  building        String?
+  floor           String?
+  room            String?
+  purchaseDate    String?  // ISO date
+  purchasePrice   Float?
+  salvageValue    Float?   @default(0)
+  usefulLife      Int?
+  warrantyMonths  Int      @default(12)
+  warrantyEnd     String?
+  vendor          String?
+  contractNo      String?
+  uninstallDate   String?
+  meterRequired   Boolean  @default(false)
+  meterMode       String?  // TOTAL | BW_COLOR
+  lastMeterBw     Int      @default(0)
+  lastMeterColor  Int      @default(0)
+  ip              String?
+  mac             String?
+  remoteId        String?
+  currentAssignee String?
+  remark          String?
+  costCenter      String?
+  deviceGroup     String?
+  isDemo          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  updatedBy       String?  @default("System")
+
+  // Relations
+  meterReadings     MeterReading[]
+  transfers         DeviceTransfer[]
+  assignments       Assignment[]
+  maintenanceLogs   MaintenanceLog[]
+  workOrders        WorkOrder[]
+  stockTransactions StockTransaction[]
+
+  @@index([site])
+  @@index([assetSiteCode])
+  @@index([status])
+  @@index([type])
+  @@index([meterRequired])
+}
+
+// ============================================================
+// 2) MeterReading — การจดมิเตอร์
+// ============================================================
+model MeterReading {
+  id                       String   @id @default(cuid())
+  readingId                String?  @unique
+  deviceId                 String
+  assetCode                String?  // asset_no — สำหรับ CSV import lookup
+  readingDate              String   // ISO date
+  readingMonth             String?  // YYYY-MM
+  meterBw                  Int      @default(0)
+  meterColor               Int      @default(0)
+  pagesBw                  Int      @default(0)
+  pagesColor               Int      @default(0)
+  prevMeterBw              Int      @default(0)
+  prevMeterColor           Int      @default(0)
+  readingType              String?  // MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN
+  readBy                   String?
+  remark                   String?
+  locationAtReading        String?
+  siteAtReading            String?
+  buildingAtReading        String?
+  floorAtReading           String?
+  departmentAtReading      String?
+  departmentCodeAtReading  String?
+  eventType                String?
+  eventId                  String?
+  isDemo                   Boolean  @default(false)
+  createdAt                DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([readingMonth])
+  @@index([isDemo])
+}
+
+// ============================================================
+// 3) Cycle — รอบจดมิเตอร์
+//    `site` is optional — null means "all sites" (a global cycle).
+//    When set, the cycle is scoped to that site code (e.g. "UDH").
+// ============================================================
+model Cycle {
+  id        String   @id @default(cuid())
+  name      String
+  startDate String
+  endDate   String
+  status    String   @default("active")
+  site      String?  // nullable — null = all sites (global cycle)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([site])
+}
+
+// ============================================================
+// 4) DeviceTransfer — ประวัติการย้าย
+// ============================================================
+model DeviceTransfer {
+  id                String   @id @default(cuid())
+  logId             String?  @unique
+  deviceId          String
+  assetCode         String?  // Asset_No
+  moveDate          String?
+  action            String?  // TRANSFER | TRANSFER_SITE | STATUS_CHANGE | STATUS_AND_TRANSFER | TRANSFER_BY_LIFECYCLE
+  fromStatus        String?
+  toStatus          String?
+  fromSite          String?
+  fromAssetSiteCode String?
+  fromBuilding      String?
+  fromFloor         String?
+  fromDepartment    String?
+  fromLocation      String?
+  toSite            String
+  toAssetSiteCode   String?
+  toBuilding        String?
+  toFloor           String?
+  toDepartment      String?
+  toLocation        String?
+  meterReadingId    String?
+  movedBy           String?
+  remark            String?
+  transferDate      String
+  reason            String?
+  createdAt         DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([toSite])
+}
+
+// ============================================================
+// 5) Assignment — การมอบหมายอุปกรณ์
+// ============================================================
+model Assignment {
+  id                 String   @id @default(cuid())
+  assignmentId       String?  @unique
+  deviceId           String
+  assignee           String
+  assigneeRole       String?
+  department         String?
+  checkoutDate       String
+  expectedReturnDate String?
+  actualReturnDate   String?
+  status             String   @default("active")
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([assignee])
+}
+
+// ============================================================
+// 6) MaintenanceLog — ประวัติซ่อมบำรุง
+// ============================================================
+model MaintenanceLog {
+  id           String   @id @default(cuid())
+  logId        String?  @unique
+  deviceId     String
+  type         String   // repair | maintenance | inspection | upgrade
+  status       String   @default("open")
+  startDate    String
+  endDate      String?
+  cost         Float?
+  vendor       String?
+  description  String
+  resolvedNote String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+}
+
+// ============================================================
+// 7) WorkOrder — ใบงานแจ้งซ่อม
+// ============================================================
+model WorkOrder {
+  id               String   @id @default(cuid())
+  woNumber         String?  @unique
+  requestId        String?  @unique
+  subject          String
+  building         String?
+  location         String?
+  details          String?
+  priority         String   @default("ปกติ")
+  reporterName     String?
+  reporterEmail    String?
+  tel              String?
+  employeeCode     String?
+  submissionSource String   @default("guest")
+  trackable        Boolean  @default(false)
+  lineUserId       String?
+  lineMessageId    String?  @unique
+  printTemplateId  String?
+  externalMeta     String?
+  picBefore        String?
+  picOnsite        String?
+  picAfter         String?
+  status           String   @default("PENDING")
+  acceptStatus     String?
+  assignedTo       String?
+  assignedBy       String?
+  assignedAt       DateTime?
+  assignmentNote   String?
+  detailsAdmin     String?
+  dateAdmin        String?
+  resolution       String?
+  resolutionGroup  String?
+  editUnlockActive Boolean  @default(false)
+  editUnlockBy     String?
+  editUnlockAt     DateTime?
+  editUnlockNote   String?
+  workCompletedAt  DateTime?
+  closedAt         DateTime?
+  canceledAt       DateTime?
+  cancelReason     String?
+  deviceId         String?
+  isDemo           Boolean  @default(false)
+  isSpecialFee     Boolean  @default(false) // งานพิเศษ (มีค่าใช้จ่าย) — แอปอื่นดึงผ่าน API
+  // ── Site-based access control (Phase 0: transitional) ──
+  // Direct Site reference so work orders without a device can still be
+  // scoped. For work orders with a device, the server derives siteCode
+  // from Device.site on create/update. Null = external/unassigned (uses
+  // a separate authorization flow — never means "all sites").
+  // See: Site-Based Access Control Guidance for ITAM-NextJS.md §5.1
+  siteCode         String?
+  // B4 FIX: Optimistic concurrency version field.
+  // Incremented on every update. Callers can send `expectedVersion` in
+  // PUT/PATCH to detect concurrent modification (409 Conflict).
+  // Used with serializable transaction for device reassignment.
+  version          Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  device   Device?            @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  messages WorkOrderMessage[]
+  reviews  WorkOrderReview[]
+  images   WorkOrderImage[]
+
+  @@index([status])
+  @@index([assignedTo])
+  @@index([deviceId])
+  @@index([isDemo])
+  @@index([isSpecialFee])
+  @@index([siteCode, status, createdAt])
+  @@index([version])
+}
+
+// ============================================================
+// 8) WorkOrderMessage — แชทในใบงาน
+// ============================================================
+model WorkOrderMessage {
+  id          String   @id @default(cuid())
+  workOrderId String
+  message     String
+  author      String?
+  authorRole  String?
+  createdAt   DateTime @default(now())
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+}
+
+// ============================================================
+// 9) WorkOrderReview — คะแนนความพึงพอใจ
+// ============================================================
+model WorkOrderReview {
+  id          String   @id @default(cuid())
+  workOrderId String
+  rating      Int
+  comment     String?
+  reviewedBy  String?
+  createdAt   DateTime @default(now())
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+}
+
+// ============================================================
+// 10) WorkOrderImage — รูปภาพในใบงาน (หลายรูปต่อขั้นตอน)
+// ============================================================
+model WorkOrderImage {
+  id          String   @id @default(cuid())
+  workOrderId String
+  stage       String   // before | onsite | after
+  image_data  String
+  fileName    String?
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+  @@index([stage])
+  @@map("work_order_images")
+}
+
+// ============================================================
+// 11) LicenseRecord — ลิขสิทธิ์ซอฟต์แวร์
+// ============================================================
+model LicenseRecord {
+  id          String   @id @default(cuid())
+  License_ID  String?
+  Asset_No    String?  // links to Device.assetCode
+  Software    String
+  LicenseType String?  // OEM | Volume | Retail | Subscription | Open License
+  License_Key String?
+  Quantity    Int      @default(1)
+  Expiry_Date String?
+  Remark      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([Asset_No])
+  @@map("license_records")
+}
+
+// ============================================================
+// 12) SiteAttribute — ข้อมูลสาขา + อัตราค่ากระดาษ
+//     Source: sheet "Site_Attributes"
+// ============================================================
+model SiteAttribute {
+  id             String   @id @default(cuid())
+  SiteCode       String   @unique // เช่น UDH, NKP, MECUD, PPIT
+  SiteName       String?  // เช่น โรงพยาบาลศูนย์อุดรธานี
+  LineOA         String?  // LINE OA ID/Token
+  Hotline        String?  // เบอร์ติดต่อ
+  PaperRateBW    Float?   @default(0.5) // ฿/แผ่น ขาวดำ
+  PaperRateColor Float?   @default(2.0) // ฿/แผ่น สี
+  TelegramChatId String?  @map("TelegramChatId") // Telegram chat ID สำหรับสาขา
+  EmailAddress   String?  @map("EmailAddress") // อีเมลสาขาสำหรับรับแจ้งเตือน
+  created_at     DateTime @default(now())
+  updated_at     DateTime @updatedAt
+
+  @@map("site_attributes")
+}
+
+// ============================================================
+// 13) Site — สาขา (legacy, ใช้คู่กับ SiteAttribute)
+// ============================================================
+model Site {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  address   String?
+  phone     String?
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// 14) SiteRate — อัตราค่ากระดาษต่อสาขา (legacy)
+// ============================================================
+model SiteRate {
+  id        String   @id @default(cuid())
+  siteCode  String
+  bwRate    Float    @default(0.5)
+  colorRate Float    @default(2.0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([siteCode])
+}
+
+// ============================================================
+// 15) MasterItem — ข้อมูลมาตรฐาน (Brand, Type, Model, Department, Status, DeviceGroup, Site)
+// ============================================================
+model MasterItem {
+  id           String   @id @default(cuid())
+  category     String   // Brand | Type | Model | Department | Status | DeviceGroup | Site
+  code         String   // รหัส/คำย่อ เช่น HP, PRINTER, UDH
+  label        String   // ชื่อแสดงผล
+  parentRef    String?  // เช่น Brand|Type สำหรับ Model
+  displayLabel String?  // ชื่อเต็ม/คำอธิบายเพิ่มเติม
+  siteCode     String?  // รหัสสาขา (สำหรับ category=Site)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([category])
+  @@index([code])
+}
+
+// ============================================================
+// 16) StockItem — สินค้าในสต็อก
+// ============================================================
+model StockItem {
+  id                String   @id @default(cuid())
+  productCode       String   @unique
+  productName       String
+  category          String?
+  brand             String?
+  model             String?
+  unit              String   @default("ชิ้น")
+  quantity          Int      @default(0)
+  minQuantity       Int      @default(0)
+  maxQuantity       Int      @default(0)
+  unitCost          Float?
+  totalValue        Float?
+  location          String?
+  site              String?
+  compatibleDevices String?
+  remark            String?
+  active            Boolean  @default(true)
+  lastUpdated       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  transactions    StockTransaction[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@index([productCode])
+  @@index([category])
+}
+
+// ============================================================
+// 17) StockTransaction — รับเข้า/เบิกออก
+// ============================================================
+model StockTransaction {
+  id              String   @id @default(cuid())
+  txnNumber       String?
+  stockItemId     String
+  productCode     String?
+  productName     String?
+  type            String   // IN | OUT | ADJUST
+  quantity        Int
+  unit            String?
+  balanceAfter    Int      @default(0)
+  reason          String?
+  requester       String?
+  department      String?
+  purpose         String?
+  approver        String?
+  approvedAt      String?
+  workOrderId     String?
+  workOrderNo     String?
+  deviceId        String?
+  cost            Float?
+  unitCost        Float?
+  vendor          String?
+  receiver        String?
+  purchaseOrderNo String?
+  txnDate         String
+  performedBy     String?
+  remark          String?
+  sourceKey       String?
+  processedFlag   String?
+  approvalStatus  String?
+  approvalMode    String?
+  autoApproveAt   String?
+  rejectReason    String?
+  isDemo          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  device    Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([stockItemId])
+  @@index([type])
+  @@index([approvalStatus])
+  @@index([isDemo])
+}
+
+// ============================================================
+// 18) PurchaseOrder — ใบสั่งซื้อ
+// ============================================================
+model PurchaseOrder {
+  id         String   @id @default(cuid())
+  poNumber   String?
+  orderDate  String
+  supplier   String?
+  status     String   @default("open")
+  totalValue Float?
+  createdBy  String?
+  remark     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  items PurchaseOrderItem[]
+
+  @@index([status])
+}
+
+// ============================================================
+// 19) PurchaseOrderItem — รายการในใบสั่งซื้อ
+// ============================================================
+model PurchaseOrderItem {
+  id               String   @id @default(cuid())
+  purchaseOrderId  String
+  stockItemId      String
+  quantityOrdered  Int
+  quantityReceived Int      @default(0)
+  unitPrice        Float?
+  totalValue       Float?
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  stockItem     StockItem     @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// 20) User — ผู้ใช้
+// ============================================================
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String?
+  name         String?
+  role         String   @default("viewer")
+  department   String?
+  permissions  String?  // JSON string
+  // Legacy: comma-separated site codes or 'ALL'. Retained during Phase 0
+  // dual-read/dual-write migration. Will be retired after UserSiteGrant
+  // is fully validated. See Site-Based Access Control Guidance §5.1.
+  allowedSites String?  // comma-separated or ALL
+  active       Boolean  @default(true)
+  passwordHash String?
+  passwordSalt String?
+  avatarUrl    String?
+  phone        String?
+  lineUserId   String?
+  lastLoginAt  String?
+  isDemo       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  siteGrants UserSiteGrant[]
+
+  @@index([email])
+  @@index([role])
+  @@index([isDemo])
+}
+
+// ============================================================
+// 20a) Role — Role catalog (Phase 1: authorization foundation)
+// ============================================================
+// Canonical role definitions stored in DB so they can be audited and
+// managed through the admin UI. Seeded from auth-shared.ts ROLE_PERMISSIONS.
+//
+// `isSystem` marks roles that cannot be deleted (superadmin, admin, etc).
+// Custom roles can be created by admins with USER_MANAGE permission.
+//
+// See: ITAM Shared Platform §4.3
+// ============================================================
+model Role {
+  code        String   @id // superadmin, site_manager, coordinator, technician, requester, viewer
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  grants      UserSiteGrant[]
+  permissions RolePermission[]
+}
+
+// ============================================================
+// 20a.2) Permission — Permission catalog (Phase 1)
+// ============================================================
+// Canonical permission definitions. The `code` matches the Permission
+// union type in auth-shared.ts so the type system and DB stay in sync.
+// `resource` + `action` enable future UI grouping and audit queries.
+// ============================================================
+model Permission {
+  code        String   @id // VIEW_DASHBOARD, WO_CREATE, DEVICE_EDIT, ...
+  resource    String   // dashboard, device, work_order, stock, ...
+  action      String   // view, create, edit, delete, assign, ...
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  roles       RolePermission[]
+}
+
+// ============================================================
+// 20a.3) RolePermission — many-to-many join (Phase 1)
+// ============================================================
+// Maps which permissions each role has. Seeded from ROLE_PERMISSIONS
+// in auth-shared.ts. Changes must be audited.
+// ============================================================
+model RolePermission {
+  roleCode       String
+  permissionCode String
+  createdAt      DateTime @default(now())
+
+  role       Role       @relation(fields: [roleCode], references: [code], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionCode], references: [code], onDelete: Cascade)
+
+  @@id([roleCode, permissionCode])
+  @@index([permissionCode])
+}
+
+// ============================================================
+// 20b) UserSiteGrant — Site-level role grants (target design)
+// ============================================================
+// Allows the same user to have different roles at different Sites
+// (e.g. editor at Site A, viewer at Site B). During the transitional
+// phase, the auth layer reads from UserSiteGrant first, then falls
+// back to User.allowedSites with an audit warning.
+//
+// `roleCode` now references the Role catalog (Phase 1).
+// `validFrom`/`validUntil` support time-bound grants (e.g. temp coverage).
+// `createdBy` tracks who issued the grant for audit.
+//
+// See: ITAM Shared Platform §4.4
+// ============================================================
+model UserSiteGrant {
+  userId     String
+  siteCode   String
+  roleCode   String   @default("viewer")
+  active     Boolean  @default(true)
+  validFrom  DateTime?
+  validUntil DateTime?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleCode], references: [code], onDelete: Restrict)
+
+  @@id([userId, siteCode])
+  @@index([siteCode, active])
+  @@index([userId, active])
+  @@index([roleCode, active])
+}
+
+// ============================================================
+// 21) AuditLog — ประวัติการเปลี่ยนแปลง
+// ============================================================
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  entity    String
+  entityId  String?
+  summary   String
+  detail    String?  // JSON string
+  actor     String   @default("system")
+  // NF-2 FIX: Canonical Site FK for audit entries.
+  // Populated by logAudit() when the action is Site-scoped.
+  // Null = global action (e.g., LOGIN, AUTH_FALLBACK) or legacy entry
+  // that predates this field. Site-scoped queries filter on this column
+  // instead of resolving entityId → entity → Site (eliminates N+1).
+  siteCode  String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([siteCode, createdAt])
+}
+
+// ============================================================
+// 22) AppSetting — ตั้งค่าแอป
+// ============================================================
+model AppSetting {
+  id       String   @id @default(cuid())
+  key      String   @unique
+  value    String
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// 23) AssetNumberPattern — รูปแบบเลขทะเบียน
+// ============================================================
+model AssetNumberPattern {
+  id            String   @id @default(cuid())
+  name          String
+  pattern       String
+  description   String?
+  isActive      Boolean  @default(false)
+  defaultPrefix String?
+  seqPadding    Int      @default(5)
+  seqStart      Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ============================================================
+// 23b) WoNumberPattern — รูปแบบเลขใบงาน (เหมือน AssetNumberPattern)
+// ============================================================
+model WoNumberPattern {
+  id            String   @id @default(cuid())
+  name          String
+  pattern       String   // เช่น {prefix}-{seq:4} → PPIT-0001
+  description   String?
+  isActive      Boolean  @default(false)
+  defaultPrefix String?  // เช่น PPIT
+  seqPadding    Int      @default(4)
+  seqStart      Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ============================================================
+// 24) OrganizationProfile — โปรไฟล์องค์กร
+// ============================================================
+model OrganizationProfile {
+  id              String   @id @default(cuid())
+  appName         String   @default("ระบบจัดการสินทรัพย์")
+  appTagline      String   @default("Asset Management System")
+  industryType    String   @default("general")
+  logoUrl         String?
+  primaryColor    String   @default("#f97316")
+  accentColor     String   @default("#0d9488")
+  language        String   @default("th")
+  timezone        String   @default("Asia/Bangkok")
+  currency        String   @default("THB")
+  allowExcelImport Boolean @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ============================================================
+// 25) DocumentTemplate — เทมเพลตเอกสาร
+// ============================================================
+model DocumentTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  type      String
+  category  String?
+  content   String
+  isActive  Boolean  @default(true)
+  isDefault Boolean  @default(false)
+  isFixed   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// 26) ImportJob — งานนำเข้าข้อมูล
+// ============================================================
+model ImportJob {
+  id            String   @id @default(cuid())
+  jobType       String
+  fileName      String
+  fileType      String   @default("excel")
+  status        String   @default("pending")
+  totalRows     Int      @default(0)
+  processedRows Int      @default(0)
+  errorRows     Int      @default(0)
+  errors        String?
+  uploadedBy    String?
+  createdAt     DateTime @default(now())
+  completedAt   DateTime?
+}
+
+// ============================================================
+// 27) LineBinding — ผูก LINE user กับผู้แจ้ง
+// ============================================================
+model LineBinding {
+  id              String   @id @default(cuid())
+  lineUserId      String
+  lineDisplayName String?
+  reporterName    String?
+  tel             String?
+  employeeCode    String?
+  workOrderCount  Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([lineUserId])
+}
+
+// ============================================================
+// 28) Report — รายงานที่บันทึกไว้
+// ============================================================
+model Report {
+  id       String   @id @default(cuid())
+  type     String
+  title    String
+  rangeKey String?
+  filters  String?
+  data     String
+  format   String   @default("json")
+  createdAt DateTime @default(now())
+}
+
+// ============================================================
+// 29) PasswordResetToken — token สำหรับ register / reset / invite
+//     type: 'register' (Method 2 invite) | 'reset' (forgot password) | 'invite'
+//     data: JSON string with { name, phone, department, roleRequest } (for register)
+// ============================================================
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  email     String   // user email
+  token     String   @unique // random UUID
+  type      String   // 'register' | 'reset' | 'invite'
+  data      String?  // JSON: { name, phone, department, roleRequest } for registration
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@index([token])
+}
+
+// ============================================================
+// 30) SyncRun — ประวัติการ sync จาก Legacy Apps Script
+//     mode: 'preview' (read-only diff) | 'apply' (write)
+//     status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+// ============================================================
+model SyncRun {
+  id              String   @id @default(cuid())
+  source          String   // 'services' | 'itam' | 'stock'
+  target          String   // 'work-order' | 'device' | 'meter' | 'stock-item' | 'stock-txn' | 'purchase-order'
+  mode            String   // 'preview' | 'apply'
+  status          String   // 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  totalRows       Int      @default(0)
+  createRows      Int      @default(0)
+  updateRows      Int      @default(0)
+  skipRows        Int      @default(0)
+  errorRows       Int      @default(0)
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  durationMs      Int?
+  triggeredBy     String   // user email
+  siteScope       String?
+  errorMessage    String?
+  retryOf         String?
+  sourceCursor    String?
+  attempts        Int      @default(1)
+  p2034Count      Int      @default(0)
+  items           SyncRunItem[]
+  createdAt       DateTime @default(now())
+
+  @@index([source, target, status])
+  @@index([triggeredBy])
+  @@index([siteScope, createdAt])
+  @@index([status, createdAt])
+}
+
+// ============================================================
+// 31) SyncRunItem — diff รายแถวจากการ sync
+//     action: 'create' | 'update' | 'skip' | 'error'
+//     status: 'pending' | 'applied' | 'skipped' | 'error'
+// ============================================================
+model SyncRunItem {
+  id              String   @id @default(cuid())
+  syncRunId       String
+  syncRun         SyncRun  @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  externalKey     String
+  action          String   // 'create' | 'update' | 'skip' | 'error'
+  before          Json?
+  after           Json?
+  expectedVersion Int?
+  expectedExists  Boolean  @default(false)
+  status          String   // 'pending' | 'applied' | 'skipped' | 'error'
+  errorMessage    String?
+  entityId        String?
+  entityType      String?
+  processedAt     DateTime?
+
+  @@index([syncRunId, action])
+  @@index([externalKey])
+  @@index([syncRunId, status])
+}
