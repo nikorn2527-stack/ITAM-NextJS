@@ -300,6 +300,9 @@ async function importWorkOrders(
     idx('jobNo'),
     idx('job_no'),
   ].find((index) => index >= 0) ?? -1
+  // P1-R6 fix: field mapping — requestId + siteCode from CSV
+  const iRequestId = idx('requestId')
+  const iSiteCode = idx('siteCode')
 
   const VALID_PRIORITIES = new Set(['ปกติ', 'ปานกลาง', 'สูง', 'ด่วน'])
   const errors: ImportError[] = []
@@ -324,16 +327,25 @@ async function importWorkOrders(
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r]
     const rowNum = r + 2
-    const subject = toStr(row[iSubject])
+    // F-04 fix: null-safe validation (toStr may return null when header/field doesn't exist)
+    const subject = (toStr(row[iSubject]) ?? '').trim()
     if (!subject) {
       errors.push({ row: rowNum, message: 'ไม่มีประเภทปัญหา (subject)' })
       continue
     }
+    // F-04 fix: null-safe requestId validation
+    const requestId = (toStr(row[iRequestId]) ?? '').trim()
+    if (!requestId) {
+      errors.push({ row: rowNum, message: 'ไม่มี requestId (required field)' })
+      continue
+    }
+    // F-04 fix: null-safe siteCode mapping
+    const siteCode = (toStr(row[iSiteCode]) ?? '').trim() || null
+
     const priority = toStr(row[iPriority])
     const prPriority =
       priority && VALID_PRIORITIES.has(priority) ? priority : 'ปกติ'
     const legacyJobNo = toStr(row[iLegacyJobNo])
-
     seq++
     const woNumber = `${prefix}${String(seq).padStart(3, '0')}`
 
@@ -344,6 +356,8 @@ async function importWorkOrders(
         select: { id: true },
       })
       const data = {
+        requestId, // P1-R6 fix: populate requestId
+        siteCode, // P1-R6 fix: populate siteCode
         subject,
         legacyJobNo,
         building: toStr(row[iBuilding]),
@@ -355,18 +369,50 @@ async function importWorkOrders(
         submissionSource: 'guest' as const,
         status: 'PENDING' as const,
       }
-      if (collision) {
-        await db.workOrder.create({ data })
-      } else {
-        await db.workOrder.create({
-          data: {
-            ...data,
-            woNumber,
-            systemJobNo: woNumber,
-          },
+      const created = collision
+        ? await db.workOrder.create({ data })
+        : await db.workOrder.create({
+            data: {
+              ...data,
+              woNumber,
+              systemJobNo: woNumber,
+            },
+          })
+      // F-01 fix: processed++ ONLY after AuditLog verification passes (fail-closed)
+      // F-04 fix: AuditLog verification failure = validation error (422), not DB error (500)
+      try {
+        await logAudit(
+          'WORK_ORDER_IMPORT',
+          'WorkOrder',
+          created.id,
+          `CSV import สร้างใบงาน ${requestId}`,
+          { source: 'csv-import', requestId, siteCode, subject },
+          'system',
+          siteCode,
+        )
+        // Explicit verification: confirm AuditLog was written (fail-closed)
+        const auditCheck = await db.auditLog.findFirst({
+          where: { entityId: created.id, action: 'WORK_ORDER_IMPORT' },
+          select: { id: true },
+        })
+        if (!auditCheck) {
+          // AuditLog not written → do NOT count as processed (fail-closed)
+          errors.push({
+            row: rowNum,
+            message: `AuditLog verification failed for WorkOrder ${requestId}`,
+          })
+        } else {
+          // AuditLog verified → only now count as processed
+          processed++
+        }
+      } catch (auditErr) {
+        // Verification query failed → do NOT count as processed (fail-closed)
+        console.error('AuditLog verification error:', auditErr)
+        errors.push({
+          row: rowNum,
+          message: `AuditLog verification error for WorkOrder ${requestId}`,
         })
       }
-      processed++
     } catch (e) {
       console.error('importWorkOrders create error', e)
       errors.push({
@@ -1780,22 +1826,28 @@ async function importAppsScriptWorkOrders(
       status = 'PENDING'
     }
 
-    const requestId = (data.requestId ?? '').trim() || null
+    const requestId = (data.requestId ?? '').trim()
     const legacyJobNo = (data.legacyJobNo ?? '').trim() || null
-    // Dedup: skip if requestId already in DB
-    if (requestId) {
-      const existing = await db.workOrder.findFirst({
-        where: { requestId },
-        select: { id: true },
-      })
-      if (existing) {
-        result.errors.push({
-          row: 0,
-          message: `มีใบงานอยู่แล้ว (request_id=${requestId})`,
-        })
-        continue
-      }
+    // P1-R6 fix: required-field validation — requestId is required
+    if (!requestId) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี requestId (required field)' })
+      continue
     }
+    // Dedup: skip if requestId already in DB
+    const existing = await db.workOrder.findFirst({
+      where: { requestId },
+      select: { id: true },
+    })
+    if (existing) {
+      result.errors.push({
+        row: 0,
+        message: `มีใบงานอยู่แล้ว (request_id=${requestId})`,
+      })
+      continue
+    }
+
+    // P1-R6 fix: field mapping — siteCode from CSV (via mapping)
+    const siteCode = (data.siteCode ?? '').trim() || null
 
     seq++
     const woNumber = `${prefix}${String(seq).padStart(3, '0')}`
@@ -1809,12 +1861,13 @@ async function importAppsScriptWorkOrders(
     if (collision) useWoNumber = null
 
     try {
-      await db.workOrder.create({
+      const created = await db.workOrder.create({
         data: {
           woNumber: useWoNumber ?? undefined,
           systemJobNo: useWoNumber ?? undefined,
           legacyJobNo,
           requestId,
+          siteCode, // P1-R6 fix: populate siteCode
           subject,
           building: data.building || null,
           location: data.location || null,
@@ -1847,6 +1900,16 @@ async function importAppsScriptWorkOrders(
         },
       })
       result.processed++
+      // P1-R6 fix: per-record AuditLog
+      await logAudit(
+        'WORK_ORDER_IMPORT',
+        'WorkOrder',
+        created.id,
+        `Apps Script import สร้างใบงาน ${requestId}`,
+        { source: 'apps-script-import', requestId, siteCode, subject },
+        'system',
+        siteCode,
+      )
     } catch (e) {
       console.error('importAppsScriptWorkOrders error', e)
       result.errors.push({
@@ -2182,6 +2245,13 @@ export async function POST(req: NextRequest) {
 
     let result: { processed: number; errors: ImportError[] }
     try {
+      // Test hook: controlled fault injection for importer-level DB failure test
+      // When TEST_INJECT_IMPORTER_FAILURE=1 AND NODE_ENV !== 'production',
+      // throws to simulate DB/infrastructure error.
+      // Production guard: this hook is a no-op in production (NODE_ENV=production).
+      if (process.env.TEST_INJECT_IMPORTER_FAILURE === '1' && process.env.NODE_ENV !== 'production') {
+        throw new Error('Test-injected DB failure (TEST_INJECT_IMPORTER_FAILURE=1)')
+      }
       switch (jobType) {
         case 'device':
           result = await importDevices(dataRows, headers)
@@ -2218,6 +2288,10 @@ export async function POST(req: NextRequest) {
           completedAt: new Date(),
         },
       })
+      // P1 fix (Audit re-review): importer catch is for UNEXPECTED DB/infrastructure
+      // errors (Prisma exceptions, connection failures). These are NOT validation
+      // errors (validation errors are pushed to errors[], not thrown).
+      // Therefore: HTTP 500 (server error), NOT 422.
       return NextResponse.json({ job: updated, error: errMsg }, { status: 500 })
     }
 
@@ -2254,7 +2328,11 @@ export async function POST(req: NextRequest) {
       },
     )
 
-    return NextResponse.json({ job: updated }, { status: 201 })
+    // F-03 fix: return 422 when there are validation errors, not 201
+    // HTTP 201 = created successfully (no errors); HTTP 422 = validation errors present
+    const finalErrorRows = totalRows - result.processed
+    const httpStatus = finalErrorRows > 0 ? 422 : 201
+    return NextResponse.json({ job: updated }, { status: httpStatus })
   } catch (err) {
     console.error('POST /api/import', err)
     const message = err instanceof Error ? err.message : 'Import failed'
