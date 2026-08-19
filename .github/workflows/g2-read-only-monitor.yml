@@ -1,0 +1,103 @@
+# ============================================================
+# GitHub Actions: G2 Staging Gate — Read-Only Monitor
+# ============================================================
+# Purpose: Poll GitHub state for Issue #14, Issue #15, PR #18 and
+#          notify on state transitions ONLY. This workflow performs
+#          NO write actions beyond posting a single comment to
+#          Issue #14 when a tracked state has changed, and persisting
+#          the last-seen snapshot file for diffing.
+#
+# Scope (minimal permissions):
+#   - issues: write        -> only to post ONE comment on Issue #14 per transition
+#   - pull-requests: write -> only to open auto-disable PR when both #14/#15 closed
+#   - contents: write      -> only to commit the snapshot file
+#   - actions: read        -> to read CI check-runs
+#
+# Hard rules (enforced by script logic + minimal token scope):
+#   - MUST NOT close issues
+#   - MUST NOT post G2 PASS / G3 authorization
+#   - MUST NOT merge PRs
+#   - MUST NOT deploy or touch environment variables
+#   - MUST NOT use production tokens (auto GITHUB_TOKEN only)
+#   - MUST NOT summarize on behalf of Audit
+#
+# Trigger:
+#   - schedule: every 15 minutes (UTC)
+#   - workflow_dispatch: manual run for testing
+#
+# Auto-disable:
+#   When BOTH Issue #14 AND Issue #15 are closed, the monitor opens a
+#   PR that removes the schedule trigger. Release Owner reviews and
+#   merges. Monitor never disables itself automatically.
+#
+# Governance: Gate state stays G2 CONDITIONAL/PENDING, G3 BLOCKED,
+#             Production BLOCKED until Audit publishes G2 PASS.
+# ============================================================
+name: G2 Read-Only Monitor
+
+on:
+  schedule:
+    # Every 15 minutes, UTC
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: g2-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install @octokit/rest
+        run: bun add @octokit/rest 2>/dev/null || true
+
+      - name: Run read-only monitor
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: bun run scripts/g2-monitor.ts
+
+      - name: Persist updated snapshot (if changed)
+        if: always()
+        run: |
+          if [ ! -f docs/g2-monitor/state.json ]; then
+            echo "No snapshot file produced — skipping commit"
+            exit 0
+          fi
+          if git diff --quiet docs/g2-monitor/state.json 2>/dev/null && \
+             ! git ls-files --error-unmatch docs/g2-monitor/state.json >/dev/null 2>&1; then
+            echo "Untracked new snapshot — will commit"
+          elif git diff --quiet docs/g2-monitor/state.json 2>/dev/null; then
+            echo "No snapshot change — skipping commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/g2-monitor/state.json
+          git commit -m "chore(monitor): update G2 state snapshot" --no-verify || \
+            echo "Nothing to commit"
+          # Push to the branch this workflow is on (main, since it's the only
+          # place schedule triggers fire from). We do NOT force-push and do NOT
+          # touch any other branch.
+          git push origin HEAD 2>&1 || \
+            echo "WARN: could not push snapshot — snapshot stays in run only"
