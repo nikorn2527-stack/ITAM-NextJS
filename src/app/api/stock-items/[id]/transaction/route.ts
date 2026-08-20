@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { requireAuth } from '@/lib/auth-middleware'
 import { demoTag } from '@/lib/demo-mode'
+import { resolveStockTransactionIdentity } from '@/lib/stock-transaction-identity'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -51,11 +52,6 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    // ── Demo mode: detect demo caller (optional auth — endpoint currently
-    //    accepts unauthenticated requests for compatibility) ──
-    const auth = await requireAuth(req).catch(() => null)
-    const demo = auth?.ok ? auth : null
-
     const body = await req.json()
     const type = String(body.type ?? '').toUpperCase()
     if (!VALID_TYPES.has(type)) {
@@ -64,6 +60,14 @@ export async function POST(
         { status: 400 },
       )
     }
+    const requiredPermission =
+      type === 'IN' ? 'STOCK_IN' : type === 'OUT' ? 'STOCK_OUT' : 'STOCK_APPROVE'
+    const auth = await requireAuth(req, requiredPermission)
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+    const actorIdentity = resolveStockTransactionIdentity(auth.user)
+
     const quantity = optInt(body.quantity, 0)
     if (quantity < 0) {
       return NextResponse.json(
@@ -147,7 +151,12 @@ export async function POST(
           quantity,
           balanceAfter: newBalance,
           reason: body.reason ? String(body.reason).trim() : null,
-          requester: body.requester ? String(body.requester).trim() : null,
+          // OUT requester is always the authenticated actor; client input is ignored.
+          requester: type === 'OUT'
+            ? actorIdentity.requester
+            : body.requester
+            ? String(body.requester).trim()
+            : null,
           department: body.department ? String(body.department).trim() : null,
           purpose: body.purpose ? String(body.purpose).trim() : null,
           workOrderId: body.workOrderId ? String(body.workOrderId) : null,
@@ -161,9 +170,10 @@ export async function POST(
             ? String(body.purchaseOrderNo).trim()
             : null,
           txnDate,
-          performedBy: body.performedBy ? String(body.performedBy).trim() : null,
+          // Audit performer is always the authenticated account; client input is ignored.
+          performedBy: actorIdentity.performedBy,
           remark: body.remark ? String(body.remark).trim() : null,
-          ...demoTag(demo?.user ?? null),
+          ...demoTag(auth.user),
         },
       })
 

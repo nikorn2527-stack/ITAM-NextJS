@@ -653,7 +653,6 @@ export function StockPage() {
         txnDate: txnForm.txnDate,
         reason: txnForm.reason || undefined,
         vendor: txnForm.vendor || undefined,
-        performedBy: txnForm.performedBy || undefined,
         remark: txnForm.remark || undefined,
       }
       if (txnForm.cost !== '') payload.cost = Number(txnForm.cost)
@@ -1923,12 +1922,16 @@ export function StockPage() {
                   ผู้ทำรายการ
                 </Label>
                 <Input
-                  value={txnForm.performedBy}
-                  onChange={(e) =>
-                    setTxnForm({ ...txnForm, performedBy: e.target.value })
-                  }
-                  placeholder="ชื่อ-นามสกุล"
+                  value="ระบบจะผูกกับบัญชีที่เข้าสู่ระบบ"
+                  readOnly
+                  aria-describedby="stock-transaction-actor-help"
                 />
+                <p
+                  id="stock-transaction-actor-help"
+                  className="text-[11px] text-slate-500 dark:text-slate-400"
+                >
+                  ไม่สามารถเปลี่ยนชื่อผู้ทำรายการจากฟอร์มได้
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
