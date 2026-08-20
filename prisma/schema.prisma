@@ -233,6 +233,10 @@ model MaintenanceLog {
 model WorkOrder {
   id               String   @id @default(cuid())
   woNumber         String?  @unique
+  // Legacy source identifier; immutable for traceability when supplied by imports.
+  legacyJobNo      String?  @map("legacy_job_no")
+  // New ITAM-NextJS identifier; woNumber remains as the compatibility display field.
+  systemJobNo      String?  @unique @map("system_job_no")
   requestId        String?  @unique
   subject          String
   building         String?
@@ -294,6 +298,7 @@ model WorkOrder {
   images   WorkOrderImage[]
 
   @@index([status])
+  @@index([legacyJobNo])
   @@index([assignedTo])
   @@index([deviceId])
   @@index([isDemo])

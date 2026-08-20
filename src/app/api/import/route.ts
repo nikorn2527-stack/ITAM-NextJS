@@ -290,6 +290,12 @@ async function importWorkOrders(
   const iPriority = idx('priority')
   const iReporter = idx('reporterName')
   const iTel = idx('tel')
+  const iLegacyJobNo = [
+    idx('legacyJobNo'),
+    idx('legacy_job_no'),
+    idx('jobNo'),
+    idx('job_no'),
+  ].find((index) => index >= 0) ?? -1
 
   const VALID_PRIORITIES = new Set(['ปกติ', 'ปานกลาง', 'สูง', 'ด่วน'])
   const errors: ImportError[] = []
@@ -322,6 +328,7 @@ async function importWorkOrders(
     const priority = toStr(row[iPriority])
     const prPriority =
       priority && VALID_PRIORITIES.has(priority) ? priority : 'ปกติ'
+    const legacyJobNo = toStr(row[iLegacyJobNo])
 
     seq++
     const woNumber = `${prefix}${String(seq).padStart(3, '0')}`
@@ -334,6 +341,7 @@ async function importWorkOrders(
       })
       const data = {
         subject,
+        legacyJobNo,
         building: toStr(row[iBuilding]),
         location: toStr(row[iLocation]),
         details: toStr(row[iDetails]),
@@ -346,7 +354,13 @@ async function importWorkOrders(
       if (collision) {
         await db.workOrder.create({ data })
       } else {
-        await db.workOrder.create({ data: { ...data, woNumber } })
+        await db.workOrder.create({
+          data: {
+            ...data,
+            woNumber,
+            systemJobNo: woNumber,
+          },
+        })
       }
       processed++
     } catch (e) {
@@ -1719,6 +1733,7 @@ async function importAppsScriptWorkOrders(
     }
 
     const requestId = (data.requestId ?? '').trim() || null
+    const legacyJobNo = (data.legacyJobNo ?? '').trim() || null
     // Dedup: skip if requestId already in DB
     if (requestId) {
       const existing = await db.workOrder.findFirst({
@@ -1749,6 +1764,8 @@ async function importAppsScriptWorkOrders(
       await db.workOrder.create({
         data: {
           woNumber: useWoNumber ?? undefined,
+          systemJobNo: useWoNumber ?? undefined,
+          legacyJobNo,
           requestId,
           subject,
           building: data.building || null,

@@ -239,6 +239,8 @@ export async function GET(req: NextRequest) {
     if (search) {
       searchOr = [
         { woNumber: { contains: search } },
+        { systemJobNo: { contains: search } },
+        { legacyJobNo: { contains: search } },
         { subject: { contains: search } },
         { building: { contains: search } },
         { location: { contains: search } },
@@ -382,6 +384,7 @@ export async function POST(req: NextRequest) {
       isSpecialFee,
       requestId,
       clientMutationId,
+      legacyJobNo: rawLegacyJobNo,
     } = body
 
     if (!subject || !String(subject).trim()) {
@@ -410,6 +413,8 @@ export async function POST(req: NextRequest) {
         select: {
           id: true,
           woNumber: true,
+          systemJobNo: true,
+          legacyJobNo: true,
           subject: true,
           status: true,
           createdAt: true,
@@ -431,6 +436,13 @@ export async function POST(req: NextRequest) {
       VALID_SOURCES.has(submissionSource.trim())
         ? submissionSource.trim()
         : 'guest'
+    // Legacy identifiers are accepted for authenticated/import-style flows;
+    // guest submissions cannot authoritatively claim a legacy source number.
+    const incomingLegacyJobNo =
+      typeof rawLegacyJobNo === 'string' && rawLegacyJobNo.trim()
+        ? rawLegacyJobNo.trim()
+        : null
+    const legacyJobNo = source === 'guest' ? null : incomingLegacyJobNo
 
     // ── External work order (ลูกค้าภายนอก / นอกสถานที่) ──
     // External WOs do NOT require guest contact validation — they are
@@ -554,8 +566,10 @@ export async function POST(req: NextRequest) {
 
     const created = await db.workOrder.create({
       data: {
-        id: woNumber,       // Use PPIT format as the primary id (like original data)
-        woNumber,           // Also set as woNumber for display
+        id: woNumber,       // Preserve current primary-key compatibility.
+        woNumber,           // Compatibility/display field used by existing clients.
+        systemJobNo: woNumber,
+        legacyJobNo,
         requestId: idempotencyKey, // Store for future replay detection
         subject: String(subject).trim(),
         building: building ? String(building).trim() : null,
@@ -627,6 +641,8 @@ export async function POST(req: NextRequest) {
       `สร้างใบแจ้งซ่อม ${created.woNumber} — ${created.subject}`,
       {
         woNumber: created.woNumber,
+        systemJobNo: created.systemJobNo,
+        legacyJobNo: created.legacyJobNo,
         subject: created.subject,
         priority: created.priority,
         building: created.building,

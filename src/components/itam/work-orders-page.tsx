@@ -143,6 +143,8 @@ export interface WorkOrderImage {
 export interface WorkOrder {
   id: string
   woNumber: string | null
+  systemJobNo: string | null
+  legacyJobNo: string | null
   subject: string
   building: string | null
   location: string | null
@@ -844,18 +846,25 @@ export function WorkOrdersPage() {
                       onClick={() => setDetailId(wo.id)}
                     >
                       <TableCell className="whitespace-nowrap py-2.5 font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
-                        <span className="inline-flex items-center gap-1">
-                          {wo.woNumber ?? '—'}
-                          {wo.isSpecialFee && (
-                            <span
-                              title="งานพิเศษ (มีค่าใช้จ่าย)"
-                              aria-label="งานพิเศษ (มีค่าใช้จ่าย)"
-                              className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-amber-100 text-[10px] dark:bg-amber-950"
-                            >
-                              💰
+                        <div className="flex flex-col">
+                          <span className="inline-flex items-center gap-1">
+                            {wo.systemJobNo ?? wo.woNumber ?? '—'}
+                            {wo.isSpecialFee && (
+                              <span
+                                title="งานพิเศษ (มีค่าใช้จ่าย)"
+                                aria-label="งานพิเศษ (มีค่าใช้จ่าย)"
+                                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-amber-100 text-[10px] dark:bg-amber-950"
+                              >
+                                💰
+                              </span>
+                            )}
+                          </span>
+                          {wo.legacyJobNo && (
+                            <span className="text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                              เดิม: {wo.legacyJobNo}
                             </span>
                           )}
-                        </span>
+                        </div>
                       </TableCell>
                       <TableCell className="max-w-[260px] py-2.5">
                         <div className="flex items-start gap-1.5">
@@ -1067,15 +1076,22 @@ function WorkOrderCard({
       <CardContent className="space-y-3 p-4">
         {/* Top row: WO number + status badges (status badge larger for readability) */}
         <div className="flex items-start justify-between gap-2">
-          <span className="inline-flex items-center gap-1 truncate font-mono text-xs font-semibold text-muted-foreground">
-            {wo.woNumber ?? '—'}
-            {wo.isSpecialFee && (
-              <span
-                title="งานพิเศษ (มีค่าใช้จ่าย)"
-                aria-label="งานพิเศษ (มีค่าใช้จ่าย)"
-                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] dark:bg-amber-950"
-              >
-                💰
+          <span className="inline-flex min-w-0 flex-col truncate font-mono text-xs font-semibold text-muted-foreground">
+            <span className="inline-flex items-center gap-1 truncate">
+              {wo.systemJobNo ?? wo.woNumber ?? '—'}
+              {wo.isSpecialFee && (
+                <span
+                  title="งานพิเศษ (มีค่าใช้จ่าย)"
+                  aria-label="งานพิเศษ (มีค่าใช้จ่าย)"
+                  className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[10px] dark:bg-amber-950"
+                >
+                  💰
+                </span>
+              )}
+            </span>
+            {wo.legacyJobNo && (
+              <span className="truncate text-[10px] font-normal text-slate-500 dark:text-slate-400">
+                เดิม: {wo.legacyJobNo}
               </span>
             )}
           </span>
