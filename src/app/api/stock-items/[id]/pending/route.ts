@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { requireAuth } from '@/lib/auth-middleware'
+import { resolveStockTransactionIdentity } from '@/lib/stock-transaction-identity'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -50,6 +52,13 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+
+    const auth = await requireAuth(req, 'STOCK_OUT')
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+    const actorIdentity = resolveStockTransactionIdentity(auth.user)
+
     const body = await req.json()
 
     const quantity = optInt(body.quantity, 0)
@@ -79,7 +88,8 @@ export async function POST(
         : null
     const department = body.department ? String(body.department).trim() : null
     const purpose = body.purpose ? String(body.purpose).trim() : null
-    const requester = body.requester ? String(body.requester).trim() : null
+    // Requester is always derived from the authenticated account; client input is ignored.
+    const requester = actorIdentity.requester
     const remark = body.remark ? String(body.remark).trim() : null
 
     const approvalMode = VALID_APPROVAL_MODES.has(String(body.approvalMode ?? ''))
@@ -109,6 +119,8 @@ export async function POST(
         balanceAfter: item.quantity,
         reason,
         requester,
+        // Audit performer is always the authenticated account; client input is ignored.
+        performedBy: actorIdentity.performedBy,
         department,
         purpose,
         workOrderId,
