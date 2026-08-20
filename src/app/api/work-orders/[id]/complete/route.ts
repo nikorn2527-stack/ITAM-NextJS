@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notifyWorkOrderCompleted } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { getRepairJobReferences } from '@/lib/repair-job-references'
 
 async function logAudit(
   action: string,
@@ -72,15 +73,18 @@ export async function POST(
 
     // ── PART 2: Check for pending parts requests ──
     // Block completion if there are PENDING parts requests linked to this WO.
-    const pendingPartsWhere = wo.woNumber
-      ? {
-          approvalStatus: 'PENDING',
-          OR: [{ workOrderId: wo.id }, { workOrderNo: wo.woNumber }],
-        }
-      : {
-          approvalStatus: 'PENDING',
-          workOrderId: wo.id,
-        }
+    // Legacy imports may retain only a raw job reference, so match all stable
+    // identifiers while keeping the direct WorkOrder relation authoritative.
+    const jobReferences = getRepairJobReferences(wo)
+    const pendingPartsWhere = {
+      approvalStatus: 'PENDING',
+      OR: [
+        { workOrderId: wo.id },
+        ...(jobReferences.length > 0
+          ? [{ workOrderNo: { in: jobReferences } }]
+          : []),
+      ],
+    }
     const pendingPartsCount = await db.stockTransaction.count({
       where: pendingPartsWhere,
     })
