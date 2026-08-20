@@ -20,6 +20,8 @@
 | `20260821000002_add_user_remark` | `success: true` |
 | `20260821000003_add_device_transfer_department_codes` | `success: true` |
 
+Post-apply migration history จาก ITAM-DB มีรายการครบสามรายการ: `add_work_order_dual_job_numbers` version `20260820231507`, `add_user_remark` version `20260820231544` และ `add_device_transfer_department_codes` version `20260820231606`.
+
 ## Post-apply schema verification
 
 Read-only query หลัง apply คืนค่าครบห้ารายการ:

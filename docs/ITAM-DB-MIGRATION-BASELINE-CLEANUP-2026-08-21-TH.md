@@ -34,6 +34,8 @@ Additive migrations จำนวนสามรายการถูก apply �
 | 2 | `20260821000002_add_user_remark` | เพิ่ม `User.remark TEXT` แบบ nullable | สำเร็จ (`success: true`) |
 | 3 | `20260821000003_add_device_transfer_department_codes` | เพิ่ม `DeviceTransfer.fromDepartmentCode` และ `toDepartmentCode` | สำเร็จ (`success: true`) |
 
+หลัง apply ตรวจ migration history ของ ITAM-DB อีกครั้ง พบรายการที่ถูกบันทึกครบสามรายการ ได้แก่ `add_work_order_dual_job_numbers` version `20260820231507`, `add_user_remark` version `20260820231544` และ `add_device_transfer_department_codes` version `20260820231606`. ชื่อ version ที่ระบบบันทึกเป็น execution timestamp จึงต้องอ่านคู่กับ source migration filename ใน repository เพื่อการ traceability ที่สมบูรณ์.
+
 Migrations ถูกเขียนเป็น `ADD COLUMN IF NOT EXISTS` และ index ใช้ `CREATE ... IF NOT EXISTS` ในรายการที่เกี่ยวข้อง จึงมีลักษณะ additive และลดความเสี่ยงจากการ rerun ระหว่าง recovery อย่างไรก็ตาม การ rerun ใน production ต้องทำผ่าน migration control ที่ได้รับอนุมัติ ไม่ควรใช้ `db:push` หรือแก้ migration history ด้วยมือ.
 
 ## Verification evidence
