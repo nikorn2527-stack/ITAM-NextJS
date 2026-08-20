@@ -569,7 +569,8 @@ export function mapCsvRow(
     let prismaField = mapping[csvKey]
     // Fall back to normalized match
     if (!prismaField) {
-      prismaField = normalizedLookup.get(normalizeKey(csvKey))
+      const normalizedField = normalizedLookup.get(normalizeKey(csvKey))
+      if (normalizedField) prismaField = normalizedField
     }
 
     if (!prismaField) {
