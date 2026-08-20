@@ -181,3 +181,19 @@ Mapping layer มีจุดเริ่มต้นที่ดีและใ
 เพิ่ม `src/lib/repair-link-resolution.ts` เป็น resolver แบบ typed และ read/preview-only สำหรับจับคู่ `StockOut.WorkOrderNo` กับ `legacy_job_no`, `system_job_no` หรือ `woNumber` ของ WorkOrder โดยไม่อ่านหรือเขียนฐานข้อมูลโดยตรง ผลลัพธ์แยก `matchedBy`, `warnings` และ quarantine reason ชัดเจน กรณีไม่พบเลขงาน, พบหลายรายการ หรือไม่มี reference จะ fail-closed และเข้าสู่ reconciliation queue ได้ในระยะถัดไป
 
 Self-verification: `repair-link-resolution.test.ts` และ `repair-data-contract.test.ts` ผ่านรวม 10/10 tests; ยังไม่มีการเชื่อม resolver เข้ากับ apply path และยังไม่มี migration/write operation จาก slice นี้
+
+
+## Implementation slice: dual-number pending-parts completion guard
+
+สถานะ: **Implemented on feature branch; not merged; no database migration executed**
+
+`POST /api/work-orders/[id]/complete` ตรวจรายการ StockTransaction ที่มี `approvalStatus=PENDING` จากทั้ง relation `workOrderId` และ raw reference `workOrderNo` ซึ่งอาจเป็น `woNumber`, `systemJobNo` หรือ `legacyJobNo` โดยใช้ reference helper แบบ deterministic, trim และ deduplicate หากมีรายการ pending ระบบยังคง fail-closed และไม่ปิดงาน
+
+Self-verification:
+
+- repair-related unit tests: 6 files / 21 tests passed
+- ESLint ของ completion route, helper และ test passed
+- `git diff --check` passed
+- B4 frozen files: 0-diff
+- targeted TypeScript command ยังพบเฉพาะ baseline errors เดิมใน `src/app/api/import/route.ts`, `src/lib/auth-middleware.ts` และ `src/lib/guest-validation.ts`; ไม่มี diagnostic ใหม่ใน completion route/helper
+- no `prisma db:push`, no live migration, no database write
