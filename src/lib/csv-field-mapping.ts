@@ -222,6 +222,14 @@ export const FIELD_MAPPINGS = {
   //   into columns. So the CSV headers here are the JSON field names.
   workOrder: {
     id: 'requestId', // ใช้เป็น dedup ID (legacy numeric id)
+    // Preserve the legacy job identifier separately from the new system number.
+    legacy_job_no: 'legacyJobNo',
+    legacy_job_number: 'legacyJobNo',
+    job_no: 'legacyJobNo',
+    job_number: 'legacyJobNo',
+    เลขที่งาน: 'legacyJobNo',
+    เลขงาน: 'legacyJobNo',
+    หมายเลขงาน: 'legacyJobNo',
     subject: 'subject',
     status: 'status', // needs value mapping (emoji → enum)
     building: 'building',
