@@ -2,6 +2,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 
+type TransferRow = {
+  fromDepartment: string | null
+  toDepartment: string | null
+  fromDepartmentCode: string | null
+  toDepartmentCode: string | null
+  [key: string]: unknown
+}
+
+/** Keep legacy response aliases while persisting canonical Prisma field names. */
+function toLegacyTransferShape<T extends TransferRow>(transfer: T) {
+  return {
+    ...transfer,
+    fromDept: transfer.fromDepartment,
+    toDept: transfer.toDepartment,
+    fromDeptCode: transfer.fromDepartmentCode,
+    toDeptCode: transfer.toDepartmentCode,
+  }
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
@@ -12,7 +31,9 @@ export async function GET(
       where: { deviceId: id },
       orderBy: [{ transferDate: 'desc' }, { createdAt: 'desc' }],
     })
-    return NextResponse.json({ transfers })
+    return NextResponse.json({
+      transfers: transfers.map((transfer) => toLegacyTransferShape(transfer)),
+    })
   } catch (err) {
     console.error('GET /api/devices/[id]/transfer', err)
     return NextResponse.json(
@@ -68,10 +89,10 @@ export async function POST(
         deviceId: id,
         fromSite,
         toSite: String(toSite).trim(),
-        fromDept,
-        toDept: toDept ? String(toDept).trim() : null,
-        fromDeptCode,
-        toDeptCode: toDeptCode ? String(toDeptCode).trim() : null,
+        fromDepartment: fromDept,
+        toDepartment: toDept ? String(toDept).trim() : null,
+        fromDepartmentCode: fromDeptCode,
+        toDepartmentCode: toDeptCode ? String(toDeptCode).trim() : null,
         reason: reason ? String(reason).trim() : null,
         transferDate: dateStr,
       },
@@ -94,7 +115,10 @@ export async function POST(
       },
     )
 
-    return NextResponse.json({ device: updated, transfer }, { status: 201 })
+    return NextResponse.json(
+      { device: updated, transfer: toLegacyTransferShape(transfer) },
+      { status: 201 },
+    )
   } catch (err) {
     console.error('POST /api/devices/[id]/transfer', err)
     const message = err instanceof Error ? err.message : 'Failed to transfer'

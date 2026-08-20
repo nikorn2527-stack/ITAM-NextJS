@@ -160,12 +160,14 @@ model DeviceTransfer {
   fromBuilding      String?
   fromFloor         String?
   fromDepartment    String?
+  fromDepartmentCode String?
   fromLocation      String?
   toSite            String
   toAssetSiteCode   String?
   toBuilding        String?
   toFloor           String?
   toDepartment      String?
+  toDepartmentCode  String?
   toLocation        String?
   meterReadingId    String?
   movedBy           String?
@@ -579,6 +581,7 @@ model User {
   active       Boolean  @default(true)
   passwordHash String?
   passwordSalt String?
+  remark       String?
   avatarUrl    String?
   phone        String?
   lineUserId   String?

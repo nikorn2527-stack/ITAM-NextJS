@@ -15,6 +15,10 @@ import {
   toFloat as toFloatLib,
   type AppsScriptSource,
 } from '@/lib/csv-field-mapping'
+import {
+  resolveMaterialIssueWorkOrder,
+  type WorkOrderLinkCandidate,
+} from '@/lib/repair-link-resolution'
 
 // ============================================================
 // Excel / CSV Import — ข้อ 3: ดาต้าเบสขึ้นได้ง่าย แค่เอาไฟล์ Excel ขึ้น
@@ -1023,13 +1027,20 @@ async function importAppsScriptTransfers(
           deviceId,
           fromSite: data.fromSite || null,
           toSite: data.toSite || '',
-          fromDept: data.fromDept || null,
-          toDept: data.toDept || null,
-          fromDeptCode: data.fromDeptCode || null,
-          toDeptCode: data.toDeptCode || null,
+          fromDepartment: data.fromDept || null,
+          toDepartment: data.toDept || null,
+          fromDepartmentCode: data.fromDeptCode || null,
+          toDepartmentCode: data.toDeptCode || null,
+          fromBuilding: data.fromBuilding || null,
+          toBuilding: data.toBuilding || null,
+          fromFloor: data.fromFloor || null,
+          toFloor: data.toFloor || null,
+          fromLocation: data.fromLocation || null,
+          toLocation: data.toLocation || null,
           reason: data.reason || null,
           transferDate,
           movedBy: data.movedBy || null,
+          remark: data.remark || null,
         },
       })
       result.processed++
@@ -1404,10 +1415,10 @@ async function importAppsScriptStockTxns(
   })
   const byCode = new Map(items.map((i) => [i.productCode, i]))
 
-  // Also collect WorkOrder references (StockOut may use any supported job number).
-  // A reference that resolves to more than one WorkOrder is deliberately quarantined
-  // by mapping it to null rather than guessing.
-  let woByReference: Map<string, string | null> | null = null
+  // Also collect WorkOrder candidates (StockOut may use any supported job number).
+  // Resolution is delegated to the shared fail-closed helper so importer and preview
+  // use identical matching/quarantine semantics.
+  let workOrderCandidates: WorkOrderLinkCandidate[] = []
   if (type === 'OUT') {
     const woReferences = new Set<string>()
     for (const obj of objects) {
@@ -1434,21 +1445,7 @@ async function importAppsScriptStockTxns(
         },
         select: { id: true, woNumber: true, systemJobNo: true, legacyJobNo: true },
       })
-      woByReference = new Map()
-      const addReference = (reference: string | null, id: string) => {
-        if (!reference) return
-        const current = woByReference?.get(reference)
-        if (current === undefined) {
-          woByReference?.set(reference, id)
-        } else if (current !== id) {
-          woByReference?.set(reference, null)
-        }
-      }
-      for (const wo of wos) {
-        addReference(wo.woNumber, wo.id)
-        addReference(wo.systemJobNo, wo.id)
-        addReference(wo.legacyJobNo, wo.id)
-      }
+      workOrderCandidates = wos
     }
   }
 
@@ -1496,17 +1493,14 @@ async function importAppsScriptStockTxns(
     const rawWorkOrderNo =
       type === 'OUT' ? toStr(data.workOrderNo) : null
     let workOrderId: string | null = null
-    if (type === 'OUT' && rawWorkOrderNo && woByReference) {
-      const resolvedId = woByReference.get(rawWorkOrderNo)
-      workOrderId = resolvedId ?? null
-      if (resolvedId === undefined) {
-        result.warnings.push(
-          `บรรทัด ${rowNum}: ไม่พบ WorkOrder สำหรับเลขงาน ${rawWorkOrderNo}; เก็บ raw reference และยังไม่ผูก relation`,
-        )
-      } else if (resolvedId === null) {
-        result.warnings.push(
-          `บรรทัด ${rowNum}: เลขงาน ${rawWorkOrderNo} ตรงกับหลาย WorkOrder; quarantine relation และไม่เดาสุ่ม`,
-        )
+    if (type === 'OUT' && rawWorkOrderNo) {
+      const resolution = resolveMaterialIssueWorkOrder(
+        { workOrderLegacyNo: rawWorkOrderNo },
+        workOrderCandidates,
+      )
+      workOrderId = resolution.link?.workOrderId ?? null
+      for (const warning of resolution.warnings) {
+        result.warnings.push(`บรรทัด ${rowNum}: ${warning}`)
       }
     }
 
@@ -1662,23 +1656,29 @@ async function importAppsScriptPOs(
 
   for (const [poNumber, g] of poGroups) {
     try {
-      const po = await db.purchaseOrder.upsert({
-        where: { poNumber },
-        create: {
-          poNumber,
-          orderDate: g.orderDate,
-          supplier: g.supplier,
-          status: g.status,
-          totalValue: g.totalValue,
-          createdBy: g.createdBy,
-        },
-        update: {
-          orderDate: g.orderDate,
-          supplier: g.supplier,
-          status: g.status,
-          totalValue: g.totalValue,
-        },
-      })
+      // poNumber is intentionally non-unique in the legacy-compatible schema.
+      // Update the first matching header when present; otherwise create one.
+      const existingPo = await db.purchaseOrder.findFirst({ where: { poNumber } })
+      const po = existingPo
+        ? await db.purchaseOrder.update({
+            where: { id: existingPo.id },
+            data: {
+              orderDate: g.orderDate,
+              supplier: g.supplier,
+              status: g.status,
+              totalValue: g.totalValue,
+            },
+          })
+        : await db.purchaseOrder.create({
+            data: {
+              poNumber,
+              orderDate: g.orderDate,
+              supplier: g.supplier,
+              status: g.status,
+              totalValue: g.totalValue,
+              createdBy: g.createdBy,
+            },
+          })
       // Insert line items (skip ones with missing stockItem)
       for (const line of g.lines) {
         if (!line.stockItemId) continue
