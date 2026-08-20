@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { notifyPartsRequested } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { resolveRepairRequester } from '@/lib/repair-identity'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -117,12 +118,11 @@ export async function POST(
       )
     }
 
-    // Actor identity comes from the authenticated session.
+    // Actor and requester identity come from the authenticated session.
+    // Do not trust body.requester: a caller must not submit stock on behalf
+    // of another user through a client-controlled field.
     const actorName = auth.user.email
-    const requester =
-      typeof body.requester === 'string' && body.requester.trim()
-        ? body.requester.trim()
-        : actorName
+    const requester = resolveRepairRequester(auth.user)
 
     // Validate all items first (fail fast)
     const validated: Array<{
