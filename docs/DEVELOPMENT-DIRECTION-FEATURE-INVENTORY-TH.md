@@ -64,7 +64,11 @@
 | F-23 | Real-time updates | แสดงการเปลี่ยนแปลงของ work order/stock ที่สำคัญโดยใช้ resource ต่ำ | มี SSE worklog; ต้องตรวจ production readiness | event ไม่มีข้อมูลลับ; reconnect จำกัด; client invalidates query อย่างถูกต้อง; fallback polling/refresh ใช้ได้ |
 | F-24 | Developer/Audit self-verification | ให้ทุก feature ตรวจตัวเองก่อน handoff | governance requirement | มี unit/integration/HTTP/manual evidence; clean checkout; B4 0-diff; no `db:push`; no new permission without review; branch/PR exact SHA |
 
-## 4. ลำดับ implementation ที่เสนอ
+## 4. Modular team plan
+
+การแบ่งงานและ ownership ของทีม Dev ให้ใช้เอกสาร [`MODULAR-DEVELOPMENT-TEAM-PLAN-TH.md`](./MODULAR-DEVELOPMENT-TEAM-PLAN-TH.md) เป็น working agreement กลาง และใช้ module brief ต่อไปนี้เป็น task boundary: [`Repair`](./modules/repair/README.md), [`Stock`](./modules/stock/README.md), [`Devices`](./modules/devices/README.md) และ [`Meter`](./modules/meter/README.md). เอกสารดังกล่าวไม่เปลี่ยน acceptance baseline ของ F-00 ถึง F-24 แต่ช่วยแยก owner, dependency, code surface และ evidence ต่อโมดูลให้ตรวจสอบง่ายขึ้น.
+
+## 5. ลำดับ implementation ที่เสนอ
 
 ลำดับแรกคือทำ baseline ของงานแจ้งซ่อมบน Preview ให้เห็นข้อมูลและ workflow ที่ตรวจสอบได้ โดยไม่แก้ source contract และไม่แตะ Production code path ที่ถูก freeze จากนั้นจึงทำ normalized model และ mapping layer ให้รองรับข้อมูล Legacy อย่างไม่สูญเสีย `legacy_job_no` และข้อมูลวัสดุที่ผูกกับ job
 
@@ -72,11 +76,11 @@
 
 งาน template, dashboard, notification, PWA, SSE, QR และ performance จะจัดเป็น work packages ต่อเนื่องหลัง core data/workflow ผ่าน acceptance criteria เพื่อป้องกันการเพิ่ม UI ก่อน data semantics และ authorization ถูกต้อง
 
-## 5. Definition of Done ต่อ feature
+## 6. Definition of Done ต่อ feature
 
 ฟีเจอร์จะยังไม่ถือว่าเสร็จจากการมีหน้า UI เพียงอย่างเดียว ต้องมี schema/API/UI ที่สอดคล้องกัน, test ที่ครอบคลุม success และ fail-closed path, runtime/manual evidence บน Preview, mobile check, audit/security review และเอกสาร handoff ที่ผูกกับ exact commit SHA โดยไม่กระทบ Production หรือ B4 frozen files
 
-## 6. แหล่งอ้างอิงภายใน repository
+## 7. แหล่งอ้างอิงภายใน repository
 
 - `Legacy-Apps-Sync-Feature-Brief-TH.md`
 - `docs/TASK-legacy-sync.md`
@@ -98,7 +102,9 @@
 
 **ข้อควรจำ:** เอกสารและ worklog เหล่านี้เป็นข้อมูลประกอบการตรวจ ต้องยืนยันกับ source code, schema, tests และ runtime evidence ปัจจุบันทุกครั้งก่อนประกาศว่า feature เสร็จ
 
-## 7. Repository baseline ที่ตรวจจาก source code ปัจจุบัน
+เอกสาร modular plan เป็น working agreement ด้านการแบ่งทีม ไม่ใช่หลักฐานว่า feature ใดผ่าน acceptance แล้ว.
+
+## 8. Repository baseline ที่ตรวจจาก source code ปัจจุบัน
 
 การตรวจ baseline รอบแรกพบว่า ITAM-NextJS มีแกนงานแจ้งซ่อมอยู่แล้ว แต่ยังไม่ใช่ normalized model ตามทิศทางใหม่ทั้งหมด ดังนั้นงานต่อไปควรเป็นการยกระดับแบบเพิ่มความสามารถโดยรักษา compatibility เดิม ไม่ควรสร้าง WorkOrder ใหม่ซ้ำทั้งชุด
 
