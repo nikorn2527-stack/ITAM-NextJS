@@ -495,6 +495,7 @@ model StockTransaction {
   purpose         String?
   approver        String?
   approvedAt      String?
+  // Optional because legacy material rows may be unresolved or quarantined.
   workOrderId     String?
   workOrderNo     String?
   deviceId        String?
