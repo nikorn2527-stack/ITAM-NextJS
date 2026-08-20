@@ -34,15 +34,17 @@ export async function GET(
     }
     const { wo } = result
 
-    // Find transactions linked via workOrderNo (preferred) or workOrderId
-    const where = wo.woNumber
-      ? {
-          OR: [
-            { workOrderNo: wo.woNumber },
-            { workOrderId: wo.id },
-          ],
-        }
-      : { workOrderId: wo.id }
+    // Find transactions linked by the canonical id, system number, or legacy number.
+    // Legacy imports may retain the old job number in StockTransaction.workOrderNo.
+    const workOrderNumbers = [wo.woNumber, wo.systemJobNo, wo.legacyJobNo]
+      .filter((value): value is string => Boolean(value && value.trim()))
+      .filter((value, index, values) => values.indexOf(value) === index)
+    const where = {
+      OR: [
+        { workOrderId: wo.id },
+        ...workOrderNumbers.map((workOrderNo) => ({ workOrderNo })),
+      ],
+    }
 
     const txns = await db.stockTransaction.findMany({
       where,
@@ -174,7 +176,7 @@ export async function POST(
     // Create all pending transactions in a single transaction.
     // Also update the WO status if needed.
     const created = await db.$transaction(async (tx) => {
-      const txns = []
+      const txns: Array<Awaited<ReturnType<typeof db.stockTransaction.create>>> = []
       for (const v of validated) {
         const txnNumber = await (async () => {
           const ymd = txnDate.replace(/-/g, '').slice(0, 8)
