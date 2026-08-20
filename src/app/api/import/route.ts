@@ -1404,24 +1404,51 @@ async function importAppsScriptStockTxns(
   })
   const byCode = new Map(items.map((i) => [i.productCode, i]))
 
-  // Also collect WorkOrder numbers (StockOut may reference them)
-  let woByNumber: Map<string, string> | null = null
+  // Also collect WorkOrder references (StockOut may use any supported job number).
+  // A reference that resolves to more than one WorkOrder is deliberately quarantined
+  // by mapping it to null rather than guessing.
+  let woByReference: Map<string, string | null> | null = null
   if (type === 'OUT') {
-    const woNumbers = new Set<string>()
+    const woReferences = new Set<string>()
     for (const obj of objects) {
-      const w = (obj.WorkOrderNo ?? obj.workOrderNo ?? '').trim()
-      if (w) woNumbers.add(w)
+      const w = (
+        obj.WorkOrderNo ??
+        obj.workOrderNo ??
+        obj.legacy_job_no ??
+        obj.legacy_job_number ??
+        obj.job_no ??
+        obj.job_number ??
+        ''
+      ).trim()
+      if (w) woReferences.add(w)
     }
-    if (woNumbers.size > 0) {
+    if (woReferences.size > 0) {
+      const references = Array.from(woReferences)
       const wos = await db.workOrder.findMany({
-        where: { woNumber: { in: Array.from(woNumbers) } },
-        select: { id: true, woNumber: true },
+        where: {
+          OR: [
+            { woNumber: { in: references } },
+            { systemJobNo: { in: references } },
+            { legacyJobNo: { in: references } },
+          ],
+        },
+        select: { id: true, woNumber: true, systemJobNo: true, legacyJobNo: true },
       })
-      woByNumber = new Map(
-        wos
-          .filter((w) => w.woNumber !== null)
-          .map((w) => [w.woNumber as string, w.id]),
-      )
+      woByReference = new Map()
+      const addReference = (reference: string | null, id: string) => {
+        if (!reference) return
+        const current = woByReference?.get(reference)
+        if (current === undefined) {
+          woByReference?.set(reference, id)
+        } else if (current !== id) {
+          woByReference?.set(reference, null)
+        }
+      }
+      for (const wo of wos) {
+        addReference(wo.woNumber, wo.id)
+        addReference(wo.systemJobNo, wo.id)
+        addReference(wo.legacyJobNo, wo.id)
+      }
     }
   }
 
@@ -1466,9 +1493,21 @@ async function importAppsScriptStockTxns(
     // Track updates
     item.quantity = newBalance
 
+    const rawWorkOrderNo =
+      type === 'OUT' ? toStr(data.workOrderNo) : null
     let workOrderId: string | null = null
-    if (type === 'OUT' && woByNumber && data.workOrderId) {
-      workOrderId = woByNumber.get(data.workOrderId) ?? null
+    if (type === 'OUT' && rawWorkOrderNo && woByReference) {
+      const resolvedId = woByReference.get(rawWorkOrderNo)
+      workOrderId = resolvedId ?? null
+      if (resolvedId === undefined) {
+        result.warnings.push(
+          `บรรทัด ${rowNum}: ไม่พบ WorkOrder สำหรับเลขงาน ${rawWorkOrderNo}; เก็บ raw reference และยังไม่ผูก relation`,
+        )
+      } else if (resolvedId === null) {
+        result.warnings.push(
+          `บรรทัด ${rowNum}: เลขงาน ${rawWorkOrderNo} ตรงกับหลาย WorkOrder; quarantine relation และไม่เดาสุ่ม`,
+        )
+      }
     }
 
     try {
@@ -1480,12 +1519,21 @@ async function importAppsScriptStockTxns(
           quantity: qty,
           balanceAfter: newBalance,
           reason: data.reason || null,
+          requester: type === 'OUT' ? data.requester || null : null,
+          department: type === 'OUT' ? data.department || null : null,
+          purpose: type === 'OUT' ? data.purpose || null : null,
+          approver: type === 'OUT' ? data.approver || null : null,
+          approvedAt: type === 'OUT' ? data.approvedAt || null : null,
           workOrderId,
+          workOrderNo: rawWorkOrderNo,
           cost: type === 'IN' ? toFloatLib(data.cost) : null,
           vendor: type === 'IN' ? data.vendor || null : null,
           txnDate,
           performedBy: data.performedBy || null,
           remark: data.remark || null,
+          rejectReason: type === 'OUT' ? data.rejectReason || null : null,
+          sourceKey: type === 'OUT' ? data.sourceKey || null : null,
+          processedFlag: type === 'OUT' ? data.processedFlag || null : null,
         },
       })
       // Update stock item quantity
