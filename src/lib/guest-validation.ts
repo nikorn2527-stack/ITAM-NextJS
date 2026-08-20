@@ -177,7 +177,7 @@ export async function validateGuestContact(
     canonicalName: matched.full_name?.trim() || nameRaw,
     canonicalPhone:
       normalizePhone(matched.phone_primary ?? matched.phone ?? '') || phoneRaw,
-    canonicalEmployeeCode: (matched.employee_code ?? matched.employeeCode ?? '').trim() || null,
+    canonicalEmployeeCode: (matched.employee_code ?? matched.employeeCode ?? '').trim() || undefined,
     department: matched.department?.trim() || undefined,
   }
 }
