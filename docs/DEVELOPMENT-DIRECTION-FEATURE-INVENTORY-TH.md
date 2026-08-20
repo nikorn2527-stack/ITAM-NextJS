@@ -174,3 +174,10 @@ Mapping layer มีจุดเริ่มต้นที่ดีและใ
 ### Known limitation
 
 การตรวจ `npx tsc --noEmit` ทั้ง repository ถูกหยุดหลังเกินเวลา 60 วินาทีและมี memory pressure ใน sandbox จึงยังไม่ประกาศเป็น full typecheck pass การยืนยันที่มีอยู่ในรอบนี้เป็น targeted Vitest + targeted ESLint และต้องทำ full typecheck/CI ใน handoff ถัดไป
+
+
+### Implementation slice: material-to-WorkOrder reconciliation
+
+เพิ่ม `src/lib/repair-link-resolution.ts` เป็น resolver แบบ typed และ read/preview-only สำหรับจับคู่ `StockOut.WorkOrderNo` กับ `legacy_job_no`, `system_job_no` หรือ `woNumber` ของ WorkOrder โดยไม่อ่านหรือเขียนฐานข้อมูลโดยตรง ผลลัพธ์แยก `matchedBy`, `warnings` และ quarantine reason ชัดเจน กรณีไม่พบเลขงาน, พบหลายรายการ หรือไม่มี reference จะ fail-closed และเข้าสู่ reconciliation queue ได้ในระยะถัดไป
+
+Self-verification: `repair-link-resolution.test.ts` และ `repair-data-contract.test.ts` ผ่านรวม 10/10 tests; ยังไม่มีการเชื่อม resolver เข้ากับ apply path และยังไม่มี migration/write operation จาก slice นี้
