@@ -8470,3 +8470,77 @@ Stage Summary:
 - Dev-1 Repair verdict on PR #30 (เราเป็น observer — ไม่ใช่ reviewer)
 - Audit final review (หลัง cross-review PASS ครบ)
 - Release Owner operational evidence (Issue #14 four items)
+
+---
+Task ID: BOUNDED-LIST-PR41-REVIEW-PACKETS-2026-08-21
+Agent: orchestrator — Dev-3 / Devices (per PARALLEL NOW + EXACT-HEAD-REVIEW-PROTOCOL)
+
+Task: ทำ bounded list/query workstream (PARALLEL NOW order) + โพสต์ REVIEW PACKET ตาม protocol ใหม่
+
+Work Log:
+
+**1. อ่านเอกสารใหม่:**
+- EXACT-HEAD-REVIEW-PROTOCOL-TH.md (commit 9e56887): กำหนด REVIEW PACKET format + 40-char SHA + REVIEW-FROZEN status
+- PARALLEL NOW — Dev-3 Devices (Issue #25 @ 19:00:47Z): สั่ง branch ใหม่ feature/next-devices-bounded-list-pagination
+- WAR-ROOM REVIEW STARTED (Issue #25 @ 19:14:48Z): Dev-4 Meter เป็น primary reviewer ของ Devices lane (#29 + #35 + #38)
+- EXPEDITED WAR-ROOM REVIEW (PR #29/#30/#31/#35 @ 19:11-19:12 UTC): current head verified packets
+
+**2. Bounded list workstream (per PARALLEL NOW order):**
+
+**New: src/lib/devices-bounded-list.ts (+205 lines)**
+- DEVICE_LIST_BOUNDS: MAX_LIMIT=500, DEFAULT_LIMIT=100, MAX_PAGE=10000, MAX_TOTAL_ENUMERABLE=5M
+- DEVICE_LIST_FIELDS: explicit select — แยก sensitive fields (serialNumber, ip, mac, contractNo, vendor, purchasePrice) ออกจาก list view
+- DEVICE_MOBILE_LIST_FIELDS: subset ≤12 fields สำหรับ ?mobile=1
+- clampPageAndLimit(): pure — handles NaN/Infinity/fractional/negative
+- buildPaginationMeta(): pure — totalPages/hasNextPage/hasPrevPage/truncated
+- emptyListResponse(): standard empty shape with meta
+- getDeviceListFields(): mobile vs full selector
+
+**Refactor: src/app/api/devices/route.ts (GET, +30/-15)**
+- Replace inline Math.min/Math.max with clampPageAndLimit()
+- Replace default include with explicit select (no IP/MAC/contract leak)
+- Add ?mobile=1 query param + meta + mobile fields (additive, backward compatible)
+- emptyListResponse() for fail-closed/empty cases
+
+**Tests: tests/devices-bounded-list.test.ts (+260 lines, 38 tests)**
+- 38/38 PASS, ~301ms
+- clampPageAndLimit (12 tests), buildPaginationMeta (8), DEVICE_LIST_FIELDS (3), DEVICE_MOBILE_LIST_FIELDS (4), isExcludedField + getDeviceListFields + emptyListResponse + bounds (11)
+
+**3. PR #41 opened:**
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/41
+- Head: feature/next-devices-bounded-list-pagination @ 751881585bbe3f7add94948e8c1560ede1dc651c
+- Base: feature/module-devices-import-boundary (PR #29)
+- Labels: module:devices, work-package:C-bounded-list, dev-3, audit-review-required, no-self-merge, governance:read-only
+- Body: REVIEW PACKET format (per EXACT-HEAD-REVIEW-PROTOCOL §3)
+
+**4. Re-post PR #27 verdict with 40-char SHA (per protocol):**
+- Comment ID: 5374339174
+- Full SHA: a7ba3f09f4f885dcef9e4fc85ac75f228d6c1cef (40 chars)
+- Previous verdict (5374076925) used 8-char short SHA → may not count per protocol §3
+- All findings stand — no changes to PR #27 since original review
+
+**5. Post REVIEW PACKETS on PR #35 + #29 (per protocol):**
+- PR #35 packet (comment 5374344199): head a4e86f4986f7e93e25d3fadfb05e0cf2a14e0df9
+- PR #29 packet (comment 5374344328): head ed64d6998cc02c596f739568d6619a37a93797af
+- Both include: base SHA, head SHA (40 chars), freeze time, scope, tests, security notes, B4 impact, shared contract flag, owner acknowledgement
+
+**6. Governance verified:**
+- B4 frozen: 0-diff (all 6 files)
+- SYNC_RUN: NOT added
+- prisma db:push: NOT used
+- Schema/migration: NOT changed
+- PR #29/#35/#38 overlap: NONE (separate files)
+- Secrets: none
+
+Stage Summary:
+- PR #41 (bounded list) opened with REVIEW PACKET format
+- PR #27 verdict re-posted with 40-char SHA (protocol compliance)
+- PR #35 + #29 REVIEW PACKETS posted (Dev-4 Meter to issue verdict)
+- 3 PRs in Devices lane now have proper packets: #29, #35, #41 (plus #38 from another team)
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+สถานะ Devices lane (4 PRs รอ Dev-4 Meter verdict):
+- PR #29 (importer): packet posted, awaiting verdict
+- PR #35 (parallel fixtures + docs): packet posted, awaiting verdict
+- PR #38 (transfer route, another team): packet posted by governance, awaiting verdict
+- PR #41 (bounded list, new): packet posted, awaiting verdict
