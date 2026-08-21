@@ -98,3 +98,25 @@ PR ทุกใบต้องระบุ owner team, feature IDs, changed tabl
 ## 10. Cross-review governance
 
 เนื่องจากทั้งสี่ทีมมีสถานะเป็น Dev เหมือนกัน การตรวจงานให้ใช้ matrix แบบหมุนเวียนตามเอกสาร [MODULAR-CROSS-REVIEW-MATRIX-TH.md](./MODULAR-CROSS-REVIEW-MATRIX-TH.md) โดย Dev-2 Stock ตรวจ PR ของ Dev-1 Repair, Dev-3 Devices ตรวจ PR ของ Dev-2 Stock, Dev-4 Meter ตรวจ PR ของ Dev-3 Devices และ Dev-1 Repair ตรวจ PR ของ Dev-4 Meter ผู้เขียนห้าม approve งานของตนเอง และ Audit ยังคงเป็น technical gate สุดท้าย
+
+
+## 11. Universal cross-review loop สำหรับทุก work item
+
+ให้ใช้วงรอบเดียวกันกับ feature, bugfix, security fix, refactor, sync, migration proposal, test-only และ documentation ที่มีผลต่อ contract โดยไม่ต้องเดาผู้ตรวจจากหมายเลข PR:
+
+```text
+ทีมเจ้าของงาน → ผู้ตรวจหลัก → ผู้ตรวจสำรองเมื่อมี conflict/ไม่พร้อม → Audit เมื่อเข้าเกณฑ์ → Release Owner ตัดสินใจ
+```
+
+| เจ้าของงาน | ผู้ตรวจหลัก | ผู้ตรวจสำรอง |
+|---|---|---|
+| Dev-1 Repair | Dev-2 Stock | Dev-3 Devices |
+| Dev-2 Stock | Dev-3 Devices | Dev-4 Meter |
+| Dev-3 Devices | Dev-4 Meter | Dev-1 Repair |
+| Dev-4 Meter | Dev-1 Repair | Dev-2 Stock |
+
+งานที่แตะหลายโมดูลยังคงมีผู้ตรวจหลักเพียงหนึ่งทีมเพื่อออก verdict เดียว และเพิ่มทีมของ consumer เป็น `DOMAIN-CONSULT` ตามผลกระทบ งานที่แตะ Shared Platform, auth/RBAC, audit, migration, sync-apply, B4 frozen boundary หรือ resource budget ต้องส่ง Audit เพิ่มเสมอ
+
+เมื่อเจ้าของงานแก้ตาม review ให้ผู้ตรวจหลักเดิมตรวจซ้ำเฉพาะ diff ใหม่ ไม่ต้องวนครบสี่ทีม หาก scope เปลี่ยนหรือเพิ่ม consumer ให้เปิด focused review กับทีมที่ได้รับผลกระทบ และอัปเดต exact-SHA evidence ใน PR เดิม
+
+คู่มือขั้นตอนปฏิบัติอยู่ที่ [MODULAR-CROSS-REVIEW-OPERATING-PROCEDURE-TH.md](./MODULAR-CROSS-REVIEW-OPERATING-PROCEDURE-TH.md) และ PR template กลางอยู่ที่ [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md)

@@ -85,3 +85,24 @@ Evidence: <test command/result or file links>
 4. [PR #28 Stock](https://github.com/nikorn2527-stack/ITAM-NextJS/pull/28)
 5. [PR #29 Devices](https://github.com/nikorn2527-stack/ITAM-NextJS/pull/29)
 6. [PR #30 Meter](https://github.com/nikorn2527-stack/ITAM-NextJS/pull/30)
+
+## 10. Universal loop สำหรับงานทุกประเภท
+
+เพื่อไม่ให้แต่ละทีมสับสนว่า PR หรืองานใหม่ต้องวนตรวจใคร ให้ใช้ลำดับถาวรนี้กับทุก work item:
+
+```text
+ทีมเจ้าของงาน → ผู้ตรวจหลักตามวงแหวน → ผู้ตรวจสำรองเมื่อมีเหตุจำเป็น → Audit เมื่อเข้าเกณฑ์ → Release Owner ตัดสินใจ release
+```
+
+| ทีมเจ้าของงาน | ผู้ตรวจหลัก | ผู้ตรวจสำรอง | ใช้กับงานอื่นอย่างไร |
+|---|---|---|---|
+| Dev-1 Repair | Dev-2 Stock | Dev-3 Devices | ทุก Repair feature, bugfix, adapter และ parts flow |
+| Dev-2 Stock | Dev-3 Devices | Dev-4 Meter | ทุก Stock feature, transaction, approval และ material issue |
+| Dev-3 Devices | Dev-4 Meter | Dev-1 Repair | ทุก Device feature, transfer, import และ lifecycle |
+| Dev-4 Meter | Dev-1 Repair | Dev-2 Stock | ทุก Meter feature, reading, reset และ report |
+
+งานที่แก้ไขหลายโมดูลให้เพิ่มทีมเจ้าของโมดูลที่ได้รับผลกระทบเป็น `DOMAIN-CONSULT` แต่ยังคงผู้ตรวจหลักตามตารางเดิมหนึ่งทีมเพื่อออก verdict เดียว งานที่แตะ Shared Platform, auth/RBAC, audit, migration หรือ sync-apply ต้องส่ง Audit เพิ่มเสมอ
+
+เมื่อเจ้าของงานแก้ตาม review ให้ผู้ตรวจหลักคนเดิมตรวจซ้ำเฉพาะ diff ใหม่ ไม่ต้องวนครบสี่ทีมอีกครั้ง หากเปลี่ยน scope หรือเพิ่มผลกระทบข้ามโมดูล ให้เริ่ม focused review กับทีมที่ได้รับผลกระทบและแจ้ง Audit ตามความเสี่ยง
+
+กติกานี้ทำให้ทุกทีมตอบได้ทันทีว่า **งานของฉันให้ใครตรวจ, ถ้าติดขัดให้ใครรับช่วง, และเมื่อใดต้องส่ง Audit** โดยไม่ต้องตีความจากหมายเลข PR หรือสลับผู้ตรวจไปเรื่อย ๆ
