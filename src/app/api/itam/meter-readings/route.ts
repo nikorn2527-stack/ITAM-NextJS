@@ -17,7 +17,10 @@ import {
   type ReadingType,
 } from '@/lib/meter-logic'
 import { assertMeterMonthWritable } from '@/lib/meter-snapshot'
-import { validateMeterChannels } from '@/lib/meter-reading-contract'
+import {
+  isStaleMeterReading,
+  validateMeterChannels,
+} from '@/lib/meter-reading-contract'
 
 // GET /api/itam/meter-readings?assetCode=&month=&page=1&limit=20
 export async function GET(req: NextRequest) {
@@ -218,6 +221,21 @@ export async function POST(req: NextRequest) {
 
     // ── Step 7: Check for existing MONTHLY reading in same month (upsert) ──
     const existing = await findExistingMonthlyReading(assetCode, finalReadingMonth)
+    if (
+      existing
+      && readingType === 'MONTHLY'
+      && isStaleMeterReading({ readingDate }, existing)
+    ) {
+      return NextResponse.json(
+        {
+          error: 'วันที่จดมิเตอร์เก่ากว่ารายการล่าสุดของรอบนี้',
+          code: 'STALE_READING',
+          existingReadingDate: existing.readingDate,
+          readingDate,
+        },
+        { status: 409 },
+      )
+    }
 
     const data = {
       assetCode,
@@ -287,7 +305,7 @@ export async function POST(req: NextRequest) {
     // Push SSE event
     publishRealtimeEvent({
       type: 'meter-written',
-      assetCode,
+      assetNo: assetCode,
       site: device.site ?? null,
       payload: { pagesBw, pagesColor, reset: readingType === 'RESET', readingType },
     })

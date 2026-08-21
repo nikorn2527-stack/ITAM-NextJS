@@ -291,7 +291,7 @@ export function isMeterDecreased(
 export async function findExistingMonthlyReading(
   assetCode: string,
   readingMonth: string,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; readingDate: string } | null> {
   const targetMonth = normalizeReadingMonth(readingMonth)
   if (!targetMonth) return null
 
@@ -301,7 +301,7 @@ export async function findExistingMonthlyReading(
       readingMonth: targetMonth,
       readingType: 'MONTHLY',
     },
-    select: { id: true },
+    select: { id: true, readingDate: true },
     orderBy: { id: 'desc' },
   })
 }
