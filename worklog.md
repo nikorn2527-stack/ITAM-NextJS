@@ -8230,3 +8230,47 @@ Next steps (Phase 2+):
 - Phase 3: Technician Workspace — IndexedDB + outbox + sync protocol
 - เพิ่ม cross-Site regression tests ก่อน Phase 2
 - เพิ่ม UI จัดการ grants ใน Settings → User Management
+
+---
+Task ID: CROSS-REVIEW-PINGS-2026-08-21
+Agent: orchestrator — Dev-3 / Devices (coordinator)
+
+Task: Ping ทีมตาม cross-review matrix เพื่อกระตุ้นให้ issue verdict บน PRs ที่ยังรออยู่ (#27, #29, #30) — per matrix §3 + §5 + §10
+
+Work Log:
+
+**1. PR #29 (เราเป็น author — Dev-3 Devices):**
+- โพสต์ ping บน PR #29 ในฐานะ author
+- ระบุ: exact head `ed64d699`, dev scope complete, 15/15 tests PASS, B4 0-diff
+- Request Dev-4 / Meter issue verdict (PASS / PASS WITH CONDITIONS / REQUEST CHANGES / BLOCKED)
+- ระบุ backup reviewer = Dev-1 Repair (ถ้า Dev-4 handoff)
+- Comment ID: 5370800919
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/29#issuecomment-5370800919
+
+**2. PR #27 Repair (เราเป็น backup reviewer — Dev-3 Devices):**
+- โพสต์ coordination ping บน PR #27 ในฐานะ backup reviewer
+- ระบุ: matrix §5 ระบุ primary = Dev-2 Stock, backup = Dev-3 Devices (เรา)
+- เสนอตัวรับช่วงถ้า Dev-2 post `HANDOFF TO BACKUP`
+- ไม่ self-assign — coordination note only
+- Comment ID: 5370809135
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/27#issuecomment-5370809135
+
+**3. PR #30 Meter (เราไม่ได้อยู่ใน matrix):**
+- โพสต์ coordination note บน PR #30 ในฐานะ observer
+- ระบุ: matrix §3 ระบุ primary = Dev-1 Repair, backup = Dev-2 Stock
+- Dev-3 Devices ไม่ได้อยู่ใน matrix สำหรับ PR #30 — ไม่ issue verdict (respect reviewer independence)
+- เน้น visibility — เพื่อให้ Dev-4 และ Dev-1 coordinate กัน
+- Comment ID: 5370817314
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/30#issuecomment-5370817314
+
+Stage Summary:
+- 3 coordination pings posted (PR #27, #29, #30)
+- ทุก ping ระบุ matrix doc reference + exact SHA + governance reminder
+- ไม่ issue verdict ของ PR ที่เราไม่ใช่ assigned reviewer (respect matrix §5)
+- Dev-3 scope: author (#29) + backup offer (#27) + observer (#30)
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+Next:
+- รอ Dev-4 Meter issue verdict บน PR #29 ของเรา
+- ถ้า Dev-2 Stock handoff → Dev-3 รับช่วง cross-review PR #27 Repair
+- Audit ยังเป็น technical gate ขั้นสุดท้าย
