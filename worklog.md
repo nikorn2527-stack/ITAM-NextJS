@@ -8544,3 +8544,89 @@ Stage Summary:
 - PR #35 (parallel fixtures + docs): packet posted, awaiting verdict
 - PR #38 (transfer route, another team): packet posted by governance, awaiting verdict
 - PR #41 (bounded list, new): packet posted, awaiting verdict
+
+---
+Task ID: INTEGRATION-SCENARIOS-PR45-2026-08-21
+Agent: orchestrator — Dev-3 / Devices (per PARALLEL NOW order "ต่อเลย")
+
+Task: ทำ integration test scenarios สำหรับ importer ↔ transfer contract (PARALLEL NOW order ส่วน "ทดสอบต่อกับ importer/transfer contract โดยไม่เพิ่ม schema")
+
+Work Log:
+
+**1. Token refresh:**
+- Token เดิมหมดอายุ — ผู้ใช้ส่ง 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 ใหม่
+- อัปเดต git remote + ตรวจสอบด้วย /user → login: nikorn2527-stack ✅
+
+**2. Integration scenarios workstream:**
+- สร้าง worktree จาก PR #29 head (ed64d69) — base เดียวกับ PR #41
+- Branch: feature/module-devices-importer-transfer-integration
+
+**3. New module: src/lib/devices-import-transfer-integration/ (+450 lines)**
+- scenarios.ts:
+  - INTEGRATION_SCENARIOS: 8 fixtures covering 200/400/403/404 outcomes
+    1. successful transfer within scope → 200
+    2. transfer to unauthorized site → 403
+    3. transfer from unauthorized site → 403
+    4. meter-required without reading/ack → 400
+    5. meter-required with ack → 200
+    6. transfer non-existent device → 404
+    7. superadmin bypass → 200
+    8. case-insensitive assetCode lookup → 200
+  - resolveDeviceByAssetCode(): pure — case-insensitive lookup
+  - decideTransferSiteScope(): pure — superadmin/from-denied/to-denied/anonymous
+  - decideMeterRequired(): pure — not-required/reading/ack/missing
+  - predictTransferOutcome(): pure — full scenario prediction
+- index.ts: barrel
+
+**4. Tests: tests/devices-import-transfer-integration/scenarios.test.ts (+260 lines, 36 tests)**
+- resolveDeviceByAssetCode: 6 tests
+- decideTransferSiteScope: 7 tests
+- decideMeterRequired: 5 tests
+- predictTransferOutcome: 8 tests (one per scenario)
+- Scenario integrity: 10 tests (count, branches, unique assetCodes, caller coverage)
+
+**5. Test evidence:**
+```
+✓ tests/devices-import-transfer-integration/scenarios.test.ts (36 tests) 8ms
+Test Files 1 passed (1)
+Tests 36 passed (36)
+Duration 269ms
+```
+
+**6. Governance verified:**
+- B4 frozen: 0-diff (all 6 files)
+- SYNC_RUN: NOT added
+- prisma db:push: NOT used
+- Schema/migration: NOT changed (per order — "ไม่เพิ่ม schema")
+- PR #29/#35/#38/#41 overlap: NONE (separate files)
+- Secrets: none
+
+**7. PR #45 opened:**
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/45
+- Head: feature/module-devices-importer-transfer-integration @ be4bc87c31fd273f8ba8ab2c03b8ffc6c6ff26cc
+- Base: feature/module-devices-import-boundary (PR #29)
+- Labels: module:devices, work-package:C-integration, dev-3, audit-review-required, no-self-merge, governance:read-only
+- Body: REVIEW PACKET format (per EXACT-HEAD-REVIEW-PROTOCOL §3) — 40-char SHA, freeze time, scope, tests, security notes, B4 impact, shared contract, owner acknowledgement
+
+**8. Issue #25 updated:**
+- Comment ID: 5376539794
+- รายงาน PR #45 + Devices lane status (5 PRs awaiting Dev-4 verdict)
+
+**9. Verdict check:**
+- ตรวจ Devices lane ทั้ง 5 PRs (#29, #35, #38, #41, #45)
+- ยังไม่มี CROSS-REVIEW verdict ใหม่จาก Dev-4 Meter
+
+Stage Summary:
+- PR #45 opened: integration scenarios, 36/36 PASS, B4 0-diff, no SYNC_RUN, no schema change
+- REVIEW PACKET posted per EXACT-HEAD-REVIEW-PROTOCOL
+- Devices lane ตอนนี้มี 5 PRs รอ Dev-4 Meter verdict ทั้งหมด
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+สถานะ Devices lane (5 PRs):
+- PR #29 (importer): packet posted, awaiting verdict
+- PR #35 (parallel fixtures + docs): packet posted, awaiting verdict
+- PR #38 (transfer route, another team): packet posted by governance, awaiting verdict
+- PR #41 (bounded list): packet posted, awaiting verdict
+- PR #45 (integration scenarios, new): packet posted, awaiting verdict
+
+Bottleneck: Dev-4 Meter ยังไม่ได้ issue verdict บน Devices lane ทั้ง 5 PRs
