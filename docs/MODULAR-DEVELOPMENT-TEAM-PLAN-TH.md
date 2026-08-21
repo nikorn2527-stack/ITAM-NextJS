@@ -94,3 +94,7 @@ PR ทุกใบต้องระบุ owner team, feature IDs, changed tabl
 [1]: https://github.com/nikorn2527-stack/ITAM-NextJS/blob/main/docs/DEVELOPMENT-DIRECTION-FEATURE-INVENTORY-TH.md "ITAM-NextJS Development Direction and Feature Inventory"
 [2]: https://github.com/nikorn2527-stack/ITAM-NextJS/blob/main/docs/REPAIR-DATA-CONTRACT-DESIGN-TH.md "Repair Data Contract Design"
 [3]: https://docs.github.com/en/pull-requests/collaborating-with-pull-requests "GitHub pull request collaboration guidance"
+
+## 10. Cross-review governance
+
+เนื่องจากทั้งสี่ทีมมีสถานะเป็น Dev เหมือนกัน การตรวจงานให้ใช้ matrix แบบหมุนเวียนตามเอกสาร [MODULAR-CROSS-REVIEW-MATRIX-TH.md](./MODULAR-CROSS-REVIEW-MATRIX-TH.md) โดย Dev-2 Stock ตรวจ PR ของ Dev-1 Repair, Dev-3 Devices ตรวจ PR ของ Dev-2 Stock, Dev-4 Meter ตรวจ PR ของ Dev-3 Devices และ Dev-1 Repair ตรวจ PR ของ Dev-4 Meter ผู้เขียนห้าม approve งานของตนเอง และ Audit ยังคงเป็น technical gate สุดท้าย
