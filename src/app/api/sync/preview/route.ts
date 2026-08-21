@@ -11,6 +11,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { fetchFromAppsScript, computePreviewItems, redacted } from '@/lib/sync-adapter'
+import { computeServicesWorkOrderPreview } from '@/lib/services-work-order-preview'
 import { logAudit } from '@/lib/audit'
 
 // Helper: convert JsonValue | null to Prisma Json? input type
@@ -83,9 +84,14 @@ export async function POST(req: NextRequest) {
     })
 
     // 8. Compute preview items (read-only — no business table writes)
-    const previewItems = await computePreviewItems(
+    const previewDb = db as unknown as Parameters<typeof computePreviewItems>[1]
+    const isServicesWorkOrder = source === 'services' && target === 'work-order'
+    const repairPreview = isServicesWorkOrder
+      ? await computeServicesWorkOrderPreview(result.records, previewDb, siteScope)
+      : null
+    const previewItems = repairPreview?.items || await computePreviewItems(
       result.records,
-      db as unknown as Parameters<typeof computePreviewItems>[1],
+      previewDb,
       siteScope,
     )
 
@@ -174,7 +180,8 @@ export async function POST(req: NextRequest) {
       })),
       sourceMetadata: {
         totalFetched: result.metadata.totalFetched,
-        unmappedColumns: result.metadata.unmappedColumns,
+        unmappedColumns: repairPreview?.unmappedColumns || result.metadata.unmappedColumns,
+        quarantinedRows: repairPreview?.quarantinedRows || 0,
       },
     })
   } catch (err) {
