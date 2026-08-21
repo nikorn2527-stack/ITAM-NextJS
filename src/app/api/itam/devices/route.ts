@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, canAccessSite, isAdminRole } from '@/lib/auth'
 import { notifyDeviceAdded } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { parseDeviceListPagination } from '@/lib/device-list-query'
 
 // GET /api/itam/devices?search=&status=&site=&type=&page=1&limit=20
 export async function GET(req: NextRequest) {
@@ -19,10 +20,7 @@ export async function GET(req: NextRequest) {
     const deviceType = searchParams.get('type')?.trim() ?? ''
     // Exact-match assetNo filter (used by QR scanner smart-routing and quick-lookup)
     const assetNoExact = searchParams.get('assetNo')?.trim() ?? ''
-    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
-    // Allow up to 2000 rows per page — virtual scroll mode fetches a large
-    // batch in one shot so it can render 2,378+ rows without lag.
-    const limit = Math.min(2000, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
+    const { page, limit, skip } = parseDeviceListPagination(searchParams)
 
     const where: Record<string, unknown> = { AND: [] as unknown[] }
     // ── Site-level filter: non-admin users only see their allowedSites ──
@@ -32,7 +30,7 @@ export async function GET(req: NextRequest) {
     if (site && !canAccessSite(user, site)) {
       return NextResponse.json({ error: `ไม่มีสิทธิ์เข้าถึงข้อมูลของสาขา: ${site}` }, { status: 403 })
     }
-    if (site) (where.AND as unknown[]).push({ site: { contains: site } })
+    if (site) (where.AND as unknown[]).push({ site })
 
     if (search) {
       (where.AND as unknown[]).push({
@@ -56,10 +54,52 @@ export async function GET(req: NextRequest) {
     const [devices, total] = await Promise.all([
       db.device.findMany({
         where,
-        skip: (page - 1) * limit,
+        skip,
         take: limit,
         orderBy: { assetCode: 'asc' },
-        include: {
+        select: {
+          id: true,
+          assetCode: true,
+          name: true,
+          brand: true,
+          model: true,
+          type: true,
+          serialNumber: true,
+          status: true,
+          site: true,
+          department: true,
+          departmentCode: true,
+          parentRef: true,
+          assetSiteCode: true,
+          displayLabel: true,
+          location: true,
+          building: true,
+          floor: true,
+          room: true,
+          purchaseDate: true,
+          purchasePrice: true,
+          salvageValue: true,
+          usefulLife: true,
+          warrantyMonths: true,
+          warrantyEnd: true,
+          vendor: true,
+          contractNo: true,
+          uninstallDate: true,
+          meterRequired: true,
+          meterMode: true,
+          lastMeterBw: true,
+          lastMeterColor: true,
+          ip: true,
+          mac: true,
+          remoteId: true,
+          currentAssignee: true,
+          remark: true,
+          costCenter: true,
+          deviceGroup: true,
+          isDemo: true,
+          createdAt: true,
+          updatedAt: true,
+          updatedBy: true,
           _count: { select: { meterReadings: true, transfers: true, assignments: true, maintenanceLogs: true } },
           meterReadings: {
             orderBy: { readingDate: 'desc' },
@@ -157,7 +197,7 @@ export async function POST(req: NextRequest) {
 
     // Best-effort notification
     void notifyDeviceAdded(
-      { assetNo: created.assetCode, brand: created.brand, model: created.model, site: created.site },
+      { assetCode: created.assetCode, brand: created.brand, model: created.model },
       user.username || user.email,
     )
 
