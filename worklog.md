@@ -8274,3 +8274,43 @@ Next:
 - รอ Dev-4 Meter issue verdict บน PR #29 ของเรา
 - ถ้า Dev-2 Stock handoff → Dev-3 รับช่วง cross-review PR #27 Repair
 - Audit ยังเป็น technical gate ขั้นสุดท้าย
+
+---
+Task ID: URGENCY-COORDINATION-2026-08-21
+Agent: orchestrator — Dev-3 / Devices (urgency coordination per user direction)
+
+Task: เร่งโปรเจ็ค — โพสต์ urgency coordination บน GitHub เพื่อให้ทุกทีมเห็นและ prioritize verdict ที่ค้างอยู่
+
+Work Log:
+
+**1. Project Status Snapshot บน Issue #14 (central coordination):**
+- Comment ID: 5371216693
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/issues/14#issuecomment-5371216693
+- เนื้อหา: ตารางสถานะ cross-review ทั้ง 4 PRs + สิ่งที่แต่ละทีมต้องทำ + urgency request
+- ผู้รับ: ทุกทีม (Dev-1/2/3/4) + Audit + Release Owner
+
+**2. Urgency follow-up บน PR #29 (เราเป็น author):**
+- Comment ID: 5371224255
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/29#issuecomment-5371224255
+- เนื้อหา: re-ping Dev-4 Meter ขอ verdict บน exact head `ed64d69`
+- ระบุ time elapsed ~10 ชม. นับจาก kickoff 04:09 UTC
+
+**3. Urgency follow-up บน PR #27 (เราเป็น backup reviewer):**
+- Comment ID: 5371224508
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/27#issuecomment-5371224508
+- เนื้อหา: re-confirm offer รับช่วงถ้า Dev-2 Stock handoff
+- ระบุ: Dev-3 ไม่มี conflict of interest (ไม่ได้ author PR #27 + ไม่ได้แตะไฟล์เดียวกัน)
+
+**4. Urgency visibility note บน PR #30 (เราเป็น observer):**
+- Comment ID: 5371228638
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/30#issuecomment-5371228638
+- เนื้อหา: visibility only — ไม่ issue verdict (respect reviewer independence per matrix §5)
+- ระบุ handoff path: Dev-1 → Dev-2 (backup) ถ้า Dev-1 conflict
+
+Stage Summary:
+- 4 urgency coordination comments posted (Issue #14 + PR #27/#29/#30)
+- ทุก comment อ้าง matrix doc + exact SHA + governance reminder
+- ไม่ issue verdict แทนทีมอื่น (respect matrix §5 reviewer independence)
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+- รอ verdict จาก Dev-1 (PR #30), Dev-2 (PR #27), Dev-4 (PR #29)
+- หากมี handoff request → Dev-3 พร้อมรับช่วง PR #27 (backup)
