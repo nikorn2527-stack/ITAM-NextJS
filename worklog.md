@@ -8314,3 +8314,93 @@ Stage Summary:
 - Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
 - รอ verdict จาก Dev-1 (PR #30), Dev-2 (PR #27), Dev-4 (PR #29)
 - หากมี handoff request → Dev-3 พร้อมรับช่วง PR #27 (backup)
+
+---
+Task ID: ACCELERATION-SPRINT-PARALLEL-FIXTURES-PR35
+Agent: orchestrator — Dev-3 / Devices (per Acceleration Sprint order)
+
+Task: ทำ parallel work ระหว่างรอ verdict PR #29 — เตรียม fixtures + tests ใน branch แยกตามคำสั่ง "Parallel queue — Dev-3 / Devices" (PR #29 @ 14:30:37Z) + "Acceleration Sprint" (14:24:47Z)
+
+Work Log:
+
+**1. Action 1: อัปเดต Issue #25 (Devices workstream):**
+- Comment ID: 5371294768
+- อัปเดต exact head: เดิม `0921304` → ปัจจุบัน `ed64d699`
+- ระบุ dev scope complete + pending verdict + parallel work plan
+
+**2. Setup worktree สำหรับ parallel work:**
+- ใช้ base = PR #29 head (`ed64d69`) เพื่อให้ fixtures build บน foundation เดียวกัน
+- Branch: `feature/module-devices-parallel-fixtures`
+
+**3. สร้าง fixtures (3 ไฟล์, +491 lines):**
+
+**File 1: `src/lib/devices-import/fixtures/asset-key-fixtures.ts` (+123)**
+- `ASSET_KEY_FIXTURES`: 4 fixtures (simple, hyphenated, underscore, prefixed legacy)
+- `DUPLICATE_FIXTURES`: 4 fixtures (simple, case-insensitive, triple, mixed)
+- `MISSING_KEY_FIXTURES`: 4 fixtures (empty, whitespace, missing column, multiple)
+
+**File 2: `src/lib/devices-import/fixtures/site-transfer-auth-fixtures.ts` (+205)**
+- `SITE_ACCESS_FIXTURES`: 5 fixtures (superadmin, explicit grant, denied, empty scope, case-insensitive)
+- `TRANSFER_AUTH_FIXTURES`: 5 fixtures (superadmin, within-site, denied-to, denied-from, anonymous)
+- `decideSiteAccess()`: pure helper (no DB, no B4 imports)
+- `decideTransferAuth()`: pure helper
+
+**File 3: `src/lib/devices-import/fixtures/retry-idempotency-fixtures.ts` (+158)**
+- `RETRY_FIXTURES`: 5 fixtures (create_only retry, upsert retry, update_only new, partial failure, concurrent)
+- `simulatePersistDecision()`: pure helper (mirrors persistDevices logic)
+- `IDEMPOTENCY_CONTRACT`: 6 clauses (assetCodeUnique, duplicateInFileQuarantined, modeAware, batchInsertAtomic, batchUpdateAtomic, retrySafe)
+
+**File 4: `src/lib/devices-import/fixtures/index.ts` (+5)** — barrel
+
+**4. สร้าง tests: `tests/devices-import-fixtures/fixtures.test.ts` (+260, 34 tests):**
+- Asset-key fixtures: 3 tests (canonical, alias resolution, integrity)
+- Duplicate fixtures: 4 tests (parser handles each duplicate scenario)
+- Missing-key fixtures: 4 tests (parser rejects each missing-key scenario)
+- Site access: 5 tests (pure decideSiteAccess decisions)
+- Transfer auth: 5 tests (pure decideTransferAuth decisions)
+- Retry: 5 tests (pure simulatePersistDecision per mode)
+- Idempotency contract: 9 tests (6 clauses + 3 mode-specific)
+- Fixture integrity: 4 tests (branch coverage, descriptions)
+
+**5. Test evidence:**
+```
+✓ tests/devices-import-fixtures/fixtures.test.ts (34 tests) 8ms
+✓ tests/device-import-persistence.test.ts (10 tests) 10ms [regression]
+✓ tests/device-import-contract.test.ts (5 tests) 5ms        [regression]
+Test Files 3 passed (3)
+Tests 49 passed (49)
+Duration 775ms
+```
+
+**6. Governance verified:**
+- B4 frozen files: ✅ 0-diff (all 6 files)
+- SYNC_RUN permission: ✅ NOT added
+- prisma db:push: ✅ NOT used
+- Schema/migration: ✅ NOT changed
+- Meter semantics: ✅ NOT changed
+- Shared schema/auth/audit: ✅ NOT changed
+- Secrets: ✅ none
+
+**7. PR #35 สร้าง:**
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/35
+- Head: feature/module-devices-parallel-fixtures
+- Base: feature/module-devices-import-boundary (PR #29)
+- Labels: module:devices, work-package:C-parallel, dev-3, audit-review-required, no-self-merge, governance:read-only
+- Body: architecture, files, tests, governance, DoD, handoff
+- Comment: Dev scope evidence (comment ID 5371398847)
+
+**8. Issue #25 อัปเดต:**
+- Comment ID: 5371399033
+- รายงาน parallel work complete + PR #35 link
+
+Stage Summary:
+- PR #35 opened: parallel fixtures + tests, 49/49 PASS, B4 0-diff, no SYNC_RUN, no schema changes
+- ทำตาม Acceleration Sprint order ครบ: separate branch, no PR #29 change, no Meter change, no schema change
+- Dev-3 author scope: PR #29 (awaiting Dev-4 verdict) + PR #35 (awaiting Dev-4 verdict — same reviewer per matrix)
+- Cross-review matrix ยังคงเดิม: Dev-4 Meter เป็น primary reviewer ของ PR #29 และ PR #35
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+Next:
+- Dev-4 Meter issue verdict บน PR #29 + PR #35
+- ถ้า Dev-4 conflict → Dev-1 Repair รับช่วง backup
+- Dev-3 STANDBY สำหรับ parallel work นี้จนกว่าจะได้ verdict
