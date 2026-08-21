@@ -1,7 +1,7 @@
 # Meter Module — จดมิเตอร์
 
-**Owner role:** Dev-3 / Asset & Meter Team  
-**Future owner:** Dev-4 / Meter Team หากมีการเพิ่มทีม  
+**Owner role:** Dev-4 / Meter Team  
+**Peer reviewer หลัก:** Dev-3 / Devices Team  
 **Primary feature IDs:** F-16, F-20, F-21, F-22, F-23 และ meter backlog ใหม่  
 **Canonical table:** `MeterReading` รวมถึง reminder/config relation ที่ผ่านการอนุมัติ
 
@@ -9,7 +9,7 @@
 
 Meter Module รับผิดชอบการบันทึกและค้นประวัติค่า meter ของอุปกรณ์ การกรอกแบบ bulk การตรวจค่าผิดปกติ การแจ้งเตือน และการแสดงแนวโน้ม. ทุก reading ต้องผูกกับ `deviceId` ที่ตรวจสอบได้และต้องอยู่ภายใต้ site/ownership scope ของผู้ใช้งาน.
 
-ในระยะที่ยังไม่มี Dev-4 ให้ Dev-3 ดูแล Meter เป็น workstream แยกจาก Devices แม้ใช้ทีมเดียวกัน. ห้ามรวม backlog หรือ test จนทำให้ไม่สามารถระบุได้ว่า defect อยู่ใน device identity หรือ meter reading semantics.
+Meter เป็น workstream แยกจาก Devices แม้มี dependency และต้อง cross-review กับ Dev-3 เมื่อเปลี่ยน `deviceId`, asset key, site ownership หรือ status semantics. ห้ามรวม backlog หรือ test จนทำให้ไม่สามารถระบุได้ว่า defect อยู่ใน device identity หรือ meter reading semantics.
 
 ## Code surface ที่ทีมควรเริ่มอ่าน
 
@@ -33,7 +33,7 @@ Meter อ่าน device identity จาก Devices แต่เป็นเจ
 
 งาน Meter จะถือว่าผ่านเมื่อบันทึก reading ได้เฉพาะ device ที่ resolve และอยู่ใน scope, duplicate period ถูกปฏิเสธหรือจัดการตาม policy, ค่าผิดช่วงถูกแจ้งชัด, bulk upload แยก success/error rows โดยไม่เขียนรายการเสีย, history แสดง actor/time/site ได้ และ reminder failure ไม่ทำให้การบันทึกหลักล้ม.
 
-UI ต้องรองรับมือถือและ keyboard/bulk flow พร้อม loading, empty, error, retry และ permission states. Tests ต้องครอบคลุม unknown device, cross-site access, duplicate period, invalid value, bulk partial failure, retry/idempotency และ reminder failure isolation.
+UI ต้องรองรับมือถือและ keyboard/bulk flow พร้อม loading, empty, error, retry และ permission states. Tests ต้องครอบคลุม unknown device, cross-site access, duplicate period, invalid value, bulk partial failure, retry/idempotency และ reminder failure isolation. PR ต้องระบุ Dev-3 เป็น primary peer reviewer และเพิ่ม consumer reviewers เมื่อแก้ shared device identity หรือ site contract.
 
 ## ห้ามทำ
 

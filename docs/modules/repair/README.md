@@ -35,7 +35,7 @@ Repair เป็นเจ้าของ lifecycle และ job identity แต
 
 งาน Repair จะถือว่าผ่านเมื่อสร้างและค้นงานด้วยเลขเดิม/เลขใหม่ได้, requester และ actor มาจาก session ตาม policy, status transition ตรวจสิทธิ์และ required fields, complete ไม่ผ่านเมื่อมี pending material issue, import/sync ที่ resolve ไม่ได้ถูก quarantine, และทุก mutation มี audit/evidence ที่ไม่เปิดเผย secret.
 
-UI ต้องมี loading, empty, error และ mobile state. Test ต้องครอบคลุม duplicate job number, cross-site access, invalid transition, unresolved material link, guest validation และ retry/idempotency. PR ต้องระบุผลกระทบต่อ Stock และ Devices หากแก้ contract ร่วม.
+UI ต้องมี loading, empty, error และ mobile state. Test ต้องครอบคลุม duplicate job number, cross-site access, invalid transition, unresolved material link, guest validation และ retry/idempotency. PR ต้องระบุ Dev-2 เป็น primary peer reviewer, Dev-3 เป็น secondary peer reviewer และเพิ่ม Dev-4 เมื่อแก้ device reference หรือ meter boundary; ต้องระบุผลกระทบต่อ Stock, Devices และ Meter หากแก้ contract ร่วม.
 
 ## ห้ามทำ
 

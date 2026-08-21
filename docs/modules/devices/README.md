@@ -1,6 +1,7 @@
 # Devices Module — จัดการอุปกรณ์
 
-**Owner role:** Dev-3 / Asset & Meter Team  
+**Owner role:** Dev-3 / Devices Team  
+**Peer reviewer หลัก:** Dev-4 / Meter Team  
 **Primary feature IDs:** F-10, F-16, F-20, F-21, F-22, F-23  
 **Consumers:** Repair และ Meter  
 **Canonical tables:** `Device`, `DeviceTransfer` และ lifecycle/warranty/utilization relations
@@ -33,7 +34,7 @@ Devices เป็นเจ้าของ master identity, ownership/site, trans
 
 งาน Devices จะถือว่าผ่านเมื่อ import เป็น idempotent ด้วย stable asset key, duplicate และ missing key ถูกแยกชัด, ownership policy ไม่ overwrite ข้อมูลที่ระบบเป็นเจ้าของ, transfer ตรวจ from/to site และ actor, lifecycle transition มี authorization/audit, Repair และ Meter ยังคง resolve identity ได้ และ mobile list/detail ใช้งานได้.
 
-Tests ต้องครอบคลุม duplicate asset, unknown site, invalid transfer, cross-site access, overwrite policy, import retry และ missing device reference. Evidence ต้องผูก source revision, row counts/summary ที่ไม่เปิดเผยข้อมูลลับ และผล schema/runtime check.
+Tests ต้องครอบคลุม duplicate asset, unknown site, invalid transfer, cross-site access, overwrite policy, import retry และ missing device reference. Evidence ต้องผูก source revision, row counts/summary ที่ไม่เปิดเผยข้อมูลลับ และผล schema/runtime check. PR ต้องระบุ Dev-4 เป็น primary peer reviewer และเพิ่ม Repair/consumer reviewers เมื่อแก้ identity ที่มีผลต่อผู้ใช้งาน downstream.
 
 ## ห้ามทำ
 
