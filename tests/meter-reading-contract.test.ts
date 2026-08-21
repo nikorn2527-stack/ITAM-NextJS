@@ -3,6 +3,7 @@ import {
   hasDuplicateMeterPeriod,
   meterPeriodKey,
   parseMeterQuery,
+  isStaleMeterReading,
   validateMeterChannels,
   validateMeterReading,
 } from '@/lib/meter-reading-contract'
@@ -115,6 +116,27 @@ describe('meterPeriodKey() and hasDuplicateMeterPeriod()', () => {
       { deviceId: 'd', date: '2026-08-21' },
       [{ deviceId: 'd', date: '2026-08-01' }],
     )).toBe(true)
+  })
+})
+
+describe('isStaleMeterReading()', () => {
+  it('rejects a candidate older than the existing monthly reading', () => {
+    expect(isStaleMeterReading(
+      { readingDate: '2026-08-20' },
+      { readingDate: '2026-08-21' },
+    )).toBe(true)
+  })
+
+  it('allows a newer or same-day candidate and an empty existing reference', () => {
+    expect(isStaleMeterReading(
+      { readingDate: '2026-08-22' },
+      { readingDate: '2026-08-21' },
+    )).toBe(false)
+    expect(isStaleMeterReading(
+      { readingDate: '2026-08-21' },
+      { readingDate: '2026-08-21' },
+    )).toBe(false)
+    expect(isStaleMeterReading({ readingDate: '2026-08-21' }, null)).toBe(false)
   })
 })
 
