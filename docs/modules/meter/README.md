@@ -1,7 +1,6 @@
 # Meter Module — จดมิเตอร์
 
-**Owner role:** Dev-3 / Asset & Meter Team  
-**Future owner:** Dev-4 / Meter Team หากมีการเพิ่มทีม  
+**Owner role:** Dev-4 / Meter Team
 **Primary feature IDs:** F-16, F-20, F-21, F-22, F-23 และ meter backlog ใหม่  
 **Canonical table:** `MeterReading` รวมถึง reminder/config relation ที่ผ่านการอนุมัติ
 
@@ -9,7 +8,7 @@
 
 Meter Module รับผิดชอบการบันทึกและค้นประวัติค่า meter ของอุปกรณ์ การกรอกแบบ bulk การตรวจค่าผิดปกติ การแจ้งเตือน และการแสดงแนวโน้ม. ทุก reading ต้องผูกกับ `deviceId` ที่ตรวจสอบได้และต้องอยู่ภายใต้ site/ownership scope ของผู้ใช้งาน.
 
-ในระยะที่ยังไม่มี Dev-4 ให้ Dev-3 ดูแล Meter เป็น workstream แยกจาก Devices แม้ใช้ทีมเดียวกัน. ห้ามรวม backlog หรือ test จนทำให้ไม่สามารถระบุได้ว่า defect อยู่ใน device identity หรือ meter reading semantics.
+Dev-4 ดูแล Meter เป็น workstream แยกจาก Devices. Dev-3 เป็น consumer/reviewer ของ device identity และ site ownership ที่ Meter ใช้อ้างอิง. ห้ามรวม backlog หรือ test จนทำให้ไม่สามารถระบุได้ว่า defect อยู่ใน device identity หรือ meter reading semantics.
 
 ## Code surface ที่ทีมควรเริ่มอ่าน
 
