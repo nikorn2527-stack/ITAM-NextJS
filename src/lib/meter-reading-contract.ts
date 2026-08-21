@@ -35,6 +35,25 @@ export interface MeterReadingReference {
   cycleId?: string | null
 }
 
+export type MeterChannel = 'bw' | 'color'
+
+export interface MeterChannelsInput {
+  deviceId: string
+  date: string
+  remark?: string | null
+  cycleId?: string | null
+  meterBw: number
+  previousMeterBw: number
+  meterColor: number
+  previousMeterColor: number
+}
+
+export interface MeterChannelsValidation {
+  ok: boolean
+  channel?: MeterChannel
+  validation?: MeterReadingValidation
+}
+
 export interface MeterQuery {
   deviceId?: string
   cycleId?: string
@@ -116,6 +135,32 @@ export function validateMeterReading(input: MeterReadingInput): MeterReadingVali
     remark,
     cycleId: input.cycleId?.trim() || null,
   }
+}
+
+/** Validate both meter channels with the same device/date/reset policy. */
+export function validateMeterChannels(input: MeterChannelsInput): MeterChannelsValidation {
+  const channels: Array<{
+    channel: MeterChannel
+    reading: number
+    previousReading: number
+  }> = [
+    { channel: 'bw', reading: input.meterBw, previousReading: input.previousMeterBw },
+    { channel: 'color', reading: input.meterColor, previousReading: input.previousMeterColor },
+  ]
+
+  for (const channel of channels) {
+    const validation = validateMeterReading({
+      deviceId: input.deviceId,
+      reading: channel.reading,
+      previousReading: channel.previousReading,
+      date: input.date,
+      remark: input.remark,
+      cycleId: input.cycleId,
+    })
+    if (!validation.ok) return { ok: false, channel: channel.channel, validation }
+  }
+
+  return { ok: true }
 }
 
 /** One reading per device and calendar month unless an explicit cycleId exists. */

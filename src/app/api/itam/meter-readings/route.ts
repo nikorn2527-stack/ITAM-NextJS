@@ -17,6 +17,7 @@ import {
   type ReadingType,
 } from '@/lib/meter-logic'
 import { assertMeterMonthWritable } from '@/lib/meter-snapshot'
+import { validateMeterChannels } from '@/lib/meter-reading-contract'
 
 // GET /api/itam/meter-readings?assetCode=&month=&page=1&limit=20
 export async function GET(req: NextRequest) {
@@ -103,7 +104,11 @@ export async function POST(req: NextRequest) {
     const meterColor = Math.floor(Number(body.meterColor || 0))
     const finalReadingMonth = normalizeReadingMonth(body.readingMonth) ||
       new Date().toISOString().slice(0, 7)
-    const readingDate = body.readingDate || new Date().toISOString().slice(0, 10)
+    const readingDate = typeof body.readingDate === 'string' && body.readingDate.trim()
+      ? body.readingDate.trim()
+      : new Date().toISOString().slice(0, 10)
+    const remark = typeof body.remark === 'string' ? body.remark.trim() || null : null
+    const cycleId = typeof body.cycleId === 'string' ? body.cycleId.trim() || null : null
 
     // ── Write-lock: reject writes to CLOSED-cycle months ──
     try {
@@ -186,6 +191,27 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const channelValidation = validateMeterChannels({
+      deviceId: device.id,
+      date: readingDate,
+      remark,
+      cycleId,
+      meterBw,
+      previousMeterBw: prevMeterBw,
+      meterColor,
+      previousMeterColor: adjustedPrevColor,
+    })
+    if (!channelValidation.ok) {
+      return NextResponse.json(
+        {
+          error: 'ค่ามิเตอร์ไม่ถูกต้อง',
+          code: channelValidation.validation?.code,
+          channel: channelValidation.channel,
+        },
+        { status: 400 },
+      )
+    }
+
     // ── Step 6: Calculate pages ──
     const pagesBw = calcPagesBw(meterBw, prevMeterBw, readingType)
     const pagesColor = calcPagesColor(meterColor, adjustedPrevColor, readingType)
@@ -204,7 +230,7 @@ export async function POST(req: NextRequest) {
       prevMeterBw,
       prevMeterColor: adjustedPrevColor,
       readBy: user.username || user.email,
-      remark: body.remark || null,
+      remark,
       readingType,
       locationAtReading: body.locationAtReading || null,
       siteAtReading: body.siteAtReading || device.site || null,
