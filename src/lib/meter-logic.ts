@@ -104,7 +104,14 @@ export async function findValidPrevReading(
     orderBy: [{ readingMonth: 'desc' }, { id: 'desc' }],
   })
 
-  const candidates = []
+  const candidates: Array<{
+    id: string
+    meterBw: number
+    meterColor: number
+    readingMonth: string | null
+    readingDate: string
+    readingType: string | null
+  }> = []
   for (const row of readings) {
     const rowMonth = normalizeReadingMonth(row.readingMonth || row.readingDate)
     if (!rowMonth) continue
@@ -291,7 +298,7 @@ export function isMeterDecreased(
 export async function findExistingMonthlyReading(
   assetCode: string,
   readingMonth: string,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; readingId: string | null } | null> {
   const targetMonth = normalizeReadingMonth(readingMonth)
   if (!targetMonth) return null
 
@@ -301,7 +308,7 @@ export async function findExistingMonthlyReading(
       readingMonth: targetMonth,
       readingType: 'MONTHLY',
     },
-    select: { id: true },
+    select: { id: true, readingId: true },
     orderBy: { id: 'desc' },
   })
 }
