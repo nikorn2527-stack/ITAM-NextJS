@@ -4,14 +4,7 @@ import { logAudit } from '@/lib/audit'
 import { requireAuth } from '@/lib/auth-middleware'
 import { demoTag } from '@/lib/demo-mode'
 import { resolveStockTransactionIdentity } from '@/lib/stock-transaction-identity'
-
-/** Parse an Int; returns 0 when missing/invalid. */
-function optInt(v: unknown, fallback = 0): number {
-  if (v === null || v === undefined || v === '') return fallback
-  const n = typeof v === 'number' ? v : Number(v)
-  if (!Number.isFinite(n)) return fallback
-  return Math.round(n)
-}
+import { validateStockTransactionInput } from '@/lib/stock-transaction-contract'
 
 /** Parse a Float; returns null when missing/invalid. */
 function optFloat(v: unknown): number | null {
@@ -20,8 +13,6 @@ function optFloat(v: unknown): number | null {
   if (!Number.isFinite(n)) return null
   return Math.max(0, n)
 }
-
-const VALID_TYPES = new Set(['IN', 'OUT', 'ADJUST'])
 
 /**
  * Generate the next sequential txn number for today: STX-YYYYMMDD-NNN.
@@ -53,13 +44,22 @@ export async function POST(
   try {
     const { id } = await params
     const body = await req.json()
-    const type = String(body.type ?? '').toUpperCase()
-    if (!VALID_TYPES.has(type)) {
+    const input = validateStockTransactionInput({
+      type: body.type,
+      quantity: body.quantity,
+      txnDate: body.txnDate,
+    })
+    if (!input.ok) {
       return NextResponse.json(
-        { error: "type ต้องเป็น 'IN', 'OUT' หรือ 'ADJUST'" },
+        {
+          error: 'ข้อมูล stock transaction ไม่ถูกต้อง',
+          code: input.code,
+          field: input.field,
+        },
         { status: 400 },
       )
     }
+    const { type, quantity, txnDate } = input.value
     const requiredPermission =
       type === 'IN' ? 'STOCK_IN' : type === 'OUT' ? 'STOCK_OUT' : 'STOCK_APPROVE'
     const auth = await requireAuth(req, requiredPermission)
@@ -67,24 +67,6 @@ export async function POST(
       return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
     const actorIdentity = resolveStockTransactionIdentity(auth.user)
-
-    const quantity = optInt(body.quantity, 0)
-    if (quantity < 0) {
-      return NextResponse.json(
-        { error: 'quantity ต้องไม่ติดลบ' },
-        { status: 400 },
-      )
-    }
-    if ((type === 'IN' || type === 'OUT') && quantity <= 0) {
-      return NextResponse.json(
-        { error: 'สำหรับ IN/OUT ต้องระบุ quantity มากกว่า 0' },
-        { status: 400 },
-      )
-    }
-
-    const txnDate = body.txnDate
-      ? String(body.txnDate).trim()
-      : new Date().toISOString().slice(0, 10)
 
     // Atomic update of StockItem.quantity + create StockTransaction.
     const result = await db.$transaction(async (tx) => {
