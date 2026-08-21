@@ -8404,3 +8404,69 @@ Next:
 - Dev-4 Meter issue verdict บน PR #29 + PR #35
 - ถ้า Dev-4 conflict → Dev-1 Repair รับช่วง backup
 - Dev-3 STANDBY สำหรับ parallel work นี้จนกว่าจะได้ verdict
+
+---
+Task ID: PARALLEL-WORK-BATCH-2026-08-21
+Agent: orchestrator — Dev-3 / Devices (per "งานไหนทำได้เลยทำเลย" user direction)
+
+Task: ทำงานที่ไม่ต้องรอเวลาทั้งหมด เพื่อเร่งโปรเจ็ค — รับช่วงตรวจ PR #27 (backup reviewer) + เตรียม acceptance docs
+
+Work Log:
+
+**งาน 1: รับช่วงตรวจ PR #27 Repair (backup takeover per matrix §5 + EXPEDITED)**
+- เหตุผล: Dev-2 Stock ไม่ issue verdict 4+ ชม.หลัง EXPEDITED + URGENT order
+- โพสต์ BACKUP TAKEOVER comment (ID 5374057789) อ้าง matrix §5 + ring direction
+- ตรวจ 5 ด้าน: contract, authz, duplicate/idempotency, resource bound, consumer compat
+- Tests: 7/7 PASS (services-work-order-adapter + services-work-order-preview)
+- B4 frozen: 0-diff verified
+- SYNC_RUN: not added
+- Schema: not changed
+- Scope: stays within Repair (no Device/Stock/Meter writes)
+- **Verdict: CROSS-REVIEW: PASS** (comment ID 5374076925)
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/27#issuecomment-5374076925
+
+**งาน 2: เตรียม importer UI/persistence-boundary acceptance plan**
+- ไฟล์: docs/devices-module/IMPORTER-ACCEPTANCE-PLAN.md (+165 lines)
+- ครอบคลุม: UI upload, mode selection, preview, import execution, error states
+- Persistence: layer separation, mode-aware, bounded queries, actor binding
+- Error reporting + audit summary acceptance
+- Idempotency/retry acceptance (unique constraint, mode-aware retry, batch atomicity, concurrent)
+
+**งาน 3: เตรียม mobile-responsive evidence checklist**
+- ไฟล์: docs/devices-module/MOBILE-RESPONSIVE-CHECKLIST.md (+185 lines)
+- Breakpoints: sm/md/lg/xl/2xl (Tailwind CSS 4)
+- Device list page, detail sheet, import flow, common components
+- Touch target compliance (WCAG 2.5.5: ≥44×44px)
+- Performance on mobile (LCP <3s, CLS <0.1)
+- Accessibility (keyboard, focus, screen reader, contrast)
+- Verification methodology: manual + automated (Lighthouse, Playwright, axe-core)
+
+**งาน 4: เตรียม Devices module DoD self-check**
+- ไฟล์: docs/devices-module/DEFINITION-OF-DONE-SELFCHECK.md (+145 lines)
+- ครอบคลุม 15 criteria จาก docs/modules/devices/README.md
+- ทุกข้อ verified as met + evidence reference
+- พร้อมส่ง Audit หลัง cross-review PASS
+
+**Push:**
+- Branch: feature/module-devices-parallel-fixtures
+- New commit: a4e86f4 (docs only, +553 lines)
+- PR #35 updated: comment ID 5374105188
+
+Stage Summary:
+- CROSS-REVIEW: PASS on PR #27 Repair (backup takeover) — เพิ่ม cross-review PASS อีก 1 PR
+- 3 acceptance documents produced (165 + 185 + 145 = 495 lines)
+- ทำตาม user direction "ทำได้เลยทำเลย" ครบ
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+สถานะ cross-review ล่าสุด:
+- PR #27 Repair: ✅ PASS (by Dev-3 backup takeover)
+- PR #28 Stock: ✅ PASS (by Dev-3 primary)
+- PR #29 Devices: ⏳ รอ Dev-4 verdict
+- PR #30 Meter: ⏳ รอ Dev-1 verdict
+- PR #35 Devices parallel: ⏳ รอ Dev-4 verdict
+
+ส่วนที่ต้องรอต่อ:
+- Dev-4 Meter verdict on PR #29 + PR #35 (เราเป็น author)
+- Dev-1 Repair verdict on PR #30 (เราเป็น observer — ไม่ใช่ reviewer)
+- Audit final review (หลัง cross-review PASS ครบ)
+- Release Owner operational evidence (Issue #14 four items)
