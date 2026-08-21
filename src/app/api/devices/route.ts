@@ -5,6 +5,13 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag } from '@/lib/demo-mode'
+import {
+  clampPageAndLimit,
+  buildPaginationMeta,
+  emptyListResponse,
+  getDeviceListFields,
+  DEVICE_LIST_FIELDS,
+} from '@/lib/devices-bounded-list'
 
 /** Clamp warrantyMonths to 1..120, default 12. */
 function clampWarrantyMonths(v: unknown): number {
@@ -63,13 +70,15 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get('search')?.trim() ?? ''
     const status = searchParams.get('status')?.trim() ?? ''
     const siteParam = searchParams.get('site')?.trim() ?? ''
-    // ── Pagination: default limit 100, max 500 (previously unbounded) ──
-    const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1)
-    const limit = Math.min(
-      500,
-      Math.max(1, Number(searchParams.get('limit') ?? '100') || 100),
-    )
-    const skip = (page - 1) * limit
+    // ── Bounded pagination: clamp page + limit to safe bounds ──
+    // Previously: inline Math.min/Math.max with hardcoded 500/100.
+    // Now: uses pure helper that also handles NaN, Infinity, fractional.
+    // Hard upper bound: MAX_LIMIT=500, MAX_PAGE=10000 (prevents deep scans).
+    const isMobile = searchParams.get('mobile') === '1'
+    const { page, limit, skip } = clampPageAndLimit({
+      page: Number(searchParams.get('page') ?? '1') || 1,
+      limit: Number(searchParams.get('limit') ?? '100') || 100,
+    })
 
     const where: Record<string, unknown> = {}
     if (search) {
@@ -108,7 +117,7 @@ export async function GET(req: NextRequest) {
         const normalized = normalizeSiteCode(siteParam)
         if (!normalized || !allowed.includes(normalized)) {
           // Out-of-scope Site requested — return empty (don't reveal existence)
-          return NextResponse.json({ devices: [], total: 0, page, limit, totalPages: 0 })
+          return NextResponse.json(emptyListResponse(page, limit))
         }
         where.site = normalized
       } else {
@@ -117,8 +126,16 @@ export async function GET(req: NextRequest) {
     } else {
       // kind === 'none' or legacy 'all' fallback — non-superadmin with no
       // explicit grants. Return empty (fail-closed).
-      return NextResponse.json({ devices: [], total: 0, page, limit, totalPages: 0 })
+      return NextResponse.json(emptyListResponse(page, limit))
     }
+
+    // ── Explicit field selection (bounded list) ──
+    // Previously: default include (returns all fields including IP/MAC/contract).
+    // Now: explicit select — sensitive fields (serialNumber, ip, mac, contractNo,
+    // vendor, purchasePrice, etc.) are excluded from list view. Detail view
+    // (/api/devices/[id]) still returns full record with proper permission.
+    // Mobile (?mobile=1) returns an even smaller subset for small screens.
+    const selectFields = getDeviceListFields(isMobile)
 
     // Run count + page in parallel for efficiency
     const [devices, total] = await Promise.all([
@@ -127,7 +144,10 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
-        include: {
+        select: {
+          ...selectFields,
+          // Latest meter reading is a derived field — keep as relation subquery
+          // but only select the fields needed for `lastReadingMonth`.
           meterReadings: {
             orderBy: { readingDate: 'desc' },
             take: 1,
@@ -154,6 +174,11 @@ export async function GET(req: NextRequest) {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      // Additive: pagination metadata for client convenience.
+      // Does NOT change existing fields — backward compatible.
+      meta: buildPaginationMeta(total, page, limit),
+      // Additive: indicate if mobile subset was returned.
+      mobile: isMobile,
     })
   } catch (err) {
     console.error('GET /api/devices', err)
