@@ -76,6 +76,6 @@
 
 ## Handoff checklist
 
-ก่อนขอ Audit review ให้แนบ exact commit SHA, test command และผลจริง, รายการไฟล์ที่เปลี่ยน, migration SQL ถ้ามี, evidence ของ fail-closed/authorization, ผลตรวจ B4 frozen files และผล resource-bound check หากเกี่ยวกับ import หรือ query. ต้องระบุ owner team, primary peer reviewer, secondary peer reviewer และ consumer reviewers ที่ตรวจแล้วก่อนส่งต่อ Audit
+ก่อนขอ Audit review ให้แนบ exact commit SHA, test command และผลจริง, รายการไฟล์ที่เปลี่ยน, migration SQL ถ้ามี, evidence ของ fail-closed/authorization, ผลตรวจ B4 frozen files และผล resource-bound check หากเกี่ยวกับ import หรือ query. ต้องระบุ owner team, primary peer reviewer, secondary peer reviewer และ consumer reviewers ที่ตรวจแล้วก่อนส่งต่อ Audit. Primary peer reviewer เป็นผู้สรุป `APPROVED FOR AUDIT` หรือ `CHANGES REQUESTED` ใน PR หลังรวบรวมความเห็นจาก reviewers อื่น; verdict นี้ไม่ใช่ Audit technical verdict หรือ release approval
 
 **ห้ามสรุปว่า feature ผ่าน release gate เพียงเพราะ unit tests ผ่าน** การ merge, staging, canary และ production ยังคงอยู่ภายใต้ Audit และ Release Owner ตาม governance เดิม

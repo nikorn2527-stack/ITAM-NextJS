@@ -73,7 +73,7 @@ PR ทุกใบต้องระบุ owner team, feature IDs, changed tabl
 | Dev-3 / Devices | Dev-4 / Meter | Dev-1 / Repair | Dev-1 และ Dev-4 เมื่อเปลี่ยน `deviceId`, asset key, site หรือ status semantics |
 | Dev-4 / Meter | Dev-3 / Devices | Dev-2 / Stock | Dev-3 ต้องตรวจทุก device identity/site boundary |
 
-Peer reviewer ตรวจ scope, contract, test evidence, fail-closed path, regression risk และความสอดคล้องกับ module ownership แต่ไม่แทนที่เจ้าของโมดูล. หาก PR เปลี่ยน shared contract ให้ระบุ consumer reviewer ทุกทีมที่ได้รับผลกระทบ แม้ไม่ใช่ reviewer ตามตาราง. หลัง peer review ผ่านแล้วจึงส่งต่อให้ **Audit** ตรวจ technical gate; การอนุมัติ environment, staging, canary และ release ยังคงเป็นหน้าที่ของ **Release Owner**.
+Peer reviewer ตรวจ scope, contract, test evidence, fail-closed path, regression risk และความสอดคล้องกับ module ownership แต่ไม่แทนที่เจ้าของโมดูล. **Primary peer reviewer เป็นผู้รับผิดชอบสรุป peer-review verdict** โดยรวบรวมความเห็นจาก Secondary และ Consumer reviewers แล้วระบุผลอย่างใดอย่างหนึ่งว่า `APPROVED FOR AUDIT` หรือ `CHANGES REQUESTED` ใน PR. หาก Primary ไม่พร้อม ให้ Secondary รับหน้าที่สรุปแทนและบันทึกเหตุผลไว้ใน PR. หาก PR เปลี่ยน shared contract ให้ระบุ consumer reviewer ทุกทีมที่ได้รับผลกระทบ แม้ไม่ใช่ reviewer ตามตาราง. Peer-review verdict ไม่ใช่ Audit technical verdict และไม่ใช่ release approval; หลัง peer review ผ่านแล้วจึงส่งต่อให้ **Audit** ตรวจ technical gate ส่วนการอนุมัติ environment, staging, canary และ release ยังคงเป็นหน้าที่ของ **Release Owner**.
 
 ## 6. Shared changes ที่ต้องประสานก่อนเขียน
 

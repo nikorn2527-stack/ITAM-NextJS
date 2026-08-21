@@ -33,7 +33,7 @@ Meter อ่าน device identity จาก Devices แต่เป็นเจ
 
 งาน Meter จะถือว่าผ่านเมื่อบันทึก reading ได้เฉพาะ device ที่ resolve และอยู่ใน scope, duplicate period ถูกปฏิเสธหรือจัดการตาม policy, ค่าผิดช่วงถูกแจ้งชัด, bulk upload แยก success/error rows โดยไม่เขียนรายการเสีย, history แสดง actor/time/site ได้ และ reminder failure ไม่ทำให้การบันทึกหลักล้ม.
 
-UI ต้องรองรับมือถือและ keyboard/bulk flow พร้อม loading, empty, error, retry และ permission states. Tests ต้องครอบคลุม unknown device, cross-site access, duplicate period, invalid value, bulk partial failure, retry/idempotency และ reminder failure isolation. PR ต้องระบุ Dev-3 เป็น primary peer reviewer และเพิ่ม consumer reviewers เมื่อแก้ shared device identity หรือ site contract.
+UI ต้องรองรับมือถือและ keyboard/bulk flow พร้อม loading, empty, error, retry และ permission states. Tests ต้องครอบคลุม unknown device, cross-site access, duplicate period, invalid value, bulk partial failure, retry/idempotency และ reminder failure isolation. PR ต้องระบุ Dev-3 เป็น primary peer reviewer และเพิ่ม consumer reviewers เมื่อแก้ shared device identity หรือ site contract; **Dev-3 เป็นผู้สรุป peer-review verdict** เป็น `APPROVED FOR AUDIT` หรือ `CHANGES REQUESTED` หลังรวบรวมความเห็นจาก reviewers อื่น. Verdict นี้ไม่ใช่ Audit technical verdict หรือ release approval.
 
 ## ห้ามทำ
 

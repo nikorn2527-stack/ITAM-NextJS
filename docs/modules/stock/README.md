@@ -35,7 +35,7 @@ Stock เป็นเจ้าของ quantity, product status และ appro
 
 งาน Stock จะถือว่าผ่านเมื่อ stock in/out และ approval ตรวจ permission/site scope, identity มาจาก session, quantity ไม่ติดลบหรือเกิน policy, duplicate/import retry ไม่สร้างรายการซ้ำ, unresolved work-order link ถูก quarantine, transaction audit ตรวจ actor/source ได้ และรายงานต่อ job แยก requester/department/purpose/approver ได้จริง.
 
-UI ต้องแสดง performed-by เป็น read-only เมื่อ policy กำหนด และต้องมี loading, empty, error, pending และ mobile states. Tests ต้องครอบคลุม unauthorized mutation, duplicate transaction, inactive/missing product, unresolved job number, approval boundary และ idempotent retry. PR ต้องระบุ Dev-1 เป็น primary peer reviewer, Dev-4 เป็น secondary peer reviewer และเพิ่ม Dev-3 เมื่อแก้ shared identity/site หรือ device-related contract.
+UI ต้องแสดง performed-by เป็น read-only เมื่อ policy กำหนด และต้องมี loading, empty, error, pending และ mobile states. Tests ต้องครอบคลุม unauthorized mutation, duplicate transaction, inactive/missing product, unresolved job number, approval boundary และ idempotent retry. PR ต้องระบุ Dev-1 เป็น primary peer reviewer, Dev-4 เป็น secondary peer reviewer และเพิ่ม Dev-3 เมื่อแก้ shared identity/site หรือ device-related contract; **Dev-1 เป็นผู้สรุป peer-review verdict** เป็น `APPROVED FOR AUDIT` หรือ `CHANGES REQUESTED` หลังรวบรวมความเห็นจาก reviewers อื่น. Verdict นี้ไม่ใช่ Audit technical verdict หรือ release approval.
 
 ## ห้ามทำ
 
