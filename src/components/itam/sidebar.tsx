@@ -50,6 +50,7 @@ const NAV_GROUPS: NavGroupDef[] = [
       { page: 'itam-work-orders', icon: '🔧', label: 'แจ้งซ่อม', desc: 'แจ้งซ่อม รับงาน ปิดงาน' },
       { page: 'itam-stock', icon: '📦', label: 'สต๊อก', desc: 'คลังสิ้นเปลือง/อะไหล่' },
       { page: 'itam-paper-analytics', icon: '📄', label: 'วิเคราะห์กระดาษ', desc: 'สถิติการใช้งาน' },
+      { page: 'mobile', icon: '📱', label: 'โหมดมือถือ', desc: 'แจ้งซ่อม จดมิเตอร์ เบิกของ' },
     ],
   },
   {
