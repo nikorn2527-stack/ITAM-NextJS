@@ -8996,3 +8996,47 @@ Total Dev-3 parallel work completed (6 PRs นอกเหนือจาก PR 
 - PR #46: devices ↔ meter contract scenarios
 - PR #47: lifecycle contract (status transitions + warranty + depreciation)
 - PR #48: audit history contract (bounded query + site scope + redaction)
+
+---
+Task ID: TEAM-NAME-ANNOUNCEMENT-ITAM-01-2026-08-22
+Agent: orchestrator — ITAM-01 (formerly Dev-3 / Devices)
+
+Task: แจ้งทุกทีมให้ทราบว่าทีมนี้ชื่อ ITAM-01 (per user direction)
+
+Work Log:
+
+**1. User direction:**
+"ผมจะเรียกทีมนี้ว่า ITAM-01 น่ะแจ้งทุกทีมให้ทราบกันด้วยครับ เพราะแต่ล่ะทีมจะมีชื่อของตัวเองเพื่อเวลาตามงาน"
+
+**2. Announcement posted on 4 issues:**
+
+| Issue | Purpose | Comment ID |
+|---|---|---|
+| #25 (Devices workstream central) | Full announcement + ITAM-01 profile + cross-review matrix | 5376845947 |
+| #14 (project coordination) | Cross-post + coordination request to other teams | 5376846047 |
+| #23 (Repair workstream) | Sibling announcement | 5376846121 |
+| #24 (Stock workstream) | Sibling announcement | 5376846204 |
+| #26 (Meter workstream) | Sibling announcement | 5376846273 |
+
+**3. ITAM-01 profile:**
+- Previous name: Dev-3 / Devices (Asset & Meter Team)
+- New name: ITAM-01
+- Module ownership: Devices (primary), Meter (backup per matrix §5 extended ring)
+- Author scope: 8 PRs in Devices lane (#29, #35, #38, #41, #45, #46, #47, #48)
+- Reviewer scope: PR #28 Stock ✅ PASS, PR #27 Repair ✅ PASS (backup takeover), PR #30 Meter (secondary backup offer)
+- Total tests: 256 PASS (pure functions)
+
+**4. Coordination request to other teams:**
+- Dev-1 / Repair → announce on Issue #23
+- Dev-2 / Stock → announce on Issue #24
+- Dev-4 / Meter → announce on Issue #26
+- Suggested convention: ITAM-02, ITAM-03, ITAM-04 (or other names as preferred)
+
+Stage Summary:
+- Team name ITAM-01 announced across 4 workstream issues + project coordination
+- 5 comments posted (Issue #14, #23, #24, #25, #26)
+- All comments reference matrix + cross-review status + gate state
+- Other teams requested to announce their names
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+ITAM-01 พร้อมทำต่อ + รอ verdicts บน Devices lane (8 PRs) + Meter lane (4 PRs)
