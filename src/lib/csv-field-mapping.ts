@@ -187,16 +187,26 @@ export const FIELD_MAPPINGS = {
     ProductName: '_skip',
     Quantity: 'quantity',
     Unit: '_skip',
-    Requester: 'performedBy',
-    Department: 'reason',
-    Purpose: 'reason',
-    Approver: 'performedBy', // เก็บผู้อนุมัติไว้ใน performedBy เป็นข้อมูลเสริม
-    ApprovedAt: '_skip',
-    processed_flag: '_skip',
-    line_no: '_skip',
-    reason_reject: 'remark',
-    source_key: '_skip',
-    WorkOrderNo: 'workOrderId', // needs lookup by woNumber
+    // Preserve legacy semantics in their own normalized fields.
+    Requester: 'requester',
+    Department: 'department',
+    Purpose: 'purpose',
+    Approver: 'approver',
+    ApprovedAt: 'approvedAt',
+    processed_flag: 'processedFlag',
+    line_no: 'lineNo',
+    reason_reject: 'rejectReason',
+    source_key: 'sourceKey',
+    // Keep the legacy reference available for dual-number reconciliation.
+    WorkOrderNo: 'workOrderNo',
+    workOrderNo: 'workOrderNo',
+    legacy_job_no: 'workOrderNo',
+    legacy_job_number: 'workOrderNo',
+    job_no: 'workOrderNo',
+    job_number: 'workOrderNo',
+    เลขที่งาน: 'workOrderNo',
+    เลขงาน: 'workOrderNo',
+    หมายเลขงาน: 'workOrderNo',
   },
 
   // ── Stock: PurchaseOrders sheet (13 cols) → PurchaseOrder + Items ──
@@ -222,6 +232,14 @@ export const FIELD_MAPPINGS = {
   //   into columns. So the CSV headers here are the JSON field names.
   workOrder: {
     id: 'requestId', // ใช้เป็น dedup ID (legacy numeric id)
+    // Preserve the legacy job identifier separately from the new system number.
+    legacy_job_no: 'legacyJobNo',
+    legacy_job_number: 'legacyJobNo',
+    job_no: 'legacyJobNo',
+    job_number: 'legacyJobNo',
+    เลขที่งาน: 'legacyJobNo',
+    เลขงาน: 'legacyJobNo',
+    หมายเลขงาน: 'legacyJobNo',
     subject: 'subject',
     status: 'status', // needs value mapping (emoji → enum)
     building: 'building',
@@ -569,7 +587,8 @@ export function mapCsvRow(
     let prismaField = mapping[csvKey]
     // Fall back to normalized match
     if (!prismaField) {
-      prismaField = normalizedLookup.get(normalizeKey(csvKey))
+      const normalizedField = normalizedLookup.get(normalizeKey(csvKey))
+      if (normalizedField) prismaField = normalizedField
     }
 
     if (!prismaField) {

@@ -1,5 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-middleware'
+import { siteFilterForUser } from '@/lib/auth'
 
 /**
  * Meter reminders endpoint.
@@ -53,6 +55,7 @@ function deviceName(d: {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}/
+const MAX_REMINDER_DEVICES = 10_000
 
 function daysBetween(a: string, b: string): number {
   const aD = new Date(a.slice(0, 10) + 'T00:00:00')
@@ -61,8 +64,11 @@ function daysBetween(a: string, b: string): number {
   return Math.round((bD.getTime() - aD.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const auth = await requireAuth(req, 'VIEW_DEVICES')
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+    const user = auth.row
     // 1. Find the active cycle (legacy cycles use status 'active'; new V5
     //    cycles may use 'OPEN'). Match both so we work regardless of which
     //    UI created the cycle. Order by startDate desc so the most recent
@@ -83,51 +89,50 @@ export async function GET() {
       })
     }
 
-    // 2. Find all meter-required devices. The Device schema has
-    //    `meterRequired Boolean` (indexed) — that's the source of truth for
-    //    "this device needs monthly meter readings". We no longer rely on
-    //    a hard-coded set of device types.
-    // 3. In parallel, find every meter reading whose `readingDate` falls
-    //    within the active cycle's [startDate, endDate] window. This is the
-    //    correct cycle association (replaces the old `cycleId` lookup).
-    //    We only need `assetNo` + `readingDate` to deduplicate "has been
-    //    read this cycle" + "last reading date" — using groupBy would lose
-    //    the date, so we keep findMany with a tight select and dedupe in JS
-    //    (this matches the working pattern in /api/notifications/route.ts).
-    const [devices, readings] = await Promise.all([
-      db.device.findMany({
-        where: { meterRequired: true },
-        orderBy: { assetCode: 'asc' },
-        select: {
-          id: true,
-          assetCode: true,
-          type: true,
-          brand: true,
-          model: true,
-          site: true,
-          purchaseDate: true,
-          updatedAt: true,
-        },
-      }),
-      db.meterReading.findMany({
-        where: {
-          readingDate: {
-            gte: activeCycle.startDate,
-            lte: activeCycle.endDate,
-          },
-        },
-        select: { assetCode: true, readingDate: true },
-        orderBy: { readingDate: 'desc' },
-      }),
-    ])
+    // 2. Find meter-required devices only inside the authenticated user's
+    //    site scope. The cap prevents an accidental unbounded reminder query.
+    const deviceWhere: Record<string, unknown> = { meterRequired: true }
+    const siteFilter = siteFilterForUser(user)
+    if (Object.keys(siteFilter).length) {
+      Object.assign(deviceWhere, siteFilter)
+    }
+    const devices = await db.device.findMany({
+      where: deviceWhere,
+      take: MAX_REMINDER_DEVICES,
+      orderBy: { assetCode: 'asc' },
+      select: {
+        id: true,
+        assetCode: true,
+        type: true,
+        brand: true,
+        model: true,
+        site: true,
+        purchaseDate: true,
+        updatedAt: true,
+      },
+    })
 
-    // Map assetCode → most-recent readingDate seen in this cycle (readings are
-    // already ordered desc, so the first occurrence per assetCode is the latest).
+    // 3. Restrict readings to the device set and aggregate in PostgreSQL.
+    //    This avoids loading every reading in the cycle into Node memory.
+    const assetCodes = devices.map((device) => device.assetCode)
+    const readings = assetCodes.length === 0
+      ? []
+      : await db.meterReading.groupBy({
+          by: ['assetCode'],
+          where: {
+            assetCode: { in: assetCodes },
+            readingDate: {
+              gte: activeCycle.startDate,
+              lte: activeCycle.endDate,
+            },
+          },
+          _max: { readingDate: true },
+        })
+
     const readAssetMap = new Map<string, string>()
-    for (const r of readings) {
-      const code = r.assetCode
-      if (code && !readAssetMap.has(code)) {
-        readAssetMap.set(code, r.readingDate ?? '')
+    for (const reading of readings) {
+      if (reading.assetCode && reading._max.readingDate) {
+        readAssetMap.set(reading.assetCode, reading._max.readingDate)
       }
     }
 

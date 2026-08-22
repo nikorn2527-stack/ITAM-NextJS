@@ -36,12 +36,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import {
   Package, CheckCircle2, Wrench, FileText, TrendingUp, Building2,
   FileDown, Flame, BarChart3, Trophy, RefreshCw, Loader2,
   AlertTriangle, Palette, ArrowUpRight, ArrowDownRight, CircleAlert,
-  CalendarClock, ArrowRight, History, Settings2, Inbox,
+  CalendarClock, ArrowRight, History, Settings2, Inbox, MoreHorizontal,
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
 import type { Cycle, DashboardRangeKey } from './types'
@@ -1267,7 +1270,7 @@ ${kpiHtml}
             )}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Select value={range} onValueChange={(v) => setRange(v as DashboardRangeKey)}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="ช่วงเวลา" />
@@ -1289,12 +1292,15 @@ ${kpiHtml}
           >
             <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> รีเฟรช
           </Button>
+          {/* Secondary actions — visible inline on sm+, collapsed into a
+              "⋯ เพิ่มเติม" dropdown on mobile to keep the first row to
+              Range + Refresh + More. */}
           <Button
             variant="outline"
             size="sm"
             onClick={exportPdf}
             disabled={isLoading || total === 0}
-            className="border-[#0d9488] text-[#0d9488] hover:bg-[#0d9488]/10 dark:border-[#14b8a6] dark:text-[#14b8a6]"
+            className="hidden border-[#0d9488] text-[#0d9488] hover:bg-[#0d9488]/10 dark:border-[#14b8a6] dark:text-[#14b8a6] sm:inline-flex"
           >
             <FileDown className="h-4 w-4" /> PDF
           </Button>
@@ -1302,7 +1308,7 @@ ${kpiHtml}
             variant="outline"
             size="sm"
             onClick={() => setSitesOpen(true)}
-            className="dark:bg-slate-800 dark:border-slate-700"
+            className="hidden dark:bg-slate-800 dark:border-slate-700 sm:inline-flex"
           >
             <Building2 className="h-4 w-4" /> สาขา
           </Button>
@@ -1310,7 +1316,7 @@ ${kpiHtml}
             variant="outline"
             size="sm"
             onClick={() => setHeatOpen(true)}
-            className="dark:bg-slate-800 dark:border-slate-700"
+            className="hidden dark:bg-slate-800 dark:border-slate-700 sm:inline-flex"
           >
             <Flame className="h-4 w-4" /> Heatmap
           </Button>
@@ -1322,11 +1328,52 @@ ${kpiHtml}
                 window.dispatchEvent(new CustomEvent('dashboard:open-customize'))
               }
             }}
-            className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c]"
+            className="hidden border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c] sm:inline-flex"
             title="ปรับแต่งวิดเจ็ต"
           >
             <Settings2 className="h-4 w-4" /> ปรับแต่ง
           </Button>
+          {/* Mobile-only overflow dropdown for secondary actions */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="sm:hidden"
+                aria-label="การกระทำเพิ่มเติม"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="ml-1">เพิ่มเติม</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={exportPdf}
+                disabled={isLoading || total === 0}
+              >
+                <FileDown className="mr-2 h-4 w-4" />
+                PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSitesOpen(true)}>
+                <Building2 className="mr-2 h-4 w-4" />
+                สาขา
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setHeatOpen(true)}>
+                <Flame className="mr-2 h-4 w-4" />
+                Heatmap
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('dashboard:open-customize'))
+                  }
+                }}
+              >
+                <Settings2 className="mr-2 h-4 w-4" />
+                ปรับแต่งวิดเจ็ต
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
       </div>

@@ -93,9 +93,9 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
 
 // ── Group builders ────────────────────────────────────
 
-async function buildDevicesReport(site: string | null) {
+async function buildDevicesReport(siteCodes: string[] | null) {
   const where: Record<string, unknown> = {}
-  if (site && site !== 'all') where.site = site
+  if (siteCodes !== null) where.site = { in: siteCodes }
 
   const devices = await db.device.findMany({
     where,
@@ -241,7 +241,7 @@ async function buildDevicesReport(site: string | null) {
   return {
     group: 'devices',
     generatedAt: new Date().toISOString(),
-    site: site ?? 'all',
+    site: siteCodes === null ? 'all' : siteCodes.join(','),
     summary: {
       total,
       active: statusMap.get('Active') ?? 0,
@@ -264,13 +264,13 @@ async function buildDevicesReport(site: string | null) {
   }
 }
 
-async function buildMetersReport(month: string, site: string | null) {
+async function buildMetersReport(month: string, siteCodes: string[] | null) {
   const monthInfo = parseMonth(month)!
   const previousMonth = previousMonthStr(month)
 
   // Current month readings
   const deviceWhere: Record<string, unknown> = {}
-  if (site && site !== 'all') deviceWhere.site = site
+  if (siteCodes !== null) deviceWhere.site = { in: siteCodes }
 
   const devices = await db.device.findMany({
     where: deviceWhere,
@@ -454,7 +454,7 @@ async function buildMetersReport(month: string, site: string | null) {
     generatedAt: new Date().toISOString(),
     month,
     monthLabel: monthInfo.label,
-    site: site ?? 'all',
+    site: siteCodes === null ? 'all' : siteCodes.join(','),
     rates: { bwRate: BW_RATE, colorRate: COLOR_RATE },
     summary: {
       totalBw: curBw,
@@ -484,7 +484,7 @@ async function buildMetersReport(month: string, site: string | null) {
   }
 }
 
-async function buildWorkOrdersReport(month: string, site: string | null) {
+async function buildWorkOrdersReport(month: string, siteCodes: string[] | null) {
   const monthInfo = parseMonth(month)!
 
   const where: Record<string, unknown> = {
@@ -492,6 +492,14 @@ async function buildWorkOrdersReport(month: string, site: string | null) {
       gte: new Date(monthInfo.start + 'T00:00:00'),
       lte: new Date(monthInfo.end + 'T23:59:59'),
     },
+  }
+  // Apply Site scope via siteCode OR device.site (legacy rows where
+  // siteCode was never backfilled fall back to the linked device's site).
+  if (siteCodes !== null) {
+    where.OR = [
+      { siteCode: { in: siteCodes } },
+      { siteCode: null, device: { site: { in: siteCodes } } },
+    ]
   }
 
   const workOrders = await db.workOrder.findMany({
@@ -515,16 +523,8 @@ async function buildWorkOrdersReport(month: string, site: string | null) {
     orderBy: { createdAt: 'desc' },
   })
 
-  // Filter by site (device.site OR building/location contains site code)
-  const filtered =
-    site && site !== 'all'
-      ? workOrders.filter((w) => {
-          if (w.device?.site === site) return true
-          if (w.building?.includes(site)) return true
-          if (w.location?.includes(site)) return true
-          return false
-        })
-      : workOrders
+  // All filtering is now done in the DB query (no post-filter needed).
+  const filtered = workOrders
 
   const total = filtered.length
 
@@ -619,7 +619,7 @@ async function buildWorkOrdersReport(month: string, site: string | null) {
     generatedAt: new Date().toISOString(),
     month,
     monthLabel: monthInfo.label,
-    site: site ?? 'all',
+    site: siteCodes === null ? 'all' : siteCodes.join(','),
     summary: {
       total,
       pending: statusMap.get('PENDING') ?? 0,
@@ -639,9 +639,9 @@ async function buildWorkOrdersReport(month: string, site: string | null) {
   }
 }
 
-async function buildStockReport(site: string | null) {
+async function buildStockReport(siteCodes: string[] | null) {
   const itemWhere: Record<string, unknown> = {}
-  if (site && site !== 'all') itemWhere.site = site
+  if (siteCodes !== null) itemWhere.site = { in: siteCodes }
 
   const items = await db.stockItem.findMany({
     where: itemWhere,
@@ -692,14 +692,21 @@ async function buildStockReport(site: string | null) {
     }))
 
   // recent transactions (last 30 days)
+  // StockTransaction has no direct `site` foreign key — we filter via
+  // the related StockItem.site field (canonical Site predicate), NOT
+  // via remark/department contains (which was unreliable: a remark
+  // like "รับเข้า UDH/NKP" would match both Sites).
+  // When siteCodes is null (superadmin all-sites), no filter is applied.
+  // When siteCodes is an empty array (fail-closed), `in: []` matches
+  // nothing — see route handler for the empty-array guard.
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10)
   const txnWhere: Record<string, unknown> = {
     txnDate: { gte: thirtyDaysAgo },
   }
-  if (site && site !== 'all') {
-    txnWhere.OR = [{ department: { contains: site } }, { remark: { contains: site } }]
+  if (siteCodes !== null) {
+    txnWhere.stockItem = { site: { in: siteCodes } }
   }
 
   const recentTxns = await db.stockTransaction.findMany({
@@ -740,9 +747,14 @@ async function buildStockReport(site: string | null) {
     cost: t.cost ?? null,
   }))
 
-  // pending approvals
+  // pending approvals — scoped via canonical stockItem.site predicate
+  // (see comment above on the recentTxns filter).
+  const pendingWhere: Record<string, unknown> = { approvalStatus: 'PENDING' }
+  if (siteCodes !== null) {
+    pendingWhere.stockItem = { site: { in: siteCodes } }
+  }
   const pendingApprovals = await db.stockTransaction.findMany({
-    where: { approvalStatus: 'PENDING' },
+    where: pendingWhere,
     select: {
       id: true,
       txnNumber: true,
@@ -763,7 +775,7 @@ async function buildStockReport(site: string | null) {
   return {
     group: 'stock',
     generatedAt: new Date().toISOString(),
-    site: site ?? 'all',
+    site: siteCodes === null ? 'all' : siteCodes.join(','),
     summary: {
       totalItems,
       totalQuantity,
@@ -792,12 +804,12 @@ async function buildStockReport(site: string | null) {
   }
 }
 
-async function buildMaintenanceReport(month: string, site: string | null) {
+async function buildMaintenanceReport(month: string, siteCodes: string[] | null) {
   const monthInfo = parseMonth(month)!
 
   // Maintenance logs (all-time, but filter for cost analysis)
   const deviceWhere: Record<string, unknown> = {}
-  if (site && site !== 'all') deviceWhere.site = site
+  if (siteCodes !== null) deviceWhere.site = { in: siteCodes }
 
   const devices = await db.device.findMany({
     where: deviceWhere,
@@ -901,12 +913,19 @@ async function buildMaintenanceReport(month: string, site: string | null) {
     }))
     .sort((a, b) => b.cost - a.cost)
 
-  // Top parts used (from stock transactions linked to work orders)
+  // Top parts used (from stock transactions linked to work orders).
+  // Filter via canonical stockItem.site predicate (same pattern as
+  // buildStockReport's recentTxns). When siteCodes is null (superadmin
+  // all-sites), no Site filter is applied.
+  const partTxnsWhere: Record<string, unknown> = {
+    type: 'OUT',
+    workOrderNo: { not: null },
+  }
+  if (siteCodes !== null) {
+    partTxnsWhere.stockItem = { site: { in: siteCodes } }
+  }
   const partTxns = await db.stockTransaction.findMany({
-    where: {
-      type: 'OUT',
-      workOrderNo: { not: null },
-    },
+    where: partTxnsWhere,
     select: {
       productName: true,
       productCode: true,
@@ -951,7 +970,7 @@ async function buildMaintenanceReport(month: string, site: string | null) {
     generatedAt: new Date().toISOString(),
     month,
     monthLabel: monthInfo.label,
-    site: site ?? 'all',
+    site: siteCodes === null ? 'all' : siteCodes.join(','),
     summary: {
       totalLogs: logs.length,
       totalCost: Number(totalCost.toFixed(2)),
@@ -969,12 +988,19 @@ async function buildMaintenanceReport(month: string, site: string | null) {
   }
 }
 
-async function buildApprovalsReport(month: string, site: string | null) {
+async function buildApprovalsReport(month: string, siteCodes: string[] | null) {
   const monthInfo = parseMonth(month)!
 
-  // Pending stock approvals
+  // Pending stock approvals — scoped via canonical stockItem.site
+  // predicate. (StockTransaction has no direct site FK, but it has a
+  // required `stockItem` relation whose `site` field is the canonical
+  // Site of the transaction.)
+  const pendingStockWhere: Record<string, unknown> = { approvalStatus: 'PENDING' }
+  if (siteCodes !== null) {
+    pendingStockWhere.stockItem = { site: { in: siteCodes } }
+  }
   const pendingStock = await db.stockTransaction.findMany({
-    where: { approvalStatus: 'PENDING' },
+    where: pendingStockWhere,
     select: {
       id: true,
       txnNumber: true,
@@ -993,14 +1019,19 @@ async function buildApprovalsReport(month: string, site: string | null) {
     take: 100,
   })
 
-  // Approved/rejected in current month
+  // Approved/rejected in current month — scoped via canonical
+  // stockItem.site predicate (same pattern as pendingStock above).
   const monthStart = new Date(monthInfo.start + 'T00:00:00')
   const monthEnd = new Date(monthInfo.end + 'T23:59:59')
+  const approvedTxnsWhere: Record<string, unknown> = {
+    approvalStatus: { in: ['APPROVED', 'REJECTED'] },
+    approvedAt: { gte: monthInfo.start, lte: monthInfo.end },
+  }
+  if (siteCodes !== null) {
+    approvedTxnsWhere.stockItem = { site: { in: siteCodes } }
+  }
   const approvedTxns = await db.stockTransaction.findMany({
-    where: {
-      approvalStatus: { in: ['APPROVED', 'REJECTED'] },
-      approvedAt: { gte: monthInfo.start, lte: monthInfo.end },
-    },
+    where: approvedTxnsWhere,
     select: {
       id: true,
       txnNumber: true,
@@ -1021,10 +1052,10 @@ async function buildApprovalsReport(month: string, site: string | null) {
   const woWhere: Record<string, unknown> = {
     status: { in: ['PENDING', 'WAITING_PARTS'] },
   }
-  if (site && site !== 'all') {
+  if (siteCodes !== null) {
     woWhere.OR = [
-      { building: { contains: site } },
-      { details: { contains: site } },
+      { siteCode: { in: siteCodes } },
+      { siteCode: null, device: { site: { in: siteCodes } } },
     ]
   }
   const pendingWO = await db.workOrder.findMany({
@@ -1043,12 +1074,19 @@ async function buildApprovalsReport(month: string, site: string | null) {
     take: 100,
   })
 
-  // Special fee cases in current month
+  // Special fee cases in current month — also scoped by Site
+  const specialFeeWhere: Record<string, unknown> = {
+    isSpecialFee: true,
+    createdAt: { gte: monthStart, lte: monthEnd },
+  }
+  if (siteCodes !== null) {
+    specialFeeWhere.OR = [
+      { siteCode: { in: siteCodes } },
+      { siteCode: null, device: { site: { in: siteCodes } } },
+    ]
+  }
   const specialFeeCases = await db.workOrder.findMany({
-    where: {
-      isSpecialFee: true,
-      createdAt: { gte: monthStart, lte: monthEnd },
-    },
+    where: specialFeeWhere,
     select: {
       id: true,
       woNumber: true,
@@ -1063,12 +1101,33 @@ async function buildApprovalsReport(month: string, site: string | null) {
     take: 100,
   })
 
-  // Approval history from audit log
+  // B5/NF-1/NF-2 FIX: Use AuditLog.siteCode column directly (set-based SQL).
+  // Filters by siteCode in the DB query — no entity resolution loop (N+1).
+  // Legacy entries (siteCode=null) are excluded for Site-scoped users (fail-closed).
+  // A backfill script should populate siteCode for existing entries.
+  const APPROVAL_ACTIONS = [
+    'STOCK_PENDING_APPROVE',
+    'STOCK_PENDING_REJECT',
+    'WO_PARTS_APPROVE',
+    'GRANT_CREATE',
+    'GRANT_UPDATE',
+    'GRANT_DELETE',
+  ]
+  const approvalHistoryWhere: Record<string, unknown> = {
+    action: { in: APPROVAL_ACTIONS },
+    createdAt: { gte: monthStart, lte: monthEnd },
+  }
+  if (siteCodes !== null) {
+    // Site-scoped user: filter by AuditLog.siteCode directly
+    if (siteCodes.length > 0) {
+      approvalHistoryWhere.siteCode = { in: siteCodes }
+    } else {
+      approvalHistoryWhere.siteCode = { equals: '__NO_MATCH__' }
+    }
+  }
+  // superadmin (siteCodes === null) → no siteCode filter → all entries
   const approvalHistory = await db.auditLog.findMany({
-    where: {
-      action: { in: ['APPROVE', 'REJECT', 'GENERATE'] },
-      createdAt: { gte: monthStart, lte: monthEnd },
-    },
+    where: approvalHistoryWhere,
     select: {
       id: true,
       action: true,
@@ -1076,6 +1135,7 @@ async function buildApprovalsReport(month: string, site: string | null) {
       entityId: true,
       summary: true,
       actor: true,
+      siteCode: true,
       createdAt: true,
     },
     orderBy: { createdAt: 'desc' },
@@ -1090,7 +1150,7 @@ async function buildApprovalsReport(month: string, site: string | null) {
     generatedAt: new Date().toISOString(),
     month,
     monthLabel: monthInfo.label,
-    site: site ?? 'all',
+    site: siteCodes === null ? 'all' : siteCodes.join(','),
     summary: {
       pendingStockCount: pendingStock.length,
       pendingWOCount: pendingWO.length,
@@ -1201,19 +1261,34 @@ export async function GET(req: NextRequest) {
       )
     }
 
-    // ── Resolve effective Site scope ──
-    // If the user is not superadmin and has specific Site grants:
-    //   - site=all → use the user's authorized Sites (not ALL sites)
-    //   - site=CODE → validate that CODE is in the user's scope (404 if not)
-    // For multi-site users, we restrict to the FIRST site for now (Phase 1).
-    // A proper multi-site aggregate requires passing siteCodes[] to each
-    // builder — that will be done in Phase 1.5. Returning null (no filter)
-    // for multi-site users would leak cross-Site data, so we don't do that.
-    let site: string | null
+    // ── Resolve effective Site scope as siteCodes[] ──
+    //
+    // Previously this route resolved a single `site: string | null`
+    // (null = all sites). For multi-Site non-superadmin users, that
+    // forced us to pick the FIRST Site and silently drop the others —
+    // a scope leak when those other Sites had data the caller was
+    // entitled to see (but didn't), and an availability bug when the
+    // caller expected an aggregate across all their Sites.
+    //
+    // Now we resolve `siteCodes: string[] | null`:
+    //   • null           → no filter (superadmin or legacy ALL fallback
+    //                      only). Means "all Sites in the system".
+    //   • string[]       → restrict to those Sites. Empty array means
+    //                      "no Sites" (fail-closed).
+    //
+    // Mapping rules:
+    //   • superadmin + site=all   → null
+    //   • superadmin + site=CODE  → [CODE]
+    //   • non-superadmin + site=all → ctx.siteScope.siteCodes (ALL of
+    //                                 their Sites, not just the first)
+    //   • non-superadmin + site=CODE → validate CODE in scope → [CODE]
+    //   • non-superadmin + no grants → empty list (handled below as
+    //                                 a fail-closed return).
+    let siteCodes: string[] | null
     if (ctx.isSuperAdmin) {
-      site = siteParam === 'all' ? null : siteParam
+      siteCodes = siteParam === 'all' ? null : [siteParam.toUpperCase()]
     } else if (ctx.siteScope.kind === 'none') {
-      // No grants at all — return empty
+      // No grants at all — return empty (fail-closed).
       return NextResponse.json({
         group,
         generatedAt: new Date().toISOString(),
@@ -1225,16 +1300,8 @@ export async function GET(req: NextRequest) {
     } else if (ctx.siteScope.kind === 'sites') {
       const allowed = ctx.siteScope.siteCodes
       if (siteParam === 'all') {
-        if (allowed.length === 1) {
-          // Single Site — pass it as the filter
-          site = allowed[0]
-        } else {
-          // Multi-site — for Phase 1, restrict to the first Site only.
-          // This is a known limitation. Phase 1.5 will pass siteCodes[]
-          // to each builder for a proper multi-site aggregate.
-          // We do NOT pass null (would leak all Sites).
-          site = allowed[0]
-        }
+        // Multi-Site aggregate across ALL of the user's Sites.
+        siteCodes = allowed.length > 0 ? allowed : []
       } else {
         // Explicit site=CODE — validate against scope
         const requested = siteParam.toUpperCase()
@@ -1245,34 +1312,48 @@ export async function GET(req: NextRequest) {
             { status: 404 },
           )
         }
-        site = requested
+        siteCodes = [requested]
       }
     } else {
       // siteScope.kind === 'all' (legacy ALL fallback for non-superadmin)
       // This is the dual-read fallback. We treat it the same as superadmin
       // for now, but this path should disappear after migration.
-      site = siteParam === 'all' ? null : siteParam
+      siteCodes = siteParam === 'all' ? null : [siteParam.toUpperCase()]
+    }
+
+    // Fail-closed: if non-superadmin ended up with an empty siteCodes
+    // array (no grants resolved to a Sites list), don't fall through to
+    // a null filter (which would mean "all Sites").
+    if (!ctx.isSuperAdmin && siteCodes !== null && siteCodes.length === 0) {
+      return NextResponse.json({
+        group,
+        generatedAt: new Date().toISOString(),
+        month: monthParam,
+        site: siteParam,
+        summary: {},
+        error: 'ไม่มี Site ที่ได้รับอนุญาต — ติดต่อผู้ดูแลเพื่อขอสิทธิ์เข้าถึง',
+      })
     }
 
     let data: unknown
     switch (group) {
       case 'devices':
-        data = await buildDevicesReport(site)
+        data = await buildDevicesReport(siteCodes)
         break
       case 'meters':
-        data = await buildMetersReport(monthParam, site)
+        data = await buildMetersReport(monthParam, siteCodes)
         break
       case 'workorders':
-        data = await buildWorkOrdersReport(monthParam, site)
+        data = await buildWorkOrdersReport(monthParam, siteCodes)
         break
       case 'stock':
-        data = await buildStockReport(site)
+        data = await buildStockReport(siteCodes)
         break
       case 'maintenance':
-        data = await buildMaintenanceReport(monthParam, site)
+        data = await buildMaintenanceReport(monthParam, siteCodes)
         break
       case 'approvals':
-        data = await buildApprovalsReport(monthParam, site)
+        data = await buildApprovalsReport(monthParam, siteCodes)
         break
       default:
         return NextResponse.json({ error: 'Unknown group' }, { status: 400 })
@@ -1283,7 +1364,7 @@ export async function GET(req: NextRequest) {
       'GENERATE',
       'Report',
       group,
-      `ดูรายงาน ${group} (${monthParam}${site ? '/' + site : ''})`,
+      `ดูรายงาน ${group} (${monthParam}${siteCodes ? '/' + siteCodes.join(',') : ''})`,
       { group, month: monthParam, site: siteParam },
     )
 

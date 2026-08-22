@@ -61,3 +61,5 @@ tool-results/
 /playwright/.cache/
 db/custom.db
 db/*.db
+.vercel
+.env*

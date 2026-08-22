@@ -217,7 +217,7 @@ export function ReportsHub() {
                 variant="outline"
                 onClick={() => refetch()}
                 disabled={isFetching}
-                className="h-8"
+                className="h-10"
               >
                 <RefreshCw
                   className={`mr-1 h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`}
@@ -228,7 +228,7 @@ export function ReportsHub() {
                 size="sm"
                 onClick={handleExportCSV}
                 disabled={!data}
-                className="h-8 bg-orange-500 hover:bg-orange-600"
+                className="h-10 bg-orange-500 hover:bg-orange-600"
               >
                 <Download className="mr-1 h-3.5 w-3.5" />
                 CSV
@@ -249,7 +249,7 @@ export function ReportsHub() {
                 onChange={(e) =>
                   setMonth(e.target.value || currentMonthValue())
                 }
-                className="h-9"
+                className="h-10"
               />
             </div>
             <div className="space-y-1.5">
@@ -257,7 +257,7 @@ export function ReportsHub() {
                 สาขา
               </Label>
               <Select value={site} onValueChange={setSite}>
-                <SelectTrigger id="rh-site" className="h-9">
+                <SelectTrigger id="rh-site" className="h-10">
                   <SelectValue placeholder="ทุกสาขา" />
                 </SelectTrigger>
                 <SelectContent>
@@ -321,8 +321,17 @@ export function ReportsHub() {
           <ReportSkeleton />
         ) : !data ? (
           <Card className="min-h-0 flex-1">
-            <CardContent className="p-8 text-center text-sm text-muted-foreground">
-              ไม่สามารถโหลดรายงานได้
+            <CardContent className="flex flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground">
+              <span>ไม่สามารถโหลดรายงานได้</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetch()}
+                className="mt-2"
+              >
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                ลองใหม่
+              </Button>
             </CardContent>
           </Card>
         ) : (

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notifyWorkOrderCompleted } from '@/lib/notifications'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { getRepairJobReferences } from '@/lib/repair-job-references'
+import { validateRepairCompletionInput } from '@/lib/repair-completion-contract'
 
 async function logAudit(
   action: string,
@@ -8,6 +11,7 @@ async function logAudit(
   summary: string,
   detail: Record<string, unknown> | null,
   actor: string,
+  siteCode?: string | null,
 ): Promise<void> {
   try {
     await db.auditLog.create({
@@ -18,6 +22,7 @@ async function logAudit(
         summary,
         detail: detail ? JSON.stringify(detail) : null,
         actor,
+        siteCode: siteCode ?? null,
       },
     })
   } catch (err) {
@@ -31,27 +36,54 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+
+    // Authenticate + authorize — completing a WO requires WO_COMPLETE at its Site
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_COMPLETE')
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    const { wo, auth } = result
+
     const body = await req.json()
     const {
       note,
       picAfter,
       picOnsite,
-      actor,
       resolution,
       resolutionGroup,
     } = body as {
-      note?: string | null
-      picAfter?: string | null
-      picOnsite?: string | null
-      actor?: string
-      resolution?: string | null
-      resolutionGroup?: string | null
+      note?: unknown
+      picAfter?: unknown
+      picOnsite?: unknown
+      resolution?: unknown
+      resolutionGroup?: unknown
     }
 
-    const wo = await db.workOrder.findUnique({ where: { id } })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    const completionInput = validateRepairCompletionInput({
+      note,
+      picAfter,
+      picOnsite,
+      resolution,
+      resolutionGroup,
+    })
+    if (!completionInput.ok) {
+      return NextResponse.json(
+        {
+          error: `ข้อมูลปิดงานไม่ถูกต้อง: ${completionInput.field}`,
+          code: completionInput.code,
+          field: completionInput.field,
+        },
+        { status: 400 },
+      )
     }
+    const {
+      note: normalizedNote,
+      picAfter: normalizedPicAfter,
+      picOnsite: normalizedPicOnsite,
+      resolution: normalizedResolution,
+      resolutionGroup: normalizedResolutionGroup,
+    } = completionInput.value
+
     if (wo.status === 'COMPLETED') {
       return NextResponse.json(
         { error: 'ใบงานนี้ปิดไปแล้ว ไม่สามารถทำเครื่องหมายเสร็จได้อีก' },
@@ -67,15 +99,18 @@ export async function POST(
 
     // ── PART 2: Check for pending parts requests ──
     // Block completion if there are PENDING parts requests linked to this WO.
-    const pendingPartsWhere = wo.woNumber
-      ? {
-          approvalStatus: 'PENDING',
-          OR: [{ workOrderId: id }, { workOrderNo: wo.woNumber }],
-        }
-      : {
-          approvalStatus: 'PENDING',
-          workOrderId: id,
-        }
+    // Legacy imports may retain only a raw job reference, so match all stable
+    // identifiers while keeping the direct WorkOrder relation authoritative.
+    const jobReferences = getRepairJobReferences(wo)
+    const pendingPartsWhere = {
+      approvalStatus: 'PENDING',
+      OR: [
+        { workOrderId: wo.id },
+        ...(jobReferences.length > 0
+          ? [{ workOrderNo: { in: jobReferences } }]
+          : []),
+      ],
+    }
     const pendingPartsCount = await db.stockTransaction.count({
       where: pendingPartsWhere,
     })
@@ -90,40 +125,37 @@ export async function POST(
       )
     }
 
-    const actorName =
-      typeof actor === 'string' && actor.trim() ? actor.trim() : 'system'
-    // NOTE (PART 3 — Single User System): replace the 'system' fallback
-    // with the authenticated user's email/id once NextAuth is wired in.
+    // Use the authenticated user's email as the actor — never trust
+    // a body-supplied `actor` field, which could be spoofed.
+    const actorName = auth.user.email
     const now = new Date()
 
-    const resolutionTrim =
-      typeof resolution === 'string' ? resolution.trim() : ''
-    const resolutionGroupTrim =
-      typeof resolutionGroup === 'string' ? resolutionGroup.trim() : ''
+    const resolutionTrim = normalizedResolution ?? ''
+    const resolutionGroupTrim = normalizedResolutionGroup ?? ''
 
     const updated = await db.workOrder.update({
-      where: { id },
+      where: { id: wo.id },
       data: {
         status: 'COMPLETED',
         workCompletedAt: now,
         closedAt: now,
-        picAfter: picAfter ? String(picAfter) : wo.picAfter,
-        picOnsite: picOnsite ? String(picOnsite) : wo.picOnsite,
+        picAfter: normalizedPicAfter ?? wo.picAfter,
+        picOnsite: normalizedPicOnsite ?? wo.picOnsite,
         resolution: resolutionTrim || null,
         resolutionGroup: resolutionTrim ? (resolutionGroupTrim || null) : null,
-        detailsAdmin: note
-          ? (wo.detailsAdmin ? wo.detailsAdmin + '\n' : '') + String(note).trim()
+        detailsAdmin: normalizedNote
+          ? (wo.detailsAdmin ? wo.detailsAdmin + '\n' : '') + normalizedNote
           : wo.detailsAdmin,
       },
     })
 
     const completionMsg = resolutionTrim
-      ? `ปิดงานเรียบร้อย — ผลการแก้ไข: ${resolutionTrim}${note ? ` (${String(note).trim()})` : ''}`
-      : `ปิดงานเรียบร้อย${note ? ` — ${String(note).trim()}` : ''}`
+      ? `ปิดงานเรียบร้อย — ผลการแก้ไข: ${resolutionTrim}${normalizedNote ? ` (${normalizedNote})` : ''}`
+      : `ปิดงานเรียบร้อย${normalizedNote ? ` — ${normalizedNote}` : ''}`
 
     await db.workOrderMessage.create({
       data: {
-        workOrderId: id,
+        workOrderId: wo.id,
         message: completionMsg,
         author: actorName,
         authorRole: 'admin',
@@ -132,20 +164,20 @@ export async function POST(
 
     await logAudit(
       'WO_COMPLETE',
-      id,
-      `ปิดงาน ${updated.woNumber ?? id}`,
+      wo.id,
+      `ปิดงาน ${updated.woNumber ?? wo.id}`,
       {
-        note: note ?? null,
+        note: normalizedNote,
         resolution: resolutionTrim || null,
         resolutionGroup: resolutionGroupTrim || null,
       },
       actorName,
+      result.woSite,
     )
 
     // ── Notification trigger (Task ID: NOTIFY-LINE) ──
     // Send 'wo_completed' to the reporter (LINE if lineUserId is known,
     // otherwise fall back to admin channels).
-    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
     try {
       await notifyWorkOrderCompleted(
         {

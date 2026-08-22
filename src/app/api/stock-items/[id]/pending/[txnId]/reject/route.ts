@@ -30,7 +30,7 @@ export async function POST(
 
     const txn = await db.stockTransaction.findUnique({
       where: { id: txnId },
-      include: { stockItem: { select: { productCode: true, unit: true } } },
+      include: { stockItem: { select: { productCode: true, unit: true, site: true } } },
     })
     if (!txn) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -70,6 +70,9 @@ export async function POST(
         approver: approverName,
         rejectReason,
       },
+      undefined,
+      // NF-2: pass canonical siteCode from StockItem
+      txn.stockItem.site ?? null,
     )
 
     return NextResponse.json({ data: updated })

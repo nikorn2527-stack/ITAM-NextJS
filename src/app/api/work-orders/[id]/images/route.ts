@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth-middleware'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 // ============================================================
 // /api/work-orders/[id]/images
@@ -12,12 +12,24 @@ import { requireAuth } from '@/lib/auth-middleware'
 //
 //   GET    /api/work-orders/:id/images           → { data: WorkOrderImage[] }
 //   POST   /api/work-orders/:id/images           → add one image
-//        body: { stage, image_data, fileName?, uploadedBy? }
+//        body: { stage, image_data, fileName? }
 //   DELETE /api/work-orders/:id/images?imageId=… → delete one image
 //
-// Security: All handlers require authentication (WO_VIEW_ALL for GET,
-// WO_ASSIGN for POST/DELETE). The parent work order is loaded first
-// and authorized before any child record is read or modified.
+// Security (Task ID: RESIDUAL-BLOCKERS-ROUND-4):
+//   Every handler authenticates + authorizes the PARENT Work Order
+//   via `loadAuthorizedWorkOrder`, which:
+//     • Verifies the JWT
+//     • Builds the AuthorizationContext (grants, site scope)
+//     • Loads the WO (by id / woNumber / requestId)
+//     • Derives the WO's Site (siteCode ?? device.site)
+//     • Checks `canAtSite(woSite, permission)` — NOT the union `can()`
+//       (prevents the UDH=admin/NKP=viewer escalation via the union)
+//   GET    requires WO_VIEW_ALL at the WO's Site (allowOwn so reporters
+//          can fetch images of their own WOs).
+//   POST   requires WO_ASSIGN at the WO's Site (no allowOwn — mutating
+//          child records of someone else's WO is not permitted).
+//   DELETE requires WO_ASSIGN at the WO's Site (no allowOwn).
+//   Failures return 404 (not 403) to avoid leaking WO existence.
 // ============================================================
 
 const VALID_STAGES = new Set(['before', 'onsite', 'after'])
@@ -32,6 +44,7 @@ async function logAudit(
   summary: string,
   detail: Record<string, unknown> | null,
   actor: string,
+  siteCode?: string | null,
 ): Promise<void> {
   try {
     await db.auditLog.create({
@@ -42,6 +55,7 @@ async function logAudit(
         summary,
         detail: detail ? JSON.stringify(detail) : null,
         actor,
+        siteCode: siteCode ?? null,
       },
     })
   } catch (err) {
@@ -53,21 +67,21 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAuth(req, 'WO_VIEW_ALL')
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
-  }
   try {
     const { id } = await params
-    const wo = await db.workOrder.findUnique({
-      where: { id },
-      select: { id: true },
+
+    // Authenticate + authorize the parent WO at its Site.
+    // allowOwn lets a reporter view images of their own WO even
+    // without a Site-scoped WO_VIEW_ALL permission.
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_VIEW_ALL', {
+      allowOwn: true,
     })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
     }
+
     const images = await db.workOrderImage.findMany({
-      where: { workOrderId: id },
+      where: { workOrderId: result.wo.id },
       orderBy: [{ stage: 'asc' }, { createdAt: 'asc' }],
     })
 
@@ -105,19 +119,16 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAuth(req, 'WO_ASSIGN')
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
-  }
   try {
     const { id } = await params
-    const wo = await db.workOrder.findUnique({
-      where: { id },
-      select: { id: true, woNumber: true },
-    })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    // Mutating child records (images) requires WO_ASSIGN at the WO's Site.
+    // allowOwn is NOT set — only Site-scoped assigners can upload images.
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_ASSIGN')
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
     }
+    const { wo, auth } = result
 
     const body = await req.json()
     const stage = typeof body.stage === 'string' ? body.stage.trim() : ''
@@ -126,12 +137,10 @@ export async function POST(
       typeof body.fileName === 'string' && body.fileName.trim()
         ? body.fileName.trim().slice(0, 255)
         : null
-    // Prefer authenticated user's email/name as uploader; fall back to body
+    // The uploader identity is ALWAYS the authenticated session —
+    // never trust a body-supplied uploadedBy field (spoofing risk).
     const uploadedBy =
-      auth.user.email || auth.user.name || auth.user.username ||
-      (typeof body.uploadedBy === 'string' && body.uploadedBy.trim()
-        ? body.uploadedBy.trim().slice(0, 120)
-        : null)
+      auth.user.email || auth.user.name || auth.user.username || null
 
     if (!VALID_STAGES.has(stage)) {
       return NextResponse.json(
@@ -158,7 +167,7 @@ export async function POST(
     // plus some headroom for staff uploads after creation).
     const STAGE_CAP = 12
     const count = await db.workOrderImage.count({
-      where: { workOrderId: id, stage },
+      where: { workOrderId: wo.id, stage },
     })
     if (count >= STAGE_CAP) {
       return NextResponse.json(
@@ -171,7 +180,7 @@ export async function POST(
 
     const created = await db.workOrderImage.create({
       data: {
-        workOrderId: id,
+        workOrderId: wo.id,
         stage,
         image_data: imageData,
         fileName,
@@ -183,9 +192,10 @@ export async function POST(
     await logAudit(
       'WO_IMAGE_ADD',
       created.id,
-      `เพิ่มรูป (${stage}) ในใบงาน ${wo.woNumber ?? id}`,
-      { workOrderId: id, stage, fileName, sizeBytes: imageData.length },
+      `เพิ่มรูป (${stage}) ในใบงาน ${wo.woNumber ?? wo.id}`,
+      { workOrderId: wo.id, stage, fileName, sizeBytes: imageData.length },
       actor,
+      result.woSite,
     )
 
     return NextResponse.json({ data: created }, { status: 201 })
@@ -201,12 +211,16 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAuth(req, 'WO_ASSIGN')
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
-  }
   try {
     const { id } = await params
+
+    // Deleting child records (images) requires WO_ASSIGN at the WO's Site.
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_ASSIGN')
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    const { wo, auth } = result
+
     const { searchParams } = new URL(req.url)
     const imageId = searchParams.get('imageId')?.trim() ?? ''
     if (!imageId) {
@@ -219,26 +233,24 @@ export async function DELETE(
     const img = await db.workOrderImage.findUnique({
       where: { id: imageId },
     })
-    if (!img || img.workOrderId !== id) {
+    if (!img || img.workOrderId !== wo.id) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
-    const wo = await db.workOrder.findUnique({
-      where: { id },
-      select: { woNumber: true },
-    })
-
     await db.workOrderImage.delete({ where: { id: imageId } })
 
-    // Use authenticated user's identity rather than trusting a client header
-    const actor = auth.user.email || auth.user.name || auth.user.username || 'system'
+    // Audit-log actor is ALWAYS the authenticated session identity —
+    // never trust a body/header-supplied actor field.
+    const actor =
+      auth.user.email || auth.user.name || auth.user.username || 'system'
 
     await logAudit(
       'WO_IMAGE_DELETE',
       imageId,
-      `ลบรูป (${img.stage}) ในใบงาน ${wo?.woNumber ?? id}`,
-      { workOrderId: id, stage: img.stage, fileName: img.fileName },
+      `ลบรูป (${img.stage}) ในใบงาน ${wo.woNumber ?? wo.id}`,
+      { workOrderId: wo.id, stage: img.stage, fileName: img.fileName },
       actor,
+      result.woSite,
     )
 
     return NextResponse.json({ ok: true })

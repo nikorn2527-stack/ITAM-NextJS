@@ -1,9 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { logAudit } from '@/lib/audit'
+import { POST as postCanonicalTransfer } from '@/app/api/itam/devices/[id]/transfer/route'
+
+type TransferRow = {
+  fromDepartment?: string | null
+  toDepartment?: string | null
+  fromDepartmentCode?: string | null
+  toDepartmentCode?: string | null
+  [key: string]: unknown
+}
+
+/** Keep legacy response aliases while persisting canonical Prisma field names. */
+function toLegacyTransferShape<T extends TransferRow>(transfer: T) {
+  return {
+    ...transfer,
+    fromDept: transfer.fromDepartment ?? null,
+    toDept: transfer.toDepartment ?? null,
+    fromDeptCode: transfer.fromDepartmentCode ?? null,
+    toDeptCode: transfer.toDepartmentCode ?? null,
+  }
+}
+
+function normalizeLegacyTransferBody(body: Record<string, unknown>) {
+  return {
+    ...body,
+    // Legacy UI used toDept/toDeptCode; canonical route uses explicit names.
+    toDepartment: body.toDepartment ?? body.toDept ?? null,
+    toDepartmentCode: body.toDepartmentCode ?? body.toDeptCode ?? null,
+    // The old route accepted transferDate and canonical route now preserves it.
+    transferDate: body.transferDate ?? body.moveDate ?? null,
+    // A legacy transfer is a location action, not an implicit status change.
+    toStatus: body.toStatus ?? body.status ?? undefined,
+  }
+}
+
+async function callCanonicalTransfer(
+  req: NextRequest,
+  params: { id: string },
+  body: Record<string, unknown>,
+) {
+  const forwardedHeaders = new Headers(req.headers)
+  forwardedHeaders.delete('content-length')
+  const forwardedRequest = new NextRequest(req.url, {
+    method: 'POST',
+    headers: forwardedHeaders,
+    body: JSON.stringify(normalizeLegacyTransferBody(body)),
+  })
+  return postCanonicalTransfer(forwardedRequest, { params: Promise.resolve(params) })
+}
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
@@ -11,8 +58,11 @@ export async function GET(
     const transfers = await db.deviceTransfer.findMany({
       where: { deviceId: id },
       orderBy: [{ transferDate: 'desc' }, { createdAt: 'desc' }],
+      take: 500,
     })
-    return NextResponse.json({ transfers })
+    return NextResponse.json({
+      transfers: transfers.map((transfer) => toLegacyTransferShape(transfer)),
+    })
   } catch (err) {
     console.error('GET /api/devices/[id]/transfer', err)
     return NextResponse.json(
@@ -27,74 +77,26 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await params
-    const body = await req.json()
-    const { toSite, toDept, toDeptCode, reason, transferDate } = body as {
-      toSite?: string
-      toDept?: string
-      toDeptCode?: string
-      reason?: string
-      transferDate?: string
+    const resolvedParams = await params
+    const body = await req.json() as Record<string, unknown>
+    const response = await callCanonicalTransfer(req, resolvedParams, body)
+    const payload = await response.json() as Record<string, unknown>
+
+    if (response.status >= 400) {
+      return NextResponse.json(payload, { status: response.status })
     }
 
-    if (!toSite || !toSite.trim()) {
-      return NextResponse.json(
-        { error: 'ต้องระบุสาขาปลายทาง (toSite)' },
-        { status: 400 },
-      )
-    }
-
-    const device = await db.device.findUnique({ where: { id } })
-    if (!device) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
-
-    const fromSite = device.site || null
-    const fromDept = device.department ?? null
-    const fromDeptCode = device.departmentCode ?? null
-    const dateStr = transferDate?.trim() || new Date().toISOString().slice(0, 10)
-
-    const updated = await db.device.update({
-      where: { id },
-      data: {
-        site: String(toSite).trim(),
-        department: toDept ? String(toDept).trim() : null,
-        departmentCode: toDeptCode ? String(toDeptCode).trim() : null,
-      },
-    })
-
-    const transfer = await db.deviceTransfer.create({
-      data: {
-        deviceId: id,
-        fromSite,
-        toSite: String(toSite).trim(),
-        fromDept,
-        toDept: toDept ? String(toDept).trim() : null,
-        fromDeptCode,
-        toDeptCode: toDeptCode ? String(toDeptCode).trim() : null,
-        reason: reason ? String(reason).trim() : null,
-        transferDate: dateStr,
-      },
-    })
-
-    await logAudit(
-      'TRANSFER',
-      'Device',
-      id,
-      `ย้ายอุปกรณ์ ${updated.assetCode}: ${fromSite ?? '—'}→${toSite}`,
+    const locationHistory = payload.locationHistory
+    return NextResponse.json(
       {
-        fromSite,
-        toSite,
-        fromDept,
-        toDept: toDept ?? null,
-        fromDeptCode,
-        toDeptCode: toDeptCode ?? null,
-        reason: reason ?? null,
-        transferDate: dateStr,
+        ...payload,
+        // Preserve the response key expected by older Device callers.
+        transfer: locationHistory && typeof locationHistory === 'object'
+          ? toLegacyTransferShape(locationHistory as TransferRow)
+          : locationHistory,
       },
+      { status: response.status },
     )
-
-    return NextResponse.json({ device: updated, transfer }, { status: 201 })
   } catch (err) {
     console.error('POST /api/devices/[id]/transfer', err)
     const message = err instanceof Error ? err.message : 'Failed to transfer'

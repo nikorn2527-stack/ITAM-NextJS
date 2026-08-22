@@ -8,7 +8,6 @@ import { Footer } from '@/components/itam/footer'
 import { GlobalSearch } from '@/components/itam/global-search'
 import { TopBarClock } from '@/components/itam/top-bar-clock'
 import { RealtimeProvider } from '@/hooks/use-realtime-updates'
-import { MobileShell } from '@/components/itam/mobile'
 import { PwaInstallButton } from '@/components/itam/pwa-registration'
 import { QrScannerDialog } from '@/components/itam/qr-scanner'
 import { useAppStore } from '@/store/app-store'
@@ -129,7 +128,9 @@ export default function Home() {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const t = params.get('token')
-    if (t) setAuthToken(t)
+    if (!t) return
+    const task = window.setTimeout(() => setAuthToken(t), 0)
+    return () => window.clearTimeout(task)
   }, [])
 
   // Boot: hydrate from localStorage then verify token validity with /me
@@ -175,7 +176,7 @@ export default function Home() {
     }
     const patchedFetch: typeof window.fetch = (input, init) => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url)
-      if ((url.includes('/api/itam/') || url.includes('/api/v1/') || url.includes('/api/work-orders') || url.includes('/api/devices') || url.includes('/api/stock-items') || url.includes('/api/dashboard') || url.includes('/api/master')) && !url.includes('/api/itam/auth/login')) {
+      if ((url.includes('/api/itam/') || url.includes('/api/v1/') || url.includes('/api/work-orders') || url.includes('/api/devices') || url.includes('/api/stock-items') || url.includes('/api/dashboard') || url.includes('/api/sync/preview')) && !url.includes('/api/itam/auth/login')) {
         const token = useAuthStore.getState().token
         if (token) {
           const headers = new Headers(init?.headers || {})
@@ -260,8 +261,6 @@ export default function Home() {
                 {activePage === 'itam-repairs' && <ItamRepairs />}
                 {activePage === 'itam-work-orders' && <WorkOrdersPage />}
                 {activePage === 'itam-stock' && <ItamStock />}
-                {/* ── Mobile Mode ── */}
-                {activePage === 'mobile' && <MobileShell />}
                 {/* ── Restored pages (were missing from main) ── */}
                 {activePage === 'import' && <ImportPage />}
                 {activePage === 'templates' && <TemplatesPage />}

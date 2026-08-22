@@ -21,8 +21,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth-middleware'
-import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 type PaperKey = 'a4-portrait' | 'a4-landscape' | 'a5-portrait'
 
@@ -112,45 +111,52 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  // ── Authentication ──
-  // Previously this route had NO auth check — anyone with a WO ID could
-  // access work order details, linked stock transactions, device data,
-  // and embedded images. This is a Blocker security fix.
-  // We accept any of: WO_VIEW_ALL, WO_VIEW_SITE, WO_VIEW_OWN.
-  // The Site/ownership check is done AFTER loading the WO (below).
-  const auth = await requireAuth(req)
-  if (!auth.ok) {
-    return NextResponse.json(
-      { error: auth.error },
-      { status: auth.status },
-    )
-  }
-  // Build authorization context for Site scope
-  const ctx = await buildAuthorizationContext(
-    auth.user,
-    auth.row.id,
-    auth.row.allowedSites,
-  )
-  // Check that the user has at least one WO view permission
-  const hasWoViewPerm =
-    ctx.can('WO_VIEW_ALL') ||
-    ctx.can('WO_VIEW_SITE') ||
-    ctx.can('WO_VIEW_OWN')
-  if (!hasWoViewPerm) {
-    return NextResponse.json(
-      { error: 'ไม่มีสิทธิ์ดูใบงาน (WO_VIEW_ALL/WO_VIEW_SITE/WO_VIEW_OWN)' },
-      { status: 403 },
-    )
-  }
   try {
     const { id } = await params
+
+    // ── Authentication + Site-scoped authorization ──
+    // Task ID: RESIDUAL-BLOCKERS-ROUND-4 — replaces the previous
+    // `can('WO_VIEW_ALL')` (union) + separate `canAccessSite(woSite)`
+    // check. The union `can()` lets a UDH=admin print NKP WOs (because
+    // WO_VIEW_ALL appears in the union even though the user's NKP role
+    // is viewer). `loadAuthorizedWorkOrder` uses `canAtSite(woSite,
+    // 'WO_VIEW_ALL')` internally — which checks ONLY the role at the
+    // WO's Site — closing the mixed-role escalation.
+    // allowOwn:true lets a reporter print their own WO even without
+    // a Site-scoped view permission (WO_VIEW_OWN).
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_VIEW_ALL', {
+      allowOwn: true,
+    })
+    if (!result.ok) {
+      // Respect the status from loadAuthorizedWorkOrder:
+      //   • 401 → caller is not authenticated (should log in first). Returning
+      //     404 here would hide the fact that authentication is required, so
+      //     the client could never recover. 401 is the correct HTTP contract
+      //     for "you must authenticate" — see RFC 7235.
+      //   • 404 → authenticated caller without access (or WO truly missing).
+      //     404 (not 403) avoids revealing WO existence to unauthorized users.
+      // This matches the pattern used by print-sheet/route.ts (status: result.status).
+      const html =
+        result.status === 401
+          ? '<h1>กรุณาเข้าสู่ระบบ</h1><p>ต้องเข้าสู่ระบบเพื่อพิมพ์ใบงาน</p>'
+          : '<h1>ไม่พบใบงาน</h1>'
+      return new NextResponse(html, {
+        status: result.status,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      })
+    }
+
     const { searchParams } = new URL(req.url)
     const paperParam = (searchParams.get('paper')?.trim() ||
       'a4-portrait') as PaperKey
     const paper = PAPER_SIZES[paperParam] ?? PAPER_SIZES['a4-portrait']
 
+    // Re-fetch the WO with the full include set required for HTML
+    // rendering. `loadAuthorizedWorkOrder` returned the WO with only
+    // the device.id/site/assetCode/name fields selected; the print
+    // template also needs brand/model/serialNumber.
     const wo = await db.workOrder.findUnique({
-      where: { id },
+      where: { id: result.wo.id },
       include: {
         device: {
           select: {
@@ -171,40 +177,6 @@ export async function GET(
         status: 404,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       })
-    }
-
-    // ── Site/ownership authorization (after loading the WO) ──
-    // - WO_VIEW_ALL (or superadmin) → can see any WO
-    // - WO_VIEW_SITE → can see if WO's siteCode (or device.site) is in scope
-    // - WO_VIEW_OWN → can see if the WO was created by this user
-    //   (matched by reporterEmail or reporterName == user.email/name)
-    if (!ctx.isSuperAdmin && !ctx.can('WO_VIEW_ALL')) {
-      const woSite = wo.siteCode ?? wo.device?.site ?? null
-      const isOwn =
-        (wo.reporterEmail && wo.reporterEmail === auth.user.email) ||
-        (wo.reporterName && wo.reporterName === auth.user.name)
-      if (ctx.can('WO_VIEW_SITE')) {
-        if (!woSite || !ctx.canAccessSite(woSite)) {
-          // Not in user's Site scope — return 404 (don't reveal existence)
-          return new NextResponse('<h1>ไม่พบใบงาน</h1>', {
-            status: 404,
-            headers: { 'Content-Type': 'text/html; charset=utf-8' },
-          })
-        }
-      } else if (ctx.can('WO_VIEW_OWN')) {
-        if (!isOwn) {
-          return new NextResponse('<h1>ไม่พบใบงาน</h1>', {
-            status: 404,
-            headers: { 'Content-Type': 'text/html; charset=utf-8' },
-          })
-        }
-      } else {
-        // No WO view permission that matches — deny
-        return new NextResponse('<h1>ไม่พบใบงาน</h1>', {
-          status: 404,
-          headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        })
-      }
     }
 
     // Linked parts

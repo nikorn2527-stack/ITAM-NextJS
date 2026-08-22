@@ -653,7 +653,6 @@ export function StockPage() {
         txnDate: txnForm.txnDate,
         reason: txnForm.reason || undefined,
         vendor: txnForm.vendor || undefined,
-        performedBy: txnForm.performedBy || undefined,
         remark: txnForm.remark || undefined,
       }
       if (txnForm.cost !== '') payload.cost = Number(txnForm.cost)
@@ -859,8 +858,9 @@ export function StockPage() {
   ]
 
   return (
-    <div className="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
-      {/* Page header */}
+    <div className="min-w-0 flex h-full flex-col overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+      {/* Page header — primary CTA (เพิ่มสินค้า) is first so it's the
+          obvious action; secondary actions follow. */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
@@ -872,13 +872,12 @@ export function StockPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant="outline"
             size="sm"
-            onClick={() => qc.invalidateQueries({ queryKey: ['stock-items'] })}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            onClick={openAddItem}
+            className="order-first w-full bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950 sm:order-none sm:w-auto"
           >
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            รีเฟรช
+            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            เพิ่มสินค้า
           </Button>
           <Button
             variant="outline"
@@ -890,12 +889,13 @@ export function StockPage() {
             สร้างใบสั่งซื้อ
           </Button>
           <Button
+            variant="outline"
             size="sm"
-            onClick={openAddItem}
-            className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+            onClick={() => qc.invalidateQueries({ queryKey: ['stock-items'] })}
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
           >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
-            เพิ่มสินค้า
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            รีเฟรช
           </Button>
         </div>
       </div>
@@ -1922,12 +1922,16 @@ export function StockPage() {
                   ผู้ทำรายการ
                 </Label>
                 <Input
-                  value={txnForm.performedBy}
-                  onChange={(e) =>
-                    setTxnForm({ ...txnForm, performedBy: e.target.value })
-                  }
-                  placeholder="ชื่อ-นามสกุล"
+                  value="ระบบจะผูกกับบัญชีที่เข้าสู่ระบบ"
+                  readOnly
+                  aria-describedby="stock-transaction-actor-help"
                 />
+                <p
+                  id="stock-transaction-actor-help"
+                  className="text-[11px] text-slate-500 dark:text-slate-400"
+                >
+                  ไม่สามารถเปลี่ยนชื่อผู้ทำรายการจากฟอร์มได้
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
