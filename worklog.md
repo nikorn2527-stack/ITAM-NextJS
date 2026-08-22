@@ -8839,3 +8839,86 @@ Stage Summary:
 - PR #46 (devices ↔ meter contract, new): packet posted, awaiting verdict
 
 Vercel blocker: ส่งให้ทีม deployment access แล้ว — Dev teams ไม่ต้องแก้ code เพื่อหลบ
+
+---
+Task ID: DEVICES-LIFECYCLE-PR47-2026-08-22
+Agent: orchestrator — Dev-3 / Devices (per "ทำต่อได้เลยครับ" user direction)
+
+Task: ทำ lifecycle contract workstream (status transitions + warranty + depreciation) เป็น parallel work ใน branch ใหม่
+
+Work Log:
+
+**1. Setup:**
+- สร้าง worktree จาก PR #29 head (ed64d69)
+- Branch: feature/module-devices-lifecycle-contract
+
+**2. New module: src/lib/devices-lifecycle-contract/ (+380 lines)**
+- scenarios.ts:
+  - DEVICE_STATUSES: 4 canonical values (active, spare, repair, disposed)
+  - ALLOWED_TRANSITIONS: status transition matrix (disposed = terminal, empty allowed)
+  - validateLifecycleTransition(): pure — checks status path + actor + deviceId
+    - Error codes: MISSING_DEVICE_ID, MISSING_ACTOR, INVALID_FROM_STATUS, INVALID_TO_STATUS, TRANSITION_NOT_ALLOWED, TERMINAL_STATUS_NO_RETURN
+  - validateWarranty(): pure — checks dates + expiry
+    - Error codes: WARRANTY_END_BEFORE_PURCHASE, INVALID_DATE
+    - Returns: isExpired, monthsRemaining
+  - calculateDepreciation(): pure — straight-line method
+    - Formula: annualDepreciation = (purchasePrice - salvageValue) / usefulLife
+    - accumulatedDepreciation capped at (purchasePrice - salvageValue)
+    - bookValue never below salvageValue
+    - Error codes: MISSING_PURCHASE_PRICE, MISSING_USEFUL_LIFE, INVALID_USEFUL_LIFE, NEGATIVE_PRICE
+  - LIFECYCLE_SCENARIOS: 10 fixtures (active→spare, repair→active, disposed→active denied, etc.)
+  - WARRANTY_SCENARIOS: 5 fixtures (valid, expired, end-before-purchase, invalid date, null)
+  - DEPRECIATION_SCENARIOS: 6 fixtures (normal, fully depreciated, missing fields, negative)
+- index.ts: barrel
+
+**3. Tests: tests/devices-lifecycle-contract/scenarios.test.ts (+340 lines, 47 tests)**
+- validateLifecycleTransition: 10 scenario tests + 4 individual error code tests
+- validateWarranty: 5 scenario tests + 5 individual case tests
+- calculateDepreciation: 6 scenario tests + 5 individual case tests
+- Constants integrity: 5 tests (4 statuses, transition matrix, disposed terminal)
+- Scenario integrity: 7 tests (count, branches, coverage)
+
+**4. Test evidence:**
+```
+✓ tests/devices-lifecycle-contract/scenarios.test.ts (47 tests) 9ms
+Test Files 1 passed (1)
+Tests 47 passed (47)
+Duration 270ms
+```
+
+**5. Governance verified:**
+- B4 frozen: 0-diff (all 6 files)
+- SYNC_RUN: NOT added
+- prisma db:push: NOT used
+- Schema/migration: NOT changed
+- PR #29/#35/#38/#41/#45/#46 overlap: NONE (separate files)
+- Secrets: none
+
+**6. PR #47 opened:**
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/47
+- Head: feature/module-devices-lifecycle-contract @ 575aa4efc623e0f2891a023fcd3e69be42c9c7a3
+- Base: feature/module-devices-import-boundary (PR #29)
+- Labels: module:devices, work-package:C-lifecycle, dev-3, audit-review-required, no-self-merge, governance:read-only
+- Body: REVIEW PACKET format (per EXACT-HEAD-REVIEW-PROTOCOL §3)
+
+Stage Summary:
+- PR #47 opened: lifecycle contract, 47/47 PASS, B4 0-diff, no SYNC_RUN, no schema change
+- REVIEW PACKET posted per EXACT-HEAD-REVIEW-PROTOCOL
+- Devices lane ตอนนี้มี 7 PRs รอ Dev-4 Meter verdict: #29, #35, #38, #41, #45, #46, #47
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+สถานะ Devices lane (7 PRs):
+- PR #29 (importer): packet posted, awaiting verdict
+- PR #35 (parallel fixtures + docs): packet posted, awaiting verdict
+- PR #38 (transfer route, another team): packet posted by governance, awaiting verdict
+- PR #41 (bounded list): packet posted, awaiting verdict
+- PR #45 (importer ↔ transfer integration): packet posted, awaiting verdict
+- PR #46 (devices ↔ meter contract): packet posted, awaiting verdict
+- PR #47 (lifecycle contract, new): packet posted, awaiting verdict
+
+Total Dev-3 parallel work completed:
+- PR #35: parallel fixtures (asset-key, site/transfer auth, retry/idempotency) + 3 acceptance docs
+- PR #41: bounded list/query + mobile subset
+- PR #45: importer ↔ transfer integration scenarios
+- PR #46: devices ↔ meter contract scenarios
+- PR #47: lifecycle contract (status transitions + warranty + depreciation)
