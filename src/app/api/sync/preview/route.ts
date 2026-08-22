@@ -11,6 +11,9 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { fetchFromAppsScript, computePreviewItems, redacted } from '@/lib/sync-adapter'
+import { computeServicesWorkOrderPreview } from '@/lib/services-work-order-preview'
+import { adaptLegacyRecords, isLegacyBridgeModule, type LegacyBridgeModule } from '@/lib/legacy-bridge'
+import { computeLegacyBridgePreviewItems } from '@/lib/legacy-bridge-preview'
 import { logAudit } from '@/lib/audit'
 
 // Helper: convert JsonValue | null to Prisma Json? input type
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest) {
   const ctx = await buildAuthorizationContext(user, auth.row.id, auth.row.allowedSites)
 
   // 3. Parse request
-  let body: { source?: string; target?: string; options?: { since?: string; siteFilter?: string; limit?: number } }
+  let body: { source?: string; target?: string; module?: string; options?: { since?: string; siteFilter?: string; limit?: number } }
   try {
     body = await req.json()
   } catch {
@@ -42,7 +45,15 @@ export async function POST(req: NextRequest) {
   }
 
   const source = body.source || 'services'
-  const target = body.target || 'work-order'
+  const requestedTarget = body.target || 'work-order'
+  // Bridge mode is deliberately opt-in. Existing callers that send only
+  // target=work-order must keep the established WorkOrder preview semantics.
+  const requestedModule = typeof body.module === 'string' ? body.module : null
+  const isBridgeTarget = requestedModule !== null && isLegacyBridgeModule(requestedModule)
+  const bridgeModule = isBridgeTarget ? requestedModule as LegacyBridgeModule : null
+  // Persist a namespaced bridge target so apply cannot confuse the legacy
+  // WorkOrder path (target=work-order) with the opt-in bridge module.
+  const target = bridgeModule ? `legacy-bridge:${bridgeModule}` : requestedTarget
   const options = body.options || {}
 
   // 4. Site scope for non-superadmin
@@ -83,9 +94,26 @@ export async function POST(req: NextRequest) {
     })
 
     // 8. Compute preview items (read-only — no business table writes)
-    const previewItems = await computePreviewItems(
+    const previewDb = db as unknown as Parameters<typeof computePreviewItems>[1]
+    const isServicesWorkOrder = source === 'services' && target === 'work-order'
+    const repairPreview = isServicesWorkOrder
+      ? await computeServicesWorkOrderPreview(result.records, previewDb, siteScope)
+      : null
+    const bridgePreview = bridgeModule
+      ? await (async () => {
+          const adapted = adaptLegacyRecords(source, bridgeModule, result.records)
+          const items = await computeLegacyBridgePreviewItems(
+            adapted.ready,
+            adapted.quarantine,
+            db as unknown as Parameters<typeof computeLegacyBridgePreviewItems>[2],
+            siteScope,
+          )
+          return { items, unmappedColumns: [...new Set([...result.metadata.unmappedColumns, ...adapted.unmappedColumns])], quarantinedRows: adapted.quarantine.length }
+        })()
+      : null
+    const previewItems = bridgePreview?.items || repairPreview?.items || await computePreviewItems(
       result.records,
-      db as unknown as Parameters<typeof computePreviewItems>[1],
+      previewDb,
       siteScope,
     )
 
@@ -174,7 +202,8 @@ export async function POST(req: NextRequest) {
       })),
       sourceMetadata: {
         totalFetched: result.metadata.totalFetched,
-        unmappedColumns: result.metadata.unmappedColumns,
+        unmappedColumns: bridgePreview?.unmappedColumns || repairPreview?.unmappedColumns || result.metadata.unmappedColumns,
+        quarantinedRows: bridgePreview?.quarantinedRows || repairPreview?.quarantinedRows || 0,
       },
     })
   } catch (err) {

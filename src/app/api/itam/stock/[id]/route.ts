@@ -3,13 +3,19 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { canAccessSite } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
+import { toCompatStockItem, toCompatStockTransaction } from '@/lib/stock-compat'
 
 interface Params {
   params: Promise<{ id: string }>
 }
 
+function finiteNumber(value: unknown): number | undefined {
+  if (value === '' || value === null || value === undefined) return undefined
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? n : undefined
+}
+
 // GET /api/itam/stock/[id] — single item + last 10 transactions
-//   Returns: { item, transactions }
 export async function GET(req: NextRequest, { params }: Params) {
   try {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
@@ -29,16 +35,18 @@ export async function GET(req: NextRequest, { params }: Params) {
       take: 10,
     })
 
-    return NextResponse.json({ item, transactions })
+    return NextResponse.json({
+      item: toCompatStockItem(item),
+      transactions: transactions.map(toCompatStockTransaction),
+    })
   } catch (err) {
     console.error('GET /api/itam/stock/[id]', err)
     return NextResponse.json({ error: 'Failed' }, { status: 500 })
   }
 }
 
-// PUT /api/itam/stock/[id] — update item fields
-//   Body: any subset of StockItem fields (except id/itemId/createdAt/updatedAt)
-//   Returns: { item }
+// PUT /api/itam/stock/[id] — update item fields.
+// Accepts legacy name alias; productCode remains immutable after creation.
 export async function PUT(req: NextRequest, { params }: Params) {
   try {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
@@ -53,33 +61,57 @@ export async function PUT(req: NextRequest, { params }: Params) {
     }
 
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
-
-    // Build update payload — only fields that are present
     const data: Record<string, unknown> = {}
-    if (typeof body.name === 'string' && body.name.trim()) data.name = body.name.trim()
+    const productName = body.productName ?? body.name
+    if (typeof productName === 'string' && productName.trim()) data.productName = productName.trim()
     if (typeof body.category === 'string') data.category = body.category.trim() || null
     if (typeof body.brand === 'string') data.brand = body.brand.trim() || null
     if (typeof body.model === 'string') data.model = body.model.trim() || null
     if (typeof body.unit === 'string' && body.unit.trim()) data.unit = body.unit.trim()
-    if (body.quantity != null && body.quantity !== '' && Number.isFinite(Number(body.quantity))) {
-      data.quantity = Number(body.quantity)
+
+    const quantity = finiteNumber(body.quantity)
+    if (quantity !== undefined) {
+      if (!Number.isInteger(quantity) || quantity < 0) {
+        return NextResponse.json({ error: 'จำนวนคงเหลือต้องเป็นจำนวนเต็มไม่ติดลบ' }, { status: 400 })
+      }
+      data.quantity = quantity
     }
-    if (body.minQuantity != null && body.minQuantity !== '' && Number.isFinite(Number(body.minQuantity))) {
-      data.minQuantity = Number(body.minQuantity)
+    const minQuantity = finiteNumber(body.minQuantity)
+    if (minQuantity !== undefined) {
+      if (!Number.isInteger(minQuantity) || minQuantity < 0) {
+        return NextResponse.json({ error: 'จุดสั่งซื้อต้องเป็นจำนวนเต็มไม่ติดลบ' }, { status: 400 })
+      }
+      data.minQuantity = minQuantity
     }
-    if (body.maxQuantity != null && body.maxQuantity !== '' && Number.isFinite(Number(body.maxQuantity))) {
-      data.maxQuantity = Number(body.maxQuantity)
+    const maxQuantity = finiteNumber(body.maxQuantity)
+    if (maxQuantity !== undefined) {
+      if (!Number.isInteger(maxQuantity) || maxQuantity < 0) {
+        return NextResponse.json({ error: 'สต็อกสูงสุดต้องเป็นจำนวนเต็มไม่ติดลบ' }, { status: 400 })
+      }
+      data.maxQuantity = maxQuantity
     }
-    if (body.unitCost != null && body.unitCost !== '' && Number.isFinite(Number(body.unitCost))) {
-      data.unitCost = Number(body.unitCost)
-    } else if (body.unitCost === '' || body.unitCost === null) {
+
+    if (body.unitCost === '' || body.unitCost === null) {
       data.unitCost = null
+    } else {
+      const unitCost = finiteNumber(body.unitCost)
+      if (unitCost !== undefined) {
+        if (unitCost < 0) return NextResponse.json({ error: 'ราคาต่อหน่วยต้องไม่ติดลบ' }, { status: 400 })
+        data.unitCost = unitCost
+      }
     }
+
     if (typeof body.location === 'string') data.location = body.location.trim() || null
     if (typeof body.site === 'string') data.site = body.site.trim() || null
     if (typeof body.compatibleDevices === 'string') data.compatibleDevices = body.compatibleDevices.trim() || null
     if (typeof body.remark === 'string') data.remark = body.remark.trim() || null
     if (typeof body.active === 'boolean') data.active = body.active
+
+    if ('quantity' in data || 'unitCost' in data) {
+      const nextQuantity = Number(data.quantity ?? existing.quantity)
+      const nextUnitCost = data.unitCost === null ? null : Number(data.unitCost ?? existing.unitCost ?? 0)
+      data.totalValue = nextUnitCost === null ? null : nextQuantity * nextUnitCost
+    }
 
     const updated = await db.stockItem.update({ where: { id }, data })
 
@@ -87,12 +119,12 @@ export async function PUT(req: NextRequest, { params }: Params) {
       'STOCK_UPDATE',
       'StockItem',
       id,
-      `แก้ไขสินค้าสต๊อก "${updated.name}"`,
-      { itemId: updated.itemId, fields: Object.keys(data) },
+      `แก้ไขสินค้าสต๊อก "${updated.productName}"`,
+      { productCode: updated.productCode, fields: Object.keys(data) },
       user.email,
     )
 
-    return NextResponse.json({ item: updated })
+    return NextResponse.json({ item: toCompatStockItem(updated) })
   } catch (err) {
     console.error('PUT /api/itam/stock/[id]', err)
     return NextResponse.json({ error: 'Failed to update' }, { status: 500 })
@@ -100,9 +132,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 }
 
 // DELETE /api/itam/stock/[id]
-//   - Soft delete (active=false) if the item has transactions.
-//   - Hard delete if it has no transactions.
-//   Returns: { ok: true, hard: boolean }
+// Soft delete when transactions exist; hard delete otherwise.
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
@@ -130,9 +160,9 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       'StockItem',
       id,
       hard
-        ? `ลบสินค้าสต๊อก "${existing.name}" (ลบถาวร)`
-        : `ปิดใช้งานสินค้าสต๊อก "${existing.name}" (มีรายการเข้า-ออก)`,
-      { itemId: existing.itemId, name: existing.name, hard, txnCount },
+        ? `ลบสินค้าสต๊อก "${existing.productName}" (ลบถาวร)`
+        : `ปิดใช้งานสินค้าสต๊อก "${existing.productName}" (มีรายการเข้า-ออก)`,
+      { productCode: existing.productCode, productName: existing.productName, hard, txnCount },
       user.email,
     )
 

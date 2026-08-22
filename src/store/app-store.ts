@@ -24,6 +24,11 @@ export type ActivePage =
   | 'itam-audit'
   | 'itam-snapshot-viewer'
   | 'reports-hub'
+  | 'devices-page'
+  | 'monthly-report'
+  | 'settings-v2'
+  | 'meter-page'
+  | 'paper-analytics-page'
 
 export type SettingsTab = 'app' | 'master' | 'sites' | 'rates' | 'users' | 'audit'
 
@@ -34,6 +39,10 @@ interface AppState {
   pendingDeviceId: string | null
   /** A settings tab to auto-activate on mount. */
   pendingSettingsTab: SettingsTab | null
+  /** A device type filter to apply on devices page on mount. */
+  pendingDeviceType: string | null
+  /** A device status filter to apply on devices page on mount. */
+  pendingDeviceStatus: string | null
   /** A warranty status filter to apply on devices page on mount. */
   pendingWarrantyFilter: 'expiring' | 'expired' | null
   /** A meter-page action to auto-run on mount (e.g. 'open-cycle' opens the cycle dialog). */
@@ -54,6 +63,10 @@ interface AppState {
   closeSidebar: () => void
   setPendingDeviceId: (id: string | null) => void
   clearPendingDeviceId: () => void
+  setPendingDeviceType: (type: string | null) => void
+  clearPendingDeviceType: () => void
+  setPendingDeviceStatus: (status: string | null) => void
+  clearPendingDeviceStatus: () => void
   setPendingSettingsTab: (tab: SettingsTab | null) => void
   clearPendingSettingsTab: () => void
   setPendingWarrantyFilter: (f: 'expiring' | 'expired' | null) => void
@@ -72,6 +85,8 @@ export const useAppStore = create<AppState>((set) => ({
   activePage: 'dashboard',
   sidebarOpen: false,
   pendingDeviceId: null,
+  pendingDeviceType: null,
+  pendingDeviceStatus: null,
   pendingSettingsTab: null,
   pendingWarrantyFilter: null,
   pendingMeterAction: null,
@@ -84,6 +99,10 @@ export const useAppStore = create<AppState>((set) => ({
   closeSidebar: () => set({ sidebarOpen: false }),
   setPendingDeviceId: (id) => set({ pendingDeviceId: id }),
   clearPendingDeviceId: () => set({ pendingDeviceId: null }),
+  setPendingDeviceType: (type) => set({ pendingDeviceType: type }),
+  clearPendingDeviceType: () => set({ pendingDeviceType: null }),
+  setPendingDeviceStatus: (status) => set({ pendingDeviceStatus: status }),
+  clearPendingDeviceStatus: () => set({ pendingDeviceStatus: null }),
   setPendingSettingsTab: (tab) => set({ pendingSettingsTab: tab }),
   clearPendingSettingsTab: () => set({ pendingSettingsTab: null }),
   setPendingWarrantyFilter: (f) => set({ pendingWarrantyFilter: f }),

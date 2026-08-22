@@ -13,6 +13,9 @@ import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { withSerializableRetryTracked } from '@/lib/retry-transaction'
 import { redacted } from '@/lib/sync-adapter'
 import { logAudit } from '@/lib/audit'
+import { isLegacyBridgeModule, type LegacyBridgeModule } from '@/lib/legacy-bridge'
+import type { LegacyBridgePreviewItem } from '@/lib/legacy-bridge-preview'
+import { applyLegacyBridgeItem, createBridgeAudit } from '@/lib/legacy-bridge-apply'
 
 // Helper: convert JsonValue | null to Prisma Json? input type
 function toJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
@@ -20,6 +23,13 @@ function toJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJso
     return Prisma.JsonNull
   }
   return value as Prisma.InputJsonValue
+}
+
+function bridgeModuleFromTarget(target: string): LegacyBridgeModule | null {
+  const prefix = 'legacy-bridge:'
+  if (!target.startsWith(prefix)) return null
+  const candidate = target.slice(prefix.length)
+  return isLegacyBridgeModule(candidate) ? candidate : null
 }
 
 export async function POST(req: NextRequest) {
@@ -84,23 +94,38 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 6. Filter items to apply
-  const itemsToApply = body.itemIds
+  // 6. Resolve an opt-in bridge target. A malformed namespaced target must
+  // fail closed rather than falling through to the WorkOrder writer.
+  const isNamespacedBridge = previewRun.target.startsWith('legacy-bridge:')
+  const bridgeModule = bridgeModuleFromTarget(previewRun.target)
+  if (isNamespacedBridge && !bridgeModule) {
+    return NextResponse.json({ error: 'Invalid legacy bridge target' }, { status: 400 })
+  }
+
+  // 7. Filter items to apply. Explicit itemIds can never override the
+  // pending-only rule for bridge runs; this prevents replaying applied rows.
+  const selectedItems = body.itemIds
     ? previewRun.items.filter((item) => body.itemIds!.includes(item.id))
-    : previewRun.items.filter((item) => item.status === 'pending')
+    : previewRun.items
+  const itemsToApply = bridgeModule
+    ? selectedItems.filter((item) => item.status === 'pending')
+    : selectedItems
 
   if (itemsToApply.length === 0) {
     return NextResponse.json({ error: 'No pending items to apply' }, { status: 400 })
   }
 
-  // 7. Pre-check per-item Site authorization (I-01)
+  // 8. Pre-check per-item Site authorization (I-01)
   // Reject items with missing/unknown/out-of-scope site before starting mutations
   const authorizedItems: typeof itemsToApply = []
   const rejectedItems: { id: string; error: string }[] = []
 
   for (const item of itemsToApply) {
     const afterData = item.after as Record<string, unknown> | null
-    const itemSiteCode = (afterData?.siteCode as string) || (afterData?.site as string) || null
+    const itemSiteCode = (afterData?.siteCode as string)
+      || (afterData?.siteAtReading as string)
+      || (afterData?.site as string)
+      || null
 
     if (!itemSiteCode) {
       rejectedItems.push({ id: item.id, error: 'MISSING_SITE: no siteCode in item data' })
@@ -115,7 +140,7 @@ export async function POST(req: NextRequest) {
     authorizedItems.push(item)
   }
 
-  // 8. Create apply SyncRun
+  // 9. Create apply SyncRun
   const applyRun = await db.syncRun.create({
     data: {
       source: previewRun.source,
@@ -149,12 +174,68 @@ export async function POST(req: NextRequest) {
     errorRows++
   }
 
-  // 9. Apply each authorized item in separate transaction
+  // 10. Apply each authorized item in separate transaction
   for (const item of authorizedItems) {
     try {
+      // Bridge skip is a successful no-op, not a failed mutation.
+      if (bridgeModule && item.action === 'skip') {
+        await db.syncRunItem.update({
+          where: { id: item.id },
+          data: { status: 'skipped', processedAt: new Date() },
+        })
+        await db.syncRunItem.create({
+          data: {
+            syncRunId: applyRun.id,
+            externalKey: item.externalKey,
+            action: 'skip',
+            before: toJsonInput(item.before),
+            after: toJsonInput(item.after),
+            expectedVersion: item.expectedVersion,
+            expectedExists: item.expectedExists,
+            status: 'skipped',
+            processedAt: new Date(),
+          },
+        })
+        continue
+      }
+
       const { result, attempts, p2034Count } = await withSerializableRetryTracked(
         async (tx) => {
-          // Re-check externalKey in transaction (race protection)
+          if (bridgeModule) {
+            const bridgeItem: LegacyBridgePreviewItem = {
+              externalKey: item.externalKey,
+              action: item.action as LegacyBridgePreviewItem['action'],
+              before: item.before as Record<string, unknown> | null,
+              after: item.after as Record<string, unknown> | null,
+              expectedVersion: item.expectedVersion,
+              expectedExists: item.expectedExists,
+              siteCode: ((item.after as Record<string, unknown> | null)?.siteCode as string)
+                || ((item.after as Record<string, unknown> | null)?.siteAtReading as string)
+                || ((item.after as Record<string, unknown> | null)?.site as string)
+                || null,
+              errorMessage: item.errorMessage || undefined,
+            }
+            const bridgeResult = await applyLegacyBridgeItem({
+              tx,
+              module: bridgeModule,
+              item: bridgeItem,
+              actor: user.email,
+              source: previewRun.source,
+              applyRunId: applyRun.id,
+            })
+            await createBridgeAudit(tx, bridgeItem, bridgeResult, previewRun.source, user.email, applyRun.id)
+            await tx.syncRunItem.update({
+              where: { id: item.id },
+              data: {
+                status: 'applied',
+                entityId: bridgeResult.entityId,
+                entityType: bridgeResult.entityType,
+                processedAt: new Date(),
+              },
+            })
+            return { targetWorkOrderId: bridgeResult.entityId, bridgeResult }
+          } else {
+            // Re-check externalKey in transaction (race protection)
           const existing = await tx.workOrder.findUnique({
             where: { requestId: item.externalKey },
             select: { id: true, version: true },
@@ -239,7 +320,8 @@ export async function POST(req: NextRequest) {
             },
           })
 
-          return { targetWorkOrderId }
+            return { targetWorkOrderId }
+          }
         },
       )
 
@@ -247,7 +329,7 @@ export async function POST(req: NextRequest) {
       totalP2034 += p2034Count
 
       if (item.action === 'create') createRows++
-      else updateRows++
+      else if (item.action === 'update') updateRows++
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
 
@@ -264,7 +346,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 10. Update SyncRun with final stats
+  // 11. Update SyncRun with final stats
   const completedAt = new Date()
   await db.syncRun.update({
     where: { id: applyRun.id },
@@ -281,7 +363,7 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // 11. Audit log for the run
+  // 12. Audit log for the run
   await logAudit(
     'SYNC_APPLY',
     'SyncRun',

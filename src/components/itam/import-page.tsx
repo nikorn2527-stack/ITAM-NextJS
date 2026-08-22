@@ -56,6 +56,7 @@ import {
 import { downloadCsv } from '@/lib/csv'
 import { cn } from '@/lib/utils'
 import { LegacyImportSection } from './legacy-import-section'
+import { ManualSyncPreviewSection } from './manual-sync-preview-section'
 
 // ============================================================
 // ข้อ 3: นำเข้าข้อมูล — อัปโหลด Excel/CSV แยกตามประเภท
@@ -479,6 +480,10 @@ export function ImportPage() {
               <Database className="h-3.5 w-3.5" />
               นำเข้าจากระบบเก่า (Apps Script)
             </TabsTrigger>
+            <TabsTrigger value="sync-preview" className="gap-1.5">
+              <RefreshCw className="h-3.5 w-3.5" />
+              Preview Sync (ไม่เขียน)
+            </TabsTrigger>
           </TabsList>
 
           {/* ─── Manual import tab ─── */}
@@ -668,6 +673,11 @@ export function ImportPage() {
           {/* ─── Legacy Apps Script import tab ─── */}
           <TabsContent value="legacy" className="min-h-0 flex-1 overflow-y-auto">
             <LegacyImportSection />
+          </TabsContent>
+
+          {/* ─── Repair preview-only sync tab ─── */}
+          <TabsContent value="sync-preview" className="min-h-0 flex-1 overflow-y-auto">
+            <ManualSyncPreviewSection />
           </TabsContent>
         </Tabs>
 

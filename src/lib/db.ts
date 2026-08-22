@@ -4,8 +4,10 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+// Reuse the same client across warm serverless invocations as well as dev HMR.
+// Without production caching, each Vercel invocation can create another pool,
+// exhausting Supabase session-mode connection limits under modest concurrency.
 if (
-  process.env.NODE_ENV !== 'production' &&
   globalForPrisma.prisma &&
   !(
     (globalForPrisma.prisma as unknown as { auditLog?: unknown }).auditLog &&
@@ -51,4 +53,6 @@ export const db =
           : ['error', 'warn'],
   })
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+// Persist in every runtime. The global is process-local, so each serverless
+// instance still owns only one Prisma client/pool and can be reclaimed normally.
+globalForPrisma.prisma = db

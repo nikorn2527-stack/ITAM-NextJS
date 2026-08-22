@@ -78,6 +78,8 @@ const WORK_ORDER_IDENTITY_KEYS = new Set([
   'เลขที่งาน',
   'เลขงาน',
   'หมายเลขงาน',
+  'site',
+  'sitecode',
 ])
 
 const STOCK_OUT_KNOWN_KEYS = new Set([

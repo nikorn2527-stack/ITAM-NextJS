@@ -358,6 +358,11 @@ export interface PreviewItem {
  * Compute preview items by comparing source records against DB.
  * Read-only — does NOT write to any business table.
  */
+export type PreviewRecordMapper = (record: SyncSourceRecord) => {
+  mapped: Record<string, unknown>
+  unmapped: string[]
+}
+
 export async function computePreviewItems(
   records: SyncSourceRecord[],
   tx: {
@@ -366,11 +371,12 @@ export async function computePreviewItems(
     }
   },
   siteScope?: string[],
+  mapper: PreviewRecordMapper = mapSourceRecord,
 ): Promise<PreviewItem[]> {
   const items: PreviewItem[] = []
 
   for (const record of records) {
-    const { mapped, unmapped } = mapSourceRecord(record)
+    const { mapped, unmapped } = mapper(record)
     const requestId = String(mapped.requestId || record.requestId || '')
 
     if (!requestId) {
