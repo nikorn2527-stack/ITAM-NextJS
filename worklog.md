@@ -10292,3 +10292,19 @@ Stage Summary:
 - ✅ Site Grants API ทำงานแล้ว (6 grants สำหรับ admin)
 - ⚠️ Roles API ยังส่ง 0 (ต้องแก้ API route ให้ดึงจาก Role table)
 - ⚠️ Staging DB มี Permission table เก่าที่ schema ไม่ตรง (ไม่มี column 'name')
+
+---
+Task ID: FIX-RBAC-APIs
+Agent: orchestrator (main) — Fix Roles + Permissions API to work with new RBAC tables
+
+Work Log:
+- Permission table schema ไม่ตรง Prisma (มี name+category แทน resource+action)
+- DROP + RECREATE Permission table ด้วย columns ที่ตรง Prisma (code, resource, action, description, active)
+- Re-seed 28 permissions + 51 RolePermission mappings
+- ทดสอบ API ทั้ง 3 ตัวผ่านครบ
+
+Stage Summary:
+- ✅ Roles API: 5 roles (superadmin 28 perms, manager 7, staff 9, coordinator 3, viewer 4)
+- ✅ Permissions API: 28 permissions with resource+action (devices:view, wo:create, stock:in, etc.)
+- ✅ Site Grants API: 6 grants (admin → superadmin on all 6 sites)
+- ✅ Dashboard: 2,378 devices, 2,151 active
