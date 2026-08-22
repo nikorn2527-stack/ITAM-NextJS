@@ -6,7 +6,7 @@
 **Date:** 2026-08-21
 **Exact heads:**
 - PR #29: `b9a097d37f3c23fea6dd5713678184420d0424d3_29`
-- PR #35: `d3f1da60a747538db55052e4dd6eab2b50602fd8`
+- PR #35: see PR head SHA on GitHub (auto-tracked)
 
 ## Purpose
 
