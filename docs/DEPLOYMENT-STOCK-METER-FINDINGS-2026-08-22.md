@@ -29,3 +29,9 @@ The `activeOnly=true` query form is not a supported canonical value in the inspe
 ## Safety and governance
 
 All checks above were read-only. No stock rows, meter readings, users, or configuration were modified. G3 Canary and Production remain blocked. B4 frozen files remain untouched.
+
+## Vercel Preview block
+
+After PR #52 was opened, the Vercel GitHub comment reported that it did not deploy the pull request because GitHub could not verify the account for commit `9824e56`. Local metadata showed the commit email as `2.31390095e+08+nikorn2527-stack@users.noreply.github.com`, while the GitHub account ID is `231390095`; the scientific-notation form is not a valid GitHub no-reply identity. The next commit must use `231390095+nikorn2527-stack@users.noreply.github.com`, and the GitHub account must be connected to the Vercel team/project by an administrator. No rewrite of existing history is required for this corrective step.
+
+This is a deployment integration block, not evidence that the parity code failed. Until a Preview deploy is available, runtime verification remains limited to local build/lint/contracts and read-only checks against the current deployment.
