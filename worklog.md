@@ -9274,3 +9274,74 @@ Total ITAM-01 parallel work completed (9 PRs นอกเหนือจาก P
 - PR #51: search/filter contract (73 tests)
 
 Total tests: 15 + 49 + 38 + 36 + 37 + 47 + 34 + 43 + 73 + 73 = 445 tests PASS (pure functions, no DB)
+
+---
+Task ID: ITAM-01-TAKEOVER-ALL-LANES-2026-08-22
+Agent: ITAM-01 — Dev-3 / Devices (per user direction "ผมเลือกข้อ 2 ครับเพราะอะไรรู้ไหม ผมว่าทีมนี้เร็วสุดทำงานได้ตรงเป๊ะ")
+
+Task: ITAM-01 รับช่วง takeover cross-review verdicts สำหรับ Meter lane + Repair lane + Stock lane ที่ค้าง verdict (per user authorization + matrix §5 extended ring)
+
+Work Log:
+
+**1. Meter lane takeover (4 PRs):**
+
+| PR | Scope | Tests | Verdict |
+|---|---|---|---|
+| #30 | meter validation contract | 6/6 PASS | ✅ PASS |
+| #31 | meter API boundary | 8/8 PASS | ✅ PASS |
+| #39 | meter stale readings | 10/10 PASS | ✅ PASS |
+| #44 | meter bound history + retries | 11/11 PASS | ✅ PASS |
+
+**2. Repair lane takeover (2 PRs — #22 is foundation, not module PR):**
+
+| PR | Scope | Tests | Verdict |
+|---|---|---|---|
+| #36 | repair completion guard | 4/4 PASS | ✅ PASS |
+| #42 | repair manual sync shell | lint clean (UI only) | ✅ PASS |
+
+**3. Stock lane takeover (2 PRs):**
+
+| PR | Scope | Tests | Verdict |
+|---|---|---|---|
+| #37 | stock transaction validation | 4/4 PASS | ✅ PASS |
+| #43 | stock CSV fallback + schema | 5/5 PASS | ✅ PASS WITH CONDITIONS (Audit required for migration) |
+
+**4. Governance verified for all 8 PRs:**
+- B4 frozen files: 0-diff verified (all 6 files vs respective base)
+- SYNC_RUN permission: NOT added (all 8)
+- Schema/migration: NOT changed except PR #43 (additive index — Audit required)
+- Canonical ownership: stays within respective module
+- Secret values: none
+
+**5. Takeover authorization:**
+- Per user direction (Release Owner): "ผมเลือกข้อ 2 ครับเพราะอะไรรู้ไหม ผมว่าทีมนี้เร็วสุดทำงานได้ตรงเป๊ะ"
+- Per matrix §5 extended ring: primary + backup silent → extended ring next = ITAM-01
+- Per EXPEDITED + WAR-ROOM orders (5+ hours silent stalemate)
+- ITAM-01 posted takeover announcement on Issue #26 (Meter) before issuing verdicts
+
+**6. Conflict of interest check (per matrix §5):**
+- ITAM-01 did NOT author any of these 8 PRs ✅
+- ITAM-01 did NOT touch any file in these PRs ✅ (separate modules)
+- ITAM-01 has no shared commits with ITAM-02/03/04 on these PRs ✅
+- ITAM-01 is consumer of Meter + Repair contracts — adds domain-consult value ✅
+
+Stage Summary:
+- 8 PRs reviewed + verdicts issued by ITAM-01 (takeover)
+- 7 PASS + 1 PASS WITH CONDITIONS (PR #43 — Audit required for migration)
+- Total verdicts issued by ITAM-01: 2 (primary/backup) + 8 (takeover) = 10 PRs
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+Updated cross-review status:
+- ✅ PASS: #27, #28, #30, #31, #36, #37, #39, #42, #44 (9 PRs)
+- ✅ PASS WITH CONDITIONS: #43 (1 PR — Audit required for migration)
+- ⏳ Pending: Devices lane #29, #35, #38, #41, #45, #46, #47, #48, #49, #50, #51 (11 PRs — ITAM-04 still reviewing)
+- ⏳ Pending: #22 (foundation — separate review path)
+- ⏳ Pending: #32, #33, #34 (governance docs)
+- ⏳ Pending: #1, #6, #16, #18 (G2/release — separate review path)
+
+ITAM-01 ทำงานครบตาม scope:
+- Author: 11 PRs (Devices lane)
+- Reviewer primary: 1 PASS (#28 Stock)
+- Reviewer backup takeover: 1 PASS (#27 Repair)
+- Reviewer extended ring takeover: 8 verdicts (4 Meter + 2 Repair + 2 Stock)
+- Total verdicts issued: 10 PRs
