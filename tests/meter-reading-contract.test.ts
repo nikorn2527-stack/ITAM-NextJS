@@ -3,6 +3,7 @@ import {
   hasDuplicateMeterPeriod,
   meterPeriodKey,
   parseMeterQuery,
+  validateMeterChannels,
   validateMeterReading,
 } from '@/lib/meter-reading-contract'
 
@@ -37,6 +38,57 @@ describe('validateMeterReading()', () => {
       date: '2026-08-21',
       remark: 'เปลี่ยนชุดมิเตอร์',
     })).toMatchObject({ ok: true, delta: -900, isReset: true })
+  })
+
+  it('validates both channels and reports the failing channel', () => {
+    expect(validateMeterChannels({
+      deviceId: 'device-1',
+      date: '2026-08-21',
+      meterBw: 1250,
+      previousMeterBw: 1000,
+      meterColor: 320,
+      previousMeterColor: 300,
+    })).toEqual({ ok: true })
+
+    const invalid = validateMeterChannels({
+      deviceId: 'device-1',
+      date: '2026-08-21',
+      meterBw: 1250,
+      previousMeterBw: 1000,
+      meterColor: -1,
+      previousMeterColor: 300,
+    })
+    expect(invalid).toMatchObject({
+      ok: false,
+      channel: 'color',
+      validation: { code: 'NEGATIVE_READING' },
+    })
+  })
+
+  it('requires a remark for a reset on either meter channel', () => {
+    const invalid = validateMeterChannels({
+      deviceId: 'device-1',
+      date: '2026-08-21',
+      meterBw: 1250,
+      previousMeterBw: 1000,
+      meterColor: 250,
+      previousMeterColor: 300,
+    })
+    expect(invalid).toMatchObject({
+      ok: false,
+      channel: 'color',
+      validation: { code: 'RESET_REQUIRES_REMARK' },
+    })
+
+    expect(validateMeterChannels({
+      deviceId: 'device-1',
+      date: '2026-08-21',
+      remark: 'เปลี่ยนชุดมิเตอร์',
+      meterBw: 1250,
+      previousMeterBw: 1000,
+      meterColor: 250,
+      previousMeterColor: 300,
+    })).toEqual({ ok: true })
   })
 
   it('rejects invalid dates, negative readings and non-finite values', () => {
