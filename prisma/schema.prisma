@@ -66,6 +66,15 @@ model Device {
   updatedAt       DateTime @updatedAt
   updatedBy       String?  @default("System")
 
+  // ── Cascading master data (NEW — nullable FKs, populated gradually) ──
+  // Kept nullable so existing devices (without cascade links) keep working.
+  typeId          String?  // FK → DeviceType.id
+  brandId         String?  // FK → Brand.id
+  modelId         String?  // FK → Model.id
+  deviceType      DeviceType? @relation(fields: [typeId], references: [id])
+  brandRef        Brand?      @relation(fields: [brandId], references: [id])
+  modelRef        Model?      @relation(fields: [modelId], references: [id])
+
   // Relations
   meterReadings     MeterReading[]
   transfers         DeviceTransfer[]
@@ -79,6 +88,57 @@ model Device {
   @@index([status])
   @@index([type])
   @@index([meterRequired])
+  @@index([typeId])
+  @@index([brandId])
+  @@index([modelId])
+}
+
+// ============================================================
+// 1a) DeviceType / Brand / Model — Cascading master data
+//     DeviceType (1) ─< Brand (1) ─< Model (N)
+//     Existing Device.brand/model/type (String) are kept for backward compat;
+//     the new FK fields are nullable so legacy rows are not broken.
+// ============================================================
+model DeviceType {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brands Brand[]
+  devices Device[]
+}
+
+model Brand {
+  id        String     @id @default(cuid())
+  name      String
+  typeId    String
+  type      DeviceType @relation(fields: [typeId], references: [id])
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  models  Model[]
+  devices Device[]
+
+  @@unique([name, typeId])
+  @@index([typeId])
+}
+
+model Model {
+  id        String   @id @default(cuid())
+  name      String
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id])
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  devices Device[]
+
+  @@unique([name, brandId])
+  @@index([brandId])
 }
 
 // ============================================================

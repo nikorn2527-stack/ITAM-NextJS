@@ -63,6 +63,7 @@ import {
   Eye,
   EyeOff,
   Building2,
+  Layers,
 } from 'lucide-react'
 import type { Device, MeterReading, DeviceTransfer, Site, Assignment, LicenseRecord } from './types'
 import {
@@ -74,6 +75,10 @@ import {
   formatThaiDate,
   formatBaht,
 } from './types'
+import {
+  CascadingDropdown,
+  type CascadingValue,
+} from './cascading-dropdown'
 
 interface Props {
   deviceId: string | null
@@ -248,6 +253,14 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const [revealedLicenseKeys, setRevealedLicenseKeys] = React.useState<
     Record<string, boolean>
   >({})
+
+  // ── Quick Edit (cascading master data + location) dialog state ──
+  // Lets the user update Type/Brand/Model + Building/Floor/Department/Location
+  // without opening the full edit form. Saves both new FK fields AND the
+  // legacy String fields (backward compatible).
+  const [quickEditOpen, setQuickEditOpen] = React.useState(false)
+  const [cascadeVal, setCascadeVal] = React.useState<CascadingValue>({})
+  const [quickSaving, setQuickSaving] = React.useState(false)
 
   // Lifecycle action dialog state
   const [actionOpen, setActionOpen] = React.useState(false)
@@ -752,6 +765,92 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     }
   }
 
+  // ── Quick Edit (cascading master data + location) ──
+  // Open the dialog pre-filled with the device's current Type/Brand/Model
+  // + Building/Floor/Department/Location. The user can change any field,
+  // and on save we PUT both the new FK fields AND the legacy String fields.
+  function openQuickEdit() {
+    if (!device) return
+    setCascadeVal({
+      type: device.type ?? '',
+      brand: device.brand ?? '',
+      model: device.model ?? '',
+      // typeId/brandId/modelId come from the device row when present
+      // (newer devices populate them; legacy devices will resolve the IDs
+      // via the loaded master lists once the user picks a known value).
+      typeId: device.typeId ?? null,
+      brandId: device.brandId ?? null,
+      modelId: device.modelId ?? null,
+      building: device.building ?? '',
+      floor: device.floor ?? '',
+      department: device.department ?? '',
+      location: device.location ?? '',
+    })
+    setQuickEditOpen(true)
+  }
+
+  async function saveQuickEdit() {
+    if (!device) return
+    if (!cascadeVal.type || !cascadeVal.brand || !cascadeVal.model) {
+      toast.error('กรุณากรอกประเภท แบรนด์ และรุ่นให้ครบ')
+      return
+    }
+    try {
+      setQuickSaving(true)
+      const body: Record<string, unknown> = {
+        // ── Legacy String fields (backward compat) ──
+        type: cascadeVal.type ?? null,
+        brand: cascadeVal.brand ?? null,
+        model: cascadeVal.model ?? null,
+        building: cascadeVal.building || null,
+        floor: cascadeVal.floor || null,
+        department: cascadeVal.department || null,
+        location: cascadeVal.location || null,
+        // ── New FK fields (may be null when user typed a brand-new value) ──
+        typeId: cascadeVal.typeId || null,
+        brandId: cascadeVal.brandId || null,
+        modelId: cascadeVal.modelId || null,
+      }
+      const res = await fetch(`/api/devices/${device.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'อัปเดตไม่สำเร็จ')
+      }
+      const json = await res.json()
+      toast.success('บันทึกข้อมูลหลักเรียบร้อยแล้ว')
+      setQuickEditOpen(false)
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['device-detail', deviceId] }),
+        qc.invalidateQueries({ queryKey: ['devices'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard'] }),
+        qc.invalidateQueries({ queryKey: ['audit'] }),
+      ])
+      // If the user typed a brand-new Type/Brand/Model, the server-side
+      // PUT doesn't auto-create the master rows. We surface a hint here
+      // so the admin can add them later via the Master Data screen.
+      if (
+        cascadeVal.isNewType ||
+        cascadeVal.isNewBrand ||
+        cascadeVal.isNewModel
+      ) {
+        toast.info(
+          'ค่าใหม่ถูกบันทึกเป็นข้อความ — แต่ยังไม่ถูกเพิ่มเข้า Master Data',
+          { duration: 6000 },
+        )
+      }
+      // Best-effort: log the returned device for debugging.
+      void json
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setQuickSaving(false)
+    }
+  }
+
   function openTransferDialog() {
     if (!device) return
     setTSite('')
@@ -1051,9 +1150,22 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
 
           {/* Info grid */}
           <section>
-            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              ข้อมูลอุปกรณ์
-            </h3>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                ข้อมูลอุปกรณ์
+              </h3>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={openQuickEdit}
+                disabled={!device}
+                className="h-7 gap-1 px-2 text-[11px] text-[#0d9488] hover:bg-[#0d9488]/10 hover:text-[#0d9488] dark:text-[#14b8a6]"
+                title="แก้ไขประเภท / แบรนด์ / รุ่น / ที่ตั้ง"
+              >
+                <Layers className="h-3.5 w-3.5" />
+                แก้ไขข้อมูลหลัก
+              </Button>
+            </div>
             {deviceLoading ? (
               <div className="grid grid-cols-2 gap-3">
                 {Array.from({ length: 8 }).map((_, i) => (
@@ -1982,6 +2094,55 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                 </>
               ) : (
                 'ยืนยันการคืน'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Edit (cascading master data + location) sub-dialog */}
+      <Dialog open={quickEditOpen} onOpenChange={setQuickEditOpen}>
+        <DialogContent className="sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+              <Layers className="h-4 w-4 text-[#0d9488]" />
+              แก้ไขข้อมูลหลัก — {device?.assetCode}
+            </DialogTitle>
+            <DialogDescription>
+              เลือกจากรายการที่มี หรือพิมพ์ค่าใหม่ได้ (ระบบจะทำเคราะห์ค่าใหม่ด้วยเครื่องหมาย “+ ใหม่”).
+              บันทึกทั้งฟิลด์ FK ใหม่ ({'typeId/brandId/modelId'}) และฟิลด์ข้อความเดิม ({'type/brand/model'}).
+            </DialogDescription>
+          </DialogHeader>
+
+          {device && (
+            <CascadingDropdown
+              site={device.site}
+              initial={cascadeVal}
+              onChange={setCascadeVal}
+              disabled={quickSaving}
+            />
+          )}
+
+          <DialogFooter className="mt-2">
+            <Button
+              variant="outline"
+              onClick={() => setQuickEditOpen(false)}
+              disabled={quickSaving}
+            >
+              ยกเลิก
+            </Button>
+            <Button
+              onClick={saveQuickEdit}
+              disabled={quickSaving}
+              className="border border-[#0d9488] bg-[#0d9488] text-white hover:bg-[#0f766e] focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6] dark:bg-[#14b8a6] dark:hover:bg-[#0d9488] dark:focus-visible:ring-offset-slate-950"
+            >
+              {quickSaving ? (
+                <>
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  กำลังบันทึก...
+                </>
+              ) : (
+                'บันทึก'
               )}
             </Button>
           </DialogFooter>

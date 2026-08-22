@@ -9795,3 +9795,113 @@ Stage Summary:
 - Stock out features: debounced search, low-stock / out-of-stock badges, bottom-sheet issue form, quantity stepper, optional WO linking via debounced search, success view with txnNumber, collapsible "รออนุมัติ" pending list.
 - Touch-friendly, Thai-localized, accessible, responsive (max-w-md centered on desktop).
 - No regressions to existing code; no schema change; B4 frozen files untouched; no new API routes.
+
+---
+Task ID: CASCADING-MASTER-DATA
+Agent: ITAM-01 — Dev-3 / Devices
+
+Task: Create cascading master data system (DeviceType → Brand → Model + Site → Building → Floor → Department + Location)
+
+Work Log:
+- Read worklog.md (last 100 lines) for project history; read existing prisma/schema.prisma (Device, MasterItem models), src/lib/db.ts, src/lib/site-scope.ts, src/lib/api/auth.ts, src/lib/auth-middleware.ts, src/components/itam/master-data-modal.tsx, src/components/itam/combobox.tsx (reusable), src/components/itam/types.ts, src/components/itam/device-detail-sheet.tsx (info grid at lines 1052–1099, SheetFooter at 1689), src/app/api/devices/[id]/route.ts (PUT accepts editable fields), src/app/api/master/route.ts (legacy MasterItem GET/POST), src/app/page.tsx (global fetch interceptor attaches Bearer to /api/itam/*, /api/v1/*, /api/devices, /api/dashboard etc), src/components/itam/devices-page.tsx (legacy device form uses plain Input for brand/model/type), src/lib/asset-site-code.ts, src/components/itam/mobile/mobile-meter-reading.tsx (Bearer-attached fetch pattern).
+- Confirmed CSV at /home/z/my-project/upload/IT_Asset_Management_Database - All_Devices.csv (2,378 rows; columns: asset_no,device_type,brand,model,serial,building,floor,department,location,department_code,status,site,contract_no,ip,mac,remote_id,updated_at,updated_by,remark,vendor,install_date,uninstall_date,warranty_end,device_group,cost_center,meter_required,meter_mode,asset_site_code).
+- Wrote work record to /agent-ctx/CASCADING-MASTER-DATA-ITAM-01.md.
+
+Schema changes (prisma/schema.prisma):
+- Added 3 new normalized models:
+  • DeviceType { id, name @unique, active, createdAt, updatedAt, brands[], devices[] }
+  • Brand      { id, name, typeId, type, active, createdAt, updatedAt, models[], devices[]; @@unique([name, typeId]), @@index([typeId]) }
+  • Model      { id, name, brandId, brand, active, createdAt, updatedAt, devices[]; @@unique([name, brandId]), @@index([brandId]) }
+- Added nullable FK columns on Device:
+  • typeId String?   → DeviceType? (relation: deviceType)
+  • brandId String?  → Brand?     (relation: brandRef)
+  • modelId String?  → Model?     (relation: modelRef)
+- Added @@index([typeId]), @@index([brandId]), @@index([modelId]) on Device.
+- KEPT existing Device.brand / Device.model / Device.type (String columns) for backward compatibility.
+- Did NOT touch B4 frozen files (retry-transaction.ts, wo-authz.ts, authorization-context.ts, auth-middleware.ts, auth-shared.ts, audit.ts).
+- Ran `bunx prisma generate` (Prisma Client v6.19.2 regenerated with new models).
+- `prisma migrate dev` was attempted but failed (DB drift — local migrations folder was empty; DB already had baseline migrations applied). Used the recommended additive approach instead: `prisma migrate diff --from-url ... --to-schema-datamodel prisma/schema.prisma --script` to compute the diff, then wrote an idempotent additive-only migration SQL file, applied via `bunx prisma db execute --file ...`, and marked the migration applied via `bunx prisma migrate resolve --applied 20260822000005_add_device_type_brand_model`.
+
+Migration file (prisma/migrations/20260822000005_add_device_type_brand_model/migration.sql):
+- CREATE TABLE IF NOT EXISTS "DeviceType" / "Brand" / "Model" with PK + columns.
+- CREATE UNIQUE INDEX "DeviceType_name_key", "Brand_name_typeId_key", "Model_name_brandId_key".
+- CREATE INDEX "Brand_typeId_idx", "Model_brandId_idx".
+- ALTER TABLE "Device" ADD COLUMN "typeId"/"brandId"/"modelId" TEXT (nullable).
+- CREATE INDEX "Device_typeId_idx" / "Device_brandId_idx" / "Device_modelId_idx".
+- AddForeignKey constraints with ON DELETE SET NULL (Device FKs) / ON DELETE RESTRICT (Brand/Model FKs).
+- All statements wrapped in DO $$ ... IF NOT EXISTS ... END$$ blocks so the migration is fully idempotent — safe to re-run.
+
+Seed script (scripts/seed-master-data.ts, ~330 lines):
+- Reads CSV, parses with RFC-4180 parser (BOM-stripped, quoted-field-aware).
+- Maps site names to site codes (อุดร→UDH, นครปฐม→NKP, เชียงใหม่→CNX, กรุงเทบ→BKK-1, default→HQ) — matches import-devices.ts.
+- Seeds DeviceType (upsert by name), Brand (findFirst by name+typeId then create), Model (findFirst by name+brandId then create) — idempotent.
+- Seeds MasterItem:
+  • Building (category='Building', siteCode from device, code=`<SITE>-<SLUG>`)
+  • Floor    (category='Floor', parentRef=building, siteCode from device)
+  • Department (category='Department', siteCode from device)
+  • DeviceGroup (category='DeviceGroup', global)
+  • Status     (category='Status', global)
+- Re-runs are no-ops (findFirst + create pattern).
+- Ran against staging DB: 12 DeviceType, 21 Brand, 41 Model, 44 Building, 103 Floor, 286 Department, 3 DeviceGroup, 9 Status.
+- Verified idempotency (re-run reports 0 new across all categories).
+
+API — unified GET /api/master/route.ts:
+- Added `requireAuth(req, 'VIEW_DEVICES')` (was previously unauthenticated).
+- Legacy backward-compat: `?category=X` or no `type=` param → returns `{ items: MasterItem[] }` filtered by category (preserves existing settings-page.tsx, devices-page.tsx, stock-out-form.tsx, stock-in-form.tsx callers).
+- New cascading GET via `?type=…`:
+  • device-types   → db.deviceType.findMany (global, not site-scoped)
+  • brands&typeId= → db.brand.findMany (global)
+  • models&brandId= → db.model.findMany (global)
+  • buildings&site= → DISTINCT building FROM Device (site-scoped)
+  • floors&site=&building= → DISTINCT floor FROM Device (site-scoped)
+  • departments&site=&building=&floor= → DISTINCT department FROM Device (site-scoped)
+  • locations&site= → DISTINCT location FROM Device (site-scoped)
+  • device-groups → DISTINCT deviceGroup FROM Device (global)
+  • statuses → DISTINCT status FROM Device (global)
+- Site scoping: uses parseAllowedSites(user.allowedSites) + normalizeSiteCode from @/lib/site-scope. For site-scoped queries, if `?site=` is given and not in user's allowed sites → 403. If `?site=` is omitted → uses user's full allowedSites list (IN clause) or unscoped for superadmin.
+- POST preserved unchanged (MasterDataModal still creates MasterItem rows). Auth bumped to MASTER_DATA_EDIT.
+- Updated src/app/page.tsx global fetch interceptor to also attach Bearer token for `/api/master` (one-line addition to the URL match condition) so all legacy client callers automatically get authenticated.
+
+API — PUT /api/devices/[id]/route.ts:
+- Added 'typeId', 'brandId', 'modelId' to EDITABLE_FIELDS list.
+- Added `typeId: setStr('typeId', body), brandId: setStr('brandId', body), modelId: setStr('modelId', body)` to the updateData object — accepts the new FK fields and persists them when present, sets to null when empty.
+
+CascadingDropdown component (src/components/itam/cascading-dropdown.tsx, ~430 lines, 'use client'):
+- Two cascade groups + free-text Location:
+  • Section 1: ประเภท → แบรนด์ → รุ่น (DeviceType → Brand → Model — backed by normalized FK tables)
+  • Section 2: อาคาร → ชั้น → แผนก → ที่ตั้ง (Building → Floor → Department + Location — backed by DISTINCT queries on Device)
+- Uses existing shadcn Combobox (Popover + Command) — supports BOTH selecting from list AND typing a brand-new value.
+- When the typed value doesn't match any item in the loaded list, a "+ ใหม่" amber badge appears next to the field and `isNewType/Brand/Model` flags are set true in the emitted CascadingValue.
+- Loading skeletons via shadcn Skeleton while each list is fetched (TanStack Query, staleTime 30–60s).
+- Touch-friendly: every Combobox trigger is h-11 (44px, meets iOS HIG).
+- Cascade-clear on parent change: changing Type clears Brand+Model; changing Building clears Floor+Department; changing Floor clears Department.
+- Props: `site` (fixed from login), `initial` (for edit mode), `onChange` (emits full CascadingValue), `disabled`, `className`.
+- Emits CascadingValue { typeId?, brandId?, modelId?, type?, brand?, model?, isNewType?, isNewBrand?, isNewModel?, building?, floor?, department?, location? }.
+- Site badge shown next to section 2 header so user knows which site the building/floor queries are scoped to.
+- Hints ("⚠ เลือกประเภทก่อน", etc.) shown when parent not yet picked.
+
+Wired into device-detail-sheet.tsx (src/components/itam/device-detail-sheet.tsx):
+- Added imports: CascadingDropdown + CascadingValue from './cascading-dropdown', Layers icon from lucide-react.
+- Added state: quickEditOpen (bool), cascadeVal (CascadingValue), quickSaving (bool).
+- Added openQuickEdit() — opens a Dialog pre-filled with the device's current Type/Brand/Model + Building/Floor/Department/Location (+ typeId/brandId/modelId from the device row when present).
+- Added saveQuickEdit() — PUTs to /api/devices/[id] with BOTH the new FK fields (typeId, brandId, modelId) AND the legacy String fields (type, brand, model, building, floor, department, location). On success: invalidates device-detail + devices + dashboard + audit queries; toast.success. When the user typed a brand-new Type/Brand/Model, surfaces an info toast explaining the value was saved as text but not auto-added to Master Data.
+- Added "แก้ไขข้อมูลหลัก" (Quick Edit) ghost button (text-[#0d9488], Layers icon, h-7) in the info-grid header next to the "ข้อมูลอุปกรณ์" label.
+- Added new Dialog (sm:max-w-3xl) containing <CascadingDropdown site={device.site} initial={cascadeVal} onChange={setCascadeVal} disabled={quickSaving} /> with ยกเลิก / บันทึก footer buttons. The บันทึก button shows a Loader2 spinner during save.
+- Existing "แก้ไข" button (which calls onEdit → opens the full form in devices-page.tsx) is UNCHANGED — users still have access to the full form for other fields (purchaseDate, warrantyMonths, ip/mac, etc.).
+- Updated src/components/itam/types.ts to add optional typeId/brandId/modelId fields to the client Device interface (so openQuickEdit can read them from the GET response).
+
+Lint / Type check:
+- `bunx eslint src/app/api/master/ src/components/itam/cascading-dropdown.tsx src/components/itam/device-detail-sheet.tsx src/app/api/devices/[id]/route.ts src/app/page.tsx scripts/seed-master-data.ts src/components/itam/types.ts` — EXIT=0, 0 errors, 0 warnings.
+- `bunx tsc --noEmit` — 0 errors in my changed files (cascading-dropdown.tsx, api/master/route.ts, api/devices/[id]/route.ts, device-detail-sheet.tsx, types.ts, page.tsx). Pre-existing errors in unrelated files (sync/route.ts displayLabel drift, dashboard-page.tsx missing imports, itam-device-detail-sheet.tsx assetNo drift) are NOT caused by this task.
+- `bunx prisma generate` — regenerated cleanly with new DeviceType/Brand/Model models.
+- Migration applied to staging DB (verified by creating + deleting a test DeviceType/Brand/Model triple via Prisma client — see verify-migration.ts; since cleaned up).
+- Seed script run successfully — 12 DeviceTypes, 21 Brands, 41 Models, 44 Buildings, 103 Floors, 286 Departments, 3 DeviceGroups, 9 Statuses in DB. Re-run is idempotent (0 new rows on second run).
+
+Stage Summary:
+- 4 new files: prisma/migrations/20260822000005_add_device_type_brand_model/migration.sql, scripts/seed-master-data.ts, src/app/api/master/route.ts (rewritten), src/components/itam/cascading-dropdown.tsx.
+- 4 files updated: prisma/schema.prisma (+3 models +3 nullable FK cols on Device +3 indexes), src/app/api/devices/[id]/route.ts (PUT accepts typeId/brandId/modelId), src/components/itam/device-detail-sheet.tsx (Quick Edit dialog with CascadingDropdown + แก้ไขข้อมูลหลัก button), src/components/itam/types.ts (+typeId/brandId/modelId on Device interface), src/app/page.tsx (global fetch interceptor includes /api/master).
+- Backward compatibility preserved: legacy Device.brand/model/type String columns are still populated on save alongside the new FK fields; existing MasterDataModal POST and `?category=…` GET behavior unchanged.
+- Site-scoped queries (buildings/floors/departments/locations) respect user.allowedSites via parseAllowedSites; global queries (device-types/brands/models/device-groups/statuses) are not scoped.
+- Touch-friendly (≥44px triggers), Thai-localized, accessible (ARIA labels on comboboxes), responsive (1-col mobile → 3-col sm for type/brand/model, 1-col mobile → 2-col sm → 4-col lg for location grid).
+- "New value" UX: typing a value not in the list is allowed; an amber "+ ใหม่" badge marks the field; the parent's onChange emits isNewXxx=true so the consumer can decide whether to auto-create the master row (currently we save as text + show an info toast).
+- B4 frozen files untouched (retry-transaction.ts, wo-authz.ts, authorization-context.ts, auth-middleware.ts, auth-shared.ts, audit.ts). No `prisma db:push` used — only migration files via `prisma db execute` + `prisma migrate resolve --applied`.

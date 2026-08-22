@@ -175,7 +175,7 @@ export default function Home() {
     }
     const patchedFetch: typeof window.fetch = (input, init) => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url)
-      if ((url.includes('/api/itam/') || url.includes('/api/v1/') || url.includes('/api/work-orders') || url.includes('/api/devices') || url.includes('/api/stock-items') || url.includes('/api/dashboard')) && !url.includes('/api/itam/auth/login')) {
+      if ((url.includes('/api/itam/') || url.includes('/api/v1/') || url.includes('/api/work-orders') || url.includes('/api/devices') || url.includes('/api/stock-items') || url.includes('/api/dashboard') || url.includes('/api/master')) && !url.includes('/api/itam/auth/login')) {
         const token = useAuthStore.getState().token
         if (token) {
           const headers = new Headers(init?.headers || {})

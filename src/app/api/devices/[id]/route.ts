@@ -102,6 +102,10 @@ const EDITABLE_FIELDS = [
   'purchasePrice',
   'salvageValue',
   'usefulLife',
+  // Cascading master-data FKs (nullable, populated by the CascadingDropdown)
+  'typeId',
+  'brandId',
+  'modelId',
 ] as const
 
 export async function PUT(
@@ -160,6 +164,10 @@ export async function PUT(
           : undefined,
       usefulLife:
         body.usefulLife !== undefined ? optInt(body.usefulLife) : undefined,
+      // Cascading master-data FKs (nullable)
+      typeId: setStr('typeId', body),
+      brandId: setStr('brandId', body),
+      modelId: setStr('modelId', body),
     }
 
     // Status transition side effects (aligned with Apps Script DeviceService.gs)
