@@ -8922,3 +8922,77 @@ Total Dev-3 parallel work completed:
 - PR #45: importer ↔ transfer integration scenarios
 - PR #46: devices ↔ meter contract scenarios
 - PR #47: lifecycle contract (status transitions + warranty + depreciation)
+
+---
+Task ID: DEVICES-AUDIT-HISTORY-PR48-2026-08-22
+Agent: orchestrator — Dev-3 / Devices (per "ทำต่อเลยครับ" user direction)
+
+Task: ทำ audit history contract workstream (bounded query + site scope + redaction) เป็น parallel work ใน branch ใหม่
+
+Work Log:
+
+**1. Setup:**
+- สร้าง worktree จาก PR #29 head (ed64d69)
+- Branch: feature/module-devices-audit-history-contract
+
+**2. New module: src/lib/devices-audit-history-contract/ (+395 lines)**
+- scenarios.ts:
+  - AUDIT_HISTORY_BOUNDS: MAX_LIMIT=100, DEFAULT_LIMIT=50, MIN_LIMIT=1, MAX_PAGE=1000
+  - DEVICE_AUDIT_ACTIONS: 7 canonical (CREATE, UPDATE, DELETE, TRANSFER, IMPORT, STATUS_CHANGE, LIFECYCLE)
+  - SENSITIVE_DETAIL_FIELDS: 11 fields (serialNumber, ip, mac, remoteId, contractNo, vendor, purchasePrice, costCenter, remark, actorEmail, performedBy)
+  - clampHistoryPagination(): pure — NaN/Infinity/clamp
+  - buildSiteFilter(): pure — null=superadmin, []=fail-closed, string[]=filter
+  - validateHistoryQuery(): pure — MISSING_DEVICE_ID, SITE_SCOPE_DENIED, INVALID_PAGINATION
+  - filterAuditLogsBySite(): pure — filters by siteCode, global logs hidden for non-superadmin
+  - redactAuditLogs(): pure — removes detail field (sensitive data)
+  - filterTransfersBySite(): pure — fromSite OR toSite in scope
+  - buildHistoryResult(): pure — combines logs + transfers + pagination
+  - AUDIT_HISTORY_SCENARIOS: 7 fixtures
+- index.ts: barrel
+
+**3. Tests: tests/devices-audit-history-contract/scenarios.test.ts (+305 lines, 34 tests)**
+- clampHistoryPagination: 8 tests
+- buildSiteFilter: 3 tests
+- validateHistoryQuery: 4 tests
+- filterAuditLogsBySite: 4 tests
+- redactAuditLogs: 3 tests
+- filterTransfersBySite: 4 tests
+- buildHistoryResult: 1 test
+- Scenario integrity: 4 tests
+- Constants integrity: 3 tests
+
+**4. Test evidence:**
+```
+✓ tests/devices-audit-history-contract/scenarios.test.ts (34 tests) 8ms
+Test Files 1 passed (1)
+Tests 34 passed (34)
+Duration 274ms
+```
+
+**5. Governance verified:**
+- B4 frozen: 0-diff (all 6 files)
+- SYNC_RUN: NOT added
+- prisma db:push: NOT used
+- Schema/migration: NOT changed
+- PR #29/#35/#38/#41/#45/#46/#47 overlap: NONE (separate files)
+- Secrets: none
+
+**6. PR #48 opened:**
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/48
+- Head: feature/module-devices-audit-history-contract @ fce472d276ebdc13c79974d49042a567353523df
+- Base: feature/module-devices-import-boundary (PR #29)
+- Labels: module:devices, work-package:C-audit-history, dev-3, audit-review-required, no-self-merge, governance:read-only
+- Body: REVIEW PACKET format (per EXACT-HEAD-REVIEW-PROTOCOL §3)
+
+Stage Summary:
+- PR #48 opened: audit history contract, 34/34 PASS, B4 0-diff, no SYNC_RUN, no schema change
+- Devices lane ตอนนี้มี 8 PRs รอ Dev-4 Meter verdict: #29, #35, #38, #41, #45, #46, #47, #48
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+Total Dev-3 parallel work completed (6 PRs นอกเหนือจาก PR #29 importer):
+- PR #35: parallel fixtures (asset-key, site/transfer auth, retry/idempotency) + 3 acceptance docs
+- PR #41: bounded list/query + mobile subset
+- PR #45: importer ↔ transfer integration scenarios
+- PR #46: devices ↔ meter contract scenarios
+- PR #47: lifecycle contract (status transitions + warranty + depreciation)
+- PR #48: audit history contract (bounded query + site scope + redaction)
