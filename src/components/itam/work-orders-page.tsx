@@ -1594,31 +1594,21 @@ function CreateWorkOrderDialog({
                   </div>
                 </div>
 
-                {/* Asset lookup */}
+                {/* Asset lookup — UniversalSearch supports type + scan + OCR */}
                 <div className="grid gap-1.5">
                   <Label htmlFor="wo-device-search">เลขทะเบียนอุปกรณ์ (Optional)</Label>
-                  <Input
-                    id="wo-device-search"
+                  <UniversalSearch
                     value={form.deviceSearch}
-                    onChange={(e) =>
+                    onChange={(v) =>
                       setForm((s) => ({
                         ...s,
-                        deviceSearch: e.target.value,
+                        deviceSearch: v,
                         deviceId: null,
                       }))
                     }
+                    context="asset_no"
                     placeholder="พิมพ์เลขทะเบียน / ชื่อ / S/N เพื่อค้นหาอุปกรณ์"
                   />
-                  {/* Prominent full-width scan button (mobile-friendly touch target ≥44px) */}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => useAppStore.getState().setQrScannerOpen(true)}
-                    className="min-h-11 w-full justify-center border-orange-300 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/40"
-                  >
-                    <ScanLine className="h-5 w-5" />
-                    สแกน QR / บาร์โค้ด
-                  </Button>
                   {deviceLoading && (
                     <div className="text-[11px] text-muted-foreground">กำลังค้นหา...</div>
                   )}

@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText } from 'lucide-react'
-import { type MasterItem } from './types'
+import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
 import { WoOptionsSection } from './wo-options-section'
@@ -350,12 +350,15 @@ export function ItamSettings() {
               <SelectTrigger className="w-full sm:w-48 dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">หมวดทั้งหมด</SelectItem>
-                <SelectItem value="Brand">Brand</SelectItem>
-                <SelectItem value="DeviceType">ประเภทอุปกรณ์</SelectItem>
-                <SelectItem value="Model">Model</SelectItem>
-                <SelectItem value="Department">แผนก</SelectItem>
-                <SelectItem value="Status">สถานะ</SelectItem>
-                <SelectItem value="DeviceGroup">กลุ่มอุปกรณ์</SelectItem>
+                {MASTER_CATEGORIES.map((cat: string) => (
+                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                ))}
+                <SelectItem value="Affiliation">Affiliation (สังกัด)</SelectItem>
+                <SelectItem value="RepairProblem">RepairProblem (ปัญหา)</SelectItem>
+                <SelectItem value="RepairResolution">RepairResolution (การแก้ไข)</SelectItem>
+                <SelectItem value="Building">Building (อาคาร)</SelectItem>
+                <SelectItem value="Floor">Floor (ชั้น)</SelectItem>
+                <SelectItem value="ContractNo">ContractNo</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex gap-2 sm:ml-auto">
@@ -469,12 +472,15 @@ export function ItamSettings() {
               <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
                 <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Brand">Brand</SelectItem>
-                  <SelectItem value="DeviceType">ประเภทอุปกรณ์</SelectItem>
-                  <SelectItem value="Model">Model</SelectItem>
-                  <SelectItem value="Department">แผนก</SelectItem>
-                  <SelectItem value="Status">สถานะ</SelectItem>
-                  <SelectItem value="DeviceGroup">กลุ่มอุปกรณ์</SelectItem>
+                  {MASTER_CATEGORIES.map((cat: string) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                  <SelectItem value="Affiliation">Affiliation (สังกัด)</SelectItem>
+                  <SelectItem value="RepairProblem">RepairProblem (ปัญหา)</SelectItem>
+                  <SelectItem value="RepairResolution">RepairResolution (การแก้ไข)</SelectItem>
+                  <SelectItem value="Building">Building (อาคาร)</SelectItem>
+                  <SelectItem value="Floor">Floor (ชั้น)</SelectItem>
+                  <SelectItem value="ContractNo">ContractNo</SelectItem>
                 </SelectContent>
               </Select>
             </div>

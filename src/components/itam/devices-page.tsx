@@ -377,10 +377,60 @@ export function DevicesPage() {
     return sites.filter((s) => userSitesArr.includes(s.code))
   }, [sites, userSitesArr])
 
+  // ── Cascading master data (DeviceType → Brand → Model) ──
+  // Uses the new /api/master?type=... endpoints backed by normalized tables.
+  const { data: deviceTypes } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['master', 'device-types'],
+    queryFn: async () => {
+      const res = await fetch('/api/master?type=device-types')
+      if (!res.ok) return []
+      const json = await res.json()
+      return (json.items ?? []) as { id: string; name: string }[]
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Brands are filtered by the selected DeviceType (cascading).
+  const { data: brandsData } = useQuery<{ id: string; name: string; typeId: string }[]>({
+    queryKey: ['master', 'brands', form.type],
+    queryFn: async () => {
+      if (!form.type) return []
+      // Find the DeviceType id from the deviceTypes list
+      const typeId = deviceTypes?.find((t) => t.name === form.type)?.id
+      if (!typeId) return []
+      const res = await fetch(`/api/master?type=brands&typeId=${typeId}`)
+      if (!res.ok) return []
+      const json = await res.json()
+      return (json.items ?? []) as { id: string; name: string; typeId: string }[]
+    },
+    enabled: !!form.type && !!deviceTypes,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Models are filtered by the selected Brand (cascading).
+  const { data: modelsData } = useQuery<{ id: string; name: string; brandId: string }[]>({
+    queryKey: ['master', 'models', form.brand],
+    queryFn: async () => {
+      if (!form.brand) return []
+      // Find the Brand id from the brandsData list
+      const brandId = brandsData?.find((b) => b.name === form.brand)?.id
+      if (!brandId) return []
+      const res = await fetch(`/api/master?type=models&brandId=${brandId}`)
+      if (!res.ok) return []
+      const json = await res.json()
+      return (json.items ?? []) as { id: string; name: string; brandId: string }[]
+    },
+    enabled: !!form.brand && !!brandsData,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // ── Legacy MasterItem lookups (Department, DeviceGroup, Affiliation) ──
+  // These remain as flat MasterItem rows (not normalized into separate tables).
   const { data: masterItems } = useQuery<{
     category: string
     code: string
     label: string
+    parentRef?: string | null
   }[]>({
     queryKey: ['master-all'],
     queryFn: async () => {
@@ -391,25 +441,25 @@ export function DevicesPage() {
         category: string
         code: string
         label: string
+        parentRef?: string | null
       }[]
     },
   })
 
-  const brands = (masterItems ?? []).filter((m) => m.category === 'Brand')
-  const types = (masterItems ?? []).filter((m) => m.category === 'Type')
   const departments = (masterItems ?? []).filter(
     (m) => m.category === 'Department',
   )
   const deviceGroups = (masterItems ?? []).filter(
     (m) => m.category === 'DeviceGroup',
   )
-  // Models filtered by the currently selected brand (cascading).
-  const models = (masterItems ?? []).filter((m) => {
-    if (m.category !== 'Model') return false
-    if (!form.brand) return true // no brand selected → show all models
-    // MasterItem.parentRef is "Brand|Type" for Model rows; we match by Brand.
-    return !m.parentRef || m.parentRef === form.brand || m.parentRef.includes(`|${form.brand}|`)
-  })
+  // Affiliation rows — parent of Department. Used for the Affiliation dropdown.
+  const affiliations = (masterItems ?? []).filter(
+    (m) => m.category === 'Affiliation',
+  )
+  // Departments filtered by the selected Affiliation (parentRef = AFF-xxx code).
+  const filteredDepartments = form.parentRef
+    ? departments.filter((d) => d.parentRef === form.parentRef)
+    : departments
 
   // ── Cascading dropdowns: site → building → floor → location ──
   // Pulls distinct values from existing devices via /api/itam/devices/cascading
@@ -1572,41 +1622,49 @@ export function DevicesPage() {
                 </SelectContent>
               </Select>
             </Field>
+            <Field label="ประเภท *">
+              <Combobox
+                value={form.type}
+                onChange={(v) => setForm({ ...form, type: v, brand: '', model: '' })}
+                items={(deviceTypes ?? []).map((t) => ({ value: t.name, label: t.name }))}
+                placeholder="เลือกหรือพิมพ์ประเภท"
+                emptyText="ไม่พบประเภท"
+              />
+            </Field>
             <Field label="แบรนด์ *">
               <Combobox
                 value={form.brand}
                 onChange={(v) => setForm({ ...form, brand: v, model: '' })}
-                items={brands.map((b) => ({ value: b.code, label: b.label }))}
-                placeholder="เลือกหรือพิมพ์แบรนด์"
-                emptyText="ไม่พบแบรนด์"
+                items={(brandsData ?? []).map((b) => ({ value: b.name, label: b.name }))}
+                placeholder={form.type ? 'เลือกหรือพิมพ์แบรนด์' : 'เลือกประเภทก่อน'}
+                emptyText={form.type ? 'ไม่พบแบรนด์ของประเภทนี้' : 'เลือกประเภทก่อน'}
               />
             </Field>
             <Field label="รุ่น *">
               <Combobox
                 value={form.model}
                 onChange={(v) => setForm({ ...form, model: v })}
-                items={models.map((m) => ({ value: m.code, label: m.label }))}
+                items={(modelsData ?? []).map((m) => ({ value: m.name, label: m.name }))}
                 placeholder={form.brand ? 'เลือกรุ่นของแบรนด์ที่เลือก' : 'เลือกแบรนด์ก่อน หรือพิมพ์รุ่น'}
                 emptyText={form.brand ? 'ไม่พบรุ่นของแบรนด์นี้' : 'ไม่พบรุ่น'}
-                groupLabel={form.brand ? `รุ่นของ ${form.brand}` : 'ทั้งหมด'}
               />
             </Field>
-            <Field label="ประเภท *">
+            <Field label="สังกัด (Affiliation)">
               <Combobox
-                value={form.type}
-                onChange={(v) => setForm({ ...form, type: v })}
-                items={types.map((t) => ({ value: t.code, label: t.label }))}
-                placeholder="เลือกหรือพิมพ์ประเภท"
-                emptyText="ไม่พบประเภท"
+                value={form.parentRef}
+                onChange={(v) => setForm({ ...form, parentRef: v, department: '' })}
+                items={affiliations.map((a) => ({ value: a.code, label: a.label }))}
+                placeholder="เลือกสังกัด (กรองแผนกตามสังกัด)"
+                emptyText="ไม่พบสังกัด"
               />
             </Field>
             <Field label="แผนก">
               <Combobox
                 value={form.department}
                 onChange={(v) => setForm({ ...form, department: v })}
-                items={departments.map((d) => ({ value: d.label, label: d.label }))}
-                placeholder="เลือกหรือพิมพ์แผนก"
-                emptyText="ไม่พบแผนก"
+                items={filteredDepartments.map((d) => ({ value: d.label, label: d.label }))}
+                placeholder={form.parentRef ? 'เลือกแผนกในสังกัดนี้' : 'เลือกหรือพิมพ์แผนก'}
+                emptyText={form.parentRef ? 'ไม่พบแผนกในสังกัดนี้' : 'ไม่พบแผนก'}
               />
             </Field>
             <Field label="กลุ่มอุปกรณ์ (Device Group)">
