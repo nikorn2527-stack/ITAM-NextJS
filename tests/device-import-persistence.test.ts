@@ -34,6 +34,7 @@ vi.mock('@/lib/db', () => {
     findMany: vi.fn(),
     createMany: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   }
   const mock$Transaction = vi.fn()
   return {
@@ -105,7 +106,7 @@ describe('findExistingAssetCodes', () => {
     ])
     const result = await findExistingAssetCodes(['A001', 'A002', 'A003'])
     expect(db.device.findMany).toHaveBeenCalledWith({
-      where: { assetCode: { in: ['a001', 'a002', 'a003'] } },
+      where: { assetCode: { in: ["A001", "A002", "A003"], mode: "insensitive" } },
       select: { assetCode: true },
     })
     expect(result.size).toBe(2)
@@ -114,6 +115,25 @@ describe('findExistingAssetCodes', () => {
     expect(result.has('a003')).toBe(false)
   })
 })
+
+
+  it('handles mixed-case DB values (A001 in DB, a001 in CSV)', async () => {
+    vi.mocked(db.device.findMany).mockResolvedValue([
+      { assetCode: 'A001' },
+    ])
+    const result = await findExistingAssetCodes(['a001'])
+    expect(result.size).toBe(1)
+    expect(result.has('a001')).toBe(true)
+  })
+
+  it('handles mixed-case DB values (a001 in DB, A001 in CSV)', async () => {
+    vi.mocked(db.device.findMany).mockResolvedValue([
+      { assetCode: 'a001' },
+    ])
+    const result = await findExistingAssetCodes(['A001'])
+    expect(result.size).toBe(1)
+    expect(result.has('a001')).toBe(true)
+  })
 
 describe('persistDevices', () => {
   beforeEach(() => {

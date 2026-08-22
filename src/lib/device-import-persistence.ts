@@ -93,13 +93,16 @@ export async function findExistingAssetCodes(
   assetCodes: string[],
 ): Promise<Set<string>> {
   if (assetCodes.length === 0) return new Set<string>()
-  // Match case-insensitive via lower() — the CSV may have either case
-  const lower = assetCodes.map((c) => c.toLowerCase())
+  // Use case-insensitive match to handle mixed-case DB values
   const existing = await db.device.findMany({
-    where: { assetCode: { in: lower } },
+    where: {
+      assetCode: {
+        in: assetCodes,
+        mode: 'insensitive',
+      },
+    },
     select: { assetCode: true },
   })
-  // Return as lowercase Set so caller can compare with .toLowerCase()
   return new Set(existing.map((d) => d.assetCode.toLowerCase()))
 }
 
@@ -197,8 +200,13 @@ export async function persistDevices(
     try {
       await db.$transaction(
         toUpdate.map((row) =>
-          db.device.update({
-            where: { assetCode: row.values.assetNo.toLowerCase() },
+          db.device.updateMany({
+            where: {
+              assetCode: {
+                equals: row.values.assetNo,
+                mode: 'insensitive',
+              },
+            },
             data: toPrismaData(row, actor),
           }),
         ),
