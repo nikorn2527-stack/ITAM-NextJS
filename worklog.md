@@ -9565,3 +9565,233 @@ Stage Summary:
 - ⏳ Need: seed real data (staging DB has 0 devices/meter/stock)
 - ⏳ Need: parity verification per module
 - Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+---
+Task ID: MOBILE-MODE-REPAIR-REQUEST
+Agent: ITAM-01 — Dev-3 / Devices
+
+Task: Build Mobile Mode repair request UI
+
+Work Log:
+- Created 3 new files under `src/components/itam/mobile/` (no existing files modified):
+  - `index.ts` — barrel export (`MobileShell`, `MobileRepairRequest`)
+  - `mobile-shell.tsx` — mobile shell with top header + 4-tab bottom navigation (แจ้งซ่อม / งานของฉัน / จดมิเตอร์ / เบิกของ). Centered phone-frame (`max-w-md`) on desktop, full-width on phones. Touch targets `h-14` (56px) — exceeds 44px minimum. Active-tab indicator animated with Framer Motion `layoutId`. Respects iOS safe-area-inset-bottom. AnimatePresence page transitions.
+  - `mobile-repair-request.tsx` — two-step repair request screen:
+    - **Step 1**: Quick search device by asset code or serial number → debounced 300ms → `GET /api/devices?search=Q&limit=10` (Bearer token attached by the global fetch interceptor). Dropdown results with loading / empty / error states.
+    - **Step 2**: Repair form — Subject (required, 200 chars), Description (required, 1000 chars w/ counter), Priority (4-button grid: ปกติ/ปานกลาง/สูง/ด่วน mapped to low/medium/high/urgent), Photo capture (camera + file picker, max 4 images, thumbnails with delete buttons).
+    - Submit → `POST /api/work-orders` with `submissionSource: 'session'` (bypasses guest contact validation since the mobile user is authenticated via the auth-store).
+    - Success screen: animated green check, large orange WorkOrder number, subject/device summary, buttons "ดูสถานะ" (opens `/api/public/work-orders/{woNumber}`) and "แจ้งซ่อมใหม่" (resets form).
+- All UI strings in Thai. All inputs have `<Label>` + `aria-required`. Errors use `role="alert"`. Loading buttons use `aria-busy`. Touch targets ≥44px throughout (h-11/h-12/h-14).
+- Camera capture re-implemented inline (not modifying the existing `camera-capture.tsx`) so the full-screen mobile UX matches native camera apps. Captures at 1280×720, downscales to ≤1024 wide JPEG @ 0.7 quality (same algorithm as `CameraCapture`).
+- Did NOT modify any existing components or routes. Did NOT touch B4 frozen files. Did NOT run `prisma db:push`. No schema changes.
+- `bunx eslint src/components/itam/mobile/` → 0 errors, 0 warnings.
+- `bunx tsc --noEmit` → 0 errors in `src/components/itam/mobile/`.
+- Work record written to `/agent-ctx/MOBILE-MODE-REPAIR-REQUEST-ITAM-01.md`.
+
+Stage Summary:
+- Mobile Mode repair request screen fully implemented and lint-clean.
+- Mobile shell with 4-tab bottom nav ready (3 tabs are ComingSoon placeholders pending future mobile-screen tasks).
+- MobileRepairRequest covers the full flow: search → select → form → photo capture → submit → success.
+- Touch-friendly, Thai-localized, accessible, responsive (max-w-md centered on desktop).
+- No regressions to existing code; no schema change; B4 frozen files untouched.
+
+---
+Task ID: MOBILE-MODE-MY-WORK
+Agent: ITAM-01 — Dev-3 / Devices
+
+Task: Build Mobile Mode — งานของฉัน (Technician Work Order List + Status Update)
+
+Work Log:
+- Created 1 new file under `src/components/itam/mobile/`:
+  - `mobile-my-work.tsx` (2401 lines) — technician-facing work order list + detail view + status update workflow + before/onsite/after photo capture.
+- Updated 2 existing files (as directed in task):
+  - `mobile-shell.tsx` — replaced the "งานของฉัน" ComingSoon placeholder with `<MobileMyWork />` (also updated the file header comment to mark tab 2 as implemented).
+  - `index.ts` — added `MobileMyWork` to the barrel export.
+- Did NOT modify any other components or routes. Did NOT touch B4 frozen files. Did NOT run `prisma db:push`. No schema changes. No new API routes.
+
+**MobileMyWork features:**
+
+1. **List view** (default):
+   - Search (debounced 250ms) by WO number / subject / reporter / location.
+   - Filter chips (horizontal scroll) with per-status counts: ทั้งหมด / รอดำเนินการ / กำลังซ่อม / รออะไหล่ / ซ่อมเสร็จ.
+   - Admin toggle: "งานของฉัน" (default — `assignedTo={user.name}`) vs. "ทั้งหมด".
+   - Refresh button (top-right) — pull-to-refresh feel via toast.
+   - Card-based list: priority color bar (left edge), WO number (orange mono), priority chip, status badge, subject (line-clamp-2), site + relative time, reporter + assigned technician (→ arrow).
+   - Pagination: prev / next + "หน้า X / Y".
+   - Loading state (ListSkeleton), error state (red card + retry), empty state (Inbox icon + "ล้างตัวกรอง" button).
+
+2. **Detail view** (full-screen overlay when tapping a card):
+   - Sticky header with back button + WO number + status badge.
+   - Subject card: priority chip + status badge + createdAt + workCompletedAt.
+   - Reporter card (2-col grid): ผู้แจ้ง / เบอร์โทร / รหัสพนักงาน / ช่าง / อาคาร / ตำแหน่ง / ไซต์.
+   - Device card (if linked): assetCode + name + brand · model · site.
+   - Problem details card (whitespace-pre-wrap).
+   - Resolution card (emerald accent, if completed).
+   - Admin notes card (if any).
+   - Photos card: before/onsite/after groups + capture (see §3).
+   - Timeline card: messages list, newest first, dot-marker vertical timeline.
+   - Status update actions card (orange-bordered) — see §4.
+
+3. **Photo capture** (PhotosCard):
+   - Fetches existing images from `GET /api/work-orders/[id]/images`.
+   - Groups by stage: ก่อนซ่อม (read-only), ระหว่างซ่อม (capture+delete), หลังซ่อม (capture+delete).
+   - Camera capture: full-screen overlay, `getUserMedia({ video: { facingMode: 'environment' }})` at 1280×720, downscaled to ≤1024 wide JPEG @ 0.7.
+   - File picker fallback: `<input type="file" accept="image/*" multiple capture="environment">`.
+   - Staged uploads: new captures go into a "รูปใหม่รออัปโหลด" panel with bulk upload button.
+   - Delete image: per-image Trash2 button → `DELETE /api/work-orders/[id]/images?imageId=…` (with confirm).
+   - Cap of 4 images per stage on the UI side (server cap is 12).
+
+4. **Status update workflow** (bottom sheet — `<Sheet side="bottom">`):
+   - PENDING (รอดำเนินการ) → "เริ่มซ่อม" (PUT status=IN_PROGRESS)
+   - IN_PROGRESS (กำลังซ่อม) → "รออะไหล่" (PUT status=WAITING_PARTS) + "ซ่อมเสร็จ" (POST /complete with resolution+note+picAfter)
+   - WAITING_PARTS (รออะไหล่) → "กลับซ่อมต่อ" (PUT status=IN_PROGRESS) + "ซ่อมเสร็จ"
+   - COMPLETED (ซ่อมเสร็จ) → "ส่งคืนอุปกรณ์" (POST /messages + PUT detailsAdmin + after photos)
+   - CANCELLED → no actions.
+   - Each action sheet: title + helper description + remark Textarea (required for some) + optional photo capture + Cancel / Confirm buttons (h-12, ≥44px).
+   - After a successful action, the sheet closes and the detail is re-fetched so the new status + message + photos appear immediately.
+
+**API endpoints used (all existing):**
+- `GET /api/work-orders?search=&status=&assignedTo=&page=&pageSize=`
+- `GET /api/work-orders/[id]`
+- `PUT /api/work-orders/[id]` (set status + detailsAdmin + dateAdmin)
+- `POST /api/work-orders/[id]/complete` (mark COMPLETED)
+- `POST /api/work-orders/[id]/messages` (add remark)
+- `GET /api/work-orders/[id]/images`
+- `POST /api/work-orders/[id]/images`
+- `DELETE /api/work-orders/[id]/images?imageId=`
+
+**Color mapping (per task spec):**
+- PENDING = orange (รอดำเนินการ)
+- IN_PROGRESS = blue/sky (กำลังซ่อม)
+- WAITING_PARTS = yellow/amber (รออะไหล่)
+- COMPLETED = green/emerald (ซ่อมเสร็จ)
+- CANCELLED = gray (ยกเลิก)
+- Priority: ด่วน = red/rose, สูง = orange, ปานกลาง = blue/sky, ปกติ = gray
+
+**Accessibility:**
+- All inputs use `<Label htmlFor>` + `aria-required="true"` where applicable.
+- All interactive buttons ≥44px (h-11 / h-12 / h-14).
+- Error messages use `role="alert"`.
+- Loading state uses `aria-busy` + spinners.
+- Card buttons have descriptive `aria-label`.
+- Bottom sheet has `<SheetTitle>` and `<SheetDescription>` for screen readers.
+- Filter chips have `aria-pressed` for state.
+
+**Thai localization:** All UI strings in Thai (ค้นหา, ทั้งหมด, รอดำเนินการ, กำลังซ่อม, รออะไหล่, ซ่อมเสร็จ, งานของฉัน, รีเฟรช, ข้อมูลผู้แจ้ง, อุปกรณ์ที่แจ้งซ่อม, รายละเอียดอาการ, ผลการแก้ไข, รูปภาพประกอบ, ก่อนซ่อม, ระหว่างซ่อม, หลังซ่อม, อัปเดตสถานะงาน, เริ่มซ่อม, รออะไหล่, ซ่อมเสร็จ, กลับซ่อมต่อ, ส่งคืนอุปกรณ์, หมายเหตุ, ถ่ายภาพ, เลือกจากคลัง, ยืนยัน, ยกเลิก).
+
+**Responsive:** Renders inside the shell's `max-w-md` centered phone-frame on desktop, full-width on phones. Filter chips use horizontal scroll. 4-col thumbnail grid for photos. 2-col grid for device info + reporter fields. Touch targets everywhere ≥44px.
+
+**Lint / Type check:**
+- `bunx eslint src/components/itam/mobile/` — 0 errors, 0 warnings (EXIT_CODE=0).
+- `bunx tsc --noEmit` — 0 errors in `src/components/itam/mobile/` (errors in other pre-existing files are unrelated to this task).
+- Work record written to `/agent-ctx/MOBILE-MODE-MY-WORK-ITAM-01.md`.
+
+Stage Summary:
+- 1 new file created + 2 files updated (mobile-shell.tsx + index.ts).
+- Mobile Mode "งานของฉัน" screen fully implemented and lint-clean.
+- MobileShell tab 2 now renders MobileMyWork (was ComingSoon).
+- Full feature set: list + search + filters + KPI counts + full-screen detail + 5-state status workflow + bottom-sheet remark entry + before/onsite/after photo capture + timeline.
+- Touch-friendly, Thai-localized, accessible, responsive (max-w-md centered on desktop).
+- No regressions to existing code; no schema change; B4 frozen files untouched; no new API routes.
+
+---
+Task ID: ITAM-01-MOBILE-METER-STOCK
+Agent: Dev-3 / Devices team (ITAM-01)
+
+Task: Build the remaining two Mobile Mode screens for the ITAM-NextJS project — จดมิเตอร์ (Meter Reading) + เบิกของ (Stock Out) — and wire them into the existing MobileShell bottom-nav.
+
+Work Log:
+- Read worklog.md, existing mobile-shell.tsx (4-tab nav), mobile-repair-request.tsx (891 lines), mobile-my-work.tsx (2401 lines) for conventions.
+- Inspected API routes:
+  - /api/devices (GET — supports search, ignores meterRequired query param; returns full device incl. meterRequired, meterMode, lastMeterBw, lastMeterColor, lastReadingMonth)
+  - /api/meter/reminders (GET — unauthenticated; returns hasActiveCycle, cycle, reminders[], totalRead, totalUnread, count)
+  - /api/itam/meter-readings (POST — implements needConfirmReset 2-step flow on 409, returns reading + pagesBw/pagesColor + readingType)
+  - /api/stock-items (GET — search by productCode/productName/brand/model/compatibleDevices; returns data + pagination + stats{total,lowStock,totalValue,thisMonth})
+  - /api/stock-items/[id]/transaction (POST — type 'OUT'|'IN'|'ADJUST'; for OUT enforces stock >= quantity; auto-generates txnNumber STX-YYYYMMDD-NNN; returns {data:{item,transaction,poUpdate}})
+  - /api/stock-items/pending (GET — filter by approvalStatus='PENDING')
+  - /api/work-orders (GET — search by woNumber/subject/reporterName/etc.)
+- Confirmed Prisma schema fields used: Device.meterRequired, Device.meterMode, Device.lastMeterBw, Device.lastMeterColor, Device.lastReadingMonth; StockItem.{productCode,productName,quantity,minQuantity,unit,active,brand,model,category,location,site}; StockTransaction.{txnNumber,quantity,balanceAfter,approvalStatus,workOrderId,workOrderNo,requester,remark}.
+- Wrote work record to /agent-ctx/ITAM-01-MOBILE-METER-STOCK-Dev-3.md.
+
+Files created:
+1. src/components/itam/mobile/mobile-meter-reading.tsx (~1100 lines, 'use client'):
+   - MobileMeterReading — main component:
+     * Loads GET /api/devices?limit=500 + GET /api/meter/reminders in parallel on mount.
+     * Filters devices client-side for meterRequired===true (server ignores meterRequired query).
+     * Annotates each device with "read this cycle" using the unread-set from /api/meter/reminders (also tracked locally via readLocally Set after each save).
+     * Progress card: "จดแล้ว X / ทั้งหมด Y (เหลือ Z เครื่อง)" + Progress bar (emerald).
+     * Sticky search bar (top-14 to sit below the shell's header) — filters by assetCode OR serialNumber; supports "last 4-5 digits" suffix matching.
+     * Device cards sorted unread-first then by assetCode asc. Tap to expand inline form.
+   - MeterReadingForm (inline sub-component):
+     * Device info grid: assetCode, serial, brand/model, site/building/location.
+     * Previous-reading panel: BW + (if BW_COLOR) Color, with lastReadingMonth badge.
+     * Input field(s): single (TOTAL mode) or two (BW_COLOR mode), h-12, font-mono, numeric.
+     * Auto-calculated delta (Δ = new − prev) — green for +, rose for −, muted for 0.
+     * RESET warning banner (amber) when new reading < previous.
+     * Remark textarea — required when RESET detected.
+     * needConfirmReset 2-step flow: server returns 409 → form swaps the Save button to "ยืนยัน Reset" (rose), keeps the confirm-reset banner visible during the re-POST.
+     * After save: marks device as read locally, auto-opens the next unread device (scrollIntoView smooth), toast success.
+     * Skip button (gray, h-12) → calls onSkip, also advances to next unread.
+   - Sub-components: InfoRow, LoadingState (Skeleton cards), ErrorState (rose), EmptyState (Gauge icon, dashed border).
+   - States: loading (Skeleton), error (rose, retry button), empty (dashed border + refresh), main.
+2. src/components/itam/mobile/mobile-stock-out.tsx (~900 lines, 'use client'):
+   - MobileStockOut — main component:
+     * Loads GET /api/stock-items?pageSize=50&activeOnly=1 on mount; debounced (300ms) re-fetch on search input change.
+     * Stats card: total + lowStock count + refresh button.
+     * Sticky search bar.
+     * Stock item cards: productCode (orange mono), productName, brand/model/category/location, quantity remaining + unit + low-stock badge (amber) / out-of-stock badge (rose) / ready badge (emerald). Tap to open issue sheet.
+     * Collapsible "รออนุมัติ" section (bottom of list) — fetches GET /api/stock-items/pending?status=PENDING&pageSize=20 lazily on first expand; shows txnNumber, productName, quantity, requester, workOrderNo.
+   - IssueSheetBody (sub-component inside Sheet side="bottom"):
+     * Header: "เบิกสินค้าออก" + helper.
+     * Item info panel: productCode, productName, brand/model, current quantity + low-stock badge.
+     * Quantity stepper (Minus / Input / Plus h-12 buttons) — clamps to [1, item.quantity]; shows "after-issue remaining" preview; over-stock alert.
+     * Work-order link (optional): debounced (300ms) search via GET /api/work-orders?search=…&pageSize=10; dropdown of WO numbers; once linked shows chip with WO number + subject + Unlink button.
+     * Requester input (defaults to current user's name/email).
+     * Remark textarea (optional).
+     * Submit → POST /api/stock-items/[id]/transaction { type:'OUT', quantity, workOrderId?, workOrderNo?, requester?, remark?, performedBy?, txnDate? }.
+     * Success view: large emerald check icon + txnNumber (orange mono, large) + product + qty + balanceAfter summary + "เสร็จสิ้น" button. Toast on success.
+     * Updates local list with the new quantity from the response, refreshes pending list silently.
+   - Sub-components: LoadingState, ErrorState.
+   - States: loading (Skeleton), error (rose, retry), main + bottom-sheet open/closed.
+
+Files updated:
+3. src/components/itam/mobile/mobile-shell.tsx:
+   - Replaced tab-3 placeholder `ComingSoon label="จดมิเตอร์"` with `<MobileMeterReading />`.
+   - Replaced tab-4 placeholder `ComingSoon label="เบิกของ"` with `<MobileStockOut />`.
+   - Removed now-unused `ComingSoon` function.
+   - Added imports for MobileMeterReading and MobileStockOut.
+4. src/components/itam/mobile/index.ts:
+   - Added `export { MobileMeterReading } from './mobile-meter-reading'`.
+   - Added `export { MobileStockOut } from './mobile-stock-out'`.
+
+Design decisions:
+- All touch targets ≥44px: nav buttons h-14, form inputs h-12, action buttons h-12, stepper h-12.
+- Color system: emerald for meter reading (success state), orange for stock-out (matches existing accent). Low-stock = amber, out-of-stock = rose, ready = emerald. RESET detection uses rose button.
+- Sticky search bars use top-14 to sit just below the MobileShell's sticky header (h-14).
+- Mobile-meter-reading uses inline expansion (AnimatePresence height auto) instead of a Sheet — the meter reading flow is keyboard-driven and we want the next device to be visible after save.
+- Mobile-stock-out uses Sheet side="bottom" (matches the mobile-my-work action sheet pattern) so the user's thumb reaches the confirm button easily.
+- All Thai labels; ARIA: role="alert" for errors, aria-busy on submitting buttons, aria-expanded on collapsibles, aria-required on required inputs, aria-label on icon-only buttons.
+- B4 frozen files untouched. No new API routes. No prisma db:push. No schema changes.
+
+API contracts used (all existing — no backend changes):
+- GET /api/devices?limit=500 — bearer auto-attached by global fetch interceptor.
+- GET /api/meter/reminders — unauthenticated.
+- POST /api/itam/meter-readings — bearer auto-attached; supports needConfirmReset 2-step flow.
+- GET /api/stock-items?search= — bearer auto-attached.
+- POST /api/stock-items/[id]/transaction — bearer auto-attached; auto-generates STX-YYYYMMDD-NNN.
+- GET /api/stock-items/pending?status=PENDING — best-effort pending list.
+- GET /api/work-orders?search= — used for optional WO linking.
+
+Lint / Type check:
+- `bunx eslint src/components/itam/mobile/` — 0 errors, 0 warnings (EXIT_CODE=0).
+- `bunx tsc --noEmit` — 0 errors in `src/components/itam/mobile/` (pre-existing errors in other files are unrelated to this task).
+- Work record written to /agent-ctx/ITAM-01-MOBILE-METER-STOCK-Dev-3.md.
+
+Stage Summary:
+- 2 new files created + 2 files updated (mobile-shell.tsx + index.ts).
+- Mobile Mode tabs 3 (จดมิเตอร์) and 4 (เบิกของ) fully implemented and lint-clean.
+- MobileShell now renders all 4 mobile screens — no more ComingSoon placeholders.
+- Meter reading features: progress bar, quick search (incl. last-4-5-digit suffix match), TOTAL + BW_COLOR modes, delta auto-calc, RESET detection + needConfirmReset 2-step flow, auto-advance to next unread device after save, skip button.
+- Stock out features: debounced search, low-stock / out-of-stock badges, bottom-sheet issue form, quantity stepper, optional WO linking via debounced search, success view with txnNumber, collapsible "รออนุมัติ" pending list.
+- Touch-friendly, Thai-localized, accessible, responsive (max-w-md centered on desktop).
+- No regressions to existing code; no schema change; B4 frozen files untouched; no new API routes.
