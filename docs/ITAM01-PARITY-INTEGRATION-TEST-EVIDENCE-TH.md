@@ -67,3 +67,11 @@ Branch นี้ **ประกอบและ build ได้** และ pure 
 ผลนี้ยืนยันว่า ITAM-DB มีข้อมูลจริงและพร้อมเป็น target database การที่ database-backed tests ก่อนหน้านี้เป็น BLOCKED หมายถึง integration worktree ใน sandbox ยังไม่มี application PostgreSQL connection ที่ใช้รันทดสอบ Prisma ได้ ไม่ได้หมายความว่า ITAM-DB ว่างหรือใช้งานไม่ได้ การทดสอบต่อไปต้องใช้ environment ที่เชื่อม ITAM-DB โดยตรง และต้องเริ่มจาก read-only smoke ก่อน mutation
 
 ข้อมูลที่ตรวจรอบนี้เป็น metadata/count เท่านั้น ไม่ได้อ่านค่า secret, password, token หรือข้อมูลส่วนบุคคลรายแถว และไม่ได้ทำ DDL/DML ใด ๆ
+
+## ITAM-DB advisor findings (read-only)
+
+Security advisor พบ `rls_enabled_no_policy` ระดับ INFO จำนวน 30 รายการ โดยหลายตารางธุรกิจ เช่น `Device`, `MeterReading`, `WorkOrder`, `StockItem`, `StockTransaction`, `User` และ `AuditLog` เปิด RLS แต่ไม่มี policy ในระดับ database ผลนี้ไม่ควรถูกสรุปว่าเป็น runtime failure ทันที เพราะแอปใช้ server-side authorization/Prisma เป็นหลัก แต่ต้องให้ Audit ยืนยันว่าไม่มี direct client access และ RLS posture สอดคล้องกับ boundary ของระบบก่อน release
+
+Performance advisor พบ INFO จำนวน 23 รายการ แบ่งเป็น foreign key ที่ไม่มี covering index 3 รายการ และ unused index 20 รายการ ประเด็นที่เกี่ยวข้องโดยตรงกับ flow ปัจจุบันคือ foreign key `StockTransaction.deviceId` ไม่มี covering index ส่วน unused indexes ต้องตรวจ query workload จริงก่อนลบ ไม่ควรลบตาม advisor โดยอัตโนมัติ
+
+Advisor findings เป็น database follow-up ของ ITAM-DB ไม่ใช่เหตุผลให้ทำ DDL ทันที และการแก้ต้องผ่าน migration + review ตาม governance ห้ามใช้ `prisma db:push`
