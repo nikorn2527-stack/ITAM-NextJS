@@ -55,3 +55,15 @@ Branch นี้ **ประกอบและ build ได้** และ pure 
 - ห้ามแก้ B4 frozen files 6 ไฟล์
 - ห้ามเพิ่ม `SYNC_RUN` permission โดยไม่มี Audit review
 - `legacy_job_no` ต้องคง immutable และใช้คู่กับ `system_job_no` ตาม data contract
+
+## ITAM-DB read-only verification
+
+ตรวจผ่าน Supabase project `ITAM-DB` (project ref redacted ในรายงานภายนอก) และพบว่า project อยู่สถานะ ACTIVE_HEALTHY, PostgreSQL 17.6.1, region `ap-southeast-1` และมีข้อมูลจริง ไม่ใช่ empty/demo database
+
+จำนวนข้อมูลจาก read-only query ล่าสุด: `Device` 2,378, `MeterReading` 14,269, `DeviceTransfer` 122, `MasterItem` 310, `WorkOrder` 4,935, `StockItem` 60, `StockTransaction` 2,602, `User` 10, `AuditLog` 20 และ `Cycle` 2
+
+ข้อสังเกต: `list_tables` metadata ก่อนหน้าแสดง `StockTransaction` 2,608 ขณะที่ direct read-only `COUNT(*)` แสดง 2,602 จึงต้องถือว่า count ของ StockTransaction ยังไม่ stable/มีการเปลี่ยนแปลงระหว่างการอ่าน และต้องตรวจซ้ำก่อนใช้เป็น release evidence
+
+ผลนี้ยืนยันว่า ITAM-DB มีข้อมูลจริงและพร้อมเป็น target database การที่ database-backed tests ก่อนหน้านี้เป็น BLOCKED หมายถึง integration worktree ใน sandbox ยังไม่มี application PostgreSQL connection ที่ใช้รันทดสอบ Prisma ได้ ไม่ได้หมายความว่า ITAM-DB ว่างหรือใช้งานไม่ได้ การทดสอบต่อไปต้องใช้ environment ที่เชื่อม ITAM-DB โดยตรง และต้องเริ่มจาก read-only smoke ก่อน mutation
+
+ข้อมูลที่ตรวจรอบนี้เป็น metadata/count เท่านั้น ไม่ได้อ่านค่า secret, password, token หรือข้อมูลส่วนบุคคลรายแถว และไม่ได้ทำ DDL/DML ใด ๆ
