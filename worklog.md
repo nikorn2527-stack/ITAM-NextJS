@@ -9390,3 +9390,32 @@ Stage Summary:
 - Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
 
 All module cross-review COMPLETE. Next: Audit technical review + Release Owner operational evidence.
+
+---
+Task ID: AUDIT-HANDOFF-ITAM-02-2026-08-22
+Agent: ITAM-01 — Dev-3 / Devices (per user direction "งั้น Audit ผมจะสางให้ทีม 02 น่ะ")
+
+Task: แจ้ง Audit handoff ให้ ITAM-02 (Stock) เป็น Audit team
+
+Work Log:
+
+**1. Audit handoff announcement posted on Issue #14:**
+- Comment ID: 5377179428
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/issues/14#issuecomment-5377179428
+- รวม: full cross-review status + 21 PR exact SHAs (40-char) + Audit scope for ITAM-02 + recusal note
+
+**2. ITAM-02 notification posted on Issue #24:**
+- URL: posted
+- สั้น: แจ้ง designation + recusal note + link to Issue #14 full scope
+
+**3. Audit scope for ITAM-02:**
+- Review all 21 module PRs at exact head SHA
+- Verify B4 frozen 0-diff + no SYNC_RUN + no schema change (except PR #43)
+- Issue AUDIT verdict per PR
+- Recuse from Stock lane PRs (#28, #37, #43) — ITAM-03 or ITAM-04 to review those
+
+Stage Summary:
+- Audit handoff to ITAM-02 announced
+- All 21 module PRs ready for Audit review (20 PASS + 1 PASS WITH CONDITIONS)
+- ITAM-01 cross-review work COMPLETE (21 verdicts issued)
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
