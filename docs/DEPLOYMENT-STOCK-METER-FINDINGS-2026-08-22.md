@@ -43,3 +43,9 @@ PR #52 produced a Preview URL after the corrected commit email was pushed, but t
 ## Fresh ITAM-DB cross-check
 
 A fresh read-only query against Supabase project `ITAM-DB` (`qbyuzygktsidpsmnwrrw`) returned `StockItem=60` rows with `active=true` on 48 rows, and `MeterReading=14,269` rows. The successful query used an explicit result limit and selected only aggregate fields. Therefore, the Vercel response of zero Stock items is not explained by an empty ITAM-DB table; the remaining leading causes are deployment environment/database URL mismatch, exhausted/incorrect connection mode, or code revision/configuration mismatch.
+
+## Resource optimization verification
+
+`src/lib/db.ts` was updated so the Prisma client is persisted on `globalThis` in production as well as development. This prevents each warm Vercel invocation from constructing a fresh Prisma client/pool in the same serverless instance, reducing the likelihood of Supabase session-mode `EMAXCONNSESSION`. The patch does not change the Prisma schema, migrations, permissions, or B4 frozen files.
+
+Verification after the patch: focused ESLint passed; the focused parity contract suite passed 5 files / 60 tests; `npm run build` passed with Next.js 16.3.1 and generated 109 static pages. A repository-wide `npx tsc --noEmit` still reports pre-existing schema/typing debt in unrelated routes and components (for example legacy MeterReading fields, license column aliases, and snapshot models); this is recorded separately and is not caused by the singleton change. Generated `next-env.d.ts` and `tsconfig.tsbuildinfo` were restored and are not included in the commit.
