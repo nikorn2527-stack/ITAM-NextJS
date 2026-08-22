@@ -35,6 +35,10 @@ export interface MeterReadingReference {
   cycleId?: string | null
 }
 
+export interface MeterReadingFreshnessReference {
+  readingDate: string
+}
+
 export type MeterChannel = 'bw' | 'color'
 
 export interface MeterChannelsInput {
@@ -176,6 +180,15 @@ export function hasDuplicateMeterPeriod(
 ): boolean {
   const candidateKey = meterPeriodKey(candidate)
   return existing.some((reference) => meterPeriodKey(reference) === candidateKey)
+}
+
+/** A monthly reading from an older date must not overwrite a newer reading. */
+export function isStaleMeterReading(
+  candidate: MeterReadingFreshnessReference,
+  existing: MeterReadingFreshnessReference | null | undefined,
+): boolean {
+  if (!existing) return false
+  return candidate.readingDate < existing.readingDate
 }
 
 /** Parse and clamp list parameters so query cost is bounded by contract. */
