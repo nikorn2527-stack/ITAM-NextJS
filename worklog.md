@@ -10174,3 +10174,68 @@ Stage Summary:
 - ✅ Normalized tables (DeviceType/Brand/Model) dropped from production + staging
 
 Correct production URL: https://itam-next-js-png-team.vercel.app
+
+---
+Task ID: MASTERITEM-16-FIELDS-REBUILD
+Agent: orchestrator (main) — Rebuild MasterItem with 16 fields matching Excel schema
+
+Task:
+ผู้ใช้ยืนยัน "A ครับ" — เปลี่ยน MasterItem schema ให้ตรง Excel ที่ส่งมา (16 fields รวมระบบ)
+
+Work Log:
+
+**1. แก้ Prisma schema:**
+- Old (7 fields): id, category, code, label, parentRef, displayLabel, siteCode, active
+- New (16 fields): id, itemId, categoryKey, value, groupName, departmentCode, brand, model, deviceType, parentRef, displayLabel, siteCode, allowedSites, active, createdAt, updatedAt
+- ลบ RepairTaxonomy model ออกจาก schema (ย้ายเข้า MasterItem)
+
+**2. Rebuild MasterItem table (scripts/rebuild-master-item-schema.ts):**
+- DROP MasterItem + RepairTaxonomy tables (CASCADE)
+- CREATE MasterItem with 16 fields + 3 indexes (categoryKey, itemId, departmentCode)
+- Import 275 rows from Excel "MasterItem ใหม่" sheet (ใช้ Prisma createMany ใน chunks 50)
+- Run on BOTH production ITAM-DB + staging DB
+
+**3. Seed Repair Taxonomy into MasterItem (scripts/seed-repair-taxonomy-into-masteritem.ts):**
+- RepairGroup (14 rows): categoryKey='RepairGroup', departmentCode=IT-xxx, groupName=status (active/future)
+- RepairProblem (24 rows): categoryKey='RepairProblem', departmentCode=RP-xxx, parentRef=IT-xxx, groupName=groupLabel
+- RepairResolution (18 rows): categoryKey='RepairResolution', departmentCode=RX-xxx, parentRef=IT-xxx, groupName=groupLabel
+- Run on production ITAM-DB
+
+**4. แก้ /api/master route:**
+- Legacy ?category= → เปลี่ยนจาก `where.category` → `where.categoryKey`
+- device-types: ดึงจาก MasterItem(categoryKey='DeviceClassification') → select deviceType field
+- brands: ดึงจาก DeviceClassification → select brand field, filter by deviceType
+- models: ดึงจาก DeviceClassification → select model field, filter by brand
+- repair-groups: ดึงจาก MasterItem(categoryKey='RepairGroup')
+- repair-problems: ดึงจาก MasterItem(categoryKey='RepairProblem'), optional ?groupCode= filter
+- repair-resolutions: ดึงจาก MasterItem(categoryKey='RepairResolution'), optional ?groupCode= filter
+
+**5. Production verification:**
+- device-types: 12 items ✅ (BARCODE SCANNERS, COPIER INKJET, COPIER LASER, LABEL PRINTER, PRINTER INKJET...)
+- brands: 11 brands ✅ (BROTHER, CANON, DELI, EPSON, Fuji Xerox...)
+- repair-groups: 14 IT groups ✅ (IT-ACC, IT-COM, IT-EML, IT-INS, IT-MNT...)
+- repair-problems: 24 problem codes ✅
+- repair-resolutions: 18 resolution codes ✅
+- Department (legacy ?category=): 172 departments ✅
+  Sample: itemId=MD-0045, value=OPD กุมารเวชกรรม, groupName=กุมารเวชกรรม, deptCode=PED-001
+- Dashboard: total=2378, active=2151 ✅
+
+Stage Summary:
+- ✅ MasterItem schema rebuilt with 16 fields matching Excel headers exactly
+- ✅ 331 rows total (275 from Excel + 56 from Repair Taxonomy) in single MasterItem table
+- ✅ RepairTaxonomy table dropped — data merged into MasterItem
+- ✅ /api/master route updated to use new field names
+- ✅ All API endpoints working on production
+- ✅ Device table untouched (2,378 rows, text columns only)
+
+Production ITAM-DB state:
+- MasterItem: 331 rows (16 fields)
+  • Department: 172 (itemId, value, groupName, departmentCode)
+  • DeviceClassification: 40 (brand, model, deviceType, parentRef)
+  • Building: 32, Floor: 12, Status: 8, Site: 6, DeviceGroup: 4, ContractNo: 1
+  • RepairGroup: 14, RepairProblem: 24, RepairResolution: 18
+- Device: 2,378 rows (text columns, no FK)
+- No normalized tables (DeviceType/Brand/Model dropped)
+- No RepairTaxonomy table (merged into MasterItem)
+
+Commit: f07d2fc fix(master): rebuild MasterItem schema (16 fields matching Excel) + merge RepairTaxonomy
