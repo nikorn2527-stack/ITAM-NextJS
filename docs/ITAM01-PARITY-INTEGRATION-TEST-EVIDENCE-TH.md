@@ -81,3 +81,18 @@ Advisor findings เป็น database follow-up ของ ITAM-DB ไม่ใ�
 ตรวจ deployment `https://itam-next-js-git-main-png-team.vercel.app/` ซ้ำผ่าน authenticated browser session แล้วพบว่า UI แสดง banner `โหมดสาธิต — ข้อมูลที่สร้างจะไม่บันทึกในระบบจริง` แต่ read-only API ไม่ได้ว่างทั้งหมด: `/api/devices?limit=1&offset=0` ตอบ HTTP 200 และ `total=2378` ตรงกับ ITAM-DB; response row มี `isDemo:false`. `/api/work-orders?limit=1&offset=0` ตอบ HTTP 200 และมีข้อมูล `isDemo:false`. `/api/stock-items?limit=1&offset=0` ตอบ HTTP 200 แต่ pagination `total=0`; `/api/meter-readings` path ที่ทดลองไม่ตรงกับ route ที่ deployment เปิดไว้และตอบ 404 HTML จึงยังต้อง map route จริงก่อนสรุป Meter parity
 
 ข้อสรุป: Vercel deployment เชื่อมข้อมูลจริงอย่างน้อย Devices และ Repair แต่ UI ยังประกาศ demo mode และ Stock/Meter ยังไม่ยืนยันว่า route/query mapping อ่านตารางจริงครบ จึงต้องตรวจ environment flag, endpoint mapping และ module-by-module parity ต่อไป โดยยังไม่ได้ทำ mutation
+
+## Vercel route mapping follow-up (2026-08-22)
+
+ตรวจ endpoint ตาม route ที่มีอยู่จริงใน source แล้ว: `/api/dashboard` ตอบ HTTP 200 และ totals `total=2378`, `active=2151`, `repair=9`, `spare=1`; `/api/devices?limit=1&offset=0` ตอบ HTTP 200 และ `total=2378`; `/api/work-orders?limit=1&offset=0` ตอบ HTTP 200 พร้อมข้อมูล `isDemo:false`; `/api/stock-items` ตอบ HTTP 200 แต่ `total=0`; `/api/meter` ตอบ HTTP 500 ด้วย `Failed to fetch meter readings`.
+
+ข้อสรุปใหม่: Vercel ต่อ ITAM-DB จริงอย่างน้อย Devices, Dashboard และ Repair ได้แล้ว แต่ parity ของ Stock ยังไม่แสดงข้อมูลจริงบน API และ Meter มี runtime failure 500 แม้ ITAM-DB มี MeterReading 14,269 แถว ต้องให้ ITAM-01 แก้สองจุดนี้ก่อนประกาศระบบเดินครบทั้ง 4 โมดูล โดยยังเป็น read-only verification และไม่มี mutation
+
+
+## Vercel dashboard re-check — 2026-08-22 04:24 GMT+7
+
+Source: https://itam-next-js-git-main-png-team.vercel.app/
+
+Read-only browser verification: Dashboard loaded successfully and showed Devices total 2,378, active 2,151, backup 1, repair 9, inactive 217. The deployment UI still displayed `โหมดสาธิต — ข้อมูลที่สร้างจะไม่บันทึกในระบบจริง` and user label `ผู้ดูแล (สาธิต)`. This confirms the deployment can read real device data from ITAM-DB while the runtime still presents demo-mode UX; no mutation was performed.
+
+The visible dashboard also showed Meter latest activity unavailable, paper usage 0, and branches 0, which remain parity/runtime mapping items to verify rather than evidence that ITAM-DB is empty.
