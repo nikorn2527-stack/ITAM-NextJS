@@ -27,14 +27,15 @@ import { getLifecycleReadingType } from '@/lib/lifecycle-reading-type'
  *   2. If device.meterRequired and no meterReadingId and no meterSkipAcknowledged → 400.
  *   3. Derive readingType server-side using getLifecycleReadingType(fromStatus, toStatus).
  *   4. Auto-generate toAssetSiteCode if not provided.
- *   5. Update device + create LocationHistory (with meterSkipAcknowledged) in transaction.
- *   6. If meterReadingId, link it back with derived readingType + eventId.
+ *   5. Update device + create DeviceTransfer + link the meter event in one transaction.
+ *   6. Audit and realtime notifications happen only after the transaction commits.
  *   7. Audit log: TRANSFER.
  */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  let meterReadingIdForRecovery: string | null = null
   try {
     const auth = await requireAuth(req, 'DEVICE_TRANSFER')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -68,6 +69,7 @@ export async function POST(
     // The user must EITHER provide a meterReadingId OR check the acknowledge
     // checkbox (confirming "มิเตอร์นับต่อเนื่อง" — meter continues).
     const meterReadingId = body.meterReadingId ? String(body.meterReadingId) : null
+    meterReadingIdForRecovery = meterReadingId
     const meterSkipAcknowledged = Boolean(body.meterSkipAcknowledged)
     const skipMeterReason = body.skipMeterReason ? String(body.skipMeterReason).trim() : null
     if (device.meterRequired && !meterReadingId && !meterSkipAcknowledged) {
@@ -89,7 +91,7 @@ export async function POST(
     // If a meterReadingId was passed, verify it belongs to this device.
     if (meterReadingId) {
       const reading = await db.meterReading.findUnique({ where: { id: meterReadingId } })
-      if (!reading || reading.assetCode !== device.assetCode) {
+      if (!reading || reading.deviceId !== device.id || reading.assetCode !== device.assetCode) {
         return NextResponse.json(
           { error: 'meterReadingId ไม่ตรงกับอุปกรณ์นี้' },
           { status: 400 },
@@ -134,7 +136,10 @@ export async function POST(
     }
 
     const nowIso = new Date().toISOString()
-    const moveDate = nowIso
+    const requestedMoveDate = body.transferDate ?? body.actionDate ?? body.moveDate
+    const moveDate = requestedMoveDate != null && String(requestedMoveDate).trim()
+      ? String(requestedMoveDate).trim()
+      : nowIso
     const movedBy = user.username || user.email
 
     // Action label mirrors Apps Script:
@@ -142,15 +147,17 @@ export async function POST(
     //   - TRANSFER_SITE (cross-site)
     const action = isCrossSite ? 'TRANSFER_SITE' : 'TRANSFER'
 
-    // Build the LocationHistory row first so we can wire the meterReading's
-    // eventId/eventType back to it (best-effort — wrapped in try/catch).
+    // Build the DeviceTransfer row and wire the meterReading event inside the
+    // same transaction so a partial lifecycle update cannot leave an orphaned
+    // meter reading or an unlinked transfer history row.
     const logId = `MV-${nowIso.replace(/[-:.TZ]/g, '').slice(0, 14)}-${Math.floor(Math.random() * 90000) + 10000}`
 
-    // Single transaction: update device + create history.
-    // Order matters (Apps Script commit 6e57904): status update FIRST, then
-    // meter/history, so a partial failure doesn't leave 3 sheets inconsistent.
-    const [updatedDevice, historyRow] = await db.$transaction([
-      db.device.update({
+    // Single interactive transaction: update device, create history, and link
+    // the meter event atomically. The status update happens first, matching the
+    // Apps Script lifecycle ordering while guaranteeing all three writes commit
+    // or roll back together.
+    const [updatedDevice, historyRow] = await db.$transaction(async (tx) => {
+      const updatedDevice = await tx.device.update({
         where: { id: device.id },
         data: {
           site: toSite,
@@ -163,8 +170,9 @@ export async function POST(
           status: toStatus, // may equal existing status (pure location move)
           updatedBy: movedBy,
         },
-      }),
-      db.deviceTransfer.create({
+      })
+
+      const historyRow = await tx.deviceTransfer.create({
         data: {
           logId,
           deviceId: device.id,
@@ -192,15 +200,12 @@ export async function POST(
           movedBy,
           remark: skipMeterReason || null,
         },
-      }),
-    ])
+      })
 
-    // Best-effort: link the meter reading back to this history row.
-    // Uses the SERVER-DERIVED readingType (not hardcoded 'CHECKOUT') so that
-    // RETURN / SEND_REPAIR / FINAL flows get the correct type.
-    if (meterReadingId) {
-      try {
-        await db.meterReading.update({
+      // Uses the SERVER-DERIVED readingType (not a client-supplied value) so
+      // RETURN / SEND_REPAIR / FINAL flows receive the canonical lifecycle type.
+      if (meterReadingId) {
+        await tx.meterReading.update({
           where: { id: meterReadingId },
           data: {
             eventType: action,
@@ -208,10 +213,10 @@ export async function POST(
             readingType: derivedReadingType,
           },
         })
-      } catch {
-        /* non-fatal */
       }
-    }
+
+      return [updatedDevice, historyRow] as const
+    })
 
     // Audit log
     try {
@@ -276,8 +281,16 @@ export async function POST(
         isCrossSite === false,
     })
   } catch (err) {
+    if (meterReadingIdForRecovery) {
+      try {
+        await db.meterReading.update({
+          where: { id: meterReadingIdForRecovery },
+          data: { eventType: 'LIFECYCLE_METER_INCOMPLETE', eventId: null },
+        })
+      } catch { /* best-effort recovery marker */ }
+    }
     console.error('POST /api/itam/devices/[id]/transfer', err)
     const message = err instanceof Error ? err.message : 'Transfer failed'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json({ error: message, code: 'TRANSFER_UPDATE_FAILED' }, { status: 500 })
   }
 }
