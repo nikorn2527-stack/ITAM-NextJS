@@ -9122,3 +9122,78 @@ Total ITAM-01 parallel work completed (7 PRs นอกเหนือจาก P
 - PR #49: import error report contract (classify + redact + CSV export)
 
 Total tests: 15 + 49 + 38 + 36 + 37 + 47 + 34 + 43 = 299 tests PASS (pure functions, no DB)
+
+---
+Task ID: DEVICES-EXPORT-CONTRACT-PR50-2026-08-22
+Agent: ITAM-01 — Dev-3 / Devices (per "แจ้งแล้วให้ทีม ITAM-04 กำลังทำ" + "ทำต่อได้เลย")
+
+Task: ทำ export contract workstream (CSV/JSON + field levels + bounded) เป็น parallel work
+
+Work Log:
+
+**1. New module: src/lib/devices-export-contract/ (+370 lines)**
+- scenarios.ts:
+  - ExportFormat: csv | json
+  - ExportFieldLevel: full | standard | mobile
+  - EXPORT_BOUNDS: MAX_LIMIT=10000, DEFAULT_LIMIT=1000, MAX_CSV_CELL_LENGTH=32767
+  - FULL_EXPORT_FIELDS: 40 fields (superadmin only, includes sensitive)
+  - STANDARD_EXPORT_FIELDS: 26 fields (excludes 10 sensitive)
+  - MOBILE_EXPORT_FIELDS: 10 fields (minimal)
+  - SENSITIVE_EXPORT_FIELDS: 10 fields (serialNumber, ip, mac, remoteId, contractNo, vendor, purchasePrice, costCenter, remark, currentAssignee)
+  - 11 pure helpers: isValidFormat, isValidFieldLevel, getExportFields, clampExportLimit, buildExportSiteFilter, validateExportQuery, escapeExportCsvField, buildCsvHeader, buildCsvRow, buildExportCsv, buildExportJson, estimateExportSize
+  - EXPORT_SCENARIOS: 8 fixtures
+- index.ts: barrel
+
+**2. Tests: tests/devices-export-contract/scenarios.test.ts (+400 lines, 73 tests)**
+- isValidFormat + isValidFieldLevel: 8 tests
+- getExportFields: 5 tests
+- clampExportLimit: 8 tests
+- buildExportSiteFilter: 6 tests
+- validateExportQuery: 5 tests
+- escapeExportCsvField: 9 tests (RFC 4180 + truncation)
+- CSV builders: 6 tests
+- buildExportJson: 3 tests
+- estimateExportSize: 4 tests
+- Scenario integration: 8 tests
+- Constants integrity: 5 tests
+- Scenario integrity: 5 tests
+
+**3. Test evidence:**
+```
+✓ tests/devices-export-contract/scenarios.test.ts (73 tests) 12ms
+Test Files 1 passed (1)
+Tests 73 passed (73)
+Duration 270ms
+```
+
+**4. Governance verified:**
+- B4 frozen: 0-diff (all 6 files)
+- SYNC_RUN: NOT added
+- prisma db:push: NOT used
+- Schema/migration: NOT changed
+- PR overlap: NONE
+- Secrets: none (sensitive excluded from standard export)
+
+**5. PR #50 opened:**
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/50
+- Head: feature/module-devices-export-contract @ 6f41b7fd7edff419da3c1db42c525f1fde9884a2
+- Base: feature/module-devices-import-boundary (PR #29)
+- Labels: module:devices, work-package:C-export, ITAM-01, audit-review-required, no-self-merge, governance:read-only
+- Body: REVIEW PACKET format (per EXACT-HEAD-REVIEW-PROTOCOL §3)
+
+Stage Summary:
+- PR #50 opened: export contract, 73/73 PASS, B4 0-diff, no SYNC_RUN, no schema change
+- Devices lane ตอนนี้มี 10 PRs รอ ITAM-04 verdict: #29, #35, #38, #41, #45, #46, #47, #48, #49, #50
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+Total ITAM-01 parallel work completed (8 PRs นอกเหนือจาก PR #29 importer):
+- PR #35: parallel fixtures + acceptance docs (49 tests)
+- PR #41: bounded list/query + mobile subset (38 tests)
+- PR #45: importer ↔ transfer integration (36 tests)
+- PR #46: devices ↔ meter contract (37 tests)
+- PR #47: lifecycle contract (47 tests)
+- PR #48: audit history contract (34 tests)
+- PR #49: import error report contract (43 tests)
+- PR #50: export contract (73 tests)
+
+Total tests: 15 + 49 + 38 + 36 + 37 + 47 + 34 + 43 + 73 = 372 tests PASS (pure functions, no DB)
