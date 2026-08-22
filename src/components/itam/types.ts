@@ -38,6 +38,10 @@ export interface Device {
   lastMeterBw?: number
   lastMeterColor?: number
   lastReadingMonth?: string | null
+  // ── Cascading master-data FKs (NEW — populated by CascadingDropdown) ──
+  typeId?: string | null
+  brandId?: string | null
+  modelId?: string | null
   // ── อื่นๆ ──
   costCenter: string | null
   deviceGroup: string | null
