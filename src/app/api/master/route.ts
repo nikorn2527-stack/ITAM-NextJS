@@ -56,10 +56,10 @@ export async function GET(req: NextRequest) {
     // Returns all MasterItem rows matching the optional category filter.
     if (!type) {
       const where: Record<string, unknown> = {}
-      if (category) where.categoryKey = category
+      if (category) where.category = category
       const items = await db.masterItem.findMany({
         where,
-        orderBy: [{ categoryKey: 'asc' }, { itemId: 'asc' }],
+        orderBy: [{ category: 'asc' }, { code: 'asc' }],
       })
       return NextResponse.json({ items })
     }
@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
       case 'device-types': {
         // Pull distinct DeviceType values from DeviceClassification MasterItem rows.
         const rows = await db.masterItem.findMany({
-          where: { categoryKey: 'DeviceClassification', active: true },
+          where: { category: 'DeviceClassification', active: true },
           select: { deviceType: true },
         })
         const types = new Set<string>()
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
         // Pull distinct Brand values from DeviceClassification MasterItem rows.
         // Optional typeId filter is the DeviceType name.
         const rows = await db.masterItem.findMany({
-          where: { categoryKey: 'DeviceClassification', active: true },
+          where: { category: 'DeviceClassification', active: true },
           select: { brand: true, deviceType: true },
         })
         const brandSet = new Set<string>()
@@ -119,7 +119,7 @@ export async function GET(req: NextRequest) {
         // Pull Model values from DeviceClassification MasterItem rows.
         // Optional brandId filter is the Brand name.
         const rows = await db.masterItem.findMany({
-          where: { categoryKey: 'DeviceClassification', active: true },
+          where: { category: 'DeviceClassification', active: true },
           select: { model: true, brand: true, deviceType: true },
         })
         const models: Array<{ name: string; brand?: string; deviceType?: string }> = []
@@ -136,36 +136,34 @@ export async function GET(req: NextRequest) {
       case 'repair-groups': {
         // Pull from MasterItem category='RepairGroup'
         const items = await db.masterItem.findMany({
-          where: { categoryKey: 'RepairGroup' },
-          orderBy: { departmentCode: 'asc' },
-          select: { id: true, value: true, displayLabel: true, departmentCode: true, groupName: true, active: true },
+          where: { category: 'RepairGroup' },
+          orderBy: { code: 'asc' },
+          select: { id: true, code: true, label: true, displayLabel: true, active: true },
         })
         const formatted = items.map((i) => ({
-          code: i.departmentCode,
-          label: i.value,
-          status: i.groupName,
+          code: i.code,
+          label: i.label,
           active: i.active,
         }))
         return NextResponse.json({ items: formatted, type })
       }
 
       case 'repair-problems': {
-        // Pull from MasterItem category='RepairProblem'
+        // Pull from MasterItem category='RepairRequest'
         // Optional groupCode filter (matches parentRef field)
-        const where: Record<string, unknown> = { categoryKey: 'RepairProblem' }
+        const where: Record<string, unknown> = { category: 'RepairRequest' }
         if (groupCode) {
           where.parentRef = groupCode
         }
         const items = await db.masterItem.findMany({
           where,
-          orderBy: [{ parentRef: 'asc' }, { departmentCode: 'asc' }],
-          select: { id: true, value: true, displayLabel: true, departmentCode: true, parentRef: true, groupName: true, active: true },
+          orderBy: [{ parentRef: 'asc' }, { code: 'asc' }],
+          select: { id: true, code: true, label: true, parentRef: true, displayLabel: true, active: true },
         })
         const formatted = items.map((i) => ({
-          code: i.departmentCode,
-          label: i.value,
+          code: i.code,
+          label: i.label,
           groupCode: i.parentRef,
-          groupLabel: i.groupName,
           active: i.active,
         }))
         return NextResponse.json({ items: formatted, type })
@@ -174,20 +172,19 @@ export async function GET(req: NextRequest) {
       case 'repair-resolutions': {
         // Pull from MasterItem category='RepairResolution'
         // Optional groupCode filter (matches parentRef field)
-        const where: Record<string, unknown> = { categoryKey: 'RepairResolution' }
+        const where: Record<string, unknown> = { category: 'RepairResolution' }
         if (groupCode) {
           where.parentRef = groupCode
         }
         const items = await db.masterItem.findMany({
           where,
-          orderBy: [{ parentRef: 'asc' }, { departmentCode: 'asc' }],
-          select: { id: true, value: true, displayLabel: true, departmentCode: true, parentRef: true, groupName: true, active: true },
+          orderBy: [{ parentRef: 'asc' }, { code: 'asc' }],
+          select: { id: true, code: true, label: true, parentRef: true, displayLabel: true, active: true },
         })
         const formatted = items.map((i) => ({
-          code: i.departmentCode,
-          label: i.value,
+          code: i.code,
+          label: i.label,
           groupCode: i.parentRef,
-          groupLabel: i.groupName,
           active: i.active,
         }))
         return NextResponse.json({ items: formatted, type })

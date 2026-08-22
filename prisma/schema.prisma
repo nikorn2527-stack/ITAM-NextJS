@@ -490,26 +490,22 @@ model SiteRate {
 // 15) MasterItem — ข้อมูลมาตรฐาน (Brand, Type, Model, Department, Status, DeviceGroup, Site)
 // ============================================================
 model MasterItem {
-  id             String   @id @default(cuid())
-  itemId         String?  // คอลัมน์ A: MD-0164, MD-0001, ...
-  categoryKey    String   // คอลัมน์ B: Department, DeviceClassification, Building, Floor, Status, Site, DeviceGroup, ContractNo
-  value          String?  // คอลัมน์ C: ค่าหลัก (ชื่อแผนก, ชื่อตึก, ฯลฯ)
-  groupName      String?  // คอลัมน์ D: สังกัด (สำหรับ Department)
-  departmentCode String?  // คอลัมน์ E: รหัสแผนก (ACC-001, ADM-001, ...)
-  brand          String?  // คอลัมน์ F: ยี่ห้อ (สำหรับ DeviceClassification)
-  model          String?  // คอลัมน์ G: รุ่น (สำหรับ DeviceClassification)
-  deviceType     String?  // คอลัมน์ H: ประเภทอุปกรณ์ (สำหรับ DeviceClassification)
-  parentRef      String?  // คอลัมน์ I: อ้างอิง parent (เช่น Brand|DeviceType)
-  displayLabel   String?  // คอลัมน์ J: ชื่อแสดงผล
-  siteCode       String?  // คอลัมน์ K: รหัสสาขา
-  allowedSites   String?  // คอลัมน์ L: สาขาที่อนุญาต (ALL หรือเฉพาะ)
-  active         Boolean  @default(true) // คอลัมน์ M
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id           String   @id @default(cuid())
+  category     String   // category column from Excel
+  code         String   // code column (DC-001, DEP-001, IT-PRN, etc.)
+  label        String   // label column (display name)
+  brand        String?  // brand (for DeviceClassification)
+  model        String?  // model (for DeviceClassification)
+  deviceType   String?  // deviceType (for DeviceClassification)
+  parentRef    String?  // parentRef (Affiliation label for Department, IT-PRN for RepairRequest, etc.)
+  displayLabel String?  // displayLabel column
+  siteCode     String?  // siteCode column (ALL, UDH, etc.)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  @@index([categoryKey])
-  @@index([itemId])
-  @@index([departmentCode])
+  @@index([category])
+  @@index([code])
 }
 
 // ============================================================
