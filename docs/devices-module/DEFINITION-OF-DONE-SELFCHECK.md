@@ -5,8 +5,8 @@
 **Status:** Ready for Audit (pending cross-review verdict)
 **Date:** 2026-08-21
 **Exact heads:**
-- PR #29: `ed64d6998cc02c596f739568d6619a37a93797af`
-- PR #35: `a4e86f4986f7e93e25d3fadfb05e0cf2a14e0df9`
+- PR #29: `b9a097d37f3c23fea6dd5713678184420d0424d3_29`
+- PR #35: `d3f1da60a747538db55052e4dd6eab2b50602fd8`
 
 ## Purpose
 
