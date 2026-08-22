@@ -9197,3 +9197,80 @@ Total ITAM-01 parallel work completed (8 PRs นอกเหนือจาก P
 - PR #50: export contract (73 tests)
 
 Total tests: 15 + 49 + 38 + 36 + 37 + 47 + 34 + 43 + 73 = 372 tests PASS (pure functions, no DB)
+
+---
+Task ID: DEVICES-SEARCH-FILTER-PR51-2026-08-22
+Agent: ITAM-01 — Dev-3 / Devices (per "ทำต่อเลยครับมันงานด่วนผมรอไม่ได้")
+
+Task: ทำ search/filter contract workstream (query optimization + index hints)
+
+Work Log:
+
+**1. New module: src/lib/devices-search-filter-contract/ (+470 lines)**
+- scenarios.ts:
+  - SEARCHABLE_FIELDS: 16 fields (excludes password/secret)
+  - SORTABLE_FIELDS: 12 fields (indexed + commonly sorted)
+  - SEARCH_BOUNDS: MAX_LIMIT=500, MAX_SEARCH_LENGTH=200
+  - INDEX_HINTS: maps field → Prisma index name
+  - SearchMode: contains | equals | startsWith | endsWith (case-insensitive)
+  - FilterOperator: eq | ne | in | notIn | gt | lt | gte | lte | between
+  - 12 pure helpers: isValid*, sanitizeSearchString, clampSearchPagination,
+    buildWhereClause, applySearchMode, buildSortClause, validateSearchQuery,
+    getIndexHint, analyzeQueryPlan
+  - SEARCH_SCENARIOS: 12 fixtures
+- index.ts: barrel
+
+**2. Tests: tests/devices-search-filter-contract/scenarios.test.ts (+420 lines, 73 tests)**
+- Validators: 15 tests
+- sanitizeSearchString: 6 tests
+- clampSearchPagination: 7 tests
+- applySearchMode: 4 tests
+- buildSortClause: 2 tests
+- buildWhereClause: 6 tests
+- validateSearchQuery: 6 tests
+- getIndexHint: 3 tests
+- analyzeQueryPlan: 4 tests
+- Scenario integration: 12 tests
+- Constants integrity: 5 tests
+- Scenario integrity: 3 tests
+
+**3. Test evidence:**
+```
+✓ tests/devices-search-filter-contract/scenarios.test.ts (73 tests) 26ms
+Test Files 1 passed (1)
+Tests 73 passed (73)
+Duration 283ms
+```
+
+**4. Governance verified:**
+- B4 frozen: 0-diff (all 6 files)
+- SYNC_RUN: NOT added
+- prisma db:push: NOT used
+- Schema/migration: NOT changed
+- PR overlap: NONE
+- Secrets: none (password/secret excluded from SEARCHABLE_FIELDS)
+
+**5. PR #51 opened:**
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/51
+- Head: feature/module-devices-search-filter-contract @ 2c9196ecd51d027b52363f3ccd4c3509a0fcb44e
+- Base: feature/module-devices-import-boundary (PR #29)
+- Labels: module:devices, work-package:C-search-filter, ITAM-01, audit-review-required, no-self-merge, governance:read-only
+- Body: REVIEW PACKET format (per EXACT-HEAD-REVIEW-PROTOCOL §3)
+
+Stage Summary:
+- PR #51 opened: search/filter contract, 73/73 PASS, B4 0-diff, no SYNC_RUN, no schema change
+- Devices lane ตอนนี้มี 11 PRs รอ ITAM-04 verdict: #29, #35, #38, #41, #45, #46, #47, #48, #49, #50, #51
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+Total ITAM-01 parallel work completed (9 PRs นอกเหนือจาก PR #29 importer):
+- PR #35: parallel fixtures + acceptance docs (49 tests)
+- PR #41: bounded list/query + mobile subset (38 tests)
+- PR #45: importer ↔ transfer integration (36 tests)
+- PR #46: devices ↔ meter contract (37 tests)
+- PR #47: lifecycle contract (47 tests)
+- PR #48: audit history contract (34 tests)
+- PR #49: import error report contract (43 tests)
+- PR #50: export contract (73 tests)
+- PR #51: search/filter contract (73 tests)
+
+Total tests: 15 + 49 + 38 + 36 + 37 + 47 + 34 + 43 + 73 + 73 = 445 tests PASS (pure functions, no DB)
