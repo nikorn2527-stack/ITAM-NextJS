@@ -17,6 +17,11 @@ import {
   type ReadingType,
 } from '@/lib/meter-logic'
 import { assertMeterMonthWritable } from '@/lib/meter-snapshot'
+import {
+  isStaleMeterReading,
+  validateMeterChannels,
+} from '@/lib/meter-reading-contract'
+import { classifyMeterWriteReplay, normalizeMeterReadingId } from '@/lib/meter-write-identity'
 
 // GET /api/itam/meter-readings?assetCode=&month=&page=1&limit=20
 export async function GET(req: NextRequest) {
@@ -103,7 +108,64 @@ export async function POST(req: NextRequest) {
     const meterColor = Math.floor(Number(body.meterColor || 0))
     const finalReadingMonth = normalizeReadingMonth(body.readingMonth) ||
       new Date().toISOString().slice(0, 7)
-    const readingDate = body.readingDate || new Date().toISOString().slice(0, 10)
+    const readingDate = typeof body.readingDate === 'string' && body.readingDate.trim()
+      ? body.readingDate.trim()
+      : new Date().toISOString().slice(0, 10)
+    const readingId = normalizeMeterReadingId(body.readingId)
+    const remark = typeof body.remark === 'string' ? body.remark.trim() || null : null
+    const cycleId = typeof body.cycleId === 'string' ? body.cycleId.trim() || null : null
+
+    // A retry identity is checked before any previous-reading lookup or write
+    // lock. Exact retries return the original row; conflicting reuse fails
+    // closed and cannot mutate meter state.
+    if (readingId) {
+      const existingByIdentity = await db.meterReading.findUnique({
+        where: { readingId },
+        select: {
+          id: true,
+          readingId: true,
+          assetCode: true,
+          readingMonth: true,
+          meterBw: true,
+          meterColor: true,
+          pagesBw: true,
+          pagesColor: true,
+          readingType: true,
+        },
+      })
+      const replay = classifyMeterWriteReplay(
+        {
+          readingId,
+          assetCode,
+          readingMonth: finalReadingMonth,
+          meterBw: Math.floor(Number(body.meterBw)),
+          meterColor: Math.floor(Number(body.meterColor || 0)),
+        },
+        existingByIdentity,
+      )
+      if (replay.status === 'conflict') {
+        return NextResponse.json(
+          { error: 'readingId ถูกใช้กับข้อมูลมิเตอร์ชุดอื่นแล้ว', code: 'IDEMPOTENCY_CONFLICT' },
+          { status: 409 },
+        )
+      }
+      if (replay.status === 'replay' && existingByIdentity) {
+        return NextResponse.json(
+          {
+            reading: existingByIdentity,
+            reset: existingByIdentity.readingType === 'RESET',
+            pagesBw: existingByIdentity.pagesBw,
+            pagesColor: existingByIdentity.pagesColor,
+            readingType: existingByIdentity.readingType,
+            modeSwitched: false,
+            isInitial: existingByIdentity.readingType === 'INITIAL',
+            updated: true,
+            idempotent: true,
+          },
+          { status: 200 },
+        )
+      }
+    }
 
     // ── Write-lock: reject writes to CLOSED-cycle months ──
     try {
@@ -186,14 +248,53 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const channelValidation = validateMeterChannels({
+      deviceId: device.id,
+      date: readingDate,
+      remark,
+      cycleId,
+      meterBw,
+      previousMeterBw: prevMeterBw,
+      meterColor,
+      previousMeterColor: adjustedPrevColor,
+    })
+    if (!channelValidation.ok) {
+      return NextResponse.json(
+        {
+          error: 'ค่ามิเตอร์ไม่ถูกต้อง',
+          code: channelValidation.validation?.code,
+          channel: channelValidation.channel,
+        },
+        { status: 400 },
+      )
+    }
+
     // ── Step 6: Calculate pages ──
     const pagesBw = calcPagesBw(meterBw, prevMeterBw, readingType)
     const pagesColor = calcPagesColor(meterColor, adjustedPrevColor, readingType)
 
     // ── Step 7: Check for existing MONTHLY reading in same month (upsert) ──
     const existing = await findExistingMonthlyReading(assetCode, finalReadingMonth)
+    if (
+      existing
+      && readingType === 'MONTHLY'
+      && isStaleMeterReading({ readingDate }, existing)
+    ) {
+      return NextResponse.json(
+        {
+          error: 'วันที่จดมิเตอร์เก่ากว่ารายการล่าสุดของรอบนี้',
+          code: 'STALE_READING',
+          existingReadingDate: existing.readingDate,
+          readingDate,
+        },
+        { status: 409 },
+      )
+    }
+    const persistedReadingId = readingId ?? existing?.readingId ?? null
 
     const data = {
+      readingId: persistedReadingId,
+      deviceId: device.id,
       assetCode,
       readingDate,
       readingMonth: finalReadingMonth,
@@ -204,7 +305,7 @@ export async function POST(req: NextRequest) {
       prevMeterBw,
       prevMeterColor: adjustedPrevColor,
       readBy: user.username || user.email,
-      remark: body.remark || null,
+      remark,
       readingType,
       locationAtReading: body.locationAtReading || null,
       siteAtReading: body.siteAtReading || device.site || null,
@@ -261,7 +362,7 @@ export async function POST(req: NextRequest) {
     // Push SSE event
     publishRealtimeEvent({
       type: 'meter-written',
-      assetCode,
+      assetNo: assetCode,
       site: device.site ?? null,
       payload: { pagesBw, pagesColor, reset: readingType === 'RESET', readingType },
     })
@@ -276,6 +377,7 @@ export async function POST(req: NextRequest) {
         modeSwitched,
         isInitial,
         updated: !!existing,
+        idempotent: false,
       },
       { status: existing ? 200 : 201 },
     )

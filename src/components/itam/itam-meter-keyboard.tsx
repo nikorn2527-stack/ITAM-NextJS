@@ -83,6 +83,7 @@ interface RecentlyKeyed {
   name: string
   meterBw: number
   meterColor: number
+  meterMode: 'TOTAL' | 'BW_COLOR'
   delta: number
   at: number
   reset: boolean
@@ -91,6 +92,13 @@ interface RecentlyKeyed {
 function fmtTime(ts: number): string {
   const d = new Date(ts)
   return d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function fmtDateTime(ts: number): string {
+  return new Date(ts).toLocaleString('th-TH', {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  })
 }
 
 function deviceLabel(d: { brand: string | null; model: string | null; assetCode: string }): string {
@@ -107,6 +115,7 @@ export function ItamMeterKeyboard() {
   const [colorInput, setColorInput] = React.useState('')
   const [remark, setRemark] = React.useState('')
   const [saving, setSaving] = React.useState(false)
+  const [latest, setLatest] = React.useState<RecentlyKeyed | null>(null)
   const [recent, setRecent] = React.useState<RecentlyKeyed[]>([])
   const [focus, setFocus] = React.useState<'search' | 'meter'>('search')
 
@@ -311,21 +320,20 @@ export function ItamMeterKeyboard() {
       const pagesBw: number = j.pagesBw ?? Math.max(0, bwNum - selected.lastMeterBw)
       const pagesColor: number = j.pagesColor ?? Math.max(0, colorNum - selected.lastMeterColor)
 
-      // Push to "recently keyed" stack (top 5).
-      setRecent((prev) =>
-        [
-          {
-            assetCode: selected.assetCode,
-            name: deviceLabel(selected),
-            meterBw: bwNum,
-            meterColor: colorNum,
-            delta: pagesBw + pagesColor,
-            at: Date.now(),
-            reset: isReset,
-          },
-          ...prev,
-        ].slice(0, 5),
-      )
+      // Only publish a result after the API has confirmed the reading was saved.
+      // The same object powers the prominent primary result and the secondary history.
+      const savedReading: RecentlyKeyed = {
+        assetCode: selected.assetCode,
+        name: deviceLabel(selected),
+        meterBw: bwNum,
+        meterColor: colorNum,
+        meterMode: isColorMode ? 'BW_COLOR' : 'TOTAL',
+        delta: pagesBw + pagesColor,
+        at: Date.now(),
+        reset: Boolean(j.reset ?? isReset),
+      }
+      setLatest(savedReading)
+      setRecent((prev) => [savedReading, ...prev].slice(0, 5))
 
       toast.success(
         `บันทึกมิเตอร์ ${selected.assetCode} · +${(pagesBw + pagesColor).toLocaleString()} แผ่น`,
@@ -541,6 +549,58 @@ export function ItamMeterKeyboard() {
         {/* Right: selected device + meter input */}
         <Card className="flex min-h-0 flex-col border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+            {/* Primary confirmation stays mounted independently from the selected queue item. */}
+            {latest && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="rounded-md border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-800 dark:bg-emerald-950/30"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                    บันทึกล่าสุดสำเร็จ
+                  </div>
+                  <span className="text-[10px] text-emerald-700/80 dark:text-emerald-300/80">
+                    {fmtDateTime(latest.at)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:grid-cols-4">
+                  <div>
+                    <div className="text-[10px] uppercase text-emerald-700/70 dark:text-emerald-300/70">Asset Code</div>
+                    <div className="font-mono font-semibold text-emerald-900 dark:text-emerald-100">{latest.assetCode}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-emerald-700/70 dark:text-emerald-300/70">BW / Color</div>
+                    <div className="font-mono font-semibold text-emerald-900 dark:text-emerald-100">
+                      BW {latest.meterBw.toLocaleString()}
+                      <span className="ml-2 text-teal-700 dark:text-teal-300">
+                        Color {latest.meterMode === 'BW_COLOR' ? latest.meterColor.toLocaleString() : '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-emerald-700/70 dark:text-emerald-300/70">Delta</div>
+                    <div className="font-mono font-semibold text-emerald-900 dark:text-emerald-100">
+                      {latest.delta > 0 ? '+' : ''}{latest.delta.toLocaleString()}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-emerald-700/70 dark:text-emerald-300/70">สถานะ</div>
+                    <Badge
+                      className={
+                        latest.reset
+                          ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                          : 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                      }
+                    >
+                      {latest.reset ? 'RESET' : 'บันทึกสำเร็จ'}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <AnimatePresence mode="wait">
               {!selected ? (
                 <motion.div
@@ -721,7 +781,7 @@ export function ItamMeterKeyboard() {
         </Card>
       </div>
 
-      {/* Bottom: recently keyed */}
+      {/* Secondary history: retained for review; primary confirmation is above. */}
       <Card className="mt-3 border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="p-3">
           <div className="mb-1.5 flex items-center justify-between">
