@@ -22,6 +22,10 @@ const deviceSheetSource = readFileSync(
   'src/components/itam/device-detail-sheet.tsx',
   'utf8',
 )
+const meterKeyboardSource = readFileSync(
+  'src/components/itam/itam-meter-keyboard.tsx',
+  'utf8',
+)
 
 describe('Meter/Lifecycle active runtime boundary', () => {
   it('preserves the legacy transfer payload and response aliases through the active facade', () => {
@@ -90,5 +94,34 @@ describe('Meter/Lifecycle active runtime boundary', () => {
     expect(getLifecycleReadingType('In Stock', 'Inactive')).toBe('CHECKOUT')
     expect(getLifecycleReadingType('Inactive', 'Active')).toBe('RETURN')
     expect(getLifecycleReadingType('Active', 'Active')).toBe('MONTHLY')
+  })
+
+  it('renders the successful reading in the primary visible area with the required fields', () => {
+    for (const field of [
+      'บันทึกล่าสุดสำเร็จ',
+      'latest.assetCode',
+      'latest.meterBw',
+      'latest.meterColor',
+      'latest.delta',
+      'fmtDateTime(latest.at)',
+      "latest.reset ? 'RESET'",
+      'role="status"',
+      'aria-live="polite"',
+    ]) {
+      expect(meterKeyboardSource).toContain(field)
+    }
+    expect(meterKeyboardSource).toContain('Secondary history: retained for review; primary confirmation is above.')
+    expect(meterKeyboardSource).toContain('setRecent((prev) => [savedReading, ...prev].slice(0, 5))')
+    expect(meterKeyboardSource.indexOf('{latest && (')).toBeLessThan(meterKeyboardSource.indexOf('<AnimatePresence mode="wait">'))
+  })
+
+  it('publishes latest and recent only after the meter API confirms success', () => {
+    const responseGuard = meterKeyboardSource.indexOf("if (!res.ok)")
+    const latestUpdate = meterKeyboardSource.indexOf('setLatest(savedReading)')
+    const historyUpdate = meterKeyboardSource.indexOf('setRecent((prev) => [savedReading, ...prev].slice(0, 5))')
+    expect(responseGuard).toBeGreaterThan(-1)
+    expect(latestUpdate).toBeGreaterThan(responseGuard)
+    expect(historyUpdate).toBeGreaterThan(latestUpdate)
+    expect(meterKeyboardSource).toContain("throw new Error(j.error || 'Save failed')")
   })
 })
