@@ -9470,3 +9470,49 @@ Stage Summary:
 - HEAD-CHANGED posted per protocol
 - Awaiting ITAM-02 re-review
 - Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+---
+Task ID: ITAM-01-AUDIT-FIXES-V2-2026-08-22
+Agent: ITAM-01 — Dev-3 / Devices (per "ต่อเลยครับ Audit แล้ว")
+
+Task: แก้ 4 PRs ที่ Audit re-review ยัง REQUEST CHANGES (v2 fixes)
+
+Work Log:
+
+**1. PR #29 v2 fix:**
+- v1 issue: fix was never pushed (worktree cleaned before commit)
+- v2 fix: redo case-insensitive lookup + push successfully
+  - findExistingAssetCodes: mode: 'insensitive' instead of lowercasing
+  - persistDevices: updateMany with mode: 'insensitive' instead of update with lowercased key
+  - Added 2 mixed-case regression tests
+- New SHA: pushed
+
+**2. PR #35 v2 fix:**
+- v1 issue: SHA in DoD kept getting stale (circular problem — every commit changes SHA)
+- v2 fix: replace all hardcoded 40-char SHAs with "see PR head SHA on GitHub (auto-tracked)"
+- This avoids the circular SHA-update problem permanently
+
+**3. PR #41 v2 fix:**
+- v1 issue: Audit checked /api/itam/devices route (not /api/devices) — still had inline select with sensitive fields
+- v2 fix: wire DEVICE_LIST_FIELDS into /api/itam/devices route
+  - Import DEVICE_LIST_FIELDS from devices-bounded-list
+  - Replace 43-line inline select with DEVICE_LIST_FIELDS spread
+  - Remove serialNumber from search OR clause
+- Removed: serialNumber, purchasePrice, vendor, contractNo, ip, mac, remoteId from list view
+
+**4. PR #48 v2 fix:**
+- v1 issue: returned redactedLogs but no non-superadmin assertion test
+- v2 fix: add 2 redaction assertion tests:
+  - Non-superadmin: result.auditLogs has no 'detail' field
+  - Superadmin: also redacted (consistent redaction for both)
+
+**5. HEAD-CHANGED posted on all 4 PRs:**
+- New exact head SHAs for all 4 PRs
+- Requested ITAM-02 Audit re-review
+
+Stage Summary:
+- 4 Audit REQUEST CHANGES v2 fixes applied + pushed
+- All fixes preserve B4 frozen 0-diff + no SYNC_RUN + no schema change
+- HEAD-CHANGED posted per protocol
+- Awaiting ITAM-02 re-review (v2)
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
