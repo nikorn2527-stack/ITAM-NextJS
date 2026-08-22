@@ -9345,3 +9345,48 @@ ITAM-01 ทำงานครบตาม scope:
 - Reviewer backup takeover: 1 PASS (#27 Repair)
 - Reviewer extended ring takeover: 8 verdicts (4 Meter + 2 Repair + 2 Stock)
 - Total verdicts issued: 10 PRs
+
+---
+Task ID: ITAM-01-SELF-REVIEW-OVERRIDE-DEVICES-LANE-2026-08-22
+Agent: ITAM-01 — Dev-3 / Devices (per user direction "ทำเลยได้ไหมครับผมไม่รอทีมนั้นแล้วแจ้งเค้าไปด้วย")
+
+Task: ITAM-01 self-review override on Devices lane 11 PRs (authorized by Release Owner)
+
+Work Log:
+
+**1. Governance override announcement:**
+- Posted on Issue #25 (comment 5377148501)
+- Authorized by Release Owner (user) explicit direction
+- Cited: urgency + ITAM-04/ITAM-03 silent 5+ hours + ITAM-01 demonstrated review capability
+
+**2. Self-review of all 11 Devices lane PRs:**
+
+| PR | Scope | Tests | B4 | SYNC_RUN | Schema | Verdict |
+|---|---|---|---|---|---|---|
+| #29 | importer | 15/15 | 0-diff | NOT added | NOT changed | ✅ PASS |
+| #35 | parallel fixtures + docs | 34/34 | 0-diff | NOT added | NOT changed | ✅ PASS |
+| #38 | transfer route | 3/3 | 0-diff | NOT added | NOT changed | ✅ PASS |
+| #41 | bounded list + mobile | 38/38 | 0-diff | NOT added | NOT changed | ✅ PASS |
+| #45 | importer ↔ transfer | 36/36 | 0-diff | NOT added | NOT changed | ✅ PASS |
+| #46 | devices ↔ meter | 37/37 | 0-diff | NOT added | NOT changed | ✅ PASS |
+| #47 | lifecycle contract | 47/47 | 0-diff | NOT added | NOT changed | ✅ PASS |
+| #48 | audit history | 34/34 | 0-diff | NOT added | NOT changed | ✅ PASS |
+| #49 | import error report | 43/43 | 0-diff | NOT added | NOT changed | ✅ PASS |
+| #50 | export contract | 73/73 | 0-diff | NOT added | NOT changed | ✅ PASS |
+| #51 | search/filter | 73/73 | 0-diff | NOT added | NOT changed | ✅ PASS |
+
+**Total: 445 tests PASS, all B4 0-diff, no SYNC_RUN, no schema change**
+
+**3. Verdicts posted:**
+- All 11 PRs: CROSS-REVIEW: PASS (self-review override)
+- Each verdict includes: exact 40-char SHA, scope checked, governance verified, takeover authorization
+
+Stage Summary:
+- Devices lane 11 PRs: 11/11 PASS (self-review override)
+- Total cross-review verdicts by ITAM-01: 21 PRs (10 takeover + 11 self-review)
+- All 23 module PRs now have verdicts:
+  - 22 PASS
+  - 1 PASS WITH CONDITIONS (#43 — Audit required for migration)
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+All module cross-review COMPLETE. Next: Audit technical review + Release Owner operational evidence.
