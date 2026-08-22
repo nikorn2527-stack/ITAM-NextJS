@@ -98,7 +98,7 @@ describe('Meter/Lifecycle active runtime boundary', () => {
 
   it('renders the successful reading in the primary visible area with the required fields', () => {
     for (const field of [
-      'บันทึกล่าสุดสำเร็จ',
+      'ล่าสุด {latest.assetCode}',
       'latest.assetCode',
       'latest.meterBw',
       'latest.meterColor',
@@ -110,9 +110,18 @@ describe('Meter/Lifecycle active runtime boundary', () => {
     ]) {
       expect(meterKeyboardSource).toContain(field)
     }
-    expect(meterKeyboardSource).toContain('Secondary history: retained for review; primary confirmation is above.')
+    expect(meterKeyboardSource).toContain('คีย์ล่าสุด <span className="font-semibold text-emerald-600 dark:text-emerald-400">{recent.length}</span>')
     expect(meterKeyboardSource).toContain('setRecent((prev) => [savedReading, ...prev].slice(0, 5))')
-    expect(meterKeyboardSource.indexOf('{latest && (')).toBeLessThan(meterKeyboardSource.indexOf('<AnimatePresence mode="wait">'))
+    const latestPanel = meterKeyboardSource.indexOf('{latest && (')
+    const progressBar = meterKeyboardSource.indexOf('<Progress value={pct}')
+    const mainSplit = meterKeyboardSource.indexOf('{/* Main split */}')
+    expect(latestPanel).toBeGreaterThan(progressBar)
+    expect(latestPanel).toBeLessThan(mainSplit)
+    expect(meterKeyboardSource).not.toContain('Secondary history: retained for review; primary confirmation is above.')
+    expect(meterKeyboardSource).not.toContain('recent.map((r, i)')
+    expect(meterKeyboardSource).toContain('flex h-full min-h-0 flex-col')
+    expect(meterKeyboardSource).not.toContain('h-[calc(100vh-3.5rem)]')
+    expect(meterKeyboardSource).not.toContain('md:h-[calc(100vh-0px)]')
   })
 
   it('publishes latest and recent only after the meter API confirms success', () => {
