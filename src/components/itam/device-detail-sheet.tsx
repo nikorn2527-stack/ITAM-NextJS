@@ -262,6 +262,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   // Meter reading (if meterable)
   const [actMeterBw, setActMeterBw] = React.useState('')
   const [actMeterColor, setActMeterColor] = React.useState('')
+  const [actMeterSkipAcknowledged, setActMeterSkipAcknowledged] = React.useState(false)
   // Status select (for other_status)
   const [actCustomStatus, setActCustomStatus] = React.useState('')
   // Common: reason / remark
@@ -300,7 +301,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
         desc: 'ย้ายไปแผนก/Site/ตำแหน่งอื่น',
         show: true,
         needLoc: true,
-        needMeter: false,
+        needMeter: true,
         targetStatus: null,
       },
       {
@@ -553,6 +554,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     setActLocation(device.location || '')
     setActMeterBw('')
     setActMeterColor('')
+    setActMeterSkipAcknowledged(false)
     setActCustomStatus('')
     setActReason('')
     setActionDate(todayISO())
@@ -584,7 +586,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
         isReinstall?: boolean
       }
     > = {
-      transfer: { id: 'transfer', icon: '🔄', label: 'ย้ายตำแหน่ง', desc: 'ย้ายไปแผนก/Site/ตำแหน่งอื่น', targetStatus: null, needLoc: true },
+      transfer: { id: 'transfer', icon: '🔄', label: 'ย้ายตำแหน่ง', desc: 'ย้ายไปแผนก/Site/ตำแหน่งอื่น', targetStatus: null, needLoc: true, needMeter: true },
       send_repair: { id: 'send_repair', icon: '🔧', label: 'ส่งซ่อม', desc: 'เปลี่ยนสถานะ → In Repair', targetStatus: 'In Repair' },
       receive_repair: { id: 'receive_repair', icon: '✅', label: 'รับซ่อมกลับ', desc: 'In Repair → Active', targetStatus: 'Active', isReinstall: true },
       uninstall: { id: 'uninstall', icon: '📦', label: 'ถอนการติดตั้ง', desc: 'เอาออกมา ยังไม่ตัดสิน', targetStatus: 'Inactive' },
@@ -604,7 +606,11 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       toast.error('ไม่พบการกระทำที่เลือก')
       return
     }
-    // Validation
+    const newStatus = cfg.needStatusSelect && actCustomStatus
+      ? actCustomStatus
+      : cfg.targetStatus
+    const meterRequired = Boolean(cfg.needMeter && device.meterRequired)
+    const hasMeterValue = actMeterBw.trim() !== ''
     if (cfg.needLoc && !actSite.trim()) {
       toast.error('กรุณาเลือกสาขาปลายทาง')
       return
@@ -613,10 +619,13 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       toast.error('กรุณาเลือกสถานะใหม่')
       return
     }
+    if (meterRequired && !hasMeterValue && !actMeterSkipAcknowledged) {
+      toast.error('กรุณาจดมิเตอร์ หรือยืนยันว่ามิเตอร์นับต่อเนื่อง')
+      return
+    }
     if (
-      cfg.needMeter &&
-      device.meterRequired &&
-      actMeterBw.trim() !== '' &&
+      meterRequired &&
+      hasMeterValue &&
       Number(actMeterBw) < (device.lastMeterReading ?? 0) &&
       !actReason.trim()
     ) {
@@ -626,13 +635,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
 
     try {
       setActioning(true)
+      let meterReadingId: string | null = null
 
-      // 1. If meter reading is provided, save it first
-      if (cfg.needMeter && device.meterRequired && actMeterBw.trim() !== '') {
-        const meterRemark = [
-          actReason.trim(),
-          `[${cfg.label}]`,
-        ]
+      // The compatibility meter API returns the saved row id. Pass it to the
+      // lifecycle endpoint so history and event linkage are not best-effort.
+      if (meterRequired && hasMeterValue) {
+        const meterRemark = [actReason.trim(), `[${cfg.label}]`]
           .filter(Boolean)
           .join(' — ')
         const meterRes = await fetch('/api/meter', {
@@ -641,63 +649,46 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
           body: JSON.stringify({
             deviceId,
             reading: Number(actMeterBw),
+            meterColor: actMeterColor.trim() === '' ? 0 : Number(actMeterColor),
             date: actionDate,
             remark: meterRemark || null,
           }),
         })
+        const meterPayload = await meterRes.json().catch(() => ({})) as {
+          error?: string
+          reading?: { id?: string }
+        }
         if (!meterRes.ok) {
-          const j = await meterRes.json().catch(() => ({}))
-          throw new Error(j.error ?? 'จดมิเตอร์ไม่สำเร็จ')
+          throw new Error(meterPayload.error ?? 'จดมิเตอร์ไม่สำเร็จ')
+        }
+        meterReadingId = meterPayload.reading?.id ?? null
+        if (!meterReadingId) {
+          throw new Error('ไม่พบรหัสรายการมิเตอร์หลังบันทึก')
         }
       }
 
-      // 2. If action is transfer → call transfer API
-      if (actionId === 'transfer') {
-        const transferRes = await fetch(`/api/devices/${deviceId}/transfer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            toSite: actSite.trim(),
-            toDept: actDept.trim() || null,
-            toDeptCode: actDeptCode.trim() || null,
-            reason: actReason.trim() || null,
-            transferDate: actionDate,
-          }),
-        })
-        if (!transferRes.ok) {
-          const j = await transferRes.json().catch(() => ({}))
-          throw new Error(j.error ?? 'ย้ายอุปกรณ์ไม่สำเร็จ')
-        }
-      } else {
-        // 3. Status change → PUT /api/devices/[id]
-        const newStatus =
-          cfg.needStatusSelect && actCustomStatus
-            ? actCustomStatus
-            : cfg.targetStatus
-        const updateBody: Record<string, unknown> = {}
-        if (newStatus) updateBody.status = newStatus
-        // If action needs location (reinstall) → also update location fields
-        if (cfg.needLoc) {
-          updateBody.site = actSite.trim()
-          updateBody.department = actDept.trim() || null
-          updateBody.departmentCode = actDeptCode.trim() || null
-          updateBody.building = actBuilding.trim() || null
-          updateBody.floor = actFloor.trim() || null
-          updateBody.location = actLocation.trim() || null
-        }
-        // Append remark with action label
-        if (actReason.trim()) {
-          updateBody.remark = actReason.trim()
-        }
-        const putRes = await fetch(`/api/devices/${deviceId}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updateBody),
-        })
-        if (!putRes.ok) {
-          const j = await putRes.json().catch(() => ({}))
-          throw new Error(j.error ?? 'อัปเดตสถานะไม่สำเร็จ')
-        }
+      const lifecycleRes = await fetch(`/api/devices/${deviceId}/lifecycle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: actionId,
+          toStatus: newStatus ?? device.status,
+          toSite: cfg.needLoc ? actSite.trim() : device.site,
+          toBuilding: cfg.needLoc ? actBuilding.trim() || null : device.building,
+          toFloor: cfg.needLoc ? actFloor.trim() || null : device.floor,
+          toDepartment: cfg.needLoc ? actDept.trim() || null : device.department,
+          toDepartmentCode: cfg.needLoc ? actDeptCode.trim() || null : device.departmentCode,
+          toLocation: cfg.needLoc ? actLocation.trim() || null : device.location,
+          meterReadingId,
+          meterSkipAcknowledged: meterRequired && !meterReadingId && actMeterSkipAcknowledged,
+          skipMeterReason: meterRequired && !meterReadingId ? actReason.trim() || null : null,
+          reason: actReason.trim() || null,
+          actionDate,
+        }),
+      })
+      if (!lifecycleRes.ok) {
+        const j = await lifecycleRes.json().catch(() => ({}))
+        throw new Error(j.error ?? 'อัปเดตวงจรอุปกรณ์ไม่สำเร็จ')
       }
 
       toast.success(`${cfg.label} เรียบร้อยแล้ว`)
@@ -858,6 +849,10 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     }
     if (tSite === device.site && tDept.trim() === (device.department ?? '') && tDeptCode.trim() === (device.departmentCode ?? '')) {
       toast.error('ไม่มีการเปลี่ยนแปลง — สาขา/แผนกเหมือนเดิม')
+      return
+    }
+    if (device.meterRequired) {
+      toast.error('อุปกรณ์นี้ต้องจดมิเตอร์ก่อนย้าย กรุณาใช้เมนู “ย้ายตำแหน่ง” ในรายการวงจรอุปกรณ์')
       return
     }
     try {
@@ -2319,6 +2314,17 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                           />
                         </div>
                       </div>
+                      <label className="flex cursor-pointer items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={actMeterSkipAcknowledged}
+                          onChange={(e) => setActMeterSkipAcknowledged(e.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#0d9488] focus:ring-[#0d9488]"
+                        />
+                        <span>
+                          ไม่มีค่ามิเตอร์ในรายการนี้ และยืนยันว่า “มิเตอร์นับต่อเนื่อง”
+                        </span>
+                      </label>
                     </div>
                   )}
 
