@@ -9040,3 +9040,85 @@ Stage Summary:
 - Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
 
 ITAM-01 พร้อมทำต่อ + รอ verdicts บน Devices lane (8 PRs) + Meter lane (4 PRs)
+
+---
+Task ID: DEVICES-ERROR-REPORT-PR49-2026-08-22
+Agent: ITAM-01 — Dev-3 / Devices (per "เดียวทำต่อได้เลยน่ะครับ")
+
+Task: ทำ import error report contract workstream (classify + redact + CSV export)
+
+Work Log:
+
+**1. Team name update:**
+- เปลี่ยนจาก "Dev-3 / Devices" เป็น "ITAM-01 — Dev-3 / Devices" (per ITAM-02 example)
+- Re-post announcement on Issue #25 + #14 with proper format
+
+**2. New module: src/lib/devices-import-error-report/ (+340 lines)**
+- scenarios.ts:
+  - ErrorCategory: 6 types (VALIDATION, DUPLICATE, MISSING, DB, AUTH, UNKNOWN)
+  - ErrorSeverity: ERROR (blocking), WARNING (non-blocking)
+  - SENSITIVE_ERROR_FIELDS: 12 fields (serialNumber, ip, mac, remoteId, contractNo, vendor, purchasePrice, costCenter, remark, password, token, secret)
+  - classifyError(): pure — keyword-based (English + Thai)
+    - AUTH checked first (before MISSING, since 'ไม่มีสิทธิ์' contains 'ไม่มี')
+  - redactSensitiveValue(): pure — [REDACTED] for sensitive
+  - classifyErrorBatch(): pure — classify + redact in one pass
+  - buildErrorReportSummary(): pure — counts + topFields + first/last row
+  - errorToCsvRow() + errorsToCsvRows(): pure — CSV row format
+  - escapeCsvField(): pure — RFC 4180 escaping
+  - buildErrorCsv(): pure — full CSV string
+  - filterErrorsByCategory() + filterErrorsBySeverity(): pure
+  - ERROR_REPORT_SCENARIOS: 5 fixtures
+- index.ts: barrel
+
+**3. Tests: tests/devices-import-error-report/scenarios.test.ts (+360 lines, 43 tests)**
+- classifyError: 12 tests (all categories, English + Thai)
+- redactSensitiveValue: 5 tests
+- classifyErrorBatch: 1 test
+- buildErrorReportSummary: 4 tests
+- escapeCsvField: 5 tests (RFC 4180)
+- errorToCsvRow + errorsToCsvRows: 2 tests
+- buildErrorCsv: 3 tests
+- filterErrorsByCategory + filterErrorsBySeverity: 2 tests
+- Scenario integration: 5 tests
+- Constants integrity: 2 tests
+- Scenario integrity: 2 tests
+
+**4. Test evidence:**
+```
+✓ tests/devices-import-error-report/scenarios.test.ts (43 tests) 9ms
+Test Files 1 passed (1)
+Tests 43 passed (43)
+Duration 266ms
+```
+
+**5. Governance verified:**
+- B4 frozen: 0-diff (all 6 files)
+- SYNC_RUN: NOT added
+- prisma db:push: NOT used
+- Schema/migration: NOT changed
+- PR overlap: NONE (separate files)
+- Secrets: none (sensitive values redacted)
+
+**6. PR #49 opened:**
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/49
+- Head: feature/module-devices-import-error-report @ 00bd8959c86240b96b3ff95c6b1f05f28473c78a
+- Base: feature/module-devices-import-boundary (PR #29)
+- Labels: module:devices, work-package:C-error-report, ITAM-01, audit-review-required, no-self-merge, governance:read-only
+- Body: REVIEW PACKET format (per EXACT-HEAD-REVIEW-PROTOCOL §3)
+- Uses ITAM-01 team name in PR body + labels
+
+Stage Summary:
+- PR #49 opened: import error report contract, 43/43 PASS, B4 0-diff, no SYNC_RUN, no schema change
+- Devices lane ตอนนี้มี 9 PRs รอ ITAM-04 verdict: #29, #35, #38, #41, #45, #46, #47, #48, #49
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+Total ITAM-01 parallel work completed (7 PRs นอกเหนือจาก PR #29 importer):
+- PR #35: parallel fixtures (asset-key, site/transfer auth, retry/idempotency) + 3 acceptance docs
+- PR #41: bounded list/query + mobile subset
+- PR #45: importer ↔ transfer integration scenarios
+- PR #46: devices ↔ meter contract scenarios
+- PR #47: lifecycle contract (status transitions + warranty + depreciation)
+- PR #48: audit history contract (bounded query + site scope + redaction)
+- PR #49: import error report contract (classify + redact + CSV export)
+
+Total tests: 15 + 49 + 38 + 36 + 37 + 47 + 34 + 43 = 299 tests PASS (pure functions, no DB)
