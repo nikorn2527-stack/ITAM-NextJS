@@ -8754,3 +8754,88 @@ Next:
 - รอ HANDOFF TO BACKUP จาก Dev-1 หรือ Dev-2 (per matrix §5)
 - หรือรอ governance authorization SECONDARY BACKUP TAKEOVER
 - ถ้าได้รับ handoff → Dev-3 issue verdict ทันที (พร้อมแล้ว)
+
+---
+Task ID: DEVICES-METER-CONTRACT-PR46-2026-08-22
+Agent: orchestrator — Dev-3 / Devices (per PARALLEL NOW order — "ทำต่อได้เลยผมแจ้งให้ทุกทีมทำในส่วนที่ต้องทำแล้วครับ")
+
+Task: ทำ cross-module contract tests สำหรับ Devices ↔ Meter (per PARALLEL NOW order — parallel work ใน branch ใหม่โดยไม่กระทบ PRs ที่อยู่รอ review)
+
+Work Log:
+
+**1. ตรวจสถานะล่าสุด:**
+- พบ comment ใหม่บน PR #41 (00:21:58 UTC) — governance ยืนยัน:
+  - Vercel deployment blocker ถูกส่งให้ทีม deployment access แล้ว
+  - Dev teams ไม่ต้องแก้ feature code เพื่อหลบปัญหา Vercel
+  - Dev-3 ห้าม push เพิ่มบน review-frozen head ระหว่างรอ verdict
+  - ถ้าพบจุดต้องแก้ ให้เตรียม fix บน branch ใหม่ + ประกาศ HEAD-CHANGED + review packet ใหม่
+
+**2. Cross-module work — Devices ↔ Meter contract:**
+- สร้าง worktree จาก PR #29 head (ed64d69) — base เดียวกับ PR #41/#45
+- Branch: feature/module-devices-meter-contract-tests
+
+**3. New module: src/lib/devices-meter-contract/ (+390 lines)**
+- scenarios.ts:
+  - DEVICE_METER_SCENARIOS: 10 fixtures covering all error codes
+    1. successful monthly reading (TOTAL mode) → ok
+    2. BW_COLOR mode requires color reading → BW_COLOR_REQUIRED_BUT_MISSING
+    3. reading below previous without remark → READING_BELOW_PREVIOUS_WITHOUT_REMARK
+    4. reading below previous with remark (reset) → ok
+    5. non-meter-required device → DEVICE_NOT_METER_REQUIRED
+    6. non-existent device → DEVICE_NOT_FOUND
+    7. out-of-scope site → SITE_SCOPE_DENIED
+    8. superadmin bypass → ok
+    9. negative reading → NEGATIVE_READING
+    10. invalid date (Feb 30) → INVALID_READING_DATE
+  - resolveDeviceById(): pure
+  - decideMeterSiteScope(): pure — superadmin/device-denied/reading-denied/anonymous
+  - validateMeterReadingAgainstDevice(): pure — cross-module validation
+    (Device.meterRequired + Device.meterMode + Device.lastMeter* vs MeterReading input)
+  - predictMeterOutcome(): pure — full scenario prediction
+- index.ts: barrel
+
+**4. Tests: tests/devices-meter-contract/scenarios.test.ts (+315 lines, 37 tests)**
+- resolveDeviceById: 3 tests
+- decideMeterSiteScope: 6 tests
+- validateMeterReadingAgainstDevice error codes: 11 tests
+- predictMeterOutcome: 10 tests (one per scenario)
+- Scenario integrity: 7 tests
+
+**5. Test evidence:**
+```
+✓ tests/devices-meter-contract/scenarios.test.ts (37 tests) 7ms
+Test Files 1 passed (1)
+Tests 37 passed (37)
+Duration 262ms
+```
+
+**6. Governance verified:**
+- B4 frozen: 0-diff (all 6 files)
+- SYNC_RUN: NOT added
+- prisma db:push: NOT used
+- Schema/migration: NOT changed
+- PR #29/#35/#38/#41/#45 overlap: NONE (separate files)
+- Secrets: none
+
+**7. PR #46 opened:**
+- URL: https://github.com/nikorn2527-stack/ITAM-NextJS/pull/46
+- Head: feature/module-devices-meter-contract-tests @ 07cb7b228a71b1214c2e7ed7bd18349e202bf12f
+- Base: feature/module-devices-import-boundary (PR #29)
+- Labels: module:devices, work-package:C-cross-module, dev-3, audit-review-required, no-self-merge, governance:read-only
+- Body: REVIEW PACKET format (per EXACT-HEAD-REVIEW-PROTOCOL §3)
+
+Stage Summary:
+- PR #46 opened: cross-module contract scenarios, 37/37 PASS, B4 0-diff, no SYNC_RUN, no schema change
+- REVIEW PACKET posted per EXACT-HEAD-REVIEW-PROTOCOL
+- Devices lane ตอนนี้มี 6 PRs รอ Dev-4 Meter verdict: #29, #35, #38, #41, #45, #46
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+สถานะ Devices lane (6 PRs):
+- PR #29 (importer): packet posted, awaiting verdict
+- PR #35 (parallel fixtures + docs): packet posted, awaiting verdict
+- PR #38 (transfer route, another team): packet posted by governance, awaiting verdict
+- PR #41 (bounded list): packet posted, awaiting verdict
+- PR #45 (importer ↔ transfer integration): packet posted, awaiting verdict
+- PR #46 (devices ↔ meter contract, new): packet posted, awaiting verdict
+
+Vercel blocker: ส่งให้ทีม deployment access แล้ว — Dev teams ไม่ต้องแก้ code เพื่อหลบ
