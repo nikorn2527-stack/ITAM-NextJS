@@ -5,6 +5,8 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { demoTag } from '@/lib/demo-mode'
 import { resolveStockTransactionIdentity } from '@/lib/stock-transaction-identity'
 import { validateStockTransactionInput } from '@/lib/stock-transaction-contract'
+import { withSerializableRetry } from '@/lib/retry-transaction'
+import { normalizeStockSourceKey, resolveWorkOrderReference } from '@/lib/stock-work-order-resolution'
 
 /** Parse a Float; returns null when missing/invalid. */
 function optFloat(v: unknown): number | null {
@@ -68,8 +70,26 @@ export async function POST(
     }
     const actorIdentity = resolveStockTransactionIdentity(auth.user)
 
+    const sourceKey = normalizeStockSourceKey(body.sourceKey)
     // Atomic update of StockItem.quantity + create StockTransaction.
-    const result = await db.$transaction(async (tx) => {
+    const result = await withSerializableRetry(async (tx) => {
+      // Retry/idempotency guard: a stable sourceKey must never apply the same
+      // stock mutation twice. A reused key with different intent is rejected.
+      if (sourceKey) {
+        const previous = await tx.stockTransaction.findFirst({
+          where: { sourceKey },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        })
+        if (previous) {
+          if (previous.stockItemId !== id || previous.type !== type || previous.quantity !== quantity) {
+            throw new Error('IDEMPOTENCY_CONFLICT')
+          }
+          const currentItem = await tx.stockItem.findUnique({ where: { id } })
+          if (!currentItem) throw new Error('NOT_FOUND')
+          return { item: currentItem, txn: previous, poUpdateSummary: null, idempotent: true, workOrderResolution: null }
+        }
+      }
+
       const item = await tx.stockItem.findUnique({ where: { id } })
       if (!item) {
         throw new Error('NOT_FOUND')
@@ -125,6 +145,24 @@ export async function POST(
             (item.unitCost !== null ? item.unitCost * quantity : null)
           : optFloat(body.cost)
 
+      const workOrderResolution = await resolveWorkOrderReference(
+        {
+          workOrderId: body.workOrderId,
+          workOrderNo: body.workOrderNo,
+          legacyJobNo: body.legacyJobNo,
+          systemJobNo: body.systemJobNo,
+          requestId: body.requestId,
+        },
+        {
+          byId: (value) => tx.workOrder.findUnique({ where: { id: value }, select: { id: true, woNumber: true, legacyJobNo: true, systemJobNo: true, requestId: true } }),
+          byWoNumber: (value) => tx.workOrder.findUnique({ where: { woNumber: value }, select: { id: true, woNumber: true, legacyJobNo: true, systemJobNo: true, requestId: true } }),
+          byLegacyJobNo: async (value) => tx.workOrder.findFirst({ where: { legacyJobNo: value }, select: { id: true, woNumber: true, legacyJobNo: true, systemJobNo: true, requestId: true } }),
+          bySystemJobNo: (value) => tx.workOrder.findUnique({ where: { systemJobNo: value }, select: { id: true, woNumber: true, legacyJobNo: true, systemJobNo: true, requestId: true } }),
+          byRequestId: (value) => tx.workOrder.findUnique({ where: { requestId: value }, select: { id: true, woNumber: true, legacyJobNo: true, systemJobNo: true, requestId: true } }),
+        },
+      )
+      const quarantinedWorkOrder = workOrderResolution.status === 'quarantined'
+
       const txn = await tx.stockTransaction.create({
         data: {
           txnNumber,
@@ -141,8 +179,10 @@ export async function POST(
             : null,
           department: body.department ? String(body.department).trim() : null,
           purpose: body.purpose ? String(body.purpose).trim() : null,
-          workOrderId: body.workOrderId ? String(body.workOrderId) : null,
-          workOrderNo: body.workOrderNo ? String(body.workOrderNo) : null,
+          workOrderId: workOrderResolution.status === 'resolved' ? workOrderResolution.workOrder.id : null,
+          workOrderNo: workOrderResolution.status === 'resolved'
+            ? workOrderResolution.canonicalWorkOrderNo
+            : null,
           deviceId: body.deviceId ? String(body.deviceId) : null,
           cost,
           unitCost: item.unitCost,
@@ -155,6 +195,13 @@ export async function POST(
           // Audit performer is always the authenticated account; client input is ignored.
           performedBy: actorIdentity.performedBy,
           remark: body.remark ? String(body.remark).trim() : null,
+          sourceKey,
+          processedFlag: workOrderResolution.status === 'resolved'
+            ? 'RESOLVED'
+            : workOrderResolution.status === 'quarantined'
+              ? 'QUARANTINED'
+              : 'UNLINKED',
+          rejectReason: quarantinedWorkOrder ? workOrderResolution.reason : null,
           ...demoTag(auth.user),
         },
       })
@@ -215,34 +262,37 @@ export async function POST(
         }
       }
 
-      return { item: updatedItem, txn, poUpdateSummary }
+      return { item: updatedItem, txn, poUpdateSummary, idempotent: false, workOrderResolution }
     })
 
-    const action =
-      type === 'IN' ? 'STOCK_IN' : type === 'OUT' ? 'STOCK_OUT' : 'STOCK_ADJUST'
-    const verb =
-      type === 'IN'
-        ? 'รับเข้า'
-        : type === 'OUT'
-        ? 'เบิกออก'
-        : 'ปรับปรุงสต็อก'
-    await logAudit(
-      action,
-      'StockItem',
-      id,
-      `${verb} ${result.item.productCode} จำนวน ${quantity} ${result.item.unit} (คงเหลือ ${result.item.quantity})`,
-      {
-        productCode: result.item.productCode,
-        type,
-        quantity,
-        balanceAfter: result.item.quantity,
-        txnNumber: result.txn.txnNumber,
-        txnId: result.txn.id,
-        reason: result.txn.reason,
-        purchaseOrderNo: result.txn.purchaseOrderNo,
-        poUpdate: result.poUpdateSummary,
-      },
-    )
+    if (!result.idempotent) {
+      const action =
+        type === 'IN' ? 'STOCK_IN' : type === 'OUT' ? 'STOCK_OUT' : 'STOCK_ADJUST'
+      const verb =
+        type === 'IN'
+          ? 'รับเข้า'
+          : type === 'OUT'
+          ? 'เบิกออก'
+          : 'ปรับปรุงสต็อก'
+      await logAudit(
+        action,
+        'StockItem',
+        id,
+        `${verb} ${result.item.productCode} จำนวน ${quantity} ${result.item.unit} (คงเหลือ ${result.item.quantity})`,
+        {
+          productCode: result.item.productCode,
+          type,
+          quantity,
+          balanceAfter: result.item.quantity,
+          txnNumber: result.txn.txnNumber,
+          txnId: result.txn.id,
+          reason: result.txn.reason,
+          purchaseOrderNo: result.txn.purchaseOrderNo,
+          poUpdate: result.poUpdateSummary,
+          workOrderResolution: result.workOrderResolution,
+        },
+      )
+    }
 
     return NextResponse.json(
       {
@@ -250,9 +300,11 @@ export async function POST(
           item: result.item,
           transaction: result.txn,
           poUpdate: result.poUpdateSummary,
+          idempotent: result.idempotent,
+          workOrderResolution: result.workOrderResolution,
         },
       },
-      { status: 201 },
+      { status: result.idempotent ? 200 : 201 },
     )
   } catch (err) {
     console.error('POST /api/stock-items/[id]/transaction', err)
@@ -264,6 +316,12 @@ export async function POST(
         return NextResponse.json(
           { error: 'สินค้านี้ถูกปิดใช้งานแล้ว' },
           { status: 400 },
+        )
+      }
+      if (err.message === 'IDEMPOTENCY_CONFLICT') {
+        return NextResponse.json(
+          { error: 'sourceKey ถูกใช้กับรายการอื่นแล้ว — retry ต้องใช้ข้อมูลเดิมเท่านั้น' },
+          { status: 409 },
         )
       }
       // Stock-insufficient and other business-rule errors.

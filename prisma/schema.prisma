@@ -525,6 +525,7 @@ model StockTransaction {
   @@index([type])
   @@index([approvalStatus])
   @@index([isDemo])
+  @@index([sourceKey])
 }
 
 // ============================================================
