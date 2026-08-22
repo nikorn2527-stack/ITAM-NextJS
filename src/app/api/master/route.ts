@@ -50,15 +50,16 @@ export async function GET(req: NextRequest) {
     const brandId = (searchParams.get('brandId') ?? '').trim() || null
     const building = (searchParams.get('building') ?? '').trim() || null
     const floor = (searchParams.get('floor') ?? '').trim() || null
+    const groupCode = (searchParams.get('groupCode') ?? '').trim() || null
 
     // ── Legacy path: `?category=…` or no `type` ──
     // Returns all MasterItem rows matching the optional category filter.
     if (!type) {
       const where: Record<string, unknown> = {}
-      if (category) where.category = category
+      if (category) where.categoryKey = category
       const items = await db.masterItem.findMany({
         where,
-        orderBy: [{ category: 'asc' }, { code: 'asc' }],
+        orderBy: [{ categoryKey: 'asc' }, { itemId: 'asc' }],
       })
       return NextResponse.json({ items })
     }
@@ -83,18 +84,13 @@ export async function GET(req: NextRequest) {
     switch (type) {
       case 'device-types': {
         // Pull distinct DeviceType values from DeviceClassification MasterItem rows.
-        // MasterItem.category='DeviceClassification' has parentRef="Brand|DeviceType".
-        // We extract the DeviceType part (after |) and dedupe.
         const rows = await db.masterItem.findMany({
-          where: { category: 'DeviceClassification', active: true },
-          select: { parentRef: true },
+          where: { categoryKey: 'DeviceClassification', active: true },
+          select: { deviceType: true },
         })
         const types = new Set<string>()
         for (const r of rows) {
-          if (r.parentRef) {
-            const parts = r.parentRef.split('|')
-            if (parts.length >= 2 && parts[1]) types.add(parts[1])
-          }
+          if (r.deviceType) types.add(r.deviceType)
         }
         const items = Array.from(types).sort().map((name) => ({ name, active: true }))
         return NextResponse.json({ items, type })
@@ -102,21 +98,16 @@ export async function GET(req: NextRequest) {
 
       case 'brands': {
         // Pull distinct Brand values from DeviceClassification MasterItem rows.
-        // Optional typeId filter is the DeviceType name (extracted from parentRef).
-        const where: Record<string, unknown> = { category: 'DeviceClassification', active: true }
+        // Optional typeId filter is the DeviceType name.
         const rows = await db.masterItem.findMany({
-          where: where as any,
-          select: { parentRef: true, displayLabel: true },
+          where: { categoryKey: 'DeviceClassification', active: true },
+          select: { brand: true, deviceType: true },
         })
         const brandSet = new Set<string>()
         for (const r of rows) {
-          if (r.parentRef) {
-            const parts = r.parentRef.split('|')
-            const brand = parts[0]
-            const devType = parts.length >= 2 ? parts[1] : ''
-            // If typeId filter provided, only include brands matching that DeviceType
-            if (!typeId || devType === typeId) {
-              if (brand) brandSet.add(brand)
+          if (r.brand) {
+            if (!typeId || r.deviceType === typeId) {
+              brandSet.add(r.brand)
             }
           }
         }
@@ -127,20 +118,15 @@ export async function GET(req: NextRequest) {
       case 'models': {
         // Pull Model values from DeviceClassification MasterItem rows.
         // Optional brandId filter is the Brand name.
-        const where: Record<string, unknown> = { category: 'DeviceClassification', active: true }
         const rows = await db.masterItem.findMany({
-          where: where as any,
-          select: { label: true, parentRef: true, displayLabel: true },
+          where: { categoryKey: 'DeviceClassification', active: true },
+          select: { model: true, brand: true, deviceType: true },
         })
         const models: Array<{ name: string; brand?: string; deviceType?: string }> = []
         for (const r of rows) {
-          if (r.parentRef) {
-            const parts = r.parentRef.split('|')
-            const brand = parts[0]
-            const devType = parts.length >= 2 ? parts[1] : ''
-            // If brandId filter provided, only include models matching that Brand
-            if (!brandId || brand === brandId) {
-              models.push({ name: r.label, brand, deviceType: devType })
+          if (r.model) {
+            if (!brandId || r.brand === brandId) {
+              models.push({ name: r.model, brand: r.brand ?? undefined, deviceType: r.deviceType ?? undefined })
             }
           }
         }
@@ -148,49 +134,63 @@ export async function GET(req: NextRequest) {
       }
 
       case 'repair-groups': {
-        // Pull from RepairTaxonomy table — IT groups
-        const items = await db.$queryRawUnsafe(`
-          SELECT code, label, status FROM "RepairTaxonomy"
-          WHERE type = 'group' AND active = true
-          ORDER BY "sortOrder" ASC
-        `)
-        return NextResponse.json({ items, type })
+        // Pull from MasterItem category='RepairGroup'
+        const items = await db.masterItem.findMany({
+          where: { categoryKey: 'RepairGroup' },
+          orderBy: { departmentCode: 'asc' },
+          select: { id: true, value: true, displayLabel: true, departmentCode: true, groupName: true, active: true },
+        })
+        const formatted = items.map((i) => ({
+          code: i.departmentCode,
+          label: i.value,
+          status: i.groupName,
+          active: i.active,
+        }))
+        return NextResponse.json({ items: formatted, type })
       }
 
       case 'repair-problems': {
-        // Pull from RepairTaxonomy table — Problem codes (RP-*)
-        // Optional groupCode filter
-        const groupCode = (searchParams.get('groupCode') ?? '').trim()
-        const params: string[] = []
-        let query = `SELECT code, label, "groupCode", "groupLabel" FROM "RepairTaxonomy"
-                      WHERE type = 'problem' AND active = true`
+        // Pull from MasterItem category='RepairProblem'
+        // Optional groupCode filter (matches parentRef field)
+        const where: Record<string, unknown> = { categoryKey: 'RepairProblem' }
         if (groupCode) {
-          query += ` AND "groupCode" = $1`
-          params.push(groupCode)
+          where.parentRef = groupCode
         }
-        query += ` ORDER BY "groupCode" ASC, "sortOrder" ASC`
-        const items = params.length
-          ? await db.$queryRawUnsafe(query, ...params)
-          : await db.$queryRawUnsafe(query)
-        return NextResponse.json({ items, type })
+        const items = await db.masterItem.findMany({
+          where,
+          orderBy: [{ parentRef: 'asc' }, { departmentCode: 'asc' }],
+          select: { id: true, value: true, displayLabel: true, departmentCode: true, parentRef: true, groupName: true, active: true },
+        })
+        const formatted = items.map((i) => ({
+          code: i.departmentCode,
+          label: i.value,
+          groupCode: i.parentRef,
+          groupLabel: i.groupName,
+          active: i.active,
+        }))
+        return NextResponse.json({ items: formatted, type })
       }
 
       case 'repair-resolutions': {
-        // Pull from RepairTaxonomy table — Resolution codes (RX-*)
-        // Optional groupCode filter
-        const groupCode = (searchParams.get('groupCode') ?? '').trim()
-        const params: string[] = []
-        let query = `SELECT code, label, "groupCode", "groupLabel" FROM "RepairTaxonomy"
-                      WHERE type = 'resolution' AND active = true`
+        // Pull from MasterItem category='RepairResolution'
+        // Optional groupCode filter (matches parentRef field)
+        const where: Record<string, unknown> = { categoryKey: 'RepairResolution' }
         if (groupCode) {
-          query += ` AND "groupCode" = $1`
-          params.push(groupCode)
+          where.parentRef = groupCode
         }
-        query += ` ORDER BY "groupCode" ASC, "sortOrder" ASC`
-        const items = params.length
-          ? await db.$queryRawUnsafe(query, ...params)
-          : await db.$queryRawUnsafe(query)
-        return NextResponse.json({ items, type })
+        const items = await db.masterItem.findMany({
+          where,
+          orderBy: [{ parentRef: 'asc' }, { departmentCode: 'asc' }],
+          select: { id: true, value: true, displayLabel: true, departmentCode: true, parentRef: true, groupName: true, active: true },
+        })
+        const formatted = items.map((i) => ({
+          code: i.departmentCode,
+          label: i.value,
+          groupCode: i.parentRef,
+          groupLabel: i.groupName,
+          active: i.active,
+        }))
+        return NextResponse.json({ items: formatted, type })
       }
 
       case 'buildings': {
