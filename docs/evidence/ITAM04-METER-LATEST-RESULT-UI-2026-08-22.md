@@ -7,27 +7,30 @@
 
 ## สรุปการแก้ไข
 
-Requirement นี้แก้ที่ `src/components/itam/itam-meter-keyboard.tsx` ซึ่งเป็น entry mode ของ `ItamMeterUnified` ที่ active page ใช้งานอยู่ โดยเพิ่ม `latest` state แยกจาก `recent` history และแสดงผลยืนยันในพื้นที่หลักของ selected-device panel รายการล่าสุดจะแสดงหลัง API ตอบกลับสำเร็จเท่านั้น ส่วนการ์ด `คีย์ล่าสุด (N/5)` ด้านล่างยังคงไว้เป็น secondary history view
+Requirement นี้แก้ที่ `src/components/itam/itam-meter-keyboard.tsx` ซึ่งเป็น entry mode ของ `ItamMeterUnified` ที่ active page ใช้งานอยู่ โดยย้ายผลยืนยันรายการล่าสุดและตัวเลขคีย์ล่าสุดขึ้นไปไว้ใน **progress summary ด้านบน** ทำให้ผู้ปฏิบัติงานเห็นรอบจดมิเตอร์, จำนวนจดแล้ว, จำนวนคงเหลือ และผลการคีย์ล่าสุดในพื้นที่เดียวกัน
 
-แผงผลลัพธ์หลักแสดง **Asset Code**, ค่า **BW/Color**, **delta**, วันเวลา และสถานะ โดยใช้ badge `RESET` เมื่อค่าที่บันทึกต่ำกว่าค่าก่อนหน้า หากเป็นโหมด `TOTAL` จะแสดง Color เป็น `—` เพื่อไม่สื่อว่ามี color counter ที่ไม่ได้ใช้ รายการใหม่ถูก prepend เข้า history จึงยังคงลำดับล่าสุดไว้ด้านบนและเก็บย้อนหลังได้สูงสุด 5 รายการ
+ส่วนผลล่าสุดแสดงแบบ compact ไม่ใช้การ์ดขนาดใหญ่ ได้แก่ **Asset Code**, ค่า **BW/Color**, **delta**, เวลา และสถานะ โดยใช้ `RESET` เมื่อค่าที่บันทึกต่ำกว่าค่าก่อนหน้า ตัวเลข `คีย์ล่าสุด` แสดงเป็นจำนวนสั้น ๆ จาก session history เท่านั้น ส่วนประวัติรายละเอียดไม่วางเป็นการ์ดท้ายหน้าอีกต่อไป และยังเข้าดูได้จากแท็บ **ประวัติมิเตอร์** ซึ่งเป็น secondary history view ที่เหมาะกับการตรวจย้อนหลัง
+
+นอกจากนี้ root layout เปลี่ยนจากการกำหนดความสูงด้วย `100vh` เป็น `h-full min-h-0` เพื่อให้ Meter page เคารพความสูงของ parent app shell ที่มี Footer อยู่ด้านล่าง ลดความเสี่ยงที่เนื้อหาจะไหลทับหรือถูก Footer บัง และทำให้หน้า entry พอดีใน viewport เดียวตาม requirement
 
 ## เงื่อนไขสำเร็จและล้มเหลว
 
-`saveReading()` ยังคงตรวจ `res.ok` และ throw error ก่อนสร้าง `savedReading`, `setLatest()` หรือ `setRecent()` ดังนั้นกรณีบันทึกไม่สำเร็จจะไม่แสดงรายการในพื้นที่ยืนยันสำเร็จ และไม่ถูกเพิ่มใน history การ toast error เดิมยังคงทำงานผ่าน `catch` ตามเดิม
+`saveReading()` ยังคงตรวจ `res.ok` และ throw error ก่อนสร้าง `savedReading`, `setLatest()` หรือ `setRecent()` ดังนั้นกรณีบันทึกไม่สำเร็จจะไม่แสดงผลสำเร็จใน top summary และไม่ถูกเพิ่มใน success history ส่วน toast error เดิมยังคงทำงานผ่าน `catch`
 
-Primary panel ถูกวางไว้นอก `selected` conditional ภายใน right working area จึงยังมองเห็นผลล่าสุดได้แม้รายการที่เพิ่งบันทึกเป็นอุปกรณ์สุดท้ายและคิวด้านซ้ายหมดแล้ว การเปลี่ยนอุปกรณ์หรือการเลื่อนไปอุปกรณ์ถัดไปไม่ลบ latest result โดยอัตโนมัติ
+ผลล่าสุดใน top summary ถูกวางหลัง progress bar และก่อน main split จึงเห็นได้ทันทีโดยไม่แย่งพื้นที่จาก selected-device form มากเกินไป การคงรายละเอียดประวัติไว้ในแท็บแยกทำให้พื้นที่หลักใช้สำหรับรายการอุปกรณ์และการป้อนค่าได้เต็มที่
 
 ## Acceptance evidence
 
 | กรณีตรวจ | ผลที่ต้องได้ | สถานะ source review |
 |---|---|---|
-| บันทึกสำเร็จ 1 รายการ | แสดงรายการใหม่ใน primary area ทันทีหลัง response สำเร็จ | ผ่านด้วย source-boundary test |
-| BW/Color | แสดง BW, Color, delta และเวลา | ผ่านด้วย source-boundary test |
-| RESET | แสดงค่าที่บันทึกและ badge `RESET` | ผ่านด้วย source-boundary test |
+| บันทึกสำเร็จ 1 รายการ | แสดง latest result ใน progress summary ด้านบนทันทีหลัง response สำเร็จ | ผ่านด้วย source-boundary test |
+| จำนวนคีย์ล่าสุด | แสดงเป็นตัวเลขสั้น ๆ ใน summary ไม่ใช้การ์ดขนาดใหญ่ | ผ่านด้วย source-boundary test |
+| BW/Color | แสดง BW, Color, delta และเวลาในบรรทัด latest แบบ compact | ผ่านด้วย source-boundary test |
+| RESET | แสดง badge/text `RESET` ใน latest result | ผ่านด้วย source-boundary test |
 | บันทึกไม่สำเร็จ | ไม่สร้าง latest-success และไม่เพิ่ม recent | ผ่านด้วย ordering assertion รอบ `res.ok` |
-| บันทึกต่อเนื่อง | รายการใหม่สุดอยู่บนสุดและ history เก็บไม่เกิน 5 รายการ | ผ่านจาก prepend/slice contract |
-| `บันทึก + ถัดไป` | focus/advance flow เดิมยังคงทำงาน และ latest แยกจาก selected item | ผ่านจากโครงสร้าง component |
-| Active unified page | entry mode เรียก `ItamMeterKeyboard`; history mode ยังคงเป็น secondary tab | ยืนยันจาก `itam-meter-unified.tsx` |
+| One-page layout | ใช้ parent-constrained `h-full min-h-0`; ไม่ใช้ `100vh` ซ้อนใน app shell | ผ่านด้วย source-boundary test |
+| History | ไม่ render recent card ท้ายหน้า; รายละเอียดประวัติอยู่แท็บ `ประวัติมิเตอร์` | ผ่านด้วย source-boundary test และ unified composition |
+| Active unified page | entry mode เรียก `ItamMeterKeyboard`; history mode เรียก `ItamMeter` | ยืนยันจาก `itam-meter-unified.tsx` |
 
 ## การตรวจสอบที่รัน
 
@@ -39,15 +42,15 @@ npx eslint src/components/itam/itam-meter-keyboard.tsx tests/meter-lifecycle-act
 git diff --check
 ```
 
-ผลตรวจคือ **8 tests ผ่าน**, ESLint ผ่านเมื่อปิดเฉพาะ rule baseline `react-hooks/set-state-in-effect` และ `git diff --check` ผ่าน การรัน ESLint แบบไม่ปิด rule ยังพบปัญหาเดิมที่บรรทัด 166 และ 186 ของ `itam-meter-keyboard.tsx` ซึ่งเป็น state update ใน existing effects และอยู่นอก patch นี้ จึงไม่ได้แก้ปนกับ requirement นี้
+ผลตรวจคือ **8 tests ผ่าน**, ESLint ผ่านเมื่อปิดเฉพาะ rule baseline `react-hooks/set-state-in-effect` และ `git diff --check` ผ่าน การรัน ESLint แบบไม่ปิด rule ยังมีปัญหา baseline จาก state update ใน existing effects ซึ่งอยู่นอก scope ของ layout requirement นี้
 
 ## ไฟล์ที่เปลี่ยน
 
 | ไฟล์ | การเปลี่ยนแปลง |
 |---|---|
-| `src/components/itam/itam-meter-keyboard.tsx` | เพิ่ม latest-result primary panel, `meterMode`, timestamp formatting และอัปเดต latest/history หลัง save สำเร็จ |
-| `tests/meter-lifecycle-active-boundary.test.ts` | เพิ่ม source-boundary assertions สำหรับข้อมูลที่ต้องแสดง, primary placement และ failure guard |
-| `docs/evidence/ITAM04-METER-LATEST-RESULT-UI-2026-08-22.md` | เอกสาร handoff และ acceptance evidence |
+| `src/components/itam/itam-meter-keyboard.tsx` | ย้าย latest result ไป progress summary, แสดงตัวเลขคีย์ล่าสุดแบบย่อ, ถอด recent card ท้ายหน้า และใช้ `h-full min-h-0` |
+| `tests/meter-lifecycle-active-boundary.test.ts` | เพิ่ม assertions สำหรับ top-summary placement, no bottom recent card, success-only state update และ one-page height contract |
+| `docs/evidence/ITAM04-METER-LATEST-RESULT-UI-2026-08-22.md` | เอกสาร handoff และ acceptance evidence ฉบับปรับปรุง |
 
 ## Governance และ deployment gate
 
@@ -59,7 +62,7 @@ Rollback สามารถทำได้ด้วยการ revert commit �
 
 ## References
 
-1. [Issue #25 — Meter UI requirement: latest keyed reading visibility](https://github.com/nikorn2527-stack/ITAM-NextJS/issues/25)
+1. [Issue #25 — Meter UI requirement](https://github.com/nikorn2527-stack/ITAM-NextJS/issues/25)
 2. [ItamMeterUnified active composition](https://github.com/nikorn2527-stack/ITAM-NextJS/blob/feature/meter-lifecycle-parity-fix/src/components/itam/itam-meter-unified.tsx)
 3. [Meter keyboard entry component](https://github.com/nikorn2527-stack/ITAM-NextJS/blob/feature/meter-lifecycle-parity-fix/src/components/itam/itam-meter-keyboard.tsx)
 4. [Meter/Lifecycle active runtime regression tests](https://github.com/nikorn2527-stack/ITAM-NextJS/blob/feature/meter-lifecycle-parity-fix/tests/meter-lifecycle-active-boundary.test.ts)

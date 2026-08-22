@@ -5,21 +5,15 @@
  *
  * Layout (single viewport, no scroll):
  *   ┌────────────────────────────────────────────────────────────────────┐
- *   │ Progress bar  จดแล้ว X / ทั้งหมด Y (เหลือ Z)         [⌨️ keyboard hints]│
+ *   │ Progress + จดแล้ว X/Y + latest compact result + keyboard hints     │
  *   ├─────────────────────────────┬──────────────────────────────────────┤
- *   │ Search box (large)          │  Selected device card                │
- *   │   type → Enter to search    │  · assetCode / brand / model / serial  │
- *   │                             │  · last meter (BW/Color)             │
- *   │ Filtered device list        │  · meter mode badge (TOTAL/BW_COLOR)  │
- *   │   ↑↓ to navigate            │                                       │
- *   │   Enter to fill input       │  Inputs:                              │
- *   │                             │   · TOTAL  → ค่ามิเตอร์ (1 input)      │
- *   │                             │   · BW_COLOR → ขาวดำ + สี (2 inputs)  │
- *   │                             │   · RESET warning if new < old       │
- *   │                             │   · Enter to save → next device      │
+ *   │ Search box + device list    │  Selected device + meter inputs      │
+ *   │   ↑↓ / Enter navigation     │  · current meter / delta / reset      │
+ *   │                             │  · save → next device                 │
  *   └─────────────────────────────┴──────────────────────────────────────┘
- *   │ Recently keyed (last 5 with timestamps)                              │
- *   └────────────────────────────────────────────────────────────────────┘
+ *
+ * Latest result is intentionally compact in the top summary; the full
+ * history remains available in the separate ประวัติมิเตอร์ tab.
  *
  * Global keys (only active when this page is mounted):
  *   ↑ / ArrowUp    → select previous device in the list
@@ -398,23 +392,37 @@ export function ItamMeterKeyboard() {
   const isReset = selected && (bwDelta < 0 || colorDelta < 0)
 
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] flex-col bg-slate-50 p-3 dark:bg-slate-950 md:h-[calc(100vh-0px)] md:p-4">
-      {/* Top: progress bar */}
+    <div className="flex h-full min-h-0 flex-col bg-slate-50 p-3 dark:bg-slate-950 md:p-4">
+      {/* Top: progress summary + compact latest result */}
       <Card className="mb-3 border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex-1">
-            <div className="mb-1 flex items-center gap-2 text-sm">
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <span className="font-semibold text-slate-800 dark:text-slate-100">
                 จดแล้ว <span className="text-[#f97316]">{read.toLocaleString()}</span>
                 <span className="mx-1 text-slate-400">/</span>
                 ทั้งหมด {total.toLocaleString()}
               </span>
               <span className="text-xs text-slate-400">
-                (เหลือ <span className="font-medium text-slate-600 dark:text-slate-300">{unread.toLocaleString()}</span>)
+                เหลือ <span className="font-medium text-slate-600 dark:text-slate-300">{unread.toLocaleString()}</span>
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-300">
+                คีย์ล่าสุด <span className="font-semibold text-emerald-600 dark:text-emerald-400">{recent.length}</span>
               </span>
               {isFetching && <Loader2 className="h-3 w-3 animate-spin text-slate-400" />}
             </div>
             <Progress value={pct} className="h-2 bg-slate-200 dark:bg-slate-800" />
+            {latest && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mt-1 truncate text-[11px] text-emerald-700 dark:text-emerald-300"
+                title={`${latest.assetCode} · BW ${latest.meterBw.toLocaleString()} · Color ${latest.meterMode === 'BW_COLOR' ? latest.meterColor.toLocaleString() : '—'} · Δ ${latest.delta.toLocaleString()} · ${fmtDateTime(latest.at)}`}
+              >
+                <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />
+                ล่าสุด {latest.assetCode} · BW {latest.meterBw.toLocaleString()} · Color {latest.meterMode === 'BW_COLOR' ? latest.meterColor.toLocaleString() : '—'} · Δ {latest.delta > 0 ? '+' : ''}{latest.delta.toLocaleString()} · {fmtTime(latest.at)} · {latest.reset ? 'RESET' : 'บันทึกสำเร็จ'}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -549,58 +557,6 @@ export function ItamMeterKeyboard() {
         {/* Right: selected device + meter input */}
         <Card className="flex min-h-0 flex-col border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-3">
-            {/* Primary confirmation stays mounted independently from the selected queue item. */}
-            {latest && (
-              <div
-                role="status"
-                aria-live="polite"
-                className="rounded-md border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-800 dark:bg-emerald-950/30"
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    บันทึกล่าสุดสำเร็จ
-                  </div>
-                  <span className="text-[10px] text-emerald-700/80 dark:text-emerald-300/80">
-                    {fmtDateTime(latest.at)}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs sm:grid-cols-4">
-                  <div>
-                    <div className="text-[10px] uppercase text-emerald-700/70 dark:text-emerald-300/70">Asset Code</div>
-                    <div className="font-mono font-semibold text-emerald-900 dark:text-emerald-100">{latest.assetCode}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-emerald-700/70 dark:text-emerald-300/70">BW / Color</div>
-                    <div className="font-mono font-semibold text-emerald-900 dark:text-emerald-100">
-                      BW {latest.meterBw.toLocaleString()}
-                      <span className="ml-2 text-teal-700 dark:text-teal-300">
-                        Color {latest.meterMode === 'BW_COLOR' ? latest.meterColor.toLocaleString() : '—'}
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-emerald-700/70 dark:text-emerald-300/70">Delta</div>
-                    <div className="font-mono font-semibold text-emerald-900 dark:text-emerald-100">
-                      {latest.delta > 0 ? '+' : ''}{latest.delta.toLocaleString()}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-emerald-700/70 dark:text-emerald-300/70">สถานะ</div>
-                    <Badge
-                      className={
-                        latest.reset
-                          ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                          : 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                      }
-                    >
-                      {latest.reset ? 'RESET' : 'บันทึกสำเร็จ'}
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-            )}
-
             <AnimatePresence mode="wait">
               {!selected ? (
                 <motion.div
@@ -780,59 +736,6 @@ export function ItamMeterKeyboard() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Secondary history: retained for review; primary confirmation is above. */}
-      <Card className="mt-3 border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <CardContent className="p-3">
-          <div className="mb-1.5 flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-              คีย์ล่าสุด ({recent.length}/5)
-            </div>
-            {recent.length > 0 && (
-              <button
-                onClick={() => setRecent([])}
-                className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-              >
-                ล้าง
-              </button>
-            )}
-          </div>
-          {recent.length === 0 ? (
-            <div className="py-2 text-center text-xs text-slate-400">ยังไม่มีรายการที่คีย์</div>
-          ) : (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {recent.map((r, i) => (
-                <div
-                  key={`${r.assetCode}-${r.at}-${i}`}
-                  className="min-w-[180px] flex-shrink-0 rounded-md border border-slate-200 bg-slate-50/60 p-2 dark:border-slate-800 dark:bg-slate-800/40"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">{r.assetCode}</span>
-                    <span className="text-[10px] text-slate-400">{fmtTime(r.at)}</span>
-                  </div>
-                  <div className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">{r.name}</div>
-                  <div className="mt-1 flex items-center justify-between">
-                    <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
-                      {r.meterBw.toLocaleString()}
-                      {r.meterColor > 0 && <span className="ml-1 text-teal-600 dark:text-teal-300">/ {r.meterColor.toLocaleString()}</span>}
-                    </span>
-                    <Badge
-                      className={
-                        r.reset
-                          ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 text-[10px]'
-                          : 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px]'
-                      }
-                    >
-                      {r.reset ? 'RESET' : `+${r.delta.toLocaleString()}`}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   )
 }
