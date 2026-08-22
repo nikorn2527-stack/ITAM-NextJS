@@ -10056,3 +10056,52 @@ Stage Summary:
 - ✅ All API endpoints working (cascading + legacy category)
 
 Commit: c6b6b29 fix(dropdowns): connect cascading API to device form + WO form + master data
+
+---
+Task ID: DROP-NORMALIZED-TABLES
+Agent: orchestrator (main) — ลบ normalized tables + Device FK columns + indexes
+
+Task:
+ผู้ใช้ยืนยันให้ลบ 3 normalized tables (DeviceType, Brand, Model) และ 3 FK columns ใน Device (typeId, brandId, modelId) เพราะเป็นสิ่งที่ผมสร้างเกินขอบเขตที่คุยกันไว้ (Device table ไม่ควรถูกแตะ — dropdown ใช้ MasterItem + text เท่านั้น)
+
+Work Log:
+
+**1. สร้าง script `/home/z/my-project/scripts/drop-normalized-tables.ts`:**
+- ใช้ raw SQL ผ่าน Prisma `$executeRawUnsafe` (idempotent — ใช้ IF EXISTS)
+- Order: indexes → columns → tables (FK dependencies)
+
+**2. ลบ indexes 3 ตัวใน Device:**
+- DROP INDEX IF EXISTS "Device_typeId_idx" ✅
+- DROP INDEX IF EXISTS "Device_brandId_idx" ✅
+- DROP INDEX IF EXISTS "Device_modelId_idx" ✅
+
+**3. ลบ FK columns ใน Device:**
+- ALTER TABLE "Device" DROP COLUMN IF EXISTS "typeId" ✅
+- ALTER TABLE "Device" DROP COLUMN IF EXISTS "brandId" ✅
+- ALTER TABLE "Device" DROP COLUMN IF EXISTS "modelId" ✅
+
+**4. ลบ normalized tables (order: Model → Brand → DeviceType เพราะมี FK ระหว่างกัน):**
+- DROP TABLE IF EXISTS "Model" ✅
+- DROP TABLE IF EXISTS "Brand" ✅
+- DROP TABLE IF EXISTS "DeviceType" ✅
+
+**5. Verification:**
+- Remaining normalized tables: [] (ว่าง) ✅
+- Remaining FK columns in Device: [] (ว่าง) ✅
+- Device count: 2,378 (ครบ ไม่หาย) ✅
+- Device text columns ยังอยู่ครบ:
+  • brand (text): 2,378 รายการ ✅
+  • model (text): 2,378 รายการ ✅
+  • type (text): 2,378 รายการ ✅
+
+Stage Summary:
+- ✅ ลบ 3 normalized tables ออกจาก production ITAM-DB
+- ✅ ลบ 3 FK columns ใน Device (typeId, brandId, modelId)
+- ✅ ลบ 3 indexes (Device_typeId_idx, Device_brandId_idx, Device_modelId_idx)
+- ✅ Device data 2,378 รายการยังอยู่ครบ + text columns ยังทำงานได้ปกติ
+- ⚠️ Code ที่ใช้ normalized tables จะพัง (api/master?type=device-types/brands/models) — ต้องแก้ให้ดึงจาก MasterItem แทน (รอคำสั่ง)
+
+Production ITAM-DB state after cleanup:
+- Device: 2,378 rows (text columns type/brand/model intact, no FK)
+- MasterItem: 839 rows (unchanged — ยังมีของที่ผม seed เพิ่ม 529 rows รอแก้ต่อ)
+- DeviceType/Brand/Model tables: DROPPED
