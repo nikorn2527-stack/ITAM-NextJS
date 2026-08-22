@@ -346,7 +346,11 @@ export function buildHistoryResult(
 
   return {
     ok: true,
-    auditLogs: paginatedLogs, // return full for now (redaction applied separately)
+    // ── Return REDACTED logs, not raw paginatedLogs ────────────────
+    // Audit (ITAM-02) REQUEST CHANGES: buildHistoryResult computed
+    // redactedLogs but returned auditLogs: paginatedLogs (raw),
+    // exposing raw detail to callers. Fix: return redactedLogs.
+    auditLogs: redactedLogs as unknown as AuditLogFixture[],
     transfers: paginatedTransfers,
     page: query.page,
     limit: query.limit,
