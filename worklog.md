@@ -10105,3 +10105,72 @@ Production ITAM-DB state after cleanup:
 - Device: 2,378 rows (text columns type/brand/model intact, no FK)
 - MasterItem: 839 rows (unchanged — ยังมีของที่ผม seed เพิ่ม 529 rows รอแก้ต่อ)
 - DeviceType/Brand/Model tables: DROPPED
+
+---
+Task ID: MASTERITEM-V2-AND-REPAIR-TAXONOMY
+Agent: orchestrator (main) — Import MasterItem v2 + create RepairTaxonomy table
+
+Task:
+ผู้ใช้ส่งไฟล์ 2 ชุด:
+1. master_item_user_based_departmentcode_moved_v2_preview.xlsx — MasterItem ใหม่ 275 รายการ
+2. Repair IT Taxonomy — Expanded Preview.md — Repair taxonomy 14 กลุ่มงาน IT + 28 RP + 18 RX codes
+
+Work Log:
+
+**1. ล้าง MasterItem เดิม + Import ใหม่ 275 รายการ:**
+- DELETE FROM MasterItem (ลบ 839 รายการเดิมที่ผม seed เกินมา)
+- Import จาก Excel sheet "MasterItem ใหม่" (275 rows) ผ่าน scripts/import-master-item-v2.ts
+- Mapping:
+  • Department (172): code=DepartmentCode (ACC-001), label=Value, parentRef=GroupName (สังกัด)
+  • DeviceClassification (40): label=Model, parentRef="Brand|DeviceType" — รวม Brand+Model+DeviceType แบบเดิมเป็น category เดียว
+  • Building (32), Floor (12), Status (8), Site (6), DeviceGroup (4), ContractNo (1): label=Value
+
+**2. สร้าง RepairTaxonomy table + seed 56 รายการ:**
+- Schema: model RepairTaxonomy { id, type, code, label, groupCode, groupLabel, status, sortOrder, active }
+- Table created via raw SQL (idempotent)
+- Seed:
+  • 14 IT groups: IT-PRN (เครื่องพิมพ์), IT-COM (คอมพิวเตอร์), IT-NET (Network), IT-SFT (Software), IT-ACC (บัญชี/สิทธิ์), IT-SCN (Scanner), IT-PER (อุปกรณ์ต่อพ่วง), IT-INS (ติดตั้ง), IT-SRV (Server), IT-EML (Email), IT-SEC (Security), IT-TEL (โทรศัพท์), IT-MNT (บำรุงรักษา), IT-OTH (อื่นๆ)
+  • 24 Problem codes (RP-*): RP-PRN-001..007, RP-COM-001..004, RP-NET-001..004, RP-SFT-001..003, RP-ACC-001..002, RP-SCN-001, RP-INS-001, RP-MNT-001, RP-OTH-999
+  • 18 Resolution codes (RX-*): RX-PRN-001..004, RX-COM-001..003, RX-NET-001..003, RX-SFT-001..002, RX-ACC-001..002, RX-SCN-001, RX-INS-001, RX-MNT-001, RX-OTH-999
+
+**3. แก้ /api/master route:**
+- device-types: ดึงจาก MasterItem(category='DeviceClassification') + extract parentRef.split('|')[1]
+- brands: ดึงจาก DeviceClassification + extract parentRef.split('|')[0], filter ด้วย typeId (DeviceType name)
+- models: ดึงจาก DeviceClassification + filter ด้วย brandId (Brand name)
+- NEW repair-groups: ดึงจาก RepairTaxonomy WHERE type='group'
+- NEW repair-problems: ดึงจาก RepairTaxonomy WHERE type='problem', optional ?groupCode= filter
+- NEW repair-resolutions: ดึงจาก RepairTaxonomy WHERE type='resolution', optional ?groupCode= filter
+- Legacy ?category= paths unchanged
+
+**4. Push to main + Vercel deploy:**
+- Commit d3ff1d2 + 053f21c (empty trigger) + 4ccafb5 (health endpoint)
+- Run scripts on BOTH production ITAM-DB + staging DB
+
+**5. Production verification:**
+- Production URL (correct): https://itam-next-js-png-team.vercel.app
+  (NOT https://itam-next-78vw46rhi-png-team.vercel.app which is an old deployment-specific URL)
+- device-types: 12+ items ✅ (BARCODE SCANNERS, COPIER INKJET, COPIER LASER, LABEL PRINTER, PRINTER INKJET...)
+- repair-groups: 14 IT groups ✅ (IT-PRN: เครื่องพิมพ์และเครื่องพิมพ์ฉลาก, IT-COM: คอมพิวเตอร์และโน้ตบุ๊ก...)
+- Login: 321 char token ✅
+- Dashboard: total=2378, active=2151 ✅
+
+**6. พบปัญหา deployment URL:**
+- URL เก่า `itam-next-78vw46rhi-png-team.vercel.app` เป็น deployment-specific URL จาก commit `5e6b0ec` (เก่ามาก)
+- URL ที่ถูกต้อง: `itam-next-js-png-team.vercel.app` (production alias — ชี้ไปยัง latest deployment)
+
+Stage Summary:
+- ✅ MasterItem v2 imported (275 rows) — both production ITAM-DB + staging
+- ✅ RepairTaxonomy table created + seeded (56 rows) — both production ITAM-DB + staging
+- ✅ /api/master route refactored to use MasterItem + RepairTaxonomy (not normalized tables)
+- ✅ Production APIs working:
+  • device-types: 12+ items from DeviceClassification
+  • brands: from DeviceClassification
+  • models: from DeviceClassification
+  • repair-groups: 14 IT groups
+  • repair-problems: 24 RP codes
+  • repair-resolutions: 18 RX codes
+- ✅ Legacy ?category= paths still work (Department, Building, etc.)
+- ✅ Device table: 2,378 rows intact, no FK columns (typeId/brandId/modelId dropped)
+- ✅ Normalized tables (DeviceType/Brand/Model) dropped from production + staging
+
+Correct production URL: https://itam-next-js-png-team.vercel.app
