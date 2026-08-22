@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Search } from 'lucide-react'
 import { type MasterItem } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
@@ -109,16 +109,26 @@ export function ItamSettings() {
   const qc = useQueryClient()
   const [tab, setTab] = React.useState<SettingsTab>('master')
   const [category, setCategory] = React.useState('all')
+  const [status, setStatus] = React.useState<'active' | 'all' | 'inactive'>('active')
+  const [search, setSearch] = React.useState('')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
-  const [form, setForm] = React.useState({ category: '', code: '', label: '', displayLabel: '' })
+  const [form, setForm] = React.useState({
+    category: '',
+    code: '',
+    label: '',
+    displayLabel: '',
+    parentRef: '',
+    siteCode: '',
+    active: true,
+  })
 
-  // Master items
+  // Load the complete set once, then filter locally like the legacy Master_Data page.
+  // This preserves the legacy Type/DeviceType aliases without changing the database schema.
   const { data: masterData, isLoading: masterLoading } = useQuery({
-    queryKey: ['itam-master', category],
+    queryKey: ['itam-master'],
     queryFn: async () => {
-      const params = category !== 'all' ? `?category=${category}` : ''
-      const res = await fetch(`/api/itam/master-items${params}`)
+      const res = await fetch('/api/itam/master-items')
       if (!res.ok) throw new Error('Failed')
       return res.json() as Promise<{ items: MasterItem[] }>
     },
@@ -231,49 +241,84 @@ export function ItamSettings() {
 
   function openAdd() {
     setEditItem(null)
-    setForm({ category: 'Brand', code: '', label: '', displayLabel: '' })
+    setForm({ category: 'Brand', code: '', label: '', displayLabel: '', parentRef: '', siteCode: '', active: true })
     setDialogOpen(true)
   }
 
   function openEdit(item: MasterItem) {
     setEditItem(item)
-    setForm({ category: item.category, code: item.code, label: item.label, displayLabel: item.displayLabel || '' })
+    setForm({
+      category: item.category,
+      code: item.code,
+      label: item.label,
+      displayLabel: item.displayLabel || '',
+      parentRef: item.parentRef || '',
+      siteCode: item.siteCode || '',
+      active: item.active !== false,
+    })
     setDialogOpen(true)
   }
 
   async function saveItem() {
-    if (!form.category || !form.label) { toast.error('กรุณากรอกหมวดหมู่และค่า'); return }
+    if (!form.category || !form.label.trim()) { toast.error('กรุณากรอกหมวดหมู่และค่าข้อมูล'); return }
+    const payload = {
+      categoryKey: form.category,
+      value: form.label.trim(),
+      code: form.code.trim() || form.label.trim(),
+      parentRef: form.parentRef.trim() || null,
+      displayLabel: form.displayLabel.trim() || null,
+      siteCode: form.siteCode.trim() || null,
+      active: form.active,
+    }
     try {
-      if (editItem) {
-        const res = await fetch(`/api/itam/master-items/${editItem.id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
-        })
-        if (!res.ok) throw new Error('Failed')
-        toast.success('แก้ไขแล้ว')
-      } else {
-        const res = await fetch('/api/itam/master-items', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
-        })
-        if (!res.ok) throw new Error('Failed')
-        toast.success('เพิ่มแล้ว')
+      const res = await fetch(editItem ? `/api/itam/master-items/${editItem.id}` : '/api/itam/master-items', {
+        method: editItem ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Failed')
       }
+      toast.success(editItem ? 'แก้ไขแล้ว' : 'เพิ่มแล้ว')
       setDialogOpen(false)
       await qc.invalidateQueries({ queryKey: ['itam-master'] })
-    } catch (e) { toast.error('บันทึกไม่สำเร็จ') }
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ') }
   }
 
   async function deleteItem(item: MasterItem) {
     if (!confirm(`ลบ "${item.label}"?`)) return
     try {
-      await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed')
       toast.success('ลบแล้ว')
       await qc.invalidateQueries({ queryKey: ['itam-master'] })
     } catch { toast.error('ลบไม่สำเร็จ') }
   }
 
-  const items = masterData?.items ?? []
+  const allItems = masterData?.items ?? []
+  const items = React.useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return allItems.filter((item) => {
+      const canonicalCategory = item.category === 'Type' ? 'DeviceType' : item.category
+      if (category !== 'all' && canonicalCategory !== category && item.category !== category) return false
+      if (status === 'active' && item.active === false) return false
+      if (status === 'inactive' && item.active !== false) return false
+      if (!q) return true
+      const haystack = [
+        item.category,
+        item.code,
+        item.label,
+        item.parentRef,
+        item.displayLabel,
+        item.siteCode,
+        item.groupName,
+        item.allowedSites,
+        item.departmentCode,
+      ].filter(Boolean).join(' ').toLowerCase()
+      return haystack.includes(q)
+    })
+  }, [allItems, category, status, search])
   const sites = sitesData?.sites ?? []
 
   return (
@@ -344,76 +389,114 @@ export function ItamSettings() {
           {tab === 'permissions' && <UserManagementSection />}
 
       {tab === 'master' && (
-        <>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="w-full sm:w-48 dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">หมวดทั้งหมด</SelectItem>
-                <SelectItem value="Brand">Brand</SelectItem>
-                <SelectItem value="DeviceType">ประเภทอุปกรณ์</SelectItem>
-                <SelectItem value="Model">Model</SelectItem>
-                <SelectItem value="Department">แผนก</SelectItem>
-                <SelectItem value="Status">สถานะ</SelectItem>
-                <SelectItem value="DeviceGroup">กลุ่มอุปกรณ์</SelectItem>
-              </SelectContent>
-            </Select>
-            <div className="flex gap-2 sm:ml-auto">
-              <Button variant="outline" size="sm" onClick={openAdd} className="flex-1 sm:flex-none"><Plus className="h-4 w-4" /> เพิ่ม</Button>
-              <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ['itam-master'] })}><RefreshCw className="h-4 w-4" /></Button>
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <div className="flex flex-col gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="w-full lg:w-52 dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">หมวดหมู่ทั้งหมด</SelectItem>
+                  <SelectItem value="Site">Site/สาขา</SelectItem>
+                  <SelectItem value="Building">อาคาร</SelectItem>
+                  <SelectItem value="Floor">ชั้น</SelectItem>
+                  <SelectItem value="Department">แผนก/หน่วยงาน</SelectItem>
+                  <SelectItem value="DepartmentCode">รหัสแผนก</SelectItem>
+                  <SelectItem value="DeviceType">ประเภทอุปกรณ์</SelectItem>
+                  <SelectItem value="Brand">ยี่ห้อ</SelectItem>
+                  <SelectItem value="Model">รุ่น</SelectItem>
+                  <SelectItem value="Status">สถานะ</SelectItem>
+                  <SelectItem value="Location">ตำแหน่ง/จุดติดตั้ง</SelectItem>
+                  <SelectItem value="Contract">เลขที่สัญญา</SelectItem>
+                  <SelectItem value="Vendor">ผู้จำหน่าย</SelectItem>
+                  <SelectItem value="DeviceGroup">กลุ่มอุปกรณ์</SelectItem>
+                  <SelectItem value="CostCenter">ศูนย์ต้นทุน</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={status} onValueChange={(v) => setStatus(v as typeof status)}>
+                <SelectTrigger className="w-full lg:w-44 dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active เท่านั้น</SelectItem>
+                  <SelectItem value="all">ทั้งหมด</SelectItem>
+                  <SelectItem value="inactive">Inactive เท่านั้น</SelectItem>
+                </SelectContent>
+              </Select>
+              <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-slate-400" />
+                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาหมวดหมู่/ค่า/คำอธิบาย" className="pl-8 dark:bg-slate-800 dark:border-slate-700" />
+              </div>
+              <div className="flex gap-2 lg:ml-auto">
+                <Button variant="outline" size="sm" onClick={openAdd} className="flex-1 lg:flex-none"><Plus className="h-4 w-4" /> เพิ่มรายการ</Button>
+                <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ['itam-master'] })} aria-label="รีเฟรช"><RefreshCw className="h-4 w-4" /></Button>
+              </div>
+            </div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              แสดง {items.length.toLocaleString()} จาก {allItems.length.toLocaleString()} รายการ · คงรูปแบบ Master_Data เดิมและกรอง Active เป็นค่าเริ่มต้น
             </div>
           </div>
 
-          <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-            <CardContent className="p-0">
-              <div className="itam-scroll max-h-[55vh] overflow-auto">
+          <Card className="min-h-0 flex-1 shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+            <CardContent className="h-full min-h-0 p-0">
+              <div className="itam-scroll h-full min-h-0 overflow-auto">
                 <Table>
-                  <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
+                  <TableHeader className="sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95">
                     <TableRow>
                       <TableHead>หมวดหมู่</TableHead>
-                      <TableHead>ค่า</TableHead>
-                      <TableHead>Display Label</TableHead>
-                      <TableHead>รหัสแผนก</TableHead>
-                      <TableHead className="text-center">สถานะ</TableHead>
+                      <TableHead>ค่าข้อมูล</TableHead>
+                      <TableHead>ข้อมูลเพิ่มเติม</TableHead>
+                      <TableHead>Dept Code</TableHead>
+                      <TableHead>Allowed Sites</TableHead>
+                      <TableHead>สถานะ</TableHead>
                       <TableHead className="text-right">จัดการ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {masterLoading ? (
-                      // Skeleton rows matching column widths
                       Array.from({ length: 6 }).map((_, i) => (
                         <TableRow key={`sk-${i}`}>
-                          <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                          <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-28" /></TableCell>
                           <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                          <TableCell><Skeleton className="h-5 w-8 rounded-full mx-auto" /></TableCell>
-                          <TableCell><Skeleton className="h-6 w-20 ml-auto" /></TableCell>
+                          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                          <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
+                          <TableCell><Skeleton className="ml-auto h-6 w-20" /></TableCell>
                         </TableRow>
                       ))
                     ) : items.length === 0 ? (
-                      <TableRow><TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">ไม่มีข้อมูล</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={7} className="py-12 text-center text-sm text-slate-400">ไม่พบรายการในตัวกรองที่เลือก</TableCell></TableRow>
                     ) : (
-                      items.map((item) => (
-                        <TableRow key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <TableCell><Badge className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{item.category}</Badge></TableCell>
-                          <TableCell className="text-sm font-medium">{item.label}</TableCell>
-                          <TableCell className="text-xs text-slate-400">{item.displayLabel || '—'}</TableCell>
-                          <TableCell className="text-xs">{item.code || '—'}</TableCell>
-                          <TableCell className="text-center">{(item as { active?: boolean }).active ? <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">✓</Badge> : <Badge className="bg-slate-50 text-slate-400">—</Badge>}</TableCell>
-                          <TableCell className="text-right">
-                            <Button size="sm" variant="ghost" onClick={() => openEdit(item)}><Pencil className="h-3 w-3" /></Button>
-                            <Button size="sm" variant="ghost" onClick={() => deleteItem(item)} className="text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /></Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      items.map((item) => {
+                        const extra = item.category === 'Model'
+                          ? item.parentRef
+                          : item.category === 'Site'
+                            ? item.siteCode
+                            : item.category === 'Status' || item.category === 'DeviceGroup'
+                              ? item.displayLabel
+                              : item.groupName || item.parentRef || item.displayLabel
+                        const deptCode = item.departmentCode || (item.category === 'Department' ? item.code : null)
+                        const allowedSites = item.allowedSites || (item.category === 'Site' ? item.siteCode : 'ALL')
+                        return (
+                          <TableRow key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                            <TableCell><Badge className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{item.category === 'Type' ? 'DeviceType' : item.category}</Badge></TableCell>
+                            <TableCell className="text-sm font-medium text-slate-700 dark:text-slate-200">{item.label}</TableCell>
+                            <TableCell className="max-w-56 truncate text-xs text-slate-500 dark:text-slate-400">{extra || '—'}</TableCell>
+                            <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">{deptCode || '—'}</TableCell>
+                            <TableCell className="font-mono text-xs text-slate-500 dark:text-slate-400">{allowedSites || 'ALL'}</TableCell>
+                            <TableCell>{item.active === false ? <Badge className="border-rose-200 bg-rose-100 text-rose-700">Inactive</Badge> : <Badge className="border-emerald-200 bg-emerald-100 text-emerald-700">Active</Badge>}</TableCell>
+                            <TableCell className="text-right">
+                              <Button size="sm" variant="ghost" onClick={() => openEdit(item)} aria-label={`แก้ไข ${item.label}`}><Pencil className="h-3 w-3" /></Button>
+                              <Button size="sm" variant="ghost" onClick={() => deleteItem(item)} aria-label={`ลบ ${item.label}`} className="text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /></Button>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
                     )}
                   </TableBody>
                 </Table>
               </div>
             </CardContent>
           </Card>
-        </>
+        </div>
       )}
 
       {tab === 'site-attributes' && <SiteAttributesSection />}
@@ -459,28 +542,65 @@ export function ItamSettings() {
         </div>
       )}
 
-      {/* Add/Edit Dialog */}
+      {/* Add/Edit Dialog — field names follow the legacy Master_Data form. */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
-          <DialogHeader><DialogTitle>{editItem ? 'แก้ไข' : 'เพิ่ม'} ข้อมูลมาตรฐาน</DialogTitle></DialogHeader>
+        <DialogContent className="sm:max-w-lg dark:border-slate-800 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle>{editItem ? 'แก้ไข' : 'เพิ่ม'} รายการ Master_Data</DialogTitle>
+          </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label className="text-xs">หมวดหมู่ *</Label>
               <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
                 <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Brand">Brand</SelectItem>
-                  <SelectItem value="DeviceType">ประเภทอุปกรณ์</SelectItem>
-                  <SelectItem value="Model">Model</SelectItem>
-                  <SelectItem value="Department">แผนก</SelectItem>
-                  <SelectItem value="Status">สถานะ</SelectItem>
-                  <SelectItem value="DeviceGroup">กลุ่มอุปกรณ์</SelectItem>
+                  <SelectItem value="Site">Site/สาขา</SelectItem>
+                  <SelectItem value="Building">Building/อาคาร</SelectItem>
+                  <SelectItem value="Floor">Floor/ชั้น</SelectItem>
+                  <SelectItem value="Department">Department/แผนก</SelectItem>
+                  <SelectItem value="DepartmentCode">DepartmentCode/รหัสแผนก</SelectItem>
+                  <SelectItem value="DeviceType">DeviceType/ประเภทอุปกรณ์</SelectItem>
+                  <SelectItem value="Type">Type/ประเภท (legacy)</SelectItem>
+                  <SelectItem value="Brand">Brand/ยี่ห้อ</SelectItem>
+                  <SelectItem value="Model">Model/รุ่น</SelectItem>
+                  <SelectItem value="Status">Status/สถานะ</SelectItem>
+                  <SelectItem value="Location">Location/จุดติดตั้ง</SelectItem>
+                  <SelectItem value="Contract">Contract/เลขที่สัญญา</SelectItem>
+                  <SelectItem value="Vendor">Vendor/ผู้จำหน่าย</SelectItem>
+                  <SelectItem value="DeviceGroup">DeviceGroup/กลุ่มอุปกรณ์</SelectItem>
+                  <SelectItem value="CostCenter">CostCenter/ศูนย์ต้นทุน</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5"><Label className="text-xs">ค่า *</Label><Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
-            <div className="space-y-1.5"><Label className="text-xs">Display Label</Label><Input value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
-            <div className="space-y-1.5"><Label className="text-xs">รหัส</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label className="text-xs">ค่าข้อมูล *</Label>
+                <Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="เช่น ZEBRA หรือ เวชกรรมฟื้นฟู" className="dark:bg-slate-800 dark:border-slate-700" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">ItemID / รหัส</Label>
+                <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="เช่น MD-0155" className="dark:bg-slate-800 dark:border-slate-700" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">ParentRef / GroupName</Label>
+                <Input value={form.parentRef} onChange={(e) => setForm({ ...form, parentRef: e.target.value })} placeholder="เช่น HP|PRINTER หรือ กลุ่มงาน" className="dark:bg-slate-800 dark:border-slate-700" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">DisplayLabel</Label>
+                <Input value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} placeholder="ชื่อที่แสดงผล" className="dark:bg-slate-800 dark:border-slate-700" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">SiteCode / Allowed Sites</Label>
+                <Input value={form.siteCode} onChange={(e) => setForm({ ...form, siteCode: e.target.value })} placeholder="เช่น UDH หรือ ALL" className="dark:bg-slate-800 dark:border-slate-700" />
+              </div>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700">
+              <div>
+                <div className="text-sm font-medium">สถานะ Active</div>
+                <div className="text-xs text-slate-500">ปิดใช้งานจะยังเก็บรายการไว้ แต่ไม่ใช้เป็นค่าหลักใน dropdown</div>
+              </div>
+              <Switch checked={form.active} onCheckedChange={(active) => setForm({ ...form, active })} />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>ยกเลิก</Button>
