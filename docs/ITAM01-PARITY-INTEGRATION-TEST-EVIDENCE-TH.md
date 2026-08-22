@@ -1,0 +1,55 @@
+# ITAM-01 Parity Integration Test Evidence
+
+**Owner:** ITAM-01 — Dev-1 / Repair  
+**Branch:** `feature/itam01-parity-integration-2026-08-22`  
+**Base:** `97a43745e5dfe9fc805318e2fb41544d4aa8647a`  
+**Purpose:** ตรวจชุดงาน Parity + งานปรับปรุงที่รวมไว้ทั้งหมดแบบ integration candidate ก่อนส่ง peer review และ Audit
+
+## สถานะการรวมงาน
+
+รวม code candidates ของ Repair, Stock, Devices และ Meter ตาม manifest แล้ว โดยงานที่มี conflict ได้แก้แบบ manual merge และตรวจ marker ครบแล้ว ไม่มี conflict marker ค้างใน `src`, `tests` หรือ `prisma` ณ จุดตรวจล่าสุด
+
+PR/code candidates ที่รวมใน branch นี้ประกอบด้วย #18, #27–#31, #35–#39, #41–#44 และ #45–#51 ตาม `ITAM01-PARITY-INTEGRATION-MANIFEST-TH.md` โดย PR #1, #6, #16 และ branch governance/release ที่อยู่นอก code parity batch ไม่ได้ถูกรวมทั้ง branch เพื่อป้องกันการย้อน baseline หรือกระทบ B4 frozen files
+
+## ผลการตรวจ
+
+| Check | Result | Evidence / หมายเหตุ |
+|---|---|---|
+| Working tree | PASS | clean หลัง commit integration; ไม่พบ conflict marker |
+| Production build | PASS | `JWT_SECRET` ใช้เฉพาะค่า ephemeral ใน sandbox; `npm run build` exit 0 |
+| Focused ESLint | PASS | ตรวจ source files ที่เปลี่ยน/เกี่ยวข้องกับ integration โดยตรง; exit 0 |
+| Targeted contract tests | PASS | Vitest: 24 test files ผ่าน, 509 tests ผ่าน |
+| Sync integration tests requiring PostgreSQL | BLOCKED | 11 tests ล้มจาก `DATABASE_URL` ใน sandbox ไม่ใช่ PostgreSQL URL; ยังไม่มีการสรุปว่า runtime DB ผ่าน |
+| Full TypeScript check | BLOCKED / PRE-EXISTING DEBT | `npx tsc --noEmit` ยังมี errors หลายกลุ่มใน production source, scripts และ tests; build ผ่านไม่ได้แปลว่า typecheck ผ่าน |
+| Full lint | NOT CLEARED | ต้องแยกแก้ lint debt เดิมทั้ง repository ตามเกณฑ์ release ที่ตกลงกัน |
+| Real read/write replay | NOT RUN | ยังต้องรันกับ ITAM-DB ที่ได้รับอนุญาตและข้อมูลทดสอบที่ควบคุมได้ |
+
+## ประเด็นที่พบจากการ merge
+
+1. Meter route มี conflict ระหว่าง stale-reading guard กับ `readingId` idempotent replay จึงผสานให้คงทั้งสอง behavior โดยตรวจ retry identity ก่อน previous-reading lookup และคง stale-date rejection หลังหา reading เดิม
+2. `findExistingMonthlyReading` ถูกปรับให้คืน `id`, `readingDate` และ `readingId` เพื่อให้ stale guard และการคง identity ของรายการเดิมใช้ข้อมูลเดียวกัน
+3. Stock transaction route มี conflict ระหว่าง validation contract กับ retry/source work-order resolution และถูกผสานโดยคงทั้ง validation และ fail-closed resolution
+4. Dependency install ใน sandbox ต้องใช้ `npm ci --legacy-peer-deps` เนื่องจาก `next-auth@4.24.15` ประกาศ optional peer ของ `nodemailer@^7.0.7` แต่ root project ระบุ `nodemailer@^9.0.5`; ไม่ได้แก้ package manifest ใน integration รอบนี้
+
+## สิ่งที่ผลนี้ยืนยันได้
+
+Branch นี้ **ประกอบและ build ได้** และ pure contract/regression tests ของ feature candidates ผ่าน 509 tests จึงพร้อมเข้าสู่ขั้นตรวจ runtime ต่อได้ในฐานะ integration candidate
+
+ผลนี้ยัง **ไม่ใช่ G2/G3 หรือ Production approval** เพราะยังขาด PostgreSQL-backed tests, full typecheck/lint clearance, read/write workflow replay จริง, exact-head peer review และ Audit verdict
+
+## Next action ที่ต้องทำ
+
+1. ให้ ITAM-01 ใช้ branch นี้เป็น exact head สำหรับแก้ integration/type/schema blockers ที่กระทบ runtime จริง โดยไม่แตะ B4 frozen files
+2. รัน database-backed tests กับ ITAM-DB ผ่าน environment ที่ได้รับอนุญาต โดย redacted evidence เท่านั้น
+3. Replay write workflows ของ Repair, Stock, Devices และ Meter ตั้งแต่ create/import/transaction/transfer/reading จนถึง history/report
+4. ตรวจ redaction, authorization/site scope, preview no-write, retry/idempotency และ CSV fallback
+5. หลัง evidence ครบ ให้ peer-review team ออก exact-head verdict แล้วส่ง Audit ตรวจต่อ
+
+## Governance constraints
+
+- Integration branch เป็นพื้นที่ทดสอบ ไม่ใช่ release approval
+- ห้าม push แก้ main หรือ REVIEW-FROZEN PR โดยตรง
+- ห้ามใช้ `prisma db:push`
+- ห้ามแก้ B4 frozen files 6 ไฟล์
+- ห้ามเพิ่ม `SYNC_RUN` permission โดยไม่มี Audit review
+- `legacy_job_no` ต้องคง immutable และใช้คู่กับ `system_job_no` ตาม data contract
