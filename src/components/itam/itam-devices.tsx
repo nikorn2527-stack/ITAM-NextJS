@@ -37,7 +37,12 @@ interface Device {
   id: string; assetCode: string; type: string | null; brand: string | null
   model: string | null; serialNumber: string | null; status: string; site: string | null
   department: string | null; building: string | null; floor: string | null
-  location: string | null; meterRequired: boolean; _count?: { meterReadings: number; locationHistories: number; assignments: number; maintenanceLogs: number }
+  location: string | null; meterRequired: boolean
+  departmentCode?: string | null; deviceGroup?: string | null; costCenter?: string | null
+  contractNo?: string | null; vendor?: string | null; ip?: string | null; mac?: string | null
+  remoteId?: string | null; purchaseDate?: string | null; warrantyEnd?: string | null
+  meterMode?: string | null; assetSiteCode?: string | null; remark?: string | null
+  _count?: { meterReadings: number; locationHistories: number; assignments: number; maintenanceLogs: number }
   /** client-only flag: optimistic row in flight */
   __optimistic?: 'add' | 'edit' | 'delete' | null
   /** client-only: timestamp when this row was last successfully saved */
@@ -45,6 +50,38 @@ interface Device {
 }
 interface DevicesResponse {
   devices: Device[]; pagination: { page: number; limit: number; total: number; totalPages: number }
+}
+
+const DEVICE_EXPORT_PAGE_SIZE = 200
+const DEVICE_EXPORT_MAX_PAGES = 1_000
+
+type DeviceListFilters = { search?: string; status?: string; type?: string }
+
+/** Fetch export rows page-by-page so each API/DB request remains bounded. */
+async function fetchAllDevicesForExport(filters: DeviceListFilters): Promise<Device[]> {
+  const buildUrl = (page: number) => {
+    const params = new URLSearchParams({ page: String(page), limit: String(DEVICE_EXPORT_PAGE_SIZE) })
+    if (filters.search?.trim()) params.set('search', filters.search.trim())
+    if (filters.status && filters.status !== 'all') params.set('status', filters.status)
+    if (filters.type && filters.type !== 'all') params.set('type', filters.type)
+    return `/api/itam/devices?${params.toString()}`
+  }
+
+  const firstRes = await fetch(buildUrl(1))
+  if (!firstRes.ok) throw new Error('Failed to fetch devices for export')
+  const first = await firstRes.json() as DevicesResponse
+  const totalPages = first.pagination?.totalPages ?? 1
+  if (totalPages > DEVICE_EXPORT_MAX_PAGES) {
+    throw new Error('ข้อมูลมีจำนวนหน้ามากเกินขอบเขตการส่งออก กรุณาใช้ตัวกรองหรือแบ่งงานส่งออก')
+  }
+  const rows = [...(first.devices ?? [])]
+  for (let page = 2; page <= totalPages; page += 1) {
+    const res = await fetch(buildUrl(page))
+    if (!res.ok) throw new Error(`Failed to fetch devices export page ${page}`)
+    const payload = await res.json() as DevicesResponse
+    rows.push(...(payload.devices ?? []))
+  }
+  return rows
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -112,7 +149,13 @@ const EMPTY_FORM: DeviceForm = {
   meterRequired: false, meterMode: 'TOTAL', assetSiteCode: '', remark: '',
 }
 
-const CSV_HEADERS = [
+type DeviceExportKey =
+  | 'assetCode' | 'type' | 'brand' | 'model' | 'serialNumber' | 'status' | 'site'
+  | 'building' | 'floor' | 'department' | 'departmentCode' | 'location' | 'deviceGroup'
+  | 'costCenter' | 'contractNo' | 'vendor' | 'ip' | 'mac' | 'remoteId' | 'purchaseDate'
+  | 'warrantyEnd' | 'meterRequired' | 'meterMode' | 'assetSiteCode' | 'remark'
+
+const CSV_HEADERS: Array<{ key: DeviceExportKey; label: string }> = [
   { key: 'assetCode', label: 'รหัสสินทรัพย์' },
   { key: 'type', label: 'ประเภท' },
   { key: 'brand', label: 'แบรนด์' },
@@ -140,19 +183,19 @@ const CSV_HEADERS = [
   { key: 'remark', label: 'หมายเหตุ' },
 ]
 
+function getDeviceExportValue(device: Device, key: DeviceExportKey): unknown {
+  if (key === 'meterRequired') return device.meterRequired ? 'Yes' : 'No'
+  return device[key]
+}
+
 // ============ Search debounce hook (200ms) ============
 function useDebounced<T>(value: T, delayMs = 200): [T, boolean] {
   const [debounced, setDebounced] = React.useState<T>(value)
-  const [isPending, setIsPending] = React.useState(false)
   React.useEffect(() => {
-    setIsPending(true)
-    const t = setTimeout(() => {
-      setDebounced(value)
-      setIsPending(false)
-    }, delayMs)
+    const t = setTimeout(() => setDebounced(value), delayMs)
     return () => clearTimeout(t)
   }, [value, delayMs])
-  return [debounced, isPending]
+  return [debounced, !Object.is(debounced, value)]
 }
 
 // ============ Highlight matched text ============
@@ -202,8 +245,9 @@ export function ItamDevices() {
   const [status, setStatus] = React.useState('all')
   const [deviceType, setDeviceType] = React.useState('all')
   const [page, setPage] = React.useState(1)
-  // Virtual scroll toggle — when ON, fetch 500 rows in one shot and virtualize
-  // (so 2,378+ devices scroll smoothly). Persisted in localStorage.
+  // Virtual scroll toggle — virtualizes the bounded page returned by the API.
+  // Pagination remains available for the next page and the API never receives
+  // an unbounded limit. Persisted in localStorage.
   const [virtualScroll, setVirtualScroll] = React.useState<boolean>(() => {
     if (typeof window === 'undefined') return false
     try { return window.localStorage.getItem('itam.virtual-scroll') === '1' } catch { return false }
@@ -211,26 +255,17 @@ export function ItamDevices() {
   React.useEffect(() => {
     try { window.localStorage.setItem('itam.virtual-scroll', virtualScroll ? '1' : '0') } catch { /* ignore */ }
   }, [virtualScroll])
-  // Adaptive limit: virtual mode → 2000 rows in one shot (handles the full
-  // 2,378-device dataset); standard mode → 20 with pagination.
-  const limit = React.useMemo(() => virtualScroll ? 2000 : 20, [virtualScroll])
-  // Reset page when toggling virtual mode (different page sizes)
-  React.useEffect(() => { setPage(1) }, [virtualScroll])
-
+  // Adaptive limit: virtual mode → the API maximum (200 rows) for smooth
+  // rendering; standard mode → 20 rows with pagination.
+  const limit = React.useMemo(() => virtualScroll ? 200 : 20, [virtualScroll])
   // QR scanner trigger (singleton dialog mounted at the app shell)
   const setQrScannerOpen = useAppStore((s) => s.setQrScannerOpen)
 
   // Search metrics (Yms)
-  const [searchStartedAt, setSearchStartedAt] = React.useState<number | null>(null)
-  const [searchMs, setSearchMs] = React.useState<number | null>(null)
-  React.useEffect(() => {
-    if (search) setSearchStartedAt(Date.now())
-    else { setSearchStartedAt(null); setSearchMs(null) }
-  }, [search])
+  const searchStartedAtRef = React.useRef<number | null>(null)
 
   // Recent searches
-  const [recent, setRecent] = React.useState<string[]>([])
-  React.useEffect(() => { setRecent(loadRecent()) }, [])
+  const [recent, setRecent] = React.useState<string[]>(loadRecent)
   function commitRecent(q: string) {
     saveRecent(q)
     setRecent(loadRecent())
@@ -242,16 +277,20 @@ export function ItamDevices() {
   const clearPendingDeviceType = useAppStore((s) => s.clearPendingDeviceType)
   const clearPendingDeviceStatus = useAppStore((s) => s.clearPendingDeviceStatus)
   React.useEffect(() => {
-    if (pendingDeviceType) {
-      setDeviceType(pendingDeviceType)
-      setPage(1)
-      clearPendingDeviceType()
-    }
-    if (pendingDeviceStatus) {
-      setStatus(pendingDeviceStatus)
-      setPage(1)
-      clearPendingDeviceStatus()
-    }
+    if (!pendingDeviceType && !pendingDeviceStatus) return
+    const timer = window.setTimeout(() => {
+      if (pendingDeviceType) {
+        setDeviceType(pendingDeviceType)
+        setPage(1)
+        clearPendingDeviceType()
+      }
+      if (pendingDeviceStatus) {
+        setStatus(pendingDeviceStatus)
+        setPage(1)
+        clearPendingDeviceStatus()
+      }
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [pendingDeviceType, pendingDeviceStatus, clearPendingDeviceType, clearPendingDeviceStatus])
 
   // Detail sheet
@@ -355,9 +394,10 @@ export function ItamDevices() {
     })
   }
 
-  // Reset selection when search/filter changes
+  // Reset selection when search/filter changes without a synchronous cascading render.
   React.useEffect(() => {
-    setSelectedAssetCodes(new Set())
+    const timer = window.setTimeout(() => setSelectedAssetCodes(new Set()), 0)
+    return () => window.clearTimeout(timer)
   }, [debouncedSearch, status, deviceType, page])
 
   async function handleSingleStickerPrint(assetCode: string) {
@@ -409,21 +449,22 @@ export function ItamDevices() {
     placeholderData: keepPreviousData,
   })
 
-  // Compute search duration when data arrives
-  React.useEffect(() => {
-    if (searchStartedAt !== null && data) {
-      setSearchMs(Date.now() - searchStartedAt)
-    }
-  }, [data, searchStartedAt])
+  // Search duration is derived from the latest completed query render.
+  const searchMs = searchStartedAtRef.current !== null && data ? Date.now() - searchStartedAtRef.current : null
 
   // ===== Mutations with optimistic UI =====
 
   // Helper: cast query data for cache manipulation
   type DevicesQueryData = DevicesResponse
 
-  function onSearch(val: string) {
+  function updateSearch(val: string) {
+    searchStartedAtRef.current = val ? Date.now() : null
     setSearch(val)
     setPage(1)
+  }
+
+  function onSearch(val: string) {
+    updateSearch(val)
   }
 
   function openAdd() {
@@ -436,22 +477,22 @@ export function ItamDevices() {
     setEditAssetCode(assetCode)
     fetch(`/api/itam/devices/${assetCode}`)
       .then(r => r.ok ? r.json() : Promise.reject(r))
-      .then((j: { device: Device & Record<string, unknown> }) => {
+      .then((j: { device: Device }) => {
         const d = j.device
         setForm({
           assetCode: d.assetCode, type: d.type || '', brand: d.brand || '', model: d.model || '',
           serialNumber: d.serialNumber || '', building: d.building || '', floor: d.floor || '',
           department: d.department || '', location: d.location || '', departmentCode: d.departmentCode || '',
-          status: d.status, site: d.site || '', contractNo: (d as { contractNo?: string }).contractNo || '',
-          ip: (d as { ip?: string }).ip || '', mac: (d as { mac?: string }).mac || '',
-          remoteId: (d as { remoteId?: string }).remoteId || '',
-          vendor: (d as { vendor?: string }).vendor || '',
-          purchaseDate: (d as { purchaseDate?: string }).purchaseDate || '',
-          warrantyEnd: (d as { warrantyEnd?: string }).warrantyEnd || '',
-          deviceGroup: (d as { deviceGroup?: string }).deviceGroup || '',
-          costCenter: (d as { costCenter?: string }).costCenter || '',
-          meterRequired: d.meterRequired, meterMode: (d as { meterMode?: string }).meterMode || 'TOTAL',
-          assetSiteCode: (d as { assetSiteCode?: string }).assetSiteCode || '',
+          status: d.status, site: d.site || '', contractNo: d.contractNo || '',
+          ip: d.ip || '', mac: d.mac || '',
+          remoteId: d.remoteId || '',
+          vendor: d.vendor || '',
+          purchaseDate: d.purchaseDate || '',
+          warrantyEnd: d.warrantyEnd || '',
+          deviceGroup: d.deviceGroup || '',
+          costCenter: d.costCenter || '',
+          meterRequired: d.meterRequired, meterMode: d.meterMode || 'TOTAL',
+          assetSiteCode: d.assetSiteCode || '',
           remark: d.remark || '',
         })
         setCrudOpen(true)
@@ -653,19 +694,11 @@ export function ItamDevices() {
     try {
       setExporting(true)
       toast.info('กำลังดึงข้อมูลทั้งหมด...')
-      const res = await fetch('/api/itam/devices?limit=100')
-      if (!res.ok) throw new Error('Failed')
-      const j: DevicesResponse = await res.json()
-      const rows = j.devices.map(d => ({
-        assetCode: d.assetCode, type: d.type || '', brand: d.brand || '',
-        model: d.model || '', serialNumber: d.serialNumber || '', status: d.status,
-        site: d.site || '', building: d.building || '', floor: d.floor || '',
-        department: d.department || '', departmentCode: '', location: d.location || '',
-        deviceGroup: '', costCenter: '', contractNo: '', vendor: '',
-        ip: '', mac: '', remoteId: '', purchaseDate: '', warrantyEnd: '',
-        meterRequired: d.meterRequired ? 'Yes' : 'No', meterMode: '', assetSiteCode: '',
-        remark: '',
-      }))
+      const rows = (await fetchAllDevicesForExport({ search: debouncedSearch, status, type: deviceType })).map((d) => {
+        const row: Record<string, unknown> = {}
+        for (const header of CSV_HEADERS) row[header.key] = getDeviceExportValue(d, header.key) ?? ''
+        return row
+      })
       downloadCsv(`devices-${dateStamp()}.csv`, rows, CSV_HEADERS)
       toast.success(`ส่งออก ${rows.length} เครื่อง`)
     } catch (e) {
@@ -680,16 +713,12 @@ export function ItamDevices() {
     try {
       setExcelExporting(true)
       toast.info('กำลังดึงข้อมูลทั้งหมด...')
-      const res = await fetch('/api/itam/devices?limit=100')
-      if (!res.ok) throw new Error('Failed')
-      const j: DevicesResponse = await res.json()
-      const rows = j.devices
+      const rows = await fetchAllDevicesForExport({ search: debouncedSearch, status, type: deviceType })
       const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c))
       const headerHtml = CSV_HEADERS.map((h) => `<th style="background:#f97316;color:#fff;padding:6px;border:1px solid #ddd;font-weight:600">${esc(h.label)}</th>`).join('')
       const bodyHtml = rows.map((d) => {
         const cells = CSV_HEADERS.map((h) => {
-          const v = (d as Record<string, unknown>)[h.key]
-          const text = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
+          const text = getDeviceExportValue(d, h.key) ?? ''
           return `<td style="padding:5px;border:1px solid #e2e8f0;mso-number-format:'\\@'">${esc(text)}</td>`
         }).join('')
         return `<tr>${cells}</tr>`
@@ -712,7 +741,6 @@ export function ItamDevices() {
 
   // ── Map Device → DocumentRenderRow (for the document-template renderer)
   function deviceToRenderRow(d: Device, idx: number): DocumentRenderRow {
-    const dev = d as Device & { vendor?: string | null; contractNo?: string | null; remark?: string | null }
     return {
       no: idx + 1,
       brand: d.brand ?? '',
@@ -725,8 +753,8 @@ export function ItamDevices() {
       location: d.location ?? '',
       site: d.site ?? '',
       status: d.status,
-      vendor: dev.vendor ?? '',
-      remark: dev.remark ?? '',
+      vendor: d.vendor ?? '',
+      remark: d.remark ?? '',
     }
   }
 
@@ -771,10 +799,7 @@ export function ItamDevices() {
     try {
       setPdfExporting(true)
       toast.info('กำลังดึงข้อมูลทั้งหมด...')
-      const res = await fetch('/api/itam/devices?limit=100')
-      if (!res.ok) throw new Error('Failed')
-      const j: DevicesResponse = await res.json()
-      const rows = j.devices
+      const rows = await fetchAllDevicesForExport({ search: debouncedSearch, status, type: deviceType })
 
       // ── Check if document templates are enabled ────────────────────
       const tplMode = await getDocumentTemplateMode()
@@ -927,10 +952,7 @@ tr:nth-child(even) td { background: #fafbfc; }
     try {
       setCustomExporting(true)
       toast.info('กำลังดึงข้อมูลทั้งหมด...')
-      const res = await fetch('/api/itam/devices?limit=2000')
-      if (!res.ok) throw new Error('Failed')
-      const j: DevicesResponse = await res.json()
-      const rows = j.devices
+      const rows = await fetchAllDevicesForExport({ search: debouncedSearch, status, type: deviceType })
       const cols = CSV_HEADERS.filter(h => selectedColumns.includes(h.key))
       localStorage.setItem('itam.customExportColumns', JSON.stringify(selectedColumns))
 
@@ -938,8 +960,7 @@ tr:nth-child(even) td { background: #fafbfc; }
         const exportRows = rows.map(d => {
           const row: Record<string, unknown> = {}
           cols.forEach(h => {
-            const v = (d as Record<string, unknown>)[h.key]
-            row[h.key] = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
+            row[h.key] = getDeviceExportValue(d, h.key) ?? ''
           })
           return row
         })
@@ -950,8 +971,7 @@ tr:nth-child(even) td { background: #fafbfc; }
         const headerHtml = cols.map(h => `<th style="background:#f97316;color:#fff;padding:6px;border:1px solid #ddd;font-weight:600">${esc(h.label)}</th>`).join('')
         const bodyHtml = rows.map(d => {
           const cells = cols.map(h => {
-            const v = (d as Record<string, unknown>)[h.key]
-            const text = h.key === 'meterRequired' ? (d.meterRequired ? 'Yes' : 'No') : (v ?? '')
+            const text = getDeviceExportValue(d, h.key) ?? ''
             return `<td style="padding:5px;border:1px solid #e2e8f0;mso-number-format:'\\@'">${esc(text)}</td>`
           }).join('')
           return `<tr>${cells}</tr>`
@@ -1005,8 +1025,8 @@ tr:nth-child(even) td { background: #fafbfc; }
     const headCells = cols.map(h => `<th>${esc(h.label)}</th>`).join('')
     const bodyRows = rows.map(d => {
       const cells = cols.map(h => {
-        const v = (d as Record<string, unknown>)[h.key]
-        const text = h.key === 'meterRequired' ? (d.meterRequired ? '✓' : '—') : (v ?? '')
+        const rawValue = getDeviceExportValue(d, h.key)
+        const text = h.key === 'meterRequired' ? (d.meterRequired ? '✓' : '—') : (rawValue ?? '')
         return `<td>${esc(text)}</td>`
       }).join('')
       return `<tr>${cells}</tr>`
@@ -1236,7 +1256,7 @@ tr:nth-child(even) td{background:#fafbfc}
           )}
           {!searchPending && search && (
             <button
-              onClick={() => { setSearch(''); setPage(1) }}
+              onClick={() => updateSearch('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
               aria-label="ล้างคำค้นหา"
             >
@@ -1272,8 +1292,8 @@ tr:nth-child(even) td{background:#fafbfc}
           type="button"
           variant={virtualScroll ? 'default' : 'outline'}
           size="sm"
-          onClick={() => setVirtualScroll((v) => !v)}
-          title={virtualScroll ? 'โหมดเลื่อนเสมือน — โหลด 500 รายการต่อหน้า, เลื่อนลื่น' : 'โหมดมาตรฐาน — 20 รายการต่อหน้า, มี pagination'}
+          onClick={() => { setVirtualScroll((v) => !v); setPage(1) }}
+          title={virtualScroll ? 'โหมดเลื่อนเสมือน — โหลดไม่เกิน 200 รายการต่อหน้า, เลื่อนลื่น' : 'โหมดมาตรฐาน — 20 รายการต่อหน้า, มี pagination'}
           className={
             virtualScroll
               ? 'h-9 bg-[#f97316] text-white hover:bg-[#ea580c]'
@@ -1289,14 +1309,14 @@ tr:nth-child(even) td{background:#fafbfc}
       <SavedFilters
         current={{ search, status, type: deviceType }}
         onApply={(f) => {
-          setSearch(f.search || '')
+          updateSearch(f.search || '')
           setStatus(f.status || 'all')
           setDeviceType(f.type || 'all')
           setPage(1)
         }}
         onReset={() => {
-          setSearch('')
-          setStatus('all')
+           updateSearch('')
+           setStatus('all')
           setDeviceType('all')
           setPage(1)
         }}
@@ -1317,7 +1337,7 @@ tr:nth-child(even) td{background:#fafbfc}
             {recent.map((q) => (
               <button
                 key={q}
-                onClick={() => { setSearch(q); setPage(1) }}
+                onClick={() => updateSearch(q)}
                 className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs text-slate-600 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-orange-700 dark:hover:bg-orange-950 dark:hover:text-orange-300"
               >
                 {q}
@@ -1400,7 +1420,7 @@ tr:nth-child(even) td{background:#fafbfc}
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => { setSearch(''); setStatus('all'); setDeviceType('all'); setPage(1) }}
+                            onClick={() => { updateSearch(''); setStatus('all'); setDeviceType('all') }}
                             className="dark:bg-slate-800 dark:border-slate-700"
                           >
                             <X className="h-3.5 w-3.5" /> ลองค้นหาด้วยคำอื่น / ล้างตัวกรอง
