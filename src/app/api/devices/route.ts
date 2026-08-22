@@ -82,8 +82,12 @@ export async function GET(req: NextRequest) {
 
     const where: Record<string, unknown> = {}
     if (search) {
+      // ── Search only NON-SENSITIVE fields ──────────────────────────
+      // Audit (ITAM-02) REQUEST CHANGES: search clause included sensitive
+      // fields (serialNumber, ip, mac, remoteId, contractNo, vendor).
+      // Remove them from list-view search to enforce list-view minimization
+      // contract. Sensitive fields are searchable in detail view only.
       where.OR = [
-        { serialNumber: { contains: search } },
         { assetCode: { contains: search } },
         { name: { contains: search } },
         { brand: { contains: search } },
@@ -93,11 +97,6 @@ export async function GET(req: NextRequest) {
         { department: { contains: search } },
         { location: { contains: search } },
         { site: { contains: search } },
-        { ip: { contains: search } },
-        { mac: { contains: search } },
-        { remoteId: { contains: search } },
-        { contractNo: { contains: search } },
-        { vendor: { contains: search } },
       ]
     }
     if (status) where.status = status
