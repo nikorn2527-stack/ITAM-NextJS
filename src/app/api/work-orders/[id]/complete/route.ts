@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { notifyWorkOrderCompleted } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { getRepairJobReferences } from '@/lib/repair-job-references'
+import { validateRepairCompletionInput } from '@/lib/repair-completion-contract'
 
 async function logAudit(
   action: string,
@@ -51,12 +52,37 @@ export async function POST(
       resolution,
       resolutionGroup,
     } = body as {
-      note?: string | null
-      picAfter?: string | null
-      picOnsite?: string | null
-      resolution?: string | null
-      resolutionGroup?: string | null
+      note?: unknown
+      picAfter?: unknown
+      picOnsite?: unknown
+      resolution?: unknown
+      resolutionGroup?: unknown
     }
+
+    const completionInput = validateRepairCompletionInput({
+      note,
+      picAfter,
+      picOnsite,
+      resolution,
+      resolutionGroup,
+    })
+    if (!completionInput.ok) {
+      return NextResponse.json(
+        {
+          error: `ข้อมูลปิดงานไม่ถูกต้อง: ${completionInput.field}`,
+          code: completionInput.code,
+          field: completionInput.field,
+        },
+        { status: 400 },
+      )
+    }
+    const {
+      note: normalizedNote,
+      picAfter: normalizedPicAfter,
+      picOnsite: normalizedPicOnsite,
+      resolution: normalizedResolution,
+      resolutionGroup: normalizedResolutionGroup,
+    } = completionInput.value
 
     if (wo.status === 'COMPLETED') {
       return NextResponse.json(
@@ -104,10 +130,8 @@ export async function POST(
     const actorName = auth.user.email
     const now = new Date()
 
-    const resolutionTrim =
-      typeof resolution === 'string' ? resolution.trim() : ''
-    const resolutionGroupTrim =
-      typeof resolutionGroup === 'string' ? resolutionGroup.trim() : ''
+    const resolutionTrim = normalizedResolution ?? ''
+    const resolutionGroupTrim = normalizedResolutionGroup ?? ''
 
     const updated = await db.workOrder.update({
       where: { id: wo.id },
@@ -115,19 +139,19 @@ export async function POST(
         status: 'COMPLETED',
         workCompletedAt: now,
         closedAt: now,
-        picAfter: picAfter ? String(picAfter) : wo.picAfter,
-        picOnsite: picOnsite ? String(picOnsite) : wo.picOnsite,
+        picAfter: normalizedPicAfter ?? wo.picAfter,
+        picOnsite: normalizedPicOnsite ?? wo.picOnsite,
         resolution: resolutionTrim || null,
         resolutionGroup: resolutionTrim ? (resolutionGroupTrim || null) : null,
-        detailsAdmin: note
-          ? (wo.detailsAdmin ? wo.detailsAdmin + '\n' : '') + String(note).trim()
+        detailsAdmin: normalizedNote
+          ? (wo.detailsAdmin ? wo.detailsAdmin + '\n' : '') + normalizedNote
           : wo.detailsAdmin,
       },
     })
 
     const completionMsg = resolutionTrim
-      ? `ปิดงานเรียบร้อย — ผลการแก้ไข: ${resolutionTrim}${note ? ` (${String(note).trim()})` : ''}`
-      : `ปิดงานเรียบร้อย${note ? ` — ${String(note).trim()}` : ''}`
+      ? `ปิดงานเรียบร้อย — ผลการแก้ไข: ${resolutionTrim}${normalizedNote ? ` (${normalizedNote})` : ''}`
+      : `ปิดงานเรียบร้อย${normalizedNote ? ` — ${normalizedNote}` : ''}`
 
     await db.workOrderMessage.create({
       data: {
@@ -143,7 +167,7 @@ export async function POST(
       wo.id,
       `ปิดงาน ${updated.woNumber ?? wo.id}`,
       {
-        note: note ?? null,
+        note: normalizedNote,
         resolution: resolutionTrim || null,
         resolutionGroup: resolutionGroupTrim || null,
       },
