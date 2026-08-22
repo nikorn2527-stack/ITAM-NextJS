@@ -2,6 +2,7 @@
 
 **Owner:** ITAM-01 — Dev-1 / Repair  
 **Branch:** `feature/itam01-parity-integration-2026-08-22`  
+**Exact HEAD:** `e3d59a4` (`docs: record parity integration test evidence`)  
 **Base:** `97a43745e5dfe9fc805318e2fb41544d4aa8647a`  
 **Purpose:** ตรวจชุดงาน Parity + งานปรับปรุงที่รวมไว้ทั้งหมดแบบ integration candidate ก่อนส่ง peer review และ Audit
 
