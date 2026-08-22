@@ -88,6 +88,13 @@ export interface MasterItem {
   parentRef: string | null
   displayLabel: string | null
   siteCode: string | null
+  active?: boolean
+  // Legacy-compatible fields. They are optional because the current Prisma
+  // model does not yet persist every Apps Script Master_Items column.
+  itemId?: string | null
+  groupName?: string | null
+  allowedSites?: string | null
+  departmentCode?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -463,14 +470,24 @@ export const DEVICE_STATUS_OPTIONS = [
   { value: 'disposed', label: 'ตัดของออก' },
 ] as const
 
+// Legacy Master_Data categories. `Type` and `DeviceType` are both kept because
+// the Apps Script accepts both spellings through canonicalMasterCategory().
 export const MASTER_CATEGORIES = [
-  'Brand',
-  'Type',
-  'Model',
-  'Department',
-  'Status',
-  'DeviceGroup',
   'Site',
+  'Building',
+  'Floor',
+  'Department',
+  'DepartmentCode',
+  'DeviceType',
+  'Type',
+  'Brand',
+  'Model',
+  'Status',
+  'Location',
+  'Contract',
+  'Vendor',
+  'DeviceGroup',
+  'CostCenter',
 ] as const
 
 export function statusBadgeClass(status: string): string {
