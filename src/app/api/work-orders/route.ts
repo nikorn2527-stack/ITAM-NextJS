@@ -3,6 +3,8 @@ import { db } from '@/lib/db'
 import { validateGuestContact } from '@/lib/guest-validation'
 import { notifyWorkOrderCreated } from '@/lib/notifications'
 import { requireAuth } from '@/lib/auth-middleware'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag } from '@/lib/demo-mode'
 import {
   getActiveWoPattern,
@@ -36,6 +38,7 @@ async function logAudit(
   summary: string,
   detail: Record<string, unknown> | null,
   actor: string,
+  siteCode?: string | null,
 ): Promise<void> {
   try {
     await db.auditLog.create({
@@ -46,6 +49,7 @@ async function logAudit(
         summary,
         detail: detail ? JSON.stringify(detail) : null,
         actor,
+        siteCode: siteCode ?? null,
       },
     })
   } catch (err) {
@@ -147,6 +151,26 @@ function normalizeExternalMeta(input: unknown): {
 }
 
 export async function GET(req: NextRequest) {
+  // ── Authentication: require an authenticated session ──
+  // Previously this route returned work orders with NO auth check at all
+  // — anyone hitting the endpoint could see every WO in the system
+  // (including reporter names, phone numbers, internal notes). This is
+  // a Blocker. Now any authenticated user can list, but the result set
+  // is scoped to the user's Site grants via buildAuthorizationContext.
+  const auth = await requireAuth(req)
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+  // ── Build authorization context for Site scope ──
+  // WorkOrder.siteCode may be null for legacy rows. We OR siteCode with
+  // device.site below so old WOs that still have a linked Device resolve
+  // to the correct Site. Non-superadmin with no grants → empty list.
+  const ctx = await buildAuthorizationContext(
+    auth.user,
+    auth.row.id,
+    auth.row.allowedSites,
+  )
+
   try {
     const { searchParams } = new URL(req.url)
     const search = searchParams.get('search')?.trim() ?? ''
@@ -166,10 +190,57 @@ export async function GET(req: NextRequest) {
       Math.max(1, Number(searchParams.get('pageSize') ?? '20') || 20),
     )
 
+    // ── Site scope enforcement ──
+    // superadmin → no filter (sees all WOs)
+    // non-superadmin with grants → restrict to WO.siteCode in scope OR
+    //   (WO.siteCode is null AND WO.device.site in scope) — this catches
+    //   legacy rows that haven't been backfilled with siteCode yet.
+    // non-superadmin with no grants → empty list (fail-closed).
+    let siteFilter: Record<string, unknown> | null = null
+    if (ctx.isSuperAdmin) {
+      // no scope filter
+    } else if (
+      ctx.siteScope.kind === 'sites' &&
+      ctx.siteScope.siteCodes.length > 0
+    ) {
+      const allowed = ctx.siteScope.siteCodes
+      siteFilter = {
+        OR: [
+          { siteCode: { in: allowed } },
+          { siteCode: null, device: { site: { in: allowed } } },
+        ],
+      }
+    } else {
+      // kind === 'none' or legacy 'all' fallback that resolves to no sites
+      // → fail-closed: return empty list.
+      return NextResponse.json({
+        data: [],
+        pagination: {
+          page,
+          pageSize,
+          total: 0,
+          totalPages: 0,
+        },
+        stats: {
+          PENDING: 0,
+          IN_PROGRESS: 0,
+          WAITING_PARTS: 0,
+          COMPLETED: 0,
+          CANCELLED: 0,
+        },
+      })
+    }
+
     const where: Record<string, unknown> = {}
+
+    // ── Build the `search` OR clause ──
+    // Used to combine with site filter via AND when both are present.
+    let searchOr: Record<string, unknown>[] | null = null
     if (search) {
-      where.OR = [
+      searchOr = [
         { woNumber: { contains: search } },
+        { systemJobNo: { contains: search } },
+        { legacyJobNo: { contains: search } },
         { subject: { contains: search } },
         { building: { contains: search } },
         { location: { contains: search } },
@@ -182,6 +253,18 @@ export async function GET(req: NextRequest) {
         { resolution: { contains: search } },
       ]
     }
+
+    // Combine siteFilter + searchOr into `where`.
+    if (siteFilter && searchOr) {
+      where.AND = [siteFilter, { OR: searchOr }]
+    } else if (siteFilter) {
+      // siteFilter is `{ OR: [...] }` — copy directly into where so
+      // subsequent status/priority/assignedTo filters can be added.
+      for (const [k, v] of Object.entries(siteFilter)) where[k] = v
+    } else if (searchOr) {
+      where.OR = searchOr
+    }
+
     if (status && VALID_STATUSES.has(status)) where.status = status
     if (priority && VALID_PRIORITIES.has(priority)) where.priority = priority
     if (assignedTo) where.assignedTo = assignedTo
@@ -233,11 +316,53 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    // ── Demo mode: detect demo caller (optional auth — guest flow still works) ──
-    const auth = await requireAuth(req).catch(() => null)
-    const demo = auth?.ok ? auth : null
+    // ── Auth flow: guest vs. authenticated staff ──
+    //
+    // Guest flow (submissionSource === 'guest'): auth is OPTIONAL — guests
+    // don't need a session to create a WO for themselves. They DO need
+    // guest contact validation (name + phone) below.
+    //
+    // Staff flow (anything else): require WO_CREATE permission. Previously
+    // this route used optional auth for everyone, so any logged-in user
+    // (even a viewer) could create WOs via the staff endpoint. This is a
+    // privilege-escalation Blocker.
+    //
+    // To pick the correct flow, we need to peek at `submissionSource` in
+    // the body BEFORE deciding which auth path to take. We read the body
+    // once and reuse it for the rest of the handler.
+    const rawBody = await req.json().catch(() => ({}))
+    const peekSource =
+      typeof rawBody.submissionSource === 'string' &&
+      VALID_SOURCES.has(rawBody.submissionSource.trim())
+        ? rawBody.submissionSource.trim()
+        : 'guest'
 
-    const body = await req.json()
+    let demo: { user: import('@/lib/auth-shared').AuthUser } | null = null
+    let ctx: Awaited<ReturnType<typeof buildAuthorizationContext>> | null = null
+    let staffUser: import('@/lib/auth-shared').AuthUser | null = null
+
+    if (peekSource === 'guest') {
+      // Guest flow — optional auth (demo users / public LINE submissions)
+      const auth = await requireAuth(req).catch(() => null)
+      if (auth?.ok) {
+        demo = auth.isDemo ? { user: auth.user } : null
+      }
+    } else {
+      // Authenticated staff — hard-require WO_CREATE permission
+      const auth = await requireAuth(req, 'WO_CREATE')
+      if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status })
+      }
+      demo = auth.isDemo ? { user: auth.user } : null
+      staffUser = auth.user
+      ctx = await buildAuthorizationContext(
+        auth.user,
+        auth.row.id,
+        auth.row.allowedSites,
+      )
+    }
+
+    const body = rawBody as Record<string, unknown>
     const {
       subject,
       building,
@@ -257,7 +382,10 @@ export async function POST(req: NextRequest) {
       isExternal,
       skipGuestValidation,
       isSpecialFee,
-    } = body as Record<string, unknown>
+      requestId,
+      clientMutationId,
+      legacyJobNo: rawLegacyJobNo,
+    } = body
 
     if (!subject || !String(subject).trim()) {
       return NextResponse.json(
@@ -266,11 +394,55 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // ── Idempotency: check requestId/clientMutationId for replay protection ──
+    // If the caller sends a requestId (legacy) or clientMutationId (new),
+    // we check if a WO with that idempotency key already exists. If so,
+    // return the existing WO as a duplicate success (matching legacy
+    // Apps Script behavior). This prevents duplicate WO creation on retry.
+    const idempotencyKey =
+      (typeof clientMutationId === 'string' && clientMutationId.trim()) ||
+      (typeof requestId === 'string' && requestId.trim()) ||
+      null
+    if (idempotencyKey) {
+      const existing = await db.workOrder.findFirst({
+        where: {
+          OR: [
+            { requestId: idempotencyKey },
+          ],
+        },
+        select: {
+          id: true,
+          woNumber: true,
+          systemJobNo: true,
+          legacyJobNo: true,
+          subject: true,
+          status: true,
+          createdAt: true,
+        },
+      })
+      if (existing) {
+        // Return the existing WO as a duplicate success — the caller
+        // should treat this as the result of their original request.
+        return NextResponse.json({
+          data: existing,
+          duplicate: true,
+          message: `พบใบงานที่สร้างด้วย requestId '${idempotencyKey}' แล้ว — ส่งคืนข้อมูลเดิม`,
+        })
+      }
+    }
+
     const source =
       typeof submissionSource === 'string' &&
       VALID_SOURCES.has(submissionSource.trim())
         ? submissionSource.trim()
         : 'guest'
+    // Legacy identifiers are accepted for authenticated/import-style flows;
+    // guest submissions cannot authoritatively claim a legacy source number.
+    const incomingLegacyJobNo =
+      typeof rawLegacyJobNo === 'string' && rawLegacyJobNo.trim()
+        ? rawLegacyJobNo.trim()
+        : null
+    const legacyJobNo = source === 'guest' ? null : incomingLegacyJobNo
 
     // ── External work order (ลูกค้าภายนอก / นอกสถานที่) ──
     // External WOs do NOT require guest contact validation — they are
@@ -339,10 +511,48 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // ── Derive siteCode from the linked Device (if any) ──
+    // WorkOrder.siteCode is the canonical Site reference for Site-based
+    // access control. For WOs with a device, we look up device.site and
+    // store its normalized form on the WO so subsequent auth checks
+    // (canAtSite, GET scope filter) work without a JOIN.
+    let derivedSiteCode: string | null = null
+    const trimmedDeviceId =
+      typeof deviceId === 'string' && deviceId.trim() ? deviceId.trim() : null
+    if (trimmedDeviceId) {
+      const device = await db.device.findUnique({
+        where: { id: trimmedDeviceId },
+        select: { site: true },
+      })
+      if (device) {
+        derivedSiteCode = normalizeSiteCode(device.site)
+      }
+    }
+
+    // ── Site-scoped authorization for staff WO creation ──
+    // Guests are not subject to canAtSite (they create WOs through the
+    // public guest flow, which is gated by guest contact validation).
+    // Staff MUST have WO_CREATE at the derived Site — using canAtSite,
+    // not the union of effectivePermissions, to prevent privilege
+    // escalation (admin at UDH creating WOs at NKP where they're viewer).
+    if (ctx && derivedSiteCode) {
+      if (!ctx.isSuperAdmin && !ctx.canAtSite(derivedSiteCode, 'WO_CREATE')) {
+        return NextResponse.json(
+          { error: `คุณไม่มีสิทธิ์สร้างใบงานที่ Site '${derivedSiteCode}'` },
+          { status: 403 },
+        )
+      }
+    }
+    // If ctx is set but derivedSiteCode is null (no device), we still
+    // allow creation — the WO will be unscoped (siteCode=null). The WO
+    // will be invisible to non-superadmin GET callers (since their scope
+    // filter requires siteCode OR device.site to be in scope). This is
+    // acceptable for now — staff with WO_CREATE can create external WOs.
+
     const actorName =
       typeof actor === 'string' && actor.trim()
         ? actor.trim()
-        : (finalReporterName || 'system')
+        : (staffUser?.email ?? finalReporterName ?? 'system')
     // NOTE (PART 3 — Single User System): when the request comes from an
     // authenticated staff/admin, use the session user's email as `actor`.
     // For guest/line submissions, the reporterName (or 'system') is fine.
@@ -356,8 +566,11 @@ export async function POST(req: NextRequest) {
 
     const created = await db.workOrder.create({
       data: {
-        id: woNumber,       // Use PPIT format as the primary id (like original data)
-        woNumber,           // Also set as woNumber for display
+        id: woNumber,       // Preserve current primary-key compatibility.
+        woNumber,           // Compatibility/display field used by existing clients.
+        systemJobNo: woNumber,
+        legacyJobNo,
+        requestId: idempotencyKey, // Store for future replay detection
         subject: String(subject).trim(),
         building: building ? String(building).trim() : null,
         location: location ? String(location).trim() : null,
@@ -368,8 +581,10 @@ export async function POST(req: NextRequest) {
         tel: finalTel || null,
         employeeCode: finalEmployeeCode || null,
         submissionSource: source,
-        deviceId:
-          typeof deviceId === 'string' && deviceId.trim() ? deviceId.trim() : null,
+        deviceId: trimmedDeviceId,
+        // Store the derived siteCode so GET scope filtering works
+        // without a JOIN to Device.
+        siteCode: derivedSiteCode,
         picBefore: picBefore ? String(picBefore) : null,
         externalMeta: externalMetaString,
         isSpecialFee: specialFeeFlag,
@@ -426,6 +641,8 @@ export async function POST(req: NextRequest) {
       `สร้างใบแจ้งซ่อม ${created.woNumber} — ${created.subject}`,
       {
         woNumber: created.woNumber,
+        systemJobNo: created.systemJobNo,
+        legacyJobNo: created.legacyJobNo,
         subject: created.subject,
         priority: created.priority,
         building: created.building,
@@ -435,11 +652,12 @@ export async function POST(req: NextRequest) {
         external: externalFlag,
         isSpecialFee: specialFeeFlag,
         department,
+        siteCode: derivedSiteCode,
+        deviceId: trimmedDeviceId,
       },
       actorName,
+      derivedSiteCode,
     )
-
-    // ── Notification trigger (Task ID: NOTIFY-LINE) ──
     // Send 'wo_created' to LINE admin group + Telegram admin chat.
     // NOTE (PART 3): pass actor from auth context once NextAuth lands.
     try {

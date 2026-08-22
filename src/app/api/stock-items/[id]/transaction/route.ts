@@ -3,14 +3,10 @@ import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { requireAuth } from '@/lib/auth-middleware'
 import { demoTag } from '@/lib/demo-mode'
-
-/** Parse an Int; returns 0 when missing/invalid. */
-function optInt(v: unknown, fallback = 0): number {
-  if (v === null || v === undefined || v === '') return fallback
-  const n = typeof v === 'number' ? v : Number(v)
-  if (!Number.isFinite(n)) return fallback
-  return Math.round(n)
-}
+import { resolveStockTransactionIdentity } from '@/lib/stock-transaction-identity'
+import { validateStockTransactionInput } from '@/lib/stock-transaction-contract'
+import { withSerializableRetry } from '@/lib/retry-transaction'
+import { normalizeStockSourceKey, resolveWorkOrderReference } from '@/lib/stock-work-order-resolution'
 
 /** Parse a Float; returns null when missing/invalid. */
 function optFloat(v: unknown): number | null {
@@ -19,8 +15,6 @@ function optFloat(v: unknown): number | null {
   if (!Number.isFinite(n)) return null
   return Math.max(0, n)
 }
-
-const VALID_TYPES = new Set(['IN', 'OUT', 'ADJUST'])
 
 /**
  * Generate the next sequential txn number for today: STX-YYYYMMDD-NNN.
@@ -51,39 +45,51 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    // ── Demo mode: detect demo caller (optional auth — endpoint currently
-    //    accepts unauthenticated requests for compatibility) ──
-    const auth = await requireAuth(req).catch(() => null)
-    const demo = auth?.ok ? auth : null
-
     const body = await req.json()
-    const type = String(body.type ?? '').toUpperCase()
-    if (!VALID_TYPES.has(type)) {
+    const input = validateStockTransactionInput({
+      type: body.type,
+      quantity: body.quantity,
+      txnDate: body.txnDate,
+    })
+    if (!input.ok) {
       return NextResponse.json(
-        { error: "type ต้องเป็น 'IN', 'OUT' หรือ 'ADJUST'" },
+        {
+          error: 'ข้อมูล stock transaction ไม่ถูกต้อง',
+          code: input.code,
+          field: input.field,
+        },
         { status: 400 },
       )
     }
-    const quantity = optInt(body.quantity, 0)
-    if (quantity < 0) {
-      return NextResponse.json(
-        { error: 'quantity ต้องไม่ติดลบ' },
-        { status: 400 },
-      )
+    const { type, quantity, txnDate } = input.value
+    const requiredPermission =
+      type === 'IN' ? 'STOCK_IN' : type === 'OUT' ? 'STOCK_OUT' : 'STOCK_APPROVE'
+    const auth = await requireAuth(req, requiredPermission)
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
     }
-    if ((type === 'IN' || type === 'OUT') && quantity <= 0) {
-      return NextResponse.json(
-        { error: 'สำหรับ IN/OUT ต้องระบุ quantity มากกว่า 0' },
-        { status: 400 },
-      )
-    }
+    const actorIdentity = resolveStockTransactionIdentity(auth.user)
 
-    const txnDate = body.txnDate
-      ? String(body.txnDate).trim()
-      : new Date().toISOString().slice(0, 10)
-
+    const sourceKey = normalizeStockSourceKey(body.sourceKey)
     // Atomic update of StockItem.quantity + create StockTransaction.
-    const result = await db.$transaction(async (tx) => {
+    const result = await withSerializableRetry(async (tx) => {
+      // Retry/idempotency guard: a stable sourceKey must never apply the same
+      // stock mutation twice. A reused key with different intent is rejected.
+      if (sourceKey) {
+        const previous = await tx.stockTransaction.findFirst({
+          where: { sourceKey },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+        })
+        if (previous) {
+          if (previous.stockItemId !== id || previous.type !== type || previous.quantity !== quantity) {
+            throw new Error('IDEMPOTENCY_CONFLICT')
+          }
+          const currentItem = await tx.stockItem.findUnique({ where: { id } })
+          if (!currentItem) throw new Error('NOT_FOUND')
+          return { item: currentItem, txn: previous, poUpdateSummary: null, idempotent: true, workOrderResolution: null }
+        }
+      }
+
       const item = await tx.stockItem.findUnique({ where: { id } })
       if (!item) {
         throw new Error('NOT_FOUND')
@@ -139,6 +145,24 @@ export async function POST(
             (item.unitCost !== null ? item.unitCost * quantity : null)
           : optFloat(body.cost)
 
+      const workOrderResolution = await resolveWorkOrderReference(
+        {
+          workOrderId: body.workOrderId,
+          workOrderNo: body.workOrderNo,
+          legacyJobNo: body.legacyJobNo,
+          systemJobNo: body.systemJobNo,
+          requestId: body.requestId,
+        },
+        {
+          byId: (value) => tx.workOrder.findUnique({ where: { id: value }, select: { id: true, woNumber: true, legacyJobNo: true, systemJobNo: true, requestId: true } }),
+          byWoNumber: (value) => tx.workOrder.findUnique({ where: { woNumber: value }, select: { id: true, woNumber: true, legacyJobNo: true, systemJobNo: true, requestId: true } }),
+          byLegacyJobNo: async (value) => tx.workOrder.findFirst({ where: { legacyJobNo: value }, select: { id: true, woNumber: true, legacyJobNo: true, systemJobNo: true, requestId: true } }),
+          bySystemJobNo: (value) => tx.workOrder.findUnique({ where: { systemJobNo: value }, select: { id: true, woNumber: true, legacyJobNo: true, systemJobNo: true, requestId: true } }),
+          byRequestId: (value) => tx.workOrder.findUnique({ where: { requestId: value }, select: { id: true, woNumber: true, legacyJobNo: true, systemJobNo: true, requestId: true } }),
+        },
+      )
+      const quarantinedWorkOrder = workOrderResolution.status === 'quarantined'
+
       const txn = await tx.stockTransaction.create({
         data: {
           txnNumber,
@@ -147,11 +171,18 @@ export async function POST(
           quantity,
           balanceAfter: newBalance,
           reason: body.reason ? String(body.reason).trim() : null,
-          requester: body.requester ? String(body.requester).trim() : null,
+          // OUT requester is always the authenticated actor; client input is ignored.
+          requester: type === 'OUT'
+            ? actorIdentity.requester
+            : body.requester
+            ? String(body.requester).trim()
+            : null,
           department: body.department ? String(body.department).trim() : null,
           purpose: body.purpose ? String(body.purpose).trim() : null,
-          workOrderId: body.workOrderId ? String(body.workOrderId) : null,
-          workOrderNo: body.workOrderNo ? String(body.workOrderNo) : null,
+          workOrderId: workOrderResolution.status === 'resolved' ? workOrderResolution.workOrder.id : null,
+          workOrderNo: workOrderResolution.status === 'resolved'
+            ? workOrderResolution.canonicalWorkOrderNo
+            : null,
           deviceId: body.deviceId ? String(body.deviceId) : null,
           cost,
           unitCost: item.unitCost,
@@ -161,9 +192,17 @@ export async function POST(
             ? String(body.purchaseOrderNo).trim()
             : null,
           txnDate,
-          performedBy: body.performedBy ? String(body.performedBy).trim() : null,
+          // Audit performer is always the authenticated account; client input is ignored.
+          performedBy: actorIdentity.performedBy,
           remark: body.remark ? String(body.remark).trim() : null,
-          ...demoTag(demo?.user ?? null),
+          sourceKey,
+          processedFlag: workOrderResolution.status === 'resolved'
+            ? 'RESOLVED'
+            : workOrderResolution.status === 'quarantined'
+              ? 'QUARANTINED'
+              : 'UNLINKED',
+          rejectReason: quarantinedWorkOrder ? workOrderResolution.reason : null,
+          ...demoTag(auth.user),
         },
       })
 
@@ -223,34 +262,37 @@ export async function POST(
         }
       }
 
-      return { item: updatedItem, txn, poUpdateSummary }
+      return { item: updatedItem, txn, poUpdateSummary, idempotent: false, workOrderResolution }
     })
 
-    const action =
-      type === 'IN' ? 'STOCK_IN' : type === 'OUT' ? 'STOCK_OUT' : 'STOCK_ADJUST'
-    const verb =
-      type === 'IN'
-        ? 'รับเข้า'
-        : type === 'OUT'
-        ? 'เบิกออก'
-        : 'ปรับปรุงสต็อก'
-    await logAudit(
-      action,
-      'StockItem',
-      id,
-      `${verb} ${result.item.productCode} จำนวน ${quantity} ${result.item.unit} (คงเหลือ ${result.item.quantity})`,
-      {
-        productCode: result.item.productCode,
-        type,
-        quantity,
-        balanceAfter: result.item.quantity,
-        txnNumber: result.txn.txnNumber,
-        txnId: result.txn.id,
-        reason: result.txn.reason,
-        purchaseOrderNo: result.txn.purchaseOrderNo,
-        poUpdate: result.poUpdateSummary,
-      },
-    )
+    if (!result.idempotent) {
+      const action =
+        type === 'IN' ? 'STOCK_IN' : type === 'OUT' ? 'STOCK_OUT' : 'STOCK_ADJUST'
+      const verb =
+        type === 'IN'
+          ? 'รับเข้า'
+          : type === 'OUT'
+          ? 'เบิกออก'
+          : 'ปรับปรุงสต็อก'
+      await logAudit(
+        action,
+        'StockItem',
+        id,
+        `${verb} ${result.item.productCode} จำนวน ${quantity} ${result.item.unit} (คงเหลือ ${result.item.quantity})`,
+        {
+          productCode: result.item.productCode,
+          type,
+          quantity,
+          balanceAfter: result.item.quantity,
+          txnNumber: result.txn.txnNumber,
+          txnId: result.txn.id,
+          reason: result.txn.reason,
+          purchaseOrderNo: result.txn.purchaseOrderNo,
+          poUpdate: result.poUpdateSummary,
+          workOrderResolution: result.workOrderResolution,
+        },
+      )
+    }
 
     return NextResponse.json(
       {
@@ -258,9 +300,11 @@ export async function POST(
           item: result.item,
           transaction: result.txn,
           poUpdate: result.poUpdateSummary,
+          idempotent: result.idempotent,
+          workOrderResolution: result.workOrderResolution,
         },
       },
-      { status: 201 },
+      { status: result.idempotent ? 200 : 201 },
     )
   } catch (err) {
     console.error('POST /api/stock-items/[id]/transaction', err)
@@ -272,6 +316,12 @@ export async function POST(
         return NextResponse.json(
           { error: 'สินค้านี้ถูกปิดใช้งานแล้ว' },
           { status: 400 },
+        )
+      }
+      if (err.message === 'IDEMPOTENCY_CONFLICT') {
+        return NextResponse.json(
+          { error: 'sourceKey ถูกใช้กับรายการอื่นแล้ว — retry ต้องใช้ข้อมูลเดิมเท่านั้น' },
+          { status: 409 },
         )
       }
       // Stock-insufficient and other business-rule errors.

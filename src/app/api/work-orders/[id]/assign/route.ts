@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notifyWorkOrderAssigned } from '@/lib/notifications'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 async function logAudit(
   action: string,
@@ -8,6 +9,7 @@ async function logAudit(
   summary: string,
   detail: Record<string, unknown> | null,
   actor: string,
+  siteCode?: string | null,
 ): Promise<void> {
   try {
     await db.auditLog.create({
@@ -18,6 +20,7 @@ async function logAudit(
         summary,
         detail: detail ? JSON.stringify(detail) : null,
         actor,
+        siteCode: siteCode ?? null,
       },
     })
   } catch (err) {
@@ -31,11 +34,18 @@ export async function POST(
 ) {
   try {
     const { id } = await params
+
+    // Authenticate + authorize — assigning a WO requires WO_ASSIGN at its Site
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_ASSIGN')
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    const { wo, auth } = result
+
     const body = await req.json()
-    const { assignedTo, assignmentNote, actor } = body as {
+    const { assignedTo, assignmentNote } = body as {
       assignedTo?: string
       assignmentNote?: string | null
-      actor?: string
     }
 
     if (!assignedTo || !String(assignedTo).trim()) {
@@ -45,23 +55,15 @@ export async function POST(
       )
     }
 
-    const wo = await db.workOrder.findUnique({ where: { id } })
-    if (!wo) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
-
-    const actorName =
-      typeof actor === 'string' && actor.trim() ? actor.trim() : 'system'
-    // NOTE (PART 3 — Single User System): replace the 'system' fallback
-    // with the authenticated user's email/id once NextAuth is wired in.
-    // All audit-log + notification `actor` values should come from the
-    // session, not the request body.
+    // Use the authenticated user's email as the actor — never trust
+    // a body-supplied `actor` field, which could be spoofed.
+    const actorName = auth.user.email
     const tech = String(assignedTo).trim()
     const note = assignmentNote ? String(assignmentNote).trim() : null
     const now = new Date()
 
     const updated = await db.workOrder.update({
-      where: { id },
+      where: { id: wo.id },
       data: {
         assignedTo: tech,
         assignedBy: actorName,
@@ -74,7 +76,7 @@ export async function POST(
 
     await db.workOrderMessage.create({
       data: {
-        workOrderId: id,
+        workOrderId: wo.id,
         message: `มอบหมายช่าง: ${tech}${note ? ` — ${note}` : ''}`,
         author: actorName,
         authorRole: 'admin',
@@ -83,15 +85,15 @@ export async function POST(
 
     await logAudit(
       'WO_ASSIGN',
-      id,
-      `มอบหมาย ${updated.woNumber ?? id} ให้ ${tech}`,
+      wo.id,
+      `มอบหมาย ${updated.woNumber ?? wo.id} ให้ ${tech}`,
       { assignedTo: tech, assignedBy: actorName, note },
       actorName,
+      result.woSite,
     )
 
     // ── Notification trigger (Task ID: NOTIFY-LINE) ──
     // Send 'wo_assigned' to the assigned staff (LINE/Telegram if known).
-    // NOTE (PART 3): pass actor from auth context once NextAuth lands.
     try {
       await notifyWorkOrderAssigned(
         {

@@ -11,9 +11,14 @@ generator client {
 
 datasource db {
   // Production uses PostgreSQL (Supabase). The local sandbox may use
-  // SQLite for testing by setting DATABASE_URL=file:.../custom.db and
-  // temporarily switching provider to "sqlite", but the committed
-  // schema must always target the production provider.
+  // SQLite for ad-hoc testing by temporarily switching provider to
+  // "sqlite" and pointing DATABASE_URL at a local .db file, but the
+  // COMMITTED schema must always target the production provider.
+  //
+  // Release candidate (this file): provider = "postgresql".
+  // Any sandbox test that used SQLite was a local, uncommitted exercise
+  // and its results are NOT production evidence — PostgreSQL verification
+  // must happen in CI / staging against a real PostgreSQL instance.
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
@@ -37,6 +42,7 @@ model Device {
   departmentCode  String?
   parentRef       String?
   assetSiteCode   String?  // asset_site_code — รหัสประจำ Site (SITE-NNNNN)
+  displayLabel    String?  // ป้ายแสดงผลที่ผู้ใช้กำหนดเอง (display label)
   location        String?
   building        String?
   floor           String?
@@ -214,12 +220,14 @@ model DeviceTransfer {
   fromBuilding      String?
   fromFloor         String?
   fromDepartment    String?
+  fromDepartmentCode String?
   fromLocation      String?
   toSite            String
   toAssetSiteCode   String?
   toBuilding        String?
   toFloor           String?
   toDepartment      String?
+  toDepartmentCode  String?
   toLocation        String?
   meterReadingId    String?
   movedBy           String?
@@ -287,7 +295,11 @@ model MaintenanceLog {
 model WorkOrder {
   id               String   @id @default(cuid())
   woNumber         String?  @unique
-  requestId        String?
+  // Legacy source identifier; immutable for traceability when supplied by imports.
+  legacyJobNo      String?  @map("legacy_job_no")
+  // New ITAM-NextJS identifier; woNumber remains as the compatibility display field.
+  systemJobNo      String?  @unique @map("system_job_no")
+  requestId        String?  @unique
   subject          String
   building         String?
   location         String?
@@ -300,7 +312,7 @@ model WorkOrder {
   submissionSource String   @default("guest")
   trackable        Boolean  @default(false)
   lineUserId       String?
-  lineMessageId    String?
+  lineMessageId    String?  @unique
   printTemplateId  String?
   externalMeta     String?
   picBefore        String?
@@ -334,6 +346,11 @@ model WorkOrder {
   // a separate authorization flow — never means "all sites").
   // See: Site-Based Access Control Guidance for ITAM-NextJS.md §5.1
   siteCode         String?
+  // B4 FIX: Optimistic concurrency version field.
+  // Incremented on every update. Callers can send `expectedVersion` in
+  // PUT/PATCH to detect concurrent modification (409 Conflict).
+  // Used with serializable transaction for device reassignment.
+  version          Int      @default(1)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -343,11 +360,13 @@ model WorkOrder {
   images   WorkOrderImage[]
 
   @@index([status])
+  @@index([legacyJobNo])
   @@index([assignedTo])
   @@index([deviceId])
   @@index([isDemo])
   @@index([isSpecialFee])
   @@index([siteCode, status, createdAt])
+  @@index([version])
 }
 
 // ============================================================
@@ -538,6 +557,7 @@ model StockTransaction {
   purpose         String?
   approver        String?
   approvedAt      String?
+  // Optional because legacy material rows may be unresolved or quarantined.
   workOrderId     String?
   workOrderNo     String?
   deviceId        String?
@@ -565,6 +585,7 @@ model StockTransaction {
   @@index([type])
   @@index([approvalStatus])
   @@index([isDemo])
+  @@index([sourceKey])
 }
 
 // ============================================================
@@ -621,6 +642,7 @@ model User {
   active       Boolean  @default(true)
   passwordHash String?
   passwordSalt String?
+  remark       String?
   avatarUrl    String?
   phone        String?
   lineUserId   String?
@@ -741,11 +763,18 @@ model AuditLog {
   summary   String
   detail    String?  // JSON string
   actor     String   @default("system")
+  // NF-2 FIX: Canonical Site FK for audit entries.
+  // Populated by logAudit() when the action is Site-scoped.
+  // Null = global action (e.g., LOGIN, AUTH_FALLBACK) or legacy entry
+  // that predates this field. Site-scoped queries filter on this column
+  // instead of resolving entityId → entity → Site (eliminates N+1).
+  siteCode  String?
   createdAt DateTime @default(now())
 
   @@index([entity, entityId])
   @@index([action])
   @@index([createdAt])
+  @@index([siteCode, createdAt])
 }
 
 // ============================================================
@@ -891,4 +920,65 @@ model PasswordResetToken {
 
   @@index([email])
   @@index([token])
+}
+
+// ============================================================
+// 30) SyncRun — ประวัติการ sync จาก Legacy Apps Script
+//     mode: 'preview' (read-only diff) | 'apply' (write)
+//     status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+// ============================================================
+model SyncRun {
+  id              String   @id @default(cuid())
+  source          String   // 'services' | 'itam' | 'stock'
+  target          String   // 'work-order' | 'device' | 'meter' | 'stock-item' | 'stock-txn' | 'purchase-order'
+  mode            String   // 'preview' | 'apply'
+  status          String   // 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  totalRows       Int      @default(0)
+  createRows      Int      @default(0)
+  updateRows      Int      @default(0)
+  skipRows        Int      @default(0)
+  errorRows       Int      @default(0)
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  durationMs      Int?
+  triggeredBy     String   // user email
+  siteScope       String?
+  errorMessage    String?
+  retryOf         String?
+  sourceCursor    String?
+  attempts        Int      @default(1)
+  p2034Count      Int      @default(0)
+  items           SyncRunItem[]
+  createdAt       DateTime @default(now())
+
+  @@index([source, target, status])
+  @@index([triggeredBy])
+  @@index([siteScope, createdAt])
+  @@index([status, createdAt])
+}
+
+// ============================================================
+// 31) SyncRunItem — diff รายแถวจากการ sync
+//     action: 'create' | 'update' | 'skip' | 'error'
+//     status: 'pending' | 'applied' | 'skipped' | 'error'
+// ============================================================
+model SyncRunItem {
+  id              String   @id @default(cuid())
+  syncRunId       String
+  syncRun         SyncRun  @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  externalKey     String
+  action          String   // 'create' | 'update' | 'skip' | 'error'
+  before          Json?
+  after           Json?
+  expectedVersion Int?
+  expectedExists  Boolean  @default(false)
+  status          String   // 'pending' | 'applied' | 'skipped' | 'error'
+  errorMessage    String?
+  entityId        String?
+  entityType      String?
+  processedAt     DateTime?
+
+  @@index([syncRunId, action])
+  @@index([externalKey])
+  @@index([syncRunId, status])
 }

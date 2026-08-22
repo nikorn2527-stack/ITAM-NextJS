@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { validateGuestContact } from '@/lib/guest-validation'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 // ============================================================
 // PUT /api/work-orders/[id]/reporter-edit
-// Lets the original reporter (guest or session user) edit a work
-// order BEFORE staff accepts it (status === 'PENDING').
+// Lets staff with WO_ASSIGN edit a work order's reporter info.
+//
+// Auth: requires WO_ASSIGN at the WO's Site (staff-only). The
+// original guest-edit flow is preserved as an additional
+// identity-verification layer (the caller must still supply the
+// reporter's name + phone, which is validated against the
+// contactDirectory and cross-checked with the stored reporter).
 //
 // Required body:
 //   - verifyName: string  (reporter name for identity check)
@@ -14,11 +20,6 @@ import { validateGuestContact } from '@/lib/guest-validation'
 //
 // Editable fields (all optional):
 //   - subject, building, location, details, tel
-//
-// For guest-submitted WOs we re-validate name + phone against the
-// contactDirectory AND require it to match the stored reporter.
-// For session-submitted WOs the same verification still applies for
-// safety (so the user must know the original reporter's contact).
 // ============================================================
 
 async function logAudit(
@@ -27,6 +28,7 @@ async function logAudit(
   summary: string,
   detail: Record<string, unknown> | null,
   actor: string,
+  siteCode?: string | null,
 ): Promise<void> {
   try {
     await db.auditLog.create({
@@ -37,6 +39,7 @@ async function logAudit(
         summary,
         detail: detail ? JSON.stringify(detail) : null,
         actor,
+        siteCode: siteCode ?? null,
       },
     })
   } catch (err) {
@@ -50,6 +53,14 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
+
+    // Authenticate + authorize — editing reporter info requires WO_ASSIGN
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_ASSIGN')
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status })
+    }
+    const { wo, auth } = result
+
     const body = await req.json()
     const {
       verifyName,
@@ -62,11 +73,6 @@ export async function PUT(
       tel,
     } = body as Record<string, unknown>
 
-    const wo = await db.workOrder.findUnique({ where: { id } })
-    if (!wo) {
-      return NextResponse.json({ error: 'ไม่พบใบงาน' }, { status: 404 })
-    }
-
     // Only allow editing while PENDING (before staff accepts)
     if (wo.status !== 'PENDING') {
       return NextResponse.json(
@@ -78,6 +84,9 @@ export async function PUT(
     }
 
     // ── Verify identity ──
+    // The caller must still supply the reporter's name + phone, which we
+    // validate against the contactDirectory and cross-check with the WO's
+    // stored reporter. This is an additional safety layer on top of auth.
     const nameStr = typeof verifyName === 'string' ? verifyName.trim() : ''
     const phoneStr = typeof verifyPhone === 'string' ? verifyPhone.trim() : ''
     const codeStr =
@@ -151,23 +160,25 @@ export async function PUT(
       details: wo.details,
       tel: wo.tel,
     }
-    const updated = await db.workOrder.update({ where: { id }, data })
+    const updated = await db.workOrder.update({ where: { id: wo.id }, data })
 
     await db.workOrderMessage.create({
       data: {
-        workOrderId: id,
-        message: 'ผู้แจ้งแก้ไขรายละเอียดใบงานเอง',
-        author: canonicalName,
-        authorRole: 'reporter',
+        workOrderId: wo.id,
+        message: `แก้ไขรายละเอียดใบงานโดย ${auth.user.email}`,
+        author: auth.user.email,
+        authorRole: 'admin',
       },
     })
 
+    // Audit-log actor = authenticated user (not the body-supplied reporter name).
     await logAudit(
       'WO_REPORTER_EDIT',
-      id,
-      `ผู้แจ้ง (${canonicalName}) แก้ไขใบงาน ${updated.woNumber ?? id}`,
-      { before, after: data },
-      canonicalName,
+      wo.id,
+      `${auth.user.email} แก้ไขใบงาน ${updated.woNumber ?? wo.id}`,
+      { before, after: data, verifiedReporter: canonicalName },
+      auth.user.email,
+      result.woSite,
     )
 
     return NextResponse.json({ data: updated })

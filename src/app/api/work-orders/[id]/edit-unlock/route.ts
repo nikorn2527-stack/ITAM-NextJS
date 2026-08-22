@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth-middleware'
+import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
 /**
  * POST /api/work-orders/[id]/edit-unlock
@@ -11,8 +11,12 @@ import { requireAuth } from '@/lib/auth-middleware'
  * Body:
  *   { active: boolean, note?: string }
  *
- * Rules:
- *   - Requires ADMIN permission.
+ * Rules (Task ID: RESIDUAL-BLOCKERS-ROUND-4):
+ *   - Requires WO_ASSIGN at the WO's Site (NOT global ADMIN). The previous
+ *     `requireAuth(req, 'ADMIN')` check did not validate Site scope, so a
+ *     UDH=admin could unlock (and then edit) NKP WOs they have no Site
+ *     grant for. `loadAuthorizedWorkOrder` checks `canAtSite(woSite,
+ *     'WO_ASSIGN')` — preventing that escalation.
  *   - Can only toggle on records with status COMPLETED or CANCELLED.
  *   - active=true  → set editUnlockActive=true, editUnlockBy=user,
  *                    editUnlockAt=now, editUnlockNote=note
@@ -27,6 +31,7 @@ async function logAudit(
   summary: string,
   detail: Record<string, unknown> | null,
   actor: string,
+  siteCode?: string | null,
 ): Promise<void> {
   try {
     await db.auditLog.create({
@@ -37,6 +42,7 @@ async function logAudit(
         summary,
         detail: detail ? JSON.stringify(detail) : null,
         actor,
+        siteCode: siteCode ?? null,
       },
     })
   } catch (err) {
@@ -51,17 +57,24 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const auth = await requireAuth(req, 'ADMIN')
-    if (!auth.ok) {
+    const { id } = await params
+
+    // Authenticate + authorize the WO at its Site.
+    // allowOwn is NOT set — unlocking a terminal WO is an admin/assigner
+    // action, not something the original reporter should be able to do.
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_ASSIGN')
+    if (!result.ok) {
       return NextResponse.json(
-        { error: auth.error },
-        { status: auth.status },
+        { error: result.error },
+        { status: result.status },
       )
     }
-    const user = auth.user
-    const actor = user.username || user.email
+    const { wo: before, auth } = result
 
-    const { id } = await params
+    // Audit-log actor is the authenticated session identity.
+    const user = auth.user
+    const actor: string =
+      user.email ?? user.username ?? user.name ?? 'system'
 
     let body: { active?: unknown; note?: unknown } = {}
     try {
@@ -81,11 +94,6 @@ export async function POST(
       typeof body.note === 'string' && body.note.trim()
         ? body.note.trim()
         : null
-
-    const before = await db.workOrder.findUnique({ where: { id } })
-    if (!before) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    }
 
     // Rule: only allow toggle on COMPLETED or CANCELLED records.
     if (!TERMINAL_STATUSES.has(before.status)) {
@@ -108,7 +116,7 @@ export async function POST(
     if (active) {
       // Unlock for editing.
       const updated = await db.workOrder.update({
-        where: { id },
+        where: { id: before.id },
         data: {
           editUnlockActive: true,
           editUnlockBy: actor,
@@ -119,8 +127,8 @@ export async function POST(
 
       await logAudit(
         'UPDATE',
-        id,
-        `ปลดล็อกแก้ไขใบแจ้งซ่อม ${updated.woNumber ?? id}`,
+        before.id,
+        `ปลดล็อกแก้ไขใบแจ้งซ่อม ${updated.woNumber ?? before.id}`,
         {
           editUnlock: {
             active: true,
@@ -130,6 +138,7 @@ export async function POST(
           },
         },
         actor,
+        result.woSite,
       )
 
       return NextResponse.json({ workOrder: updated })
@@ -137,7 +146,7 @@ export async function POST(
 
     // Re-lock (keep other fields for audit per Apps Script setWorkOrderEditUnlock).
     const updated = await db.workOrder.update({
-      where: { id },
+      where: { id: before.id },
       data: {
         editUnlockActive: false,
       },
@@ -145,8 +154,8 @@ export async function POST(
 
     await logAudit(
       'UPDATE',
-      id,
-      `ล็อกการแก้ไขใบแจ้งซ่อม ${updated.woNumber ?? id} อีกครั้ง`,
+      before.id,
+      `ล็อกการแก้ไขใบแจ้งซ่อม ${updated.woNumber ?? before.id} อีกครั้ง`,
       {
         editUnlock: {
           active: false,
@@ -155,6 +164,7 @@ export async function POST(
         },
       },
       actor,
+      result.woSite,
     )
 
     return NextResponse.json({ workOrder: updated })

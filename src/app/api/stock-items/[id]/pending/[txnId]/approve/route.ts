@@ -96,6 +96,9 @@ export async function POST(
         approver: approverName,
         note,
       },
+      undefined,
+      // NF-2: pass canonical siteCode from StockItem
+      result.item.site ?? null,
     )
 
     // ── Notification trigger (Task ID: NOTIFY-LINE) ──

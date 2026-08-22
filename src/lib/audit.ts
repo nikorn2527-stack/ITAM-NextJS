@@ -5,10 +5,13 @@ import { db } from '@/lib/db'
  * the calling mutation still succeeds. All summaries should be in Thai.
  *
  * AuditLog table columns (PostgreSQL camelCase):
- *   id, action, entity, entityId, summary, detail, actor, createdAt
+ *   id, action, entity, entityId, summary, detail, actor, siteCode, createdAt
  *
  * `createdAt` has a DB default (`now()`) so we don't set it manually.
  * `actor` defaults to 'system' when no user is supplied.
+ * `siteCode` is optional — populate it for Site-scoped actions so that
+ *   Site-scoped queries can filter on `AuditLog.siteCode` directly
+ *   instead of resolving `entityId` → entity → Site (NF-2 fix).
  */
 export async function logAudit(
   action: string,
@@ -17,6 +20,7 @@ export async function logAudit(
   summary: string,
   detail?: Record<string, unknown>,
   user?: string | null,
+  siteCode?: string | null,
 ): Promise<void> {
   try {
     await db.auditLog.create({
@@ -27,6 +31,7 @@ export async function logAudit(
         summary,
         detail: detail ? JSON.stringify(detail) : null,
         actor: user ?? 'system',
+        siteCode: siteCode ?? null,
       },
     })
   } catch (err) {

@@ -15,6 +15,10 @@ import {
   toFloat as toFloatLib,
   type AppsScriptSource,
 } from '@/lib/csv-field-mapping'
+import {
+  resolveMaterialIssueWorkOrder,
+  type WorkOrderLinkCandidate,
+} from '@/lib/repair-link-resolution'
 
 // ============================================================
 // Excel / CSV Import — ข้อ 3: ดาต้าเบสขึ้นได้ง่าย แค่เอาไฟล์ Excel ขึ้น
@@ -290,6 +294,15 @@ async function importWorkOrders(
   const iPriority = idx('priority')
   const iReporter = idx('reporterName')
   const iTel = idx('tel')
+  const iLegacyJobNo = [
+    idx('legacyJobNo'),
+    idx('legacy_job_no'),
+    idx('jobNo'),
+    idx('job_no'),
+  ].find((index) => index >= 0) ?? -1
+  // P1-R6 fix: field mapping — requestId + siteCode from CSV
+  const iRequestId = idx('requestId')
+  const iSiteCode = idx('siteCode')
 
   const VALID_PRIORITIES = new Set(['ปกติ', 'ปานกลาง', 'สูง', 'ด่วน'])
   const errors: ImportError[] = []
@@ -314,15 +327,25 @@ async function importWorkOrders(
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r]
     const rowNum = r + 2
-    const subject = toStr(row[iSubject])
+    // F-04 fix: null-safe validation (toStr may return null when header/field doesn't exist)
+    const subject = (toStr(row[iSubject]) ?? '').trim()
     if (!subject) {
       errors.push({ row: rowNum, message: 'ไม่มีประเภทปัญหา (subject)' })
       continue
     }
+    // F-04 fix: null-safe requestId validation
+    const requestId = (toStr(row[iRequestId]) ?? '').trim()
+    if (!requestId) {
+      errors.push({ row: rowNum, message: 'ไม่มี requestId (required field)' })
+      continue
+    }
+    // F-04 fix: null-safe siteCode mapping
+    const siteCode = (toStr(row[iSiteCode]) ?? '').trim() || null
+
     const priority = toStr(row[iPriority])
     const prPriority =
       priority && VALID_PRIORITIES.has(priority) ? priority : 'ปกติ'
-
+    const legacyJobNo = toStr(row[iLegacyJobNo])
     seq++
     const woNumber = `${prefix}${String(seq).padStart(3, '0')}`
 
@@ -333,7 +356,10 @@ async function importWorkOrders(
         select: { id: true },
       })
       const data = {
+        requestId, // P1-R6 fix: populate requestId
+        siteCode, // P1-R6 fix: populate siteCode
         subject,
+        legacyJobNo,
         building: toStr(row[iBuilding]),
         location: toStr(row[iLocation]),
         details: toStr(row[iDetails]),
@@ -343,12 +369,50 @@ async function importWorkOrders(
         submissionSource: 'guest' as const,
         status: 'PENDING' as const,
       }
-      if (collision) {
-        await db.workOrder.create({ data })
-      } else {
-        await db.workOrder.create({ data: { ...data, woNumber } })
+      const created = collision
+        ? await db.workOrder.create({ data })
+        : await db.workOrder.create({
+            data: {
+              ...data,
+              woNumber,
+              systemJobNo: woNumber,
+            },
+          })
+      // F-01 fix: processed++ ONLY after AuditLog verification passes (fail-closed)
+      // F-04 fix: AuditLog verification failure = validation error (422), not DB error (500)
+      try {
+        await logAudit(
+          'WORK_ORDER_IMPORT',
+          'WorkOrder',
+          created.id,
+          `CSV import สร้างใบงาน ${requestId}`,
+          { source: 'csv-import', requestId, siteCode, subject },
+          'system',
+          siteCode,
+        )
+        // Explicit verification: confirm AuditLog was written (fail-closed)
+        const auditCheck = await db.auditLog.findFirst({
+          where: { entityId: created.id, action: 'WORK_ORDER_IMPORT' },
+          select: { id: true },
+        })
+        if (!auditCheck) {
+          // AuditLog not written → do NOT count as processed (fail-closed)
+          errors.push({
+            row: rowNum,
+            message: `AuditLog verification failed for WorkOrder ${requestId}`,
+          })
+        } else {
+          // AuditLog verified → only now count as processed
+          processed++
+        }
+      } catch (auditErr) {
+        // Verification query failed → do NOT count as processed (fail-closed)
+        console.error('AuditLog verification error:', auditErr)
+        errors.push({
+          row: rowNum,
+          message: `AuditLog verification error for WorkOrder ${requestId}`,
+        })
       }
-      processed++
     } catch (e) {
       console.error('importWorkOrders create error', e)
       errors.push({
@@ -1009,13 +1073,20 @@ async function importAppsScriptTransfers(
           deviceId,
           fromSite: data.fromSite || null,
           toSite: data.toSite || '',
-          fromDept: data.fromDept || null,
-          toDept: data.toDept || null,
-          fromDeptCode: data.fromDeptCode || null,
-          toDeptCode: data.toDeptCode || null,
+          fromDepartment: data.fromDept || null,
+          toDepartment: data.toDept || null,
+          fromDepartmentCode: data.fromDeptCode || null,
+          toDepartmentCode: data.toDeptCode || null,
+          fromBuilding: data.fromBuilding || null,
+          toBuilding: data.toBuilding || null,
+          fromFloor: data.fromFloor || null,
+          toFloor: data.toFloor || null,
+          fromLocation: data.fromLocation || null,
+          toLocation: data.toLocation || null,
           reason: data.reason || null,
           transferDate,
           movedBy: data.movedBy || null,
+          remark: data.remark || null,
         },
       })
       result.processed++
@@ -1390,24 +1461,37 @@ async function importAppsScriptStockTxns(
   })
   const byCode = new Map(items.map((i) => [i.productCode, i]))
 
-  // Also collect WorkOrder numbers (StockOut may reference them)
-  let woByNumber: Map<string, string> | null = null
+  // Also collect WorkOrder candidates (StockOut may use any supported job number).
+  // Resolution is delegated to the shared fail-closed helper so importer and preview
+  // use identical matching/quarantine semantics.
+  let workOrderCandidates: WorkOrderLinkCandidate[] = []
   if (type === 'OUT') {
-    const woNumbers = new Set<string>()
+    const woReferences = new Set<string>()
     for (const obj of objects) {
-      const w = (obj.WorkOrderNo ?? obj.workOrderNo ?? '').trim()
-      if (w) woNumbers.add(w)
+      const w = (
+        obj.WorkOrderNo ??
+        obj.workOrderNo ??
+        obj.legacy_job_no ??
+        obj.legacy_job_number ??
+        obj.job_no ??
+        obj.job_number ??
+        ''
+      ).trim()
+      if (w) woReferences.add(w)
     }
-    if (woNumbers.size > 0) {
+    if (woReferences.size > 0) {
+      const references = Array.from(woReferences)
       const wos = await db.workOrder.findMany({
-        where: { woNumber: { in: Array.from(woNumbers) } },
-        select: { id: true, woNumber: true },
+        where: {
+          OR: [
+            { woNumber: { in: references } },
+            { systemJobNo: { in: references } },
+            { legacyJobNo: { in: references } },
+          ],
+        },
+        select: { id: true, woNumber: true, systemJobNo: true, legacyJobNo: true },
       })
-      woByNumber = new Map(
-        wos
-          .filter((w) => w.woNumber !== null)
-          .map((w) => [w.woNumber as string, w.id]),
-      )
+      workOrderCandidates = wos
     }
   }
 
@@ -1452,9 +1536,18 @@ async function importAppsScriptStockTxns(
     // Track updates
     item.quantity = newBalance
 
+    const rawWorkOrderNo =
+      type === 'OUT' ? toStr(data.workOrderNo) : null
     let workOrderId: string | null = null
-    if (type === 'OUT' && woByNumber && data.workOrderId) {
-      workOrderId = woByNumber.get(data.workOrderId) ?? null
+    if (type === 'OUT' && rawWorkOrderNo) {
+      const resolution = resolveMaterialIssueWorkOrder(
+        { workOrderLegacyNo: rawWorkOrderNo },
+        workOrderCandidates,
+      )
+      workOrderId = resolution.link?.workOrderId ?? null
+      for (const warning of resolution.warnings) {
+        result.warnings.push(`บรรทัด ${rowNum}: ${warning}`)
+      }
     }
 
     try {
@@ -1466,12 +1559,21 @@ async function importAppsScriptStockTxns(
           quantity: qty,
           balanceAfter: newBalance,
           reason: data.reason || null,
+          requester: type === 'OUT' ? data.requester || null : null,
+          department: type === 'OUT' ? data.department || null : null,
+          purpose: type === 'OUT' ? data.purpose || null : null,
+          approver: type === 'OUT' ? data.approver || null : null,
+          approvedAt: type === 'OUT' ? data.approvedAt || null : null,
           workOrderId,
+          workOrderNo: rawWorkOrderNo,
           cost: type === 'IN' ? toFloatLib(data.cost) : null,
           vendor: type === 'IN' ? data.vendor || null : null,
           txnDate,
           performedBy: data.performedBy || null,
           remark: data.remark || null,
+          rejectReason: type === 'OUT' ? data.rejectReason || null : null,
+          sourceKey: type === 'OUT' ? data.sourceKey || null : null,
+          processedFlag: type === 'OUT' ? data.processedFlag || null : null,
         },
       })
       // Update stock item quantity
@@ -1600,23 +1702,29 @@ async function importAppsScriptPOs(
 
   for (const [poNumber, g] of poGroups) {
     try {
-      const po = await db.purchaseOrder.upsert({
-        where: { poNumber },
-        create: {
-          poNumber,
-          orderDate: g.orderDate,
-          supplier: g.supplier,
-          status: g.status,
-          totalValue: g.totalValue,
-          createdBy: g.createdBy,
-        },
-        update: {
-          orderDate: g.orderDate,
-          supplier: g.supplier,
-          status: g.status,
-          totalValue: g.totalValue,
-        },
-      })
+      // poNumber is intentionally non-unique in the legacy-compatible schema.
+      // Update the first matching header when present; otherwise create one.
+      const existingPo = await db.purchaseOrder.findFirst({ where: { poNumber } })
+      const po = existingPo
+        ? await db.purchaseOrder.update({
+            where: { id: existingPo.id },
+            data: {
+              orderDate: g.orderDate,
+              supplier: g.supplier,
+              status: g.status,
+              totalValue: g.totalValue,
+            },
+          })
+        : await db.purchaseOrder.create({
+            data: {
+              poNumber,
+              orderDate: g.orderDate,
+              supplier: g.supplier,
+              status: g.status,
+              totalValue: g.totalValue,
+              createdBy: g.createdBy,
+            },
+          })
       // Insert line items (skip ones with missing stockItem)
       for (const line of g.lines) {
         if (!line.stockItemId) continue
@@ -1718,21 +1826,28 @@ async function importAppsScriptWorkOrders(
       status = 'PENDING'
     }
 
-    const requestId = (data.requestId ?? '').trim() || null
-    // Dedup: skip if requestId already in DB
-    if (requestId) {
-      const existing = await db.workOrder.findFirst({
-        where: { requestId },
-        select: { id: true },
-      })
-      if (existing) {
-        result.errors.push({
-          row: 0,
-          message: `มีใบงานอยู่แล้ว (request_id=${requestId})`,
-        })
-        continue
-      }
+    const requestId = (data.requestId ?? '').trim()
+    const legacyJobNo = (data.legacyJobNo ?? '').trim() || null
+    // P1-R6 fix: required-field validation — requestId is required
+    if (!requestId) {
+      result.errors.push({ row: rowNum, message: 'ไม่มี requestId (required field)' })
+      continue
     }
+    // Dedup: skip if requestId already in DB
+    const existing = await db.workOrder.findFirst({
+      where: { requestId },
+      select: { id: true },
+    })
+    if (existing) {
+      result.errors.push({
+        row: 0,
+        message: `มีใบงานอยู่แล้ว (request_id=${requestId})`,
+      })
+      continue
+    }
+
+    // P1-R6 fix: field mapping — siteCode from CSV (via mapping)
+    const siteCode = (data.siteCode ?? '').trim() || null
 
     seq++
     const woNumber = `${prefix}${String(seq).padStart(3, '0')}`
@@ -1746,10 +1861,13 @@ async function importAppsScriptWorkOrders(
     if (collision) useWoNumber = null
 
     try {
-      await db.workOrder.create({
+      const created = await db.workOrder.create({
         data: {
           woNumber: useWoNumber ?? undefined,
+          systemJobNo: useWoNumber ?? undefined,
+          legacyJobNo,
           requestId,
+          siteCode, // P1-R6 fix: populate siteCode
           subject,
           building: data.building || null,
           location: data.location || null,
@@ -1782,6 +1900,16 @@ async function importAppsScriptWorkOrders(
         },
       })
       result.processed++
+      // P1-R6 fix: per-record AuditLog
+      await logAudit(
+        'WORK_ORDER_IMPORT',
+        'WorkOrder',
+        created.id,
+        `Apps Script import สร้างใบงาน ${requestId}`,
+        { source: 'apps-script-import', requestId, siteCode, subject },
+        'system',
+        siteCode,
+      )
     } catch (e) {
       console.error('importAppsScriptWorkOrders error', e)
       result.errors.push({
@@ -2117,6 +2245,13 @@ export async function POST(req: NextRequest) {
 
     let result: { processed: number; errors: ImportError[] }
     try {
+      // Test hook: controlled fault injection for importer-level DB failure test
+      // When TEST_INJECT_IMPORTER_FAILURE=1 AND NODE_ENV !== 'production',
+      // throws to simulate DB/infrastructure error.
+      // Production guard: this hook is a no-op in production (NODE_ENV=production).
+      if (process.env.TEST_INJECT_IMPORTER_FAILURE === '1' && process.env.NODE_ENV !== 'production') {
+        throw new Error('Test-injected DB failure (TEST_INJECT_IMPORTER_FAILURE=1)')
+      }
       switch (jobType) {
         case 'device':
           result = await importDevices(dataRows, headers)
@@ -2153,6 +2288,10 @@ export async function POST(req: NextRequest) {
           completedAt: new Date(),
         },
       })
+      // P1 fix (Audit re-review): importer catch is for UNEXPECTED DB/infrastructure
+      // errors (Prisma exceptions, connection failures). These are NOT validation
+      // errors (validation errors are pushed to errors[], not thrown).
+      // Therefore: HTTP 500 (server error), NOT 422.
       return NextResponse.json({ job: updated, error: errMsg }, { status: 500 })
     }
 
@@ -2189,7 +2328,11 @@ export async function POST(req: NextRequest) {
       },
     )
 
-    return NextResponse.json({ job: updated }, { status: 201 })
+    // F-03 fix: return 422 when there are validation errors, not 201
+    // HTTP 201 = created successfully (no errors); HTTP 422 = validation errors present
+    const finalErrorRows = totalRows - result.processed
+    const httpStatus = finalErrorRows > 0 ? 422 : 201
+    return NextResponse.json({ job: updated }, { status: httpStatus })
   } catch (err) {
     console.error('POST /api/import', err)
     const message = err instanceof Error ? err.message : 'Import failed'

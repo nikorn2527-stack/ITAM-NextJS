@@ -193,7 +193,7 @@ export function StockSummary() {
   const loading = stockLoading || txnLoading
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center gap-2">
         <BarChart3 className="h-6 w-6 text-[#f97316]" />
@@ -206,26 +206,26 @@ export function StockSummary() {
       </div>
 
       {/* Date range filter */}
-      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:gap-4">
-          <div className="space-y-1.5 sm:w-48">
-            <Label htmlFor="sum-from" className="text-xs">จากวันที่</Label>
+      <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <CardContent className="grid grid-cols-2 items-end gap-2.5 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:gap-3 md:p-3.5">
+          <div className="min-w-0 space-y-1">
+            <Label htmlFor="sum-from" className="text-[11px] font-medium text-slate-500 dark:text-slate-400">จากวันที่</Label>
             <Input
               id="sum-from"
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              className="dark:bg-slate-800 dark:border-slate-700"
+              className="h-9 dark:border-slate-700 dark:bg-slate-800"
             />
           </div>
-          <div className="space-y-1.5 sm:w-48">
-            <Label htmlFor="sum-to" className="text-xs">ถึงวันที่</Label>
+          <div className="min-w-0 space-y-1">
+            <Label htmlFor="sum-to" className="text-[11px] font-medium text-slate-500 dark:text-slate-400">ถึงวันที่</Label>
             <Input
               id="sum-to"
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              className="dark:bg-slate-800 dark:border-slate-700"
+              className="h-9 dark:border-slate-700 dark:bg-slate-800"
             />
           </div>
           {(fromDate || toDate) && (
@@ -235,7 +235,7 @@ export function StockSummary() {
                 setFromDate('')
                 setToDate('')
               }}
-              className="text-xs text-[#f97316] hover:underline"
+              className="col-span-2 justify-self-start text-[11px] font-medium text-[#f97316] hover:underline sm:col-span-1 sm:mb-2"
             >
               ล้างช่วงวันที่
             </button>
@@ -244,74 +244,75 @@ export function StockSummary() {
       </Card>
 
       {/* Aggregate stat cards */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-emerald-600">
+          <CardContent className="flex items-center justify-between gap-3 p-3 md:p-3.5">
+            <div className="flex min-w-0 items-center gap-2 text-emerald-600">
               <TrendingUp className="h-4 w-4" />
               <span className="text-xs font-medium">รับเข้ารวม</span>
             </div>
-            <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {loading ? <Skeleton className="h-7 w-16" /> : formatInt(totalInQty)}
+            <div className="shrink-0 text-xl font-bold text-slate-800 dark:text-slate-100 md:text-2xl">
+              {loading ? <Skeleton className="h-6 w-16" /> : formatInt(totalInQty)}
             </div>
           </CardContent>
         </Card>
         <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-amber-600">
+          <CardContent className="flex items-center justify-between gap-3 p-3 md:p-3.5">
+            <div className="flex min-w-0 items-center gap-2 text-amber-600">
               <TrendingDown className="h-4 w-4" />
               <span className="text-xs font-medium">เบิกออกรวม</span>
             </div>
-            <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {loading ? <Skeleton className="h-7 w-16" /> : formatInt(totalOutQty)}
+            <div className="shrink-0 text-xl font-bold text-slate-800 dark:text-slate-100 md:text-2xl">
+              {loading ? <Skeleton className="h-6 w-16" /> : formatInt(totalOutQty)}
             </div>
           </CardContent>
         </Card>
         <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-[#0d9488]">
+          <CardContent className="flex items-center justify-between gap-3 p-3 md:p-3.5">
+            <div className="flex min-w-0 items-center gap-2 text-[#0d9488]">
               <Banknote className="h-4 w-4" />
               <span className="text-xs font-medium">มูลค่าสต็อกรวม</span>
             </div>
-            <div className="mt-1 text-xl font-bold text-slate-800 dark:text-slate-100">
-              {loading ? <Skeleton className="h-7 w-28" /> : formatBaht(totalStockValue)}
+            <div className="shrink-0 text-base font-bold text-slate-800 dark:text-slate-100 md:text-xl">
+              {loading ? <Skeleton className="h-6 w-28" /> : formatBaht(totalStockValue)}
             </div>
           </CardContent>
         </Card>
         <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 text-[#f97316]">
+          <CardContent className="flex items-center justify-between gap-3 p-3 md:p-3.5">
+            <div className="flex min-w-0 items-center gap-2 text-[#f97316]">
               <Users className="h-4 w-4" />
               <span className="text-xs font-medium">ผู้ทำรายการ</span>
             </div>
-            <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {loading ? <Skeleton className="h-7 w-12" /> : formatInt(personRows.length)}
+            <div className="shrink-0 text-xl font-bold text-slate-800 dark:text-slate-100 md:text-2xl">
+              {loading ? <Skeleton className="h-6 w-12" /> : formatInt(personRows.length)}
             </div>
           </CardContent>
         </Card>
       </div>
 
+      <div className="grid gap-3 xl:grid-cols-2 xl:items-start">
       {/* Summary by product */}
       <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <CardHeader className="pb-3">
+        <CardHeader className="px-3 py-2.5 md:px-4">
           <CardTitle className="flex items-center gap-2 text-sm">
             <Package className="h-4 w-4 text-[#0d9488]" />
             สรุปแยกตามสินค้า
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="itam-scroll max-h-[50vh] overflow-auto">
+          <div className="itam-scroll max-h-[calc(100vh-22rem)] min-h-[260px] overflow-auto">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
-                <TableRow>
-                  <TableHead className="w-28">รหัสสินค้า</TableHead>
-                  <TableHead className="min-w-[180px]">ชื่อสินค้า</TableHead>
-                  <TableHead className="w-24 text-right">รับเข้า</TableHead>
-                  <TableHead className="w-24 text-right">เบิกออก</TableHead>
-                  <TableHead className="w-24 text-right">คงเหลือ</TableHead>
-                  <TableHead className="w-20">หน่วย</TableHead>
-                  <TableHead className="w-32 text-right">มูลค่าคงเหลือ</TableHead>
-                </TableRow>
+                  <TableRow className="h-9">
+                    <TableHead className="w-28 py-2 text-[11px]">รหัสสินค้า</TableHead>
+                    <TableHead className="min-w-[180px] py-2 text-[11px]">ชื่อสินค้า</TableHead>
+                    <TableHead className="w-24 py-2 text-right text-[11px]">รับเข้า</TableHead>
+                    <TableHead className="w-24 py-2 text-right text-[11px]">เบิกออก</TableHead>
+                    <TableHead className="w-24 py-2 text-right text-[11px]">คงเหลือ</TableHead>
+                    <TableHead className="w-20 py-2 text-[11px]">หน่วย</TableHead>
+                    <TableHead className="w-32 py-2 text-right text-[11px]">มูลค่าคงเหลือ</TableHead>
+                  </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
@@ -332,23 +333,23 @@ export function StockSummary() {
                 ) : (
                   productRows.map((row) => (
                     <TableRow key={row.productCode} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                      <TableCell className="font-mono text-[11px] text-slate-700 dark:text-slate-200">
+                      <TableCell className="py-1.5 font-mono text-[11px] text-slate-700 dark:text-slate-200">
                         {row.productCode}
                       </TableCell>
-                      <TableCell className="text-xs text-slate-700 dark:text-slate-200">
+                      <TableCell className="py-1.5 text-xs text-slate-700 dark:text-slate-200">
                         {row.productName}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs text-emerald-600">
+                      <TableCell className="py-1.5 text-right font-mono text-xs text-emerald-600">
                         +{formatInt(row.totalIn)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs text-amber-600">
+                      <TableCell className="py-1.5 text-right font-mono text-xs text-amber-600">
                         -{formatInt(row.totalOut)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-bold text-slate-700 dark:text-slate-200">
+                      <TableCell className="py-1.5 text-right font-mono text-xs font-bold text-slate-700 dark:text-slate-200">
                         {formatInt(row.currentStock)}
                       </TableCell>
-                      <TableCell className="text-[11px] text-slate-500 dark:text-slate-400">{row.unit}</TableCell>
-                      <TableCell className="text-right font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      <TableCell className="py-1.5 text-[11px] text-slate-500 dark:text-slate-400">{row.unit}</TableCell>
+                      <TableCell className="py-1.5 text-right font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
                         {formatBaht(row.value)}
                       </TableCell>
                     </TableRow>
@@ -362,23 +363,23 @@ export function StockSummary() {
 
       {/* Summary by person */}
       <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <CardHeader className="pb-3">
+        <CardHeader className="px-3 py-2.5 md:px-4">
           <CardTitle className="flex items-center gap-2 text-sm">
             <Users className="h-4 w-4 text-[#f97316]" />
             สรุปแยกตามผู้ทำรายการ
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="itam-scroll max-h-[40vh] overflow-auto">
+          <div className="itam-scroll max-h-[calc(100vh-22rem)] min-h-[260px] overflow-auto">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
-                <TableRow>
-                  <TableHead className="min-w-[180px]">ผู้ทำรายการ</TableHead>
-                  <TableHead className="w-24 text-right">รับเข้า</TableHead>
-                  <TableHead className="w-24 text-right">เบิกออก</TableHead>
-                  <TableHead className="w-24 text-right">ปรับปรุง</TableHead>
-                  <TableHead className="w-24 text-right">รวม</TableHead>
-                </TableRow>
+                  <TableRow className="h-9">
+                    <TableHead className="min-w-[180px] py-2 text-[11px]">ผู้ทำรายการ</TableHead>
+                    <TableHead className="w-24 py-2 text-right text-[11px]">รับเข้า</TableHead>
+                    <TableHead className="w-24 py-2 text-right text-[11px]">เบิกออก</TableHead>
+                    <TableHead className="w-24 py-2 text-right text-[11px]">ปรับปรุง</TableHead>
+                    <TableHead className="w-24 py-2 text-right text-[11px]">รวม</TableHead>
+                  </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
@@ -399,19 +400,19 @@ export function StockSummary() {
                 ) : (
                   personRows.map((row) => (
                     <TableRow key={row.person} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                      <TableCell className="text-xs font-medium text-slate-700 dark:text-slate-200">
+                      <TableCell className="py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200">
                         {row.person}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs text-emerald-600">
+                      <TableCell className="py-1.5 text-right font-mono text-xs text-emerald-600">
                         {formatInt(row.inCount)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs text-amber-600">
+                      <TableCell className="py-1.5 text-right font-mono text-xs text-amber-600">
                         {formatInt(row.outCount)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs text-sky-600">
+                      <TableCell className="py-1.5 text-right font-mono text-xs text-sky-600">
                         {formatInt(row.adjustCount)}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs font-bold">
+                      <TableCell className="py-1.5 text-right font-mono text-xs font-bold">
                         <Badge className="bg-[#0d9488]/10 text-[#0d9488] border-[#0d9488]/20 text-[10px]">
                           {formatInt(row.total)}
                         </Badge>
@@ -424,6 +425,7 @@ export function StockSummary() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   )
 }
