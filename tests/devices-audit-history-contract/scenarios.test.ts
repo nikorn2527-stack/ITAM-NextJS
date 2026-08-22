@@ -352,6 +352,70 @@ describe('buildHistoryResult', () => {
 })
 
 // ─── Scenario integrity ─────────────────────────────────────────────
+
+  it('non-superadmin buildHistoryResult output has no detail/raw sensitive payload', () => {
+    const auditLogs: AuditLogFixture[] = [
+      {
+        id: 'log-1',
+        action: 'CREATE',
+        entity: 'Device',
+        entityId: 'dev-1',
+        summary: 'Device created',
+        detail: '{"serialNumber":"SN001","ip":"10.0.0.1","password":"secret"}',
+        actor: 'admin@itam.local',
+        siteCode: 'UDH',
+        createdAt: '2026-08-21T10:00:00Z',
+      },
+    ]
+    const query = {
+      deviceId: 'dev-1',
+      page: 1,
+      limit: 50,
+      skip: 0,
+      siteFilter: ['UDH'],
+    }
+    // Non-superadmin — redaction should be applied
+    const result = buildHistoryResult(auditLogs, [], query, false)
+    expect(result.ok).toBe(true)
+    expect(result.auditLogs.length).toBe(1)
+    // The returned auditLogs should be redacted — no 'detail' field
+    const returnedLog = result.auditLogs[0] as unknown as Record<string, unknown>
+    expect(returnedLog).not.toHaveProperty('detail')
+    // Should still have essential fields
+    expect(returnedLog).toHaveProperty('id')
+    expect(returnedLog).toHaveProperty('action')
+    expect(returnedLog).toHaveProperty('summary')
+  })
+
+  it('superadmin buildHistoryResult output also redacts detail (consistent redaction)', () => {
+    const auditLogs: AuditLogFixture[] = [
+      {
+        id: 'log-1',
+        action: 'CREATE',
+        entity: 'Device',
+        entityId: 'dev-1',
+        summary: 'Device created',
+        detail: '{"serialNumber":"SN001"}',
+        actor: 'admin@itam.local',
+        siteCode: 'UDH',
+        createdAt: '2026-08-21T10:00:00Z',
+      },
+    ]
+    const query = {
+      deviceId: 'dev-1',
+      page: 1,
+      limit: 50,
+      skip: 0,
+      siteFilter: null, // superadmin
+    }
+    const result = buildHistoryResult(auditLogs, [], query, true)
+    expect(result.ok).toBe(true)
+    expect(result.auditLogs.length).toBe(1)
+    // Superadmin also gets redacted logs (no raw detail string)
+    const returnedLog = result.auditLogs[0] as unknown as Record<string, unknown>
+    expect(returnedLog).not.toHaveProperty('detail')
+  })
+
 describe('Scenario integrity', () => {
   it('AUDIT_HISTORY_SCENARIOS has 7 scenarios', () => {
     expect(AUDIT_HISTORY_SCENARIOS.length).toBe(7)
