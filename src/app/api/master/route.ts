@@ -82,41 +82,114 @@ export async function GET(req: NextRequest) {
 
     switch (type) {
       case 'device-types': {
-        const items = await db.deviceType.findMany({
-          where: { active: true },
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true, active: true },
+        // Pull distinct DeviceType values from DeviceClassification MasterItem rows.
+        // MasterItem.category='DeviceClassification' has parentRef="Brand|DeviceType".
+        // We extract the DeviceType part (after |) and dedupe.
+        const rows = await db.masterItem.findMany({
+          where: { category: 'DeviceClassification', active: true },
+          select: { parentRef: true },
         })
+        const types = new Set<string>()
+        for (const r of rows) {
+          if (r.parentRef) {
+            const parts = r.parentRef.split('|')
+            if (parts.length >= 2 && parts[1]) types.add(parts[1])
+          }
+        }
+        const items = Array.from(types).sort().map((name) => ({ name, active: true }))
         return NextResponse.json({ items, type })
       }
 
       case 'brands': {
-        if (!typeId) {
-          return NextResponse.json(
-            { error: 'Missing typeId param' },
-            { status: 400 },
-          )
-        }
-        const items = await db.brand.findMany({
-          where: { typeId, active: true },
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true, typeId: true, active: true },
+        // Pull distinct Brand values from DeviceClassification MasterItem rows.
+        // Optional typeId filter is the DeviceType name (extracted from parentRef).
+        const where: Record<string, unknown> = { category: 'DeviceClassification', active: true }
+        const rows = await db.masterItem.findMany({
+          where: where as any,
+          select: { parentRef: true, displayLabel: true },
         })
+        const brandSet = new Set<string>()
+        for (const r of rows) {
+          if (r.parentRef) {
+            const parts = r.parentRef.split('|')
+            const brand = parts[0]
+            const devType = parts.length >= 2 ? parts[1] : ''
+            // If typeId filter provided, only include brands matching that DeviceType
+            if (!typeId || devType === typeId) {
+              if (brand) brandSet.add(brand)
+            }
+          }
+        }
+        const items = Array.from(brandSet).sort().map((name) => ({ name, active: true }))
         return NextResponse.json({ items, type })
       }
 
       case 'models': {
-        if (!brandId) {
-          return NextResponse.json(
-            { error: 'Missing brandId param' },
-            { status: 400 },
-          )
-        }
-        const items = await db.model.findMany({
-          where: { brandId, active: true },
-          orderBy: { name: 'asc' },
-          select: { id: true, name: true, brandId: true, active: true },
+        // Pull Model values from DeviceClassification MasterItem rows.
+        // Optional brandId filter is the Brand name.
+        const where: Record<string, unknown> = { category: 'DeviceClassification', active: true }
+        const rows = await db.masterItem.findMany({
+          where: where as any,
+          select: { label: true, parentRef: true, displayLabel: true },
         })
+        const models: Array<{ name: string; brand?: string; deviceType?: string }> = []
+        for (const r of rows) {
+          if (r.parentRef) {
+            const parts = r.parentRef.split('|')
+            const brand = parts[0]
+            const devType = parts.length >= 2 ? parts[1] : ''
+            // If brandId filter provided, only include models matching that Brand
+            if (!brandId || brand === brandId) {
+              models.push({ name: r.label, brand, deviceType: devType })
+            }
+          }
+        }
+        return NextResponse.json({ items: models, type })
+      }
+
+      case 'repair-groups': {
+        // Pull from RepairTaxonomy table — IT groups
+        const items = await db.$queryRawUnsafe(`
+          SELECT code, label, status FROM "RepairTaxonomy"
+          WHERE type = 'group' AND active = true
+          ORDER BY "sortOrder" ASC
+        `)
+        return NextResponse.json({ items, type })
+      }
+
+      case 'repair-problems': {
+        // Pull from RepairTaxonomy table — Problem codes (RP-*)
+        // Optional groupCode filter
+        const groupCode = (searchParams.get('groupCode') ?? '').trim()
+        const params: string[] = []
+        let query = `SELECT code, label, "groupCode", "groupLabel" FROM "RepairTaxonomy"
+                      WHERE type = 'problem' AND active = true`
+        if (groupCode) {
+          query += ` AND "groupCode" = $1`
+          params.push(groupCode)
+        }
+        query += ` ORDER BY "groupCode" ASC, "sortOrder" ASC`
+        const items = params.length
+          ? await db.$queryRawUnsafe(query, ...params)
+          : await db.$queryRawUnsafe(query)
+        return NextResponse.json({ items, type })
+      }
+
+      case 'repair-resolutions': {
+        // Pull from RepairTaxonomy table — Resolution codes (RX-*)
+        // Optional groupCode filter
+        const groupCode = (searchParams.get('groupCode') ?? '').trim()
+        const params: string[] = []
+        let query = `SELECT code, label, "groupCode", "groupLabel" FROM "RepairTaxonomy"
+                      WHERE type = 'resolution' AND active = true`
+        if (groupCode) {
+          query += ` AND "groupCode" = $1`
+          params.push(groupCode)
+        }
+        query += ` ORDER BY "groupCode" ASC, "sortOrder" ASC`
+        const items = params.length
+          ? await db.$queryRawUnsafe(query, ...params)
+          : await db.$queryRawUnsafe(query)
         return NextResponse.json({ items, type })
       }
 
