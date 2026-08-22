@@ -96,3 +96,25 @@ Source: https://itam-next-js-git-main-png-team.vercel.app/
 Read-only browser verification: Dashboard loaded successfully and showed Devices total 2,378, active 2,151, backup 1, repair 9, inactive 217. The deployment UI still displayed `โหมดสาธิต — ข้อมูลที่สร้างจะไม่บันทึกในระบบจริง` and user label `ผู้ดูแล (สาธิต)`. This confirms the deployment can read real device data from ITAM-DB while the runtime still presents demo-mode UX; no mutation was performed.
 
 The visible dashboard also showed Meter latest activity unavailable, paper usage 0, and branches 0, which remain parity/runtime mapping items to verify rather than evidence that ITAM-DB is empty.
+
+## Legacy Bridge MVP — 2026-08-22
+
+ITAM-01 เดินหน้าสร้าง compatibility bridge สำหรับช่วง coexistence ระหว่าง legacy Apps Script ที่ยังเป็น operational source กับ Next.js/ITAM-DB โดยเชื่อมเข้ากับ `/api/sync/preview` และ `/api/sync/run` แบบ opt-in ผ่าน target namespace `legacy-bridge:<module>` แทนการสร้าง pipeline คู่ขนาน
+
+ขอบเขต module ที่รองรับใน bridge รุ่นนี้คือ `device`, `work-order`, `meter-reading`, `stock-item` และ `stock-transaction` โดย adapter จะ normalize alias จาก legacy เป็น canonical fields ของ ITAM-DB, รักษา `legacyJobNo`/`requestId` และ source identifiers, บังคับ Asset No. + Serial Number เป็นคู่, quarantine แถวที่ไม่ผ่าน validation และสร้าง external key แบบ deterministic
+
+Preview เป็น read-only และจำแนก `create`, `update`, `skip` และ `error`; stock transaction ใช้ version baseline และ conflict เป็น quarantine แทนการ skip เงียบ ส่วน apply ใช้ serializable transaction retry, fail-closed ในการ resolve Device/WorkOrder, ป้องกัน duplicate ของ MeterReading/StockTransaction แบบ append-only, รองรับ ADJUST เป็น absolute balance และเขียน audit แบบ redacted ใน transaction เดียวกับ business mutation
+
+ผลตรวจสอบรอบนี้:
+
+- `npx eslint` เฉพาะไฟล์ bridge, sync routes และ regression test: PASS
+- `npx vitest run tests/sync/legacy-bridge-preview.test.ts tests/sync/stock-transaction-identity.test.ts`: 2 files, 7 tests PASS
+- `npm run build` ด้วย JWT local build-only: PASS; compile สำเร็จและ route generation สำเร็จ
+- `npx vitest run tests/sync`: 70 tests ผ่านจาก 81 tests; 11 tests ถูก BLOCKED เพราะ test ต้องใช้ PostgreSQL แต่ sandbox ไม่มี `DATABASE_URL` ที่เป็น PostgreSQL URL จึงไม่ได้รัน write test กับ ITAM-DB จริง
+- `next-env.d.ts` ที่ build สร้างถูกคืนค่าแล้ว และไม่รวมใน change set
+
+ยังไม่มีการ apply ข้อมูล legacy เข้า ITAM-DB จริงในรอบนี้จนกว่า Release Owner/Audit จะกำหนด source payload และอนุมัติ controlled run เพราะ bridge apply เป็น write operation ต่อฐานข้อมูลจริง
+
+สถานะ governance ยังคงเป็น G2 CONDITIONAL/PENDING, G3 BLOCKED และ Production BLOCKED
+
+เพิ่มโค้ดและหลักฐานใน PR #52
