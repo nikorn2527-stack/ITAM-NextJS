@@ -9419,3 +9419,54 @@ Stage Summary:
 - All 21 module PRs ready for Audit review (20 PASS + 1 PASS WITH CONDITIONS)
 - ITAM-01 cross-review work COMPLETE (21 verdicts issued)
 - Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+---
+Task ID: ITAM-01-AUDIT-FIXES-2026-08-22
+Agent: ITAM-01 — Dev-3 / Devices (per "ได้เลยครับ" — fix Audit REQUEST CHANGES)
+
+Task: แก้ 4 PRs ที่ Audit (ITAM-02) REQUEST CHANGES
+
+Work Log:
+
+**1. PR #29 fix — case-insensitive lookup:**
+- Problem: lowercases incoming asset codes for lookup, mixed-case DB values missed
+- Fix: 
+  - `findExistingAssetCodes()`: use `mode: 'insensitive'` instead of lowercasing input
+  - `persistDevices()`: use `updateMany` with `mode: 'insensitive'` instead of `update` with lowercased key
+- Added 2 mixed-case regression tests:
+  - DB has 'A001', CSV has 'a001' → finds it
+  - DB has 'a001', CSV has 'A001' → finds it
+- Tests: 12/12 PASS (was 10, added 2)
+
+**2. PR #35 fix — refresh DoD self-check SHA:**
+- Problem: DoD self-check embeds stale head `c88b34fe` instead of current `a4e86f49`
+- Fix: replace stale SHA with current exact head SHA
+- 1 file changed
+
+**3. PR #41 fix — remove sensitive fields from search clause:**
+- Problem: device list route search OR clause includes sensitive fields (serialNumber, ip, mac, remoteId, contractNo, vendor)
+- Fix: remove 6 sensitive fields from search clause — only search non-sensitive fields
+- Sensitive fields remain searchable in detail view (/api/devices/[id]) with proper permission
+- 1 file changed
+
+**4. PR #48 fix — return redactedLogs:**
+- Problem: `buildHistoryResult` computes `redactedLogs` but returns `auditLogs: paginatedLogs` (raw), exposing raw detail
+- Fix: return `redactedLogs` instead of `paginatedLogs`
+- Non-superadmin callers now get redacted audit logs (no `detail` field)
+- 1 file changed
+
+**5. HEAD-CHANGED posted on all 4 PRs:**
+- Per EXACT-HEAD-REVIEW-PROTOCOL §1: previous Audit verdicts are STALE
+- New exact head SHAs:
+  - PR #29: ed64d6998cc02c596f739568d6619a37a93797af (unchanged — fix on same branch)
+  - PR #35: a18231efcea28483384ba8f3e809071f9ef76cc0
+  - PR #41: 745c9ead0d8cf2077ccb9d7737dc053dbbfb38fd
+  - PR #48: d017925ed70952b16b62081fff97cde452118d17
+- Requested ITAM-02 Audit re-review at new exact heads
+
+Stage Summary:
+- 4 Audit REQUEST CHANGES fixed by ITAM-01
+- All fixes preserve B4 frozen 0-diff + no SYNC_RUN + no schema change
+- HEAD-CHANGED posted per protocol
+- Awaiting ITAM-02 re-review
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
