@@ -5,6 +5,7 @@ import { siteFilterForUser, canAccessSite, isAdminRole } from '@/lib/auth'
 import { notifyDeviceAdded } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { parseDeviceListPagination } from '@/lib/device-list-query'
+import { DEVICE_LIST_FIELDS, DEVICE_MOBILE_LIST_FIELDS } from '@/lib/devices-bounded-list'
 
 // GET /api/itam/devices?search=&status=&site=&type=&page=1&limit=20
 export async function GET(req: NextRequest) {
@@ -39,7 +40,6 @@ export async function GET(req: NextRequest) {
           { type: { contains: search } },
           { brand: { contains: search } },
           { model: { contains: search } },
-          { serialNumber: { contains: search } },
           { department: { contains: search } },
         ],
       })
@@ -58,48 +58,7 @@ export async function GET(req: NextRequest) {
         take: limit,
         orderBy: { assetCode: 'asc' },
         select: {
-          id: true,
-          assetCode: true,
-          name: true,
-          brand: true,
-          model: true,
-          type: true,
-          serialNumber: true,
-          status: true,
-          site: true,
-          department: true,
-          departmentCode: true,
-          parentRef: true,
-          assetSiteCode: true,
-          displayLabel: true,
-          location: true,
-          building: true,
-          floor: true,
-          room: true,
-          purchaseDate: true,
-          purchasePrice: true,
-          salvageValue: true,
-          usefulLife: true,
-          warrantyMonths: true,
-          warrantyEnd: true,
-          vendor: true,
-          contractNo: true,
-          uninstallDate: true,
-          meterRequired: true,
-          meterMode: true,
-          lastMeterBw: true,
-          lastMeterColor: true,
-          ip: true,
-          mac: true,
-          remoteId: true,
-          currentAssignee: true,
-          remark: true,
-          costCenter: true,
-          deviceGroup: true,
-          isDemo: true,
-          createdAt: true,
-          updatedAt: true,
-          updatedBy: true,
+          ...DEVICE_LIST_FIELDS,
           _count: { select: { meterReadings: true, transfers: true, assignments: true, maintenanceLogs: true } },
           meterReadings: {
             orderBy: { readingDate: 'desc' },
