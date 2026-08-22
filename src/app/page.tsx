@@ -8,6 +8,7 @@ import { Footer } from '@/components/itam/footer'
 import { GlobalSearch } from '@/components/itam/global-search'
 import { TopBarClock } from '@/components/itam/top-bar-clock'
 import { RealtimeProvider } from '@/hooks/use-realtime-updates'
+import { MobileShell } from '@/components/itam/mobile'
 import { PwaInstallButton } from '@/components/itam/pwa-registration'
 import { QrScannerDialog } from '@/components/itam/qr-scanner'
 import { useAppStore } from '@/store/app-store'
@@ -259,6 +260,8 @@ export default function Home() {
                 {activePage === 'itam-repairs' && <ItamRepairs />}
                 {activePage === 'itam-work-orders' && <WorkOrdersPage />}
                 {activePage === 'itam-stock' && <ItamStock />}
+                {/* ── Mobile Mode ── */}
+                {activePage === 'mobile' && <MobileShell />}
                 {/* ── Restored pages (were missing from main) ── */}
                 {activePage === 'import' && <ImportPage />}
                 {activePage === 'templates' && <TemplatesPage />}
