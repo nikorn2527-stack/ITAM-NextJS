@@ -6,7 +6,7 @@
 **Date:** 2026-08-21
 **Exact heads:**
 - PR #29: `ed64d6998cc02c596f739568d6619a37a93797af`
-- PR #35: `c88b34fe02204b7254a468a93a4d6dafdca9ea12`
+- PR #35: `a4e86f4986f7e93e25d3fadfb05e0cf2a14e0df9`
 
 ## Purpose
 
