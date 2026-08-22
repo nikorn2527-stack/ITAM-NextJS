@@ -10239,3 +10239,56 @@ Production ITAM-DB state:
 - No RepairTaxonomy table (merged into MasterItem)
 
 Commit: f07d2fc fix(master): rebuild MasterItem schema (16 fields matching Excel) + merge RepairTaxonomy
+
+---
+Task ID: CREATE-RBAC-TABLES
+Agent: orchestrator (main) — Create RBAC tables (Site/Role/Permission/RolePermission/UserSiteGrant)
+
+Task:
+ผู้ใช้ถามเรื่อง site grants API error — ตรวจพบว่าตาราง RBAC 5 ตัวหายไปจาก production DB (ไม่ถูก migrate ตอน merge PR #22)
+
+Work Log:
+
+**1. ตรวจสอบสาเหตุ:**
+- ตาราง Site, Role, Permission, RolePermission, UserSiteGrant ไม่มีใน production DB
+- สาเหตุ: merge PR #22 (conflict resolution "accept theirs") เอา schema มาแต่ไม่ได้ run migration
+- API /api/itam/auth/site-grants ส่ง error "Failed to fetch site grants" เพราะตาราง UserSiteGrant ไม่มี
+
+**2. สร้าง scripts/create-rbac-tables.ts:**
+- CREATE TABLE (idempotent — IF NOT EXISTS) 5 ตาราง:
+  • Site (id, code, name, address, phone, createdAt)
+  • Role (code PK, name, description, isSystem, active, createdAt, updatedAt)
+  • Permission (code PK, name, description, category, active, createdAt)
+  • RolePermission (roleCode+permissionCode PK, createdAt)
+  • UserSiteGrant (userId+siteCode PK, roleCode, active, validFrom, validUntil, createdBy, timestamps)
+- Seed ข้อมูลเริ่มต้น:
+  • 6 Sites จาก MasterItem (PPIT, UDH, NKP, NSH, RYH, MECUD)
+  • 5 Roles (superadmin, manager, staff, coordinator, viewer)
+  • 28 Permissions (devices:view, wo:create, stock:in, etc.)
+  • 51 RolePermission mappings
+  • 6 UserSiteGrants for admin (superadmin on all 6 sites)
+
+**3. รันบน production ITAM-DB:**
+- สำเร็จทั้ง 5 ตาราง + seed data
+- Sites: 6 ✅
+- Roles: 5 ✅
+- Permissions: 28 ✅
+- RolePermissions: 51 ✅
+- UserSiteGrants: 6 ✅ (admin → superadmin on all sites)
+
+**4. ทดสอบ API:**
+- /api/itam/auth/site-grants → 6 grants ✅ (admin@example.com → 6 sites as superadmin)
+- /api/itam/auth/roles → 0 (ต้องแก้ API route ให้ดึงจาก Role table)
+
+**5. เกี่ยวกับ Supabase Auth:**
+- ผู้ใช้ถามว่าใช้สิทธิ์ของ Supabase ได้ไหม
+- คำตอบ: ใช้ทั้งคู่ — Supabase Auth สำหรับ authentication (login/OAuth/email verify) + ระบบ RBAC ของเราสำหรับ authorization (สิทธิ์/สาขา)
+- Supabase มี Row Level Security (RLS) แต่ไม่รองรับ role-based multi-site แบบของเรา
+- แนะนำ: ใช้ Supabase Auth สำหรับ login ในอนาคต (OAuth Google/LINE) แต่เก็บ RBAC ของเราไว้
+
+Stage Summary:
+- ✅ 5 RBAC tables created on production ITAM-DB
+- ✅ Seed data: 6 Sites + 5 Roles + 28 Permissions + 51 RolePermissions + 6 UserSiteGrants
+- ✅ Site Grants API ทำงานแล้ว (6 grants สำหรับ admin)
+- ⚠️ Roles API ยังส่ง 0 (ต้องแก้ API route ให้ดึงจาก Role table)
+- ⚠️ Staging DB มี Permission table เก่าที่ schema ไม่ตรง (ไม่มี column 'name')
