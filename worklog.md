@@ -9993,3 +9993,66 @@ ITAM-04 deliverables now live in production:
 - Removed "คีย์ล่าสุด (N/5)" secondary history card
 - h-full min-h-0 layout (no overflow to Footer)
 - Auto-switch port 5432→6543 (transaction mode, pool_size=200) — 13× headroom
+
+---
+Task ID: DROPDOWN-CONNECT-3-POINTS
+Agent: orchestrator (main) — เชื่อม dropdown 3 จุด + แก้ Affiliation hierarchy
+
+Task:
+ผู้ใช้แจ้งว่ายังมีจุดที่ไม่ได้เชื่อม dropdown เพื่อดึงข้อมูล:
+1. เพิ่มอุปกรณ์ใหม่ — ยังไม่ได้เชื่อม cascading API
+2. แจ้งซ่อมใหม่ — ยังไม่ได้เชื่อม dropdown
+3. ข้อมูลมาตรฐาน — ยังเป็นของเดิม (category list ผิด + ไม่มี categories ใหม่)
+4. การจัด หน่วยงาน + สังกัด (Affiliation) ไม่เป็นไปตามที่คุยกัน (parentRef ต้องเป็น code)
+
+Work Log:
+
+**สาเหตุ:** code ของเราที่แก้ก่อนหน้านี้หายไปตอน merge PR #22 (conflict resolution "accept theirs" เอา version เดิมจาก feature branch มาแทน)
+
+**จุด 3 — itam-settings.tsx (Master Data page):**
+- Before: hardcoded `Brand/DeviceType/Model/Department/Status/DeviceGroup` (ใช้ "DeviceType" แทน "Type" + ไม่มี "Site" + ไม่มี categories ใหม่)
+- After: import MASTER_CATEGORIES จาก types.ts + เพิ่ม 6 categories ใหม่ (Affiliation, RepairProblem, RepairResolution, Building, Floor, ContractNo)
+- Applied to ทั้ง filter dropdown + add/edit dialog
+
+**จุด 1 — devices-page.tsx (Add Device form):**
+- Before: ดึง brands/types/models จาก `/api/master` (legacy, no params) แล้ว filter client-side ตาม category — ไม่ได้ใช้ cascading API
+- After:
+  • `deviceTypes` → `/api/master?type=device-types` (normalized DeviceType table)
+  • `brandsData` → `/api/master?type=brands&typeId=<id>` (filtered by selected type)
+  • `modelsData` → `/api/master?type=models&brandId=<id>` (filtered by selected brand)
+  • Cascade-clear: changing Type clears Brand+Model
+  • Combobox items ใช้ `name` field จาก normalized tables (ไม่ใช่ `code`/`label` จาก MasterItem)
+
+**จุด 4 — Affiliation hierarchy (devices-page.tsx):**
+- Added: `affiliations` = MasterItem(category='Affiliation') — 42 rows with code AFF-001 to AFF-042
+- Added: `filteredDepartments` = departments filtered by `form.parentRef` (selected Affiliation code)
+- Added: "สังกัด (Affiliation)" Combobox field — shows label (Thai text), stores code (AFF-xxx) in parentRef
+- Modified: "แผนก" Combobox — now shows only departments under selected Affiliation
+- Cascade-clear: changing Affiliation clears Department
+- ตรงตาม requirement ของ 04: parentRef เป็น stable code (AFF-001) ไม่ใช่ display text
+
+**จุด 2 — work-orders-page.tsx (Add Work Order form):**
+- Before: Asset lookup ใช้ Input + standalone Scan button แยกกัน
+- After: ใช้ UniversalSearch component (type + scan + OCR ในตัวเดียว) กับ context='asset_no'
+- UniversalSearch มี 3 modes: TYPE (พิมพ์), SCAN (QR/barcode), OCR (อ่านข้อความจากกล้อง)
+- ลบ standalone Scan button ที่ซ้ำซ้อนออก
+
+**Verification:**
+- TypeScript: 0 errors ในไฟล์ที่แก้ (pre-existing error ใน devices-page.tsx:711 เรื่อง Device[] → Record<string,unknown>[] เป็นของเดิม)
+- Vercel deploy: c6b6b29 state=READY ✅
+- Production tests:
+  • Home: HTTP 200 ✅
+  • Login: 321 char token ✅
+  • device-types API: 12 items ✅
+  • Affiliation API: 42 items (AFF-001, AFF-002, AFF-003...) ✅
+  • Dashboard: total=2,378, active=2,151 ✅
+
+Stage Summary:
+- ✅ จุด 1: Add Device form — Type→Brand→Model cascading via /api/master?type=...
+- ✅ จุด 2: Add WO form — UniversalSearch (type+scan+OCR) สำหรับ asset lookup
+- ✅ จุด 3: Master Data page — MASTER_CATEGORIES + 6 new categories
+- ✅ จุด 4: Affiliation hierarchy — dropdown สังกัด filters แผนก by parentRef code
+- ✅ Production deploy c6b6b29 READY
+- ✅ All API endpoints working (cascading + legacy category)
+
+Commit: c6b6b29 fix(dropdowns): connect cascading API to device form + WO form + master data
