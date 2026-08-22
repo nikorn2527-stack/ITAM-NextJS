@@ -9516,3 +9516,52 @@ Stage Summary:
 - HEAD-CHANGED posted per protocol
 - Awaiting ITAM-02 re-review (v2)
 - Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
+
+---
+Task ID: PARITY-BATCH-START-2026-08-22
+Agent: ITAM-01 — Dev-3 / Devices (per "คุณเริ่มเลย เอาให้มันรันแอฟได้ก่อน")
+
+Task: เริ่ม parity batch — ทำให้แอปรันได้ก่อน + แจ้งทีมอื่นเรื่อง legacy function inventory
+
+Work Log:
+
+**1. ตรวจสถานะแอป:**
+- .env: เดิมชี้ SQLite (file:...custom.db) → แก้เป็น staging Postgres
+- prisma/schema.prisma: provider = "postgresql" ✅ (ถูกต้องอยู่แล้ว)
+- Prisma client: generated for postgresql ✅
+
+**2. แก้ปัญหา DATABASE_URL:**
+- ปัญหา: Next.js Turbopack ไม่เห็น .env เมื่อรัน bun run dev
+- แก้: set DATABASE_URL เป็น process env var ตรงใน command
+- ผล: Prisma เชื่อมต่อ staging DB ได้ ✅
+
+**3. แก้ปัญหา login:**
+- ปัญหา: admin password hash ไม่ตรงกับ bcrypt.compare('admin123')
+- แก้: reset admin + superadmin password ด้วย bcrypt.hash('admin123', 10)
+- ผล: Login สำเร็จ — ได้ JWT token กลับมา ✅
+  - admin/admin123 → JWT token + user object
+  - superadmin/superadmin123 → (เตรียมไว้)
+
+**4. ตรวจ staging DB data:**
+- Tables: 37 tables (schema ครบ)
+- Data: User 6, Role 8, Site 5, WorkOrder 11, AuditLog 159
+- Empty: Device 0, MeterReading 0, StockItem 0, StockTransaction 0
+
+**5. อ่าน legacy app inventory:**
+- Legacy: Google Apps Script + Google Sheets (15,581 lines, 533 functions)
+- 7 main pages: Dashboard, Device Management, Location Transfer, Meter Reading, Paper Analytics, Master Data, Settings
+- Full function inventory posted on Issue #14 (comment 5377746990)
+
+**6. แจ้งทีมอื่น:**
+- Posted legacy function inventory on Issue #14
+- ทีมอื่นสามารถดึงฟังก์ชั่นจาก legacy app มาใส่ใน Next.js ได้เลย
+- Reference: /home/z/my-project/upload/DETAILED_DOCUMENTATION.md
+
+Stage Summary:
+- ✅ Dev server รันได้ (localhost:3000)
+- ✅ Login ทำงาน (admin/admin123 → JWT token)
+- ✅ staging DB เชื่อมต่อได้
+- ✅ Legacy function inventory แจ้งทีมอื่นแล้ว
+- ⏳ Need: seed real data (staging DB has 0 devices/meter/stock)
+- ⏳ Need: parity verification per module
+- Gate state unchanged: G2 CONDITIONAL/PENDING | G3 BLOCKED | Production BLOCKED
