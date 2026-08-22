@@ -75,3 +75,9 @@ Security advisor พบ `rls_enabled_no_policy` ระดับ INFO จำน�
 Performance advisor พบ INFO จำนวน 23 รายการ แบ่งเป็น foreign key ที่ไม่มี covering index 3 รายการ และ unused index 20 รายการ ประเด็นที่เกี่ยวข้องโดยตรงกับ flow ปัจจุบันคือ foreign key `StockTransaction.deviceId` ไม่มี covering index ส่วน unused indexes ต้องตรวจ query workload จริงก่อนลบ ไม่ควรลบตาม advisor โดยอัตโนมัติ
 
 Advisor findings เป็น database follow-up ของ ITAM-DB ไม่ใช่เหตุผลให้ทำ DDL ทันที และการแก้ต้องผ่าน migration + review ตาม governance ห้ามใช้ `prisma db:push`
+
+## Vercel ↔ ITAM-DB read-only verification (2026-08-22)
+
+ตรวจ deployment `https://itam-next-js-git-main-png-team.vercel.app/` ซ้ำผ่าน authenticated browser session แล้วพบว่า UI แสดง banner `โหมดสาธิต — ข้อมูลที่สร้างจะไม่บันทึกในระบบจริง` แต่ read-only API ไม่ได้ว่างทั้งหมด: `/api/devices?limit=1&offset=0` ตอบ HTTP 200 และ `total=2378` ตรงกับ ITAM-DB; response row มี `isDemo:false`. `/api/work-orders?limit=1&offset=0` ตอบ HTTP 200 และมีข้อมูล `isDemo:false`. `/api/stock-items?limit=1&offset=0` ตอบ HTTP 200 แต่ pagination `total=0`; `/api/meter-readings` path ที่ทดลองไม่ตรงกับ route ที่ deployment เปิดไว้และตอบ 404 HTML จึงยังต้อง map route จริงก่อนสรุป Meter parity
+
+ข้อสรุป: Vercel deployment เชื่อมข้อมูลจริงอย่างน้อย Devices และ Repair แต่ UI ยังประกาศ demo mode และ Stock/Meter ยังไม่ยืนยันว่า route/query mapping อ่านตารางจริงครบ จึงต้องตรวจ environment flag, endpoint mapping และ module-by-module parity ต่อไป โดยยังไม่ได้ทำ mutation
