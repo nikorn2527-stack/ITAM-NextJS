@@ -908,3 +908,81 @@ Task: Re-test bug fixes ที่ ITAM-01 push (3 commits: 4207109, 0fba816, f06
 - 📊 โควต้า Vercel + Supabase — ผ่าน แต่ใกล้ limit (DB egress)
 - 📁 Verification Report: `/home/z/my-project/qa-reports/VERIFY-001.md`
 
+
+---
+
+## Task ID: QA-004
+Agent: QA Team
+Task: ทดสอบหน้าแจ้งซ่อม (Work Orders)
+
+**Test Date:** 2026-08-23
+**Test Account:** demo_admin / demo123 (role=admin)
+**Environment:** Next.js 16.3.2 dev + SQLite (DB มี 1 WO: PPIT0001 ที่สร้างระหว่างทดสอบ)
+**Pass Rate:** 9/15 = 60% ❌
+
+### Results:
+
+#### ✅ ผ่าน (9 รายการ)
+- ✅ Login + Navigate ไปหน้า "แจ้งซ่อม"
+- ✅ โครงสร้าง header + รีเฟรช + แจ้งซ่อมใหม่ + ค้นหา + สแกน QR + กรองสถานะ + กรองความเร่งด่วน
+- ✅ Stats cards แสดงครบ (รอ/กำลังซ่อม/เสร็จแล้ว/ยกเลิก)
+- ✅ Status filter — 5 สถานะ
+- ✅ Priority filter — 4 ระดับ
+- ✅ Create WO form — validation ทำงาน (ปุ่ม disabled จนกว่าจะกรอก required ครบ)
+- ✅ External mode (ลูกค้าภายนอก) — toggle + เพิ่ม field "ชื่อลูกค้า *"
+- ✅ Create external WO — POST 201 + toast "สร้างใบแจ้งซ่อม PPIT0001 แล้ว" + บันทึก DB จริง
+- ✅ QR scanner dialog + fallback
+- ✅ Dark mode toggle
+- ✅ Mobile responsive (390px)
+- ✅ Form a11y — ทุก input มี id unique (wo-location, wo-reporter, wo-tel ฯลฯ)
+
+#### ❌ ไม่ผ่าน (6 รายการ)
+
+##### 🔴 Critical (3 ตัว)
+
+**BUG-WO-001: Guest WO creation คืน 403 — validateGuestContact ล้มเหลว**
+- อธิบายปัญหา: สร้าง WO แบบ guest (ไม่ใช่ external) → POST 403 + toast "ยังไม่มีข้อมูลผู้ติดต่อในระบบ (contactDirectory)"
+- สาเหตุ: `validateGuestContact()` ตรวว่าชื่อ+เบอร์อยู่ใน ContactDirectory table — แต่ DB sandbox ว่าง
+- ผลกระทบ: user ปกติไม่สามารถสร้าง WO ได้ (ต้องเปิด "ลูกค้าภายนอก" เท่านั้น)
+- ไฟล์: `src/app/api/work-orders/route.ts:481-497`
+
+**BUG-WO-002: WO list ไม่แสดงใบงานที่สร้าง — fail-closed สำหรับ non-superadmin**
+- อธิบายปัญหา: หลัง create WO สำเร็จ (POST 201) → list ยังแสดง "ยังไม่มีใบแจ้งซ่อม" — API คืน `data: [], total: 0` ทั้งที่ DB มี WO จริง
+- สาเหตุ: `buildAuthorizationContext` ทำให้ demo_admin (role=admin, allowedSites=ALL) ไม่ใช่ superadmin + ไม่มี site grants → fail-closed → คืน empty list
+- ผลกระทบ: admin ไม่เห็น WO ที่ตนเองสร้าง → ไม่สามารถ manage WO ได้
+- ไฟล์: `src/app/api/work-orders/route.ts:206-216` (fail-closed branch)
+
+**BUG-WO-003: Search box พิมพ์แล้วไม่ trigger API request**
+- อธิบายปัญหา: พิมพ์ "PPIT" ในช่องค้นหา → ไม่มี `/api/work-orders?q=PPIT` ออกไปเลย
+- ผลกระทบ: search feature ใช้ไม่ได้
+- ไฟล์: `src/components/itam/itam-work-orders.tsx`
+
+##### 🟠 High (1 ตัว)
+
+**BUG-WO-004: WO list ไม่ refresh หลัง create (cache invalidation)**
+- อธิบายปัญหา: หลัง POST 201 สำเร็จ + toast → list ไม่ auto-refresh ต้องกด "รีเฟรช" เอง
+- ผลกระทบ: user สร้าง WO แล้วไม่เห็นใน list ทันที
+
+##### 🟡 Medium (2 ตัว)
+- **BUG-WO-005:** Form inputs ไม่มี `name` attribute — browser autofill ไม่ทำงาน
+- **BUG-WO-006:** ไม่มี empty state message สำหรับ contactDirectory missing — user ไม่รู้จะแก้ยังไง
+
+### ไม่ได้ทดสอบ (เพราะ BUG-WO-002):
+- ❌ WO detail view, Assign, Complete, Messages, Images, Print, Status flow
+
+### Priority สำหรับ ITAM-01:
+1. 🔴 **P0:** BUG-WO-002 — แก้ fail-closed สำหรับ admin role
+2. 🔴 **P0:** BUG-WO-003 — แก้ search box onChange handler
+3. 🔴 **P0:** BUG-WO-001 — seed contactDirectory หรือแก้ validateGuestContact ให้ bypass ใน dev mode
+4. 🟠 **P1:** BUG-WO-004 — เพิ่ม queryClient.invalidateQueries(['work-orders']) หลัง create
+5. 🟡 **P2:** BUG-WO-005, BUG-WO-006
+
+### Insights สำหรับ ITAM-01:
+- **fail-closed policy** เป็น security best practice แต่ทำให้ demo_admin (admin) ไม่เห็น WO → ควรแก้ให้ admin role ทำหน้าที่เหมือน superadmin ใน dev environment
+- **Pattern BUG ระบบ:** "ไม่มี cache invalidation หลัง create" เหมือน Stock (BUG-STK-002) — แต่ Stock แก้แล้ว Work Orders ยังไม่แก้
+- **Form a11y ดี** — ทุก input มี id unique (เหมือน Stock) — แต่ยังขาด name attribute
+
+### หลักฐาน:
+- 📸 `/home/z/my-project/qa-reports/wo-*.png` (5 รูป)
+- 📄 Test Report: `/home/z/my-project/qa-reports/QA-WO-001.md`
+
