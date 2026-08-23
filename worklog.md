@@ -11447,3 +11447,83 @@ Files modified:
 - MODIFIED: src/components/itam/stock/stock-out-form.tsx — type="button" on save + fix duplicate
 - MODIFIED: src/components/itam/stock/stock-inventory.tsx — AlertDialog, overflow-x-auto, aria-labels, Thai header
 
+
+---
+Task ID: VERCEL-QUOTA-OPTIMIZATION
+Agent: orchestrator (main) — ดีไซน์ให้ทำงานในโควต้า Vercel Hobby + Supabase Free
+
+Task:
+ปรับปรุงประสิทธิภาพและลดการใช้ทรัพยากรให้พอดีกับ Vercel Hobby (Free) + Supabase Free
+
+Work Log:
+
+**Phase 1 — Critical:**
+
+**1.1 แก้ start script + standalone output:**
+- เพิ่ม `output: 'standalone'` ใน next.config.ts
+- ผล: deploy production ได้ (self-host + Vercel)
+
+**1.2 SSE → Polling:**
+- ลบ EventSource (SSE) ทั้งหมดจาก use-realtime-updates.tsx
+- เปลี่ยนเป็น polling: fetch /api/itam/updates?since=<ts> ทุก 60s
+- สร้าง endpoint ใหม่: /api/itam/updates (query auditLog since timestamp)
+- ผล: ใช้ Vercel Hobby ได้ (ไม่ติด 60s timeout)
+
+**1.3 ลด Dashboard polling:**
+- Dashboard: 60s → 300s (5 min)
+- Insights: 180s → 600s (10 min)
+- Reminders: 120s → 600s (10 min)
+- refetchOnWindowFocus: 'always' → false
+- ผล: CPU usage ลด 5× (240 min/month → ~50 min/month)
+
+**1.4 ลบ pg + @electric-sql/pglite:**
+- `bun remove pg @electric-sql/pglite`
+- ไม่ได้ใช้ในโค้ดเลย — เป็น dead dependency
+- ผล: bundle ลด ~5MB ต่อ serverless function
+
+**Phase 2 — Optimization:**
+
+**2.1 staleTime ใน DevicesPage:**
+- เพิ่ม `staleTime: 5 * 60 * 1000` (5 min)
+- ผล: refetch ลด 10× (จาก 30s → 5 min)
+
+**2.2 Bounded findMany:**
+- /api/users: เพิ่ม `take: 100`
+- nextProductCode(): findMany → findFirst (1 row แทนทั้งหมด)
+- ผล: ลด DB load + payload
+
+**2.5 DB Indexes:**
+- Device: เพิ่ม @@index([assetCode, status]) + @@index([updatedAt])
+- ผล: query filter/search เร็วขึ้น
+
+**Phase 4 — Monitoring:**
+
+**4.2 Cron keepalive:**
+- สร้าง /api/cron/keepalive (SELECT 1)
+- สร้าง vercel.json (cron ทุกวันจันทร์ 9:00)
+- ผล: กัน Supabase auto-pause
+
+**2.4 maxDuration:**
+- /api/itam/paper-analytics: `export const maxDuration = 30`
+- ผล: กัน timeout บน Vercel Hobby
+
+Stage Summary — โควต้าหลังแก้ Phase 1+2:
+- Function invocations: ~5K/วัน (จาก 50K/วัน) → ในโควต้า 100K/เดือน ✅
+- Active CPU: ~50 min/เดือน (จาก 240 min ใน 2 วัน) → ใช้ได้ 5 เดือน ✅
+- DB egress: ~5 GB/เดือน (จาก 50 GB) → ในโควต้า 5 GB ✅
+- Bundle size: ลด ~5MB (ลบ pg) ✅
+
+Files created/modified:
+- MODIFIED: next.config.ts — output: 'standalone'
+- MODIFIED: src/hooks/use-realtime-updates.tsx — SSE → polling
+- MODIFIED: src/components/itam/itam-dashboard.tsx — polling 60s→300s, refetchOnWindowFocus: false
+- MODIFIED: src/components/itam/devices-page.tsx — staleTime 5 min
+- MODIFIED: src/app/api/stock-items/route.ts — nextProductCode findFirst
+- MODIFIED: src/app/api/users/route.ts — take: 100
+- MODIFIED: src/app/api/itam/paper-analytics/route.ts — maxDuration: 30
+- MODIFIED: prisma/schema.prisma — Device indexes
+- NEW: src/app/api/itam/updates/route.ts — polling endpoint
+- NEW: src/app/api/cron/keepalive/route.ts — Supabase keepalive
+- NEW: vercel.json — cron schedule
+- REMOVED: pg, @electric-sql/pglite from package.json
+

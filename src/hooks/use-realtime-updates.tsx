@@ -1,20 +1,15 @@
 'use client'
 
 /**
- * useRealtimeUpdates — SSE subscription hook.
+ * useRealtimeUpdates — Polling-based update hook (replaces SSE).
  *
- * Connects to /api/itam/events?token=<jwt> via EventSource. On every event
- * it calls `qc.invalidateQueries({ queryKey: [...] })` so the relevant
- * TanStack Query cache refetches — i.e. the new data appears instantly
- * without the user clicking refresh.
- *
- * Connection lifecycle:
- *   • Open when the user is authenticated.
- *   • Reconnect automatically (EventSource native — backs off 3s).
- *   • Close on unmount or logout.
+ * Previously this connected to /api/itam/events via EventSource (SSE).
+ * SSE doesn't work on Vercel Hobby (60s function timeout) so we switched
+ * to polling. The hook calls /api/itam/updates?since=<ts> every 60s
+ * and invalidates the relevant TanStack Query caches.
  *
  * Returns:
- *   • status: 'connecting' | 'open' | 'closed'
+ *   • status: 'polling' | 'closed'
  *   • lastEvent: the most recent RealtimeEvent | null
  *   • lastEventAt: epoch ms
  */
@@ -23,206 +18,124 @@ import * as React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth-store'
 
-export type RealtimeStatus = 'connecting' | 'open' | 'closed'
+export type RealtimeStatus = 'polling' | 'closed'
 
 export interface RealtimeEventPayload {
   type:
     | 'device-added'
     | 'device-updated'
     | 'device-deleted'
-    | 'device-transferred'
-    | 'meter-written'
-    | 'dashboard-changed'
-    | 'notification-sent'
-    | 'hello'
-  assetNo?: string
-  site?: string | null
-  payload?: Record<string, unknown>
-  ts: number
+    | 'meter-reading'
+    | 'work-order'
+    | 'stock'
+    | 'cycle'
+    | 'audit'
+  entity?: string
+  id?: string
+  ts?: number
 }
 
-interface State {
+interface RealtimeState {
   status: RealtimeStatus
   lastEvent: RealtimeEventPayload | null
-  lastEventAt: number | null
+  lastEventAt: number
 }
 
-const RECONNECT_DELAY_MS = 3000
+const POLL_INTERVAL = 60_000 // 60 seconds
 
-export function useRealtimeUpdates(): State {
+export function useRealtimeUpdates() {
   const qc = useQueryClient()
   const token = useAuthStore((s) => s.token)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  const [state, setState] = React.useState<State>({
+  const [state, setState] = React.useState<RealtimeState>({
     status: 'closed',
     lastEvent: null,
-    lastEventAt: null,
+    lastEventAt: 0,
   })
-
-  // Ref-use so the onmessage handler always sees the latest token without
-  // having to re-create the EventSource on every token change.
-  const tokenRef = React.useRef<string | null>(token)
-  React.useEffect(() => {
-    tokenRef.current = token
-  }, [token])
 
   React.useEffect(() => {
     if (!isAuthenticated || !token) {
       setState((s) => ({ ...s, status: 'closed' }))
       return
     }
-    let es: EventSource | null = null
+
     let closed = false
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
+    let lastTs = Date.now()
 
-    function connect() {
-      if (closed) return
-      const t = tokenRef.current
-      if (!t) return
-      setState((s) => ({ ...s, status: 'connecting' }))
+    setState((s) => ({ ...s, status: 'polling' }))
+
+    async function poll() {
+      if (closed || !token) return
+
       try {
-        es = new EventSource(`/api/itam/events?token=${encodeURIComponent(t)}`)
+        const res = await fetch(
+          `/api/itam/updates?since=${lastTs}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        )
+        if (!res.ok) return
+        const data = await res.json()
+        const events: RealtimeEventPayload[] = data.events ?? []
+
+        if (events.length > 0) {
+          const latest = events[events.length - 1]
+          lastTs = latest.ts ?? Date.now()
+          setState((s) => ({
+            ...s,
+            lastEvent: latest,
+            lastEventAt: Date.now(),
+          }))
+
+          // Invalidate caches based on event types
+          const types = new Set(events.map((e) => e.type))
+          if (types.has('device-added') || types.has('device-updated') || types.has('device-deleted')) {
+            qc.invalidateQueries({ queryKey: ['devices'] })
+            qc.invalidateQueries({ queryKey: ['dashboard'] })
+          }
+          if (types.has('meter-reading')) {
+            qc.invalidateQueries({ queryKey: ['meter'] })
+            qc.invalidateQueries({ queryKey: ['devices'] })
+          }
+          if (types.has('work-order')) {
+            qc.invalidateQueries({ queryKey: ['work-orders'] })
+          }
+          if (types.has('stock')) {
+            qc.invalidateQueries({ queryKey: ['stock-items'] })
+          }
+          if (types.has('cycle')) {
+            qc.invalidateQueries({ queryKey: ['active-cycle'] })
+          }
+          if (types.has('audit')) {
+            qc.invalidateQueries({ queryKey: ['audit'] })
+            qc.invalidateQueries({ queryKey: ['notifications'] })
+          }
+        }
       } catch {
-        scheduleReconnect()
-        return
-      }
-      es.onopen = () => {
-        if (!closed) setState((s) => ({ ...s, status: 'open' }))
-      }
-      es.onerror = () => {
-        // EventSource auto-reconnects, but if the browser gives up we'll
-        // close + try again after a short delay.
-        if (closed) return
-        setState((s) => ({ ...s, status: 'connecting' }))
-        try {
-          es?.close()
-        } catch {
-          /* ignore */
-        }
-        scheduleReconnect()
+        // Network error — try again next cycle
       }
 
-      const handle = (e: MessageEvent) => {
-        if (closed) return
-        let parsed: RealtimeEventPayload | null = null
-        try {
-          parsed = JSON.parse(e.data) as RealtimeEventPayload
-        } catch {
-          return
-        }
-        setState((s) => ({
-          status: 'open',
-          lastEvent: parsed,
-          lastEventAt: Date.now(),
-        }))
-
-        // ── Invalidate the right caches based on event type ──────────────
-        // Be liberal with invalidation — TanStack Query dedupes concurrent
-        // refetches of the same key, and staleTime: 30s in providers.tsx
-        // means most redundant invalidations are no-ops anyway.
-        const type = parsed?.type
-        if (!type) return
-
-        // All device-list views should refresh on any device mutation.
-        if (
-          type === 'device-added' ||
-          type === 'device-updated' ||
-          type === 'device-deleted' ||
-          type === 'device-transferred'
-        ) {
-          qc.invalidateQueries({ queryKey: ['itam-devices'] })
-          qc.invalidateQueries({ queryKey: ['itam-device'] })
-          qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
-          qc.invalidateQueries({ queryKey: ['active-cycle'] })
-        }
-        if (type === 'meter-written') {
-          qc.invalidateQueries({ queryKey: ['itam-meter'] })
-          qc.invalidateQueries({ queryKey: ['itam-meter-readings'] })
-          qc.invalidateQueries({ queryKey: ['unread-meters'] })
-          qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
-          qc.invalidateQueries({ queryKey: ['paper-analytics'] })
-          qc.invalidateQueries({ queryKey: ['itam-paper-analytics'] })
-        }
-        if (type === 'device-transferred') {
-          qc.invalidateQueries({ queryKey: ['location-history'] })
-        }
-        if (type === 'notification-sent') {
-          qc.invalidateQueries({ queryKey: ['notifications'] })
-        }
-      }
-
-      // EventSource dispatches a named event for each SSE `event:` line;
-      // also handle the implicit `message` event as a fallback.
-      const eventTypes = [
-        'hello',
-        'device-added',
-        'device-updated',
-        'device-deleted',
-        'device-transferred',
-        'meter-written',
-        'dashboard-changed',
-        'notification-sent',
-      ]
-      es.onmessage = handle
-      for (const t of eventTypes) {
-        es.addEventListener(t, handle as EventListener)
+      if (!closed) {
+        pollTimer = setTimeout(poll, POLL_INTERVAL)
       }
     }
 
-    function scheduleReconnect() {
-      if (closed) return
-      if (reconnectTimer) clearTimeout(reconnectTimer)
-      reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS)
-    }
-
-    connect()
+    poll()
 
     return () => {
       closed = true
-      if (reconnectTimer) clearTimeout(reconnectTimer)
-      try {
-        es?.close()
-      } catch {
-        /* ignore */
-      }
-      es = null
+      if (pollTimer) clearTimeout(pollTimer)
+      setState((s) => ({ ...s, status: 'closed' }))
     }
-  }, [isAuthenticated, token])
+  }, [isAuthenticated, token, qc])
 
   return state
 }
 
 /**
- * Singleton hook — keeps ONE EventSource connection alive for the whole app
- * (mount it once at the AppShell level). Other components can read the
- * status from the internal module state without each opening their own SSE.
- *
- * Implementation: a tiny external store backed by a module-level state
- * updated by a single useRealtimeUpdates() instance.
+ * Singleton hook — keeps ONE polling loop alive for the whole app.
+ * Mounted once in the Sidebar.
  */
-
-const statusListeners = new Set<() => void>()
-let statusSnapshot: RealtimeStatus = 'closed'
-
 export function useRealtimeStatus(): RealtimeStatus {
-  return React.useSyncExternalStore(
-    (cb) => {
-      statusListeners.add(cb)
-      return () => statusListeners.delete(cb)
-    },
-    () => statusSnapshot,
-    () => 'closed' as RealtimeStatus,
-  )
-}
-
-/** Mount once at the app shell — wires useRealtimeUpdates into the store. */
-export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { status } = useRealtimeUpdates()
-  React.useEffect(() => {
-    if (status !== statusSnapshot) {
-      statusSnapshot = status
-      for (const cb of statusListeners) cb()
-    }
-  }, [status])
-  return <>{children}</>
+  return status
 }

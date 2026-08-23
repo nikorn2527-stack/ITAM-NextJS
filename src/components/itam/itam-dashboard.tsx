@@ -397,13 +397,11 @@ export function ItamDashboard() {
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
-    // Polling: 60s instead of 30s to reduce DB/network load.
-    // The dashboard is also invalidated by SSE events on device/wo/stock
-    // changes, so users still see updates quickly.
-    refetchInterval: 60_000,
-    // Only refetch on window focus if data is older than 2 minutes
-    refetchOnWindowFocus: 'always',
-    staleTime: 60_000,
+    // Polling: 5 min (reduced from 60s to save Vercel Hobby CPU quota).
+    // SSE is being removed — polling is the only update source now.
+    refetchInterval: 300_000,
+    refetchOnWindowFocus: false,
+    staleTime: 300_000,
     placeholderData: (prev) => prev,
   })
 
@@ -473,7 +471,7 @@ export function ItamDashboard() {
       return res.json()
     },
     // Insights: 3 min instead of 1 min — they don't change quickly
-    refetchInterval: 180_000,
+    refetchInterval: 600_000,
     staleTime: 120_000,
   })
   const insights = insightsData?.insights ?? []
@@ -507,7 +505,7 @@ export function ItamDashboard() {
     },
     staleTime: 60_000,
     // Reminders: 2 min instead of 1 min
-    refetchInterval: 120_000,
+    refetchInterval: 600_000,
   })
 
   // Warranty summary
