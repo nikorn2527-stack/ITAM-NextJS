@@ -234,7 +234,7 @@ export async function GET(req: NextRequest) {
         }
         const rows = await db.masterItem.findMany({
           where,
-          select: { label: true, departmentCode: true },
+          select: { label: true, code: true },
           orderBy: { label: 'asc' },
         })
         const items = rows.map((r) => r.label).filter(Boolean)
