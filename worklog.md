@@ -770,3 +770,69 @@ Optimization opportunities:
 10. **`auditLog.findMany` ใน `db.ts` validation — ควร simplify** เพราะตอนนี้มี overhead เล็กน้อยทุกครั้งที่ import module
 
 
+
+---
+
+## 📢 Workflow Update — QA ↔ ITAM-01 (2026-08-23)
+
+> ตามที่ user ยืนยัน: ITAM-01 deploy manual (ล่าสุด 17 ชม. ที่แล้ว) + กำลังแก้ bug + QA รอ re-test ใน sandbox
+
+### Workflow ที่ตกลงกัน:
+
+```
+QA รายงาน Bug (56 ตัว)
+       ↓
+ITAM-01 แก้ + push commit พร้อมแจ้ง Bug ID
+       ↓
+QA sync โค้ดใหม่จาก GitHub (rsync เฉพาะ src/, prisma/, scripts/)
+       ↓
+QA re-test bug เฉพาะที่ ITAM-01 บอกว่าแก้
+       ↓
+Verified ✅ → ปิด bug
+Re-opened ❌ → รายงานใหม่ให้ ITAM-01
+```
+
+### Bug Lifecycle:
+- 🔴 `Open` — QA พบ, รอแก้
+- 🟡 `In Progress` — ITAM-01 แก้อยู่
+- 🟢 `Fixed — Pending Verification` — ITAM-01 push commit แล้ว
+- ✅ `Verified` — QA re-test ผ่าน
+- ❌ `Re-opened` — QA re-test ไม่ผ่าน
+- ⏸️ `Won't Fix` — ITAM-01 ตัดสินใจไม่แก้
+
+### ไฟล์สำคัญ:
+- 📋 `/home/z/my-project/qa-reports/VERIFICATION-TRACKER.md` — ตารางติดตาม bug ทั้งหมด
+- 📄 `/home/z/my-project/qa-reports/QA-DEVICES-001.md` — รายงานหน้า Devices (22 bugs)
+- 📄 `/home/z/my-project/qa-reports/QA-STOCK-001.md` — รายงานหน้า Stock (16 bugs)
+- 📄 `/home/z/my-project/qa-reports/QA-DASH-001.md` — รายงานหน้า Dashboard (10 bugs)
+- 📄 `/home/z/my-project/qa-reports/QA-PAPER-001.md` — รายงานหน้า Paper (8 bugs)
+
+### สถานะปัจจุบัน:
+- ✅ QA ส่งรายงาน 4 หน้าแล้ว — 56 bugs (12 Critical, 10 High, 15 Medium, 19 Low)
+- 🔄 ITAM-01 กำลังแก้ bug
+- ⏳ QA รอ — เมื่อ ITAM-01 แจ้ง Bug ID ที่แก้เสร็จ + push commit, QA จะ sync + re-test
+
+### สิ่งที่ ITAM-01 ต้องแจ้งเมื่อแก้เสร็จ:
+```
+Task ID: DEV-FIX-XXX
+Bugs Fixed (commit <hash>):
+- BUG-001 ✅ (commit abc1234) — <คำอธิบายสั้น>
+- BUG-STK-001 ✅ (commit def5678) — <คำอธิบายสั้น>
+
+Bugs Won't Fix:
+- BUG-014 ⏸️ — <เหตุผล>
+
+Files Changed:
+- src/components/itam/devices-page.tsx
+- ...
+```
+
+### Pattern Bugs ที่ควรแก้พร้อมกัน (root cause เดียวกัน):
+1. **Tabs Navigation พัง** — Stock (BUG-STK-001) + Paper (BUG-PAPER-001) — น่าจะเป็น shared Tab component
+2. **ไม่มี toast หลัง Refresh** — ทุกหน้า (Devices, Stock, Dashboard, Paper)
+3. **widget headers ไม่มี semantic heading** — Dashboard (BUG-DASH-003) + Paper (BUG-PAPER-007)
+4. **Site filter ไม่มี empty state** — Devices (BUG-007) + Paper (BUG-PAPER-005)
+5. **Form submit ไม่ทำงาน** — Devices (BUG-001) + Stock IN (BUG-STK-003) — ปุ่ม `type="submit"` ไม่ได้อยู่ใน `<form>`
+
+→ ถ้า ITAM-01 แก้ root cause ของ pattern เหล่านี้ จะแก้ bug หลายตัวพร้อมกัน
+
