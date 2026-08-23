@@ -422,3 +422,116 @@ Environment: Next.js 16.3.2 dev + SQLite (DB เริ่มว่าง → ส
 - Stock OUT form ทำงานปกติ — แสดงว่ามีบาง form ใช้ pattern ที่ถูกต้อง → ให้ดู Stock OUT form เป็นต้นแบบ
 - Form a11y ของ Stock ดีมาก (มี id ครบ) → ให้ทำแบบเดียวกันใน Devices page ด้วย
 
+
+---
+
+## Task ID: QA-001
+Agent: QA Team
+Task: ทดสอบหน้าจัดการอุปกรณ์ (Devices Page)
+
+**Test Date:** 2026-08-23
+**Test Account:** demo_admin / demo123 (role=admin)
+**Environment:** Next.js 16.3.2 dev + SQLite (DB ว่าง)
+**Pass Rate:** 9/22 = 41%
+
+### Results:
+
+#### ✅ ผ่าน (9 รายการ)
+- ✅ Login flow — demo_admin/demo123 เข้าระบบได้
+- ✅ Page navigation (Dashboard → จัดการอุปกรณ์) — h1 แสดงถูกต้อง
+- ✅ Empty state UX — แสดง "ยังไม่มีอุปกรณ์ในระบบ" + ปุ่ม CTA "เพิ่มอุปกรณ์"
+- ✅ Status filter — เลือก "ส่งซ่อม" แล้ว API `/api/devices?status=repair&limit=500` 200
+- ✅ Search box typing — debounce ทำงาน, API `/api/devices` ถูกเรียก
+- ✅ QR scanner dialog — เปิดได้ + มี fallback "ใส่รหัสเอง" เมื่อไม่มีกล้อง
+- ✅ Dark mode toggle — bg=ดำ, text=ขาว (lab color space ถูกต้อง)
+- ✅ Footer alignment — main bottom=767, footer top=767, ไม่ overlap
+- ✅ Refresh button — API refetch สำเร็จ
+
+#### ❌ ไม่ผ่าน (22 รายการ)
+
+##### 🔴 Critical (6 ตัว — ทำให้ฟีเจอร์หลักใช้ไม่ได้)
+
+**BUG-001: ปุ่ม "บันทึก" ใน form เพิ่มอุปกรณ์ไม่ทำงาน**
+- อธิบายปัญหา: กดปุ่ม "บันทึก" ในฟอร์มเพิ่มอุปกรณ์แล้วไม่เกิดอะไรเลย — ไม่มี validation error, ไม่มี toast, ไม่มี POST request ไป server
+- สาเหตุ: ปุ่มเป็น `type="submit"` แต่ไม่ได้อยู่ใน `<form>` element (`form: null`) → submit event ไม่ trigger
+- ผลกระทบ: ไม่สามารถเพิ่มอุปกรณ์ใหม่ผ่าน UI ได้เลย (Blocker ของฟีเจอร์หลัก)
+- ไฟล์: `src/components/itam/devices-page.tsx`
+
+**BUG-002: React Query refetch loop — duplicate GET requests**
+- อธิบายปัญหา: มี 5 ชุดของ duplicate GET requests ในช่วง 3 วินาที (20 requests รวม) — `/api/devices`, `/api/devices/lifecycle`, `/api/devices/depreciation`, `/api/devices/warranty`
+- ผลกระทบ: บน production (2,378 devices) จะเพิ่ม server load 5-10×, ทำให้ client ช้าลง
+
+**BUG-006: Page size selector (pagination) พัง**
+- อธิบายปัญหา: เปลี่ยน page size (20/50/100) แล้ว UI อัปเดตค่า แต่ไม่ trigger API refetch — API ยังคงส่ง `/api/devices?limit=500` เดิมตลอด
+- ผลกระทบ: pagination feature ไม่ทำงาน — user เปลี่ยน page size แล้วจำนวนแถวที่แสดงไม่เปลี่ยน
+
+**BUG-009: "ดาวน์โหลดเทมเพลต CSV" ไม่ทำงาน**
+- อธิบายปัญหา: คลิกปุ่มแล้วไม่เกิดอะไร — ไม่มี `<a download>` ถูกสร้าง, ไม่มี blob URL, ไม่มี network request, ไม่มี error
+- ผลกระทบ: user ไม่สามารถดาวน์โหลดเทมเพลต CSV เพื่อใช้นำเข้าข้อมูล
+
+**BUG-010: "ส่งออก CSV" ไม่ทำงาน**
+- อธิบายปัญหา: คลิก "ส่งออก CSV" แล้ว API `/api/devices?limit=500` ถูกเรียก 200 OK แต่ไม่มีไฟล์ถูกดาวน์โหลด — ไม่มี blob URL, ไม่มี empty CSV, ไม่มี error message
+- ผลกระทบ: user ไม่สามารถ export ข้อมูลเป็น CSV ได้
+
+**BUG-012: Global Search ไม่ทำงาน**
+- อธิบายปัหหา: พิมพ์ "test" ใน global search (เปิดด้วยปุ่ม "ค้นหาทั่วระบบ" หรือ Alt+T) แล้วไม่มี `/api/search` API call เลย — listbox "Suggestions" ว่างเปล่า
+- ผลกระทบ: user ไม่สามารถค้นหาทั่วระบบได้
+
+##### 🟠 High (3 ตัว)
+
+**BUG-011: Mobile — Table ไม่ scroll แนวนอน**
+- อธิบายปัญหา: ใน mobile (390px viewport) — table กว้าง 894px แต่ container 330px และ table ไม่สามารถ scroll แนวนอนได้
+- ผลกระทบ: user มือถือไม่เห็นคอลัมน์ครึ่งหลังของตาราง (มิเตอร์ล่าสุด, อัปเดตล่าสุด, การกระทำ)
+
+**BUG-004: Unwanted cascading request เมื่อ page load**
+- อธิบายปัญหา: มี `/api/itam/devices/cascading?field=building&site=HQ` auto-request เมื่อ page load โดย user ยังไม่ได้เลือก site/building ใดๆ
+- ผลกระทบ: เปลือง bandwidth + server load โดยไม่จำเป็น
+
+**BUG-005: Page size inconsistency**
+- อธิบายปัญหา: UI pagination บอก page size = 50 (default) แต่ API request ใช้ `limit=500`
+- ผลกระทบ: ค่าใน UI หลอก user — บอกว่าแสดง 50 แต่จริงๆ โหลด 500
+
+##### 🟡 Medium (4 ตัว)
+
+**BUG-003: Form inputs ไม่มี `id` และ `name` (Accessibility)**
+- อธิบายปัญหา: ทุก input ในฟอร์มเพิ่มอุปกรณ์ (ยกเว้น `dev-assetSiteCode`) ไม่มี `id` และ `name` (id="", name="")
+- ผลกระทบ: Label ไม่ click ได้, Screen reader ไม่ประกาศ label, Browser autofill ไม่ทำงาน
+- ละเมิด WCAG 2.1: SC 1.3.1, SC 3.3.2, SC 4.1.2
+
+**BUG-007: Empty filter dropdown ไม่มี empty state message**
+- อธิบายปัญหา: Site filter มีแค่ "สาขาทั้งหมด" — เมื่อ DB ไม่มีข้อมูล sites ก็ไม่บอก user ว่า "ยังไม่มีสาขาในระบบ"
+- ผลกระทบ: user สับสนว่าระบบพังหรือไม่มีข้อมูล
+
+**BUG-008: Dropdown ไม่ปิดด้วย Escape key**
+- อธิบายปัญหา: เปิด filter dropdown แล้วกด Escape 2 ครั้ง dropdown ยังไม่ปิด — ต้องคลิกข้างนอก
+- ผลกระทบ: ผิดจาก convention มาตรฐาน (Esc = ปิด)
+
+**BUG-013: Misleading aria-label "Notifications alt+T"**
+- อธิบายปัญหา: region มี `aria-label="Notifications alt+T"` แต่กด Alt+T จริงๆ เปิด "Global Search" ไม่ใช่ Notifications
+- ผลกระทบ: user สับสน — label บอกอย่าง ปุ่มทำอย่าง
+
+##### 🟢 Low (9 ตัว — cosmetic)
+
+**BUG-014:** Date pickers มี spinbutton Month/Day/Year = 0 (placeholder ไม่ชัดเจน)
+**BUG-015:** ไม่มี toast หลัง Refresh button (no feedback)
+**BUG-016:** "พิมพ์สติกเกอร์" disabled ไม่มี tooltip บอกเหตุผล
+**BUG-017:** ไม่มี `aria-keyshortcuts` attributes บน shortcut buttons
+**BUG-018:** Logout button ไม่เห็นใน desktop collapsed sidebar
+**BUG-019:** Dialog ไม่มี focus trap (Tab ออกจาก dialog ได้)
+**BUG-020:** Search box ไม่มี clear (×) button
+**BUG-021:** Filter chip ไม่แสดงค่าที่เลือกแบบ visual badge
+**BUG-022:** ไม่มี skeleton loader ตอนรอ data (white flash)
+
+### Priority สำหรับ ITAM-01:
+1. 🔴 **P0 (ด่วนที่สุด):** BUG-001, BUG-006 — ทำให้ฟีเจอร์หลักใช้ได้ (เพิ่ม device + pagination)
+2. 🔴 **P0 (ด่วน):** BUG-002 — กระทบ production performance
+3. 🟠 **P1:** BUG-009, BUG-010, BUG-012 — CSV import/export + global search
+4. 🟡 **P2:** BUG-003, BUG-004, BUG-005, BUG-007, BUG-008, BUG-013 — UX/a11y
+5. 🟢 **P3:** BUG-014 ถึง BUG-022 — cosmetic/polish
+
+### หลักฐาน:
+- 📄 เอกสารฉบับเต็ม: `/home/z/my-project/qa-reports/QA-DEVICES-001.md`
+- 📸 Screenshots: `/home/z/my-project/qa-videos/step-*.png` (11 รูป)
+
+---
+
