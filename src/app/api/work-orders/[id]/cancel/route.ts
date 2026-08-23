@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notifyWorkOrderCancelled } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { releaseStockReservation } from '@/lib/stock-calculation'
 
 async function logAudit(
   action: string,
@@ -100,32 +101,17 @@ export async function POST(
       result.woSite,
     )
 
-    // ── GAP-H06: Cascade cancel to pending stock requests ──
-    // Legacy: Services/code.gs lines 4046-4131 — when a WO is cancelled,
-    // all pending stock requests linked to that WO should also be cancelled.
+    // ── GAP-H06: Cascade cancel to pending stock requests (single source of truth) ──
     try {
-      const pendingStockTxns = await db.stockTransaction.findMany({
-        where: {
-          workOrderId: wo.id,
-          approvalStatus: 'PENDING',
-        },
-        select: { id: true },
+      const { released } = await releaseStockReservation({
+        workOrderId: wo.id,
+        reason: `ใบงาน ${updated.woNumber ?? wo.id} ถูกยกเลิก: ${reasonStr}`,
       })
-      if (pendingStockTxns.length > 0) {
-        await db.stockTransaction.updateMany({
-          where: {
-            id: { in: pendingStockTxns.map((t) => t.id) },
-          },
-          data: {
-            approvalStatus: 'REJECTED',
-            rejectReason: `ยกเลิกอัตโนมัติ — ใบงาน ${updated.woNumber ?? wo.id} ถูกยกเลิก: ${reasonStr}`,
-          },
-        })
-        console.log(`[wo-cancel] Cancelled ${pendingStockTxns.length} pending stock requests for WO ${wo.id}`)
+      if (released > 0) {
+        console.log(`[wo-cancel] Released ${released} stock reservations for WO ${wo.id}`)
       }
     } catch (e) {
       console.error('[wo-cancel] Stock cascade cancel failed:', e)
-      // Don't fail the WO cancellation — just log the error
     }
 
     // ── Notification trigger (Task ID: NOTIFY-LINE) ──
