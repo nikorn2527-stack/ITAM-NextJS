@@ -217,7 +217,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('GET /api/sites/comparison', err)
     return NextResponse.json(
-      { error: 'Failed to compute site comparison' },
+      { error: err instanceof Error ? err.message : 'Failed to compute site comparison' },
       { status: 500 },
     )
   }
