@@ -1,7 +1,6 @@
 {
   "buildCommand": "npx prisma generate && next build",
   "installCommand": "bun install",
-  "framework": "nextjs",
   "github": {
     "silent": true
   },
