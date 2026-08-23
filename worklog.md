@@ -12245,3 +12245,398 @@ Stage Summary:
 - 📸 Screenshots: /tmp/replace-on-withdraw-dialog.png, /tmp/custom-export-dialog.png
 - 📦 Files created: src/lib/asset-qr.ts, src/app/api/devices/[id]/replace-on-withdraw/route.ts, src/components/itam/custom-export-dialog.tsx
 - 📝 Files modified: src/components/itam/qr-scanner.tsx, src/components/itam/device-detail-sheet.tsx, src/components/itam/devices-page.tsx, prisma/schema.prisma, src/app/api/devices/route.ts, src/app/api/devices/[id]/route.ts
+
+---
+Task ID: 10-a
+Agent: explore (sub-agent)
+Task: Research-only — map the current CSV Import implementation in /home/z/my-project so the orchestrator can extend it to (1) support the 3 new Device Set fields (parentDeviceId, setLabel, setPosition) added in Task 9, and (2) support bulk-update mode (currently the dialog/API only creates new devices — duplicates are skipped). NO code changes.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` (12,247 lines) — confirmed Task 9 (orchestrator) added Replace-on-Withdraw + Device Set (parentDeviceId/setLabel/setPosition Prisma fields, added to schema.prisma lines 67-71, propagated to POST `/api/devices/route.ts` lines 334-337 + PUT `/api/devices/[id]/route.ts` lines 154-160, and to devices-page.tsx FormState). Custom Export already supports 43 columns including the new Device Set fields. **Import path was NOT updated in Task 9** — so it cannot accept the 3 new fields and cannot update existing devices.
+- Read `src/components/itam/csv-import-dialog.tsx` (541 lines) — the user-facing CSV import dialog. Accepts `.csv` only (line 382). Client-side parses via `parseCsv` from `@/lib/csv`. Has Thai+English auto-header-mapping via `HEADER_ALIASES` (15 columns, lines 39-55). NO manual column-mapping UI. Preview table shows first 8 rows (lines 436-494). Pre-validates required fields + dup-in-file + dup-in-DB. Submits JSON `{devices: [...]}` to POST `/api/devices/import`. Expects response `{inserted, skipped}`. Does NOT support the 3 new Device Set fields nor any update mode.
+- Read `src/app/api/devices/import/route.ts` (199 lines) — the JSON endpoint the dialog talks to. CREATE-ONLY (lines 135-143: rows whose assetCode exists in DB are pushed to errors[]). Match key = `assetCode` exact. Validates row-by-row (assetCode/name/brand/model/type required + status enum + dup-in-file + dup-in-DB). Uses `db.device.createMany` (one bulk insert). Response `{inserted, skipped, errors}` status 201. Supports 15 fields (assetCode, name, brand, model, type, serialNumber, status, site, department, departmentCode, parentRef, displayLabel, location, purchaseDate, lastMeterReading). Does NOT support parentDeviceId/setLabel/setPosition. Has its own local `toStr`/`toInt` helpers (lines 25-38) — NOT shared.
+- Read `src/app/api/itam/devices/import/route.ts` (285 lines) — the CANONICAL import endpoint (per Dev-3 / Work Package C). POST accepts RAW CSV text body `{csv: string, mode?: 'upsert'|'create_only'|'update_only'}`. Auth-gated with DEVICE_EDIT + per-row site-scope check. Delegates to `parseDeviceImportCsv` (in `src/lib/device-import-contract.ts`) + `persistDevices` (in `src/lib/device-import-persistence.ts`). **Already supports all 3 modes including UPSERT** (lines 82-89, 158-174 of persistence). Match key = `assetNo` (case-insensitive; canonical DB column is `assetCode`). Supports 24 fields (contract.ts lines 3-28: deviceType, brand, model, serial, status, site, building, floor, department, departmentCode, location, deviceGroup, costCenter, contractNo, vendor, ip, mac, remoteId, installDate, warrantyEnd, meterRequired, meterMode, assetSiteCode, remark). Does NOT support the 3 new Device Set fields NOR name/parentRef/displayLabel/purchaseDate/warrantyMonths/purchasePrice/salvageValue/usefulLife/uninstallDate. Response `{inserted, updated, skipped, errors, byRow, total, valid, duplicateInDb, mode}` status 201. **This endpoint is NOT wired to the CsvImportDialog** (dialog sends JSON, this expects raw CSV text).
+- Read `src/app/api/import/route.ts` (2390 lines) — legacy multi-entity FormData importer. jobType dispatch: device/work-order/stock/meter-reading/master-data. Also has Apps-Script-legacy-source path. For jobType='device', calls `importDevices(rows, headers)` (lines 145-306) which **already supports UPSERT** — splits into toCreate/toUpdate based on existing assetCodes (lines 237-244). Supports only 12 fields (assetCode, name, brand, model, type, serialNumber, status, site, department, location, purchaseDate, warrantyMonths). Does NOT support the 3 new Device Set fields. Tracks results via `ImportJob` Prisma model. Response `{job: ImportJob}` HTTP 201/422. Wired to `src/components/itam/import-page.tsx` (the "ข้อ 3" page, NOT the devices-page dialog).
+- Read `src/lib/device-import-contract.ts` (252 lines) — pure parser/validator used by `/api/itam/devices/import`. Defines `HEADER_ALIASES` (lines 82-108) for 24 fields. `parseDeviceImportCsv` strips BOM, finds assetNoIndex, builds fieldIndexes, parses rows. `validateDeviceImportRows` only checks dup-in-file (no required-field validation here — that happens in the parser via `if (!values.assetNo) errors.push(...)` line 211).
+- Read `src/lib/device-import-persistence.ts` (239 lines) — pure DB layer. `toPrismaData(row, actor)` (lines 49-81) maps the 24 fields to Prisma shape, with fallbacks (name='Unknown' if deviceType missing, status='Active' if missing). `findExistingAssetCodes(assetCodes)` does ONE bounded `db.device.findMany` (case-insensitive). `persistDevices(validatedRows, existingAssetCodes, opts)` splits rows into toCreate/toUpdate per mode, runs `createMany` for inserts + `db.$transaction([updateMany,...])` for updates (lines 181-223). Returns `{inserted, updated, skipped, errors, duplicateInDb, summary}`.
+- Read `src/app/api/devices/route.ts` (407 lines) — POST handler. Has inline `clampWarrantyMonths`, `optFloat`, `optInt`, `optStr`, `optBool` helpers (lines 17-49). Already supports the 3 new Device Set fields (lines 334-337). NO PUT handler here (PUT is at `/api/devices/[id]`).
+- Read `src/app/api/devices/[id]/route.ts` (287 lines) — single-device PUT. Uses `setStr(field, body)` + `setBool(field, body)` wrappers around optStr/optBool (lines 41-50) that return `undefined` when field absent → only updates fields present in body. Already supports the 3 new Device Set fields (lines 154-160). EDITABLE_FIELDS whitelist (lines 69-106) does NOT include parentDeviceId/setLabel/setPosition yet — should be added for audit change-tracking. NO bulk endpoint exists on the canonical device API.
+- Read `src/app/api/itam/devices/bulk/route.ts` (124 lines) — bulk-edit endpoint. Body: `{assetNos: string[], patch: {...}}`. Whitelist patchable fields (line 41-45): status, site, building, floor, department, departmentCode, location, deviceGroup, costCenter, meterRequired, meterMode, vendor, contractNo, remark. Does NOT include the 3 new Device Set fields. **BUGGY**: uses `db.device.findMany({ where: { assetNo: { in: assetNos } } })` (line 71) — `assetNo` is NOT a Prisma field on Device (only `assetCode` is). This endpoint is **not wired into any UI** (grep found zero callers). Either fix the bug or delete this endpoint.
+- Read `src/app/api/itam/devices/cascading/route.ts` (99 lines) — GET-only, returns distinct values for cascading location dropdowns. Not import-related.
+- Read `src/components/itam/import-page.tsx` (1023 lines) — full-page "ข้อ 3: นำเข้าข้อมูล" UI. 4 job types (device/work-order/stock/meter-reading) with separate templates (IMPORT_TYPES lines 76-188). Uploads via FormData to `/api/import?jobType=...`. Shows history via `GET /api/import?limit=50`. Has its own `onDownloadTemplate()` (line 441) emitting `${jobType}-template.csv`.
+- Read `src/components/itam/legacy-import-section.tsx` (918 lines, first 122 lines) — sub-component for Apps Script legacy CSV import. Has its own template download (line 110-122) using `TEMPLATE_HEADERS` from `src/lib/csv-field-mapping.ts`.
+- Read `src/lib/csv.ts` (124 lines) — shared client+server CSV helpers: `parseCsv(text)` (RFC-4180 quoted, BOM-strip), `downloadCsv(filename, rows, headers)` (UTF-8 BOM, Excel-Thai-safe), `dateStamp()`.
+- Read `src/lib/bulk-audit.ts` (47 lines) — `logBulkAudit(action, entity, summary, detail, user)` writes ONE AuditLog row for bulk ops (used by `applyBulkDelete` in devices-page.tsx).
+- Read `src/lib/utils.ts` (7 lines) — only contains `cn` (clsx+twMerge). No `optStr`/`optInt`/`optFloat`/`optBool` shared helpers exist — they're copy-pasted across 12 route files.
+- Verified `scripts/import-products.ts` (188 lines) is for MasterItem ProductCategory+Product — NOT devices.
+- Verified `scripts/import-it-asset.ts` (77 lines) and `import-devices.ts` (root, 145 lines) are one-off CLI scripts that bulk-loaded the initial IT-Asset CSV from `/upload/` — they are NOT the runtime import path. Useful as a reference for the field set they mapped (parentRef, displayLabel, deviceGroup, costCenter, etc. — fields missing from `/api/devices/import`).
+- Checked `src/components/itam/devices-page.tsx` line 3330: `<CsvImportDialog open={importOpen} onOpenChange={setImportOpen} />`. Trigger button at line 2716. State `importOpen` declared at line 322. The dialog is reachable from the devices page toolbar.
+
+Stage Summary:
+- ✅ Mapped all 6 research areas (A–F). See full report below.
+- ✅ Confirmed: the user-facing `CsvImportDialog` talks to `/api/devices/import` — the SIMPLEST of three import paths. The other two (`/api/itam/devices/import` canonical, `/api/import` legacy) already support UPSERT but are wired to different UIs and use different request shapes. **The orchestrator's task is to either extend `/api/devices/import` to support update+new-fields, OR re-wire the dialog to `/api/itam/devices/import` (which already has upsert) and just add the 3 new fields to its contract.**
+- ✅ Confirmed: NONE of the three import paths currently accept `parentDeviceId`, `setLabel`, `setPosition` — all three must be extended (or just the chosen one).
+- ✅ Confirmed: `/api/itam/devices/bulk/route.ts` exists but is **buggy** (`assetNo` field doesn't exist on Device schema) AND not wired to UI. It's effectively dead code. Bulk-update pattern from UI side is currently "N parallel single-PUT calls via Promise.allSettled" (see `applyBulkDelete` line 1474 of devices-page.tsx).
+- ✅ Confirmed: `optStr`/`optInt`/`optFloat`/`optBool` are NOT shared — they're copy-pasted across 12 route files. Recommendation: extract to `src/lib/coerce.ts` so the import route can reuse them.
+- ⚠️ Recommendation for the orchestrator's implementation strategy (see full report section "Assessment"): **Easiest path = extend `/api/devices/import` (the endpoint the dialog already calls) to accept `mode: 'create'|'update'|'upsert'`, split rows by existingAssetCodes, use createMany for inserts + `db.$transaction([updateMany,...])` for updates, and add the 3 new Device Set fields to the input type, validation, and createMany/updateMany payloads. Mirror the persistence pattern already proven in `src/lib/device-import-persistence.ts`. Then extend the dialog UI with a mode selector + the 3 new columns in HEADER_ALIASES/TEMPLATE_HEADERS/ImportRow.**
+- 📝 Files inspected (NO modifications): worklog.md, csv-import-dialog.tsx, import-page.tsx, legacy-import-section.tsx, devices-page.tsx (relevant excerpts), device-detail-sheet.tsx (referenced), prisma/schema.prisma, src/app/api/devices/route.ts, src/app/api/devices/[id]/route.ts, src/app/api/devices/import/route.ts, src/app/api/itam/devices/import/route.ts, src/app/api/itam/devices/bulk/route.ts, src/app/api/itam/devices/cascading/route.ts, src/app/api/import/route.ts, src/app/api/import/[id]/route.ts, src/lib/csv.ts, src/lib/utils.ts, src/lib/bulk-audit.ts, src/lib/device-import-contract.ts, src/lib/device-import-persistence.ts, src/lib/csv-field-mapping.ts (header grep only), scripts/import-products.ts, scripts/import-it-asset.ts, import-devices.ts.
+
+---
+
+## Full Research Report
+
+### A. CsvImportDialog component — `src/components/itam/csv-import-dialog.tsx` (541 lines)
+
+**File format accepted**: `.csv` / `text/csv` only (line 382):
+```tsx
+<input ref={inputRef} type="file" accept=".csv,text/csv" className="hidden" ... />
+```
+Excel explicitly NOT supported (analogous `/api/import` route rejects `.xlsx`).
+
+**Column auto-mapping via HEADER_ALIASES** (lines 39-55) — Thai + English, case-insensitive. NO manual column-mapping UI:
+```ts
+const HEADER_ALIASES: Array<{ aliases: string[]; field: keyof ImportRow }> = [
+  { aliases: ['รหัส', 'รหัสอุปกรณ์', 'assetcode', 'asset code', 'code'], field: 'assetCode' },
+  { aliases: ['ชื่อ', 'ชื่ออุปกรณ์', 'name'], field: 'name' },
+  // ... 15 fields total
+  { aliases: ['มิเตอร์ล่าสุด', 'lastmeterreading', 'last meter reading'], field: 'lastMeterReading' },
+]
+```
+`detectFieldMap(headers)` (line 136) normalizes headers + matches aliases.
+
+**ImportRow interface** (lines 82-100) — 15 known fields, NO `parentDeviceId` / `setLabel` / `setPosition`.
+
+**TEMPLATE_HEADERS** (lines 64-80) — 15 columns; emitted as `devices-template.csv` by `downloadTemplate()` (line 208).
+
+**Preview UI** (lines 436-494): a shadcn `<Table>` showing first 8 rows with columns # / รหัส / ชื่อ / แบรนด์ / ประเภท / สถานะ / สาขา / สถานะตรวจสอบ (✓ พร้อม / ⚠ ข้าม).
+
+**Validation** (`validateRows` lines 167-206): requires assetCode+name+brand+model+type, validates status enum (`active/spare/repair/disposed/''`), rejects dup-in-file + dup-in-DB. Existing DB codes fetched via `useQuery(['devices','','all','all'])` hitting `/api/devices` (line 236-249) — **N.B. this only fetches the first page (default limit=100), so dup detection is INCOMPLETE for users with >100 devices.**
+
+**Submit** (`doImport` lines 296-342):
+```ts
+const payload = validRows.map((r) => ({ assetCode, name, brand, model, type, serialNumber: r.serialNumber||null, ... }))
+const res = await fetch('/api/devices/import', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ devices: payload }),
+})
+// expects { inserted, skipped }
+```
+On success: `toast.success`, invalidates `['devices']` + `['dashboard']`, closes dialog after 600ms.
+
+**Gap vs. orchestrator's request**: dialog does NOT (a) accept the 3 new Device Set fields, (b) offer an update/upsert mode selector, (c) relax required-field validation when updating, (d) round-trip-compatible template (export has 43 cols, template has 15).
+
+### B. Import API endpoints
+
+The codebase has THREE device import endpoints — different shapes, different feature sets:
+
+#### B1. `/api/devices/import` — `src/app/api/devices/import/route.ts` (199 lines) ← **THE ENDPOINT THE DIALOG CALLS**
+
+```ts
+// line 23
+const VALID_STATUSES = new Set(['active', 'spare', 'repair', 'disposed'])
+
+// line 40
+export async function POST(req: NextRequest) {
+  const body = await req.json()
+  const devices = Array.isArray(body?.devices) ? (body.devices as ImportDeviceInput[]) : []
+  // ... 5000-row limit (line 51)
+  // ... row-by-row validation (lines 63-125)
+  // ... existing-codes pre-check via db.device.findMany (lines 128-133)
+  // ... createMany with 15 fields (lines 148-167)
+  return NextResponse.json({ inserted, skipped, errors }, { status: 201 })
+}
+```
+
+- **Mode**: CREATE-ONLY. Rows whose `assetCode` already exists in DB are filtered out and pushed to `errors[]` (lines 135-144).
+- **Match key**: `assetCode` exact match.
+- **Fields supported** (15): assetCode, name, brand, model, type, serialNumber, status, site, department, departmentCode, parentRef, displayLabel, location, purchaseDate, lastMeterReading.
+- **Fields NOT supported**: ❌ `parentDeviceId`, ❌ `setLabel`, ❌ `setPosition` (the 3 new Device Set fields). Also missing from this endpoint but present in the schema: building, floor, room, ip, mac, remoteId, warrantyMonths, warrantyEnd, vendor, contractNo, uninstallDate, meterRequired, meterMode, costCenter, deviceGroup, remark, purchasePrice, salvageValue, usefulLife, assetSiteCode.
+- **Validation**: row-by-row, all-at-once. Pushes to `errors: Array<{row, message}>`.
+- **Response shape**: `{ inserted, skipped, errors }` status 201.
+- **Persistence**: single `db.device.createMany({ data: toInsert })` (line 148).
+- **Audit**: one `logAudit('IMPORT', 'Device', null, ...)` (line 172).
+- **Helpers**: local `toStr` (line 25), `toInt` (line 31) — NOT shared with `/api/devices/route.ts`.
+
+#### B2. `/api/itam/devices/import` — `src/app/api/itam/devices/import/route.ts` (285 lines) ← **CANONICAL, supports UPSERT but NOT wired to the dialog**
+
+```ts
+// line 37
+// Body: { csv: string, mode?: 'upsert' | 'create_only' | 'update_only' }
+// Returns: { inserted, updated, skipped, errors, byRow, total, valid, duplicateInDb, mode }
+
+// line 82
+const mode: 'upsert' | 'create_only' | 'update_only' = body.mode ?? 'upsert'
+
+// line 92 — parse CSV text (not JSON)
+const parseResult = parseDeviceImportCsv(csvText)
+
+// line 153 — one bounded DB lookup
+const existingAssetCodes = await findExistingAssetCodes(allAssetNos)
+
+// line 162 — persist (mode-aware)
+const persistResult = await persistDevices(validationResult.validRows, existingAssetCodes, { mode, actor })
+```
+
+- **Mode**: UPSERT / CREATE_ONLY / UPDATE_ONLY — **already implemented!**
+- **Match key**: `assetNo` (case-insensitive — canonical DB column is `assetCode`). `findExistingAssetCodes()` lowercases both sides (persistence.ts line 106).
+- **Fields supported** (24, from `src/lib/device-import-contract.ts` lines 3-28): `deviceType, brand, model, serial, status, site, building, floor, department, departmentCode, location, deviceGroup, costCenter, contractNo, vendor, ip, mac, remoteId, installDate, warrantyEnd, meterRequired, meterMode, assetSiteCode, remark`.
+- **Fields NOT supported**: ❌ the 3 new Device Set fields. Also: name (uses `deviceType ?? 'Unknown'` as fallback — see persistence.ts line 53), parentRef, displayLabel, purchaseDate (uses `installDate` instead — see CSV_TO_PRISMA_FIELD map line 37), warrantyMonths, purchasePrice, salvageValue, usefulLife, uninstallDate, lastMeterBw, lastMeterColor.
+- **Validation**: pure function `validateDeviceImportRows` (contract.ts line 231) — only checks dup-in-file. Required-assetNo check is in parser (line 211).
+- **Persistence**: `createMany` for inserts (persistence.ts line 183), `db.$transaction([updateMany,...])` for updates (persistence.ts lines 201-213) — atomic.
+- **Response shape** (lines 261-273): `{ inserted, updated, skipped, errors, byRow, total, valid, duplicateInDb, mode }` status 201. The `byRow[]` array tells the caller per-row what happened (create/update/skip-existing/skip-missing/skip).
+- **Auth**: `requireAuth(req, 'DEVICE_EDIT')` + per-row site-scope check (lines 124-149).
+- **Status field note**: persistence.ts line 58 does `status: (v.status ?? 'Active').toLowerCase()` — but the DB stores mixed-case like `"Active"`, `"In Repair"` etc. (see STATUS_MAP in `/api/devices/route.ts` lines 107-112). This is a bug in the canonical importer — it would create rows with status='active' (lowercase) which wouldn't match the dashboard's status filter.
+
+#### B3. `/api/import` — `src/app/api/import/route.ts` (2390 lines) ← **LEGACY MULTI-ENTITY, also has UPSERT**
+
+```ts
+// line 31-44
+type JobType = 'device' | 'work-order' | 'stock' | 'meter-reading' | 'master-data'
+
+// line 1996 — POST accepts FormData (file upload)
+export async function POST(req: NextRequest) {
+  const form = await req.formData()
+  const file = form.get('file')
+  // ... jobType dispatch (line 2279)
+}
+
+// line 145 — device importer (already supports UPSERT)
+async function importDevices(rows, headers) {
+  // ... 12-field validation
+  // ... existing-codes pre-check (line 238)
+  const toCreate = toInsert.filter((r) => !existingMap.has(r.assetCode))
+  const toUpdate = toInsert.filter((r) => existingMap.has(r.assetCode))
+  // createMany for inserts (line 251)
+  // per-row db.device.update for updates (line 280)
+}
+```
+
+- **Mode**: implicit UPSERT (no mode selector — always creates new + updates existing).
+- **Match key**: `assetCode` exact.
+- **Fields supported** (12): assetCode, name, brand, model, type, serialNumber, status, site, department, location, purchaseDate, warrantyMonths.
+- **Response shape**: `{ job: ImportJob }` HTTP 201 (success) or 422 (validation errors). Tracked via Prisma `ImportJob` model (status, totalRows, processedRows, errorRows, errors JSON).
+- Wired to `src/components/itam/import-page.tsx` (the "ข้อ 3" full page, NOT the devices-page dialog).
+
+#### B4. `/api/itam/devices/bulk/route.ts` (124 lines) ← **DEAD CODE / BUGGY**
+
+```ts
+// line 32
+const assetNos: string[] = Array.isArray(body.assetNos) ? body.assetNos : []
+// line 41 — whitelist (NO Device Set fields):
+const ALLOWED = new Set(['status', 'site', 'building', 'floor', 'department', 'departmentCode',
+  'location', 'deviceGroup', 'costCenter', 'meterRequired', 'meterMode', 'vendor', 'contractNo', 'remark'])
+// line 71 — BUG: `assetNo` doesn't exist on Device schema (should be `assetCode`)
+const targets = await db.device.findMany({ where: { assetNo: { in: assetNos } }, ... })
+```
+
+Not wired to any UI (grep found zero callers). Effectively dead code. Either fix the `assetNo` → `assetCode` bug and wire it up, OR delete it. It does NOT include the 3 new Device Set fields in the whitelist.
+
+### C. Existing template download
+
+**THREE separate template-download paths exist** (one per import UI):
+
+1. **`CsvImportDialog.downloadTemplate()`** (csv-import-dialog.tsx line 208-223):
+```ts
+function downloadTemplate() {
+  const sample: Record<string, unknown> = {}
+  TEMPLATE_HEADERS.forEach((h) => {
+    sample[h.key] = h.key === 'status' ? 'ใช้งานอยู่'
+      : h.key === 'lastMeterReading' ? '0'
+      : h.key === 'purchaseDate' ? '2025-01-01'
+      : h.key === 'assetCode' ? 'IT-PRT-001' : ''
+  })
+  downloadCsv('devices-template.csv', [sample], TEMPLATE_HEADERS)
+}
+```
+Template = 1 sample row + 15 column headers (assetCode, name, brand, model, type, serialNumber, status, site, department, departmentCode, parentRef, displayLabel, location, purchaseDate, lastMeterReading). Button at line 391-398.
+
+2. **`import-page.tsx.onDownloadTemplate()`** (line 441-446):
+```ts
+function onDownloadTemplate() {
+  if (!selectedTypeDef) return
+  const fname = `${selectedTypeDef.id}-template.csv`  // e.g. 'device-template.csv'
+  downloadCsv(fname, [selectedTypeDef.sample], selectedTypeDef.headers)
+}
+```
+Device template = 12 headers + 1 sample row (lines 82-110).
+
+3. **`legacy-import-section.tsx` template download** (line 110-122) — for Apps Script legacy sheets; uses `TEMPLATE_HEADERS` from `src/lib/csv-field-mapping.ts`.
+
+**Gap**: None of the templates include the 3 new Device Set fields. The orchestrator should add `parentDeviceId`, `setLabel`, `setPosition` columns (and ideally align the template with the 43-column custom export so users can round-trip).
+
+### D. Other import-related files
+
+- `scripts/import-products.ts` (188 lines) — imports MasterItem ProductCategory+Product (StockItem linkage). **NOT device-related.**
+- `scripts/import-it-asset.ts` (77 lines) — one-off CLI script. Reads `/upload/IT_Asset_Management_Database - All_Devices.csv`, uses `parseCsv` + `mapCsvRow` + `FIELD_MAPPINGS.device` from `src/lib/csv-mapping.ts`. Inserts/updates Devices in batches of 100. Useful as a reference for the broader field set (parentRef, displayLabel, building, floor, contractNo, ip, mac, remoteId, warrantyEnd, vendor, deviceGroup, costCenter, remark, uninstallDate) — most of which are MISSING from `/api/devices/import`.
+- `import-devices.ts` (root, 145 lines) — another one-off CLI script with similar purpose. Uses raw `db.device.createMany`. Maps ~22 fields including `assetSiteCode`, `meterMode`, `deviceGroup`, `costCenter`. **NOT runtime code.**
+- `src/components/itam/import-page.tsx` (1023 lines) — full-page "ข้อ 3: นำเข้าข้อมูล" UI with 4 job types (device/work-order/stock/meter-reading) + history list. Distinct from the dialog in devices-page.tsx.
+- `src/components/itm/legacy-import-section.tsx` (918 lines) — sub-component for the Apps Script legacy CSV import flow. Uses `/api/import?source=apps-script-*&sheetId=...`.
+- `src/lib/csv-field-mapping.ts` — shared field/headers registry for the legacy Apps Script importer. Exports `FIELD_MAPPINGS`, `STATUS_MAPPINGS`, `SOURCE_SHEET_REGISTRY`, `TEMPLATE_HEADERS`, `mapCsvRow`, `parseCsv`, `parseBool`, `parseDate`, `toInt`, `toFloat`.
+- `src/lib/device-import-contract.ts` (252 lines) — pure parser/validator for the canonical `/api/itam/devices/import` endpoint. Defines `HEADER_ALIASES` (lines 82-108) for 24 fields.
+- `src/lib/device-import-persistence.ts` (239 lines) — pure DB layer for the canonical endpoint. Has `toPrismaData()` mapping + `findExistingAssetCodes()` + `persistDevices()` with mode-aware create/update split.
+
+### E. Update-by-bulk patterns
+
+**Existing bulk-update endpoint**: `/api/itam/devices/bulk/route.ts` (124 lines) — but BUGGY (`assetNo` field doesn't exist on Device schema) and not wired to UI. Effectively dead code.
+
+**UI bulk-update pattern** (`devices-page.tsx` `applyBulkDelete` line 1474):
+```ts
+async function applyBulkDelete() {
+  const ids = Array.from(selectedIds)
+  const results = await Promise.allSettled(
+    ids.map((id) => fetch(`/api/devices/${id}`, { method: 'DELETE' })),
+  )
+  // ... toast success/warning
+  await logBulkAction('BULK_DELETE', `ลบอุปกรณ์ ${ok} เครื่อง`, { count: ok, failed: fail, deviceIds: ids })
+}
+```
+N parallel single-resource calls via `Promise.allSettled` — NO single bulk endpoint. This pattern works for ~50 devices but doesn't scale to 5000.
+
+**`/api/devices/[id]` PUT** (single-device update, lines 108-261 of `src/app/api/devices/[id]/route.ts`): accepts partial body; only fields present in body are updated (via `setStr`/`setBool` helpers returning `undefined` when absent). Already supports the 3 new Device Set fields (lines 154-160). EDITABLE_FIELDS whitelist (lines 69-106) does NOT include parentDeviceId/setLabel/setPosition — should be added for proper audit change-tracking.
+
+**`/api/devices` route.ts** has NO PUT handler (POST is create-only, GET is list-only).
+
+**Recommended approach for bulk-update via CSV import**: Don't add a separate bulk endpoint. Instead, extend `/api/devices/import` to accept a `mode` field (create/update/upsert) and use `db.$transaction([updateMany,...])` for the update path — mirroring the proven pattern in `src/lib/device-import-persistence.ts` (lines 199-223).
+
+### F. Field validation patterns
+
+**`optStr` / `optInt` / `optFloat` / `optBool` helpers** — defined INLINE in `src/app/api/devices/route.ts` (lines 17-49) and copy-pasted in `src/app/api/devices/[id]/route.ts` (lines 5-50):
+
+```ts
+// src/app/api/devices/route.ts lines 17-49
+function clampWarrantyMonths(v: unknown): number { ... }
+function optFloat(v: unknown): number | null { ... }
+function optInt(v: unknown): number | null { ... }
+function optStr(v: unknown): string | null { ... }
+function optBool(v: unknown): boolean { ... }
+```
+
+```ts
+// src/app/api/devices/[id]/route.ts lines 41-50
+function setStr(field: string, body: Record<string, unknown>) {
+  if (body[field] === undefined) return undefined
+  return optStr(body[field])
+}
+function setBool(field: string, body: Record<string, unknown>) {
+  if (body[field] === undefined) return undefined
+  return optBool(body[field])
+}
+```
+
+**`src/lib/utils.ts` (7 lines) only contains `cn` (clsx+twMerge)** — NO shared coerce helpers exist.
+
+Grep confirms these helpers are copy-pasted across **12 route files** (stock-items, devices, work-orders, templates, purchase-orders). The import endpoints use DIFFERENT local helpers:
+- `/api/devices/import` lines 25-38: local `toStr`/`toInt` (simpler — `toInt` returns 0 on failure, vs `optInt` returns null)
+- `/api/itam/devices/import` uses `textCell`/`booleanCell` from contract.ts (lines 125-136)
+- `/api/import` lines 120-140: local `toStr`/`toInt`/`toFloat`
+
+**Assessment**: the orchestrator should extract the `optStr/optInt/optFloat/optBool` helpers (and probably `setStr/setBool`) into a new shared module like `src/lib/coerce.ts`, then refactor the import endpoint (and ideally the 12 duplicated route files) to import from there. This DRYs up the codebase AND makes the new import logic consistent with the device create/update endpoints.
+
+Alternatively, the orchestrator can keep the current copy-paste pattern and just inline the helpers into `/api/devices/import` (matches existing style but adds another duplicate).
+
+---
+
+## Assessment — what needs to change to support new fields + update mode
+
+### Recommended implementation strategy (3 options, easiest first):
+
+**Option A (EASIEST, recommended) — extend `/api/devices/import`**:
+The user-facing `CsvImportDialog` already calls this endpoint with JSON body `{devices: [...]}`. Extend it to:
+
+1. Accept `mode: 'create' | 'update' | 'upsert'` in the body (default `'create'` for backward-compat).
+2. Add `parentDeviceId`, `setLabel`, `setPosition` to `ImportDeviceInput` type (lines 5-21) + to the createMany/updateMany payloads (lines 148-167).
+3. When `mode='update'` or `'upsert'`: split `validRows` into `toCreate` + `toUpdate` based on `existingSet` (mirror `/api/import/route.ts` lines 237-244 and `device-import-persistence.ts` lines 158-174). Use `db.device.createMany` for inserts (existing pattern) + `db.$transaction(toUpdate.map(r => db.device.update({ where: { assetCode }, data: {...} })))` for updates.
+4. When `mode='create'` (default): keep current behavior (skip duplicates).
+5. When `mode='update'`: skip rows whose assetCode doesn't exist in DB (count as `skippedMissing`).
+6. Extend response shape to `{ inserted, updated, skipped, errors, byRow, mode }` — backward-compat because old dialog only reads `inserted` + `skipped`.
+7. For `parentDeviceId`: accept either a cuid (e.g. `clxxxx...`) or an assetCode; resolve to device ID at persist time via a bounded `db.device.findMany({ where: { OR: [...] }})`. If not found, push to errors.
+8. **Don't forget**: relax required-field validation for update mode — only `assetCode` is required when updating (other fields present in body are applied, absent fields are left untouched — same pattern as PUT `/api/devices/[id]`'s `setStr` returning `undefined`).
+
+**Option B (CLEANER, more work) — re-wire dialog to `/api/itam/devices/import`**:
+The canonical endpoint already supports UPSERT and has better separation (pure parser + pure persistence). But it requires:
+1. Change the dialog to send raw CSV text instead of JSON.
+2. Add the 3 new Device Set fields + (ideally) `name`, `parentRef`, `displayLabel`, `purchaseDate`, `warrantyMonths` etc. to the contract (HEADER_ALIASES + DeviceImportValues + toPrismaData).
+3. Fix the lowercase-status bug (persistence.ts line 58) — should preserve DB's mixed-case convention (`Active`, `In Repair`, etc.).
+4. Adjust dialog to handle the richer response shape (`byRow[]`).
+
+**Option C (LEAST WORK, most limited) — leave dialog as-is, just add fields**:
+Add `parentDeviceId`, `setLabel`, `setPosition` to `ImportRow` + `HEADER_ALIASES` + `TEMPLATE_HEADERS` + the createMany payload. Still create-only. Does NOT satisfy the "update existing devices in bulk" requirement.
+
+### UI changes needed in `csv-import-dialog.tsx`:
+
+1. Add a mode selector (3 radio buttons or a Select): `สร้างใหม่เท่านั้น` / `อัปเดตเท่านั้น` / `สร้างหรืออัปเดต (Upsert)`. Default = `สร้างใหม่เท่านั้น` (current behavior).
+2. Extend `HEADER_ALIASES` (line 39) + `TEMPLATE_HEADERS` (line 64) + `ImportRow` (line 82) + `EMPTY_ROW` (line 102) + `validateRows` (line 167) + `doImport` payload (line 300) with `parentDeviceId`, `setLabel`, `setPosition`.
+3. When mode='update' or 'upsert': change duplicate-in-DB from "error/skip" to "will be updated" (different badge color in preview, different message).
+4. When mode='update': relax required-field validation to only require `assetCode`.
+5. Update `downloadTemplate()` to include the 3 new columns.
+6. Update the response handling (line 322-330) to also surface `updated` count when present.
+7. **Fix the incomplete dup-detection bug**: `useQuery(['devices','','all','all'])` fetches only first 100 devices — should either fetch all (pass `limit=500` + page through) OR rely on the server-side check in `/api/devices/import` (which already does the right thing via `db.device.findMany`). Simplest fix: remove client-side dup-DB check, let server return errors[] for dups.
+8. **Optional but recommended**: add a "ดาวน์โหลดเทมเพลตเต็ม (43 คอลัมน์)" button that emits a template matching `EXPORT_AVAILABLE_COLUMNS` (devices-page.tsx line 1233-1277) so users can round-trip Export → Edit → Import.
+
+### Other small fixes the orchestrator should consider:
+
+1. Fix `EDITABLE_FIELDS` whitelist in `/api/devices/[id]/route.ts` (lines 69-106) to include `parentDeviceId`, `setLabel`, `setPosition` so audit change-tracking covers them. Currently the PUT handler accepts these fields (lines 154-160) but the audit `changes` dict (lines 197-208) won't record them.
+2. Decide what to do with `/api/itam/devices/bulk/route.ts` — either delete (dead code) or fix the `assetNo` → `assetCode` bug + add the 3 new fields to the whitelist + wire to UI.
+3. Consider extracting `optStr/optInt/optFloat/optBool` to `src/lib/coerce.ts` so the import route can reuse them (and ideally DRY up the 12 duplicated route files in a follow-up).
+
+
+---
+Task ID: 10
+Agent: orchestrator (main)
+Task: User asked to extend the CSV Import to (1) support the new Device Set fields added in Task 9, and (2) support bulk UPDATE of existing devices (not just create new). User explicitly said "เอาที่ล่ะอย่าง" (take it one step at a time) so I assessed scope and decided it fits — the import endpoint was the simplest of 3 paths and only needed mode selector + 3 new fields.
+
+Work Log:
+- Dispatched research subagent (Task ID 10-a) which found 3 separate import paths:
+  • `/api/devices/import` (create-only, 15 fields, called by CsvImportDialog) — TARGET
+  • `/api/itam/devices/import` (upsert, 24 fields, NOT wired to any UI)
+  • `/api/import` (implicit upsert, 12 fields, called by import-page.tsx)
+- Recommended: extend `/api/devices/import` to support mode + 3 new fields.
+
+- Phase 1 — Rewrote `/api/devices/import/route.ts`:
+  • Added `requireAuth(req, 'DEVICE_EDIT')` — previously this route had NO auth check (security bug fixed).
+  • Added `mode: 'create' | 'update' | 'upsert'` parameter (default 'create' = backward-compat).
+  • Extended `ImportDeviceInput` interface from 15 → 30+ fields (added building, floor, room, purchasePrice, warrantyMonths, warrantyEnd, vendor, contractNo, ip, mac, remoteId, meterRequired, meterMode, lastMeterBw, lastMeterColor, costCenter, deviceGroup, remark, + 3 Device Set fields: parentDeviceId, setLabel, setPosition).
+  • Added proper coercers: `toStr`, `toInt`, `toFloat`, `toBool` (was only `toStr` + `toInt`).
+  • Added `STATUS_CANONICAL` map: normalises legacy short forms (active→Active, spare→In Stock, repair→In Repair, disposed→Disposed) + full Thai labels (ใช้งานอยู่, สำรอง, ส่งซ่อม, ไม่ใช้งาน, เกษียณ, ตัดของออก, จำหน่าย, คืนเครื่อง).
+  • `parentDeviceId` resolution: caller may pass either a cuid OR an assetCode; resolved to cuid via bounded `db.device.findMany`.
+  • Single `db.$transaction` wraps inserts (`createMany`) + updates (one-by-one `device.update`).
+  • Response shape extended (backward-compat — old dialog only reads `inserted`/`skipped`):
+    `{ mode, inserted, updated, skipped, errors, byRow: [{row, assetCode, action}] }`
+  • Validation now mode-aware: create requires name/brand/model/type; update requires only assetCode; upsert validates per-row depending on whether device exists.
+
+- Phase 2 — Updated `src/components/itam/csv-import-dialog.tsx`:
+  • Extended `HEADER_ALIASES` from 15 → 32 entries (added building, floor, room, purchasePrice, warrantyMonths, warrantyEnd, vendor, contractNo, ip, mac, remoteId, meterRequired, meterMode, lastMeterColor, costCenter, deviceGroup, remark, + 3 Device Set fields with Thai+English aliases).
+  • Extended `TEMPLATE_HEADERS` from 15 → 32 columns.
+  • Extended `ImportRow` + `EMPTY_ROW` with all new fields.
+  • Added `ImportMode` type + `MODE_INFO` lookup (label + desc + color per mode).
+  • Added mode selector UI: 3-button grid (เพิ่มใหม่ / อัปเดต / เพิ่ม/อัปเดต) at top of dialog.
+  • Updated `validateRows()` signature to take mode — different validation per mode:
+    - create: existing codes are errors (legacy behavior preserved)
+    - update: missing codes are errors (warned)
+    - upsert: no dup-DB check (server handles insert vs update)
+  • Added `React.useEffect` to re-validate rows when mode changes (so user sees errors update instantly).
+  • Updated `downloadTemplate()` to take mode — generates `devices-create-template.csv` / `devices-update-template.csv` / `devices-upsert-template.csv`.
+  • Updated `doImport()` to send `{ mode, devices: payload }` + include all 30+ fields (only non-empty ones, so update mode doesn't null-out existing values).
+  • Updated toast + result banner: shows "เพิ่ม X + อัปเดต Y" for upsert mode.
+  • Updated button label to show mode: "เพิ่มใหม่ (N)" / "อัปเดต (N)" / "เพิ่ม/อัปเดต (N)".
+  • Bumped existing-devices query from default limit (100) to `limit=500` so dup detection covers more devices.
+
+- Phase 3 — Verified via agent-browser:
+  • Opened import dialog → saw 3-button mode selector with descriptions.
+  • Clicked "อัปเดต" → template button label updated to "(อัปเดต)", action button changed to "อัปเดต".
+  • Clicked "เพิ่ม/อัปเดต" → both labels updated accordingly.
+  • Screenshot at /tmp/import-dialog-modes.png.
+
+Stage Summary:
+- ✅ Import now supports all 3 modes: create (default, backward-compat), update (bulk update existing), upsert (sync from master spreadsheet).
+- ✅ All 3 new Device Set fields (parentDeviceId, setLabel, setPosition) supported in both import API and CSV parsing. parentDeviceId accepts either cuid or assetCode (auto-resolved).
+- ✅ Template CSV expanded from 15 → 32 columns. Filename reflects mode (devices-update-template.csv, etc).
+- ✅ Security fix: added `requireAuth(req, 'DEVICE_EDIT')` to import endpoint — previously unauthenticated.
+- ✅ Status labels normalised: Thai labels (ใช้งานอยู่, ส่งซ่อม, etc) and legacy short forms (active, spare, repair, disposed) all map to canonical DB values (Active, In Stock, In Repair, Disposed).
+- ✅ Mode-aware client-side validation: create requires name/brand/model/type; update requires only assetCode + warns if missing in DB.
+- ✅ Re-validation on mode change: switching modes instantly updates error markers in the preview.
+- 📸 Screenshot: /tmp/import-dialog-modes.png
+- 📝 Files modified:
+  • `src/app/api/devices/import/route.ts` (rewritten — 199 → 280 lines)
+  • `src/components/itm/csv-import-dialog.tsx` (extended — 541 → 780 lines)
