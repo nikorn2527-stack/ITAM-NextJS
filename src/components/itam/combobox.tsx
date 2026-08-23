@@ -307,6 +307,7 @@ export function Combobox({
           className="w-[--radix-popover-trigger-width] p-0 dark:border-slate-700 dark:bg-slate-900"
           align="start"
           onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerDown={(e) => e.preventDefault()}
         >
           <Command shouldFilter={false}>
             <div className="flex items-center border-b px-3 dark:border-slate-700">

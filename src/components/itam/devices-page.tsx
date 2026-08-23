@@ -661,8 +661,30 @@ export function DevicesPage() {
     )
   }, [form.type])
 
+  // ── Auto-generate device name from brand + model + location ──
+  // Watches brand, model, building, floor, location — auto-fills `name`
+  // unless the user has manually typed something.
+  // Example: "BROTHER HL-L5210DN ตึกผู้ป่วยนอก (OPD) ชั้น 2"
+  const nameManuallyEditedRef = React.useRef(false)
+  React.useEffect(() => {
+    // Don't auto-fill if user has manually edited the name
+    if (nameManuallyEditedRef.current) return
+    const parts = [
+      form.brand,
+      form.model,
+      form.building,
+      form.floor ? `ชั้น ${form.floor}` : '',
+      form.location,
+    ].filter(Boolean)
+    const autoName = parts.join(' ')
+    setForm((prev) =>
+      prev.name === autoName ? prev : { ...prev, name: autoName },
+    )
+  }, [form.brand, form.model, form.building, form.floor, form.location])
+
   function openAdd() {
     setForm({ ...EMPTY_FORM })
+    nameManuallyEditedRef.current = false
     setDialogOpen(true)
     // Auto-generate the next assetCode continuing from the latest integer
     // (the legacy Apps Script assigned sequential integers 1, 2, 3 …).
@@ -694,6 +716,7 @@ export function DevicesPage() {
   }, [])
 
   function openEdit(d: Device) {
+    nameManuallyEditedRef.current = true
     setForm({
       id: d.id,
       assetCode: d.assetCode,
@@ -1546,14 +1569,16 @@ export function DevicesPage() {
                           emptyText="ไม่พบรุ่น — พิมพ์เพื่อเพิ่มใหม่"
                         />
                       </Field>
-                      <Field label="ชื่ออุปกรณ์" required>
+                      <Field label="ชื่ออุปกรณ์ (auto)" hint="สร้างอัตโนมัติจาก แบรนด์ + รุ่น + สถานที่ — แก้ไขได้ถ้าต้องการ">
                         <Input
                           id="dev-name"
                           value={form.name}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            nameManuallyEditedRef.current = true
                             setForm({ ...form, name: e.target.value })
-                          }
-                          placeholder="ชื่ออุปกรณ์ เช่น PRINTER LASER ชั้น 2 OPD"
+                          }}
+                          placeholder="สร้างอัตโนมัติ เช่น BROTHER HL-L5210DN ตึกผู้ป่วยนอก (OPD) ชั้น 2"
+                          className="bg-amber-50/50 dark:bg-amber-950/10"
                         />
                       </Field>
                       <Field label="Serial Number">
