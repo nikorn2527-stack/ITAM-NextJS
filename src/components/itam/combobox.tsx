@@ -254,7 +254,12 @@ export function Combobox({
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
       setOpen(false)
+      setQuery('')
+      // Blur the input to ensure focus leaves the combobox
+      ;(e.target as HTMLInputElement).blur()
       return
     }
     // Only forward Enter when the popover is closed (so the parent can move
