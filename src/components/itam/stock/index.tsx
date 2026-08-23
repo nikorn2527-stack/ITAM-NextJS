@@ -55,28 +55,28 @@ export function StockTabs() {
 
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col gap-4">
         <TabsList className="flex h-auto w-full flex-shrink-0 flex-wrap justify-start gap-1 p-1 dark:bg-slate-900 dark:border dark:border-slate-800">
-          <TabsTrigger value="dashboard" className="gap-1.5">
+          <TabsTrigger value="dashboard" className="gap-1.5" onClick={() => setTab("dashboard")}>
             <LayoutDashboard className="h-3.5 w-3.5" /> ภาพรวม
           </TabsTrigger>
-          <TabsTrigger value="inventory" className="gap-1.5">
+          <TabsTrigger value="inventory" className="gap-1.5" onClick={() => setTab("inventory")}>
             <Package className="h-3.5 w-3.5" /> คลังสินค้า
           </TabsTrigger>
-          <TabsTrigger value="in" className="gap-1.5">
+          <TabsTrigger value="in" className="gap-1.5" onClick={() => setTab("in")}>
             <ArrowDownCircle className="h-3.5 w-3.5" /> รับเข้า
           </TabsTrigger>
-          <TabsTrigger value="out" className="gap-1.5">
+          <TabsTrigger value="out" className="gap-1.5" onClick={() => setTab("out")}>
             <ArrowUpCircle className="h-3.5 w-3.5" /> เบิกออก
           </TabsTrigger>
-          <TabsTrigger value="pending" className="gap-1.5">
+          <TabsTrigger value="pending" className="gap-1.5" onClick={() => setTab("pending")}>
             <Clock className="h-3.5 w-3.5" /> รออนุมัติ
           </TabsTrigger>
-          <TabsTrigger value="po" className="gap-1.5">
+          <TabsTrigger value="po" className="gap-1.5" onClick={() => setTab("po")}>
             <FileText className="h-3.5 w-3.5" /> ใบสั่งซื้อ
           </TabsTrigger>
-          <TabsTrigger value="history" className="gap-1.5">
+          <TabsTrigger value="history" className="gap-1.5" onClick={() => setTab("history")}>
             <History className="h-3.5 w-3.5" /> ประวัติ
           </TabsTrigger>
-          <TabsTrigger value="summary" className="gap-1.5">
+          <TabsTrigger value="summary" className="gap-1.5" onClick={() => setTab("summary")}>
             <BarChart3 className="h-3.5 w-3.5" /> สรุป
           </TabsTrigger>
         </TabsList>
