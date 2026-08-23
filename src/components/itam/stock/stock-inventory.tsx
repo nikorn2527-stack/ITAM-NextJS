@@ -38,6 +38,16 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Table,
   TableBody,
   TableCell,
@@ -416,10 +426,12 @@ export function StockInventory() {
     })
   }
 
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = React.useState<StockItem | null>(null)
+
   function handleDelete(item: StockItem, e?: React.MouseEvent) {
     e?.stopPropagation()
-    if (!confirm(`ต้องการลบสินค้า "${item.productName}" (${item.productCode}) หรือไม่?\n(ระบบจะตั้งเป็น "ปิดใช้งาน" — ไม่ลบถาวร)`)) return
-    deleteMutation.mutate(item.id)
+    setDeleteTarget(item)
   }
 
   // ── Render ───────────────────────────────────────────────────────────
@@ -493,8 +505,8 @@ export function StockInventory() {
       {/* Product table — fills remaining height (Issue 3) */}
       <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="min-h-0 flex-1 p-0">
-          <div className="itam-scroll min-h-0 flex-1 overflow-auto">
-            <Table>
+          <div className="itam-scroll min-h-0 flex-1 overflow-auto overflow-x-auto">
+            <Table className="min-w-[700px]">
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="w-28">รหัสสินค้า</TableHead>
@@ -503,7 +515,7 @@ export function StockInventory() {
                   <TableHead className="w-20">หน่วย</TableHead>
                   <TableHead className="w-28 text-right">ราคา/หน่วย</TableHead>
                   <TableHead className="w-32 text-right">มูลค่ารวม</TableHead>
-                  <TableHead className="w-24 text-right">ReorderPoint</TableHead>
+                  <TableHead className="w-24 text-right">จุดสั่งซื้อซ้ำ</TableHead>
                   <TableHead className="w-24">สถานะ</TableHead>
                   <TableHead className="w-72 text-right">จัดการ</TableHead>
                 </TableRow>
@@ -595,7 +607,7 @@ export function StockInventory() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              title="รับเข้า"
+                              title="รับเข้า" aria-label="รับเข้า"
                               onClick={(e) => openTxn(item, 'IN', e)}
                               className="h-7 px-2 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950"
                             >
@@ -604,7 +616,7 @@ export function StockInventory() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              title="เบิกออก"
+                              title="เบิกออก" aria-label="เบิกออก"
                               onClick={(e) => openTxn(item, 'OUT', e)}
                               disabled={item.quantity <= 0}
                               className="h-7 px-2 text-amber-600 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-950"
@@ -614,7 +626,7 @@ export function StockInventory() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              title="ปรับปรุง"
+                              title="ปรับปรุง" aria-label="ปรับปรุง"
                               onClick={(e) => openTxn(item, 'ADJUST', e)}
                               className="h-7 px-2 text-sky-600 hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-sky-950"
                             >
@@ -635,7 +647,7 @@ export function StockInventory() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              title="แก้ไข"
+                              title="แก้ไข" aria-label="แก้ไข"
                               onClick={(e) => openEdit(item, e)}
                               className="h-7 px-2 text-slate-500 hover:text-[#0d9488]"
                             >
@@ -644,7 +656,7 @@ export function StockInventory() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              title="ลบ"
+                              title="ลบ" aria-label="ลบ"
                               onClick={(e) => handleDelete(item, e)}
                               disabled={deleteMutation.isPending}
                               className="h-7 px-2 text-rose-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950"
@@ -1179,6 +1191,34 @@ export function StockInventory() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบสินค้า</AlertDialogTitle>
+            <AlertDialogDescription>
+              คุณกำลังจะลบ{' '}
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {deleteTarget?.productName} ({deleteTarget?.productCode})
+              </span>
+              {' '}— ระบบจะตั้งเป็น "ปิดใช้งาน" ไม่ลบถาวร
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
+                setDeleteTarget(null)
+              }}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              ลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
