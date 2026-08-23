@@ -247,7 +247,7 @@ function CycleProgressWidget({
               </div>
             </div>
           </div>
-          <Button
+          <Button type="button"
             size="sm"
             onClick={onCreateCycle}
             className="shrink-0 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
@@ -338,7 +338,7 @@ function CycleProgressWidget({
                   className="h-1.5 [&>div]:bg-[#0d9488]"
                 />
               </div>
-              <Button
+              <Button type="button"
                 size="sm"
                 onClick={onManageCycle}
                 className="mt-1 self-end bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
@@ -367,7 +367,22 @@ export function ItamDashboard() {
   const [heatOpen, setHeatOpen] = React.useState(false)
   const [lastUpdated, setLastUpdated] = React.useState<Date | null>(null)
   const [glowKey, setGlowKey] = React.useState<string | null>(null)
-  const [range, setRange] = React.useState<DashboardRangeKey>('month')
+  const [range, setRangeState] = React.useState<DashboardRangeKey>(() => {
+    // Persist range in localStorage so it survives page refresh
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('itam-dashboard-range')
+      if (saved === 'month' || saved === '30days' || saved === 'quarter' || saved === 'all') {
+        return saved
+      }
+    }
+    return 'month'
+  })
+  const setRange = React.useCallback((r: DashboardRangeKey) => {
+    setRangeState(r)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('itam-dashboard-range', r)
+    }
+  }, [])
 
   // Track previous totals to know which KPI changed
   const prevTotalsRef = React.useRef<{ total: number; active: number; spare: number; repair: number; meter: number } | null>(null)
@@ -1283,10 +1298,10 @@ ${kpiHtml}
               ))}
             </SelectContent>
           </Select>
-          <Button
+          <Button type="button"
             variant="outline"
             size="sm"
-            onClick={() => refetch()}
+            onClick={async () => { await refetch(); toast.success('รีเฟรชข้อมูลเรียบร้อย') }}
             disabled={isFetching}
             className="dark:bg-slate-800 dark:border-slate-700"
           >
@@ -1295,16 +1310,17 @@ ${kpiHtml}
           {/* Secondary actions — visible inline on sm+, collapsed into a
               "⋯ เพิ่มเติม" dropdown on mobile to keep the first row to
               Range + Refresh + More. */}
-          <Button
+          <Button type="button"
             variant="outline"
             size="sm"
             onClick={exportPdf}
             disabled={isLoading || total === 0}
+            title={isLoading || total === 0 ? 'ต้องมีข้อมูลใน Dashboard ก่อนถึงจะ export PDF ได้' : 'ส่งออก PDF'}
             className="hidden border-[#0d9488] text-[#0d9488] hover:bg-[#0d9488]/10 dark:border-[#14b8a6] dark:text-[#14b8a6] sm:inline-flex"
           >
             <FileDown className="h-4 w-4" /> PDF
           </Button>
-          <Button
+          <Button type="button"
             variant="outline"
             size="sm"
             onClick={() => setSitesOpen(true)}
@@ -1312,7 +1328,7 @@ ${kpiHtml}
           >
             <Building2 className="h-4 w-4" /> สาขา
           </Button>
-          <Button
+          <Button type="button"
             variant="outline"
             size="sm"
             onClick={() => setHeatOpen(true)}
@@ -1320,7 +1336,7 @@ ${kpiHtml}
           >
             <Flame className="h-4 w-4" /> Heatmap
           </Button>
-          <Button
+          <Button type="button"
             variant="outline"
             size="sm"
             onClick={() => {
@@ -1336,7 +1352,7 @@ ${kpiHtml}
           {/* Mobile-only overflow dropdown for secondary actions */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
+              <Button type="button"
                 variant="outline"
                 size="sm"
                 className="sm:hidden"
