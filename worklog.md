@@ -11266,3 +11266,16 @@ Files modified:
 - MODIFIED: src/components/itam/devices-page.tsx — added 16 input IDs + empty state
 - MODIFIED: src/components/itam/combobox.tsx — Escape handling (preventDefault + clear + blur)
 
+
+---
+Task ID: QA-STOCK-PASS
+Agent: QA Team (02)
+Task: QA ทดสอบหน้า Stock (คลังสต็อก)
+
+Result:
+✅ ผ่านทั้งหมด — ไม่มีบัก
+
+หน้าที่ผ่าน QA แล้ว:
+1. ✅ หน้าจัดการอุปกรณ์ (Devices Page) — แก้บักครบ + ผ่าน QA
+2. ✅ หน้าสต็อก (Stock Page) — ผ่าน QA ไม่มีบัก
+
