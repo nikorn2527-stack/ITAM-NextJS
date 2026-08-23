@@ -134,24 +134,60 @@ export const ACCENT_BTN =
 
 // ── Constants ──────────────────────────────────────────────────────────
 
-export const CATEGORY_OPTIONS = [
-  { value: 'all', label: 'ทุกหมวดหมู่' },
-  { value: 'หมึกพิมพ์', label: 'หมึกพิมพ์' },
-  { value: 'กระดาษ', label: 'กระดาษ' },
-  { value: 'อะไหล่', label: 'อะไหล่' },
-  { value: 'อุปกรณ์สำนักงาน', label: 'อุปกรณ์สำนักงาน' },
-  { value: 'สายไฟ/สายเคเบิล', label: 'สายไฟ/สายเคเบิล' },
-  { value: 'อื่น ๆ', label: 'อื่น ๆ' },
-] as const
+/**
+ * Category labels — maps DB enum values to Thai labels.
+ * Used for display + filter dropdowns.
+ */
+export const CATEGORY_LABELS: Record<string, string> = {
+  INK: 'หมึกพิมพ์',
+  TONER: 'ผงหมึก (Toner)',
+  DRUM: 'ดรัม (Drum)',
+  PAPER_MEDIA: 'กระดาษ',
+  MAINTENANCE_KIT: 'ชุดบำรุงรักษา',
+  STICKER_LABEL: 'สติกเกอร์/ฉลาก',
+  OTHER: 'อื่น ๆ',
+}
 
-export const SITE_OPTIONS = [
-  { value: 'all', label: 'ทุกสาขา' },
-  { value: 'MECUD', label: 'MECUD (อุดร)' },
-  { value: 'MECNK', label: 'MECNK (นคร)' },
-  { value: 'MECSK', label: 'MECSK (สกล)' },
-  { value: 'MECL', label: 'MECL (ลำปาง)' },
-  { value: 'MECPK', label: 'MECPK (แพร่)' },
-] as const
+export function categoryLabel(cat: string | null | undefined): string {
+  if (!cat) return 'อื่น ๆ'
+  return CATEGORY_LABELS[cat] ?? cat
+}
+
+/**
+ * Build category options from a list of distinct categories (from DB).
+ * Always includes "ทุกหมวดหมู่" as the first option.
+ */
+export function buildCategoryOptions(categories: string[]): { value: string; label: string }[] {
+  return [
+    { value: 'all', label: 'ทุกหมวดหมู่' },
+    ...categories.sort().map((c) => ({ value: c, label: categoryLabel(c) })),
+  ]
+}
+
+/**
+ * Build site options from API data (from /api/sites).
+ * The API returns { sites: [{ id, code, name, ... }] } — we map to { value, label }.
+ * Always includes "ทุกสาขา" as the first option.
+ */
+export function buildSiteOptions(
+  sites: { code: string; name?: string | null }[] | { SiteCode: string; SiteName?: string | null }[],
+): { value: string; label: string }[] {
+  // Normalize: accept both { code, name } (API format) and { SiteCode, SiteName } (Prisma format)
+  const normalized = sites.map((s) => {
+    const code = (s as { code?: string; SiteCode?: string }).code ?? (s as { SiteCode?: string }).SiteCode ?? ''
+    const name = (s as { name?: string; SiteName?: string }).name ?? (s as { SiteName?: string }).SiteName ?? null
+    return { code: String(code), name }
+  })
+  return [
+    { value: 'all', label: 'ทุกสาขา' },
+    ...normalized
+      .sort((a, b) => a.code.localeCompare(b.code))
+      .map((s) => ({
+        value: s.code,
+        label: `${s.code} — ${s.name ?? s.code}`,
+      })),
+  ]
+}
 
 export const TYPE_LABELS: Record<string, string> = {
   IN: 'รับเข้า',

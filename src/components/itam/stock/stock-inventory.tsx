@@ -74,8 +74,9 @@ import {
   type StockItem,
   type StockTransaction,
   stockKeys,
-  CATEGORY_OPTIONS,
-  SITE_OPTIONS,
+  buildCategoryOptions,
+  buildSiteOptions,
+  categoryLabel,
   TYPE_LABELS,
   TYPE_BADGES,
   formatBaht,
@@ -139,6 +140,38 @@ const EMPTY_FORM: ProductForm = {
 
 export function StockInventory() {
   const qc = useQueryClient()
+
+  // ── Fetch categories + sites from DB (not hardcoded) ──
+  const { data: stockData } = useQuery<StockListResponse>({
+    queryKey: stockKeys.list({ pageSize: 200, forOptions: true }),
+    queryFn: () =>
+      authFetch<StockListResponse>('/api/stock-items?activeOnly=0&pageSize=200'),
+    staleTime: 120_000,
+  })
+  const dbCategories = React.useMemo(() => {
+    const set = new Set<string>()
+    for (const item of stockData?.data ?? []) {
+      if (item.category) set.add(item.category)
+    }
+    return Array.from(set)
+  }, [stockData])
+
+  const { data: siteData } = useQuery<{ sites: { SiteCode: string; SiteName: string | null }[] }>({
+    queryKey: ['sites-for-stock'],
+    queryFn: async () => {
+      try {
+        const res = await authFetch<{ sites: { SiteCode: string; SiteName: string | null }[] }>('/api/sites')
+        return res
+      } catch {
+        return { sites: [] }
+      }
+    },
+    staleTime: 120_000,
+  })
+  const dbSites = siteData?.sites ?? []
+
+  const categoryOptions = React.useMemo(() => buildCategoryOptions(dbCategories), [dbCategories])
+  const siteOptions = React.useMemo(() => buildSiteOptions(dbSites), [dbSites])
 
   // Filter state
   const [categoryFilter, setCategoryFilter] = React.useState('all')
@@ -400,7 +433,7 @@ export function StockInventory() {
             <SelectValue placeholder="หมวดหมู่" />
           </SelectTrigger>
           <SelectContent>
-            {CATEGORY_OPTIONS.map((o) => (
+            {categoryOptions.map((o) => (
               <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
@@ -410,7 +443,7 @@ export function StockInventory() {
             <SelectValue placeholder="สาขา" />
           </SelectTrigger>
           <SelectContent>
-            {SITE_OPTIONS.map((o) => (
+            {siteOptions.map((o) => (
               <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
@@ -498,7 +531,7 @@ export function StockInventory() {
                           )}
                           {item.category && (
                             <Badge className="mt-0.5 bg-slate-100 text-slate-600 border-slate-200 text-[9px] dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700">
-                              {item.category}
+                              {categoryLabel(item.category)}
                             </Badge>
                           )}
                         </TableCell>
@@ -628,14 +661,19 @@ export function StockInventory() {
           <div className="itam-scroll max-h-[60vh] space-y-3 overflow-y-auto pr-1">
             {/* ProductCode (optional — auto-generated if blank) */}
             <div className="space-y-1.5">
-              <Label htmlFor="stk-code">รหัสสินค้า <span className="text-[10px] text-slate-400">(ไม่บังคับ — ระบบสร้างให้อัตโนมัติ STK-NNNN)</span></Label>
+              <Label htmlFor="stk-code">รหัสสินค้า <span className="text-[10px] text-slate-400">(ไม่บังคับ — ระบบสร้างให้อัตโนมัติรูปแบบ STK-NNNN)</span></Label>
               <Input
                 id="stk-code"
-                placeholder="STK-0001"
+                placeholder="เว้นว่าง = สร้างอัตโนมัติ เช่น STK-0001"
                 value={form.productCode}
                 onChange={(e) => setForm((f) => ({ ...f, productCode: e.target.value }))}
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
+              {!editTarget && (
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                  ✓ ถ้าเว้นว่าง ระบบจะสร้างรหัสใหม่ให้อัตโนมัติ (ต่อจากล่าสุด)
+                </p>
+              )}
             </div>
 
             {/* ProductName */}
@@ -662,7 +700,7 @@ export function StockInventory() {
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
               <datalist id="stk-cat-list">
-                {CATEGORY_OPTIONS.filter((o) => o.value !== 'all').map((o) => (
+                {categoryOptions.filter((o) => o.value !== 'all').map((o) => (
                   <option key={o.value} value={o.value} />
                 ))}
               </datalist>
@@ -781,7 +819,7 @@ export function StockInventory() {
                   className="dark:bg-slate-800 dark:border-slate-700"
                 />
                 <datalist id="stk-site-list">
-                  {SITE_OPTIONS.filter((o) => o.value !== 'all').map((o) => (
+                  {siteOptions.filter((o) => o.value !== 'all').map((o) => (
                     <option key={o.value} value={o.value} />
                   ))}
                 </datalist>
