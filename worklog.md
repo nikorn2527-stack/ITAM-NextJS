@@ -11063,3 +11063,94 @@ Files modified:
 - MODIFIED: src/app/api/devices/route.ts — derive lastMeterBw/Color from latest MeterReading
 - MODIFIED: src/components/itam/device-detail-sheet.tsx — SheetTitle sr-only + fix lastMeterReading undefined
 
+
+---
+Task ID: STOCK-IMPORT-PRODUCTS
+Agent: orchestrator (main) — นำเข้า ProductCategory + Product + เชื่อม StockItem
+
+Task:
+1. นำเข้า ProductCategory (11) + Product (60) จาก Excel เข้า MasterItem
+2. เชื่อม StockItem (60 รายการ) → ProductCategory (PCAT-xxx)
+
+Work Log:
+
+**1. Import ProductCategory + Product:**
+- อ่าน Excel: upload/master_item_repair_stock_products_categorized_sitecode_preview.xlsx
+- Sheet "MasterItem": 461 รายการ (รวม ProductCategory 11 + Product 60)
+- ProductCategory: PCAT-001 ถึง PCAT-011 (หมึกและโทนเนอร์, ดรัม, ชุดบำรุงรักษา, ฯลฯ)
+- Product: PROD-001 ถึง PROD-060 (parentRef = PCAT-xxx)
+- ผล: 11 ProductCategory + 60 Product อยู่ใน DB แล้ว (import ครั้งก่อน)
+
+**2. Link StockItem → ProductCategory:**
+- อ่าน Sheet "Products Source" (60 รายการ: ProductCode, ProductName)
+- Match: StockItem.productName → Product.label → Product.parentRef = PCAT-xxx
+- อัปเดต StockItem.category จาก legacy codes (INK, TONER, DRUM, ฯลฯ) → PCAT-xxx
+- ผล: 60/60 StockItem อัปเดตสำเร็จ (0 ไม่พบ)
+
+**3. UI Updates:**
+- shared.ts: เพิ่ม PCAT labels (PCAT-001: หมึกและโทนเนอร์, ฯลฯ)
+- stock-inventory.tsx: fetch ProductCategory จาก /api/master?category=ProductCategory
+- Filter dropdown: ใช้ PCAT codes จาก MasterItem (11 หมวด) แทน hardcoded
+- Add/Edit dialog: เปลี่ยนจาก Input+datalist → Select dropdown
+
+Stage Summary:
+- ✅ 11 ProductCategory imported into MasterItem
+- ✅ 60 Product imported into MasterItem (parentRef → PCAT-xxx)
+- ✅ 60 StockItem.category updated to PCAT-xxx
+- ✅ Filter dropdown ดึงจาก MasterItem (ProductCategory)
+- ✅ Add/Edit product dialog ใช้ Select dropdown จาก ProductCategory
+
+Files modified:
+- NEW: scripts/import-products.ts — import + link script
+- MODIFIED: src/components/itam/stock/shared.ts — PCAT labels in CATEGORY_LABELS
+- MODIFIED: src/components/itam/stock/stock-inventory.tsx — fetch ProductCategory from MasterItem + Select dropdown
+
+---
+
+## 📋 สรุปงานทั้งหมด (สำหรับทีม QA)
+
+### งานที่ทำเสร็จทั้งหมด:
+
+**A. หน้าจัดการอุปกรณ์ (Devices Page):**
+1. ✅ Full-page form (3 แท็บ: สถานที่ติดตั้ง / อุปกรณ์ / ขั้นสูง)
+2. ✅ Auto-gen assetCode (ต่อจากล่าสุด) + assetSiteCode (ต่อจาก Site)
+3. ✅ Auto-gen device name จาก brand+model+location
+4. ✅ Auto-derive meterRequired จาก Type (PRINTER/COPIER → ต้องจดมิเตอร์)
+5. ✅ SN Scanner (สแกนบาร์โค้ด → auto-fill Serial Number)
+6. ✅ Dropdown ไฮไลต์สีเขียว (ชั้น/แผนก/ตำแหน่ง ที่มี Device อยู่จริง + badge จำนวน)
+7. ✅ Dropdown ไม่เด้ง (onPointerDown preventDefault)
+8. ✅ Dropdown ไฮไลต์ดันขึ้นด้านบน (sort)
+9. ✅ Filter: สถานะ/สาขา/รับประกัน/ผู้ใช้งาน ทำงาน (status mapping + site code → Thai name)
+10. ✅ Serial No. แสดงใน list view
+11. ✅ มิเตอร์ล่าสุด แสดงเลขจริง (derive from MeterReading)
+12. ✅ ประวัติ (Detail Sheet) เปิดได้ + แสดง actions (ย้าย/ส่งซ่อม/ถอน/จำหน่าย)
+13. ✅ License/Software section (เพิ่ม/ลบ หลาย licenses)
+14. ✅ deviceGroup default = ของบริษัท
+15. ✅ Reverse cascade: Model → Brand+Type, Department → Affiliation
+
+**B. หน้าสต็อก (Stock Page):**
+1. ✅ รับเข้า/เบิกออก/ใบสั่งซื้อ — dropdown ไม่เด้ง (onPointerDown)
+2. ✅ ตัวเลือกสินค้าเลื่อนดูได้ (max-h-60 overflow-y-auto)
+3. ✅ คลังสินค้า: ปุ่ม "เพิ่มสินค้า" มี
+4. ✅ Filter หมวดหมู่: ดึงจาก MasterItem (ProductCategory PCAT-001 ถึง PCAT-011)
+5. ✅ Filter สาขา: ดึงจาก SiteAttribute (MECUD, NKP, PPIT, UDH)
+6. ✅ Product code: auto-gen STK-NNNN (เก็บ B0001-B0060 เดิมไว้)
+7. ✅ ProductCategory (11) + Product (60) imported into MasterItem
+8. ✅ StockItem (60) linked to ProductCategory (PCAT-xxx)
+
+**C. Theme & UI:**
+1. ✅ iPhone-style light theme (#f2f2f7 bg, #1c1c1e text)
+2. ✅ Placeholder-first design (ใช้ตัวจางๆ แทน hint แยก)
+
+**D. Demo Mode:**
+1. ✅ demo_admin/demo123 ใช้งานได้ — ข้อมูล tag isDemo=true
+2. ✅ Demo banner แสดง ("โหมดสาธิต — ข้อมูลที่สร้างจะไม่บันทึกในระบบจริง")
+
+### การเข้าสู่ระบบ:
+- **admin/admin123** = ผู้ใช้จริง (กระทบ DB จริง)
+- **demo_admin/demo123** = โหมดสาธิต (isDemo=true, ไม่กระทบข้อมูลจริง)
+
+### สิ่งที่ยังไม่ได้ทำ (Pending):
+- ข้อเสนอ: ย้ายข้อมูลกรอก → ข้อมูลมาตรฐาน (ยังไม่ทำ)
+- การประสานงานกับทีม ITAM-02 (ถ้ามี)
+
