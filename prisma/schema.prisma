@@ -1,6 +1,3 @@
-
-
-
 // ============================================================
 // 2) MeterReading — การจดมิเตอร์
 // ============================================================
@@ -10,23 +7,23 @@
 model Device {
   id              String   @id @default(cuid())
   assetCode       String   @unique // asset_no — เลขสินทรัพย์รวม ห้ามแก้ไข
-  name            String   // ชื่ออุปกรณ์
+  name            String // ชื่ออุปกรณ์
   brand           String
   model           String
-  type            String   // ประเภท: PRINTER | SCANNER | COMPUTER | NETWORK | OTHER
-  serialNumber    String?  // serial
+  type            String // ประเภท: PRINTER | SCANNER | COMPUTER | NETWORK | OTHER
+  serialNumber    String? // serial
   status          String   @default("Active")
-  site            String   // สาขา/ที่ตั้ง
+  site            String // สาขา/ที่ตั้ง
   department      String?
   departmentCode  String?
   parentRef       String?
-  assetSiteCode   String?  // asset_site_code — รหัสประจำ Site (SITE-NNNNN)
-  displayLabel    String?  // ป้ายแสดงผลที่ผู้ใช้กำหนดเอง (display label)
+  assetSiteCode   String? // asset_site_code — รหัสประจำ Site (SITE-NNNNN)
+  displayLabel    String? // ป้ายแสดงผลที่ผู้ใช้กำหนดเอง (display label)
   location        String?
   building        String?
   floor           String?
   room            String?
-  purchaseDate    String?  // ISO date
+  purchaseDate    String? // ISO date
   purchasePrice   Float?
   salvageValue    Float?   @default(0)
   usefulLife      Int?
@@ -36,7 +33,7 @@ model Device {
   contractNo      String?
   uninstallDate   String?
   meterRequired   Boolean  @default(false)
-  meterMode       String?  // TOTAL | BW_COLOR
+  meterMode       String? // TOTAL | BW_COLOR
   lastMeterBw     Int      @default(0)
   lastMeterColor  Int      @default(0)
   ip              String?
@@ -61,31 +58,31 @@ model Device {
 }
 
 model MeterReading {
-  id                       String   @id @default(cuid())
-  readingId                String?  @unique
-  deviceId                 String
-  assetCode                String?  // asset_no — สำหรับ CSV import lookup
-  readingDate              String   // ISO date
-  readingMonth             String?  // YYYY-MM
-  meterBw                  Int      @default(0)
-  meterColor               Int      @default(0)
-  pagesBw                  Int      @default(0)
-  pagesColor               Int      @default(0)
-  prevMeterBw              Int      @default(0)
-  prevMeterColor           Int      @default(0)
-  readingType              String?  // MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN
-  readBy                   String?
-  remark                   String?
-  locationAtReading        String?
-  siteAtReading            String?
-  buildingAtReading        String?
-  floorAtReading           String?
-  departmentAtReading      String?
-  departmentCodeAtReading  String?
-  eventType                String?
-  eventId                  String?
-  isDemo                   Boolean  @default(false)
-  createdAt                DateTime @default(now())
+  id                      String   @id @default(cuid())
+  readingId               String?  @unique
+  deviceId                String
+  assetCode               String? // asset_no — สำหรับ CSV import lookup
+  readingDate             String // ISO date
+  readingMonth            String? // YYYY-MM
+  meterBw                 Int      @default(0)
+  meterColor              Int      @default(0)
+  pagesBw                 Int      @default(0)
+  pagesColor              Int      @default(0)
+  prevMeterBw             Int      @default(0)
+  prevMeterColor          Int      @default(0)
+  readingType             String? // MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN
+  readBy                  String?
+  remark                  String?
+  locationAtReading       String?
+  siteAtReading           String?
+  buildingAtReading       String?
+  floorAtReading          String?
+  departmentAtReading     String?
+  departmentCodeAtReading String?
+  eventType               String?
+  eventId                 String?
+  isDemo                  Boolean  @default(false)
+  createdAt               DateTime @default(now())
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
@@ -105,7 +102,7 @@ model Cycle {
   startDate String
   endDate   String
   status    String   @default("active")
-  site      String?  // nullable — null = all sites (global cycle)
+  site      String? // nullable — null = all sites (global cycle)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -117,34 +114,34 @@ model Cycle {
 // 4) DeviceTransfer — ประวัติการย้าย
 // ============================================================
 model DeviceTransfer {
-  id                String   @id @default(cuid())
-  logId             String?  @unique
-  deviceId          String
-  assetCode         String?  // Asset_No
-  moveDate          String?
-  action            String?  // TRANSFER | TRANSFER_SITE | STATUS_CHANGE | STATUS_AND_TRANSFER | TRANSFER_BY_LIFECYCLE
-  fromStatus        String?
-  toStatus          String?
-  fromSite          String?
-  fromAssetSiteCode String?
-  fromBuilding      String?
-  fromFloor         String?
-  fromDepartment    String?
+  id                 String   @id @default(cuid())
+  logId              String?  @unique
+  deviceId           String
+  assetCode          String? // Asset_No
+  moveDate           String?
+  action             String? // TRANSFER | TRANSFER_SITE | STATUS_CHANGE | STATUS_AND_TRANSFER | TRANSFER_BY_LIFECYCLE
+  fromStatus         String?
+  toStatus           String?
+  fromSite           String?
+  fromAssetSiteCode  String?
+  fromBuilding       String?
+  fromFloor          String?
+  fromDepartment     String?
   fromDepartmentCode String?
-  fromLocation      String?
-  toSite            String
-  toAssetSiteCode   String?
-  toBuilding        String?
-  toFloor           String?
-  toDepartment      String?
-  toDepartmentCode  String?
-  toLocation        String?
-  meterReadingId    String?
-  movedBy           String?
-  remark            String?
-  transferDate      String
-  reason            String?
-  createdAt         DateTime @default(now())
+  fromLocation       String?
+  toSite             String
+  toAssetSiteCode    String?
+  toBuilding         String?
+  toFloor            String?
+  toDepartment       String?
+  toDepartmentCode   String?
+  toLocation         String?
+  meterReadingId     String?
+  movedBy            String?
+  remark             String?
+  transferDate       String
+  reason             String?
+  createdAt          DateTime @default(now())
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
@@ -183,7 +180,7 @@ model MaintenanceLog {
   id           String   @id @default(cuid())
   logId        String?  @unique
   deviceId     String
-  type         String   // repair | maintenance | inspection | upgrade
+  type         String // repair | maintenance | inspection | upgrade
   status       String   @default("open")
   startDate    String
   endDate      String?
@@ -203,32 +200,32 @@ model MaintenanceLog {
 // 7) WorkOrder — ใบงานแจ้งซ่อม
 // ============================================================
 model WorkOrder {
-  id               String   @id @default(cuid())
-  woNumber         String?  @unique
+  id               String    @id @default(cuid())
+  woNumber         String?   @unique
   // Legacy source identifier; immutable for traceability when supplied by imports.
-  legacyJobNo      String?  @map("legacy_job_no")
+  legacyJobNo      String?   @map("legacy_job_no")
   // New ITAM-NextJS identifier; woNumber remains as the compatibility display field.
-  systemJobNo      String?  @unique @map("system_job_no")
-  requestId        String?  @unique
+  systemJobNo      String?   @unique @map("system_job_no")
+  requestId        String?   @unique
   subject          String
   building         String?
   location         String?
   details          String?
-  priority         String   @default("ปกติ")
+  priority         String    @default("ปกติ")
   reporterName     String?
   reporterEmail    String?
   tel              String?
   employeeCode     String?
-  submissionSource String   @default("guest")
-  trackable        Boolean  @default(false)
+  submissionSource String    @default("guest")
+  trackable        Boolean   @default(false)
   lineUserId       String?
-  lineMessageId    String?  @unique
+  lineMessageId    String?   @unique
   printTemplateId  String?
   externalMeta     String?
   picBefore        String?
   picOnsite        String?
   picAfter         String?
-  status           String   @default("PENDING")
+  status           String    @default("PENDING")
   acceptStatus     String?
   assignedTo       String?
   assignedBy       String?
@@ -238,7 +235,7 @@ model WorkOrder {
   dateAdmin        String?
   resolution       String?
   resolutionGroup  String?
-  editUnlockActive Boolean  @default(false)
+  editUnlockActive Boolean   @default(false)
   editUnlockBy     String?
   editUnlockAt     DateTime?
   editUnlockNote   String?
@@ -247,8 +244,8 @@ model WorkOrder {
   canceledAt       DateTime?
   cancelReason     String?
   deviceId         String?
-  isDemo           Boolean  @default(false)
-  isSpecialFee     Boolean  @default(false) // งานพิเศษ (มีค่าใช้จ่าย) — แอปอื่นดึงผ่าน API
+  isDemo           Boolean   @default(false)
+  isSpecialFee     Boolean   @default(false) // งานพิเศษ (มีค่าใช้จ่าย) — แอปอื่นดึงผ่าน API
   // ── Site-based access control (Phase 0: transitional) ──
   // Direct Site reference so work orders without a device can still be
   // scoped. For work orders with a device, the server derives siteCode
@@ -260,9 +257,9 @@ model WorkOrder {
   // Incremented on every update. Callers can send `expectedVersion` in
   // PUT/PATCH to detect concurrent modification (409 Conflict).
   // Used with serializable transaction for device reassignment.
-  version          Int      @default(1)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   device   Device?            @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   messages WorkOrderMessage[]
@@ -317,7 +314,7 @@ model WorkOrderReview {
 model WorkOrderImage {
   id          String   @id @default(cuid())
   workOrderId String
-  stage       String   // before | onsite | after
+  stage       String // before | onsite | after
   image_data  String
   fileName    String?
   uploadedBy  String?
@@ -336,9 +333,9 @@ model WorkOrderImage {
 model LicenseRecord {
   id          String   @id @default(cuid())
   License_ID  String?
-  Asset_No    String?  // links to Device.assetCode
+  Asset_No    String? // links to Device.assetCode
   Software    String
-  LicenseType String?  // OEM | Volume | Retail | Subscription | Open License
+  LicenseType String? // OEM | Volume | Retail | Subscription | Open License
   License_Key String?
   Quantity    Int      @default(1)
   Expiry_Date String?
@@ -357,9 +354,9 @@ model LicenseRecord {
 model SiteAttribute {
   id             String   @id @default(cuid())
   SiteCode       String   @unique // เช่น UDH, NKP, MECUD, PPIT
-  SiteName       String?  // เช่น โรงพยาบาลศูนย์อุดรธานี
-  LineOA         String?  // LINE OA ID/Token
-  Hotline        String?  // เบอร์ติดต่อ
+  SiteName       String? // เช่น โรงพยาบาลศูนย์อุดรธานี
+  LineOA         String? // LINE OA ID/Token
+  Hotline        String? // เบอร์ติดต่อ
   PaperRateBW    Float?   @default(0.5) // ฿/แผ่น ขาวดำ
   PaperRateColor Float?   @default(2.0) // ฿/แผ่น สี
   TelegramChatId String?  @map("TelegramChatId") // Telegram chat ID สำหรับสาขา
@@ -401,15 +398,15 @@ model SiteRate {
 // ============================================================
 model MasterItem {
   id           String   @id @default(cuid())
-  category     String   // category column from Excel
-  code         String   // code column (DC-001, DEP-001, IT-PRN, etc.)
-  label        String   // label column (display name)
-  brand        String?  // brand (for DeviceClassification)
-  model        String?  // model (for DeviceClassification)
-  deviceType   String?  // deviceType (for DeviceClassification)
-  parentRef    String?  // parentRef (Affiliation label for Department, IT-PRN for RepairRequest, etc.)
-  displayLabel String?  // displayLabel column
-  siteCode     String?  // siteCode column (ALL, UDH, etc.)
+  category     String // category column from Excel
+  code         String // code column (DC-001, DEP-001, IT-PRN, etc.)
+  label        String // label column (display name)
+  brand        String? // brand (for DeviceClassification)
+  model        String? // model (for DeviceClassification)
+  deviceType   String? // deviceType (for DeviceClassification)
+  parentRef    String? // parentRef (Affiliation label for Department, IT-PRN for RepairRequest, etc.)
+  displayLabel String? // displayLabel column
+  siteCode     String? // siteCode column (ALL, UDH, etc.)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -444,7 +441,7 @@ model StockItem {
   updatedAt         DateTime @updatedAt
 
   // Relations
-  transactions    StockTransaction[]
+  transactions       StockTransaction[]
   purchaseOrderItems PurchaseOrderItem[]
 
   @@index([productCode])
@@ -460,7 +457,7 @@ model StockTransaction {
   stockItemId     String
   productCode     String?
   productName     String?
-  type            String   // IN | OUT | ADJUST
+  type            String // IN | OUT | ADJUST
   quantity        Int
   unit            String?
   balanceAfter    Int      @default(0)
@@ -525,11 +522,11 @@ model PurchaseOrder {
 // 19) PurchaseOrderItem — รายการในใบสั่งซื้อ
 // ============================================================
 model PurchaseOrderItem {
-  id               String   @id @default(cuid())
+  id               String @id @default(cuid())
   purchaseOrderId  String
   stockItemId      String
   quantityOrdered  Int
-  quantityReceived Int      @default(0)
+  quantityReceived Int    @default(0)
   unitPrice        Float?
   totalValue       Float?
 
@@ -547,11 +544,11 @@ model User {
   name         String?
   role         String   @default("viewer")
   department   String?
-  permissions  String?  // JSON string
+  permissions  String? // JSON string
   // Legacy: comma-separated site codes or 'ALL'. Retained during Phase 0
   // dual-read/dual-write migration. Will be retired after UserSiteGrant
   // is fully validated. See Site-Based Access Control Guidance §5.1.
-  allowedSites String?  // comma-separated or ALL
+  allowedSites String? // comma-separated or ALL
   active       Boolean  @default(true)
   passwordHash String?
   passwordSalt String?
@@ -604,13 +601,13 @@ model Role {
 // ============================================================
 model Permission {
   code        String   @id // VIEW_DASHBOARD, WO_CREATE, DEVICE_EDIT, ...
-  resource    String   // dashboard, device, work_order, stock, ...
-  action      String   // view, create, edit, delete, assign, ...
+  resource    String // dashboard, device, work_order, stock, ...
+  action      String // view, create, edit, delete, assign, ...
   description String?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  roles       RolePermission[]
+  roles RolePermission[]
 }
 
 // ============================================================
@@ -648,13 +645,13 @@ model RolePermission {
 model UserSiteGrant {
   userId     String
   siteCode   String
-  roleCode   String   @default("viewer")
-  active     Boolean  @default(true)
+  roleCode   String    @default("viewer")
+  active     Boolean   @default(true)
   validFrom  DateTime?
   validUntil DateTime?
   createdBy  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   role Role @relation(fields: [roleCode], references: [code], onDelete: Restrict)
@@ -674,7 +671,7 @@ model AuditLog {
   entity    String
   entityId  String?
   summary   String
-  detail    String?  // JSON string
+  detail    String? // JSON string
   actor     String   @default("system")
   // NF-2 FIX: Canonical Site FK for audit entries.
   // Populated by logAudit() when the action is Site-scoped.
@@ -694,9 +691,9 @@ model AuditLog {
 // 22) AppSetting — ตั้งค่าแอป
 // ============================================================
 model AppSetting {
-  id       String   @id @default(cuid())
-  key      String   @unique
-  value    String
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
   updatedAt DateTime @updatedAt
 }
 
@@ -722,10 +719,10 @@ model AssetNumberPattern {
 model WoNumberPattern {
   id            String   @id @default(cuid())
   name          String
-  pattern       String   // เช่น {prefix}-{seq:4} → PPIT-0001
+  pattern       String // เช่น {prefix}-{seq:4} → PPIT-0001
   description   String?
   isActive      Boolean  @default(false)
-  defaultPrefix String?  // เช่น PPIT
+  defaultPrefix String? // เช่น PPIT
   seqPadding    Int      @default(4)
   seqStart      Int      @default(1)
   createdAt     DateTime @default(now())
@@ -736,19 +733,19 @@ model WoNumberPattern {
 // 24) OrganizationProfile — โปรไฟล์องค์กร
 // ============================================================
 model OrganizationProfile {
-  id              String   @id @default(cuid())
-  appName         String   @default("ระบบจัดการสินทรัพย์")
-  appTagline      String   @default("Asset Management System")
-  industryType    String   @default("general")
-  logoUrl         String?
-  primaryColor    String   @default("#f97316")
-  accentColor     String   @default("#0d9488")
-  language        String   @default("th")
-  timezone        String   @default("Asia/Bangkok")
-  currency        String   @default("THB")
-  allowExcelImport Boolean @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  appName          String   @default("ระบบจัดการสินทรัพย์")
+  appTagline       String   @default("Asset Management System")
+  industryType     String   @default("general")
+  logoUrl          String?
+  primaryColor     String   @default("#f97316")
+  accentColor      String   @default("#0d9488")
+  language         String   @default("th")
+  timezone         String   @default("Asia/Bangkok")
+  currency         String   @default("THB")
+  allowExcelImport Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 // ============================================================
@@ -771,17 +768,17 @@ model DocumentTemplate {
 // 26) ImportJob — งานนำเข้าข้อมูล
 // ============================================================
 model ImportJob {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   jobType       String
   fileName      String
-  fileType      String   @default("excel")
-  status        String   @default("pending")
-  totalRows     Int      @default(0)
-  processedRows Int      @default(0)
-  errorRows     Int      @default(0)
+  fileType      String    @default("excel")
+  status        String    @default("pending")
+  totalRows     Int       @default(0)
+  processedRows Int       @default(0)
+  errorRows     Int       @default(0)
   errors        String?
   uploadedBy    String?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
   completedAt   DateTime?
 }
 
@@ -806,13 +803,13 @@ model LineBinding {
 // 28) Report — รายงานที่บันทึกไว้
 // ============================================================
 model Report {
-  id       String   @id @default(cuid())
-  type     String
-  title    String
-  rangeKey String?
-  filters  String?
-  data     String
-  format   String   @default("json")
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  rangeKey  String?
+  filters   String?
+  data      String
+  format    String   @default("json")
   createdAt DateTime @default(now())
 }
 
@@ -823,10 +820,10 @@ model Report {
 // ============================================================
 model PasswordResetToken {
   id        String   @id @default(cuid())
-  email     String   // user email
+  email     String // user email
   token     String   @unique // random UUID
-  type      String   // 'register' | 'reset' | 'invite'
-  data      String?  // JSON: { name, phone, department, roleRequest } for registration
+  type      String // 'register' | 'reset' | 'invite'
+  data      String? // JSON: { name, phone, department, roleRequest } for registration
   used      Boolean  @default(false)
   expiresAt DateTime
   createdAt DateTime @default(now())
@@ -841,28 +838,28 @@ model PasswordResetToken {
 //     status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 // ============================================================
 model SyncRun {
-  id              String   @id @default(cuid())
-  source          String   // 'services' | 'itam' | 'stock'
-  target          String   // 'work-order' | 'device' | 'meter' | 'stock-item' | 'stock-txn' | 'purchase-order'
-  mode            String   // 'preview' | 'apply'
-  status          String   // 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-  totalRows       Int      @default(0)
-  createRows      Int      @default(0)
-  updateRows      Int      @default(0)
-  skipRows        Int      @default(0)
-  errorRows       Int      @default(0)
-  startedAt       DateTime @default(now())
-  completedAt     DateTime?
-  durationMs      Int?
-  triggeredBy     String   // user email
-  siteScope       String?
-  errorMessage    String?
-  retryOf         String?
-  sourceCursor    String?
-  attempts        Int      @default(1)
-  p2034Count      Int      @default(0)
-  items           SyncRunItem[]
-  createdAt       DateTime @default(now())
+  id           String        @id @default(cuid())
+  source       String // 'services' | 'itam' | 'stock'
+  target       String // 'work-order' | 'device' | 'meter' | 'stock-item' | 'stock-txn' | 'purchase-order'
+  mode         String // 'preview' | 'apply'
+  status       String // 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  totalRows    Int           @default(0)
+  createRows   Int           @default(0)
+  updateRows   Int           @default(0)
+  skipRows     Int           @default(0)
+  errorRows    Int           @default(0)
+  startedAt    DateTime      @default(now())
+  completedAt  DateTime?
+  durationMs   Int?
+  triggeredBy  String // user email
+  siteScope    String?
+  errorMessage String?
+  retryOf      String?
+  sourceCursor String?
+  attempts     Int           @default(1)
+  p2034Count   Int           @default(0)
+  items        SyncRunItem[]
+  createdAt    DateTime      @default(now())
 
   @@index([source, target, status])
   @@index([triggeredBy])
@@ -876,16 +873,16 @@ model SyncRun {
 //     status: 'pending' | 'applied' | 'skipped' | 'error'
 // ============================================================
 model SyncRunItem {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   syncRunId       String
-  syncRun         SyncRun  @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
+  syncRun         SyncRun   @relation(fields: [syncRunId], references: [id], onDelete: Cascade)
   externalKey     String
-  action          String   // 'create' | 'update' | 'skip' | 'error'
+  action          String // 'create' | 'update' | 'skip' | 'error'
   before          Json?
   after           Json?
   expectedVersion Int?
-  expectedExists  Boolean  @default(false)
-  status          String   // 'pending' | 'applied' | 'skipped' | 'error'
+  expectedExists  Boolean   @default(false)
+  status          String // 'pending' | 'applied' | 'skipped' | 'error'
   errorMessage    String?
   entityId        String?
   entityType      String?
