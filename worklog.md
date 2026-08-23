@@ -10958,3 +10958,57 @@ Files modified:
 - MODIFIED: src/app/api/itam/devices/location-summary/route.ts — added location + locationCounts
 - MODIFIED: src/components/itam/devices-page.tsx — globalLocations query + highlightedLocations + locationBadges + Location Combobox uses global list
 
+
+---
+Task ID: FIX-3-NAME-BOUNCE-THEME
+Agent: orchestrator (main) — auto-name + fix bounce + iPhone theme
+
+Task:
+1. ชื่ออุปกรณ์ auto-generate จาก brand+model+location
+2. Dropdown เด้งออกครั้งแรก (ทุกช่อง)
+3. ธีมโหมดสว่าง โทนสี iPhone (ลดความสว่าง)
+
+Work Log:
+
+**1. Auto-generate name (useEffect):**
+- nameManuallyEditedRef: track ถ้า user พิมพ์เอง → หยุด auto-gen
+- useEffect ดู brand, model, building, floor, location → auto-fill name
+- รูปแบบ: `${brand} ${model} ${building} ${floor ? 'ชั้น '+floor : ''} ${location}`
+- ตัวอย่าง: "BROTHER HL-L5210DN ตึกผู้ป่วยนอก (OPD) ชั้น 2"
+- openAdd: reset ref=false (auto-gen ทำงาน)
+- openEdit: set ref=true (ไม่ overwrite ชื่อเดิม)
+- Field label: "ชื่ออุปกรณ์ (auto)" + hint + bg-amber-50 (เหมือน auto-gen fields)
+- onChange: set nameManuallyEditedRef.current = true (user edit แล้ว)
+
+**2. Fix dropdown bounce (onPointerDown preventDefault):**
+- ปัญหา: PopoverContent click → input blur → handleBlur closes dropdown
+- แก้: เพิ่ม `onPointerDown={(e) => e.preventDefault()}` บน PopoverContent
+- ผล: pointer events ใน dropdown ไม่ทำให้ input blur → dropdown ไม่เด้ง
+- แก้ได้ทุก Combobox (เพราะแก้ที่ component เดียว)
+
+**3. iPhone-style light theme:**
+- globals.css :root variables updated:
+  - --background: oklch(0.96 0.003 270) → #f2f2f7 (iOS systemGray6, warm gray)
+  - --foreground: oklch(0.25 0.002 270) → #1c1c1e (almost black, not pure)
+  - --card: oklch(1 0 0) → pure white (stands out against gray bg)
+  - --muted: oklch(0.93 0.003 270) → #e5e5ea (iOS systemGray5)
+  - --muted-foreground: oklch(0.55 0.01 270) → #8e8e93 (iOS systemGray)
+  - --border: oklch(0.85 0.003 270) → #c6c6c8 (iOS systemGray3)
+  - --sidebar: oklch(0.95 0.003 270) → slightly different from bg
+- ผล: สบายตา ไม่ pure white, cards โดดเด่นชัดเจน
+
+Stage Summary:
+- ✅ ชื่ออุปกรณ์ auto-generate: "BROTHER HL-L5210DN ตึกผู้ป่วยนอก (OPD) ชั้น 2"
+- ✅ Dropdown ไม่เด้ง (onPointerDown preventDefault)
+- ✅ iPhone theme: warm gray bg (#f2f2f7) + white cards + soft text (#1c1c1e)
+
+Production verification (agent-browser + VLM):
+- auto-name: select UDH + building + floor 2 + model HL-L5210DN → name = "BROTHER HL-L5210DN ตึกผู้ป่วยนอก (OPD) ชั้น 2" ✓
+- dropdown: first click opens + selects without bounce ✓
+- theme: VLM confirms "light cool gray background, not pure white; cards stand out clearly" ✓
+
+Files modified:
+- MODIFIED: src/app/globals.css — iPhone-style :root CSS variables
+- MODIFIED: src/components/itam/combobox.tsx — onPointerDown preventDefault on PopoverContent
+- MODIFIED: src/components/itam/devices-page.tsx — nameManuallyEditedRef + auto-gen useEffect + name field UI
+
