@@ -11397,3 +11397,53 @@ Stage Summary:
 Files modified:
 - MODIFIED: src/components/itam/itam-dashboard.tsx — type="button" on 9 buttons, PDF tooltip, range localStorage, refresh toast
 
+
+---
+Task ID: QA-STOCK-001-FIXES
+Agent: orchestrator (main) — แก้ตามรายงาน QA หน้า Stock (QA-002)
+
+Task:
+แก้บัก 16 ตัวตามรายงาน QA-STOCK-001 (Pass Rate 8/16 = 50%)
+
+Work Log:
+
+**P0 BUG-STK-001: Tabs พัง:**
+- แก้แล้วใน QA-003 (onClick fallback บน TabsTrigger)
+- ตรวจสอบแล้ว: onClick={() => setTab("xxx")} อยู่ครบทุก tab (8 tabs)
+
+**P0 BUG-STK-003: Stock IN "บันทึก" ไม่ทำงาน:**
+- สาเหตุ: Button ไม่มี type="button" → default type="submit"
+- แก้: เพิ่ม type="button" ให้ save + reset buttons ใน stock-in-form.tsx + stock-out-form.tsx
+
+**P1 BUG-STK-002: ไม่มี toast หลัง create/update/delete:**
+- ตรวจสอบ: toast มีอยู่แล้วใน onSuccess/onError ของ mutations
+- สาเหตุที่ QA ไม่เห็น: ปุ่ม submit ไม่ทำงาน (BUG-STK-003) → แก้แล้ว → toast จะแสดง
+
+**P1 BUG-STK-005: Mobile responsive พัง:**
+- แก้: เพิ่ม overflow-x-auto ใน table container + min-w-[700px] ใน Table
+
+**P1 BUG-STK-006: Delete ใช้ native confirm():**
+- แก้: เปลี่ยนจาก confirm() → shadcn AlertDialog (import + state + dialog)
+- ปุ่ม "ลบ" → setDeleteTarget → AlertDialog เปิด → ยืนยัน → deleteMutation.mutate
+
+**P2 BUG-STK-004: row buttons ไม่มี aria-label:**
+- แก้: เพิ่ม aria-label ให้ทุกปุ่ม action (รับเข้า, เบิกออก, ปรับปรุง, แก้ไข, ลบ)
+
+**P3 BUG-STK-014: ReorderPoint header ภาษาอังกฤษ:**
+- แก้: เปลี่ยน "ReorderPoint" → "จุดสั่งซื้อซ้ำ"
+
+Stage Summary:
+- ✅ P0 BUG-STK-001: Tabs (แก้ใน QA-003)
+- ✅ P0 BUG-STK-003: Stock IN submit (type="button")
+- ✅ P1 BUG-STK-002: toast (มีอยู่แล้ว — จะทำงานเมื่อ submit ทำงาน)
+- ✅ P1 BUG-STK-005: Mobile responsive (overflow-x-auto + min-w)
+- ✅ P1 BUG-STK-006: AlertDialog แทน confirm()
+- ✅ P2 BUG-STK-004: aria-label on row buttons
+- ✅ P3 BUG-STK-014: Thai header
+- ⏳ P2-P3 อื่นๆ: ยังไม่ได้แก้ (non-blocking)
+
+Files modified:
+- MODIFIED: src/components/itam/stock/stock-in-form.tsx — type="button" on save + reset
+- MODIFIED: src/components/itam/stock/stock-out-form.tsx — type="button" on save + fix duplicate
+- MODIFIED: src/components/itam/stock/stock-inventory.tsx — AlertDialog, overflow-x-auto, aria-labels, Thai header
+

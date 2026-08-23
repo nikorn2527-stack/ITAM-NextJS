@@ -443,6 +443,7 @@ export function StockInForm() {
         </div>
         <div className="flex gap-2">
           <Button
+            type="button"
             variant="outline"
             onClick={() => {
               setLines([newLineItem()])
@@ -454,6 +455,7 @@ export function StockInForm() {
             ล้างฟอร์ม
           </Button>
           <Button
+            type="button"
             onClick={submit}
             disabled={submitMutation.isPending}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"

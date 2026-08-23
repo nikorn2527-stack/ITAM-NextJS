@@ -458,6 +458,7 @@ export function StockOutForm() {
                         <TableCell className="text-xs text-slate-500 dark:text-slate-400">{l.unit}</TableCell>
                         <TableCell>
                           <Button
+            type="button"
                             size="sm"
                             variant="ghost"
                             onClick={() => removeLine(l.key)}
@@ -481,6 +482,7 @@ export function StockOutForm() {
       {/* Submit */}
       <div className="flex justify-end gap-2">
         <Button
+            type="button"
           variant="outline"
           onClick={() => {
             setLines([newLineItem()])
@@ -492,6 +494,7 @@ export function StockOutForm() {
           ล้างฟอร์ม
         </Button>
         <Button
+          type="button"
           onClick={submit}
           disabled={submitMutation.isPending}
           className="bg-amber-600 hover:bg-amber-700 text-white"
