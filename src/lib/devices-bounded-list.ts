@@ -60,7 +60,7 @@ export const DEVICE_LIST_FIELDS = {
   brand: true,
   model: true,
   type: true,
-  serialNumber: true, // included for list view (ITAM uses it in barcode workflows)
+  serialNumber: true,
   status: true,
   site: true,
   department: true,
@@ -77,6 +77,7 @@ export const DEVICE_LIST_FIELDS = {
   meterMode: true,
   lastMeterBw: true,
   lastMeterColor: true,
+  currentAssignee: true, // needed for assignee filter
   isDemo: true,
   createdAt: true,
   updatedAt: true,
@@ -116,7 +117,6 @@ export const DEVICE_LIST_EXCLUDED_FIELDS = [
   'salvageValue',
   'usefulLife',
   'remark',
-  'currentAssignee',
   'parentRef',
   'uninstallDate',
 ] as const
