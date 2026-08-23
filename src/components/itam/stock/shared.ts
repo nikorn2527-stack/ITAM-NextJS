@@ -135,10 +135,24 @@ export const ACCENT_BTN =
 // ── Constants ──────────────────────────────────────────────────────────
 
 /**
- * Category labels — maps DB enum values to Thai labels.
- * Used for display + filter dropdowns.
+ * Category labels — maps DB values to Thai labels.
+ * Now uses ProductCategory codes (PCAT-xxx) from MasterItem as the primary
+ * system. Legacy codes (INK, TONER, etc.) are kept as fallbacks.
  */
 export const CATEGORY_LABELS: Record<string, string> = {
+  // ProductCategory codes (from MasterItem — imported via Excel)
+  'PCAT-001': 'หมึกและโทนเนอร์',
+  'PCAT-002': 'ดรัมและชุดสร้างภาพ',
+  'PCAT-003': 'ชุดบำรุงรักษา',
+  'PCAT-004': 'อะไหล่ชุดป้อนกระดาษ',
+  'PCAT-005': 'อะไหล่เครื่องสแกน',
+  'PCAT-006': 'ฉลากและสติ๊กเกอร์',
+  'PCAT-007': 'กระดาษ',
+  'PCAT-008': 'วัสดุสำนักงาน',
+  'PCAT-009': 'อุปกรณ์คอมพิวเตอร์และอุปกรณ์ต่อพ่วง',
+  'PCAT-010': 'อุปกรณ์เครือข่าย',
+  'PCAT-011': 'อะไหล่และวัสดุอื่น ๆ',
+  // Legacy codes (fallback)
   INK: 'หมึกพิมพ์',
   TONER: 'ผงหมึก (Toner)',
   DRUM: 'ดรัม (Drum)',

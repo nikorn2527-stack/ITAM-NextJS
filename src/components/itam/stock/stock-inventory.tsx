@@ -141,7 +141,23 @@ const EMPTY_FORM: ProductForm = {
 export function StockInventory() {
   const qc = useQueryClient()
 
-  // ── Fetch categories + sites from DB (not hardcoded) ──
+  // ── Fetch ProductCategory from MasterItem + sites from DB ──
+  const { data: productCategoriesData } = useQuery<{ code: string; label: string }[]>({
+    queryKey: ['master-product-categories'],
+    queryFn: async () => {
+      try {
+        const res = await authFetch<{ items: { code: string; label: string }[] }>(
+          '/api/master?category=ProductCategory',
+        )
+        return res.items ?? []
+      } catch {
+        return []
+      }
+    },
+    staleTime: 120_000,
+  })
+  // Use ProductCategory codes from MasterItem as the canonical list.
+  // Fall back to distinct categories from StockItem if MasterItem has none.
   const { data: stockData } = useQuery<StockListResponse>({
     queryKey: stockKeys.list({ pageSize: 200, forOptions: true }),
     queryFn: () =>
@@ -149,18 +165,22 @@ export function StockInventory() {
     staleTime: 120_000,
   })
   const dbCategories = React.useMemo(() => {
+    if (productCategoriesData && productCategoriesData.length > 0) {
+      return productCategoriesData.map((pc) => pc.code)
+    }
+    // Fallback: distinct categories from StockItem
     const set = new Set<string>()
     for (const item of stockData?.data ?? []) {
       if (item.category) set.add(item.category)
     }
     return Array.from(set)
-  }, [stockData])
+  }, [productCategoriesData, stockData])
 
-  const { data: siteData } = useQuery<{ sites: { SiteCode: string; SiteName: string | null }[] }>({
+  const { data: siteData } = useQuery<{ sites: { code: string; name?: string | null }[] }>({
     queryKey: ['sites-for-stock'],
     queryFn: async () => {
       try {
-        const res = await authFetch<{ sites: { SiteCode: string; SiteName: string | null }[] }>('/api/sites')
+        const res = await authFetch<{ sites: { code: string; name?: string | null }[] }>('/api/sites')
         return res
       } catch {
         return { sites: [] }
@@ -690,20 +710,23 @@ export function StockInventory() {
 
             {/* Category */}
             <div className="space-y-1.5">
-              <Label htmlFor="stk-cat">หมวดหมู่</Label>
-              <Input
-                id="stk-cat"
-                list="stk-cat-list"
-                placeholder="เช่น หมึกพิมพ์, กระดาษ, อะไหล่..."
-                value={form.category}
-                onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                className="dark:bg-slate-800 dark:border-slate-700"
-              />
-              <datalist id="stk-cat-list">
-                {categoryOptions.filter((o) => o.value !== 'all').map((o) => (
-                  <option key={o.value} value={o.value} />
-                ))}
-              </datalist>
+              <Label htmlFor="stk-cat">หมวดหมู่ <span className="text-[10px] text-slate-400">(เลือกจาก ProductCategory)</span></Label>
+              <Select
+                value={form.category || '__none__'}
+                onValueChange={(v) => setForm((f) => ({ ...f, category: v === '__none__' ? '' : v }))}
+              >
+                <SelectTrigger className="w-full dark:bg-slate-800 dark:border-slate-700">
+                  <SelectValue placeholder="— เลือกหมวดหมู่ —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">— ไม่ระบุ —</SelectItem>
+                  {categoryOptions.filter((o) => o.value !== 'all').map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Brand + Model */}
