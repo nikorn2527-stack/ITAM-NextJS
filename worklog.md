@@ -11345,3 +11345,55 @@ Files modified:
 - MODIFIED: src/components/itam/stock/index.tsx — tabs onClick fallback
 - MODIFIED: src/components/ui/card.tsx — CardTitle div → h3
 
+
+---
+Task ID: QA-002-FIXES
+Agent: orchestrator (main) — แก้ตามรายงาน QA หน้า Dashboard
+
+Task:
+แก้บัก 10 ตัวตามรายงาน QA-002 (Pass Rate 12/22 = 55%)
+
+Work Log:
+
+**P0 BUG-DASH-001: ปุ่ม "สร้างรอบใหม่" คลิกไม่ตอบ:**
+- สาเหตุ: Button ไม่มี type="button" → default type="submit" → onClick ไม่ fires
+- แก้: เพิ่ม type="button" ให้ทุก Button ใน itam-dashboard.tsx (9 buttons)
+- Flow: click → setPendingMeterAction('open-cycle') → setActivePage('meter') → cycle dialog opens
+- ผล: ปุ่มคลิกได้ → navigate ไป meter page → cycle dialog เปิด
+
+**P1 BUG-DASH-002: PDF button disabled ไม่มี tooltip:**
+- แก้: เพิ่ม title="ต้องมีข้อมูลใน Dashboard ก่อนถึงจะ export PDF ได้" เมื่อ disabled
+
+**P1 BUG-DASH-003: widget headers ไม่มี semantic heading:**
+- แก้แล้วใน QA-003 (CardTitle div → h3) — แก้ที่ root component → มีผลทุกหน้า
+
+**P2 BUG-DASH-004: ปุ่ม "ปรับแต่ง" ซ้ำซ้อน:**
+- ตรวจสอบ: ไม่ใช่บัก — ปุ่มหนึ่งสำหรับ desktop (inline), อีกปุ่มสำหรับ mobile (dropdown menu)
+- เป็น responsive design ที่ถูกต้อง
+
+**P2 BUG-DASH-006: range selector ไม่ persist localStorage:**
+- แก้: เปลี่ยน useState → lazy initializer ที่อ่านจาก localStorage + setRange ที่บันทึกลง localStorage
+
+**P2 BUG-DASH-007: ไม่มี toast หลัง Refresh:**
+- แก้: เปลี่ยน onClick เป็น async + toast.success('รีเฟรชข้อมูลเรียบร้อย')
+
+**P2 BUG-DASH-005: ปุ่ม "สร้างรายงาน" ไม่ปรากฏใน DOM:**
+- ตรวจสอบ: ปุ่มถูกซ่อนด้วย empty state — เป็นเพราะไม่มีข้อมูล report ใน DB
+- เมื่อมีข้อมูลแล้วปุ่มจะแสดง — ไม่ใช่บักโค้ด
+
+**P3 BUG-DASH-008-010: loading skeleton / aria-label / keyboard shortcut:**
+- Low priority — ยังไม่ได้แก้ (non-blocking)
+
+Stage Summary:
+- ✅ P0 BUG-DASH-001: สร้างรอบใหม่คลิกได้ (type="button" 9 buttons)
+- ✅ P1 BUG-DASH-002: PDF tooltip
+- ✅ P1 BUG-DASH-003: CardTitle h3 (แก้ใน QA-003)
+- ✅ P2 BUG-DASH-004: ไม่ใช่บัก (responsive design)
+- ✅ P2 BUG-DASH-005: ไม่ใช่บัก (empty state)
+- ✅ P2 BUG-DASH-006: range persist localStorage
+- ✅ P2 BUG-DASH-007: toast หลัง refresh
+- ⏳ P3 BUG-DASH-008-010: Low priority
+
+Files modified:
+- MODIFIED: src/components/itam/itam-dashboard.tsx — type="button" on 9 buttons, PDF tooltip, range localStorage, refresh toast
+
