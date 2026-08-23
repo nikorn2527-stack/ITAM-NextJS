@@ -10812,3 +10812,99 @@ Files modified:
   - Used placeholders for field hints (faint text)
   - Removed duplicate old section blocks (deleted ~800 lines)
 
+
+---
+Task ID: TAB-REDESIGN-V2-HIGHLIGHTS
+Agent: orchestrator (main) — ย้ายข้อมูลเครื่อง + auto meter + green highlight + License on top
+
+Task:
+ผู้ใช้ต้องการปรับฟอร์ม 5 ข้อ:
+1. ย้ายข้อมูลเครื่อง (Type/Brand/Model/Name/Serial) จาก Tab 2 → Tab 1
+2. ย้าย Remote ID + meter info จาก Tab 3 → Tab 2 (แทนที่ข้อมูลเครื่อง)
+3. License/Software ขึ้นบนสุดใน Tab 3
+4. meterRequired auto-derive จาก Type (ไม่ต้อง checkbox)
+5. Dropdown ชั้น/แผนก ไฮไลต์ (สีเขียว) รายการที่มี Device อยู่จริง + แสดงจำนวน
+
+Work Log:
+
+**1. Create /api/itam/devices/location-summary:**
+- GET /api/itam/devices/location-summary?site=UDH&building=ตึกผู้ป่วยนอก (OPD)
+- คืนค่า: { floors: [], departments: [], floorCounts: {}, departmentCounts: {}, total: N }
+- ใช้ Device.site (Thai name) + building ในการ group
+- แก้ปัญหา Device.site เก็บ Thai name → resolve via SiteAttribute.SiteCode → SiteName
+
+**2. Combobox enhancements:**
+- เพิ่ม `highlightedValues?: string[]` prop → ไฮไลต์ items ในสีเขียว
+- เพิ่ม `highlightBadges?: Record<string, string>` prop → แสดง badge (เช่น "5 เครื่อง")
+- เพิ่ม `onAddNew` + `addNewLabel` props (เดิมมีอยู่แล้วใน commit ก่อนหน้า)
+- ไอเทมที่ไฮไลต์: bg-emerald-50, text-emerald-700 (font-semibold), badge สีเขียว
+- ไอเทมปกติ: สีจาง — ยังเลือกได้
+
+**3. Auto-derive meterRequired from Type:**
+- useEffect ที่ trigger เมื่อ form.type เปลี่ยน
+- METER_REQUIRED_TYPES = ['PRINTER', 'COPIER', 'MFD', 'MULTIFUNCTION']
+- ถ้า type.toUpperCase().includes(...) → meterRequired = true
+- ลบ checkbox "ต้องจดมิเตอร์" ออกจากฟอร์ม
+- แสดง hint ใน Tab 2: "✅ ต้องจดมิเตอร์ — อัตโนมัติจากประเภท PRINTER LASER"
+
+**4. ย้ายข้อมูลเครื่อง → Tab 1:**
+- Type, Brand, Model, Name, Serial ย้ายจาก Tab 2 → Tab 1 (ต่อจาก ตำแหน่ง/ห้อง)
+- แยก section "💻 ข้อมูลเครื่อน" พร้อม hint:
+  - Type: "เลือกแล้วระบบกำหนด จดมิเตอร์ อัตโนมัติ"
+  - Model: "เลือกรุ่นแล้ว แบรนด์/ประเภท auto"
+
+**5. ย้าย Remote ID + meter → Tab 2:**
+- ลบ ข้อมูลเครื่อง ออกจาก Tab 2
+- เพิ่ม Remote ID field
+- เพิ่ม meter hint (auto-derived) ด้านล่าง
+- เก็บ: สถานะ, IP, MAC, กลุ่มอุปกรณ์, โหมดมิเตอร์
+
+**6. License ขึ้นบนสุดใน Tab 3:**
+- ลบ section "Remote ID + Meter Required" ออกจาก Tab 3 (ย้ายไป Tab 2)
+- ย้าย License/Software section ขึ้นเป็นอันดับ 1 ใน Tab 3
+- ลำดับใหม่: License → ซื้อ/รับประกัน → การเงิน → อื่นๆ
+
+**7. Fetch location-summary + highlight:**
+- useQuery locationSummary (site + building) → returns floors/departments + counts
+- highlightedFloors = locationSummary.floors
+- highlightedDepartments = locationSummary.departments
+- floorBadges = { '2': '286 เครื่อง', ... }
+- ส่ง highlightedValues + highlightBadges ให้ Combobox ของ ชั้น + แผนก
+- hint ใต้ label: "🟢 ไฮไลต์ = ชั้นที่มีเครื่องอยู่จริงในอาคารนี้ (6 ชั้น)"
+
+Stage Summary:
+- ✅ Tab 1: สถานที่ + ข้อมูลเครื่อง (Type/Brand/Model/Name/Serial ย้ายมาแล้ว)
+- ✅ Tab 2: ตั้งค่าอุปกรณ์ (สถานะ, Remote ID, IP, MAC, กลุ่ม, โหมดมิเตอร์ + meter hint)
+- ✅ Tab 3: License บนสุด → ซื้อ/รับประกัน → การเงิน → อื่นๆ
+- ✅ meterRequired auto-derive จาก Type (ลบ checkbox)
+- ✅ Dropdown ชั้น/แผนก ไฮไลต์สีเขียว + badge จำนวนเครื่อง
+- ✅ ยังเลือกอันอื่นได้ (สีจาง)
+
+Production verification (agent-browser + VLM):
+- Login → devices → Add Device ✓
+- Tab 1: สถานที่ + ข้อมูลเครื่อง (Type/Brand/Model/Name/Serial) ✓
+- Tab 2: สถานะ, Remote ID, IP, MAC, กลุ่มอุปกรณ์, โหมดมิเตอร์ + meter hint ✓
+- Tab 3: License บนสุด ✓
+- เลือก site UDH + building "ตึกผู้ป่วยนอก (OPD)" → floor dropdown shows:
+  - 🟢 ชั้น 1 [165 เครื่อง]
+  - 🟢 ชั้น 2 [286 เครื่อง]
+  - 🟢 ชั้น 3 [177 เครื่อง]
+  - 🟢 ชั้น 4 [91 เครื่อง]
+  - 🟢 ชั้น 5 [81 เครื่อง]
+  - 🟢 ชั้น 6 [53 เครื่อง]
+  - ⚪ ชั้น 7, 8, 9, F1, G (no devices — still selectable)
+- เลือก Type = PRINTER LASER → Tab 2 shows "✅ ต้องจดมิเตอร์ — อัตโนมัติจากประเภท PRINTER LASER" ✓
+- VLM confirms: "items highlighted with light green background, device counts in green, non-highlighted still selectable"
+
+Files created/modified:
+- NEW: src/app/api/itam/devices/location-summary/route.ts (~80 LOC)
+- MODIFIED: src/components/itam/combobox.tsx — added highlightedValues + highlightBadges + onAddNew + addNewLabel props + renderItem with green highlight + badge
+- MODIFIED: src/components/itam/devices-page.tsx:
+  - Added locationSummary useQuery
+  - Added highlightedFloors/Departments + floorBadges/departmentBadges useMemo
+  - Added auto-derive meterRequired useEffect (METER_REQUIRED_TYPES)
+  - Moved device fields (Type/Brand/Model/Name/Serial) from Tab 2 → Tab 1
+  - Replaced Tab 2 content with Remote ID + meter hint (removed device fields)
+  - Moved License to top of Tab 3 (removed Remote ID + meter section)
+  - Added highlightedValues + highlightBadges to floor + department Comboboxes
+

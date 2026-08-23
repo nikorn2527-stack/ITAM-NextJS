@@ -581,6 +581,74 @@ export function DevicesPage() {
     enabled: dialogOpen && Boolean(form.building) && Boolean(form.floor),
   })
 
+  // ── Location Summary: which floors + departments have devices at this building ──
+  // Used to HIGHLIGHT (green) the floors/departments that actually exist at
+  // the selected site+building — so the user knows "this floor has 5 departments"
+  // without blocking them from picking others.
+  const { data: locationSummary } = useQuery<{
+    floors: string[]
+    departments: string[]
+    floorCounts: Record<string, number>
+    departmentCounts: Record<string, number>
+  }>({
+    queryKey: ['location-summary', form.site, form.building],
+    queryFn: async () => {
+      if (!form.site || !form.building) return { floors: [], departments: [], floorCounts: {}, departmentCounts: {} }
+      try {
+        const params = new URLSearchParams({
+          site: form.site,
+          building: form.building,
+        })
+        const j = await authFetch<{
+          floors: string[]
+          departments: string[]
+          floorCounts: Record<string, number>
+          departmentCounts: Record<string, number>
+        }>(`/api/itam/devices/location-summary?${params.toString()}`)
+        return j
+      } catch {
+        return { floors: [], departments: [], floorCounts: {}, departmentCounts: {} }
+      }
+    },
+    enabled: dialogOpen && Boolean(form.site) && Boolean(form.building),
+  })
+
+  // Derived highlight sets + badges
+  const highlightedFloors = locationSummary?.floors ?? []
+  const highlightedDepartments = locationSummary?.departments ?? []
+  const floorBadges = React.useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const [floor, count] of Object.entries(locationSummary?.floorCounts ?? {})) {
+      m[floor] = `${count} เครื่อง`
+    }
+    return m
+  }, [locationSummary])
+  const departmentBadges = React.useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const [dept, count] of Object.entries(locationSummary?.departmentCounts ?? {})) {
+      m[dept] = `${count} เครื่อง`
+    }
+    return m
+  }, [locationSummary])
+
+  // ── Auto-derive meterRequired from Type ──
+  // Printers, copiers, and multi-function devices need meter tracking.
+  // Scanners, barcode scanners, and other devices do not.
+  // This runs whenever form.type changes — the user doesn't need to
+  // manually check a "meter required" checkbox.
+  const METER_REQUIRED_TYPES = ['PRINTER', 'COPIER', 'MFD', 'MULTIFUNCTION']
+  React.useEffect(() => {
+    if (!form.type) return
+    const isMeterRequired = METER_REQUIRED_TYPES.some((t) =>
+      form.type.toUpperCase().includes(t),
+    )
+    setForm((prev) =>
+      prev.meterRequired === isMeterRequired
+        ? prev
+        : { ...prev, meterRequired: isMeterRequired },
+    )
+  }, [form.type])
+
   function openAdd() {
     setForm({ ...EMPTY_FORM })
     setDialogOpen(true)
@@ -1307,7 +1375,7 @@ export function DevicesPage() {
                         emptyText="ยังไม่มีอาคารในสาขานี้ — พิมพ์เพื่อเพิ่มใหม่"
                       />
                     </Field>
-                    <Field label="ชั้น" required>
+                    <Field label="ชั้น" required hint={highlightedFloors.length > 0 ? `🟢 ไฮไลต์ = ชั้นที่มีเครื่องอยู่จริงในอาคารนี้ (${highlightedFloors.length} ชั้น)` : undefined}>
                       <Combobox
                         value={form.floor}
                         onChange={(v) =>
@@ -1322,11 +1390,13 @@ export function DevicesPage() {
                           value: f,
                           label: f,
                         }))}
+                        highlightedValues={highlightedFloors}
+                        highlightBadges={floorBadges}
                         placeholder="เลือกหรือพิมพ์ชั้น"
                         emptyText="ไม่พบชั้น — พิมพ์เพื่อเพิ่มใหม่"
                       />
                     </Field>
-                    <Field label="แผนก (Department)">
+                    <Field label="แผนก (Department)" hint={highlightedDepartments.length > 0 ? `🟢 ไฮไลต์ = แผนกที่มีเครื่องอยู่จริงในชั้นนี้ (${highlightedDepartments.length} แผนก)` : undefined}>
                       <Combobox
                         value={form.department}
                         onChange={(v) => {
@@ -1346,6 +1416,8 @@ export function DevicesPage() {
                           value: d.label,
                           label: d.label,
                         }))}
+                        highlightedValues={highlightedDepartments}
+                        highlightBadges={departmentBadges}
                         placeholder="เลือกแผนก — สังกัด auto"
                         emptyText="ไม่พบแผนก — พิมพ์เพื่อเพิ่มใหม่"
                       />
@@ -1390,16 +1462,112 @@ export function DevicesPage() {
                       </Field>
                     </div>
                   </div>
+
+                  {/* ── ข้อมูลเครื่อง (moved from Tab 2) ──
+                      Type / Brand / Model / Name / Serial — ย้ายมาไว้ใน
+                      Tab 1 เพราะพื้นที่พอและเป็นข้อมูลจำเป็นต้องกรอก */}
+                  <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      💻 ข้อมูลเครื่อง
+                    </div>
+                    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                      <Field label="ประเภท (Type)" required hint="เลือกแล้วระบบกำหนด จดมิเตอร์ อัตโนมัติ">
+                        <Combobox
+                          value={form.type}
+                          onChange={(v) =>
+                            setForm({ ...form, type: v, brand: '', model: '' })
+                          }
+                          items={(deviceTypes ?? []).map((t) => ({
+                            value: t.name,
+                            label: t.name,
+                          }))}
+                          placeholder="เลือกหรือพิมพ์ประเภท เช่น PRINTER LASER"
+                          emptyText="ไม่พบประเภท"
+                        />
+                      </Field>
+                      <Field label="แบรนด์ (Brand)" required>
+                        <Combobox
+                          value={form.brand}
+                          onChange={(v) =>
+                            setForm({ ...form, brand: v, model: '' })
+                          }
+                          items={(brandsData ?? []).map((b) => ({
+                            value: b.name,
+                            label: b.name,
+                          }))}
+                          placeholder="เลือกหรือพิมพ์แบรนด์ เช่น BROTHER"
+                          emptyText="ไม่พบแบรนด์"
+                        />
+                      </Field>
+                      <Field label="รุ่น (Model)" required hint="เลือกรุ่นแล้ว แบรนด์/ประเภท auto">
+                        <Combobox
+                          value={form.model}
+                          onChange={(v) => {
+                            const match = deviceClassifications.find(
+                              (c) =>
+                                (c.model ?? '').toLowerCase() ===
+                                v.toLowerCase(),
+                            )
+                            if (match) {
+                              setForm((prev) => ({
+                                ...prev,
+                                model: v,
+                                brand: match.brand ?? prev.brand,
+                                type: match.deviceType ?? prev.type,
+                              }))
+                            } else {
+                              setForm((prev) => ({ ...prev, model: v }))
+                            }
+                          }}
+                          items={Array.from(
+                            new Set(
+                              deviceClassifications
+                                .map((c) => c.model)
+                                .filter((m): m is string => Boolean(m)),
+                            ),
+                          )
+                            .sort()
+                            .map((m) => ({ value: m, label: m }))}
+                          placeholder="เลือกรุ่น เช่น HL-L5210DN"
+                          emptyText="ไม่พบรุ่น — พิมพ์เพื่อเพิ่มใหม่"
+                        />
+                      </Field>
+                      <Field label="ชื่ออุปกรณ์" required>
+                        <Input
+                          id="dev-name"
+                          value={form.name}
+                          onChange={(e) =>
+                            setForm({ ...form, name: e.target.value })
+                          }
+                          placeholder="ชื่ออุปกรณ์ เช่น PRINTER LASER ชั้น 2 OPD"
+                        />
+                      </Field>
+                      <Field label="Serial Number">
+                        <div className="relative">
+                          <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                          <Input
+                            id="dev-serialNumber"
+                            value={form.serialNumber}
+                            onChange={(e) =>
+                              setForm({ ...form, serialNumber: e.target.value })
+                            }
+                            placeholder="สแกนจากด้านบน หรือพิมพ์ SN"
+                            className="pl-8 font-mono text-xs"
+                          />
+                        </div>
+                      </Field>
+                    </div>
+                  </div>
                 </div>
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 2: 💻 อุปกรณ์ (2-column grid)
+                  Tab 2: 💻 อุปกรณ์ (ตั้งค่า — Remote ID, สถานะ, IP/MAC, กลุ่ม, มิเตอร์)
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="device" className="space-y-4">
                 <div className="rounded-lg border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900/40 dark:bg-slate-900">
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-                    💻 อุปกรณ์
+                    💻 ตั้งค่าอุปกรณ์
                   </div>
                   <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
                     <Field label="สถานะ" required>
@@ -1421,90 +1589,15 @@ export function DevicesPage() {
                         </SelectContent>
                       </Select>
                     </Field>
-                    <Field label="ประเภท (Type)" required>
-                      <Combobox
-                        value={form.type}
-                        onChange={(v) =>
-                          setForm({ ...form, type: v, brand: '', model: '' })
-                        }
-                        items={(deviceTypes ?? []).map((t) => ({
-                          value: t.name,
-                          label: t.name,
-                        }))}
-                        placeholder="เลือกหรือพิมพ์ประเภท เช่น PRINTER LASER"
-                        emptyText="ไม่พบประเภท"
-                      />
-                    </Field>
-                    <Field label="แบรนด์ (Brand)" required>
-                      <Combobox
-                        value={form.brand}
-                        onChange={(v) =>
-                          setForm({ ...form, brand: v, model: '' })
-                        }
-                        items={(brandsData ?? []).map((b) => ({
-                          value: b.name,
-                          label: b.name,
-                        }))}
-                        placeholder="เลือกหรือพิมพ์แบรนด์ เช่น BROTHER"
-                        emptyText="ไม่พบแบรนด์"
-                      />
-                    </Field>
-                    <Field label="รุ่น (Model)" required>
-                      <Combobox
-                        value={form.model}
-                        onChange={(v) => {
-                          const match = deviceClassifications.find(
-                            (c) =>
-                              (c.model ?? '').toLowerCase() ===
-                              v.toLowerCase(),
-                          )
-                          if (match) {
-                            setForm((prev) => ({
-                              ...prev,
-                              model: v,
-                              brand: match.brand ?? prev.brand,
-                              type: match.deviceType ?? prev.type,
-                            }))
-                          } else {
-                            setForm((prev) => ({ ...prev, model: v }))
-                          }
-                        }}
-                        items={Array.from(
-                          new Set(
-                            deviceClassifications
-                              .map((c) => c.model)
-                              .filter((m): m is string => Boolean(m)),
-                          ),
-                        )
-                          .sort()
-                          .map((m) => ({ value: m, label: m }))}
-                        placeholder="เลือกรุ่น — แบรนด์/ประเภท auto เช่น HL-L5210DN"
-                        emptyText="ไม่พบรุ่น — พิมพ์เพื่อเพิ่มใหม่"
-                      />
-                    </Field>
-                    <Field label="ชื่ออุปกรณ์" required>
+                    <Field label="Remote ID (TeamViewer / AnyDesk)">
                       <Input
-                        id="dev-name"
-                        value={form.name}
+                        value={form.remoteId}
                         onChange={(e) =>
-                          setForm({ ...form, name: e.target.value })
+                          setForm({ ...form, remoteId: e.target.value })
                         }
-                        placeholder="ชื่ออุปกรณ์ เช่น PRINTER LASER ชั้น 2 OPD"
+                        placeholder="เช่น 123 456 789"
+                        className="font-mono text-xs"
                       />
-                    </Field>
-                    <Field label="Serial Number">
-                      <div className="relative">
-                        <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                        <Input
-                          id="dev-serialNumber"
-                          value={form.serialNumber}
-                          onChange={(e) =>
-                            setForm({ ...form, serialNumber: e.target.value })
-                          }
-                          placeholder="สแกนจากด้านบน หรือพิมพ์ SN"
-                          className="pl-8 font-mono text-xs"
-                        />
-                      </div>
                     </Field>
                     <Field label="IP Address">
                       <div className="relative">
@@ -1576,6 +1669,15 @@ export function DevicesPage() {
                       </Select>
                     </Field>
                   </div>
+
+                  {/* ── meter status hint (auto-derived from Type) ── */}
+                  <div className={`mt-3 rounded-md px-3 py-2 text-[11px] ${form.meterRequired ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' : 'bg-slate-50 text-slate-500 dark:bg-slate-800/50 dark:text-slate-400'}`}>
+                    {form.meterRequired ? (
+                      <>✅ <span className="font-semibold">ต้องจดมิเตอร์</span> — อัตโนมัติจากประเภท "{form.type}" (เครื่องพิมพ์/ก๊อปปี้)</>
+                    ) : (
+                      <>⚪ <span className="font-semibold">ไม่ต้องจดมิเตอร์</span> — อัตโนมัติจากประเภท "{form.type || '(ยังไม่เลือก)'}"</>
+                    )}
+                  </div>
                 </div>
               </TabsContent>
 
@@ -1583,157 +1685,6 @@ export function DevicesPage() {
                   Tab 3: ⚙️ ขั้นสูง
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="advanced" className="space-y-4">
-                {/* ── Remote ID + Meter Required ── */}
-                <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                    🌐 เครือข่าย + มิเตอร์
-                  </div>
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                    <Field label="Remote ID (TeamViewer / AnyDesk)">
-                      <Input
-                        value={form.remoteId}
-                        onChange={(e) =>
-                          setForm({ ...form, remoteId: e.target.value })
-                        }
-                        placeholder="เช่น 123 456 789"
-                        className="font-mono text-xs"
-                      />
-                    </Field>
-                    <div className="flex h-9 items-center gap-2">
-                      <Checkbox
-                        id="meterRequired"
-                        checked={form.meterRequired}
-                        onCheckedChange={(v) =>
-                          setForm({ ...form, meterRequired: v === true })
-                        }
-                        className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600"
-                      />
-                      <Label
-                        htmlFor="meterRequired"
-                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                      >
-                        ต้องจดมิเตอร์ (เช่น เครื่องพิมพ์ / สแกนเนอร์)
-                      </Label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── การซื้อ / รับประกัน ── */}
-                <div className="rounded-lg border border-violet-200 bg-white p-4 shadow-sm dark:border-violet-900/40 dark:bg-slate-900">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400">
-                    🧾 การซื้อ / รับประกัน
-                  </div>
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                    <Field label="ผู้ขาย (Vendor)">
-                      <Input
-                        value={form.vendor}
-                        onChange={(e) =>
-                          setForm({ ...form, vendor: e.target.value })
-                        }
-                        placeholder="ชื่อบริษัท / ร้านค้า"
-                      />
-                    </Field>
-                    <Field label="เลขที่สัญญา (Contract No)">
-                      <Input
-                        value={form.contractNo}
-                        onChange={(e) =>
-                          setForm({ ...form, contractNo: e.target.value })
-                        }
-                        placeholder="เลขที่สัญญา"
-                      />
-                    </Field>
-                    <Field label="วันที่ซื้อ">
-                      <Input
-                        type="date"
-                        value={form.purchaseDate}
-                        onChange={(e) =>
-                          setForm({ ...form, purchaseDate: e.target.value })
-                        }
-                      />
-                    </Field>
-                    <Field label="รับประกัน (เดือน)">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={120}
-                        step={1}
-                        value={form.warrantyMonths}
-                        onChange={(e) =>
-                          setForm({ ...form, warrantyMonths: e.target.value })
-                        }
-                        placeholder="12"
-                      />
-                    </Field>
-                    <Field label="วันหมดประกัน">
-                      <Input
-                        type="date"
-                        value={form.warrantyEnd}
-                        onChange={(e) =>
-                          setForm({ ...form, warrantyEnd: e.target.value })
-                        }
-                      />
-                    </Field>
-                    <Field label="วันที่ถอดถอน">
-                      <Input
-                        type="date"
-                        value={form.uninstallDate}
-                        onChange={(e) =>
-                          setForm({ ...form, uninstallDate: e.target.value })
-                        }
-                      />
-                    </Field>
-                  </div>
-                </div>
-
-                {/* ── การเงิน ── */}
-                <div className="rounded-lg border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900/40 dark:bg-slate-900">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-                    💰 การเงิน (ค่าเสื่อมราคา)
-                  </div>
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
-                    <Field label="ราคาซื้อ (฿)">
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={form.purchasePrice}
-                        onChange={(e) =>
-                          setForm({ ...form, purchasePrice: e.target.value })
-                        }
-                        placeholder="0.00"
-                      />
-                    </Field>
-                    <Field label="มูลค่าซาลเวจ (฿)">
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={form.salvageValue}
-                        onChange={(e) =>
-                          setForm({ ...form, salvageValue: e.target.value })
-                        }
-                        placeholder="0.00"
-                      />
-                    </Field>
-                    <Field label="อายุการใช้งาน (เดือน)">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={240}
-                        step={1}
-                        value={form.usefulLife}
-                        onChange={(e) =>
-                          setForm({ ...form, usefulLife: e.target.value })
-                        }
-                        placeholder="60"
-                      />
-                    </Field>
-                  </div>
-                  <div className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
-                    📐 สูตร: (ราคาซื้อ − มูลค่าซาลเวจ) ÷ อายุการใช้งาน = ค่าเสื่อมราคาต่อเดือน
-                  </div>
-                </div>
-
                 {/* ── License / Software ── */}
                 <div className="rounded-lg border border-violet-200 bg-white p-4 shadow-sm dark:border-violet-900/40 dark:bg-slate-900">
                   <div className="mb-3 flex items-center justify-between">
@@ -1881,6 +1832,123 @@ export function DevicesPage() {
                     </div>
                   )}
                 </div>
+
+                {/* ── การซื้อ / รับประกัน ── */}
+                <div className="rounded-lg border border-violet-200 bg-white p-4 shadow-sm dark:border-violet-900/40 dark:bg-slate-900">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400">
+                    🧾 การซื้อ / รับประกัน
+                  </div>
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                    <Field label="ผู้ขาย (Vendor)">
+                      <Input
+                        value={form.vendor}
+                        onChange={(e) =>
+                          setForm({ ...form, vendor: e.target.value })
+                        }
+                        placeholder="ชื่อบริษัท / ร้านค้า"
+                      />
+                    </Field>
+                    <Field label="เลขที่สัญญา (Contract No)">
+                      <Input
+                        value={form.contractNo}
+                        onChange={(e) =>
+                          setForm({ ...form, contractNo: e.target.value })
+                        }
+                        placeholder="เลขที่สัญญา"
+                      />
+                    </Field>
+                    <Field label="วันที่ซื้อ">
+                      <Input
+                        type="date"
+                        value={form.purchaseDate}
+                        onChange={(e) =>
+                          setForm({ ...form, purchaseDate: e.target.value })
+                        }
+                      />
+                    </Field>
+                    <Field label="รับประกัน (เดือน)">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={120}
+                        step={1}
+                        value={form.warrantyMonths}
+                        onChange={(e) =>
+                          setForm({ ...form, warrantyMonths: e.target.value })
+                        }
+                        placeholder="12"
+                      />
+                    </Field>
+                    <Field label="วันหมดประกัน">
+                      <Input
+                        type="date"
+                        value={form.warrantyEnd}
+                        onChange={(e) =>
+                          setForm({ ...form, warrantyEnd: e.target.value })
+                        }
+                      />
+                    </Field>
+                    <Field label="วันที่ถอดถอน">
+                      <Input
+                        type="date"
+                        value={form.uninstallDate}
+                        onChange={(e) =>
+                          setForm({ ...form, uninstallDate: e.target.value })
+                        }
+                      />
+                    </Field>
+                  </div>
+                </div>
+
+                {/* ── การเงิน ── */}
+                <div className="rounded-lg border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900/40 dark:bg-slate-900">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                    💰 การเงิน (ค่าเสื่อมราคา)
+                  </div>
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
+                    <Field label="ราคาซื้อ (฿)">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={form.purchasePrice}
+                        onChange={(e) =>
+                          setForm({ ...form, purchasePrice: e.target.value })
+                        }
+                        placeholder="0.00"
+                      />
+                    </Field>
+                    <Field label="มูลค่าซาลเวจ (฿)">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={form.salvageValue}
+                        onChange={(e) =>
+                          setForm({ ...form, salvageValue: e.target.value })
+                        }
+                        placeholder="0.00"
+                      />
+                    </Field>
+                    <Field label="อายุการใช้งาน (เดือน)">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={240}
+                        step={1}
+                        value={form.usefulLife}
+                        onChange={(e) =>
+                          setForm({ ...form, usefulLife: e.target.value })
+                        }
+                        placeholder="60"
+                      />
+                    </Field>
+                  </div>
+                  <div className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
+                    📐 สูตร: (ราคาซื้อ − มูลค่าซาลเวจ) ÷ อายุการใช้งาน = ค่าเสื่อมราคาต่อเดือน
+                  </div>
+                </div>
+
 
                 {/* ── อื่นๆ (Tech fields) ── */}
                 <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
