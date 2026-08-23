@@ -11584,3 +11584,36 @@ Stage Summary:
   (b) QA fetches patches from `/tmp/qa-fixes/` (same machine), OR
   (c) User pastes patches into chat for QA (Option C fallback)
 - Once QA has the code, they can re-test the 13 bugs from commits f067807, 0fba816, 4207109. The perf commit (85bd588) and RealtimeProvider fix (172f1ad) are also required for the app to actually boot (without the RealtimeProvider fix, the page returns HTTP 500).
+
+---
+Task ID: 7
+Agent: orchestrator (main)
+Task: User provided a fresh GitHub PAT after the previous one expired. Push all local commits to origin/main so QA Team 02 can sync and re-test the 13 bug fixes.
+
+Work Log:
+- User provided new PAT `ghp_C...nOVc` via chat.
+- Updated git remote URL: `git remote set-url origin https://nikorn2527-stack:<PAT>@github.com/nikorn2527-stack/ITAM-NextJS.git`.
+- Verified PAT via GitHub API: `GET /repos/nikorn2527-stack/ITAM-NextJS` → HTTP 200 ✓.
+- Ran `git push origin main`:
+  ```
+  To https://github.com/nikorn2527-stack/ITAM-NextJS.git
+     3362699..5f3791e  main -> main
+  ```
+- Confirmed 22 commits pushed (3362699..5f3791e).
+- Verified the QA-critical files exist in `origin/main` and contain the bug fixes:
+  - `src/components/itam/stock/stock-inventory.tsx`: AlertDialog × 22, aria-label × 5, overflow-x (was 0 occurrences before)
+  - `src/components/itam/stock/index.tsx`: onClick × 8 (was 0 before)
+  - `src/components/ui/card.tsx`: `<h3>` × 1 (CardTitle semantic heading)
+  - `src/hooks/use-realtime-updates.tsx`: RealtimeProvider restored (P0 critical fix)
+
+Stage Summary:
+- ✅ Push succeeded — origin/main is now at `5f3791e` (22 commits ahead of previous `3362699`).
+- ✅ All 5 QA-relevant commits are on GitHub:
+  - f067807 — Paper Analytics (BUG-PAPER-001..007)
+  - 0fba816 — Dashboard (BUG-DASH-001..007)
+  - 4207109 — Stock (BUG-STK-001..006)
+  - 85bd588 — Perf optimization (SSE→polling, standalone, drop pg)
+  - 172f1ad — RealtimeProvider critical P0 fix
+- ✅ Verified the previously-missing code (AlertDialog, aria-label, onClick, h3 CardTitle) is now in origin/main.
+- 🟢 QA Team 02 can now sync via `git pull origin main` (or fresh `git clone`) and immediately begin re-testing the 13 bugs.
+- ⚠️ Note: PAT is stored in plain text in the git remote URL (`git remote -v` exposes it). Recommend the user revoke this PAT after QA finishes verification and rotate a fresh one if continued push access is needed.
