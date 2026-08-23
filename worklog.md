@@ -703,3 +703,70 @@ Task: ทดสอบหน้า Paper Analytics (วิเคราะห์�
 - 📸 Screenshots: `/home/z/my-project/qa-reports/paper-*.png` (10 รูป)
 - 📄 Test Report: `/home/z/my-project/qa-reports/QA-PAPER-001.md`
 
+
+---
+
+## Task ID: ANALYZE-QUOTA-001
+Agent: Code Analyst
+Task: วิเคราะห์จุดเสี่ยงเกินโควต้า Vercel + Supabase Free tier
+
+Work Log:
+- อ่าน `worklog.md` บรรทัด 1-110, 600-705 (MIGRATE-001 + QA tasks) เพื่อเข้าใจสถานะ
+- อ่าน `src/lib/db.ts` (101 บรรทัด) — ตรวจ Prisma client + auto-switch pooler 5432→6543
+- อ่าน `src/lib/realtime.ts` (127 บรรทัด) — ตรวจ in-memory pub/sub
+- อ่าน `src/app/api/itam/events/route.ts` (116 บรรทัด) — ตรวจ SSE + heartbeat + 10-minute timeout
+- อ่าน `src/app/api/itam/dashboard/route.ts` (293 บรรทัด) — ตรวจ query complexity (Promise.all, groupBy)
+- อ่าน `src/app/api/devices/route.ts` (352 บรรทัด) — ตรวจ clampPageAndLimit + bounded select
+- อ่าน `src/app/api/itam/devices/route.ts` (178 บรรทัด) — ตรวจ `_count` subqueries
+- อ่าน `src/app/page.tsx` (389 บรรทัด) — ตรวจ fetch interceptor + auth bootstrap
+- อ่าน `src/components/itam/devices-page.tsx` (บางส่วน, บรรทัด 255-409) — ตรวจ useQuery + useEffect patterns
+- อ่าน `src/hooks/use-realtime-updates.tsx` (229 บรรทัด) — ตรวจ EventSource lifecycle
+- อ่าน `src/app/providers.tsx` — ตรวจ default staleTime = 30s
+- อ่าน `src/components/itam/itam-dashboard.tsx` (บรรทัด 375-504) — ตรวจ 6 useQuery + refetchInterval
+- อ่าน `next.config.ts` + `package.json` — ตรวจ output:standalone + deps
+- Grep `useQuery|staleTime|refetchInterval` ใน `src/` (80+ matches)
+- Grep `findMany\(\{` ใน `src/` (60+ matches) — ตรวจ queries ที่ไม่มี take/skip/where
+- Grep `setInterval|EventSource|text/event-stream|polling` (15 matches)
+- Grep `useEffect` multiline สำหรับ dep arrays ยาว (พบ cascading-dropdown 10-item deps)
+- Grep `maxDuration|output: 'standalone'` — ไม่พบ
+- Grep `import.*from 'pg'` — ไม่พบ (`pg` ใน package.json:80 แต่ไม่ถูกใช้)
+- ตรวจขนาด DB ปัจจุบัน: file 616 KB; Device=0, MeterReading=0, AuditLog=19, User=3, StockItem=1, Role=5, Permission=28, RolePermission=79 (ข้อมูลจริงเกือบว่าง — ทั้งหมดเป็น schema + seed)
+- ห้ามแก้โค้ด — ทำเฉพาะการวิเคราะห์และรายงาน
+
+Stage Summary:
+
+Critical risks (จะเกินโควต้าแน่ๆ ถ้าไม่แก้):
+1. **SSE endpoint ถูก Vercel ตัดที่ 60s** — `src/app/api/itam/events/route.ts:95` `setTimeout(cleanup, 10 * 60 * 1000)` ตั้งไว้ 10 นาที แต่ Vercel Hobby serverless timeout = 60s. EventSource ฝั่ง client (`src/hooks/use-realtime-updates.tsx:84`) จะ reconnect ทุก ~60s → ~60 invocations/hour/user × N users × N tabs. ทำไม่ได้บน Vercel Hobby ต้องเปลี่ยนเป็น polling หรือใช้บริการที่ support long-lived connection (Pusher/Ably/Upstash QStash)
+2. **Dashboard polling 60s × 5 queries** — `src/components/itam/itam-dashboard.tsx:388` `refetchInterval: 60_000` + lines 461/477/495 (180s/300s/120s) + `refetchOnWindowFocus: 'always'` (line 390). รวมแล้ว dashboard เดียวเรียก API ~6 ครั้ง/นาที/user. ทำให้ Active CPU (4 ชม./เดือน) หมดภายใน ~2 วันของการใช้งานจริง
+3. **SSE event เดียว invalidate 6 caches** — `src/hooks/use-realtime-updates.tsx:133-150` ทุก device event เรียก `qc.invalidateQueries` 6 ครั้ง = 6 refetches ทันที. คูณกับ dashboard polling จะทำให้ burst ใหญ่
+4. **`package.json:8` start script พัง** — `bun .next/standalone/server.js` แต่ `next.config.ts` ไม่มี `output: 'standalone'` → deploy production ไม่ได้เลย
+5. **DevicesPage ดึง limit=500 ทุกครั้ง** — `src/components/itam/devices-page.tsx:301` fetch `/api/devices?limit=500` ทุก mount/filter change โดยไม่มี `staleTime` (line 291 ใช้ default 30s). เมื่อข้อมูลขึ้นไป 2,378 devices (ตาม comment ใน dashboard route) payload ~500KB+ ต่อ refetch = bandwidth หนัก
+6. **`pg` dependency ไม่ได้ใช้** — `package.json:80` มี `pg` แต่ไม่มีการ import ในโค้ด. Prisma จัดการเองอยู่แล้ว. เพิ่ม ~5MB ใน serverless bundle = bandwidth เปล่าๆ
+
+Medium risks (ใช้งานหนักจะเกิน):
+1. **`/api/stock-items` GET มี findMany ไม่จำกัด** — `src/app/api/stock-items/route.ts:87-95` stats query ดึง active stock ทั้งหมดมา compute ใน JS ไม่มี `take`
+2. **`nextProductCode()` ดึง STK-* ทั้งหมด** — `src/app/api/stock-items/route.ts:25-39` findMany ไม่มี take/orderBy แค่หา max → ควร `orderBy: { productCode: 'desc' }, take: 1`
+3. **`/api/users` findMany ไม่มี take** — `src/app/api/users/route.ts:185-187` คืน users ทั้งหมด
+4. **`/api/itam/meter-readings/unread` take: 5000** — `src/app/api/itam/meter-readings/unread/route.ts:97` ดึง 5000 rows มา filter ใน JS. คูณกับการเรียกทุก 2 นาที (reminders refetchInterval ที่ dashboard:495) = ทั้ง DB และ bandwidth หนัก
+5. **`/api/itam/devices` มี `_count` subquery 4 relations** — `src/app/api/itam/devices/route.ts:62` ทุก device มี subquery 4 ตัว (meterReadings + transfers + assignments + maintenanceLogs) × limit per page. 100 devices/page × 4 subqueries = 400 subqueries
+6. **`/api/itam/meter-readings` เรียกใช้ `meter-logic.ts:91` findMany ทุก readings ของ device** — ไม่มี `take` limit. device เก่าที่มีข้อมูลหลายปีจะโหลดหนัก
+7. **`meter-snapshot.ts:124` findMany ทุก readings ใน cycle month + join device** — query หนักเมื่อข้อมูลเยอะ ควรทำ background job
+8. **`notifications-popover.tsx:141` refetchInterval: 60_000** — ทุก 1 นาทีดึง notifications ต่อ active session
+9. **`cascading-dropdown.tsx:215-226` useEffect 10-item dep array** — re-run ทุกครั้งที่ field ของ `initial` เปลี่ยน (10 fields)
+
+Optimization opportunities:
+1. **DB ปัจจุบันว่าง** (616 KB) — Device=0, MeterReading=0. Supabase 500MB ยังเหลือเยอะ. แต่ worklog บอก production scale ~2,378 devices (comment ใน dashboard route และ `src/components/itam/devices-page.tsx:299` "Server-side pagination... doesn't have to hold all 2,378 devices")
+2. **`db.ts` auto-switch 5432→6543 + connection_limit=5 + pgbouncer=true** — ทำถูกแล้ว ลด risk ของ EMAXCONNSESSION บน Supabase Free ได้
+3. **`db.ts:11-40` Prisma client validation ซับซ้อนเกินไป** — ตรวจ 14 model properties ทุกครั้ง ควรใช้ schema version number แทน
+4. **Dashboard polling ควรเปลี่ยนเป็น 5 นาที (300s)** — SSE invalidation มีอยู่แล้ว polling 60s ซ้ำซ้อน
+5. **`refetchOnWindowFocus: 'always'` ใน itam-dashboard.tsx:390 ควรตั้งเป็น `false`** — providers.tsx ตั้ง `false` ไว้ default แต่ dashboard แทนที่เป็น 'always' = ทุกครั้งที่ user สลับ tab กลับมา = invocations เปล่าๆ
+6. **เพิ่ม `staleTime` ที่ explicit ให้ `['devices']` และ `['sites']` ใน devices-page.tsx:291,353** — ป้องกัน refetch ทุก 30 วินาที
+7. **`output: 'standalone'` ใน next.config.ts** — ลด image size ของ serverless deployment ได้มาก (Docker/Vercel ใช้ trace-only files)
+8. **ตั้ง `export const maxDuration = 60` (หรือ <60) บนทุก route** — Vercel default = 10s; long queries (meter-snapshot, paper-analytics) อาจ timeout ถ้าไม่ตั้ง
+9. **`/api/itam/events` SSE — ทางเลือกสำหรับ Vercel Hobby:**
+   - เปลี่ยนเป็น polling `/api/itam/updates?since=<ts>` ทุก 30-60s (ง่ายสุด)
+   - หรือใช้ Upstash QStash / Pusher / Ably (มี free tier)
+   - ลบ RealtimeProvider ใน `src/app/page.tsx:273` ถ้า deploy บน Vercel
+10. **`auditLog.findMany` ใน `db.ts` validation — ควร simplify** เพราะตอนนี้มี overhead เล็กน้อยทุกครั้งที่ import module
+
+
