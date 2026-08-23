@@ -1,5 +1,5 @@
 {
-  "buildCommand": "bunx prisma generate && bun run build:next",
+  "buildCommand": "echo 'DB URL check:' && echo $DATABASE_URL | head -c 20 && echo '...' && bunx prisma generate && bun run build:next",
   "installCommand": "bun install",
   "framework": "nextjs",
   "github": {
