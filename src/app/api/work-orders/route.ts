@@ -6,6 +6,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag } from '@/lib/demo-mode'
+import { STATUS_MAPPINGS } from '@/lib/csv-field-mapping'
 import {
   getActiveWoPattern,
   generateWoNumberFromPattern,
@@ -586,7 +587,7 @@ export async function POST(req: NextRequest) {
         picBefore: picBefore ? String(picBefore) : null,
         externalMeta: externalMetaString,
         isSpecialFee: specialFeeFlag,
-        status: 'PENDING',
+        status: 'PENDING', // New WOs always start as PENDING (legacy status mapping handled on import)
         ...demoTag(demo?.user ?? null),
       },
     })

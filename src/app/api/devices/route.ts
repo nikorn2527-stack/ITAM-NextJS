@@ -295,6 +295,53 @@ export async function POST(req: NextRequest) {
         site: created.site,
       },
     )
+
+    // ── GAP-C01: Create INITIAL MeterReading for meterable devices ──
+    // Legacy: DeviceService.gs lines 175-185 — when a printer is added with
+    // initialMeter data, an INITIAL reading is saved so the first monthly
+    // reading calculates pages = meter - initial (not meter - 0).
+    if (created.meterRequired && body.initialMeter) {
+      const im = body.initialMeter
+      const hasBw = typeof im.meterBw === 'number' && isFinite(im.meterBw)
+      const hasColor = typeof im.meterColor === 'number' && isFinite(im.meterColor)
+      if (hasBw || hasColor) {
+        const now = new Date()
+        const readingMonth = im.readingMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+        try {
+          const reading = await db.meterReading.create({
+            data: {
+              deviceId: created.id,
+              assetCode: created.assetCode,
+              readingDate: im.readingDate || now.toISOString().slice(0, 10),
+              readingMonth,
+              meterBw: im.meterBw ?? 0,
+              meterColor: im.meterColor ?? 0,
+              pagesBw: 0, // INITIAL → pages = 0 (baseline)
+              pagesColor: 0,
+              prevMeterBw: 0,
+              prevMeterColor: 0,
+              readingType: 'INITIAL',
+              readBy: auth.user.email || 'system',
+              remark: im.remark || 'มิเตอร์ตั้งต้นตอนเพิ่มอุปกรณ์',
+              ...demoTag(demo?.user ?? null),
+            },
+          })
+          // Update device's lastMeter fields to match the INITIAL reading
+          await db.device.update({
+            where: { id: created.id },
+            data: {
+              lastMeterBw: im.meterBw ?? 0,
+              lastMeterColor: im.meterColor ?? 0,
+            },
+          })
+          console.log(`[devices] INITIAL reading created for ${created.assetCode}: bw=${im.meterBw ?? 0}, color=${im.meterColor ?? 0}`)
+        } catch (e) {
+          console.error('[devices] INITIAL meter reading failed:', e)
+          // Don't fail device creation — just log the error
+        }
+      }
+    }
+
     return NextResponse.json({ device: created }, { status: 201 })
   } catch (err) {
     console.error('POST /api/devices', err)
