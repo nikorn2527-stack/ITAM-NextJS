@@ -60,6 +60,7 @@ export const DEVICE_LIST_FIELDS = {
   brand: true,
   model: true,
   type: true,
+  serialNumber: true, // included for list view (ITAM uses it in barcode workflows)
   status: true,
   site: true,
   department: true,
@@ -105,7 +106,6 @@ export const DEVICE_MOBILE_LIST_FIELDS = {
  * Used by tests to verify no leak.
  */
 export const DEVICE_LIST_EXCLUDED_FIELDS = [
-  'serialNumber',
   'ip',
   'mac',
   'remoteId',
