@@ -171,7 +171,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('GET /api/search', err)
     return NextResponse.json(
-      { error: 'Search failed' },
+      { error: err instanceof Error ? err.message : 'Search failed' },
       { status: 500 },
     )
   }

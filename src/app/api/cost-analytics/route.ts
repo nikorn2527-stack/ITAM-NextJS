@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('GET /api/cost-analytics', err)
     return NextResponse.json(
-      { error: 'Failed to compute cost analytics' },
+      { error: err instanceof Error ? err.message : 'Failed to compute cost analytics' },
       { status: 500 },
     )
   }

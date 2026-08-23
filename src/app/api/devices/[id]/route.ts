@@ -62,7 +62,7 @@ export async function GET(
     return NextResponse.json({ device })
   } catch (err) {
     console.error('GET /api/devices/[id]', err)
-    return NextResponse.json({ error: 'Failed to fetch device' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to fetch device' }, { status: 500 })
   }
 }
 
@@ -103,9 +103,6 @@ const EDITABLE_FIELDS = [
   'salvageValue',
   'usefulLife',
   // Cascading master-data FKs (nullable, populated by the CascadingDropdown)
-  'typeId',
-  'brandId',
-  'modelId',
 ] as const
 
 export async function PUT(
@@ -165,9 +162,6 @@ export async function PUT(
       usefulLife:
         body.usefulLife !== undefined ? optInt(body.usefulLife) : undefined,
       // Cascading master-data FKs (nullable)
-      typeId: setStr('typeId', body),
-      brandId: setStr('brandId', body),
-      modelId: setStr('modelId', body),
     }
 
     // Status transition side effects (aligned with Apps Script DeviceService.gs)
