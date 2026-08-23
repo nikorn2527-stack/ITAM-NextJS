@@ -986,3 +986,103 @@ Task: ทดสอบหน้าแจ้งซ่อม (Work Orders)
 - 📸 `/home/z/my-project/qa-reports/wo-*.png` (5 รูป)
 - 📄 Test Report: `/home/z/my-project/qa-reports/QA-WO-001.md`
 
+
+---
+
+## Task ID: QA-005
+Agent: QA Team
+Task: ทดสอบหน้าจดมิเตอร์ (Meter Reading) — หัวใจของระบบเพราะเชื่อม lifecycle ทุกชนิด
+
+**Test Date:** 2026-08-23
+**Test Account:** demo_admin / demo123 (role=admin)
+**Environment:** Next.js 16.3.2 dev + SQLite (DB seed: 3 devices PRT-001/002/003 + INITIAL readings + active cycle)
+**Pass Rate:** 9/16 = 56% — **❌ ไม่ผ่าน**
+
+### 📝 Context (สำคัญมาก)
+จดมิเตอร์เป็นจุดสำคัญที่สุดเพราะ:
+- เชื่อม lifecycle ทุกชนิด (ติดตั้ง INITIAL / ถอน FINAL / ย้าย TRANSFER_SITE / จำหน่าย CHECKOUT)
+- ข้อมูลที่บันทึกจะถูกใช้ใน Paper Analytics + Reports + Monthly Report
+- ถ้าคำนวณ pages ผิด → cost analytics จะผิดทั้งหมด
+- ใช้คำนวณค่ากระดาษ (฿) ที่เรียกเก็บจากแต่ละสาขา
+
+### Results:
+
+#### ✅ ผ่าน (9 รายการ)
+- ✅ Login + Navigate + Tabs 2 ตัวแสดงครบ
+- ✅ Device list แสดง 3 เครื่อง + badge "✓ จดแล้ว"
+- ✅ Device selection — click เลือก + border-orange highlight
+- ✅ Form: BW + Color + หมายเหตุ + บันทึก+ถัดไป
+- ✅ **บันทึกมิเตอร์สำเร็จ** — POST 201 + toast "บันทึกมิเตอร์ PRT-001 · +700 แผ่น" (1500-1000=500 BW + 700-500=200 Color = 700 รวม)
+- ✅ Notification system — Telegram + LINE OA log
+- ✅ "จัดการรอบ" dialog — แสดง active cycle + เหลือเวลา 8 วัน
+- ✅ **Transfer-with-meter API ทำงาน** (atomic):
+  - Device.site: Udon Thani Test → BKK
+  - Device.lastMeterBw: 1000 → 1100 ✅ (อัปเดต!)
+  - Device.lastMeterColor: 500 → 600 ✅
+  - MeterReading created (eventType=TRANSFER_SITE)
+  - DeviceTransfer history created + assetSiteCode: BKK-00001
+- ✅ Dark mode + Mobile responsive (390px)
+
+#### ❌ ไม่ผ่าน (16 รายการ)
+
+##### 🔴 Critical (5 ตัว — กระทบ financial/cost)
+
+**BUG-METER-001: ปุ่ม "บันทึก + ถัดไป" type=submit แต่ form: null — pattern เดียวกับ BUG-001 + BUG-STK-003**
+- อธิบายปัญหา: คลิกผ่าน UI ไม่ทริกเกอร์ submit — ต้องใช้ JS .click()
+
+**BUG-METER-002: บันทึกค่า rollback (ต่ำกว่าเดิม) ได้โดยไม่มี validation**
+- อธิบายปัญหา: กรอก BW=500 (น้อยกว่า lastMeterBw=1000) → บันทึกได้ → pages=0 (clamped แทนค่าติดลบ)
+- ผลกระทบ: ข้อมูลผิด + cost หาย + user ไม่มี warning ให้แก้
+
+**BUG-METER-003: Device.lastMeterBw/lastMeterColor ไม่อัปเดตหลังจดมิเตอร์ปกติ**
+- อธิบายปัญหา: หลังจด meter → MeterReading ถูกสร้าง + pages คำนวณถูก แต่ **Device.lastMeterBw ยังเป็นค่าเดิม** (1000 ไม่ใช่ 1500)
+- ผลกระทบ:
+  1. การจดครั้งต่อไป prevMeter ผิด → pages ผิด
+  2. **การจดครั้งที่ 2 ใช้ prevMeter = 1000 (INITIAL) ไม่ใช่ prevMeter = 1500 (จากครั้งก่อน)**
+  3. pages นับรวมตั้งแต่ INITIAL ทุกครั้ง → pages เพิ่มขึ้นเรื่อยๆ → **cost analytics ผิดทั้งหมด**
+- **เปรียบเทียบ:** Transfer-with-meter endpoint อัปเดต Device.lastMeter แล้ว — แสดงว่ามี 2 code paths ที่ต่างกัน
+
+**BUG-METER-004: Tab "ประวัติมิเตอร์" คลิกไม่ได้ — Tabs Navigation พัง**
+- Pattern: เดียวกับ BUG-STK-001 + BUG-PAPER-001 (แก้แล้วใน VERIFY-001)
+- Pattern: แต่ Meter ยังไม่แก้
+
+**BUG-METER-005: ปุ่ม "บันทึก + ถัดไป" ไม่ auto-move ไป device ถัดไป**
+- อธิบายปัญหา: หลังบันทึก PRT-001 → device selection ไม่ย้ายไป PRT-002 อัตโนมัติ (ตามชื่อปุ่ม "บันทึก + **ถัดไป**")
+- ผลกระทบ: bulk entry workflow ใช้ไม่ได้
+
+##### 🟠 High (4 ตัว)
+- **BUG-METER-006:** Search box พิมพ์ "PRT-003" แล้ว list ไม่กรอง — pattern เดียวกับ BUG-WO-003
+- **BUG-METER-007:** Export CSV คลิกไม่เกิดอะไร — pattern เดียวกับ BUG-009, BUG-010
+- **BUG-METER-008:** Refresh button ไม่มี toast — pattern เดียวกับทุกหน้าก่อนแก้ (Dashboard + Paper แก้แล้ว แต่ Meter ยังไม่แก้)
+- **BUG-METER-009:** Keyboard shortcuts ไม่ทำงาน (↑↓ / Enter / Esc) — help text บอกแต่ใช้ไม่ได้
+
+##### 🟡 Medium (4 ตัว)
+- **BUG-METER-010:** Number inputs ไม่มี id/aria-label/name (เหมือน Devices page เดิม ก่อนแก้)
+- **BUG-METER-011:** ไม่มี page heading h1 (ละเมิด WCAG 2.4.6)
+- **BUG-METER-012:** List items ใช้ `<li>` แต่ไม่ได้อยู่ใน `<ul>` (semantic HTML)
+- **BUG-METER-013:** "✓ จดแล้ว" badge ไม่อัปเดตหลังบันทึกใหม่
+
+##### 🟢 Low (3 ตัว)
+- BUG-METER-014: Prev meter display ไม่แสดงใน form
+- BUG-METER-015: ไม่มี bulk entry mode
+- BUG-METER-016: ไม่มี skeleton loader
+
+### Priority สำหรับ ITAM-01:
+1. 🔴 **P0 (ด่วนที่สุด — กระทบ cost):** BUG-METER-003 — แก้ Device.lastMeter อัปเดตหลังจด meter ปกติ (copy logic จาก transfer-with-meter endpoint ที่ทำถูกแล้ว)
+2. 🔴 **P0 (data integrity):** BUG-METER-002 — เพิ่ม validation `meterBw >= lastMeterBw` ที่ frontend + backend
+3. 🔴 **P0:** BUG-METER-004 — แก้ Tabs navigation (pattern เดียวกับ Stock + Paper ที่แก้แล้ว)
+4. 🔴 **P0:** BUG-METER-005 — auto-move ไป device ถัดไป (bulk entry workflow)
+5. 🔴 **P0:** BUG-METER-001 — เปลี่ยน type=submit → type=button + เพิ่ม form wrapper
+6. 🟠 **P1:** BUG-METER-006, 007, 008, 009
+7. 🟡 **P2:** BUG-METER-010, 011, 012, 013
+
+### 💡 Insights สำหรับ ITAM-01:
+- **ที่สำคัญที่สุด:** BUG-METER-003 — เปรียบเทียบ code path ระหว่าง `meter-readings` endpoint ปกติ vs `transfer-with-meter` endpoint — ตัวหลังอัปเดต Device.lastMeter แล้ว แต่ตัวแรกไม่ → copy logic จาก transfer-with-meter มาใช้
+- **Pattern BUG ระบบที่ยังไม่แก้:** Tabs navigation, CSV export, Refresh toast — ITAM-01 แก้ใน Stock + Dashboard + Paper แล้ว แต่ยังไม่ได้แก้ใน Meter → ใช้วิธีเดียวกัน
+- **Form a11y:** Meter form ไม่มี id/name/aria-label (เหมือน Devices page เดิม ก่อนแก้) → ทำให้เหมือน Stock form ที่มี id unique
+- **Atomic transaction:** Transfer-with-meter ทำงานถูกต้อง — ใช้เป็นต้นแบบสำหรับ meter-readings endpoint ปกติ
+
+### 📁 หลักฐาน:
+- 📸 `/home/z/my-project/qa-reports/meter-*.png` (3 รูป)
+- 📄 Test Report: `/home/z/my-project/qa-reports/QA-METER-001.md`
+
