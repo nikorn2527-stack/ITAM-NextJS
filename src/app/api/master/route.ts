@@ -191,6 +191,9 @@ export async function GET(req: NextRequest) {
       }
 
       case 'buildings': {
+        // Pull from MasterItem(category='Building') instead of Device table.
+        // Device.site stores Thai text (e.g. "โรงพยาบาลศูนย์อุดรธานี") not site codes (e.g. "UDH").
+        // MasterItem has siteCode field that matches site codes.
         const effectiveSite = resolveSite()
         if (effectiveSite === '__FORBIDDEN__') {
           return NextResponse.json(
@@ -198,85 +201,43 @@ export async function GET(req: NextRequest) {
             { status: 403 },
           )
         }
-        const whereSite: Record<string, unknown> = {}
+        const where: Record<string, unknown> = { category: 'Building', active: true }
         if (effectiveSite) {
-          whereSite.site = effectiveSite
-        } else if (!isAllSites) {
-          whereSite.site = { in: parsed.codes }
+          where.OR = [{ siteCode: effectiveSite }, { siteCode: 'ALL' }]
         }
-        const rows = await db.device.findMany({
-          where: {
-            ...whereSite,
-            NOT: { OR: [{ building: null }, { building: '' }] },
-          },
-          distinct: ['building'],
-          select: { building: true },
-          orderBy: { building: 'asc' },
+        const rows = await db.masterItem.findMany({
+          where,
+          select: { label: true },
+          orderBy: { label: 'asc' },
         })
-        const items = rows
-          .map((r) => r.building)
-          .filter((b): b is string => Boolean(b))
+        const items = rows.map((r) => r.label).filter(Boolean)
         return NextResponse.json({ items, type })
       }
 
       case 'floors': {
-        const effectiveSite = resolveSite()
-        if (effectiveSite === '__FORBIDDEN__') {
-          return NextResponse.json(
-            { error: 'Site out of scope' },
-            { status: 403 },
-          )
-        }
-        const whereSite: Record<string, unknown> = {}
-        if (effectiveSite) {
-          whereSite.site = effectiveSite
-        } else if (!isAllSites) {
-          whereSite.site = { in: parsed.codes }
-        }
-        const rows = await db.device.findMany({
-          where: {
-            ...whereSite,
-            ...(building ? { building } : {}),
-            NOT: { OR: [{ floor: null }, { floor: '' }] },
-          },
-          distinct: ['floor'],
-          select: { floor: true },
-          orderBy: { floor: 'asc' },
+        // Pull from MasterItem(category='Floor') — floors are global (not site-scoped).
+        const rows = await db.masterItem.findMany({
+          where: { category: 'Floor', active: true },
+          select: { label: true },
+          orderBy: { label: 'asc' },
         })
-        const items = rows
-          .map((r) => r.floor)
-          .filter((f): f is string => Boolean(f))
+        const items = rows.map((r) => r.label).filter(Boolean)
         return NextResponse.json({ items, type })
       }
 
       case 'departments': {
-        const effectiveSite = resolveSite()
-        if (effectiveSite === '__FORBIDDEN__') {
-          return NextResponse.json(
-            { error: 'Site out of scope' },
-            { status: 403 },
-          )
+        // Pull from MasterItem(category='Department') with optional parentRef filter (Affiliation).
+        const where: Record<string, unknown> = { category: 'Department', active: true }
+        if (building) {
+          // 'building' param is actually used as parentRef (Affiliation code) for filtering
+          where.parentRef = building
         }
-        const whereSite: Record<string, unknown> = {}
-        if (effectiveSite) {
-          whereSite.site = effectiveSite
-        } else if (!isAllSites) {
-          whereSite.site = { in: parsed.codes }
-        }
-        const rows = await db.device.findMany({
-          where: {
-            ...whereSite,
-            ...(building ? { building } : {}),
-            ...(floor ? { floor } : {}),
-            NOT: { OR: [{ department: null }, { department: '' }] },
-          },
-          distinct: ['department'],
-          select: { department: true },
-          orderBy: { department: 'asc' },
+        const rows = await db.masterItem.findMany({
+          where,
+          select: { label: true, departmentCode: true },
+          orderBy: { label: 'asc' },
         })
-        const items = rows
-          .map((r) => r.department)
-          .filter((d): d is string => Boolean(d))
+        const items = rows.map((r) => r.label).filter(Boolean)
         return NextResponse.json({ items, type })
       }
 
