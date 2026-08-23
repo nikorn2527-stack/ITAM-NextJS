@@ -46,6 +46,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+} from '@/components/ui/dropdown-menu'
+import {
   Plus,
   RefreshCw,
   Pencil,
@@ -63,6 +72,15 @@ import {
   ChevronRight,
   Sparkles,
   ScanLine,
+  AlertTriangle,
+  CheckCircle2,
+  Wrench,
+  XCircle,
+  ShieldCheck,
+  Keyboard,
+  Columns3,
+  Eye,
+  Clock,
 } from 'lucide-react'
 import {
   type Device,
@@ -79,6 +97,7 @@ import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
 import { Combobox } from './combobox'
 import { downloadCsv, dateStamp } from '@/lib/csv'
+import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -307,6 +326,129 @@ export function DevicesPage() {
   const [pageSize, setPageSize] = React.useState(50)
   const [pageInput, setPageInput] = React.useState('1')
 
+  // ── New: recently-viewed devices (persisted in localStorage) ──
+  // Stores the last 5 device IDs the user opened in the detail sheet.
+  const [recentDeviceIds, setRecentDeviceIds] = React.useState<string[]>([])
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem('itam-recent-devices')
+      if (raw) setRecentDeviceIds(JSON.parse(raw))
+    } catch {
+      /* ignore */
+    }
+  }, [])
+  const pushRecentDevice = React.useCallback((id: string) => {
+    setRecentDeviceIds((prev) => {
+      const next = [id, ...prev.filter((x) => x !== id)].slice(0, 5)
+      try {
+        localStorage.setItem('itam-recent-devices', JSON.stringify(next))
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }, [])
+
+  // ── New: keyboard shortcuts help dialog ──
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
+
+  // ── New: column visibility (persisted) ──
+  // Default columns mirror what the table currently renders. Hidden columns
+  // are removed from the header + body. Users can toggle via the Columns button.
+  type ColumnKey =
+    | 'assetCode'
+    | 'assetSiteCode'
+    | 'type'
+    | 'brandModel'
+    | 'serialNumber'
+    | 'location'
+    | 'department'
+    | 'status'
+    | 'meter'
+    | 'updatedAt'
+    | 'actions'
+  const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
+    { key: 'assetCode', label: 'รหัสทรัพย์สิน' },
+    { key: 'assetSiteCode', label: 'ทะเบียน Site' },
+    { key: 'type', label: 'ประเภท' },
+    { key: 'brandModel', label: 'ยี่ห้อ/รุ่น' },
+    { key: 'serialNumber', label: 'Serial No.' },
+    { key: 'location', label: 'อาคาร/ชั้น' },
+    { key: 'department', label: 'แผนก/ตำแหน่ง' },
+    { key: 'status', label: 'สถานะ' },
+    { key: 'meter', label: 'มิเตอร์ล่าสุด' },
+    { key: 'updatedAt', label: 'อัปเดตล่าสุด' },
+    { key: 'actions', label: 'การกระทำ' },
+  ]
+  const [hiddenColumns, setHiddenColumns] = React.useState<Set<ColumnKey>>(
+    () => {
+      try {
+        const raw = localStorage.getItem('itam-devices-hidden-cols')
+        if (raw) return new Set(JSON.parse(raw))
+      } catch {
+        /* ignore */
+      }
+      return new Set()
+    },
+  )
+  const toggleColumn = React.useCallback((key: ColumnKey) => {
+    setHiddenColumns((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      try {
+        localStorage.setItem(
+          'itam-devices-hidden-cols',
+          JSON.stringify([...next]),
+        )
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }, [])
+  const isColVisible = (key: ColumnKey) => !hiddenColumns.has(key)
+
+  // ── New: global keyboard shortcuts ──
+  // Ctrl/Cmd+K → focus search; Ctrl/Cmd+N → new device; Ctrl/Cmd+R → refresh; ? → shortcuts help
+  const searchInputId = 'itam-devices-search'
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // Skip when typing in inputs (except for Escape)
+      const target = e.target as HTMLElement
+      const isTyping =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      if (isTyping && e.key !== 'Escape') return
+
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        const el = document.getElementById(searchInputId) as HTMLInputElement | null
+        el?.focus()
+        el?.select()
+      } else if (mod && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        openAdd()
+      } else if (mod && e.key.toLowerCase() === 'r') {
+        e.preventDefault()
+        qc.invalidateQueries({ queryKey: ['devices'] })
+      } else if (e.key === '?' && !mod) {
+        e.preventDefault()
+        setShortcutsOpen(true)
+      } else if (e.key === 'Escape') {
+        if (shortcutsOpen) setShortcutsOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shortcutsOpen, qc])
+
+  // ── New: derived KPI counts from the filtered `devices` list ──
+  // (Moved below `devices` declaration so the closure captures it correctly.)
+
   // Read pendingDeviceId / pendingWarrantyFilter from store on mount
   const pendingDeviceId = useAppStore((s) => s.pendingDeviceId)
   const clearPendingDeviceId = useAppStore((s) => s.clearPendingDeviceId)
@@ -379,6 +521,35 @@ export function DevicesPage() {
     }
     return list
   }, [devicesRaw, warrantyFilter, assigneeFilter])
+
+  // ── New: derived KPI counts from the filtered `devices` list ──
+  // Clicking a KPI card in the UI applies the corresponding filter.
+  const kpi = React.useMemo(() => {
+    const list = devices ?? []
+    const active = list.filter((d) => d.status === 'ACTIVE').length
+    const repair = list.filter((d) => d.status === 'IN_REPAIR').length
+    const inactive = list.filter(
+      (d) => d.status === 'INACTIVE' || d.status === 'RETIRED',
+    ).length
+    const spare = list.filter((d) => d.status === 'SPARE').length
+    const warrantyExpiringSoon = list.filter((d) => {
+      const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
+      return w.status === 'expiring'
+    }).length
+    const warrantyExpired = list.filter((d) => {
+      const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
+      return w.status === 'expired'
+    }).length
+    return {
+      total: list.length,
+      active,
+      repair,
+      inactive,
+      spare,
+      warrantyExpiringSoon,
+      warrantyExpired,
+    }
+  }, [devices])
 
   // ── Pagination: client-side slicing of the filtered `devices` array ──
   // When search/filter changes, reset to page 1.
@@ -2098,17 +2269,136 @@ export function DevicesPage() {
             เพิ่ม / แก้ไข / ลบ อุปกรณ์ IT ในระบบ
           </p>
         </div>
-        {/* Primary CTA in the header — always visible without scrolling.
-            On mobile it's full-width; on sm+ it's right-aligned. */}
-        <Button
-          type="button"
+        <div className="flex items-center gap-2">
+          {/* Keyboard shortcuts help — `?` anywhere opens it */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShortcutsOpen(true)}
+            className="hidden text-slate-500 hover:bg-slate-100 hover:text-[#f97316] dark:text-slate-400 dark:hover:bg-slate-800 sm:inline-flex"
+            title="คีย์ลัด (กด ? เพื่อเปิด)"
+            aria-label="คีย์ลัด"
+          >
+            <Keyboard className="h-4 w-4" />
+          </Button>
+          {/* Primary CTA in the header — always visible without scrolling.
+              On mobile it's full-width; on sm+ it's right-aligned. */}
+          <Button
+            type="button"
                 onClick={openAdd}
-          className="w-full bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950 sm:w-auto"
-        >
-          <Plus className="h-4 w-4" />
-          เพิ่มอุปกรณ์
-        </Button>
+            className="w-full bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950 sm:w-auto"
+          >
+            <Plus className="h-4 w-4" />
+            เพิ่มอุปกรณ์
+          </Button>
+        </div>
       </div>
+
+      {/* ── KPI summary cards ──
+          Quick stats computed from the filtered device list. Clicking a
+          card applies the corresponding filter instantly. */}
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+        <KpiCard
+          label="ทั้งหมด"
+          value={kpi.total}
+          tone="neutral"
+          active={statusFilter === 'all'}
+          onClick={() => setStatusFilter('all')}
+        />
+        <KpiCard
+          label="ใช้งานอยู่"
+          value={kpi.active}
+          tone="success"
+          icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+          active={statusFilter === 'ACTIVE'}
+          onClick={() => setStatusFilter('ACTIVE')}
+        />
+        <KpiCard
+          label="ส่งซ่อม"
+          value={kpi.repair}
+          tone="warning"
+          icon={<Wrench className="h-3.5 w-3.5" />}
+          active={statusFilter === 'IN_REPAIR'}
+          onClick={() => setStatusFilter('IN_REPAIR')}
+        />
+        <KpiCard
+          label="สำรอง"
+          value={kpi.spare}
+          tone="info"
+          icon={<PackageOpen className="h-3.5 w-3.5" />}
+          active={statusFilter === 'SPARE'}
+          onClick={() => setStatusFilter('SPARE')}
+        />
+        <KpiCard
+          label="ไม่ใช้งาน/เกษียณ"
+          value={kpi.inactive}
+          tone="danger"
+          icon={<XCircle className="h-3.5 w-3.5" />}
+          active={statusFilter === 'INACTIVE' || statusFilter === 'RETIRED'}
+          onClick={() => setStatusFilter('INACTIVE')}
+        />
+        <KpiCard
+          label="รับประกันใกล้หมด"
+          value={kpi.warrantyExpiringSoon}
+          tone="warning"
+          icon={<AlertTriangle className="h-3.5 w-3.5" />}
+          active={warrantyFilter === 'expiring'}
+          onClick={() => setWarrantyFilter('expiring')}
+        />
+        <KpiCard
+          label="รับประกันหมดแล้ว"
+          value={kpi.warrantyExpired}
+          tone="danger"
+          icon={<ShieldCheck className="h-3.5 w-3.5" />}
+          active={warrantyFilter === 'expired'}
+          onClick={() => setWarrantyFilter('expired')}
+        />
+      </div>
+
+      {/* ── Recently-viewed devices bar ──
+          Shows the last 5 device IDs opened in the detail sheet, persisted
+          in localStorage so they survive page reloads. Clicking opens the
+          detail sheet instantly. */}
+      {recentDeviceIds.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-white/70 px-2.5 py-1.5 text-xs dark:border-slate-800 dark:bg-slate-900/70">
+          <Clock className="h-3.5 w-3.5 text-slate-400" />
+          <span className="text-slate-500 dark:text-slate-400">ล่าสุด:</span>
+          {recentDeviceIds.map((id) => {
+            const dev = (devices ?? []).find((d) => d.id === id)
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setDetailDeviceId(id)
+                  pushRecentDevice(id)
+                }}
+                className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700 transition-colors hover:bg-[#f97316]/10 hover:text-[#f97316] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#fb923c]/10 dark:hover:text-[#fb923c]"
+                title={dev ? `${dev.assetCode} — ${dev.name}` : id}
+              >
+                {dev ? dev.assetCode : id.slice(-6)}
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => {
+              setRecentDeviceIds([])
+              try {
+                localStorage.removeItem('itam-recent-devices')
+              } catch {
+                /* ignore */
+              }
+            }}
+            className="ml-auto rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+            aria-label="ล้างรายการล่าสุด"
+            title="ล้างรายการล่าสุด"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="flex min-h-0 flex-1 flex-col p-4">
@@ -2118,7 +2408,8 @@ export function DevicesPage() {
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
-                  placeholder="ค้นหา Serial / รหัส / ตึก / ชั้น / หน่วยงาน / แบรนด์..."
+                  id={searchInputId}
+                  placeholder="ค้นหา Serial / รหัส / ตึก / ชั้น / หน่วยงาน / แบรนด์... (Ctrl+K)"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
@@ -2234,6 +2525,50 @@ export function DevicesPage() {
                 <RefreshCw className="h-4 w-4" />
                 <span className="hidden sm:inline">รีเฟรช</span>
               </Button>
+              {/* Column visibility dropdown — lets the user hide columns
+                  they don't need. Choice persists in localStorage. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    aria-label="เลือกคอลัมน์"
+                    className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+                  >
+                    <Columns3 className="h-4 w-4" />
+                    <span className="hidden sm:inline">คอลัมน์</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="text-xs text-slate-500 dark:text-slate-400">
+                    เลือกคอลัมน์ที่จะแสดง
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {ALL_COLUMNS.map((col) => (
+                    <DropdownMenuCheckboxItem
+                      key={col.key}
+                      checked={isColVisible(col.key)}
+                      onCheckedChange={() => toggleColumn(col.key)}
+                      className="text-sm"
+                    >
+                      {col.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setHiddenColumns(new Set())
+                      try {
+                        localStorage.removeItem('itam-devices-hidden-cols')
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                    className="text-xs text-[#f97316] focus:text-[#f97316]"
+                  >
+                    รีเซ็ตเป็นค่าเริ่มต้น
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -2342,7 +2677,7 @@ export function DevicesPage() {
             <Table className="min-w-[800px]">
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
-                  {hasDevices && (
+                  {hasDevices && isColVisible('assetCode') && (
                     <TableHead className="w-10">
                       <Checkbox
                         checked={allSelected ? true : someSelected ? 'indeterminate' : false}
@@ -2352,17 +2687,17 @@ export function DevicesPage() {
                       />
                     </TableHead>
                   )}
-                  <TableHead className="text-slate-600 dark:text-slate-300">รหัสทรัพย์สิน</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">ทะเบียน Site</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">ประเภท</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">ยี่ห้อ/รุ่น</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">Serial No.</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">อาคาร/ชั้น</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">แผนก/ตำแหน่ง</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">มิเตอร์ล่าสุด</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">อัปเดตล่าสุด</TableHead>
-                  <TableHead className="text-right text-slate-600 dark:text-slate-300">การกระทำ</TableHead>
+                  {isColVisible('assetCode') && <TableHead className="text-slate-600 dark:text-slate-300">รหัสทรัพย์สิน</TableHead>}
+                  {isColVisible('assetSiteCode') && <TableHead className="text-slate-600 dark:text-slate-300">ทะเบียน Site</TableHead>}
+                  {isColVisible('type') && <TableHead className="text-slate-600 dark:text-slate-300">ประเภท</TableHead>}
+                  {isColVisible('brandModel') && <TableHead className="text-slate-600 dark:text-slate-300">ยี่ห้อ/รุ่น</TableHead>}
+                  {isColVisible('serialNumber') && <TableHead className="text-slate-600 dark:text-slate-300">Serial No.</TableHead>}
+                  {isColVisible('location') && <TableHead className="text-slate-600 dark:text-slate-300">อาคาร/ชั้น</TableHead>}
+                  {isColVisible('department') && <TableHead className="text-slate-600 dark:text-slate-300">แผนก/ตำแหน่ง</TableHead>}
+                  {isColVisible('status') && <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>}
+                  {isColVisible('meter') && <TableHead className="text-slate-600 dark:text-slate-300">มิเตอร์ล่าสุด</TableHead>}
+                  {isColVisible('updatedAt') && <TableHead className="text-slate-600 dark:text-slate-300">อัปเดตล่าสุด</TableHead>}
+                  {isColVisible('actions') && <TableHead className="text-right text-slate-600 dark:text-slate-300">การกระทำ</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2442,24 +2777,33 @@ export function DevicesPage() {
                         className="w-10"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={(v) => toggleSelect(d.id, v === true)}
-                          aria-label={`เลือก ${d.assetCode}`}
-                          className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
-                        />
+                        {isColVisible('assetCode') && (
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={(v) => toggleSelect(d.id, v === true)}
+                            aria-label={`เลือก ${d.assetCode}`}
+                            className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
+                          />
+                        )}
                       </TableCell>
                       {/* รหัสทรัพย์สิน */}
+                      {isColVisible('assetCode') && (
                       <TableCell className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
                         {d.assetCode}
                       </TableCell>
+                      )}
                       {/* ทะเบียน Site */}
+                      {isColVisible('assetSiteCode') && (
                       <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
                         {d.assetSiteCode || <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </TableCell>
+                      )}
                       {/* ประเภท */}
+                      {isColVisible('type') && (
                       <TableCell className="text-slate-700 dark:text-slate-200">{d.type}</TableCell>
+                      )}
                       {/* ยี่ห้อ/รุ่น */}
+                      {isColVisible('brandModel') && (
                       <TableCell className="max-w-[180px]">
                         <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={`${d.brand} ${d.model}`}>
                           {d.brand || '-'}
@@ -2470,11 +2814,15 @@ export function DevicesPage() {
                           </div>
                         )}
                       </TableCell>
+                      )}
                       {/* Serial No. */}
+                      {isColVisible('serialNumber') && (
                       <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
                         {d.serialNumber || <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </TableCell>
+                      )}
                       {/* อาคาร/ชั้น */}
+                      {isColVisible('location') && (
                       <TableCell className="max-w-[140px]">
                         <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={d.building ?? ''}>
                           {d.building || '-'}
@@ -2485,7 +2833,9 @@ export function DevicesPage() {
                           </div>
                         )}
                       </TableCell>
+                      )}
                       {/* แผนก/ตำแหน่ง */}
+                      {isColVisible('department') && (
                       <TableCell className="max-w-[160px]">
                         <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={d.department ?? ''}>
                           {d.department || '-'}
@@ -2496,13 +2846,17 @@ export function DevicesPage() {
                           </div>
                         )}
                       </TableCell>
+                      )}
                       {/* สถานะ */}
+                      {isColVisible('status') && (
                       <TableCell>
                         <Badge className={statusBadgeClass(d.status)}>
                           {statusLabel(d.status)}
                         </Badge>
                       </TableCell>
+                      )}
                       {/* มิเตอร์ล่าสุด */}
+                      {isColVisible('meter') && (
                       <TableCell className="min-w-[100px]">
                         {hasMeter ? (
                           <div>
@@ -2524,11 +2878,15 @@ export function DevicesPage() {
                           </span>
                         )}
                       </TableCell>
+                      )}
                       {/* อัปเดตล่าสุด */}
+                      {isColVisible('updatedAt') && (
                       <TableCell className="text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                         {formatDateTime(d.updatedAt)}
                       </TableCell>
+                      )}
                       {/* การกระทำ */}
+                      {isColVisible('actions') && (
                       <TableCell
                         className="text-right"
                         onClick={(e) => e.stopPropagation()}
@@ -2569,6 +2927,7 @@ export function DevicesPage() {
                           </Button>
                         </div>
                       </TableCell>
+                      )}
                     </TableRow>
                     )
                   })
@@ -2753,7 +3112,131 @@ export function DevicesPage() {
         devices={devices ?? []}
         orgName={settings?.orgName ?? null}
       />
+
+      {/* ── Keyboard shortcuts dialog ──
+          Opened via the keyboard icon button or by pressing `?` anywhere. */}
+      <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Keyboard className="h-5 w-5 text-[#f97316]" />
+              คีย์ลัด (Keyboard Shortcuts)
+            </DialogTitle>
+            <DialogDescription>
+              เร่งการทำงานด้วยคีย์ลัดเหล่านี้ — ใช้ได้ทุกที่ในหน้าจัดการอุปกรณ์
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            {[
+              { keys: ['Ctrl', 'K'], desc: 'โฟกัสช่องค้นหา' },
+              { keys: ['Ctrl', 'N'], desc: 'เพิ่มอุปกรณ์ใหม่' },
+              { keys: ['Ctrl', 'R'], desc: 'รีเฟรชรายการ' },
+              { keys: ['?'], desc: 'เปิดเมนูคีย์ลัดนี้' },
+              { keys: ['Esc'], desc: 'ปิด dialog / ยกเลิกการเลือก' },
+              { keys: ['Enter'], desc: 'ในช่องค้นหา → ค้นหาทันที' },
+            ].map((s) => (
+              <div
+                key={s.desc}
+                className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900"
+              >
+                <span className="text-slate-700 dark:text-slate-300">
+                  {s.desc}
+                </span>
+                <div className="flex items-center gap-1">
+                  {s.keys.map((k) => (
+                    <kbd
+                      key={k}
+                      className="inline-flex h-6 min-w-6 items-center justify-center rounded border border-slate-300 bg-white px-1.5 font-mono text-xs font-semibold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    >
+                      {k}
+                    </kbd>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
+  )
+}
+
+// ─── KpiCard ─────────────────────────────────────────────────────────
+// A compact stat card used at the top of the devices page. Clickable so
+// users can apply the corresponding filter instantly. `tone` controls the
+// accent color (border-left + icon tint) so each metric is scannable.
+type KpiTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
+function KpiCard({
+  label,
+  value,
+  tone = 'neutral',
+  icon,
+  active,
+  onClick,
+}: {
+  label: string
+  value: number
+  tone?: KpiTone
+  icon?: React.ReactNode
+  active?: boolean
+  onClick?: () => void
+}) {
+  const toneClasses: Record<KpiTone, { ring: string; text: string; bg: string }> = {
+    neutral: {
+      ring: 'border-slate-200 dark:border-slate-800',
+      text: 'text-slate-700 dark:text-slate-300',
+      bg: 'bg-white dark:bg-slate-900',
+    },
+    success: {
+      ring: 'border-emerald-200 dark:border-emerald-900/50',
+      text: 'text-emerald-700 dark:text-emerald-400',
+      bg: 'bg-emerald-50 dark:bg-emerald-950/30',
+    },
+    warning: {
+      ring: 'border-amber-200 dark:border-amber-900/50',
+      text: 'text-amber-700 dark:text-amber-400',
+      bg: 'bg-amber-50 dark:bg-amber-950/30',
+    },
+    danger: {
+      ring: 'border-rose-200 dark:border-rose-900/50',
+      text: 'text-rose-700 dark:text-rose-400',
+      bg: 'bg-rose-50 dark:bg-rose-950/30',
+    },
+    info: {
+      ring: 'border-sky-200 dark:border-sky-900/50',
+      text: 'text-sky-700 dark:text-sky-400',
+      bg: 'bg-sky-50 dark:bg-sky-950/30',
+    },
+  }
+  const t = toneClasses[tone]
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'group relative flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-all',
+        'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1',
+        t.bg,
+        t.ring,
+        active && 'ring-2 ring-[#f97316] ring-offset-1',
+      )}
+    >
+      <div className="flex items-center justify-between gap-1">
+        <span
+          className={cn(
+            'flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide',
+            t.text,
+          )}
+        >
+          {icon}
+          {label}
+        </span>
+      </div>
+      <span className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+        {value.toLocaleString('th-TH')}
+      </span>
+    </button>
   )
 }
 

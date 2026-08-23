@@ -118,7 +118,6 @@ model Cycle {
 
   @@index([status])
   @@index([site])
-  @@index([assetCode, status])
   @@index([updatedAt])
 }
 
