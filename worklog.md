@@ -11527,3 +11527,26 @@ Files created/modified:
 - NEW: vercel.json — cron schedule
 - REMOVED: pg, @electric-sql/pglite from package.json
 
+
+---
+Task ID: 5
+Agent: orchestrator (main)
+Task: User asked to go back to the device management page (จัดการอุปกรณ์). Investigation revealed the dev server was crashing with a critical RealtimeProvider export error.
+
+Work Log:
+- Read `/home/z/my-project/worklog.md` to understand context (recent perf-optimization commit 85bd588 rewrote `use-realtime-updates.tsx` from SSE → polling).
+- Inspected `dev.log` — found `Export RealtimeProvider doesn't exist in target module` causing `GET / 500` on every page load.
+- Root cause: commit 85bd588 deleted the `RealtimeProvider` component (and the singleton external store pattern) when migrating from SSE to polling, but `src/app/page.tsx:10` still imports `RealtimeProvider`. The new `useRealtimeStatus()` was also broken — it called `useRealtimeUpdates()` directly, which would have started a NEW polling loop per subscriber.
+- Fix: Added back to `src/hooks/use-realtime-updates.tsx`:
+  - Module-level `statusListeners: Set<() => void>` and `statusSnapshot: RealtimeStatus`
+  - `useRealtimeStatus()` now uses `useSyncExternalStore` against the module-level store (so multiple subscribers share ONE polling loop, not N)
+  - `RealtimeProvider({children})` wraps children, mounts the single polling loop, and propagates status changes to the external store
+- Verified dev server recovers: `✓ Compiled in 411ms`, `GET / 200 in 1160ms`.
+- Verified via agent-browser: page boots → login → dashboard → click "จัดการอุปกรณ์" → Devices page renders fully (2,378-row device table loads, columns + actions + filters all visible).
+- Captured screenshot at `/tmp/devices-page.png`.
+
+Stage Summary:
+- Critical P0 blocker fixed: app was completely broken (HTTP 500 on `/`) due to a missing React component export introduced by the SSE→polling refactor in commit 85bd588.
+- Design improvement: `useRealtimeStatus()` is now O(1) per subscriber instead of O(N) polling loops — proper singleton pattern via `useSyncExternalStore`.
+- Devices page is fully functional in the browser (verified end-to-end).
+- Stray `/api/itam/events?token=...` 401 noise in dev.log is from leftover cached Service Worker / old browser tabs trying to use the deprecated SSE endpoint. This is non-blocking (the SSE route still exists at `src/app/api/itam/events/route.ts`) but ideally should be removed in a cleanup pass — the SSE route is no longer needed since polling is the new strategy.

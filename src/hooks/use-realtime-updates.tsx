@@ -132,10 +132,44 @@ export function useRealtimeUpdates() {
 }
 
 /**
- * Singleton hook — keeps ONE polling loop alive for the whole app.
- * Mounted once in the Sidebar.
+ * Singleton hook — keeps ONE polling loop alive for the whole app
+ * (mounted once in `RealtimeProvider` at the AppShell level).
+ *
+ * Other components (e.g. the Sidebar status indicator) can read the
+ * status without each opening their own polling loop.
+ *
+ * Implementation: a tiny external store backed by module-level state
+ * updated by the single `useRealtimeUpdates()` instance inside
+ * `RealtimeProvider`.
  */
+const statusListeners = new Set<() => void>()
+let statusSnapshot: RealtimeStatus = 'closed'
+
 export function useRealtimeStatus(): RealtimeStatus {
+  return React.useSyncExternalStore(
+    (cb) => {
+      statusListeners.add(cb)
+      return () => statusListeners.delete(cb)
+    },
+    () => statusSnapshot,
+    () => 'closed' as RealtimeStatus,
+  )
+}
+
+/**
+ * Mount once at the app shell (wrap the authenticated app).
+ *
+ * Wires the single `useRealtimeUpdates()` polling loop into the
+ * module-level external store so every `useRealtimeStatus()` subscriber
+ * sees the same status without each running its own fetcher.
+ */
+export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const { status } = useRealtimeUpdates()
-  return status
+  React.useEffect(() => {
+    if (status !== statusSnapshot) {
+      statusSnapshot = status
+      for (const cb of statusListeners) cb()
+    }
+  }, [status])
+  return <>{children}</>
 }
