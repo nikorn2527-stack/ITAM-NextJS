@@ -4,6 +4,62 @@
 // ============================================================
 // 2) MeterReading — การจดมิเตอร์
 // ============================================================
+// ============================================================
+// 1) Device — อุปกรณ์ IT (เครื่องพิมพ์, สแกนเนอร์, คอมพิวเตอร์, ...)
+// ============================================================
+model Device {
+  id              String   @id @default(cuid())
+  assetCode       String   @unique // asset_no — เลขสินทรัพย์รวม ห้ามแก้ไข
+  name            String   // ชื่ออุปกรณ์
+  brand           String
+  model           String
+  type            String   // ประเภท: PRINTER | SCANNER | COMPUTER | NETWORK | OTHER
+  serialNumber    String?  // serial
+  status          String   @default("Active")
+  site            String   // สาขา/ที่ตั้ง
+  department      String?
+  departmentCode  String?
+  parentRef       String?
+  assetSiteCode   String?  // asset_site_code — รหัสประจำ Site (SITE-NNNNN)
+  displayLabel    String?  // ป้ายแสดงผลที่ผู้ใช้กำหนดเอง (display label)
+  location        String?
+  building        String?
+  floor           String?
+  room            String?
+  purchaseDate    String?  // ISO date
+  purchasePrice   Float?
+  salvageValue    Float?   @default(0)
+  usefulLife      Int?
+  warrantyMonths  Int      @default(12)
+  warrantyEnd     String?
+  vendor          String?
+  contractNo      String?
+  uninstallDate   String?
+  meterRequired   Boolean  @default(false)
+  meterMode       String?  // TOTAL | BW_COLOR
+  lastMeterBw     Int      @default(0)
+  lastMeterColor  Int      @default(0)
+  ip              String?
+  mac             String?
+  remoteId        String?
+  currentAssignee String?
+  remark          String?
+  costCenter      String?
+  deviceGroup     String?
+  isDemo          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  updatedBy       String?  @default("System")
+
+  // Relations (other models reference Device via deviceId)
+  meterReadings     MeterReading[]
+  transfers         DeviceTransfer[]
+  assignments       Assignment[]
+  maintenanceLogs   MaintenanceLog[]
+  workOrders        WorkOrder[]
+  stockTransactions StockTransaction[]
+}
+
 model MeterReading {
   id                       String   @id @default(cuid())
   readingId                String?  @unique
