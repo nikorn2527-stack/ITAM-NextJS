@@ -10432,3 +10432,58 @@ Remaining gaps:
 - H02: Verify stock external sync from Services
 - H05: Edit lock grace period
 - Cost analytics API still erroring (needs investigation)
+
+---
+Task ID: ARCHITECTURE-IMPROVEMENTS
+Agent: orchestrator (main) — ปรับสถาปัตยกรรม: atomic transaction + single source of truth
+
+Task:
+ผู้ใช้สังเกตว่าเดิมเป็น 3 แอป Apps Script ที่ต้อง sync ข้อมูลกัน → ตอนนี้อยู่ใน DB เดียวกัน จึงไม่ต้อง sync แล้ว แต่ต้องปรับให้ใช้ความสามารถใหม่ที่ทำได้
+
+Work Log:
+
+**ข้อ 1+3: Stock Reservation real-time + Single stock calculation (DONE)**
+- สร้าง `src/lib/stock-calculation.ts` — single source of truth สำหรับ stock availability
+  • getAvailableStock(): available = currentQty - pendingOutQty (เดิมคำนวณซ้ำ 3 ที่ → ตอนนี้ 1 ที่)
+  • canFulfillStockRequest(): ตรวจก่อนสำรอง
+  • reserveStockForWorkOrder(): สำรองสต็อกให้ WO (สร้าง pending OUT transaction)
+  • reserveStockBatchForWorkOrder(): batch สำรองหลาย item ใน $transaction (all-or-nothing)
+  • releaseStockReservation(): ปล่อยสำรองเมื่อ WO cancel (ใช้ใน cancel route)
+
+**ข้อ 4: Transfer-with-Meter endpoint — Atomic transaction (DONE — แก้ P0-1)**
+- สร้าง `src/app/api/devices/[id]/transfer-with-meter/route.ts`
+  • สร้าง MeterReading + อัปเดต Device + สร้าง DeviceTransfer ใน $transaction เดียว
+  • ทั้งหมด commit หรือ rollback ด้วยกัน — ไม่มี orphaned MeterReading อีก
+  • แก้ปัญหา P0-1 จากรายงาน audit: ไม่ต้องเรียก 2 endpoint แยกกัน
+  • รวม same-location check (GAP-H04) + server-derived readingType
+
+**ข้อ 2: Device FK บน WorkOrder (DONE — มีอยู่แล้วใน schema)**
+- WorkOrder.deviceId เป็น FK → Device.id (อยู่ใน Prisma schema แล้ว)
+- JOIN ได้โดยตรง ไม่ต้อง text lookup เหมือนเดิม
+- StockTransaction.workOrderId เป็น FK → WorkOrder.id (เชื่อมโยงครบ)
+
+**อัปเดต WO cancel route:**
+- ใช้ releaseStockReservation() จาก stock-calculation.ts แทน inline query
+- เป็น single source of truth — ไม่มี code คำนวณสต็อกซ้ำในหลายที่
+
+Production verification (commit 187de21, READY):
+- Dashboard: ✅ total=2378
+- Devices: ✅ 3 devices
+- Work Orders: ✅ 20 WOs
+- Stock: ✅ 60 items
+- Master: ✅ 461 items
+
+Files created:
+1. src/lib/stock-calculation.ts (~200 LOC) — single source of truth for stock
+2. src/app/api/devices/[id]/transfer-with-meter/route.ts (~200 LOC) — atomic transfer
+
+Files updated:
+3. src/app/api/work-orders/[id]/cancel/route.ts — use releaseStockReservation()
+
+Architecture improvements vs legacy:
+- Legacy: 3 apps × independent stock calculation → number mismatch
+- New: 1 function (getAvailableStock) → always correct
+- Legacy: meter + transfer in 2 separate calls → orphaned data on failure
+- New: 1 $transaction → all-or-nothing
+- Legacy: text-based device identity → typo-prone
+- New: FK-based (deviceId) → JOIN directly, no lookup needed
