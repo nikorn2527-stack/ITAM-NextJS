@@ -220,3 +220,120 @@ Environment: Next.js 16.3.2 dev + SQLite (DB ว่าง — ไม่มี de
 - `/home/z/my-project/qa-devices-10-mobile-390.png` — mobile 390px view
 - `/home/z/my-project/qa-devices-11-dark-mode.png` — dark mode
 - `/home/z/my-project/qa-devices-12-dark-mode-2.png` — dark mode confirmed
+
+---
+
+## 📢 Communication Protocol — กฎการสื่อสารระหว่างทีม
+
+> ตามที่ user แนะนำ — ทีม QA และทีม Dev (ITAM-01) ต้องทำงานร่วมกันผ่าน `worklog.md` และ contract ที่ตกลงกัน
+
+### 1. ศูนย์กลางข้อมูล: `worklog.md`
+- **ไฟล์เดียว** ที่ทั้งสองทีมอ่านเพื่อเข้าใจสถานะปัจจุบัน
+- แต่ละทีมบันทึก Task ID ของตัวเอง ในรูปแบบ:
+  - `QA-XXX-###` — สำหรับทีม QA (เช่น `QA-DEVICES-001`)
+  - `DEV-XXX-###` — สำหรับทีม Dev / ITAM-01 (เช่น `DEV-FIX-BUG-001`)
+- ห้ามลบ section ของอีกทีม — ใส่ `---` คั่นแล้วต่อท้ายเท่านั้น
+
+### 2. ไฟล์ที่ "ห้ามแตะ" (Do-Not-Touch Lists)
+
+#### 🔒 ไฟล์ของทีม QA — ITAM-01 ห้ามแก้ไข
+| ไฟล์ / โฟลเดอร์ | เหตุผล |
+|----------------|--------|
+| `/home/z/my-project/qa-reports/*.md` | เอกสารการตรวจรับ — เป็นหลักฐานตรวจสอบ |
+| `/home/z/my-project/qa-videos/*` | วิดีโอ + screenshots การเทส |
+| `/home/z/my-project/worklog.md` (ส่วน `QA-*`) | ประวัติการทดสอบ |
+
+#### 🔒 ไฟล์ของทีม Dev / ITAM-01 — QA ห้ามแก้ไข
+| ไฟล์ / โฟลเดอร์ | เหตุผล |
+|----------------|--------|
+| `/home/z/my-project/src/**` (โค้ดทั้งหมด) | โค้ดแอป — QA ทำหน้าที่แค่ทดสอบ ไม่แก้ |
+| `/home/z/my-project/prisma/**` | Database schema |
+| `/home/z/my-project/scripts/**` | Migration / seed scripts |
+| `/home/z/my-project/worklog.md` (ส่วน `MIGRATE-*`, `DEV-*`) | ประวัติการพัฒนา |
+
+#### 🤝 ไฟล์ที่ทั้งสองทีมอ่านร่วมกัน (Read-Only Contract)
+| ไฟล์ | หน้าที่ |
+|------|--------|
+| `/home/z/my-project/src/components/itam/types.ts` | **Shared Types Contract** — ทั้งสองทีมต้องอ้างอิง type จากไฟล์นี้ |
+| `/home/z/my-project/prisma/schema.prisma` | Database schema — reference only |
+| `/home/z/my-project/package.json` | Dependency manifest — reference only |
+
+### 3. Shared Types Contract
+
+ทีม Dev (ITAM-01) และทีม QA ต้องใช้ type definitions จาก:
+
+📁 `src/components/itam/types.ts` (635 lines)
+
+หาก Dev เปลี่ยน type ในไฟล์นี้ ต้องแจ้ง QA ใน worklog ที่ส่วน `DEV-TYPES-CHANGE` เพื่อ QA ปรับ test cases ตาม
+
+หาก QA พบว่า type ไม่ตรงกับ implementation (เช่น form ไม่มี field ที่ type บอก) — รายงานใน `QA-TYPES-MISMATCH` section
+
+### 4. Workflow ระหว่างทีม
+
+```
+┌─────────────┐         bug report          ┌─────────────┐
+│   QA Team   │ ─────────────────────────> │   ITAM-01   │
+│             │   qa-reports/QA-XXX.md      │  (Dev)      │
+│             │ <───────────────────────── │             │
+└─────────────┘     fix commit + DEV-FIX   └─────────────┘
+       │                                          │
+       │  re-test (verify fix)                    │
+       ▼                                          ▼
+   update QA-XXX.md                          update DEV-FIX-XXX
+   status: Open → Verified ✅               status: In Progress → Done ✅
+```
+
+### 5. ตัวอย่าง Task ID Convention
+
+| Pattern | ใช้สำหรับ |
+|---------|---------|
+| `QA-DEVICES-###` | ทดสอบหน้า Devices |
+| `QA-WORKORDERS-###` | ทดสอบหน้า Work Orders |
+| `QA-STOCK-###` | ทดสอบหน้า Stock |
+| `QA-METER-###` | ทดสอบหน้า Meter Reading |
+| `QA-SETTINGS-###` | ทดสอบหน้า Settings |
+| `QA-AUTH-###` | ทดสอบ Auth / RBAC |
+| `DEV-FIX-BUG-###` | Dev แก้ bug ตามรายงาน QA |
+| `DEV-FEATURE-###` | Dev สร้างฟีเจอร์ใหม่ |
+| `DEV-REFACTOR-###` | Dev ปรับโครงสร้างโค้ด |
+
+### 6. กฎเพิ่มเติม
+
+- ✅ QA สามารถ: สร้างไฟล์ใน `qa-reports/`, `qa-videos/`, append worklog ส่วน QA
+- ❌ QA ห้าม: แก้ไฟล์ใน `src/`, `prisma/`, `scripts/` หรือลบ worklog ส่วน Dev
+- ✅ Dev สามารถ: แก้ไฟล์ใน `src/`, `prisma/`, `scripts/`, append worklog ส่วน Dev
+- ❌ Dev ห้าม: แก้ไฟล์ใน `qa-reports/`, `qa-videos/` หรือลบ worklog ส่วน QA
+- ✅ ทั้งสองทีม: อ่านไฟล์ใน `qa-reports/`, `src/components/itam/types.ts`, `prisma/schema.prisma` ได้ตลอด
+
+---
+
+## 📊 สถานะปัจจุบัน (Snapshot)
+
+| ทีม | Task ล่าสุด | สถานะ |
+|-----|-----------|--------|
+| MIGRATE | MIGRATE-001 | ✅ เสร็จ — รันได้ทุกหน้า |
+| QA | QA-DEVICES-001 | ✅ เสร็จ — รายงาน 22 bugs |
+| DEV | — | ⏳ รอรับรายงาน QA-DEVICES-001 เพื่อเริ่มแก้ |
+
+### Priority recommendations สำหรับ ITAM-01 (ตามลำดับ):
+
+1. 🔴 **P0 — แก้ด่วน**: BUG-001 (form submit), BUG-006 (pagination), BUG-009 (CSV template), BUG-010 (export CSV), BUG-012 (global search)
+2. 🟠 **P1 — แก้ก่อน Go-Live**: BUG-002 (refetch loop), BUG-011 (mobile table scroll)
+3. 🟡 **P2 — แก้ Polish**: BUG-003 (form a11y), BUG-004, BUG-005, BUG-007, BUG-008, BUG-013
+4. 🟢 **P3 — ทีหลัง**: BUG-014 ถึง BUG-022 (cosmetic)
+
+---
+
+## 📁 โครงสร้างไฟล์ QA ปัจจุบัน
+
+```
+/home/z/my-project/
+├── worklog.md                          # 📋 ศูนย์กลางข้อมูล (MIGRATE + QA + DEV)
+├── qa-reports/
+│   └── QA-DEVICES-001.md              # 📄 Test Report หน้า Devices
+├── qa-videos/
+│   ├── 01-devices-page-qa.webm        # 🎥 วิดีโอการเทส (~2 นาที)
+│   └── step-*.png (11 รูป)            # 📸 screenshots แต่ละ step
+└── src/components/itam/types.ts       # 🤝 Shared Types Contract
+```
+
