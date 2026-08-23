@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { requireAuth } from '@/lib/auth-middleware'
 
 /** Trim a string field, returning null when empty/missing. */
 function optStr(v: unknown): string | null {
@@ -10,20 +11,26 @@ function optStr(v: unknown): string | null {
 
 /** GET /api/devices/[id]/licenses — list licenses for a device. */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'VIEW_DEVICES')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const device = await db.device.findUnique({
       where: { id },
-      select: { assetCode: true },
+      select: { assetCode: true, name: true },
     })
     if (!device) {
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     }
+    // Schema uses PascalCase field names: Asset_No, Software, License_ID,
+    // LicenseType, License_Key, Quantity, Expiry_Date, Remark
     const licenses = await db.licenseRecord.findMany({
-      where: { assetCode: device.assetCode },
+      where: { Asset_No: device.assetCode },
       orderBy: { createdAt: 'desc' },
     })
     return NextResponse.json({ licenses })
@@ -41,6 +48,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'DEVICE_EDIT')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const device = await db.device.findUnique({
@@ -64,26 +75,26 @@ export async function POST(
     const quantity = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1
     const created = await db.licenseRecord.create({
       data: {
-        licenseId: optStr(body.licenseId),
-        assetCode: device.assetCode,
-        software: String(body.software).trim(),
-        licenseType: optStr(body.licenseType),
-        licenseKey: optStr(body.licenseKey),
-        quantity,
-        expiryDate: optStr(body.expiryDate),
-        remark: optStr(body.remark),
+        License_ID: optStr(body.licenseId),
+        Asset_No: device.assetCode,
+        Software: String(body.software).trim(),
+        LicenseType: optStr(body.licenseType),
+        License_Key: optStr(body.licenseKey),
+        Quantity: quantity,
+        Expiry_Date: optStr(body.expiryDate),
+        Remark: optStr(body.remark),
       },
     })
     await logAudit(
       'CREATE',
       'LicenseRecord',
       created.id,
-      `เพิ่ม License "${created.software}" ให้อุปกรณ์ ${device.assetCode} (${device.name})`,
+      `เพิ่ม License "${created.Software}" ให้อุปกรณ์ ${device.assetCode} (${device.name})`,
       {
         deviceId: id,
         assetCode: device.assetCode,
-        software: created.software,
-        licenseId: created.licenseId,
+        software: created.Software,
+        licenseId: created.License_ID,
       },
     )
     return NextResponse.json({ license: created }, { status: 201 })
@@ -100,6 +111,10 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'DEVICE_EDIT')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const { searchParams } = new URL(req.url)
@@ -128,11 +143,11 @@ export async function DELETE(
       'DELETE',
       'LicenseRecord',
       licenseId,
-      `ลบ License "${existing.software}" จากอุปกรณ์ ${device.assetCode} (${device.name})`,
+      `ลบ License "${existing.Software}" จากอุปกรณ์ ${device.assetCode} (${device.name})`,
       {
         deviceId: id,
         assetCode: device.assetCode,
-        software: existing.software,
+        software: existing.Software,
       },
     )
     return NextResponse.json({ ok: true })
@@ -153,6 +168,10 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'DEVICE_EDIT')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const { searchParams } = new URL(req.url)
@@ -199,29 +218,30 @@ export async function PUT(
     const updated = await db.licenseRecord.update({
       where: { id: licenseId },
       data: {
-        licenseId: body.licenseId === undefined ? undefined : optStr(body.licenseId),
-        software:
+        License_ID:
+          body.licenseId === undefined ? undefined : optStr(body.licenseId),
+        Software:
           body.software === undefined ? undefined : String(body.software).trim(),
-        licenseType:
+        LicenseType:
           body.licenseType === undefined ? undefined : optStr(body.licenseType),
-        licenseKey:
+        License_Key:
           body.licenseKey === undefined ? undefined : optStr(body.licenseKey),
-        quantity,
-        expiryDate:
+        Quantity: quantity,
+        Expiry_Date:
           body.expiryDate === undefined ? undefined : optStr(body.expiryDate),
-        remark: body.remark === undefined ? undefined : optStr(body.remark),
+        Remark: body.remark === undefined ? undefined : optStr(body.remark),
       },
     })
     await logAudit(
       'UPDATE',
       'LicenseRecord',
       licenseId,
-      `แก้ไข License "${updated.software}" ของอุปกรณ์ ${device.assetCode} (${device.name})`,
+      `แก้ไข License "${updated.Software}" ของอุปกรณ์ ${device.assetCode} (${device.name})`,
       {
         deviceId: id,
         assetCode: device.assetCode,
-        software: updated.software,
-        licenseId: updated.licenseId,
+        software: updated.Software,
+        licenseId: updated.License_ID,
       },
     )
     return NextResponse.json({ license: updated })

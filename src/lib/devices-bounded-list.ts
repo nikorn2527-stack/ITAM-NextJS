@@ -60,6 +60,7 @@ export const DEVICE_LIST_FIELDS = {
   brand: true,
   model: true,
   type: true,
+  serialNumber: true,
   status: true,
   site: true,
   department: true,
@@ -76,6 +77,7 @@ export const DEVICE_LIST_FIELDS = {
   meterMode: true,
   lastMeterBw: true,
   lastMeterColor: true,
+  currentAssignee: true, // needed for assignee filter
   isDemo: true,
   createdAt: true,
   updatedAt: true,
@@ -105,7 +107,6 @@ export const DEVICE_MOBILE_LIST_FIELDS = {
  * Used by tests to verify no leak.
  */
 export const DEVICE_LIST_EXCLUDED_FIELDS = [
-  'serialNumber',
   'ip',
   'mac',
   'remoteId',
@@ -116,7 +117,6 @@ export const DEVICE_LIST_EXCLUDED_FIELDS = [
   'salvageValue',
   'usefulLife',
   'remark',
-  'currentAssignee',
   'parentRef',
   'uninstallDate',
 ] as const

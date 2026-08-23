@@ -99,16 +99,43 @@ export async function GET(req: NextRequest) {
         { site: { contains: search } },
       ]
     }
-    if (status) where.status = status
+    if (status) {
+      // Map filter value → DB status strings.
+      // The DB stores human-readable values like "Active", "In Repair",
+      // "Pending Repair", "In Stock" etc. The filter dropdown sends short
+      // codes like "active", "repair", "spare", "disposed".
+      const STATUS_MAP: Record<string, string[]> = {
+        active: ['Active'],
+        spare: ['In Stock', 'Inactive', 'Spare'],
+        repair: ['In Repair', 'Pending Repair'],
+        disposed: ['Disposed', 'Retired'],
+      }
+      const dbStatuses = STATUS_MAP[status.toLowerCase()]
+      if (dbStatuses && dbStatuses.length > 0) {
+        where.status = { in: dbStatuses }
+      } else {
+        // Fallback: case-insensitive contains
+        where.status = { contains: status, mode: 'insensitive' }
+      }
+    }
 
     // ── Site scope enforcement via authorization context ──
     // superadmin → all sites (no filter, or explicit site filter if provided)
     // non-superadmin with specific Sites → filter to those Sites
     // non-superadmin with no Sites → return empty
     // explicit site=CODE → validate against user's scope (404 if out-of-scope)
+    //
+    // NOTE: Device.site stores the Thai site NAME (e.g. "โรงพยาบาลศูนย์อุดรธานี"),
+    // not the site CODE (e.g. "UDH"). So when the user picks a site code from
+    // the dropdown, we must resolve it to the Thai name before filtering.
     if (ctx.isSuperAdmin) {
       if (siteParam) {
-        where.site = normalizeSiteCode(siteParam) ?? siteParam
+        // Resolve site code → Thai name via SiteAttribute
+        const sa = await db.siteAttribute.findUnique({
+          where: { SiteCode: normalizeSiteCode(siteParam) ?? '' },
+          select: { SiteName: true },
+        })
+        where.site = sa?.SiteName ?? siteParam
       }
     } else if (ctx.siteScope.kind === 'sites' && ctx.siteScope.siteCodes.length > 0) {
       const allowed = ctx.siteScope.siteCodes
@@ -118,9 +145,24 @@ export async function GET(req: NextRequest) {
           // Out-of-scope Site requested — return empty (don't reveal existence)
           return NextResponse.json(emptyListResponse(page, limit))
         }
-        where.site = normalized
+        // Resolve site code → Thai name
+        const sa = await db.siteAttribute.findUnique({
+          where: { SiteCode: normalized },
+          select: { SiteName: true },
+        })
+        where.site = sa?.SiteName ?? normalized
       } else {
-        where.site = { in: allowed }
+        // No explicit site param → filter by all allowed site codes → resolve to Thai names
+        const siteNames = await Promise.all(
+          allowed.map(async (code) => {
+            const sa = await db.siteAttribute.findUnique({
+              where: { SiteCode: code },
+              select: { SiteName: true },
+            })
+            return sa?.SiteName ?? code
+          }),
+        )
+        where.site = { in: siteNames.filter(Boolean) }
       }
     } else {
       // kind === 'none' or legacy 'all' fallback — non-superadmin with no
@@ -146,18 +188,26 @@ export async function GET(req: NextRequest) {
         select: {
           ...selectFields,
           // Latest meter reading is a derived field — keep as relation subquery
-          // but only select the fields needed for `lastReadingMonth`.
           meterReadings: {
             orderBy: { readingDate: 'desc' },
             take: 1,
-            select: { readingMonth: true, readingDate: true },
+            select: {
+              readingMonth: true,
+              readingDate: true,
+              meterBw: true,
+              meterColor: true,
+              pagesBw: true,
+              pagesColor: true,
+            },
           },
         },
       }),
       db.device.count({ where }),
     ])
-    // Annotate each device with `lastReadingMonth` derived from its latest
-    // MeterReading record (matches Apps Script's `lastReadingMonth` column).
+    // Annotate each device with `lastReadingMonth` + `lastMeterBw` + `lastMeterColor`
+    // derived from its latest MeterReading record. The Device table has
+    // lastMeterBw/lastMeterColor columns but they may not be kept in sync —
+    // so we derive from the latest MeterReading for accuracy.
     const devicesWithMeter = devices.map((d) => {
       const latest = d.meterReadings?.[0]
       const { meterReadings, ...rest } = d
@@ -165,6 +215,8 @@ export async function GET(req: NextRequest) {
         ...rest,
         lastReadingMonth:
           latest?.readingMonth ?? latest?.readingDate?.slice(0, 7) ?? null,
+        lastMeterBw: latest?.meterBw ?? rest.lastMeterBw ?? 0,
+        lastMeterColor: latest?.meterColor ?? rest.lastMeterColor ?? 0,
       }
     })
     return NextResponse.json({

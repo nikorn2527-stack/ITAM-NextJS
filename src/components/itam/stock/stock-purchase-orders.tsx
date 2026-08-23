@@ -594,10 +594,10 @@ export function StockPurchaseOrders() {
                                   <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
                                 </Button>
                               </PopoverTrigger>
-                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0 dark:border-slate-700 dark:bg-slate-900" align="start">
+                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0 dark:border-slate-700 dark:bg-slate-900" align="start" onPointerDown={(e) => e.preventDefault()}>
                                 <Command>
                                   <CommandInput placeholder="ค้นรหัส / ชื่อ..." />
-                                  <CommandList className="itam-scroll max-h-72">
+                                  <CommandList className="itam-scroll max-h-60 overflow-y-auto">
                                     <CommandEmpty>ไม่พบสินค้า</CommandEmpty>
                                     <CommandGroup>
                                       {products.map((p) => (

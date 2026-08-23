@@ -23,16 +23,18 @@ function optInt(v: unknown, fallback = 0): number {
  * Finds existing codes matching STK-\d+, takes the max, +1.
  */
 async function nextProductCode(): Promise<string> {
-  const items = await db.stockItem.findMany({
+  // Use findFirst with orderBy desc — only fetch 1 row instead of all STK-* rows
+  const latest = await db.stockItem.findFirst({
     where: { productCode: { startsWith: 'STK-' } },
+    orderBy: { productCode: 'desc' },
     select: { productCode: true },
   })
   let max = 0
-  for (const it of items) {
-    const m = /^STK-(\d+)$/.exec(it.productCode)
+  if (latest) {
+    const m = /^STK-(\d+)$/.exec(latest.productCode)
     if (m) {
       const n = parseInt(m[1], 10)
-      if (Number.isFinite(n) && n > max) max = n
+      if (Number.isFinite(n)) max = n
     }
   }
   return `STK-${String(max + 1).padStart(4, '0')}`

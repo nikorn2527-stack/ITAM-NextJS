@@ -176,16 +176,12 @@ export default function Home() {
     }
     const patchedFetch: typeof window.fetch = (input, init) => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url)
-      // ── Attach Bearer token to every ITAM API route that requires auth.
-      //    The original Vercel deployment only patched a subset of routes;
-      //    in this sandbox we patch ALL /api/* routes (except the explicit
-      //    login endpoint) so endpoints like /api/sites, /api/master,
-      //    /api/meter, /api/cycles, /api/reports, /api/notifications,
-      //    /api/audit, /api/settings, /api/users, /api/templates,
-      //    /api/import, /api/search, /api/site-rates, /api/cost-analytics,
-      //    /api/seed, /api/site-attributes, /api/health (authz), /api/auth/me,
-      //    /api/auth/logout also receive the token.
-      const isItamApi =
+      // ── Match any authenticated ITAM API call ──
+      // Includes /api/master, /api/sites, /api/meter, /api/cycles,
+      // /api/reports, /api/notifications, /api/audit, /api/settings
+      // so that legacy `fetch()` calls without explicit authHeaders() also
+      // get the Bearer token attached.
+      const isAuthUrl =
         url.includes('/api/itam/') ||
         url.includes('/api/v1/') ||
         url.includes('/api/work-orders') ||
@@ -193,31 +189,25 @@ export default function Home() {
         url.includes('/api/stock-items') ||
         url.includes('/api/dashboard') ||
         url.includes('/api/sync/preview') ||
-        url.includes('/api/sites') ||
         url.includes('/api/master') ||
+        url.includes('/api/sites') ||
         url.includes('/api/meter') ||
         url.includes('/api/cycles') ||
         url.includes('/api/reports') ||
         url.includes('/api/notifications') ||
         url.includes('/api/audit') ||
         url.includes('/api/settings') ||
-        url.includes('/api/users') ||
-        url.includes('/api/templates') ||
-        url.includes('/api/import') ||
         url.includes('/api/search') ||
-        url.includes('/api/site-rates') ||
-        url.includes('/api/cost-analytics') ||
-        url.includes('/api/seed') ||
-        url.includes('/api/site-attributes') ||
-        url.includes('/api/health/authz') ||
-        url.includes('/api/auth/me') ||
-        url.includes('/api/auth/logout') ||
-        url.includes('/api/auth/verify-token')
-      if (isItamApi && !url.includes('/api/itam/auth/login') && !url.includes('/api/auth/login') && !url.includes('/api/auth/register') && !url.includes('/api/auth/forgot-password') && !url.includes('/api/auth/reset-password')) {
+        url.includes('/api/health')
+      const isLoginUrl = url.includes('/api/itam/auth/login')
+      if (isAuthUrl && !isLoginUrl) {
         const token = useAuthStore.getState().token
         if (token) {
           const headers = new Headers(init?.headers || {})
-          headers.set('Authorization', `Bearer ${token}`)
+          // Only add Authorization if not already present (avoid double-setting)
+          if (!headers.has('Authorization')) {
+            headers.set('Authorization', `Bearer ${token}`)
+          }
           if (!headers.has('Content-Type') && init?.body && typeof init.body === 'string') {
             headers.set('Content-Type', 'application/json')
           }

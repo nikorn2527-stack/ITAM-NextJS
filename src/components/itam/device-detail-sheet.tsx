@@ -994,6 +994,10 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
         className="itam-scroll w-full gap-0 overflow-y-auto border-slate-800 bg-white p-0 dark:border-slate-800 dark:bg-slate-900 sm:max-w-[480px]"
       >
         <SheetHeader className="border-b border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900">
+          {/* Visually-hidden title for accessibility (Radix Dialog requires it) */}
+          <SheetTitle className="sr-only">
+            {device?.name || 'รายละเอียดอุปกรณ์'}
+          </SheetTitle>
           {deviceLoading ? (
             <>
               <Skeleton className="h-6 w-2/3" />
@@ -1244,7 +1248,10 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                   label="มิเตอร์ล่าสุด"
                   value={
                     <span className="font-mono tabular-nums">
-                      {device.lastMeterReading.toLocaleString()}
+                      {(device.lastMeterBw ?? device.lastMeterReading ?? 0).toLocaleString()}
+                      {device.lastMeterColor && device.lastMeterColor > 0 ? (
+                        <span className="ml-2 text-[10px] text-slate-400">สี {(device.lastMeterColor).toLocaleString()}</span>
+                      ) : null}
                     </span>
                   }
                 />

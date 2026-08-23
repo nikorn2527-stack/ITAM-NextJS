@@ -354,10 +354,10 @@ export function StockInForm() {
                                 <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0 dark:border-slate-700 dark:bg-slate-900" align="start">
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0 dark:border-slate-700 dark:bg-slate-900" align="start" onPointerDown={(e) => e.preventDefault()}>
                               <Command>
                                 <CommandInput placeholder="ค้นรหัส / ชื่อ..." />
-                                <CommandList className="itam-scroll max-h-72">
+                                <CommandList className="itam-scroll max-h-60 overflow-y-auto">
                                   <CommandEmpty>ไม่พบสินค้า</CommandEmpty>
                                   <CommandGroup>
                                     {products.map((p) => (
@@ -443,6 +443,7 @@ export function StockInForm() {
         </div>
         <div className="flex gap-2">
           <Button
+            type="button"
             variant="outline"
             onClick={() => {
               setLines([newLineItem()])
@@ -454,6 +455,7 @@ export function StockInForm() {
             ล้างฟอร์ม
           </Button>
           <Button
+            type="button"
             onClick={submit}
             disabled={submitMutation.isPending}
             className="bg-emerald-600 hover:bg-emerald-700 text-white"

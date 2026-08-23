@@ -29,7 +29,7 @@
  */
 
 import * as React from 'react'
-import { Check, ChevronsUpDown, Search } from 'lucide-react'
+import { Check, ChevronsUpDown, Plus, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import {
   Popover,
@@ -67,6 +67,34 @@ export interface ComboboxProps {
   openOnFocus?: boolean
   /** Pass-through for special key handling (e.g. Enter → next field). */
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  /**
+   * Optional display override — when provided, the input shows
+   * `displayValue(value)` instead of the raw value. Useful when the stored
+   * value is an English code (e.g. "COMPANY") but the UI should show a
+   * localized label (e.g. "ของบริษัท"). When the user starts typing, the
+   * display falls back to the raw typed text until they pick an option.
+   */
+  displayValue?: (value: string) => string
+  /**
+   * Optional set of values to HIGHLIGHT in green. Used by the location
+   * dropdowns to show which floors/departments actually have devices at
+   * the selected building — so the user knows "this floor has 5 departments"
+   * without blocking them from picking others.
+   */
+  highlightedValues?: string[]
+  /**
+   * Optional badge text to show next to highlighted items (e.g. "5 เครื่อง").
+   * Keyed by the item value.
+   */
+  highlightBadges?: Record<string, string>
+  /**
+   * When provided, shows a "+ เพิ่มใหม่" item at the bottom of the dropdown.
+   * Clicking it calls onAddNew(currentQuery). Useful for letting users add
+   * a new entry without leaving the form.
+   */
+  onAddNew?: (query: string) => void
+  /** Custom label for the add-new button (default: "เพิ่มใหม่"). */
+  addNewLabel?: string
 }
 
 export function Combobox({
@@ -84,24 +112,115 @@ export function Combobox({
   className,
   openOnFocus = true,
   onKeyDown,
+  displayValue,
+  highlightedValues,
+  highlightBadges,
+  onAddNew,
+  addNewLabel = 'เพิ่มใหม่',
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
   const internalRef = React.useRef<HTMLInputElement>(null)
   const ref = inputRef ?? internalRef
 
+  // Normalize highlightedValues into a Set for O(1) lookup.
+  const highlightSet = React.useMemo(
+    () => new Set(highlightedValues ?? []),
+    [highlightedValues],
+  )
+
   // Items filtered by the user's typed query — case-insensitive substring
   // match on either the label or the value. Falls back to the full list when
   // the query is empty so the dropdown always shows something useful.
+  // Highlighted items (green) are sorted to the TOP so the user doesn't
+  // have to scroll to find them.
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return items
-    return items.filter(
+    const base = !q
+      ? items
+      : items.filter(
+          (it) =>
+            it.label.toLowerCase().includes(q) ||
+            it.value.toLowerCase().includes(q),
+        )
+    // Sort: highlighted items first, then non-highlighted (preserve original order within each group)
+    if (!highlightSet.size) return base
+    return [...base].sort((a, b) => {
+      const aHl = highlightSet.has(a.value) ? 0 : 1
+      const bHl = highlightSet.has(b.value) ? 0 : 1
+      return aHl - bHl
+    })
+  }, [items, query, highlightSet])
+
+  // Alias for clarity in the render section (matches the new naming convention).
+  const filteredFlat = filtered
+
+  // Whether to show the "add new" button: only when onAddNew is provided
+  // AND the query is non-empty AND the query doesn't exactly match an
+  // existing item (avoid duplicates).
+  const showAddNew =
+    Boolean(onAddNew) &&
+    query.trim().length > 0 &&
+    !filteredFlat.some(
       (it) =>
-        it.label.toLowerCase().includes(q) ||
-        it.value.toLowerCase().includes(q),
+        it.label.toLowerCase() === query.trim().toLowerCase() ||
+        it.value.toLowerCase() === query.trim().toLowerCase(),
     )
-  }, [items, query])
+
+  // Shared CommandItem renderer — supports green highlight + badge.
+  function renderItem(it: ComboboxItem) {
+    const isHighlighted = highlightSet.has(it.value)
+    const badge = highlightBadges?.[it.value]
+    return (
+      <CommandItem
+        key={it.value}
+        value={it.value}
+        onSelect={() => {
+          onChange(it.value)
+          setQuery('')
+          setOpen(false)
+        }}
+        className={
+          isHighlighted
+            ? 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:hover:bg-emerald-900/40'
+            : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+        }
+      >
+        <Check
+          className={`mr-2 h-3.5 w-3.5 ${
+            value === it.value ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+        <span
+          className={`flex-1 truncate text-sm ${
+            isHighlighted
+              ? 'font-semibold text-emerald-700 dark:text-emerald-400'
+              : ''
+          }`}
+        >
+          {it.label}
+        </span>
+        {isHighlighted && badge && (
+          <span className="ml-2 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-400">
+            {badge}
+          </span>
+        )}
+        {it.value !== it.label && (
+          <span className="ml-2 font-mono text-[10px] text-slate-400">
+            {it.value}
+          </span>
+        )}
+      </CommandItem>
+    )
+  }
+
+  // The visible text in the input:
+  //  - If the user is typing (popover open + non-empty query), show the
+  //    raw typed query so they can see what they're searching for.
+  //  - If a displayValue override is provided, show displayValue(value).
+  //  - Otherwise show the raw value (legacy behavior).
+  const visibleValue =
+    open && query ? query : displayValue ? displayValue(value) : value
 
   // Keep the input query in sync with the controlled value so typing in the
   // input both filters the dropdown AND updates the parent's form state.
@@ -112,17 +231,35 @@ export function Combobox({
   }
 
   function handleFocus() {
-    if (openOnFocus && items.length > 0) setOpen(true)
+    // Use a microtask delay to avoid the "first click closes the dropdown"
+    // issue that happens when the input receives focus and the popover
+    // opens, but the subsequent click (on the trigger button or input)
+    // is interpreted as a "blur" by the input. The 0ms setTimeout
+    // defers the open so it doesn't race with the focus event.
+    if (openOnFocus && items.length > 0) {
+      setTimeout(() => setOpen(true), 0)
+    }
   }
 
   function handleBlur() {
     // Delay close so click on a CommandItem has time to fire first.
-    setTimeout(() => setOpen(false), 150)
+    // 200ms is enough for most browsers' click event to register
+    // after the input blur. Without this, the first selection would
+    // close the dropdown before the click registers.
+    setTimeout(() => {
+      setOpen(false)
+      setQuery('')
+    }, 200)
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
       setOpen(false)
+      setQuery('')
+      // Blur the input to ensure focus leaves the combobox
+      ;(e.target as HTMLInputElement).blur()
       return
     }
     // Only forward Enter when the popover is closed (so the parent can move
@@ -149,7 +286,7 @@ export function Combobox({
               type="text"
               role="combobox"
               aria-expanded={open}
-              value={value}
+              value={visibleValue}
               onChange={handleInputChange}
               onFocus={handleFocus}
               onBlur={handleBlur}
@@ -175,6 +312,7 @@ export function Combobox({
           className="w-[--radix-popover-trigger-width] p-0 dark:border-slate-700 dark:bg-slate-900"
           align="start"
           onOpenAutoFocus={(e) => e.preventDefault()}
+          onPointerDown={(e) => e.preventDefault()}
         >
           <Command shouldFilter={false}>
             <div className="flex items-center border-b px-3 dark:border-slate-700">
@@ -187,60 +325,35 @@ export function Combobox({
               />
             </div>
             <CommandList className="itam-scroll max-h-60">
-              <CommandEmpty>{emptyText}</CommandEmpty>
+              {filteredFlat.length === 0 && !showAddNew && (
+                <CommandEmpty>{emptyText}</CommandEmpty>
+              )}
               {groupLabel ? (
                 <CommandGroup heading={groupLabel}>
-                  {filtered.map((it) => (
-                    <CommandItem
-                      key={it.value}
-                      value={it.value}
-                      onSelect={() => {
-                        onChange(it.value)
-                        setQuery('')
-                        setOpen(false)
-                      }}
-                      className="hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      <Check
-                        className={`mr-2 h-3.5 w-3.5 ${
-                          value === it.value ? 'opacity-100' : 'opacity-0'
-                        }`}
-                      />
-                      <span className="flex-1 truncate text-sm">{it.label}</span>
-                      {it.value !== it.label && (
-                        <span className="ml-2 font-mono text-[10px] text-slate-400">
-                          {it.value}
-                        </span>
-                      )}
-                    </CommandItem>
-                  ))}
+                  {filteredFlat.map(renderItem)}
                 </CommandGroup>
               ) : (
                 <CommandGroup>
-                  {filtered.map((it) => (
-                    <CommandItem
-                      key={it.value}
-                      value={it.value}
-                      onSelect={() => {
-                        onChange(it.value)
-                        setQuery('')
-                        setOpen(false)
-                      }}
-                      className="hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      <Check
-                        className={`mr-2 h-3.5 w-3.5 ${
-                          value === it.value ? 'opacity-100' : 'opacity-0'
-                        }`}
-                      />
-                      <span className="flex-1 truncate text-sm">{it.label}</span>
-                      {it.value !== it.label && (
-                        <span className="ml-2 font-mono text-[10px] text-slate-400">
-                          {it.value}
-                        </span>
-                      )}
-                    </CommandItem>
-                  ))}
+                  {filteredFlat.map(renderItem)}
+                </CommandGroup>
+              )}
+              {/* Add-new button at the bottom */}
+              {showAddNew && onAddNew && (
+                <CommandGroup heading=" ">
+                  <CommandItem
+                    value={`__add_new__${query}`}
+                    onSelect={() => {
+                      onAddNew(query.trim())
+                      setQuery('')
+                      setOpen(false)
+                    }}
+                    className="border-t border-slate-100 text-[#f97316] hover:bg-[#f97316]/5 dark:border-slate-800 dark:text-[#fb923c]"
+                  >
+                    <Plus className="mr-2 h-3.5 w-3.5" />
+                    <span className="flex-1 text-sm font-medium">
+                      {addNewLabel} <span className="font-mono">&ldquo;{query.trim()}&rdquo;</span>
+                    </span>
+                  </CommandItem>
                 </CommandGroup>
               )}
             </CommandList>
