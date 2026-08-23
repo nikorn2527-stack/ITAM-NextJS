@@ -1594,19 +1594,19 @@ function CreateWorkOrderDialog({
                   </div>
                 </div>
 
-                {/* Asset lookup — UniversalSearch supports type + scan + OCR */}
+                {/* Asset lookup */}
                 <div className="grid gap-1.5">
                   <Label htmlFor="wo-device-search">เลขทะเบียนอุปกรณ์ (Optional)</Label>
-                  <UniversalSearch
+                  <Input
+                    id="wo-device-search"
                     value={form.deviceSearch}
-                    onChange={(v) =>
+                    onChange={(e) =>
                       setForm((s) => ({
                         ...s,
-                        deviceSearch: v,
+                        deviceSearch: e.target.value,
                         deviceId: null,
                       }))
                     }
-                    context="asset_no"
                     placeholder="พิมพ์เลขทะเบียน / ชื่อ / S/N เพื่อค้นหาอุปกรณ์"
                   />
                   {deviceLoading && (
