@@ -1,0 +1,351 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
+import { requireAuth } from '@/lib/auth-middleware'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { normalizeSiteCode } from '@/lib/site-scope'
+import { demoTag } from '@/lib/demo-mode'
+import {
+  clampPageAndLimit,
+  buildPaginationMeta,
+  emptyListResponse,
+  getDeviceListFields,
+  DEVICE_LIST_FIELDS,
+} from '@/lib/devices-bounded-list'
+
+/** Clamp warrantyMonths to 1..120, default 12. */
+function clampWarrantyMonths(v: unknown): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return 12
+  return Math.max(1, Math.min(120, Math.round(n)))
+}
+
+/** Parse a Float; returns null when missing/invalid. */
+function optFloat(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return null
+  return Math.max(0, n)
+}
+
+/** Parse an Int; returns null when missing/invalid. */
+function optInt(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return null
+  return Math.max(1, Math.round(n))
+}
+
+/** Trim a string field, returning null when empty/missing. */
+function optStr(v: unknown): string | null {
+  if (v === null || v === undefined || v === '') return null
+  return String(v).trim()
+}
+
+/** Parse a boolean field; returns false when missing/invalid. */
+function optBool(v: unknown): boolean {
+  if (v === true || v === 'true' || v === 1 || v === 'TRUE' || v === 'True') return true
+  return false
+}
+
+export async function GET(req: NextRequest) {
+  // ── Authentication: require VIEW_DEVICES permission ──
+  // Previously this route returned full device records (including
+  // serialNumber, IP/MAC, vendor/contract info) with no auth check.
+  // Now it enforces authentication and Site scope.
+  const auth = await requireAuth(req, 'VIEW_DEVICES')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+  // ── Build authorization context for Site scope ──
+  // Uses buildAuthorizationContext() instead of reading auth.user.allowedSites
+  // directly, so that UserSiteGrant is consulted first (dual-read).
+  const ctx = await buildAuthorizationContext(
+    auth.user,
+    auth.row.id,
+    auth.row.allowedSites,
+  )
+  try {
+    const { searchParams } = new URL(req.url)
+    const search = searchParams.get('search')?.trim() ?? ''
+    const status = searchParams.get('status')?.trim() ?? ''
+    const siteParam = searchParams.get('site')?.trim() ?? ''
+    // ── Bounded pagination: clamp page + limit to safe bounds ──
+    // Previously: inline Math.min/Math.max with hardcoded 500/100.
+    // Now: uses pure helper that also handles NaN, Infinity, fractional.
+    // Hard upper bound: MAX_LIMIT=500, MAX_PAGE=10000 (prevents deep scans).
+    const isMobile = searchParams.get('mobile') === '1'
+    const { page, limit, skip } = clampPageAndLimit({
+      page: Number(searchParams.get('page') ?? '1') || 1,
+      limit: Number(searchParams.get('limit') ?? '100') || 100,
+    })
+
+    const where: Record<string, unknown> = {}
+    if (search) {
+      // ── Search only NON-SENSITIVE fields ──────────────────────────
+      // Audit (ITAM-02) REQUEST CHANGES: search clause included sensitive
+      // fields (serialNumber, ip, mac, remoteId, contractNo, vendor).
+      // Remove them from list-view search to enforce list-view minimization
+      // contract. Sensitive fields are searchable in detail view only.
+      where.OR = [
+        { assetCode: { contains: search } },
+        { name: { contains: search } },
+        { brand: { contains: search } },
+        { model: { contains: search } },
+        { building: { contains: search } },
+        { floor: { contains: search } },
+        { department: { contains: search } },
+        { location: { contains: search } },
+        { site: { contains: search } },
+      ]
+    }
+    if (status) where.status = status
+
+    // ── Site scope enforcement via authorization context ──
+    // superadmin → all sites (no filter, or explicit site filter if provided)
+    // non-superadmin with specific Sites → filter to those Sites
+    // non-superadmin with no Sites → return empty
+    // explicit site=CODE → validate against user's scope (404 if out-of-scope)
+    if (ctx.isSuperAdmin) {
+      if (siteParam) {
+        where.site = normalizeSiteCode(siteParam) ?? siteParam
+      }
+    } else if (ctx.siteScope.kind === 'sites' && ctx.siteScope.siteCodes.length > 0) {
+      const allowed = ctx.siteScope.siteCodes
+      if (siteParam) {
+        const normalized = normalizeSiteCode(siteParam)
+        if (!normalized || !allowed.includes(normalized)) {
+          // Out-of-scope Site requested — return empty (don't reveal existence)
+          return NextResponse.json(emptyListResponse(page, limit))
+        }
+        where.site = normalized
+      } else {
+        where.site = { in: allowed }
+      }
+    } else {
+      // kind === 'none' or legacy 'all' fallback — non-superadmin with no
+      // explicit grants. Return empty (fail-closed).
+      return NextResponse.json(emptyListResponse(page, limit))
+    }
+
+    // ── Explicit field selection (bounded list) ──
+    // Previously: default include (returns all fields including IP/MAC/contract).
+    // Now: explicit select — sensitive fields (serialNumber, ip, mac, contractNo,
+    // vendor, purchasePrice, etc.) are excluded from list view. Detail view
+    // (/api/devices/[id]) still returns full record with proper permission.
+    // Mobile (?mobile=1) returns an even smaller subset for small screens.
+    const selectFields = getDeviceListFields(isMobile)
+
+    // Run count + page in parallel for efficiency
+    const [devices, total] = await Promise.all([
+      db.device.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          ...selectFields,
+          // Latest meter reading is a derived field — keep as relation subquery
+          // but only select the fields needed for `lastReadingMonth`.
+          meterReadings: {
+            orderBy: { readingDate: 'desc' },
+            take: 1,
+            select: { readingMonth: true, readingDate: true },
+          },
+        },
+      }),
+      db.device.count({ where }),
+    ])
+    // Annotate each device with `lastReadingMonth` derived from its latest
+    // MeterReading record (matches Apps Script's `lastReadingMonth` column).
+    const devicesWithMeter = devices.map((d) => {
+      const latest = d.meterReadings?.[0]
+      const { meterReadings, ...rest } = d
+      return {
+        ...rest,
+        lastReadingMonth:
+          latest?.readingMonth ?? latest?.readingDate?.slice(0, 7) ?? null,
+      }
+    })
+    return NextResponse.json({
+      devices: devicesWithMeter,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      // Additive: pagination metadata for client convenience.
+      // Does NOT change existing fields — backward compatible.
+      meta: buildPaginationMeta(total, page, limit),
+      // Additive: indicate if mobile subset was returned.
+      mobile: isMobile,
+    })
+  } catch (err) {
+    console.error('GET /api/devices', err)
+    return NextResponse.json(
+      { error: 'Failed to fetch devices' },
+      { status: 500 },
+    )
+  }
+}
+
+export async function POST(req: NextRequest) {
+  // ── Authentication: require DEVICE_EDIT permission ──
+  // Previously this route treated auth as optional (fail-open), allowing
+  // unauthenticated device creation. This is a Blocker security fix.
+  // Demo mode is still supported: if the authenticated user is a demo user,
+  // the created device is tagged with isDemo=true.
+  const auth = await requireAuth(req, 'DEVICE_EDIT')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+  const demo = auth
+  // ── Build authorization context for Site scope validation ──
+  const ctx = await buildAuthorizationContext(
+    auth.user,
+    auth.row.id,
+    auth.row.allowedSites,
+  )
+
+  try {
+    const body = await req.json()
+    const required = ['assetCode', 'name', 'brand', 'model', 'type', 'status', 'site']
+    for (const k of required) {
+      if (body[k] === undefined || body[k] === null || body[k] === '') {
+        return NextResponse.json(
+          { error: `Missing required field: ${k}` },
+          { status: 400 },
+        )
+      }
+    }
+
+    // ── Validate that the caller can create devices at body.site ──
+    // Non-superadmin must have an active Site grant for the target Site.
+    // This prevents creating devices at Sites the user cannot access.
+    const targetSite = normalizeSiteCode(body.site)
+    if (!targetSite) {
+      return NextResponse.json(
+        { error: 'site ไม่ถูกต้อง' },
+        { status: 400 },
+      )
+    }
+    // ── B1 FIX (audit round 2): use canAtSite(targetSite, 'DEVICE_EDIT')
+    // instead of canAccessSite(targetSite).
+    // canAccessSite only checks that the user has ANY grant at the Site
+    // (even a viewer grant). That allows privilege escalation via the
+    // effective-permissions union: a user with admin role at UDH (which
+    // grants DEVICE_EDIT) and viewer role at NKP would pass canAccessSite
+    // ('NKP') even though viewer does NOT include DEVICE_EDIT. canAtSite
+    // checks the role AT the target Site only, closing the leak.
+    if (!ctx.isSuperAdmin && !ctx.canAtSite(targetSite, 'DEVICE_EDIT')) {
+      return NextResponse.json(
+        { error: `คุณไม่มีสิทธิ์สร้างอุปกรณ์ที่ Site '${targetSite}'` },
+        { status: 403 },
+      )
+    }
+
+    const created = await db.device.create({
+      data: {
+        assetCode: String(body.assetCode).trim(),
+        name: String(body.name).trim(),
+        brand: String(body.brand).trim(),
+        model: String(body.model).trim(),
+        type: String(body.type).trim(),
+        serialNumber: optStr(body.serialNumber),
+        status: String(body.status).trim(),
+        site: targetSite,
+        assetSiteCode: optStr(body.assetSiteCode),
+        department: optStr(body.department),
+        departmentCode: optStr(body.departmentCode),
+        parentRef: optStr(body.parentRef),
+        displayLabel: optStr(body.displayLabel),
+        location: optStr(body.location),
+        building: optStr(body.building),
+        floor: optStr(body.floor),
+        room: optStr(body.room),
+        ip: optStr(body.ip),
+        mac: optStr(body.mac),
+        remoteId: optStr(body.remoteId),
+        purchaseDate: optStr(body.purchaseDate),
+        warrantyMonths: clampWarrantyMonths(body.warrantyMonths),
+        purchasePrice: optFloat(body.purchasePrice),
+        salvageValue: optFloat(body.salvageValue) ?? 0,
+        usefulLife: optInt(body.usefulLife),
+        warrantyEnd: optStr(body.warrantyEnd),
+        vendor: optStr(body.vendor),
+        contractNo: optStr(body.contractNo),
+        uninstallDate: optStr(body.uninstallDate),
+        meterRequired: optBool(body.meterRequired),
+        meterMode: optStr(body.meterMode),
+        costCenter: optStr(body.costCenter),
+        deviceGroup: optStr(body.deviceGroup),
+        remark: optStr(body.remark),
+        ...demoTag(demo?.user ?? null),
+      },
+    })
+    await logAudit(
+      'CREATE',
+      'Device',
+      created.id,
+      `เพิ่มอุปกรณ์ ${created.assetCode} (${created.name})`,
+      {
+        assetCode: created.assetCode,
+        name: created.name,
+        brand: created.brand,
+        type: created.type,
+        site: created.site,
+      },
+    )
+
+    // ── GAP-C01: Create INITIAL MeterReading for meterable devices ──
+    // Legacy: DeviceService.gs lines 175-185 — when a printer is added with
+    // initialMeter data, an INITIAL reading is saved so the first monthly
+    // reading calculates pages = meter - initial (not meter - 0).
+    if (created.meterRequired && body.initialMeter) {
+      const im = body.initialMeter
+      const hasBw = typeof im.meterBw === 'number' && isFinite(im.meterBw)
+      const hasColor = typeof im.meterColor === 'number' && isFinite(im.meterColor)
+      if (hasBw || hasColor) {
+        const now = new Date()
+        const readingMonth = im.readingMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+        try {
+          const reading = await db.meterReading.create({
+            data: {
+              deviceId: created.id,
+              assetCode: created.assetCode,
+              readingDate: im.readingDate || now.toISOString().slice(0, 10),
+              readingMonth,
+              meterBw: im.meterBw ?? 0,
+              meterColor: im.meterColor ?? 0,
+              pagesBw: 0, // INITIAL → pages = 0 (baseline)
+              pagesColor: 0,
+              prevMeterBw: 0,
+              prevMeterColor: 0,
+              readingType: 'INITIAL',
+              readBy: auth.user.email || 'system',
+              remark: im.remark || 'มิเตอร์ตั้งต้นตอนเพิ่มอุปกรณ์',
+              ...demoTag(demo?.user ?? null),
+            },
+          })
+          // Update device's lastMeter fields to match the INITIAL reading
+          await db.device.update({
+            where: { id: created.id },
+            data: {
+              lastMeterBw: im.meterBw ?? 0,
+              lastMeterColor: im.meterColor ?? 0,
+            },
+          })
+          console.log(`[devices] INITIAL reading created for ${created.assetCode}: bw=${im.meterBw ?? 0}, color=${im.meterColor ?? 0}`)
+        } catch (e) {
+          console.error('[devices] INITIAL meter reading failed:', e)
+          // Don't fail device creation — just log the error
+        }
+      }
+    }
+
+    return NextResponse.json({ device: created }, { status: 201 })
+  } catch (err) {
+    console.error('POST /api/devices', err)
+    const message = err instanceof Error ? err.message : 'Failed to create device'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
