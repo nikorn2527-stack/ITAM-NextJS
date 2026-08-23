@@ -12,16 +12,17 @@ export async function GET(req: Request) {
 
     const userSites = getAllowedSites(user)
     const sites = await db.siteAttribute.findMany({
-      orderBy: { siteCode: 'asc' },
+      orderBy: { SiteCode: 'asc' },
     })
     // Site-level filter — restrict the visible site list
-    const visibleSites = userSites === 'ALL' ? sites : sites.filter((s) => userSites.includes(s.siteName || ''))
+    const visibleSites = userSites === 'ALL' ? sites : sites.filter((s) => userSites.includes(s.SiteName || ''))
 
     const sitesWithCounts = await Promise.all(
       visibleSites.map(async (s) => {
-        const deviceCount = await db.device.count({ where: { site: s.siteName || '' } })
+        const siteName = s.SiteName || ''
+        const deviceCount = await db.device.count({ where: { site: siteName } })
         const activeCount = await db.device.count({
-          where: { site: s.siteName || '', status: 'Active' },
+          where: { site: siteName, status: 'Active' },
         })
         return { ...s, deviceCount, activeCount }
       }),
