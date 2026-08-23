@@ -34,6 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1129,6 +1130,46 @@ export function DevicesPage() {
         {/* ── Scrollable Body ── */}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+            {/* ── SN Scanner (always visible at top) ──
+                Scan a barcode → auto-fills the Serial Number field (in อุปกรณ์ tab).
+                Useful for quickly entering SN without manual typing.
+                Uses Enter key (sent by most barcode scanners) to commit the value. */}
+            <div className="mb-4 flex items-center gap-2 rounded-md border border-[#f97316]/30 bg-[#f97316]/5 px-3 py-2 dark:border-[#fb923c]/30 dark:bg-[#fb923c]/5">
+              <ScanLine className="h-4 w-4 shrink-0 text-[#f97316] dark:text-[#fb923c]" />
+              <input
+                type="text"
+                placeholder="สแกนหรือพิมพ์ Serial Number แล้วกด Enter เพื่อกรอกอัตโนมัติ…"
+                className="flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
+                onKeyDown={(e) => {
+                  // Most barcode scanners send Enter after the code.
+                  // We commit the value to form.serialNumber on Enter.
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const v = (e.target as HTMLInputElement).value.trim()
+                    if (v) {
+                      setForm((prev) => ({ ...prev, serialNumber: v }))
+                      ;(e.target as HTMLInputElement).value = ''
+                      // Auto-switch to อุปกรณ์ tab so the user sees the filled SN
+                      const deviceTab = document.querySelector('[data-state="inactive"][role="tab"]')
+                      // The Tabs component is controlled by Radix, so we just
+                      // clear the input — the user can click the อุปกรณ์ tab to verify.
+                    }
+                  }
+                }}
+                onBlur={(e) => {
+                  // Also commit on blur (if user typed manually and clicked away)
+                  const v = e.target.value.trim()
+                  if (v) {
+                    setForm((prev) => ({ ...prev, serialNumber: v }))
+                    e.target.value = ''
+                  }
+                }}
+              />
+              <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                สแกนบาร์โค้ด → กด Enter → กรอก SN อัตโนมัติ
+              </span>
+            </div>
+
             {/* ── Quick legend ── */}
             <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
               <span className="flex items-center gap-1">
@@ -1145,811 +1186,757 @@ export function DevicesPage() {
               </span>
             </div>
 
-            {/* ───────────────────────────────────────────────────────
-                Section 1: รหัสอุปกรณ์ (Auto-generated)
-                ─────────────────────────────────────────────────────── */}
-            <FormSection
-              step={1}
-              icon="🤖"
-              title="รหัสอุปกรณ์"
-              subtitle="ระบบสร้างรหัสให้อัตโนมัติ — แก้ไขได้หากต้องการ"
-              accent="amber"
-            >
-              <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                <Field label="รหัสอุปกรณ์" required>
-                  <div className="relative">
-                    <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      id="dev-assetCode"
-                      value={form.assetCode}
-                      onChange={(e) =>
-                        setForm({ ...form, assetCode: e.target.value })
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault()
-                          document.getElementById('dev-site')?.focus()
-                        }
-                      }}
-                      placeholder="ระบบสร้างอัตโนมัติ (เช่น 2379)"
-                      className="bg-amber-50/50 pl-8 font-mono dark:bg-amber-950/10"
-                    />
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onClick={() => void fetchNextAssetCode()}
-                      disabled={Boolean(form.id)}
-                      title="สร้างเลขถัดไปอัตโนมัติ"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-[#f97316] hover:bg-[#f97316]/10 disabled:opacity-40 dark:text-[#fb923c]"
-                    >
-                      <Sparkles className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                    ✓ เลขลำดับต่อจากล่าสุด — ระบบค้นหาเลขสูงสุดแล้ว +1 ให้อัตโนมัติ
-                  </p>
-                </Field>
-              </div>
-            </FormSection>
+            {/* ── Tabs: 3 sections ──
+                Tab 1: 📍 สถานที่ติดตั้ง (สาขา + รหัส + อาคาร/ชั้น/แผนก + ตำแหน่ง/ห้อง)
+                Tab 2: 💻 อุปกรณ์ (สถานะ, Type/Brand/Model, IP/MAC, กลุ่มอุปกรณ์, โหมดมิเตอร์)
+                Tab 3: ⚙️ ขั้นสูง (Remote ID, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ) */}
+            <Tabs defaultValue="location" className="w-full">
+              <TabsList className="mb-4 grid w-full grid-cols-3">
+                <TabsTrigger value="location">📍 สถานที่ติดตั้ง</TabsTrigger>
+                <TabsTrigger value="device">💻 อุปกรณ์</TabsTrigger>
+                <TabsTrigger value="advanced">⚙️ ขั้นสูง</TabsTrigger>
+              </TabsList>
 
-            {/* ───────────────────────────────────────────────────────
-                Section 2: 📍 สถานที่ติดตั้ง (Where)
-                ─────────────────────────────────────────────────────── */}
-            <FormSection
-              step={2}
-              icon="📍"
-              title="สถานที่ติดตั้ง"
-              subtitle="เอาไปติดตั้งที่ไหน — เลือกสาขาแล้วระบบจะสร้างรหัสประจำ Site ให้อัตโนมัติ"
-              accent="blue"
-            >
-              <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                <Field label="สาขา" required>
-                  <Select
-                    value={form.site}
-                    onValueChange={(v) => {
-                      setForm((prev) => ({
-                        ...prev,
-                        site: v,
-                        building: '',
-                        floor: '',
-                        room: '',
-                      }))
-                      // Auto-generate assetSiteCode on CREATE (when empty).
-                      if (!form.id && !form.assetSiteCode) {
-                        void fetchNextSiteCode(v)
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="w-full" id="dev-site">
-                      <SelectValue placeholder="— เลือกสาขา —" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(visibleSites ?? []).map((s) => (
-                        <SelectItem key={s.code} value={s.code}>
-                          {s.code} — {s.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field label="รหัสประจำ Site" hint="เลือกสาขาแล้วระบบจะสร้างให้อัตโนมัติ — รูปแบบ PREFIX-NNNNN (เช่น UDH-02234)">
-                  <div className="flex gap-2">
-                    <Input
-                      id="dev-assetSiteCode"
-                      value={form.assetSiteCode}
-                      onChange={(e) =>
-                        setForm({ ...form, assetSiteCode: e.target.value })
-                      }
-                      placeholder="เลือกสาขาแล้วระบบจะสร้างให้อัตโนมัติ เช่น UDH-02234"
-                      className="bg-amber-50/50 font-mono text-xs dark:bg-amber-950/10 dark:border-slate-700"
-                    />
+              {/* ═══════════════════════════════════════════════════════
+                  Tab 1: 📍 สถานที่ติดตั้ง
+                  ═══════════════════════════════════════════════════════ */}
+              <TabsContent value="location" className="space-y-4">
+                {/* ── Row 1: สาขา + รหัสอุปกรณ์ + รหัสประจำ Site (แถวเดียว — 2 อันหลัง auto จากสาขา) ── */}
+                <div className="rounded-lg border border-sky-200 bg-white p-4 shadow-sm dark:border-sky-900/40 dark:bg-slate-900">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">
+                    📍 สถานที่ติดตั้ง
+                  </div>
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
+                    <Field label="สาขา" required>
+                      <Select
+                        value={form.site}
+                        onValueChange={(v) => {
+                          setForm((prev) => ({
+                            ...prev,
+                            site: v,
+                            building: '',
+                            floor: '',
+                            room: '',
+                          }))
+                          if (!form.id && !form.assetSiteCode) {
+                            void fetchNextSiteCode(v)
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="w-full" id="dev-site">
+                          <SelectValue placeholder="— เลือกสาขา —" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(visibleSites ?? []).map((s) => (
+                            <SelectItem key={s.code} value={s.code}>
+                              {s.code} — {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="รหัสอุปกรณ์" required>
+                      <div className="relative">
+                        <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          id="dev-assetCode"
+                          value={form.assetCode}
+                          onChange={(e) =>
+                            setForm({ ...form, assetCode: e.target.value })
+                          }
+                          placeholder="สร้างอัตโนมัติ เช่น 2379"
+                          className="bg-amber-50/50 pl-8 font-mono dark:bg-amber-950/10"
+                        />
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          onClick={() => void fetchNextAssetCode()}
+                          disabled={Boolean(form.id)}
+                          title="สร้างเลขถัดไปอัตโนมัติ"
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-[#f97316] hover:bg-[#f97316]/10 disabled:opacity-40 dark:text-[#fb923c]"
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </Field>
+                    <Field label="รหัสประจำ Site">
+                      <div className="flex gap-2">
+                        <Input
+                          id="dev-assetSiteCode"
+                          value={form.assetSiteCode}
+                          onChange={(e) =>
+                            setForm({ ...form, assetSiteCode: e.target.value })
+                          }
+                          placeholder="สร้างอัตโนมัติ เช่น UDH-02234"
+                          className="bg-amber-50/50 font-mono text-xs dark:bg-amber-950/10 dark:border-slate-700"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={generateSiteCodeNow}
+                          disabled={!form.site}
+                          className="h-9 shrink-0 border-[#f97316]/30 text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c]/30 dark:text-[#fb923c]"
+                          title="สร้าง/อัปเดตรหัสประจำ Site อัตโนมัติ"
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </Field>
+                  </div>
+
+                  {/* ── Row 2: อาคาร + ชั้น + แผนก ── */}
+                  <div className="mt-4 grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
+                    <Field label="อาคาร" required>
+                      <Combobox
+                        value={form.building}
+                        onChange={(v) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            building: v,
+                            floor: '',
+                            location: '',
+                            room: '',
+                          }))
+                        }
+                        items={(buildingOptions ?? []).map((b) => ({
+                          value: b,
+                          label: b,
+                        }))}
+                        placeholder="เลือกหรือพิมพ์อาคาร"
+                        emptyText="ยังไม่มีอาคารในสาขานี้ — พิมพ์เพื่อเพิ่มใหม่"
+                      />
+                    </Field>
+                    <Field label="ชั้น" required>
+                      <Combobox
+                        value={form.floor}
+                        onChange={(v) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            floor: v,
+                            location: '',
+                            room: '',
+                          }))
+                        }
+                        items={(floorOptions ?? []).map((f) => ({
+                          value: f,
+                          label: f,
+                        }))}
+                        placeholder="เลือกหรือพิมพ์ชั้น"
+                        emptyText="ไม่พบชั้น — พิมพ์เพื่อเพิ่มใหม่"
+                      />
+                    </Field>
+                    <Field label="แผนก (Department)">
+                      <Combobox
+                        value={form.department}
+                        onChange={(v) => {
+                          const match = departments.find((d) => d.label === v)
+                          if (match?.parentRef) {
+                            setForm((prev) => ({
+                              ...prev,
+                              department: v,
+                              parentRef: match.parentRef ?? prev.parentRef,
+                              departmentCode: match.parentRef ?? prev.departmentCode,
+                            }))
+                          } else {
+                            setForm((prev) => ({ ...prev, department: v }))
+                          }
+                        }}
+                        items={filteredDepartments.map((d) => ({
+                          value: d.label,
+                          label: d.label,
+                        }))}
+                        placeholder="เลือกแผนก — สังกัด auto"
+                        emptyText="ไม่พบแผนก — พิมพ์เพื่อเพิ่มใหม่"
+                      />
+                    </Field>
+                  </div>
+
+                  {/* ── สังกัด auto hint ── */}
+                  {form.parentRef && (
+                    <div className="mt-3 flex items-center gap-2 rounded-md bg-sky-50 px-3 py-2 text-[11px] text-sky-700 dark:bg-sky-950/30 dark:text-sky-400">
+                      <span className="font-semibold">สังกัด (auto):</span>
+                      <span>{form.parentRef}</span>
+                      <span className="text-sky-400">← เติมอัตโนมัติจากแผนกที่เลือก</span>
+                    </div>
+                  )}
+
+                  {/* ── Row 3: ตำแหน่ง + ห้อง (optional, ระบุจุดจำเพาะ) ── */}
+                  <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      ระบุจุดจำเพาะ (ไม่บังคับ — ใส่เฉพาะตอนต้องการ)
+                    </div>
+                    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                      <Field label="ตำแหน่ง (Location)">
+                        <Combobox
+                          value={form.location}
+                          onChange={(v) => setForm({ ...form, location: v })}
+                          items={(locationOptions ?? []).map((l) => ({
+                            value: l,
+                            label: l,
+                          }))}
+                          placeholder="ระบุจุดจำเพาะ เช่น ห้องตรวจ 77"
+                          emptyText="พิมพ์เพื่อเพิ่มใหม่"
+                        />
+                      </Field>
+                      <Field label="ห้อง (Room)">
+                        <Input
+                          value={form.room}
+                          onChange={(e) =>
+                            setForm({ ...form, room: e.target.value })
+                          }
+                          placeholder="หมายเลขห้อง เช่น 301"
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* ═══════════════════════════════════════════════════════
+                  Tab 2: 💻 อุปกรณ์ (2-column grid)
+                  ═══════════════════════════════════════════════════════ */}
+              <TabsContent value="device" className="space-y-4">
+                <div className="rounded-lg border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900/40 dark:bg-slate-900">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                    💻 อุปกรณ์
+                  </div>
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                    <Field label="สถานะ" required>
+                      <Select
+                        value={form.status}
+                        onValueChange={(v) =>
+                          setForm({ ...form, status: v })
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="เลือกสถานะ" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DEVICE_STATUS_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="ประเภท (Type)" required>
+                      <Combobox
+                        value={form.type}
+                        onChange={(v) =>
+                          setForm({ ...form, type: v, brand: '', model: '' })
+                        }
+                        items={(deviceTypes ?? []).map((t) => ({
+                          value: t.name,
+                          label: t.name,
+                        }))}
+                        placeholder="เลือกหรือพิมพ์ประเภท เช่น PRINTER LASER"
+                        emptyText="ไม่พบประเภท"
+                      />
+                    </Field>
+                    <Field label="แบรนด์ (Brand)" required>
+                      <Combobox
+                        value={form.brand}
+                        onChange={(v) =>
+                          setForm({ ...form, brand: v, model: '' })
+                        }
+                        items={(brandsData ?? []).map((b) => ({
+                          value: b.name,
+                          label: b.name,
+                        }))}
+                        placeholder="เลือกหรือพิมพ์แบรนด์ เช่น BROTHER"
+                        emptyText="ไม่พบแบรนด์"
+                      />
+                    </Field>
+                    <Field label="รุ่น (Model)" required>
+                      <Combobox
+                        value={form.model}
+                        onChange={(v) => {
+                          const match = deviceClassifications.find(
+                            (c) =>
+                              (c.model ?? '').toLowerCase() ===
+                              v.toLowerCase(),
+                          )
+                          if (match) {
+                            setForm((prev) => ({
+                              ...prev,
+                              model: v,
+                              brand: match.brand ?? prev.brand,
+                              type: match.deviceType ?? prev.type,
+                            }))
+                          } else {
+                            setForm((prev) => ({ ...prev, model: v }))
+                          }
+                        }}
+                        items={Array.from(
+                          new Set(
+                            deviceClassifications
+                              .map((c) => c.model)
+                              .filter((m): m is string => Boolean(m)),
+                          ),
+                        )
+                          .sort()
+                          .map((m) => ({ value: m, label: m }))}
+                        placeholder="เลือกรุ่น — แบรนด์/ประเภท auto เช่น HL-L5210DN"
+                        emptyText="ไม่พบรุ่น — พิมพ์เพื่อเพิ่มใหม่"
+                      />
+                    </Field>
+                    <Field label="ชื่ออุปกรณ์" required>
+                      <Input
+                        id="dev-name"
+                        value={form.name}
+                        onChange={(e) =>
+                          setForm({ ...form, name: e.target.value })
+                        }
+                        placeholder="ชื่ออุปกรณ์ เช่น PRINTER LASER ชั้น 2 OPD"
+                      />
+                    </Field>
+                    <Field label="Serial Number">
+                      <div className="relative">
+                        <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          id="dev-serialNumber"
+                          value={form.serialNumber}
+                          onChange={(e) =>
+                            setForm({ ...form, serialNumber: e.target.value })
+                          }
+                          placeholder="สแกนจากด้านบน หรือพิมพ์ SN"
+                          className="pl-8 font-mono text-xs"
+                        />
+                      </div>
+                    </Field>
+                    <Field label="IP Address">
+                      <div className="relative">
+                        <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          id="dev-ip"
+                          value={form.ip}
+                          onChange={(e) =>
+                            setForm({ ...form, ip: e.target.value })
+                          }
+                          placeholder="192.168.1.10"
+                          className="pl-8 font-mono text-xs"
+                          inputMode="decimal"
+                        />
+                      </div>
+                    </Field>
+                    <Field label="MAC Address">
+                      <div className="relative">
+                        <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          id="dev-mac"
+                          value={form.mac}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              mac: formatMacInput(e.target.value),
+                            })
+                          }
+                          placeholder="AA:BB:CC:DD:EE:FF"
+                          className="pl-8 font-mono text-xs"
+                          inputMode="text"
+                        />
+                      </div>
+                    </Field>
+                    <Field
+                      label="กลุ่มอุปกรณ์ (Device Group)"
+                    >
+                      <Combobox
+                        value={form.deviceGroup}
+                        onChange={(v) =>
+                          setForm({ ...form, deviceGroup: v })
+                        }
+                        items={deviceGroups.map((g) => ({
+                          value: g.code,
+                          label: DEVICE_GROUP_THAI[g.code] ?? g.label,
+                        }))}
+                        displayValue={(v) => DEVICE_GROUP_THAI[v] ?? v}
+                        placeholder="เลือกกลุ่มอุปกรณ์ (default: ของบริษัท)"
+                        emptyText="ไม่พบกลุ่มอุปกรณ์"
+                      />
+                    </Field>
+                    <Field label="โหมดมิเตอร์">
+                      <Select
+                        value={form.meterMode}
+                        onValueChange={(v) =>
+                          setForm({ ...form, meterMode: v })
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="เลือกโหมดมิเตอร์" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {METER_MODE_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* ═══════════════════════════════════════════════════════
+                  Tab 3: ⚙️ ขั้นสูง
+                  ═══════════════════════════════════════════════════════ */}
+              <TabsContent value="advanced" className="space-y-4">
+                {/* ── Remote ID + Meter Required ── */}
+                <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                    🌐 เครือข่าย + มิเตอร์
+                  </div>
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                    <Field label="Remote ID (TeamViewer / AnyDesk)">
+                      <Input
+                        value={form.remoteId}
+                        onChange={(e) =>
+                          setForm({ ...form, remoteId: e.target.value })
+                        }
+                        placeholder="เช่น 123 456 789"
+                        className="font-mono text-xs"
+                      />
+                    </Field>
+                    <div className="flex h-9 items-center gap-2">
+                      <Checkbox
+                        id="meterRequired"
+                        checked={form.meterRequired}
+                        onCheckedChange={(v) =>
+                          setForm({ ...form, meterRequired: v === true })
+                        }
+                        className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600"
+                      />
+                      <Label
+                        htmlFor="meterRequired"
+                        className="text-sm font-medium text-slate-700 dark:text-slate-300"
+                      >
+                        ต้องจดมิเตอร์ (เช่น เครื่องพิมพ์ / สแกนเนอร์)
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── การซื้อ / รับประกัน ── */}
+                <div className="rounded-lg border border-violet-200 bg-white p-4 shadow-sm dark:border-violet-900/40 dark:bg-slate-900">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400">
+                    🧾 การซื้อ / รับประกัน
+                  </div>
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                    <Field label="ผู้ขาย (Vendor)">
+                      <Input
+                        value={form.vendor}
+                        onChange={(e) =>
+                          setForm({ ...form, vendor: e.target.value })
+                        }
+                        placeholder="ชื่อบริษัท / ร้านค้า"
+                      />
+                    </Field>
+                    <Field label="เลขที่สัญญา (Contract No)">
+                      <Input
+                        value={form.contractNo}
+                        onChange={(e) =>
+                          setForm({ ...form, contractNo: e.target.value })
+                        }
+                        placeholder="เลขที่สัญญา"
+                      />
+                    </Field>
+                    <Field label="วันที่ซื้อ">
+                      <Input
+                        type="date"
+                        value={form.purchaseDate}
+                        onChange={(e) =>
+                          setForm({ ...form, purchaseDate: e.target.value })
+                        }
+                      />
+                    </Field>
+                    <Field label="รับประกัน (เดือน)">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={120}
+                        step={1}
+                        value={form.warrantyMonths}
+                        onChange={(e) =>
+                          setForm({ ...form, warrantyMonths: e.target.value })
+                        }
+                        placeholder="12"
+                      />
+                    </Field>
+                    <Field label="วันหมดประกัน">
+                      <Input
+                        type="date"
+                        value={form.warrantyEnd}
+                        onChange={(e) =>
+                          setForm({ ...form, warrantyEnd: e.target.value })
+                        }
+                      />
+                    </Field>
+                    <Field label="วันที่ถอดถอน">
+                      <Input
+                        type="date"
+                        value={form.uninstallDate}
+                        onChange={(e) =>
+                          setForm({ ...form, uninstallDate: e.target.value })
+                        }
+                      />
+                    </Field>
+                  </div>
+                </div>
+
+                {/* ── การเงิน ── */}
+                <div className="rounded-lg border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900/40 dark:bg-slate-900">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                    💰 การเงิน (ค่าเสื่อมราคา)
+                  </div>
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
+                    <Field label="ราคาซื้อ (฿)">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={form.purchasePrice}
+                        onChange={(e) =>
+                          setForm({ ...form, purchasePrice: e.target.value })
+                        }
+                        placeholder="0.00"
+                      />
+                    </Field>
+                    <Field label="มูลค่าซาลเวจ (฿)">
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={form.salvageValue}
+                        onChange={(e) =>
+                          setForm({ ...form, salvageValue: e.target.value })
+                        }
+                        placeholder="0.00"
+                      />
+                    </Field>
+                    <Field label="อายุการใช้งาน (เดือน)">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={240}
+                        step={1}
+                        value={form.usefulLife}
+                        onChange={(e) =>
+                          setForm({ ...form, usefulLife: e.target.value })
+                        }
+                        placeholder="60"
+                      />
+                    </Field>
+                  </div>
+                  <div className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
+                    📐 สูตร: (ราคาซื้อ − มูลค่าซาลเวจ) ÷ อายุการใช้งาน = ค่าเสื่อมราคาต่อเดือน
+                  </div>
+                </div>
+
+                {/* ── License / Software ── */}
+                <div className="rounded-lg border border-violet-200 bg-white p-4 shadow-sm dark:border-violet-900/40 dark:bg-slate-900">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400">
+                      🔐 License / Software
+                    </div>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={generateSiteCodeNow}
-                      disabled={!form.site}
-                      className="h-9 shrink-0 border-[#f97316]/30 text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c]/30 dark:text-[#fb923c]"
-                      title="สร้าง/อัปเดตรหัสประจำ Site อัตโนมัติ"
+                      onClick={addLicense}
+                      className="border-[#f97316]/30 text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c]/30 dark:text-[#fb923c]"
                     >
-                      <Sparkles className="h-3.5 w-3.5" />
-                      สร้างรหัส
+                      <Plus className="mr-1 h-3.5 w-3.5" />
+                      เพิ่ม License
                     </Button>
                   </div>
-                </Field>
-                <Field label="อาคาร">
-                  <Combobox
-                    value={form.building}
-                    onChange={(v) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        building: v,
-                        floor: '',
-                        location: '',
-                        room: '',
-                      }))
-                    }
-                    items={(buildingOptions ?? []).map((b) => ({
-                      value: b,
-                      label: b,
-                    }))}
-                    placeholder={form.site ? 'เลือกหรือพิมพ์อาคาร' : 'เลือกสาขาก่อน'}
-                    emptyText="ยังไม่มีอาคารในสาขานี้ — พิมพ์เพื่อเพิ่มใหม่"
-                  />
-                </Field>
-                <Field label="ชั้น">
-                  <Combobox
-                    value={form.floor}
-                    onChange={(v) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        floor: v,
-                        location: '',
-                        room: '',
-                      }))
-                    }
-                    items={(floorOptions ?? []).map((f) => ({
-                      value: f,
-                      label: f,
-                    }))}
-                    placeholder={form.building ? 'เลือกหรือพิมพ์ชั้น' : 'เลือกอาคารก่อน'}
-                    emptyText={
-                      form.building
-                        ? 'ยังไม่มีชั้นในอาคารนี้ — พิมพ์เพื่อเพิ่มใหม่'
-                        : 'ไม่พบชั้น'
-                    }
-                  />
-                </Field>
-                <Field label="ตำแหน่ง (Location)">
-                  <Combobox
-                    value={form.location}
-                    onChange={(v) => setForm({ ...form, location: v })}
-                    items={(locationOptions ?? []).map((l) => ({
-                      value: l,
-                      label: l,
-                    }))}
-                    placeholder={form.floor ? 'เลือกหรือพิมพ์ตำแหน่ง' : 'เลือกชั้นก่อน'}
-                    emptyText={
-                      form.floor
-                        ? 'ยังไม่มีตำแหน่ง — พิมพ์เพื่อเพิ่มใหม่'
-                        : 'ไม่พบตำแหน่ง'
-                    }
-                  />
-                </Field>
-                <Field label="ห้อง (Room)">
-                  <Input
-                    value={form.room}
-                    onChange={(e) =>
-                      setForm({ ...form, room: e.target.value })
-                    }
-                    placeholder="เช่น 301"
-                  />
-                </Field>
-                <Field label="สังกัด (Affiliation)">
-                  <Combobox
-                    value={form.parentRef}
-                    onChange={(v) =>
-                      setForm({ ...form, parentRef: v, department: '' })
-                    }
-                    items={affiliations.map((a) => ({
-                      value: a.label,
-                      label: a.label,
-                    }))}
-                    placeholder="เลือกสังกัด หรือเลือกแผนกก่อน — ระบบจะเติมสังกัดให้"
-                    emptyText="ไม่พบสังกัด"
-                  />
-                </Field>
-                <Field label="แผนก (Department)">
-                  <Combobox
-                    value={form.department}
-                    onChange={(v) => {
-                      // Reverse cascade: pick Department → auto-fill Affiliation
-                      const match = departments.find((d) => d.label === v)
-                      if (match?.parentRef) {
-                        setForm((prev) => ({
-                          ...prev,
-                          department: v,
-                          parentRef: match.parentRef ?? prev.parentRef,
-                        }))
-                      } else {
-                        setForm((prev) => ({ ...prev, department: v }))
-                      }
-                    }}
-                    items={filteredDepartments.map((d) => ({
-                      value: d.label,
-                      label: d.label,
-                    }))}
-                    placeholder={
-                      form.parentRef
-                        ? 'เลือกแผนกในสังกัดนี้'
-                        : 'เลือกแผนก — ระบบจะเติมสังกัดให้อัตโนมัติ'
-                    }
-                    emptyText={
-                      form.parentRef
-                        ? 'ไม่พบแผนกในสังกัดนี้'
-                        : 'ไม่พบแผนก — พิมพ์เพื่อเพิ่มใหม่'
-                    }
-                  />
-                </Field>
-              </div>
-            </FormSection>
-
-            {/* ───────────────────────────────────────────────────────
-                Section 3: 💻 ข้อมูลเครื่อง (What)
-                ─────────────────────────────────────────────────────── */}
-            <FormSection
-              step={3}
-              icon="💻"
-              title="ข้อมูลเครื่อง"
-              subtitle="เครื่องอะไร — เลือกรุ่นแล้วระบบจะเติมแบรนด์/ประเภทให้อัตโนมัติ"
-              accent="emerald"
-            >
-              <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                <Field label="รุ่น (Model)" required hint="เลือกรุ่นแล้วแบรนด์/ประเภทจะถูกเติมอัตโนมัติ">
-                  <Combobox
-                    value={form.model}
-                    onChange={(v) => {
-                      // Reverse cascade: pick Model → auto-fill Brand + Type
-                      const match = deviceClassifications.find(
-                        (c) =>
-                          (c.model ?? '').toLowerCase() ===
-                          v.toLowerCase(),
-                      )
-                      if (match) {
-                        setForm((prev) => ({
-                          ...prev,
-                          model: v,
-                          brand: match.brand ?? prev.brand,
-                          type: match.deviceType ?? prev.type,
-                        }))
-                      } else {
-                        setForm((prev) => ({ ...prev, model: v }))
-                      }
-                    }}
-                    items={Array.from(
-                      new Set(
-                        deviceClassifications
-                          .map((c) => c.model)
-                          .filter((m): m is string => Boolean(m)),
-                      ),
-                    )
-                      .sort()
-                      .map((m) => ({ value: m, label: m }))}
-                    placeholder="เลือกรุ่น — ระบบจะเติมแบรนด์/ประเภทให้อัตโนมัติ"
-                    emptyText="ไม่พบรุ่น — พิมพ์เพื่อเพิ่มใหม่"
-                  />
-                </Field>
-                <Field label="ชื่ออุปกรณ์" required>
-                  <Input
-                    id="dev-name"
-                    value={form.name}
-                    onChange={(e) =>
-                      setForm({ ...form, name: e.target.value })
-                    }
-                    placeholder="เช่น PRINTER LASER ชั้น 2 อาคารผู้ป่วยนอก"
-                  />
-                </Field>
-                <Field label="ประเภท (Type)" required>
-                  <Combobox
-                    value={form.type}
-                    onChange={(v) =>
-                      setForm({ ...form, type: v, brand: '', model: '' })
-                    }
-                    items={(deviceTypes ?? []).map((t) => ({
-                      value: t.name,
-                      label: t.name,
-                    }))}
-                    placeholder="เลือกหรือพิมพ์ประเภท"
-                    emptyText="ไม่พบประเภท"
-                  />
-                </Field>
-                <Field label="แบรนด์ (Brand)" required>
-                  <Combobox
-                    value={form.brand}
-                    onChange={(v) =>
-                      setForm({ ...form, brand: v, model: '' })
-                    }
-                    items={(brandsData ?? []).map((b) => ({
-                      value: b.name,
-                      label: b.name,
-                    }))}
-                    placeholder={form.type ? 'เลือกหรือพิมพ์แบรนด์' : 'เลือกประเภทก่อน'}
-                    emptyText={
-                      form.type ? 'ไม่พบแบรนด์ของประเภทนี้' : 'เลือกประเภทก่อน'
-                    }
-                  />
-                </Field>
-                <Field label="Serial Number">
-                  <div className="relative">
-                    <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      id="dev-serialNumber"
-                      value={form.serialNumber}
-                      onChange={(e) =>
-                        setForm({ ...form, serialNumber: e.target.value })
-                      }
-                      placeholder="สแกนหรือพิมพ์ SN"
-                      className="pl-8 font-mono text-xs"
-                    />
-                  </div>
-                </Field>
-                <Field label="สถานะ" required>
-                  <Select
-                    value={form.status}
-                    onValueChange={(v) =>
-                      setForm({ ...form, status: v })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DEVICE_STATUS_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field
-                  label="กลุ่มอุปกรณ์ (Device Group)"
-                  hint="ค่าเริ่มต้น: ของบริษัท — สามารถเปลี่ยนเป็น เช่า/เช่าซื้อ, ของแผนก, ส่วนบุคคล"
-                >
-                  <Combobox
-                    value={form.deviceGroup}
-                    onChange={(v) =>
-                      setForm({ ...form, deviceGroup: v })
-                    }
-                    items={deviceGroups.map((g) => ({
-                      value: g.code,
-                      label: DEVICE_GROUP_THAI[g.code] ?? g.label,
-                    }))}
-                    displayValue={(v) => DEVICE_GROUP_THAI[v] ?? v}
-                    placeholder="เลือกกลุ่มอุปกรณ์ (ค่าเริ่มต้น: ของบริษัท)"
-                    emptyText="ไม่พบกลุ่มอุปกรณ์"
-                  />
-                </Field>
-              </div>
-            </FormSection>
-
-            {/* ───────────────────────────────────────────────────────
-                Section 4: 🌐 เครือข่าย
-                ─────────────────────────────────────────────────────── */}
-            <FormSection
-              step={4}
-              icon="🌐"
-              title="เครือข่าย"
-              subtitle="IP, MAC Address และ Remote ID สำหรับควบคุมระยะไกล"
-              accent="slate"
-            >
-              <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                <Field label="IP Address">
-                  <div className="relative">
-                    <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      id="dev-ip"
-                      value={form.ip}
-                      onChange={(e) =>
-                        setForm({ ...form, ip: e.target.value })
-                      }
-                      placeholder="192.168.1.10"
-                      className="pl-8 font-mono text-xs"
-                      inputMode="decimal"
-                    />
-                  </div>
-                </Field>
-                <Field label="MAC Address">
-                  <div className="relative">
-                    <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      id="dev-mac"
-                      value={form.mac}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          mac: formatMacInput(e.target.value),
-                        })
-                      }
-                      placeholder="AA:BB:CC:DD:EE:FF"
-                      className="pl-8 font-mono text-xs"
-                      inputMode="text"
-                    />
-                  </div>
-                </Field>
-                <Field label="Remote ID (TeamViewer / AnyDesk)">
-                  <Input
-                    value={form.remoteId}
-                    onChange={(e) =>
-                      setForm({ ...form, remoteId: e.target.value })
-                    }
-                    placeholder="เช่น 123 456 789"
-                    className="font-mono text-xs"
-                  />
-                </Field>
-              </div>
-            </FormSection>
-
-            {/* ───────────────────────────────────────────────────────
-                Section 5: 🧾 การซื้อ / รับประกัน
-                ─────────────────────────────────────────────────────── */}
-            <FormSection
-              step={5}
-              icon="🧾"
-              title="การซื้อ / รับประกัน"
-              subtitle="ข้อมูลผู้ขาย เลขที่สัญญา และวันรับประกัน"
-              accent="violet"
-            >
-              <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                <Field label="ผู้ขาย (Vendor)">
-                  <Input
-                    value={form.vendor}
-                    onChange={(e) =>
-                      setForm({ ...form, vendor: e.target.value })
-                    }
-                    placeholder="ชื่อบริษัท / ร้านค้า"
-                  />
-                </Field>
-                <Field label="เลขที่สัญญา (Contract No)">
-                  <Input
-                    value={form.contractNo}
-                    onChange={(e) =>
-                      setForm({ ...form, contractNo: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="วันที่ซื้อ">
-                  <Input
-                    type="date"
-                    value={form.purchaseDate}
-                    onChange={(e) =>
-                      setForm({ ...form, purchaseDate: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="รับประกัน (เดือน)">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={120}
-                    step={1}
-                    value={form.warrantyMonths}
-                    onChange={(e) =>
-                      setForm({ ...form, warrantyMonths: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="วันหมดประกัน">
-                  <Input
-                    type="date"
-                    value={form.warrantyEnd}
-                    onChange={(e) =>
-                      setForm({ ...form, warrantyEnd: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="วันที่ถอดถอน">
-                  <Input
-                    type="date"
-                    value={form.uninstallDate}
-                    onChange={(e) =>
-                      setForm({ ...form, uninstallDate: e.target.value })
-                    }
-                  />
-                </Field>
-              </div>
-            </FormSection>
-
-            {/* ───────────────────────────────────────────────────────
-                Section 6: ⚙️ มิเตอร์
-                ─────────────────────────────────────────────────────── */}
-            <FormSection
-              step={6}
-              icon="⚙️"
-              title="มิเตอร์"
-              subtitle="กำหนดว่าอุปกรณ์นี้ต้องจดมิเตอร์หรือไม่ (เช่น เครื่องพิมพ์)"
-              accent="amber"
-            >
-              <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                <div className="flex h-9 items-center gap-2">
-                  <Checkbox
-                    id="meterRequired"
-                    checked={form.meterRequired}
-                    onCheckedChange={(v) =>
-                      setForm({ ...form, meterRequired: v === true })
-                    }
-                    className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600"
-                  />
-                  <Label
-                    htmlFor="meterRequired"
-                    className="text-sm font-medium text-slate-700 dark:text-slate-300"
-                  >
-                    ต้องจดมิเตอร์ (เช่น เครื่องพิมพ์ / สแกนเนอร์)
-                  </Label>
-                </div>
-                <Field label="โหมดมิเตอร์">
-                  <Select
-                    value={form.meterMode}
-                    onValueChange={(v) =>
-                      setForm({ ...form, meterMode: v })
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {METER_MODE_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-              </div>
-            </FormSection>
-
-            {/* ───────────────────────────────────────────────────────
-                Section 7: 💰 การเงิน (ค่าเสื่อมราคา)
-                ─────────────────────────────────────────────────────── */}
-            <FormSection
-              step={7}
-              icon="💰"
-              title="การเงิน"
-              subtitle="สำหรับคำนวณค่าเสื่อมราคาแบบเส้นตรง"
-              accent="emerald"
-            >
-              <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
-                <Field label="ราคาซื้อ (฿)">
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.purchasePrice}
-                    onChange={(e) =>
-                      setForm({ ...form, purchasePrice: e.target.value })
-                    }
-                    placeholder="0.00"
-                  />
-                </Field>
-                <Field label="มูลค่าซาลเวจ (฿)">
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={form.salvageValue}
-                    onChange={(e) =>
-                      setForm({ ...form, salvageValue: e.target.value })
-                    }
-                    placeholder="0.00"
-                  />
-                </Field>
-                <Field label="อายุการใช้งาน (เดือน)">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={240}
-                    step={1}
-                    value={form.usefulLife}
-                    onChange={(e) =>
-                      setForm({ ...form, usefulLife: e.target.value })
-                    }
-                    placeholder="60"
-                  />
-                </Field>
-              </div>
-              <div className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
-                📐 สูตร: (ราคาซื้อ − มูลค่าซาลเวจ) ÷ อายุการใช้งาน = ค่าเสื่อมราคาต่อเดือน
-              </div>
-            </FormSection>
-
-            {/* ───────────────────────────────────────────────────────
-                Section 8: 🔐 License / Software (NEW)
-                ─────────────────────────────────────────────────────── */}
-            <FormSection
-              step={8}
-              icon="🔐"
-              title="License / Software"
-              subtitle="ซอฟต์แวร์ที่ติดตั้งในเครื่องนี้ พร้อม License Key และวันหมดอายุ"
-              accent="violet"
-              action={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addLicense}
-                  className="border-[#f97316]/30 text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c]/30 dark:text-[#fb923c]"
-                >
-                  <Plus className="mr-1 h-3.5 w-3.5" />
-                  เพิ่ม License
-                </Button>
-              }
-            >
-              {licensesLoading && (
-                <div className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-                  กำลังโหลด License ที่มีอยู่...
-                </div>
-              )}
-              {form.licenses.length === 0 && !licensesLoading ? (
-                <div className="rounded-md border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                  ยังไม่มี License สำหรับอุปกรณ์นี้ — กด "เพิ่ม License" เพื่อเพิ่มซอฟต์แวร์
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {form.licenses.map((lic, idx) => (
-                    <div
-                      key={lic.id ?? `new-${idx}`}
-                      className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
-                    >
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                          License #{idx + 1}
-                          {lic.id && (
-                            <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                              {lic.id.slice(-8)}
-                            </span>
-                          )}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => removeLicense(idx)}
-                          className="rounded p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                          title="ลบ License นี้"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        <Field label="ซอฟต์แวร์" required>
-                          <Input
-                            value={lic.software}
-                            onChange={(e) =>
-                              updateLicense(idx, {
-                                software: e.target.value,
-                              })
-                            }
-                            placeholder="เช่น Microsoft Office 2021"
-                          />
-                        </Field>
-                        <Field label="ประเภท License">
-                          <Select
-                            value={lic.licenseType || '__none__'}
-                            onValueChange={(v) =>
-                              updateLicense(idx, { licenseType: v === '__none__' ? '' : v })
-                            }
-                          >
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="— เลือกประเภท —" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {LICENSE_TYPE_OPTIONS.map((o) => (
-                                <SelectItem key={o.value} value={o.value}>
-                                  {o.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </Field>
-                        <Field label="จำนวน Seat">
-                          <Input
-                            type="number"
-                            min={1}
-                            step={1}
-                            value={lic.quantity}
-                            onChange={(e) =>
-                              updateLicense(idx, {
-                                quantity: Number(e.target.value) || 1,
-                              })
-                            }
-                          />
-                        </Field>
-                        <Field label="License ID">
-                          <Input
-                            value={lic.licenseId}
-                            onChange={(e) =>
-                              updateLicense(idx, {
-                                licenseId: e.target.value,
-                              })
-                            }
-                            placeholder="รหัส License ของผู้ขาย"
-                            className="font-mono text-xs"
-                          />
-                        </Field>
-                        <Field label="License Key">
-                          <Input
-                            value={lic.licenseKey}
-                            onChange={(e) =>
-                              updateLicense(idx, {
-                                licenseKey: e.target.value,
-                              })
-                            }
-                            placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
-                            className="font-mono text-xs"
-                          />
-                        </Field>
-                        <Field label="วันหมดอายุ">
-                          <Input
-                            type="date"
-                            value={lic.expiryDate}
-                            onChange={(e) =>
-                              updateLicense(idx, {
-                                expiryDate: e.target.value,
-                              })
-                            }
-                          />
-                        </Field>
-                        <Field label="หมายเหตุ">
-                          <Input
-                            value={lic.remark}
-                            onChange={(e) =>
-                              updateLicense(idx, {
-                                remark: e.target.value,
-                              })
-                            }
-                            placeholder="ข้อความเพิ่มเติม"
-                          />
-                        </Field>
-                      </div>
+                  {licensesLoading && (
+                    <div className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+                      กำลังโหลด License ที่มีอยู่...
                     </div>
-                  ))}
+                  )}
+                  {form.licenses.length === 0 && !licensesLoading ? (
+                    <div className="rounded-md border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                      ยังไม่มี License สำหรับอุปกรณ์นี้ — กด "เพิ่ม License" เพื่อเพิ่มซอฟต์แวร์
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {form.licenses.map((lic, idx) => (
+                        <div
+                          key={lic.id ?? `new-${idx}`}
+                          className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
+                        >
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                              License #{idx + 1}
+                              {lic.id && (
+                                <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                  {lic.id.slice(-8)}
+                                </span>
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeLicense(idx)}
+                              className="rounded p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                              title="ลบ License นี้"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            <Field label="ซอฟต์แวร์" required>
+                              <Input
+                                value={lic.software}
+                                onChange={(e) =>
+                                  updateLicense(idx, {
+                                    software: e.target.value,
+                                  })
+                                }
+                                placeholder="เช่น Microsoft Office 2021"
+                              />
+                            </Field>
+                            <Field label="ประเภท License">
+                              <Select
+                                value={lic.licenseType || '__none__'}
+                                onValueChange={(v) =>
+                                  updateLicense(idx, { licenseType: v === '__none__' ? '' : v })
+                                }
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue placeholder="— เลือกประเภท —" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {LICENSE_TYPE_OPTIONS.map((o) => (
+                                    <SelectItem key={o.value} value={o.value}>
+                                      {o.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </Field>
+                            <Field label="จำนวน Seat">
+                              <Input
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={lic.quantity}
+                                onChange={(e) =>
+                                  updateLicense(idx, {
+                                    quantity: Number(e.target.value) || 1,
+                                  })
+                                }
+                              />
+                            </Field>
+                            <Field label="License ID">
+                              <Input
+                                value={lic.licenseId}
+                                onChange={(e) =>
+                                  updateLicense(idx, {
+                                    licenseId: e.target.value,
+                                  })
+                                }
+                                placeholder="รหัส License ของผู้ขาย"
+                                className="font-mono text-xs"
+                              />
+                            </Field>
+                            <Field label="License Key">
+                              <Input
+                                value={lic.licenseKey}
+                                onChange={(e) =>
+                                  updateLicense(idx, {
+                                    licenseKey: e.target.value,
+                                  })
+                                }
+                                placeholder="XXXXX-XXXXX-XXXXX-XXXXX"
+                                className="font-mono text-xs"
+                              />
+                            </Field>
+                            <Field label="วันหมดอายุ">
+                              <Input
+                                type="date"
+                                value={lic.expiryDate}
+                                onChange={(e) =>
+                                  updateLicense(idx, {
+                                    expiryDate: e.target.value,
+                                  })
+                                }
+                              />
+                            </Field>
+                            <Field label="หมายเหตุ">
+                              <Input
+                                value={lic.remark}
+                                onChange={(e) =>
+                                  updateLicense(idx, {
+                                    remark: e.target.value,
+                                  })
+                                }
+                                placeholder="ข้อความเพิ่มเติม"
+                              />
+                            </Field>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </FormSection>
 
-            {/* ───────────────────────────────────────────────────────
-                Section 9: 📝 อื่นๆ (Tech fields)
-                ─────────────────────────────────────────────────────── */}
-            <FormSection
-              step={9}
-              icon="📝"
-              title="อื่นๆ"
-              subtitle="ฟิลด์เทคนิคเพิ่มเติม (มักใช้โดยผู้ดูแลระบบ)"
-              accent="slate"
-            >
-              <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                <Field label="ศูนย์ต้นทุน (Cost Center)">
-                  <Input
-                    value={form.costCenter}
-                    onChange={(e) =>
-                      setForm({ ...form, costCenter: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="รหัสแผนก (DepartmentCode)">
-                  <Input
-                    value={form.departmentCode}
-                    onChange={(e) =>
-                      setForm({ ...form, departmentCode: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="ParentRef" hint="ใช้สำหรับ grouping แบบเดิม เช่น HP|PRINTER">
-                  <Input
-                    value={form.parentRef}
-                    onChange={(e) =>
-                      setForm({ ...form, parentRef: e.target.value })
-                    }
-                    placeholder="เช่น HP|PRINTER"
-                  />
-                </Field>
-                <Field label="DisplayLabel" hint="ป้ายแสดงผลที่กำหนดเอง">
-                  <Input
-                    value={form.displayLabel}
-                    onChange={(e) =>
-                      setForm({ ...form, displayLabel: e.target.value })
-                    }
-                  />
-                </Field>
-                <Field label="หมายเหตุ (Remark)">
-                  <Input
-                    value={form.remark}
-                    onChange={(e) =>
-                      setForm({ ...form, remark: e.target.value })
-                    }
-                  />
-                </Field>
-              </div>
-            </FormSection>
+                {/* ── อื่นๆ (Tech fields) ── */}
+                <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                    📝 อื่นๆ (ฟิลด์เทคนิค)
+                  </div>
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                    <Field label="ศูนย์ต้นทุน (Cost Center)">
+                      <Input
+                        value={form.costCenter}
+                        onChange={(e) =>
+                          setForm({ ...form, costCenter: e.target.value })
+                        }
+                        placeholder="ศูนย์ต้นทุน"
+                      />
+                    </Field>
+                    <Field label="รหัสแผนก (DepartmentCode)">
+                      <Input
+                        value={form.departmentCode}
+                        onChange={(e) =>
+                          setForm({ ...form, departmentCode: e.target.value })
+                        }
+                        placeholder="รหัสแผนก (auto จากสังกัด)"
+                      />
+                    </Field>
+                    <Field label="ParentRef" hint="ใช้สำหรับ grouping แบบเดิม เช่น HP|PRINTER">
+                      <Input
+                        value={form.parentRef}
+                        onChange={(e) =>
+                          setForm({ ...form, parentRef: e.target.value })
+                        }
+                        placeholder="เช่น HP|PRINTER"
+                      />
+                    </Field>
+                    <Field label="DisplayLabel" hint="ป้ายแสดงผลที่กำหนดเอง">
+                      <Input
+                        value={form.displayLabel}
+                        onChange={(e) =>
+                          setForm({ ...form, displayLabel: e.target.value })
+                        }
+                        placeholder="ป้ายแสดงผล"
+                      />
+                    </Field>
+                    <Field label="หมายเหตุ (Remark)">
+                      <Input
+                        value={form.remark}
+                        onChange={(e) =>
+                          setForm({ ...form, remark: e.target.value })
+                        }
+                        placeholder="หมายเหตุ"
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
 
             {/* ── Bottom spacing ── */}
             <div className="h-16" />
