@@ -49,19 +49,21 @@ export async function GET(req: NextRequest) {
     })
     const siteName = sa?.SiteName ?? siteCode
 
-    // Query devices at this site + building — group by floor + department.
+    // Query devices at this site + building — group by floor + department + location.
     const rows = await db.device.findMany({
       where: {
         site: siteName,
         building: building,
       },
-      select: { floor: true, department: true },
+      select: { floor: true, department: true, location: true },
     })
 
     const floorSet = new Set<string>()
     const deptSet = new Set<string>()
+    const locSet = new Set<string>()
     const floorCounts: Record<string, number> = {}
     const departmentCounts: Record<string, number> = {}
+    const locationCounts: Record<string, number> = {}
 
     for (const r of rows) {
       if (r.floor) {
@@ -72,13 +74,19 @@ export async function GET(req: NextRequest) {
         deptSet.add(r.department)
         departmentCounts[r.department] = (departmentCounts[r.department] ?? 0) + 1
       }
+      if (r.location) {
+        locSet.add(r.location)
+        locationCounts[r.location] = (locationCounts[r.location] ?? 0) + 1
+      }
     }
 
     return NextResponse.json({
       floors: Array.from(floorSet).sort(),
       departments: Array.from(deptSet).sort(),
+      locations: Array.from(locSet).sort(),
       floorCounts,
       departmentCounts,
+      locationCounts,
       total: rows.length,
     })
   } catch (err) {

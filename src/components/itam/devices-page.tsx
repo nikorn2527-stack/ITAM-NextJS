@@ -562,38 +562,40 @@ export function DevicesPage() {
     },
     enabled: dialogOpen,
   })
-  const { data: locationOptions } = useQuery<string[]>({
-    queryKey: ['cascading', 'location', form.site, form.building, form.floor],
+  // ── GLOBAL locations (distinct across all devices) ──
+  // Used as the full list for the Location dropdown — so the user sees
+  // every location that has ever been entered in the system, as a guide.
+  // The ones matching the current floor are HIGHLIGHTED in green.
+  const { data: globalLocations } = useQuery<string[]>({
+    queryKey: ['global-locations'],
     queryFn: async () => {
       try {
-        const params = new URLSearchParams({ field: 'location' })
-        if (form.site) params.set('site', form.site)
-        if (form.building) params.set('building', form.building)
-        if (form.floor) params.set('floor', form.floor)
         const j = await authFetch<{ values: string[] }>(
-          `/api/itam/devices/cascading?${params.toString()}`,
+          '/api/itam/devices/cascading?field=location',
         )
         return j.values ?? []
       } catch {
         return []
       }
     },
-    enabled: dialogOpen && Boolean(form.building) && Boolean(form.floor),
+    enabled: dialogOpen,
   })
 
-  // ── Location Summary: which floors + departments have devices at this building ──
+  // ── Location Summary: which floors + departments + locations have devices at this building ──
   // Used to HIGHLIGHT (green) the floors/departments that actually exist at
   // the selected site+building — so the user knows "this floor has 5 departments"
   // without blocking them from picking others.
   const { data: locationSummary } = useQuery<{
     floors: string[]
     departments: string[]
+    locations: string[]
     floorCounts: Record<string, number>
     departmentCounts: Record<string, number>
+    locationCounts: Record<string, number>
   }>({
     queryKey: ['location-summary', form.site, form.building],
     queryFn: async () => {
-      if (!form.site || !form.building) return { floors: [], departments: [], floorCounts: {}, departmentCounts: {} }
+      if (!form.site || !form.building) return { floors: [], departments: [], locations: [], floorCounts: {}, departmentCounts: {}, locationCounts: {} }
       try {
         const params = new URLSearchParams({
           site: form.site,
@@ -602,12 +604,14 @@ export function DevicesPage() {
         const j = await authFetch<{
           floors: string[]
           departments: string[]
+          locations: string[]
           floorCounts: Record<string, number>
           departmentCounts: Record<string, number>
+          locationCounts: Record<string, number>
         }>(`/api/itam/devices/location-summary?${params.toString()}`)
         return j
       } catch {
-        return { floors: [], departments: [], floorCounts: {}, departmentCounts: {} }
+        return { floors: [], departments: [], locations: [], floorCounts: {}, departmentCounts: {}, locationCounts: {} }
       }
     },
     enabled: dialogOpen && Boolean(form.site) && Boolean(form.building),
@@ -616,6 +620,7 @@ export function DevicesPage() {
   // Derived highlight sets + badges
   const highlightedFloors = locationSummary?.floors ?? []
   const highlightedDepartments = locationSummary?.departments ?? []
+  const highlightedLocations = locationSummary?.locations ?? []
   const floorBadges = React.useMemo(() => {
     const m: Record<string, string> = {}
     for (const [floor, count] of Object.entries(locationSummary?.floorCounts ?? {})) {
@@ -627,6 +632,13 @@ export function DevicesPage() {
     const m: Record<string, string> = {}
     for (const [dept, count] of Object.entries(locationSummary?.departmentCounts ?? {})) {
       m[dept] = `${count} เครื่อง`
+    }
+    return m
+  }, [locationSummary])
+  const locationBadges = React.useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const [loc, count] of Object.entries(locationSummary?.locationCounts ?? {})) {
+      m[loc] = `${count} เครื่อง`
     }
     return m
   }, [locationSummary])
@@ -1439,15 +1451,17 @@ export function DevicesPage() {
                       ระบุจุดจำเพาะ (ไม่บังคับ — ใส่เฉพาะตอนต้องการ)
                     </div>
                     <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
-                      <Field label="ตำแหน่ง (Location)">
+                      <Field label="ตำแหน่ง (Location)" hint={highlightedLocations.length > 0 ? `🟢 ไฮไลต์ = ตำแหน่งที่มีเครื่องอยู่ในตึกนี้ (${highlightedLocations.length} ตำแหน่ง)` : 'ดึงตำแหน่งทั้งหมดที่เคยมีในระบบ — พิมพ์เพื่อเพิ่มใหม่ได้'}>
                         <Combobox
                           value={form.location}
                           onChange={(v) => setForm({ ...form, location: v })}
-                          items={(locationOptions ?? []).map((l) => ({
+                          items={(globalLocations ?? []).map((l) => ({
                             value: l,
                             label: l,
                           }))}
-                          placeholder="ระบุจุดจำเพาะ เช่น ห้องตรวจ 77"
+                          highlightedValues={highlightedLocations}
+                          highlightBadges={locationBadges}
+                          placeholder="เลือกหรือพิมพ์ตำแหน่ง เช่น ห้องตรวจ 77"
                           emptyText="พิมพ์เพื่อเพิ่มใหม่"
                         />
                       </Field>

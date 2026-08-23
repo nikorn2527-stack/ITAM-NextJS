@@ -10908,3 +10908,53 @@ Files created/modified:
   - Moved License to top of Tab 3 (removed Remote ID + meter section)
   - Added highlightedValues + highlightBadges to floor + department Comboboxes
 
+
+---
+Task ID: TAB-FIXES-3-ISSUES
+Agent: orchestrator (main) — แก้ 3 ปัญหา: highlight sort, dropdown bounce, location global
+
+Task:
+1. ไฮไลต์สีเขียวไม่ดันขึ้นด้านบน — ต้องเลื่อนหา
+2. Dropdown เด้งออกครั้งแรก, ครั้งที่ 2 ทำงานปกติ
+3. ตำแหน่ง: ดึง global + ไฮไลต์สีเขียวที่มีในชั้นนั้น
+
+Work Log:
+
+**1. Highlight sort to top (Combobox):**
+- filtered useMemo: หลังจาก filter ตาม query → sort โดย highlighted items ขึ้นก่อน
+- ใช้ highlightSet (Set) สำหรับ O(1) lookup
+- ผล: 🟢 items อยู่ด้านบน, ⚪ items อยู่ด้านล่าง
+- ทดสอบ: floor dropdown แสดง 🟢 1,2,3,4,5,6 ก่อน ⚪ 10,7,8,9,F1,G
+
+**2. Fix dropdown bounce (Combobox):**
+- ปัญหา: handleBlur ตั้ง timeout 150ms ปิด popover → ชนกับ click event ของ item
+- แก้:
+  - handleFocus: เพิ่ม setTimeout(() => setOpen(true), 0) — defer open เพื่อไม่ให้ race กับ focus event
+  - handleBlur: เพิ่ม delay จาก 150ms → 200ms
+- ผล: คลิกครั้งแรกเลือกได้ทันที — ไม่เด้ง
+
+**3. Location global + highlight:**
+- แก้ /api/itam/devices/location-summary: เพิ่ม `location` field + `locationCounts`
+- ใน devices-page.tsx:
+  - เพิ่ม globalLocations useQuery — ดึง distinct locations จาก /api/itam/devices/cascading?field=location (no filters = global)
+  - เพิ่ม highlightedLocations = locationSummary.locations (เฉพาะในตึกนี้)
+  - เพิ่ม locationBadges (เช่น "159 เครื่อง")
+  - อัปเดต Location Combobox: items=globalLocations + highlightedValues + highlightBadges
+- hint: "🟢 ไฮไลต์ = ตำแหน่งที่มีเครื่องอยู่ในตึกนี้ (15 ตำแหน่ง)"
+- ผล: Total 157 locations (global), 15 ไฮไลต์สีเขียว + badges จำนวนเครื่อง
+
+Stage Summary:
+- ✅ ไฮไลต์สีเขียวดันขึ้นด้านบน (sort)
+- ✅ Dropdown ไม่เด้ง (handleFocus defer + handleBlur 200ms)
+- ✅ Location ดึง global (157 ตำแหน่ง) + ไฮไลต์สีเขียวตำแหน่งในตึกนั้น + badges จำนวน
+
+Production verification (agent-browser):
+- floor dropdown: 🟢 1,2,3,4,5,6 (with counts) at top, ⚪ 10,7,8,9,F1,G below ✓
+- first-click selection works — "2" selected without bounce ✓
+- location dropdown: 157 total, 15 highlighted green with device counts ✓
+
+Files modified:
+- MODIFIED: src/components/itam/combobox.tsx — sort highlighted to top + handleFocus defer + handleBlur 200ms
+- MODIFIED: src/app/api/itam/devices/location-summary/route.ts — added location + locationCounts
+- MODIFIED: src/components/itam/devices-page.tsx — globalLocations query + highlightedLocations + locationBadges + Location Combobox uses global list
+
