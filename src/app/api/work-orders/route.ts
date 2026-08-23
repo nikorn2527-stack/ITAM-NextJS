@@ -161,17 +161,14 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
-  // ── Build authorization context for Site scope ──
-  // WorkOrder.siteCode may be null for legacy rows. We OR siteCode with
-  // device.site below so old WOs that still have a linked Device resolve
-  // to the correct Site. Non-superadmin with no grants → empty list.
-  const ctx = await buildAuthorizationContext(
-    auth.user,
-    auth.row.id,
-    auth.row.allowedSites,
-  )
 
   try {
+    // ── Build authorization context for Site scope ──
+    const ctx = await buildAuthorizationContext(
+      auth.user,
+      auth.row.id,
+      auth.row.allowedSites,
+    )
     const { searchParams } = new URL(req.url)
     const search = searchParams.get('search')?.trim() ?? ''
     const status = searchParams.get('status')?.trim() ?? ''
@@ -307,8 +304,9 @@ export async function GET(req: NextRequest) {
     })
   } catch (err) {
     console.error('GET /api/work-orders', err)
+    const message = err instanceof Error ? err.message : 'Failed to fetch work orders'
     return NextResponse.json(
-      { error: 'Failed to fetch work orders' },
+      { error: message, detail: err instanceof Error ? err.stack?.split('\n').slice(0, 3).join(' | ') : String(err) },
       { status: 500 },
     )
   }
