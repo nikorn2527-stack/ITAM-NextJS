@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npx prisma generate && next build",
+  "buildCommand": "bunx prisma generate && bun run build:next",
   "installCommand": "bun install",
   "framework": "nextjs",
   "github": {
