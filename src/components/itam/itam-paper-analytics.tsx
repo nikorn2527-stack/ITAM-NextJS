@@ -253,6 +253,7 @@ tr:nth-child(even) td { background: #fafbfc; }
 @media print { .no-print { display: none; } }
 </style></head><body>
 <button class="print-btn no-print" onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button>
+<button class="close-btn no-print" onclick="window.close()" style="position:fixed;top:12px;right:100px;background:#64748b;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">✕ ปิด</button>
 <div class="header"><div><div class="org">PNG TEAM</div><div class="subtitle">ITAM Paper Analytics Report</div></div><div class="meta"><div>วันที่ออกรายงาน: ${esc(generatedAt)}</div><div>ช่วงเดือน: ${esc(monthStart)} → ${esc(monthEnd)}</div></div></div>
 <h2 class="section">📊 ตัวชี้วัดหลัก</h2>
 ${kpiHtml}
@@ -260,7 +261,7 @@ ${kpiHtml}
 <table><thead><tr><th>เดือน</th><th class="num">ขาวดำ</th><th class="num">สี</th><th class="num">รวม</th></tr></thead><tbody>${monthlyHtml}</tbody></table>
 <h2 class="section">🏆 5 แผนกใช้กระดาษสูงสุด</h2>
 <table><thead><tr><th>#</th><th>แผนก</th><th class="num">แผ่น</th></tr></thead><tbody>${topDeptHtml}</tbody></table>
-<script>window.addEventListener('load', function () { setTimeout(function () { try { window.print(); } catch (e) {} }, 250); });</script>
+<script>window.addEventListener('load', function () { setTimeout(function () { try { window.print(); } catch (e) {} }, 250); }); window.addEventListener('keydown', function(e) { if (e.key === 'Escape') { window.close(); } });</script>
 </body></html>`
     win.document.open()
     win.document.write(html)
@@ -297,10 +298,10 @@ ${kpiHtml}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => overviewQuery.refetch()} className="dark:bg-slate-800 dark:border-slate-700">
+          <Button variant="outline" size="sm" type="button" onClick={async () => { await overviewQuery.refetch(); toast.success('รีเฟรชข้อมูลเรียบร้อย') }} className="dark:bg-slate-800 dark:border-slate-700">
             <RefreshCw className={`h-4 w-4 ${overviewQuery.isFetching ? 'animate-spin' : ''}`} /> รีเฟรช
           </Button>
-          <Button variant="outline" size="sm" onClick={exportPdfOverview} className="dark:bg-slate-800 dark:border-slate-700">
+          <Button variant="outline" size="sm" type="button" onClick={exportPdfOverview} className="dark:bg-slate-800 dark:border-slate-700">
             <FileText className="h-4 w-4" /> PDF
           </Button>
         </div>
@@ -312,11 +313,11 @@ ${kpiHtml}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1.5">
               <Label className="text-xs">เดือนเริ่ม</Label>
-              <Input type="month" value={monthStart} onChange={(e) => setMonthStart(e.target.value || monthsAgoStr(5))} className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input type="month" id="paper-monthStart" name="monthStart" value={monthStart} onChange={(e) => setMonthStart(e.target.value || monthsAgoStr(5))} className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">เดือนสิ้นสุด</Label>
-              <Input type="month" value={monthEnd} onChange={(e) => setMonthEnd(e.target.value || currentMonthStr())} className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input type="month" id="paper-monthEnd" name="monthEnd" value={monthEnd} onChange={(e) => setMonthEnd(e.target.value || currentMonthStr())} className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">สาขา</Label>
@@ -324,6 +325,9 @@ ${kpiHtml}
                 <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="ทุกสาขา" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__all">ทุกสาขา</SelectItem>
+                  {sites.length === 0 && (
+                    <SelectItem value="__none__" disabled>— ยังไม่มีสาขาในระบบ —</SelectItem>
+                  )}
                   {sites.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -342,10 +346,10 @@ ${kpiHtml}
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="flex min-h-0 flex-1 flex-col gap-4">
         <TabsList className="grid w-full flex-shrink-0 grid-cols-2 sm:grid-cols-4">
-          <TabsTrigger value="overview" className="gap-1"><LayoutGrid className="h-3.5 w-3.5" /> ภาพรวม</TabsTrigger>
-          <TabsTrigger value="ranking" className="gap-1"><Trophy className="h-3.5 w-3.5" /> จัดอันดับ</TabsTrigger>
-          <TabsTrigger value="compare3" className="gap-1"><TrendingUp className="h-3.5 w-3.5" /> 3 เดือน</TabsTrigger>
-          <TabsTrigger value="detail" className="gap-1"><TableIcon className="h-3.5 w-3.5" /> รายละเอียด</TabsTrigger>
+          <TabsTrigger value="overview" className="gap-1" onClick={() => setTab("overview")}><LayoutGrid className="h-3.5 w-3.5" /> ภาพรวม</TabsTrigger>
+          <TabsTrigger value="ranking" className="gap-1" onClick={() => setTab("ranking")}><Trophy className="h-3.5 w-3.5" /> จัดอันดับ</TabsTrigger>
+          <TabsTrigger value="compare3" className="gap-1" onClick={() => setTab("compare3")}><TrendingUp className="h-3.5 w-3.5" /> 3 เดือน</TabsTrigger>
+          <TabsTrigger value="detail" className="gap-1" onClick={() => setTab("detail")}><TableIcon className="h-3.5 w-3.5" /> รายละเอียด</TabsTrigger>
         </TabsList>
 
         {/* ───────────────────────────────────────────────────────────────── */}
