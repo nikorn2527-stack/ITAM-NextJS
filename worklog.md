@@ -11550,3 +11550,37 @@ Stage Summary:
 - Design improvement: `useRealtimeStatus()` is now O(1) per subscriber instead of O(N) polling loops — proper singleton pattern via `useSyncExternalStore`.
 - Devices page is fully functional in the browser (verified end-to-end).
 - Stray `/api/itam/events?token=...` 401 noise in dev.log is from leftover cached Service Worker / old browser tabs trying to use the deprecated SSE endpoint. This is non-blocking (the SSE route still exists at `src/app/api/itam/events/route.ts`) but ideally should be removed in a cleanup pass — the SSE route is no longer needed since polling is the new strategy.
+
+---
+Task ID: 6
+Agent: orchestrator (main)
+Task: QA Team 02 reported they cannot re-test the 13 bug fixes (BUG-STK/DASH/PAPER-001..007) because their sandbox still has the original GitHub-cloned code (timestamp 02:33). User asked to push code so QA can sync. Tried Option A (git push) but token expired — fell back to Option B (git format-patch).
+
+Work Log:
+- Read QA report: sandbox has 4 key files at timestamp 02:33 (pre-fix state), missing AlertDialog/aria-label/onClick in stock-inventory.tsx, etc.
+- Listed local commits ahead of origin/main: 21 commits total (d90547e..172f1ad).
+- The 5 commits QA needs for verification:
+  - f067807 (0017-a6e4cc66) — Paper Analytics BUG-PAPER-001..007 (13.7 KB)
+  - 0fba816 (0018-e391d5c8) — Dashboard BUG-DASH-001..007 (8.6 KB)
+  - 4207109 (0019-50ed62db) — Stock BUG-STK-001..006 (12.8 KB)
+  - 85bd588 (0020-a64e0614) — perf optimization: SSE→polling, output:standalone, removed pg (31.4 KB)
+  - 172f1ad (0021-30ee3fb8) — RealtimeProvider critical P0 fix (5.0 KB)
+- Tried `git push origin main` → HTTP 401: token `ghp_H...TEkfj` is expired/revoked.
+- Generated `/tmp/qa-fixes/ALL-CHANGES-combined.patch` (294 KB, 5908 lines) = single diff from origin/main..HEAD.
+- Generated 21 individual `git format-patch` files (0001-0021) totaling 504 KB.
+- Verified on a fresh clone reset to origin/main (3362699):
+  - `git apply --check ALL-CHANGES-combined.patch` → no errors ✓
+  - `git am 0017-0021` (5 patches) → applied cleanly with commit history preserved ✓
+- Cleanup: removed /tmp/qa-verify clone.
+
+Stage Summary:
+- Delivery method chosen: **Option B (git format-patch)** since Option A failed due to expired token.
+- Patches are ready at `/tmp/qa-fixes/` for QA to fetch.
+- Two recommended application methods:
+  1. `git apply /tmp/qa-fixes/ALL-CHANGES-combined.patch` — single-shot, no commit history
+  2. `git am /tmp/qa-fixes/0017*.patch /tmp/qa-fixes/0018*.patch /tmp/qa-fixes/0019*.patch /tmp/qa-fixes/0020*.patch /tmp/qa-fixes/0021*.patch` — preserves commit history with original hashes
+- ⚠️ Open issue: GitHub PAT expired. Either:
+  (a) User provides a new PAT so we can `git push` (Option A), OR
+  (b) QA fetches patches from `/tmp/qa-fixes/` (same machine), OR
+  (c) User pastes patches into chat for QA (Option C fallback)
+- Once QA has the code, they can re-test the 13 bugs from commits f067807, 0fba816, 4207109. The perf commit (85bd588) and RealtimeProvider fix (172f1ad) are also required for the app to actually boot (without the RealtimeProvider fix, the page returns HTTP 500).
