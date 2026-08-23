@@ -206,6 +206,45 @@ export async function PUT(
       `แก้ไขอุปกรณ์ ${updated.assetCode}`,
       { changes },
     )
+
+    // ── GAP-H08: Auto-sync new master data values ──
+    // Legacy: DeviceService.gs lines 294-306 — when a device is updated with
+    // a new Type/Brand/Model/Building/Floor/DeviceGroup value, that value is
+    // automatically added to MasterItem if it doesn't already exist.
+    const masterFields: Array<{ field: string; category: string }> = [
+      { field: 'type', category: 'DeviceType' },
+      { field: 'brand', category: 'Brand' },
+      { field: 'building', category: 'Building' },
+      { field: 'floor', category: 'Floor' },
+      { field: 'deviceGroup', category: 'DeviceGroup' },
+    ]
+    for (const { field, category } of masterFields) {
+      const newVal = updated[field as keyof typeof updated] as string | null
+      if (newVal && typeof newVal === 'string' && newVal.trim()) {
+        const trimmed = newVal.trim()
+        // Check if this value exists in MasterItem
+        const existing = await db.masterItem.findFirst({
+          where: { category, label: trimmed },
+          select: { id: true },
+        })
+        if (!existing) {
+          // Auto-create new MasterItem entry
+          await db.masterItem.create({
+            data: {
+              category,
+              code: `${category.slice(0, 3).toUpperCase()}-${Date.now().toString(36)}`,
+              label: trimmed,
+              displayLabel: trimmed,
+              siteCode: 'ALL',
+              active: true,
+            },
+          }).catch(() => {
+            // Ignore — best-effort, don't fail the device update
+          })
+        }
+      }
+    }
+
     return NextResponse.json({ device: updated })
   } catch (err) {
     console.error('PUT /api/devices/[id]', err)

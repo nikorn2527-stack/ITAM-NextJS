@@ -8,6 +8,8 @@
 // pulls produce the same external key.
 // ============================================================
 
+import { STATUS_MAPPINGS } from '@/lib/csv-field-mapping'
+
 export type LegacyBridgeModule =
   | 'device'
   | 'work-order'
@@ -216,6 +218,10 @@ function adaptWorkOrder(record: LegacySourceRecord): { payload: Record<string, u
   }
   if (!payload.requestId && payload.legacyJobNo) payload.requestId = payload.legacyJobNo
   if (!payload.status) payload.status = 'PENDING'
+  // Apply legacy status mapping (Thai text with emoji → enum)
+  if (typeof payload.status === 'string' && STATUS_MAPPINGS.workOrder[payload.status]) {
+    payload.status = STATUS_MAPPINGS.workOrder[payload.status]
+  }
   if (!payload.priority) payload.priority = 'ปกติ'
 
   return { payload, required: ['requestId', 'subject', 'siteCode'], consumed }

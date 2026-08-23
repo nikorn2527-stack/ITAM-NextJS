@@ -142,6 +142,27 @@ export async function POST(
       : nowIso
     const movedBy = user.username || user.email
 
+    // ── GAP-H04: Same-location check (legacy: TransferService.gs lines 25-28) ──
+    // If target location is identical to current location, reject the transfer
+    // to prevent unnecessary history records.
+    const targetBuilding = body.toBuilding != null ? String(body.toBuilding).trim() || null : device.building
+    const targetFloor = body.toFloor != null ? String(body.toFloor).trim() || null : device.floor
+    const targetDept = body.toDepartment != null ? String(body.toDepartment).trim() || null : device.department
+    const targetLocation = body.toLocation != null ? String(body.toLocation).trim() || null : device.location
+    if (
+      !isCrossSite &&
+      targetBuilding === device.building &&
+      targetFloor === device.floor &&
+      targetDept === device.department &&
+      targetLocation === device.location &&
+      toStatus === device.status
+    ) {
+      return NextResponse.json(
+        { error: 'ตำแหน่งปลายทางตรงกับตำแหน่งปัจจุบัน — ไม่จำเป็นต้องย้าย', code: 'SAME_LOCATION' },
+        { status: 400 },
+      )
+    }
+
     // Action label mirrors Apps Script:
     //   - TRANSFER (same site, location changed)
     //   - TRANSFER_SITE (cross-site)

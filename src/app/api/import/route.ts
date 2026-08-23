@@ -234,51 +234,75 @@ async function importDevices(
 
   if (toInsert.length === 0) return { processed: 0, errors }
 
-  // Pre-filter assetCodes that already exist in DB.
+  // Pre-check existing assetCodes — use upsert pattern (update existing, insert new)
   const existing = await db.device.findMany({
     where: { assetCode: { in: toInsert.map((r) => r.assetCode as string) } },
-    select: { assetCode: true },
+    select: { assetCode: true, id: true },
   })
-  const existingSet = new Set(existing.map((d) => d.assetCode))
-  const filtered = toInsert.filter((r) => {
-    if (existingSet.has(r.assetCode as string)) {
+  const existingMap = new Map(existing.map((d) => [d.assetCode, d.id]))
+  const toCreate = toInsert.filter((r) => !existingMap.has(r.assetCode as string))
+  const toUpdate = toInsert.filter((r) => existingMap.has(r.assetCode as string))
+
+  let processed = 0
+
+  // Insert new devices
+  if (toCreate.length > 0) {
+    try {
+      const result = await db.device.createMany({
+        data: toCreate.map((r) => ({
+          assetCode: r.assetCode as string,
+          name: r.name as string,
+          brand: r.brand as string,
+          model: r.model as string,
+          type: r.type as string,
+          serialNumber: r.serialNumber as string | null,
+          status: r.status as string,
+          site: r.site as string,
+          department: r.department as string | null,
+          location: r.location as string | null,
+          purchaseDate: r.purchaseDate as string | null,
+          warrantyMonths: r.warrantyMonths as number,
+        })),
+      })
+      processed += result.count
+    } catch (e) {
+      console.error('importDevices createMany error', e)
       errors.push({
         row: 0,
-        message: `มีอยู่แล้วในระบบ: ${r.assetCode}`,
+        message: e instanceof Error ? e.message : 'DB error (device create)',
       })
-      return false
     }
-    return true
-  })
-
-  if (filtered.length === 0) return { processed: 0, errors }
-
-  try {
-    const result = await db.device.createMany({
-      data: filtered.map((r) => ({
-        assetCode: r.assetCode as string,
-        name: r.name as string,
-        brand: r.brand as string,
-        model: r.model as string,
-        type: r.type as string,
-        serialNumber: r.serialNumber as string | null,
-        status: r.status as string,
-        site: r.site as string,
-        department: r.department as string | null,
-        location: r.location as string | null,
-        purchaseDate: r.purchaseDate as string | null,
-        warrantyMonths: r.warrantyMonths as number,
-      })),
-    })
-    return { processed: result.count, errors }
-  } catch (e) {
-    console.error('importDevices createMany error', e)
-    errors.push({
-      row: 0,
-      message: e instanceof Error ? e.message : 'DB error (device)',
-    })
-    return { processed: 0, errors }
   }
+
+  // Update existing devices (upsert behavior)
+  for (const r of toUpdate) {
+    try {
+      await db.device.update({
+        where: { assetCode: r.assetCode as string },
+        data: {
+          name: r.name as string,
+          brand: r.brand as string,
+          model: r.model as string,
+          type: r.type as string,
+          serialNumber: r.serialNumber as string | null,
+          status: r.status as string,
+          site: r.site as string,
+          department: r.department as string | null,
+          location: r.location as string | null,
+          purchaseDate: r.purchaseDate as string | null,
+          warrantyMonths: r.warrantyMonths as number,
+        },
+      })
+      processed++
+    } catch (e) {
+      errors.push({
+        row: 0,
+        message: `Update failed for ${r.assetCode}: ${e instanceof Error ? e.message : 'DB error'}`,
+      })
+    }
+  }
+
+  return { processed, errors }
 }
 
 async function importWorkOrders(

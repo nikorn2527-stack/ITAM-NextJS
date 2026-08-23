@@ -100,6 +100,34 @@ export async function POST(
       result.woSite,
     )
 
+    // ── GAP-H06: Cascade cancel to pending stock requests ──
+    // Legacy: Services/code.gs lines 4046-4131 — when a WO is cancelled,
+    // all pending stock requests linked to that WO should also be cancelled.
+    try {
+      const pendingStockTxns = await db.stockTransaction.findMany({
+        where: {
+          workOrderId: wo.id,
+          approvalStatus: 'PENDING',
+        },
+        select: { id: true },
+      })
+      if (pendingStockTxns.length > 0) {
+        await db.stockTransaction.updateMany({
+          where: {
+            id: { in: pendingStockTxns.map((t) => t.id) },
+          },
+          data: {
+            approvalStatus: 'REJECTED',
+            rejectReason: `ยกเลิกอัตโนมัติ — ใบงาน ${updated.woNumber ?? wo.id} ถูกยกเลิก: ${reasonStr}`,
+          },
+        })
+        console.log(`[wo-cancel] Cancelled ${pendingStockTxns.length} pending stock requests for WO ${wo.id}`)
+      }
+    } catch (e) {
+      console.error('[wo-cancel] Stock cascade cancel failed:', e)
+      // Don't fail the WO cancellation — just log the error
+    }
+
     // ── Notification trigger (Task ID: NOTIFY-LINE) ──
     // Send 'wo_cancelled' to reporter (LINE if lineUserId is known).
     try {

@@ -33,18 +33,18 @@ export const FIELD_MAPPINGS = {
     device_type: 'type',
     serial: 'serialNumber',
     department_code: 'departmentCode',
-    contract_no: 'vendor', // สัญญาบำรุง → ผู้ขาย/ผู้รับเหมา
+    contract_no: 'contractNo', // สัญญาบำรุง → contractNo
     remote_id: 'remoteId',
     updated_at: 'updatedAt',
     updated_by: 'updatedBy',
-    install_date: 'purchaseDate', // วันติดตั้ง ≈ วันซื้อ
-    uninstall_date: 'warrantyEnd', // fallback: ใช้ถอดเป็นเกณฑ์ประกันโดยประมาณ
+    install_date: 'installDate', // วันติดตั้ง → installDate
+    uninstall_date: 'uninstallDate', // วันถอดถอน → uninstallDate
     warranty_end: 'warrantyEnd',
     device_group: 'deviceGroup',
     cost_center: 'costCenter',
     meter_required: 'meterRequired',
     meter_mode: 'meterMode',
-    asset_site_code: 'displayLabel',
+    asset_site_code: 'assetSiteCode', // รหัสประจำสาขา → assetSiteCode
     // direct 1:1 matches (no rename needed)
     brand: 'brand',
     model: 'model',
