@@ -10719,3 +10719,96 @@ Remaining issues (non-blocking):
 - Date format in native date inputs uses browser locale (not Thai) — acceptable
 - Long form requires scrolling — sticky header/footer help but very long on mobile
 
+
+---
+Task ID: TAB-REDESIGN-3-TABS
+Agent: orchestrator (main) — แปลงฟอร์มเป็น 3 แท็บ + SN scanner
+
+Task:
+ผู้ใช้ต้องการฟอร์มแบบแท็บ 3 แท็บ เพื่อให้กรอกง่ายขึ้น:
+1. SN scanner ด้านบนสุด (กด Enter → auto-fill Serial Number)
+2. Tab 1 — 📍 สถานที่ติดตั้ง (4 ฟิลด์หลัก + 2 ฟิลด์ท้าย)
+3. Tab 2 — 💻 อุปกรณ์ (2 คอลัมน์ grid)
+4. Tab 3 — ⚙️ ขั้นสูง (ซ่อนไว้)
+5. ใช้ placeholder (ตัวจางๆ) แทนข้อความอธิบายแยก
+
+Work Log:
+
+**1. Add Tabs component import:**
+- `import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'`
+
+**2. SN Scanner (ด้านบน — ก่อนแท็บ):**
+- ช่อง input สีส้มอ่อน สำหรับสแกน/พิมพ์ SN
+- ใช้ onKeyDown (Enter) และ onBlur เพื่อ commit ค่าไป `form.serialNumber`
+- หลัง commit → เคลียร์ช่อง input
+- ข้อความช่วยเหลือ: "สแกนบาร์โค้ด → กด Enter → กรอก SN อัตโนมัติ"
+- ✅ ทดสอบแล้ว: พิมพ์ "TEST-SN-99999" → กด Enter → สลับไป Tab 2 → SN field แสดงค่า
+
+**3. Tab 1 — 📍 สถานที่ติดตั้ง:**
+- **Row 1 (3 คอลัมน์)**: สาขา * + รหัสอุปกรณ์ (auto) + รหัสประจำ Site (auto)
+  - เหตุผล: 2 อันหลัง auto-gen จากสาขา → เห็นความสัมพันธ์ชัดเจน
+- **Row 2 (3 คอลัมน์)**: อาคาร * + ชั้น * + แผนก
+- **สังกัด auto hint**: ถ้าเลือกแผนก แล้ว parentRef มีค่า → แสดง hint สีฟ้า
+  "สังกัด (auto): บริหาร/ยุทธศาสตร์ ← เติมอัตโนมัติจากแผนกที่เลือก"
+- **Row 3 (แยก section ย่อย)**: ตำแหน่ง + ห้อง
+  - label "ระบุจุดจำเพาะ (ไม่บังคับ — ใส่เฉพาะตอนต้องการ)"
+- ลบ: สังกัด (Combobox), รหัสแผนก — ย้ายไป Tab 3
+
+**4. Tab 2 — 💻 อุปกรณ์ (2-column grid):**
+- สถานะ *, ประเภท *, แบรนด์ *, รุ่น *, ชื่ออุปกรณ์ *, Serial Number
+- IP Address, MAC Address, กลุ่มอุปกรณ์ (default: ของบริษัท), โหมดมิเตอร์
+- ทุกฟิลด์ใช้ placeholder อธิบายแทน hint แยก
+- ตัวอย่าง placeholder:
+  - "เลือกหรือพิมพ์ประเภท เช่น PRINTER LASER"
+  - "เลือกรุ่น — แบรนด์/ประเภท auto เช่น HL-L5210DN"
+  - "สแกนจากด้านบน หรือพิมพ์ SN"
+
+**5. Tab 3 — ⚙️ ขั้นสูง:**
+- 🌐 เครือข่าย + มิเตอร์: Remote ID, ต้องจดมิเตอร์ (checkbox)
+- 🧾 การซื้อ/รับประกัน: ผู้ขาย, เลขที่สัญญา, วันที่ซื้อ, รับประกัน, วันหมดประกัน, วันที่ถอดถอน
+- 💰 การเงิน: ราคาซื้อ, มูลค่าซาลเวจ, อายุการใช้งาน + สูตร
+- 🔐 License/Software: เพิ่ม/ลบ หลาย licenses
+- 📝 อื่นๆ: Cost Center, รหัสแผนก, ParentRef, DisplayLabel, หมายเหตุ
+
+**6. ลบ FormSection component usage:**
+- เดิมใช้ FormSection 9 sections → ตอนนี้ใช้ plain div ธรรมดาในแต่ละ tab
+- ลบ duplicate old sections (9 FormSection blocks)
+- ประหยัดบรรทัดโค้ดไปเยอะ
+
+**7. Placeholder-first design:**
+- ใช้ placeholder (ตัวจางๆ ในช่องกรอก) แทนข้อความ hint แยก
+- ตัวอย่าง: "สร้างอัตโนมัติ เช่น 2379" แทนการเขียน hint แยก
+- ลด clutter ในฟอร์ม
+
+Stage Summary:
+- ✅ 3 แท็บ: 📍 สถานที่ติดตั้ง, 💻 อุปกรณ์, ⚙️ ขั้นสูง
+- ✅ SN scanner ด้านบน (กด Enter → auto-fill Serial Number)
+- ✅ Tab 1: 3+3+2 fields layout (สาขา+รหัส / อาคาร+ชั้น+แผนก / ตำแหน่ง+ห้อง)
+- ✅ Tab 2: 2-column grid (อุปกรณ์ + เครือข่าย + กลุ่ม + มิเตอร์)
+- ✅ Tab 3: ขั้นสูง (ซ่อน — ค่าเริ่มต้นและฟิลด์ admin)
+- ✅ สังกัด auto hint (ไม่ต้องเลือก — แสดงอ่านอย่างเดียว)
+- ✅ Placeholder-first (ลด hint แยก)
+- ✅ ลบ FormSection + duplicate old sections
+
+Production verification (agent-browser + VLM):
+- Login → devices → Add Device ✓
+- 3 tabs visible: 📍 สถานที่ติดตั้ง (default), 💻 อุปกรณ์, ⚙️ ขั้นสูง ✓
+- SN scanner at top ✓
+- Tab 1: สาขา+รหัสอุปกรณ์+รหัสประจำ Site (row 1), อาคาร+ชั้น+แผนก (row 2), ตำแหน่ง+ห้อง (bottom) ✓
+- Tab 2: 2-column grid with all device fields ✓
+- Tab 3: Remote ID, Meter, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ ✓
+- SN scanner test: type "TEST-SN-99999" → Enter → switch to Tab 2 → SN field = "TEST-SN-99999" ✓
+- VLM confirms: "3 fields on same row (สาขา/รหัสอุปกรณ์/รหัสประจำ Site), 3 fields on same row (อาคาร/ชั้น/แผนก), ตำแหน่ง/ห้อง at bottom"
+
+Files modified:
+- MODIFIED: src/components/itam/devices-page.tsx
+  - Added Tabs import
+  - Added SN scanner (onKeyDown Enter + onBlur commit)
+  - Restructured form into 3 TabsContent blocks
+  - Tab 1: 3-row layout (3+3+2 fields + สังกัด auto hint)
+  - Tab 2: 2-column grid (device fields)
+  - Tab 3: advanced sections (network, purchase, finance, license, other)
+  - Removed 9 FormSection blocks (replaced with plain divs)
+  - Used placeholders for field hints (faint text)
+  - Removed duplicate old section blocks (deleted ~800 lines)
+
