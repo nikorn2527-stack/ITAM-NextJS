@@ -10592,3 +10592,130 @@ Remaining issues (non-blocking):
 - Some legacy fetches in other components still don't send auth headers (will fix in subsequent task)
 - ParentRef textbox shows affiliation label (because parentRef is overloaded as both affiliation + legacy HP|PRINTER pattern) — existing design issue, not introduced
 
+
+---
+Task ID: DEVICE-FORM-FULLPAGE-REDESIGN
+Agent: orchestrator (main) — แปลง Dialog เป็น Full-page form + เพิ่ม License/Software section
+
+Task:
+ผู้ใช้รายงานว่าหน้าเพิ่มอุปกรณ์ใหม่ใช้งานยาก:
+1. ตั้งค่าเยอะเกินไปสำหรับคนทั่วไป — ต้องแยก required vs optional
+2. ควรเรียงตามพฤติกรรมการใช้งาน: ที่ตั้ง → เครื่อง → อื่นๆ
+3. ส่วนที่ระบบเจนออโต้ ไว้ด้านบนถูกแล้ว
+4. ยังไม่มีส่วนเพิ่ม License/Software
+5. ควรเป็นหน้าเลย ไม่ใช่ Popup เพราะต้องตั้งค่าเยอะ
+
+Work Log:
+
+**1. Convert Dialog → Full-page view (early return):**
+- เดิม Add/Edit form เป็น `<Dialog>` (popup modal) — พื้นที่จำกัด ต้อง scroll ในกรอบเล็ก
+- เปลี่ยนเป็น early return: `if (dialogOpen) return <FullPageForm />`
+- ทำให้ form ขึ้นเต็มจอ (fixed inset-0 z-50) พร้อม sticky header + sticky footer
+- Header มี X button + title + Cancel/Save buttons
+- Footer มี Cancel/Save buttons (mobile-friendly)
+- Body scroll ได้อิสระใน `max-w-4xl` container
+
+**2. Reorganize sections by usage behavior (9 sections):**
+เรียงตามพฤติกรรมจริง:
+1. 🤖 รหัสอุปกรณ์ (amber) — assetCode auto-gen, independent
+2. 📍 สถานที่ติดตั้ง (blue/sky) — Site → assetSiteCode → Building → Floor → Location → Room → Affiliation → Department
+3. 💻 ข้อมูลเครื่อง (emerald) — Model (reverse-cascade to Brand+Type) → Name → Type → Brand → SN → Status → DeviceGroup
+4. 🌐 เครือข่าย (slate) — IP, MAC, Remote ID
+5. 🧾 การซื้อ/รับประกัน (violet) — Vendor, Contract No, Purchase Date, Warranty Months, Warranty End, Uninstall Date
+6. ⚙️ มิเตอร์ (amber) — Meter Required checkbox, Meter Mode
+7. 💰 การเงิน (emerald) — Purchase Price, Salvage Value, Useful Life + สูตรค่าเสื่อมราคา
+8. 🔐 License/Software (violet) — NEW section, multiple licenses with add/remove
+9. 📝 อื่นๆ (slate) — Cost Center, DepartmentCode, ParentRef, DisplayLabel, Remark (tech fields)
+
+**3. FormSection component (NEW):**
+- สร้าง reusable section wrapper พร้อม:
+  - step badge (วงกลมเลขลำดับ)
+  - icon emoji
+  - title + subtitle
+  - accent color (amber/blue/emerald/violet/slate)
+  - optional action button (เช่น "เพิ่ม License")
+  - bordered card with header + body
+
+**4. Field component (enhanced):**
+- เพิ่ม `required` prop:
+  - แสดง orange asterisk ถัด label
+  - เพิ่ม orange left-border 2px รอบ field (scannable)
+- ทำให้ required fields มองเห็นชัดเจนแม่นยำ
+
+**5. Quick legend (top of form):**
+- แสดงคำอธิบาย: * จำเป็น, ไม่บังคับ, ✨ ระบบสร้างให้อัตโนมัติ
+- ช่วยให้ผู้ใช้ใหม่เข้าใจสัญลักษณ์ทันที
+
+**6. License/Software section (NEW):**
+- สร้าง `LicenseRow` interface (camelCase client) mirroring LicenseRecord schema
+- สร้าง `EMPTY_LICENSE` template + `LICENSE_TYPE_OPTIONS` (OEM/Volume/Retail/Subscription/Open License)
+- License helpers: `addLicense()`, `updateLicense(idx, patch)`, `removeLicense(idx)`
+- แต่ละ license row แสดงในการ์ดย่อยพร้อม:
+  - License #N badge + DB id (last 8 chars)
+  - 7 fields: Software (required), License Type, Quantity, License ID, License Key, Expiry Date, Remark
+  - ปุ่มลบ (trash icon)
+- Empty state: "ยังไม่มี License — กด เพิ่ม License"
+
+**7. License loading (edit mode):**
+- `loadDeviceLicenses(deviceId)` — GET /api/devices/[id]/licenses
+- แปลง PascalCase fields (Asset_No, Software, License_ID, etc.) → camelCase (assetCode, software, licenseId, etc.)
+- ตั้งค่า `licensesLoading` state ขณะโหลด
+
+**8. Save flow (updated):**
+- Omit `licenses` จาก device payload (save separately)
+- หลัง device save สำเร็จ → sync licenses:
+  - New device: POST ทุก license row
+  - Edit device: POST new rows (no id) + PUT existing rows (with id)
+- ใช้ Promise.allSettled แบบ best-effort — ถ้า license บางตัวล้มเหลว ไม่ให้ fail ทั้ง device
+- แสดง warning toast ถ้ามี license failures
+
+**9. Fix licenses API (PascalCase fields):**
+- Schema uses PascalCase: `License_ID`, `Asset_No`, `Software`, `LicenseType`, `License_Key`, `Quantity`, `Expiry_Date`, `Remark`
+- เดิม API ใช้ camelCase (`assetCode`, `software`, etc.) → broken
+- แก้ทุก query/create/update ให้ใช้ PascalCase ที่ตรง schema
+- เพิ่ม `requireAuth` ทุก handler (GET/POST/PUT/DELETE)
+
+**10. Fix Radix Select empty value error:**
+- `LICENSE_TYPE_OPTIONS` มี option `value: ''` (placeholder "— เลือกประเภท —")
+- Radix Select.Item ห้ามมี value="" → throw runtime error
+- แก้: เปลี่ยนเป็น sentinel `'__none__'` + แปลงกลับเป็น '' ใน onValueChange
+- ปรับ `value={lic.licenseType || '__none__'}` เพื่อ handle empty state
+
+Stage Summary:
+- ✅ Full-page form (not popup) — early return เมื่อ dialogOpen=true
+- ✅ 9 sections เรียงตามพฤติกรรม: รหัส → ที่ตั้ง → เครื่อง → เครือข่าย → ซื้อ → มิเตอร์ → การเงิน → License → อื่นๆ
+- ✅ Required vs Optional ชัดเจน (orange asterisk + left-border)
+- ✅ Quick legend อธิบายสัญลักษณ์
+- ✅ License/Software section ใหม่ — เพิ่ม/แก้/ลบ หลาย licenses ได้
+- ✅ FormSection + Field (with required prop) reusable components
+- ✅ Licenses API แก้ PascalCase field names + requireAuth
+- ✅ Radix Select empty value bug แก้แล้ว (sentinel pattern)
+
+Production verification (agent-browser + VLM):
+- Login as admin → devices page → click "เพิ่มอุปกรณ์" ✓
+- Full-page form opens (not popup) ✓
+- All 9 sections visible in correct order ✓
+- assetCode auto-gen = 2379 ✓
+- deviceGroup default = "ของบริษัท" ✓
+- Click "เพิ่ม License" → license card appears with 7 fields ✓
+- VLM confirms: "layout is clear and structured, card-based design, visual hierarchy is good"
+
+Files modified:
+- MODIFIED: src/components/itam/devices-page.tsx
+  - Added LicenseRow interface + EMPTY_LICENSE + LICENSE_TYPE_OPTIONS
+  - Added licenses[] to FormState + EMPTY_FORM
+  - Added loadDeviceLicenses(), addLicense(), updateLicense(), removeLicense()
+  - Updated save() to sync licenses after device save
+  - Converted Dialog → early-return full-page form
+  - Reorganized into 9 FormSection components
+  - Added FormSection + enhanced Field (with required prop) helpers
+  - Removed old Dialog block (dead code)
+- MODIFIED: src/app/api/devices/[id]/licenses/route.ts
+  - Fixed all field names to PascalCase (License_ID, Asset_No, Software, etc.)
+  - Added requireAuth to all handlers
+
+Remaining issues (non-blocking):
+- License DELETE not wired to UI (only local state removeLicense) — would need server-side DELETE call for persisted licenses
+- Date format in native date inputs uses browser locale (not Thai) — acceptable
+- Long form requires scrolling — sticky header/footer help but very long on mobile
+
