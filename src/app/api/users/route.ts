@@ -184,6 +184,7 @@ export async function GET(req: NextRequest) {
     }
     const users = await db.user.findMany({
       orderBy: { createdAt: 'asc' },
+      take: 100, // bounded — prevent unbounded query on Vercel Hobby
     })
     return NextResponse.json({ users: users.map(publicUser) })
   } catch (err) {

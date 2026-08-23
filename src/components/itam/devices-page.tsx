@@ -359,6 +359,7 @@ export function DevicesPage() {
       const json = await res.json()
       return json.devices as Device[]
     },
+    staleTime: 5 * 60 * 1000, // 5 min — reduce refetch frequency
   })
 
   // Apply warranty filter client-side (computed from purchaseDate + warrantyMonths)

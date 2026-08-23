@@ -22,6 +22,8 @@ import { siteFilterForUser } from '@/lib/auth'
  *
  * Permission: VIEW_ANALYTICS
  */
+export const maxDuration = 30 // Vercel Hobby: 30s (default 10s)
+
 export async function GET(req: NextRequest) {
   try {
     const auth = await requireAuth(req, 'VIEW_ANALYTICS')
