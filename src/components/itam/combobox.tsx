@@ -132,15 +132,25 @@ export function Combobox({
   // Items filtered by the user's typed query — case-insensitive substring
   // match on either the label or the value. Falls back to the full list when
   // the query is empty so the dropdown always shows something useful.
+  // Highlighted items (green) are sorted to the TOP so the user doesn't
+  // have to scroll to find them.
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return items
-    return items.filter(
-      (it) =>
-        it.label.toLowerCase().includes(q) ||
-        it.value.toLowerCase().includes(q),
-    )
-  }, [items, query])
+    const base = !q
+      ? items
+      : items.filter(
+          (it) =>
+            it.label.toLowerCase().includes(q) ||
+            it.value.toLowerCase().includes(q),
+        )
+    // Sort: highlighted items first, then non-highlighted (preserve original order within each group)
+    if (!highlightSet.size) return base
+    return [...base].sort((a, b) => {
+      const aHl = highlightSet.has(a.value) ? 0 : 1
+      const bHl = highlightSet.has(b.value) ? 0 : 1
+      return aHl - bHl
+    })
+  }, [items, query, highlightSet])
 
   // Alias for clarity in the render section (matches the new naming convention).
   const filteredFlat = filtered
@@ -221,15 +231,25 @@ export function Combobox({
   }
 
   function handleFocus() {
-    if (openOnFocus && items.length > 0) setOpen(true)
+    // Use a microtask delay to avoid the "first click closes the dropdown"
+    // issue that happens when the input receives focus and the popover
+    // opens, but the subsequent click (on the trigger button or input)
+    // is interpreted as a "blur" by the input. The 0ms setTimeout
+    // defers the open so it doesn't race with the focus event.
+    if (openOnFocus && items.length > 0) {
+      setTimeout(() => setOpen(true), 0)
+    }
   }
 
   function handleBlur() {
     // Delay close so click on a CommandItem has time to fire first.
+    // 200ms is enough for most browsers' click event to register
+    // after the input blur. Without this, the first selection would
+    // close the dropdown before the click registers.
     setTimeout(() => {
       setOpen(false)
       setQuery('')
-    }, 150)
+    }, 200)
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
