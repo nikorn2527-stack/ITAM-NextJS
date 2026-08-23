@@ -151,6 +151,13 @@ export async function PUT(
       costCenter: setStr('costCenter', body),
       deviceGroup: setStr('deviceGroup', body),
       remark: setStr('remark', body),
+      // ── Device Set fields (Task ID 9, Phase 2) ──
+      parentDeviceId: setStr('parentDeviceId', body),
+      setLabel: setStr('setLabel', body),
+      setPosition:
+        body.setPosition !== undefined
+          ? optInt(body.setPosition)
+          : undefined,
       purchasePrice:
         body.purchasePrice !== undefined
           ? optFloat(body.purchasePrice)
