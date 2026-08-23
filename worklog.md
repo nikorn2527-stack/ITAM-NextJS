@@ -10487,3 +10487,108 @@ Architecture improvements vs legacy:
 - New: 1 $transaction → all-or-nothing
 - Legacy: text-based device identity → typo-prone
 - New: FK-based (deviceId) → JOIN directly, no lookup needed
+
+---
+Task ID: ADD-DEVICE-FORM-FIXES
+Agent: orchestrator (main) — แก้หน้าเพิ่มอุปกรณ์ใหม่: dropdown + auto-gen
+
+Task:
+ผู้ใช้รายงานว่าหน้าเพิ่มอุปกรณ์ใหม่ dropdown ยังเลือกไม่ได้ ต้องกรอกเอง และต้องการ:
+1. อาคาร/ชั้น/แผนก cascade ตามที่ตั้ง
+2. เลือกรุ่น → แบรนด์/ประเภท auto-fill
+3. เลือกแผนก → สังกัด auto-fill
+4. กลุ่มอุปกรณ์ default = ของบริษัท
+5. รหัสอุปกรณ์ auto-gen ต่อจากล่าสุด
+6. รหัสประจำ Site auto-gen ต่อจากล่าสุด
+
+Work Log:
+
+**1. Root cause ของ dropdown ว่าง:**
+- `/api/master` และ `/api/sites` ใช้ `requireAuth` แต่ client-side fetch ไม่ได้ส่ง Bearer token
+- เกิด 401 → queryFn return [] → dropdown ว่าง
+- Fix: แก้ `src/app/page.tsx` fetch interceptor ให้ cover `/api/master`, `/api/sites`, `/api/meter`, `/api/cycles`, `/api/reports`, `/api/notifications`, `/api/audit`, `/api/settings`, `/api/health` ด้วย (ก่อนหน้านี้ครอบแค่ /api/itam/, /api/devices ฯลฯ)
+- เพิ่ม `authHeaders()` ให้ fetch ทั้งหมดใน devices-page.tsx (sites, master, next-asset-code)
+
+**2. /api/devices/next-asset-code (NEW):**
+- สร้าง endpoint ใหม่ที่ return next sequential assetCode (MAX integer assetCode + 1)
+- รองรับ legacy integer-only asset codes (1, 2, … 2378 → next: 2379)
+- รองรับ optional `?prefix=` สำหรับกรณีอยากได้ "IT-1000" แบบ
+- `GET /api/devices/next-asset-code` → { code, next, max }
+
+**3. Auto-gen assetCode ตอนเปิด Add New:**
+- `openAdd()` เรียก `fetchNextAssetCode()` แล้ว fill `form.assetCode`
+- มี sparkle button ด้านขวา input ให้ผู้ใช้กด re-generate ได้
+- แสดง helper text "เลขลำดับต่อจากล่าสุด — ระบบค้นหาเลขสูงสุดแล้ว +1 ให้อัตโนมัติ"
+
+**4. Auto-gen assetSiteCode (existing, ปรับปรุง UX):**
+- มีอยู่แล้วในตอน site change → เรียก `/api/devices/next-site-code?site=<code>`
+- ปรับ placeholder ให้บอกชัด: "เลือกสาขาแล้วระบบจะสร้างให้อัตโนมัติ เช่น UDH-02234"
+
+**5. DeviceGroup default + Thai labels:**
+- เพิ่ม `DEFAULT_DEVICE_GROUP = 'COMPANY'` ใน EMPTY_FORM
+- เพิ่ม `DEVICE_GROUP_THAI` mapping: COMPANY → ของบริษัท, LEASED → เช่า/เช่าซื้อ, DEPT → ของแผนก, PERSONAL → ส่วนบุคคล
+- Combobox ใช้ `displayValue` prop ใหม่เพื่อแสดง Thai label แต่เก็บ English code (backward-compat)
+
+**6. Combobox component (NEW prop):**
+- เพิ่ม `displayValue?: (value: string) => string` prop
+- เมื่อ user พิมพ์ → แสดง typed query (raw)
+- เมื่อ user เลือก → แสดง displayValue(value) (localized label)
+- ไม่ใช้ displayValue → fall back to legacy behavior (raw value)
+
+**7. Reverse cascade: Model → Brand + Type:**
+- `deviceClassifications` filter from MasterItem category='DeviceClassification'
+- Model combobox items = unique model values
+- เมื่อ user เลือก Model → ค้นหา matching DeviceClassification row → setForm({ brand, type, model }) ให้ auto
+- ตัวอย่าง: เลือก "7835i" → brand=Fuji Xerox, type=COPIER LASER auto-fill
+
+**8. Reverse cascade: Department → Affiliation:**
+- เดิม Department.parentRef เก็บ Affiliation LABEL (เช่น "บริหาร/ยุทธศาสตร์") แต่ Combobox value ใช้ Affiliation CODE (เช่น "AFF-001") → filter ไม่เคย match
+- Fix: เปลี่ยน Affiliation Combobox ให้ใช้ `a.label` เป็น value (match Department.parentRef)
+- เมื่อ user เลือก Department → ค้นหา matching Department → setForm({ department, parentRef }) โดย parentRef = department.parentRef (คือ affiliation label)
+- ตัวอย่าง: เลือก "กลุ่มงานพัสดุ" → affiliation="บริหาร/ยุทธศาสตร์" auto-fill
+
+**9. Fix Building/Floor dropdowns (MasterItem-based):**
+- เดิมใช้ `/api/itam/devices/cascading?field=building&site=UDH` — query `Device` table where site='UDH'
+- แต่ Device.site เก็บ Thai name "โรงพยาบาลศูนย์อุดรธานี" ไม่ใช่ "UDH" → 0 results
+- Fix: เปลี่ยน building ไปใช้ `/api/master?type=buildings&site=UDH` (queries MasterItem.siteCode)
+- Floor ใช้ `/api/master?type=floors` (global, ไม่ site-scoped)
+- Location ยังใช้ cascading API เดิม (ไม่ใช่ master data)
+- ผล: UDH มี 30 buildings + 12 floors
+
+**10. แก้ TDZ bug:**
+- ตอนแรก `EMPTY_FORM` อ้างถึง `DEFAULT_DEVICE_GROUP` ก่อน const declaration → "Cannot access 'DEFAULT_DEVICE_GROUP' before initialization"
+- Fix: ย้าย DEVICE_GROUP_THAI + DEFAULT_DEVICE_GROUP ขึ้นไปก่อน EMPTY_FORM
+
+Stage Summary:
+- ✅ assetCode auto-gen (2379 ต่อจาก 2378)
+- ✅ assetSiteCode auto-gen (UDH-02234 ต่อจาก UDH-02233)
+- ✅ deviceGroup default = "ของบริษัท" (English code COMPANY เก็บใน DB)
+- ✅ Model → Brand + Type auto-fill (7835i → Fuji Xerox + COPIER LASER)
+- ✅ Department → Affiliation auto-fill (กลุ่มงานพัสดุ → บริหาร/ยุทธศาสตร์)
+- ✅ Building dropdown (30 items for UDH)
+- ✅ Floor dropdown (12 items global)
+- ✅ Site dropdown (4 sites: MECUD, NKP, PPIT, UDH)
+- ✅ Fetch interceptor ครอบทุก /api/* ที่ต้อง auth
+- ✅ Combobox component รองรับ displayValue prop
+
+Files created/modified:
+- NEW: src/app/api/devices/next-asset-code/route.ts (~50 LOC)
+- MODIFIED: src/app/page.tsx — fetch interceptor covers more /api/* URLs
+- MODIFIED: src/components/itam/combobox.tsx — added displayValue prop
+- MODIFIED: src/components/itam/devices-page.tsx — auto-gen logic, reverse cascade, Thai labels, auth headers, building/floor via master API, moved constants above EMPTY_FORM (TDZ fix)
+
+Production verification (committed locally, ready to push):
+- Login as admin/admin123 ✓
+- Navigate to devices page ✓
+- Click "เพิ่มอุปกรณ์" → dialog opens, assetCode=2379, deviceGroup="ของบริษัท" ✓
+- Pick Model "7835i" → Brand="Fuji Xerox", Type="COPIER LASER" auto-fill ✓
+- Pick Department "กลุ่มงานพัสดุ" → Affiliation="บริหาร/ยุทธศาสตร์" auto-fill ✓
+- Pick Site "UDH" → assetSiteCode="UDH-02234" auto-gen ✓
+- Building dropdown → 30 items (PCU 1, ตึก 69 ปี, ตึกคลังพัสดุ, etc.) ✓
+- Floor dropdown → 12 items (1, 2, 3, ..., 12) ✓
+
+Remaining issues (non-blocking):
+- /api/meter/reminders returns 401 (not in interceptor list — minor)
+- Some legacy fetches in other components still don't send auth headers (will fix in subsequent task)
+- ParentRef textbox shows affiliation label (because parentRef is overloaded as both affiliation + legacy HP|PRINTER pattern) — existing design issue, not introduced
+

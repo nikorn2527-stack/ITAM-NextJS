@@ -170,6 +170,22 @@ interface FormState {
   remark: string
 }
 
+/**
+ * DeviceGroup Thai labels — the MasterItem stores English codes (COMPANY,
+ * LEASED, DEPT, PERSONAL) but the UI should display them in Thai so users
+ * understand the meaning. The stored value stays the English code so the
+ * backend / CSV / Apps Script bridge keeps working.
+ */
+const DEVICE_GROUP_THAI: Record<string, string> = {
+  COMPANY: 'ของบริษัท',
+  LEASED: 'เช่า/เช่าซื้อ',
+  DEPT: 'ของแผนก',
+  PERSONAL: 'ส่วนบุคคล',
+}
+
+/** Default DeviceGroup code on Add New (the user requested "ของบริษัท"). */
+const DEFAULT_DEVICE_GROUP = 'COMPANY'
+
 const EMPTY_FORM: FormState = {
   assetCode: '',
   assetSiteCode: '',
@@ -203,7 +219,7 @@ const EMPTY_FORM: FormState = {
   meterRequired: false,
   meterMode: 'TOTAL',
   costCenter: '',
-  deviceGroup: '',
+  deviceGroup: DEFAULT_DEVICE_GROUP,
   remark: '',
 }
 
@@ -353,7 +369,7 @@ export function DevicesPage() {
   const { data: sites } = useQuery<Site[]>({
     queryKey: ['sites'],
     queryFn: async () => {
-      const res = await fetch('/api/sites')
+      const res = await fetch('/api/sites', { headers: authHeaders() })
       if (!res.ok) return []
       const json = await res.json()
       return json.sites as Site[]
@@ -382,7 +398,7 @@ export function DevicesPage() {
   const { data: deviceTypes } = useQuery<{ id: string; name: string }[]>({
     queryKey: ['master', 'device-types'],
     queryFn: async () => {
-      const res = await fetch('/api/master?type=device-types')
+      const res = await fetch('/api/master?type=device-types', { headers: authHeaders() })
       if (!res.ok) return []
       const json = await res.json()
       return (json.items ?? []) as { id: string; name: string }[]
@@ -398,7 +414,7 @@ export function DevicesPage() {
       // Find the DeviceType id from the deviceTypes list
       const typeId = deviceTypes?.find((t) => t.name === form.type)?.id
       if (!typeId) return []
-      const res = await fetch(`/api/master?type=brands&typeId=${typeId}`)
+      const res = await fetch(`/api/master?type=brands&typeId=${typeId}`, { headers: authHeaders() })
       if (!res.ok) return []
       const json = await res.json()
       return (json.items ?? []) as { id: string; name: string; typeId: string }[]
@@ -415,7 +431,7 @@ export function DevicesPage() {
       // Find the Brand id from the brandsData list
       const brandId = brandsData?.find((b) => b.name === form.brand)?.id
       if (!brandId) return []
-      const res = await fetch(`/api/master?type=models&brandId=${brandId}`)
+      const res = await fetch(`/api/master?type=models&brandId=${brandId}`, { headers: authHeaders() })
       if (!res.ok) return []
       const json = await res.json()
       return (json.items ?? []) as { id: string; name: string; brandId: string }[]
@@ -431,10 +447,13 @@ export function DevicesPage() {
     code: string
     label: string
     parentRef?: string | null
+    deviceType?: string | null
+    brand?: string | null
+    model?: string | null
   }[]>({
     queryKey: ['master-all'],
     queryFn: async () => {
-      const res = await fetch('/api/master')
+      const res = await fetch('/api/master', { headers: authHeaders() })
       if (!res.ok) return []
       const json = await res.json()
       return (json.items ?? []) as {
@@ -442,6 +461,9 @@ export function DevicesPage() {
         code: string
         label: string
         parentRef?: string | null
+        deviceType?: string | null
+        brand?: string | null
+        model?: string | null
       }[]
     },
   })
@@ -456,23 +478,34 @@ export function DevicesPage() {
   const affiliations = (masterItems ?? []).filter(
     (m) => m.category === 'Affiliation',
   )
-  // Departments filtered by the selected Affiliation (parentRef = AFF-xxx code).
+  // Departments filtered by the selected Affiliation (parentRef stores the
+  // Affiliation LABEL — not the code — so we match against label).
   const filteredDepartments = form.parentRef
     ? departments.filter((d) => d.parentRef === form.parentRef)
     : departments
 
+  // ── DeviceClassification rows (Type/Brand/Model lookup) ──
+  // Used for the reverse cascade: when the user picks a Model, we can
+  // auto-fill Brand + Type from the matching DeviceClassification row.
+  // Also used to filter brands by type and models by brand.
+  const deviceClassifications = (masterItems ?? []).filter(
+    (m) => m.category === 'DeviceClassification',
+  )
+
   // ── Cascading dropdowns: site → building → floor → location ──
-  // Pulls distinct values from existing devices via /api/itam/devices/cascading
-  // (which requires VIEW_DEVICES permission). Falls back to an empty list if
-  // the call fails so the user can still type a free-form value.
+  // Uses /api/master?type=buildings|floors for buildings/floors (backed by
+  // MasterItem with siteCode matching — works correctly with site CODES
+  // like "UDH"). Location still uses the device-history-based cascading API
+  // because locations aren't master data.
   const { data: buildingOptions } = useQuery<string[]>({
-    queryKey: ['cascading', 'building', form.site],
+    queryKey: ['master', 'buildings', form.site],
     queryFn: async () => {
       try {
-        const j = await authFetch<{ values: string[] }>(
-          `/api/itam/devices/cascading?field=building${form.site ? `&site=${encodeURIComponent(form.site)}` : ''}`,
-        )
-        return j.values ?? []
+        const url = `/api/master?type=buildings${form.site ? `&site=${encodeURIComponent(form.site)}` : ''}`
+        const res = await fetch(url, { headers: authHeaders() })
+        if (!res.ok) return []
+        const j = (await res.json()) as { items?: string[] }
+        return j.items ?? []
       } catch {
         return []
       }
@@ -480,21 +513,18 @@ export function DevicesPage() {
     enabled: dialogOpen && Boolean(form.site),
   })
   const { data: floorOptions } = useQuery<string[]>({
-    queryKey: ['cascading', 'floor', form.site, form.building],
+    queryKey: ['master', 'floors'],
     queryFn: async () => {
       try {
-        const params = new URLSearchParams({ field: 'floor' })
-        if (form.site) params.set('site', form.site)
-        if (form.building) params.set('building', form.building)
-        const j = await authFetch<{ values: string[] }>(
-          `/api/itam/devices/cascading?${params.toString()}`,
-        )
-        return j.values ?? []
+        const res = await fetch('/api/master?type=floors', { headers: authHeaders() })
+        if (!res.ok) return []
+        const j = (await res.json()) as { items?: string[] }
+        return j.items ?? []
       } catch {
         return []
       }
     },
-    enabled: dialogOpen && Boolean(form.building),
+    enabled: dialogOpen,
   })
   const { data: locationOptions } = useQuery<string[]>({
     queryKey: ['cascading', 'location', form.site, form.building, form.floor],
@@ -518,7 +548,34 @@ export function DevicesPage() {
   function openAdd() {
     setForm({ ...EMPTY_FORM })
     setDialogOpen(true)
+    // Auto-generate the next assetCode continuing from the latest integer
+    // (the legacy Apps Script assigned sequential integers 1, 2, 3 …).
+    // Best-effort — if the API call fails, the user can still type a code.
+    void fetchNextAssetCode()
   }
+
+  // ── Auto-generate assetCode (continuing from latest) ──
+  // Calls /api/devices/next-asset-code and fills the field on Add New.
+  // Only auto-fills when the field is empty (CREATE only).
+  const generatingAssetCodeRef = React.useRef(false)
+  const fetchNextAssetCode = React.useCallback(async () => {
+    if (generatingAssetCodeRef.current) return
+    generatingAssetCodeRef.current = true
+    try {
+      const res = await fetch('/api/devices/next-asset-code', { headers: authHeaders() })
+      if (!res.ok) return
+      const j = (await res.json()) as { code?: string | null; next?: number }
+      if (j.code) {
+        setForm((prev) =>
+          prev.assetCode ? prev : { ...prev, assetCode: j.code ?? '' },
+        )
+      }
+    } catch {
+      /* non-fatal — user can still type a code manually */
+    } finally {
+      generatingAssetCodeRef.current = false
+    }
+  }, [])
 
   function openEdit(d: Device) {
     setForm({
@@ -1501,11 +1558,24 @@ export function DevicesPage() {
                       document.getElementById('dev-name')?.focus()
                     }
                   }}
-                  placeholder="IT-PRT-001"
+                  placeholder="ระบบสร้างอัตโนมัติ (เช่น 2379)"
                   autoFocus
-                  className="pl-8"
+                  className="pl-8 font-mono"
                 />
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => void fetchNextAssetCode()}
+                  disabled={Boolean(form.id)}
+                  title="สร้างเลขถัดไปอัตโนมัติ"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-[#f97316] hover:bg-[#f97316]/10 disabled:opacity-40 dark:text-[#fb923c]"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                </button>
               </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                เลขลำดับต่อจากล่าสุด — ระบบค้นหาเลขสูงสุดแล้ว +1 ให้อัตโนมัติ
+              </p>
             </Field>
             <Field label="ชื่ออุปกรณ์ *">
               <Input
@@ -1643,38 +1713,91 @@ export function DevicesPage() {
             <Field label="รุ่น *">
               <Combobox
                 value={form.model}
-                onChange={(v) => setForm({ ...form, model: v })}
-                items={(modelsData ?? []).map((m) => ({ value: m.name, label: m.name }))}
-                placeholder={form.brand ? 'เลือกรุ่นของแบรนด์ที่เลือก' : 'เลือกแบรนด์ก่อน หรือพิมพ์รุ่น'}
-                emptyText={form.brand ? 'ไม่พบรุ่นของแบรนด์นี้' : 'ไม่พบรุ่น'}
+                onChange={(v) => {
+                  // Reverse cascade: when user picks a Model, auto-fill Brand
+                  // + Type from the matching DeviceClassification row.
+                  const match = deviceClassifications.find(
+                    (c) => (c.model ?? '').toLowerCase() === v.toLowerCase(),
+                  )
+                  if (match) {
+                    setForm((prev) => ({
+                      ...prev,
+                      model: v,
+                      brand: match.brand ?? prev.brand,
+                      type: match.deviceType ?? prev.type,
+                    }))
+                  } else {
+                    setForm((prev) => ({ ...prev, model: v }))
+                  }
+                }}
+                items={Array.from(
+                  new Set(
+                    deviceClassifications
+                      .map((c) => c.model)
+                      .filter((m): m is string => Boolean(m)),
+                  ),
+                )
+                  .sort()
+                  .map((m) => ({ value: m, label: m }))}
+                placeholder="เลือกรุ่น — ระบบจะเติมแบรนด์/ประเภทให้อัตโนมัติ"
+                emptyText="ไม่พบรุ่น — พิมพ์เพื่อเพิ่มใหม่"
               />
+              {form.model && (
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                  ✓ เลือกรุ่นแล้ว แบรนด์/ประเภทจะถูกเติมอัตโนมัติ
+                </p>
+              )}
             </Field>
             <Field label="สังกัด (Affiliation)">
               <Combobox
                 value={form.parentRef}
                 onChange={(v) => setForm({ ...form, parentRef: v, department: '' })}
-                items={affiliations.map((a) => ({ value: a.code, label: a.label }))}
-                placeholder="เลือกสังกัด (กรองแผนกตามสังกัด)"
+                items={affiliations.map((a) => ({ value: a.label, label: a.label }))}
+                placeholder="เลือกสังกัด หรือเลือกแผนกก่อน — ระบบจะเติมสังกัดให้"
                 emptyText="ไม่พบสังกัด"
               />
             </Field>
             <Field label="แผนก">
               <Combobox
                 value={form.department}
-                onChange={(v) => setForm({ ...form, department: v })}
+                onChange={(v) => {
+                  // Reverse cascade: when user picks a Department, auto-fill
+                  // the Affiliation (parentRef) from that department's parentRef.
+                  const match = departments.find((d) => d.label === v)
+                  if (match?.parentRef) {
+                    setForm((prev) => ({
+                      ...prev,
+                      department: v,
+                      parentRef: match.parentRef ?? prev.parentRef,
+                    }))
+                  } else {
+                    setForm((prev) => ({ ...prev, department: v }))
+                  }
+                }}
                 items={filteredDepartments.map((d) => ({ value: d.label, label: d.label }))}
-                placeholder={form.parentRef ? 'เลือกแผนกในสังกัดนี้' : 'เลือกหรือพิมพ์แผนก'}
-                emptyText={form.parentRef ? 'ไม่พบแผนกในสังกัดนี้' : 'ไม่พบแผนก'}
+                placeholder={
+                  form.parentRef
+                    ? 'เลือกแผนกในสังกัดนี้'
+                    : 'เลือกแผนก — ระบบจะเติมสังกัดให้อัตโนมัติ'
+                }
+                emptyText={form.parentRef ? 'ไม่พบแผนกในสังกัดนี้' : 'ไม่พบแผนก — พิมพ์เพื่อเพิ่มใหม่'}
               />
             </Field>
             <Field label="กลุ่มอุปกรณ์ (Device Group)">
               <Combobox
                 value={form.deviceGroup}
                 onChange={(v) => setForm({ ...form, deviceGroup: v })}
-                items={deviceGroups.map((g) => ({ value: g.code, label: g.label }))}
-                placeholder="เลือกหรือพิมพ์กลุ่มอุปกรณ์"
+                items={deviceGroups.map((g) => ({
+                  value: g.code,
+                  label: DEVICE_GROUP_THAI[g.code] ?? g.label,
+                }))}
+                displayValue={(v) => DEVICE_GROUP_THAI[v] ?? v}
+                placeholder="เลือกกลุ่มอุปกรณ์ (ค่าเริ่มต้น: ของบริษัท)"
                 emptyText="ไม่พบกลุ่มอุปกรณ์"
               />
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                ค่าเริ่มต้น: ของบริษัท — สามารถเปลี่ยนเป็น เช่า/เช่าซื้อ, ของแผนก, ส่วนบุคคล ได้
+              </p>
             </Field>
             <Field label="รหัสประจำ Site (AssetSiteCode)">
               <div className="flex gap-2">
@@ -1682,7 +1805,7 @@ export function DevicesPage() {
                   id="dev-assetSiteCode"
                   value={form.assetSiteCode}
                   onChange={(e) => setForm({ ...form, assetSiteCode: e.target.value })}
-                  placeholder="เช่น UDH-00001"
+                  placeholder="เลือกสาขาแล้วระบบจะสร้างให้อัตโนมัติ เช่น UDH-02234"
                   className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
                 />
                 <Button
@@ -1699,7 +1822,7 @@ export function DevicesPage() {
                 </Button>
               </div>
               <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                รูปแบบ PREFIX-NNNNN (เช่น UDH-00001) — ระบบจะหาเลขถัดไปให้อัตโนมัติ
+                ✓ เลือกสาขาแล้วระบบจะหาเลขถัดไปให้อัตโนมัติ — รูปแบบ PREFIX-NNNNN (เช่น UDH-02234)
               </p>
             </Field>
             <Field label="รหัสแผนก (DepartmentCode)">

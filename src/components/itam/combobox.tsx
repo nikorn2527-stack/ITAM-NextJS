@@ -67,6 +67,14 @@ export interface ComboboxProps {
   openOnFocus?: boolean
   /** Pass-through for special key handling (e.g. Enter → next field). */
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  /**
+   * Optional display override — when provided, the input shows
+   * `displayValue(value)` instead of the raw value. Useful when the stored
+   * value is an English code (e.g. "COMPANY") but the UI should show a
+   * localized label (e.g. "ของบริษัท"). When the user starts typing, the
+   * display falls back to the raw typed text until they pick an option.
+   */
+  displayValue?: (value: string) => string
 }
 
 export function Combobox({
@@ -84,6 +92,7 @@ export function Combobox({
   className,
   openOnFocus = true,
   onKeyDown,
+  displayValue,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState('')
@@ -103,6 +112,14 @@ export function Combobox({
     )
   }, [items, query])
 
+  // The visible text in the input:
+  //  - If the user is typing (popover open + non-empty query), show the
+  //    raw typed query so they can see what they're searching for.
+  //  - If a displayValue override is provided, show displayValue(value).
+  //  - Otherwise show the raw value (legacy behavior).
+  const visibleValue =
+    open && query ? query : displayValue ? displayValue(value) : value
+
   // Keep the input query in sync with the controlled value so typing in the
   // input both filters the dropdown AND updates the parent's form state.
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -117,7 +134,10 @@ export function Combobox({
 
   function handleBlur() {
     // Delay close so click on a CommandItem has time to fire first.
-    setTimeout(() => setOpen(false), 150)
+    setTimeout(() => {
+      setOpen(false)
+      setQuery('')
+    }, 150)
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -149,7 +169,7 @@ export function Combobox({
               type="text"
               role="combobox"
               aria-expanded={open}
-              value={value}
+              value={visibleValue}
               onChange={handleInputChange}
               onFocus={handleFocus}
               onBlur={handleBlur}
