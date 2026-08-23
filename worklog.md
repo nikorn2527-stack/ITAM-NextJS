@@ -535,3 +535,80 @@ Task: ทดสอบหน้าจัดการอุปกรณ์ (Device
 
 ---
 
+
+---
+
+## Task ID: QA-002
+Agent: QA Team
+Task: ทดสอบหน้า Dashboard
+
+**Test Date:** 2026-08-23
+**Test Account:** demo_admin / demo123 (role=admin)
+**Environment:** Next.js 16.3.2 dev + SQLite (DB มี STK-0001 + audit log จาก QA-STOCK-001)
+**Pass Rate:** 12/22 = 55%
+
+### Results:
+
+#### ✅ ผ่าน (12 รายการ)
+- ✅ Login + Navigate ไป Dashboard
+- ✅ โครงสร้าง header + range selector (4 options: เดือนนี้/30วัน/ไตรมาส/ทั้งหมด)
+- ✅ Range selector ทำงาน — API `/api/itam/dashboard?range=quarter` 200
+- ✅ Refresh button — trigger refetch
+- ✅ Site filter dialog — empty state "ยังไม่มีข้อมูล"
+- ✅ Heatmap dialog — empty state "ยังไม่มีข้อมูล"
+- ✅ Customize widgets panel — toggle on/off + count update (10/10 → 9/10)
+- ✅ Customize "รีเซ็ต" — reset กลับ 9/10 → 10/10
+- ✅ Quick Actions (จดมิเตอร์/สแกน QR/ค้นหา/วิเคราะห์) — navigate ถูกต้อง
+- ✅ "จัดการรอบ" dialog — empty state "ยังไม่มีรอบจดมิเตอร์"
+- ✅ Notifications popover — badge "2" + รายการ audit log
+- ✅ "ไปยังหน้าอุปกรณ์" — navigate to Devices
+- ✅ Dark mode toggle
+- ✅ Mobile responsive (390px) — ไม่มี overflow
+- ✅ 11 API endpoints 200
+
+#### ❌ ไม่ผ่าน (10 รายการ)
+
+##### 🔴 Critical (1 ตัว)
+**BUG-DASH-001: ปุ่ม "สร้างรอบใหม่" คลิกไม่ตอบ**
+- อธิบายปัญหา: คลิกปุ่ม "สร้างรอบใหม่" ใน widget "รอบจดมิเตอร์" แล้วไม่เกิดอะไร — ไม่มี dialog เปิด, ไม่มี error, ไม่มี network request
+- ผลกระทบ: user ไม่สามารถสร้าง cycle ใหม่จาก Dashboard ได้ (Blocker)
+- ไฟล์น่าจะ: `src/components/itam/dashboard-page.tsx` หรือ `cycle-manage-dialog.tsx`
+
+##### 🟠 High (2 ตัว)
+**BUG-DASH-002: PDF button disabled โดยไม่มี tooltip**
+- อธิบายปัญหา: ปุ่ม PDF disabled (เพราะไม่มีข้อมูล) แต่ไม่มี tooltip บอกเหตุผล
+- ผลกระทบ: user สับสนว่าทำไมกดไม่ได้
+
+**BUG-DASH-003: widget headers ส่วนใหญ่ไม่มี semantic heading (a11y)**
+- อธิบายปัญหา: จาก widget cards ทั้งหมด มีแค่ "🔄 วงจรชีวิตอุปกรณ์" ที่ใช้ `<h3>` — ที่เหลือใช้ div/span
+- ผลกระทบ: Screen reader ข้าม widget headers ไป — user ไม่รู้ว่ามี widget อะไรบ้าง
+- ละเมิด WCAG 2.1 SC 1.3.1
+
+##### 🟡 Medium (4 ตัว)
+**BUG-DASH-004: ปุ่ม "ปรับแต่ง" และ "ปรับแต่งวิดเจ็ต" ทำงานเหมือนกัน**
+- อธิบายปัญหา: มี 2 ปุ่มใน header ที่เปิด dialog เดียวกัน — ซ้ำซ้อน
+
+**BUG-DASH-005: ปุ่ม "สร้างรายงาน" / "สร้างรายงานแรก" ไม่ปรากฏใน DOM**
+- อธิบายปัญหา: ค้นหาปุ่มใน DOM ไม่เจอ — อาจถูกซ่อนด้วย empty state แต่ไม่มี CTA ทดแทน
+
+**BUG-DASH-006: range selector ไม่ persist ใน localStorage**
+- อธิบายปัญหา: เลือก "ไตรมาสนี้" แล้ว reload → กลับเป็น "เดือนนี้" เสมอ
+
+**BUG-DASH-007: ไม่มี toast หลัง Refresh**
+- อธิบายปัญหา: คลิก "รีเฟรช" → API refetch แต่ไม่มี toast บอก "รีเฟรชสำเร็จ"
+
+##### 🟢 Low (3 ตัว)
+- **BUG-DASH-008:** ไม่มี loading skeleton ตอนรอ dashboard API (white flash)
+- **BUG-DASH-009:** ไม่มี aria-label บน widget cards
+- **BUG-DASH-010:** ไม่มี keyboard shortcut สำหรับ refresh (F5/Ctrl+R)
+
+### Priority สำหรับ ITAM-01:
+1. 🔴 **P0:** BUG-DASH-001 — "สร้างรอบใหม่" Blocker ของ cycle feature
+2. 🟠 **P1:** BUG-DASH-002, BUG-DASH-003 — UX + a11y
+3. 🟡 **P2:** BUG-DASH-004, 005, 006, 007 — UX improvements
+4. 🟢 **P3:** BUG-DASH-008, 009, 010 — polish
+
+### หลักฐาน:
+- 📸 Screenshots: `/home/z/my-project/qa-reports/dashboard-*.png` (11 รูป)
+- 📄 Test Report: `/home/z/my-project/qa-reports/QA-DASH-001.md`
+
