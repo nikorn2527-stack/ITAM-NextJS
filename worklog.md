@@ -337,3 +337,88 @@ Environment: Next.js 16.3.2 dev + SQLite (DB ว่าง — ไม่มี de
 └── src/components/itam/types.ts       # 🤝 Shared Types Contract
 ```
 
+
+---
+
+## Task ID: QA-STOCK-001
+Agent: QA Tester (web dev review — round 2)
+Task: ทดสอบหน้า "คลังสต็อก" (Stock Page) แบบละเอียด หาบั๊กและช่องโหว่ทั้ง Functional และ UI/UX (ห้ามแก้โค้ด — แค่จับผิด)
+
+Test Account: `demo_admin / demo123` (role=admin, isDemo=true)
+Environment: Next.js 16.3.2 dev + SQLite (DB เริ่มว่าง → สร้าง STK-0001 + ทำ transaction + ลบ)
+
+### Work Log — ลำดับการทดสอบ
+1. Login → Dashboard → Navigate ไปหน้า "คลังสต็อก"
+2. ตรวจ tabs (8 ตัว) + Overview tab empty state
+3. คลิก Inventory tab → ตรวจ filters + table
+4. คลิก "เพิ่มสินค้า" → กรอก form → สร้าง STK-0001 (Toner HP 26A)
+5. ตรวจ form a11y (id, name, aria-label)
+6. ทดสอบ tab navigation (รับเข้า → เบิกออก → รออนุมัติ → ใบสั่งซื้อ → ประวัติ → สรุป → ภาพรวม)
+7. ทดสอบ Stock IN ผ่าน row action button + form validation
+8. ทดสอบ Stock OUT ผ่าน row action button + overdraw validation + valid transaction
+9. ทดสอบ delete + confirm dialog
+10. ทดสอบ mobile responsive (390×844)
+11. ทดสอบ dark mode toggle
+
+### รายงาน Bugs ที่พบ (16 ตัว)
+
+#### 🔴 Critical (Blocker)
+- **BUG-STK-001**: Tabs Navigation พังทั้งหมด — คลิก tab ใดๆ selected ยังเป็น "คลังสินค้า" เสมอ → user เข้าถึง Stock IN/OUT/Pending/PO/History/Summary ผ่าน tab ไม่ได้
+- **BUG-STK-003**: Stock IN form "บันทึก" ไม่ทำงาน — กดแล้วไม่มี validation, ไม่มี POST request (เหมือน BUG-001 ของ Devices page)
+
+#### 🟠 High
+- **BUG-STK-002**: ไม่มี success toast หลัง create/update/delete/transaction (เงียบสนิท)
+- **BUG-STK-005**: Mobile responsive พัง — viewport เปลี่ยนแล้ว layout ไม่ปรับ
+- **BUG-STK-006**: Delete ใช้ native browser `confirm()` แทน shadcn AlertDialog
+
+#### 🟡 Medium
+- **BUG-STK-004**: row action buttons มี `title` แต่ไม่มี `aria-label` (a11y ต่ำ)
+- **BUG-STK-010**: Stock IN form ไม่มี "บันทึกและเพิ่มอีก" สำหรับ bulk entry
+- **BUG-STK-011**: ไม่แสดง "last updated by" ใน row (audit trail missing)
+- **BUG-STK-015**: Stock IN form ไม่มีการเลือก purchase order
+
+#### 🟢 Low (cosmetic)
+- BUG-STK-007: ไม่มี skeleton loader
+- BUG-STK-008: ไม่มี empty state สำหรับ filter dropdowns
+- BUG-STK-009: ไม่มี keyboard shortcut "เพิ่มสินค้า" (Ctrl+N)
+- BUG-STK-012: ไม่มี search filter clear (×) button
+- BUG-STK-013: ตารางไม่มี column visibility toggle
+- BUG-STK-014: "ReorderPoint" header ควรเป็น "จุดสั่งซื้อซ้ำ"
+- BUG-STK-016: row hover ไม่มี highlight
+
+### ✅ สิ่งที่ทำงานได้ดี (8/16 ผ่าน)
+- ✅ Login + Navigate
+- ✅ Tabs 8 ตัวแสดงครบ (visual)
+- ✅ Overview tab empty state
+- ✅ Inventory tab filters + table
+- ✅ Add stock item — POST 201 + table update
+- ✅ Form inputs a11y — ทุก input มี id unique (เก่งกว่า Devices page มาก!)
+- ✅ Stock OUT overdraw validation
+- ✅ Stock OUT valid transaction — POST 201 + table update (10→7)
+- ✅ Delete accept → DELETE 200
+- ✅ Dark mode + Footer alignment
+
+### เปรียบเทียบกับ Devices Page (QA-DEVICES-001)
+- Stock Page มี UX ที่ดีกว่าในด้าน: form a11y + button disabled state + overdraw validation
+- Stock Page มี bug ร้ายแรงกว่าในด้าน: tab navigation (Devices ไม่มี tabs)
+- ทั้งสองหน้า: form submit ของ Stock IN ก็พังเหมือน Devices (น่าจะเป็น pattern เดียวกัน)
+
+### Stage Summary
+- Pass Rate: 8/16 = 50%
+- Critical bugs 2 ตัว (BUG-STK-001, BUG-STK-003) — ต้องแก้ก่อน cutover
+- วิดีโอ: `/home/z/my-project/qa-videos/stock/01-stock-page-qa.webm` (2.6 MB, ~3 นาที)
+- Screenshots: 18 รูปใน `/home/z/my-project/qa-videos/stock/`
+- Test Report: `/home/z/my-project/qa-reports/QA-STOCK-001.md`
+
+### Priority recommendations สำหรับ ITAM-01
+1. 🔴 **P0**: แก้ BUG-STK-001 (Tabs) — เป็น root cause ของการเข้าถึงฟีเจอร์ 6 ตัวไม่ได้
+2. 🔴 **P0**: แก้ BUG-STK-003 (Stock IN form submit) — เหมือน BUG-001 ของ Devices page
+3. 🟠 **P1**: แก้ BUG-STK-005 (Mobile) + BUG-STK-002 (toasts) + BUG-STK-006 (AlertDialog)
+4. 🟡 **P2**: แก้ BUG-STK-004, BUG-STK-010, BUG-STK-011, BUG-STK-015
+5. 🟢 **P3**: แก้ BUG-STK-007, 008, 009, 012, 013, 014, 016 (cosmetic)
+
+### Insights สำหรับ ITAM-01
+- pattern ของ bug "form submit ไม่ทำงาน" เหมือนกันใน Devices + Stock IN → น่าจะเป็น pattern เดียวกัน (ปุ่ม `type="submit"` ไม่ได้อยู่ใน `<form>`)
+- Stock OUT form ทำงานปกติ — แสดงว่ามีบาง form ใช้ pattern ที่ถูกต้อง → ให้ดู Stock OUT form เป็นต้นแบบ
+- Form a11y ของ Stock ดีมาก (มี id ครบ) → ให้ทำแบบเดียวกันใน Devices page ด้วย
+
