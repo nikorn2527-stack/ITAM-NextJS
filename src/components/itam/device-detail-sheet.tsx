@@ -64,6 +64,11 @@ import {
   EyeOff,
   Building2,
   Layers,
+  ScanLine,
+  CheckCircle2,
+  AlertCircle,
+  PackageCheck,
+  PackagePlus,
 } from 'lucide-react'
 import type { Device, MeterReading, DeviceTransfer, Site, Assignment, LicenseRecord } from './types'
 import {
@@ -79,6 +84,8 @@ import {
   CascadingDropdown,
   type CascadingValue,
 } from './cascading-dropdown'
+import { useAppStore } from '@/store/app-store'
+import { parseAssetNo } from '@/lib/asset-qr'
 
 interface Props {
   deviceId: string | null
@@ -282,6 +289,28 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const [actReason, setActReason] = React.useState('')
   const [actionDate, setActionDate] = React.useState(todayISO())
   const [actioning, setActioning] = React.useState(false)
+
+  // ── Replace-on-Withdraw state ──
+  // When the user picks "เครื่องทดแทน" they can either:
+  //   • 'existing' — scan/find a registered device by assetCode/serial
+  //   • 'new'      — create a brand new device record (auto-install)
+  // `actReplacementEnabled` toggles the whole section. When enabled, the
+  // confirmAction() flow calls /replace-on-withdraw instead of /lifecycle.
+  const [actReplacementEnabled, setActReplacementEnabled] = React.useState(false)
+  const [actReplacementMode, setActReplacementMode] = React.useState<'existing' | 'new'>('existing')
+  const [actReplacementAssetCode, setActReplacementAssetCode] = React.useState('')
+  const [actReplacementSerial, setActReplacementSerial] = React.useState('')
+  const [actReplacementName, setActReplacementName] = React.useState('')
+  const [actReplacementBrand, setActReplacementBrand] = React.useState('')
+  const [actReplacementModel, setActReplacementModel] = React.useState('')
+  const [actReplacementType, setActReplacementType] = React.useState('')
+  const [actReplacementLookup, setActReplacementLookup] = React.useState<
+    | { state: 'idle' }
+    | { state: 'searching' }
+    | { state: 'found'; device: { id: string; assetCode: string; name: string; brand?: string | null; model?: string | null; status: string; site: string } }
+    | { state: 'not-found' }
+    | { state: 'error'; message: string }
+  >({ state: 'idle' })
 
   const LICENSE_TYPE_OPTIONS = [
     { value: 'OEM', label: 'OEM' },
@@ -571,8 +600,96 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     setActCustomStatus('')
     setActReason('')
     setActionDate(todayISO())
+    // Reset replacement state — only enabled for withdraw-type actions
+    setActReplacementEnabled(false)
+    setActReplacementMode('existing')
+    setActReplacementAssetCode('')
+    setActReplacementSerial('')
+    setActReplacementName('')
+    setActReplacementBrand(device.brand || '')
+    setActReplacementModel(device.model || '')
+    setActReplacementType(device.type || '')
+    setActReplacementLookup({ state: 'idle' })
     setActionOpen(true)
   }
+
+  // ── Lookup a replacement device by assetCode/serial (debounced) ──
+  // Fires when `actReplacementAssetCode` changes in 'existing' mode. Sets
+  // lookup state to 'found' / 'not-found' / 'error' so the UI can show
+  // inline feedback.
+  React.useEffect(() => {
+    if (!actReplacementEnabled || actReplacementMode !== 'existing') {
+      setActReplacementLookup({ state: 'idle' })
+      return
+    }
+    const q = actReplacementAssetCode.trim()
+    if (!q) {
+      setActReplacementLookup({ state: 'idle' })
+      return
+    }
+    let cancelled = false
+    setActReplacementLookup({ state: 'searching' })
+    const t = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ search: q, limit: '5' })
+        const res = await fetch(`/api/devices?${params.toString()}`)
+        if (!res.ok) {
+          if (!cancelled) setActReplacementLookup({ state: 'error', message: 'HTTP ' + res.status })
+          return
+        }
+        const json = (await res.json()) as { devices?: Array<{ id: string; assetCode: string; name: string; brand?: string | null; model?: string | null; status: string; site: string; serialNumber?: string | null }> }
+        const list = json.devices ?? []
+        // Match: exact assetCode OR exact serialNumber OR startsWith assetCode
+        const match = list.find(
+          (d) => d.assetCode === q
+            || d.serialNumber === q
+            || d.assetCode.startsWith(q),
+        )
+        if (cancelled) return
+        if (match) {
+          setActReplacementLookup({
+            state: 'found',
+            device: {
+              id: match.id,
+              assetCode: match.assetCode,
+              name: match.name,
+              brand: match.brand,
+              model: match.model,
+              status: match.status,
+              site: match.site,
+            },
+          })
+        } else {
+          setActReplacementLookup({ state: 'not-found' })
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setActReplacementLookup({ state: 'error', message: e instanceof Error ? e.message : 'lookup failed' })
+        }
+      }
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [actReplacementEnabled, actReplacementMode, actReplacementAssetCode])
+
+  // Subscribe to global QR scanner results when the replacement section is
+  // open — so a technician can scan a QR/barcode to fill the asset code.
+  const qrScanNonce = useAppStore((s) => s.qrScanNonce)
+  const lastQrScan = useAppStore((s) => s.lastQrScan)
+  React.useEffect(() => {
+    if (qrScanNonce === 0) return
+    if (!actReplacementEnabled) return
+    if (!actionOpen) return
+    if (!lastQrScan) return
+    const parsed = parseAssetNo(lastQrScan)
+    if (parsed) {
+      setActReplacementAssetCode(parsed)
+    } else {
+      setActReplacementAssetCode(lastQrScan)
+    }
+  }, [qrScanNonce, actReplacementEnabled, actionOpen, lastQrScan])
 
   /** Find the action config by id (from the full list, ignoring show filter). */
   function findActionConfig(id: string) {
@@ -646,8 +763,91 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       return
     }
 
+    // ── Replacement-specific validation ──
+    // Only enabled for withdraw-type actions (send_repair / uninstall / dispose / return_device)
+    const isWithdrawAction =
+      actionId === 'send_repair'
+      || actionId === 'uninstall'
+      || actionId === 'dispose'
+      || actionId === 'return_device'
+    if (actReplacementEnabled) {
+      if (!isWithdrawAction) {
+        toast.error('เครื่องทดแทนใช้ได้เฉพาะการถอน/ส่งซ่อน/จำหน่าย/คืนเครื่อง')
+        return
+      }
+      if (!actReplacementAssetCode.trim()) {
+        toast.error('กรุณาระบุรหัสเครื่องทดแทน หรือสแกน QR/บาร์โค้ด')
+        return
+      }
+      if (actReplacementMode === 'existing' && actReplacementLookup.state !== 'found') {
+        toast.error('ไม่พบเครื่องทดแทนในระบบ — หากต้องการสร้างใหม่ ให้เปลี่ยนเป็นโหมด "สร้างใหม่"')
+        return
+      }
+      if (actReplacementMode === 'new' && actReplacementLookup.state === 'found') {
+        toast.error(`รหัส "${actReplacementAssetCode}" มีอยู่แล้ว — ใช้โหมด "ใช้เครื่องที่มี"`)
+        return
+      }
+    }
+
     try {
       setActioning(true)
+
+      // ── Branch: Replace-on-Withdraw (single atomic transaction) ──
+      // When replacement is enabled, we skip the meter-pre-write + lifecycle
+      // flow and call the dedicated /replace-on-withdraw route instead.
+      // The replacement device's meter is not relevant here (it may be new).
+      if (actReplacementEnabled && isWithdrawAction) {
+        const replaceRes = await fetch(`/api/devices/${deviceId}/replace-on-withdraw`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: actionId,
+            toStatus: newStatus ?? cfg.targetStatus ?? device.status,
+            reason: actReason.trim() || null,
+            actionDate,
+            replacement: {
+              mode: actReplacementMode,
+              assetCode: actReplacementAssetCode.trim(),
+              serialNumber: actReplacementSerial.trim() || undefined,
+              name: actReplacementName.trim() || undefined,
+              brand: actReplacementBrand.trim() || undefined,
+              model: actReplacementModel.trim() || undefined,
+              type: actReplacementType.trim() || undefined,
+            },
+          }),
+        })
+        if (!replaceRes.ok) {
+          const j = await replaceRes.json().catch(() => ({}))
+          throw new Error(j.error ?? 'ถอนพร้อมทดแทนไม่สำเร็จ')
+        }
+        const result = (await replaceRes.json()) as {
+          sourceDevice?: { assetCode?: string }
+          replacementDevice?: { assetCode?: string; id?: string }
+          created?: boolean
+        }
+        toast.success(
+          `${cfg.label} เรียบร้อย พร้อมติดตั้งเครื่องทดแทน ${result.replacementDevice?.assetCode ?? actReplacementAssetCode}${result.created ? ' (สร้างใหม่)' : ''}`,
+        )
+        setActionOpen(false)
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ['device-detail', deviceId] }),
+          qc.invalidateQueries({ queryKey: ['device-transfers', deviceId] }),
+          qc.invalidateQueries({ queryKey: ['device-meter', deviceId] }),
+          qc.invalidateQueries({ queryKey: ['devices'] }),
+          qc.invalidateQueries({ queryKey: ['dashboard'] }),
+          qc.invalidateQueries({ queryKey: ['audit'] }),
+        ])
+        // If a new replacement device was created, also open its detail sheet
+        if (result.replacementDevice?.id) {
+          // Best-effort: small delay so toast is visible first
+          setTimeout(() => {
+            useAppStore.getState().setPendingDeviceId(result.replacementDevice!.id)
+          }, 800)
+        }
+        return
+      }
+
+      // ── Default flow: meter pre-write + lifecycle ──
       let meterReadingId: string | null = null
 
       // The compatibility meter API returns the saved row id. Pass it to the
@@ -2523,6 +2723,187 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                   {actionId === 'dispose' && (
                     <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
                       ⚠️ การจำหน่ายเป็นการปิดงานถาวร — หลังจำหน่ายเครื่องจะไม่สามารถใช้งานได้อีก (ยกเว้นติดตั้งใหม่)
+                    </div>
+                  )}
+
+                  {/* ── Replace-on-Withdraw section ──
+                      Only shown for withdraw-type actions (send_repair, uninstall,
+                      dispose, return_device). Lets the user specify a replacement
+                      device that will be installed at the same location in one
+                      atomic transaction — saves doing 2 separate operations. */}
+                  {(actionId === 'send_repair' || actionId === 'uninstall' || actionId === 'dispose' || actionId === 'return_device') && (
+                    <div className="rounded-lg border border-[#f97316]/30 bg-[#f97316]/5 p-3 dark:border-[#fb923c]/30 dark:bg-[#fb923c]/5">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={actReplacementEnabled}
+                          onChange={(e) => setActReplacementEnabled(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-[#f97316] focus:ring-[#f97316] dark:border-slate-600 dark:bg-slate-800"
+                        />
+                        <PackageCheck className="h-4 w-4 text-[#f97316]" />
+                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                          ติดตั้งเครื่องทดแทนในตำแหน่งเดิม
+                        </span>
+                      </label>
+                      <p className="mt-1 pl-6 text-xs text-slate-500 dark:text-slate-400">
+                        ถอนเครื่องนี้ + ติดตั้งเครื่องทดแทนที่ตำแหน่งเดิมในคลิกเดียว — ไม่ต้องเพิ่มเครื่องใหม่แยก
+                      </p>
+
+                      {actReplacementEnabled && (
+                        <div className="mt-3 space-y-3 border-t border-[#f97316]/20 pt-3 dark:border-[#fb923c]/20">
+                          {/* Mode toggle */}
+                          <div className="flex gap-1 rounded-md bg-slate-100 p-1 dark:bg-slate-800">
+                            <button
+                              type="button"
+                              onClick={() => setActReplacementMode('existing')}
+                              className={
+                                'flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1.5 text-xs font-medium transition-colors ' +
+                                (actReplacementMode === 'existing'
+                                  ? 'bg-white text-[#f97316] shadow-sm dark:bg-slate-700 dark:text-[#fb923c]'
+                                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100')
+                              }
+                            >
+                              <PackageCheck className="h-3.5 w-3.5" />
+                              ใช้เครื่องที่มีในระบบ
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setActReplacementMode('new')}
+                              className={
+                                'flex flex-1 items-center justify-center gap-1.5 rounded px-2 py-1.5 text-xs font-medium transition-colors ' +
+                                (actReplacementMode === 'new'
+                                  ? 'bg-white text-[#f97316] shadow-sm dark:bg-slate-700 dark:text-[#fb923c]'
+                                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100')
+                              }
+                            >
+                              <PackagePlus className="h-3.5 w-3.5" />
+                              สร้างเครื่องใหม่
+                            </button>
+                          </div>
+
+                          {/* Asset code input + scan button */}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                              รหัสทรัพย์สินเครื่องทดแทน *
+                            </Label>
+                            <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <Input
+                                  value={actReplacementAssetCode}
+                                  onChange={(e) => setActReplacementAssetCode(e.target.value)}
+                                  placeholder={
+                                    actReplacementMode === 'existing'
+                                      ? 'ค้นหา / สแกนรหัสทรัพย์สิน หรือ Serial No.'
+                                      : 'รหัสทรัพย์สินใหม่ (เช่น 2379)'
+                                  }
+                                  className="pr-9"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => useAppStore.getState().setQrScannerOpen(true)}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#f97316] dark:hover:bg-slate-800"
+                                  title="สแกน QR / บาร์โค้ด"
+                                  aria-label="สแกน QR / บาร์โค้ดเครื่องทดแทน"
+                                >
+                                  <ScanLine className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                            {/* Lookup feedback (existing mode) */}
+                            {actReplacementMode === 'existing' && actReplacementLookup.state !== 'idle' && (
+                              <div className="text-xs">
+                                {actReplacementLookup.state === 'searching' && (
+                                  <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                    กำลังค้นหา...
+                                  </span>
+                                )}
+                                {actReplacementLookup.state === 'found' && (
+                                  <span className="flex items-start gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+                                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                                    <span>
+                                      <strong>{actReplacementLookup.device.assetCode}</strong> — {actReplacementLookup.device.name}
+                                      {actReplacementLookup.device.brand && ` (${actReplacementLookup.device.brand} ${actReplacementLookup.device.model ?? ''})`}
+                                      <br />
+                                      สถานะปัจจุบัน: {actReplacementLookup.device.status} @ {actReplacementLookup.device.site}
+                                    </span>
+                                  </span>
+                                )}
+                                {actReplacementLookup.state === 'not-found' && (
+                                  <span className="flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                                    <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                                    <span>
+                                      ไม่พบในระบบ — หากต้องการสร้างใหม่ ให้เปลี่ยนเป็นโหมด "สร้างเครื่องใหม่"
+                                    </span>
+                                  </span>
+                                )}
+                                {actReplacementLookup.state === 'error' && (
+                                  <span className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+                                    <AlertCircle className="h-3.5 w-3.5" />
+                                    ผิดพลาด: {actReplacementLookup.message}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {/* New mode — show hint */}
+                            {actReplacementMode === 'new' && (
+                              <p className="text-xs text-slate-500 dark:text-slate-400">
+                                ระบบจะสร้างอุปกรณ์ใหม่อัตโนมัติที่ตำแหน่งเดิม — สามารถแก้ไขรายละเอียดเพิ่มเติมได้ภายหลัง
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Extra fields (new mode only) */}
+                          {actReplacementMode === 'new' && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <Label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                  Serial No.
+                                </Label>
+                                <Input
+                                  value={actReplacementSerial}
+                                  onChange={(e) => setActReplacementSerial(e.target.value)}
+                                  placeholder="ไม่บังคับ"
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                  ชื่อเครื่อง
+                                </Label>
+                                <Input
+                                  value={actReplacementName}
+                                  onChange={(e) => setActReplacementName(e.target.value)}
+                                  placeholder={`อุปกรณ์ทดแทน ${device?.assetCode ?? ''}`}
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                  ยี่ห้อ
+                                </Label>
+                                <Input
+                                  value={actReplacementBrand}
+                                  onChange={(e) => setActReplacementBrand(e.target.value)}
+                                  placeholder="สืบทอดจากเครื่องเดิม"
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                  รุ่น
+                                </Label>
+                                <Input
+                                  value={actReplacementModel}
+                                  onChange={(e) => setActReplacementModel(e.target.value)}
+                                  placeholder="สืบทอดจากเครื่องเดิม"
+                                  className="h-8 text-sm"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

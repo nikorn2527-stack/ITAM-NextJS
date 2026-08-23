@@ -34,26 +34,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Camera, ScanLine, Keyboard, X, CheckCircle2, AlertCircle } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
+import { parseAssetNo } from '@/lib/asset-qr'
 
-/** Extract an asset number from arbitrary QR text. */
-function parseAssetNo(raw: string): string | null {
-  const s = raw.trim()
-  if (!s) return null
-  // 1) URL with ?asset= or ?assetNo= or ?id=
-  const urlMatch = s.match(/[?&](?:asset|assetNo|id)=([^&]+)/i)
-  if (urlMatch) return decodeURIComponent(urlMatch[1])
-  // 2) "ITAM:XXX" or "ITAM-XXX" prefix
-  const prefixMatch = s.match(/^ITAM[:\-]\s*(.+)$/i)
-  if (prefixMatch) return prefixMatch[1].trim()
-  // 3) URL path segment /itam/devices/XXX
-  const pathMatch = s.match(/\/(?:devices|asset|itam)\b[^/]*\/([^/?#]+)/i)
-  if (pathMatch) return decodeURIComponent(pathMatch[1])
-  // 4) Plain alphanumeric code — accept if it looks like an asset number
-  //    (digits + letters, 1-30 chars, no spaces).
-  if (/^[A-Za-z0-9\-_]{1,30}$/.test(s)) return s
-  // 5) Fallback — return the whole string trimmed, caller can search
-  return s
-}
+// `parseAssetNo` is now imported from `@/lib/asset-qr` so the same
+// parser is shared with the Replace-on-Withdraw flow and Work Orders
+// field-replacement feature.
 
 type ScanMode = 'camera' | 'manual'
 

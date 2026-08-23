@@ -96,6 +96,7 @@ import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
 import { Combobox } from './combobox'
+import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
@@ -220,6 +221,10 @@ interface FormState {
   costCenter: string
   deviceGroup: string
   remark: string
+  // ── Device Set / Parent-Child (Task ID 9, Phase 2) ──
+  parentDeviceId: string    // "" = no parent (this device is a parent or standalone)
+  setLabel: string          // e.g. "ชุดเครื่องพิมพ์ห้องจ่ายยา"
+  setPosition: string      // "" = unset
   // ── License / Software (NEW) ──
   licenses: LicenseRow[]
 }
@@ -275,6 +280,9 @@ const EMPTY_FORM: FormState = {
   costCenter: '',
   deviceGroup: DEFAULT_DEVICE_GROUP,
   remark: '',
+  parentDeviceId: '',
+  setLabel: '',
+  setPosition: '',
   licenses: [],
 }
 
@@ -935,6 +943,14 @@ export function DevicesPage() {
       costCenter: d.costCenter ?? '',
       deviceGroup: d.deviceGroup ?? '',
       remark: d.remark ?? '',
+      // ── Device Set fields (Task ID 9, Phase 2) ──
+      // Cast through unknown because the legacy `Device` type doesn't
+      // include parentDeviceId/setLabel/setPosition yet (only the DB row does).
+      parentDeviceId: (d as unknown as { parentDeviceId?: string | null }).parentDeviceId ?? '',
+      setLabel: (d as unknown as { setLabel?: string | null }).setLabel ?? '',
+      setPosition: (d as unknown as { setPosition?: number | null }).setPosition != null
+        ? String((d as unknown as { setPosition?: number | null }).setPosition)
+        : '',
       licenses: [],
     })
     setDialogOpen(true)
@@ -1086,6 +1102,10 @@ export function DevicesPage() {
         costCenter: form.costCenter || null,
         deviceGroup: form.deviceGroup || null,
         remark: form.remark || null,
+        // ── Device Set fields (Task ID 9, Phase 2) ──
+        parentDeviceId: form.parentDeviceId || null,
+        setLabel: form.setLabel || null,
+        setPosition: form.setPosition === '' ? null : Number(form.setPosition),
       }
       const isEdit = Boolean(form.id)
       const url = isEdit ? `/api/devices/${form.id}` : '/api/devices'
@@ -1202,6 +1222,134 @@ export function DevicesPage() {
       toast.success(`ส่งออก ${rows.length} รายการแล้ว`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  // ── Custom Export Dialog (Task ID 9, Phase 3) ──
+  // Full list of columns that can be exported — richer than the default
+  // DEVICE_CSV_HEADERS list. Grouped for visual clarity in the picker.
+  const EXPORT_AVAILABLE_COLUMNS: ExportColumn[] = [
+    { key: 'assetCode', label: 'รหัสทรัพย์สิน', group: 'ข้อมูลทั่วไป' },
+    { key: 'assetSiteCode', label: 'ทะเบียน Site', group: 'ข้อมูลทั่วไป' },
+    { key: 'name', label: 'ชื่ออุปกรณ์', group: 'ข้อมูลทั่วไป' },
+    { key: 'type', label: 'ประเภท', group: 'ข้อมูลทั่วไป' },
+    { key: 'brand', label: 'ยี่ห้อ', group: 'ข้อมูลทั่วไป' },
+    { key: 'model', label: 'รุ่น', group: 'ข้อมูลทั่วไป' },
+    { key: 'serialNumber', label: 'Serial No.', group: 'ข้อมูลทั่วไป' },
+    { key: 'status', label: 'สถานะ', group: 'ข้อมูลทั่วไป' },
+    { key: 'site', label: 'สาขา', group: 'ตำแหน่ง' },
+    { key: 'building', label: 'อาคาร', group: 'ตำแหน่ง' },
+    { key: 'floor', label: 'ชั้น', group: 'ตำแหน่ง' },
+    { key: 'room', label: 'ห้อง', group: 'ตำแหน่ง' },
+    { key: 'department', label: 'แผนก', group: 'ตำแหน่ง' },
+    { key: 'departmentCode', label: 'รหัสแผนก', group: 'ตำแหน่ง' },
+    { key: 'location', label: 'ตำแหน่ง/ที่ตั้ง', group: 'ตำแหน่ง' },
+    { key: 'currentAssignee', label: 'ผู้ใช้งานปัจจุบัน', group: 'ผู้ใช้/การเงิน' },
+    { key: 'costCenter', label: 'Cost Center', group: 'ผู้ใช้/การเงิน' },
+    { key: 'deviceGroup', label: 'กลุ่มอุปกรณ์', group: 'ผู้ใช้/การเงิน' },
+    { key: 'purchaseDate', label: 'วันที่รับ', group: 'ผู้ใช้/การเงิน' },
+    { key: 'purchasePrice', label: 'ราคาทุน', group: 'ผู้ใช้/การเงิน' },
+    { key: 'salvageValue', label: 'มูลค่าซาก', group: 'ผู้ใช้/การเงิน' },
+    { key: 'usefulLife', label: 'อายุการใช้งาน (เดือน)', group: 'ผู้ใช้/การเงิน' },
+    { key: 'warrantyMonths', label: 'การรับประกัน (เดือน)', group: 'ผู้ใช้/การเงิน' },
+    { key: 'warrantyEnd', label: 'วันหมดรับประกัน', group: 'ผู้ใช้/การเงิน' },
+    { key: 'vendor', label: 'ผู้จำหน่าย', group: 'ผู้ใช้/การเงิน' },
+    { key: 'contractNo', label: 'เลขที่สัญญา', group: 'ผู้ใช้/การเงิน' },
+    { key: 'meterRequired', label: 'ต้องจดมิเตอร์', group: 'มิเตอร์' },
+    { key: 'meterMode', label: 'โหมดมิเตอร์', group: 'มิเตอร์' },
+    { key: 'lastMeterBw', label: 'มิเตอร์ ขาวดำ', group: 'มิเตอร์' },
+    { key: 'lastMeterColor', label: 'มิเตอร์ สี', group: 'มิเตอร์' },
+    { key: 'lastReadingMonth', label: 'เดือนที่จดล่าสุด', group: 'มิเตอร์' },
+    { key: 'ip', label: 'IP Address', group: 'เครือข่าย' },
+    { key: 'mac', label: 'MAC Address', group: 'เครือข่าย' },
+    { key: 'remoteId', label: 'Remote ID', group: 'เครือข่าย' },
+    { key: 'parentRef', label: 'Parent Ref', group: 'ความสัมพันธ์' },
+    { key: 'parentDeviceId', label: 'อุปกรณ์หลัก (Set)', group: 'ความสัมพันธ์' },
+    { key: 'setLabel', label: 'ชื่อชุด', group: 'ความสัมพันธ์' },
+    { key: 'setPosition', label: 'ลำดับในชุด', group: 'ความสัมพันธ์' },
+    { key: 'displayLabel', label: 'Display Label', group: 'อื่นๆ' },
+    { key: 'uninstallDate', label: 'วันที่ถอน', group: 'อื่นๆ' },
+    { key: 'remark', label: 'หมายเหตุ', group: 'อื่นๆ' },
+    { key: 'updatedBy', label: 'ผู้แก้ไขล่าสุด', group: 'อื่นๆ' },
+    { key: 'updatedAt', label: 'วันที่อัปเดต', group: 'อื่นๆ' },
+  ]
+  const [customExportOpen, setCustomExportOpen] = React.useState(false)
+
+  /** Custom export handler — fetches devices and writes them in the chosen
+   *  format with the user-selected columns (in the chosen order). */
+  async function handleCustomExport(
+    columns: ExportColumn[],
+    format: ExportFormat,
+  ) {
+    try {
+      setExporting(true)
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      if (statusFilter !== 'all') params.set('status', statusFilter)
+      if (siteFilter !== 'all') params.set('site', siteFilter)
+      params.set('limit', '500')
+      const res = await fetch(`/api/devices?${params.toString()}`, {
+        headers: authHeaders(),
+      })
+      if (!res.ok) throw new Error('Failed to fetch devices for export')
+      const json = await res.json()
+      const rows = (json.devices ?? []) as Record<string, unknown>[]
+
+      const headers = columns.map((c) => ({ key: c.key, label: c.label }))
+      const filename = `devices-${dateStamp()}`
+
+      if (format === 'csv') {
+        downloadCsv(`${filename}.csv`, rows, headers)
+      } else if (format === 'xlsx') {
+        // Dynamic import keeps xlsx out of the main bundle — only loaded
+        // when the user actually picks Excel format.
+        const XLSX = await import('xlsx')
+        const data = rows.map((r) => {
+          const obj: Record<string, unknown> = {}
+          for (const h of headers) obj[h.label] = r[h.key] ?? ''
+          return obj
+        })
+        const ws = XLSX.utils.json_to_sheet(data)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Devices')
+        XLSX.writeFile(wb, `${filename}.xlsx`)
+      } else if (format === 'pdf') {
+        // PDF: open a print-friendly window with a table the browser can
+        // print to PDF. Avoids heavy pdf-lib dependency; uses the browser's
+        // native print → Save as PDF.
+        const printWin = window.open('', '_blank', 'width=1024,height=768')
+        if (!printWin) {
+          throw new Error('โปรดอนุญาต popup เพื่อสร้าง PDF')
+        }
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>${filename}</title>
+<style>
+body { font-family: 'Sarabun', 'Helvetica', sans-serif; margin: 16px; font-size: 11px; }
+h1 { font-size: 16px; margin: 0 0 8px; }
+.meta { color: #666; font-size: 10px; margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
+th { background: #f97316; color: white; font-weight: 600; font-size: 10px; }
+tr:nth-child(even) { background: #fafafa; }
+</style></head><body>
+<h1>รายการอุปกรณ์ IT</h1>
+<div class="meta">ส่งออกเมื่อ ${new Date().toLocaleString('th-TH')} — ${rows.length} รายการ, ${columns.length} คอลัมน์</div>
+<table>
+<thead><tr>${headers.map((h) => `<th>${h.label}</th>`).join('')}</tr></thead>
+<tbody>
+${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replace(/</g, '&lt;')}</td>`).join('')}</tr>`).join('')}
+</tbody>
+</table>
+<script>window.onload = () => { window.print(); };</script>
+</body></html>`
+        printWin.document.write(html)
+        printWin.document.close()
+      }
+      toast.success(`ส่งออก ${rows.length} รายการ (${columns.length} คอลัมน์) เป็น ${format.toUpperCase()} แล้ว`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Custom export failed')
+      throw e
     } finally {
       setExporting(false)
     }
@@ -1467,9 +1615,10 @@ export function DevicesPage() {
                 Tab 2: 💻 อุปกรณ์ (สถานะ, Type/Brand/Model, IP/MAC, กลุ่มอุปกรณ์, โหมดมิเตอร์)
                 Tab 3: ⚙️ ขั้นสูง (Remote ID, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ) */}
             <Tabs defaultValue="location" className="w-full">
-              <TabsList className="mb-4 grid w-full grid-cols-3">
+              <TabsList className="mb-4 grid w-full grid-cols-4">
                 <TabsTrigger value="location">📍 สถานที่ติดตั้ง</TabsTrigger>
                 <TabsTrigger value="device">💻 อุปกรณ์</TabsTrigger>
+                <TabsTrigger value="set">📦 ชุดอุปกรณ์</TabsTrigger>
                 <TabsTrigger value="advanced">⚙️ ขั้นสูง</TabsTrigger>
               </TabsList>
 
@@ -1895,7 +2044,82 @@ export function DevicesPage() {
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 3: ⚙️ ขั้นสูง
+                  Tab 3: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
+                  ─────────────────────────────────────────────────────
+                  Lets the user mark this device as belonging to a "set":
+                  • If this is a parent device, leave parent empty — children
+                    will be assigned their own parentDeviceId via this same UI.
+                  • If this is a child device, pick the parent device from
+                    the combobox (search by assetCode or name).
+                  • setLabel = a free-text name for the whole set (shared
+                    across all members — e.g. "ชุดเครื่องพิมพ์ห้องจ่ายยา").
+                  • setPosition = optional ordering inside the set (1, 2, 3…).
+                  ═══════════════════════════════════════════════════════ */}
+              <TabsContent value="set" className="space-y-4">
+                <div className="rounded-lg border border-teal-200 bg-white p-4 shadow-sm dark:border-teal-900/40 dark:bg-slate-900">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+                    📦 ชุดอุปกรณ์ (Device Set)
+                  </div>
+                  <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                    จัดกลุ่มอุปกรณ์หลายชิ้นเป็นชุดเดียวกัน — เช่น เครื่องพิมพ์ + UPS + สายเครือข่าย
+                    เครื่องหลัก (parent) คือเครื่องที่เป็นศูนย์กลางของชุด ส่วนอุปกรณ์อื่นๆ ที่อยู่ในชุด
+                    จะอ้างอิงมาที่เครื่องหลักผ่าน parent
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Field label="อุปกรณ์หลักในชุด (Parent)">
+                      <Input
+                        value={form.parentDeviceId}
+                        onChange={(e) =>
+                          setForm({ ...form, parentDeviceId: e.target.value })
+                        }
+                        placeholder="รหัสอุปกรณ์หลัก (เช่น 2378) — เว้นว่างถ้าเป็นเครื่องหลัก"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                        💡 ใส่รหัสทรัพย์สินของเครื่องหลัก — เครื่องนี้จะกลายเป็น "อุปกรณ์ลูก" ในชุด
+                      </p>
+                    </Field>
+
+                    <Field label="ลำดับในชุด (Set Position)">
+                      <Input
+                        type="number"
+                        min="1"
+                        value={form.setPosition}
+                        onChange={(e) =>
+                          setForm({ ...form, setPosition: e.target.value })
+                        }
+                        placeholder="1, 2, 3, …"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                        ใช้สำหรับจัดเรียงลำดับเครื่องในชุด (ไม่บังคับ)
+                      </p>
+                    </Field>
+
+                    <Field label="ชื่อชุด (Set Label)">
+                      <Input
+                        value={form.setLabel}
+                        onChange={(e) =>
+                          setForm({ ...form, setLabel: e.target.value })
+                        }
+                        placeholder="เช่น ชุดเครื่องพิมพ์ห้องจ่ายยา"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                        ชื่อที่ใช้เรียกชุด — ใส่เหมือนกันทุกเครื่องในชุด
+                      </p>
+                    </Field>
+                  </div>
+
+                  {form.parentDeviceId && (
+                    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                      ⚠️ อุปกรณ์นี้ถูกกำหนดเป็น <strong>อุปกรณ์ลูก</strong> ในชุด —
+                      เมื่อย้ายเครื่องหลัก คุณสามารถเลือกให้อุปกรณ์ลูกตามไปด้วยได้จากหน้ารายละเอียด
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* ═══════════════════════════════════════════════════════
+                  Tab 4: ⚙️ ขั้นสูง
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="advanced" className="space-y-4">
                 {/* ── License / Software ── */}
@@ -2498,13 +2722,13 @@ export function DevicesPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={exportCsv}
+                onClick={() => setCustomExportOpen(true)}
                 disabled={exporting}
-                aria-label={exporting ? 'กำลังส่งออก' : 'ส่งออก CSV'}
+                aria-label={exporting ? 'กำลังส่งออก' : 'ส่งออกข้อมูล'}
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">{exporting ? 'กำลังส่งออก...' : 'ส่งออก CSV'}</span>
+                <span className="hidden sm:inline">{exporting ? 'กำลังส่งออก...' : 'ส่งออก'}</span>
               </Button>
               <Button
                 variant="outline"
@@ -3104,6 +3328,17 @@ export function DevicesPage() {
 
       {/* CSV Import */}
       <CsvImportDialog open={importOpen} onOpenChange={setImportOpen} />
+
+      {/* Custom Export — column picker + reorder + format selector (CSV/Excel/PDF) */}
+      <CustomExportDialog
+        open={customExportOpen}
+        onOpenChange={setCustomExportOpen}
+        availableColumns={EXPORT_AVAILABLE_COLUMNS}
+        onExport={handleCustomExport}
+        storageKey="itam-devices-export-cols"
+        defaultSelectedKeys={DEVICE_CSV_HEADERS.map((h) => h.key)}
+        totalRows={totalCount}
+      />
 
       {/* Sticker print */}
       <StickerPrintDialog
