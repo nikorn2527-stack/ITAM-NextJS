@@ -10366,3 +10366,69 @@ Stage Summary:
 
 Production URL: https://itam-next-js.vercel.app
 Commit: 6313b02 fix(wo): move buildAuthorizationContext inside try block + log actual error
+
+---
+Task ID: AUDIT-REPORT-FIXES
+Agent: orchestrator (main) — แก้ตามรายงาน audit 2 ฉบับ
+
+Work Log:
+
+**รายงานที่ 1: จุดที่ต้องแก้ไขก่อน Cutover**
+- P0-2: ✅ ตรวจ + แก้ DATABASE_URL บน Vercel → pooler.supabase.com:6543 + pgbouncer=true
+- P0-1: ⚠️ Atomicity meter + transfer/lifecycle — documented (ยังไม่ได้แก้เป็น $transaction เดียว)
+- P0-3: ⏳ Parallel-verify ตัวเลขมิเตอร์ 1 รอบเดือนเต็ม — ต้องทำ staging test
+- P0-4: ✅ Commit UI มิเตอร์ (7bd51d8) — cherry-picked เข้า main แล้ว
+
+**รายงานที่ 2: Final Comprehensive Audit Report**
+
+Phase 1 — Before Data Import (CRITICAL):
+- ✅ C02: asset_site_code → assetSiteCode (was displayLabel)
+- ✅ C03: contract_no → contractNo (was vendor)
+- ✅ C04: uninstall_date → uninstallDate (was warrantyEnd)
+- ✅ H07: install_date → installDate (was purchaseDate)
+- ✅ H01: Apply STATUS_MAPPINGS.workOrder in legacy-bridge.ts
+- ✅ H03: CSV import upsert — update existing instead of skip
+
+Phase 2 — Before Go-Live (CRITICAL + HIGH):
+- ✅ C01: Add INITIAL MeterReading on device creation
+- ✅ H04: Transfer same-location check
+- ✅ H06: Cancel cascade to stock (reject pending stock requests)
+- ✅ H08: Master data auto-sync on device update
+
+Phase 3 — Post Go-Live:
+- ⏳ H02: Verify stock integration
+- ⏳ H05: Edit lock grace period
+- ⏳ M01-M07: Medium gaps
+
+Production verification (commit 5f26812, READY):
+- Dashboard: ✅ total=2378
+- Devices list: ✅ 3 devices
+- Device detail: ✅ (was broken before — now works)
+- Work Orders: ✅ 20 WOs
+- Search: ✅ (was broken before — now works)
+- Cost analytics: ❌ (still failing — needs investigation)
+- Master items: ✅ 461 items
+- Meter readings: ✅
+- Stock: ✅ 60 items
+- Audit logs: ✅
+- Notifications: ✅
+- Roles: ✅ 5 roles
+- Site grants: ✅ 6 grants
+- Repair taxonomy: ✅ 14 groups + 24 problems + 18 resolutions
+
+Files modified (8):
+- src/lib/csv-field-mapping.ts — 4 CSV field mapping fixes
+- src/app/api/work-orders/route.ts — import STATUS_MAPPINGS
+- src/lib/legacy-bridge.ts — apply STATUS_MAPPINGS.workOrder
+- src/app/api/import/route.ts — upsert logic (update existing + insert new)
+- src/app/api/devices/route.ts — INITIAL MeterReading on creation
+- src/app/api/itam/devices/[id]/transfer/route.ts — same-location check
+- src/app/api/work-orders/[id]/cancel/route.ts — cascade cancel to stock
+- src/app/api/devices/[id]/route.ts — master data auto-sync
+
+Remaining gaps:
+- P0-1: Atomicity meter + transfer/lifecycle (merge into single $transaction)
+- P0-3: Parallel-verify meter numbers 1 full month
+- H02: Verify stock external sync from Services
+- H05: Edit lock grace period
+- Cost analytics API still erroring (needs investigation)
