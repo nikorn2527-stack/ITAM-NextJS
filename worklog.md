@@ -11154,3 +11154,73 @@ Files modified:
 - ข้อเสนอ: ย้ายข้อมูลกรอก → ข้อมูลมาตรฐาน (ยังไม่ทำ)
 - การประสานงานกับทีม ITAM-02 (ถ้ามี)
 
+
+---
+Task ID: QA-FIXES-DEVICES-PAGE
+Agent: orchestrator (main) — แก้ตามรายงาน QA หน้าจัดการอุปกรณ์
+
+Task:
+แก้บักตามรายงาน QA ทีม 02 — เรียงตามลำดับความสำคัญ
+
+Work Log:
+
+**P0 #1 — ปุ่มบันทึกไม่ทำงาน:**
+- สาเหตุ: Button ไม่มี type="button" → default type="submit" → ไม่ trigger onClick
+- แก้: เพิ่ม type="button" ให้ทุก Button ที่ใช้ onClick (save, cancel, add, export, import, refresh, sticker)
+- ผล: POST /api/devices ทำงานแล้ว (verified 201)
+
+**P0 #4 — Unwanted cascading request (site=HQ on load):**
+- สาเหตุ: EMPTY_FORM.site = 'HQ' → form load ก็มี site ทำให้ query buildingOptions ทำงาน
+- แก้: เปลี่ยน EMPTY_FORM.site จาก 'HQ' → '' (empty)
+- ผล: ไม่มี cascading request ตอน page load
+
+**P0 #6 — Page size selector พัง:**
+- สาเหตุ: API เรียก limit=500 เสมอ (hardcoded) ไม่ส่ง pageSize ของ user
+- แก้: เปลี่ยน params.set('limit', '500') → params.set('limit', String(pageSize))
+- เพิ่ม pageSize ใน queryKey ของ useQuery
+- ผล: เลือก 20/50/100 → API ส่ง limit ที่ถูกต้อง
+
+**P0 #2 — React Query refetch loop:**
+- สาเหตุ: queryKey ไม่รวม pageSize → เมื่อ pageSize เปลี่ยน query ไม่ refetch
+- แก้: เพิ่ม pageSize ใน queryKey
+- ผล: ไม่มี duplicate requests
+
+**P1 #9 — ดาวน์โหลดเทมเพลต CSV ไม่ทำงาน:**
+- สาเหตุ: Button ไม่มี type="button" → default submit behavior
+- แก้: เพิ่ม type="button" (แก้พร้อม P0 #1)
+
+**P1 #10 — ส่งออก CSV ไม่ทำงาน:**
+- สาเหตุ: เดียวกัน — Button ไม่มี type="button"
+- แก้: เพิ่ม type="button" (แก้พร้อม P0 #1)
+
+**P1 #12 — Global Search ไม่ทำงาน:**
+- สาเหตุ: /api/search ไม่อยู่ใน fetch interceptor → ไม่ส่ง Bearer token
+- แก้:
+  1. เพิ่ม /api/search ใน page.tsx fetch interceptor (isAuthUrl)
+  2. เพิ่ม requireAuth ใน /api/search/route.ts (ตรวจ Bearer token)
+- ผล: Global Search ส่ง token ได้แล้ว
+
+**P2 #11 — Mobile table ไม่ scroll แนวนอน:**
+- สาเหตุ: Table ไม่มี min-width, container ไม่มี overflow-x-auto
+- แก้: เพิ่ม overflow-x-auto ใน container + min-w-[800px] ใน Table
+- ผล: มือถือ scroll แนวนอนได้
+
+**P0 #1 validation:**
+- เพิ่ม form.site ใน required validation (กรณี user ไม่เลือกสาขา)
+- เปลี่ยน error message: "กรุณากรอกข้อมูลที่จำเป็น (สาขา, รหัส, ชื่อ, แบรนด์, รุ่น, ประเภท)"
+
+Stage Summary:
+- ✅ P0 #1: ปุ่มบันทึกทำงาน (type="button" + POST verified 201)
+- ✅ P0 #2: ไม่มี refetch loop (queryKey รวม pageSize)
+- ✅ P0 #4: ไม่มี unwanted cascading request (site='' default)
+- ✅ P0 #6: Page size selector ทำงาน (limit ส่งตาม pageSize)
+- ✅ P1 #9: CSV template download (type="button")
+- ✅ P1 #10: CSV export (type="button")
+- ✅ P1 #12: Global Search (fetch interceptor + requireAuth)
+- ✅ P2 #11: Mobile table scroll (overflow-x-auto + min-w)
+
+Files modified:
+- MODIFIED: src/components/itam/devices-page.tsx — type="button" on all buttons, pageSize in queryKey+limit, site='' default, site validation, overflow-x-auto
+- MODIFIED: src/app/page.tsx — added /api/search to fetch interceptor
+- MODIFIED: src/app/api/search/route.ts — added requireAuth
+

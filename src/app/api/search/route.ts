@@ -52,6 +52,11 @@ const EMPTY: SearchResults = {
 
 export async function GET(req: NextRequest) {
   try {
+    // Require authentication — previously this endpoint was public.
+    const authHeader = req.headers.get('authorization') || req.headers.get('Authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     const q = (new URL(req.url).searchParams.get('q') ?? '').trim()
     if (q.length < 2) {
       return NextResponse.json({ results: EMPTY, total: 0 })

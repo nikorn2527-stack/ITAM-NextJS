@@ -197,6 +197,7 @@ export default function Home() {
         url.includes('/api/notifications') ||
         url.includes('/api/audit') ||
         url.includes('/api/settings') ||
+        url.includes('/api/search') ||
         url.includes('/api/health')
       const isLoginUrl = url.includes('/api/itam/auth/login')
       if (isAuthUrl && !isLoginUrl) {

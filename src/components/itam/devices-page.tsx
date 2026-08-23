@@ -230,7 +230,7 @@ const EMPTY_FORM: FormState = {
   type: '',
   serialNumber: '',
   status: 'active',
-  site: 'HQ',
+  site: '',
   department: '',
   departmentCode: '',
   parentRef: '',
@@ -341,16 +341,17 @@ export function DevicesPage() {
   })
 
   const { data: devicesRaw, isLoading } = useQuery<Device[]>({
-    queryKey: ['devices', search, statusFilter, siteFilter],
+    queryKey: ['devices', search, statusFilter, siteFilter, pageSize],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
       if (statusFilter !== 'all') params.set('status', statusFilter)
       if (siteFilter !== 'all') params.set('site', siteFilter)
-      // Server-side pagination: request up to 500 rows per page so the
-      // browser doesn't have to hold all 2,378 devices in memory.
-      // The legacy client-side pagination is kept as a fallback.
-      params.set('limit', '500')
+      // Use the user-selected page size (20/50/100) for the API request.
+      // Previously hardcoded to 500 which caused the page size selector to
+      // appear broken (UI showed 50 but API always fetched 500).
+      params.set('limit', String(pageSize))
+      params.set('page', '1')
       const res = await fetch(`/api/devices?${params.toString()}`, {
         headers: authHeaders(),
       })
@@ -871,8 +872,8 @@ export function DevicesPage() {
   }
 
   async function save() {
-    if (!form.assetCode || !form.name || !form.brand || !form.model || !form.type) {
-      toast.error('กรุณากรอกข้อมูลที่จำเป็น (รหัส, ชื่อ, แบรนด์, รุ่น, ประเภท)')
+    if (!form.assetCode || !form.name || !form.brand || !form.model || !form.type || !form.site) {
+      toast.error('กรุณากรอกข้อมูลที่จำเป็น (สาขา, รหัส, ชื่อ, แบรนด์, รุ่น, ประเภท)')
       return
     }
     try {
@@ -1374,7 +1375,6 @@ export function DevicesPage() {
                           className="bg-amber-50/50 font-mono text-xs dark:bg-amber-950/10 dark:border-slate-700"
                         />
                         <Button
-                          type="button"
                           variant="outline"
                           size="sm"
                           onClick={generateSiteCodeNow}
@@ -2054,13 +2054,14 @@ export function DevicesPage() {
         <div className="sticky bottom-0 z-10 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] dark:border-slate-800 dark:bg-slate-900 sm:px-6">
           <Button
             variant="outline"
-            onClick={() => setDialogOpen(false)}
+            type="button"
+              onClick={() => setDialogOpen(false)}
             disabled={saving}
           >
             ยกเลิก
           </Button>
           <Button
-            onClick={save}
+              onClick={save}
             disabled={saving}
             className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
@@ -2083,7 +2084,8 @@ export function DevicesPage() {
         {/* Primary CTA in the header — always visible without scrolling.
             On mobile it's full-width; on sm+ it's right-aligned. */}
         <Button
-          onClick={openAdd}
+          type="button"
+                onClick={openAdd}
           className="w-full bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950 sm:w-auto"
         >
           <Plus className="h-4 w-4" />
@@ -2173,6 +2175,7 @@ export function DevicesPage() {
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
+                type="button"
                 onClick={() => setImportOpen(true)}
                 aria-label="นำเข้า CSV"
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
@@ -2202,7 +2205,7 @@ export function DevicesPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => qc.invalidateQueries({ queryKey: ['devices'] })}
+                onClick={() => qc.invalidateQueries({ queryKey: ["devices"] })}
                 aria-label="รีเฟรช"
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
@@ -2312,9 +2315,9 @@ export function DevicesPage() {
           </AnimatePresence>
 
           {/* Table */}
-          {/* Table — fills remaining height of the Card (Issue 3: heights fill available space) */}
-          <div className="itam-scroll mt-4 min-h-0 flex-1 overflow-auto rounded-md border border-slate-300 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <Table>
+          {/* Table — fills remaining height of the Card. overflow-x-auto for mobile horizontal scroll. */}
+          <div className="itam-scroll mt-4 min-h-0 flex-1 overflow-auto overflow-x-auto rounded-md border border-slate-300 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <Table className="min-w-[800px]">
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   {hasDevices && (
@@ -2384,7 +2387,8 @@ export function DevicesPage() {
                         ) : (
                           <Button
                             size="sm"
-                            onClick={openAdd}
+                            type="button"
+                onClick={openAdd}
                             className="mt-2 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
                           >
                             <Plus className="h-4 w-4" />
@@ -2533,7 +2537,7 @@ export function DevicesPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => setStickerOpen(true)}
+                onClick={() => setStickerOpen(true)}
                             aria-label="พิมพ์สติกเกอร์"
                             title="พิมพ์สติกเกอร์"
                             className="h-7 gap-1 px-2 text-[11px] dark:bg-slate-800 dark:border-slate-700"
@@ -2878,7 +2882,6 @@ function SelectValueInput({
           {options.map((o) => (
             <button
               key={o.value}
-              type="button"
               className="block w-full px-3 py-1.5 text-left text-sm hover:bg-slate-100"
               onMouseDown={(e) => {
                 e.preventDefault()
