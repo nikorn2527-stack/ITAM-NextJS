@@ -146,18 +146,26 @@ export async function GET(req: NextRequest) {
         select: {
           ...selectFields,
           // Latest meter reading is a derived field — keep as relation subquery
-          // but only select the fields needed for `lastReadingMonth`.
           meterReadings: {
             orderBy: { readingDate: 'desc' },
             take: 1,
-            select: { readingMonth: true, readingDate: true },
+            select: {
+              readingMonth: true,
+              readingDate: true,
+              meterBw: true,
+              meterColor: true,
+              pagesBw: true,
+              pagesColor: true,
+            },
           },
         },
       }),
       db.device.count({ where }),
     ])
-    // Annotate each device with `lastReadingMonth` derived from its latest
-    // MeterReading record (matches Apps Script's `lastReadingMonth` column).
+    // Annotate each device with `lastReadingMonth` + `lastMeterBw` + `lastMeterColor`
+    // derived from its latest MeterReading record. The Device table has
+    // lastMeterBw/lastMeterColor columns but they may not be kept in sync —
+    // so we derive from the latest MeterReading for accuracy.
     const devicesWithMeter = devices.map((d) => {
       const latest = d.meterReadings?.[0]
       const { meterReadings, ...rest } = d
@@ -165,6 +173,8 @@ export async function GET(req: NextRequest) {
         ...rest,
         lastReadingMonth:
           latest?.readingMonth ?? latest?.readingDate?.slice(0, 7) ?? null,
+        lastMeterBw: latest?.meterBw ?? rest.lastMeterBw ?? 0,
+        lastMeterColor: latest?.meterColor ?? rest.lastMeterColor ?? 0,
       }
     })
     return NextResponse.json({

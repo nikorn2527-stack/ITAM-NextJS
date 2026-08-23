@@ -11012,3 +11012,54 @@ Files modified:
 - MODIFIED: src/components/itam/combobox.tsx — onPointerDown preventDefault on PopoverContent
 - MODIFIED: src/components/itam/devices-page.tsx — nameManuallyEditedRef + auto-gen useEffect + name field UI
 
+
+---
+Task ID: FIX-LIST-VIEW-3-ISSUES
+Agent: orchestrator (main) — แก้ Serial/Meter/History ในหน้า list view
+
+Task:
+1. Serial No. ไม่แสดงเลขเครื่อง
+2. มิเตอร์ล่าสุด ไม่แสดงเลข
+3. ประวัติ ดูไม่ได้
+
+Work Log:
+
+**1. Serial No. ไม่แสดง:**
+- สาเหตุ: DEVICE_LIST_FIELDS ไม่ include serialNumber (ถูก exclude เป็น sensitive field)
+- แก้: เพิ่ม serialNumber: true ใน DEVICE_LIST_FIELDS
+- ลบ 'serialNumber' ออกจาก DEVICE_LIST_EXCLUDED_FIELDS
+- ผล: list view ส่ง serialNumber กลับมา → column แสดงเลข (เช่น E81695B6N896795)
+
+**2. มิเตอร์ล่าสุด ไม่แสดงเลข:**
+- สาเหตุ: Device.lastMeterBw/lastMeterColor columns ใน DB = 0 ทุกอุปกรณ์ (ไม่ได้ sync)
+- API ส่งค่าจาก Device table ตรงๆ → แสดง 0
+- แก้: ใน GET /api/devices route ให้ derive lastMeterBw/lastMeterColor จาก latest MeterReading
+  - select meterBw, meterColor, pagesBw, pagesColor ใน subquery
+  - map: lastMeterBw = latest?.meterBw ?? rest.lastMeterBw ?? 0
+- ผล: แสดงเลขมิเตอร์จริง (เช่น 2377 → meterBw=1, readingMonth=2026-07)
+
+**3. ประวัติดูไม่ได้:**
+- สาเหตุ 1: DialogContent ไม่มี DialogTitle (Radix accessibility error)
+  - ตอน deviceLoading มีแค่ Skeleton ไม่มี SheetTitle
+  - แก้: เพิ่ม SheetTitle sr-only (visually hidden) ก่อน conditional render
+- สาเหตุ 2: device.lastMeterReading undefined (field ไม่มีใน detail API response)
+  - Error: "Cannot read properties of undefined (reading 'toLocaleString')"
+  - แก้: ใช้ (device.lastMeterBw ?? device.lastMeterReading ?? 0).toLocaleString()
+  - เพิ่ม lastMeterColor badge แสดงผลรวมสี
+- ผล: คลิก row → detail sheet เปิด + แสดงข้อมูลครบ
+
+Stage Summary:
+- ✅ Serial No. แสดงใน list view
+- ✅ มิเตอร์ล่าสุดแสดงเลขจริง (derive from MeterReading)
+- ✅ ประวัติ (detail sheet) เปิดได้ + แสดงมิเตอร์ล่าสุด
+
+Production verification (agent-browser):
+- Row 2378: Serial "E81695B6N896795" ✓
+- Row 2377: meter "1" + month "กรกฎาคม 2569" ✓
+- Click row 2377 → detail sheet opens, hasHistory=true, hasDevice=true ✓
+
+Files modified:
+- MODIFIED: src/lib/devices-bounded-list.ts — added serialNumber to DEVICE_LIST_FIELDS, removed from EXCLUDED
+- MODIFIED: src/app/api/devices/route.ts — derive lastMeterBw/Color from latest MeterReading
+- MODIFIED: src/components/itam/device-detail-sheet.tsx — SheetTitle sr-only + fix lastMeterReading undefined
+
