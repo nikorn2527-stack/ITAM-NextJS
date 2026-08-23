@@ -176,11 +176,37 @@ export default function Home() {
     }
     const patchedFetch: typeof window.fetch = (input, init) => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : (input as Request).url)
-      if ((url.includes('/api/itam/') || url.includes('/api/v1/') || url.includes('/api/work-orders') || url.includes('/api/devices') || url.includes('/api/stock-items') || url.includes('/api/dashboard') || url.includes('/api/sync/preview')) && !url.includes('/api/itam/auth/login')) {
+      // ── Match any authenticated ITAM API call ──
+      // Includes /api/master, /api/sites, /api/meter, /api/cycles,
+      // /api/reports, /api/notifications, /api/audit, /api/settings
+      // so that legacy `fetch()` calls without explicit authHeaders() also
+      // get the Bearer token attached.
+      const isAuthUrl =
+        url.includes('/api/itam/') ||
+        url.includes('/api/v1/') ||
+        url.includes('/api/work-orders') ||
+        url.includes('/api/devices') ||
+        url.includes('/api/stock-items') ||
+        url.includes('/api/dashboard') ||
+        url.includes('/api/sync/preview') ||
+        url.includes('/api/master') ||
+        url.includes('/api/sites') ||
+        url.includes('/api/meter') ||
+        url.includes('/api/cycles') ||
+        url.includes('/api/reports') ||
+        url.includes('/api/notifications') ||
+        url.includes('/api/audit') ||
+        url.includes('/api/settings') ||
+        url.includes('/api/health')
+      const isLoginUrl = url.includes('/api/itam/auth/login')
+      if (isAuthUrl && !isLoginUrl) {
         const token = useAuthStore.getState().token
         if (token) {
           const headers = new Headers(init?.headers || {})
-          headers.set('Authorization', `Bearer ${token}`)
+          // Only add Authorization if not already present (avoid double-setting)
+          if (!headers.has('Authorization')) {
+            headers.set('Authorization', `Bearer ${token}`)
+          }
           if (!headers.has('Content-Type') && init?.body && typeof init.body === 'string') {
             headers.set('Content-Type', 'application/json')
           }
