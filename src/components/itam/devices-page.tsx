@@ -1490,6 +1490,7 @@ export function DevicesPage() {
                       </Field>
                       <Field label="ห้อง (Room)">
                         <Input
+                        id="dev-room"
                           value={form.room}
                           onChange={(e) =>
                             setForm({ ...form, room: e.target.value })
@@ -1630,6 +1631,7 @@ export function DevicesPage() {
                     </Field>
                     <Field label="Remote ID (TeamViewer / AnyDesk)">
                       <Input
+                        id="dev-remoteId"
                         value={form.remoteId}
                         onChange={(e) =>
                           setForm({ ...form, remoteId: e.target.value })
@@ -1880,6 +1882,7 @@ export function DevicesPage() {
                   <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
                     <Field label="ผู้ขาย (Vendor)">
                       <Input
+                        id="dev-vendor"
                         value={form.vendor}
                         onChange={(e) =>
                           setForm({ ...form, vendor: e.target.value })
@@ -1889,6 +1892,7 @@ export function DevicesPage() {
                     </Field>
                     <Field label="เลขที่สัญญา (Contract No)">
                       <Input
+                        id="dev-contractNo"
                         value={form.contractNo}
                         onChange={(e) =>
                           setForm({ ...form, contractNo: e.target.value })
@@ -1899,6 +1903,7 @@ export function DevicesPage() {
                     <Field label="วันที่ซื้อ">
                       <Input
                         type="date"
+                        id="dev-purchaseDate"
                         value={form.purchaseDate}
                         onChange={(e) =>
                           setForm({ ...form, purchaseDate: e.target.value })
@@ -1911,6 +1916,7 @@ export function DevicesPage() {
                         min={1}
                         max={120}
                         step={1}
+                        id="dev-warrantyMonths"
                         value={form.warrantyMonths}
                         onChange={(e) =>
                           setForm({ ...form, warrantyMonths: e.target.value })
@@ -1921,6 +1927,7 @@ export function DevicesPage() {
                     <Field label="วันหมดประกัน">
                       <Input
                         type="date"
+                        id="dev-warrantyEnd"
                         value={form.warrantyEnd}
                         onChange={(e) =>
                           setForm({ ...form, warrantyEnd: e.target.value })
@@ -1930,6 +1937,7 @@ export function DevicesPage() {
                     <Field label="วันที่ถอดถอน">
                       <Input
                         type="date"
+                        id="dev-uninstallDate"
                         value={form.uninstallDate}
                         onChange={(e) =>
                           setForm({ ...form, uninstallDate: e.target.value })
@@ -1950,6 +1958,7 @@ export function DevicesPage() {
                         type="number"
                         min={0}
                         step="0.01"
+                        id="dev-purchasePrice"
                         value={form.purchasePrice}
                         onChange={(e) =>
                           setForm({ ...form, purchasePrice: e.target.value })
@@ -1962,6 +1971,7 @@ export function DevicesPage() {
                         type="number"
                         min={0}
                         step="0.01"
+                        id="dev-salvageValue"
                         value={form.salvageValue}
                         onChange={(e) =>
                           setForm({ ...form, salvageValue: e.target.value })
@@ -1975,6 +1985,7 @@ export function DevicesPage() {
                         min={1}
                         max={240}
                         step={1}
+                        id="dev-usefulLife"
                         value={form.usefulLife}
                         onChange={(e) =>
                           setForm({ ...form, usefulLife: e.target.value })
@@ -1997,6 +2008,7 @@ export function DevicesPage() {
                   <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
                     <Field label="ศูนย์ต้นทุน (Cost Center)">
                       <Input
+                        id="dev-costCenter"
                         value={form.costCenter}
                         onChange={(e) =>
                           setForm({ ...form, costCenter: e.target.value })
@@ -2006,6 +2018,7 @@ export function DevicesPage() {
                     </Field>
                     <Field label="รหัสแผนก (DepartmentCode)">
                       <Input
+                        id="dev-departmentCode"
                         value={form.departmentCode}
                         onChange={(e) =>
                           setForm({ ...form, departmentCode: e.target.value })
@@ -2015,6 +2028,7 @@ export function DevicesPage() {
                     </Field>
                     <Field label="ParentRef" hint="ใช้สำหรับ grouping แบบเดิม เช่น HP|PRINTER">
                       <Input
+                        id="dev-parentRef"
                         value={form.parentRef}
                         onChange={(e) =>
                           setForm({ ...form, parentRef: e.target.value })
@@ -2024,6 +2038,7 @@ export function DevicesPage() {
                     </Field>
                     <Field label="DisplayLabel" hint="ป้ายแสดงผลที่กำหนดเอง">
                       <Input
+                        id="dev-displayLabel"
                         value={form.displayLabel}
                         onChange={(e) =>
                           setForm({ ...form, displayLabel: e.target.value })
@@ -2033,6 +2048,7 @@ export function DevicesPage() {
                     </Field>
                     <Field label="หมายเหตุ (Remark)">
                       <Input
+                        id="dev-remark"
                         value={form.remark}
                         onChange={(e) =>
                           setForm({ ...form, remark: e.target.value })
@@ -2140,6 +2156,11 @@ export function DevicesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">สาขาทั้งหมด</SelectItem>
+                  {(visibleSites ?? []).length === 0 && (
+                    <SelectItem value="__none__" disabled>
+                      — ยังไม่มีสาขาที่เข้าถึงได้ —
+                    </SelectItem>
+                  )}
                   {(visibleSites ?? []).map((s) => (
                     <SelectItem key={s.code} value={s.code}>
                       {s.code} — {s.name}

@@ -11224,3 +11224,45 @@ Files modified:
 - MODIFIED: src/app/page.tsx — added /api/search to fetch interceptor
 - MODIFIED: src/app/api/search/route.ts — added requireAuth
 
+
+---
+Task ID: QA-FIXES-P2-P3
+Agent: orchestrator (main) — แก้ P2-P3 ตามรายงาน QA
+
+Work Log:
+
+**P2 #3 — Form inputs ไม่มี id/name:**
+- เดิม: มีแค่ 7 inputs ที่มี id (dev-assetCode, dev-name, ฯลฯ)
+- แก้: เพิ่ม id ให้ครบทุก input ในฟอร์ม (16 เพิ่ม → รวม 23 id)
+  - dev-remoteId, dev-room, dev-vendor, dev-contractNo
+  - dev-purchaseDate, dev-warrantyMonths, dev-warrantyEnd, dev-uninstallDate
+  - dev-purchasePrice, dev-salvageValue, dev-usefulLife
+  - dev-costCenter, dev-departmentCode, dev-parentRef, dev-displayLabel, dev-remark
+- ผล: label คลิกได้, screen reader อ่านได้, autofill ทำงาน
+
+**P2 #7 — Empty filter dropdown state:**
+- เดิม: Site filter มีแค่ "สาขาทั้งหมด" ไม่บอกว่าไม่มีข้อมูล
+- แก้: เพิ่ม disabled SelectItem "— ยังไม่มีสาขาที่เข้าถึงได้ —" เมื่อ visibleSites.length === 0
+- ผล: User เห็นชัดว่ายังไม่มีสาขา
+
+**P2 #8 — Dropdown ไม่ปิดด้วย Escape:**
+- เดิม: Escape ปิด popover แต่ไม่ clear query + ไม่ blur input → ดูเหมือนยังเปิดอยู่
+- แก้: เพิ่ม e.preventDefault() + e.stopPropagation() + setQuery('') + blur()
+- ผล: กด Escape ครั้งเดียว → popover ปิด + query clear + focus ออก
+
+**P2 #13 — Misleading label "Notifications alt+T":**
+- ตรวจสอบ: aria-label จริงคือ "การแจ้งเตือน" (ถูกต้อง)
+- "alt+T" น่าจะมาจาก accessibility tree ของ browser ที่ auto-generate shortcut hint
+- ไม่พบ accesskey หรือ keyboard shortcut สำหรับ Alt+T ในโค้ด
+- ไม่พบปัญหาในโค้ด — เป็น false positive จาก QA tool
+
+Stage Summary:
+- ✅ P2 #3: เพิ่ม id ให้ครบทุก input (23 id)
+- ✅ P2 #7: Empty state ใน site filter dropdown
+- ✅ P2 #8: Escape ปิด dropdown + clear + blur
+- ✅ P2 #13: ตรวจสอบแล้ว — label ถูกต้อง, "alt+T" เป็น false positive
+
+Files modified:
+- MODIFIED: src/components/itam/devices-page.tsx — added 16 input IDs + empty state
+- MODIFIED: src/components/itam/combobox.tsx — Escape handling (preventDefault + clear + blur)
+
