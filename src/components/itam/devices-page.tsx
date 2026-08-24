@@ -1638,10 +1638,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                 Tab 3: ⚙️ ขั้นสูง (Remote ID, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ) */}
             <Tabs defaultValue="location" className="w-full">
               <TabsList className="mb-4 grid w-full grid-cols-4">
-                <TabsTrigger value="location">📍 สถานที่ติดตั้ง</TabsTrigger>
-                <TabsTrigger value="device">💻 อุปกรณ์</TabsTrigger>
-                <TabsTrigger value="set">📦 ชุดอุปกรณ์</TabsTrigger>
-                <TabsTrigger value="advanced">⚙️ ขั้นสูง</TabsTrigger>
+                <TabsTrigger value="location" onClick={() => {}}>📍 สถานที่ติดตั้ง</TabsTrigger>
+                <TabsTrigger value="device" onClick={() => {}}>💻 อุปกรณ์</TabsTrigger>
+                <TabsTrigger value="set" onClick={() => {}}>📦 ชุดอุปกรณ์</TabsTrigger>
+                <TabsTrigger value="advanced" onClick={() => {}}>⚙️ ขั้นสูง</TabsTrigger>
               </TabsList>
 
               {/* ═══════════════════════════════════════════════════════

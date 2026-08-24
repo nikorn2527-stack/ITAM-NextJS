@@ -1194,8 +1194,8 @@ export function ItamStickerEditor() {
                     คลิกที่องค์ประกอบใน workspace เพื่อแก้ไข หรือกดปุ่ม +Text/+Image/+QR/+Rect เพื่อเพิ่มใหม่
                   </div>
                   <TabsList className="grid h-8 w-full grid-cols-2">
-                    <TabsTrigger value="template" className="text-[11px]">เทมเพลต</TabsTrigger>
-                    <TabsTrigger value="variables" className="text-[11px]">ตัวแปร</TabsTrigger>
+                    <TabsTrigger value="template" onClick={() => {}} className="text-[11px]">เทมเพลต</TabsTrigger>
+                    <TabsTrigger value="variables" onClick={() => {}} className="text-[11px]">ตัวแปร</TabsTrigger>
                   </TabsList>
                 </div>
                 <TabsContent value="template" className="mt-0 space-y-3">
@@ -1265,10 +1265,10 @@ export function ItamStickerEditor() {
                     )}
                   </div>
                   <TabsList className="grid h-8 w-full grid-cols-4">
-                    <TabsTrigger value="position" className="text-[11px]">ตำแหน่ง</TabsTrigger>
-                    <TabsTrigger value="style" className="text-[11px]">สไตล์</TabsTrigger>
-                    <TabsTrigger value="data" className="text-[11px]">ข้อมูล</TabsTrigger>
-                    <TabsTrigger value="advanced" className="text-[11px]">ขั้นสูง</TabsTrigger>
+                    <TabsTrigger value="position" onClick={() => {}} className="text-[11px]">ตำแหน่ง</TabsTrigger>
+                    <TabsTrigger value="style" onClick={() => {}} className="text-[11px]">สไตล์</TabsTrigger>
+                    <TabsTrigger value="data" onClick={() => {}} className="text-[11px]">ข้อมูล</TabsTrigger>
+                    <TabsTrigger value="advanced" onClick={() => {}} className="text-[11px]">ขั้นสูง</TabsTrigger>
                   </TabsList>
                 </div>
 
