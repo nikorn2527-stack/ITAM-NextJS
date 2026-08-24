@@ -532,14 +532,36 @@ export function DevicesPage() {
 
   // ── New: derived KPI counts from the filtered `devices` list ──
   // Clicking a KPI card in the UI applies the corresponding filter.
+  // Status matching is case-insensitive — DB stores mixed-case values
+  // (Active, In Repair, Retired, Inactive, Disposed, Returned) but the
+  // legacy short forms (active, spare, repair, disposed) also appear in
+  // old imports. We normalise by lowercasing + checking against a set of
+  // known aliases per KPI bucket.
   const kpi = React.useMemo(() => {
     const list = devices ?? []
-    const active = list.filter((d) => d.status === 'ACTIVE').length
-    const repair = list.filter((d) => d.status === 'IN_REPAIR').length
-    const inactive = list.filter(
-      (d) => d.status === 'INACTIVE' || d.status === 'RETIRED',
-    ).length
-    const spare = list.filter((d) => d.status === 'SPARE').length
+    const norm = (s: string | null | undefined): string =>
+      (s ?? '').trim().toLowerCase()
+    const active = list.filter((d) => {
+      const s = norm(d.status)
+      return s === 'active' || s === 'in use'
+    }).length
+    const repair = list.filter((d) => {
+      const s = norm(d.status)
+      return s === 'in repair' || s === 'repair' || s === 'pending repair'
+    }).length
+    const inactive = list.filter((d) => {
+      const s = norm(d.status)
+      return (
+        s === 'inactive'
+        || s === 'retired'
+        || s === 'disposed'
+        || s === 'returned'
+      )
+    }).length
+    const spare = list.filter((d) => {
+      const s = norm(d.status)
+      return s === 'spare' || s === 'in stock'
+    }).length
     const warrantyExpiringSoon = list.filter((d) => {
       const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
       return w.status === 'expiring'
@@ -2535,32 +2557,32 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           value={kpi.active}
           tone="success"
           icon={<CheckCircle2 className="h-3.5 w-3.5" />}
-          active={statusFilter === 'ACTIVE'}
-          onClick={() => setStatusFilter('ACTIVE')}
+          active={statusFilter === 'active'}
+          onClick={() => setStatusFilter('active')}
         />
         <KpiCard
           label="ส่งซ่อม"
           value={kpi.repair}
           tone="warning"
           icon={<Wrench className="h-3.5 w-3.5" />}
-          active={statusFilter === 'IN_REPAIR'}
-          onClick={() => setStatusFilter('IN_REPAIR')}
+          active={statusFilter === 'repair'}
+          onClick={() => setStatusFilter('repair')}
         />
         <KpiCard
           label="สำรอง"
           value={kpi.spare}
           tone="info"
           icon={<PackageOpen className="h-3.5 w-3.5" />}
-          active={statusFilter === 'SPARE'}
-          onClick={() => setStatusFilter('SPARE')}
+          active={statusFilter === 'spare'}
+          onClick={() => setStatusFilter('spare')}
         />
         <KpiCard
           label="ไม่ใช้งาน/เกษียณ"
           value={kpi.inactive}
           tone="danger"
           icon={<XCircle className="h-3.5 w-3.5" />}
-          active={statusFilter === 'INACTIVE' || statusFilter === 'RETIRED'}
-          onClick={() => setStatusFilter('INACTIVE')}
+          active={statusFilter === 'disposed'}
+          onClick={() => setStatusFilter('disposed')}
         />
         <KpiCard
           label="รับประกันใกล้หมด"
