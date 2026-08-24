@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 
 type ReportType = 'work-order' | 'stock' | 'devices' | 'all'
@@ -404,6 +405,13 @@ function formatResponseTime(minutes: number | null): string {
 export async function GET(req: NextRequest) {
   const unavailable = moduleUnavailableResponse('reports')
   if (unavailable) return unavailable
+
+  // Milestone 1 — Security baseline: require VIEW_REPORTS
+  const auth = await requireAuth(req, 'VIEW_REPORTS')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const { searchParams } = new URL(req.url)
     const monthParam = searchParams.get('month')?.trim() || null
