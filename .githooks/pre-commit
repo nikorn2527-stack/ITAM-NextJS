@@ -28,6 +28,21 @@ if [ -f "scripts/check-prisma-fields.mjs" ]; then
   fi
 fi
 
+# BUG-MONTHLY-001 prevention: TypeScript syntax check on staged files.
+# QA recommended: "เพิ่ม npx tsc --noEmit ใน pre-commit hook"
+# This catches syntax errors (missing brackets, typos) before they ship.
+# Runs tsc --noEmit on the whole project (fast with incremental cache).
+if [ -f "tsconfig.json" ]; then
+  echo "🔍 Running TypeScript syntax check..."
+  if ! npx tsc --noEmit --skipLibCheck 2>/dev/null; then
+    echo ""
+    echo "❌ TypeScript syntax check failed — fix errors before committing."
+    echo "💡 To bypass: git commit --no-verify (use sparingly!)"
+    exit 1
+  fi
+  echo "✅ TypeScript syntax OK"
+fi
+
 # Also run ESLint on staged files if available (best-effort, non-blocking)
 if [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ]; then
   # Skip if lint would block — we want this hook to focus on Prisma fields only.
