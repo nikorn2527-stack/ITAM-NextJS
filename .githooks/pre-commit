@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Pre-commit hook — runs Prisma field case-sensitivity checker on staged files.
+#
+# WHY: BUG-KPI-001 (Task 11) — KPI cards showed 0 because code compared
+# `d.status === 'ACTIVE'` but DB stores mixed-case `'Active'`. This hook
+# catches similar case mismatches + snake_case usage before they ship.
+#
+# INSTALL: `git config core.hooksPath .githooks` (run once per clone)
+# UNINSTALL: `git config --unset core.hooksPath`
+# BYPASS: `git commit --no-verify` (use sparingly!)
+
+set -e
+
+# Only check staged .ts/.tsx/.js/.jsx/.mjs files
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx|js|jsx|mjs)$' || true)
+
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+# Run the checker (it auto-detects staged files via `git diff --cached`)
+if [ -f "scripts/check-prisma-fields.mjs" ]; then
+  if ! node scripts/check-prisma-fields.mjs --quiet; then
+    echo ""
+    echo "💡 To bypass: git commit --no-verify (use sparingly!)"
+    echo "💡 To fix: see scripts/check-prisma-fields.mjs for canonical field names"
+    exit 1
+  fi
+fi
+
+# Also run ESLint on staged files if available (best-effort, non-blocking)
+if [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ]; then
+  # Skip if lint would block — we want this hook to focus on Prisma fields only.
+  # Full lint runs in CI.
+  :
+fi
+
+exit 0
