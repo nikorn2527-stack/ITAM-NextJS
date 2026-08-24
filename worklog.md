@@ -1086,3 +1086,48 @@ Task: ทดสอบหน้าจดมิเตอร์ (Meter Reading) —
 - 📸 `/home/z/my-project/qa-reports/meter-*.png` (3 รูป)
 - 📄 Test Report: `/home/z/my-project/qa-reports/QA-METER-001.md`
 
+
+---
+
+## Task ID: SEND-ITAM-01-ROUND-2
+Agent: QA Team
+Task: ส่งสรุป bugs ที่ ITAM-01 ต้องแก้ต่อ (หลังรอบแรก verified 17/78)
+
+**วันที่:** 2026-08-23
+**สถานะ:** ⏳ รอ ITAM-01 แก้ไข
+
+### สรุปการสื่อสาร:
+- ✅ QA ส่งรายงาน 78 bugs ใน 6 หน้า ครบถ้วน
+- ✅ ITAM-01 แก้ 17 ตัว (Stock + Dashboard + Paper) — verified 14 + re-open 2 + partial 1
+- 🔴 ยังเหลือ 61 ตัวที่ต้องแก้ (Devices 22 + Work Orders 6 + Meter 16 + เศษจาก 3 หน้าอื่น = 17)
+- 🔴 มี 2 ตัว re-open ที่ต้องแก้ซ้ำ
+
+### ไฟล์ที่ส่งให้ ITAM-01:
+- 📄 `/home/z/my-project/qa-reports/FOR-ITAM-01-ACTION-REQUIRED.md` — **สรุปชุดใหม่ พร้อม priority + pattern bugs + ตัวอย่างโค้ดแก้ BUG-METER-003**
+
+### Priority สูงสุด (ส่งให้ ITAM-01 แก้ก่อน):
+1. 🔴🔴 **BUG-METER-003** — Device.lastMeter ไม่อัปเดต → cost ผิด 3-9× (production เห็น 945,298 แทน 1,600)
+2. 🔴 **BUG-WO-002** — fail-closed สำหรับ admin → WO workflow ใช้ไม่ได้
+3. 🔴 **BUG-WO-001** — validateGuestContact ล้มเหลว → Guest สร้าง WO ไม่ได้
+4. 🔴 **BUG-METER-002** — rollback validation ขาด
+5. 🔴 **BUG-METER-001** — Form submit pattern (เหมือน Stock IN)
+6. 🔴 **BUG-METER-004** — Tabs pattern (เหมือน Stock + Paper)
+7. 🔴 **BUG-METER-005** — Bulk entry workflow
+8. 🔴 **BUG-001** — Devices form submit pattern
+9. 🔴 **BUG-002** — Refetch loop (performance)
+10. 🔴 **BUG-006, BUG-009, BUG-010, BUG-012** — Devices pagination/CSV/search
+
+### Pattern Bugs (แก้ root cause แก้ครั้งเดียวได้หลาย bugs):
+- Form submit (type=submit + form=null) → BUG-001 + BUG-METER-001
+- Tabs Navigation พัง → BUG-METER-004
+- ไม่มี toast หลัง Refresh → BUG-METER-008 + BUG-015
+- CSV export พัง → BUG-009, BUG-010, BUG-METER-007
+- Search box พิมพ์ไม่ trigger API → BUG-WO-003, BUG-METER-006, BUG-012
+- widget headers ไม่มี h3 → BUG-METER-011
+
+→ แก้ pattern 6 ตัวนี้ → ลด bug ได้ ~15 ตัวพร้อมกัน
+
+### Stage Summary:
+- QA ส่งสรุปชุดใหม่ให้ ITAM-01 แล้ว
+- รอ ITAM-01 push commit ใหม่ → QA จะ sync + re-test ต่อ
+
