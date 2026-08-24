@@ -29,6 +29,7 @@ export type ActivePage =
   | 'settings-v2'
   | 'meter-page'
   | 'paper-analytics-page'
+  | 'mobile'
 
 export type SettingsTab = 'app' | 'master' | 'sites' | 'rates' | 'users' | 'audit'
 

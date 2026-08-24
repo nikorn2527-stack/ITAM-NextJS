@@ -19,6 +19,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
@@ -1223,6 +1224,8 @@ async function buildApprovalsReport(month: string, siteCodes: string[] | null) {
 
 // ── Route handler ─────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const unavailable = moduleUnavailableResponse('reports')
+  if (unavailable) return unavailable
   const auth = await requireAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
