@@ -107,11 +107,6 @@ const MeterPage = dynamic(() =>
 const PaperAnalyticsPage = dynamic(() =>
   import('@/components/itam/paper-analytics-page').then((m) => m.PaperAnalyticsPage),
 )
-// Mobile-first workflow shell. Keep this lazy-loaded with the other page
-// modules so desktop users do not pay for the four mobile workflows upfront.
-const MobileShell = dynamic(() =>
-  import('@/components/itam/mobile').then((m) => m.MobileShell),
-)
 // ── Auth pages (from email links: ?token={token}) ──
 const AuthRegisterPage = dynamic(() =>
   import('@/components/itam/auth-register-page').then((m) => m.AuthRegisterPage),
@@ -307,7 +302,6 @@ export default function Home() {
                 {activePage === 'stock' && <StockPage />}
                 {activePage === 'meter-page' && <MeterPage />}
                 {activePage === 'paper-analytics-page' && <PaperAnalyticsPage />}
-                {activePage === 'mobile' && <MobileShell />}
               </motion.div>
             </AnimatePresence>
           </main>
