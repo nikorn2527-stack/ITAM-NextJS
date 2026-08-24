@@ -60,7 +60,8 @@ export function BulkMeterDialog({
       const init: Record<string, RowState> = {}
       for (const d of devices) {
         init[d.id] = {
-          newReading: String(d.lastMeterReading ?? 0),
+          // BUG-METER-003 fix: prefer lastMeterBw (canonical API field)
+          newReading: String(d.lastMeterBw ?? d.lastMeterReading ?? 0),
           remark: '',
         }
       }
@@ -102,7 +103,8 @@ export function BulkMeterDialog({
     >()
     for (const d of eligibleDevices) {
       const r = rows[d.id]
-      const prev = d.lastMeterReading ?? 0
+      // BUG-METER-003 fix: prefer lastMeterBw (canonical API field)
+      const prev = d.lastMeterBw ?? d.lastMeterReading ?? 0
       const trimmed = (r?.newReading ?? '').trim()
       const nextNum = trimmed === '' ? null : Number(trimmed)
       const next = nextNum !== null && Number.isFinite(nextNum) ? nextNum : null

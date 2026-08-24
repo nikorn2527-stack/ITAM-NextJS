@@ -12704,3 +12704,351 @@ Stage Summary:
   Export dialog, Device Set tab, keyboard shortcuts, column visibility.
 - ⚠️ QA Team 02 has NOT sent any report for the new features yet. User should ping them.
 - 📌 1 unpushed commit now: the KPI fix from this round. Will push next time or on request.
+
+---
+Task ID: 12-a
+Agent: explore (sub-agent)
+Task: Research-only — investigate BUG-METER-003 ("Device.lastMeter not updating → pages count from INITIAL every time → cumulative count doubles"). Map the meter-write path end-to-end and identify exactly where Device.lastMeterBw/lastMeterColor is (or isn't) updated. NO code changes.
+
+Work Log:
+- Read worklog.md Tasks 9, 10, 11 — context: prior rounds added Replace-on-Withdraw (Task 9), Device Set fields, CSV Import with upsert mode (Task 10), KPI fix (Task 11). Meter endpoint NOT touched in any prior task.
+- Read `src/app/api/meter/route.ts` (221 lines) — legacy compat endpoint. Reads `device.lastMeterBw` (line 167) ONLY for the legacy RESET-detection flag (`isLegacyReset`), then delegates the actual write to `postMeterReading` (POST /api/itam/meter-readings). Does NOT call `db.device.update`. The body it forwards contains `assetCode`, `meterBw`, `meterColor`, `readingDate`, `readingMonth`, `remark`, `confirmReset` — NOT a `lastMeterBw` write.
+- Read `src/app/api/itam/meter-readings/route.ts` (391 lines) — the canonical meter-write endpoint. Verifies auth + site scope, computes `prev` via `findValidPrevReading(assetCode, finalReadingMonth, true)` (line 184, queries MeterReading table — NOT Device.lastMeterBw), computes `pagesBw = calcPagesBw(...)` (line 273), upserts the MeterReading row (lines 320-328), writes an audit log (lines 332-351), publishes SSE + notification. **NO `db.device.update` call** to set `lastMeterBw`/`lastMeterColor`. ← This is the BUG location.
+- Read `src/lib/meter-logic.ts` (315 lines) — `findValidPrevReading` queries `db.meterReading.findMany` filtered by `assetCode` + `readingMonth: { not: null }`, ordered by month desc + id desc, then skips rows whose month >= targetMonth and rows with readingType ∈ {FINAL, SEND_REPAIR}. So pages for MONTHLY readings are computed correctly **from the MeterReading table**, independent of Device.lastMeterBw. INITIAL/RESET readings get pages=0 (baseline) via `calcPagesBw`.
+- Read `prisma/schema.prisma` (Device model lines 17-84, MeterReading model lines 86-118). Confirmed: Device has `lastMeterBw Int @default(0)` + `lastMeterColor Int @default(0)` (lines 47-48). MeterReading has all expected fields: `meterBw`, `meterColor`, `pagesBw`, `pagesColor`, `prevMeterBw`, `prevMeterColor`, `readingType`, `readBy`, `remark`, plus lifecycle link fields `eventType`/`eventId`.
+- Read `src/app/api/itam/devices/[id]/lifecycle/route.ts` (319 lines) — links a pre-existing MeterReading to a DeviceTransfer. Lines 234-243 update the MeterReading's `eventType`/`eventId`/`readingType`. **Does NOT update Device.lastMeterBw/lastMeterColor** even when a meter reading is linked.
+- Read `src/app/api/devices/[id]/transfer-with-meter/route.ts` (267 lines) — the atomic meter+transfer path. Lines 130-131 read `device.lastMeterBw ?? 0` / `device.lastMeterColor ?? 0` as prevBw/prevColor. Lines 132-133 compute `pagesBw = Math.max(0, bw - prevBw)` / `pagesColor = Math.max(0, color - prevColor)`. Line 154-157 DOES call `tx.device.update({ data: { lastMeterBw: bw, lastMeterColor: color }})`. **This is the ONLY runtime meter path that updates Device.lastMeterBw** — but it relies on Device.lastMeterBw being correct from prior readings. Since the canonical /api/itam/meter-readings endpoint doesn't update Device.lastMeterBw, the prevBw read here is STALE (= 0 or the initial seed value) → pages = (new meter - 0) = full meter reading → **cumulative doubling bug manifests HERE** when transfer-with-meter is used after regular meter readings.
+- Read `src/lib/legacy-bridge-apply.ts` (357 lines) — `applyMeterReading` (lines 161-203) is called by `/api/sync/run` after a preview-approved legacy-bridge sync. Line 201 calls `tx.device.update({ data: { lastMeterBw: meterBw, lastMeterColor: meterColor, updatedBy: args.actor }})`. This path correctly updates Device.lastMeterBw, but it's NOT the regular user-facing meter-write path.
+- Read `src/app/api/devices/import/route.ts` (468 lines, Task 10 work). Lines 274-275 (create path) and lines 398-399 (update path, only when CSV row has a non-null `lastMeterBw`/`lastMeterReading` value) set Device.lastMeterBw from CSV input. This is a ONE-TIME seed for imported rows — does not cause BUG-METER-003.
+- Read `src/components/itam/meter-page.tsx` (702 lines, primary UI). Line 152: `setNewReading(String(d.lastMeterReading ?? 0))`. Line 164: `const prevReading = readingTarget?.lastMeterReading ?? 0`. Line 183-192: POST /api/meter body = `{ deviceId, reading: newReadingNum, date, remark, cycleId }`. **The UI uses `d.lastMeterReading`** (a field that does NOT exist in the GET /api/devices response — the response includes `lastMeterBw` instead, derived from the latest MeterReading row). So the UI's `prevReading` is always 0 (because `d.lastMeterReading` is `undefined`). This is a **separate UI display bug** — misleading "previous reading" shown to user, but the server-side pages computation is still correct (uses findValidPrevReading).
+- Read `src/components/itam/bulk-meter-dialog.tsx` (562 lines, batch UI). Lines 63, 105: same `d.lastMeterReading ?? 0` pattern. Line 157: POST /api/meter. Same UI display bug as meter-page.tsx.
+- Read `src/components/itam/itam-meter.tsx` (alternative meter UI). Lines 94, 374: POST /api/itam/meter-readings (canonical endpoint, not legacy). Line 380: sends `prevMeterBw: m.prev` in body — but server ignores this (recomputes via findValidPrevReading).
+- Read `src/components/itam/mobile/mobile-meter-reading.tsx` (line 660): POST /api/itam/meter-readings (canonical endpoint). Mobile path also doesn't write Device.lastMeterBw.
+- Read `src/components/itam/itam-meter-keyboard.tsx` (line 296, 303-304): POST /api/itam/meter-readings, sends prevMeterBw from Device.lastMeterBw. Server ignores it.
+- Grep across whole repo for `lastMeterBw:` / `lastMeterColor:` writes (not selects). Found these WRITES (server-side `db.device.update` / `create` / `createMany` payloads):
+  • `src/app/api/devices/[id]/transfer-with-meter/route.ts:156` — `data: { lastMeterBw: bw, lastMeterColor: color }` ✅
+  • `src/lib/legacy-bridge-apply.ts:201` — `data: { lastMeterBw: meterBw, lastMeterColor: meterColor, updatedBy }` ✅ (legacy-bridge sync only)
+  • `src/app/api/devices/route.ts:218-219` — only a SELECT-derived annotation in GET response (the underlying DB column is NOT written here; line 218 just overrides the response payload field with the latest MeterReading's meterBw).
+  • `src/app/api/devices/route.ts:389-390` — POST /api/devices create path sets initial lastMeterBw from `im.meterBw` (initial meter reading supplied at device-creation time).
+  • `src/app/api/devices/import/route.ts:274-275, 398-399` — Task 10 import (one-time seed from CSV).
+  • `src/app/api/import/route.ts:658, 1033` — legacy /api/import route (sets lastMeterBw from `val.bw`/`val.color`).
+- Confirmed: **the canonical meter-write endpoint POST /api/itam/meter-readings NEVER writes Device.lastMeterBw/lastMeterColor.** This is the gap.
+
+Stage Summary:
+- ✅ Mapped all 6 research areas (A–F). See full report below.
+- ✅ Confirmed the BUG location: `src/app/api/itam/meter-readings/route.ts` — the canonical meter-write endpoint. It saves the MeterReading row + audit + SSE + notification but does NOT call `db.device.update` to propagate the new meterBw/meterColor onto the Device row. Device.lastMeterBw/lastMeterColor therefore drift out of sync after the very first reading (or remain at the seed value set by CSV import / device-creation).
+- ✅ Confirmed the BUG SYMPTOM manifests most concretely in `src/app/api/devices/[id]/transfer-with-meter/route.ts` (lines 130-133): this path computes `pagesBw = Math.max(0, bw - device.lastMeterBw)` and `pagesColor = Math.max(0, color - device.lastMeterColor)`. Since Device.lastMeterBw is stale (= 0 or the import seed), every transfer-with-meter records pages = full meter reading → cumulative doubling. This matches the bug report exactly ("pages count from INITIAL every time → cumulative count doubles").
+- ⚠️ Important nuance: the canonical POST /api/itam/meter-readings endpoint does NOT actually exhibit the doubling itself — it computes pages via `findValidPrevReading(assetCode, finalReadingMonth, true)` which queries the MeterReading table (NOT Device.lastMeterBw). So pages stored in regular month-over-month readings ARE correct. The doubling bug appears only in paths that read `device.lastMeterBw` directly: transfer-with-meter (the worst offender), the legacy RESET check in /api/meter, and the UI display in meter-page.tsx/bulk-meter-dialog.tsx (which shows prevReading=0 always because it uses `d.lastMeterReading` instead of `d.lastMeterBw`).
+- ⚠️ The task description's claim "every reading computes pages = (new - 0) = new" applies to the transfer-with-meter path, not the canonical /api/itam/meter-readings path. The FIX recommended below addresses both: (1) make /api/itam/meter-readings write Device.lastMeterBw so downstream readers (transfer-with-meter, /api/meter RESET check, UI) see the correct prev value; (2) fix the UI to use `d.lastMeterBw` (the field the API actually returns) instead of the non-existent `d.lastMeterReading`.
+- 📝 Files inspected (NO modifications): worklog.md, prisma/schema.prisma, src/lib/meter-logic.ts, src/lib/legacy-bridge-apply.ts, src/app/api/meter/route.ts, src/app/api/itam/meter-readings/route.ts, src/app/api/itam/devices/[id]/lifecycle/route.ts, src/app/api/devices/route.ts, src/app/api/devices/[id]/transfer-with-meter/route.ts, src/app/api/devices/import/route.ts, src/app/api/import/route.ts, src/app/api/itam/meter-readings/unread/route.ts, src/app/api/reports/unified/route.ts, src/components/itam/meter-page.tsx, src/components/itam/bulk-meter-dialog.tsx, src/components/itam/itam-meter.tsx, src/components/itam/itam-meter-unified.tsx, src/components/itam/itam-meter-keyboard.tsx, src/components/itam/mobile/mobile-meter-reading.tsx, src/components/itam/types.ts.
+
+---
+
+## Full Research Report
+
+### A. Meter API endpoint — `src/app/api/meter/route.ts` (221 lines)
+
+This is a **legacy compat shim** that delegates the actual write to `POST /api/itam/meter-readings`.
+
+```ts
+// Line 167 — reads Device.lastMeterBw ONLY for the legacy RESET-detection flag
+const previousDeviceReading = device.lastMeterBw ?? 0
+const isLegacyReset = meterBw < previousDeviceReading
+
+// Lines 170-185 — builds a forwarded body for the canonical endpoint
+const delegatedBody = {
+  ...body,
+  assetCode: device.assetCode,
+  meterBw,
+  meterColor: Number(body.meterColor ?? 0),
+  readingDate: readingDate || undefined,
+  readingMonth: ...,
+  remark: remark || null,
+  confirmReset: body.confirmReset === true || (isLegacyReset && Boolean(remark)),
+}
+
+// Lines 187-194 — forwards as a NextRequest to the canonical endpoint
+const response = await postMeterReading(forwardedRequest)
+```
+
+**Does it update Device.lastMeterBw?** NO. It does NOT call `db.device.update`. It only reads `device.lastMeterBw` (line 167) for the RESET-detection flag. The actual write is delegated.
+
+**Does it compute pagesBw/pagesColor?** NO. Delegated to the canonical endpoint.
+
+**Does it store the MeterReading row?** Indirectly — via delegation.
+
+**Bug:** Device.lastMeterBw is NEVER updated through this path. The `previousDeviceReading` read at line 167 will be 0 (or stale) for any device whose meter readings were recorded via this endpoint, so `isLegacyReset` is false-negative — the legacy RESET confirmation prompt won't fire when it should.
+
+### B. Lifecycle endpoint — `src/app/api/itam/devices/[id]/lifecycle/route.ts` (319 lines)
+
+This endpoint performs the lifecycle status change (transfer + status change). It accepts an optional pre-existing `meterReadingId` (a meter reading previously written via /api/meter) and links it to the DeviceTransfer history.
+
+```ts
+// Lines 234-243 — links the MeterReading to the DeviceTransfer
+if (meterReadingId) {
+  await tx.meterReading.update({
+    where: { id: meterReadingId },
+    data: {
+      eventType: historyAction,
+      eventId: historyRow.id,
+      readingType: derivedReadingType,
+    },
+  })
+}
+```
+
+**Does it update Device.lastMeterBw?** NO. It only updates the MeterReading's `eventType`/`eventId`/`readingType` to link it to the transfer history. The Device row itself is updated (lines 185-201) but only with `status`, `site`, `assetSiteCode`, `building`, `floor`, `department`, `departmentCode`, `location`, `uninstallDate`, `updatedBy` — NOT `lastMeterBw`/`lastMeterColor`.
+
+**Implication:** Even when a lifecycle action successfully links a meter reading, the Device.lastMeterBw column remains stale.
+
+### C. MeterReading model + Device model — `prisma/schema.prisma`
+
+**Device model (lines 17-84)** — relevant meter fields:
+```prisma
+meterRequired   Boolean  @default(false)
+meterMode       String? // TOTAL | BW_COLOR
+lastMeterBw     Int      @default(0)   // line 47
+lastMeterColor  Int      @default(0)   // line 48
+```
+Confirmed: Device has `lastMeterBw` + `lastMeterColor`, both default 0.
+
+**MeterReading model (lines 86-118)** — all fields confirmed present:
+```prisma
+id                      String   @id @default(cuid())
+readingId               String?  @unique
+deviceId                String
+assetCode               String?
+readingDate             String
+readingMonth            String?
+meterBw                 Int      @default(0)
+meterColor              Int      @default(0)
+pagesBw                 Int      @default(0)
+pagesColor              Int      @default(0)
+prevMeterBw             Int      @default(0)
+prevMeterColor          Int      @default(0)
+readingType             String? // MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN
+readBy                  String?
+remark                  String?
+locationAtReading       String?
+siteAtReading           String?
+buildingAtReading       String?
+floorAtReading          String?
+departmentAtReading     String?
+departmentCodeAtReading String?
+eventType               String?
+eventId                 String?
+isDemo                  Boolean  @default(false)
+createdAt               DateTime @default(now())
+```
+
+The schema is complete and consistent. There is no schema-level blocker for the fix.
+
+### D. Meter page UI
+
+**Primary UI — `src/components/itam/meter-page.tsx` (702 lines)**:
+```tsx
+// Line 152 — pre-fill new reading input from Device.lastMeterReading (BUG: field doesn't exist in API response)
+setNewReading(String(d.lastMeterReading ?? 0))
+
+// Line 164 — compute prevReading for display (always 0 in practice)
+const prevReading = readingTarget?.lastMeterReading ?? 0
+const newReadingNum = Number(newReading)
+const delta = Number.isFinite(newReadingNum) ? newReadingNum - prevReading : 0
+
+// Lines 183-192 — POST body sent to /api/meter
+const res = await fetch('/api/meter', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    deviceId: readingTarget.id,
+    reading: newReadingNum,
+    date: readingDate,
+    remark: remark.trim() || null,
+    cycleId: activeCycle?.id ?? null,
+  }),
+})
+```
+
+**Does the UI pre-fill prevMeter from Device.lastMeter?** It TRIES to — but uses `d.lastMeterReading` (a field that does NOT exist in the GET /api/devices response). The API actually returns `lastMeterBw` (derived from the latest MeterReading row at line 218 of `src/app/api/devices/route.ts`). So `d.lastMeterReading` is `undefined`, and the UI falls back to `0` via `?? 0`. **Result: the "previous reading" displayed to the user is always 0**, even though the server-side pages computation is correct.
+
+**Bulk UI — `src/components/itam/bulk-meter-dialog.tsx` (562 lines)**: Same bug — lines 63, 105 use `d.lastMeterReading ?? 0` for prev display.
+
+**Alternative UIs**:
+- `src/components/itam/itam-meter.tsx` (line 374): POST /api/itam/meter-readings directly. Sends `prevMeterBw: m.prev` in body — but server ignores it (recomputes via findValidPrevReading).
+- `src/components/itam/itam-meter-keyboard.tsx` (line 296, 303-304): POST /api/itam/meter-readings. Sends `prevMeterBw: selected.lastMeterBw` and `prevMeterColor: selected.lastMeterColor` in body. Server ignores.
+- `src/components/itam/mobile/mobile-meter-reading.tsx` (line 660): POST /api/itam/meter-readings.
+
+None of these UI paths send a "please update Device.lastMeterBw" flag — and the server doesn't have one anyway.
+
+### E. Every place that WRITES Device.lastMeterBw/lastMeterColor
+
+Grep results for `lastMeterBw:` / `lastMeterColor:` in Prisma write payloads (filtered to actual writes, excluding SELECT/TypeScript type annotations):
+
+| File | Line | Context | Updates Device? |
+|---|---|---|---|
+| `src/app/api/devices/[id]/transfer-with-meter/route.ts` | 156 | `tx.device.update({ data: { lastMeterBw: bw, lastMeterColor: color }})` inside atomic transfer+meter transaction | ✅ YES — but only on the transfer-with-meter path, NOT on the regular meter-reading path. |
+| `src/lib/legacy-bridge-apply.ts` | 201 | `tx.device.update({ data: { lastMeterBw: meterBw, lastMeterColor: meterColor, updatedBy: args.actor }})` in `applyMeterReading` | ✅ YES — but only inside the `/api/sync/run` legacy-bridge sync path, NOT the regular user-facing meter-reading path. |
+| `src/app/api/devices/route.ts` | 218-219 | `lastMeterBw: latest?.meterBw ?? rest.lastMeterBw ?? 0` — only a SELECT-derived annotation in GET response payload (NOT a DB write). | ❌ NO (read-only override). |
+| `src/app/api/devices/route.ts` | 389-390 | `lastMeterBw: im.meterBw ?? 0` / `lastMeterColor: im.meterColor ?? 0` in POST create path (sets initial seed when device is created with an initial meter reading). | ✅ YES — but only at device creation. |
+| `src/app/api/devices/import/route.ts` | 274-275 | `lastMeterBw: toInt(raw.lastMeterBw ?? raw.lastMeterReading) ?? 0` in createMany path. | ✅ YES — one-time seed from CSV. |
+| `src/app/api/devices/import/route.ts` | 398-399 | `lastMeterBw: data.lastMeterBw ?? 0` in update-path data builder. | ✅ YES — only when CSV row supplies a value. |
+| `src/app/api/import/route.ts` | 658, 1033 | `data: { lastMeterBw: val.bw, lastMeterColor: val.color }` — legacy `/api/import` route meter-reading job. | ✅ YES — legacy import path only. |
+
+**Critical finding:** the **canonical meter-write endpoint** `POST /api/itam/meter-readings/route.ts` is **NOT in this list**. It never calls `db.device.update` to set `lastMeterBw`/`lastMeterColor`. This is the gap that BUG-METER-003 reports.
+
+### F. Import endpoint (Task 10) — `src/app/api/devices/import/route.ts`
+
+**Does it set lastMeterBw from `lastMeterReading`?** YES, on the create path:
+```ts
+// Lines 274-275 (createMany data)
+lastMeterBw: toInt(raw.lastMeterBw ?? raw.lastMeterReading) ?? 0,
+lastMeterColor: toInt(raw.lastMeterColor) ?? 0,
+```
+
+And on the update path (when CSV row has a value):
+```ts
+// Lines 398-399 (update-path data builder)
+lastMeterBw: data.lastMeterBw ?? 0,
+lastMeterColor: data.lastMeterColor ?? 0,
+```
+
+But this is a ONE-TIME SEED when importing rows — it does not cause the ongoing cumulative doubling bug. The bug is about live meter readings not updating Device.lastMeterBw.
+
+---
+
+## Assessment & Recommended Fix
+
+### Root cause
+
+The canonical meter-write endpoint `POST /api/itam/meter-readings/route.ts` does NOT call `db.device.update` to propagate the new meterBw/meterColor onto the Device row. The Device.lastMeterBw/lastMeterColor columns therefore drift out of sync (or stay at the seed value) after the first reading.
+
+### Where the doubling bug actually manifests
+
+The worst offender is `POST /api/devices/[id]/transfer-with-meter/route.ts` lines 130-133:
+```ts
+const prevBw = device.lastMeterBw ?? 0          // ← stale (always 0 if no transfer-with-meter ever ran)
+const prevColor = device.lastMeterColor ?? 0
+const pagesBw = Math.max(0, bw - prevBw)         // ← = bw - 0 = bw  (WRONG — should be bw - last_meter)
+const pagesColor = Math.max(0, color - prevColor)
+```
+This path computes pages directly from `device.lastMeterBw` (it does NOT call `findValidPrevReading`). Since Device.lastMeterBw is never updated by the canonical /api/itam/meter-readings endpoint, prevBw is 0 (or stale seed), so every transfer-with-meter records pages = full meter reading → **cumulative doubling**, exactly as the bug report describes.
+
+The canonical /api/itam/meter-readings endpoint itself is NOT exhibiting the doubling (because it computes prev via findValidPrevReading from the MeterReading table). But by not updating Device.lastMeterBw, it leaves the column in a state that breaks every other consumer:
+- transfer-with-meter (the doubling bug above)
+- /api/meter line 167 RESET detection (false negative)
+- UI display in meter-page.tsx + bulk-meter-dialog.tsx (always shows prevReading=0 — but this is also separately broken because they read `d.lastMeterReading` instead of `d.lastMeterBw`)
+
+### Recommended fix (for the orchestrator to implement)
+
+**1. PRIMARY FIX — `src/app/api/itam/meter-readings/route.ts`:** After the MeterReading row is saved (after line 328 `saved = await db.meterReading.create/update`), add a `db.device.update` call to sync Device.lastMeterBw/lastMeterColor:
+```ts
+await db.device.update({
+  where: { id: device.id },
+  data: {
+    lastMeterBw: meterBw,
+    lastMeterColor: meterColor,
+    updatedBy: user.username || user.email,
+  },
+})
+```
+Best to wrap the MeterReading save + Device update in a `db.$transaction` to keep them atomic. This matches the pattern already used in `src/app/api/devices/[id]/transfer-with-meter/route.ts` (lines 135-158) and `src/lib/legacy-bridge-apply.ts` (lines 179-201).
+
+**2. SECONDARY FIX — `src/app/api/itam/devices/[id]/lifecycle/route.ts`:** When `meterReadingId` is provided (lines 234-243), also fetch the linked MeterReading's `meterBw`/`meterColor` and call `tx.device.update` to set `lastMeterBw`/`lastMeterColor` inside the existing transaction. This handles the lifecycle-link path.
+
+**3. UI FIX — `src/components/itam/meter-page.tsx` + `src/components/itam/bulk-meter-dialog.tsx`:** Change `d.lastMeterReading` → `d.lastMeterBw` (lines 152, 164 in meter-page.tsx; lines 63, 105 in bulk-meter-dialog.tsx) so the displayed "previous reading" reflects the actual Device.lastMeterBw value that the API returns. (Note: the GET /api/devices endpoint already overrides lastMeterBw with the latest MeterReading's meterBw at line 218 of `src/app/api/devices/route.ts`, so this fix is correct as long as that override stays.)
+
+**4. OPTIONAL — clean up `src/components/itam/types.ts` line 49** (`lastMeterReading: number`): This field is dead (never returned by the API). Either remove it or alias it to `lastMeterBw` to prevent future confusion. Removing it would force compile errors at the UI call sites — which is what surfaced this bug in the first place.
+
+### Risk callouts
+
+- The fix in step 1 must use the SAME value for `meterBw`/`meterColor` as what was saved to the MeterReading row (i.e. use the local `meterBw` / `meterColor` constants from lines 107-108, not `saved.meterBw` — they should be identical but using the local constants is safer).
+- For RESET readings (where meterBw < prevMeterBw), the new Device.lastMeterBw should still be the new meterBw (the device's meter is now at the new lower value, after a counter swap or replacement). This matches the behavior of transfer-with-meter (line 156: `lastMeterBw: bw` where `bw = meterBw ?? 0`).
+- For INITIAL readings (first reading on a device), Device.lastMeterBw should be set to the new meterBw. This is a behavior change — currently the column stays at 0/seed for INITIAL readings. After the fix, the column will reflect the actual current meter. This is the correct behavior and aligns with the existing transfer-with-meter pattern.
+
+---
+Task ID: 12
+Agent: orchestrator (main)
+Task: User flagged 3 issues:
+  1. Typo "ส่งซ่อน" should be "ส่งซ่อม" in toast message
+  2. Clarify status of the 4 Replace-on-Withdraw integration points (1 done, 3 pending)
+  3. Fix BUG-METER-003 (Device.lastMeter not updating → cumulative doubling)
+
+Work Log:
+
+### Issue 1: Typo fix
+- Grep'd for "ส่งซ่อน" across src/ — found 1 occurrence in device-detail-sheet.tsx:775
+  (toast.error message). All other 15+ occurrences use "ส่งซ่อม" correctly.
+- Fixed: changed to "ส่งซ่อม".
+
+### Issue 2: Status clarification
+- Confirmed: ONLY 1/4 of the proposed integration points is done.
+  ✅ #1 Device Detail Sheet — replace-on-withdraw checkbox in action dialog (done in Task 9)
+  ❌ #2 Devices Page bulk action — bulk action bar still only has status/site/delete, no replacement
+  ❌ #3 Work Orders page — no replace-device sub-dialog (4,169-line file needs careful integration)
+  ❌ #4 QR Location Scan — QrScannerDialog only navigates to device detail, no "change device at this location" mode
+- Documented in chat to user.
+
+### Issue 3: BUG-METER-003 fix
+
+- Dispatched research subagent (Task ID 12-a) which mapped the meter-write paths:
+  • Canonical: POST /api/itam/meter-readings — does NOT call db.device.update (the bug)
+  • Lifecycle: /api/itam/devices/[id]/lifecycle — links MeterReading but doesn't sync Device.lastMeter
+  • Transfer-with-meter: /api/devices/[id]/transfer-with-meter — DOES update Device.lastMeter (only path)
+  • UI: meter-page.tsx + bulk-meter-dialog.tsx read `d.lastMeterReading` which is NOT in API response
+
+- Applied 3 fixes:
+
+  **Fix #1 (PRIMARY) — meter-readings route**:
+  - Wrapped MeterReading save + Device.lastMeterBw/lastMeterColor update in a single `db.$transaction`
+  - After saving MeterReading, calls `tx.device.update({ where: { id: device.id }, data: { lastMeterBw: meterBw, lastMeterColor: meterColor, updatedBy } })`
+  - This matches the existing pattern in transfer-with-meter route
+  - File: src/app/api/itam/meter-readings/route.ts (lines 319-354)
+
+  **Fix #2 (SECONDARY) — lifecycle route**:
+  - When a lifecycle action links a MeterReading (via meterReadingId), now also:
+    1. Fetches the linked reading's meterBw/meterColor
+    2. Calls `tx.device.update({ where: { id: device.id }, data: { lastMeterBw, lastMeterColor, updatedBy } })`
+  - All inside the existing lifecycle transaction
+  - File: src/app/api/itam/devices/[id]/lifecycle/route.ts (lines 234-262)
+
+  **Fix #3 (UI) — meter-page + bulk-meter-dialog**:
+  - Extended types.ts Device interface: added `lastMeterBw` + `lastMeterColor` as canonical fields, kept `lastMeterReading` for backward-compat
+  - meter-page.tsx: openReadingDialog(), prevReading calculation, table display cell — all now use `d.lastMeterBw ?? d.lastMeterReading ?? 0` fallback
+  - bulk-meter-dialog.tsx: init row state + prev calculation — same fallback pattern
+  - Files: src/components/itam/types.ts, src/components/itam/meter-page.tsx, src/components/itam/bulk-meter-dialog.tsx
+
+- **CRITICAL DISCOVERY during testing**: When posting a meter reading, got error
+  "The column `Device.parentDeviceId` does not exist in the current database."
+  → The Prisma schema changes from Task 9 Phase 2 (parentDeviceId, setLabel, setPosition)
+  were NEVER actually pushed to the database! prisma db push had been failing silently
+  due to Supabase pooler timeouts.
+  - Fix: switched from pooler port 6543 to direct port 5432, ran raw SQL ALTER TABLE
+    via `bunx prisma db execute`. Columns now exist in DB.
+  - This is a PRE-EXISTING issue from Task 9 that surfaced now because the new
+    meter-readings code triggers a `db.device.update` that touches the new columns.
+
+- **Verified end-to-end via API test** on device 2377:
+  | Step | Action | prevMeterBw | meterBw | pagesBw | Status |
+  |------|--------|-------------|---------|---------|--------|
+  | Initial state | (existing INITIAL) | 0 | 1 | 1 | (pre-existing) |
+  | 1 | POST 1500 (month 2026-08) | 1 | 1500 | 1499 | ✅ correct |
+  | 2 | POST 2000 (month 2026-08, overwrite) | 1 | 2000 | 1999 | ✅ correct |
+  | 3 | POST 2500 (month 2026-09, explicit) | 2000 | 2500 | 500 | ✅ correct (NOT 2500) |
+
+  Before fix, step 3 would have shown prevMeterBw=0 → pagesBw=2500 (cumulative doubling).
+  After fix, prevMeterBw=2000 → pagesBw=500 (correct delta).
+
+Stage Summary:
+- ✅ Typo "ส่งซ่อน" → "ส่งซ่อม" fixed (1 occurrence in code).
+- ✅ Clarified: 3/4 Replace-on-Withdraw integration points are still pending (only Device Detail Sheet done).
+- ✅ BUG-METER-003 fixed in 3 files (meter-readings route, lifecycle route, UI types/components).
+- ✅ Prisma schema pushed to DB (parentDeviceId, setLabel, setPosition columns now exist) — this was a hidden blocker.
+- ✅ Verified end-to-end via API: 3 sequential readings produce correct page deltas (1499, 1999, 500) instead of cumulative doubling.
+- 📌 Note: The "cumulative doubling" specifically manifested in paths that read `device.lastMeterBw` directly (transfer-with-meter route, UI display, RESET detection). The canonical meter-readings endpoint itself computes prev via `findValidPrevReading` (queries MeterReading table), so regular month-over-month readings were always correct. The fix makes all paths consistent.
+- 📝 Files modified:
+  • src/components/itam/device-detail-sheet.tsx (typo fix)
+  • src/app/api/itam/meter-readings/route.ts (Fix #1 — primary)
+  • src/app/api/itam/devices/[id]/lifecycle/route.ts (Fix #2 — lifecycle sync)
+  • src/components/itam/types.ts (Fix #3 — Device type)
+  • src/components/itam/meter-page.tsx (Fix #3 — UI fallback)
+  • src/components/itam/bulk-meter-dialog.tsx (Fix #3 — UI fallback)

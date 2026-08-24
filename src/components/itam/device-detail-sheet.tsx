@@ -772,7 +772,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       || actionId === 'return_device'
     if (actReplacementEnabled) {
       if (!isWithdrawAction) {
-        toast.error('เครื่องทดแทนใช้ได้เฉพาะการถอน/ส่งซ่อน/จำหน่าย/คืนเครื่อง')
+        toast.error('เครื่องทดแทนใช้ได้เฉพาะการถอน/ส่งซ่อม/จำหน่าย/คืนเครื่อง')
         return
       }
       if (!actReplacementAssetCode.trim()) {
