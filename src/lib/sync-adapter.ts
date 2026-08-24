@@ -177,6 +177,48 @@ interface AppsScriptResponse {
   error?: string
 }
 
+// ── Retry-delay seam (P9-03) ─────────────────────────────────
+// The retry backoff delay is routed through this injectable holder so
+// that tests can make it instant WITHOUT touching globalThis.setTimeout.
+//
+// WHY THIS EXISTS:
+// fetchFromAppsScript() uses globalThis.setTimeout for TWO independent
+// purposes:
+//   1. Retry backoff delay (this seam)
+//   2. AbortController request-timeout timer (real setTimeout, never mocked)
+// Previously, tests mocked globalThis.setTimeout globally to skip the
+// 1s/2s/4s retry backoff. That also fired controller.abort() BEFORE fetch
+// ran — but mockFetch ignored signal.aborted, producing FALSE PASSES
+// (the audit's P9-03 probe confirmed this).
+//
+// Separating the two timers means tests override ONLY the retry backoff
+// (via _setRetryDelayForTesting) while the request-timeout timer stays on
+// the real globalThis.setTimeout and cannot fire prematurely. The retry
+// count (SYNC_SOURCE_MAX_RETRIES=3) and timeout semantics are preserved.
+let _retryDelayFn: (ms: number) => Promise<void> = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Override the retry-delay function for testing.
+ * Pass a function that resolves immediately to skip the 1s/2s/4s
+ * exponential backoff WITHOUT affecting the AbortController
+ * request-timeout timer (which stays on the real globalThis.setTimeout).
+ *
+ * Pass null to restore the real delay.
+ *
+ * GUARD: No-op in production.
+ */
+export function _setRetryDelayForTesting(
+  fn: ((ms: number) => Promise<void>) | null,
+): void {
+  if (process.env.NODE_ENV === 'production') {
+    // Never allow test overrides in production
+    return
+  }
+  _retryDelayFn =
+    fn ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
+}
+
 /**
  * Fetch records from Apps Script Web App endpoint.
  * Uses server-side credential only — never exposed to browser.
@@ -224,29 +266,44 @@ export async function fetchFromAppsScript(options: {
   if (limit) requestUrl.searchParams.set('limit', String(Math.min(limit, SYNC_PREVIEW_MAX_ROWS)))
   if (cursor) requestUrl.searchParams.set('cursor', cursor)
 
-  // Fetch with retry (source-level retry: 3 attempts, exponential backoff)
+  // Fetch with retry (source-level retry: SYNC_SOURCE_MAX_RETRIES attempts,
+  // exponential backoff). Retry count is NOT reduced — default stays 3.
+  //
+  // P9-03 timer separation:
+  //   - Retry backoff → _retryDelayFn seam (tests override via
+  //     _setRetryDelayForTesting; production uses real setTimeout)
+  //   - Request-timeout timer → real globalThis.setTimeout (NEVER mocked)
+  // This guarantees mocking the retry delay cannot fire the AbortController
+  // timeout prematurely, which was the false-pass root cause.
   let lastError: Error | null = null
   for (let attempt = 0; attempt < SYNC_SOURCE_MAX_RETRIES; attempt++) {
+    const controller = new AbortController()
+    // Request-timeout timer — ALWAYS on the real globalThis.setTimeout
+    // (never mocked by tests). Cleared in `finally` on every path so the
+    // timer is cancelled whether fetch succeeded, threw, or response
+    // processing threw. Preserves timeout semantics + prevents dangling
+    // timers across retry attempts.
+    const timeout = setTimeout(() => controller.abort(), SYNC_SOURCE_TIMEOUT_MS)
     try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), SYNC_SOURCE_TIMEOUT_MS)
-
       const response = await fetch(requestUrl.toString(), {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ source, options: { since, siteFilter, limit, cursor } }),
+        body: JSON.stringify({ authToken: token, source, options: { since, siteFilter, limit, cursor } }),
         signal: controller.signal,
       })
-
-      clearTimeout(timeout)
 
       if (!response.ok) {
         throw new Error(`Source responded ${response.status}: ${response.statusText}`)
       }
 
+      // P9-02: Apps Script ContentService.createTextOutput always returns
+      // HTTP 200, even for auth failures. Auth errors are indicated by
+      // JSON body: { error: 'Unauthorized: ...', code: 'UNAUTHORIZED' }
+      // The adapter checks data.error and throws, so auth failures are
+      // caught even though HTTP status is 200. This is a known Apps Script
+      // limitation — documented in the contract.
       const data: AppsScriptResponse = await response.json()
 
       if (data.error) {
@@ -269,9 +326,17 @@ export async function fetchFromAppsScript(options: {
 
       if (attempt < SYNC_SOURCE_MAX_RETRIES - 1) {
         // Exponential backoff: 1s, 2s, 4s
+        // Routed through the _retryDelayFn seam so tests can make backoff
+        // instant WITHOUT touching the request-timeout timer above.
         const delay = Math.pow(2, attempt) * 1000
-        await new Promise((resolve) => setTimeout(resolve, delay))
+        await _retryDelayFn(delay)
       }
+    } finally {
+      // Always clear the request-timeout timer — success, error, or throw.
+      // This keeps timeout semantics intact (the timer is real and would
+      // fire at SYNC_SOURCE_TIMEOUT_MS) while ensuring no dangling timer
+      // leaks across the retry loop.
+      clearTimeout(timeout)
     }
   }
 
