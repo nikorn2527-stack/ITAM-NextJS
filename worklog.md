@@ -8362,3 +8362,30 @@ Stage Summary:
 - 📝 Files created:
   • scripts/check-prisma-fields.mjs (250 lines)
   • .githooks/pre-commit (30 lines)
+
+---
+Task ID: 15
+Agent: orchestrator (main) — ITAM-01
+Task: QA Deep Test (VERIFY-004) found 6 new bugs on Settings page. Fix all 6.
+
+Work Log:
+
+| Bug ID | Severity | Fix |
+|--------|----------|-----|
+| BUG-SETTINGS-009 | 🔴 Critical | Changed fetch from `/api/itam/sites` (500) → `/api/sites` (200). Also fixed field name mismatch: API returns `code`/`name` but interface expected `siteCode`/`siteName` — added fallback `s.siteCode \|\| s.code`. |
+| BUG-SETTINGS-011 | 🔴 Critical | `useMutation` mutationFn was capturing `form` in closure → stale state. Fixed by passing payload as argument to `mutate()` instead. Also added phone validation. |
+| BUG-SETTINGS-007 | 🟡 Medium | Added `id`, `name`, `aria-label`, `placeholder` on all 4 master form inputs. Added `disabled={!form.category \|\| !form.label}` on save button. |
+| BUG-SETTINGS-008 | 🟡 Medium | Added `title` + `aria-label` on Pencil (edit) and Trash2 (delete) row buttons. |
+| BUG-SETTINGS-010 | 🟡 Medium | Added `id`, `name`, `aria-label`, `placeholder` on all 6 contact form inputs. |
+| BUG-SETTINGS-012 | 🟡 Medium | Converted uncontrolled Tabs (`defaultValue="google"`) → controlled (`value={providerTab}` + `onValueChange`) + `onClick` fallback on each TabsTrigger. Same pattern as BUG-METER-004/BUG-PAPER-001. |
+
+Files modified:
+- src/components/itam/itam-settings.tsx (BUG-009, 007, 008)
+- src/components/itam/contact-directory-section.tsx (BUG-011, 010)
+- src/components/itam/oauth-section.tsx (BUG-012)
+
+Pushed: commit 27e798b → origin/main
+
+Stage Summary:
+- ✅ All 6 Settings bugs fixed and pushed.
+- Pattern fixes applied: controlled Tabs (BUG-012), pass-args-to-mutate (BUG-011), a11y (BUG-007/008/010), API endpoint fix (BUG-009).
