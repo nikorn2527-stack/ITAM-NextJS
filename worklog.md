@@ -1182,3 +1182,44 @@ Task: Re-test BUG-METER-003 + BUG-KPI-001 + ส่งรายการ 44 bugs 
 ### ไฟล์ที่ส่งให้ ITAM-01:
 - 📄 `/home/z/my-project/qa-reports/VERIFY-002-FOR-ITAM-01.md` — สรุปครบ: re-test + 44 bugs + 2 re-open + pattern bugs + priority
 
+
+---
+
+## Task ID: VERIFY-003
+Agent: QA Team
+Task: Re-test หลัง ITAM-01 push commit ใหม่ (latest `96372fd`)
+
+**วันที่:** 2026-08-23
+
+### ✅ Verified (3 ตัว — แก้ผ่าน)
+1. **BUG-001** (Devices form submit) — กดปุ่มโดยไม่กรอกข้อมูล → toast "กรุณากรอกข้อมูลที่จำเป็น" + ไม่มี POST
+2. **BUG-METER-003** (Device.lastMeter) — ทดสอบ 3 readings (different months): pages=500, 500, 500 (correct delta)
+3. **BUG-METER-004** (Tabs) — Tabs เปลี่ยนเป็น controlled component (value/onValueChange) — keyboard navigation ทำงาน
+
+### ❌ ยังพัง (8 ตัว)
+1. **BUG-WO-002** — admin ยังคืน total=0 (fail-closed ยังเป็น `if (ctx.isSuperAdmin)` เท่านั้น)
+2. **BUG-KPI-001** (dependency) — KPI ยังเป็น 0 เพราะ API คืน [] (ติด BUG-WO-002)
+3. **BUG-WO-001** — validateGuestContact ยังตรวจ contactDirectory อยู่
+4. **BUG-METER-001** — ปุ่ม "บันทึก + ถัดไป" ยังเป็น type=submit + form=null (เหมือน BUG-001 เดิมก่อนแก้)
+5. **BUG-METER-002** — บันทึก BW=500 (ต่ำกว่า lastMeter=1000) ได้ → POST 200 (no validation)
+6. **BUG-PAPER-002** — เปลี่ยน input[type=month] เป็น 2026-09 แล้ว API ยังส่ง monthEnd=2026-08
+7. **BUG-PAPER-003** (re-open) — เป็น native browser UI ของ input[type=month] ไม่ใช่ component ของแอป → อาจจะไม่ใช่ bug จริง
+8. **BUG-STK-004** (partial) — 5/6 buttons มี aria-label, ปุ่ม eye icon ยังขาด
+
+### Insights สำคัญ:
+- **BUG-METER-003 ไม่ใช่ cumulative doubling จริง** — ITAM-01 อธิบายใน worklog ว่า "regular month-over-month readings were always correct" — prev มาจาก MeterReading table ผ่าน findValidPrevReading ปัญหา cumulative doubling เกิดเฉพาะ paths ที่อ่าน device.lastMeterBw โดยตรง (transfer-with-meter route, UI display)
+- QA รอบก่อนเทสผิดเพราะใช้ readingMonth เดียวกัน (2026-08) → exclusiveCurrentMonth=true skip same-month → ใช้ INITIAL เป็น prev
+- รอบนี้ทดสอบใช้ readingMonth ต่างกัน → pages คำนวณถูกทุกครั้ง ✅
+
+### Priority สำหรับ ITAM-01 รอบถัดไป:
+1. 🔴 **BUG-WO-002** — เพิ่ม `|| ctx.user.role === 'admin'` ใน fail-closed check (จะ unlock BUG-KPI-001 ด้วย)
+2. 🔴 **BUG-WO-001** — Bypass validateGuestContact ใน dev mode หรือ seed contactDirectory
+3. 🔴 **BUG-METER-001** — เปลี่ยน type=submit → type=button + onClick (เหมือน Devices ที่แก้แล้ว)
+4. 🔴 **BUG-METER-002** — เพิ่ม validation meterBw >= lastMeterBw
+5. 🔴 **BUG-PAPER-002** — เพิ่ม onChange handler ใน input[type=month]
+6. ❌ **BUG-STK-004** (partial) — เพิ่ม aria-label="ดูรายละเอียด" ในปุ่ม eye icon
+7. ⚠️ **BUG-PAPER-003** — พิจารณาปิดเป็น Won't Fix (native browser UI)
+
+### ไฟล์ที่ส่ง:
+- 📄 `/home/z/my-project/qa-reports/VERIFY-003-FOR-ITAM-01.md` — สรุปรอบนี้
+
