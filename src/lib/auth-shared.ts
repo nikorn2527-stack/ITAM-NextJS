@@ -46,10 +46,12 @@ export type Permission =
   | 'STOCK_IN'
   | 'STOCK_OUT'
   | 'STOCK_APPROVE'
-  // ── Templates / Import / Audit ──
+  // ── Templates / Import / Audit / Reports ──
   | 'TEMPLATES_MANAGE'
   | 'IMPORT_DATA'
   | 'VIEW_AUDIT'
+  | 'VIEW_REPORTS'
+  | 'MANAGE_REPORTS'
 
 export type Role = 'superadmin' | 'admin' | 'editor' | 'meter' | 'viewer'
 
@@ -94,6 +96,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'WO_CREATE', 'WO_VIEW_ALL', 'WO_ASSIGN', 'WO_COMPLETE', 'WO_CANCEL',
     'STOCK_VIEW', 'STOCK_IN', 'STOCK_OUT', 'STOCK_APPROVE',
     'TEMPLATES_MANAGE', 'IMPORT_DATA', 'VIEW_AUDIT',
+    'VIEW_REPORTS', 'MANAGE_REPORTS',
   ],
   admin: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'METER_WRITE',
@@ -103,6 +106,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'WO_CREATE', 'WO_VIEW_ALL', 'WO_ASSIGN', 'WO_COMPLETE', 'WO_CANCEL',
     'STOCK_VIEW', 'STOCK_IN', 'STOCK_OUT', 'STOCK_APPROVE',
     'TEMPLATES_MANAGE', 'IMPORT_DATA', 'VIEW_AUDIT',
+    'VIEW_REPORTS', 'MANAGE_REPORTS',
   ],
   editor: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'METER_WRITE',
@@ -111,15 +115,18 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'WO_CREATE', 'WO_VIEW_ALL', 'WO_COMPLETE',
     'STOCK_VIEW', 'STOCK_IN', 'STOCK_OUT',
     'IMPORT_DATA',
+    'VIEW_REPORTS',
   ],
   meter: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'METER_WRITE',
     'PRINT',
     'WO_CREATE', 'WO_VIEW_OWN',
+    'VIEW_REPORTS',
   ],
   viewer: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'PRINT',
     'WO_VIEW_SITE', 'STOCK_VIEW',
+    'VIEW_REPORTS',
   ],
 }
 

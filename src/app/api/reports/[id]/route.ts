@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { requireAuth } from '@/lib/auth-middleware'
 import { reportsService } from '@/modules/reports'
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const unavailable = moduleUnavailableResponse('reports')
   if (unavailable) return unavailable
+
+  // Milestone 1 — Security baseline: require VIEW_REPORTS
+  const auth = await requireAuth(req, 'VIEW_REPORTS')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const { id } = await params
     const report = await reportsService.getDetail(id)
@@ -25,11 +33,18 @@ export async function GET(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const unavailable = moduleUnavailableResponse('reports')
   if (unavailable) return unavailable
+
+  // Milestone 1 — Security baseline: require MANAGE_REPORTS for delete
+  const auth = await requireAuth(req, 'MANAGE_REPORTS')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const { id } = await params
     const deleted = await reportsService.deleteRecord(id)
