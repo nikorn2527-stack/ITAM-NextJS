@@ -75,6 +75,12 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 
 export function OauthSection() {
   const qc = useQueryClient()
+  // BUG-SETTINGS-012 fix: controlled Tabs with state + onClick fallback.
+  // Radix Tabs 1.1.13 has a known issue where click events don't fire
+  // reliably in some contexts (Dialog, Portal, SSR hydration). Using
+  // a controlled value + onClick handler on each TabsTrigger is the
+  // proven fix pattern (same as BUG-METER-004 / BUG-PAPER-001).
+  const [providerTab, setProviderTab] = React.useState('google')
   const { data, isLoading } = useQuery<Record<string, string>>({
     queryKey: ['oauth-settings'],
     queryFn: async () => {
@@ -150,17 +156,18 @@ export function OauthSection() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="google" className="w-full">
+      {/* BUG-SETTINGS-012 fix: controlled Tabs + onClick fallback on triggers */}
+      <Tabs value={providerTab} onValueChange={setProviderTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 sm:w-auto sm:inline-flex">
-          <TabsTrigger value="google" className="gap-1.5">
+          <TabsTrigger value="google" className="gap-1.5" onClick={() => setProviderTab('google')}>
             <span>🔴</span>
             <span className="hidden sm:inline">Google</span>
           </TabsTrigger>
-          <TabsTrigger value="line" className="gap-1.5">
+          <TabsTrigger value="line" className="gap-1.5" onClick={() => setProviderTab('line')}>
             <span>🟢</span>
             <span className="hidden sm:inline">LINE</span>
           </TabsTrigger>
-          <TabsTrigger value="telegram" className="gap-1.5">
+          <TabsTrigger value="telegram" className="gap-1.5" onClick={() => setProviderTab('telegram')}>
             <span>🔵</span>
             <span className="hidden sm:inline">Telegram</span>
           </TabsTrigger>
