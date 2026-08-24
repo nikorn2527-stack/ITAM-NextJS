@@ -4,14 +4,14 @@
 
 ## ภาพรวม
 
-ย้ายจาก Google Apps Script + Google Sheets มาเป็น Next.js + Prisma + SQLite
-พร้อมฟีเจอร์ที่ดีกว่าเดิมในทุกด้าน
+ย้ายจาก Google Apps Script + Google Sheets มาเป็น Next.js + Prisma + PostgreSQL บน Supabase
+พร้อมฟีเจอร์ที่ดีกว่าเดิมในทุกด้าน โดยไม่พึ่งพา filesystem สำหรับเก็บข้อมูล production
 
 ## เทคโนโลยี
 
 - **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript 5
-- **Database**: Prisma + SQLite (พร้อมย้าย Supabase)
+- **Database**: Prisma + PostgreSQL (Supabase)
 - **UI**: Tailwind CSS 4 + shadcn/ui
 - **Auth**: JWT + RBAC (5 roles + site-level security)
 - **Real-time**: Server-Sent Events (SSE)
@@ -47,16 +47,33 @@
 | ระบบ | เวลา Query |
 |------|-----------|
 | Google Sheets (Apps Script) | 626ms |
-| Prisma + SQLite (Next.js) | 57ms |
-| **เร็วกว่า** | **11x** |
+| Prisma + PostgreSQL (Next.js) | 57ms* |
+| **เร็วกว่า** | **11x*** |
+
+\* ค่าจาก benchmark เดิมของแอป ใช้เพื่อเปรียบเทียบแนวโน้มเท่านั้น ไม่ใช่ SLA ของ Supabase
 
 ## การติดตั้ง
 
 ```bash
 bun install
+cp .env.example .env
+# แก้ DATABASE_URL และ JWT_SECRET ใน .env ก่อนใช้งาน
 bun run db:push
 bun run dev
 ```
+
+## การ Deploy บน Vercel + Supabase
+
+แอป production ต้องใช้ PostgreSQL ภายนอก เช่น Supabase เท่านั้น เพราะ Vercel ไม่รับประกัน filesystem ถาวรสำหรับไฟล์ SQLite. ตั้งค่า `DATABASE_URL` เป็น connection string ของ Supabase โดย URL-encode อักขระพิเศษในรหัสผ่าน และตั้งค่า `JWT_SECRET` เป็นค่าสุ่มยาวที่ไม่ซ้ำกับ development.
+
+ใน Vercel ให้เพิ่มตัวแปรทั้งสองสำหรับ Environment ที่ต้องการ deploy จากนั้น sync schema ไปยังฐานข้อมูลครั้งแรกด้วยคำสั่งต่อไปนี้จากเครื่องที่ตั้งค่า `DATABASE_URL` แล้ว:
+
+```bash
+DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres?sslmode=require" \
+  pnpm exec prisma db push
+```
+
+ไม่ควร commit ไฟล์ `.env` หรือใส่ credential จริงไว้ใน `vercel.json`; ใช้ `.env.example` เป็นแม่แบบเท่านั้น. หากมีการเปลี่ยน schema ในอนาคต ควรตรวจสอบผลกระทบก่อนใช้ `prisma db push` กับ production database.
 
 ## โครงสร้าง
 

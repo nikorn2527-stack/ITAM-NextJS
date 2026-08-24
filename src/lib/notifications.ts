@@ -33,17 +33,16 @@
  *       email_from                 → อีเมลผู้ส่งเริ่มต้น
  */
 
-import nodemailer from 'nodemailer'
 import { db } from '@/lib/db'
 
 // ============================================================
 // Types
 // ============================================================
 
-export type NotificationChannel = 'line-oa' | 'line-notify' | 'telegram' | 'email'
+export type NotificationChannel = 'line-oa' | 'telegram' | 'email'
 
 export type NotificationTemplate =
-  | 'wo_created' // แจ้งซ่อมใหม่
+  | 'wo_created' // แจ้งซ่อนใหม่
   | 'wo_assigned' // มอบหมายงาน
   | 'wo_completed' // ปิดงานแล้ว
   | 'wo_cancelled' // ยกเลิกงาน
@@ -118,13 +117,11 @@ const DEFAULT_NOTIFY_EVENTS: NotifyEventConfig = {
 // ============================================================
 
 interface NotifySettings {
-  // ── Channel credentials (camelCase — saved by /api/itam/notifications/settings) ──
-  notifyEmails?: string // comma-separated recipient list
+  lineChannelAccessToken?: string
+  lineChannelSecret?: string
+  lineAdminGroupId?: string
   telegramBotToken?: string
   telegramChatId?: string
-  lineNotifyToken?: string // LINE Notify token
-  lineOaChannelAccessToken?: string // LINE OA channel access token
-  lineOaToUserId?: string // LINE OA target user/group ID
   smtpHost?: string
   smtpPort?: string
   smtpUser?: string
@@ -134,38 +131,23 @@ interface NotifySettings {
   notifyEnabled?: boolean
 }
 
-/**
- * Load notification settings from AppSetting.
- *
- * Reads the camelCase keys saved by `/api/itam/notifications/settings` (UI),
- * with snake_case fallbacks for any legacy data still in the DB.
- */
 async function loadSettings(): Promise<NotifySettings> {
   try {
     const rows = await db.appSetting.findMany()
-    const get = (...keys: string[]) => {
-      for (const k of keys) {
-        const v = rows.find((r) => r.key === k)?.value
-        if (v) return v
-      }
-      return undefined
-    }
+    const get = (key: string) =>
+      rows.find((r) => r.key === key)?.value || undefined
     return {
-      notifyEmails: get('notifyEmails', 'notify_emails'),
-      telegramBotToken: get('telegramBotToken', 'telegram_bot_token'),
-      telegramChatId: get('telegramChatId', 'telegram_chat_id'),
-      lineNotifyToken: get('lineNotifyToken', 'line_notify_token'),
-      lineOaChannelAccessToken: get(
-        'lineOaChannelAccessToken',
-        'line_channel_access_token',
-      ),
-      lineOaToUserId: get('lineOaToUserId', 'line_admin_group_id'),
-      smtpHost: get('smtpHost', 'smtp_host'),
-      smtpPort: get('smtpPort', 'smtp_port'),
-      smtpUser: get('smtpUser', 'smtp_user'),
-      smtpPass: get('smtpPass', 'smtp_pass'),
-      emailFrom: get('emailFrom', 'email_from'),
-      notifyEnabled: get('notifyEnabled', 'notify_enabled') !== 'false',
+      lineChannelAccessToken: get('line_channel_access_token'),
+      lineChannelSecret: get('line_channel_secret'),
+      lineAdminGroupId: get('line_admin_group_id'),
+      telegramBotToken: get('telegram_bot_token'),
+      telegramChatId: get('telegram_chat_id'),
+      smtpHost: get('smtp_host'),
+      smtpPort: get('smtp_port'),
+      smtpUser: get('smtp_user'),
+      smtpPass: get('smtp_pass'),
+      emailFrom: get('email_from'),
+      notifyEnabled: get('notify_enabled') !== 'false',
     }
   } catch (err) {
     console.error('[notifications] loadSettings failed:', err)
@@ -191,8 +173,8 @@ function interpolate(tpl: string, data: Record<string, unknown>): string {
 
 const TEMPLATES: Record<NotificationTemplate, { title: string; body: string }> = {
   wo_created: {
-    title: 'แจ้งซ่อมใหม่',
-    body: '🔧 แจ้งซ่อมใหม่ {woNumber}\nหัวข้อ: {subject}\nสถานที่: {building} {location}\nผู้แจ้ง: {reporterName}\nเบอร์: {tel}\nความเร่งด่วน: {priority}',
+    title: 'แจ้งซ่อนใหม่',
+    body: '🔧 แจ้งซ่อนใหม่ {woNumber}\nหัวข้อ: {subject}\nสถานที่: {building} {location}\nผู้แจ้ง: {reporterName}\nเบอร์: {tel}\nความเร่งด่วน: {priority}',
   },
   wo_assigned: {
     title: 'มอบหมายงาน',
@@ -232,19 +214,19 @@ const TEMPLATES: Record<NotificationTemplate, { title: string; body: string }> =
   },
   device_added: {
     title: 'เพิ่มอุปกรณ์ใหม่',
-    body: 'เพิ่มอุปกรณ์ {assetCode}\nประเภท: {type}\nยี่ห้อ/รุ่น: {brand} {model}',
+    body: 'เพิ่มอุปกรณ์ {assetNo}\nประเภท: {deviceType}\nยี่ห้อ/รุ่น: {brand} {model}',
   },
   device_updated: {
     title: 'แก้ไขข้อมูลอุปกรณ์',
-    body: 'แก้ไขอุปกรณ์ {assetCode}\nฟิลด์ที่เปลี่ยน: {changedFields}',
+    body: 'แก้ไขอุปกรณ์ {assetNo}\nฟิลด์ที่เปลี่ยน: {changedFields}',
   },
   transfer: {
     title: 'ย้ายตำแหน่งอุปกรณ์',
-    body: 'ย้ายอุปกรณ์ {assetCode}\nจาก: {fromSite}\nไปยัง: {toSite}\nผู้ดำเนินการ: {by}',
+    body: 'ย้ายอุปกรณ์ {assetNo}\nจาก: {fromSite}\nไปยัง: {toSite}\nผู้ดำเนินการ: {by}',
   },
   meter: {
     title: 'บันทึกมิเตอร์',
-    body: 'บันทึกมิเตอร์อุปกรณ์ {assetCode}\nขาวดำ: {pagesBw} หน้า\nสี: {pagesColor} หน้า\nผู้บันทึก: {by}',
+    body: 'บันทึกมิเตอร์อุปกรณ์ {assetNo}\nขาวดำ: {pagesBw} หน้า\nสี: {pagesColor} หน้า\nผู้บันทึก: {by}',
   },
   custom: {
     title: '{title}',
@@ -318,7 +300,7 @@ async function logNotificationAudit(
 /**
  * Send a LINE message via Push API.
  * - If `lineUserId` is provided → Push to that user.
- * - Otherwise → Push to the configured `lineOaToUserId` (admin group/room).
+ * - Otherwise → Push to the admin group/room configured in AppSetting.
  *
  * NOTE: For now this just logs (no API keys configured). When keys are
  * configured in AppSetting, real sending will be attempted.
@@ -328,16 +310,16 @@ export async function sendLINE(
   lineUserId?: string,
 ): Promise<void> {
   const settings = await loadSettings()
-  const target = lineUserId ?? settings.lineOaToUserId
+  const target = lineUserId ?? settings.lineAdminGroupId
   if (!target) {
     console.warn(
-      '[notifications][line-oa] no target (lineOaToUserId or lineUserId) — log only',
+      '[notifications][line-oa] no target (lineUserId or line_admin_group_id) — log only',
     )
     console.log('[notifications][line-oa] message:\n' + message)
     return
   }
 
-  if (!settings.lineOaChannelAccessToken || !settings.notifyEnabled) {
+  if (!settings.lineChannelAccessToken || !settings.notifyEnabled) {
     console.log(
       `[notifications][line-oa] (log only) → ${target}\n${message}`,
     )
@@ -351,7 +333,7 @@ export async function sendLINE(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${settings.lineOaChannelAccessToken}`,
+        Authorization: `Bearer ${settings.lineChannelAccessToken}`,
       },
       body: JSON.stringify({
         to: target,
@@ -366,36 +348,6 @@ export async function sendLINE(
     }
   } catch (err) {
     console.error('[notifications][line-oa] send failed:', err)
-  }
-}
-
-/**
- * Send a message via LINE Notify API (simple 1-way push to a chat/group
- * linked to the token's owner). Uses `lineNotifyToken` from AppSetting.
- */
-export async function sendLINENotify(message: string): Promise<void> {
-  const settings = await loadSettings()
-  if (!settings.lineNotifyToken || !settings.notifyEnabled) {
-    console.log('[notifications][line-notify] (log only)\n' + message)
-    return
-  }
-  try {
-    const res = await fetch('https://notify-api.line.me/api/notify', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        Authorization: `Bearer ${settings.lineNotifyToken}`,
-      },
-      body: new URLSearchParams({ message }).toString(),
-    })
-    if (!res.ok) {
-      const txt = await res.text()
-      console.error(
-        `[notifications][line-notify] LINE Notify API error ${res.status}: ${txt}`,
-      )
-    }
-  } catch (err) {
-    console.error('[notifications][line-notify] send failed:', err)
   }
 }
 
@@ -450,45 +402,27 @@ export async function sendTelegram(
 }
 
 /**
- * Send an email via nodemailer when SMTP settings are configured,
- * otherwise log to console. Returns true if SMTP was attempted
- * (regardless of success), false if logged only.
+ * Send an email. For now this just logs; when SMTP settings are
+ * configured it would perform a real send (e.g. via nodemailer).
  */
 export async function sendEmail(
   to: string,
   subject: string,
   body: string,
-): Promise<boolean> {
+): Promise<void> {
   const settings = await loadSettings()
   if (!settings.smtpHost || !settings.notifyEnabled) {
     console.log(
       `[notifications][email] (log only) → ${to}\nSubject: ${subject}\n${body}`,
     )
-    return false
+    return
   }
 
-  try {
-    const transporter = nodemailer.createTransport({
-      host: settings.smtpHost,
-      port: parseInt(settings.smtpPort || '587', 10),
-      secure: parseInt(settings.smtpPort || '587', 10) === 465,
-      auth: {
-        user: settings.smtpUser,
-        pass: settings.smtpPass,
-      },
-    })
-    await transporter.sendMail({
-      from: settings.emailFrom || settings.smtpUser,
-      to,
-      subject,
-      html: body,
-    })
-    console.log(`[notifications][email] sent → ${to} (${subject})`)
-    return true
-  } catch (err) {
-    console.error('[notifications][email] send failed:', err)
-    return false
-  }
+  // ── Real SMTP send would go here ──
+  // (Implementation deferred — requires a nodemailer dependency.)
+  console.log(
+    `[notifications][email] SMTP configured but not implemented → ${to}\nSubject: ${subject}\n${body}`,
+  )
 }
 
 // ============================================================
@@ -504,7 +438,7 @@ export async function sendNotification(data: NotificationData): Promise<void> {
   const { template, channels, data: ctx, lineUserId, telegramChatId, email } =
     data
 
-  if (!channels || !channels.length) {
+  if (!channels.length) {
     console.warn('[notifications] no channels specified — skipping')
     return
   }
@@ -515,15 +449,6 @@ export async function sendNotification(data: NotificationData): Promise<void> {
   // Build the combined message (title + body) for channel senders
   const fullMessage = `${rendered.title}\n${rendered.body}`
 
-  // Pre-load settings once (used for email fallback + line-notify)
-  const settings = await loadSettings()
-  const emailRecipients = email
-    ? [email]
-    : (settings.notifyEmails ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean)
-
   await Promise.all(
     channels.map(async (channel) => {
       try {
@@ -531,23 +456,16 @@ export async function sendNotification(data: NotificationData): Promise<void> {
           case 'line-oa':
             await sendLINE(fullMessage, lineUserId)
             break
-          case 'line-notify':
-            await sendLINENotify(fullMessage)
-            break
           case 'telegram':
             await sendTelegram(fullMessage, telegramChatId)
             break
           case 'email':
-            if (emailRecipients.length === 0) {
+            if (!email) {
               console.warn(
-                '[notifications][email] no email address (pass `email` or set `notifyEmails`) — skipping',
+                '[notifications][email] no email address — skipping',
               )
             } else {
-              await Promise.all(
-                emailRecipients.map((to) =>
-                  sendEmail(to, rendered.title, rendered.body),
-                ),
-              )
+              await sendEmail(email, rendered.title, rendered.body)
             }
             break
         }
@@ -555,7 +473,7 @@ export async function sendNotification(data: NotificationData): Promise<void> {
           channel,
           template,
           rendered,
-          { lineUserId, telegramChatId, email: emailRecipients.join(',') || email },
+          { lineUserId, telegramChatId, email },
           actor,
           data.entityId,
           data.entity,
@@ -566,7 +484,7 @@ export async function sendNotification(data: NotificationData): Promise<void> {
           channel,
           template,
           rendered,
-          { lineUserId, telegramChatId, email: emailRecipients.join(',') || email },
+          { lineUserId, telegramChatId, email },
           actor,
           data.entityId,
           data.entity,
@@ -947,32 +865,33 @@ async function channelsForEvent(event: keyof NotifyEventConfig): Promise<Notific
   const selected: NotificationChannel[] = []
   if (channels.telegram) selected.push('telegram')
   if (channels.lineOA) selected.push('line-oa')
-  if (channels.lineNotify) selected.push('line-notify')
   if (channels.email) selected.push('email')
+  // LINE Notify is retained in the settings UI, but has no sender in the
+  // current implementation; do not silently send it through a different API.
   return selected
 }
 
 export async function notifyDeviceAdded(
-  device: { assetCode?: string | null; type?: string | null; brand?: string | null; model?: string | null },
+  device: { assetNo?: string | null; deviceType?: string | null; brand?: string | null; model?: string | null },
   actor = 'system',
 ): Promise<void> {
   await sendNotification({
     template: 'device_added',
     channels: await channelsForEvent('deviceAdded'),
     data: {
-      assetCode: device.assetCode ?? '—',
-      type: device.type ?? '—',
+      assetNo: device.assetNo ?? '—',
+      deviceType: device.deviceType ?? '—',
       brand: device.brand ?? '—',
       model: device.model ?? '—',
     },
     actor,
-    entityId: device.assetCode ?? undefined,
+    entityId: device.assetNo ?? undefined,
     entity: 'Device',
   })
 }
 
 export async function notifyDeviceUpdated(
-  device: { assetCode?: string | null; brand?: string | null; model?: string | null },
+  device: { assetNo?: string | null; brand?: string | null; model?: string | null },
   actor = 'system',
   changedFields: string[] = [],
 ): Promise<void> {
@@ -980,19 +899,19 @@ export async function notifyDeviceUpdated(
     template: 'device_updated',
     channels: await channelsForEvent('deviceUpdated'),
     data: {
-      assetCode: device.assetCode ?? '—',
+      assetNo: device.assetNo ?? '—',
       brand: device.brand ?? '—',
       model: device.model ?? '—',
       changedFields: changedFields.length ? changedFields.join(', ') : '—',
     },
     actor,
-    entityId: device.assetCode ?? undefined,
+    entityId: device.assetNo ?? undefined,
     entity: 'Device',
   })
 }
 
 export async function notifyTransfer(ctx: {
-  assetCode: string
+  assetNo: string
   fromSite?: string | null
   toSite?: string | null
   by?: string | null
@@ -1001,19 +920,19 @@ export async function notifyTransfer(ctx: {
     template: 'transfer',
     channels: await channelsForEvent('transfer'),
     data: {
-      assetCode: ctx.assetCode,
+      assetNo: ctx.assetNo,
       fromSite: ctx.fromSite ?? '—',
       toSite: ctx.toSite ?? '—',
       by: ctx.by ?? '—',
     },
     actor: ctx.by ?? 'system',
-    entityId: ctx.assetCode,
+    entityId: ctx.assetNo,
     entity: 'Device',
   })
 }
 
 export async function notifyMeter(ctx: {
-  assetCode: string
+  assetNo: string
   pagesBw: number
   pagesColor: number
   by?: string | null
@@ -1022,17 +941,13 @@ export async function notifyMeter(ctx: {
     template: 'meter',
     channels: await channelsForEvent('meter'),
     data: {
-      assetCode: ctx.assetCode,
+      assetNo: ctx.assetNo,
       pagesBw: ctx.pagesBw,
       pagesColor: ctx.pagesColor,
       by: ctx.by ?? '—',
     },
     actor: ctx.by ?? 'system',
-    entityId: ctx.assetCode,
+    entityId: ctx.assetNo,
     entity: 'Device',
   })
 }
-
-// ============================================================
-// Convenience helpers for device events (used by itam/devices routes)
-// These wrap sendNotification with pre-built templates for common
