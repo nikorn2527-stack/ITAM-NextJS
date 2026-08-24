@@ -1261,3 +1261,58 @@ Task: เสนอเปลี่ยนชื่อ "วงจรชีวิต
 
 ### Priority: 🟢 Low (cosmetic — ไม่กระทบฟังก์ชัน)
 
+
+---
+
+## Task ID: QA-UX-002
+Agent: QA Team
+Task: เสนอเปลี่ยนสีพื้นหลังโหมดสว่าง — จาก pure white → warm gray (สบายตา)
+
+**วันที่:** 2026-08-24
+**สถานะ:** ✅ User อนุมัติแล้ว — ส่งให้ ITAM-01 เปลี่ยน
+
+### ปัญหา:
+- Production ใช้ pure white (`#ffffff`) → สว่างเกินไป แสบตาเมื่อใช้นาน
+- Sandbox QA ใช้ warm gray (`#f2f2f7` / `oklch(0.96 0.003 270)`) → สบายตา ทนได้นานกว่า
+
+### การเปลี่ยน (สำหรับ ITAM-01):
+
+**ไฟล์:** `src/app/globals.css`
+
+```diff
+:root {
+  /* เดิม: */
+- --background: hsl(0 0% 100%);    /* pure white — แสบตา */
+
+  /* เปลี่ยนเป็น (เหมือน Sandbox QA): */
++ --background: oklch(0.96 0.003 270);  /* warm gray #f2f2f7 — สบายตา */
++ --foreground: oklch(0.25 0.002 270);  /* ตัวอักษรเข้มนุ่ม */
++ --card: oklch(1 0 0);                /* card ขาว (ตัดกับพื้นเทา) */
++ --border: oklch(0.85 0.003 270);    /* ขอบเทาอ่อน */
++ --muted: oklch(0.93 0.003 270);    /* muted เทาอ่อน */
++ --secondary: oklch(0.93 0.003 270);
++ --accent: oklch(0.93 0.003 270);
+}
+```
+
+### ถ้า production ใช้ HSL (ไม่ใช่ OKLCH):
+```css
+--background: hsl(240 5% 96%);     /* ≈ #f2f2f7 warm gray */
+--foreground: hsl(240 5% 15%);     /* ตัวอักษรเข้มนุ่ม */
+--card: hsl(0 0% 100%);           /* card ขาว */
+--border: hsl(240 5% 85%);        /* ขอบเทาอ่อน */
+```
+
+### เหตุผล:
+- Apple Human Interface Guidelines แนะนำ warm gray (#f2f2f7) สำหรับ background
+- ลดความสว่างจาก 100% → 96% → ลดการสะท้อนแสง → สบายตา
+- คอนทราสต์ card (ขาว) กับ background (เทาอุ่น) → ดูมีมิติ ไม่แบน
+- ทนการใช้งานนานขึ้น ลดอาการเมื่อยล้าตา
+
+### Priority: 🟡 Medium (UX — กระทบทุกหน้า)
+
+### หมายเหตุ:
+- ตรวจสอบว่า production ใช้ OKLCH หรือ HSL ก่อนเปลี่ยน
+- ถ้าใช้ Tailwind CSS 4 + shadcn/ui — OKLCH รองรับโดยตรง
+- ทดสอบหลังเปลี่ยน: ทุกหน้าต้องยังอ่านง่าย + คอนทราสต์ผ่าน WCAG AA
+
