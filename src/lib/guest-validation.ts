@@ -106,6 +106,12 @@ export function normalizeName(input: string | null | undefined): string {
  *  - name (case-insensitive) + phone (digits only) must match a row
  *  - if employee_code is provided, it must also match
  *  - inactive rows are skipped
+ *
+ * BUG-WO-001 fix: when contactDirectory is empty AND we're running in dev
+ * mode (NODE_ENV=development), bypass validation so QA can create guest
+ * work orders without first seeding the directory. The bypass returns
+ * ok=true with the raw input — no canonical values. In production the
+ * strict fail-closed behavior is preserved.
  */
 export async function validateGuestContact(
   input: GuestValidationInput,
@@ -123,6 +129,23 @@ export async function validateGuestContact(
 
   const dir = await loadContactDirectory()
   if (dir.length === 0) {
+    // BUG-WO-001 fix: dev-mode bypass. When the contactDirectory is empty
+    // (common in dev/preview environments), allow the guest contact through
+    // without strict matching. In production this remains fail-closed.
+    if (process.env.NODE_ENV === 'development') {
+      return {
+        ok: true,
+        canonicalName: nameRaw,
+        canonicalPhone: normalizePhone(phoneRaw) || phoneRaw,
+        canonicalEmployeeCode: codeRaw || null,
+        entry: {
+          full_name: nameRaw,
+          phone_primary: phoneRaw,
+          employee_code: codeRaw || undefined,
+          active: true,
+        },
+      }
+    }
     return {
       ok: false,
       error: 'ยังไม่มีข้อมูลผู้ติดต่อในระบบ (contactDirectory) กรุณาติดต่อผู้ดูแล',

@@ -473,6 +473,7 @@ export function StockPurchaseOrders() {
                             size="sm"
                             variant="ghost"
                             title="ดูรายละเอียด"
+                            aria-label={`ดูรายละเอียดใบสั่งซื้อ ${po.poNumber ?? po.id ?? ''}`}
                             onClick={() => openDetail(po.id)}
                             className="h-7 px-2 text-slate-500 hover:text-[#0d9488]"
                           >

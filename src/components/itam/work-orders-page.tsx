@@ -2010,6 +2010,12 @@ function WorkOrderDetailContent({
   onClose: () => void
   resolutions: ResolutionOption[]
 }) {
+  // BUG-WO-002 fix: missing useQueryClient() — multiple `qc.invalidateQueries`
+  // calls below (lines ~2215+) reference `qc` but it was never declared in
+  // this component scope, causing runtime ReferenceError when image upload
+  // or parts/approve flows try to invalidate the WO cache.
+  const qc = useQueryClient()
+
   // Assign technician
   const [assignOpen, setAssignOpen] = React.useState(false)
   const [techName, setTechName] = React.useState(wo.assignedTo ?? '')
