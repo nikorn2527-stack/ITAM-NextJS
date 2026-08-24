@@ -28,6 +28,16 @@ if [ -f "scripts/check-prisma-fields.mjs" ]; then
   fi
 fi
 
+# ARCH-01 prevention: validate module manifest and sidebar route mapping.
+if [ -f "scripts/check-module-manifest.mjs" ]; then
+  echo "🔍 Running module manifest check..."
+  if ! node scripts/check-module-manifest.mjs; then
+    echo ""
+    echo "❌ Module manifest check failed — fix module route/dependency mapping before committing."
+    exit 1
+  fi
+fi
+
 # BUG-MONTHLY-001 prevention: TypeScript syntax check on staged files.
 # QA recommended: "เพิ่ม npx tsc --noEmit ใน pre-commit hook"
 # This catches syntax errors (missing brackets, typos) before they ship.

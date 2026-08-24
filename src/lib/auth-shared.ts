@@ -99,6 +99,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'METER_WRITE',
     'DEVICE_EDIT', 'DEVICE_DELETE', 'DEVICE_TRANSFER', 'LIFECYCLE_EDIT',
     'MASTER_DATA_EDIT', 'EXPORT_PRINT', 'PRINT', 'ADMIN',
+    'USER_MANAGE', 'SYSTEM_CONFIG',
     'WO_CREATE', 'WO_VIEW_ALL', 'WO_ASSIGN', 'WO_COMPLETE', 'WO_CANCEL',
     'STOCK_VIEW', 'STOCK_IN', 'STOCK_OUT', 'STOCK_APPROVE',
     'TEMPLATES_MANAGE', 'IMPORT_DATA', 'VIEW_AUDIT',
@@ -337,7 +338,7 @@ export function isSuperAdminRole(role: string | null | undefined): boolean {
 // returns an empty array (fail-closed). Existing users without allowedSites
 // must be granted explicit access via UserSiteGrant or allowedSites.
 export function getAllowedSites(user: Pick<UserPermissionRow, 'role' | 'allowedSites'>): string[] | 'ALL' {
-  if (isSuperAdminRole(user.role)) return 'ALL'
+  if (isSuperAdminRole(user.role) || normalizeRole(user.role) === 'admin') return 'ALL'
   const raw = String(user.allowedSites ?? '').trim()
   if (raw.toUpperCase() === 'ALL') return 'ALL'
   const arr = raw.split(',').map((s) => s.trim()).filter(Boolean)
@@ -380,7 +381,7 @@ export function toAuthUser(row: UserPermissionRow): AuthUser {
     role,
     name: row.name,
     username: row.username,
-    allowedSites: isSuperAdminRole(role) ? 'ALL' : (row.allowedSites ?? ''),
+    allowedSites: (isSuperAdminRole(role) || role === 'admin') ? 'ALL' : (row.allowedSites ?? ''),
     permissions,
     isDemo: row.isDemo === true,
   }

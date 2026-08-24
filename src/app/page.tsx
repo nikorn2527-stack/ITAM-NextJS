@@ -86,6 +86,9 @@ const MonthlyReport = dynamic(() =>
 const ReportsHub = dynamic(() =>
   import('@/components/itam/reports-hub').then((m) => m.ReportsHub),
 )
+const MobileShell = dynamic(() =>
+  import('@/components/itam/mobile').then((m) => m.MobileShell),
+)
 const SettingsPageV2 = dynamic(() =>
   import('@/components/itam/settings-page-v2').then((m) => m.SettingsPageV2),
 )
@@ -293,6 +296,7 @@ export default function Home() {
                 {activePage === 'templates' && <TemplatesPage />}
                 {activePage === 'monthly-report' && <MonthlyReport />}
                 {activePage === 'reports-hub' && <ReportsHub />}
+                {activePage === 'mobile' && <MobileShell />}
                 {activePage === 'settings-v2' && <SettingsPageV2 />}
                 {activePage === 'work-orders' && <WorkOrdersPage />}
                 {activePage === 'stock' && <StockPage />}
