@@ -63,6 +63,10 @@ interface ReminderDevice {
   model: string
   site: string
   lastMeterReading: number
+  /** Latest BW meter — canonical field from API. Used for prev reading. */
+  lastMeterBw?: number
+  /** Latest color meter — canonical field from API. */
+  lastMeterColor?: number
 }
 interface ReminderEntry {
   device: ReminderDevice
@@ -149,7 +153,9 @@ export function MeterPage() {
 
   function openReadingDialog(d: Device) {
     setReadingTarget(d)
-    setNewReading(String(d.lastMeterReading ?? 0))
+    // BUG-METER-003 fix: prefer lastMeterBw (canonical API field) over
+    // lastMeterReading (legacy alias that's often undefined → 0).
+    setNewReading(String(d.lastMeterBw ?? d.lastMeterReading ?? 0))
     setReadingDate(todayISO())
     setRemark('')
   }
@@ -161,7 +167,8 @@ export function MeterPage() {
     setTimeout(() => setHighlightUnread(false), 3000)
   }
 
-  const prevReading = readingTarget?.lastMeterReading ?? 0
+  // BUG-METER-003 fix: prefer lastMeterBw (canonical API field).
+  const prevReading = readingTarget?.lastMeterBw ?? readingTarget?.lastMeterReading ?? 0
   const newReadingNum = Number(newReading)
   const delta = Number.isFinite(newReadingNum) ? newReadingNum - prevReading : 0
   const isReset = newReadingNum < prevReading
@@ -525,7 +532,7 @@ export function MeterPage() {
                         </TableCell>
                         <TableCell className="text-slate-700 dark:text-slate-200">{d.site}</TableCell>
                         <TableCell className="text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
-                          {d.lastMeterReading.toLocaleString()}
+                          {(d.lastMeterBw ?? d.lastMeterReading ?? 0).toLocaleString()}
                         </TableCell>
                         <TableCell>
                           {remindersData?.hasActiveCycle === false ? (

@@ -232,14 +232,33 @@ export async function POST(
       })
 
       if (meterReadingId) {
-        await tx.meterReading.update({
+        // ── BUG-METER-003 FIX (Task 12) ──
+        // When a lifecycle action links a MeterReading, also sync
+        // Device.lastMeterBw/lastMeterColor from that reading. Without
+        // this, the column stays stale (or 0) → next transfer-with-meter
+        // computes pages = full reading → cumulative doubling.
+        const linkedReading = await tx.meterReading.findUnique({
           where: { id: meterReadingId },
-          data: {
-            eventType: historyAction,
-            eventId: historyRow.id,
-            readingType: derivedReadingType,
-          },
+          select: { meterBw: true, meterColor: true },
         })
+        if (linkedReading) {
+          await tx.meterReading.update({
+            where: { id: meterReadingId },
+            data: {
+              eventType: historyAction,
+              eventId: historyRow.id,
+              readingType: derivedReadingType,
+            },
+          })
+          await tx.device.update({
+            where: { id: device.id },
+            data: {
+              lastMeterBw: linkedReading.meterBw,
+              lastMeterColor: linkedReading.meterColor,
+              updatedBy: movedBy,
+            },
+          })
+        }
       }
 
       return [updatedDevice, historyRow] as const
