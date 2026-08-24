@@ -636,6 +636,7 @@ export function StockInventory() {
                               size="sm"
                               variant="ghost"
                               title="ดูรายละเอียด"
+                              aria-label={`ดูรายละเอียด ${item.name ?? item.productCode ?? ''}`}
                               onClick={(e) => {
                                 e.stopPropagation()
                                 openDetail(item)

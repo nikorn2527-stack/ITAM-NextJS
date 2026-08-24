@@ -190,7 +190,7 @@ export function LifecycleDashboard() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 sm:text-base">
-                  🔄 วงจรชีวิตอุปกรณ์
+                  🔄 แผนเปลี่ยนทดแทนอุปกรณ์
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   วางแผนการเปลี่ยนทดแทนอุปกรณ์ตามอายุและสถานะรับประกัน
@@ -383,7 +383,7 @@ export function LifecycleDashboard() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <RefreshCw className="h-4 w-4 text-[#f97316]" />
-              🔄 ตารางวงจรชีวิตอุปกรณ์ทั้งหมด
+              🔄 ตารางแผนเปลี่ยนทดแทนอุปกรณ์ทั้งหมด
             </DialogTitle>
             <DialogDescription>
               รายการอุปกรณ์ทั้งหมด {devices.length} เครื่อง — เรียงตามคะแนนความจำเป็นในการเปลี่ยนทดแทน

@@ -1,8 +1,13 @@
 {
+  "buildCommand": "npx prisma generate && next build",
   "crons": [
     {
       "path": "/api/cron/keepalive",
       "schedule": "0 9 * * 1"
     }
-  ]
+  ],
+  "framework": "nextjs",
+  "github": {
+    "silent": true
+  }
 }

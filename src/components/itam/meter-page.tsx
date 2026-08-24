@@ -181,8 +181,18 @@ export function MeterPage() {
       toast.error('กรุณากรอกค่ามิเตอร์เป็นตัวเลข')
       return
     }
-    if (needsRemark) {
-      toast.error('ค่าใหม่น้อยกว่าค่าก่อนหน้า กรุณาระบุหมายเหตุ (RESET)')
+    // BUG-METER-002 fix: explicit validation that meterBw >= lastMeterBw
+    // (or a remark must be provided when it's a RESET — counter swap, drum
+    // replacement, etc.). Previously only triggered toast when remark was
+    // missing; now we surface a clear message explaining the constraint.
+    if (isReset && needsRemark) {
+      toast.error(
+        `ค่าใหม่ (${newReadingNum.toLocaleString()}) น้อยกว่าค่าก่อนหน้า (${prevReading.toLocaleString()}) — กรุณาระบุหมายเหตุ RESET (เช่น เปลี่ยน Drum/เครื่องพิมพ์ใหม่)`,
+      )
+      return
+    }
+    if (isReset && !remark.trim()) {
+      toast.error('ค่ามิเตอร์ลดลง — ต้องระบุหมายเหตุ RESET ก่อนบันทึก')
       return
     }
     try {

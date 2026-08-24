@@ -144,7 +144,7 @@ function KpiCard({
             ) : (
               <div className="flex items-baseline gap-1">
                 <span className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-2xl">
-                  {animated.toLocaleString()}
+                  {(animated ?? 0).toLocaleString()}
                 </span>
                 {unit && (
                   <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">{unit}</span>
@@ -814,7 +814,7 @@ ${kpiHtml}
                 ) : (
                   <div className="flex items-baseline gap-1">
                     <span className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-2xl">
-                      {paperThisMonth.toLocaleString()}
+                      {(paperThisMonth ?? 0).toLocaleString()}
                     </span>
                     <span className="text-xs font-medium text-slate-400 dark:text-slate-500">แผ่น</span>
                   </div>
@@ -1003,7 +1003,7 @@ ${kpiHtml}
                 {/* Center label */}
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                   <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                    {donutTotal.toLocaleString()}
+                    {(donutTotal ?? 0).toLocaleString()}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400">เครื่องทั้งหมด</div>
                 </div>

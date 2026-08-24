@@ -689,7 +689,7 @@ export function WorkOrdersPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
+          <Button type="button"
             variant="outline"
             size="sm"
             onClick={() => listQuery.refetch()}
@@ -701,7 +701,7 @@ export function WorkOrdersPage() {
             />
             <span className="hidden sm:inline">รีเฟรช</span>
           </Button>
-          <Button size="sm" onClick={openCreate} className="bg-orange-500 hover:bg-orange-600">
+          <Button type="button" size="sm" onClick={openCreate} className="bg-orange-500 hover:bg-orange-600">
             <Plus className="h-4 w-4" />
             แจ้งซ่อมใหม่
           </Button>
@@ -812,7 +812,7 @@ export function WorkOrdersPage() {
             <p className="max-w-sm text-sm text-muted-foreground">
               กดปุ่ม &quot;แจ้งซ่อมใหม่&quot; เพื่อสร้างใบงานแรก หรือปรับตัวกรองเพื่อค้นหาใบงานเก่า
             </p>
-            <Button size="sm" onClick={openCreate} className="mt-1 bg-orange-500 hover:bg-orange-600">
+            <Button type="button" size="sm" onClick={openCreate} className="mt-1 bg-orange-500 hover:bg-orange-600">
               <Plus className="h-4 w-4" />
               แจ้งซ่อมใหม่
             </Button>
@@ -924,7 +924,7 @@ export function WorkOrdersPage() {
                       </TableCell>
                       <TableCell className="py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
-                          <Button
+                          <Button type="button"
                             size="sm"
                             variant="ghost"
                             onClick={() => setDetailId(wo.id)}
@@ -934,7 +934,7 @@ export function WorkOrdersPage() {
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
+                          <Button type="button"
                             size="sm"
                             variant="ghost"
                             onClick={() =>
@@ -964,7 +964,7 @@ export function WorkOrdersPage() {
             ทั้งหมด {pagination.total} รายการ • หน้า {pagination.page} / {pagination.totalPages}
           </p>
           <div className="flex items-center gap-1">
-            <Button
+            <Button type="button"
               variant="outline"
               size="sm"
               disabled={page <= 1}
@@ -972,7 +972,7 @@ export function WorkOrdersPage() {
             >
               ก่อนหน้า
             </Button>
-            <Button
+            <Button type="button"
               variant="outline"
               size="sm"
               disabled={page >= pagination.totalPages}
@@ -1906,7 +1906,7 @@ function CreateWorkOrderDialog({
 
         {/* Sticky footer — ปุ่มยกเลิก/บันทึก อยู่ติดล่างสำหรับใช้งานบนมือถือ */}
         <DialogFooter className="sticky bottom-0 gap-2 border-t bg-white p-3 dark:bg-slate-900 sm:flex-row sm:justify-end sm:border-0 sm:bg-transparent sm:p-0 sm:dark:bg-transparent">
-          <Button
+          <Button type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={saving}
@@ -1914,7 +1914,7 @@ function CreateWorkOrderDialog({
           >
             ยกเลิก
           </Button>
-          <Button
+          <Button type="button"
             onClick={onSubmit}
             disabled={saving || !form.subject.trim() || form.subject === '__custom__'}
             className="min-h-11 w-full bg-orange-500 hover:bg-orange-600 sm:w-auto"
@@ -1982,6 +1982,19 @@ function WorkOrderDetailDialog({
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-24 w-full" />
           </div>
+        ) : detailQuery.isError ? (
+          // Defensive fix: show error state instead of blank screen
+          <div className="space-y-3 p-6">
+            <div className="text-sm font-medium text-rose-600">โหลดใบงานไม่สำเร็จ</div>
+            <div className="text-xs text-muted-foreground">
+              {detailQuery.error instanceof Error
+                ? detailQuery.error.message
+                : 'เกิดข้อผิดพลาดบางอย่าง — ลองปิดและเปิดใหม่'}
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => detailQuery.refetch()}>
+              ลองใหม่
+            </Button>
+          </div>
         ) : !wo ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
             ไม่พบใบงาน
@@ -2010,6 +2023,12 @@ function WorkOrderDetailContent({
   onClose: () => void
   resolutions: ResolutionOption[]
 }) {
+  // BUG-WO-002 fix: missing useQueryClient() — multiple `qc.invalidateQueries`
+  // calls below (lines ~2215+) reference `qc` but it was never declared in
+  // this component scope, causing runtime ReferenceError when image upload
+  // or parts/approve flows try to invalidate the WO cache.
+  const qc = useQueryClient()
+
   // Assign technician
   const [assignOpen, setAssignOpen] = React.useState(false)
   const [techName, setTechName] = React.useState(wo.assignedTo ?? '')
@@ -2281,7 +2300,7 @@ function WorkOrderDetailContent({
       toast.error('รูปนี้เป็นข้อมูลเดิม — ใช้การแก้ไขใบงานเพื่อลบ')
       return
     }
-    if (!confirm(`ลบรูป (${img.stage}) ใช่ไหม?`)) return
+    if (!window.confirm(`ลบรูป (${img.stage}) ใช่ไหม?`)) return
     try {
       setDeletingImgId(img.id)
       const res = await fetch(
@@ -2975,7 +2994,7 @@ function WorkOrderDetailContent({
                 )}
               </div>
               {canRequestParts && (
-                <Button
+                <Button type="button"
                   size="sm"
                   variant="outline"
                   onClick={() => setPartsOpen(true)}
@@ -3055,7 +3074,7 @@ function WorkOrderDetailContent({
                       </div>
                       {status === 'PENDING' && (
                         <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t pt-2">
-                          <Button
+                          <Button type="button"
                             size="sm"
                             variant="outline"
                             onClick={() => handleApprovePart(p.id)}
@@ -3078,7 +3097,7 @@ function WorkOrderDetailContent({
                                 className="h-7 flex-1 text-[11px]"
                                 autoFocus
                               />
-                              <Button
+                              <Button type="button"
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleRejectPart(p)}
@@ -3087,7 +3106,7 @@ function WorkOrderDetailContent({
                               >
                                 ยืนยัน
                               </Button>
-                              <Button
+                              <Button type="button"
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => {
@@ -3100,7 +3119,7 @@ function WorkOrderDetailContent({
                               </Button>
                             </div>
                           ) : (
-                            <Button
+                            <Button type="button"
                               size="sm"
                               variant="outline"
                               onClick={() => {
@@ -3278,7 +3297,7 @@ function WorkOrderDetailContent({
                   }}
                   disabled={sendingMsg}
                 />
-                <Button
+                <Button type="button"
                   size="sm"
                   onClick={handleSendMessage}
                   disabled={sendingMsg || !chatText.trim()}
@@ -3302,7 +3321,7 @@ function WorkOrderDetailContent({
           (พิมพ์, ผู้แจ้งแก้ไข) come after since they're less time-critical. */}
       <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t bg-white px-3 py-3 dark:bg-slate-900 sm:px-5">
         {canComplete && (
-          <Button
+          <Button type="button"
             size="sm"
             onClick={() => setCompleteOpen(true)}
             className="order-1 min-h-11 w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto"
@@ -3312,7 +3331,7 @@ function WorkOrderDetailContent({
           </Button>
         )}
         {canAssign && (
-          <Button
+          <Button type="button"
             size="sm"
             variant="outline"
             onClick={() => setAssignOpen(true)}
@@ -3323,7 +3342,7 @@ function WorkOrderDetailContent({
           </Button>
         )}
         {canRequestParts && (
-          <Button
+          <Button type="button"
             size="sm"
             variant="outline"
             onClick={() => setPartsOpen(true)}
@@ -3334,7 +3353,7 @@ function WorkOrderDetailContent({
           </Button>
         )}
         {canCancel && (
-          <Button
+          <Button type="button"
             size="sm"
             variant="outline"
             onClick={() => setCancelOpen(true)}
@@ -3344,7 +3363,7 @@ function WorkOrderDetailContent({
             ยกเลิก
           </Button>
         )}
-        <Button
+        <Button type="button"
           size="sm"
           variant="outline"
           onClick={() => setPrintOpen(true)}
@@ -3354,7 +3373,7 @@ function WorkOrderDetailContent({
           <span className="hidden sm:inline">พิมพ์ใบงาน</span>
           <span className="sm:hidden">พิมพ์</span>
         </Button>
-        <Button
+        <Button type="button"
           size="sm"
           variant="outline"
           onClick={() => {
@@ -3369,7 +3388,7 @@ function WorkOrderDetailContent({
           <span className="sm:hidden">QR</span>
         </Button>
         {canReporterEdit && (
-          <Button
+          <Button type="button"
             size="sm"
             variant="outline"
             onClick={() => setReporterEditOpen(true)}
@@ -3386,7 +3405,7 @@ function WorkOrderDetailContent({
             actions — on mobile with a full-width primary button, the spacer
             could expand across a blank first flex line. */}
         <div className="order-8 flex-1" />
-        <Button size="sm" variant="ghost" onClick={onClose} className="order-last min-h-11">
+        <Button type="button" size="sm" variant="ghost" onClick={onClose} className="order-last min-h-11">
           ปิด
         </Button>
       </div>
@@ -3714,14 +3733,14 @@ function WorkOrderDetailContent({
             </div>
           </div>
           <DialogFooter>
-            <Button
+            <Button type="button"
               variant="outline"
               onClick={() => setReporterEditOpen(false)}
               disabled={reporterEditSaving}
             >
               ยกเลิก
             </Button>
-            <Button
+            <Button type="button"
               onClick={handleReporterEdit}
               disabled={reporterEditSaving}
               className="bg-amber-500 hover:bg-amber-600"
@@ -3867,7 +3886,7 @@ function WorkOrderDetailContent({
                           />
                         </div>
                         <div className="col-span-1 flex items-center justify-end">
-                          <Button
+                          <Button type="button"
                             size="sm"
                             variant="ghost"
                             className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
@@ -3886,14 +3905,14 @@ function WorkOrderDetailContent({
           </ScrollArea>
 
           <DialogFooter>
-            <Button
+            <Button type="button"
               variant="outline"
               onClick={() => setPartsOpen(false)}
               disabled={partsSaving}
             >
               ยกเลิก
             </Button>
-            <Button
+            <Button type="button"
               onClick={handleRequestParts}
               disabled={partsSaving || partsLines.length === 0}
               className="bg-purple-600 hover:bg-purple-700"

@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
-import {
-  getNotifyChannels,
-  sendNotification,
-  type NotificationChannel,
-} from '@/lib/notifications'
+import { getNotifyChannels, sendNotification } from '@/lib/notifications'
 
 /**
  * POST /api/itam/notifications/test
@@ -27,27 +23,12 @@ export async function POST(req: NextRequest) {
       ? body.message.trim()
       : 'ทดสอบการแจ้งเตือนจากระบบ ITAM — หากคุณได้รับข้อความนี้แสดงว่าช่องทางการแจ้งเตือนทำงานปกติ'
 
-    // Build the enabled-channels list from saved settings so the test
-    // actually goes through the configured channels (Telegram / LINE OA /
-    // LINE Notify / Email).
-    const channelsCfg = await getNotifyChannels()
-    const channels: NotificationChannel[] = []
-    if (channelsCfg.telegram) channels.push('telegram')
-    if (channelsCfg.lineOA) channels.push('line-oa')
-    if (channelsCfg.lineNotify) channels.push('line-notify')
-    if (channelsCfg.email) channels.push('email')
-
-    if (channels.length === 0) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            'ยังไม่ได้เปิดใช้ช่องทางการแจ้งเตือน — กรุณาเปิดอย่างน้อย 1 ช่องทางในหน้าตั้งค่าก่อนกดส่งทดสอบ',
-          channels: [],
-        },
-        { status: 400 },
-      )
-    }
+    const configured = await getNotifyChannels()
+    const channels = [
+      ...(configured.email ? (['email'] as const) : []),
+      ...(configured.telegram ? (['telegram'] as const) : []),
+      ...(configured.lineOA ? (['line-oa'] as const) : []),
+    ]
 
     await sendNotification({
       template: 'custom',
@@ -55,17 +36,15 @@ export async function POST(req: NextRequest) {
       data: {
         title: '🔔 ทดสอบการแจ้งเตือน',
         message: `${message}\n\nส่งโดย: ${user.email}`,
+        test: true,
+        by: user.email,
+        sentAt: new Date().toISOString(),
       },
       actor: user.email,
-      entity: 'Notification',
+      entity: 'NotificationTest',
     })
 
-    return NextResponse.json({
-      ok: true,
-      sentAt: new Date().toISOString(),
-      by: user.email,
-      channels,
-    })
+    return NextResponse.json({ ok: true, sentAt: new Date().toISOString(), by: user.email })
   } catch (err) {
     console.error('POST /api/itam/notifications/test', err)
     return NextResponse.json({ error: 'Failed' }, { status: 500 })

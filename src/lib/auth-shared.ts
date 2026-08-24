@@ -46,10 +46,12 @@ export type Permission =
   | 'STOCK_IN'
   | 'STOCK_OUT'
   | 'STOCK_APPROVE'
-  // ── Templates / Import / Audit ──
+  // ── Templates / Import / Audit / Reports ──
   | 'TEMPLATES_MANAGE'
   | 'IMPORT_DATA'
   | 'VIEW_AUDIT'
+  | 'VIEW_REPORTS'
+  | 'MANAGE_REPORTS'
 
 export type Role = 'superadmin' | 'admin' | 'editor' | 'meter' | 'viewer'
 
@@ -94,14 +96,17 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'WO_CREATE', 'WO_VIEW_ALL', 'WO_ASSIGN', 'WO_COMPLETE', 'WO_CANCEL',
     'STOCK_VIEW', 'STOCK_IN', 'STOCK_OUT', 'STOCK_APPROVE',
     'TEMPLATES_MANAGE', 'IMPORT_DATA', 'VIEW_AUDIT',
+    'VIEW_REPORTS', 'MANAGE_REPORTS',
   ],
   admin: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'METER_WRITE',
     'DEVICE_EDIT', 'DEVICE_DELETE', 'DEVICE_TRANSFER', 'LIFECYCLE_EDIT',
     'MASTER_DATA_EDIT', 'EXPORT_PRINT', 'PRINT', 'ADMIN',
+    'USER_MANAGE', 'SYSTEM_CONFIG',
     'WO_CREATE', 'WO_VIEW_ALL', 'WO_ASSIGN', 'WO_COMPLETE', 'WO_CANCEL',
     'STOCK_VIEW', 'STOCK_IN', 'STOCK_OUT', 'STOCK_APPROVE',
     'TEMPLATES_MANAGE', 'IMPORT_DATA', 'VIEW_AUDIT',
+    'VIEW_REPORTS', 'MANAGE_REPORTS',
   ],
   editor: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'METER_WRITE',
@@ -110,15 +115,18 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'WO_CREATE', 'WO_VIEW_ALL', 'WO_COMPLETE',
     'STOCK_VIEW', 'STOCK_IN', 'STOCK_OUT',
     'IMPORT_DATA',
+    'VIEW_REPORTS',
   ],
   meter: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'METER_WRITE',
     'PRINT',
     'WO_CREATE', 'WO_VIEW_OWN',
+    'VIEW_REPORTS',
   ],
   viewer: [
     'VIEW_DASHBOARD', 'VIEW_DEVICES', 'VIEW_ANALYTICS', 'PRINT',
     'WO_VIEW_SITE', 'STOCK_VIEW',
+    'VIEW_REPORTS',
   ],
 }
 
@@ -337,7 +345,7 @@ export function isSuperAdminRole(role: string | null | undefined): boolean {
 // returns an empty array (fail-closed). Existing users without allowedSites
 // must be granted explicit access via UserSiteGrant or allowedSites.
 export function getAllowedSites(user: Pick<UserPermissionRow, 'role' | 'allowedSites'>): string[] | 'ALL' {
-  if (isSuperAdminRole(user.role)) return 'ALL'
+  if (isSuperAdminRole(user.role) || normalizeRole(user.role) === 'admin') return 'ALL'
   const raw = String(user.allowedSites ?? '').trim()
   if (raw.toUpperCase() === 'ALL') return 'ALL'
   const arr = raw.split(',').map((s) => s.trim()).filter(Boolean)
@@ -380,7 +388,7 @@ export function toAuthUser(row: UserPermissionRow): AuthUser {
     role,
     name: row.name,
     username: row.username,
-    allowedSites: isSuperAdminRole(role) ? 'ALL' : (row.allowedSites ?? ''),
+    allowedSites: (isSuperAdminRole(role) || role === 'admin') ? 'ALL' : (row.allowedSites ?? ''),
     permissions,
     isDemo: row.isDemo === true,
   }

@@ -1,36 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { requireAuth } from '@/lib/auth-middleware'
+import { reportsService } from '@/modules/reports'
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = moduleUnavailableResponse('reports')
+  if (unavailable) return unavailable
+
+  // Milestone 1 — Security baseline: require VIEW_REPORTS
+  const auth = await requireAuth(req, 'VIEW_REPORTS')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const { id } = await params
-    const report = await db.report.findUnique({ where: { id } })
+    const report = await reportsService.getDetail(id)
     if (!report) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
-    let parsedData: unknown = null
-    try {
-      parsedData = report.data ? JSON.parse(report.data) : null
-    } catch {
-      parsedData = report.data
-    }
-    let parsedFilters: unknown = null
-    try {
-      parsedFilters = report.filters ? JSON.parse(report.filters) : null
-    } catch {
-      parsedFilters = report.filters
-    }
-    return NextResponse.json({
-      report: {
-        ...report,
-        data: parsedData,
-        filters: parsedFilters,
-      },
-    })
+    return NextResponse.json({ report })
   } catch (err) {
     console.error('GET /api/reports/[id]', err)
     return NextResponse.json(
@@ -41,23 +33,24 @@ export async function GET(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = moduleUnavailableResponse('reports')
+  if (unavailable) return unavailable
+
+  // Milestone 1 — Security baseline: require MANAGE_REPORTS for delete
+  const auth = await requireAuth(req, 'MANAGE_REPORTS')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const { id } = await params
-    const existing = await db.report.findUnique({ where: { id } })
-    if (!existing) {
+    const deleted = await reportsService.deleteRecord(id)
+    if (!deleted) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
-    await db.report.delete({ where: { id } })
-    await logAudit(
-      'DELETE',
-      'Report',
-      id,
-      `ลบรายงาน ${existing.title}`,
-      { type: existing.type, rangeKey: existing.rangeKey },
-    )
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/reports/[id]', err)

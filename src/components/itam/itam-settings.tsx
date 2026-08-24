@@ -97,7 +97,23 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
   },
 ]
 
-interface Site { id: string; siteCode: string; siteName: string | null; lineOa: string | null; hotline: string | null; paperRateBw: number | null; paperRateColor: number | null; deviceCount?: number; activeCount?: number }
+// BUG-SETTINGS-009 fix: API returns `code` + `name`, but the original
+// interface expected `siteCode` + `siteName`. Accept both shapes so the
+// sites list renders correctly regardless of which endpoint shape wins.
+interface Site {
+  id: string
+  siteCode: string
+  siteName: string | null
+  lineOa: string | null
+  hotline: string | null
+  paperRateBw: number | null
+  paperRateColor: number | null
+  deviceCount?: number
+  activeCount?: number
+  // API also returns these aliases (from /api/sites route)
+  code?: string
+  name?: string | null
+}
 
 interface NotifySettings {
   channels: { email: boolean; telegram: boolean; lineNotify: boolean; lineOA: boolean }
@@ -220,10 +236,12 @@ export function ItamSettings() {
   }
 
   // Sites
+  // BUG-SETTINGS-009 fix: was fetching /api/itam/sites which returns 500
+  // (different route shape). The canonical sites endpoint is /api/sites.
   const { data: sitesData, isLoading: sitesLoading } = useQuery({
     queryKey: ['itam-sites'],
     queryFn: async () => {
-      const res = await fetch('/api/itam/sites')
+      const res = await fetch('/api/sites')
       if (!res.ok) throw new Error('Failed')
       return res.json() as Promise<{ sites: Site[] }>
     },
@@ -405,8 +423,9 @@ export function ItamSettings() {
                           <TableCell className="text-xs">{item.code || '—'}</TableCell>
                           <TableCell className="text-center">{(item as { active?: boolean }).active ? <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">✓</Badge> : <Badge className="bg-slate-50 text-slate-400">—</Badge>}</TableCell>
                           <TableCell className="text-right">
-                            <Button size="sm" variant="ghost" onClick={() => openEdit(item)}><Pencil className="h-3 w-3" /></Button>
-                            <Button size="sm" variant="ghost" onClick={() => deleteItem(item)} className="text-rose-500 hover:bg-rose-50"><Trash2 className="h-3 w-3" /></Button>
+                            {/* BUG-SETTINGS-008 fix: added title + aria-label */}
+                            <Button size="sm" variant="ghost" onClick={() => openEdit(item)} title={`แก้ไข ${item.label}`} aria-label={`แก้ไข ${item.label}`}><Pencil className="h-3 w-3" /></Button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteItem(item)} className="text-rose-500 hover:bg-rose-50" title={`ลบ ${item.label}`} aria-label={`ลบ ${item.label}`}><Trash2 className="h-3 w-3" /></Button>
                           </TableCell>
                         </TableRow>
                       ))
@@ -441,11 +460,16 @@ export function ItamSettings() {
           ) : sites.length === 0 ? (
             <div className="col-span-full py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูลสาขา</div>
           ) : (
-            sites.map((s) => (
+            sites.map((s) => {
+              // BUG-SETTINGS-009: support both `siteCode`/`siteName` (legacy
+              // interface) and `code`/`name` (what /api/sites actually returns).
+              const code = s.siteCode || s.code || '—'
+              const name = s.siteName || s.name || null
+              return (
               <Card key={s.id} className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-                <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4 text-[#f97316]" /> {s.siteCode}</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Building2 className="h-4 w-4 text-[#f97316]" /> {code}</CardTitle></CardHeader>
                 <CardContent className="space-y-2">
-                  <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{s.siteName}</div>
+                  <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{name ?? code}</div>
                   <div className="flex gap-4 text-xs text-slate-500">
                     <span>📦 {s.deviceCount ?? 0} เครื่อง</span>
                     <span>✅ {s.activeCount ?? 0} ใช้งาน</span>
@@ -457,7 +481,8 @@ export function ItamSettings() {
                   {s.hotline && <div className="text-xs text-slate-400">📞 {s.hotline}</div>}
                 </CardContent>
               </Card>
-            ))
+              )
+            })
           )}
         </div>
       )}
@@ -467,10 +492,11 @@ export function ItamSettings() {
         <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader><DialogTitle>{editItem ? 'แก้ไข' : 'เพิ่ม'} ข้อมูลมาตรฐาน</DialogTitle></DialogHeader>
           <div className="space-y-3">
+            {/* BUG-SETTINGS-007 fix: added id/name/aria-label + disabled when incomplete */}
             <div className="space-y-1.5">
-              <Label className="text-xs">หมวดหมู่ *</Label>
+              <Label htmlFor="master-category" className="text-xs">หมวดหมู่ *</Label>
               <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="master-category" className="dark:bg-slate-800 dark:border-slate-700" aria-label="หมวดหมู่"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {MASTER_CATEGORIES.map((cat: string) => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
@@ -484,13 +510,23 @@ export function ItamSettings() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5"><Label className="text-xs">ค่า *</Label><Input value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
-            <div className="space-y-1.5"><Label className="text-xs">Display Label</Label><Input value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
-            <div className="space-y-1.5"><Label className="text-xs">รหัส</Label><Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="dark:bg-slate-800 dark:border-slate-700" /></div>
+            <div className="space-y-1.5">
+              <Label htmlFor="master-label" className="text-xs">ค่า *</Label>
+              <Input id="master-label" name="label" aria-label="ค่า" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="เช่น BROTHER" className="dark:bg-slate-800 dark:border-slate-700" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="master-displayLabel" className="text-xs">Display Label</Label>
+              <Input id="master-displayLabel" name="displayLabel" aria-label="Display Label" value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} placeholder="ไม่บังคับ" className="dark:bg-slate-800 dark:border-slate-700" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="master-code" className="text-xs">รหัส</Label>
+              <Input id="master-code" name="code" aria-label="รหัส" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="ไม่บังคับ" className="dark:bg-slate-800 dark:border-slate-700" />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>ยกเลิก</Button>
-            <Button onClick={saveItem} className="bg-[#f97316] text-white hover:bg-[#ea580c]">บันทึก</Button>
+            {/* BUG-SETTINGS-007 fix: disable save button when required fields are empty */}
+            <Button onClick={saveItem} disabled={!form.category || !form.label} className="bg-[#f97316] text-white hover:bg-[#ea580c] disabled:opacity-50 disabled:cursor-not-allowed">บันทึก</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

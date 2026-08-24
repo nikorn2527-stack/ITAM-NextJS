@@ -115,18 +115,24 @@ export function ContactDirectorySection() {
   }, [entries, search])
 
   const addMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (payload: {
+      fullName: string
+      phonePrimary: string
+      employeeCode?: string
+      department?: string
+      note?: string
+      active: boolean
+    }) => {
+      // BUG-SETTINGS-011 fix: pass payload as argument to mutate() instead
+      // of capturing `form` in the closure. Previously the mutationFn
+      // captured `form` at hook creation time — when the user typed in
+      // the input, the form state updated in React but the mutationFn
+      // still saw the old empty `form.fullName`, causing submitAdd's
+      // toast error to fire even after the user typed a name.
       const res = await fetch('/api/settings/contact-directory', {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({
-          fullName: form.fullName.trim(),
-          phonePrimary: form.phonePrimary.trim(),
-          employeeCode: form.employeeCode.trim() || undefined,
-          department: form.department.trim() || undefined,
-          note: form.note.trim() || undefined,
-          active: form.active,
-        }),
+        body: JSON.stringify(payload),
       })
       const j = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(j.error || 'Failed')
@@ -168,11 +174,25 @@ export function ContactDirectorySection() {
   }
 
   function submitAdd() {
-    if (!form.fullName.trim()) {
+    // BUG-SETTINGS-011 fix: read form state fresh at call time + pass to
+    // mutate() as argument (not captured in mutationFn closure).
+    const payload = {
+      fullName: form.fullName.trim(),
+      phonePrimary: form.phonePrimary.trim(),
+      employeeCode: form.employeeCode.trim() || undefined,
+      department: form.department.trim() || undefined,
+      note: form.note.trim() || undefined,
+      active: form.active,
+    }
+    if (!payload.fullName) {
       toast.error('กรุณาระบุชื่อ-นามสกุล')
       return
     }
-    addMutation.mutate()
+    if (!payload.phonePrimary) {
+      toast.error('กรุณาระบุเบอร์โทร')
+      return
+    }
+    addMutation.mutate(payload)
   }
 
   return (
@@ -306,18 +326,25 @@ export function ContactDirectorySection() {
           </DialogHeader>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">ชื่อ-นามสกุล *</Label>
+              <Label htmlFor="contact-fullName" className="text-xs">ชื่อ-นามสกุล *</Label>
               <Input
+                id="contact-fullName"
+                name="fullName"
+                aria-label="ชื่อ-นามสกุล"
                 value={form.fullName}
                 onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
+                placeholder="เช่น คุณสมชาย ใจดี"
                 className="dark:bg-slate-800 dark:border-slate-700"
                 autoFocus
               />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label className="text-xs">เบอร์โทร</Label>
+                <Label htmlFor="contact-phone" className="text-xs">เบอร์โทร</Label>
                 <Input
+                  id="contact-phone"
+                  name="phonePrimary"
+                  aria-label="เบอร์โทร"
                   value={form.phonePrimary}
                   onChange={(e) => setForm((f) => ({ ...f, phonePrimary: e.target.value }))}
                   inputMode="tel"
@@ -326,27 +353,39 @@ export function ContactDirectorySection() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">รหัสพนักงาน</Label>
+                <Label htmlFor="contact-employeeCode" className="text-xs">รหัสพนักงาน</Label>
                 <Input
+                  id="contact-employeeCode"
+                  name="employeeCode"
+                  aria-label="รหัสพนักงาน"
                   value={form.employeeCode}
                   onChange={(e) => setForm((f) => ({ ...f, employeeCode: e.target.value }))}
+                  placeholder="ไม่บังคับ"
                   className="dark:bg-slate-800 dark:border-slate-700"
                 />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">แผนก / หน่วยงาน</Label>
+              <Label htmlFor="contact-department" className="text-xs">แผนก / หน่วยงาน</Label>
               <Input
+                id="contact-department"
+                name="department"
+                aria-label="แผนก / หน่วยงาน"
                 value={form.department}
                 onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))}
+                placeholder="เช่น แผนกเทคโนโลยีสารสนเทศ"
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">หมายเหตุ (ไม่บังคับ)</Label>
+              <Label htmlFor="contact-note" className="text-xs">หมายเหตุ (ไม่บังคับ)</Label>
               <Input
+                id="contact-note"
+                name="note"
+                aria-label="หมายเหตุ"
                 value={form.note}
                 onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+                placeholder="หมายเหตุเพิ่มเติม"
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
             </div>

@@ -140,8 +140,8 @@ fi
 PROJECT_DIR="$NEXTJS_PROJECT_DIR" BUILD_DIR="$BUILD_DIR" \
     bash "$SCRIPT_DIR/python-runtime-build.sh"
 
-# 有 Preview 数据库时复制现有数据；没有时直接在部署产物中初始化空库。
-# 模板源码不携带 db/custom.db，不能依赖 dev.sh 必须在 Deploy 前成功运行过。
+# Vercel/serverless deployments must use an external PostgreSQL database;
+# never copy or initialize a SQLite file inside the build artifact.
 PROJECT_DIR="$NEXTJS_PROJECT_DIR" BUILD_DIR="$BUILD_DIR" \
     bash "$SCRIPT_DIR/database-runtime-build.sh"
 
