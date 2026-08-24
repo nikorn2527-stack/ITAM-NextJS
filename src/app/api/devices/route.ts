@@ -331,6 +331,10 @@ export async function POST(req: NextRequest) {
         costCenter: optStr(body.costCenter),
         deviceGroup: optStr(body.deviceGroup),
         remark: optStr(body.remark),
+        // ── Device Set fields (Task ID 9, Phase 2) ──
+        parentDeviceId: optStr(body.parentDeviceId),
+        setLabel: optStr(body.setLabel),
+        setPosition: optInt(body.setPosition),
         ...demoTag(demo?.user ?? null),
       },
     })

@@ -46,7 +46,17 @@ export interface Device {
   costCenter: string | null
   deviceGroup: string | null
   remark: string | null
+  /**
+   * Last meter reading (BW) — derived from the latest MeterReading row by
+   * GET /api/devices (NOT the Device.lastMeterBw column, which may be
+   * stale). Kept for backward-compat with older UI code that reads
+   * `d.lastMeterReading`. Newer code should prefer `lastMeterBw`.
+   */
   lastMeterReading: number
+  /** Latest BW meter value — the canonical field returned by the API. */
+  lastMeterBw: number
+  /** Latest color meter value — the canonical field returned by the API. */
+  lastMeterColor: number
   currentAssignee: string | null
   purchasePrice: number | null
   salvageValue: number | null

@@ -1131,3 +1131,54 @@ Task: ส่งสรุป bugs ที่ ITAM-01 ต้องแก้ต่�
 - QA ส่งสรุปชุดใหม่ให้ ITAM-01 แล้ว
 - รอ ITAM-01 push commit ใหม่ → QA จะ sync + re-test ต่อ
 
+
+---
+
+## Task ID: VERIFY-002
+Agent: QA Team
+Task: Re-test BUG-METER-003 + BUG-KPI-001 + ส่งรายการ 44 bugs ที่เหลือ
+
+**วันที่:** 2026-08-23
+**หลัง:** git pull origin main (latest commit `96372fd`)
+
+### Re-test Results:
+
+#### BUG-METER-003 — PARTIAL FIX (Re-open)
+- ✅ **Device.lastMeter อัปเดตแล้ว** — POST meterBw=2200 → Device.lastMeterBw=2200, POST meterBw=2500 → Device.lastMeterBw=2500
+- ❌ **prevMeter ยังผิด** — Reading 2 ใช้ prevMeterBw=1000 (INITIAL) ไม่ใช่ 2200 (Reading 1)
+- **Root cause:** `findValidPrevReading()` ใช้ `exclusiveCurrentMonth=true` → skip same-month readings → prev ตกไปที่ INITIAL เสมอ
+- **วิธีแก้:** เปลี่ยนจาก `findValidPrevReading()` → ใช้ `device.lastMeterBw` โดยตรง (เพราะ Device.lastMeter อัปเดตถูกแล้วจาก fix ของ ITAM-01)
+
+#### BUG-KPI-001 — Code Fixed แต่ยังแสดง 0 (Dependent on BUG-WO-002)
+- ✅ **Code แก้ถูก** — `devices-page.tsx:535-570` KPI computation case-insensitive + alias matching
+- ❌ **KPI ยังแสดง 0** — เพราะ API `/api/devices` คืน `devices: []` (ติด BUG-WO-002 fail-closed)
+- **Root cause:** ไม่ใช่ BUG-KPI-001 แต่เป็น BUG-WO-002 ที่ยังไม่แก้
+- **วิธีแก้:** แก้ BUG-WO-002 ก่อน → BUG-KPI-001 จะทำงานอัตโนมัติ
+
+### รายการ 44 Bugs ที่เหลือ (3 หน้า):
+- **Devices (22):** BUG-001 ถึง BUG-022
+- **Work Orders (6):** BUG-WO-001 ถึง BUG-WO-006
+- **Meter (16):** BUG-METER-001 ถึง BUG-METER-016
+
+### Re-open Bugs (2 ตัว):
+1. **BUG-PAPER-003** — "Show month picker" ยังพัง หลังแก้ใน commit f067807
+2. **BUG-STK-004** (partial) — 5/6 buttons มี aria-label, ขาด "ดูรายละเอียด"
+
+### Pattern Bugs (แก้ root cause → แก้หลาย bugs พร้อมกัน):
+- Form submit pattern → BUG-001 + BUG-METER-001 (2 bugs ใน 1 fix)
+- Tabs pattern → BUG-METER-004 (เหมือน Stock + Paper)
+- Refresh toast pattern → BUG-015 + BUG-METER-008
+- CSV export pattern → BUG-009 + BUG-010 + BUG-METER-007
+- Search pattern → BUG-012 + BUG-WO-003 + BUG-METER-006 (3 bugs ใน 1 fix)
+- fail-closed → BUG-WO-002 (จะ unlock BUG-KPI-001 ด้วย)
+
+### Priority สูงสุด:
+1. 🔴🔴 **BUG-METER-003** (re-open partial) — แก้ findValidPrevReading ให้ใช้ device.lastMeter
+2. 🔴 **BUG-WO-002** — fail-closed (จะ unlock BUG-KPI-001 ด้วย)
+3. 🔴 **BUG-WO-001** — validateGuestContact
+4. 🔴 **BUG-METER-002** — rollback validation
+5. 🔴 **BUG-001 + BUG-METER-001** — Form submit pattern (แก้ครั้งเดียวได้ 2 bugs)
+
+### ไฟล์ที่ส่งให้ ITAM-01:
+- 📄 `/home/z/my-project/qa-reports/VERIFY-002-FOR-ITAM-01.md` — สรุปครบ: re-test + 44 bugs + 2 re-open + pattern bugs + priority
+

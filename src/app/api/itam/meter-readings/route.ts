@@ -316,16 +316,42 @@ export async function POST(req: NextRequest) {
       ...demoTag(user),
     }
 
+    // ── BUG-METER-003 FIX (Task 12) ──
+    // Save MeterReading + sync Device.lastMeterBw/lastMeterColor atomically.
+    // Previously only MeterReading was saved — Device.lastMeterBw stayed
+    // stale (or 0), so:
+    //   • transfer-with-meter route read stale prev → pages = full reading
+    //     → cumulative doubling (1000, 1500, 2000 → pages 1000+1500+2000=4500
+    //       instead of correct 1000+500+500=2000)
+    //   • UI showed prev = 0 always
+    //   • RESET detection (delta < prev) never fired
+    // The new value is the meterBw/meterColor we just persisted. For RESET
+    // readings this matches the existing transfer-with-meter behavior
+    // (which sets lastMeter = new reading regardless of prev).
     let saved
-    if (existing && readingType === 'MONTHLY') {
-      // Update existing MONTHLY in-place (Apps Script behavior)
-      saved = await db.meterReading.update({
-        where: { id: existing.id },
-        data,
+    await db.$transaction(async (tx) => {
+      if (existing && readingType === 'MONTHLY') {
+        // Update existing MONTHLY in-place (Apps Script behavior)
+        saved = await tx.meterReading.update({
+          where: { id: existing.id },
+          data,
+        })
+      } else {
+        saved = await tx.meterReading.create({ data })
+      }
+
+      // Sync Device.lastMeterBw / lastMeterColor / updatedBy so the next
+      // reading (and any path reading device.lastMeterBw directly) sees
+      // the correct previous value.
+      await tx.device.update({
+        where: { id: device.id },
+        data: {
+          lastMeterBw: meterBw,
+          lastMeterColor: meterColor,
+          updatedBy: user.username || user.email,
+        },
       })
-    } else {
-      saved = await db.meterReading.create({ data })
-    }
+    })
 
     // Audit log
     try {

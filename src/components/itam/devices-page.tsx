@@ -46,6 +46,15 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+} from '@/components/ui/dropdown-menu'
+import {
   Plus,
   RefreshCw,
   Pencil,
@@ -63,6 +72,15 @@ import {
   ChevronRight,
   Sparkles,
   ScanLine,
+  AlertTriangle,
+  CheckCircle2,
+  Wrench,
+  XCircle,
+  ShieldCheck,
+  Keyboard,
+  Columns3,
+  Eye,
+  Clock,
 } from 'lucide-react'
 import {
   type Device,
@@ -78,7 +96,9 @@ import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
 import { Combobox } from './combobox'
+import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
 import { downloadCsv, dateStamp } from '@/lib/csv'
+import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -201,6 +221,10 @@ interface FormState {
   costCenter: string
   deviceGroup: string
   remark: string
+  // ── Device Set / Parent-Child (Task ID 9, Phase 2) ──
+  parentDeviceId: string    // "" = no parent (this device is a parent or standalone)
+  setLabel: string          // e.g. "ชุดเครื่องพิมพ์ห้องจ่ายยา"
+  setPosition: string      // "" = unset
   // ── License / Software (NEW) ──
   licenses: LicenseRow[]
 }
@@ -256,6 +280,9 @@ const EMPTY_FORM: FormState = {
   costCenter: '',
   deviceGroup: DEFAULT_DEVICE_GROUP,
   remark: '',
+  parentDeviceId: '',
+  setLabel: '',
+  setPosition: '',
   licenses: [],
 }
 
@@ -306,6 +333,129 @@ export function DevicesPage() {
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(50)
   const [pageInput, setPageInput] = React.useState('1')
+
+  // ── New: recently-viewed devices (persisted in localStorage) ──
+  // Stores the last 5 device IDs the user opened in the detail sheet.
+  const [recentDeviceIds, setRecentDeviceIds] = React.useState<string[]>([])
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem('itam-recent-devices')
+      if (raw) setRecentDeviceIds(JSON.parse(raw))
+    } catch {
+      /* ignore */
+    }
+  }, [])
+  const pushRecentDevice = React.useCallback((id: string) => {
+    setRecentDeviceIds((prev) => {
+      const next = [id, ...prev.filter((x) => x !== id)].slice(0, 5)
+      try {
+        localStorage.setItem('itam-recent-devices', JSON.stringify(next))
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }, [])
+
+  // ── New: keyboard shortcuts help dialog ──
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false)
+
+  // ── New: column visibility (persisted) ──
+  // Default columns mirror what the table currently renders. Hidden columns
+  // are removed from the header + body. Users can toggle via the Columns button.
+  type ColumnKey =
+    | 'assetCode'
+    | 'assetSiteCode'
+    | 'type'
+    | 'brandModel'
+    | 'serialNumber'
+    | 'location'
+    | 'department'
+    | 'status'
+    | 'meter'
+    | 'updatedAt'
+    | 'actions'
+  const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
+    { key: 'assetCode', label: 'รหัสทรัพย์สิน' },
+    { key: 'assetSiteCode', label: 'ทะเบียน Site' },
+    { key: 'type', label: 'ประเภท' },
+    { key: 'brandModel', label: 'ยี่ห้อ/รุ่น' },
+    { key: 'serialNumber', label: 'Serial No.' },
+    { key: 'location', label: 'อาคาร/ชั้น' },
+    { key: 'department', label: 'แผนก/ตำแหน่ง' },
+    { key: 'status', label: 'สถานะ' },
+    { key: 'meter', label: 'มิเตอร์ล่าสุด' },
+    { key: 'updatedAt', label: 'อัปเดตล่าสุด' },
+    { key: 'actions', label: 'การกระทำ' },
+  ]
+  const [hiddenColumns, setHiddenColumns] = React.useState<Set<ColumnKey>>(
+    () => {
+      try {
+        const raw = localStorage.getItem('itam-devices-hidden-cols')
+        if (raw) return new Set(JSON.parse(raw))
+      } catch {
+        /* ignore */
+      }
+      return new Set()
+    },
+  )
+  const toggleColumn = React.useCallback((key: ColumnKey) => {
+    setHiddenColumns((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      try {
+        localStorage.setItem(
+          'itam-devices-hidden-cols',
+          JSON.stringify([...next]),
+        )
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }, [])
+  const isColVisible = (key: ColumnKey) => !hiddenColumns.has(key)
+
+  // ── New: global keyboard shortcuts ──
+  // Ctrl/Cmd+K → focus search; Ctrl/Cmd+N → new device; Ctrl/Cmd+R → refresh; ? → shortcuts help
+  const searchInputId = 'itam-devices-search'
+  React.useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // Skip when typing in inputs (except for Escape)
+      const target = e.target as HTMLElement
+      const isTyping =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      if (isTyping && e.key !== 'Escape') return
+
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        const el = document.getElementById(searchInputId) as HTMLInputElement | null
+        el?.focus()
+        el?.select()
+      } else if (mod && e.key.toLowerCase() === 'n') {
+        e.preventDefault()
+        openAdd()
+      } else if (mod && e.key.toLowerCase() === 'r') {
+        e.preventDefault()
+        qc.invalidateQueries({ queryKey: ['devices'] })
+      } else if (e.key === '?' && !mod) {
+        e.preventDefault()
+        setShortcutsOpen(true)
+      } else if (e.key === 'Escape') {
+        if (shortcutsOpen) setShortcutsOpen(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shortcutsOpen, qc])
+
+  // ── New: derived KPI counts from the filtered `devices` list ──
+  // (Moved below `devices` declaration so the closure captures it correctly.)
 
   // Read pendingDeviceId / pendingWarrantyFilter from store on mount
   const pendingDeviceId = useAppStore((s) => s.pendingDeviceId)
@@ -379,6 +529,57 @@ export function DevicesPage() {
     }
     return list
   }, [devicesRaw, warrantyFilter, assigneeFilter])
+
+  // ── New: derived KPI counts from the filtered `devices` list ──
+  // Clicking a KPI card in the UI applies the corresponding filter.
+  // Status matching is case-insensitive — DB stores mixed-case values
+  // (Active, In Repair, Retired, Inactive, Disposed, Returned) but the
+  // legacy short forms (active, spare, repair, disposed) also appear in
+  // old imports. We normalise by lowercasing + checking against a set of
+  // known aliases per KPI bucket.
+  const kpi = React.useMemo(() => {
+    const list = devices ?? []
+    const norm = (s: string | null | undefined): string =>
+      (s ?? '').trim().toLowerCase()
+    const active = list.filter((d) => {
+      const s = norm(d.status)
+      return s === 'active' || s === 'in use'
+    }).length
+    const repair = list.filter((d) => {
+      const s = norm(d.status)
+      return s === 'in repair' || s === 'repair' || s === 'pending repair'
+    }).length
+    const inactive = list.filter((d) => {
+      const s = norm(d.status)
+      return (
+        s === 'inactive'
+        || s === 'retired'
+        || s === 'disposed'
+        || s === 'returned'
+      )
+    }).length
+    const spare = list.filter((d) => {
+      const s = norm(d.status)
+      return s === 'spare' || s === 'in stock'
+    }).length
+    const warrantyExpiringSoon = list.filter((d) => {
+      const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
+      return w.status === 'expiring'
+    }).length
+    const warrantyExpired = list.filter((d) => {
+      const w = computeWarranty(d.purchaseDate, d.warrantyMonths ?? 12)
+      return w.status === 'expired'
+    }).length
+    return {
+      total: list.length,
+      active,
+      repair,
+      inactive,
+      spare,
+      warrantyExpiringSoon,
+      warrantyExpired,
+    }
+  }, [devices])
 
   // ── Pagination: client-side slicing of the filtered `devices` array ──
   // When search/filter changes, reset to page 1.
@@ -764,6 +965,14 @@ export function DevicesPage() {
       costCenter: d.costCenter ?? '',
       deviceGroup: d.deviceGroup ?? '',
       remark: d.remark ?? '',
+      // ── Device Set fields (Task ID 9, Phase 2) ──
+      // Cast through unknown because the legacy `Device` type doesn't
+      // include parentDeviceId/setLabel/setPosition yet (only the DB row does).
+      parentDeviceId: (d as unknown as { parentDeviceId?: string | null }).parentDeviceId ?? '',
+      setLabel: (d as unknown as { setLabel?: string | null }).setLabel ?? '',
+      setPosition: (d as unknown as { setPosition?: number | null }).setPosition != null
+        ? String((d as unknown as { setPosition?: number | null }).setPosition)
+        : '',
       licenses: [],
     })
     setDialogOpen(true)
@@ -915,6 +1124,10 @@ export function DevicesPage() {
         costCenter: form.costCenter || null,
         deviceGroup: form.deviceGroup || null,
         remark: form.remark || null,
+        // ── Device Set fields (Task ID 9, Phase 2) ──
+        parentDeviceId: form.parentDeviceId || null,
+        setLabel: form.setLabel || null,
+        setPosition: form.setPosition === '' ? null : Number(form.setPosition),
       }
       const isEdit = Boolean(form.id)
       const url = isEdit ? `/api/devices/${form.id}` : '/api/devices'
@@ -1031,6 +1244,134 @@ export function DevicesPage() {
       toast.success(`ส่งออก ${rows.length} รายการแล้ว`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  // ── Custom Export Dialog (Task ID 9, Phase 3) ──
+  // Full list of columns that can be exported — richer than the default
+  // DEVICE_CSV_HEADERS list. Grouped for visual clarity in the picker.
+  const EXPORT_AVAILABLE_COLUMNS: ExportColumn[] = [
+    { key: 'assetCode', label: 'รหัสทรัพย์สิน', group: 'ข้อมูลทั่วไป' },
+    { key: 'assetSiteCode', label: 'ทะเบียน Site', group: 'ข้อมูลทั่วไป' },
+    { key: 'name', label: 'ชื่ออุปกรณ์', group: 'ข้อมูลทั่วไป' },
+    { key: 'type', label: 'ประเภท', group: 'ข้อมูลทั่วไป' },
+    { key: 'brand', label: 'ยี่ห้อ', group: 'ข้อมูลทั่วไป' },
+    { key: 'model', label: 'รุ่น', group: 'ข้อมูลทั่วไป' },
+    { key: 'serialNumber', label: 'Serial No.', group: 'ข้อมูลทั่วไป' },
+    { key: 'status', label: 'สถานะ', group: 'ข้อมูลทั่วไป' },
+    { key: 'site', label: 'สาขา', group: 'ตำแหน่ง' },
+    { key: 'building', label: 'อาคาร', group: 'ตำแหน่ง' },
+    { key: 'floor', label: 'ชั้น', group: 'ตำแหน่ง' },
+    { key: 'room', label: 'ห้อง', group: 'ตำแหน่ง' },
+    { key: 'department', label: 'แผนก', group: 'ตำแหน่ง' },
+    { key: 'departmentCode', label: 'รหัสแผนก', group: 'ตำแหน่ง' },
+    { key: 'location', label: 'ตำแหน่ง/ที่ตั้ง', group: 'ตำแหน่ง' },
+    { key: 'currentAssignee', label: 'ผู้ใช้งานปัจจุบัน', group: 'ผู้ใช้/การเงิน' },
+    { key: 'costCenter', label: 'Cost Center', group: 'ผู้ใช้/การเงิน' },
+    { key: 'deviceGroup', label: 'กลุ่มอุปกรณ์', group: 'ผู้ใช้/การเงิน' },
+    { key: 'purchaseDate', label: 'วันที่รับ', group: 'ผู้ใช้/การเงิน' },
+    { key: 'purchasePrice', label: 'ราคาทุน', group: 'ผู้ใช้/การเงิน' },
+    { key: 'salvageValue', label: 'มูลค่าซาก', group: 'ผู้ใช้/การเงิน' },
+    { key: 'usefulLife', label: 'อายุการใช้งาน (เดือน)', group: 'ผู้ใช้/การเงิน' },
+    { key: 'warrantyMonths', label: 'การรับประกัน (เดือน)', group: 'ผู้ใช้/การเงิน' },
+    { key: 'warrantyEnd', label: 'วันหมดรับประกัน', group: 'ผู้ใช้/การเงิน' },
+    { key: 'vendor', label: 'ผู้จำหน่าย', group: 'ผู้ใช้/การเงิน' },
+    { key: 'contractNo', label: 'เลขที่สัญญา', group: 'ผู้ใช้/การเงิน' },
+    { key: 'meterRequired', label: 'ต้องจดมิเตอร์', group: 'มิเตอร์' },
+    { key: 'meterMode', label: 'โหมดมิเตอร์', group: 'มิเตอร์' },
+    { key: 'lastMeterBw', label: 'มิเตอร์ ขาวดำ', group: 'มิเตอร์' },
+    { key: 'lastMeterColor', label: 'มิเตอร์ สี', group: 'มิเตอร์' },
+    { key: 'lastReadingMonth', label: 'เดือนที่จดล่าสุด', group: 'มิเตอร์' },
+    { key: 'ip', label: 'IP Address', group: 'เครือข่าย' },
+    { key: 'mac', label: 'MAC Address', group: 'เครือข่าย' },
+    { key: 'remoteId', label: 'Remote ID', group: 'เครือข่าย' },
+    { key: 'parentRef', label: 'Parent Ref', group: 'ความสัมพันธ์' },
+    { key: 'parentDeviceId', label: 'อุปกรณ์หลัก (Set)', group: 'ความสัมพันธ์' },
+    { key: 'setLabel', label: 'ชื่อชุด', group: 'ความสัมพันธ์' },
+    { key: 'setPosition', label: 'ลำดับในชุด', group: 'ความสัมพันธ์' },
+    { key: 'displayLabel', label: 'Display Label', group: 'อื่นๆ' },
+    { key: 'uninstallDate', label: 'วันที่ถอน', group: 'อื่นๆ' },
+    { key: 'remark', label: 'หมายเหตุ', group: 'อื่นๆ' },
+    { key: 'updatedBy', label: 'ผู้แก้ไขล่าสุด', group: 'อื่นๆ' },
+    { key: 'updatedAt', label: 'วันที่อัปเดต', group: 'อื่นๆ' },
+  ]
+  const [customExportOpen, setCustomExportOpen] = React.useState(false)
+
+  /** Custom export handler — fetches devices and writes them in the chosen
+   *  format with the user-selected columns (in the chosen order). */
+  async function handleCustomExport(
+    columns: ExportColumn[],
+    format: ExportFormat,
+  ) {
+    try {
+      setExporting(true)
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      if (statusFilter !== 'all') params.set('status', statusFilter)
+      if (siteFilter !== 'all') params.set('site', siteFilter)
+      params.set('limit', '500')
+      const res = await fetch(`/api/devices?${params.toString()}`, {
+        headers: authHeaders(),
+      })
+      if (!res.ok) throw new Error('Failed to fetch devices for export')
+      const json = await res.json()
+      const rows = (json.devices ?? []) as Record<string, unknown>[]
+
+      const headers = columns.map((c) => ({ key: c.key, label: c.label }))
+      const filename = `devices-${dateStamp()}`
+
+      if (format === 'csv') {
+        downloadCsv(`${filename}.csv`, rows, headers)
+      } else if (format === 'xlsx') {
+        // Dynamic import keeps xlsx out of the main bundle — only loaded
+        // when the user actually picks Excel format.
+        const XLSX = await import('xlsx')
+        const data = rows.map((r) => {
+          const obj: Record<string, unknown> = {}
+          for (const h of headers) obj[h.label] = r[h.key] ?? ''
+          return obj
+        })
+        const ws = XLSX.utils.json_to_sheet(data)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Devices')
+        XLSX.writeFile(wb, `${filename}.xlsx`)
+      } else if (format === 'pdf') {
+        // PDF: open a print-friendly window with a table the browser can
+        // print to PDF. Avoids heavy pdf-lib dependency; uses the browser's
+        // native print → Save as PDF.
+        const printWin = window.open('', '_blank', 'width=1024,height=768')
+        if (!printWin) {
+          throw new Error('โปรดอนุญาต popup เพื่อสร้าง PDF')
+        }
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>${filename}</title>
+<style>
+body { font-family: 'Sarabun', 'Helvetica', sans-serif; margin: 16px; font-size: 11px; }
+h1 { font-size: 16px; margin: 0 0 8px; }
+.meta { color: #666; font-size: 10px; margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
+th { background: #f97316; color: white; font-weight: 600; font-size: 10px; }
+tr:nth-child(even) { background: #fafafa; }
+</style></head><body>
+<h1>รายการอุปกรณ์ IT</h1>
+<div class="meta">ส่งออกเมื่อ ${new Date().toLocaleString('th-TH')} — ${rows.length} รายการ, ${columns.length} คอลัมน์</div>
+<table>
+<thead><tr>${headers.map((h) => `<th>${h.label}</th>`).join('')}</tr></thead>
+<tbody>
+${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replace(/</g, '&lt;')}</td>`).join('')}</tr>`).join('')}
+</tbody>
+</table>
+<script>window.onload = () => { window.print(); };</script>
+</body></html>`
+        printWin.document.write(html)
+        printWin.document.close()
+      }
+      toast.success(`ส่งออก ${rows.length} รายการ (${columns.length} คอลัมน์) เป็น ${format.toUpperCase()} แล้ว`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Custom export failed')
+      throw e
     } finally {
       setExporting(false)
     }
@@ -1296,9 +1637,10 @@ export function DevicesPage() {
                 Tab 2: 💻 อุปกรณ์ (สถานะ, Type/Brand/Model, IP/MAC, กลุ่มอุปกรณ์, โหมดมิเตอร์)
                 Tab 3: ⚙️ ขั้นสูง (Remote ID, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ) */}
             <Tabs defaultValue="location" className="w-full">
-              <TabsList className="mb-4 grid w-full grid-cols-3">
+              <TabsList className="mb-4 grid w-full grid-cols-4">
                 <TabsTrigger value="location">📍 สถานที่ติดตั้ง</TabsTrigger>
                 <TabsTrigger value="device">💻 อุปกรณ์</TabsTrigger>
+                <TabsTrigger value="set">📦 ชุดอุปกรณ์</TabsTrigger>
                 <TabsTrigger value="advanced">⚙️ ขั้นสูง</TabsTrigger>
               </TabsList>
 
@@ -1724,7 +2066,82 @@ export function DevicesPage() {
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 3: ⚙️ ขั้นสูง
+                  Tab 3: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
+                  ─────────────────────────────────────────────────────
+                  Lets the user mark this device as belonging to a "set":
+                  • If this is a parent device, leave parent empty — children
+                    will be assigned their own parentDeviceId via this same UI.
+                  • If this is a child device, pick the parent device from
+                    the combobox (search by assetCode or name).
+                  • setLabel = a free-text name for the whole set (shared
+                    across all members — e.g. "ชุดเครื่องพิมพ์ห้องจ่ายยา").
+                  • setPosition = optional ordering inside the set (1, 2, 3…).
+                  ═══════════════════════════════════════════════════════ */}
+              <TabsContent value="set" className="space-y-4">
+                <div className="rounded-lg border border-teal-200 bg-white p-4 shadow-sm dark:border-teal-900/40 dark:bg-slate-900">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">
+                    📦 ชุดอุปกรณ์ (Device Set)
+                  </div>
+                  <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                    จัดกลุ่มอุปกรณ์หลายชิ้นเป็นชุดเดียวกัน — เช่น เครื่องพิมพ์ + UPS + สายเครือข่าย
+                    เครื่องหลัก (parent) คือเครื่องที่เป็นศูนย์กลางของชุด ส่วนอุปกรณ์อื่นๆ ที่อยู่ในชุด
+                    จะอ้างอิงมาที่เครื่องหลักผ่าน parent
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <Field label="อุปกรณ์หลักในชุด (Parent)">
+                      <Input
+                        value={form.parentDeviceId}
+                        onChange={(e) =>
+                          setForm({ ...form, parentDeviceId: e.target.value })
+                        }
+                        placeholder="รหัสอุปกรณ์หลัก (เช่น 2378) — เว้นว่างถ้าเป็นเครื่องหลัก"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                        💡 ใส่รหัสทรัพย์สินของเครื่องหลัก — เครื่องนี้จะกลายเป็น "อุปกรณ์ลูก" ในชุด
+                      </p>
+                    </Field>
+
+                    <Field label="ลำดับในชุด (Set Position)">
+                      <Input
+                        type="number"
+                        min="1"
+                        value={form.setPosition}
+                        onChange={(e) =>
+                          setForm({ ...form, setPosition: e.target.value })
+                        }
+                        placeholder="1, 2, 3, …"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                        ใช้สำหรับจัดเรียงลำดับเครื่องในชุด (ไม่บังคับ)
+                      </p>
+                    </Field>
+
+                    <Field label="ชื่อชุด (Set Label)">
+                      <Input
+                        value={form.setLabel}
+                        onChange={(e) =>
+                          setForm({ ...form, setLabel: e.target.value })
+                        }
+                        placeholder="เช่น ชุดเครื่องพิมพ์ห้องจ่ายยา"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                        ชื่อที่ใช้เรียกชุด — ใส่เหมือนกันทุกเครื่องในชุด
+                      </p>
+                    </Field>
+                  </div>
+
+                  {form.parentDeviceId && (
+                    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                      ⚠️ อุปกรณ์นี้ถูกกำหนดเป็น <strong>อุปกรณ์ลูก</strong> ในชุด —
+                      เมื่อย้ายเครื่องหลัก คุณสามารถเลือกให้อุปกรณ์ลูกตามไปด้วยได้จากหน้ารายละเอียด
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* ═══════════════════════════════════════════════════════
+                  Tab 4: ⚙️ ขั้นสูง
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="advanced" className="space-y-4">
                 {/* ── License / Software ── */}
@@ -2098,17 +2515,136 @@ export function DevicesPage() {
             เพิ่ม / แก้ไข / ลบ อุปกรณ์ IT ในระบบ
           </p>
         </div>
-        {/* Primary CTA in the header — always visible without scrolling.
-            On mobile it's full-width; on sm+ it's right-aligned. */}
-        <Button
-          type="button"
+        <div className="flex items-center gap-2">
+          {/* Keyboard shortcuts help — `?` anywhere opens it */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShortcutsOpen(true)}
+            className="hidden text-slate-500 hover:bg-slate-100 hover:text-[#f97316] dark:text-slate-400 dark:hover:bg-slate-800 sm:inline-flex"
+            title="คีย์ลัด (กด ? เพื่อเปิด)"
+            aria-label="คีย์ลัด"
+          >
+            <Keyboard className="h-4 w-4" />
+          </Button>
+          {/* Primary CTA in the header — always visible without scrolling.
+              On mobile it's full-width; on sm+ it's right-aligned. */}
+          <Button
+            type="button"
                 onClick={openAdd}
-          className="w-full bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950 sm:w-auto"
-        >
-          <Plus className="h-4 w-4" />
-          เพิ่มอุปกรณ์
-        </Button>
+            className="w-full bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950 sm:w-auto"
+          >
+            <Plus className="h-4 w-4" />
+            เพิ่มอุปกรณ์
+          </Button>
+        </div>
       </div>
+
+      {/* ── KPI summary cards ──
+          Quick stats computed from the filtered device list. Clicking a
+          card applies the corresponding filter instantly. */}
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
+        <KpiCard
+          label="ทั้งหมด"
+          value={kpi.total}
+          tone="neutral"
+          active={statusFilter === 'all'}
+          onClick={() => setStatusFilter('all')}
+        />
+        <KpiCard
+          label="ใช้งานอยู่"
+          value={kpi.active}
+          tone="success"
+          icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+          active={statusFilter === 'active'}
+          onClick={() => setStatusFilter('active')}
+        />
+        <KpiCard
+          label="ส่งซ่อม"
+          value={kpi.repair}
+          tone="warning"
+          icon={<Wrench className="h-3.5 w-3.5" />}
+          active={statusFilter === 'repair'}
+          onClick={() => setStatusFilter('repair')}
+        />
+        <KpiCard
+          label="สำรอง"
+          value={kpi.spare}
+          tone="info"
+          icon={<PackageOpen className="h-3.5 w-3.5" />}
+          active={statusFilter === 'spare'}
+          onClick={() => setStatusFilter('spare')}
+        />
+        <KpiCard
+          label="ไม่ใช้งาน/เกษียณ"
+          value={kpi.inactive}
+          tone="danger"
+          icon={<XCircle className="h-3.5 w-3.5" />}
+          active={statusFilter === 'disposed'}
+          onClick={() => setStatusFilter('disposed')}
+        />
+        <KpiCard
+          label="รับประกันใกล้หมด"
+          value={kpi.warrantyExpiringSoon}
+          tone="warning"
+          icon={<AlertTriangle className="h-3.5 w-3.5" />}
+          active={warrantyFilter === 'expiring'}
+          onClick={() => setWarrantyFilter('expiring')}
+        />
+        <KpiCard
+          label="รับประกันหมดแล้ว"
+          value={kpi.warrantyExpired}
+          tone="danger"
+          icon={<ShieldCheck className="h-3.5 w-3.5" />}
+          active={warrantyFilter === 'expired'}
+          onClick={() => setWarrantyFilter('expired')}
+        />
+      </div>
+
+      {/* ── Recently-viewed devices bar ──
+          Shows the last 5 device IDs opened in the detail sheet, persisted
+          in localStorage so they survive page reloads. Clicking opens the
+          detail sheet instantly. */}
+      {recentDeviceIds.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-white/70 px-2.5 py-1.5 text-xs dark:border-slate-800 dark:bg-slate-900/70">
+          <Clock className="h-3.5 w-3.5 text-slate-400" />
+          <span className="text-slate-500 dark:text-slate-400">ล่าสุด:</span>
+          {recentDeviceIds.map((id) => {
+            const dev = (devices ?? []).find((d) => d.id === id)
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  setDetailDeviceId(id)
+                  pushRecentDevice(id)
+                }}
+                className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-700 transition-colors hover:bg-[#f97316]/10 hover:text-[#f97316] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#fb923c]/10 dark:hover:text-[#fb923c]"
+                title={dev ? `${dev.assetCode} — ${dev.name}` : id}
+              >
+                {dev ? dev.assetCode : id.slice(-6)}
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => {
+              setRecentDeviceIds([])
+              try {
+                localStorage.removeItem('itam-recent-devices')
+              } catch {
+                /* ignore */
+              }
+            }}
+            className="ml-auto rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+            aria-label="ล้างรายการล่าสุด"
+            title="ล้างรายการล่าสุด"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
 
       <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="flex min-h-0 flex-1 flex-col p-4">
@@ -2118,7 +2654,8 @@ export function DevicesPage() {
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
-                  placeholder="ค้นหา Serial / รหัส / ตึก / ชั้น / หน่วยงาน / แบรนด์..."
+                  id={searchInputId}
+                  placeholder="ค้นหา Serial / รหัส / ตึก / ชั้น / หน่วยงาน / แบรนด์... (Ctrl+K)"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
@@ -2207,13 +2744,13 @@ export function DevicesPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={exportCsv}
+                onClick={() => setCustomExportOpen(true)}
                 disabled={exporting}
-                aria-label={exporting ? 'กำลังส่งออก' : 'ส่งออก CSV'}
+                aria-label={exporting ? 'กำลังส่งออก' : 'ส่งออกข้อมูล'}
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">{exporting ? 'กำลังส่งออก...' : 'ส่งออก CSV'}</span>
+                <span className="hidden sm:inline">{exporting ? 'กำลังส่งออก...' : 'ส่งออก'}</span>
               </Button>
               <Button
                 variant="outline"
@@ -2234,6 +2771,50 @@ export function DevicesPage() {
                 <RefreshCw className="h-4 w-4" />
                 <span className="hidden sm:inline">รีเฟรช</span>
               </Button>
+              {/* Column visibility dropdown — lets the user hide columns
+                  they don't need. Choice persists in localStorage. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    aria-label="เลือกคอลัมน์"
+                    className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+                  >
+                    <Columns3 className="h-4 w-4" />
+                    <span className="hidden sm:inline">คอลัมน์</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="text-xs text-slate-500 dark:text-slate-400">
+                    เลือกคอลัมน์ที่จะแสดง
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {ALL_COLUMNS.map((col) => (
+                    <DropdownMenuCheckboxItem
+                      key={col.key}
+                      checked={isColVisible(col.key)}
+                      onCheckedChange={() => toggleColumn(col.key)}
+                      className="text-sm"
+                    >
+                      {col.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setHiddenColumns(new Set())
+                      try {
+                        localStorage.removeItem('itam-devices-hidden-cols')
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                    className="text-xs text-[#f97316] focus:text-[#f97316]"
+                  >
+                    รีเซ็ตเป็นค่าเริ่มต้น
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -2342,7 +2923,7 @@ export function DevicesPage() {
             <Table className="min-w-[800px]">
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
-                  {hasDevices && (
+                  {hasDevices && isColVisible('assetCode') && (
                     <TableHead className="w-10">
                       <Checkbox
                         checked={allSelected ? true : someSelected ? 'indeterminate' : false}
@@ -2352,17 +2933,17 @@ export function DevicesPage() {
                       />
                     </TableHead>
                   )}
-                  <TableHead className="text-slate-600 dark:text-slate-300">รหัสทรัพย์สิน</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">ทะเบียน Site</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">ประเภท</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">ยี่ห้อ/รุ่น</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">Serial No.</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">อาคาร/ชั้น</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">แผนก/ตำแหน่ง</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">มิเตอร์ล่าสุด</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">อัปเดตล่าสุด</TableHead>
-                  <TableHead className="text-right text-slate-600 dark:text-slate-300">การกระทำ</TableHead>
+                  {isColVisible('assetCode') && <TableHead className="text-slate-600 dark:text-slate-300">รหัสทรัพย์สิน</TableHead>}
+                  {isColVisible('assetSiteCode') && <TableHead className="text-slate-600 dark:text-slate-300">ทะเบียน Site</TableHead>}
+                  {isColVisible('type') && <TableHead className="text-slate-600 dark:text-slate-300">ประเภท</TableHead>}
+                  {isColVisible('brandModel') && <TableHead className="text-slate-600 dark:text-slate-300">ยี่ห้อ/รุ่น</TableHead>}
+                  {isColVisible('serialNumber') && <TableHead className="text-slate-600 dark:text-slate-300">Serial No.</TableHead>}
+                  {isColVisible('location') && <TableHead className="text-slate-600 dark:text-slate-300">อาคาร/ชั้น</TableHead>}
+                  {isColVisible('department') && <TableHead className="text-slate-600 dark:text-slate-300">แผนก/ตำแหน่ง</TableHead>}
+                  {isColVisible('status') && <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>}
+                  {isColVisible('meter') && <TableHead className="text-slate-600 dark:text-slate-300">มิเตอร์ล่าสุด</TableHead>}
+                  {isColVisible('updatedAt') && <TableHead className="text-slate-600 dark:text-slate-300">อัปเดตล่าสุด</TableHead>}
+                  {isColVisible('actions') && <TableHead className="text-right text-slate-600 dark:text-slate-300">การกระทำ</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2442,24 +3023,33 @@ export function DevicesPage() {
                         className="w-10"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={(v) => toggleSelect(d.id, v === true)}
-                          aria-label={`เลือก ${d.assetCode}`}
-                          className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
-                        />
+                        {isColVisible('assetCode') && (
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={(v) => toggleSelect(d.id, v === true)}
+                            aria-label={`เลือก ${d.assetCode}`}
+                            className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
+                          />
+                        )}
                       </TableCell>
                       {/* รหัสทรัพย์สิน */}
+                      {isColVisible('assetCode') && (
                       <TableCell className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
                         {d.assetCode}
                       </TableCell>
+                      )}
                       {/* ทะเบียน Site */}
+                      {isColVisible('assetSiteCode') && (
                       <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
                         {d.assetSiteCode || <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </TableCell>
+                      )}
                       {/* ประเภท */}
+                      {isColVisible('type') && (
                       <TableCell className="text-slate-700 dark:text-slate-200">{d.type}</TableCell>
+                      )}
                       {/* ยี่ห้อ/รุ่น */}
+                      {isColVisible('brandModel') && (
                       <TableCell className="max-w-[180px]">
                         <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={`${d.brand} ${d.model}`}>
                           {d.brand || '-'}
@@ -2470,11 +3060,15 @@ export function DevicesPage() {
                           </div>
                         )}
                       </TableCell>
+                      )}
                       {/* Serial No. */}
+                      {isColVisible('serialNumber') && (
                       <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
                         {d.serialNumber || <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </TableCell>
+                      )}
                       {/* อาคาร/ชั้น */}
+                      {isColVisible('location') && (
                       <TableCell className="max-w-[140px]">
                         <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={d.building ?? ''}>
                           {d.building || '-'}
@@ -2485,7 +3079,9 @@ export function DevicesPage() {
                           </div>
                         )}
                       </TableCell>
+                      )}
                       {/* แผนก/ตำแหน่ง */}
+                      {isColVisible('department') && (
                       <TableCell className="max-w-[160px]">
                         <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={d.department ?? ''}>
                           {d.department || '-'}
@@ -2496,13 +3092,17 @@ export function DevicesPage() {
                           </div>
                         )}
                       </TableCell>
+                      )}
                       {/* สถานะ */}
+                      {isColVisible('status') && (
                       <TableCell>
                         <Badge className={statusBadgeClass(d.status)}>
                           {statusLabel(d.status)}
                         </Badge>
                       </TableCell>
+                      )}
                       {/* มิเตอร์ล่าสุด */}
+                      {isColVisible('meter') && (
                       <TableCell className="min-w-[100px]">
                         {hasMeter ? (
                           <div>
@@ -2524,11 +3124,15 @@ export function DevicesPage() {
                           </span>
                         )}
                       </TableCell>
+                      )}
                       {/* อัปเดตล่าสุด */}
+                      {isColVisible('updatedAt') && (
                       <TableCell className="text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                         {formatDateTime(d.updatedAt)}
                       </TableCell>
+                      )}
                       {/* การกระทำ */}
+                      {isColVisible('actions') && (
                       <TableCell
                         className="text-right"
                         onClick={(e) => e.stopPropagation()}
@@ -2569,6 +3173,7 @@ export function DevicesPage() {
                           </Button>
                         </div>
                       </TableCell>
+                      )}
                     </TableRow>
                     )
                   })
@@ -2746,6 +3351,17 @@ export function DevicesPage() {
       {/* CSV Import */}
       <CsvImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
+      {/* Custom Export — column picker + reorder + format selector (CSV/Excel/PDF) */}
+      <CustomExportDialog
+        open={customExportOpen}
+        onOpenChange={setCustomExportOpen}
+        availableColumns={EXPORT_AVAILABLE_COLUMNS}
+        onExport={handleCustomExport}
+        storageKey="itam-devices-export-cols"
+        defaultSelectedKeys={DEVICE_CSV_HEADERS.map((h) => h.key)}
+        totalRows={totalCount}
+      />
+
       {/* Sticker print */}
       <StickerPrintDialog
         open={stickerOpen}
@@ -2753,7 +3369,131 @@ export function DevicesPage() {
         devices={devices ?? []}
         orgName={settings?.orgName ?? null}
       />
+
+      {/* ── Keyboard shortcuts dialog ──
+          Opened via the keyboard icon button or by pressing `?` anywhere. */}
+      <Dialog open={shortcutsOpen} onOpenChange={setShortcutsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Keyboard className="h-5 w-5 text-[#f97316]" />
+              คีย์ลัด (Keyboard Shortcuts)
+            </DialogTitle>
+            <DialogDescription>
+              เร่งการทำงานด้วยคีย์ลัดเหล่านี้ — ใช้ได้ทุกที่ในหน้าจัดการอุปกรณ์
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            {[
+              { keys: ['Ctrl', 'K'], desc: 'โฟกัสช่องค้นหา' },
+              { keys: ['Ctrl', 'N'], desc: 'เพิ่มอุปกรณ์ใหม่' },
+              { keys: ['Ctrl', 'R'], desc: 'รีเฟรชรายการ' },
+              { keys: ['?'], desc: 'เปิดเมนูคีย์ลัดนี้' },
+              { keys: ['Esc'], desc: 'ปิด dialog / ยกเลิกการเลือก' },
+              { keys: ['Enter'], desc: 'ในช่องค้นหา → ค้นหาทันที' },
+            ].map((s) => (
+              <div
+                key={s.desc}
+                className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-900"
+              >
+                <span className="text-slate-700 dark:text-slate-300">
+                  {s.desc}
+                </span>
+                <div className="flex items-center gap-1">
+                  {s.keys.map((k) => (
+                    <kbd
+                      key={k}
+                      className="inline-flex h-6 min-w-6 items-center justify-center rounded border border-slate-300 bg-white px-1.5 font-mono text-xs font-semibold text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    >
+                      {k}
+                    </kbd>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
+  )
+}
+
+// ─── KpiCard ─────────────────────────────────────────────────────────
+// A compact stat card used at the top of the devices page. Clickable so
+// users can apply the corresponding filter instantly. `tone` controls the
+// accent color (border-left + icon tint) so each metric is scannable.
+type KpiTone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
+function KpiCard({
+  label,
+  value,
+  tone = 'neutral',
+  icon,
+  active,
+  onClick,
+}: {
+  label: string
+  value: number
+  tone?: KpiTone
+  icon?: React.ReactNode
+  active?: boolean
+  onClick?: () => void
+}) {
+  const toneClasses: Record<KpiTone, { ring: string; text: string; bg: string }> = {
+    neutral: {
+      ring: 'border-slate-200 dark:border-slate-800',
+      text: 'text-slate-700 dark:text-slate-300',
+      bg: 'bg-white dark:bg-slate-900',
+    },
+    success: {
+      ring: 'border-emerald-200 dark:border-emerald-900/50',
+      text: 'text-emerald-700 dark:text-emerald-400',
+      bg: 'bg-emerald-50 dark:bg-emerald-950/30',
+    },
+    warning: {
+      ring: 'border-amber-200 dark:border-amber-900/50',
+      text: 'text-amber-700 dark:text-amber-400',
+      bg: 'bg-amber-50 dark:bg-amber-950/30',
+    },
+    danger: {
+      ring: 'border-rose-200 dark:border-rose-900/50',
+      text: 'text-rose-700 dark:text-rose-400',
+      bg: 'bg-rose-50 dark:bg-rose-950/30',
+    },
+    info: {
+      ring: 'border-sky-200 dark:border-sky-900/50',
+      text: 'text-sky-700 dark:text-sky-400',
+      bg: 'bg-sky-50 dark:bg-sky-950/30',
+    },
+  }
+  const t = toneClasses[tone]
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'group relative flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-all',
+        'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1',
+        t.bg,
+        t.ring,
+        active && 'ring-2 ring-[#f97316] ring-offset-1',
+      )}
+    >
+      <div className="flex items-center justify-between gap-1">
+        <span
+          className={cn(
+            'flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide',
+            t.text,
+          )}
+        >
+          {icon}
+          {label}
+        </span>
+      </div>
+      <span className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
+        {value.toLocaleString('th-TH')}
+      </span>
+    </button>
   )
 }
 
