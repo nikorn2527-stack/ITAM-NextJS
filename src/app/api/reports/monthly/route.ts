@@ -9,6 +9,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { db } from '@/lib/db'
 
 type ReportType = 'work-order' | 'stock' | 'devices' | 'all'
@@ -401,6 +402,8 @@ function formatResponseTime(minutes: number | null): string {
 }
 
 export async function GET(req: NextRequest) {
+  const unavailable = moduleUnavailableResponse('reports')
+  if (unavailable) return unavailable
   try {
     const { searchParams } = new URL(req.url)
     const monthParam = searchParams.get('month')?.trim() || null

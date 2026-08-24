@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { db } from '@/lib/db'
-import { logAudit } from '@/lib/audit'
+import { reportsService } from '@/modules/reports'
 
 type ReportType = 'dashboard_summary' | 'cycle' | 'audit' | 'utilization'
 type RangeKey = 'month' | '30d' | 'quarter' | 'all'
@@ -73,16 +74,19 @@ async function buildDashboardSummary(rangeKey: RangeKey) {
   })
 
   const total = devices.length
-  const active = devices.filter((d) => d.status === 'active').length
-  const spare = devices.filter((d) => d.status === 'spare').length
-  const repair = devices.filter((d) => d.status === 'repair').length
+  // Device statuses are legacy mixed-case values in existing databases.
+  // Normalize at the report boundary so dashboard counts stay correct across
+  // both legacy and newly seeded records.
+  const active = devices.filter((d) => d.status.toLowerCase() === 'active').length
+  const spare = devices.filter((d) => d.status.toLowerCase() === 'spare').length
+  const repair = devices.filter((d) => d.status.toLowerCase() === 'repair').length
 
   const statusMap = new Map<string, number>()
   for (const d of devices) {
     statusMap.set(d.status, (statusMap.get(d.status) ?? 0) + 1)
   }
   const byStatus = Array.from(statusMap.entries()).map(([name, value]) => ({
-    name: STATUS_LABEL_MAP[name] ?? name,
+    name: STATUS_LABEL_MAP[name.toLowerCase()] ?? name,
     raw: name,
     value,
   }))
@@ -361,24 +365,15 @@ const REPORT_TYPE_LABELS: Record<ReportType, string> = {
 }
 
 export async function GET(req: NextRequest) {
+  const unavailable = moduleUnavailableResponse('reports')
+  if (unavailable) return unavailable
   try {
     const { searchParams } = new URL(req.url)
     const limit = Math.min(
       Number(searchParams.get('limit') ?? '20') || 20,
       100,
     )
-    const reports = await db.report.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      select: {
-        id: true,
-        type: true,
-        title: true,
-        rangeKey: true,
-        format: true,
-        createdAt: true,
-      },
-    })
+    const reports = await reportsService.listRecent(limit)
     return NextResponse.json({ reports })
   } catch (err) {
     console.error('GET /api/reports', err)
@@ -390,6 +385,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const unavailable = moduleUnavailableResponse('reports')
+  if (unavailable) return unavailable
   try {
     const body = await req.json()
     const type = String(body.type ?? '') as ReportType
@@ -414,24 +411,14 @@ export async function POST(req: NextRequest) {
       String(body.title ?? '').trim() ||
       `${REPORT_TYPE_LABELS[type]} — ${range.label} (${new Date().toLocaleString('th-TH')})`
 
-    const created = await db.report.create({
-      data: {
-        type,
-        title,
-        rangeKey,
-        filters: filters ? JSON.stringify(filters) : null,
-        data: JSON.stringify(data),
-        format: 'json',
-      },
+    const created = await reportsService.createRecord({
+      type,
+      title,
+      rangeKey,
+      filters: filters ? JSON.stringify(filters) : null,
+      data: JSON.stringify(data),
+      format: 'json',
     })
-
-    await logAudit(
-      'GENERATE',
-      'Report',
-      created.id,
-      `สร้างรายงาน ${title}`,
-      { type, rangeKey },
-    )
 
     return NextResponse.json({ report: created }, { status: 201 })
   } catch (err) {
