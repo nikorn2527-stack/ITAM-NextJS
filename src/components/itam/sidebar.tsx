@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
 import { Sun, Moon, Search, LogOut, QrCode, Menu } from 'lucide-react'
 import { useAppStore, type ActivePage } from '@/store/app-store'
+import { isModuleEnabled, type ModuleName } from '@/config/modules'
 import { useClock, formatThaiTime, formatThaiDate } from '@/hooks/use-clock'
 import { useAuthStore, useNavVisibility, useRole } from '@/store/auth-store'
 import { ROLE_LABELS, type Role } from '@/lib/rbac'
@@ -12,7 +13,6 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { NotificationsPopover } from './notifications-popover'
 import { useRealtimeStatus } from '@/hooks/use-realtime-updates'
-import { isRouteEnabled } from '@/config/modules'
 
 // Map of role → Thai label (the auth store returns a normalized role string)
 function roleLabel(role: string | undefined | null): string {
@@ -25,6 +25,7 @@ interface NavItemDef {
   icon: string
   label: string
   desc?: string
+  module?: ModuleName
 }
 
 interface NavGroupDef {
@@ -40,35 +41,35 @@ const NAV_GROUPS: NavGroupDef[] = [
   {
     title: 'ภาพรวม',
     items: [
-      { page: 'dashboard', icon: '📊', label: 'Dashboard', desc: 'สรุปภาพรวมระบบ' },
+      { page: 'dashboard', icon: '📊', label: 'Dashboard', desc: 'สรุปภาพรวมระบบ', module: 'dashboard' },
     ],
   },
   {
     title: 'การทำงาน',
     items: [
-      { page: 'itam-devices', icon: '💻', label: 'จัดการอุปกรณ์', desc: 'ครุภัณฑ์ทั้งหมด' },
-      { page: 'itam-meter-keyboard', icon: '📈', label: 'จดมิเตอร์', desc: 'จดมิเตอร์ + ประวัติ' },
-      { page: 'itam-work-orders', icon: '🔧', label: 'แจ้งซ่อม', desc: 'แจ้งซ่อม รับงาน ปิดงาน' },
-      { page: 'itam-stock', icon: '📦', label: 'สต๊อก', desc: 'คลังสิ้นเปลือง/อะไหล่' },
-      { page: 'itam-paper-analytics', icon: '📄', label: 'วิเคราะห์กระดาษ', desc: 'สถิติการใช้งาน' },
-      { page: 'mobile', icon: '📱', label: 'โหมดมือถือ', desc: 'แจ้งซ่อม จดมิเตอร์ เบิกของ' },
+      { page: 'itam-devices', icon: '💻', label: 'จัดการอุปกรณ์', desc: 'ครุภัณฑ์ทั้งหมด', module: 'devices' },
+      { page: 'itam-meter-keyboard', icon: '📈', label: 'จดมิเตอร์', desc: 'จดมิเตอร์ + ประวัติ', module: 'meters' },
+      { page: 'itam-work-orders', icon: '🔧', label: 'แจ้งซ่อม', desc: 'แจ้งซ่อม รับงาน ปิดงาน', module: 'work-orders' },
+      { page: 'itam-stock', icon: '📦', label: 'สต๊อก', desc: 'คลังสิ้นเปลือง/อะไหล่', module: 'stock' },
+      { page: 'itam-paper-analytics', icon: '📄', label: 'วิเคราะห์กระดาษ', desc: 'สถิติการใช้งาน', module: 'paper-analytics' },
+      { page: 'mobile', icon: '📱', label: 'โหมดมือถือ', desc: 'แจ้งซ่อม จดมิเตอร์ เบิกของ', module: 'work-orders' },
     ],
   },
   {
     title: 'เครื่องมือ',
     items: [
-      { page: 'templates', icon: '📄', label: 'เทมเพลต', desc: 'จัดการเทมเพลต (สติกเกอร์/เอกสาร/ใบงาน)' },
-      { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล', desc: 'Import CSV/Excel' },
-      { page: 'reports-hub', icon: '📊', label: 'ศูนย์รายงาน', desc: 'รายงาน 5 กลุ่ม + อนุมัติ' },
-      { page: 'monthly-report', icon: '📅', label: 'รายงานรายเดือน', desc: 'สรุปการใช้งานรายเดือน' },
-      { page: 'itam-snapshot-viewer', icon: '🔒', label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์' },
+      { page: 'templates', icon: '📄', label: 'เทมเพลต', desc: 'จัดการเทมเพลต (สติกเกอร์/เอกสาร/ใบงาน)', module: 'templates' },
+      { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล', desc: 'Import CSV/Excel', module: 'import' },
+      { page: 'reports-hub', icon: '📊', label: 'ศูนย์รายงาน', desc: 'รายงาน 5 กลุ่ม + อนุมัติ', module: 'reports' },
+      { page: 'monthly-report', icon: '📅', label: 'รายงานรายเดือน', desc: 'สรุปการใช้งานรายเดือน', module: 'reports' },
+      { page: 'itam-snapshot-viewer', icon: '🔒', label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์', module: 'meters' },
     ],
   },
   {
     title: 'ระบบ',
     items: [
-      { page: 'itam-settings', icon: '⚙️', label: 'ตั้งค่าระบบ', desc: 'การตั้งค่าทั้งหมด' },
-      { page: 'itam-audit', icon: '📜', label: 'ประวัติการใช้งาน', desc: 'Audit log' },
+      { page: 'itam-settings', icon: '⚙️', label: 'ตั้งค่าระบบ', desc: 'การตั้งค่าทั้งหมด', module: 'settings' },
+      { page: 'itam-audit', icon: '📜', label: 'ประวัติการใช้งาน', desc: 'Audit log', module: 'audit' },
     ],
   },
 ]
@@ -214,7 +215,7 @@ export function Sidebar() {
   }
   const visibleNavItems = React.useMemo(() => {
     return NAV_GROUPS.flatMap((g) => g.items).filter((item) => {
-      if (!isRouteEnabled(item.page)) return false
+      if (item.module && !isModuleEnabled(item.module)) return false
       const key = pageToVisibilityKey[item.page]
       // Items without an explicit mapping default to visible (preserves
       // existing behavior for any nav id not yet wired to a permission).
@@ -229,7 +230,7 @@ export function Sidebar() {
     return NAV_GROUPS.map((g) => ({
       ...g,
       items: g.items.filter((item) => {
-        if (!isRouteEnabled(item.page)) return false
+        if (item.module && !isModuleEnabled(item.module)) return false
         const key = pageToVisibilityKey[item.page]
         if (!key) return true
         return Boolean(navVisibility[key])
