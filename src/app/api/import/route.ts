@@ -15,10 +15,6 @@ import {
   toFloat as toFloatLib,
   type AppsScriptSource,
 } from '@/lib/csv-field-mapping'
-import {
-  resolveMaterialIssueWorkOrder,
-  type WorkOrderLinkCandidate,
-} from '@/lib/repair-link-resolution'
 
 // ============================================================
 // Excel / CSV Import — ข้อ 3: ดาต้าเบสขึ้นได้ง่าย แค่เอาไฟล์ Excel ขึ้น
@@ -234,75 +230,51 @@ async function importDevices(
 
   if (toInsert.length === 0) return { processed: 0, errors }
 
-  // Pre-check existing assetCodes — use upsert pattern (update existing, insert new)
+  // Pre-filter assetCodes that already exist in DB.
   const existing = await db.device.findMany({
     where: { assetCode: { in: toInsert.map((r) => r.assetCode as string) } },
-    select: { assetCode: true, id: true },
+    select: { assetCode: true },
   })
-  const existingMap = new Map(existing.map((d) => [d.assetCode, d.id]))
-  const toCreate = toInsert.filter((r) => !existingMap.has(r.assetCode as string))
-  const toUpdate = toInsert.filter((r) => existingMap.has(r.assetCode as string))
-
-  let processed = 0
-
-  // Insert new devices
-  if (toCreate.length > 0) {
-    try {
-      const result = await db.device.createMany({
-        data: toCreate.map((r) => ({
-          assetCode: r.assetCode as string,
-          name: r.name as string,
-          brand: r.brand as string,
-          model: r.model as string,
-          type: r.type as string,
-          serialNumber: r.serialNumber as string | null,
-          status: r.status as string,
-          site: r.site as string,
-          department: r.department as string | null,
-          location: r.location as string | null,
-          purchaseDate: r.purchaseDate as string | null,
-          warrantyMonths: r.warrantyMonths as number,
-        })),
-      })
-      processed += result.count
-    } catch (e) {
-      console.error('importDevices createMany error', e)
+  const existingSet = new Set(existing.map((d) => d.assetCode))
+  const filtered = toInsert.filter((r) => {
+    if (existingSet.has(r.assetCode as string)) {
       errors.push({
         row: 0,
-        message: e instanceof Error ? e.message : 'DB error (device create)',
+        message: `มีอยู่แล้วในระบบ: ${r.assetCode}`,
       })
+      return false
     }
-  }
+    return true
+  })
 
-  // Update existing devices (upsert behavior)
-  for (const r of toUpdate) {
-    try {
-      await db.device.update({
-        where: { assetCode: r.assetCode as string },
-        data: {
-          name: r.name as string,
-          brand: r.brand as string,
-          model: r.model as string,
-          type: r.type as string,
-          serialNumber: r.serialNumber as string | null,
-          status: r.status as string,
-          site: r.site as string,
-          department: r.department as string | null,
-          location: r.location as string | null,
-          purchaseDate: r.purchaseDate as string | null,
-          warrantyMonths: r.warrantyMonths as number,
-        },
-      })
-      processed++
-    } catch (e) {
-      errors.push({
-        row: 0,
-        message: `Update failed for ${r.assetCode}: ${e instanceof Error ? e.message : 'DB error'}`,
-      })
-    }
-  }
+  if (filtered.length === 0) return { processed: 0, errors }
 
-  return { processed, errors }
+  try {
+    const result = await db.device.createMany({
+      data: filtered.map((r) => ({
+        assetCode: r.assetCode as string,
+        name: r.name as string,
+        brand: r.brand as string,
+        model: r.model as string,
+        type: r.type as string,
+        serialNumber: r.serialNumber as string | null,
+        status: r.status as string,
+        site: r.site as string,
+        department: r.department as string | null,
+        location: r.location as string | null,
+        purchaseDate: r.purchaseDate as string | null,
+        warrantyMonths: r.warrantyMonths as number,
+      })),
+    })
+    return { processed: result.count, errors }
+  } catch (e) {
+    console.error('importDevices createMany error', e)
+    errors.push({
+      row: 0,
+      message: e instanceof Error ? e.message : 'DB error (device)',
+    })
+    return { processed: 0, errors }
+  }
 }
 
 async function importWorkOrders(
@@ -318,12 +290,6 @@ async function importWorkOrders(
   const iPriority = idx('priority')
   const iReporter = idx('reporterName')
   const iTel = idx('tel')
-  const iLegacyJobNo = [
-    idx('legacyJobNo'),
-    idx('legacy_job_no'),
-    idx('jobNo'),
-    idx('job_no'),
-  ].find((index) => index >= 0) ?? -1
   // P1-R6 fix: field mapping — requestId + siteCode from CSV
   const iRequestId = idx('requestId')
   const iSiteCode = idx('siteCode')
@@ -369,7 +335,6 @@ async function importWorkOrders(
     const priority = toStr(row[iPriority])
     const prPriority =
       priority && VALID_PRIORITIES.has(priority) ? priority : 'ปกติ'
-    const legacyJobNo = toStr(row[iLegacyJobNo])
     seq++
     const woNumber = `${prefix}${String(seq).padStart(3, '0')}`
 
@@ -383,7 +348,6 @@ async function importWorkOrders(
         requestId, // P1-R6 fix: populate requestId
         siteCode, // P1-R6 fix: populate siteCode
         subject,
-        legacyJobNo,
         building: toStr(row[iBuilding]),
         location: toStr(row[iLocation]),
         details: toStr(row[iDetails]),
@@ -395,13 +359,7 @@ async function importWorkOrders(
       }
       const created = collision
         ? await db.workOrder.create({ data })
-        : await db.workOrder.create({
-            data: {
-              ...data,
-              woNumber,
-              systemJobNo: woNumber,
-            },
-          })
+        : await db.workOrder.create({ data: { ...data, woNumber } })
       // F-01 fix: processed++ ONLY after AuditLog verification passes (fail-closed)
       // F-04 fix: AuditLog verification failure = validation error (422), not DB error (500)
       try {
@@ -1097,20 +1055,13 @@ async function importAppsScriptTransfers(
           deviceId,
           fromSite: data.fromSite || null,
           toSite: data.toSite || '',
-          fromDepartment: data.fromDept || null,
-          toDepartment: data.toDept || null,
-          fromDepartmentCode: data.fromDeptCode || null,
-          toDepartmentCode: data.toDeptCode || null,
-          fromBuilding: data.fromBuilding || null,
-          toBuilding: data.toBuilding || null,
-          fromFloor: data.fromFloor || null,
-          toFloor: data.toFloor || null,
-          fromLocation: data.fromLocation || null,
-          toLocation: data.toLocation || null,
+          fromDept: data.fromDept || null,
+          toDept: data.toDept || null,
+          fromDeptCode: data.fromDeptCode || null,
+          toDeptCode: data.toDeptCode || null,
           reason: data.reason || null,
           transferDate,
           movedBy: data.movedBy || null,
-          remark: data.remark || null,
         },
       })
       result.processed++
@@ -1485,37 +1436,24 @@ async function importAppsScriptStockTxns(
   })
   const byCode = new Map(items.map((i) => [i.productCode, i]))
 
-  // Also collect WorkOrder candidates (StockOut may use any supported job number).
-  // Resolution is delegated to the shared fail-closed helper so importer and preview
-  // use identical matching/quarantine semantics.
-  let workOrderCandidates: WorkOrderLinkCandidate[] = []
+  // Also collect WorkOrder numbers (StockOut may reference them)
+  let woByNumber: Map<string, string> | null = null
   if (type === 'OUT') {
-    const woReferences = new Set<string>()
+    const woNumbers = new Set<string>()
     for (const obj of objects) {
-      const w = (
-        obj.WorkOrderNo ??
-        obj.workOrderNo ??
-        obj.legacy_job_no ??
-        obj.legacy_job_number ??
-        obj.job_no ??
-        obj.job_number ??
-        ''
-      ).trim()
-      if (w) woReferences.add(w)
+      const w = (obj.WorkOrderNo ?? obj.workOrderNo ?? '').trim()
+      if (w) woNumbers.add(w)
     }
-    if (woReferences.size > 0) {
-      const references = Array.from(woReferences)
+    if (woNumbers.size > 0) {
       const wos = await db.workOrder.findMany({
-        where: {
-          OR: [
-            { woNumber: { in: references } },
-            { systemJobNo: { in: references } },
-            { legacyJobNo: { in: references } },
-          ],
-        },
-        select: { id: true, woNumber: true, systemJobNo: true, legacyJobNo: true },
+        where: { woNumber: { in: Array.from(woNumbers) } },
+        select: { id: true, woNumber: true },
       })
-      workOrderCandidates = wos
+      woByNumber = new Map(
+        wos
+          .filter((w) => w.woNumber !== null)
+          .map((w) => [w.woNumber as string, w.id]),
+      )
     }
   }
 
@@ -1560,18 +1498,9 @@ async function importAppsScriptStockTxns(
     // Track updates
     item.quantity = newBalance
 
-    const rawWorkOrderNo =
-      type === 'OUT' ? toStr(data.workOrderNo) : null
     let workOrderId: string | null = null
-    if (type === 'OUT' && rawWorkOrderNo) {
-      const resolution = resolveMaterialIssueWorkOrder(
-        { workOrderLegacyNo: rawWorkOrderNo },
-        workOrderCandidates,
-      )
-      workOrderId = resolution.link?.workOrderId ?? null
-      for (const warning of resolution.warnings) {
-        result.warnings.push(`บรรทัด ${rowNum}: ${warning}`)
-      }
+    if (type === 'OUT' && woByNumber && data.workOrderId) {
+      workOrderId = woByNumber.get(data.workOrderId) ?? null
     }
 
     try {
@@ -1583,21 +1512,12 @@ async function importAppsScriptStockTxns(
           quantity: qty,
           balanceAfter: newBalance,
           reason: data.reason || null,
-          requester: type === 'OUT' ? data.requester || null : null,
-          department: type === 'OUT' ? data.department || null : null,
-          purpose: type === 'OUT' ? data.purpose || null : null,
-          approver: type === 'OUT' ? data.approver || null : null,
-          approvedAt: type === 'OUT' ? data.approvedAt || null : null,
           workOrderId,
-          workOrderNo: rawWorkOrderNo,
           cost: type === 'IN' ? toFloatLib(data.cost) : null,
           vendor: type === 'IN' ? data.vendor || null : null,
           txnDate,
           performedBy: data.performedBy || null,
           remark: data.remark || null,
-          rejectReason: type === 'OUT' ? data.rejectReason || null : null,
-          sourceKey: type === 'OUT' ? data.sourceKey || null : null,
-          processedFlag: type === 'OUT' ? data.processedFlag || null : null,
         },
       })
       // Update stock item quantity
@@ -1726,29 +1646,23 @@ async function importAppsScriptPOs(
 
   for (const [poNumber, g] of poGroups) {
     try {
-      // poNumber is intentionally non-unique in the legacy-compatible schema.
-      // Update the first matching header when present; otherwise create one.
-      const existingPo = await db.purchaseOrder.findFirst({ where: { poNumber } })
-      const po = existingPo
-        ? await db.purchaseOrder.update({
-            where: { id: existingPo.id },
-            data: {
-              orderDate: g.orderDate,
-              supplier: g.supplier,
-              status: g.status,
-              totalValue: g.totalValue,
-            },
-          })
-        : await db.purchaseOrder.create({
-            data: {
-              poNumber,
-              orderDate: g.orderDate,
-              supplier: g.supplier,
-              status: g.status,
-              totalValue: g.totalValue,
-              createdBy: g.createdBy,
-            },
-          })
+      const po = await db.purchaseOrder.upsert({
+        where: { poNumber },
+        create: {
+          poNumber,
+          orderDate: g.orderDate,
+          supplier: g.supplier,
+          status: g.status,
+          totalValue: g.totalValue,
+          createdBy: g.createdBy,
+        },
+        update: {
+          orderDate: g.orderDate,
+          supplier: g.supplier,
+          status: g.status,
+          totalValue: g.totalValue,
+        },
+      })
       // Insert line items (skip ones with missing stockItem)
       for (const line of g.lines) {
         if (!line.stockItemId) continue
@@ -1851,7 +1765,6 @@ async function importAppsScriptWorkOrders(
     }
 
     const requestId = (data.requestId ?? '').trim()
-    const legacyJobNo = (data.legacyJobNo ?? '').trim() || null
     // P1-R6 fix: required-field validation — requestId is required
     if (!requestId) {
       result.errors.push({ row: rowNum, message: 'ไม่มี requestId (required field)' })
@@ -1888,8 +1801,6 @@ async function importAppsScriptWorkOrders(
       const created = await db.workOrder.create({
         data: {
           woNumber: useWoNumber ?? undefined,
-          systemJobNo: useWoNumber ?? undefined,
-          legacyJobNo,
           requestId,
           siteCode, // P1-R6 fix: populate siteCode
           subject,
