@@ -61,3 +61,13 @@ if [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ] || [ -f "eslint.config.m
 fi
 
 exit 0
+
+# Milestone 3: Module boundary enforcement
+if [ -f "scripts/check-module-boundaries.mjs" ]; then
+  if ! node scripts/check-module-boundaries.mjs --staged 2>/dev/null; then
+    echo ""
+    echo "❌ Module boundary violations detected — fix before committing."
+    echo "💡 To bypass: git commit --no-verify"
+    exit 1
+  fi
+fi
