@@ -146,6 +146,20 @@ export function BulkMeterDialog({
 
   async function handleSave() {
     if (!canSave) return
+    // BUG-METER-002 fix: explicit pre-save validation. Previously rows with
+    // needsRemark=true were silently filtered out (filter `m.meta.valid`)
+    // — user clicked "บันทึก" and nothing happened, no feedback. Now we
+    // surface a clear toast explaining which rows need a RESET remark.
+    const invalidRows = eligibleDevices
+      .map((d) => ({ device: d, meta: rowMeta.get(d.id)! }))
+      .filter((m) => m.meta.changed && !m.meta.valid)
+    if (invalidRows.length > 0) {
+      const sample = invalidRows.slice(0, 3).map((m) => m.device.assetCode).join(', ')
+      toast.error(
+        `ต้องแก้ ${invalidRows.length} แถว: ค่ามิเตอร์ลดลงต้องระบุหมายเหตุ RESET (เช่น ${sample}${invalidRows.length > 3 ? ' และอีก ' + (invalidRows.length - 3) + ' แถว' : ''})`,
+      )
+      return
+    }
     const toSave = eligibleDevices
       .map((d) => ({ device: d, meta: rowMeta.get(d.id)! }))
       .filter((m) => m.meta.changed && m.meta.valid)
