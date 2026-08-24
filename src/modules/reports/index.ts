@@ -4,6 +4,8 @@ import { createReportsService } from './service'
 
 /** The reports module's supported cross-module import boundary. */
 export { createReportsService } from './service'
+export { buildReport, computeRange, REPORT_TYPE_LABELS } from './report-builder'
+export type { RangeInfo, RangeKey, ReportType } from './report-builder'
 
 export const reportsService = createReportsService(reportsRepository, async (action, report) =>
   logAudit(action, 'Report', report.id, `${action === 'GENERATE' ? 'สร้าง' : 'ลบ'}รายงาน ${report.title}`, {
