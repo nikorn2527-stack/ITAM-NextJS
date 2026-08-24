@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { NotificationsPopover } from './notifications-popover'
 import { useRealtimeStatus } from '@/hooks/use-realtime-updates'
+import { isRouteEnabled } from '@/config/modules'
 
 // Map of role → Thai label (the auth store returns a normalized role string)
 function roleLabel(role: string | undefined | null): string {
@@ -213,6 +214,7 @@ export function Sidebar() {
   }
   const visibleNavItems = React.useMemo(() => {
     return NAV_GROUPS.flatMap((g) => g.items).filter((item) => {
+      if (!isRouteEnabled(item.page)) return false
       const key = pageToVisibilityKey[item.page]
       // Items without an explicit mapping default to visible (preserves
       // existing behavior for any nav id not yet wired to a permission).
@@ -227,6 +229,7 @@ export function Sidebar() {
     return NAV_GROUPS.map((g) => ({
       ...g,
       items: g.items.filter((item) => {
+        if (!isRouteEnabled(item.page)) return false
         const key = pageToVisibilityKey[item.page]
         if (!key) return true
         return Boolean(navVisibility[key])

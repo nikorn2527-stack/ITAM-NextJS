@@ -237,21 +237,22 @@ export async function buildAuthorizationContext(
 ): Promise<AuthorizationContext> {
   const globalRole = normalizeRole(user.role)
   const isSuperAdmin = globalRole === 'superadmin'
+  const isGlobalAdmin = globalRole === 'admin'
 
-  // superadmin bypasses Site grants — has access to everything
-  if (isSuperAdmin) {
+  // superadmin and admin bypass Site grants — both have access to everything
+  if (isSuperAdmin || isGlobalAdmin) {
     const globalPerms = getRolePermissions(globalRole)
     return {
       userId,
       email: user.email,
       globalRole,
-      isSuperAdmin: true,
+      isSuperAdmin,
       grants: [],
       siteScope: { kind: 'all', siteCodes: [] },
       effectivePermissions: globalPerms,
       usedLegacyFallback: false,
       can: (perm) => globalPerms.includes(perm),
-      canAtSite: () => true, // superadmin has all permissions at every Site
+      canAtSite: () => true, // superadmin/admin has all permissions at every Site
       canAccessSite: () => true,
       siteWhere: () => ({}),
       roleAtSite: () => globalRole,
