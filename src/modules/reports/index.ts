@@ -6,6 +6,8 @@ import { createReportsService } from './service'
 export { createReportsService } from './service'
 export { buildReport, computeRange, REPORT_TYPE_LABELS } from './report-builder'
 export { monthlyReportBuilder } from './monthly-report-builder'
+export { buildDevicesReport, buildMetersReport, buildWorkOrdersReport, buildStockReport, buildMaintenanceReport, buildApprovalsReport, currentMonthStr, parseMonth, VALID_GROUPS } from './unified-report-builder'
+export type { ReportGroup } from './unified-report-builder'
 export type { RangeInfo, RangeKey, ReportType } from './report-builder'
 export type { MonthlyReportResult, MonthRange, WorkOrderSummary, StockSummary, DeviceSummary } from './monthly-report-builder'
 
