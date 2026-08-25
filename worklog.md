@@ -1550,3 +1550,45 @@ Task: Final verify — P0+P1+P2+UX+ARCH = 100%
 + if (ctx.isSuperAdmin || ctx.globalRole === 'admin') {
 ```
 
+
+---
+
+## Task ID: FEATURE-EXPORT-PRINT-001
+Agent: QA Team (User Request)
+Task: Custom Export & Print Template System — Feature Specification
+
+**วันที่:** 2026-08-24
+**สถานะ:** 📄 Spec พร้อม — ส่งให้ ITAM-01
+
+### ความต้องการของ User:
+1. ทุกหน้าที่มี Export/Print ต้องมีฟอร์มตั้งต้นจากระบบ
+2. Custom ฟอร์ม + หัวคอลัมน์ได้ (เลือก + เรียง + เปลี่ยนชื่อ)
+3. เลือกฟอร์มก่อนปริ้นได้
+
+### สถานะปัจจุบัน:
+- ✅ Devices มี CustomExportDialog แล้ว (column picker + reorder + format)
+- ✅ Devices มี StickerPrintDialog แล้ว
+- ✅ DocumentTemplate model มีอยู่แล้ว
+- ⚠️ หน้าอื่นๆ มี export แบบง่าย — ไม่มี column picker
+- ⚠️ ไม่มี template selection ก่อน print
+
+### แผนงาน 4 Phases (12 วัน):
+1. Phase 1: ExportTemplate model + 9 default templates (3 วัน)
+2. Phase 2: Universal Export Dialog — ย้าย + ขยายไปทุกหน้า (4 วัน)
+3. Phase 3: Print Template Selection — dialog ก่อน print (3 วัน)
+4. Phase 4: UX Polish — preview + drag-drop + persist (2 วัน)
+
+### ไฟล์ที่สร้าง:
+- 📄 `/home/z/my-project/docs/CUSTOM-EXPORT-PRINT-SPEC.md` — Spec ฉบับสมบูรณ์
+
+### 9 หน้าที่ต้องมี:
+1. Devices (Export + Sticker) ✅ มีบางส่วน
+2. Meter (Export CSV)
+3. Work Orders (Export + Print ใบงาน)
+4. Stock (Export CSV)
+5. Paper Analytics (Export + Print PDF)
+6. Audit (Export CSV)
+7. Monthly Report (Export + Print)
+8. Dashboard (Print PDF)
+9. Reports Hub (Print PDF)
+
