@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { notifyWorkOrderCancelled } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
@@ -33,6 +34,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, \'WO_CREATE\')
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
     const { id } = await params
 
