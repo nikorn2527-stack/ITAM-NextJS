@@ -1518,18 +1518,27 @@ export function ItamDocumentEditor() {
 
                 {/* Available variables */}
                 <TabsContent value="variables" className="mt-0 space-y-1.5">
-                  <Label className="text-xs">ตัวแปรที่ใช้ได้</Label>
+                  <Label className="text-xs">ตัวแปร — คลิกเพื่อแทรกลงใน element ที่เลือก</Label>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                    ถ้ายังไม่ได้เลือก element ใน canvas → ตัวแปรจะถูกคัดลอก
+                  </p>
                   <div className="flex flex-wrap gap-1">
                     {DOCUMENT_VARIABLES.map((v) => (
                       <button
                         key={v}
                         type="button"
                         className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[9px] text-slate-600 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-orange-700 dark:hover:bg-orange-950 dark:hover:text-orange-300"
-                        title={`คลิกเพื่อคัดลอก ${v}`}
+                        title={`คลิกเพื่อแทรก ${v}`}
                         onClick={(e) => {
                           e.preventDefault()
-                          navigator.clipboard?.writeText(v).catch(() => {})
-                          toast.success(`คัดลอก ${v}`)
+                          if (selectedEl && (selectedEl.type === 'text' || selectedEl.type === 'qr')) {
+                            const cur = selectedEl.content ?? ''
+                            updateSelectedElement({ content: cur + v })
+                            toast.success(`แทรก ${v}`)
+                          } else {
+                            navigator.clipboard?.writeText(v).catch(() => {})
+                            toast.success(`คัดลอก ${v} (เลือก element ก่อนเพื่อแทรก)`)
+                          }
                         }}
                       >
                         {v}
@@ -1670,13 +1679,36 @@ export function ItamDocumentEditor() {
                 <TabsContent value="data" className="mt-0 space-y-2">
                   {selectedEl.type === 'text' && (
                     <div className="space-y-1.5">
-                      <Label className="text-xs">ข้อความ (รองรับ {'{{ตัวแปร}}'})</Label>
+                      <Label className="text-xs">ข้อความ (คลิกตัวแปรด้านล่างเพื่อแทรก)</Label>
                       <Textarea
                         value={selectedEl.content ?? ''}
                         onChange={(e) => updateSelectedElement({ content: e.target.value })}
                         rows={4}
                         className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                        placeholder="พิมพ์ข้อความหรือคลิกตัวแปรด้านล่าง..."
                       />
+                      {/* Quick variable insert buttons */}
+                      <div className="rounded-md border border-slate-100 bg-slate-50/50 p-1.5 dark:border-slate-800 dark:bg-slate-900/30">
+                        <div className="mb-1 text-[9px] font-medium uppercase text-slate-400 dark:text-slate-500">
+                          คลิกเพื่อแทรกตัวแปร
+                        </div>
+                        <div className="flex flex-wrap gap-0.5">
+                          {DOCUMENT_VARIABLES.map((v) => (
+                            <button
+                              key={v}
+                              type="button"
+                              className="rounded border border-slate-200 bg-white px-1 py-0.5 font-mono text-[8px] text-slate-600 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                              title={`แทรก ${v}`}
+                              onClick={() => {
+                                const cur = selectedEl.content ?? ''
+                                updateSelectedElement({ content: cur + v })
+                              }}
+                            >
+                              {v}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
                   {selectedEl.type === 'image' && (
