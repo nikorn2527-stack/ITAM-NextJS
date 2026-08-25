@@ -235,7 +235,7 @@ function saveRecent(q: string) {
     const cur = loadRecent()
     const next = [q.trim(), ...cur.filter((x) => x !== q.trim())].slice(0, 6)
     window.localStorage.setItem(RECENT_KEY, JSON.stringify(next))
-  } catch { /* ignore */ }
+  } catch (e) { console.error(String(e)) }
 }
 
 export function ItamDevices() {
@@ -250,10 +250,10 @@ export function ItamDevices() {
   // an unbounded limit. Persisted in localStorage.
   const [virtualScroll, setVirtualScroll] = React.useState<boolean>(() => {
     if (typeof window === 'undefined') return false
-    try { return window.localStorage.getItem('itam.virtual-scroll') === '1' } catch { return false }
+    try { return window.localStorage.getItem('itam.virtual-scroll') === '1' } catch (e) { console.error(String(e)); return false }
   })
   React.useEffect(() => {
-    try { window.localStorage.setItem('itam.virtual-scroll', virtualScroll ? '1' : '0') } catch { /* ignore */ }
+    try { window.localStorage.setItem('itam.virtual-scroll', virtualScroll ? '1' : '0') } catch (e) { console.error(String(e)) }
   }, [virtualScroll])
   // Adaptive limit: virtual mode → the API maximum (200 rows) for smooth
   // rendering; standard mode → 20 rows with pagination.

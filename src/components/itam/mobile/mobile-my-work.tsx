@@ -1649,7 +1649,7 @@ function PhotosCard({
   }
 
   async function deleteImage(imageId: string) {
-    if (!confirm('ลบรูปนี้?')) return
+    if (!window.confirm('ลบรูปนี้?')) return
     try {
       const res = await fetch(
         `/api/work-orders/${encodeURIComponent(workOrderId)}/images?imageId=${encodeURIComponent(imageId)}`,
