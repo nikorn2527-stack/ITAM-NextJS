@@ -149,7 +149,17 @@ export async function POST(
     const reason = String(body.reason ?? '').trim() || null
     const replacementReason = `เครื่องทดแทนสำหรับ ${source.assetCode}`
 
+    // P0-3 fix: compute assetSiteCode BEFORE the transaction (the function
+    // uses `db` not `tx`, causing a separate round-trip that blows the
+    // transaction timeout on Supabase pooler)
+    const precomputedAssetSiteCode =
+      (await getNextAssetSiteCode(installLocation.site, {
+        assetNo: replacementAssetCode,
+      })) ?? installLocation.assetSiteCode ?? null
+
     // ── Atomic transaction: withdraw source + find-or-create replacement + install replacement ──
+    // P0-3 fix: increase transaction timeout to 30s (default 5s is too short
+    // for Supabase pooler + multiple queries inside the transaction)
     const result = await db.$transaction(async (tx) => {
       // 1) Withdraw source device
       const updatedSource = await tx.device.update({
@@ -200,11 +210,8 @@ export async function POST(
       let replacement = existingReplacement
       let created = false
       if (!replacement) {
-        // Auto-create with minimal defaults derived from source
-        const newAssetSiteCode =
-          (await getNextAssetSiteCode(installLocation.site, {
-            assetNo: replacementAssetCode,
-          })) ?? installLocation.assetSiteCode
+        // P0-3 fix: use precomputed value (not calling getNextAssetSiteCode inside tx)
+        const newAssetSiteCode = precomputedAssetSiteCode
 
         const replacementName = String(replacementBody.name ?? '').trim()
           || `อุปกรณ์ทดแทน ${source.assetCode}`
@@ -240,12 +247,9 @@ export async function POST(
       }
 
       // 3) Install replacement at the source's location + set status = ACTIVE
+      // P0-3 fix: use precomputed value (not calling getNextAssetSiteCode inside tx)
       const replacementAssetSiteCode =
-        replacement.assetSiteCode
-        ?? (await getNextAssetSiteCode(installLocation.site, {
-          assetNo: replacement.assetCode,
-        }))
-        ?? installLocation.assetSiteCode
+        replacement.assetSiteCode ?? precomputedAssetSiteCode ?? installLocation.assetSiteCode
 
       const updatedReplacement = await tx.device.update({
         where: { id: replacement.id },
@@ -300,7 +304,7 @@ export async function POST(
         replacementTransfer,
         created,
       }
-    })
+    }, { timeout: 30_000, maxWait: 35_000 })
 
     // ── Audit + realtime (after commit) ──
     try {
