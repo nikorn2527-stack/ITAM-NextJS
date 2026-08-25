@@ -341,18 +341,14 @@ export function DevicesPage() {
     try {
       const raw = localStorage.getItem('itam-recent-devices')
       if (raw) setRecentDeviceIds(JSON.parse(raw))
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error(String(e)) }
   }, [])
   const pushRecentDevice = React.useCallback((id: string) => {
     setRecentDeviceIds((prev) => {
       const next = [id, ...prev.filter((x) => x !== id)].slice(0, 5)
       try {
         localStorage.setItem('itam-recent-devices', JSON.stringify(next))
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error(String(e)) }
       return next
     })
   }, [])
@@ -393,9 +389,7 @@ export function DevicesPage() {
       try {
         const raw = localStorage.getItem('itam-devices-hidden-cols')
         if (raw) return new Set(JSON.parse(raw))
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error(String(e)) }
       return new Set()
     },
   )
@@ -409,9 +403,7 @@ export function DevicesPage() {
           'itam-devices-hidden-cols',
           JSON.stringify([...next]),
         )
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error(String(e)) }
       return next
     })
   }, [])
@@ -2633,9 +2625,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               setRecentDeviceIds([])
               try {
                 localStorage.removeItem('itam-recent-devices')
-              } catch {
-                /* ignore */
-              }
+              } catch (e) { console.error(String(e)) }
             }}
             className="ml-auto rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
             aria-label="ล้างรายการล่าสุด"
@@ -2805,9 +2795,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       setHiddenColumns(new Set())
                       try {
                         localStorage.removeItem('itam-devices-hidden-cols')
-                      } catch {
-                        /* ignore */
-                      }
+                      } catch (e) { console.error(String(e)) }
                     }}
                     className="text-xs text-[#f97316] focus:text-[#f97316]"
                   >

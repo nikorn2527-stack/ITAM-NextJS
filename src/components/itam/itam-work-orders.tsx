@@ -267,9 +267,7 @@ function isThisMonth(iso: string | null | undefined): boolean {
     if (isNaN(d.getTime())) return false
     const now = new Date()
     return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
-  } catch {
-    return false
-  }
+  } catch (e) { console.error(String(e)); return false }
 }
 
 function formatDateTime(iso: string | null | undefined): string {

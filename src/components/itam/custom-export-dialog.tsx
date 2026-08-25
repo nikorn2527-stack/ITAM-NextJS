@@ -93,9 +93,7 @@ export function CustomExportDialog({
         const valid = parsed.filter((k) => availableColumns.some((c) => c.key === k))
         if (valid.length > 0) return valid
       }
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error(String(e)) }
     return defaultSelectedKeys ?? availableColumns.map((c) => c.key)
   })
   const [format, setFormat] = React.useState<ExportFormat>('csv')
@@ -106,9 +104,7 @@ export function CustomExportDialog({
   React.useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(selectedKeys))
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error(String(e)) }
   }, [selectedKeys, storageKey])
 
   // Group columns for the picker
@@ -157,9 +153,7 @@ export function CustomExportDialog({
     setSelectedKeys(defaultSelectedKeys ?? availableColumns.map((c) => c.key))
     try {
       localStorage.removeItem(storageKey)
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error(String(e)) }
   }
 
   const selectedColumns = React.useMemo(
