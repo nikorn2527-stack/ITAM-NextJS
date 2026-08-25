@@ -123,7 +123,7 @@ export function WoOptionsSection() {
   })
 
   function handleDelete(id: string, label: string) {
-    if (!confirm(`ลบ "${label}"?`)) return
+    if (!window.confirm(`ลบ "${label}"?`)) return
     fetch(`/api/settings/options/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       headers: authHeaders(),

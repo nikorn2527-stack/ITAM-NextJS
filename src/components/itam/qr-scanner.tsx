@@ -142,9 +142,7 @@ export function QrScannerDialog() {
     if (v) {
       try {
         v.srcObject = null
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error(String(e)) }
     }
   }
 
@@ -200,9 +198,7 @@ export function QrScannerDialog() {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
         navigator.vibrate(120)
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error(String(e)) }
     }
     // Smart routing: check if device is meter-required
     try {

@@ -283,7 +283,7 @@ export function ItamSettings() {
   }
 
   async function deleteItem(item: MasterItem) {
-    if (!confirm(`ลบ "${item.label}"?`)) return
+    if (!window.confirm(`ลบ "${item.label}"?`)) return
     try {
       await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE' })
       toast.success('ลบแล้ว')

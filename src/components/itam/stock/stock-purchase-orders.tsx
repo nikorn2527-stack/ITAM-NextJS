@@ -345,7 +345,7 @@ export function StockPurchaseOrders() {
   }
 
   function handleCancelPo(id: string) {
-    if (!confirm('ต้องการยกเลิกใบสั่งซื้อนี้หรือไม่?')) return
+    if (!window.confirm('ต้องการยกเลิกใบสั่งซื้อนี้หรือไม่?')) return
     cancelPoMutation.mutate(id)
   }
 

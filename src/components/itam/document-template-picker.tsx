@@ -67,7 +67,7 @@ export function DocumentTemplatePicker({
     let stored: string | null = null
     try {
       stored = window.localStorage.getItem(LAST_TPL_KEY)
-    } catch { /* ignore */ }
+    } catch (e) { console.error(String(e)) }
     if (stored && templates.some((t) => t.id === stored)) {
       setSelectedId(stored)
     } else if (activeId) {
@@ -81,10 +81,10 @@ export function DocumentTemplatePicker({
 
   function confirm() {
     if (selectedId === '__standard__') {
-      try { window.localStorage.setItem(LAST_TPL_KEY, '__standard__') } catch { /* ignore */ }
+      try { window.localStorage.setItem(LAST_TPL_KEY, '__standard__') } catch (e) { console.error(String(e)) }
       onSelect({ mode: 'standard' })
     } else if (selectedId) {
-      try { window.localStorage.setItem(LAST_TPL_KEY, selectedId) } catch { /* ignore */ }
+      try { window.localStorage.setItem(LAST_TPL_KEY, selectedId) } catch (e) { console.error(String(e)) }
       onSelect({ mode: 'template', templateId: selectedId })
     } else {
       toast.error('กรุณาเลือกเทมเพลต')
