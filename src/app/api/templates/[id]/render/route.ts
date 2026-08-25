@@ -17,6 +17,8 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import {
   interpolate,
@@ -430,6 +432,15 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+  // Milestone 2: Security baseline — require TEMPLATES_MANAGE
+  const auth = await requireAuth(req, 'TEMPLATES_MANAGE')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const { id } = await params
     const template = await db.documentTemplate.findUnique({
