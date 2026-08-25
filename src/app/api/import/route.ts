@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import {
@@ -1905,6 +1906,8 @@ async function dispatchAppsScriptImport(
 //   • ถ้าไม่มี → ใช้ jobType แบบเดิม
 // ============================================================
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'IMPORT_DATA')
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
     const form = await req.formData()
     const file = form.get('file')
@@ -2279,6 +2282,8 @@ export async function POST(req: NextRequest) {
 // GET /api/import  — recent ImportJob history (default 50)
 // ============================================================
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'IMPORT_DATA')
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
     const { searchParams } = new URL(req.url)
     const limit = Math.min(

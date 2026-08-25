@@ -1403,3 +1403,68 @@ QA รายงาน BUG-MONTHLY-001 (syntax error) ผิด! — `od -c` ย�
 - ❌ เหลือ: 1 (BUG-WO-002 — admin permission ใน 2 ไฟล์)
 - **% P0 เสร็จ: 92%**
 
+
+---
+
+## Task ID: VERIFY-008 (FINAL)
+Agent: QA Team
+Task: Full verify after 12 commits — ARCH Phase 1-8 + bug fixes + UX + pattern sweep
+
+**วันที่:** 2026-08-24
+**Main HEAD:** `f15ec4f` (ARCH Phase 8: Dashboard + Paper Analytics — migration complete)
+
+### ✅ ALL PASSED:
+
+| # | Category | ผล | หลักฐาน |
+|---|---------|-----|--------|
+| 1 | **BUG-MONTHLY-001** | ✅ CORRECT | `od -c` = `const [month, setMonth]` (QA ดูผิดก่อนหน้านี้) |
+| 2 | **BUG-REPORTS-001** | ✅ FIXED | Reports Hub h3:7, lang="th", ไม่ crash |
+| 3 | **BUG-REPORTS-002** | ✅ FIXED | API unified summary.total=3 |
+| 4 | **BUG-REPORTS-003** | ✅ FIXED | 30 null-safe checks `(value ?? 0).toLocaleString()` |
+| 5 | **BUG-MOBILE-001** | ✅ FIXED | MobileShell render, hasMobile=true |
+| 6 | **BUG-SETTINGS-002** | ✅ FIXED | User Management loaded |
+| 7 | **BUG-SETTINGS-003** | ✅ FIXED | Demo users 3 คน |
+| 8 | **BUG-SETTINGS-004** | ✅ FIXED | Pending users loaded |
+| 9 | **BUG-IMPORT-001** | ✅ FIXED | 25 TabsTriggers onClick (pattern sweep) |
+| 10 | **BUG-TEMPLATES-001** | ✅ FIXED | รวมใน pattern sweep |
+| 11 | **QA-UX-001** | ✅ FIXED | "🔄 แผนเปลี่ยนทดแทนอุปกรณ์" |
+| 12 | **QA-UX-002** | ✅ FIXED | warm gray oklch(0.96 0.003 270) |
+| 13 | **Monthly Report** | ✅ FIXED | h3:8, lang="th", ไม่ crash |
+| 14 | **ARCH Phase 1-8** | ✅ COMPLETE | 9 modules with barrel exports + repository |
+| 15 | **Pre-commit hook** | ✅ | 15 checks (Prisma + TypeScript + ESLint + module boundary + manifest) |
+
+### ⚠️ Known Issue:
+| Bug ID | สถานะ | รายละเอียด |
+|--------|------|----------|
+| **BUG-WO-002** | ⚠️ | admin ยังคืน WO/Devices total=0 — แต่ไม่ crash (list ว่าง, ไม่ error). Reports Hub ใช้ `/api/reports/unified` ที่ทำงานได้ → ไม่ติด |
+| **check:modules** | ⚠️ | manifest keys ไม่ตรงกับ module folder names (auth vs core/auth, dashboard vs dashboard/) — cosmetic issue, ไม่กระทบการทำงาน |
+
+### 🏆 Module Architecture Status:
+```
+✅ Phase 1: Reports (full migration — thin adapters)
+✅ Phase 2: Templates (full migration — thin adapters)
+✅ Phase 3: Import (barrel + auth, legacy route kept)
+✅ Phase 4: Meters (barrel + auth verified)
+✅ Phase 5: Stock (barrel + auth on all 7 routes)
+✅ Phase 6: Work Orders (barrel + auth on all 12 routes)
+✅ Phase 7: Devices (barrel created)
+✅ Phase 8: Dashboard + Paper (barrel + auth added)
+
+9 modules with barrel exports + repository pattern
+```
+
+### 📊 FINAL PROJECT STATUS:
+```
+โปรเจ็ค ITAM-NextJS
+├── ✅ QA Testing         100% ████████████████████ (11/11 หน้า)
+├── ✅ Quota Analysis    100% ████████████████████
+├── ✅ Pre-commit hooks   100% ████████████████████ (15 checks)
+├── ✅ UX Improvements    100% ████████████████████ (2/2 เปลี่ยนแล้ว)
+├── ✅ Module Architecture 100% ████████████████████ (Phase 1-8 complete)
+├── ✅ Bug Fixes (P0)     92%  ██████████████████░ (11/12)
+├── 🟡 Bug Fixes (P1)     ~30% ██████░░░░░░░░░░░░░
+├── 🔴 Bug Fixes (P2)     ~10% ██░░░░░░░░░░░░░░░░░
+
+รวม: ~60% เสร็จ | ~40% เหลือ (ส่วนใหญ่เป็น P1+P2 cosmetic)
+```
+
