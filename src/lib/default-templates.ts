@@ -14,86 +14,146 @@
  * {{vendor}}, {{contractNo}}, {{currentAssignee}}, {{hotline}}, {{companyName}}
  */
 
-// ── Sticker Template 1: "สติกเกอร์มาตรฐาน" (Standard Label) ──
+// ── Sticker Template 1: "สติกเกอร์มาตรฐาน" (Standard Label — UDH02 style) ──
 // ขนาด: 75.2mm × 36mm (A4 landscape, 3×8 = 24 stickers per sheet)
-// เหมาะสำหรับ: อุปกรณ์ IT ทั่วไป
+// อิงจากแอปเดิม (Apps Script Template Designer — UDH02)
+// Layout: QR left-top | Company name | Asset No in box | Serial (highlight)
+//         | Brand Model | MAC | Building/Floor/Dept | Notes line | Footer
 export const STICKER_TEMPLATE_STANDARD = {
-  name: 'สติกเกอร์มาตรฐาน (75×36mm)',
+  name: 'สติกเกอร์มาตรฐาน (75×36mm) — แบบเดิม UDH02',
   type: 'sticker',
   category: 'label',
   content: JSON.stringify({
     canvas: { width: 75.2, height: 36, unit: 'mm' },
     overflow: 'clip',
     elements: [
-      // QR code — top-left corner (encodes assetCode)
+      // QR code — top-left corner (encodes serial number, like old app)
       {
         id: 'el-qr',
         type: 'qr',
-        x: 2, y: 2, width: 14, height: 14,
-        content: '{{assetCode}}',
+        x: 2, y: 2, width: 12, height: 12,
+        content: '{{serialNumber}}',
         zIndex: 1,
       },
-      // Asset code — big, bold, top-right
+      // Company name — bold, top area (left of asset number)
       {
-        id: 'el-assetcode',
+        id: 'el-company',
         type: 'text',
-        x: 18, y: 2, width: 55, height: 7,
-        content: '{{assetCode}}',
-        fontSize: 11, fontWeight: 700, color: '#1e293b', align: 'left',
+        x: 16, y: 2, width: 40, height: 4,
+        content: '{{companyName}}',
+        fontSize: 6, fontWeight: 700, color: '#1e293b', align: 'left',
         zIndex: 2,
       },
-      // Asset site code — right of QR
+      // Asset No — in a box (right side, bold)
       {
-        id: 'el-sitesite',
+        id: 'el-assetno-box',
+        type: 'rect',
+        x: 57, y: 1, width: 16, height: 8,
+        background: '#f1f5f9', border: '#334155', borderRadius: 1,
+        zIndex: 2,
+      },
+      {
+        id: 'el-assetno-label',
         type: 'text',
-        x: 18, y: 9, width: 55, height: 4,
-        content: '{{assetSiteCode}}',
-        fontSize: 6, fontWeight: 400, color: '#64748b', align: 'left',
+        x: 58, y: 1.5, width: 14, height: 3,
+        content: 'Asset No.',
+        fontSize: 4, fontWeight: 400, color: '#64748b', align: 'center',
         zIndex: 3,
       },
-      // Brand + Model — second line
       {
-        id: 'el-brandmodel',
+        id: 'el-assetno',
         type: 'text',
-        x: 18, y: 13, width: 55, height: 4,
-        content: '{{brand}} {{model}}',
-        fontSize: 6, fontWeight: 400, color: '#334155', align: 'left',
-        zIndex: 4,
+        x: 58, y: 4.5, width: 14, height: 4,
+        content: '{{assetCode}}',
+        fontSize: 8, fontWeight: 800, color: '#0f172a', align: 'center',
+        zIndex: 3,
       },
-      // Serial number
+      // Serial number — with highlight background (like old app orange highlight)
+      {
+        id: 'el-serial-bg',
+        type: 'rect',
+        x: 16, y: 6, width: 40, height: 4,
+        background: '#fff3e0', border: '#ff9800', borderRadius: 0.5,
+        zIndex: 2,
+      },
       {
         id: 'el-serial',
         type: 'text',
-        x: 18, y: 17, width: 55, height: 4,
-        content: 'SN: {{serialNumber}}',
-        fontSize: 5, fontWeight: 400, color: '#94a3b8', align: 'left',
+        x: 17, y: 6.5, width: 38, height: 3,
+        content: 'SERIAL NO.: {{serialNumber}}',
+        fontSize: 5, fontWeight: 600, color: '#e65100', align: 'left',
+        zIndex: 3,
+      },
+      // Brand + Model — bold
+      {
+        id: 'el-brandmodel',
+        type: 'text',
+        x: 16, y: 11, width: 57, height: 4,
+        content: '{{brand}} {{model}}',
+        fontSize: 7, fontWeight: 700, color: '#1e293b', align: 'left',
+        zIndex: 4,
+      },
+      // MAC address (if present)
+      {
+        id: 'el-mac',
+        type: 'text',
+        x: 16, y: 15, width: 57, height: 3,
+        content: 'MAC: {{mac}}',
+        fontSize: 5, fontWeight: 400, color: '#64748b', align: 'left',
         zIndex: 5,
       },
-      // Building / Floor / Department
+      // Type/Category
       {
-        id: 'el-location',
+        id: 'el-type',
         type: 'text',
-        x: 18, y: 21, width: 55, height: 5,
-        content: '{{building}} ชั้น {{floor}} | {{department}}',
+        x: 16, y: 18, width: 30, height: 3,
+        content: 'ครุภัณฑ์: {{type}}',
         fontSize: 5, fontWeight: 400, color: '#475569', align: 'left',
         zIndex: 6,
       },
-      // Border rect
+      // Building / Floor
+      {
+        id: 'el-building',
+        type: 'text',
+        x: 46, y: 18, width: 27, height: 3,
+        content: '{{building}} ชั้น {{floor}}',
+        fontSize: 5, fontWeight: 400, color: '#475569', align: 'left',
+        zIndex: 6,
+      },
+      // Department / Location
+      {
+        id: 'el-dept',
+        type: 'text',
+        x: 16, y: 21, width: 57, height: 3,
+        content: 'แผนก: {{department}} | ที่ตั้ง: {{location}}',
+        fontSize: 5, fontWeight: 400, color: '#475569', align: 'left',
+        zIndex: 7,
+      },
+      // Notes line (dotted)
+      {
+        id: 'el-notes',
+        type: 'text',
+        x: 2, y: 25, width: 71, height: 3,
+        content: 'หมายเหตุ: ............................................................',
+        fontSize: 4, fontWeight: 400, color: '#94a3b8', align: 'left',
+        zIndex: 8,
+      },
+      // Footer: hotline + LINE OA
+      {
+        id: 'el-footer',
+        type: 'text',
+        x: 2, y: 29, width: 71, height: 4,
+        content: '{{companyName}} | โทร. {{hotline}} | LINE: {{lineOA}}',
+        fontSize: 4, fontWeight: 400, color: '#94a3b8', align: 'center',
+        zIndex: 9,
+      },
+      // Border rect (like old app's red border)
       {
         id: 'el-border',
         type: 'rect',
         x: 0, y: 0, width: 75.2, height: 36,
         border: '#cbd5e1', borderRadius: 1,
         zIndex: 0,
-      },
-      // Footer: hotline + company
-      {
-        id: 'el-footer',
-        type: 'text',
-        x: 2, y: 30, width: 71, height: 4,
-        content: '{{companyName}} | โทร. {{hotline}}',
-        fontSize: 4, fontWeight: 400, color: '#94a3b8', align: 'center',
-        zIndex: 7,
       },
     ],
   }),
