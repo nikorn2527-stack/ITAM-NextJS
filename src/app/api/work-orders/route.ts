@@ -195,7 +195,7 @@ export async function GET(req: NextRequest) {
     //   legacy rows that haven't been backfilled with siteCode yet.
     // non-superadmin with no grants → empty list (fail-closed).
     let siteFilter: Record<string, unknown> | null = null
-    if (ctx.isSuperAdmin || ctx.user.role === 'admin') {
+    if (ctx.isSuperAdmin || ctx.globalRole === 'admin') {
       // no scope filter
     } else if (
       ctx.siteScope.kind === 'sites' &&

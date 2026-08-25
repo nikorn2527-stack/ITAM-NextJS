@@ -95,6 +95,7 @@ import {
 import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
+import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
 import { Combobox } from './combobox'
 import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
 import { downloadCsv, dateStamp } from '@/lib/csv'
@@ -321,6 +322,7 @@ export function DevicesPage() {
   const [exporting, setExporting] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [stickerOpen, setStickerOpen] = React.useState(false)
+  const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
 
   // Bulk operations state
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
@@ -3356,6 +3358,21 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
         onOpenChange={setStickerOpen}
         devices={devices ?? []}
         orgName={settings?.orgName ?? null}
+      />
+
+      {/* Print Template Selection — lets user choose which template to use */}
+      <PrintTemplateSelectionDialog
+        open={printTemplateOpen}
+        onOpenChange={setPrintTemplateOpen}
+        templateType="sticker"
+        actionLabel="พิมพ์สติกเกอร์"
+        onSelect={(template) => {
+          toast.success(`เลือกเทมเพลต: ${template.name}`)
+          setStickerOpen(true)
+        }}
+        onCreateNew={() => {
+          useAppStore.getState().setActivePage('templates')
+        }}
       />
 
       {/* ── Keyboard shortcuts dialog ──
