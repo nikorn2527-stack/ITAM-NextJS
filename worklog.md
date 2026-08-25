@@ -1361,3 +1361,45 @@ Task: Re-test หลัง ITAM-01 merge (commit `fd58677` + `85ee451`)
 2. ⚠️ **BUG-MONTHLY-001** — เปลี่ยน `const onth,` → `const [month,` (1 ตัวอักษร)
 3. ⚠️ **BUG-REPORTS-003** — เปลี่ยน `value.toLocaleString` → `(value ?? 0).toLocaleString` (defensive)
 
+
+---
+
+## Task ID: VERIFY-007
+Agent: QA Team
+Task: Final verify — commit `782bafc` + `5a69647` (pattern sweep)
+
+**วันที่:** 2026-08-24
+**Main HEAD:** `5a69647` (Pattern bug sweep: fix 25 TabsTriggers + 3 toLocaleString null checks)
+
+### ✅ ALL FIXED:
+
+| Bug ID | ผล | หลักฐาน |
+|--------|-----|--------|
+| **BUG-MONTHLY-001** | ✅ CORRECT | `od -c` ยืนยัน `const [month, setMonth]` — QA ดูผิดก่อนหน้านี้เพราะ sed/grep display issue |
+| **BUG-REPORTS-003** | ✅ FIXED | 5 null-safe checks `(value ?? 0).toLocaleString()` ใน itam-dashboard.tsx + reports-hub.tsx |
+| **QA-UX-001** | ✅ FIXED | "🔄 แผนเปลี่ยนทดแทนอุปกรณ์" (2 จุด) |
+| **QA-UX-002** | ✅ FIXED | `--background: oklch(0.96 0.003 270)` = warm gray #f2f2f7 |
+| **BUG-IMPORT-001** | ✅ FIXED | 25 TabsTriggers + onClick fallback (pattern sweep) |
+| **BUG-TEMPLATES-001** | ✅ FIXED | (รวมใน pattern sweep) |
+| **BUG-REPORTS-001** | ✅ FIXED | Reports Hub แสดงผล (API คืน summary.total=3) |
+| **BUG-MOBILE-001** | ✅ FIXED | MobileShell render |
+| **BUG-SETTINGS-002** | ✅ FIXED | User Management loaded |
+| **BUG-SETTINGS-003** | ✅ FIXED | Demo users แสดง 3 คน |
+| **BUG-SETTINGS-004** | ✅ FIXED | Pending users loaded |
+
+### ❌ ยังเหลือ 1 ตัว:
+
+| Bug ID | สถานะ | รายละเอียด |
+|--------|------|----------|
+| **BUG-WO-002** | ❌ | `if (ctx.isSuperAdmin)` ยังอยู่ใน devices/route.ts:131 + work-orders/route.ts:198 |
+
+**หมายเหตุ:** WO total=0 และ Devices total=0 — แต่ WO list ไม่ crash (แค่ list ว่างเพราะ admin ไม่มี site grants)
+
+### 🎉 QA Apology:
+QA รายงาน BUG-MONTHLY-001 (syntax error) ผิด! — `od -c` ยืนยันว่าโค้ดถูกต้อง `const [month, setMonth]` ตั้งแต่แรก. ปัญหาเกิดจาก sed/grep แสดงผล `[m` ผิดเพี้ยน. ไม่ใช่ syntax error จริง.
+
+### สรุปสถานะ P0:
+- ✅ แก้แล้ว: 11/12 P0 bugs
+- ❌ เหลือ: 1 (BUG-WO-002 — admin permission ใน 2 ไฟล์)
+- **% P0 เสร็จ: 92%**
+

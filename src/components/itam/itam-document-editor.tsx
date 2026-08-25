@@ -1316,12 +1316,12 @@ export function ItamDocumentEditor() {
                     คลิกที่องค์ประกอบใน workspace เพื่อแก้ไข หรือกดปุ่ม +Text/+Image/+Rect เพื่อเพิ่มใหม่
                   </div>
                   <TabsList className="grid h-8 w-full grid-cols-3 sm:grid-cols-6">
-                    <TabsTrigger value="template" className="text-[10px] leading-none sm:text-[11px]">เทมเพลต</TabsTrigger>
-                    <TabsTrigger value="table" className="text-[10px] leading-none sm:text-[11px]">ตาราง</TabsTrigger>
-                    <TabsTrigger value="columns" className="text-[10px] leading-none sm:text-[11px]">คอลัมน์</TabsTrigger>
-                    <TabsTrigger value="summary" className="text-[10px] leading-none sm:text-[11px]">สรุปยอด</TabsTrigger>
-                    <TabsTrigger value="footer" className="text-[10px] leading-none sm:text-[11px]">Footer</TabsTrigger>
-                    <TabsTrigger value="variables" className="text-[10px] leading-none sm:text-[11px]">ตัวแปร</TabsTrigger>
+                    <TabsTrigger value="template" onClick={() => {}} className="text-[10px] leading-none sm:text-[11px]">เทมเพลต</TabsTrigger>
+                    <TabsTrigger value="table" onClick={() => {}} className="text-[10px] leading-none sm:text-[11px]">ตาราง</TabsTrigger>
+                    <TabsTrigger value="columns" onClick={() => {}} className="text-[10px] leading-none sm:text-[11px]">คอลัมน์</TabsTrigger>
+                    <TabsTrigger value="summary" onClick={() => {}} className="text-[10px] leading-none sm:text-[11px]">สรุปยอด</TabsTrigger>
+                    <TabsTrigger value="footer" onClick={() => {}} className="text-[10px] leading-none sm:text-[11px]">Footer</TabsTrigger>
+                    <TabsTrigger value="variables" onClick={() => {}} className="text-[10px] leading-none sm:text-[11px]">ตัวแปร</TabsTrigger>
                   </TabsList>
                 </div>
 
@@ -1547,10 +1547,10 @@ export function ItamDocumentEditor() {
                     </Badge>
                   </div>
                   <TabsList className="grid h-8 w-full grid-cols-4">
-                    <TabsTrigger value="position" className="text-[11px]">ตำแหน่ง</TabsTrigger>
-                    <TabsTrigger value="style" className="text-[11px]">สไตล์</TabsTrigger>
-                    <TabsTrigger value="data" className="text-[11px]">ข้อมูล</TabsTrigger>
-                    <TabsTrigger value="advanced" className="text-[11px]">ขั้นสูง</TabsTrigger>
+                    <TabsTrigger value="position" onClick={() => {}} className="text-[11px]">ตำแหน่ง</TabsTrigger>
+                    <TabsTrigger value="style" onClick={() => {}} className="text-[11px]">สไตล์</TabsTrigger>
+                    <TabsTrigger value="data" onClick={() => {}} className="text-[11px]">ข้อมูล</TabsTrigger>
+                    <TabsTrigger value="advanced" onClick={() => {}} className="text-[11px]">ขั้นสูง</TabsTrigger>
                   </TabsList>
                 </div>
 

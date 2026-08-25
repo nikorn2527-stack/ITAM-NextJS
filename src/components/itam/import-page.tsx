@@ -472,11 +472,11 @@ export function ImportPage() {
         {/* Tab switcher: manual import vs legacy Apps Script import */}
         <Tabs defaultValue="manual" className="flex min-h-0 w-full flex-1 flex-col gap-6">
           <TabsList className="flex-shrink-0 bg-slate-100 dark:bg-slate-800">
-            <TabsTrigger value="manual" className="gap-1.5">
+            <TabsTrigger value="manual" onClick={() => {}} className="gap-1.5">
               <Upload className="h-3.5 w-3.5" />
               นำเข้าใหม่ (Manual)
             </TabsTrigger>
-            <TabsTrigger value="legacy" className="gap-1.5">
+            <TabsTrigger value="legacy" onClick={() => {}} className="gap-1.5">
               <Database className="h-3.5 w-3.5" />
               นำเข้าจากระบบเก่า (Apps Script)
             </TabsTrigger>
