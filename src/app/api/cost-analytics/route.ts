@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 
 type RangeKey = 'month' | '30d' | 'quarter' | 'all'
@@ -58,6 +59,8 @@ function readingDateWhere(range: RangeInfo): Record<string, unknown> {
 const METERABLE_TYPES = ['PRINTER', 'COPIER', 'MFP']
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'VIEW_DASHBOARD')
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
     const { searchParams } = new URL(req.url)
     const rawRange = (searchParams.get('range')?.trim() ?? 'month') as RangeKey
