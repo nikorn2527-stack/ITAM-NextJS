@@ -1,26 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { logAudit } from '@/lib/audit'
-import { isTemplateType } from '@/lib/templates'
-
-/** Normalise an optional string field → string | null. */
-function optStr(v: unknown): string | null {
-  if (v === null || v === undefined) return null
-  const s = String(v).trim()
-  return s === '' ? null : s
-}
-
 /**
- * GET /api/templates/[id]
- * Returns: { template: {...} }
+ * GET /api/templates/[id] — get single template
+ * PUT /api/templates/[id] — update template
+ * DELETE /api/templates/[id] — delete template (blocks default deletion)
+ *
+ * Milestone 2 (Templates): refactored to thin adapter — no @/lib/db imports.
  */
+import { NextRequest, NextResponse } from 'next/server'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { requireAuth } from '@/lib/auth-middleware'
+import { isTemplateType } from '@/lib/templates'
+import { templatesService } from '@/modules/templates'
+
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+  const auth = await requireAuth(req, 'TEMPLATES_MANAGE')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const { id } = await params
-    const template = await db.documentTemplate.findUnique({ where: { id } })
+    const template = await templatesService.getDetail(id)
     if (!template) {
       return NextResponse.json({ error: 'ไม่พบเทมเพลต' }, { status: 404 })
     }
@@ -34,27 +39,22 @@ export async function GET(
   }
 }
 
-/**
- * PUT /api/templates/[id]
- * Body: partial { name?, type?, category?, content?, isActive?, isDefault? }
- * Returns: { template: {...} }
- *
- * If isDefault=true, clear other defaults for the same type (excluding this one).
- */
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+  const auth = await requireAuth(req, 'TEMPLATES_MANAGE')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const { id } = await params
     const body = await req.json()
 
-    const before = await db.documentTemplate.findUnique({ where: { id } })
-    if (!before) {
-      return NextResponse.json({ error: 'ไม่พบเทมเพลต' }, { status: 404 })
-    }
-
-    // ── Validate type if provided ──
     if (body.type !== undefined && !isTemplateType(body.type)) {
       return NextResponse.json(
         { error: 'ประเภทเทมเพลตไม่ถูกต้อง (type)' },
@@ -68,99 +68,53 @@ export async function PUT(
       )
     }
 
-    // Determine the effective type (for default-clearing logic)
-    const effectiveType = body.type ?? before.type
-    const willBeDefault = body.isDefault === true
-
-    // ── If setting as default, clear other defaults for the same type ──
-    if (willBeDefault) {
-      await db.documentTemplate.updateMany({
-        where: {
-          type: effectiveType,
-          isDefault: true,
-          id: { not: id },
-        },
-        data: { isDefault: false },
-      })
-    }
-
-    // content: accept string or object (object → JSON.stringify)
-    let contentUpdate: string | undefined
-    if (body.content !== undefined) {
-      contentUpdate =
-        typeof body.content === 'string'
+    const contentUpdate =
+      body.content !== undefined
+        ? typeof body.content === 'string'
           ? body.content
           : JSON.stringify(body.content)
-    }
+        : undefined
 
-    const updated = await db.documentTemplate.update({
-      where: { id },
-      data: {
-        name: body.name !== undefined ? String(body.name).trim() : undefined,
-        type: body.type !== undefined ? body.type : undefined,
-        category: body.category !== undefined ? optStr(body.category) : undefined,
-        content: contentUpdate,
-        isActive:
-          body.isActive !== undefined ? Boolean(body.isActive) : undefined,
-        isDefault:
-          body.isDefault !== undefined ? Boolean(body.isDefault) : undefined,
-      },
+    const updated = await templatesService.update(id, {
+      name: body.name !== undefined ? String(body.name).trim() : undefined,
+      type: body.type,
+      category: body.category !== undefined ? (body.category?.trim() || null) : undefined,
+      content: contentUpdate,
+      isActive: body.isActive !== undefined ? Boolean(body.isActive) : undefined,
+      isDefault: body.isDefault !== undefined ? Boolean(body.isDefault) : undefined,
     })
-
-    // ── Audit log of changed fields ──
-    const changes: Record<string, { from: unknown; to: unknown }> = {}
-    for (const k of [
-      'name',
-      'type',
-      'category',
-      'isActive',
-      'isDefault',
-    ] as const) {
-      if (body[k] !== undefined) {
-        const from = before[k] as unknown
-        const to = updated[k] as unknown
-        if (String(from ?? '') !== String(to ?? '')) {
-          changes[k] = { from, to }
-        }
-      }
-    }
-    if (body.content !== undefined) {
-      changes.content = { from: '(เนื้อหาเดิม)', to: '(เนื้อหาใหม่)' }
-    }
-    await logAudit(
-      'UPDATE',
-      'DocumentTemplate',
-      id,
-      `แก้ไขเทมเพลต "${updated.name}" (${updated.type})`,
-      { changes },
-    )
 
     return NextResponse.json({ template: updated })
   } catch (err) {
     console.error('PUT /api/templates/[id]', err)
-    const message =
-      err instanceof Error ? err.message : 'Failed to update template'
+    if (err instanceof Error && err.message === 'ไม่พบเทมเพลต') {
+      return NextResponse.json({ error: 'ไม่พบเทมเพลต' }, { status: 404 })
+    }
+    const message = err instanceof Error ? err.message : 'Failed to update template'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
-/**
- * DELETE /api/templates/[id]
- * Blocks deletion when the template is marked isDefault (so the system
- * always retains at least the default per type).
- * Returns: { success: true, id }
- */
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+  const auth = await requireAuth(req, 'TEMPLATES_MANAGE')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const { id } = await params
-    const template = await db.documentTemplate.findUnique({ where: { id } })
-    if (!template) {
+    const result = await templatesService.remove(id)
+
+    if (!result.template && !result.blocked) {
       return NextResponse.json({ error: 'ไม่พบเทมเพลต' }, { status: 404 })
     }
-    if (template.isDefault) {
+    if (result.blocked) {
       return NextResponse.json(
         {
           error:
@@ -170,21 +124,10 @@ export async function DELETE(
       )
     }
 
-    await db.documentTemplate.delete({ where: { id } })
-
-    await logAudit(
-      'DELETE',
-      'DocumentTemplate',
-      id,
-      `ลบเทมเพลต "${template.name}" (${template.type})`,
-      { type: template.type, name: template.name },
-    )
-
     return NextResponse.json({ success: true, id })
   } catch (err) {
     console.error('DELETE /api/templates/[id]', err)
-    const message =
-      err instanceof Error ? err.message : 'Failed to delete template'
+    const message = err instanceof Error ? err.message : 'Failed to delete template'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

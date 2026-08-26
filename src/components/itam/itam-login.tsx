@@ -188,9 +188,7 @@ export function ItamLogin() {
       url.searchParams.delete('token')
       url.searchParams.delete('user')
       window.history.replaceState({}, '', url.toString())
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error(String(e)) }
   }, [])
 
   // Auto-open registration dialog when ?register=1 is in the URL

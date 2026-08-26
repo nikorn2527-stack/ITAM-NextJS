@@ -118,7 +118,7 @@ export function PendingUsersSection() {
 
   async function reject(user: PendingUser) {
     if (actingId) return
-    if (!confirm(`ปฏิเสธคำขอของ "${user.name || user.email}"?\nบัญชีนี้จะถูกลบออกจากระบบ`)) {
+    if (!window.confirm(`ปฏิเสธคำขอของ "${user.name || user.email}"?\nบัญชีนี้จะถูกลบออกจากระบบ`)) {
       return
     }
     setActingId(user.id)

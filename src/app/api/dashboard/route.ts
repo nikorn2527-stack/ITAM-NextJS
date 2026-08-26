@@ -1,4 +1,5 @@
 // ============================================================
+import { requireAuth } from '@/lib/auth-middleware'
 // Dashboard API (Task ID: RBAC-DASHBOARD)
 // ============================================================
 // GET /api/dashboard
@@ -88,6 +89,8 @@ function readingDateWhere(range: RangeInfo): Record<string, unknown> {
 //   5. All independent queries parallelized with Promise.all
 //   6. Status classification uses shared status-utils.ts (consistent with ITAM dashboard)
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'VIEW_DASHBOARD')
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
     const { searchParams } = new URL(req.url)
     const rawRange = (searchParams.get('range')?.trim() ?? 'month') as RangeKey

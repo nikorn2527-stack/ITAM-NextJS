@@ -51,7 +51,7 @@ export async function POST(
   // 3. Run ownership check (I-02)
   if (user.role !== 'superadmin' && originalRun.triggeredBy !== user.email) {
     return NextResponse.json(
-      { error: 'Cannot retry another user\'s sync run' },
+      { error: "Cannot retry another user's sync run" },
       { status: 403 },
     )
   }

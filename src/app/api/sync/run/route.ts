@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
   // Non-superadmin can only apply their own runs
   if (user.role !== 'superadmin' && previewRun.triggeredBy !== user.email) {
     return NextResponse.json(
-      { error: 'Cannot apply another user\'s preview run' },
+      { error: "Cannot apply another user's preview run" },
       { status: 403 },
     )
   }

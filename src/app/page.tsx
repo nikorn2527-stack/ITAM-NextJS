@@ -264,7 +264,7 @@ export default function Home() {
   // pages with short content fit in one screen without scrolling.
   return (
     <RealtimeProvider>
-      <div className="flex h-screen flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
+      <div className="flex h-screen flex-col overflow-hidden bg-background dark:bg-slate-950">
         <DemoBanner />
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:ml-14">
