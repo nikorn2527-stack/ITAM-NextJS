@@ -123,7 +123,7 @@ export function WoOptionsSection() {
   })
 
   function handleDelete(id: string, label: string) {
-    if (!confirm(`ลบ "${label}"?`)) return
+    if (!window.confirm(`ลบ "${label}"?`)) return
     fetch(`/api/settings/options/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       headers: authHeaders(),
@@ -180,15 +180,15 @@ export function WoOptionsSection() {
       {/* Tabs — 3 sections in tabs (instead of stacking vertically) */}
       <Tabs defaultValue="subjects" className="flex min-h-0 flex-1 flex-col gap-3">
         <TabsList className="flex flex-shrink-0 flex-wrap gap-1 sm:grid sm:grid-cols-3">
-          <TabsTrigger value="subjects" className="gap-1.5">
+          <TabsTrigger value="subjects" onClick={() => {}} className="gap-1.5">
             <Wrench className="h-3.5 w-3.5 text-[#f97316]" /> หัวข้อปัญหา
             <Badge variant="outline" className="ml-1 text-[10px]">{subjects.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="buildings" className="gap-1.5">
+          <TabsTrigger value="buildings" onClick={() => {}} className="gap-1.5">
             <Building2 className="h-3.5 w-3.5 text-teal-500" /> อาคาร/ฝ่าย
             <Badge variant="outline" className="ml-1 text-[10px]">{buildings.length}</Badge>
           </TabsTrigger>
-          <TabsTrigger value="resolutions" className="gap-1.5">
+          <TabsTrigger value="resolutions" onClick={() => {}} className="gap-1.5">
             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> ผลการแก้ไข
             <Badge variant="outline" className="ml-1 text-[10px]">{resolutions.length}</Badge>
           </TabsTrigger>

@@ -128,7 +128,7 @@ export async function GET(req: NextRequest) {
     // NOTE: Device.site stores the Thai site NAME (e.g. "โรงพยาบาลศูนย์อุดรธานี"),
     // not the site CODE (e.g. "UDH"). So when the user picks a site code from
     // the dropdown, we must resolve it to the Thai name before filtering.
-    if (ctx.isSuperAdmin) {
+    if (ctx.isSuperAdmin || ctx.globalRole === 'admin') {
       if (siteParam) {
         // Resolve site code → Thai name via SiteAttribute
         const sa = await db.siteAttribute.findUnique({

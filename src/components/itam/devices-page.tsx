@@ -95,6 +95,7 @@ import {
 import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
+import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
 import { Combobox } from './combobox'
 import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
 import { downloadCsv, dateStamp } from '@/lib/csv'
@@ -321,6 +322,7 @@ export function DevicesPage() {
   const [exporting, setExporting] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [stickerOpen, setStickerOpen] = React.useState(false)
+  const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
 
   // Bulk operations state
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
@@ -341,18 +343,14 @@ export function DevicesPage() {
     try {
       const raw = localStorage.getItem('itam-recent-devices')
       if (raw) setRecentDeviceIds(JSON.parse(raw))
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error(String(e)) }
   }, [])
   const pushRecentDevice = React.useCallback((id: string) => {
     setRecentDeviceIds((prev) => {
       const next = [id, ...prev.filter((x) => x !== id)].slice(0, 5)
       try {
         localStorage.setItem('itam-recent-devices', JSON.stringify(next))
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error(String(e)) }
       return next
     })
   }, [])
@@ -393,9 +391,7 @@ export function DevicesPage() {
       try {
         const raw = localStorage.getItem('itam-devices-hidden-cols')
         if (raw) return new Set(JSON.parse(raw))
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error(String(e)) }
       return new Set()
     },
   )
@@ -409,9 +405,7 @@ export function DevicesPage() {
           'itam-devices-hidden-cols',
           JSON.stringify([...next]),
         )
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error(String(e)) }
       return next
     })
   }, [])
@@ -1638,10 +1632,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                 Tab 3: ⚙️ ขั้นสูง (Remote ID, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ) */}
             <Tabs defaultValue="location" className="w-full">
               <TabsList className="mb-4 grid w-full grid-cols-4">
-                <TabsTrigger value="location">📍 สถานที่ติดตั้ง</TabsTrigger>
-                <TabsTrigger value="device">💻 อุปกรณ์</TabsTrigger>
-                <TabsTrigger value="set">📦 ชุดอุปกรณ์</TabsTrigger>
-                <TabsTrigger value="advanced">⚙️ ขั้นสูง</TabsTrigger>
+                <TabsTrigger value="location" onClick={() => {}}>📍 สถานที่ติดตั้ง</TabsTrigger>
+                <TabsTrigger value="device" onClick={() => {}}>💻 อุปกรณ์</TabsTrigger>
+                <TabsTrigger value="set" onClick={() => {}}>📦 ชุดอุปกรณ์</TabsTrigger>
+                <TabsTrigger value="advanced" onClick={() => {}}>⚙️ ขั้นสูง</TabsTrigger>
               </TabsList>
 
               {/* ═══════════════════════════════════════════════════════
@@ -2633,9 +2627,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               setRecentDeviceIds([])
               try {
                 localStorage.removeItem('itam-recent-devices')
-              } catch {
-                /* ignore */
-              }
+              } catch (e) { console.error(String(e)) }
             }}
             className="ml-auto rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
             aria-label="ล้างรายการล่าสุด"
@@ -2805,9 +2797,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       setHiddenColumns(new Set())
                       try {
                         localStorage.removeItem('itam-devices-hidden-cols')
-                      } catch {
-                        /* ignore */
-                      }
+                      } catch (e) { console.error(String(e)) }
                     }}
                     className="text-xs text-[#f97316] focus:text-[#f97316]"
                   >
@@ -3368,6 +3358,21 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
         onOpenChange={setStickerOpen}
         devices={devices ?? []}
         orgName={settings?.orgName ?? null}
+      />
+
+      {/* Print Template Selection — lets user choose which template to use */}
+      <PrintTemplateSelectionDialog
+        open={printTemplateOpen}
+        onOpenChange={setPrintTemplateOpen}
+        templateType="sticker"
+        actionLabel="พิมพ์สติกเกอร์"
+        onSelect={(template) => {
+          toast.success(`เลือกเทมเพลต: ${template.name}`)
+          setStickerOpen(true)
+        }}
+        onCreateNew={() => {
+          useAppStore.getState().setActivePage('templates')
+        }}
       />
 
       {/* ── Keyboard shortcuts dialog ──

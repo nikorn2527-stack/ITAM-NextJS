@@ -643,3 +643,15 @@ export function relativeTime(iso: string): string {
     return iso
   }
 }
+
+/**
+ * BUG-REPORTS-003 fix: null-safe toLocaleString wrapper.
+ * Prevents TypeError when value is null/undefined (common in report data
+ * where aggregation returns null for empty results).
+ *
+ * Usage: replace `value.toLocaleString()` with `safeLocaleString(value)`
+ */
+export function safeLocaleString(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '0'
+  return value.toLocaleString()
+}

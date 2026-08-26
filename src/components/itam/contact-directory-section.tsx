@@ -157,7 +157,7 @@ export function ContactDirectorySection() {
   })
 
   function handleDelete(e: ContactEntry) {
-    if (!confirm(`ลบ "${e.full_name}" จากสมุดผู้ติดต่อ?`)) return
+    if (!window.confirm(`ลบ "${e.full_name}" จากสมุดผู้ติดต่อ?`)) return
     fetch(`/api/settings/contact-directory/${encodeURIComponent(e.id)}`, {
       method: 'DELETE',
       headers: authHeaders(),
