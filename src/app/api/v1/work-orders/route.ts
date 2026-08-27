@@ -258,6 +258,22 @@ export async function POST(req: NextRequest) {
       externalMeta = body.externalMeta.trim()
     }
 
+    // ── BUG-WO-002-VERIFY FIX ───────────────────────────────────────
+    // WorkOrder has no `assetCode` column (only `deviceId` relation to
+    // Device). When the caller supplies an assetCode, look up the matching
+    // Device and link via deviceId. This unblocks POST /api/v1/work-orders
+    // which previously 500'd with "Unknown argument `assetCode`".
+    let deviceId: string | null = null
+    const rawAssetCode =
+      typeof body.assetCode === 'string' ? body.assetCode.trim() : ''
+    if (rawAssetCode) {
+      const device = await db.device.findUnique({
+        where: { assetCode: rawAssetCode },
+        select: { id: true },
+      })
+      deviceId = device?.id ?? null
+    }
+
     const order = await db.workOrder.create({
       data: {
         woNumber,
@@ -276,7 +292,7 @@ export async function POST(req: NextRequest) {
         externalMeta,
         picBefore: body.picBefore ? String(body.picBefore) : null,
         status: 'PENDING',
-        assetCode: body.assetCode ? String(body.assetCode).trim() : null,
+        deviceId,
         isSpecialFee: body.isSpecialFee === true,
       },
     })
@@ -295,7 +311,8 @@ export async function POST(req: NextRequest) {
         priority: order.priority,
         submissionSource: order.submissionSource,
         trackable: order.trackable,
-        assetCode: order.assetCode,
+        assetCode: rawAssetCode || null,
+        deviceId: order.deviceId,
       },
       userEmail,
     )

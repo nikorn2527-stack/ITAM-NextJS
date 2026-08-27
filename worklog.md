@@ -1592,3 +1592,117 @@ Task: Custom Export & Print Template System — Feature Specification
 8. Dashboard (Print PDF)
 9. Reports Hub (Print PDF)
 
+
+
+---
+
+## Task ID: VERIFY-010 (BUG-WO-002 Re-verify + POST Fix)
+Agent: QA Team
+Task: Re-verify BUG-WO-002 after User reports "นึกว่าแก้ไขแล้ว" (thought it was already fixed)
+
+**วันที่:** 2026-08-27
+**User สืบทอดมาจาก:** session เดิม — User สงสัยว่า BUG-WO-002 แก้จริงหรือเปล่า
+
+### 🔍 Root Cause Analysis:
+
+User บอกว่า "นึกว่าแก้ไขแล้ว" เพราะที่ผ่านมามีการเปลี่ยน source code แล้ว:
+- `src/app/api/work-orders/route.ts:198` → `ctx.isSuperAdmin || ctx.globalRole === 'admin'` ✅ อยู่
+- `src/app/api/devices/route.ts:131` → `ctx.isSuperAdmin || ctx.globalRole === 'admin'` ✅ อยู่
+
+แต่ตอนทดสอบจริง UI ยังแสดง "0 รอดำเนินการ" ทั้งหมด — เลยทำให้ดูเหมือนยังไม่แก้
+
+### 🎯 สาเหตุจริง (ทำไม UI ยังโชว์ 0):
+
+1. **DB ไม่มี WorkOrder เลย** — `prisma.workOrder.count() === 0` (DB sandbox ว่าง ไม่มีข้อมูล WO ให้แสดง)
+2. ไม่ใช่ bug fail-closed อีกต่อไป — code fix ทำงานถูกต้องแล้ว
+3. `demo_admin@itam.demo` (role=admin, active=true, isDemo=true) มีอยู่จริงใน DB → auth ผ่าน
+
+### ✅ พิสูจน์ว่า BUG-WO-002 แก้แล้ว (Verification Steps):
+
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | แทรก WO ตรงเข้า DB ผ่าน Prisma (`WO-QA-VERIFY-001`) | ✅ Created, DB count=1 |
+| 2 | GET `/api/v1/work-orders` as admin (Bearer token) | ✅ 200 — WO ปรากฏใน `data[]` |
+| 3 | Reload UI → หน้าแจ้งซ่อม | ✅ Stats card แสดง "1 รอดำเนินการ" |
+| 4 | ตาราง WO list | ✅ Row `WO-QA-VERIFY-001` แสดงครบ (เลข/หัวข้อ/สถานะ/ผู้แจ้ง/เบอร์/วันที่/ปุ่ม) |
+
+📸 หลักฐาน: `/home/z/my-project/qa-reports/bug-wo-002-verified-fixed.png`
+
+### 🆕 พบ Bug ใหม่ระหว่าง Verify (P0 — FIXED แล้ว):
+
+**BUG-WO-CREATE-ASSETCODE (P0):** POST `/api/v1/work-orders` ตอบ 500 เสมอ
+- **สาเหตุ:** Route ส่ง `assetCode: ...` เข้า `db.workOrder.create()` ที่บรรทัด 279 — แต่ WorkOrder model ไม่มี field `assetCode` (มีแค่ `deviceId` relation)
+- **Error log:** `Unknown argument 'assetCode'. Available options are marked with ?`
+- **ผลกระทบ:** สร้าง WO ผ่าน API/UI ไม่ได้เลย (ทุกคำขอ POST → 500)
+- **Severity:** 🔴 P0 — Blocker ของ WO creation flow
+
+### 🔧 Fix Applied (src/app/api/v1/work-orders/route.ts):
+
+```diff
++ // ── BUG-WO-002-VERIFY FIX ───────────────────────────────────────
++ // WorkOrder has no `assetCode` column (only `deviceId` relation to
++ // Device). When the caller supplies an assetCode, look up the matching
++ // Device and link via deviceId. This unblocks POST /api/v1/work-orders
++ // which previously 500'd with "Unknown argument `assetCode`".
++ let deviceId: string | null = null
++ const rawAssetCode =
++   typeof body.assetCode === 'string' ? body.assetCode.trim() : ''
++ if (rawAssetCode) {
++   const device = await db.device.findUnique({
++     where: { assetCode: rawAssetCode },
++     select: { id: true },
++   })
++   deviceId = device?.id ?? null
++ }
+
+  const order = await db.workOrder.create({
+    data: {
+      ...
+-     assetCode: body.assetCode ? String(body.assetCode).trim() : null,
++     deviceId,
+      isSpecialFee: body.isSpecialFee === true,
+    },
+  })
+```
+
+Audit log ก็แก้:
+```diff
+  {
+    woNumber: order.woNumber,
+    ...
+-   assetCode: order.assetCode,
++   assetCode: rawAssetCode || null,
++   deviceId: order.deviceId,
+  },
+```
+
+### ✅ Post-Fix Verification:
+
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | POST `/api/v1/work-orders` as admin | ✅ 201 — `WO-20260827-001` สร้างสำเร็จ |
+| 2 | Reload UI | ✅ Stats card แสดง "2 รอดำเนินการ" |
+| 3 | ตาราง WO list | ✅ ทั้ง `WO-20260827-001` + `WO-QA-VERIFY-001` แสดงครบ |
+| 4 | Dev log | ✅ ไม่มี error ใหม่ (ทุก endpoint 200) |
+| 5 | ESLint (ไฟล์นี้) | ✅ ผ่าน (113 lint errors ที่เหลือเป็น pre-existing ในไฟล์อื่น) |
+
+📸 หลักฐาน: `/home/z/my-project/qa-reports/bug-wo-002-and-post-fix-verified.png`
+
+### 📊 สรุปสถานะ BUG-WO-002:
+
+| ระดับ | สถานะ |
+|------|------|
+| Source code fix | ✅ อยู่ในที่ (`ctx.globalRole === 'admin'`) |
+| Runtime behavior | ✅ ทำงานถูกต้อง (admin เห็น WO list) |
+| UI display | ✅ แสดง WO ในตาราง + stats card |
+| **สรุป** | **✅ FIXED จริง — User คิดถูกที่บอกว่านึกว่าแก้แล้ว** |
+
+**เหตุผลที่ UI ยังโชว์ 0 ตอนแรก:** DB ว่างไม่มี WO — ไม่ใช่เพราะ bug ยังอยู่
+
+### 🎁 โบนัส: Bug ใหม่ที่แก้ไปด้วย:
+- **BUG-WO-CREATE-ASSETCODE (P0)** — POST `/api/v1/work-orders` 500 → แก้แล้ว (lookup Device ด้วย assetCode, link ผ่าน deviceId)
+
+### ⚠️ หมายเหตุสำหรับรอบถัดไป:
+- UI ใช้ `/api/v1/work-orders` (มี prefix `v1`) — ไม่ใช่ `/api/work-orders`
+- ทดสอบเสมอด้วย WO จริงใน DB (อย่าลืม seed WO ตัวอย่างก่อน QA)
+- `POST /api/v1/work-orders` รองรับ `assetCode` ตอนนี้ — จะ lookup Device และ link `deviceId` อัตโนมัติ
