@@ -1,5 +1,6 @@
 {
   "buildCommand": "npx prisma generate && next build",
+  "installCommand": "npm install --legacy-peer-deps",
   "crons": [
     {
       "path": "/api/cron/keepalive",
