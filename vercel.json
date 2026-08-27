@@ -1,6 +1,6 @@
 {
-  "buildCommand": "next build",
-  "installCommand": "npm install --legacy-peer-deps",
+  "buildCommand": "npm run vercel-build",
+  "installCommand": "npm install --legacy-peer-deps --ignore-scripts",
   "crons": [
     {
       "path": "/api/cron/keepalive",
