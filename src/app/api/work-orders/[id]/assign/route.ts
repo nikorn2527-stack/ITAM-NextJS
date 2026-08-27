@@ -104,6 +104,10 @@ export async function POST(
           woNumber: updated.woNumber,
           subject: updated.subject,
           assignedTo: updated.assignedTo,
+          // Pass through so the "มอบหมายงาน" notification is pushed back to
+          // the reporter's LINE 1:1 chat when this WO came in via LINE OA.
+          lineUserId: updated.lineUserId ?? null,
+          reporterEmail: updated.reporterEmail ?? null,
         },
         { channels: ['line-oa', 'telegram'], actor: actorName },
       )

@@ -545,6 +545,8 @@ export async function notifyWorkOrderAssigned(
     woNumber?: string | null
     subject: string
     assignedTo?: string | null
+    lineUserId?: string | null
+    reporterEmail?: string | null
   },
   opts: { channels?: NotificationChannel[]; actor?: string } = {},
 ): Promise<void> {
@@ -556,6 +558,13 @@ export async function notifyWorkOrderAssigned(
       assignedTo: wo.assignedTo ?? '—',
       subject: wo.subject,
     },
+    // ── BUG FIX (Scenario 2 — LINE round-trip) ──────────────────────────
+    // Previously this helper did NOT pass lineUserId/email, so when an admin
+    // assigned a technician to a WO that came in via LINE, the "มอบหมายงาน"
+    // notification was pushed to the admin group instead of the reporter's
+    // LINE 1:1 chat. Pass them through so sendLINE() targets the reporter.
+    lineUserId: wo.lineUserId ?? undefined,
+    email: wo.reporterEmail ?? undefined,
     actor: opts.actor,
     entityId: wo.id,
     entity: 'WorkOrder',

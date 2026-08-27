@@ -105,8 +105,12 @@ export async function loadAuthorizedWorkOrder(
   const rawWoSite = wo.siteCode ?? wo.device?.site ?? null
   const woSite = rawWoSite ? normalizeSiteCode(rawWoSite) : null
 
-  // 5. Superadmin bypasses Site checks (they have all permissions everywhere)
-  if (ctx.isSuperAdmin) {
+  // 5. Superadmin + admin bypass Site checks (they have all permissions
+  //    everywhere). Without this, an admin user cannot assign/complete a WO
+  //    that has no siteCode (e.g. created without a device/site) — it would
+  //    return 404 even though admin has global access. Mirrors the bypass
+  //    pattern used in src/app/api/work-orders/route.ts:198.
+  if (ctx.isSuperAdmin || ctx.globalRole === 'admin') {
     return { ok: true, wo, ctx, auth, woSite }
   }
 

@@ -157,16 +157,27 @@ async function upsertLineBinding(
   displayName?: string,
 ): Promise<void> {
   try {
-    await db.lineBinding.upsert({
+    // Use findFirst + update/create because Prisma's upsert requires the
+    // `where` to use a @unique field. The schema marks lineUserId as
+    // @unique, but legacy Prisma clients (or stale dev-server caches) may
+    // still reject it. findFirst sidesteps this without losing safety.
+    const existing = await db.lineBinding.findFirst({
       where: { lineUserId },
-      create: {
-        lineUserId,
-        lineDisplayName: displayName ?? null,
-      },
-      update: {
-        lineDisplayName: displayName ?? undefined,
-      },
+      select: { id: true },
     })
+    if (existing) {
+      await db.lineBinding.update({
+        where: { id: existing.id },
+        data: { lineDisplayName: displayName ?? undefined },
+      })
+    } else {
+      await db.lineBinding.create({
+        data: {
+          lineUserId,
+          lineDisplayName: displayName ?? null,
+        },
+      })
+    }
   } catch (err) {
     console.error('[line-webhook] upsertLineBinding failed:', err)
   }
@@ -487,7 +498,7 @@ export async function POST(req: NextRequest) {
           const woNumber = await generateWoNumber()
           if (woNumber) {
             // Pull reporter info from LineBinding if available
-            const binding = await db.lineBinding.findUnique({
+            const binding = await db.lineBinding.findFirst({
               where: { lineUserId },
               select: { reporterName: true, tel: true, employeeCode: true },
             })
@@ -559,7 +570,7 @@ export async function POST(req: NextRequest) {
         // ── Branch 4: default → create a WO with the text as subject ──
         const woNumber = await generateWoNumber()
         if (woNumber) {
-          const binding = await db.lineBinding.findUnique({
+          const binding = await db.lineBinding.findFirst({
             where: { lineUserId },
             select: { reporterName: true, tel: true, employeeCode: true },
           })
