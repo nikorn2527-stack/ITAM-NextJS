@@ -34,7 +34,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAuth(req, \'WO_CREATE\')
+  const auth = await requireAuth(req, 'WO_CREATE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
     const { id } = await params

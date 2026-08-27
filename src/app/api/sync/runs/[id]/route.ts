@@ -40,7 +40,7 @@ export async function GET(
   // 3. Run ownership check (I-04)
   if (user.role !== 'superadmin' && run.triggeredBy !== user.email) {
     return NextResponse.json(
-      { error: 'Cannot view another user\'s sync run' },
+      { error: "Cannot view another user's sync run" },
       { status: 403 },
     )
   }
