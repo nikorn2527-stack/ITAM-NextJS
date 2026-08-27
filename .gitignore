@@ -63,3 +63,4 @@ db/custom.db
 db/*.db
 .vercel
 .env*
+bun.lock
