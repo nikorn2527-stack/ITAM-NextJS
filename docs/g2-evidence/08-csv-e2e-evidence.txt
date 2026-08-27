@@ -1,0 +1,35 @@
+=== G2 CSV Fallback E2E Test (F-01–F-04 fixes, fail-closed) ===
+Provenance:
+  Commit SHA: 641c35ecdb92
+  Parent SHA: a0a5d11ccbc1
+  Base: a0a5d11 (main)
+  Environment: local staging (Supabase Postgres, redacted)
+  Command: bun run scripts/g2-csv-e2e-test.ts
+  Import URL: http://localhost:3000/api/import
+  Timestamp (UTC): 2026-08-18T14:06:01.771Z
+
+✓ Test 1a: POST /api/import valid CSV → HTTP 201 + ImportJob status=completed, processedRows=2
+  → HTTP 201 (expected 201) | job.status=completed | processedRows=2/2 | errorRows=0
+✓ Test 1b: WorkOrders created + requestId/siteCode populated (field mapping acceptance)
+  → found 2 WorkOrders | requestId populated: 2/2 | siteCode populated: 2/2
+✓ Test 2: AuditLog per-record completeness (fail-closed — distinct entityId, exact count, siteCode matches WorkOrder)
+  → AuditLog entries: 2 | distinct entityIds: 2/2 | all woIds have audit: true | all entries valid: true | siteCode matches WorkOrder: true ✓
+    --- raw DB mapping (WorkOrder → AuditLog) ---
+    WorkOrder CSV-E2E-001 (siteCode=HQ) → AuditLog: action=WORK_ORDER_IMPORT entity=WorkOrder siteCode=HQ actor=system
+    WorkOrder CSV-E2E-002 (siteCode=UDH) → AuditLog: action=WORK_ORDER_IMPORT entity=WorkOrder siteCode=UDH actor=system
+✓ Test 3: POST /api/import invalid CSV (missing requestId) → MUST be 4xx (HTTP 500 ALWAYS fails)
+  → HTTP 422  | route rejects (4xx) ✓ | ImportJob: status=failed, totalRows=1, processedRows=0, errorRows=1 | response: {"job":{"id":"cmsyqjx8x0006nlbo1c5ut59j","jobType":"work-order","fileName":"invalid.csv","fileType":"csv","status":"failed","totalRows":1,"processedRows":0,"errorRows":1,"errors":"[{\"row\":2,\"messag
+✓ Test 4: /api/import route structure (POST + logAudit + CSV parse + jobType validation)
+  → POST=true | logAudit=true | CSV parse=true | jobType validation=true
+✓ Test 5: Data validation error (duplicate requestId) → HTTP 422 (deterministic, NOT 500)
+  → HTTP 422 (expected 422) | errorRows=1 | ✓
+✓ Test 6: Validation error (missing requestId) → HTTP 422 (deterministic, NOT 500/201)
+  → HTTP 422 (expected 422) | errorRows=1 | ✓
+
+--- cleanup: deleted 2 WorkOrders, 2 AuditLogs, 2 ImportJobs | remaining: 0 (should be 0) ---
+
+=== Summary ===
+Passed: 7
+Failed: 0
+
+✅ All CSV E2E tests passed (true HTTP /api/import route, fail-closed)

@@ -121,7 +121,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAuth(req, \'WO_VIEW_ALL\')
+  const auth = await requireAuth(req, 'WO_VIEW_ALL')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
     const { id } = await params
