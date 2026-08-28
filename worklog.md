@@ -2243,3 +2243,64 @@ Task: ทดสอบสถานการณ์งานแจ้งซ่อ�
 ```
 
 📸 หลักฐาน: `/home/z/my-project/qa-reports/scenario1-create-form.png`, `scenario1-wo-list.png`
+
+
+---
+
+## Task ID: DEMO-VIDEO-001
+Agent: QA Team
+Task: สร้างวีดีโอนำเสนอแอป ITAM-NextJS ตามคำขอ User
+
+**วันที่:** 2026-08-28
+**Output:** `/home/z/my-project/itam-nextjs-demo.mp4` (2.3MB, 43s, 1280x720, H.264, 30fps)
+
+### 🎬 Approach:
+เนื่องจาก dev server ไม่เสถียร (OOM kill เมื่อ Turbopack compile route ใหม่ ทำให้ browser automation record วีดีโอไม่ได้) จึงใช้วิธี:
+1. รวบรวม screenshots จาก qa-reports/ (ที่เคย capture ระหว่าง QA ก่อนหน้านี้)
+2. เลือก 12 screenshots ที่ดีที่สุด (1 ต่อ feature หลัก)
+3. สร้าง intro + outro ด้วย image-generation skill (z-ai-web-dev-sdk)
+4. ประกอบเป็นวีดีโอด้วย ffmpeg พร้อม crossfade transitions และคำบรรยายภาษาไทย
+
+### 🎯 12 หน้าที่นำเสนอ:
+1. Dashboard — ภาพรวมสถานะอุปกรณ์ การแจ้งซ่อน และรอบจดมิเตอร์
+2. Heatmap สาขา — แสดงความหนาแน่นของอุปกรณ์ตามสาขา
+3. จดมิเตอร์ — บันทึกการใช้งานกระดาษและคำนวณต้นทุน
+4. วิเคราะห์กระดาษ — เปรียบเทียบการใช้กระดาษรายเดือน
+5. แจ้งซ่อน — ครบวงจร แจ้ง→รับงาน→ซ่อม→ปิดงาน
+6. สร้างใบแจ้งซ่อนใหม่ — รองรับทั้ง admin และลูกค้าภายนอก
+7. พิมพ์รายงาน PDF — export ออกมาเป็นเอกสารได้ทันที
+8. ตั้งค่าระบบ RBAC — จัดการสิทธิ์ผู้ใช้แบบละเอียด
+9. ศูนย์รายงาน — รวมรายงานสำคัญทุกประเภท
+10. รายงานรายเดือน — สรุปยอดใช้กระดาษรายสาขา
+11. โหมดมือถือ — สำหรับช่างและพนักงานภาคสนาม
+12. จัดการผู้ใช้ — เพิ่ม ลบ และกำหนดบทบาท
+
+### 🛠️ เทคนิคที่ใช้:
+- **image-generation skill** (z-ai CLI):
+  - `intro.png` — 1344x768 AI-generated dashboard mockup
+  - `outro.png` — 1344x768 AI-generated logo/concept
+- **ffmpeg** สำหรับประกอบวีดีโอ:
+  - แต่ละภาพ normalize ให้เป็น 1280x720 (pad white background)
+  - เพิ่ม orange top bar + black bottom caption bar
+  - ใช้ font Loma (Thai-supporting font จาก /usr/share/fonts/opentype/tlwg/)
+  - `xfade` filter สำหรับ crossfade 1s ระหว่าง slides
+  - libx264 codec, CRF 23, 30fps
+
+### 📊 ผลลัพธ์:
+- **ไฟล์หลัก:** `/home/z/my-project/itam-nextjs-demo.mp4` (2.3MB)
+- **ไฟล์ต้นฉบับ:** `/home/z/my-project/qa-reports/demo-video/itam-nextjs-demo-v2.mp4`
+- **ความยาว:** 43 วินาที (14 slides × 4s - 13 crossfades × 1s)
+- **คุณภาพ:** 1280x720 H.264, 30fps, 432 kbps
+
+### ⚠️ ข้อจำกัด:
+1. **Dev server OOM** — ทำให้ไม่สามารถใช้ `agent-browser record` สร้างวีดีโอแบบ live demo ได้ (ต้องใช้ screenshots แทน)
+2. **ภาพบางภาพอาจไม่ตรงกับสถานะปัจจุบัน** — screenshots เก็บไว้ตั้งแต่ QA phase แรก อาจไม่ reflect bug fixes ที่แก้ทีหลัง
+3. **ไม่มีเสียงบรรยาย** — ใช้ captions ภาษาไทยเท่านั้น
+
+### 📁 ไฟล์ที่สร้าง:
+- `/home/z/my-project/itam-nextjs-demo.mp4` — วีดีโอนำเสนอ (final)
+- `/home/z/my-project/qa-reports/demo-video/itam-nextjs-demo-v2.mp4` — สำเนา
+- `/home/z/my-project/qa-reports/demo-video/intro.png` — intro image (AI-generated)
+- `/home/z/my-project/qa-reports/demo-video/outro.png` — outro image (AI-generated)
+- `/home/z/my-project/qa-reports/demo-video/build-video-v2.sh` — script สร้างวีดีโอ
+- `/home/z/my-project/qa-reports/demo-video/frames-v2/*.png` — 14 normalized slide frames
