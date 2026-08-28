@@ -2304,3 +2304,87 @@ Task: สร้างวีดีโอนำเสนอแอป ITAM-NextJS �
 - `/home/z/my-project/qa-reports/demo-video/outro.png` — outro image (AI-generated)
 - `/home/z/my-project/qa-reports/demo-video/build-video-v2.sh` — script สร้างวีดีโอ
 - `/home/z/my-project/qa-reports/demo-video/frames-v2/*.png` — 14 normalized slide frames
+
+
+---
+
+## Task ID: SYSTEM-TEST-001
+Agent: QA Team
+Task: เทสระบบทั้งหมดผ่าน agent-browser (คำขอ User "เทสระบบ")
+
+**วันที่:** 2026-08-28
+**Tester:** demo_admin (admin role)
+**Tested Pages:** 13 หน้า + WO lifecycle flow
+
+### ✅ หน้าที่โหลดสำเร็จ (13/13):
+
+| # | หน้า | สถานะ | หมายเหตุ |
+|---|------|------|---------|
+| 1 | Login | ✅ | Login สำเร็จหลัง reseed demo users (DB reset ทำให้ demo users หายไป) |
+| 2 | Dashboard | ✅ | แสดง KPI + widgets + clock + auto-update |
+| 3 | จัดการอุปกรณ์ | ✅ | ตาราง + KPI + tabs |
+| 4 | จดมิเตอร์ | ✅ | "ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ" + tabs จดมิเตอร์/ประวัติ |
+| 5 | แจ้งซ่อม | ✅ | KPI + filter + search + table + ปุ่ม "แจ้งซ่อมใหม่" |
+| 6 | สต๊อก | ✅ | ตาราง + "ยังไม่มีรายการเคลื่อนไหว" empty state |
+| 7 | วิเคราะห์กระดาษ | ✅ | 4 tabs (ภาพรวม/จัดอันดับ/3 เดือน/รายละเอียด) + filter |
+| 8 | ศูนย์รายงาน | ✅ | ตารางประกันใกล้หมด + KPI ค่าเสื่อม |
+| 9 | รายงานรายเดือน | ✅ | หัวข้อ 6 ส่วน (ใบงานตามสถานะ/ความเร่งด่วน/หัวข้อยอดนิยม/ผลงานช่าง/สต็อกยอดนิยม/รายการเหลือน้อย) |
+| 10 | ตั้งค่าระบบ | ✅ | หมวดครบ (ข้อมูลองค์กร/สาขา/ผู้ใช้/สิทธิ์/รออนุมัติ/สาธิต/การแจ้งเตือน/เทมเพลตข้อความ/ปรับแต่งแอป/OAuth) |
+| 11 | โหมดมือถือ | ✅ | Navigation 4 tabs (แจ้งซ่อม/งานของฉัน/จดมิเตอร์/เบิกของ) |
+| 12 | เทมเพลต | ✅ | รายการสติกเกอร์ + ปุ่ม "สร้างใหม่" |
+| 13 | นำเข้าข้อมูล | ✅ | 3 tabs (Manual / Apps Script / Preview Sync) |
+| 14 | ประวัติการใช้งาน | ✅ | ตาราง Audit Log + entries (LOGIN, GENERATE) |
+
+### ✅ WO Lifecycle Flow (ทดสอบครบ):
+
+| ขั้นตอน | ผล | หลักฐาน |
+|--------|-----|--------|
+| 1. Create WO (UI form) | ✅ | `PPIT0001` สร้างสำเร็จ สถานะ PENDING |
+| 2. Auto-open detail sheet | ✅ | แสดง timeline + message "แจ้งซ่อมใหม่" |
+| 3. Assign technician | ✅ | assignedTo="ช่างสมชาย", status=IN_PROGRESS |
+| 4. Complete WO (via API) | ✅ | status=COMPLETED, closedAt set, resolution saved |
+| 5. KPI updates | ✅ | "เสร็จแล้ว: 1" หลัง reload |
+| 6. Dark mode toggle | ✅ | ทำงานปกติ |
+| 7. Notifications popover | ✅ | เปิดได้ |
+| 8. Global search | ✅ | เปิด + แสดงผลลัพธ์ |
+| 9. Print WO button | ⚠️ | ปุ่มคลิกได้ แต่ print dialog ไม่เปิด (UI bug — setPrintOpen(true) ไม่ trigger) |
+| 10. Print WO via API | ✅ | ทดสอบแยก — print endpoint ทำงานได้ |
+
+### 🐛 ปัญหาที่พบ:
+
+| # | Severity | รายละเอียด | สถานะ |
+|---|---------|----------|------|
+| SYS-BUG-001 | 🔴 P0 | DB reset ทำให้ demo users หายไป — ต้อง reseed ทุกครั้งหลัง db:push --force-reset | ⚠️ workaround: reseed manual |
+| SYS-BUG-002 | 🟠 P1 | "ปิดงาน" button ใน AlertDialog ไม่ทำงานเมื่อ click — handleComplete ไม่ trigger | ⚠️ workaround: call API ตรง |
+| SYS-BUG-003 | 🟠 P1 | "พิมพ์ใบงาน" ปุ่มใน list ไม่เปิด Print Dialog — setPrintOpen(true) ไม่ทริกเกอร์ | ⚠️ API endpoint ทำงาน |
+| SYS-BUG-004 | 🟡 P2 | Dev server OOM kill เมื่อ Turbopack compile route ใหม่ — ต้อง restart + warmup | ⚠️ workaround: NODE_OPTIONS=--max-old-space-size=512 |
+
+### 📊 Final Status:
+
+```
+ระบบ ITAM-NextJS
+├── ✅ หน้า UI ทั้งหมดโหลดได้        14/14 หน้า (100%)
+├── ✅ Login + Auth                 ผ่าน (หลัง reseed)
+├── ✅ WO Create flow              ผ่าน (UI + API)
+├── ✅ WO Assign flow             ผ่าน (UI + API)
+├── ⚠️ WO Complete flow            API ผ่าน, UI มี bug
+├── ✅ Audit Log                   ผ่าน
+├── ✅ Dark mode                    ผ่าน
+├── ✅ Mobile mode                  ผ่าน
+├── ⚠️ Print WO                     API ผ่าน, UI มี bug
+├── ✅ Global search                ผ่าน
+└── ✅ Notifications                ผ่าน
+
+สรุป: ระบบทำงานได้ ~85% — UI bugs ส่วนใหญ่เป็น click handler ไม่ trigger
+```
+
+### 📁 Screenshots หลักฐาน (25 รูป):
+- `/home/z/my-project/qa-reports/test-01-dashboard.png` ถึง `test-25-print-opened.png`
+- `/home/z/my-project/qa-reports/test-14-wo-created.png` — สร้าง WO สำเร็จ
+- `/home/z/my-project/qa-reports/test-18-assigned.png` — Assign สำเร็จ
+- `/home/z/my-project/qa-reports/test-20-wo-completed.png` — ปิดงานสำเร็จ (via API)
+
+### 💡 คำแนะนำ:
+1. ควรแก้ SYS-BUG-002 และ SYS-BUG-003 เพราะเป็น user-facing flows สำคัญ
+2. ควรเพิ่ม `bun run db:seed` script ใน package.json เพื่อ reseed demo users อัตโนมัติ
+3. ควรตั้งค่า swap memory หรือใช้ webpack แทน Turbopack เพื่อแก้ SYS-BUG-004
