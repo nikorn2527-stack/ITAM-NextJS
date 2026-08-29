@@ -270,6 +270,13 @@ export async function POST(req: NextRequest) {
       externalMeta = body.externalMeta.trim()
     }
 
+    // QA FIX: WorkOrder has no assetCode column. Look up Device by assetCode.
+    let deviceId: string | null = null
+    const rawAssetCode = typeof body.assetCode === 'string' ? body.assetCode.trim() : ''
+    if (rawAssetCode) {
+      const device = await db.device.findUnique({ where: { assetCode: rawAssetCode }, select: { id: true } })
+      deviceId = device?.id ?? null
+    }
     const order = await db.workOrder.create({
       data: {
         woNumber,
@@ -288,7 +295,7 @@ export async function POST(req: NextRequest) {
         externalMeta,
         picBefore: body.picBefore ? String(body.picBefore) : null,
         status: 'PENDING',
-        assetCode: body.assetCode ? String(body.assetCode).trim() : null,
+        deviceId,
         isSpecialFee: body.isSpecialFee === true,
       },
     })
@@ -307,7 +314,8 @@ export async function POST(req: NextRequest) {
         priority: order.priority,
         submissionSource: order.submissionSource,
         trackable: order.trackable,
-        assetCode: order.assetCode,
+        assetCode: rawAssetCode || null,
+      deviceId: order.deviceId,
       },
       userEmail,
     )
