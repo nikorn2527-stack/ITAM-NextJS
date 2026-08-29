@@ -451,7 +451,6 @@ export function CsvImportDialog({ open, onOpenChange }: Props) {
     if (!parsed) return
     const revalidated = validateRows(parsed.rows, existingCodes, mode)
     setParsed({ ...parsed, rows: revalidated })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, existingCodes])
 
   const validRows = (parsed?.rows ?? []).filter((r) => !r._error)

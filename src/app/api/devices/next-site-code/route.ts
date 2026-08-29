@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { getNextAssetSiteCode, getSiteCodeForName } from '@/lib/asset-site-code'
 
@@ -13,6 +14,10 @@ import { getNextAssetSiteCode, getSiteCodeForName } from '@/lib/asset-site-code'
  *   • Return PREFIX-(MAX+1), zero-padded to 5 digits (e.g. "UDH-00042").
  */
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'VIEW_DEVICES')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { searchParams } = new URL(req.url)
     const siteParam = searchParams.get('site')?.trim() ?? ''

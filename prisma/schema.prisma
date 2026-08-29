@@ -34,8 +34,8 @@ model Device {
   floor           String?
   room            String?
   purchaseDate    String? // ISO date
-  purchasePrice   Float?
-  salvageValue    Float?   @default(0)
+  purchasePrice   Decimal? @db.Decimal(12, 2)
+  salvageValue    Decimal? @default(0) @db.Decimal(12, 2)
   usefulLife      Int?
   warrantyMonths  Int      @default(12)
   warrantyEnd     String?
@@ -68,7 +68,7 @@ model Device {
   parentDevice   Device?  @relation("DeviceSetChildren", fields: [parentDeviceId], references: [id], onDelete: SetNull)
   childDevices   Device[] @relation("DeviceSetChildren")
   setLabel       String? // ชื่อชุด เช่น "ชุดเครื่องพิมพ์ห้องจ่ายยา"
-  setPosition    Int?    // ลำดับในชุด (1, 2, 3, …)
+  setPosition    Int? // ลำดับในชุด (1, 2, 3, …)
 
   // Relations (other models reference Device via deviceId)
   meterReadings     MeterReading[]
@@ -77,6 +77,7 @@ model Device {
   maintenanceLogs   MaintenanceLog[]
   workOrders        WorkOrder[]
   stockTransactions StockTransaction[]
+  pmSchedules       PMSchedule[]
 
   @@index([parentDeviceId])
   @@index([status])
@@ -211,7 +212,7 @@ model MaintenanceLog {
   status       String   @default("open")
   startDate    String
   endDate      String?
-  cost         Float?
+  cost         Decimal? @db.Decimal(12, 2)
   vendor       String?
   description  String
   resolvedNote String?
@@ -292,6 +293,7 @@ model WorkOrder {
   messages WorkOrderMessage[]
   reviews  WorkOrderReview[]
   images   WorkOrderImage[]
+  parts    WorkOrderPart[]
 
   @@index([status])
   @@index([legacyJobNo])
@@ -355,6 +357,35 @@ model WorkOrderImage {
 }
 
 // ============================================================
+// 10b) WorkOrderPart — คำขออะไหล่ในใบงาน (Task ID: P0-SCHEMA-FIXES)
+//     Referenced by CompleteDialog Step 2 (work-orders-page.tsx).
+//     Tracks each part requested against a WorkOrder, with optional
+//     StockItem linkage and an approval workflow (PENDING -> APPROVED/REJECTED).
+// ============================================================
+model WorkOrderPart {
+  id          String     @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  stockItemId String?
+  stockItem   StockItem? @relation(fields: [stockItemId], references: [id])
+  productCode String
+  productName String
+  quantity    Int
+  unitCost    Decimal?   @db.Decimal(12, 2)
+  totalCost   Decimal?   @db.Decimal(12, 2)
+  status      String     @default("PENDING") // PENDING | APPROVED | REJECTED
+  requestedBy String?
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([workOrderId])
+  @@index([status])
+  @@index([stockItemId])
+}
+
+// ============================================================
 // 11) LicenseRecord — ลิขสิทธิ์ซอฟต์แวร์
 // ============================================================
 model LicenseRecord {
@@ -384,10 +415,11 @@ model SiteAttribute {
   SiteName       String? // เช่น โรงพยาบาลศูนย์อุดรธานี
   LineOA         String? // LINE OA ID/Token
   Hotline        String? // เบอร์ติดต่อ
-  PaperRateBW    Float?   @default(0.5) // ฿/แผ่น ขาวดำ
-  PaperRateColor Float?   @default(2.0) // ฿/แผ่น สี
+  PaperRateBW    Decimal? @default(0.5) @db.Decimal(12, 2) // ฿/แผ่น ขาวดำ
+  PaperRateColor Decimal? @default(2.0) @db.Decimal(12, 2) // ฿/แผ่น สี
   TelegramChatId String?  @map("TelegramChatId") // Telegram chat ID สำหรับสาขา
   EmailAddress   String?  @map("EmailAddress") // อีเมลสาขาสำหรับรับแจ้งเตือน
+  isDemo         Boolean  @default(false)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
@@ -412,8 +444,8 @@ model Site {
 model SiteRate {
   id        String   @id @default(cuid())
   siteCode  String
-  bwRate    Float    @default(0.5)
-  colorRate Float    @default(2.0)
+  bwRate    Decimal  @default(0.5) @db.Decimal(12, 2)
+  colorRate Decimal  @default(2.0) @db.Decimal(12, 2)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -456,23 +488,34 @@ model StockItem {
   quantity          Int      @default(0)
   minQuantity       Int      @default(0)
   maxQuantity       Int      @default(0)
-  unitCost          Float?
-  totalValue        Float?
+  unitCost          Decimal? @db.Decimal(12, 2)
+  totalValue        Decimal? @db.Decimal(12, 2)
   location          String?
   site              String?
   compatibleDevices String?
   remark            String?
   active            Boolean  @default(true)
+  isDemo            Boolean  @default(false)
   lastUpdated       String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  // ── Cost Analytics (COST-ANALYTICS-SPEC.md Phase 1) ──
+  costType           String?
+  yieldPerPage       Int?
+  depreciationMethod String?
+  usefulLifeMonths   Int?
+  usefulLifePages    Int?
+
   // Relations
   transactions       StockTransaction[]
   purchaseOrderItems PurchaseOrderItem[]
+  workOrderParts     WorkOrderPart[]
 
   @@index([productCode])
   @@index([category])
+  @@index([costType])
+  @@index([isDemo])
 }
 
 // ============================================================
@@ -498,8 +541,8 @@ model StockTransaction {
   workOrderId     String?
   workOrderNo     String?
   deviceId        String?
-  cost            Float?
-  unitCost        Float?
+  cost            Decimal? @db.Decimal(12, 2)
+  unitCost        Decimal? @db.Decimal(12, 2)
   vendor          String?
   receiver        String?
   purchaseOrderNo String?
@@ -534,28 +577,30 @@ model PurchaseOrder {
   orderDate  String
   supplier   String?
   status     String   @default("open")
-  totalValue Float?
+  totalValue Decimal? @db.Decimal(12, 2)
   createdBy  String?
   remark     String?
+  isDemo     Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   items PurchaseOrderItem[]
 
   @@index([status])
+  @@index([isDemo])
 }
 
 // ============================================================
 // 19) PurchaseOrderItem — รายการในใบสั่งซื้อ
 // ============================================================
 model PurchaseOrderItem {
-  id               String @id @default(cuid())
+  id               String   @id @default(cuid())
   purchaseOrderId  String
   stockItemId      String
   quantityOrdered  Int
-  quantityReceived Int    @default(0)
-  unitPrice        Float?
-  totalValue       Float?
+  quantityReceived Int      @default(0)
+  unitPrice        Decimal? @db.Decimal(12, 2)
+  totalValue       Decimal? @db.Decimal(12, 2)
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   stockItem     StockItem     @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
@@ -706,12 +751,23 @@ model AuditLog {
   // that predates this field. Site-scoped queries filter on this column
   // instead of resolving entityId → entity → Site (eliminates N+1).
   siteCode  String?
+  // P0-SCHEMA-FIXES: Enhanced attribution fields.
+  // userId/ipAddress/userAgent capture who/where/from-what-device the
+  // action was taken. Populated by audit-enhanced.ts wrapper (the B4
+  // frozen audit.ts is unchanged — values are also stored in detail._meta
+  // until audit.ts is refactored to populate these directly).
+  userId    String?
+  ipAddress String?
+  userAgent String?
+  isDemo    Boolean  @default(false)
   createdAt DateTime @default(now())
 
   @@index([entity, entityId])
   @@index([action])
   @@index([createdAt])
   @@index([siteCode, createdAt])
+  @@index([userId])
+  @@index([isDemo])
 }
 
 // ============================================================
@@ -721,7 +777,10 @@ model AppSetting {
   id        String   @id @default(cuid())
   key       String   @unique
   value     String
+  isDemo    Boolean  @default(false)
   updatedAt DateTime @updatedAt
+
+  @@index([isDemo])
 }
 
 // ============================================================
@@ -918,4 +977,71 @@ model SyncRunItem {
   @@index([syncRunId, action])
   @@index([externalKey])
   @@index([syncRunId, status])
+}
+
+// ============================================================
+// 23) PMSchedule — ตารางงานบำรุงรักษาป้องกัน (Preventive Maintenance)
+// ============================================================
+model PMSchedule {
+  id           String   @id @default(cuid())
+  scheduleNo   String?  @unique
+  title        String
+  description  String?
+  frequency    String   @default("monthly")
+  intervalDays Int?
+  dayOfMonth   Int?
+  weekday      String?
+  startMonth   Int?
+  deviceType   String?
+  site         String?
+  building     String?
+  floor        String?
+  department   String?
+  deviceId     String?
+  checklist    String?
+  active       Boolean  @default(true)
+  startDate    String?
+  lastRunDate  String?
+  nextRunDate  String?
+  autoCreateWO Boolean  @default(false)
+  assignedTo   String?
+  createdBy    String?
+  isDemo       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  device     Device?       @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  executions PMExecution[]
+
+  @@index([active, nextRunDate])
+  @@index([frequency])
+  @@index([site])
+  @@index([deviceType])
+  @@index([isDemo])
+}
+
+// ============================================================
+// 24) PMExecution — ผลการทำ PM แต่ละครั้ง
+// ============================================================
+model PMExecution {
+  id              String   @id @default(cuid())
+  scheduleId      String
+  workOrderId     String?
+  scheduledDate   String
+  executedDate    String?
+  status          String   @default("PENDING")
+  checklistResult String?
+  remark          String?
+  performedBy     String?
+  images          String?
+  isDemo          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  schedule PMSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId, scheduledDate])
+  @@index([status])
+  @@index([scheduledDate])
+  @@index([isDemo])
 }

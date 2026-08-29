@@ -1623,6 +1623,7 @@ export function TemplateEditor({
 
   // ── Auto-fit: calculate scale so the full page fits in the canvas area ──
   const [fitScale, setFitScale] = React.useState(1)
+  const paper = content.paper
   React.useEffect(() => {
     function calcFit() {
       const el = canvasRef.current
@@ -1854,7 +1855,6 @@ export function TemplateEditor({
   }, [selectedId, content, readOnly])
 
   // ── Render ──
-  const paper = content.paper
   const totalScale = fitScale * zoom // fitScale auto-fits, zoom is user adjustment on top
   const paperWidthPx = mmToPx(paper.width) * totalScale
   const paperHeightPx = mmToPx(paper.height) * totalScale

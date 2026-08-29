@@ -16,6 +16,7 @@
 
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
+import { logAudit } from '@/lib/audit'
 import { parseQuery, buildWhere, buildOrderBy, list, ok } from '@/lib/api/response'
 import { requireApiAuth } from '@/lib/api/auth'
 
@@ -30,7 +31,7 @@ const FIELD_MAP: Record<string, string> = {
   assetSiteCode: 'assetSiteCode',
 }
 
-const SEARCH_FIELDS = ['assetNo', 'brand', 'model', 'serial', 'department', 'location']
+const SEARCH_FIELDS = ['assetCode', 'brand', 'model', 'serialNumber', 'department', 'location']
 
 export async function GET(req: NextRequest) {
   const auth = await requireApiAuth(req, 'VIEW_DEVICES')
@@ -48,7 +49,7 @@ export async function GET(req: NextRequest) {
 
   const where = { ...buildWhere(query, FIELD_MAP, SEARCH_FIELDS), ...siteFilter }
   const orderBy = buildOrderBy(query, FIELD_MAP, {
-    assetNo: 'asc',
+    assetCode: 'asc',
   })
 
   // Parallel: count + fetch
@@ -110,15 +111,16 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Audit log
-    await db.auditLog.create({
-      data: {
-        timestamp: new Date().toISOString(),
-        action: 'CREATE',
-        user: auth.ctx.user.email,
-        details: JSON.stringify({ entity: 'Device', assetCode: created.assetCode, ...body }),
-      },
-    })
+    // Audit log — use the shared logAudit helper so field names are correct
+    // (AuditLog columns: action, entity, entityId, summary, detail, actor, siteCode, createdAt)
+    await logAudit(
+      'CREATE',
+      'Device',
+      created.id,
+      `เพิ่มอุปกรณ์ ${created.assetCode}`,
+      { entity: 'Device', assetCode: created.assetCode, ...body },
+      auth.ctx.user.email,
+    )
 
     const { created: createdResp } = await import('@/lib/api/response')
     return createdResp(created)

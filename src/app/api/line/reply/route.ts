@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { sendLINE } from '@/lib/notifications'
+import { requireAuth } from '@/lib/auth-middleware'
 
 /**
  * POST /api/line/reply
  *
  * Send a reply message to a LINE user from inside the staff/admin app
  * (e.g. when a technician types a message in the WO detail view).
+ *
+ * Requires authentication (VIEW_WORK_ORDERS or higher permission).
  *
  * This uses the LINE Push API (since we don't have a replyToken here),
  * so it requires the LINE user to have added the bot as a friend.
@@ -16,18 +19,13 @@ import { sendLINE } from '@/lib/notifications'
  *     lineUserId: string,         // LINE user ID to push to
  *     message:    string,         // message text
  *     woNumber?:  string,         // optional WO number (for context + audit)
- *     actor?:     string,         // staff email/username (PART 3: from auth)
- *     author?:    string,         // display name (defaults to actor)
+ *     author?:    string,         // display name (defaults to authenticated user)
  *   }
  *
  * Side effects:
  *   1. Sends a LINE Push message to {lineUserId}.
  *   2. Saves the message as a WorkOrderMessage (linked via WO number).
- *   3. Audit log entry (NOTIFY_LINE_REPLY).
- *
- * NOTE (PART 3 — Single User System):
- *   `actor` should be the logged-in User's email/id from auth context.
- *   Replace the body-fallback once NextAuth integration lands.
+ *   3. Audit log entry (NOTIFY_LINE_REPLY) with the authenticated actor.
  */
 
 async function logAuditLineReply(
@@ -54,12 +52,18 @@ async function logAuditLineReply(
 
 export async function POST(req: NextRequest) {
   try {
+    // ── Auth: reject unauthenticated callers ──
+    const auth = await requireAuth(req, 'WO_VIEW_OWN')
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+    const actorName = auth.user.username || auth.user.email || 'staff'
+
     const body = await req.json()
     const {
       lineUserId,
       message,
       woNumber,
-      actor,
       author,
     } = body as Record<string, unknown>
 
@@ -76,12 +80,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const actorName =
-      typeof actor === 'string' && actor.trim() ? actor.trim() : 'staff'
     const authorName =
-      typeof author === 'string' && author.trim()
-        ? author.trim()
-        : actorName
+      typeof author === 'string' && author.trim() ? author.trim() : actorName
     const woNum =
       typeof woNumber === 'string' ? woNumber.trim() : null
 

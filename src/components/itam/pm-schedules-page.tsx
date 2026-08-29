@@ -184,6 +184,9 @@ interface FormState {
   startMonth: string
   deviceType: string
   site: string
+  building: string
+  floor: string
+  department: string
   deviceId: string
   startDate: string
   autoCreateWO: boolean
@@ -201,6 +204,9 @@ const EMPTY_FORM: FormState = {
   startMonth: '1',
   deviceType: '',
   site: '',
+  building: '',
+  floor: '',
+  department: '',
   deviceId: '',
   startDate: todayISO(),
   autoCreateWO: false,
@@ -255,6 +261,104 @@ export function PMSchedulesPage() {
   })
   const sites = sitesData ?? []
 
+  // ── Fetch ALL active devices for the current site scope (single fetch) ──
+  // Replaces the previous 3 separate `distinct=…` fetches that had three bugs:
+  //   1) `pageSize=500` was ignored — the route only reads `limit` (default 100).
+  //   2) the response field is `devices`, not `data` — so the old `.data ?? []`
+  //      fallback made every dropdown render EMPTY (only the placeholder showed).
+  //   3) no `status` param — pulled ALL statuses instead of Active-only as the
+  //      user explicitly asked ("เฉพาะสถานะที่ใช้งานได้").
+  // Now we fetch up to 500 active devices ONCE and derive building / floor /
+  // department lists + per-option counts entirely client-side, so cascading
+  // (select Building → Floor list narrows → Department list narrows) is instant
+  // and we can show "(N เครื่อง)" next to each option.
+  const { data: activeDevicesData } = useQuery<{
+    devices: Array<{
+      building: string | null
+      floor: string | null
+      department: string | null
+      type: string | null
+    }>
+  }>({
+    queryKey: ['pm-active-devices', siteFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: '500', status: 'Active' })
+      if (siteFilter !== 'all') params.set('site', siteFilter)
+      const res = await fetch(`/api/devices?${params}`, { headers: getAuthHeaders() })
+      if (!res.ok) return { devices: [] }
+      return res.json()
+    },
+    staleTime: 60_000,
+  })
+
+  const allActive = activeDevicesData?.devices ?? []
+
+  // Buildings (all, within current site scope) + active device count per building.
+  const masterBuilding = React.useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const d of allActive) {
+      if (d.building) counts.set(d.building, (counts.get(d.building) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort(([a], [b]) => a.localeCompare(b, 'th'))
+      .map(([code, count]) => ({ code, label: code, count }))
+  }, [allActive])
+
+  // Floors (cascading: filtered by selected building) + active device count per floor.
+  const masterFloor = React.useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const d of allActive) {
+      if (!d.floor) continue
+      if (form.building && d.building !== form.building) continue
+      counts.set(d.floor, (counts.get(d.floor) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort(([a], [b]) => {
+        const na = Number(a)
+        const nb = Number(b)
+        if (!Number.isNaN(na) && !Number.isNaN(nb) && na !== nb) return na - nb
+        return a.localeCompare(b, 'th')
+      })
+      .map(([code, count]) => ({ code, label: code, count }))
+  }, [allActive, form.building])
+
+  // Departments (cascading: filtered by selected building + floor) + active device count.
+  const masterDepartment = React.useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const d of allActive) {
+      if (!d.department) continue
+      if (form.building && d.building !== form.building) continue
+      if (form.floor && d.floor !== form.floor) continue
+      counts.set(d.department, (counts.get(d.department) ?? 0) + 1)
+    }
+    return Array.from(counts.entries())
+      .sort(([a], [b]) => a.localeCompare(b, 'th'))
+      .map(([code, count]) => ({ code, label: code, count }))
+  }, [allActive, form.building, form.floor])
+
+  // Active device counts per type — used to annotate the device-type dropdown.
+  const deviceTypeCounts = React.useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const d of allActive) {
+      if (!d.type) continue
+      counts.set(d.type, (counts.get(d.type) ?? 0) + 1)
+    }
+    return counts
+  }, [allActive])
+
+  // Estimated active device count matching the WHOLE current form selection.
+  // Shown in the "เป้าหมายปัจจุบัน" summary so the user knows roughly how many
+  // machines the schedule will cover.
+  const targetDeviceCount = React.useMemo(() => {
+    return allActive.filter((d) => {
+      if (form.deviceType && d.type !== form.deviceType) return false
+      if (form.building && d.building !== form.building) return false
+      if (form.floor && d.floor !== form.floor) return false
+      if (form.department && d.department !== form.department) return false
+      return true
+    }).length
+  }, [allActive, form.deviceType, form.building, form.floor, form.department])
+
   // ── Fetch schedules ──
   const params = new URLSearchParams()
   if (activeFilter === 'active') params.set('active', 'true')
@@ -282,6 +386,9 @@ export function PMSchedulesPage() {
         startMonth: input.data.startMonth === '' ? null : Number(input.data.startMonth),
         deviceType: input.data.deviceType || null,
         site: input.data.site || null,
+        building: input.data.building || null,
+        floor: input.data.floor || null,
+        department: input.data.department || null,
         deviceId: input.data.deviceId || null,
         checklist: input.data.checklist.length > 0 ? input.data.checklist : null,
         startDate: input.data.startDate || null,
@@ -352,6 +459,9 @@ export function PMSchedulesPage() {
       startMonth: s.startMonth == null ? '' : String(s.startMonth),
       deviceType: s.deviceType ?? '',
       site: s.site ?? '',
+      building: (s as PMSchedule & { building?: string | null }).building ?? '',
+      floor: (s as PMSchedule & { floor?: string | null }).floor ?? '',
+      department: (s as PMSchedule & { department?: string | null }).department ?? '',
       deviceId: s.deviceId ?? '',
       startDate: s.startDate ?? todayISO(),
       autoCreateWO: s.autoCreateWO,
@@ -1257,7 +1367,7 @@ export function PMSchedulesPage() {
             {/* Target */}
             <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
               <Label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                กลุ่มเป้าหมาย
+                กลุ่มเป้าหมาย — เลือกได้หลายแบบ
               </Label>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div className="space-y-1.5">
@@ -1271,11 +1381,15 @@ export function PMSchedulesPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="__none__">ทุกประเภท</SelectItem>
-                      {DEVICE_TYPES.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {DEVICE_TYPE_LABELS[t] ?? t}
-                        </SelectItem>
-                      ))}
+                      {DEVICE_TYPES.map((t) => {
+                        const cnt = deviceTypeCounts.get(t) ?? 0
+                        return (
+                          <SelectItem key={t} value={t}>
+                            {DEVICE_TYPE_LABELS[t] ?? t}{' '}
+                            <span className="ml-1 text-[10px] text-slate-400">({cnt} เครื่อง)</span>
+                          </SelectItem>
+                        )
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1283,7 +1397,11 @@ export function PMSchedulesPage() {
                   <Label htmlFor="pm-sitesel" className="text-xs">สาขา</Label>
                   <Select
                     value={form.site || '__none__'}
-                    onValueChange={(v) => setForm((f) => ({ ...f, site: v === '__none__' ? '' : v }))}
+                    onValueChange={(v) => setForm((f) => ({
+                      ...f,
+                      site: v === '__none__' ? '' : v,
+                      building: '', floor: '', department: '',
+                    }))}
                   >
                     <SelectTrigger id="pm-sitesel" className="h-9 text-xs">
                       <SelectValue placeholder="ทุกสาขา" />
@@ -1297,6 +1415,210 @@ export function PMSchedulesPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              {/* ── เลือกแบบกลุ่มเพิ่มเติม ── */}
+              <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                <Label className="text-xs text-slate-500">เลือกแบบกลุ่มเพิ่มเติม (ไม่บังคับ)</Label>
+                <div className="flex flex-wrap gap-2">
+                  {/* All devices */}
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, deviceType: '', site: '', deviceId: '' }))}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] transition ${
+                      !form.deviceType && !form.site && !form.deviceId
+                        ? 'border-violet-400 bg-violet-100 text-violet-700 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-300'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-violet-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    📋 ทุกอุปกรณ์
+                  </button>
+                  {/* By type — PRINTER */}
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, deviceType: 'PRINTER', site: '', deviceId: '' }))}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] transition ${
+                      form.deviceType === 'PRINTER'
+                        ? 'border-orange-400 bg-orange-100 text-orange-700 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-300'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    🖨️ เครื่องพิมพ์
+                  </button>
+                  {/* By type — COPIER */}
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, deviceType: 'COPIER', site: '', deviceId: '' }))}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] transition ${
+                      form.deviceType === 'COPIER'
+                        ? 'border-teal-400 bg-teal-100 text-teal-700 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-300'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    📄 เครื่องถ่ายเอกสาร
+                  </button>
+                  {/* By type — MFP */}
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, deviceType: 'MFP', site: '', deviceId: '' }))}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] transition ${
+                      form.deviceType === 'MFP'
+                        ? 'border-amber-400 bg-amber-100 text-amber-700 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-amber-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    🖨️📋 มัลติฟังก์ชัน
+                  </button>
+                  {/* By type — COMPUTER */}
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, deviceType: 'COMPUTER', site: '', deviceId: '' }))}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] transition ${
+                      form.deviceType === 'COMPUTER'
+                        ? 'border-blue-400 bg-blue-100 text-blue-700 dark:border-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    💻 คอมพิวเตอร์
+                  </button>
+                  {/* By type — NETWORK */}
+                  <button
+                    type="button"
+                    onClick={() => setForm((f) => ({ ...f, deviceType: 'NETWORK', site: '', deviceId: '' }))}
+                    className={`rounded-md border px-2.5 py-1 text-[11px] transition ${
+                      form.deviceType === 'NETWORK'
+                        ? 'border-cyan-400 bg-cyan-100 text-cyan-700 dark:border-cyan-700 dark:bg-cyan-950 dark:text-cyan-300'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-cyan-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    🌐 อุปกรณ์เครือข่าย
+                  </button>
+                </div>
+
+                {/* Quick site selection */}
+                {sites.length > 0 && (
+                  <div className="mt-2">
+                    <Label className="text-xs text-slate-500">เลือกสาขาด่วน:</Label>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, site: '' }))}
+                        className={`rounded border px-1.5 py-0.5 text-[10px] transition ${
+                          !form.site
+                            ? 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-300'
+                            : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-violet-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                        }`}
+                      >
+                        ทุกสาขา
+                      </button>
+                      {sites.slice(0, 8).map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, site: s.code }))}
+                          className={`rounded border px-1.5 py-0.5 text-[10px] transition ${
+                            form.site === s.code
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                              : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                          }`}
+                        >
+                          {s.code}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── ตึก / ชั้น / แผนก (Chip Selector) ── */}
+                <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+                  <Label className="text-xs text-slate-500">กรองตามตำแหน่ง (ไม่บังคับ)</Label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {/* Building */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-400">ตึก/อาคาร</Label>
+                      <Select
+                        value={form.building || '__none__'}
+                        onValueChange={(v) => setForm((f) => ({
+                          ...f,
+                          building: v === '__none__' ? '' : v,
+                          floor: '', department: '',
+                        }))}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="ทุกตึก" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">ทุกตึก</SelectItem>
+                          {masterBuilding.map((b) => (
+                            <SelectItem key={b.code} value={b.label}>
+                              {b.label}{' '}
+                              <span className="ml-1 text-[10px] text-slate-400">({b.count} เครื่อง)</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Floor */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-400">ชั้น</Label>
+                      <Select
+                        value={form.floor || '__none__'}
+                        onValueChange={(v) => setForm((f) => ({
+                          ...f,
+                          floor: v === '__none__' ? '' : v,
+                          department: '',
+                        }))}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="ทุกชั้น" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">ทุกชั้น</SelectItem>
+                          {masterFloor.map((fl) => (
+                            <SelectItem key={fl.code} value={fl.label}>
+                              {fl.label}{' '}
+                              <span className="ml-1 text-[10px] text-slate-400">({fl.count} เครื่อง)</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* Department */}
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-400">แผนก</Label>
+                      <Select
+                        value={form.department || '__none__'}
+                        onValueChange={(v) => setForm((f) => ({ ...f, department: v === '__none__' ? '' : v }))}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="ทุกแผนก" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60">
+                          <SelectItem value="__none__">ทุกแผนก</SelectItem>
+                          {masterDepartment.map((d) => (
+                            <SelectItem key={d.code} value={d.label}>
+                              {d.label}{' '}
+                              <span className="ml-1 text-[10px] text-slate-400">({d.count} เครื่อง)</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Current selection summary */}
+                <div className="rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-600 dark:bg-slate-800/40 dark:text-slate-300">
+                  <strong>เป้าหมายปัจจุบัน:</strong>{' '}
+                  {form.deviceType ? DEVICE_TYPE_LABELS[form.deviceType] ?? form.deviceType : 'ทุกประเภท'}
+                  {form.site ? ` · สาขา ${form.site}` : ' · ทุกสาขา'}
+                  {form.building ? ` · ตึก ${form.building}` : ''}
+                  {form.floor ? ` · ชั้น ${form.floor}` : ''}
+                  {form.department ? ` · แผนก ${form.department}` : ''}
+                  <span className="ml-1 text-emerald-600 dark:text-emerald-400">
+                    {' '}· เป้าหมาย ~{targetDeviceCount} เครื่อง (ใช้งานอยู่)
+                  </span>
                 </div>
               </div>
             </div>

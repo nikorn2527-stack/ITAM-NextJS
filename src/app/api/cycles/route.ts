@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 
@@ -10,6 +11,10 @@ import { logAudit } from '@/lib/audit'
  * reality (the countdown reset fix from Issue 4).
  */
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'VIEW_DASHBOARD')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')?.trim() ?? ''
@@ -53,6 +58,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'METER_WRITE')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const body = await req.json()
     const { name, startDate, endDate, status, site } = body as {

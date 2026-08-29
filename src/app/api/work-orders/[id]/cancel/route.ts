@@ -34,7 +34,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAuth(req, 'WO_CREATE')
+  // Auth: loadAuthorizedWorkOrder does the site-scoped WO_CANCEL check.
+  // Basic auth here — wo-authz layer enforces the correct permission.
+  const auth = await requireAuth(req)
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
     const { id } = await params

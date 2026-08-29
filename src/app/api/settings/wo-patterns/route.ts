@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import {
   getActiveWoPattern,
@@ -6,7 +7,11 @@ import {
 } from '@/lib/wo-number-pattern'
 
 // GET /api/settings/wo-patterns — ดึงรูปแบบเลขใบงานทั้งหมด
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'SYSTEM_CONFIG')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     await ensureDefaultWoPatterns()
     const patterns = await db.woNumberPattern.findMany({
@@ -22,6 +27,10 @@ export async function GET() {
 
 // POST /api/settings/wo-patterns — สร้างรูปแบบเลขใบงานใหม่
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'SYSTEM_CONFIG')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const body = await req.json()
     const { name, pattern, description, defaultPrefix, seqPadding, seqStart } = body

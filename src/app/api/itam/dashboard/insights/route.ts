@@ -64,15 +64,30 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // ─── 2) MoM change ─────────────────────────────────────────────────────
+    // ─── 2) MoM change — based on SUM of pagesBw + pagesColor recorded
+    //    (by readingDate) in each calendar month, all readingTypes.
+    //    This matches the dashboard's "paper this month" definition.
+    const curMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+    const curDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    const curMonthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(curDaysInMonth).padStart(2, '0')}`
+    const prevMonthStart = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-01`
+    const prevDaysInMonth = new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 0).getDate()
+    const prevMonthEnd = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDaysInMonth).padStart(2, '0')}`
+
     const [curAgg, prevAgg] = await Promise.all([
       db.meterReading.aggregate({
         _sum: { pagesBw: true, pagesColor: true },
-        where: { readingMonth: currentMonth, device: siteFilter },
+        where: {
+          readingDate: { gte: curMonthStart, lte: curMonthEnd },
+          device: siteFilter,
+        },
       }),
       db.meterReading.aggregate({
         _sum: { pagesBw: true, pagesColor: true },
-        where: { readingMonth: prevMonth, device: siteFilter },
+        where: {
+          readingDate: { gte: prevMonthStart, lte: prevMonthEnd },
+          device: siteFilter,
+        },
       }),
     ])
     const curTotal = (curAgg._sum.pagesBw ?? 0) + (curAgg._sum.pagesColor ?? 0)
@@ -204,19 +219,117 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Sort + limit
-    highUsageList.sort((a, b) => Number(b.value) - Number(a.value))
-    colorHeavyList.sort((a, b) => Number(b.colorPercent) - Number(a.colorPercent))
-    insights.push(...highUsageList.slice(0, 5))
-    insights.push(...colorHeavyList.slice(0, 5))
+    // ─── 4) Smart, actionable insights — top 3 by priority with recommendations ──
+    // Compute cost impact (est. baht/month) for each insight:
+    //   - BW page ≈ 0.50 baht
+    //   - Color page ≈ 3.00 baht
+    //   - High-usage: extra cost vs avg
+    //   - Color-heavy: would save (colorSheets × (3.00 - 0.50)) if converted to BW
+    //   - Not-read: opportunity cost (avg sheets/device × count × 0.50)
+    const BW_COST = 0.5
+    const COLOR_COST = 3.0
+
+    interface EnrichedInsight extends Record<string, unknown> {
+      priority: number  // 1 = highest
+      costImpactBath?: number  // estimated monthly cost / saving
+      recommendation?: string
+      actionLabel?: string
+    }
+
+    const enriched: EnrichedInsight[] = []
+
+    // Not-read: priority 1 (data gap — affects billing accuracy)
+    if (notReadCount > 0) {
+      // Estimate using LAST MONTH's per-device average (not current month's
+      // partial data, which inflates the average when only a few devices
+      // have read so far). Fall back to a sensible per-device baseline.
+      const prevAvgPerDevice = meterRequiredActive > 0
+        ? Math.round(prevTotal / meterRequiredActive)
+        : 200
+      const estUncaptured = Math.round(prevAvgPerDevice * notReadCount * 0.9) // 90% of last month's avg (usage usually fluctuates)
+      enriched.push({
+        type: 'not_read',
+        count: notReadCount,
+        total: meterRequiredActive,
+        month: currentMonth,
+        priority: 1,
+        costImpactBath: Math.round(estUncaptured * BW_COST),
+        message: `${notReadCount} เครื่องยังไม่ได้จดมิเตอร์เดือนนี้ (คาดการณ์ข้อมูลที่ขาด ~${estUncaptured.toLocaleString()} แผ่น จากค่าเฉลี่ยเดือนก่อน)`,
+        recommendation: `เร่งจดมิเตอร์ ${notReadCount} เครื่องที่เหลือ — ข้อมูลที่หายไปจะกระทบความถูกต้องของรายงานต้นทุน`,
+        actionLabel: `ไปจดมิเตอร์ (${notReadCount} เครื่อง)`,
+      })
+    }
+
+    // MoM change: priority 2 (trend alert)
+    if (prevTotal > 0) {
+      const pct = Math.round(((curTotal - prevTotal) / prevTotal) * 100)
+      if (Math.abs(pct) >= 10) {
+        const dir = pct > 0 ? 'เพิ่มขึ้น' : 'ลดลง'
+        const deltaSheets = Math.abs(curTotal - prevTotal)
+        const deltaCost = Math.round(deltaSheets * BW_COST)
+        enriched.push({
+          type: 'mom_change',
+          month: currentMonth,
+          prevMonth,
+          current: curTotal,
+          prev: prevTotal,
+          percent: pct,
+          priority: 2,
+          costImpactBath: deltaCost,
+          message: `การใช้กระดาษ${dir} ${Math.abs(pct)}% เทียบเดือนก่อน (${prevTotal.toLocaleString()} → ${curTotal.toLocaleString()} แผ่น)`,
+          recommendation: pct > 0
+            ? `ตรวจสอบสาเหตุการใช้เพิ่ม ${deltaSheets.toLocaleString()} แผ่น — อาจเป็นการพิมพ์เอกสารจำนวนมากหรืออุปกรณ์ที่ตั้งค่าผิด`
+            : `ใช้กระดาษลดลง ${deltaSheets.toLocaleString()} แผ่น — ประหยัดได้ประมาณ ${deltaCost.toLocaleString()} บาท`,
+          actionLabel: 'ดูรายละเอียด',
+        })
+      }
+    }
+
+    // High-usage devices: priority 3 (cost opportunity)
+    for (const item of highUsageList.slice(0, 3)) {
+      const extraSheets = Number(item.value) - Number(item.avg)
+      const extraCost = Math.round(extraSheets * BW_COST)
+      enriched.push({
+        ...item,
+        priority: 3,
+        costImpactBath: extraCost,
+        recommendation: `ตรวจสอบ ${item.assetNo} — ใช้กระดาษ ${extraSheets.toLocaleString()} แผ่นเกินค่าเฉลี่ย (ประมาณ ${extraCost.toLocaleString()} บาท/เดือน) · พิจารณาตั้งค่าโควต้าหรือตรวจสอบการพิมพ์ผิดปกติ`,
+        actionLabel: `ดู ${item.assetNo}`,
+      })
+    }
+
+    // Color-heavy devices: priority 4 (cost saving opportunity)
+    for (const item of colorHeavyList.slice(0, 3)) {
+      const colorSheets = Number(item.colorSheets)
+      const potentialSave = Math.round(colorSheets * (COLOR_COST - BW_COST))
+      enriched.push({
+        ...item,
+        priority: 4,
+        costImpactBath: potentialSave,
+        recommendation: `${item.assetNo} ใช้สี ${colorSheets.toLocaleString()} แผ่น — หากปรับเป็นขาวดำจะประหยัด ~${potentialSave.toLocaleString()} บาท/เดือน · ตั้งค่า default เป็น BW หรือตรวจสอบเอกสารที่พิมพ์`,
+        actionLabel: `ดู ${item.assetNo}`,
+      })
+    }
+
+    // Sort by priority, then by cost impact desc within priority
+    enriched.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority
+      return (b.costImpactBath ?? 0) - (a.costImpactBath ?? 0)
+    })
 
     return NextResponse.json({
-      insights,
+      insights: enriched,
       meta: {
         currentMonth,
         prevMonth,
         userSites,
         generatedAt: new Date().toISOString(),
+        totals: {
+          currentMonthSheets: curTotal,
+          prevMonthSheets: prevTotal,
+          meterRequiredActive,
+          readThisMonth: readCount,
+        },
       },
     })
   } catch (err) {

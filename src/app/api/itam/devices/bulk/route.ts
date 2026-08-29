@@ -102,15 +102,17 @@ export async function POST(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'BULK_UPDATE_DEVICES',
-          user: user.email,
-          details: JSON.stringify({
+          entity: 'Device',
+          entityId: null,
+          summary: `อัปเดตอุปกรณ์หลายเครื่อง: ${updated} สำเร็จ, ${skipped} ข้าม (รวม ${assetNos.length})`,
+          detail: JSON.stringify({
             count: assetNos.length,
             updated,
             skipped,
             patch: cleanPatch,
           }),
+          actor: user.email,
         },
       })
     } catch { /* ignore */ }

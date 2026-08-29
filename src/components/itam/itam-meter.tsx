@@ -114,8 +114,8 @@ export function ItamMeter() {
   const totalPages = data?.pagination.totalPages ?? 0
 
   return (
-    <div className="space-y-4 p-4 md:p-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
+      <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จดมิเตอร์ (Real DB)</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">{total.toLocaleString()} รายการ</p>
@@ -133,9 +133,9 @@ export function ItamMeter() {
         </div>
       </div>
 
-      <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-        <CardContent className="p-0">
-          <div className="itam-scroll max-h-[60vh] overflow-auto">
+      <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <CardContent className="min-h-0 flex-1 p-0">
+          <div className="itam-scroll h-full overflow-auto">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
@@ -220,7 +220,7 @@ export function ItamMeter() {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           {isLoading ? (
             <Skeleton className="h-4 w-32" />
           ) : (
@@ -409,14 +409,14 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-hidden sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
+      <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
             <ClipboardList className="h-5 w-5 text-[#f97316]" />
             📝 จดมิเตอร์หลายเครื่อง
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="itam-scroll flex-1 min-h-0 space-y-3 overflow-y-auto">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <Label htmlFor="bulk-reading-date" className="text-xs font-medium text-slate-600 dark:text-slate-300">
@@ -438,7 +438,7 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 
           <div className="itam-scroll max-h-[55vh] overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800">
             <Table>
-              <TableHeader className="sticky top-0 z-10 bg-slate-50/90 backdrop-blur-sm dark:bg-slate-900/90">
+              <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="text-xs">รหัส</TableHead>
                   <TableHead className="text-xs">ชื่ออุปกรณ์</TableHead>

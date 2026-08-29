@@ -312,10 +312,8 @@ export function DemoManagementSection() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={resetting}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault()
-                void doReset()
-              }}
+              type="button"
+              onClick={() => void doReset()}
               disabled={resetting}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >

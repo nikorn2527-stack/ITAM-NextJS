@@ -573,10 +573,10 @@ function StickerTab() {
           <AlertDialogFooter>
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
+              type="button"
               className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
               disabled={deleteMutation.isPending}
-              onClick={(e) => {
-                e.preventDefault()
+              onClick={() => {
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
               }}
             >
@@ -961,10 +961,10 @@ function DocumentTab() {
           <AlertDialogFooter>
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
+              type="button"
               className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
               disabled={deleteMutation.isPending}
-              onClick={(e) => {
-                e.preventDefault()
+              onClick={() => {
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
               }}
             >
@@ -1641,10 +1641,10 @@ function WorkOrderTab() {
             <AlertDialogFooter>
               <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
               <AlertDialogAction
+                type="button"
                 className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
                 disabled={deleteMutation.isPending}
-                onClick={(e) => {
-                  e.preventDefault()
+                onClick={() => {
                   if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
                 }}
               >

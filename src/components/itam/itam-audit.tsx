@@ -14,6 +14,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Search, RefreshCw, ChevronLeft, ChevronRight, Download, ScrollText, Filter } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { useAuthStore } from '@/store/auth-store'
+import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
+import { runCustomExport } from '@/lib/custom-export'
+
+// ============================================================
+// Custom Export — Audit page (Task ID: FIX-1-2-EXPORT-PRINT)
+// ============================================================
+const AUDIT_EXPORT_COLUMNS: ExportColumn[] = [
+  { key: 'createdAt', label: 'วันที่เวลา', group: 'หลัก' },
+  { key: 'action', label: 'การกระทำ', group: 'หลัก' },
+  { key: 'entity', label: 'entity', group: 'หลัก' },
+  { key: 'summary', label: 'รายการ', group: 'หลัก' },
+  { key: 'actor', label: 'ผู้กระทำ', group: 'หลัก' },
+  { key: 'site', label: 'สาขา', group: 'หลัก' },
+]
 
 /**
  * Audit Log display (Task ID: FIX-RBAC-AUDIT-CYCLE-SITE — Issue 3).
@@ -137,6 +151,9 @@ export function ItamAudit() {
   const [page, setPage] = React.useState(1)
   const [limit] = React.useState(25)
 
+  // Custom export dialog state (Task ID: FIX-1-2-EXPORT-PRINT)
+  const [customExportOpen, setCustomExportOpen] = React.useState(false)
+
   const queryKey = React.useMemo(
     () => ['itam-audit', action, actor, search, startDate, endDate, page, limit],
     [action, actor, search, startDate, endDate, page, limit],
@@ -212,6 +229,59 @@ export function ItamAudit() {
     setPage(1)
   }
 
+  // ── Custom Export handler ── (Task ID: FIX-1-2-EXPORT-PRINT)
+  // Fetches ALL matching audit logs (ignoring pagination) and maps each
+  // row to the user-selected columns. The `site` column is best-effort:
+  // if the audit detail JSON contains a `site` field we use it; otherwise
+  // empty string. (AuditLog schema doesn't have a dedicated site column.)
+  const handleCustomExport = React.useCallback(
+    async (columns: ExportColumn[], format: ExportFormat) => {
+      // Re-fetch with a high limit so the export includes everything that
+      // matches the current filters, not just the current page.
+      const params = new URLSearchParams({ page: '1', limit: '10000' })
+      if (action !== 'all') params.set('action', action)
+      if (actor.trim()) params.set('actor', actor.trim())
+      if (search.trim()) params.set('q', search.trim())
+      if (startDate) params.set('startDate', startDate)
+      if (endDate) params.set('endDate', endDate)
+      const res = await fetch(`/api/itam/audit?${params}`, { headers: authHeaders() })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'โหลดข้อมูล audit ไม่สำเร็จ')
+      }
+      const json: { logs: AuditLog[] } = await res.json()
+      const allLogs = json.logs ?? []
+      if (allLogs.length === 0) {
+        toast.warning('ไม่มีข้อมูล audit ในตัวกรองปัจจุบันให้ส่งออก')
+        return
+      }
+      const rows: Record<string, unknown>[] = allLogs.map((l) => {
+        // Try to extract `site` from the detail JSON if present.
+        let siteVal = ''
+        if (l.detail) {
+          try {
+            const obj = JSON.parse(l.detail) as Record<string, unknown>
+            if (typeof obj.site === 'string') siteVal = obj.site
+            else if (typeof obj.siteName === 'string') siteVal = obj.siteName
+          } catch {
+            // detail wasn't JSON — leave siteVal empty
+          }
+        }
+        return {
+          createdAt: fmtTimestamp(l.createdAt),
+          action: actionLabel(l.action),
+          entity: l.entity ?? '',
+          summary: l.summary ?? '',
+          actor: l.actor ?? '',
+          site: siteVal,
+        }
+      })
+      runCustomExport(columns, format, rows, 'audit-log', 'รายงานประวัติการใช้งาน (Audit Log)')
+      toast.success(`ส่งออก ${rows.length} รายการ`)
+    },
+    [action, actor, search, startDate, endDate],
+  )
+
   const hasActiveFilter =
     action !== 'all' ||
     actor.trim() !== '' ||
@@ -244,6 +314,14 @@ export function ItamAudit() {
             className="dark:bg-slate-800 dark:border-slate-700"
           >
             <Download className="h-4 w-4" /> ส่งออก CSV
+          </Button>
+          {/* ส่งออก (custom) — Task ID: FIX-1-2-EXPORT-PRINT */}
+          <Button
+            variant="outline"
+            onClick={() => setCustomExportOpen(true)}
+            className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c]"
+          >
+            <Download className="h-4 w-4" /> ส่งออก
           </Button>
         </div>
       </div>
@@ -403,6 +481,16 @@ export function ItamAudit() {
           </div>
         </div>
       )}
+
+      {/* Custom Export Dialog — Task ID: FIX-1-2-EXPORT-PRINT */}
+      <CustomExportDialog
+        open={customExportOpen}
+        onOpenChange={setCustomExportOpen}
+        availableColumns={AUDIT_EXPORT_COLUMNS}
+        onExport={handleCustomExport}
+        storageKey="itam-audit-export-cols"
+        totalRows={total}
+      />
     </div>
   )
 }

@@ -86,6 +86,14 @@ const MonthlyReport = dynamic(() =>
 const ReportsHub = dynamic(() =>
   import('@/components/itam/reports-hub').then((m) => m.ReportsHub),
 )
+// ── Cost Analytics (COST-ANALYTICS-SPEC.md Phase 3) ──
+const MaterialCostReport = dynamic(() =>
+  import('@/components/itam/material-cost-report').then((m) => m.MaterialCostReport),
+)
+// ── PM (Preventive Maintenance) ──
+const PMSchedulesPage = dynamic(() =>
+  import('@/components/itam/pm-schedules-page').then((m) => m.PMSchedulesPage),
+)
 const MobileShell = dynamic(() =>
   import('@/components/itam/mobile').then((m) => m.MobileShell),
 )
@@ -268,7 +276,7 @@ export default function Home() {
         <DemoBanner />
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:ml-14">
-          <main className="flex-1 overflow-hidden pt-14 md:pt-0">
+          <main className="flex-1 overflow-x-hidden overflow-y-auto pt-14 md:pt-0">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activePage}
@@ -296,6 +304,8 @@ export default function Home() {
                 {activePage === 'templates' && <TemplatesPage />}
                 {activePage === 'monthly-report' && <MonthlyReport />}
                 {activePage === 'reports-hub' && <ReportsHub />}
+                {activePage === 'material-cost' && <MaterialCostReport />}
+                {activePage === 'pm-schedules' && <PMSchedulesPage />}
                 {activePage === 'mobile' && <MobileShell />}
                 {activePage === 'settings-v2' && <SettingsPageV2 />}
                 {activePage === 'work-orders' && <WorkOrdersPage />}

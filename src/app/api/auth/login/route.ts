@@ -1,16 +1,19 @@
 // ============================================================
-// POST /api/auth/login (Task ID: RBAC-DASHBOARD)
+// POST /api/auth/login (legacy compat endpoint)
 // ============================================================
 // Body: { email, password }
 // Returns: { user, token }
-// - password check ตอนนี้ข้ามไปก่อน (accept any password)
+// - Verifies password against stored hash using verifyPassword()
 // - sets HttpOnly cookie `itam-session`
+// - This is the legacy endpoint; new code should use /api/itam/auth/login
+//   (which uses JWT and supports username OR email).
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toAuthUser } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
+import { verifyPassword } from '@/lib/auth'
 import {
   AUTH_COOKIE,
   SESSION_TTL_MS,
@@ -35,7 +38,13 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
-    // password check skipped for now — accept any password (incl. empty)
+    const password = typeof body.password === 'string' ? body.password : ''
+    if (!password) {
+      return NextResponse.json(
+        { error: 'กรุณาระบุรหัสผ่าน' },
+        { status: 400 },
+      )
+    }
 
     const user = await db.user.findUnique({ where: { email } })
     if (!user) {
@@ -48,6 +57,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: 'บัญชีนี้ถูกปิดใช้งาน' },
         { status: 403 },
+      )
+    }
+
+    // Verify password against stored hash
+    const ok = verifyPassword(password, user.passwordHash, user.passwordSalt)
+    if (!ok) {
+      return NextResponse.json(
+        { error: 'รหัสผ่านไม่ถูกต้อง' },
+        { status: 401 },
       )
     }
 

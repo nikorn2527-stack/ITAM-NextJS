@@ -42,6 +42,10 @@ async function nextProductCode(): Promise<string> {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'STOCK_VIEW')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { searchParams } = new URL(req.url)
     const search = searchParams.get('search')?.trim() ?? ''
@@ -131,6 +135,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'STOCK_IN')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const body = await req.json()
     if (!body.productName || typeof body.productName !== 'string') {

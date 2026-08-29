@@ -21,8 +21,24 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   RefreshCw, FileSpreadsheet, FileText, ChevronLeft, ChevronRight,
   TrendingUp, Trophy, FileBarChart, Table as TableIcon, LayoutGrid,
+  Download,
 } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
+import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
+import { runCustomExport } from '@/lib/custom-export'
+
+// ============================================================
+// Custom Export — Paper Analytics (Task ID: FIX-1-2-EXPORT-PRINT)
+// ============================================================
+const PAPER_EXPORT_COLUMNS: ExportColumn[] = [
+  { key: 'month', label: 'เดือน', group: 'หลัก' },
+  { key: 'site', label: 'สาขา', group: 'หลัก' },
+  { key: 'device', label: 'อุปกรณ์', group: 'หลัก' },
+  { key: 'bw', label: 'แผ่น BW', group: 'แผ่น' },
+  { key: 'color', label: 'แผ่นสี', group: 'แผ่น' },
+  { key: 'total', label: 'แผ่นรวม', group: 'แผ่น' },
+  { key: 'cost', label: 'ต้นทุน', group: 'แผ่น' },
+]
 
 interface OverviewKpi {
   totalSheets: number
@@ -114,6 +130,9 @@ export function ItamPaperAnalytics() {
   const [department, setDepartment] = React.useState('')
   const [page, setPage] = React.useState(1)
   const [limit] = React.useState(20)
+
+  // Custom export dialog state (Task ID: FIX-1-2-EXPORT-PRINT)
+  const [customExportOpen, setCustomExportOpen] = React.useState(false)
 
   // Sites list for filter
   const [sites, setSites] = React.useState<string[]>([])
@@ -288,6 +307,47 @@ ${kpiHtml}
     toast.success(`ส่งออก Excel ${rows.length} แถว`)
   }
 
+  // ── Custom Export handler ── (Task ID: FIX-1-2-EXPORT-PRINT)
+  // Fetches the FULL detail view (all rows for the current filter, ignoring
+  // the in-page pagination) and maps each row to the column keys.
+  // • เดือน: shown as the month range that was filtered
+  // • ต้นทุน: estimated as bw*0.5 + color*3.0 baht (placeholder rates —
+  //   the API doesn't currently expose per-page cost; this gives the user
+  //   a rough "order of magnitude" figure that they can refine later).
+  const handleCustomExport = React.useCallback(
+    async (columns: ExportColumn[], format: ExportFormat) => {
+      const p = new URLSearchParams(baseParams)
+      p.set('page', '1')
+      p.set('limit', '10000')
+      const res = await fetch(`/api/itam/paper-analytics?view=detail&${p}`)
+      if (!res.ok) throw new Error('โหลดข้อมูลกระดาษไม่สำเร็จ')
+      const json: DetailResp = await res.json()
+      const allRows = json.rows ?? []
+      if (allRows.length === 0) {
+        toast.warning('ไม่มีข้อมูลการใช้กระดาษในช่วงที่เลือกให้ส่งออก')
+        return
+      }
+      const monthLabel = monthStart === monthEnd ? monthStart : `${monthStart} - ${monthEnd}`
+      const rows: Record<string, unknown>[] = allRows.map((r) => {
+        const bw = r.bw ?? 0
+        const color = r.color ?? 0
+        const cost = bw * 0.5 + color * 3.0
+        return {
+          month: monthLabel,
+          site: r.site ?? '',
+          device: `${r.brand ?? ''} ${r.model ?? ''}`.trim() || r.assetCode,
+          bw,
+          color,
+          total: r.total ?? (bw + color),
+          cost: cost.toFixed(2),
+        }
+      })
+      runCustomExport(columns, format, rows, 'paper-analytics', 'รายงานการใช้กระดาษ')
+      toast.success(`ส่งออก ${rows.length} รายการ`)
+    },
+    [baseParams, monthStart, monthEnd],
+  )
+
   return (
     <div className="flex h-full flex-col gap-4 p-4 md:p-6">
       <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -303,6 +363,16 @@ ${kpiHtml}
           </Button>
           <Button variant="outline" size="sm" type="button" onClick={exportPdfOverview} className="dark:bg-slate-800 dark:border-slate-700">
             <FileText className="h-4 w-4" /> PDF
+          </Button>
+          {/* ส่งออก (custom) — Task ID: FIX-1-2-EXPORT-PRINT */}
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={() => setCustomExportOpen(true)}
+            className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c]"
+          >
+            <Download className="h-4 w-4" /> ส่งออก
           </Button>
         </div>
       </div>
@@ -505,7 +575,7 @@ ${kpiHtml}
               <CardContent className="p-0">
                 <div className="itam-scroll max-h-[70vh] overflow-auto">
                   <Table>
-                    <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
+                    <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                       <TableRow>
                         <TableHead className="w-16">รหัส</TableHead>
                         <TableHead>เครื่อง</TableHead>
@@ -587,7 +657,7 @@ ${kpiHtml}
               <CardContent className="p-0">
                 <div className="itam-scroll max-h-[65vh] overflow-auto">
                   <Table>
-                    <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
+                    <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                       <TableRow>
                         <TableHead className="w-16">รหัส</TableHead>
                         <TableHead>เครื่อง</TableHead>
@@ -648,6 +718,16 @@ ${kpiHtml}
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Custom Export Dialog — Task ID: FIX-1-2-EXPORT-PRINT */}
+      <CustomExportDialog
+        open={customExportOpen}
+        onOpenChange={setCustomExportOpen}
+        availableColumns={PAPER_EXPORT_COLUMNS}
+        onExport={handleCustomExport}
+        storageKey="itam-paper-export-cols"
+        totalRows={detailQuery.data?.pagination.total ?? overviewQuery.data?.kpi.totalSheets ?? 0}
+      />
     </div>
   )
 }

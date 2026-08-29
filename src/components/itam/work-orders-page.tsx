@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
   TableBody,
@@ -79,6 +80,7 @@ import {
   ScanLine,
   Eye,
   X,
+  Calculator,
 } from 'lucide-react'
 import { formatThaiDate, relativeTime } from './types'
 import { TemplatePrintDialog } from './template-print-dialog'
@@ -2044,6 +2046,19 @@ function WorkOrderDetailContent({
   const [picAfter, setPicAfter] = React.useState<string | null>(wo.picAfter ?? null)
   const picAfterInputRef = React.useRef<HTMLInputElement>(null)
 
+  // Complete — Step 2: เบิกอะไหล่ตอนปิดงาน
+  // Lets the technician attach a parts request directly from the CompleteDialog.
+  // Same search/add-line pattern as the dedicated parts dialog, but with an
+  // auto-approve toggle that controls whether the WO actually completes or
+  // transitions to WAITING_PARTS instead.
+  const [completePartsSearch, setCompletePartsSearch] = React.useState('')
+  const [completePartsSearchResults, setCompletePartsSearchResults] = React.useState<PartsStockItem[]>([])
+  const [completePartsSearchLoading, setCompletePartsSearchLoading] = React.useState(false)
+  const [completePartsLines, setCompletePartsLines] = React.useState<
+    { productCode: string; productName: string; unit: string; quantity: string; remark: string; unitCost: number | null }[]
+  >([])
+  const [completeAutoApproveParts, setCompleteAutoApproveParts] = React.useState(false)
+
   // Cancel
   const [cancelOpen, setCancelOpen] = React.useState(false)
   const [cancelReason, setCancelReason] = React.useState('')
@@ -2331,6 +2346,50 @@ function WorkOrderDetailContent({
     }
   }, [partsOpen])
 
+  // Reset the CompleteDialog's Step-2 parts section whenever the dialog opens
+  // (mirrors the partsOpen reset above).
+  React.useEffect(() => {
+    if (completeOpen) {
+      setCompletePartsSearch('')
+      setCompletePartsSearchResults([])
+      setCompletePartsLines([])
+      setCompleteAutoApproveParts(false)
+    }
+  }, [completeOpen])
+
+  // Debounced parts search for the CompleteDialog's Step-2 section.
+  // Same pattern as the partsSearch effect above.
+  React.useEffect(() => {
+    if (!completePartsSearch.trim()) {
+      setCompletePartsSearchResults([])
+      return
+    }
+    let cancelled = false
+    setCompletePartsSearchLoading(true)
+    const t = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({
+          search: completePartsSearch.trim(),
+          pageSize: '20',
+        })
+        const res = await fetch(`/api/stock-items?${params.toString()}`, {
+          headers: getAuthHeaders(),
+        })
+        if (!res.ok) return
+        const json: PartsListApiResponse = await res.json()
+        if (!cancelled) setCompletePartsSearchResults(json.data ?? [])
+      } catch {
+        if (!cancelled) setCompletePartsSearchResults([])
+      } finally {
+        if (!cancelled) setCompletePartsSearchLoading(false)
+      }
+    }, 300)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [completePartsSearch])
+
   // Debounced parts search
   React.useEffect(() => {
     if (!partsSearch.trim()) {
@@ -2447,6 +2506,39 @@ function WorkOrderDetailContent({
     }
   }
 
+  // ── Complete — Step 2 parts helpers (เบิกอะไหล่ตอนปิดงาน) ──
+  function addCompletePart(item: PartsStockItem) {
+    if (completePartsLines.some((l) => l.productCode === item.productCode)) {
+      toast.error(`${item.productCode} มีอยู่ในรายการแล้ว`)
+      return
+    }
+    setCompletePartsLines((prev) => [
+      ...prev,
+      {
+        productCode: item.productCode,
+        productName: item.productName,
+        unit: item.unit,
+        unitCost: item.unitCost,
+        quantity: '1',
+        remark: '',
+      },
+    ])
+    setCompletePartsSearch('')
+    setCompletePartsSearchResults([])
+  }
+  function removeCompletePart(idx: number) {
+    setCompletePartsLines((prev) => prev.filter((_, i) => i !== idx))
+  }
+  function updateCompletePart(
+    idx: number,
+    key: 'quantity' | 'remark',
+    value: string,
+  ) {
+    setCompletePartsLines((prev) =>
+      prev.map((l, i) => (i === idx ? { ...l, [key]: value } : l)),
+    )
+  }
+
   async function handleComplete() {
     try {
       setCompleting(true)
@@ -2456,6 +2548,8 @@ function WorkOrderDetailContent({
         const opt = resolutions.find((r) => r.value === resolutionValue)
         group = opt?.group ?? ''
       }
+      // Filter to lines with a positive quantity before submission.
+      const validParts = completePartsLines.filter((l) => Number(l.quantity) > 0)
       const res = await fetch(`/api/work-orders/${wo.id}/complete`, {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
@@ -2465,16 +2559,47 @@ function WorkOrderDetailContent({
           resolutionGroup: group || null,
           picAfter: picAfter,
           actor: 'admin',
+          // Step 2: parts requested inline while completing the WO.
+          // When `autoApproveParts=true` the server creates APPROVED
+          // stock-outs (reduces stock immediately) so the WO can still
+          // complete in this request. When false, the server creates
+          // PENDING requests and flips the WO to WAITING_PARTS.
+          parts: validParts.map((l) => ({
+            productCode: l.productCode,
+            quantity: Number(l.quantity),
+            remark: l.remark.trim() || undefined,
+          })),
+          autoApproveParts: completeAutoApproveParts,
         }),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error ?? 'ปิดงานไม่สำเร็จ')
       }
-      toast.success('ปิดงานเรียบร้อย')
+      const json = await res.json().catch(() => ({}))
+      const partsCreated: number | undefined = json?.partsCreated
+      const autoApproved: boolean | undefined = json?.autoApproved
+      const newStatus: string | undefined = json?.data?.status
+      if (partsCreated && partsCreated > 0) {
+        if (newStatus === 'WAITING_PARTS' || autoApproved === false) {
+          toast.success(
+            `เพิ่มคำขอเบิกอะไหล่ ${partsCreated} รายการ — ใบงานเปลี่ยนสถานะเป็น "รออะไหล่"`,
+          )
+        } else {
+          toast.success(
+            `ปิดงานเรียบร้อย พร้อมเบิกอะไหล่อัตโนมัติ ${partsCreated} รายการ`,
+          )
+        }
+      } else {
+        toast.success('ปิดงานเรียบร้อย')
+      }
       setCompleteOpen(false)
       setCompleteNote('')
       onMutated()
+      // Invalidate the parts cache so the WO detail's parts list refreshes.
+      qc.invalidateQueries({ queryKey: ['wo-parts', wo.id] })
+      qc.invalidateQueries({ queryKey: ['stock-items'] })
+      qc.invalidateQueries({ queryKey: ['stock-pending'] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'ปิดงานไม่สำเร็จ')
     } finally {
@@ -2751,9 +2876,7 @@ function WorkOrderDetailContent({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() =>
-                window.open(`/api/work-orders/${wo.id}/print-sheet`, '_blank', 'noopener,noreferrer')
-              }
+              onClick={() => setPrintOpen(true)}
               aria-label="พิมพ์ใบงาน"
               title="พิมพ์ใบงาน"
               className="h-8 gap-1 px-2.5 text-xs"
@@ -3444,11 +3567,9 @@ function WorkOrderDetailContent({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={assigning}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
+              type="button"
               disabled={assigning || !techName.trim()}
-              onClick={(e) => {
-                e.preventDefault()
-                handleAssign()
-              }}
+              onClick={() => handleAssign()}
             >
               {assigning ? (
                 <RefreshCw className="h-4 w-4 animate-spin" />
@@ -3560,13 +3681,221 @@ function WorkOrderDetailContent({
               </div>
             </div>
           </div>
+
+          {/* ── Step 2: เบิกอะไหล่ตอนปิดงาน ── */}
+          {/* Purple-bordered box mirroring the parts dialog pattern, but
+              with an auto-approve toggle that controls whether the WO
+              actually completes in this request (auto) or transitions to
+              WAITING_PARTS (manual). */}
+          <div className="space-y-3 rounded-lg border border-purple-200 bg-purple-50/40 p-3 dark:border-purple-900/60 dark:bg-purple-950/20">
+            <div className="flex items-center gap-2">
+              <Calculator className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              <span className="text-sm font-semibold text-purple-700 dark:text-purple-300">
+                เบิกอะไหล่ตอนปิดงาน
+              </span>
+              <Badge
+                variant="outline"
+                className="border-purple-200 bg-purple-100 text-[10px] text-purple-700 dark:border-purple-800 dark:bg-purple-950 dark:text-purple-300"
+              >
+                ไม่บังคับ
+              </Badge>
+            </div>
+            <p className="text-[11px] leading-relaxed text-purple-700/80 dark:text-purple-300/80">
+              เพิ่มอะไหล่ที่ใช้ซ่อม — หากเปิดใช้ &quot;อนุมัติอัตโนมัติ&quot; ระบบจะลดสต็อก
+              และปิดงานให้ทันที หากปิดไว้ ใบงานจะเปลี่ยนสถานะเป็น &quot;รออะไหล่&quot;
+              และรอการอนุมัติก่อนปิดงาน
+            </p>
+
+            {/* Search box */}
+            <div className="grid gap-1.5">
+              <Label
+                htmlFor="complete-parts-search"
+                className="text-purple-700 dark:text-purple-300"
+              >
+                ค้นหาสินค้า
+              </Label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="complete-parts-search"
+                  value={completePartsSearch}
+                  onChange={(e) => setCompletePartsSearch(e.target.value)}
+                  placeholder="พิมพ์รหัสสินค้า / ชื่อ / แบรนด์"
+                  className="bg-white pl-9 dark:bg-slate-900"
+                />
+              </div>
+              {completePartsSearchLoading && (
+                <div className="text-[11px] text-muted-foreground">
+                  กำลังค้นหา...
+                </div>
+              )}
+              {!completePartsSearchLoading &&
+                completePartsSearchResults.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto rounded-md border border-purple-200 bg-card dark:border-purple-900/60">
+                    {completePartsSearchResults.map((it) => (
+                      <button
+                        key={it.id}
+                        type="button"
+                        onClick={() => addCompletePart(it)}
+                        disabled={!it.active}
+                        className="flex w-full items-center justify-between gap-2 border-b border-purple-100 px-3 py-2 text-left text-xs last:border-b-0 hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-purple-900/60 dark:hover:bg-purple-950/40"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-mono font-semibold text-purple-600 dark:text-purple-400">
+                            {it.productCode}
+                          </div>
+                          <div className="truncate text-muted-foreground">
+                            {it.productName}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <span>
+                            คงเหลือ: {it.quantity} {it.unit}
+                          </span>
+                          <Plus className="h-3 w-3 text-purple-500" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              {!completePartsSearchLoading &&
+                completePartsSearch.trim() &&
+                completePartsSearchResults.length === 0 && (
+                  <div className="rounded-md border border-dashed border-purple-200 p-3 text-center text-[11px] text-muted-foreground dark:border-purple-900/60">
+                    ไม่พบสินค้าที่ตรงกับ &quot;{completePartsSearch}&quot;
+                  </div>
+                )}
+            </div>
+
+            {/* Selected parts list */}
+            <div className="grid gap-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-purple-700 dark:text-purple-300">
+                  รายการที่เบิก ({completePartsLines.length})
+                </Label>
+              </div>
+              {completePartsLines.length === 0 ? (
+                <div className="rounded-md border border-dashed border-purple-200 p-3 text-center text-[11px] text-muted-foreground dark:border-purple-900/60">
+                  ยังไม่ได้เลือกอะไหล่ — ค้นหาแล้วกด + เพื่อเพิ่ม
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {completePartsLines.map((line, idx) => (
+                    <div
+                      key={`${line.productCode}-${idx}`}
+                      className="grid grid-cols-12 gap-2 rounded-md border border-purple-100 bg-white p-2 dark:border-purple-900/60 dark:bg-slate-900"
+                    >
+                      <div className="col-span-12 sm:col-span-6">
+                        <div className="font-mono text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                          {line.productCode}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {line.productName}
+                        </div>
+                        {line.unitCost !== null && line.unitCost > 0 && (
+                          <div className="text-[10px] text-muted-foreground">
+                            ราคา/หน่วย: ฿
+                            {line.unitCost.toLocaleString('th-TH', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div className="col-span-4 sm:col-span-2">
+                        <Input
+                          type="number"
+                          min="1"
+                          value={line.quantity}
+                          onChange={(e) =>
+                            updateCompletePart(idx, 'quantity', e.target.value)
+                          }
+                          className="h-8 text-xs"
+                          placeholder="จำนวน"
+                        />
+                      </div>
+                      <div className="col-span-7 sm:col-span-3">
+                        <Input
+                          value={line.remark}
+                          onChange={(e) =>
+                            updateCompletePart(idx, 'remark', e.target.value)
+                          }
+                          className="h-8 text-xs"
+                          placeholder="หมายเหตุ"
+                        />
+                      </div>
+                      <div className="col-span-1 flex items-center justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                          onClick={() => removeCompletePart(idx)}
+                          aria-label="ลบรายการ"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Auto-approve toggle + status hint */}
+            {completePartsLines.length > 0 && (
+              <div className="space-y-2">
+                <label
+                  htmlFor="complete-auto-approve"
+                  className="flex cursor-pointer items-start gap-2 text-xs"
+                >
+                  <Checkbox
+                    id="complete-auto-approve"
+                    checked={completeAutoApproveParts}
+                    onCheckedChange={(v) =>
+                      setCompleteAutoApproveParts(v === true)
+                    }
+                    className="mt-0.5 border-emerald-400 data-[state=checked]:border-emerald-600 data-[state=checked]:bg-emerald-600"
+                  />
+                  <span className="flex-1">
+                    <span className="font-medium text-emerald-700 dark:text-emerald-300">
+                      อนุมัติเบิกอะไหล่อัตโนมัติ
+                    </span>
+                    <br />
+                    <span className="text-muted-foreground">
+                      เมื่อเปิดใช้ — ระบบจะลดสต็อกและปิดงานให้ทันที
+                    </span>
+                  </span>
+                </label>
+                <div
+                  className={
+                    completeAutoApproveParts
+                      ? 'rounded-md border border-emerald-200 bg-emerald-50 p-2 text-[11px] text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
+                      : 'rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
+                  }
+                >
+                  {completeAutoApproveParts ? (
+                    <>
+                      ✓ ปิดงานพร้อมเบิกอะไหล่ {completePartsLines.length} รายการ
+                      (ลดสต็อกทันที)
+                    </>
+                  ) : (
+                    <>
+                      ⚠ ใบงานจะเปลี่ยนสถานะเป็น &quot;รออะไหล่&quot; และรอการอนุมัติอะไหล่ก่อนปิดงาน
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <AlertDialogFooter>
             <AlertDialogCancel disabled={completing}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
+              type="button"
               disabled={completing}
-              onClick={(e) => {
-                e.preventDefault()
-                handleComplete()
+              onClick={() => {
+                void handleComplete()
               }}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
@@ -3605,11 +3934,9 @@ function WorkOrderDetailContent({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={canceling}>ปิด</AlertDialogCancel>
             <AlertDialogAction
+              type="button"
               disabled={canceling || !cancelReason.trim()}
-              onClick={(e) => {
-                e.preventDefault()
-                handleCancel()
-              }}
+              onClick={() => handleCancel()}
               className="bg-rose-600 hover:bg-rose-700"
             >
               {canceling ? (

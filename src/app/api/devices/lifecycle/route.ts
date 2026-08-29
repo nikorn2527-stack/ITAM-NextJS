@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 
 /**
@@ -105,7 +106,11 @@ function agingBucketLabel(ageInMonths: number): string {
 
 const AGING_BUCKET_ORDER = ['ไม่ระบุ', '< 1 ปี', '1–3 ปี', '3–5 ปี', '> 5 ปี']
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'VIEW_DEVICES')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     // Fetch only the columns we need for lifecycle analysis. The schema has
     // indexes on `status` and `deviceType` so the groupBy queries below are

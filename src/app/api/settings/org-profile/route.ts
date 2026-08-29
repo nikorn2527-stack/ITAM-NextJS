@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { getOrgProfile, updateOrgProfile } from '@/lib/org-profile'
 
 // GET /api/settings/org-profile — ดึง profile ขององค์กร
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'VIEW_DEVICES')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const profile = await getOrgProfile()
     return NextResponse.json({ profile })
@@ -15,6 +20,10 @@ export async function GET() {
 
 // PUT /api/settings/org-profile — อัปเดต profile
 export async function PUT(req: NextRequest) {
+  const auth = await requireAuth(req, 'SYSTEM_CONFIG')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const body = await req.json()
     const profile = await updateOrgProfile(body)

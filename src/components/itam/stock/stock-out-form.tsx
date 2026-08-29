@@ -63,6 +63,9 @@ import {
   Loader2,
   Save,
   AlertTriangle,
+  Search,
+  FileText,
+  X,
 } from 'lucide-react'
 import {
   type StockItem,
@@ -80,11 +83,27 @@ interface StockListResponse {
   stats: { total: number; lowStock: number; totalValue: number; thisMonth: number }
 }
 
+interface WorkOrderLite {
+  id: string
+  woNumber: string | null
+  subject: string
+  status: string
+  reporterName: string | null
+  building: string | null
+  location: string | null
+}
+
+interface WorkOrdersSearchResponse {
+  data: WorkOrderLite[]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+}
+
 interface FormState {
   txnDate: string
   requester: string
   department: string
   purpose: string
+  workOrderId: string
   workOrderNo: string
   remark: string
 }
@@ -131,10 +150,42 @@ export function StockOutForm() {
     requester: '',
     department: '',
     purpose: '',
+    workOrderId: '',
     workOrderNo: '',
     remark: '',
   })
   const [lines, setLines] = React.useState<LineItem[]>([newLineItem()])
+
+  // ── Work-order search (Stock OUT → link to WO) ──
+  // The WO field used to be a plain text Input — replaced with a
+  // search-then-pick dropdown that stores both `workOrderId` (FK,
+  // resolved server-side) and `workOrderNo` (display).
+  const [woSearch, setWoSearch] = React.useState('')
+  const [woSearchOpen, setWoSearchOpen] = React.useState(false)
+  const [woDebounced, setWoDebounced] = React.useState('')
+  const [selectedWo, setSelectedWo] = React.useState<WorkOrderLite | null>(null)
+  React.useEffect(() => {
+    const t = setTimeout(() => setWoDebounced(woSearch.trim()), 300)
+    return () => clearTimeout(t)
+  }, [woSearch])
+  const { data: woSearchData, isLoading: woSearchLoading } =
+    useQuery<WorkOrdersSearchResponse>({
+      queryKey: ['wo-search-stock-out', woDebounced],
+      queryFn: async () => {
+        if (!woDebounced) return { data: [], pagination: { page: 1, pageSize: 20, total: 0, totalPages: 0 } }
+        const params = new URLSearchParams({
+          status: 'ALL',
+          search: woDebounced,
+          pageSize: '20',
+        })
+        return authFetch<WorkOrdersSearchResponse>(
+          `/api/work-orders?${params.toString()}`,
+        )
+      },
+      enabled: woDebounced.length > 0,
+      staleTime: 30_000,
+    })
+  const woResults: WorkOrderLite[] = woSearchData?.data ?? []
 
   const { data, isLoading } = useQuery<StockListResponse>({
     queryKey: stockKeys.list({ pageSize: 200, forForm: 'out' }),
@@ -175,6 +226,11 @@ export function StockOutForm() {
               requester: form.requester.trim() || null,
               department: form.department.trim() || null,
               purpose: form.purpose.trim() || null,
+              // Send BOTH the FK id and the display string — the API's
+              // `resolveWorkOrderReference` prefers `workOrderId` but
+              // also accepts `workOrderNo` as a fallback (so legacy
+              // lookups by woNumber still work).
+              workOrderId: form.workOrderId.trim() || null,
               workOrderNo: form.workOrderNo.trim() || null,
               performedBy: form.requester.trim() || null,
               reason: form.purpose.trim() || null,
@@ -199,7 +255,10 @@ export function StockOutForm() {
       toast.success(`เบิกออกสต็อกเรียบร้อย (${count} รายการ)`)
       qc.invalidateQueries({ queryKey: ['stock-items'] })
       setLines([newLineItem()])
-      setForm((f) => ({ ...f, workOrderNo: '', remark: '' }))
+      setForm((f) => ({ ...f, workOrderId: '', workOrderNo: '', remark: '' }))
+      setSelectedWo(null)
+      setWoSearch('')
+      setWoDebounced('')
     },
     onError: (err: unknown) => {
       toast.error(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
@@ -321,13 +380,151 @@ export function StockOutForm() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="out-wo">ใบสั่งซ่อมเลขที่ <span className="text-[10px] text-slate-400">(ไม่บังคับ)</span></Label>
-            <Input
-              id="out-wo"
-              placeholder="WO-YYYYMMDD-NNN"
-              value={form.workOrderNo}
-              onChange={(e) => setForm((f) => ({ ...f, workOrderNo: e.target.value }))}
-              className="dark:bg-slate-800 dark:border-slate-700"
+
+            {/* Hidden inputs keep the actual form values for submission.
+                The visible UI is the search input + chip below. */}
+            <input
+              type="hidden"
+              name="workOrderId"
+              value={form.workOrderId}
             />
+            <input
+              type="hidden"
+              name="workOrderNo"
+              value={form.workOrderNo}
+            />
+
+            {selectedWo ? (
+              // Selected WO chip (emerald) — woNumber + subject + reporter + building + remove.
+              <div className="flex items-start gap-2 rounded-md border border-emerald-300 bg-emerald-50 p-2 dark:border-emerald-700 dark:bg-emerald-950/30">
+                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                      {selectedWo.woNumber ?? selectedWo.id}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-200 bg-emerald-100 px-1 py-0 text-[9px] text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                    >
+                      {selectedWo.status || 'WO'}
+                    </Badge>
+                  </div>
+                  <div className="truncate text-[11px] text-emerald-700/80 dark:text-emerald-300/80">
+                    {selectedWo.subject}
+                  </div>
+                  <div className="text-[10px] text-emerald-700/70 dark:text-emerald-300/70">
+                    {selectedWo.reporterName ?? '—'}
+                    {selectedWo.building ? ` • ${selectedWo.building}` : ''}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedWo(null)
+                    setForm((f) => ({ ...f, workOrderId: '', workOrderNo: '' }))
+                    setWoSearch('')
+                    setWoDebounced('')
+                    setWoSearchOpen(false)
+                  }}
+                  className="shrink-0 rounded p-1 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-900 dark:text-emerald-300 dark:hover:bg-emerald-900/40 dark:hover:text-emerald-100"
+                  aria-label="ลบใบสั่งซ่อมที่เลือก"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              // Search Input + results dropdown (Popover + Command — same
+              // pattern as the product picker in the line items table).
+              <Popover open={woSearchOpen} onOpenChange={setWoSearchOpen}>
+                <PopoverTrigger asChild>
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      id="out-wo"
+                      value={woSearch}
+                      onChange={(e) => {
+                        setWoSearch(e.target.value)
+                        setWoSearchOpen(true)
+                      }}
+                      onFocus={() => setWoSearchOpen(true)}
+                      onBlur={() => setTimeout(() => setWoSearchOpen(false), 200)}
+                      placeholder="ค้นหา WO-YYYYMMDD-NNN / หัวข้อ / อาคาร / ผู้แจ้ง"
+                      className="pl-9 dark:bg-slate-800 dark:border-slate-700"
+                      autoComplete="off"
+                    />
+                    <ChevronsUpDown className="absolute right-1.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  </div>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-[--radix-popover-trigger-width] p-0 dark:border-slate-700 dark:bg-slate-900"
+                  align="start"
+                  onPointerDown={(e) => e.preventDefault()}
+                >
+                  <Command shouldFilter={false}>
+                    <CommandList className="itam-scroll max-h-72 overflow-y-auto">
+                      {woSearchLoading && (
+                        <div className="flex items-center gap-2 px-3 py-2 text-[11px] text-slate-500">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          กำลังค้นหา...
+                        </div>
+                      )}
+                      {!woSearchLoading && woResults.length === 0 && (
+                        <CommandEmpty>
+                          {woSearch.trim()
+                            ? 'ไม่พบใบสั่งซ่อม'
+                            : 'พิมพ์เพื่อค้นหาใบสั่งซ่อม (WO-YYYYMMDD-NNN / หัวข้อ / อาคาร / ผู้แจ้ง)'}
+                        </CommandEmpty>
+                      )}
+                      {!woSearchLoading && woResults.length > 0 && (
+                        <CommandGroup>
+                          {woResults.map((wo) => (
+                            <CommandItem
+                              key={wo.id}
+                              value={`${wo.woNumber ?? ''} ${wo.subject} ${wo.reporterName ?? ''} ${wo.building ?? ''}`}
+                              onSelect={() => {
+                                setSelectedWo(wo)
+                                setForm((f) => ({
+                                  ...f,
+                                  workOrderId: wo.id,
+                                  workOrderNo: wo.woNumber ?? '',
+                                }))
+                                setWoSearch('')
+                                setWoDebounced('')
+                                setWoSearchOpen(false)
+                              }}
+                              className="hover:bg-slate-100 dark:hover:bg-slate-800"
+                            >
+                              <Check className="mr-2 h-3.5 w-3.5 opacity-0" />
+                              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                                    {wo.woNumber ?? '—'}
+                                  </span>
+                                  <Badge
+                                    variant="outline"
+                                    className="px-1 py-0 text-[9px] text-slate-500"
+                                  >
+                                    {wo.status}
+                                  </Badge>
+                                </div>
+                                <span className="truncate text-xs text-slate-700 dark:text-slate-200">
+                                  {wo.subject}
+                                </span>
+                                <span className="text-[10px] text-slate-500">
+                                  {wo.reporterName ?? '—'}
+                                  {wo.building ? ` • ${wo.building}` : ''}
+                                </span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="out-remark">หมายเหตุ</Label>
@@ -486,7 +683,11 @@ export function StockOutForm() {
           variant="outline"
           onClick={() => {
             setLines([newLineItem()])
-            setForm({ txnDate: todayISO(), requester: '', department: '', purpose: '', workOrderNo: '', remark: '' })
+            setForm({ txnDate: todayISO(), requester: '', department: '', purpose: '', workOrderId: '', workOrderNo: '', remark: '' })
+            setSelectedWo(null)
+            setWoSearch('')
+            setWoDebounced('')
+            setWoSearchOpen(false)
           }}
           disabled={submitMutation.isPending}
           className="dark:bg-slate-800 dark:border-slate-700"

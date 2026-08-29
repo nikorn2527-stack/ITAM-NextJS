@@ -69,6 +69,16 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'STOCK_VIEW')
+  if (!auth.ok) {
+    return new NextResponse(
+      `<h1>401 — กรุณาเข้าสู่ระบบ</h1>`,
+      {
+        status: auth.status,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      },
+    )
+  }
   try {
     const { id: stockItemId } = await params
     const { searchParams } = new URL(req.url)

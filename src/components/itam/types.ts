@@ -478,13 +478,23 @@ export const DEVICE_STATUS_OPTIONS = [
 ] as const
 
 export const MASTER_CATEGORIES = [
-  'Brand',
-  'Type',
-  'Model',
   'Department',
   'Status',
   'DeviceGroup',
+  'DeviceClassification',
   'Site',
+  'Affiliation',
+  'RepairGroup',
+  'RepairRequest',
+  'RepairResolution',
+  'Building',
+  'Floor',
+  'ContractNo',
+  'Product',
+  'ProductCategory',
+  'Purpose',
+  'StockSource',
+  'Supplier',
 ] as const
 
 export function statusBadgeClass(status: string): string {

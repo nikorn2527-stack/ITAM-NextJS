@@ -1,6 +1,6 @@
-const { PrismaClient } = require("@prisma/client");
-const fs = require("fs");
-const csv = require("csv-parse/sync");
+const { PrismaClient } = require("@prisma/client"); // eslint-disable-line @typescript-eslint/no-require-imports
+const fs = require("fs"); // eslint-disable-line @typescript-eslint/no-require-imports
+const csv = require("csv-parse/sync"); // eslint-disable-line @typescript-eslint/no-require-imports
 
 const p = new PrismaClient({ log: ["error"] });
 

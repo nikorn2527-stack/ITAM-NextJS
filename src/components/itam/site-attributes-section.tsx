@@ -682,10 +682,8 @@ export function SiteAttributesSection() {
               ยกเลิก
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault()
-                void confirmDelete()
-              }}
+              type="button"
+              onClick={() => void confirmDelete()}
               disabled={deleting}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >

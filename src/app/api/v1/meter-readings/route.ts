@@ -7,10 +7,10 @@
  *   Auth: VIEW_DEVICES
  *
  *   Standard query params:
- *     ?q=search                    — search assetNo, remark, readBy
+ *     ?q=search                    — search assetCode, remark, readBy
  *     ?page=1&limit=20             — pagination
  *     ?sort=-readingDate           — sort (prefix - for desc)
- *     ?filter[assetNo]=X           — exact match
+ *     ?filter[assetCode]=X           — exact match
  *     ?filter[readingMonth]=2026-08
  *     ?filter[readingType]=MONTHLY
  *     ?filter[readBy]=someone
@@ -26,12 +26,12 @@
  * ════════════════════════════════════════════════════════════════════════
  *   Auth: METER_WRITE
  *
- *   Body: { assetNo, meterBw, meterColor?, prevMeterBw?, prevMeterColor?,
+ *   Body: { assetCode, meterBw, meterColor?, prevMeterBw?, prevMeterColor?,
  *           readingDate?, readingMonth?, readingType?, remark?,
  *           locationAtReading?, siteAtReading?, buildingAtReading?,
  *           floorAtReading?, departmentAtReading?, departmentCodeAtReading? }
  *
- *   • assetNo required (else 400 BAD_REQUEST).
+ *   • assetCode required (else 400 BAD_REQUEST).
  *   • Device must exist (else 404 NOT_FOUND 'device').
  *   • User must have site access to device.site (else 403 FORBIDDEN).
  *   • If prevMeter* not provided → look up device's last reading.
@@ -219,10 +219,11 @@ export async function POST(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'METER_WRITE',
-          user: user.email,
-          details: JSON.stringify({
+          entity: 'MeterReading',
+          entityId: saved.id,
+          summary: `จดมิเตอร์ ${device.assetCode}: BW=${meterBw} สี=${meterColor} (${readingType})`,
+          detail: JSON.stringify({
             assetCode: device.assetCode,
             meterBw,
             meterColor,
@@ -234,6 +235,7 @@ export async function POST(req: NextRequest) {
             reset: isReset,
             readingMonth: finalReadingMonth,
           }),
+          actor: user.email,
         },
       })
     } catch {

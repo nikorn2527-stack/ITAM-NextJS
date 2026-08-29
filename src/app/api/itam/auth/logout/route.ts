@@ -20,10 +20,12 @@ export async function POST(req: Request) {
   try {
     await db.auditLog.create({
       data: {
-        timestamp: new Date().toISOString(),
         action: 'LOGOUT',
-        user: auth.user.email,
-        details: JSON.stringify({ method: 'password' }),
+        entity: 'User',
+        entityId: auth.user.id ?? null,
+        summary: `ออกจากระบบ: ${auth.user.email}`,
+        detail: JSON.stringify({ method: 'password' }),
+        actor: auth.user.email,
       },
     })
   } catch {
