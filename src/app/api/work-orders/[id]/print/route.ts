@@ -24,7 +24,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 
-type PaperKey = 'a4-portrait' | 'a4-landscape' | 'a5-portrait'
+type PaperKey = 'a4-portrait' | 'a4-landscape' | 'a5-portrait' | 'ticket-80' | 'ticket-58'
 
 const PAPER_SIZES: Record<
   PaperKey,
@@ -37,6 +37,8 @@ const PAPER_SIZES: Record<
     maxWidth: '277mm',
   },
   'a5-portrait': { size: 'A5 portrait', landscape: false, maxWidth: '130mm' },
+  'ticket-80': { size: '80mm auto', landscape: false, maxWidth: '72mm' },
+  'ticket-58': { size: '58mm auto', landscape: false, maxWidth: '52mm' },
 }
 
 function esc(input: unknown): string {
@@ -526,9 +528,98 @@ export async function GET(
         break-inside: avoid;
       }
     }
+
+    /* ── Ticket / Thermal printer styles (80mm / 58mm) ── */
+    body.ticket {
+      padding: 4px;
+    }
+    body.ticket .page {
+      padding: 4mm 2mm;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    body.ticket .header {
+      flex-direction: column;
+      gap: 4px;
+      padding-bottom: 6px;
+      margin-bottom: 6px;
+      border-bottom: 1px dashed #94a3b8;
+    }
+    body.ticket .header .logo {
+      display: none; /* hide circle logo — save ink on thermal */
+    }
+    body.ticket .header .title-block h1 {
+      font-size: 16px;
+      text-align: center;
+    }
+    body.ticket .header .subtitle {
+      display: none;
+    }
+    body.ticket .header .meta {
+      text-align: center;
+      font-size: 10px;
+    }
+    body.ticket .header .meta .wo-num {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    body.ticket h2 {
+      font-size: 11px;
+      margin: 6px 0 3px;
+      padding-bottom: 2px;
+      border-bottom: 1px dashed #cbd5e1;
+    }
+    body.ticket .info-row {
+      flex-direction: row;
+      gap: 4px;
+      font-size: 10px;
+      padding: 1px 0;
+    }
+    body.ticket .info-row .label {
+      min-width: 60px;
+      font-weight: 600;
+    }
+    body.ticket .device-box,
+    body.ticket .external-box,
+    body.ticket .resolution-box,
+    body.ticket .note-box,
+    body.ticket .cancel-box {
+      padding: 4px;
+      font-size: 10px;
+    }
+    body.ticket .signatures {
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    body.ticket .sign-line {
+      padding-top: 4px;
+    }
+    body.ticket table.parts {
+      font-size: 10px;
+    }
+    body.ticket table.parts th,
+    body.ticket table.parts td {
+      padding: 2px 4px;
+    }
+    body.ticket .images-grid {
+      grid-template-columns: 1fr; /* stack images vertically on narrow paper */
+    }
+    body.ticket .images-grid img {
+      max-width: 60mm;
+    }
+    body.ticket .print-btn-bar { display: none; }
+    body.ticket .footer {
+      font-size: 9px;
+      margin-top: 6px;
+      padding-top: 4px;
+      border-top: 1px dashed #94a3b8;
+      text-align: center;
+    }
   </style>
 </head>
-<body class="${paperParam === 'a5-portrait' ? 'a5' : ''}">
+<body class="${paperParam === 'a5-portrait' ? 'a5' : ''} ${paperParam === 'ticket-80' || paperParam === 'ticket-58' ? 'ticket' : ''}">
   <div class="page">
     <!-- Header -->
     <div class="header">

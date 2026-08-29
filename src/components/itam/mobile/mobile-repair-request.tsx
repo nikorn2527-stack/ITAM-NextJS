@@ -66,6 +66,7 @@ import {
   Trash2,
   ScanLine,
   Building2,
+  Printer,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -871,6 +872,44 @@ function SuccessScreen({
             >
               <RotateCcw className="mr-2 h-4 w-4" />
               แจ้งซ่อมใหม่
+            </Button>
+          </div>
+
+          {/* Print ticket (thermal printer) */}
+          <div className="mt-3 grid w-full grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 text-xs"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.open(
+                    `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-80`,
+                    '_blank',
+                    'noopener,noreferrer',
+                  )
+                }
+              }}
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              พิมพ์ 80mm
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 text-xs"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.open(
+                    `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-58`,
+                    '_blank',
+                    'noopener,noreferrer',
+                  )
+                }
+              }}
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              พิมพ์ 58mm
             </Button>
           </div>
         </CardContent>
