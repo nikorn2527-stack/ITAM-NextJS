@@ -447,7 +447,7 @@ export function DevicesPage() {
         el?.select()
       } else if (mod && e.key.toLowerCase() === 'n') {
         e.preventDefault()
-        openAdd()
+        openAddRef.current?.()
       } else if (mod && e.key.toLowerCase() === 'r') {
         e.preventDefault()
         qc.invalidateQueries({ queryKey: ['devices'] })
@@ -893,14 +893,23 @@ export function DevicesPage() {
     )
   }, [form.brand, form.model, form.building, form.floor, form.location])
 
+  // ── New device dialog opener ──
+  // Uses a ref so the keyboard shortcut effect (declared earlier) can invoke
+  // it without "Cannot access variable before declared" (temporal dead zone).
+  const openAddRef = React.useRef<(() => void) | null>(null)
+  React.useEffect(() => {
+    openAddRef.current = () => {
+      setForm({ ...EMPTY_FORM })
+      nameManuallyEditedRef.current = false
+      setDialogOpen(true)
+      // Auto-generate the next assetCode continuing from the latest integer
+      // (the legacy Apps Script assigned sequential integers 1, 2, 3 …).
+      // Best-effort — if the API call fails, the user can still type a code.
+      void fetchNextAssetCode()
+    }
+  })
   function openAdd() {
-    setForm({ ...EMPTY_FORM })
-    nameManuallyEditedRef.current = false
-    setDialogOpen(true)
-    // Auto-generate the next assetCode continuing from the latest integer
-    // (the legacy Apps Script assigned sequential integers 1, 2, 3 …).
-    // Best-effort — if the API call fails, the user can still type a code.
-    void fetchNextAssetCode()
+    openAddRef.current?.()
   }
 
   // ── Auto-generate assetCode (continuing from latest) ──
