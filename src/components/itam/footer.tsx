@@ -18,6 +18,8 @@ const PAGE_LABELS: Record<string, string> = {
   stock: 'สต๊อกสินค้า',
   import: 'นำเข้าข้อมูล',
   'reports-hub': 'รายงาน',
+  'material-cost': 'ต้นทุนวัสดุ',
+  'pm-schedules': 'ตาราง PM',
   templates: 'เทมเพลต',
   'monthly-report': 'รายงานรายเดือน',
   'settings-v2': 'ตั้งค่า',

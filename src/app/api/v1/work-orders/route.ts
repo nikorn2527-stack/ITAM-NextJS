@@ -49,11 +49,12 @@ import {
 // equality which won't match a Boolean column, so we omit it here. Use
 // ?filter[trackable]=notnull / null if needed via the standard mechanism
 // (also string-based, so treat that as best-effort).
+// Note: WorkOrder has no `assetNo` field — removed from FIELD_MAP to
+// prevent Prisma "Unknown argument" 500 errors when filtering.
 const FIELD_MAP: Record<string, string> = {
   status: 'status',
   priority: 'priority',
   assignedTo: 'assignedTo',
-  assetNo: 'assetNo',
   submissionSource: 'submissionSource',
 }
 
@@ -162,12 +163,23 @@ export async function GET(req: NextRequest) {
 
   const mergedQuery = { ...query, filters: mergedFilters }
   const where = buildWhere(mergedQuery, FIELD_MAP, SEARCH_FIELDS)
+
+  // ── Site scope: restrict to user's allowed sites ──
+  // WorkOrder has a `siteCode` field (FK-less reference). If the user's
+  // allowedSites !== 'ALL', filter to WOs whose siteCode is in their list.
+  // (Null siteCode = external/unassigned — only visible to admins.)
+  const siteFilter =
+    auth.ctx.allowedSites === 'ALL'
+      ? {}
+      : { siteCode: { in: auth.ctx.allowedSites } }
+  const scopedWhere = { ...where, ...siteFilter }
+
   const orderBy = buildOrderBy(query, FIELD_MAP, { createdAt: 'desc' })
 
   const [total, orders] = await Promise.all([
-    db.workOrder.count({ where }),
+    db.workOrder.count({ where: scopedWhere }),
     db.workOrder.findMany({
-      where,
+      where: scopedWhere,
       orderBy,
       skip: (query.page - 1) * query.limit,
       take: query.limit,

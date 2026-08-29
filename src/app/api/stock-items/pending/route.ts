@@ -13,6 +13,10 @@ import { db } from '@/lib/db'
  *   pageSize=...                            (default 100, max 500)
  */
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'STOCK_VIEW')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')?.trim() ?? 'PENDING'

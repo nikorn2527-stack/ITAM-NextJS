@@ -79,6 +79,7 @@ import {
   Check,
   PackageSearch,
   X,
+  Download,
 } from 'lucide-react'
 import {
   type StockItem,
@@ -97,6 +98,26 @@ import {
   authFetch,
   PRIMARY_BTN,
 } from './shared'
+import { CustomExportDialog, type ExportColumn, type ExportFormat } from '../custom-export-dialog'
+import { runCustomExport } from '@/lib/custom-export'
+
+// ============================================================
+// Custom Export — Stock Inventory (Task ID: FIX-1-2-EXPORT-PRINT)
+// ============================================================
+const STOCK_EXPORT_COLUMNS: ExportColumn[] = [
+  { key: 'productCode', label: 'รหัสสินค้า', group: 'สินค้า' },
+  { key: 'productName', label: 'ชื่อสินค้า', group: 'สินค้า' },
+  { key: 'category', label: 'หมวดหมู่', group: 'สินค้า' },
+  { key: 'brand', label: 'แบรนด์', group: 'สินค้า' },
+  { key: 'model', label: 'รุ่น', group: 'สินค้า' },
+  { key: 'quantity', label: 'จำนวนคงเหลือ', group: 'สต็อก' },
+  { key: 'minQuantity', label: 'สต็อกต่ำสุด', group: 'สต็อก' },
+  { key: 'unitCost', label: 'ราคา/หน่วย', group: 'สต็อก' },
+  { key: 'totalValue', label: 'มูลค่ารวม', group: 'สต็อก' },
+  { key: 'location', label: 'ตำแหน่ง', group: 'สต็อก' },
+  { key: 'site', label: 'สาขา', group: 'สต็อก' },
+  { key: 'status', label: 'สถานะ', group: 'สต็อก' },
+]
 
 // ── Response types ─────────────────────────────────────────────────────
 
@@ -127,6 +148,12 @@ interface ProductForm {
   site: string
   compatibleDevices: string
   remark: string
+  // ── Cost Analytics fields ──
+  costType: string
+  yieldPerPage: string
+  depreciationMethod: string
+  usefulLifeMonths: string
+  usefulLifePages: string
 }
 
 const EMPTY_FORM: ProductForm = {
@@ -144,6 +171,11 @@ const EMPTY_FORM: ProductForm = {
   site: '',
   compatibleDevices: '',
   remark: '',
+  costType: '',
+  yieldPerPage: '',
+  depreciationMethod: '',
+  usefulLifeMonths: '',
+  usefulLifePages: '',
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -282,6 +314,12 @@ export function StockInventory() {
         site: input.data.site.trim() || null,
         compatibleDevices: input.data.compatibleDevices.trim() || null,
         remark: input.data.remark.trim() || null,
+        // ── Cost Analytics ──
+        costType: input.data.costType || null,
+        yieldPerPage: input.data.yieldPerPage === '' ? null : Number(input.data.yieldPerPage),
+        depreciationMethod: input.data.depreciationMethod || null,
+        usefulLifeMonths: input.data.usefulLifeMonths === '' ? null : Number(input.data.usefulLifeMonths),
+        usefulLifePages: input.data.usefulLifePages === '' ? null : Number(input.data.usefulLifePages),
       }
       if (input.id) {
         return authFetch<{ data: StockItem }>(`/api/stock-items/${input.id}`, {
@@ -367,6 +405,12 @@ export function StockInventory() {
       site: item.site ?? '',
       compatibleDevices: item.compatibleDevices ?? '',
       remark: item.remark ?? '',
+      // ── Cost Analytics ──
+      costType: (item as StockItem & { costType?: string | null }).costType ?? '',
+      yieldPerPage: (item as StockItem & { yieldPerPage?: number | null }).yieldPerPage == null ? '' : String((item as StockItem & { yieldPerPage?: number | null }).yieldPerPage),
+      depreciationMethod: (item as StockItem & { depreciationMethod?: string | null }).depreciationMethod ?? '',
+      usefulLifeMonths: (item as StockItem & { usefulLifeMonths?: number | null }).usefulLifeMonths == null ? '' : String((item as StockItem & { usefulLifeMonths?: number | null }).usefulLifeMonths),
+      usefulLifePages: (item as StockItem & { usefulLifePages?: number | null }).usefulLifePages == null ? '' : String((item as StockItem & { usefulLifePages?: number | null }).usefulLifePages),
     })
     setFormOpen(true)
   }
@@ -429,6 +473,43 @@ export function StockInventory() {
   // Delete dialog state
   const [deleteTarget, setDeleteTarget] = React.useState<StockItem | null>(null)
 
+  // Custom export dialog state (Task ID: FIX-1-2-EXPORT-PRINT)
+  const [customExportOpen, setCustomExportOpen] = React.useState(false)
+
+  // ── Custom Export handler ──
+  // Builds rows from the currently filtered `items` list and delegates to
+  // the shared runCustomExport helper.
+  const handleCustomExport = React.useCallback(
+    (columns: ExportColumn[], format: ExportFormat) => {
+      if (items.length === 0) {
+        toast.warning('ไม่มีข้อมูลสินค้าในตัวกรองปัจจุบันให้ส่งออก')
+        return
+      }
+      const rows: Record<string, unknown>[] = items.map((item) => {
+        const low = isLow(item)
+        const out = item.quantity <= 0
+        const status = out ? 'หมด' : low ? 'ต่ำ' : !item.active ? 'ปิดใช้งาน' : 'ปกติ'
+        return {
+          productCode: item.productCode ?? '',
+          productName: item.productName ?? '',
+          category: item.category ? categoryLabel(item.category) : '',
+          brand: item.brand ?? '',
+          model: item.model ?? '',
+          quantity: item.quantity ?? 0,
+          minQuantity: item.minQuantity ?? 0,
+          unitCost: item.unitCost ?? 0,
+          totalValue: (item.unitCost ?? 0) * (item.quantity ?? 0),
+          location: item.location ?? '',
+          site: item.site ?? '',
+          status,
+        }
+      })
+      runCustomExport(columns, format, rows, 'stock-inventory', 'รายงานสต็อกสินค้า')
+      toast.success(`ส่งออก ${rows.length} รายการ`)
+    },
+    [items],
+  )
+
   function handleDelete(item: StockItem, e?: React.MouseEvent) {
     e?.stopPropagation()
     setDeleteTarget(item)
@@ -439,7 +520,7 @@ export function StockInventory() {
   return (
     <div className="flex h-full flex-col gap-4">
       {/* Action bar */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -452,6 +533,14 @@ export function StockInventory() {
           <Button onClick={openCreate} className={PRIMARY_BTN}>
             <Plus className="h-4 w-4" /> เพิ่มสินค้า
           </Button>
+          {/* ส่งออก — Task ID: FIX-1-2-EXPORT-PRINT */}
+          <Button
+            variant="outline"
+            onClick={() => setCustomExportOpen(true)}
+            className="dark:bg-slate-800 dark:border-slate-700"
+          >
+            <Download className="h-4 w-4" /> ส่งออก
+          </Button>
         </div>
         <div className="text-xs text-slate-500 dark:text-slate-400">
           ทั้งหมด {items.length.toLocaleString('th-TH')} รายการ
@@ -459,7 +548,7 @@ export function StockInventory() {
       </div>
 
       {/* Filter bar */}
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+      <div className="flex flex-shrink-0 flex-col gap-2 lg:flex-row lg:items-center">
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
           <SelectTrigger className="w-full lg:w-44 dark:bg-slate-800 dark:border-slate-700">
             <SelectValue placeholder="หมวดหมู่" />
@@ -830,6 +919,141 @@ export function StockInventory() {
                 onChange={(e) => setForm((f) => ({ ...f, unitCost: e.target.value }))}
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
+            </div>
+
+            {/* ── การคำนวณต้นทุนวัสดุ ── */}
+            <div className="rounded-lg border border-[#f97316]/30 bg-[#f97316]/5 p-3 dark:border-[#fb923c]/30 dark:bg-[#fb923c]/5">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
+                💰 การคำนวณต้นทุนวัสดุ
+              </div>
+              {/* costType */}
+              <div className="space-y-1.5">
+                <Label htmlFor="stk-costtype" className="text-xs">
+                  ประเภทการคำนวณ
+                </Label>
+                <Select
+                  value={form.costType || '__none__'}
+                  onValueChange={(v) => setForm((f) => ({
+                    ...f,
+                    costType: v === '__none__' ? '' : v,
+                    yieldPerPage: v !== 'consumable' ? '' : f.yieldPerPage,
+                    depreciationMethod: v !== 'spare_part' ? '' : f.depreciationMethod,
+                    usefulLifeMonths: v !== 'spare_part' ? '' : f.usefulLifeMonths,
+                    usefulLifePages: v !== 'spare_part' ? '' : f.usefulLifePages,
+                  }))}
+                >
+                  <SelectTrigger id="stk-costtype" className="w-full dark:bg-slate-800 dark:border-slate-700">
+                    <SelectValue placeholder="— เลือกประเภท —" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— ไม่ระบุ —</SelectItem>
+                    <SelectItem value="consumable">วัสดุสิ้นเปลือง (หมึก, ผงถ่าน)</SelectItem>
+                    <SelectItem value="spare_part">อะไหล่ (Drum, Fuser, Belt)</SelectItem>
+                    <SelectItem value="service">บริการ (ค่าซ่อมนอก, ขนส่ง)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* consumable → yieldPerPage */}
+              {form.costType === 'consumable' && (
+                <div className="mt-2 space-y-1.5">
+                  <Label htmlFor="stk-yield" className="text-xs">
+                    อัตราการพิมพ์ต่อขวด/ตลับ (แผ่น)
+                  </Label>
+                  <Input
+                    id="stk-yield"
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="เช่น 1500 (พิมพ์ได้ 1,500 แผ่นต่อขวด)"
+                    value={form.yieldPerPage}
+                    onChange={(e) => setForm((f) => ({ ...f, yieldPerPage: e.target.value }))}
+                    className="dark:bg-slate-800 dark:border-slate-700"
+                  />
+                  {form.unitCost && form.yieldPerPage && Number(form.yieldPerPage) > 0 && (
+                    <div className="rounded bg-orange-50 px-2 py-1 text-[11px] text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
+                      💡 ต้นทุนต่อแผ่น = ฿{Number(form.unitCost).toLocaleString()} ÷ {Number(form.yieldPerPage).toLocaleString()} = <strong>฿{(Number(form.unitCost) / Number(form.yieldPerPage)).toFixed(2)}/แผ่น</strong>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* spare_part → depreciation */}
+              {form.costType === 'spare_part' && (
+                <div className="mt-2 space-y-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="stk-depmethod" className="text-xs">วิธีคำนวณค่าเสื่อม</Label>
+                    <Select
+                      value={form.depreciationMethod || '__none__'}
+                      onValueChange={(v) => setForm((f) => ({
+                        ...f,
+                        depreciationMethod: v === '__none__' ? '' : v,
+                        usefulLifeMonths: v !== 'straight_line' ? '' : f.usefulLifeMonths,
+                        usefulLifePages: v !== 'usage_based' ? '' : f.usefulLifePages,
+                      }))}
+                    >
+                      <SelectTrigger id="stk-depmethod" className="w-full dark:bg-slate-800 dark:border-slate-700">
+                        <SelectValue placeholder="— เลือกวิธี —" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">— ไม่ระบุ —</SelectItem>
+                        <SelectItem value="straight_line">เสื่อมตามเวลา (ต่อเดือน)</SelectItem>
+                        <SelectItem value="usage_based">เสื่อมตามการใช้งาน (ต่อแผ่น)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {form.depreciationMethod === 'straight_line' && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="stk-life-months" className="text-xs">อายุการใช้งาน (เดือน)</Label>
+                      <Input
+                        id="stk-life-months"
+                        type="number"
+                        min="1"
+                        placeholder="เช่น 24 (2 ปี)"
+                        value={form.usefulLifeMonths}
+                        onChange={(e) => setForm((f) => ({ ...f, usefulLifeMonths: e.target.value }))}
+                        className="dark:bg-slate-800 dark:border-slate-700"
+                      />
+                      {form.unitCost && form.usefulLifeMonths && Number(form.usefulLifeMonths) > 0 && (
+                        <div className="rounded bg-violet-50 px-2 py-1 text-[11px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                          💡 ต้นทุนต่อเดือน = ฿{Number(form.unitCost).toLocaleString()} ÷ {form.usefulLifeMonths} = <strong>฿{(Number(form.unitCost) / Number(form.usefulLifeMonths)).toFixed(2)}/เดือน</strong>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {form.depreciationMethod === 'usage_based' && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="stk-life-pages" className="text-xs">อายุการใช้งาน (แผ่นพิมพ์)</Label>
+                      <Input
+                        id="stk-life-pages"
+                        type="number"
+                        min="1"
+                        placeholder="เช่น 100000 (100K แผ่น)"
+                        value={form.usefulLifePages}
+                        onChange={(e) => setForm((f) => ({ ...f, usefulLifePages: e.target.value }))}
+                        className="dark:bg-slate-800 dark:border-slate-700"
+                      />
+                      {form.unitCost && form.usefulLifePages && Number(form.usefulLifePages) > 0 && (
+                        <div className="rounded bg-violet-50 px-2 py-1 text-[11px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                          💡 ต้นทุนต่อแผ่น = ฿{Number(form.unitCost).toLocaleString()} ÷ {Number(form.usefulLifePages).toLocaleString()} = <strong>฿{(Number(form.unitCost) / Number(form.usefulLifePages)).toFixed(4)}/แผ่น</strong>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {form.costType === 'service' && (
+                <div className="mt-2 rounded-md border border-teal-200 bg-teal-50 px-3 py-2 text-[11px] text-teal-700 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300">
+                  ✓ ต้นทุน = ราคา × จำนวน (คำนวณตรงตัวเมื่อเบิกใช้)
+                </div>
+              )}
+
+              {!form.costType && (
+                <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
+                  เลือกประเภทการคำนวณเพื่อให้ระบบคำนวณต้นทุนต่อแผ่น/เดือน อัตโนมัติ
+                </div>
+              )}
             </div>
 
             {/* Location + Site */}
@@ -1220,6 +1444,16 @@ export function StockInventory() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Custom Export Dialog — Task ID: FIX-1-2-EXPORT-PRINT */}
+      <CustomExportDialog
+        open={customExportOpen}
+        onOpenChange={setCustomExportOpen}
+        availableColumns={STOCK_EXPORT_COLUMNS}
+        onExport={handleCustomExport}
+        storageKey="itam-stock-export-cols"
+        totalRows={items.length}
+      />
     </div>
   )
 }

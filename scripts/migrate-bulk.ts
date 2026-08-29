@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client'
-const Database = require('better-sqlite3')
+import Database from 'better-sqlite3'
 
 const db = new Database('/home/z/my-project/db/custom.db', { readonly: true })
 const p = new PrismaClient()

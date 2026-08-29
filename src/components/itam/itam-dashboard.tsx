@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as ReTooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, AreaChart, Area, LabelList,
+  ReferenceLine,
 } from 'recharts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -45,6 +46,7 @@ import {
   FileDown, Flame, BarChart3, Trophy, RefreshCw, Loader2,
   AlertTriangle, Palette, ArrowUpRight, ArrowDownRight, CircleAlert,
   CalendarClock, ArrowRight, History, Settings2, Inbox, MoreHorizontal,
+  Printer,
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
 import type { Cycle, DashboardRangeKey } from './types'
@@ -57,6 +59,7 @@ import {
   DashboardWidgetLayout,
   type WidgetId,
 } from './dashboard-widget-layout'
+import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
 
 interface SiteRow { siteCode: string; siteName: string | null; deviceCount: number; activeCount: number; paperSheets: number }
 interface DashboardData {
@@ -129,21 +132,21 @@ function KpiCard({
       ].join(' ')}
     >
       <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: accent }} />
-      <CardContent className="p-3 sm:p-4">
-        <div className="flex items-center gap-3">
+      <CardContent className="p-2.5 sm:p-3">
+        <div className="flex items-center gap-2 sm:gap-2.5">
           <div
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg sm:h-11 sm:w-11"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg sm:h-9 sm:w-9"
             style={{ background: `${accent}1a`, color: accent }}
           >
             {icon}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{title}</div>
+            <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">{title}</div>
             {loading ? (
-              <Skeleton className="mt-1 h-7 w-20" />
+              <Skeleton className="mt-1 h-6 w-20" />
             ) : (
-              <div className="flex items-baseline gap-1">
-                <span className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-2xl">
+              <div className="flex items-baseline gap-1 flex-wrap">
+                <span className="text-base font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-lg break-all">
                   {(animated ?? 0).toLocaleString()}
                 </span>
                 {unit && (
@@ -365,6 +368,8 @@ export function ItamDashboard() {
 
   const [sitesOpen, setSitesOpen] = React.useState(false)
   const [heatOpen, setHeatOpen] = React.useState(false)
+  // Print template selection dialog state (Task ID: FIX-1-2-EXPORT-PRINT)
+  const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
   const [lastUpdated, setLastUpdated] = React.useState<Date | null>(null)
   const [glowKey, setGlowKey] = React.useState<string | null>(null)
   const [range, setRangeState] = React.useState<DashboardRangeKey>(() => {
@@ -461,9 +466,34 @@ export function ItamDashboard() {
   interface InsightItem {
     type: string
     message: string
+    priority?: number
+    costImpactBath?: number
+    recommendation?: string
+    actionLabel?: string
+    percent?: number
+    count?: number
+    total?: number
+    month?: string
+    prevMonth?: string
+    current?: number
+    prev?: number
+    assetNo?: string
     [k: string]: unknown
   }
-  const { data: insightsData, isLoading: insightsLoading } = useQuery<{ insights: InsightItem[] }>({
+  interface InsightsResponse {
+    insights: InsightItem[]
+    meta?: {
+      currentMonth?: string
+      prevMonth?: string
+      totals?: {
+        currentMonthSheets?: number
+        prevMonthSheets?: number
+        meterRequiredActive?: number
+        readThisMonth?: number
+      }
+    }
+  }
+  const { data: insightsData, isLoading: insightsLoading } = useQuery<InsightsResponse>({
     queryKey: ['itam-dashboard-insights'],
     queryFn: async () => {
       const res = await fetch('/api/itam/dashboard/insights')
@@ -475,6 +505,8 @@ export function ItamDashboard() {
     staleTime: 120_000,
   })
   const insights = insightsData?.insights ?? []
+  const insightsMeta = insightsData?.meta
+  const insightsTotals = insightsMeta?.totals
 
   // Active cycle (for the Cycle Progress widget)
   const { data: activeCycle, isLoading: cycleLoading } = useQuery<Cycle | null>({
@@ -641,8 +673,111 @@ ${kpiHtml}
   // Bar chart: by type (top 8)
   const barData = React.useMemo(() => (data?.byType ?? []).slice(0, 8), [data])
 
-  // Area chart: paper trend
-  const areaData = React.useMemo(() => data?.paperTrend ?? [], [data])
+  // Area chart: paper trend + linear-regression forecast for next month.
+  // We append a 7th "คาดการณ์" point and split the chart data into two
+  // dataKeys so the forecast segment is rendered with a dashed amber line.
+  interface AreaPoint {
+    month: string
+    sheets: number | null
+    forecastSheets: number | null
+    isForecast?: boolean
+  }
+  const { areaData, forecastSheets, forecastReliability } = React.useMemo(() => {
+    const base = (data?.paperTrend ?? []).map((p) => ({
+      month: p.month,
+      sheets: p.sheets as number | null,
+      forecastSheets: null as number | null,
+      isForecast: false,
+    }))
+    if (base.length < 3) {
+      return { areaData: base as AreaPoint[], forecastSheets: null as number | null, forecastReliability: 'insufficient' as 'insufficient' }
+    }
+    // Exclude the LAST month from the regression if it looks like an
+    // incomplete/partial month (e.g., current month where only a few devices
+    // have been read so far). Heuristic: if the last value is < 20% of the
+    // second-to-last value, treat it as partial and exclude from regression.
+    const ys0 = base.map((t) => t.sheets ?? 0)
+    let regStart = 0
+    let regEnd = base.length // exclusive
+    if (base.length >= 4) {
+      const lastVal = ys0[ys0.length - 1]
+      const prevVal = ys0[ys0.length - 2]
+      if (prevVal > 0 && lastVal < prevVal * 0.2) {
+        // Last month is likely partial — exclude from regression.
+        regEnd = base.length - 1
+      }
+    }
+    const regPoints = ys0.slice(regStart, regEnd)
+    const n = regPoints.length
+    if (n < 3) {
+      return { areaData: base as AreaPoint[], forecastSheets: null as number | null, forecastReliability: 'insufficient' as 'insufficient' }
+    }
+    // Simple linear regression: y = mx + b over the regression points
+    const xs = regPoints.map((_, i) => i)
+    const ys = regPoints
+    const sumX = xs.reduce((a, b) => a + b, 0)
+    const sumY = ys.reduce((a, b) => a + b, 0)
+    const sumXY = xs.reduce((s, x, i) => s + x * ys[i], 0)
+    const sumXX = xs.reduce((s, x) => s + x * x, 0)
+    const denom = n * sumXX - sumX * sumX
+    if (denom === 0) {
+      return { areaData: base as AreaPoint[], forecastSheets: null as number | null, forecastReliability: 'insufficient' as 'insufficient' }
+    }
+    const m = (n * sumXY - sumX * sumY) / denom
+    const b = (sumY - m * sumX) / n
+    // Predict the NEXT month (index = n, since regression used indices 0..n-1)
+    const rawForecast = Math.round(m * n + b)
+
+    // Compute R² to gauge forecast reliability
+    const meanY = sumY / n
+    let ssTot = 0
+    let ssRes = 0
+    for (let i = 0; i < n; i++) {
+      const predicted = m * i + b
+      ssTot += (ys[i] - meanY) ** 2
+      ssRes += (ys[i] - predicted) ** 2
+    }
+    const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0
+    let reliability: 'high' | 'medium' | 'low' = 'low'
+    if (r2 >= 0.7) reliability = 'high'
+    else if (r2 >= 0.4) reliability = 'medium'
+
+    // Sanity check: if the linear forecast is suspiciously low (less than 30%
+    // of the recent 3-month average), fall back to the 3-month moving average.
+    // This handles cases where an outlier (e.g., a bulk data import in March)
+    // makes the linear regression predict an unrealistic near-zero value.
+    const recentSlice = ys.slice(-3)
+    const recentAvg = recentSlice.length > 0
+      ? Math.round(recentSlice.reduce((a, c) => a + c, 0) / recentSlice.length)
+      : 0
+    let forecast = Math.max(0, rawForecast)
+    if (recentAvg > 0 && forecast < recentAvg * 0.3) {
+      // Linear forecast is unrealistic — use 3-month moving average instead
+      forecast = recentAvg
+      reliability = reliability === 'high' ? 'medium' : 'low'
+    }
+
+    // Bridge: repeat the last actual value on the forecast series so the
+    // dashed line connects from the last real point to the projection.
+    if (base.length > 0) {
+      const last = base[base.length - 1]
+      base[base.length - 1] = {
+        ...last,
+        forecastSheets: last.sheets,
+      }
+    }
+    const forecastPoint: AreaPoint = {
+      month: 'คาดการณ์',
+      sheets: null,
+      forecastSheets: forecast,
+      isForecast: true,
+    }
+    return {
+      areaData: [...base, forecastPoint],
+      forecastSheets: forecast,
+      forecastReliability: reliability,
+    }
+  }, [data])
 
   // Drill-down handlers
   function drillDownStatus(statusKey: string) {
@@ -695,11 +830,11 @@ ${kpiHtml}
   const kpiWidget = (
     <>
       {/* KPI row — 5 cards on lg */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
         <KpiCard
           title="อุปกรณ์ทั้งหมด"
           value={total}
-          icon={<Package className="h-5 w-5" />}
+          icon={<Package className="h-4 w-4" />}
           accent="#0f172a"
           loading={isLoading}
           glow={glowKey === 'total'}
@@ -708,7 +843,7 @@ ${kpiHtml}
         <KpiCard
           title="ใช้งานอยู่"
           value={active}
-          icon={<CheckCircle2 className="h-5 w-5" />}
+          icon={<CheckCircle2 className="h-4 w-4" />}
           accent="#10b981"
           loading={isLoading}
           glow={glowKey === 'active'}
@@ -717,7 +852,7 @@ ${kpiHtml}
         <KpiCard
           title="สำรอง"
           value={spare}
-          icon={<Package className="h-5 w-5" />}
+          icon={<Package className="h-4 w-4" />}
           accent="#f59e0b"
           loading={isLoading}
           glow={glowKey === 'spare'}
@@ -726,7 +861,7 @@ ${kpiHtml}
         <KpiCard
           title="ส่งซ่อม"
           value={repair}
-          icon={<Wrench className="h-5 w-5" />}
+          icon={<Wrench className="h-4 w-4" />}
           accent="#f97316"
           loading={isLoading}
           glow={glowKey === 'repair'}
@@ -735,7 +870,7 @@ ${kpiHtml}
         <KpiCard
           title="ต้องจดมิเตอร์"
           value={data?.meterRequiredCount ?? 0}
-          icon={<FileText className="h-5 w-5" />}
+          icon={<FileText className="h-4 w-4" />}
           accent="#0d9488"
           loading={isLoading}
           glow={glowKey === 'meter'}
@@ -764,30 +899,30 @@ ${kpiHtml}
             style={{ background: 'linear-gradient(90deg, #f59e0b, #f97316)' }}
           />
         )}
-        <div className="flex items-center gap-3 p-3 sm:p-4">
+        <div className="flex items-center gap-3 p-2.5 sm:p-3">
           <div
             className={cn(
-              'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-11 sm:w-11',
+              'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-transform group-hover:scale-105 sm:h-9 sm:w-9',
               warrantyAlerts > 0 ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400',
             )}
           >
-            <AlertTriangle className="h-5 w-5" />
+            <AlertTriangle className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+            <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">
               รับประกันใกล้หมด
             </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-xl font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-2xl">
+              <span className="text-lg font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-xl">
                 {warrantyAlerts}
               </span>
-              <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
+              <span className="shrink-0 text-[11px] font-medium text-slate-400 dark:text-slate-500">
                 เครื่อง
               </span>
             </div>
-            <div className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
+            <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
               {warrantyAlerts > 0
-                ? `ใกล้หมด ${warrantyData?.summary.expiring ?? 0} · หมดแล้ว ${warrantyData?.summary.expired ?? 0} — กดเพื่อดูรายการ`
+                ? `ใกล้หมด ${warrantyData?.summary.expiring ?? 0} · หมดแล้ว ${warrantyData?.summary.expired ?? 0}`
                 : 'ทุกเครื่องยังอยู่ในรับประกัน'}
             </div>
           </div>
@@ -800,26 +935,26 @@ ${kpiHtml}
       </button>
 
       {/* Paper-this-month mini card under the warranty bar */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
         <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-          <CardContent className="flex items-center justify-between p-3 sm:p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-500/15 text-teal-600 dark:text-teal-400">
-                <FileText className="h-5 w-5" />
+          <CardContent className="flex items-center justify-between p-2.5 sm:p-3">
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-500/15 text-teal-600 dark:text-teal-400 sm:h-9 sm:w-9">
+                <FileText className="h-4 w-4" />
               </div>
               <div>
-                <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{paperKpiLabel}</div>
+                <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">{paperKpiLabel}</div>
                 {isLoading ? (
-                  <Skeleton className="mt-1 h-7 w-24" />
+                  <Skeleton className="mt-1 h-6 w-24" />
                 ) : (
                   <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-2xl">
+                    <span className="text-lg font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-xl">
                       {(paperThisMonth ?? 0).toLocaleString()}
                     </span>
-                    <span className="text-xs font-medium text-slate-400 dark:text-slate-500">แผ่น</span>
+                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">แผ่น</span>
                   </div>
                 )}
-                <div className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
+                <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
                   ช่วง: {rangeInfoLabel}
                 </div>
               </div>
@@ -828,24 +963,24 @@ ${kpiHtml}
         </Card>
 
         <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
-          <CardContent className="flex items-center justify-between p-3 sm:p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-500/15 text-orange-600 dark:text-orange-400">
-                <Building2 className="h-5 w-5" />
+          <CardContent className="flex items-center justify-between p-2.5 sm:p-3">
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-500/15 text-orange-600 dark:text-orange-400 sm:h-9 sm:w-9">
+                <Building2 className="h-4 w-4" />
               </div>
               <div>
-                <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">จำนวนสาขา</div>
+                <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">จำนวนสาขา</div>
                 {isLoading ? (
-                  <Skeleton className="mt-1 h-7 w-16" />
+                  <Skeleton className="mt-1 h-6 w-16" />
                 ) : (
                   <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-2xl">
+                    <span className="text-lg font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-xl">
                       {(data?.bySite ?? []).length}
                     </span>
-                    <span className="text-xs font-medium text-slate-400 dark:text-slate-500">สาขา</span>
+                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">สาขา</span>
                   </div>
                 )}
-                <div className="mt-0.5 truncate text-xs text-slate-400 dark:text-slate-500">
+                <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
                   ⚡ {data?.queryTimeMs ?? 0}ms
                 </div>
               </div>
@@ -886,14 +1021,42 @@ ${kpiHtml}
           {insightsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
         </CardTitle>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          ระบบตรวจพบสิ่งผิดปกติอัตโนมัติ — ใช้กระดาษสูง / สีเยอะ / ยังไม่จดมิเตอร์ / เปลี่ยนแปลงรายเดือน
+          ตรวจพบสิ่งผิดปกติอัตโนมัติ
         </p>
       </CardHeader>
       <CardContent>
+        {/* Compact totals strip — surfaces meta.totals from the API */}
+        {insightsTotals && (
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-slate-100 bg-slate-50/60 px-3 py-1.5 text-[11px] text-slate-600 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-300">
+            <span>
+              กระดาษเดือนนี้:{' '}
+              <span className="font-semibold tabular-nums">
+                {(insightsTotals.currentMonthSheets ?? 0).toLocaleString()}
+              </span>{' '}
+              แผ่น
+            </span>
+            <span className="text-slate-300 dark:text-slate-600">·</span>
+            <span>
+              เดือนก่อน:{' '}
+              <span className="font-semibold tabular-nums">
+                {(insightsTotals.prevMonthSheets ?? 0).toLocaleString()}
+              </span>{' '}
+              แผ่น
+            </span>
+            <span className="text-slate-300 dark:text-slate-600">·</span>
+            <span>
+              จดมิเตอร์แล้ว:{' '}
+              <span className="font-semibold tabular-nums">
+                {insightsTotals.readThisMonth ?? 0}/{insightsTotals.meterRequiredActive ?? 0}
+              </span>{' '}
+              เครื่อง
+            </span>
+          </div>
+        )}
         {insightsLoading ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-20 w-full rounded-md" />
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 w-full rounded-md" />
             ))}
           </div>
         ) : insights.length === 0 ? (
@@ -902,42 +1065,122 @@ ${kpiHtml}
             <div>ไม่พบสิ่งผิดปกติในเดือนนี้</div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
             {insights.slice(0, 6).map((ins, idx) => {
-              const palette = (() => {
-                switch (ins.type) {
-                  case 'high_usage':
-                    return { bg: 'bg-rose-50 dark:bg-rose-950/30', border: 'border-rose-200 dark:border-rose-800', text: 'text-rose-700 dark:text-rose-300', icon: <AlertTriangle className="h-4 w-4" /> }
-                  case 'color_heavy':
-                    return { bg: 'bg-amber-50 dark:bg-amber-950/30', border: 'border-amber-200 dark:border-amber-800', text: 'text-amber-700 dark:text-amber-300', icon: <Palette className="h-4 w-4" /> }
-                  case 'not_read':
-                    return { bg: 'bg-orange-50 dark:bg-orange-950/30', border: 'border-orange-200 dark:border-orange-800', text: 'text-orange-700 dark:text-orange-300', icon: <FileText className="h-4 w-4" /> }
-                  case 'mom_change':
-                    return ins.percent && Number(ins.percent) > 0
-                      ? { bg: 'bg-rose-50 dark:bg-rose-950/30', border: 'border-rose-200 dark:border-rose-800', text: 'text-rose-700 dark:text-rose-300', icon: <ArrowUpRight className="h-4 w-4" /> }
-                      : { bg: 'bg-teal-50 dark:bg-teal-950/30', border: 'border-teal-200 dark:border-teal-800', text: 'text-teal-700 dark:text-teal-300', icon: <ArrowDownRight className="h-4 w-4" /> }
-                  default:
-                    return { bg: 'bg-slate-50 dark:bg-slate-800/40', border: 'border-slate-200 dark:border-slate-700', text: 'text-slate-700 dark:text-slate-300', icon: <CircleAlert className="h-4 w-4" /> }
+              const priority = Number(ins.priority ?? 5)
+              const priorityColors: Record<number, string> = {
+                1: 'border-rose-300 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/30',
+                2: 'border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30',
+                3: 'border-orange-300 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30',
+                4: 'border-teal-300 bg-teal-50 dark:border-teal-800 dark:bg-teal-950/30',
+              }
+              const priorityLabelList = ['วิกฤต', 'สำคัญ', 'ตรวจสอบ', 'โอกาส']
+              const priorityLabel = priorityLabelList[priority - 1] || 'ข้อมูล'
+              const cardClass =
+                priorityColors[priority] ||
+                'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40'
+
+              // Heading label per insight type (concise)
+              const headingLabel =
+                ins.type === 'high_usage'
+                  ? 'ใช้กระดาษสูง'
+                  : ins.type === 'color_heavy'
+                    ? 'ใช้สีเยอะ'
+                    : ins.type === 'not_read'
+                      ? 'ยังไม่ได้จดมิเตอร์'
+                      : ins.type === 'mom_change'
+                        ? 'เปรียบเทียบรายเดือน'
+                        : 'ข้อมูล'
+
+              const headingIcon =
+                ins.type === 'high_usage' ? (
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                ) : ins.type === 'color_heavy' ? (
+                  <Palette className="h-3.5 w-3.5" />
+                ) : ins.type === 'not_read' ? (
+                  <FileText className="h-3.5 w-3.5" />
+                ) : ins.type === 'mom_change' ? (
+                  Number(ins.percent) > 0 ? (
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowDownRight className="h-3.5 w-3.5" />
+                  )
+                ) : (
+                  <CircleAlert className="h-3.5 w-3.5" />
+                )
+
+              // Cost impact: green if saving, red if cost
+              const isSaving =
+                ins.type === 'color_heavy' ||
+                (ins.type === 'mom_change' && Number(ins.percent) < 0)
+              const costValue = Number(ins.costImpactBath ?? 0)
+              const showCost = costValue > 0
+              const costColorClass = isSaving
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-rose-600 dark:text-rose-400'
+              const costSign = isSaving ? '−' : '+'
+
+              // Action handler — route to the right page
+              function handleInsightAction() {
+                if (ins.type === 'not_read') {
+                  setActivePage('itam-meter-keyboard')
+                } else if (ins.type === 'mom_change') {
+                  setActivePage('itam-paper-analytics')
+                } else {
+                  setActivePage('itam-paper-analytics')
                 }
-              })()
+              }
+
               return (
                 <motion.div
                   key={`${ins.type}-${idx}`}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.25, delay: idx * 0.04 }}
-                  className={`rounded-md border ${palette.border} ${palette.bg} p-3`}
+                  className={`rounded-md border ${cardClass} p-2.5`}
                 >
-                  <div className={`mb-1 flex items-center gap-1.5 text-xs font-semibold ${palette.text}`}>
-                    {palette.icon}
-                    <span className="uppercase tracking-wide">
-                      {ins.type === 'high_usage' && 'ใช้กระดาษสูง'}
-                      {ins.type === 'color_heavy' && 'ใช้สีเยอะ'}
-                      {ins.type === 'not_read' && 'ยังไม่ได้จดมิเตอร์'}
-                      {ins.type === 'mom_change' && 'เปรียบเทียบรายเดือน'}
+                  {/* Row 1: priority badge + heading */}
+                  <div className="mb-1 flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-sm bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-900/70 dark:text-slate-300">
+                      ลำดับ {priority} · {priorityLabel}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      {headingIcon}
+                      <span className="uppercase tracking-wide">{headingLabel}</span>
                     </span>
                   </div>
-                  <div className="text-sm text-slate-700 dark:text-slate-200">{ins.message}</div>
+                  {/* Row 2: main message */}
+                  <div className="text-xs text-slate-700 dark:text-slate-200">{ins.message}</div>
+                  {/* Row 3: recommendation */}
+                  {ins.recommendation && (
+                    <div className="mt-1 flex items-start gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span aria-hidden>💡</span>
+                      <span>{ins.recommendation}</span>
+                    </div>
+                  )}
+                  {/* Row 4: cost impact + action button */}
+                  <div className="mt-1.5 flex items-center justify-between gap-2">
+                    {showCost ? (
+                      <span className={`text-xs font-semibold tabular-nums ${costColorClass}`}>
+                        ≈ {costSign}
+                        {costValue.toLocaleString()} บาท/เดือน
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">ไม่มีผลกระทบต้นทุนโดยตรง</span>
+                    )}
+                    {ins.actionLabel && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleInsightAction}
+                        className="h-7 border-slate-300 px-2 py-0.5 text-[11px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                      >
+                        {ins.actionLabel}
+                        <ArrowRight className="ml-0.5 h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
                 </motion.div>
               )
             })}
@@ -958,7 +1201,7 @@ ${kpiHtml}
         <Card className="h-full shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardHeader>
             <CardTitle className="text-base">สัดส่วนสถานะอุปกรณ์</CardTitle>
-            <p className="text-xs text-slate-500 dark:text-slate-400">คลิกเซกเตอร์เพื่อดูรายการ</p>
+            <p className="sr-only">คลิกเซกเตอร์เพื่อดูรายการ</p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -986,6 +1229,8 @@ ${kpiHtml}
                         if (payload?.statusKey) drillDownStatus(payload.statusKey)
                       }}
                       cursor="pointer"
+                      label={false}
+                      labelLine={false}
                     >
                       {donutData.map((entry, idx) => (
                         <Cell key={idx} fill={entry.color} />
@@ -1036,7 +1281,7 @@ ${kpiHtml}
         <Card className="h-full shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardHeader>
             <CardTitle className="text-base">จำนวนอุปกรณ์ตามประเภท (Top 8)</CardTitle>
-            <p className="text-xs text-slate-500 dark:text-slate-400">คลิกแท่งเพื่อกรองหน้าอุปกรณ์</p>
+            <p className="sr-only">คลิกแท่งเพื่อกรองหน้าอุปกรณ์</p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -1104,7 +1349,7 @@ ${kpiHtml}
       <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="text-base">แนวโน้มการใช้กระดาษ (6 เดือนล่าสุด)</CardTitle>
-          <p className="text-xs text-slate-500 dark:text-slate-400">รวมขาวดำ + สี · หน่วย: แผ่น</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400">สิ่งที่บันทึกในแต่ละเดือน (รวมทุกสถานะ) · หน่วย: แผ่น</p>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -1112,40 +1357,153 @@ ${kpiHtml}
           ) : areaData.length === 0 ? (
             <EmptyState message="ยังไม่มีข้อมูล" />
           ) : (
-            <div className="h-56 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={areaData} margin={{ top: 10, right: 12, left: -8, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="areaTealGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4} />
-                      <stop offset="100%" stopColor="#0d9488" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                  <XAxis dataKey="month" tick={{ fill: axisColor, fontSize: 11 }} />
-                  <YAxis tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`} />
-                  <ReTooltip
-                    contentStyle={tooltipStyle}
-                    formatter={(v: number, _n: string, p: { payload?: { month?: string } }) => [
-                      `${v.toLocaleString()} แผ่น`,
-                      `${p?.payload?.month ?? ''}`,
-                    ]}
-                    labelFormatter={() => ''}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="sheets"
-                    stroke="#0d9488"
-                    strokeWidth={2.5}
-                    fill="url(#areaTealGrad)"
-                    isAnimationActive
-                    animationDuration={800}
-                    dot={{ r: 3, fill: '#0d9488', strokeWidth: 0 }}
-                    activeDot={{ r: 5, fill: '#0d9488', stroke: isDark ? '#0f172a' : '#fff', strokeWidth: 2 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            <>
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={areaData} margin={{ top: 10, right: 12, left: -8, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="areaTealGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#0d9488" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#0d9488" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="areaForecastGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.25} />
+                        <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                    <XAxis dataKey="month" tick={{ fill: axisColor, fontSize: 11 }} />
+                    <YAxis tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`} />
+                    <ReTooltip
+                      contentStyle={tooltipStyle}
+                      formatter={(v: number, _n: string, p: { payload?: { month?: string; isForecast?: boolean } }) => [
+                        `${v.toLocaleString()} แผ่น`,
+                        `${p?.payload?.isForecast ? 'คาดการณ์' : (p?.payload?.month ?? '')}`,
+                      ]}
+                      labelFormatter={() => ''}
+                    />
+                    {forecastSheets !== null && (
+                      <ReferenceLine
+                        x="คาดการณ์"
+                        stroke="#f59e0b"
+                        strokeDasharray="4 4"
+                        label={{
+                          value: 'พยากรณ์',
+                          position: 'top',
+                          fill: '#f59e0b',
+                          fontSize: 10,
+                          fontWeight: 600,
+                        }}
+                      />
+                    )}
+                    {/* Actual sheets — solid teal line + teal dots */}
+                    <Area
+                      type="monotone"
+                      dataKey="sheets"
+                      stroke="#0d9488"
+                      strokeWidth={2.5}
+                      fill="url(#areaTealGrad)"
+                      isAnimationActive
+                      animationDuration={800}
+                      connectNulls={false}
+                      dot={(props: {
+                        cx?: number
+                        cy?: number
+                        payload?: { isForecast?: boolean }
+                      }) => {
+                        const { cx, cy, payload } = props
+                        if (typeof cx !== 'number' || typeof cy !== 'number') {
+                          return <g key="empty" />
+                        }
+                        // Skip dot on the forecast point (it has sheets=null)
+                        if (payload?.isForecast) return <g key="skip-forecast" />
+                        return (
+                          <circle
+                            key={`dot-${cx}-${cy}`}
+                            cx={cx}
+                            cy={cy}
+                            r={3}
+                            fill="#0d9488"
+                            strokeWidth={0}
+                          />
+                        )
+                      }}
+                      activeDot={{ r: 5, fill: '#0d9488', stroke: isDark ? '#0f172a' : '#fff', strokeWidth: 2 }}
+                    />
+                    {/* Forecast — dashed amber line, only visible between the
+                        last actual point and the projection (bridge value
+                        repeats the last actual to connect the segment). */}
+                    {forecastSheets !== null && (
+                      <Area
+                        type="monotone"
+                        dataKey="forecastSheets"
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        strokeDasharray="5 4"
+                        fill="url(#areaForecastGrad)"
+                        isAnimationActive
+                        animationDuration={800}
+                        connectNulls={false}
+                        dot={(props: {
+                          cx?: number
+                          cy?: number
+                          payload?: { isForecast?: boolean; forecastSheets?: number | null }
+                        }) => {
+                          const { cx, cy, payload } = props
+                          if (typeof cx !== 'number' || typeof cy !== 'number') {
+                            return <g key="empty" />
+                          }
+                          // Skip the bridge dot on the last actual point
+                          if (!payload?.isForecast) return <g key="bridge" />
+                          return (
+                            <g key="forecast-dot">
+                              <circle
+                                cx={cx}
+                                cy={cy}
+                                r={5}
+                                fill="#f59e0b"
+                                stroke={isDark ? '#0f172a' : '#fff'}
+                                strokeWidth={2}
+                              />
+                              <circle
+                                cx={cx}
+                                cy={cy}
+                                r={3}
+                                fill="none"
+                                stroke={isDark ? '#fde68a' : '#fffbeb'}
+                                strokeWidth={1}
+                                strokeDasharray="2 1"
+                              />
+                            </g>
+                          )
+                        }}
+                        activeDot={{ r: 5, fill: '#f59e0b', stroke: isDark ? '#0f172a' : '#fff', strokeWidth: 2 }}
+                      />
+                    )}
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              {forecastSheets !== null && (
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span aria-hidden>🔮</span>
+                  <span>
+                    พยากรณ์เดือนถัดไป:{' '}
+                    <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                      ~{forecastSheets.toLocaleString()} แผ่น
+                    </span>{' '}
+                    <span className="text-slate-400">
+                      ({forecastReliability === 'high'
+                        ? 'แนวโน้มน่าเชื่อถือ'
+                        : forecastReliability === 'medium'
+                          ? 'แนวโน้มปานกลาง'
+                          : forecastReliability === 'low'
+                            ? 'ข้อมูลผันผวนสูง — ใช้อ้างอิงเท่านั้น'
+                            : 'ข้อมูลไม่เพียงพอ'})
+                    </span>
+                  </span>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
@@ -1170,9 +1528,9 @@ ${kpiHtml}
           <EmptyState message="ยังไม่มีข้อมูลสาขา" />
         ) : (
           <div className="itam-scroll max-h-72 space-y-2 overflow-y-auto pr-1">
-            {(data?.bySite ?? []).map((s) => (
+            {(data?.bySite ?? []).map((s, idx) => (
               <div
-                key={s.siteCode}
+                key={s.siteCode || `site-${idx}`}
                 className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2 dark:border-slate-800"
               >
                 <div className="min-w-0">
@@ -1318,6 +1676,16 @@ ${kpiHtml}
           >
             <FileDown className="h-4 w-4" /> PDF
           </Button>
+          {/* พิมพ์ (เทมเพลต) — Task ID: FIX-1-2-EXPORT-PRINT */}
+          <Button type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setPrintTemplateOpen(true)}
+            className="hidden border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c] sm:inline-flex"
+            title="เลือกเทมเพลตก่อนพิมพ์"
+          >
+            <Printer className="h-4 w-4" /> พิมพ์
+          </Button>
           <Button type="button"
             variant="outline"
             size="sm"
@@ -1367,6 +1735,13 @@ ${kpiHtml}
               >
                 <FileDown className="mr-2 h-4 w-4" />
                 PDF
+              </DropdownMenuItem>
+              {/* พิมพ์ (เทมเพลต) — Task ID: FIX-1-2-EXPORT-PRINT */}
+              <DropdownMenuItem
+                onClick={() => setPrintTemplateOpen(true)}
+              >
+                <Printer className="mr-2 h-4 w-4" />
+                พิมพ์
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSitesOpen(true)}>
                 <Building2 className="mr-2 h-4 w-4" />
@@ -1431,7 +1806,7 @@ ${kpiHtml}
               sortedSites.map((s, i) => {
                 const pct = Math.max(2, (s.deviceCount / maxDevices) * 100)
                 return (
-                  <div key={s.siteCode} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                  <div key={s.siteCode || `site-${i}`} className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
                     <div className="mb-1.5 flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {i < 3 ? <span className="text-lg">{MEDALS[i]}</span> : <span className="inline-block w-4 text-center text-xs font-bold text-slate-400">{i + 1}</span>}
@@ -1525,6 +1900,18 @@ ${kpiHtml}
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Print Template Selection Dialog — Task ID: FIX-1-2-EXPORT-PRINT */}
+      <PrintTemplateSelectionDialog
+        open={printTemplateOpen}
+        onOpenChange={setPrintTemplateOpen}
+        templateType="work-order"
+        actionLabel="พิมพ์"
+        onSelect={(template) => {
+          toast.success(`เลือกเทมเพลต: ${template.name}`)
+          if (typeof window !== 'undefined') window.print()
+        }}
+      />
     </div>
   )
 }

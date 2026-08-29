@@ -55,6 +55,19 @@ import {
   DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu'
 import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+} from '@/components/ui/command'
+import {
   Plus,
   RefreshCw,
   Pencil,
@@ -81,6 +94,8 @@ import {
   Columns3,
   Eye,
   Clock,
+  ChevronsUpDown,
+  Check,
 } from 'lucide-react'
 import {
   type Device,
@@ -445,7 +460,6 @@ export function DevicesPage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shortcutsOpen, qc])
 
   // ── New: derived KPI counts from the filtered `devices` list ──
@@ -2082,20 +2096,24 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     จะอ้างอิงมาที่เครื่องหลักผ่าน parent
                   </p>
 
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <Field label="อุปกรณ์หลักในชุด (Parent)">
-                      <Input
-                        value={form.parentDeviceId}
-                        onChange={(e) =>
-                          setForm({ ...form, parentDeviceId: e.target.value })
-                        }
-                        placeholder="รหัสอุปกรณ์หลัก (เช่น 2378) — เว้นว่างถ้าเป็นเครื่องหลัก"
-                      />
-                      <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
-                        💡 ใส่รหัสทรัพย์สินของเครื่องหลัก — เครื่องนี้จะกลายเป็น "อุปกรณ์ลูก" ในชุด
-                      </p>
-                    </Field>
+                  {/* ── Parent device search (Combobox) ── */}
+                  <Field label="อุปกรณ์หลักในชุด (Parent)">
+                    <DeviceParentCombobox
+                      value={form.parentDeviceId}
+                      onChange={(id) => setForm({ ...form, parentDeviceId: id })}
+                      excludeId={form.id}
+                      authHeaders={authHeaders}
+                    />
+                  </Field>
 
+                  {/* ── Parent device info (auto-filled) ── */}
+                  {form.parentDeviceId && (
+                    <div className="mb-3 rounded-md border border-teal-300 bg-teal-50/60 px-3 py-2 text-xs dark:border-teal-700 dark:bg-teal-950/30">
+                      <ParentDeviceInfo deviceId={form.parentDeviceId} authHeaders={authHeaders} />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <Field label="ลำดับในชุด (Set Position)">
                       <Input
                         type="number"
@@ -2121,6 +2139,22 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       />
                       <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
                         ชื่อที่ใช้เรียกชุด — ใส่เหมือนกันทุกเครื่องในชุด
+                      </p>
+                    </Field>
+                  </div>
+
+                  {/* ── Child device serial (for devices not in system yet) ── */}
+                  <div className="mt-3">
+                    <Field label="Serial Number ของอุปกรณ์นี้ (ถ้าไม่มีในระบบ)">
+                      <Input
+                        value={form.serialNumber}
+                        onChange={(e) =>
+                          setForm({ ...form, serialNumber: e.target.value })
+                        }
+                        placeholder="เช่น D6J222613811 — ใช้สำหรับอุปกรณ์ที่ยังไม่มีในระบบ"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                        ถ้าอุปกรณ์นี้มีในระบบแล้ว ใส่ Serial เพื่อเชื่อมข้อมูลอัตโนมัติ
                       </p>
                     </Field>
                   </div>
@@ -3666,3 +3700,146 @@ function SelectValueInput({
 }
 
 // (no extra exports)
+
+// ============================================================
+// DeviceParentCombobox — searches devices by assetCode/name/serial
+// and lets the user pick a parent device for Device Set.
+// ============================================================
+function DeviceParentCombobox({
+  value,
+  onChange,
+  excludeId,
+  authHeaders,
+}: {
+  value: string
+  onChange: (id: string) => void
+  excludeId?: string
+  authHeaders: () => Record<string, string>
+}) {
+  const [search, setSearch] = React.useState('')
+  const [open, setOpen] = React.useState(false)
+
+  const { data: results } = useQuery<Device[]>({
+    queryKey: ['device-parent-search', search],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        search,
+        limit: '20',
+        page: '1',
+      })
+      const res = await fetch(`/api/devices?${params}`, { headers: authHeaders() })
+      if (!res.ok) return []
+      const json = await res.json()
+      return (json.devices as Device[]) ?? []
+    },
+    enabled: open && search.trim().length > 0,
+    staleTime: 10_000,
+  })
+
+  const selectedDevice = results?.find((d) => d.id === value)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          className="w-full justify-between"
+        >
+          {selectedDevice ? (
+            <span className="truncate">
+              <span className="font-mono font-semibold text-[#f97316]">{selectedDevice.assetCode}</span>
+              {' — '}
+              <span className="text-slate-600 dark:text-slate-300">{selectedDevice.name}</span>
+            </span>
+          ) : value ? (
+            <span className="text-xs text-slate-400">รหัส: {value} (ค้นหาเพื่อเลือก)</span>
+          ) : (
+            <span className="text-slate-400">ค้นหาอุปกรณ์หลัก — เว้นว่างถ้าเป็นเครื่องหลัก</span>
+          )}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[400px] p-0" align="start">
+        <Command>
+          <CommandInput
+            placeholder="พิมพ์รหัสทรัพย์สิน / ชื่อ / Serial..."
+            value={search}
+            onValueChange={setSearch}
+          />
+          <CommandList>
+            <CommandEmpty>ไม่พบอุปกรณ์ — ลองพิมพ์ใหม่</CommandEmpty>
+            <CommandGroup>
+              {(results ?? []).filter((d) => d.id !== excludeId).map((d) => (
+                <CommandItem
+                  key={d.id}
+                  value={`${d.assetCode} ${d.name} ${d.serialNumber ?? ''}`}
+                  onSelect={() => {
+                    onChange(d.id)
+                    setOpen(false)
+                  }}
+                >
+                  <div className="flex flex-col">
+                    <span>
+                      <span className="font-mono font-semibold text-[#f97316]">{d.assetCode}</span>
+                      {' — '}
+                      {d.name}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {d.type} · {d.brand} {d.model} · Serial: {d.serialNumber ?? '—'} · {d.site ?? '—'}
+                    </span>
+                  </div>
+                  {d.id === value && <Check className="ml-auto h-4 w-4" />}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+// ============================================================
+// ParentDeviceInfo — fetches and displays parent device details
+// (type, serial, brand, model) when a parent is selected.
+// ============================================================
+function ParentDeviceInfo({
+  deviceId,
+  authHeaders,
+}: {
+  deviceId: string
+  authHeaders: () => Record<string, string>
+}) {
+  const { data: device, isLoading } = useQuery<Device>({
+    queryKey: ['device-detail', deviceId],
+    queryFn: async () => {
+      const res = await fetch(`/api/devices/${deviceId}`, { headers: authHeaders() })
+      if (!res.ok) throw new Error('Failed to load device')
+      const json = await res.json()
+      return json.device as Device
+    },
+    staleTime: 30_000,
+  })
+
+  if (isLoading) return <span className="text-slate-400">กำลังโหลดข้อมูล...</span>
+  if (!device) return <span className="text-rose-500">ไม่พบอุปกรณ์หลัก</span>
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="font-mono font-semibold text-teal-700 dark:text-teal-300">{device.assetCode}</span>
+        <span className="font-medium text-slate-700 dark:text-slate-200">{device.name}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+        <div>ประเภท: <span className="font-medium text-slate-600 dark:text-slate-300">{device.type}</span></div>
+        <div>Serial: <span className="font-mono text-slate-600 dark:text-slate-300">{device.serialNumber ?? '—'}</span></div>
+        <div>แบรนด์: <span className="text-slate-600 dark:text-slate-300">{device.brand ?? '—'}</span></div>
+        <div>รุ่น: <span className="text-slate-600 dark:text-slate-300">{device.model ?? '—'}</span></div>
+        <div>สาขา: <span className="text-slate-600 dark:text-slate-300">{device.site ?? '—'}</span></div>
+        <div>สถานะ: <span className="text-slate-600 dark:text-slate-300">{device.status}</span></div>
+      </div>
+    </div>
+  )
+}

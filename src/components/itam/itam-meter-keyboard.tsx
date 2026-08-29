@@ -202,6 +202,10 @@ export function ItamMeterKeyboard() {
       return () => clearTimeout(t)
     }
     if (focus === 'search') {
+      // After save, search is cleared so `selected` becomes null. We still
+      // want to focus the search box so the user can type the next query
+      // immediately. Dependency on `focus` alone (not selected.assetCode)
+      // ensures this fires even when selected doesn't change.
       const t = setTimeout(() => searchInputRef.current?.focus(), 30)
       return () => clearTimeout(t)
     }
@@ -334,17 +338,22 @@ export function ItamMeterKeyboard() {
         { description: isReset ? '⚠️ RESET' : undefined },
       )
 
-      // Move focus to the next unread device and refocus the BW input.
-      await qc.invalidateQueries({ queryKey: ['itam-meter-keyboard'] })
-      await qc.invalidateQueries({ queryKey: ['itam-readings'] })
-      await qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+      // Legacy-app flow: immediately clear all inputs + return focus to the
+      // SEARCH box (before awaiting query invalidation) so the user can start
+      // typing the next search query without delay. No mouse needed.
+      setBwInput('')
+      setColorInput('')
+      setRemark('')
+      setSearchInput('')
+      setSearch('')
+      setSelectedIndex(0)
+      setFocus('search')
 
-      // Optimistically advance — after the query refetches, the new "selected"
-      // may be a different assetCode; we use the current selectedIndex which
-      // (because the just-read device drops out of the unread list) naturally
-      // points to the next device.
-      setSelectedIndex((i) => Math.min(i, Math.max(0, devices.length - 2)))
-      setFocus('meter')
+      // Invalidate queries (refetch happens in background; the search box is
+      // already focused so the user can type the next query immediately).
+      void qc.invalidateQueries({ queryKey: ['itam-meter-keyboard'] })
+      void qc.invalidateQueries({ queryKey: ['itam-readings'] })
+      void qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed')
     } finally {
@@ -445,11 +454,53 @@ export function ItamMeterKeyboard() {
         </CardContent>
       </Card>
 
-      {/* Main split */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[1fr_1.05fr]">
+      {/* Main split — left: search+list, right: input+recent */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_1fr] gap-3 lg:grid-cols-[1fr_1.05fr] lg:grid-rows-1">
         {/* Left: search + list */}
         <Card className="flex min-h-0 flex-col border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+            {/* ── Recent 10 readings — STICKY at top of right panel ── */}
+            {recent.length > 0 && (
+              <div className="mb-2 rounded-md border border-emerald-200 bg-emerald-50/60 p-2 dark:border-emerald-800 dark:bg-emerald-950/20">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    ✅ บันทึกล่าสุด ({Math.min(recent.length, 10)}/{recent.length})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRecent([])}
+                    className="text-[10px] text-slate-400 hover:text-rose-500"
+                  >
+                    ล้าง
+                  </button>
+                </div>
+                <div className="itam-scroll max-h-32 space-y-1 overflow-y-auto">
+                  {recent.slice(0, 10).map((r, i) => (
+                    <div
+                      key={r.assetCode + r.at}
+                      className={`flex items-center gap-2 rounded px-2 py-1 text-[11px] ${
+                        i === 0
+                          ? 'bg-emerald-100/80 dark:bg-emerald-950/40'
+                          : 'bg-white/50 dark:bg-slate-800/30'
+                      }`}
+                    >
+                      <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">{r.assetCode}</span>
+                      <span className="text-slate-500 dark:text-slate-400">
+                        BW {r.meterBw.toLocaleString()}
+                        {r.meterMode === 'BW_COLOR' && ` · สี ${r.meterColor.toLocaleString()}`}
+                      </span>
+                      <span className={`ml-auto font-mono ${r.delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                        Δ {r.delta > 0 ? '+' : ''}{r.delta.toLocaleString()}
+                      </span>
+                      {r.reset && <span className="text-[9px] text-amber-600">RESET</span>}
+                      <span className="text-[9px] text-slate-400">{fmtTime(r.at)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Device search */}
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
@@ -482,7 +533,7 @@ export function ItamMeterKeyboard() {
 
             <div
               ref={listRef}
-              className="itam-scroll min-h-0 flex-1 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800"
+              className="itam-scroll min-h-0 max-h-[42vh] flex-1 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800 lg:max-h-[55vh]"
             >
               {isLoading ? (
                 <div className="space-y-1 p-2">
@@ -555,7 +606,7 @@ export function ItamMeterKeyboard() {
         </Card>
 
         {/* Right: selected device + meter input */}
-        <Card className="flex min-h-0 flex-col border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+        <Card className="flex min-h-0 max-h-[55vh] flex-col border-slate-200 dark:border-slate-800 dark:bg-slate-900 lg:max-h-none">
           <CardContent className="flex min-h-0 flex-1 flex-col gap-3 p-3">
             <AnimatePresence mode="wait">
               {!selected ? (
@@ -576,7 +627,7 @@ export function ItamMeterKeyboard() {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -8 }}
                   transition={{ duration: 0.15 }}
-                  className="flex min-h-0 flex-1 flex-col gap-3"
+                  className="itam-scroll flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto"
                 >
                   {/* Device header */}
                   <div className="rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/40">
@@ -697,42 +748,47 @@ export function ItamMeterKeyboard() {
                         className="text-xs dark:bg-slate-800 dark:border-slate-700"
                       />
                     </div>
-
-                    <div className="mt-auto flex items-center gap-2">
-                      <Button
-                        onClick={saveReading}
-                        disabled={saving || !Number.isFinite(bwNum) || (isReset && !remark.trim())}
-                        className="flex-1 bg-[#f97316] text-white hover:bg-[#ea580c]"
-                      >
-                        {saving ? (
-                          <>
-                            <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> กำลังบันทึก...
-                          </>
-                        ) : (
-                          <>
-                            <CornerDownLeft className="mr-1.5 h-4 w-4" /> บันทึก + ถัดไป
-                          </>
-                        )}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setFocus('search')}
-                        className="dark:bg-slate-800 dark:border-slate-700"
-                      >
-                        <Search className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400">
-                      <div className="flex items-center gap-2">
-                        <span className="flex items-center gap-1"><ArrowUp className="h-3 w-3" />/<ArrowDown className="h-3 w-3" /> เลือกเครื่อง</span>
-                        <span className="flex items-center gap-1"><CornerDownLeft className="h-3 w-3" /> บันทึก</span>
-                      </div>
-                      <span>Enter ในช่องค้นหา → กระโดดไปที่ช่องกรอก</span>
-                    </div>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* ── Always-visible action bar (OUTSIDE scrollable motion.div) ── */}
+            {selected && (
+              <div className="flex flex-shrink-0 flex-col gap-2 border-t border-slate-200 pt-2 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={saveReading}
+                    disabled={saving || !Number.isFinite(bwNum) || (isReset && !remark.trim())}
+                    className="flex-1 bg-[#f97316] text-white hover:bg-[#ea580c]"
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> กำลังบันทึก...
+                      </>
+                    ) : (
+                      <>
+                        <CornerDownLeft className="mr-1.5 h-4 w-4" /> บันทึก + ถัดไป
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setFocus('search')}
+                    className="dark:bg-slate-800 dark:border-slate-700"
+                  >
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1"><ArrowUp className="h-3 w-3" />/<ArrowDown className="h-3 w-3" /> เลือกเครื่อง</span>
+                    <span className="flex items-center gap-1"><CornerDownLeft className="h-3 w-3" /> บันทึก</span>
+                  </div>
+                  <span>Enter ในช่องค้นหา → กระโดดไปที่ช่องกรอก</span>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

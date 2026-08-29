@@ -73,10 +73,12 @@ export async function POST(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'ASSIGN',
-          user: user.email,
-          details: JSON.stringify({ assetNo: body.assetNo, assignee: body.assignee }),
+          entity: 'DeviceAssignment',
+          entityId: created.id,
+          summary: `มอบหมาย ${body.assetNo} ให้ ${body.assignee}`,
+          detail: JSON.stringify({ assetNo: body.assetNo, assignee: body.assignee }),
+          actor: user.email,
         },
       })
     } catch { /* ignore */ }

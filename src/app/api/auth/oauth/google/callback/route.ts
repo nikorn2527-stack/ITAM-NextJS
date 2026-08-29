@@ -177,10 +177,12 @@ export async function GET(req: NextRequest) {
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'OAUTH_REGISTER',
-          user: email,
-          details: JSON.stringify({ provider: 'google', id: newUser.id }),
+          entity: 'User',
+          entityId: newUser.id,
+          summary: `ลงทะเบียนผ่าน Google: ${email}`,
+          detail: JSON.stringify({ provider: 'google', id: newUser.id, email }),
+          actor: email,
         },
       })
     } catch {

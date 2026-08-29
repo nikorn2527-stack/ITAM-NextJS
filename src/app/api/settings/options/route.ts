@@ -258,7 +258,11 @@ function serializeResolutions(arr: ResolutionOption[]): string {
   return JSON.stringify(arr.map(({ id, ...rest }) => (id ? { id, ...rest } : rest)))
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'VIEW_DEVICES')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const [subjRow, bldRow, resRow] = await Promise.all([
       db.appSetting.findUnique({ where: { key: 'subjectOptions' } }),

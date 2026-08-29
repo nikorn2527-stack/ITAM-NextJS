@@ -33,10 +33,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     try {
       await db.auditLog.create({
         data: {
-          timestamp: new Date().toISOString(),
           action: 'RETURN',
-          user: user.email,
-          details: JSON.stringify({ assignmentId: id, assetNo: existing.assetNo }),
+          entity: 'DeviceAssignment',
+          entityId: id,
+          summary: `คืนอุปกรณ์ ${existing.assetNo}`,
+          detail: JSON.stringify({ assignmentId: id, assetNo: existing.assetNo }),
+          actor: user.email,
         },
       })
     } catch { /* ignore */ }

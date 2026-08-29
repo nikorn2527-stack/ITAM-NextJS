@@ -13,7 +13,7 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone } from 'lucide-react'
 import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
@@ -77,6 +77,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
     items: [
       { value: 'users', label: 'จัดการผู้ใช้', icon: Users },
       { value: 'permissions', label: 'สิทธิ์ผู้ใช้', icon: Shield },
+      { value: 'mobile-nav', label: 'เมนูมือถือ', icon: Smartphone },
       { value: 'pending', label: 'รออนุมัติ', icon: Users },
       { value: 'demo', label: '🧪 สาธิตระบบ', icon: FlaskConical },
     ],
@@ -371,12 +372,6 @@ export function ItamSettings() {
                 {MASTER_CATEGORIES.map((cat: string) => (
                   <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                 ))}
-                <SelectItem value="Affiliation">Affiliation (สังกัด)</SelectItem>
-                <SelectItem value="RepairProblem">RepairProblem (ปัญหา)</SelectItem>
-                <SelectItem value="RepairResolution">RepairResolution (การแก้ไข)</SelectItem>
-                <SelectItem value="Building">Building (อาคาร)</SelectItem>
-                <SelectItem value="Floor">Floor (ชั้น)</SelectItem>
-                <SelectItem value="ContractNo">ContractNo</SelectItem>
               </SelectContent>
             </Select>
             <div className="flex gap-2 sm:ml-auto">
@@ -501,12 +496,6 @@ export function ItamSettings() {
                   {MASTER_CATEGORIES.map((cat: string) => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                   ))}
-                  <SelectItem value="Affiliation">Affiliation (สังกัด)</SelectItem>
-                  <SelectItem value="RepairProblem">RepairProblem (ปัญหา)</SelectItem>
-                  <SelectItem value="RepairResolution">RepairResolution (การแก้ไข)</SelectItem>
-                  <SelectItem value="Building">Building (อาคาร)</SelectItem>
-                  <SelectItem value="Floor">Floor (ชั้น)</SelectItem>
-                  <SelectItem value="ContractNo">ContractNo</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -712,6 +701,8 @@ export function ItamSettings() {
       {tab === 'wo-patterns' && <WoPatternTab />}
 
       {tab === 'demo' && <DemoManagementSection />}
+
+      {tab === 'mobile-nav' && <MobileNavConfigSection />}
         </div>
       </div>
     </div>
@@ -1022,5 +1013,194 @@ function AppCustomizeTab() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+// ============================================================
+// MobileNavConfigSection — admin ตั้งค่าเมนูมือถือ/เดสก์ท็อปตาม role
+// ============================================================
+function MobileNavConfigSection() {
+  const qc = useQueryClient()
+  const [config, setConfig] = React.useState<Record<string, Record<string, boolean>>>({})
+  const [selectedRole, setSelectedRole] = React.useState('staff')
+  const [saving, setSaving] = React.useState(false)
+
+  const ROLES = [
+    { value: 'admin', label: 'ผู้ดูแลระบบ' },
+    { value: 'manager', label: 'ผู้จัดการ' },
+    { value: 'staff', label: 'ช่างเทคนิค' },
+    { value: 'coordinator', label: 'ผู้ประสานงาน' },
+    { value: 'viewer', label: 'ผู้ดู' },
+  ]
+
+  // All nav pages that can be toggled
+  const NAV_PAGES = [
+    { page: 'dashboard', label: '📊 Dashboard' },
+    { page: 'itam-devices', label: '💻 จัดการอุปกรณ์' },
+    { page: 'itam-meter-keyboard', label: '📈 จดมิเตอร์' },
+    { page: 'itam-work-orders', label: '🔧 แจ้งซ่อม' },
+    { page: 'pm-schedules', label: '🗓️ ตาราง PM' },
+    { page: 'itam-stock', label: '📦 สต๊อก' },
+    { page: 'itam-paper-analytics', label: '📄 วิเคราะห์กระดาษ' },
+    { page: 'templates', label: '📄 เทมเพลต' },
+    { page: 'import', label: '📥 นำเข้าข้อมูล' },
+    { page: 'reports-hub', label: '📊 ศูนย์รายงาน' },
+    { page: 'material-cost', label: '💰 ต้นทุนวัสดุ' },
+    { page: 'monthly-report', label: '📅 รายงานรายเดือน' },
+    { page: 'itam-settings', label: '⚙️ ตั้งค่าระบบ' },
+    { page: 'itam-audit', label: '📜 ประวัติการใช้งาน' },
+    { page: 'mobile', label: '📱 โหมดมือถือ' },
+  ]
+
+  // Load config from AppSetting
+  const { data: settingsData } = useQuery({
+    queryKey: ['mobile-nav-config-settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings')
+      if (!res.ok) return { settings: [] }
+      return res.json()
+    },
+  })
+
+  React.useEffect(() => {
+    if (settingsData?.settings) {
+      const raw = settingsData.settings.find((s: { key: string }) => s.key === 'mobileNavConfig')
+      if (raw?.value) {
+        try {
+          setConfig(JSON.parse(raw.value))
+        } catch {
+          setConfig({})
+        }
+      }
+    }
+  }, [settingsData])
+
+  function togglePage(role: string, page: string, value: boolean) {
+    setConfig((prev) => ({
+      ...prev,
+      [role]: {
+        ...(prev[role] ?? {}),
+        [page]: value,
+      },
+    }))
+  }
+
+  function setAllForRole(role: string, value: boolean) {
+    setConfig((prev) => ({
+      ...prev,
+      [role]: Object.fromEntries(NAV_PAGES.map((p) => [p.page, value])),
+    }))
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mobileNavConfig: JSON.stringify(config),
+        }),
+      })
+      if (!res.ok) throw new Error('บันทึกไม่สำเร็จ')
+      toast.success('บันทึกการตั้งค่าเมนูมือถือแล้ว')
+      qc.invalidateQueries({ queryKey: ['mobile-nav-config'] })
+      qc.invalidateQueries({ queryKey: ['mobile-nav-config-settings'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const roleConfig = config[selectedRole] ?? {}
+
+  return (
+    <Card className="border-slate-200 dark:border-slate-800 dark:bg-slate-900">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Smartphone className="h-5 w-5 text-[#f97316]" />
+          ตั้งค่าเมนูมือถือ / เดสก์ท็อป
+        </CardTitle>
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          กำหนดว่าแต่ละ role จะเห็นเมนูใดบนมือถือ (หน้าจอ &lt; 768px) — บนเดสก์ท็อปจะเห็นทุกเมนูที่ไม่ได้ปิด
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Role selector */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Label className="text-xs">เลือก Role:</Label>
+          {ROLES.map((r) => (
+            <button
+              key={r.value}
+              type="button"
+              onClick={() => setSelectedRole(r.value)}
+              className={`rounded-md border px-3 py-1 text-xs transition ${
+                selectedRole === r.value
+                  ? 'border-[#f97316] bg-[#f97316]/10 text-[#f97316] dark:border-[#fb923c] dark:bg-[#fb923c]/10 dark:text-[#fb923c]'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-[#f97316]/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Quick actions */}
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setAllForRole(selectedRole, true)}>
+            เปิดทั้งหมด
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setAllForRole(selectedRole, false)}>
+            ปิดทั้งหมด
+          </Button>
+        </div>
+
+        {/* Page toggles */}
+        <div className="rounded-md border border-slate-200 dark:border-slate-800">
+          <Table>
+            <TableHeader>
+              <TableRow className="text-xs">
+                <TableHead>เมนู</TableHead>
+                <TableHead className="w-24 text-center">มือถือ</TableHead>
+                <TableHead className="w-24 text-center">เดสก์ท็อป</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {NAV_PAGES.map((p) => {
+                const mobileVisible = roleConfig[p.page] ?? true
+                return (
+                  <TableRow key={p.page} className="text-xs">
+                    <TableCell>{p.label}</TableCell>
+                    <TableCell className="text-center">
+                      <Switch
+                        checked={mobileVisible}
+                        onCheckedChange={(v) => togglePage(selectedRole, p.page, v)}
+                      />
+                    </TableCell>
+                    <TableCell className="text-center text-slate-400">
+                      ✓ (เห็นเสมอ)
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="rounded-md bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800/40 dark:text-slate-400">
+          💡 <strong>มือถือ</strong> = ผู้ใช้เห็นเฉพาะเมนูที่เปิดไว้ (เมื่อเข้าผ่านหน้าจอ &lt; 768px)<br />
+          💡 <strong>เดสก์ท็อป</strong> = ผู้ใช้เห็นทุกเมนู (ยกเว้นที่ปิดไว้)
+        </div>
+
+        <Button
+          onClick={save}
+          disabled={saving}
+          className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+        >
+          {saving ? 'กำลังบันทึก...' : '💾 บันทึกการตั้งค่า'}
+        </Button>
+      </CardContent>
+    </Card>
   )
 }

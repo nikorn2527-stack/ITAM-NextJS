@@ -33,9 +33,9 @@ const TIME_FMT = new Intl.DateTimeFormat('th-TH', {
 })
 
 const DATE_FMT = new Intl.DateTimeFormat('th-TH', {
-  weekday: 'long',
+  weekday: 'short',
   day: 'numeric',
-  month: 'long',
+  month: 'short',
   year: 'numeric',
 })
 
@@ -48,8 +48,5 @@ export function formatThaiTime(now: Date | null): string {
 /** "วันพุธที่ 13 สิงหาคม 2568" — empty string until mounted. */
 export function formatThaiDate(now: Date | null): string {
   if (!now) return ''
-  // Strip the leading "วัน" if present (some Thai locales prepend it) so we
-  // can prefix with our own "วัน" wording.
-  const raw = DATE_FMT.format(now)
-  return raw.startsWith('วัน') ? raw : `วัน${raw}`
+  return DATE_FMT.format(now)
 }

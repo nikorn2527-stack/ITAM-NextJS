@@ -7,6 +7,7 @@
 // ============================================================
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { readFileSync, existsSync } from 'node:fs'
 import {
   deriveSiteCode,
   redacted,
@@ -450,32 +451,28 @@ dbDescribe('Route authorization (requires PostgreSQL)', () => {
     // F-05 fix: static check that SYNC_RUN is NOT used (implementation
     // uses existing ADMIN permission instead, to avoid modifying B4
     // frozen file auth-shared.ts)
-    const fs = require('fs')
-    const content = fs.readFileSync('src/lib/auth-shared.ts', 'utf8')
+    const content = readFileSync('src/lib/auth-shared.ts', 'utf8')
     expect(content).not.toContain('SYNC_RUN')
   })
 
   it('sync API routes require authentication (check route files exist)', () => {
-    const fs = require('fs')
     const routes = [
       'src/app/api/sync/preview/route.ts',
       'src/app/api/sync/run/route.ts',
       'src/app/api/sync/runs/route.ts',
     ]
     for (const r of routes) {
-      expect(fs.existsSync(r)).toBe(true)
+      expect(existsSync(r)).toBe(true)
     }
   })
 
   it('preview route uses requireAuth', () => {
-    const fs = require('fs')
-    const content = fs.readFileSync('src/app/api/sync/preview/route.ts', 'utf8')
+    const content = readFileSync('src/app/api/sync/preview/route.ts', 'utf8')
     expect(content).toContain('requireAuth')
   })
 
   it('run route uses requireAuth', () => {
-    const fs = require('fs')
-    const content = fs.readFileSync('src/app/api/sync/run/route.ts', 'utf8')
+    const content = readFileSync('src/app/api/sync/run/route.ts', 'utf8')
     expect(content).toContain('requireAuth')
   })
 })

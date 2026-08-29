@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 
 const METERABLE_TYPES = new Set(['PRINTER', 'COPIER', 'MFP'])
@@ -60,9 +61,13 @@ interface CycleReportAnomaly {
  * - anomalies (RESET = delta < 0, HIGH_DELTA = delta > 20000)
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'VIEW_DASHBOARD')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const cycle = await db.cycle.findUnique({ where: { id } })

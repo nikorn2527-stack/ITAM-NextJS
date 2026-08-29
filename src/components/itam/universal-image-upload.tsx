@@ -167,7 +167,6 @@ export function UniversalImageUpload({
               key={idx}
               className="group relative aspect-square overflow-hidden rounded-md border bg-muted"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={img}
                 alt={`รูปที่ ${idx + 1}`}

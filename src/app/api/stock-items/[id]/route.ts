@@ -20,9 +20,13 @@ function optInt(v: unknown, fallback = 0): number {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'STOCK_VIEW')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const item = await db.stockItem.findUnique({
@@ -69,6 +73,10 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'STOCK_IN')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const body = await req.json()
@@ -193,9 +201,13 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'STOCK_IN')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const item = await db.stockItem.findUnique({ where: { id } })

@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
 
 /**
  * Generic audit-log endpoint for client-side actions that don't mutate DB
  * records (e.g. printing stickers). Server-side mutations should call
  * `logAudit()` directly from their route handlers instead.
+ *
+ * SECURITY: requires authentication to prevent attackers from spamming /
+ * forging audit log entries via anonymous POST.
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'VIEW_DASHBOARD')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const body = await req.json()
     const { action, entity, entityId, summary, detail } = body as {

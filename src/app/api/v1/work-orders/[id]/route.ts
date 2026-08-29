@@ -66,6 +66,16 @@ export async function GET(
     if (!order.tel || order.tel.trim() !== reporterTel) {
       return forbidden('เบอร์โทรศัพท์ไม่ตรงกับใบแจ้งซ่อมนี้')
     }
+  } else {
+    // ── Site scope: authed users can only view WOs in their allowed sites ──
+    // Admins (allowedSites === 'ALL') can view any WO. Other users must
+    // match the WO's siteCode to their allowedSites list. Null siteCode
+    // (external/unassigned) is only visible to admins.
+    if (auth.ctx.allowedSites !== 'ALL') {
+      if (!order.siteCode || !auth.ctx.allowedSites.includes(order.siteCode)) {
+        return forbidden('ไม่มีสิทธิ์เข้าถึงใบแจ้งซ่อมนี้ (site scope)')
+      }
+    }
   }
 
   const [messages, review] = await Promise.all([
@@ -135,6 +145,7 @@ export async function PUT(
     const data: Record<string, unknown> = {}
 
     // Scalar text fields (only set when explicitly provided)
+    // Note: `assetNo` removed — WorkOrder model has no such field.
     const scalarFields = [
       'subject',
       'building',
@@ -146,7 +157,6 @@ export async function PUT(
       'reporterEmail',
       'tel',
       'employeeCode',
-      'assetNo',
       'picBefore',
       'picOnsite',
       'picAfter',

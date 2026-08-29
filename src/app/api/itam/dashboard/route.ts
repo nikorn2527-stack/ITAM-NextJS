@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, getAllowedSites } from '@/lib/auth'
@@ -83,23 +84,65 @@ export async function GET(req: NextRequest) {
         _count: { type: true },
       }),
 
-      // 3) Paper usage this month — by readingDate (actual reading date, not cycle month)
-      //    Filtered to USAGE_TYPES only (MONTHLY/CHECKOUT/RETURN) to match Apps Script.
+      // 3) Paper usage this month — SUM of pagesBw + pagesColor for ALL readings
+      //    recorded (by readingDate) in the current calendar month, regardless of
+      //    readingType. This represents "the amount entered this month" — what
+      //    was recorded in August = August's actual paper activity (not a delta
+      //    that would reflect last month's usage).
+      //    pagesBw/pagesColor already store the DELTA per reading (computed at
+      //    POST time), so summing them gives the true total usage recorded this
+      //    month across all statuses.
       db.meterReading.aggregate({
         _sum: { pagesBw: true, pagesColor: true },
         where: {
           readingDate: { gte: monthStart, lte: monthEnd },
           device: siteFilter,
-          ...usageTypeFilter,
         },
       }),
 
-      // 4) Paper usage trend (6 months) — single groupBy, USAGE_TYPES only
-      db.meterReading.groupBy({
-        by: ['readingMonth'],
-        where: { readingMonth: { in: trendMonthKeys }, device: siteFilter, ...usageTypeFilter },
-        _sum: { pagesBw: true, pagesColor: true },
-      }),
+      // 4) Paper usage trend (6 months) — DELTA calculation per month.
+      //    For each month, get the latest reading and the reading before it,
+      //    then compute delta = latest - previous (per device), then sum.
+      db.$queryRaw`
+        WITH monthly_latest AS (
+          SELECT DISTINCT ON (mr."deviceId", mr."readingMonth")
+            mr."deviceId",
+            mr."readingMonth",
+            mr."pagesBw" as latest_bw,
+            mr."pagesColor" as latest_color,
+            mr."readingDate"
+          FROM "MeterReading" mr
+          WHERE mr."readingMonth" IN (${Prisma.join(trendMonthKeys)})
+            AND mr."readingType" IN ('MONTHLY', 'CHECKOUT', 'RETURN')
+            AND (mr."pagesBw" > 0 OR mr."pagesColor" > 0)
+          ORDER BY mr."deviceId", mr."readingMonth", mr."readingDate" DESC
+        ),
+        monthly_previous AS (
+          SELECT DISTINCT ON (ml."deviceId", ml."readingMonth")
+            ml."deviceId",
+            ml."readingMonth",
+            mr."pagesBw" as prev_bw,
+            mr."pagesColor" as prev_color
+          FROM monthly_latest ml
+          JOIN "MeterReading" mr ON mr."deviceId" = ml."deviceId"
+            AND mr."readingDate" < ml."readingDate"
+            AND mr."readingType" IN ('MONTHLY', 'CHECKOUT', 'RETURN')
+            AND (mr."pagesBw" > 0 OR mr."pagesColor" > 0)
+          ORDER BY ml."deviceId", ml."readingMonth", mr."readingDate" DESC
+        )
+        SELECT
+          ml."readingMonth",
+          COALESCE(SUM(
+            GREATEST(0, ml.latest_bw - COALESCE(mp.prev_bw, 0))
+          ), 0) as delta_bw,
+          COALESCE(SUM(
+            GREATEST(0, ml.latest_color - COALESCE(mp.prev_color, 0))
+          ), 0) as delta_color
+        FROM monthly_latest ml
+        LEFT JOIN monthly_previous mp ON mp."deviceId" = ml."deviceId" AND mp."readingMonth" = ml."readingMonth"
+        GROUP BY ml."readingMonth"
+        ORDER BY ml."readingMonth"
+      `,
 
       // 5) Meter-required device count
       db.device.count({
@@ -131,15 +174,18 @@ export async function GET(req: NextRequest) {
       .sort((a, b) => b.value - a.value)
       .slice(0, 8)
 
-    // ── Paper this month ───────────────────────────────────────────────────
+    // ── Paper this month — SUM of pagesBw + pagesColor for all readings
+    //    recorded (by readingDate) in the current calendar month, all statuses.
+    //    This represents "the actual amount entered this month".
+    const paperThisMonthRows = paperThisMonthAgg as { _sum: { pagesBw: number | null; pagesColor: number | null } }
     const paperThisMonth =
-      (paperThisMonthAgg._sum.pagesBw ?? 0) + (paperThisMonthAgg._sum.pagesColor ?? 0)
+      (paperThisMonthRows._sum.pagesBw ?? 0) + (paperThisMonthRows._sum.pagesColor ?? 0)
 
-    // ── Paper trend (6 months) ─────────────────────────────────────────────
+    // ── Paper trend (6 months) — DELTA per month ──
     const trendMap: Record<string, number> = {}
-    for (const g of paperTrendGroups as { readingMonth: string | null; _sum: { pagesBw: number | null; pagesColor: number | null } }[]) {
+    for (const g of paperTrendGroups as { readingMonth: string; delta_bw: bigint; delta_color: bigint }[]) {
       const k = g.readingMonth || ''
-      if (k) trendMap[k] = (trendMap[k] || 0) + (g._sum.pagesBw ?? 0) + (g._sum.pagesColor ?? 0)
+      if (k) trendMap[k] = (trendMap[k] || 0) + Number(g.delta_bw) + Number(g.delta_color)
     }
     const paperTrend = trendMonths.map((m) => ({
       month: m.label,
@@ -192,13 +238,13 @@ export async function GET(req: NextRequest) {
           where: { site: { in: visibleSiteNames } },
           select: { assetCode: true, site: true },
         }),
-        // Paper usage per asset this month (by readingDate, USAGE_TYPES only, aggregated)
+        // Paper usage per asset this month (by readingDate, ALL readingTypes —
+        // matches the top-level "paper this month" definition)
         db.meterReading.groupBy({
           by: ['assetCode'],
           where: {
             readingDate: { gte: monthStart, lte: monthEnd },
             device: { site: { in: visibleSiteNames } },
-            ...usageTypeFilter,
           },
           _sum: { pagesBw: true, pagesColor: true },
         }),

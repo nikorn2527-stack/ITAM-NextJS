@@ -36,7 +36,7 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth-store'
 import {
   Cpu, Gauge, Wrench, Package, Activity, ShieldCheck,
-  FileText, Download, RefreshCw, CalendarDays,
+  FileText, Download, RefreshCw, CalendarDays, Printer,
 } from 'lucide-react'
 import {
   currentMonthValue, formatMonthLabel, formatDateTime,
@@ -47,6 +47,7 @@ import { WorkOrdersReport } from './reports/workorders-report'
 import { StockReport } from './reports/stock-report'
 import { MaintenanceReport } from './reports/maintenance-report'
 import { ApprovalsReport } from './reports/approvals-report'
+import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
 
 type ReportGroup =
   | 'devices'
@@ -78,6 +79,9 @@ export function ReportsHub() {
   const [activeGroup, setActiveGroup] = React.useState<ReportGroup>('devices')
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
+
+  // Print template selection dialog state (Task ID: FIX-1-2-EXPORT-PRINT)
+  const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
 
   function getAuthHeaders(
     extra: Record<string, string> = {},
@@ -233,6 +237,18 @@ export function ReportsHub() {
                 <Download className="mr-1 h-3.5 w-3.5" />
                 CSV
               </Button>
+              {/* พิมพ์ PDF — Task ID: FIX-1-2-EXPORT-PRINT */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPrintTemplateOpen(true)}
+                disabled={!data}
+                className="h-10 border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c]"
+                title="เลือกเทมเพลตก่อนพิมพ์ PDF"
+              >
+                <Printer className="mr-1 h-3.5 w-3.5" />
+                พิมพ์ PDF
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -289,7 +305,7 @@ export function ReportsHub() {
         onValueChange={(v) => setActiveGroup(v as ReportGroup)}
         className="flex min-h-0 flex-1 flex-col gap-3"
       >
-        <TabsList className="grid h-auto w-full grid-cols-3 gap-1 md:grid-cols-6">
+        <TabsList className="grid h-auto w-full flex-shrink-0 grid-cols-3 gap-1 md:grid-cols-6">
           <TabsTrigger value="devices" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Cpu className="h-4 w-4" />
             <span>อุปกรณ์</span>
@@ -351,6 +367,18 @@ export function ReportsHub() {
           </motion.div>
         )}
       </Tabs>
+
+      {/* Print Template Selection Dialog — Task ID: FIX-1-2-EXPORT-PRINT */}
+      <PrintTemplateSelectionDialog
+        open={printTemplateOpen}
+        onOpenChange={setPrintTemplateOpen}
+        templateType="work-order"
+        actionLabel="พิมพ์"
+        onSelect={(template) => {
+          toast.success(`เลือกเทมเพลต: ${template.name}`)
+          if (typeof window !== 'undefined') window.print()
+        }}
+      />
     </div>
   )
 }

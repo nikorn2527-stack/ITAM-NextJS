@@ -324,8 +324,8 @@ function SearchCamera({
       ctx.drawImage(video, 0, 0, w, h)
 
       // Try BarcodeDetector first (native, fast, on Chrome Android)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const BarcodeDetectorAny = (window as any).BarcodeDetector
+      type BarcodeDetectorCtor = new (opts: { formats: string[] }) => { detect: (src: CanvasRenderingContext2D | HTMLCanvasElement | ImageBitmap | VideoFrame) => Promise<Array<{ rawValue?: string }>> }
+      const BarcodeDetectorAny = (window as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector
       if (BarcodeDetectorAny) {
         try {
           const detector = new BarcodeDetectorAny({
@@ -380,7 +380,6 @@ function SearchCamera({
       cancelled = true
       cleanup()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode])
 
   async function runOcr() {

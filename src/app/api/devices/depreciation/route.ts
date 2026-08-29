@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 
 /**
  * Depreciation endpoint — graceful "not configured" response.
@@ -17,7 +18,11 @@ import { NextResponse } from 'next/server'
 const NOT_CONFIGURED_MESSAGE =
   'Depreciation tracking requires purchasePrice/salvageValue fields which are not yet in the schema'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'VIEW_DEVICES')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   return NextResponse.json(
     {
       configured: false,

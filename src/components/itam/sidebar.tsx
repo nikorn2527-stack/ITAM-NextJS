@@ -3,7 +3,11 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
-import { Sun, Moon, Search, LogOut, QrCode, Menu } from 'lucide-react'
+import { Sun, Moon, Search, LogOut, QrCode, Menu,
+  LayoutDashboard, Monitor, TrendingUp, Wrench, CalendarClock,
+  Package, FileText, Smartphone, Download, BarChart3, Coins,
+  Lock, Settings, ScrollText, type LucideIcon,
+} from 'lucide-react'
 import { useAppStore, type ActivePage } from '@/store/app-store'
 import { isModuleEnabled, type ModuleName } from '@/config/modules'
 import { useClock, formatThaiTime, formatThaiDate } from '@/hooks/use-clock'
@@ -22,7 +26,7 @@ function roleLabel(role: string | undefined | null): string {
 
 interface NavItemDef {
   page: ActivePage
-  icon: string
+  icon: LucideIcon
   label: string
   desc?: string
   module?: ModuleName
@@ -41,35 +45,37 @@ const NAV_GROUPS: NavGroupDef[] = [
   {
     title: 'ภาพรวม',
     items: [
-      { page: 'dashboard', icon: '📊', label: 'Dashboard', desc: 'สรุปภาพรวมระบบ', module: 'dashboard' },
+      { page: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', desc: 'สรุปภาพรวมระบบ', module: 'dashboard' },
     ],
   },
   {
     title: 'การทำงาน',
     items: [
-      { page: 'itam-devices', icon: '💻', label: 'จัดการอุปกรณ์', desc: 'ครุภัณฑ์ทั้งหมด', module: 'devices' },
-      { page: 'itam-meter-keyboard', icon: '📈', label: 'จดมิเตอร์', desc: 'จดมิเตอร์ + ประวัติ', module: 'meters' },
-      { page: 'itam-work-orders', icon: '🔧', label: 'แจ้งซ่อม', desc: 'แจ้งซ่อม รับงาน ปิดงาน', module: 'work-orders' },
-      { page: 'itam-stock', icon: '📦', label: 'สต๊อก', desc: 'คลังสิ้นเปลือง/อะไหล่', module: 'stock' },
-      { page: 'itam-paper-analytics', icon: '📄', label: 'วิเคราะห์กระดาษ', desc: 'สถิติการใช้งาน', module: 'paper-analytics' },
-      { page: 'mobile', icon: '📱', label: 'โหมดมือถือ', desc: 'แจ้งซ่อม จดมิเตอร์ เบิกของ', module: 'work-orders' },
+      { page: 'itam-devices', icon: Monitor, label: 'จัดการอุปกรณ์', desc: 'ครุภัณฑ์ทั้งหมด', module: 'devices' },
+      { page: 'itam-meter-keyboard', icon: TrendingUp, label: 'จดมิเตอร์', desc: 'จดมิเตอร์ + ประวัติ', module: 'meters' },
+      { page: 'itam-work-orders', icon: Wrench, label: 'แจ้งซ่อม', desc: 'แจ้งซ่อม รับงาน ปิดงาน', module: 'work-orders' },
+      { page: 'pm-schedules', icon: CalendarClock, label: 'ตาราง PM', desc: 'บำรุงรักษาตามรอบเวลา', module: 'work-orders' },
+      { page: 'itam-stock', icon: Package, label: 'สต๊อก', desc: 'คลังสิ้นเปลือง/อะไหล่', module: 'stock' },
+      { page: 'itam-paper-analytics', icon: FileText, label: 'วิเคราะห์กระดาษ', desc: 'สถิติการใช้งาน', module: 'paper-analytics' },
+      { page: 'mobile', icon: Smartphone, label: 'โหมดมือถือ', desc: 'แจ้งซ่อม จดมิเตอร์ เบิกของ', module: 'work-orders' },
     ],
   },
   {
     title: 'เครื่องมือ',
     items: [
-      { page: 'templates', icon: '📄', label: 'เทมเพลต', desc: 'จัดการเทมเพลต (สติกเกอร์/เอกสาร/ใบงาน)', module: 'templates' },
-      { page: 'import', icon: '📥', label: 'นำเข้าข้อมูล', desc: 'Import CSV/Excel', module: 'import' },
-      { page: 'reports-hub', icon: '📊', label: 'ศูนย์รายงาน', desc: 'รายงาน 5 กลุ่ม + อนุมัติ', module: 'reports' },
-      { page: 'monthly-report', icon: '📅', label: 'รายงานรายเดือน', desc: 'สรุปการใช้งานรายเดือน', module: 'reports' },
-      { page: 'itam-snapshot-viewer', icon: '🔒', label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์', module: 'meters' },
+      { page: 'templates', icon: FileText, label: 'เทมเพลต', desc: 'จัดการเทมเพลต (สติกเกอร์/เอกสาร/ใบงาน)', module: 'templates' },
+      { page: 'import', icon: Download, label: 'นำเข้าข้อมูล', desc: 'Import CSV/Excel', module: 'import' },
+      { page: 'reports-hub', icon: BarChart3, label: 'ศูนย์รายงาน', desc: 'รายงาน 5 กลุ่ม + อนุมัติ', module: 'reports' },
+      { page: 'material-cost', icon: Coins, label: 'ต้นทุนวัสดุ', desc: 'หมึก/อะไหล่/บริการ + สอบทาน', module: 'reports' },
+      { page: 'monthly-report', icon: CalendarClock, label: 'รายงานรายเดือน', desc: 'สรุปการใช้งานรายเดือน', module: 'reports' },
+      { page: 'itam-snapshot-viewer', icon: Lock, label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์', module: 'meters' },
     ],
   },
   {
     title: 'ระบบ',
     items: [
-      { page: 'itam-settings', icon: '⚙️', label: 'ตั้งค่าระบบ', desc: 'การตั้งค่าทั้งหมด', module: 'settings' },
-      { page: 'itam-audit', icon: '📜', label: 'ประวัติการใช้งาน', desc: 'Audit log', module: 'audit' },
+      { page: 'itam-settings', icon: Settings, label: 'ตั้งค่าระบบ', desc: 'การตั้งค่าทั้งหมด', module: 'settings' },
+      { page: 'itam-audit', icon: ScrollText, label: 'ประวัติการใช้งาน', desc: 'Audit log', module: 'audit' },
     ],
   },
 ]
@@ -224,8 +230,49 @@ export function Sidebar() {
     })
   }, [navVisibility])
 
+  // ── Mobile/Desktop menu filtering ──
+  // Admin can configure which nav items each role sees on mobile vs desktop.
+  // Stored in AppSetting key 'mobileNavConfig' as JSON: { [role]: { [page]: true|false } }
+  // Default: all items visible on desktop, only essential items on mobile.
+  const [isMobile, setIsMobile] = React.useState(false)
+  React.useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  const { data: mobileNavConfig } = useQuery<Record<string, Record<string, boolean>>>({
+    queryKey: ['mobile-nav-config'],
+    queryFn: async () => {
+      try {
+        const res = await fetch('/api/settings', { headers: getAuthHeaders() })
+        if (!res.ok) return {}
+        const json = await res.json()
+        const raw = json.settings?.find((s: { key: string; value: string }) => s.key === 'mobileNavConfig')
+        if (!raw?.value) return {}
+        return JSON.parse(raw.value)
+      } catch {
+        return {}
+      }
+    },
+    staleTime: 30_000,
+  })
+
+  // Default mobile-visible pages (when no config is set for this role)
+  const DEFAULT_MOBILE_PAGES: string[] = [
+    'dashboard',
+    'itam-work-orders',
+    'work-orders',
+    'itam-meter-keyboard',
+    'itam-stock',
+    'mobile',
+    'pm-schedules',
+  ]
+
   // Filtered NAV_GROUPS — preserves group ordering/structure but hides items
   // the user doesn't have permission to see. Empty groups are skipped.
+  // On mobile, also filter by mobileNavConfig (or default mobile pages).
   const filteredNavGroups = React.useMemo(() => {
     return NAV_GROUPS.map((g) => ({
       ...g,
@@ -233,10 +280,29 @@ export function Sidebar() {
         if (item.module && !isModuleEnabled(item.module)) return false
         const key = pageToVisibilityKey[item.page]
         if (!key) return true
-        return Boolean(navVisibility[key])
+        if (!Boolean(navVisibility[key])) return false
+
+        // ── Mobile/Desktop filtering ──
+        if (isMobile) {
+          // Check role-specific config first
+          const roleConfig = mobileNavConfig?.[role]
+          if (roleConfig && typeof roleConfig[item.page] === 'boolean') {
+            return roleConfig[item.page]
+          }
+          // Fall back to default mobile pages
+          return DEFAULT_MOBILE_PAGES.includes(item.page)
+        }
+        // Desktop: show all (unless explicitly hidden by config)
+        const desktopConfig = mobileNavConfig?.[role]
+        if (desktopConfig && typeof desktopConfig[item.page] === 'boolean') {
+          // On desktop, if config explicitly hides a page, respect it
+          // But only if there's a config — otherwise show everything
+          return desktopConfig[item.page] || true
+        }
+        return true
       }),
     })).filter((g) => g.items.length > 0)
-  }, [navVisibility])
+  }, [navVisibility, isMobile, mobileNavConfig, role])
 
   // ── Organization Profile (flexible: ชื่อ/โลโก้/tagline เปลี่ยนได้) ──
   const { data: orgProfile } = useQuery({
@@ -370,7 +436,7 @@ export function Sidebar() {
               <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-[#f97316]" />
               <span>{formatThaiTime(clockNow)}</span>
               <span className="text-slate-300 dark:text-slate-600">·</span>
-              <span>{formatThaiDate(clockNow)}</span>
+              <span className="whitespace-nowrap">{formatThaiDate(clockNow)}</span>
             </div>
           )}
         </div>
@@ -422,12 +488,15 @@ export function Sidebar() {
                   />
                   <span
                     className={cn(
-                      'inline-flex flex-shrink-0 items-center justify-center',
-                      expanded ? 'h-5 w-5 text-base' : 'h-7 w-7 text-lg',
+                      'inline-flex flex-shrink-0 items-center justify-center rounded-lg transition-colors',
+                      expanded ? 'h-7 w-7' : 'h-8 w-8',
+                      active
+                        ? 'bg-[#f97316]/15 text-[#f97316] dark:bg-[#fb923c]/15 dark:text-[#fb923c]'
+                        : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300',
                     )}
                     aria-hidden
                   >
-                    {item.icon}
+                    <item.icon className={expanded ? 'h-4 w-4' : 'h-5 w-5'} />
                   </span>
                   <span
                     className={cn(

@@ -17,10 +17,12 @@ import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { PenLine, History, CalendarClock, Plus, AlertTriangle, RotateCcw } from 'lucide-react'
+import { PenLine, History, CalendarClock, Plus, AlertTriangle, RotateCcw, Download } from 'lucide-react'
 import { ItamMeterKeyboard } from './itam-meter-keyboard'
 import { ItamMeter } from './itam-meter'
 import { CycleManageDialog } from './cycle-manage-dialog'
+import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
+import { runCustomExport } from '@/lib/custom-export'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -34,6 +36,21 @@ import {
 } from '@/components/ui/dialog'
 import type { Cycle } from './types'
 import { formatMonthThai } from './types'
+
+// ============================================================
+// Custom Export — Meter page (Task ID: FIX-1-2-EXPORT-PRINT)
+// ============================================================
+const METER_EXPORT_COLUMNS: ExportColumn[] = [
+  { key: 'assetCode', label: 'รหัสอุปกรณ์', group: 'อุปกรณ์' },
+  { key: 'deviceName', label: 'ชื่ออุปกรณ์', group: 'อุปกรณ์' },
+  { key: 'site', label: 'สาขา', group: 'อุปกรณ์' },
+  { key: 'prevMeter', label: 'มิเตอร์ก่อนหน้า', group: 'มิเตอร์' },
+  { key: 'lastMeter', label: 'มิเตอร์ล่าสุด', group: 'มิเตอร์' },
+  { key: 'pagesBw', label: 'แผ่น BW', group: 'มิเตอร์' },
+  { key: 'pagesColor', label: 'แผ่นสี', group: 'มิเตอร์' },
+  { key: 'readingDate', label: 'วันที่จด', group: 'มิเตอร์' },
+  { key: 'remark', label: 'หมายเหตุ', group: 'มิเตอร์' },
+]
 
 // ============================================================
 // CycleCountdownBar — sticky bar at top of meter page
@@ -403,6 +420,9 @@ export function ItamMeterUnified() {
   const [mode, setMode] = React.useState<'entry' | 'history'>('entry')
   const [cycleDialogOpen, setCycleDialogOpen] = React.useState(false)
   const [quickCreateOpen, setQuickCreateOpen] = React.useState(false)
+  // Custom export dialog state (Task ID: FIX-1-2-EXPORT-PRINT)
+  const [customExportOpen, setCustomExportOpen] = React.useState(false)
+  const [exportTotalRows, setExportTotalRows] = React.useState(0)
 
   // Fetch active cycle (lightweight — used by both countdown bar + manage dialog)
   const { data: activeCycle } = useQuery<Cycle | null>({
@@ -446,6 +466,60 @@ export function ItamMeterUnified() {
     void refetchReminders()
   }, [qc, refetchReminders])
 
+  // ── Custom Export handler ──
+  // Fetches ALL meter readings (paginated) and builds rows keyed by the
+  // column `key` so runCustomExport can map them.
+  const handleCustomExport = React.useCallback(
+    async (columns: ExportColumn[], format: ExportFormat) => {
+      // Read all readings — fetch up to 10k rows in pages of 500.
+      const all: Array<{
+        assetCode: string
+        readingDate: string | null
+        meterBw: number
+        meterColor: number
+        pagesBw: number
+        pagesColor: number
+        prevMeterBw: number
+        remark: string | null
+        device?: { assetCode: string; brand: string | null; model: string | null; site: string | null } | null
+      }> = []
+      let page = 1
+      const pageSize = 500
+      let totalPages = 1
+      while (page <= totalPages) {
+        const res = await fetch(`/api/itam/meter-readings?page=${page}&limit=${pageSize}`)
+        if (!res.ok) throw new Error('โหลดข้อมูลมิเตอร์ไม่สำเร็จ')
+        const json: {
+          readings: typeof all
+          pagination: { totalPages: number; total: number }
+        } = await res.json()
+        all.push(...json.readings)
+        totalPages = json.pagination.totalPages
+        if (json.readings.length < pageSize) break
+        page += 1
+      }
+      setExportTotalRows(all.length)
+      if (all.length === 0) {
+        toast.warning('ไม่มีข้อมูลมิเตอร์ให้ส่งออก')
+        return
+      }
+      const rows: Record<string, unknown>[] = all.map((r) => ({
+        assetCode: r.assetCode ?? '',
+        deviceName: r.device ? `${r.device.brand ?? ''} ${r.device.model ?? ''}`.trim() : '',
+        site: r.device?.site ?? '',
+        prevMeter: r.prevMeterBw ?? 0,
+        lastMeter: r.meterBw ?? 0,
+        pagesBw: r.pagesBw ?? 0,
+        pagesColor: r.pagesColor ?? 0,
+        readingDate: r.readingDate ?? '',
+        remark: r.remark ?? '',
+      }))
+      runCustomExport(columns, format, rows, 'meter-readings', 'รายงานการจดมิเตอร์')
+      toast.success(`ส่งออก ${rows.length} รายการ`)
+    },
+    [],
+  )
+
   return (
     <div className="flex h-full flex-col p-3 md:p-4">
       {/* Countdown bar — FIXED, never scrolls away */}
@@ -459,6 +533,18 @@ export function ItamMeterUnified() {
         />
       </div>
 
+      {/* Action bar — ส่งออก (Task ID: FIX-1-2-EXPORT-PRINT) */}
+      <div className="mb-2 flex flex-shrink-0 items-center justify-end gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCustomExportOpen(true)}
+          className="dark:bg-slate-800 dark:border-slate-700"
+        >
+          <Download className="h-3.5 w-3.5" /> ส่งออก
+        </Button>
+      </div>
+
       <Tabs value={mode} onValueChange={(v) => setMode(v as 'entry' | 'history')} className="flex min-h-0 flex-1 flex-col">
         <TabsList className="grid w-full max-w-md grid-cols-2 flex-shrink-0">
           <TabsTrigger value="entry" className="gap-1.5">
@@ -470,10 +556,10 @@ export function ItamMeterUnified() {
             ประวัติมิเตอร์
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="entry" className="mt-2 min-h-0 flex-1 overflow-auto">
+        <TabsContent value="entry" className="mt-2 min-h-0 flex-1 overflow-hidden">
           <ItamMeterKeyboard />
         </TabsContent>
-        <TabsContent value="history" className="mt-2 min-h-0 flex-1 overflow-auto">
+        <TabsContent value="history" className="mt-2 min-h-0 flex-1 overflow-hidden">
           <ItamMeter />
         </TabsContent>
       </Tabs>
@@ -488,6 +574,16 @@ export function ItamMeterUnified() {
         open={quickCreateOpen}
         onOpenChange={setQuickCreateOpen}
         onCreated={handleCreated}
+      />
+
+      {/* Custom Export Dialog (Task ID: FIX-1-2-EXPORT-PRINT) */}
+      <CustomExportDialog
+        open={customExportOpen}
+        onOpenChange={setCustomExportOpen}
+        availableColumns={METER_EXPORT_COLUMNS}
+        onExport={handleCustomExport}
+        storageKey="itam-meter-export-cols"
+        totalRows={exportTotalRows}
       />
     </div>
   )

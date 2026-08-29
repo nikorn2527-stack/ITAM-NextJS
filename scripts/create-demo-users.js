@@ -17,8 +17,8 @@
  * role are reset to the canonical values; allowedSites stays "ALL").
  */
 
-const crypto = require('node:crypto')
-const { PrismaClient } = require('@prisma/client')
+const crypto = require('node:crypto') // eslint-disable-line @typescript-eslint/no-require-imports
+const { PrismaClient } = require('@prisma/client') // eslint-disable-line @typescript-eslint/no-require-imports
 
 const prisma = new PrismaClient()
 

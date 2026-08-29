@@ -17,13 +17,17 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; txnId: string }> },
 ) {
+  const auth = await requireAuth(req, 'STOCK_APPROVE')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id, txnId } = await params
     const body = await req.json().catch(() => ({} as Record<string, unknown>))
     const approverName =
       typeof body.approver === 'string' && body.approver.trim()
         ? body.approver.trim()
-        : 'admin'
+        : auth.user.email
     const rejectReason =
       typeof body.reason === 'string' && body.reason.trim()
         ? body.reason.trim()

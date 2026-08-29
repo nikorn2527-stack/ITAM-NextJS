@@ -82,6 +82,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth-store'
+import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
 import {
   Wrench,
   CheckCircle2,
@@ -724,6 +725,9 @@ export function MonthlyReport() {
     meters: false,
   })
   const [printBusy, setPrintBusy] = React.useState(false)
+
+  // ── Print template selection dialog state (Task ID: FIX-1-2-EXPORT-PRINT) ──
+  const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
 
   function getAuthHeaders(
     extra: Record<string, string> = {},
@@ -1717,6 +1721,18 @@ export function MonthlyReport() {
                 <Printer className="mr-1 h-3.5 w-3.5" />
                 พิมพ์หน้านี้
               </Button>
+              {/* พิมพ์ด้วยเทมเพลต — Task ID: FIX-1-2-EXPORT-PRINT */}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPrintTemplateOpen(true)}
+                disabled={!data}
+                className="h-8 border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c]"
+                title="เลือกเทมเพลตก่อนพิมพ์"
+              >
+                <Printer className="mr-1 h-3.5 w-3.5" />
+                พิมพ์ด้วยเทมเพลต
+              </Button>
               <Button
                 size="sm"
                 onClick={handleExportCSV}
@@ -2555,6 +2571,18 @@ export function MonthlyReport() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Print Template Selection Dialog — Task ID: FIX-1-2-EXPORT-PRINT */}
+      <PrintTemplateSelectionDialog
+        open={printTemplateOpen}
+        onOpenChange={setPrintTemplateOpen}
+        templateType="work-order"
+        actionLabel="พิมพ์"
+        onSelect={(template) => {
+          toast.success(`เลือกเทมเพลต: ${template.name}`)
+          if (typeof window !== 'undefined') window.print()
+        }}
+      />
     </div>
   )
 }

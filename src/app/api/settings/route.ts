@@ -1,11 +1,58 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 
-export async function GET() {
+/**
+ * Secret-pattern deny-list for the public settings map.
+ *
+ * The AppSetting table stores arbitrary key/value pairs, including secrets
+ * such as `line_channel_access_token`, `line_channel_secret`, OAuth
+ * client secrets, API keys, etc. The generic `/api/settings` GET returns
+ * the full map to the frontend so it can render non-sensitive UI flags
+ * (orgName, cycleTemplate.*, mobileNavConfig, …).
+ *
+ * To prevent secret leakage via that endpoint, any key matching one of
+ * the patterns below is OMITTED from the response map. Frontend code that
+ * needs a secret value (e.g. notifications.ts loading LINE tokens) reads
+ * it directly from the DB via the server-side lib, never through this API.
+ */
+const SECRET_KEY_PATTERNS: RegExp[] = [
+  /token/i,
+  /secret/i,
+  /password/i,
+  /passwd/i,
+  /api[_-]?key/i,
+  /apikey/i,
+  /oauth/i,
+  /credential/i,
+  /private[_-]?key/i,
+  /client[_-]?secret/i,
+  /channel[_-]?secret/i,
+  /access[_-]?token/i,
+  /refresh[_-]?token/i,
+  /bearer/i,
+  /jwt[_-]?secret/i,
+  /session[_-]?secret/i,
+  /encryption[_-]?key/i,
+]
+
+function isSecretKey(key: string): boolean {
+  return SECRET_KEY_PATTERNS.some((re) => re.test(key))
+}
+
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'SYSTEM_CONFIG')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const settings = await db.appSetting.findMany()
     const map: Record<string, string> = {}
-    for (const s of settings) map[s.key] = s.value
+    for (const s of settings) {
+      // SECURITY: never expose secret-pattern keys via the public map.
+      if (isSecretKey(s.key)) continue
+      map[s.key] = s.value
+    }
     return NextResponse.json({ settings: map })
   } catch (err) {
     console.error('GET /api/settings', err)
@@ -16,7 +63,11 @@ export async function GET() {
   }
 }
 
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
+  const auth = await requireAuth(req, 'SYSTEM_CONFIG')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const body = (await req.json()) as Record<string, string>
     if (!body || typeof body !== 'object') {
@@ -32,7 +83,10 @@ export async function PUT(req: Request) {
     await Promise.all(ops)
     const settings = await db.appSetting.findMany()
     const map: Record<string, string> = {}
-    for (const s of settings) map[s.key] = s.value
+    for (const s of settings) {
+      if (isSecretKey(s.key)) continue
+      map[s.key] = s.value
+    }
     return NextResponse.json({ settings: map })
   } catch (err) {
     console.error('PUT /api/settings', err)

@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 
 // GET a single cycle with stats (reading count, total sheets)
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'VIEW_DASHBOARD')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const cycle = await db.cycle.findUnique({ where: { id } })
@@ -31,6 +36,11 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'METER_WRITE')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+  const user = auth.row
   try {
     const { id } = await params
     const body = await req.json()
@@ -45,16 +55,7 @@ export async function PUT(
       startDate?: string
       endDate?: string
     }
-    // `user` for audit attribution (optional — this route may be unauthenticated)
-    let user: { email?: string } | null = null
-    try {
-      const { requireAuth } = await import('@/lib/auth-middleware')
-      const auth = await requireAuth(req, 'METER_WRITE')
-      if (auth.ok) user = auth.row
-    } catch {
-      // unauthenticated — proceed without user (for testing)
-    }
-
+    // `user` is set above from requireAuth for audit attribution
     const existing = await db.cycle.findUnique({ where: { id } })
     if (!existing) {
       return NextResponse.json({ error: 'Cycle not found' }, { status: 404 })
@@ -167,9 +168,13 @@ export async function PUT(
 
 // DELETE — remove a cycle (only if not active and has no readings)
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await requireAuth(req, 'METER_WRITE')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const cycle = await db.cycle.findUnique({ where: { id } })
