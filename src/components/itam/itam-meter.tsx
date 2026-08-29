@@ -11,8 +11,11 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Gauge, RefreshCw, ChevronLeft, ChevronRight, ClipboardList, Loader2, AlertTriangle } from 'lucide-react'
+import { useAuthStore } from '@/store/auth-store'
+import { type Site } from './types'
 
 interface Reading {
   id: string; assetCode: string; readingDate: string | null; readingMonth: string | null
@@ -69,6 +72,7 @@ export function ItamMeter() {
   const qc = useQueryClient()
   const [page, setPage] = React.useState(1)
   const [limit] = React.useState(20)
+  const [siteFilter, setSiteFilter] = React.useState<string>('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [assetCode, setAssetCode] = React.useState('')
   const [meterBw, setMeterBw] = React.useState('')
@@ -78,10 +82,29 @@ export function ItamMeter() {
   // Bulk entry dialog
   const [bulkOpen, setBulkOpen] = React.useState(false)
 
-  const { data, isLoading } = useQuery<ReadingsResponse>({
-    queryKey: ['itam-readings', page, limit],
+  // ── Sites list (for site filter dropdown) ──
+  const getAuthHeaders = React.useCallback((extra?: Record<string, string>) => {
+    const token = useAuthStore.getState()?.token
+    return { ...(extra ?? {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+  }, [])
+  const { data: sitesData } = useQuery<Site[]>({
+    queryKey: ['meter-sites'],
     queryFn: async () => {
-      const res = await fetch(`/api/itam/meter-readings?page=${page}&limit=${limit}`)
+      const res = await fetch('/api/sites', { headers: getAuthHeaders() })
+      if (!res.ok) return []
+      const json = (await res.json()) as { sites?: Site[] } | Site[]
+      return Array.isArray(json) ? json : (json.sites ?? [])
+    },
+    staleTime: 60_000,
+  })
+  const sites = sitesData ?? []
+
+  const { data, isLoading } = useQuery<ReadingsResponse>({
+    queryKey: ['itam-readings', page, limit, siteFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) })
+      if (siteFilter !== 'all') params.set('site', siteFilter)
+      const res = await fetch(`/api/itam/meter-readings?${params.toString()}`)
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
@@ -121,6 +144,19 @@ export function ItamMeter() {
           <p className="text-sm text-slate-500 dark:text-slate-400">{total.toLocaleString()} รายการ</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Select value={siteFilter} onValueChange={(v) => { setSiteFilter(v); setPage(1) }}>
+            <SelectTrigger className="h-9 w-[140px] text-xs" aria-label="กรองสาขา">
+              <SelectValue placeholder="สาขา" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">ทุกสาขา</SelectItem>
+              {sites.map((s) => (
+                <SelectItem key={s.id} value={s.code}>
+                  {s.code} {s.name ? `— ${s.name}` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button variant="outline" onClick={() => qc.invalidateQueries({ queryKey: ['itam-readings'] })} className="dark:bg-slate-800 dark:border-slate-700">
             <RefreshCw className="h-4 w-4" /> รีเฟรช
           </Button>
