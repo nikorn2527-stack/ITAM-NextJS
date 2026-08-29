@@ -2388,3 +2388,57 @@ Task: เทสระบบทั้งหมดผ่าน agent-browser (ค�
 1. ควรแก้ SYS-BUG-002 และ SYS-BUG-003 เพราะเป็น user-facing flows สำคัญ
 2. ควรเพิ่ม `bun run db:seed` script ใน package.json เพื่อ reseed demo users อัตโนมัติ
 3. ควรตั้งค่า swap memory หรือใช้ webpack แทน Turbopack เพื่อแก้ SYS-BUG-004
+
+
+---
+
+## Task ID: POST-MERGE-VERIFY-009
+Agent: QA Team
+Task: ตรวจสอบ ITAM-01 merge (commit ad09813) + แก้ bug fixes ที่หาย
+
+**วันที่:** 2026-08-29
+
+### 📊 ผลตรวจ origin/main commit `ad09813`:
+
+#### ✅ สำเร็จ (95%):
+- QA Files ทั้ง 15 ไฟล์ merged ครบ
+- ITAM-01 P0 fixes 48 ตัว merged ครบ
+- ลบ /api/itam/debug ✅
+- Float → Decimal (16 columns) ✅
+- WorkOrderPart model ✅
+- AuditLog new fields ✅
+- Dependencies installed ✅
+- Analytics + SpeedInsights ใน layout ✅
+- 2 crons ใน vercel.json ✅
+
+#### ❌ Bug fixes ของ QA ที่หาย (5 ตัว):
+1. admin bypass ใน wo-authz.ts
+2. LineBinding.lineUserId @unique
+3. notifyWorkOrderAssigned lineUserId param
+4. v1/work-orders assetCode → deviceId
+5. line/webhook findUnique → findFirst
+
+### 💡 สาเหตุ:
+QA แก้ bug fixes ใน local sandbox commits แต่ push เฉพาะไฟล์ใหม่ (15 ไฟล์) ไป `feature/qa-007-merge-checklist` — ไม่ได้ push bug fixes ที่แก้ไฟล์เดิมแยก
+
+### ✅ แก้ไขแล้ว — PR #59:
+
+- **Branch:** `feature/qa-008-bugfixes-missing`
+- **Commit:** `640bdf3` (bug fixes) + `b19c2ac` (report)
+- **PR URL:** https://github.com/nikorn2527-stack/ITAM-NextJS/pull/59
+- **Files:** 5 files changed (+28 / -6) + report
+
+### 📁 ไฟล์ที่สร้าง:
+- `qa-reports/POST-MERGE-VERIFY-009.md` — รายงาน verify ละเอียด
+
+### 📋 Action Items สำหรับ ITAM-01:
+1. Merge PR #59 → https://github.com/nikorn2527-stack/ITAM-NextJS/pull/59
+2. รัน `prisma db:push` เพื่อ apply LineBinding @unique
+3. ทดสอบ WO lifecycle (assign + complete)
+4. ทดสอบ LINE webhook
+5. รัน `bash scripts/verify-merge.sh`
+
+### 📊 สถานะรวม:
+- PR #58 (QA files): ✅ merged by ITAM-01
+- PR #59 (QA bug fixes): ⏳ รอ ITAM-01 merge
+- Total completeness: 95% → 100% (หลัง merge PR #59)
