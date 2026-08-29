@@ -26,6 +26,8 @@ import {
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
 import { runCustomExport } from '@/lib/custom-export'
+import { canSelectSite } from './types'
+import { useAuthStore } from '@/store/auth-store'
 
 // ============================================================
 // Custom Export — Paper Analytics (Task ID: FIX-1-2-EXPORT-PRINT)
@@ -130,6 +132,10 @@ export function ItamPaperAnalytics() {
   const [department, setDepartment] = React.useState('')
   const [page, setPage] = React.useState(1)
   const [limit] = React.useState(20)
+
+  // ── Site filter visibility — only show if user can select among multiple sites ──
+  const authUser = useAuthStore((s) => s.user)
+  const showSiteFilter = authUser ? canSelectSite(authUser) : false
 
   // Custom export dialog state (Task ID: FIX-1-2-EXPORT-PRINT)
   const [customExportOpen, setCustomExportOpen] = React.useState(false)
@@ -389,19 +395,21 @@ ${kpiHtml}
               <Label className="text-xs">เดือนสิ้นสุด</Label>
               <Input type="month" id="paper-monthEnd" name="monthEnd" value={monthEnd} onChange={(e) => setMonthEnd(e.target.value || currentMonthStr())} className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">สาขา</Label>
-              <Select value={site || '__all'} onValueChange={(v) => setSite(v === '__all' ? '' : v)}>
-                <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="ทุกสาขา" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all">ทุกสาขา</SelectItem>
-                  {sites.length === 0 && (
-                    <SelectItem value="__none__" disabled>— ยังไม่มีสาขาในระบบ —</SelectItem>
-                  )}
-                  {sites.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
+            {showSiteFilter && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">สาขา</Label>
+                <Select value={site || '__all'} onValueChange={(v) => setSite(v === '__all' ? '' : v)}>
+                  <SelectTrigger className="dark:bg-slate-800 dark:border-slate-700"><SelectValue placeholder="ทุกสาขา" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all">ทุกสาขา</SelectItem>
+                    {sites.length === 0 && (
+                      <SelectItem value="__none__" disabled>— ยังไม่มีสาขาในระบบ —</SelectItem>
+                    )}
+                    {sites.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs">อาคาร</Label>
               <Input value={building} onChange={(e) => setBuilding(e.target.value)} placeholder="ทุกอาคาร" className="dark:bg-slate-800 dark:border-slate-700" />

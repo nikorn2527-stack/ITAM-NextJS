@@ -41,6 +41,7 @@ import {
 import {
   currentMonthValue, formatMonthLabel, formatDateTime,
 } from './reports/shared'
+import { canSelectSite } from './types'
 import { DevicesReport } from './reports/devices-report'
 import { MetersReport } from './reports/meters-report'
 import { WorkOrdersReport } from './reports/workorders-report'
@@ -79,6 +80,10 @@ export function ReportsHub() {
   const [activeGroup, setActiveGroup] = React.useState<ReportGroup>('devices')
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
+
+  // ── Site filter visibility — only show if user can select among multiple sites ──
+  const authUser = useAuthStore((s) => s.user)
+  const showSiteFilter = authUser ? canSelectSite(authUser) : false
 
   // Print template selection dialog state (Task ID: FIX-1-2-EXPORT-PRINT)
   const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
@@ -268,24 +273,26 @@ export function ReportsHub() {
                 className="h-10"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="rh-site" className="text-xs font-medium">
-                สาขา
-              </Label>
-              <Select value={site} onValueChange={setSite}>
-                <SelectTrigger id="rh-site" className="h-10">
-                  <SelectValue placeholder="ทุกสาขา" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ทุกสาขา</SelectItem>
-                  {sites.map((s) => (
-                    <SelectItem key={s.id} value={s.code}>
-                      {s.name} ({s.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {showSiteFilter && (
+              <div className="space-y-1.5">
+                <Label htmlFor="rh-site" className="text-xs font-medium">
+                  สาขา
+                </Label>
+                <Select value={site} onValueChange={setSite}>
+                  <SelectTrigger id="rh-site" className="h-10">
+                    <SelectValue placeholder="ทุกสาขา" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ทุกสาขา</SelectItem>
+                    {sites.map((s) => (
+                      <SelectItem key={s.id} value={s.code}>
+                        {s.name} ({s.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">ข้อมูล ณ</Label>
               <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-xs text-muted-foreground">

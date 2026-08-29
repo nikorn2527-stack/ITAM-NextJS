@@ -98,6 +98,8 @@ import {
   authFetch,
   PRIMARY_BTN,
 } from './shared'
+import { canSelectSite } from '../types'
+import { useAuthStore } from '@/store/auth-store'
 import { CustomExportDialog, type ExportColumn, type ExportFormat } from '../custom-export-dialog'
 import { runCustomExport } from '@/lib/custom-export'
 
@@ -240,6 +242,10 @@ export function StockInventory() {
   const [siteFilter, setSiteFilter] = React.useState('all')
   const [lowStockOnly, setLowStockOnly] = React.useState(false)
   const [search, setSearch] = React.useState('')
+
+  // ── Site filter visibility — only show if user can select among multiple sites ──
+  const authUser = useAuthStore((s) => s.user)
+  const showSiteFilter = authUser ? canSelectSite(authUser) : false
 
   // Create/Edit dialog state
   const [formOpen, setFormOpen] = React.useState(false)
@@ -559,16 +565,18 @@ export function StockInventory() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={siteFilter} onValueChange={setSiteFilter}>
-          <SelectTrigger className="w-full lg:w-44 dark:bg-slate-800 dark:border-slate-700">
-            <SelectValue placeholder="สาขา" />
-          </SelectTrigger>
-          <SelectContent>
-            {siteOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {showSiteFilter && (
+          <Select value={siteFilter} onValueChange={setSiteFilter}>
+            <SelectTrigger className="w-full lg:w-44 dark:bg-slate-800 dark:border-slate-700">
+              <SelectValue placeholder="สาขา" />
+            </SelectTrigger>
+            <SelectContent>
+              {siteOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <div className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
           <Switch
             id="low-only"

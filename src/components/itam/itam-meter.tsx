@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Gauge, RefreshCw, ChevronLeft, ChevronRight, ClipboardList, Loader2, AlertTriangle } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
-import { type Site } from './types'
+import { type Site, canSelectSite } from './types'
 
 interface Reading {
   id: string; assetCode: string; readingDate: string | null; readingMonth: string | null
@@ -82,6 +82,10 @@ export function ItamMeter() {
   // Bulk entry dialog
   const [bulkOpen, setBulkOpen] = React.useState(false)
 
+  // ── Site filter visibility ──
+  const authUser = useAuthStore((s) => s.user)
+  const showSiteFilter = authUser ? canSelectSite(authUser) : false
+
   // ── Sites list (for site filter dropdown) ──
   const getAuthHeaders = React.useCallback((extra?: Record<string, string>) => {
     const token = useAuthStore.getState()?.token
@@ -144,19 +148,21 @@ export function ItamMeter() {
           <p className="text-sm text-slate-500 dark:text-slate-400">{total.toLocaleString()} รายการ</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Select value={siteFilter} onValueChange={(v) => { setSiteFilter(v); setPage(1) }}>
-            <SelectTrigger className="h-9 w-[140px] text-xs" aria-label="กรองสาขา">
-              <SelectValue placeholder="สาขา" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">ทุกสาขา</SelectItem>
-              {sites.map((s) => (
-                <SelectItem key={s.id} value={s.code}>
-                  {s.code} {s.name ? `— ${s.name}` : ''}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {showSiteFilter && (
+            <Select value={siteFilter} onValueChange={(v) => { setSiteFilter(v); setPage(1) }}>
+              <SelectTrigger className="h-9 w-[140px] text-xs" aria-label="กรองสาขา">
+                <SelectValue placeholder="สาขา" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ทุกสาขา</SelectItem>
+                {sites.map((s) => (
+                  <SelectItem key={s.id} value={s.code}>
+                    {s.code} {s.name ? `— ${s.name}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Button variant="outline" onClick={() => qc.invalidateQueries({ queryKey: ['itam-readings'] })} className="dark:bg-slate-800 dark:border-slate-700">
             <RefreshCw className="h-4 w-4" /> รีเฟรช
           </Button>

@@ -53,6 +53,7 @@ import {
 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useAuthStore } from '@/store/auth-store'
+import { canSelectSite } from './types'
 import {
   FREQUENCY_OPTIONS, FREQUENCY_LABELS, WEEKDAY_OPTIONS, WEEKDAY_LABELS,
 } from '@/lib/pm-schedule'
@@ -221,6 +222,10 @@ export function PMSchedulesPage() {
   const [search, setSearch] = React.useState('')
   const [activeFilter, setActiveFilter] = React.useState<'all' | 'active' | 'inactive'>('all')
   const [siteFilter, setSiteFilter] = React.useState<string>('all')
+
+  // ── Site filter visibility — only show if user can select among multiple sites ──
+  const authUser = useAuthStore((s) => s.user)
+  const showSiteFilter = authUser ? canSelectSite(authUser) : false
 
   const [formOpen, setFormOpen] = React.useState(false)
   const [editTarget, setEditTarget] = React.useState<PMSchedule | null>(null)
@@ -683,22 +688,24 @@ export function PMSchedulesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="pm-site" className="text-xs font-medium">สาขา</Label>
-              <Select value={siteFilter} onValueChange={setSiteFilter}>
-                <SelectTrigger id="pm-site" className="h-9 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ทุกสาขา</SelectItem>
-                  {sites.map((s) => (
-                    <SelectItem key={s.id} value={s.code}>
-                      {s.name} ({s.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {showSiteFilter && (
+              <div className="space-y-1.5">
+                <Label htmlFor="pm-site" className="text-xs font-medium">สาขา</Label>
+                <Select value={siteFilter} onValueChange={setSiteFilter}>
+                  <SelectTrigger id="pm-site" className="h-9 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ทุกสาขา</SelectItem>
+                    {sites.map((s) => (
+                      <SelectItem key={s.id} value={s.code}>
+                        {s.name} ({s.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

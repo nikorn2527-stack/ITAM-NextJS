@@ -154,6 +154,47 @@ export interface SiteRate {
   updatedAt: string
 }
 
+/**
+ * ตรวจสอบว่า user คนนี้สามารถเลือกกรอง Site ได้หรือไม่
+ *
+ * หลักการ:
+ *   - superadmin / admin (allowedSites === 'ALL') → เลือกได้ (เห็นทุก site)
+ *   - user ที่มี allowedSites เป็น list ของ site codes:
+ *       - ถ้ามีแค่ 1 site → ซ่อน dropdown (ไม่มีประโยชน์ เพราะเห็นแค่ site เดียว)
+ *       - ถ้ามี 2+ sites → แสดง dropdown (เลือกกรองได้)
+ *   - user ที่ไม่มี allowedSites เลย → ซ่อน dropdown (fail-closed)
+ *
+ * ใช้ในทุกหน้าที่มี Site filter dropdown เพื่อควบคุมการแสดงผล
+ * ตามสิทธิ์ของ user — ไม่ใช่แค่ superadmin ถึงจะเห็น
+ */
+export function canSelectSite(user: {
+  role: string
+  allowedSites: string | null
+}): boolean {
+  const role = user.role?.toLowerCase() ?? ''
+  if (role === 'superadmin' || role === 'admin') return true
+  const raw = String(user.allowedSites ?? '').trim()
+  if (!raw) return false
+  // allowedSites format: comma-separated site codes ("UDH,NKP" or "UDH")
+  const sites = raw.split(',').map((s) => s.trim()).filter(Boolean)
+  return sites.length > 1
+}
+
+/**
+ * ดึงรายการ site codes ที่ user สามารถเข้าถึงได้
+ * คืนค่า null ถ้า user เป็น superadmin/admin (เห็นทุก site)
+ */
+export function getAllowedSiteCodes(user: {
+  role: string
+  allowedSites: string | null
+}): string[] | null {
+  const role = user.role?.toLowerCase() ?? ''
+  if (role === 'superadmin' || role === 'admin') return null
+  const raw = String(user.allowedSites ?? '').trim()
+  if (!raw) return []
+  return raw.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
 export type WarrantyStatus = 'active' | 'expiring' | 'expired' | 'unknown'
 
 export interface WarrantyEntry {
