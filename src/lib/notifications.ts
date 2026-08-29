@@ -530,6 +530,8 @@ export async function notifyWorkOrderCreated(
       priority: wo.priority,
     },
     lineUserId: wo.lineUserId ?? undefined,
+    lineUserId: wo.lineUserId ?? undefined,
+    email: wo.reporterEmail ?? undefined,
     actor: opts.actor,
     entityId: wo.id,
     entity: 'WorkOrder',
@@ -545,6 +547,8 @@ export async function notifyWorkOrderAssigned(
     woNumber?: string | null
     subject: string
     assignedTo?: string | null
+    lineUserId?: string | null
+    reporterEmail?: string | null
   },
   opts: { channels?: NotificationChannel[]; actor?: string } = {},
 ): Promise<void> {
@@ -556,6 +560,8 @@ export async function notifyWorkOrderAssigned(
       assignedTo: wo.assignedTo ?? '—',
       subject: wo.subject,
     },
+    lineUserId: wo.lineUserId ?? undefined,
+    email: wo.reporterEmail ?? undefined,
     actor: opts.actor,
     entityId: wo.id,
     entity: 'WorkOrder',
@@ -589,6 +595,8 @@ export async function notifyWorkOrderCompleted(
     },
     lineUserId: wo.lineUserId ?? undefined,
     email: wo.reporterEmail ?? undefined,
+    lineUserId: wo.lineUserId ?? undefined,
+    email: wo.reporterEmail ?? undefined,
     actor: opts.actor,
     entityId: wo.id,
     entity: 'WorkOrder',
@@ -615,6 +623,8 @@ export async function notifyWorkOrderCancelled(
       cancelReason: wo.cancelReason ?? '—',
     },
     lineUserId: wo.lineUserId ?? undefined,
+    lineUserId: wo.lineUserId ?? undefined,
+    email: wo.reporterEmail ?? undefined,
     actor: opts.actor,
     entityId: wo.id,
     entity: 'WorkOrder',
@@ -641,6 +651,8 @@ export async function notifyWorkOrderMessage(
       author: wo.author ?? '—',
       message: wo.message,
     },
+    lineUserId: wo.lineUserId ?? undefined,
+    email: wo.reporterEmail ?? undefined,
     actor: opts.actor,
     entityId: wo.id,
     entity: 'WorkOrder',
@@ -666,6 +678,8 @@ export async function notifyPartsRequested(
       productName: item.productName,
       quantity: item.quantity,
     },
+    lineUserId: wo.lineUserId ?? undefined,
+    email: wo.reporterEmail ?? undefined,
     actor: opts.actor,
     entityId: wo.id,
     entity: 'WorkOrder',

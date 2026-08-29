@@ -873,7 +873,7 @@ model ImportJob {
 // ============================================================
 model LineBinding {
   id              String   @id @default(cuid())
-  lineUserId      String
+  lineUserId      String   @unique
   lineDisplayName String?
   reporterName    String?
   tel             String?
