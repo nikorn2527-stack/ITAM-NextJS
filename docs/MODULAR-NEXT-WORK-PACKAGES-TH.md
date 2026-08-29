@@ -2,7 +2,7 @@
 
 **สถานะ:** Ready to start
 
-**ฐานงาน:** `feature/itam-next-direction-repair-workflow` @ `951be88`
+**ฐานงาน:** `feature/itam-next-direction-repair-workflow` @ `97a43745e5dfe9fc805318e2fb41544d4aa8647a`
 
 **เป้าหมาย:** ให้ทีม Dev แยกทำงานตามโมดูลได้ทันที โดยรักษา ITAM-DB เป็น canonical target, ให้ legacy apps เป็น read-only source reference และไม่เปลี่ยน release governance
 
@@ -54,7 +54,7 @@
 
 **Definition of Done:** parser/validator เป็น pure functions ที่ทดสอบได้โดยไม่ใช้ DB, persistence รับเฉพาะ validated rows, error ระบุ row และเหตุผลได้, import batch ยังมี upper bound, audit summary ไม่เปิดเผยข้อมูลเกินจำเป็น และ B4/auth contract ไม่เปลี่ยน
 
-## Work package D — Dev-3 Meter
+## Work package D — Dev-4 Meter
 
 **โมดูล:** จดมิเตอร์
 
@@ -72,10 +72,10 @@
 
 ทีมโมดูลห้ามแก้ canonical table ของโมดูลอื่นโดยตรง หากต้องเชื่อมให้ใช้ typed contract หรือ API boundary และระบุ dependency ใน PR ทุก PR ต้องมี changed-scope tests, regression evidence, `git diff --check`, B4 frozen-file diff check และระบุว่าเป็น Preview, read-only, additive migration หรือ business mutation
 
-ลำดับแนะนำคือ Repair และ Stock ทำ mapping/validation ได้ก่อน ส่วน Devices/Meter ทำ parser และ pure validation ได้คู่ขนาน เมื่อมี schema หรือ cross-module contract ใหม่จึงรวมผลผ่าน Shared Platform review ก่อนนำไป staging
+ลำดับแนะนำคือ Repair และ Stock ทำ mapping/validation ได้ก่อน ส่วน Devices/Meter ทำ parser และ pure validation ได้คู่ขนาน เมื่อมี schema หรือ cross-module contract ใหม่จึงรวมผลผ่าน Shared Platform review ก่อนนำไป staging. งานของ Dev-3 Devices และ Dev-4 Meter ต้องมี cross-review ตาม rotation ในเอกสารกลาง โดยเฉพาะเมื่อเปลี่ยน `deviceId`, asset key, site ownership หรือ reading contract
 
 ## Handoff checklist
 
-ก่อนขอ Audit review ให้แนบ exact commit SHA, test command และผลจริง, รายการไฟล์ที่เปลี่ยน, migration SQL ถ้ามี, evidence ของ fail-closed/authorization, ผลตรวจ B4 frozen files และผล resource-bound check หากเกี่ยวกับ import หรือ query
+ก่อนขอ Audit review ให้แนบ exact commit SHA, test command และผลจริง, รายการไฟล์ที่เปลี่ยน, migration SQL ถ้ามี, evidence ของ fail-closed/authorization, ผลตรวจ B4 frozen files และผล resource-bound check หากเกี่ยวกับ import หรือ query. ต้องระบุ owner team, primary peer reviewer, secondary peer reviewer และ consumer reviewers ที่ตรวจแล้วก่อนส่งต่อ Audit. Primary peer reviewer เป็นผู้สรุป `APPROVED FOR AUDIT` หรือ `CHANGES REQUESTED` ใน PR หลังรวบรวมความเห็นจาก reviewers อื่น; verdict นี้ไม่ใช่ Audit technical verdict หรือ release approval
 
 **ห้ามสรุปว่า feature ผ่าน release gate เพียงเพราะ unit tests ผ่าน** การ merge, staging, canary และ production ยังคงอยู่ภายใต้ Audit และ Release Owner ตาม governance เดิม

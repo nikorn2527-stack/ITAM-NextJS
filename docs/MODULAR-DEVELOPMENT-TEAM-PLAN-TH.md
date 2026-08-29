@@ -16,18 +16,19 @@
 
 ## 2. Team topology ปัจจุบัน
 
-ขณะนี้มีทีม Dev ที่ทำงานได้สามทีม จึงกำหนดชื่อเชิงบทบาทก่อน โดยไม่ผูกกับชื่อบุคคลหรือ GitHub username จนกว่าจะมีรายชื่อสมาชิกยืนยันใน repository.
+ขณะนี้มีทีม Dev ที่ทำงานได้สี่ทีม จึงกำหนดชื่อเชิงบทบาทตาม module ก่อน โดยไม่ผูกกับชื่อบุคคลหรือ GitHub username จนกว่าจะมีรายชื่อสมาชิกยืนยันใน repository.
 
 | Team role | Ownership หลัก | งานรองในระยะเริ่มต้น | สิ่งที่ทีมต้องส่งมอบ |
 |---|---|---|---|
 | **Dev-1 / Repair Team** | แจ้งซ่อมและ repair workflow | เป็น steward ของ repair-data contract ร่วมกับทีม Stock | code, tests, migration proposal, preview evidence และ handoff note |
 | **Dev-2 / Stock Team** | สต๊อก สินค้า การเบิกจ่าย และ approval | material-issue contract ที่เชื่อมกับ Repair | code, quantity/approval tests, duplicate/quarantine evidence และ report correctness |
-| **Dev-3 / Asset & Meter Team** | จัดการอุปกรณ์ และจดมิเตอร์ โดยแยก backlog เป็นสองโมดูล | ดูแล compatibility ของ device identity ที่ Meter ใช้อ้างอิง | device/meter code, import/readings tests, mobile evidence และ data integrity note |
+| **Dev-3 / Devices Team** | asset master, device lifecycle, transfer และ importer | ดูแล device identity contract ให้ Repair และ Meter ใช้ร่วมกัน | code, import/transfer tests, mobile evidence และ data integrity note |
+| **Dev-4 / Meter Team** | meter reading, history, bulk entry และ reminder | ดูแล reading contract และ compatibility กับ device identity | code, reading/bulk tests, mobile evidence และ data integrity note |
 | **Shared Platform Steward** | auth, RBAC, site scope, audit, sync, mapping, migration tooling | ประสานงานโดย Dev-1 ในช่วงที่ยังไม่มีทีม platform แยก | contract review, migration ordering และ regression gate |
 | **Audit** | technical review และ fail-closed/security gate | ตรวจ exact SHA, tests, B4 frozen และ evidence | verdict ใน PR/Issue; ไม่ใช่ผู้เขียน feature แทน Dev |
 | **Release Owner** | environment, risk, staging, canary และ release decision | จัดลำดับการเปิดใช้งานและรับรอง operational evidence | environment decision, go/no-go และการส่งต่อ gate |
 
-หากมีทีม Dev เพิ่มเป็นทีมที่สี่ ให้ย้าย ownership ของ **Meter** ไปเป็น **Dev-4 / Meter Team** ได้โดยไม่เปลี่ยน module contract หรือ schema semantics. การย้าย ownership ต้องทำผ่าน PR ที่แก้เอกสารนี้และอัปเดต module README ที่เกี่ยวข้อง.
+Dev-3 และ Dev-4 เป็นคนละ ownership แม้จะมี dependency ระหว่าง Devices กับ Meter. การเปลี่ยน device identity, site ownership หรือ status semantics ต้องให้ทั้งสองทีมตรวจ consumer impact ก่อน merge โดยไม่รวม backlog หรือ test ของสองโมดูลจนแยก defect ไม่ได้.
 
 ## 3. Module map และขอบเขต
 
@@ -61,6 +62,19 @@
 
 PR ทุกใบต้องระบุ owner team, feature IDs, changed tables/routes, migration requirement, test commands, mobile check, security/fail-closed result และ rollback consideration. PR จะยังไม่ถือว่าเสร็จจนกว่าจะมี exact commit SHA, clean diff, B4 frozen check และ evidence ที่ Audit ตรวจได้.
 
+### 5.1 Cross-review rotation ของ Dev 4 ทีม
+
+ในกรณีที่ทั้งสี่ทีมเป็น Dev ให้ใช้ peer review แบบสลับทีมก่อนส่งงานให้ Audit โดยทีมเจ้าของ PR ต้องไม่เป็นผู้อนุมัติ PR ของตนเอง. ตารางด้านล่างเป็น reviewer rotation เริ่มต้นและสามารถเปลี่ยนผู้ตรวจสำรองได้เมื่อ Release Owner ระบุรายชื่อจริง.
+
+| Owner PR | Primary peer reviewer | Secondary peer reviewer | Consumer review ที่ต้องเพิ่มเมื่อเกี่ยวข้อง |
+|---|---|---|---|
+| Dev-1 / Repair | Dev-2 / Stock | Dev-3 / Devices | Dev-4 / Meter เมื่อแตะ device reference หรือ meter boundary |
+| Dev-2 / Stock | Dev-1 / Repair | Dev-4 / Meter | Dev-1 ต้องตรวจทุก material-issue/work-order contract |
+| Dev-3 / Devices | Dev-4 / Meter | Dev-1 / Repair | Dev-1 และ Dev-4 เมื่อเปลี่ยน `deviceId`, asset key, site หรือ status semantics |
+| Dev-4 / Meter | Dev-3 / Devices | Dev-2 / Stock | Dev-3 ต้องตรวจทุก device identity/site boundary |
+
+Peer reviewer ตรวจ scope, contract, test evidence, fail-closed path, regression risk และความสอดคล้องกับ module ownership แต่ไม่แทนที่เจ้าของโมดูล. **Primary peer reviewer เป็นผู้รับผิดชอบสรุป peer-review verdict** โดยรวบรวมความเห็นจาก Secondary และ Consumer reviewers แล้วระบุผลอย่างใดอย่างหนึ่งว่า `APPROVED FOR AUDIT` หรือ `CHANGES REQUESTED` ใน PR. หาก Primary ไม่พร้อม ให้ Secondary รับหน้าที่สรุปแทนและบันทึกเหตุผลไว้ใน PR. หาก PR เปลี่ยน shared contract ให้ระบุ consumer reviewer ทุกทีมที่ได้รับผลกระทบ แม้ไม่ใช่ reviewer ตามตาราง. Peer-review verdict ไม่ใช่ Audit technical verdict และไม่ใช่ release approval; หลัง peer review ผ่านแล้วจึงส่งต่อให้ **Audit** ตรวจ technical gate ส่วนการอนุมัติ environment, staging, canary และ release ยังคงเป็นหน้าที่ของ **Release Owner**.
+
 ## 6. Shared changes ที่ต้องประสานก่อนเขียน
 
 การแก้ `prisma/schema.prisma`, migration, `src/lib/auth*`, authorization, audit, retry, import mapping, sync control plane, navigation shell หรือ shared types ถือเป็น **cross-module change**. เจ้าของโมดูลต้องประกาศผลกระทบใน PR ก่อนเริ่มแก้ และอย่างน้อยต้องให้ทีมที่เป็น consumer ตรวจ contract.
@@ -75,7 +89,7 @@ PR ทุกใบต้องระบุ owner team, feature IDs, changed tabl
 
 ## 8. ลำดับการเริ่มงานที่แนะนำ
 
-เริ่มพร้อมกันได้สาม workstreams แต่ต้องเรียง dependency ภายในแต่ละโมดูล. Repair และ Stock ควรใช้ repair-data contract ฉบับเดียวกันก่อนพัฒนา workflow ต่อ; Devices ควรตรึง stable device identity ก่อนให้ Meter ขยาย bulk reading; Shared Platform ต้องรับเฉพาะ cross-module changes ที่จำเป็นจริง.
+เริ่มพร้อมกันได้สี่ workstreams แต่ต้องเรียง dependency ภายในแต่ละโมดูล. Repair และ Stock ควรใช้ repair-data contract ฉบับเดียวกันก่อนพัฒนา workflow ต่อ; Devices ควรตรึง stable device identity ก่อนให้ Meter ขยาย bulk reading; Shared Platform ต้องรับเฉพาะ cross-module changes ที่จำเป็นจริง.
 
 | ระยะ | Repair | Stock | Devices | Meter |
 |---|---|---|---|---|
@@ -85,7 +99,7 @@ PR ทุกใบต้องระบุ owner team, feature IDs, changed tabl
 
 ## 9. คำสั่งเริ่มงานสำหรับทีม
 
-แต่ละทีมให้คัดลอก module README ของตนไปใช้เป็น task brief, เปิด branch ตาม naming convention, ตรวจ source/schema ปัจจุบันก่อนแก้ และส่ง PR กลับเข้า `main` โดยระบุ dependency ที่ต้องรอจากทีมอื่น. ห้าม checkout หรือ push ทับ branch ของทีมอื่น และห้ามถือว่า code ใน Legacy Apps เป็นพื้นที่ให้แก้ไขโดยอัตโนมัติ.
+แต่ละทีมให้คัดลอก module README ของตนไปใช้เป็น task brief, เปิด branch ตาม naming convention, ตรวจ source/schema ปัจจุบันก่อนแก้ และส่ง PR กลับเข้า `main` โดยระบุ owner team, primary/secondary peer reviewer และ dependency ที่ต้องรอจากทีมอื่น. ห้าม checkout หรือ push ทับ branch ของทีมอื่น และห้ามถือว่า code ใน Legacy Apps เป็นพื้นที่ให้แก้ไขโดยอัตโนมัติ.
 
 รายชื่อสมาชิกจริง, GitHub team slug และผู้ review สำรองจะเติมภายหลังเมื่อ Release Owner ส่งรายชื่อ. จนกว่าจะมีรายชื่อ ให้ใช้ role name ในเอกสารและ PR แทนการเดาชื่อบุคคล.
 
