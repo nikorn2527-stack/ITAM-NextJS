@@ -82,7 +82,7 @@ import {
   X,
   Calculator,
 } from 'lucide-react'
-import { formatThaiDate, relativeTime } from './types'
+import { formatThaiDate, relativeTime, type Site } from './types'
 import { TemplatePrintDialog } from './template-print-dialog'
 import { Combobox } from './combobox'
 import { useAppStore } from '@/store/app-store'
@@ -526,6 +526,7 @@ export function WorkOrdersPage() {
   const [search, setSearch] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<string>('all')
   const [priorityFilter, setPriorityFilter] = React.useState<string>('all')
+  const [siteFilter, setSiteFilter] = React.useState<string>('all')
   const [page, setPage] = React.useState(1)
   const [createOpen, setCreateOpen] = React.useState(false)
   const [form, setForm] = React.useState<NewFormState>(EMPTY_FORM)
@@ -569,7 +570,20 @@ export function WorkOrdersPage() {
 
   React.useEffect(() => {
     setPage(1)
-  }, [statusFilter, priorityFilter])
+  }, [statusFilter, priorityFilter, siteFilter])
+
+  // ── Sites list (for site filter dropdown — superadmin can filter to a single site) ──
+  const { data: sitesData } = useQuery<Site[]>({
+    queryKey: ['wo-sites'],
+    queryFn: async () => {
+      const res = await fetch('/api/sites', { headers: getAuthHeaders() })
+      if (!res.ok) return []
+      const json = (await res.json()) as { sites?: Site[] } | Site[]
+      return Array.isArray(json) ? json : (json.sites ?? [])
+    },
+    staleTime: 60_000,
+  })
+  const sites = sitesData ?? []
 
   const listQuery = useQuery<WorkOrderListResponse>({
     queryKey: [
@@ -577,6 +591,7 @@ export function WorkOrdersPage() {
       debouncedSearch,
       statusFilter,
       priorityFilter,
+      siteFilter,
       page,
     ],
     queryFn: async () => {
@@ -584,6 +599,7 @@ export function WorkOrdersPage() {
       if (debouncedSearch) params.set('search', debouncedSearch)
       if (statusFilter !== 'all') params.set('status', statusFilter)
       if (priorityFilter !== 'all') params.set('priority', priorityFilter)
+      if (siteFilter !== 'all') params.set('site', siteFilter)
       params.set('page', String(page))
       params.set('pageSize', String(PAGE_SIZE))
       const res = await fetch(`/api/work-orders?${params.toString()}`, {
@@ -787,6 +803,19 @@ export function WorkOrdersPage() {
                 {PRIORITY_OPTIONS.map((o) => (
                   <SelectItem key={o.value} value={o.value}>
                     {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={siteFilter} onValueChange={setSiteFilter}>
+              <SelectTrigger className="w-full md:w-[160px]" aria-label="กรองสาขา">
+                <SelectValue placeholder="สาขา" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ทุกสาขา</SelectItem>
+                {sites.map((s) => (
+                  <SelectItem key={s.id} value={s.code}>
+                    {s.code} {s.name ? `— ${s.name}` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>

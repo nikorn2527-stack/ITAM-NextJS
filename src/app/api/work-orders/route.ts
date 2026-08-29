@@ -188,15 +188,28 @@ export async function GET(req: NextRequest) {
       Math.max(1, Number(searchParams.get('pageSize') ?? '20') || 20),
     )
 
+    // ── Optional client-side site filter (superadmin can filter to a single site) ──
+    // Non-superadmin users are already scope-restricted below; their `site`
+    // param must be a subset of their allowed sites or it's ignored.
+    const siteParam = searchParams.get('site')?.trim() ?? ''
+
     // ── Site scope enforcement ──
-    // superadmin → no filter (sees all WOs)
+    // superadmin → no filter (sees all WOs) unless `site` param is provided
     // non-superadmin with grants → restrict to WO.siteCode in scope OR
     //   (WO.siteCode is null AND WO.device.site in scope) — this catches
     //   legacy rows that haven't been backfilled with siteCode yet.
     // non-superadmin with no grants → empty list (fail-closed).
     let siteFilter: Record<string, unknown> | null = null
     if (ctx.isSuperAdmin || ctx.globalRole === 'admin') {
-      // no scope filter
+      // superadmin: apply optional `site` param filter if provided
+      if (siteParam) {
+        siteFilter = {
+          OR: [
+            { siteCode: siteParam },
+            { siteCode: null, device: { site: siteParam } },
+          ],
+        }
+      }
     } else if (
       ctx.siteScope.kind === 'sites' &&
       ctx.siteScope.siteCodes.length > 0
