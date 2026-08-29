@@ -106,7 +106,7 @@ export async function loadAuthorizedWorkOrder(
   const woSite = rawWoSite ? normalizeSiteCode(rawWoSite) : null
 
   // 5. Superadmin bypasses Site checks (they have all permissions everywhere)
-  if (ctx.isSuperAdmin) {
+  if (ctx.isSuperAdmin || ctx.globalRole === 'admin') { // QA FIX: admin bypass
     return { ok: true, wo, ctx, auth, woSite }
   }
 

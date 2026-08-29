@@ -487,7 +487,7 @@ export async function POST(req: NextRequest) {
           const woNumber = await generateWoNumber()
           if (woNumber) {
             // Pull reporter info from LineBinding if available
-            const binding = await db.lineBinding.findUnique({
+            const binding = await db.lineBinding.findFirst({
               where: { lineUserId },
               select: { reporterName: true, tel: true, employeeCode: true },
             })
@@ -559,7 +559,7 @@ export async function POST(req: NextRequest) {
         // ── Branch 4: default → create a WO with the text as subject ──
         const woNumber = await generateWoNumber()
         if (woNumber) {
-          const binding = await db.lineBinding.findUnique({
+          const binding = await db.lineBinding.findFirst({
             where: { lineUserId },
             select: { reporterName: true, tel: true, employeeCode: true },
           })
