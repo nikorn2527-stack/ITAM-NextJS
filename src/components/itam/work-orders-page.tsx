@@ -82,7 +82,7 @@ import {
   X,
   Calculator,
 } from 'lucide-react'
-import { formatThaiDate, relativeTime, type Site } from './types'
+import { formatThaiDate, relativeTime, type Site, canSelectSite } from './types'
 import { TemplatePrintDialog } from './template-print-dialog'
 import { Combobox } from './combobox'
 import { useAppStore } from '@/store/app-store'
@@ -533,6 +533,13 @@ export function WorkOrdersPage() {
   const [saving, setSaving] = React.useState(false)
   const [detailId, setDetailId] = React.useState<string | null>(null)
 
+  // ── Site filter visibility: แสดง dropdown เฉพาะ user ที่เลือก site ได้ ──
+  // superadmin/admin → แสดง (เห็นทุก site, เลือกกรองได้)
+  // user ที่มี 2+ sites → แสดง (เลือกกรองได้)
+  // user ที่มี 1 site หรือ 0 site → ซ่อน (ไม่มีประโยชน์)
+  const authUser = useAuthStore((s) => s.user)
+  const showSiteFilter = authUser ? canSelectSite(authUser) : false
+
   // ── QR/barcode scan handling for the list search box ──
   // Only react when the create dialog is NOT open (otherwise the create
   // form's device-search field is the intended target).
@@ -807,19 +814,21 @@ export function WorkOrdersPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={siteFilter} onValueChange={setSiteFilter}>
-              <SelectTrigger className="w-full md:w-[160px]" aria-label="กรองสาขา">
-                <SelectValue placeholder="สาขา" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">ทุกสาขา</SelectItem>
-                {sites.map((s) => (
-                  <SelectItem key={s.id} value={s.code}>
-                    {s.code} {s.name ? `— ${s.name}` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {showSiteFilter && (
+              <Select value={siteFilter} onValueChange={setSiteFilter}>
+                <SelectTrigger className="w-full md:w-[160px]" aria-label="กรองสาขา">
+                  <SelectValue placeholder="สาขา" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทุกสาขา</SelectItem>
+                  {sites.map((s) => (
+                    <SelectItem key={s.id} value={s.code}>
+                      {s.code} {s.name ? `— ${s.name}` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </CardContent>
       </Card>

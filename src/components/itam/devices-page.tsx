@@ -106,6 +106,7 @@ import {
   computeWarranty,
   formatMonthThai,
   formatDateTime,
+  canSelectSite,
 } from './types'
 import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
@@ -626,6 +627,7 @@ export function DevicesPage() {
   // ── Filter the site dropdown by the current user's allowedSites ──
   // (Non-admin users should only see their own sites in the form.)
   const authUser = useAuthStore((s) => s.user)
+  const showSiteFilter = authUser ? canSelectSite(authUser) : false
   const userAllowedSites = authUser?.allowedSites ?? 'ALL'
   const userSitesArr = React.useMemo<string[] | null>(() => {
     if (!userAllowedSites || userAllowedSites.toUpperCase() === 'ALL') return null
@@ -2723,24 +2725,26 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={siteFilter} onValueChange={setSiteFilter}>
-                <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue placeholder="สาขา" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">สาขาทั้งหมด</SelectItem>
-                  {(visibleSites ?? []).length === 0 && (
-                    <SelectItem value="__none__" disabled>
-                      — ยังไม่มีสาขาที่เข้าถึงได้ —
-                    </SelectItem>
-                  )}
-                  {(visibleSites ?? []).map((s) => (
-                    <SelectItem key={s.code} value={s.code}>
-                      {s.code} — {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {showSiteFilter && (
+                <Select value={siteFilter} onValueChange={setSiteFilter}>
+                  <SelectTrigger className="w-full sm:w-40">
+                    <SelectValue placeholder="สาขา" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">สาขาทั้งหมด</SelectItem>
+                    {(visibleSites ?? []).length === 0 && (
+                      <SelectItem value="__none__" disabled>
+                        — ยังไม่มีสาขาที่เข้าถึงได้ —
+                      </SelectItem>
+                    )}
+                    {(visibleSites ?? []).map((s) => (
+                      <SelectItem key={s.code} value={s.code}>
+                        {s.code} — {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               <Select value={warrantyFilter} onValueChange={setWarrantyFilter}>
                 <SelectTrigger className="w-full sm:w-40">
                   <SelectValue placeholder="รับประกัน" />

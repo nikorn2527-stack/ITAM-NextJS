@@ -48,6 +48,7 @@ import {
 } from '@/components/ui/table'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth-store'
+import { canSelectSite } from './types'
 import {
   Droplet,
   Wrench,
@@ -177,6 +178,10 @@ function depreciationLabel(method: string | null | undefined): string {
 export function MaterialCostReport() {
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
+
+  // ── Site filter visibility — only show if user can select among multiple sites ──
+  const authUser = useAuthStore((s) => s.user)
+  const showSiteFilter = authUser ? canSelectSite(authUser) : false
 
   function getAuthHeaders(
     extra: Record<string, string> = {},
@@ -389,24 +394,26 @@ export function MaterialCostReport() {
                 className="h-10"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="mcr-site" className="text-xs font-medium">
-                สาขา
-              </Label>
-              <Select value={site} onValueChange={setSite}>
-                <SelectTrigger id="mcr-site" className="h-10">
-                  <SelectValue placeholder="ทุกสาขา" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ทุกสาขา</SelectItem>
-                  {sites.map((s) => (
-                    <SelectItem key={s.id} value={s.code}>
-                      {s.name} ({s.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {showSiteFilter && (
+              <div className="space-y-1.5">
+                <Label htmlFor="mcr-site" className="text-xs font-medium">
+                  สาขา
+                </Label>
+                <Select value={site} onValueChange={setSite}>
+                  <SelectTrigger id="mcr-site" className="h-10">
+                    <SelectValue placeholder="ทุกสาขา" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">ทุกสาขา</SelectItem>
+                    {sites.map((s) => (
+                      <SelectItem key={s.id} value={s.code}>
+                        {s.name} ({s.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">เดือนที่เลือก</Label>
               <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-xs text-muted-foreground">

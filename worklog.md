@@ -10846,3 +10846,66 @@ Stage Summary:
 - Lint = 0 errors
 - Server + edge endpoint ทำงาน
 - Push ไป origin/main แล้ว (commit ad09813)
+
+---
+Task ID: SITE-FILTER-VISIBILITY
+Agent: orchestrator (main) — ITAM-01
+Task: Hide Site filter dropdown when user only has access to 1 site (visibility based on permissions).
+
+## Background
+User feedback: "ถ้ายูสเซอร์นั้น ดูได้หมด มันก็ต้องมี แต่ถ้า เค้าเข้าได้แค่ 1 site มันต้องซ่อนถูกไหมคือมันเกี่ยวไปถึงเรื่องสิทธิ์ต่างๆ"
+Translation: superadmin/admin (sees all sites) → show dropdown. Users with 2+ sites → show dropdown. Users with 1 site → hide (useless). Users with 0 sites → hide (fail-closed).
+
+## Helper used
+`canSelectSite(user)` from `src/components/itam/types.ts` (already added by previous agent):
+- superadmin / admin → `true`
+- 2+ allowedSites → `true`
+- 1 site → `false`
+- 0 sites → `false` (fail-closed)
+
+## Pattern applied
+For each list/filter dropdown:
+```tsx
+const authUser = useAuthStore((s) => s.user)
+const showSiteFilter = authUser ? canSelectSite(authUser) : false
+// ...
+{showSiteFilter && (
+  <Select value={siteFilter} onValueChange={setSiteFilter}>...</Select>
+)}
+```
+
+## Files changed (6 total)
+
+| File | Import added | showSiteFilter defined | Select wrapped |
+|------|-------------|----------------------|----------------|
+| `src/components/itam/devices-page.tsx` | `canSelectSite` (added to existing types import) | line 630 | line 2728 |
+| `src/components/itam/stock/stock-inventory.tsx` | `canSelectSite` from `'../types'` (new import) + `useAuthStore` | line 248 | line 568 |
+| `src/components/itam/itam-paper-analytics.tsx` | `canSelectSite` (new import) + `useAuthStore` | line 138 | line 398 (wrapped Label+Select block together) |
+| `src/components/itam/reports-hub.tsx` | `canSelectSite` (new import — `useAuthStore` already imported) | line 86 | line 276 (wrapped Label+Select block together) |
+| `src/components/itam/material-cost-report.tsx` | `canSelectSite` (new import — `useAuthStore` already imported) | line 184 | line 397 (wrapped Label+Select block together) |
+| `src/components/itam/pm-schedules-page.tsx` | `canSelectSite` (new import — `useAuthStore` already imported) | line 228 | line 691 (wrapped Label+Select block together) |
+
+## Important rules followed
+- **Did NOT wrap** the "Add Device" form site selector in `devices-page.tsx` line ~1691 — that one assigns a site to a new device record and must stay visible for all users.
+- **Did NOT wrap** any CREATE/EDIT form selectors — only list/filter dropdowns were wrapped.
+- For pages where the Site filter is wrapped inside a `<div className="space-y-1.5">` (containing Label + Select), the **entire div was wrapped** so that both the label and the select are hidden together — otherwise the label would be orphaned when the select is hidden.
+
+## Verification
+
+| Test | Expected | Actual | Status |
+|------|----------|--------|--------|
+| `bun run lint` | 0 errors | **0 errors, 90 warnings** | ✅ |
+| dev.log compile errors | none | **none** | ✅ |
+| Pattern matches `work-orders-page.tsx` + `itam-meter.tsx` (already done) | yes | **yes** | ✅ |
+
+## Notes
+- Pre-existing errors in `dev.log` (`sites.map is not a function` / `PrismaClientValidationError` for `GET /api/itam/sites`) are unrelated to these changes — they stem from a `siteCode` vs `SiteCode` field-name mismatch in the SiteAttribute Prisma query and predate this task.
+- Pre-existing React key warnings (`Encountered two children with the same key 'empty'`) are also unrelated.
+
+Stage Summary:
+- 6 of 6 remaining files updated (devices-page, stock-inventory, itam-paper-analytics, reports-hub, material-cost-report, pm-schedules-page).
+- Combined with previously-updated `work-orders-page.tsx` + `itam-meter.tsx`, all 8 site-filter lists now respect user permissions.
+- Users with 1 site no longer see a useless Site filter dropdown.
+- Superadmin/admin still see the dropdown (can filter across all sites).
+- Form-based site selectors (Add Device, etc.) remain visible to all users as expected.
+- Lint = 0 errors. No compile errors in dev.log.
