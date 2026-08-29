@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const assetCode = (searchParams.get('assetCode')?.trim() || searchParams.get('assetNo')?.trim() || '')
     const month = searchParams.get('month')?.trim() ?? ''
+    const siteParam = searchParams.get('site')?.trim() ?? ''
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
 
@@ -43,7 +44,11 @@ export async function GET(req: NextRequest) {
     // Site-level filter via the device relation
     const siteFilter = siteFilterForUser(user)
     if (Object.keys(siteFilter).length) {
+      // non-superadmin: restrict to allowed sites
       (where.AND as unknown[]).push({ device: siteFilter })
+    } else if (siteParam) {
+      // superadmin (allowedSites='ALL'): optional ?site= filter
+      (where.AND as unknown[]).push({ device: { site: siteParam } })
     }
     if (Array.isArray(where.AND) && where.AND.length === 0) delete where.AND
 
