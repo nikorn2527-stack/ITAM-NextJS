@@ -448,7 +448,7 @@ export function ItamMeterKeyboard() {
               onClick={exportUnread}
               className="dark:bg-slate-800 dark:border-slate-700"
             >
-              Export CSV
+              ส่งออก CSV
             </Button>
           </div>
         </CardContent>

@@ -1417,6 +1417,7 @@ export function ItamDocumentEditor() {
                           disabled={i === 0}
                           className="text-slate-400 hover:text-slate-700 disabled:opacity-30"
                           title="เลื่อนขึ้น"
+                          aria-label="เลื่อนคอลัมน์ขึ้น"
                         >
                           <ChevronUp className="h-3 w-3" />
                         </button>
@@ -1426,6 +1427,7 @@ export function ItamDocumentEditor() {
                           disabled={i === (draft?.table.columns.length ?? 0) - 1}
                           className="text-slate-400 hover:text-slate-700 disabled:opacity-30"
                           title="เลื่อนลง"
+                          aria-label="เลื่อนคอลัมน์ลง"
                         >
                           <ChevronDown className="h-3 w-3" />
                         </button>
@@ -1446,6 +1448,7 @@ export function ItamDocumentEditor() {
                           onClick={() => removeColumn(i)}
                           className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                           title="ลบคอลัมน์"
+                          aria-label="ลบคอลัมน์"
                         >
                           <X className="h-3 w-3" />
                         </button>

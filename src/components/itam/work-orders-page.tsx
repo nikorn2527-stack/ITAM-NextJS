@@ -1574,6 +1574,7 @@ function CreateWorkOrderDialog({
                       variant="outline"
                       onClick={addSerial}
                       disabled={!form.serialInput.trim()}
+                      aria-label="เพิ่มหมายเลขซีเรียล"
                     >
                       <Plus className="h-4 w-4" />
                     </Button>

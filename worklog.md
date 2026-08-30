@@ -11159,3 +11159,72 @@ Stage Summary:
 - Fix 3: 5/10 routes had `auth.user.email` added as actor. Other routes already had the actor set (verified each one).
 - Fix 4: 5/10 itam routes migrated from `canAccessSite` to `ctx.canAtSite` (devices, devices/[id], devices/[id]/transfer, devices/bulk, meter-readings). The other 5 routes in the spec don't actually use `canAccessSite` — verified via grep, no migration needed.
 - Lint = 0 errors. No new TypeScript errors introduced (verified by git stash comparison). B4 frozen files untouched.
+
+---
+
+## Task ID: P1-UI-FIXES — 4 P1 UI bug fixes
+
+### FIX-028: aria-label on icon-only buttons
+
+Audited ALL `<button>` and shadcn `<Button>` elements in `src/components/itam/` using a Python AST-style scan. Found that the explicitly focused files (mobile-shell, mobile-repair-request, mobile-my-work, mobile-meter-reading, mobile-stock-out, itam-meter-keyboard, work-orders-page) already had aria-labels on icon-only buttons. Added aria-labels to the additional icon-only buttons that were missing them:
+
+| File | Button | aria-label added |
+|------|--------|------------------|
+| `src/components/itam/camera-capture.tsx:104` | Close (X) | `ปิดกล้อง` |
+| `src/components/itam/itam-document-editor.tsx:1414` | ChevronUp | `เลื่อนคอลัมน์ขึ้น` |
+| `src/components/itam/itam-document-editor.tsx:1423` | ChevronDown | `เลื่อนคอลัมน์ลง` |
+| `src/components/itam/itam-document-editor.tsx:1444` | X (remove column) | `ลบคอลัมน์` |
+| `src/components/itam/devices-page.tsx:1558` | Close dialog (X) | `ปิด` |
+| `src/components/itam/pm-schedules-page.tsx:2053` | Camera button | `ถ่ายภาพหรือเลือกรูป` |
+| `src/components/itam/template-editor.tsx:670` | ChevronUp | `เลื่อนขึ้น` |
+| `src/components/itam/template-editor.tsx:679` | ChevronDown | `เลื่อนลง` |
+| `src/components/itam/template-editor.tsx:688` | Copy | `คัดลอก` |
+| `src/components/itam/template-editor.tsx:697` | Trash | `ลบ` |
+| `src/components/itam/devices-page.tsx:1740` | Sparkles (auto site code) | `สร้างรหัสประจำ Site อัตโนมัติ` |
+| `src/components/itam/pm-schedules-page.tsx:909` | Prev month | `เดือนก่อนหน้า` |
+| `src/components/itam/pm-schedules-page.tsx:913` | Next month | `เดือนถัดไป` |
+| `src/components/itam/work-orders-page.tsx:1571` | Plus (add serial) | `เพิ่มหมายเลขซีเรียล` |
+
+Re-scanned after fixes — **0 icon-only buttons missing aria-label remaining** in `src/components/itam/`.
+
+### FIX-031: Mixed language UI
+
+| # | File:Line | Before | After |
+|---|-----------|--------|-------|
+| 1 | `src/components/itam/footer.tsx:58` | `Powered by PNG TEAM` | `ขับเคลื่อนโดย PNG TEAM` |
+| 2 | `src/components/itam/sidebar.tsx:48` | `label: 'Dashboard'` | `label: 'แดชบอร์ด'` (page key `dashboard` unchanged) |
+| 3 | `src/components/itam/itam-meter-keyboard.tsx:451` | `Export CSV` | `ส่งออก CSV` |
+
+NOTE: sidebar.tsx did not contain an "Export CSV" string — only itam-meter-keyboard.tsx did. Page IDs and keys were preserved; only display labels changed.
+
+### FIX-032: /api/import auth gap
+
+Added `url.includes('/api/import') ||` to the `isAuthUrl` allow-list in `src/app/page.tsx` (between `/api/search` and `/api/health`). This ensures the global fetch interceptor attaches the Bearer token to all `/api/import/*` requests so authenticated import endpoints no longer fail with 401. The `/api/itam/auth/login` exclusion (which prevents double-token attachment during login) is preserved.
+
+### FIX-033: camera-capture muted
+
+Added `muted` attribute to the `<video>` element at `src/components/itam/camera-capture.tsx:117`. Without `muted`, some browsers (especially Chrome on Android) refuse to autoPlay `getUserMedia` streams, blocking camera capture entirely. Final tag: `<video ref={videoRef} muted autoPlay playsInline className="flex-1 object-contain" />`.
+
+### Verification
+
+| Check | Expected | Actual | Status |
+|-------|----------|--------|--------|
+| `bun run lint` errors | 0 | **0 errors, 78 warnings** (all pre-existing `react-hooks/set-state-in-effect` — unchanged from baseline) | ✅ |
+| Compile errors in `dev.log` | 0 | 0 | ✅ |
+| Icon-only `<button>` missing aria-label | 0 | **0** (verified via Python AST scan) | ✅ |
+| Icon-only shadcn `<Button>` missing aria-label | 0 | **0** (verified via Python AST scan) | ✅ |
+| Page keys/IDs changed | 0 | 0 (only display labels changed) | ✅ |
+
+### Files modified (7)
+1. `src/components/itam/camera-capture.tsx` — muted + aria-label (FIX-028 + FIX-033)
+2. `src/components/itam/itam-document-editor.tsx` — 3 aria-labels (FIX-028)
+3. `src/components/itam/devices-page.tsx` — 2 aria-labels (FIX-028)
+4. `src/components/itam/pm-schedules-page.tsx` — 3 aria-labels (FIX-028)
+5. `src/components/itam/template-editor.tsx` — 4 aria-labels (FIX-028)
+6. `src/components/itam/work-orders-page.tsx` — 1 aria-label (FIX-028)
+7. `src/components/itam/footer.tsx` — Thai label (FIX-031)
+8. `src/components/itam/sidebar.tsx` — Thai label (FIX-031)
+9. `src/components/itam/itam-meter-keyboard.tsx` — Thai label (FIX-031)
+10. `src/app/page.tsx` — /api/import added to allow-list (FIX-032)
+
+Stage Summary: All 4 P1 UI bugs fixed. Lint stays at 0 errors (78 pre-existing warnings unchanged). No new compile errors. Accessibility scan confirms zero icon-only buttons missing aria-labels across all of `src/components/itam/`.

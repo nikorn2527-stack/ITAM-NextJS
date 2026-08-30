@@ -673,6 +673,7 @@ function PropertiesPanel({
             className="h-7 flex-1"
             onClick={onMoveUp}
             title="เลื่อนขึ้น (render บนสุด)"
+            aria-label="เลื่อนขึ้น"
           >
             <ChevronUp className="h-3.5 w-3.5" />
           </Button>
@@ -682,6 +683,7 @@ function PropertiesPanel({
             className="h-7 flex-1"
             onClick={onMoveDown}
             title="เลื่อนลง"
+            aria-label="เลื่อนลง"
           >
             <ChevronDown className="h-3.5 w-3.5" />
           </Button>
@@ -691,6 +693,7 @@ function PropertiesPanel({
             className="h-7 flex-1"
             onClick={onDuplicate}
             title="คัดลอก (Ctrl+D)"
+            aria-label="คัดลอก"
           >
             <Copy className="h-3.5 w-3.5" />
           </Button>
@@ -700,6 +703,7 @@ function PropertiesPanel({
             className="h-7 flex-1 border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-700 dark:text-rose-300 dark:hover:bg-rose-950"
             onClick={onDelete}
             title="ลบ (Del)"
+            aria-label="ลบ"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
