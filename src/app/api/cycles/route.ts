@@ -109,6 +109,7 @@ export async function POST(req: NextRequest) {
       created.id,
       `สร้างรอบจดมิเตอร์ ${created.name} (${created.startDate} → ${created.endDate})${created.site ? ` @ ${created.site}` : ' (ทุกสาขา)'}`,
       { name: created.name, startDate: created.startDate, endDate: created.endDate, site: created.site },
+      auth.user.email, // FIX-026: actor
     )
     return NextResponse.json({ cycle: created }, { status: 201 })
   } catch (err) {

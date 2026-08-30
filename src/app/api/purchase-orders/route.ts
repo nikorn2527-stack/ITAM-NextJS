@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { withRetryOnUnique } from '@/lib/retry-unique'
+import { requireAuth } from '@/lib/auth-middleware'
+import { demoTag } from '@/lib/demo-mode'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -109,6 +112,15 @@ interface PoItemInput {
 }
 
 export async function POST(req: NextRequest) {
+  // FIX-025 + FIX-026: require auth so we can tag demo data and record
+  // the actor in the audit log. The frontend already attaches a Bearer
+  // token to all /api/purchase-orders requests (see stock/shared.ts
+  // getAuthHeaders), so this is a no-op for legitimate callers — only
+  // previously-anonymous external calls are rejected.
+  const auth = await requireAuth(req, 'STOCK_APPROVE')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const body = await req.json()
     if (!body.orderDate || typeof body.orderDate !== 'string') {
@@ -125,9 +137,9 @@ export async function POST(req: NextRequest) {
     }
 
     const orderDate = String(body.orderDate).trim()
-    const poNumber = body.poNumber
+    const userSuppliedPoNumber = body.poNumber
       ? String(body.poNumber).trim()
-      : await nextPoNumber(orderDate)
+      : null
 
     // Validate item references and compute totals.
     const itemInputs: PoItemInput[] = body.items as PoItemInput[]
@@ -164,46 +176,80 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const created = await db.$transaction(async (tx) => {
-      const po = await tx.purchaseOrder.create({
-        data: {
-          poNumber,
-          orderDate,
-          supplier: body.supplier ? String(body.supplier).trim() : null,
-          status: body.status ? String(body.status).trim() : 'open',
-          createdBy: body.createdBy ? String(body.createdBy).trim() : null,
-          remark: body.remark ? String(body.remark).trim() : null,
-        },
-      })
-
-      let totalValue = 0
-      const itemRows = []
-      for (const it of itemInputs) {
-        const qtyOrdered = optInt(it.quantityOrdered, 0)
-        const unitPrice = optFloat(it.unitPrice)
-        const lineTotal = unitPrice !== null ? unitPrice * qtyOrdered : null
-        if (lineTotal !== null) totalValue += lineTotal
-        const row = await tx.purchaseOrderItem.create({
+    // ── Build a function that runs the create transaction with a given
+    //    poNumber (shared by both user-supplied and auto-generated paths).
+    const runTransaction = (poNumber: string) =>
+      db.$transaction(async (tx) => {
+        const po = await tx.purchaseOrder.create({
           data: {
-            purchaseOrderId: po.id,
-            stockItemId: String(it.stockItemId),
-            quantityOrdered: qtyOrdered,
-            quantityReceived: 0,
-            unitPrice,
-            totalValue: lineTotal,
+            poNumber,
+            orderDate,
+            supplier: body.supplier ? String(body.supplier).trim() : null,
+            status: body.status ? String(body.status).trim() : 'open',
+            createdBy: body.createdBy ? String(body.createdBy).trim() : null,
+            remark: body.remark ? String(body.remark).trim() : null,
+            ...demoTag(auth.user), // FIX-025: tag demo data for safe cleanup
           },
         })
-        itemRows.push(row)
-      }
 
-      const updatedPo = await tx.purchaseOrder.update({
-        where: { id: po.id },
-        data: { totalValue },
+        let totalValue = 0
+        const itemRows: Array<Awaited<ReturnType<typeof tx.purchaseOrderItem.create>>> = []
+        for (const it of itemInputs) {
+          const qtyOrdered = optInt(it.quantityOrdered, 0)
+          const unitPrice = optFloat(it.unitPrice)
+          const lineTotal = unitPrice !== null ? unitPrice * qtyOrdered : null
+          if (lineTotal !== null) totalValue += lineTotal
+          const row = await tx.purchaseOrderItem.create({
+            data: {
+              purchaseOrderId: po.id,
+              stockItemId: String(it.stockItemId),
+              quantityOrdered: qtyOrdered,
+              quantityReceived: 0,
+              unitPrice,
+              totalValue: lineTotal,
+            },
+          })
+          itemRows.push(row)
+        }
+
+        const updatedPo = await tx.purchaseOrder.update({
+          where: { id: po.id },
+          data: { totalValue },
+        })
+
+        return { po: updatedPo, items: itemRows }
       })
 
-      return { po: updatedPo, items: itemRows }
-    })
-
+    let created: Awaited<ReturnType<typeof runTransaction>>
+    if (userSuppliedPoNumber) {
+      // User-supplied path — pre-check for a clearer 400. No retry:
+      // the same code would fail again on P2002.
+      // NOTE: poNumber is NOT a unique column (see schema), so we use
+      // findFirst instead of findUnique.
+      const existing = await db.purchaseOrder.findFirst({
+        where: { poNumber: userSuppliedPoNumber },
+        select: { id: true },
+      })
+      if (existing) {
+        return NextResponse.json(
+          { error: `รหัสใบสั่งซื้อ ${userSuppliedPoNumber} มีอยู่แล้ว` },
+          { status: 400 },
+        )
+      }
+      created = await runTransaction(userSuppliedPoNumber)
+    } else {
+      // FIX-024: Auto-generated path — wrap with retry-on-P2002.
+      // Re-generate poNumber on each attempt; the winner's row is now
+      // visible to nextPoNumber's max-seq lookup, so the next call gets
+      // a new (non-conflicting) sequence number.
+      // NOTE: poNumber is not a unique column, so P2002 will not actually
+      // fire today — but this guard is defensive: if a unique index is
+      // added later, the retry kicks in automatically.
+      created = await withRetryOnUnique(async () => {
+        const freshPoNumber = await nextPoNumber(orderDate)
+        return runTransaction(freshPoNumber)
+      })
+    }
     await logAudit(
       'CREATE',
       'PurchaseOrder',
@@ -215,6 +261,7 @@ export async function POST(req: NextRequest) {
         totalValue: created.po.totalValue,
         itemCount: created.items.length,
       },
+      auth.user.email, // FIX-026: actor
     )
 
     return NextResponse.json({ data: created.po }, { status: 201 })

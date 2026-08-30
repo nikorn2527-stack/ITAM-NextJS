@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { canAccessSite } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { getNextAssetSiteCode, normalizeAssetSiteCodeForCompare } from '@/lib/asset-site-code'
 import { notifyTransfer } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
@@ -40,6 +40,8 @@ export async function POST(
     const auth = await requireAuth(req, 'DEVICE_TRANSFER')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // FIX-027: build authorization context for site-scoped permission checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { id } = await params
     const body = await req.json()
@@ -52,14 +54,15 @@ export async function POST(
     }
 
     // Site access — must be allowed to act on the source site AND the target site.
-    if (!canAccessSite(user, device.site)) {
+    // Use canAtSite so a viewer at this site (no DEVICE_TRANSFER) is denied.
+    if (!ctx.canAtSite(device.site, 'DEVICE_TRANSFER')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์ย้ายอุปกรณ์ในสาขานี้' }, { status: 403 })
     }
     const toSite = String(body.toSite ?? '').trim()
     if (!toSite) {
       return NextResponse.json({ error: 'กรุณาระบุสาขาปลายทาง' }, { status: 400 })
     }
-    if (!canAccessSite(user, toSite)) {
+    if (!ctx.canAtSite(toSite, 'DEVICE_TRANSFER')) {
       return NextResponse.json({ error: `ไม่มีสิทธิ์ย้ายอุปกรณ์ไปสาขา: ${toSite}` }, { status: 403 })
     }
 

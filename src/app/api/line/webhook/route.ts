@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { db } from '@/lib/db'
+import { withRetryOnUnique } from '@/lib/retry-unique'
 
 /**
  * POST /api/line/webhook
@@ -491,32 +492,41 @@ export async function POST(req: NextRequest) {
               where: { lineUserId },
               select: { reporterName: true, tel: true, employeeCode: true },
             })
-            createdWo = await db.workOrder.create({
-              data: {
-                woNumber,
-                subject: `แจ้งซ่อมอุปกรณ์: ${device.name} (${device.assetCode})`,
-                building: device.building,
-                location: device.location,
-                details: `แจ้งผ่าน LINE — รหัสทรัพย์สิน: ${device.assetCode}\nอุปกรณ์: ${device.name}\nสาขา: ${device.site}${device.department ? `\nแผนก: ${device.department}` : ''}`,
-                priority: 'ปกติ',
-                reporterName: binding?.reporterName ?? null,
-                tel: binding?.tel ?? null,
-                employeeCode: binding?.employeeCode ?? null,
-                submissionSource: 'line',
-                deviceId: device.id,
-                lineUserId,
-                lineMessageId: messageId,
-                status: 'PENDING',
-              },
-              select: {
-                id: true,
-                woNumber: true,
-                subject: true,
-                building: true,
-                location: true,
-                reporterName: true,
-                tel: true,
-              },
+            // FIX-024: wrap create with retry-on-P2002 — re-generate the
+            // woNumber on each attempt so concurrent LINE submissions that
+            // both compute the same WO number resolve cleanly.
+            createdWo = await withRetryOnUnique(async () => {
+              const freshWoNumber = await generateWoNumber()
+              if (!freshWoNumber) {
+                throw new Error('unable to generate woNumber')
+              }
+              return db.workOrder.create({
+                data: {
+                  woNumber: freshWoNumber,
+                  subject: `แจ้งซ่อมอุปกรณ์: ${device.name} (${device.assetCode})`,
+                  building: device.building,
+                  location: device.location,
+                  details: `แจ้งผ่าน LINE — รหัสทรัพย์สิน: ${device.assetCode}\nอุปกรณ์: ${device.name}\nสาขา: ${device.site}${device.department ? `\nแผนก: ${device.department}` : ''}`,
+                  priority: 'ปกติ',
+                  reporterName: binding?.reporterName ?? null,
+                  tel: binding?.tel ?? null,
+                  employeeCode: binding?.employeeCode ?? null,
+                  submissionSource: 'line',
+                  deviceId: device.id,
+                  lineUserId,
+                  lineMessageId: messageId,
+                  status: 'PENDING',
+                },
+                select: {
+                  id: true,
+                  woNumber: true,
+                  subject: true,
+                  building: true,
+                  location: true,
+                  reporterName: true,
+                  tel: true,
+                },
+              })
             })
             await bumpLineBindingWoCount(lineUserId)
             await db.workOrderMessage.create({
@@ -563,29 +573,38 @@ export async function POST(req: NextRequest) {
             where: { lineUserId },
             select: { reporterName: true, tel: true, employeeCode: true },
           })
-          createdWo = await db.workOrder.create({
-            data: {
-              woNumber,
-              subject: text.slice(0, 200),
-              details: `แจ้งผ่าน LINE: ${text}`,
-              priority: 'ปกติ',
-              reporterName: binding?.reporterName ?? null,
-              tel: binding?.tel ?? null,
-              employeeCode: binding?.employeeCode ?? null,
-              submissionSource: 'line',
-              lineUserId,
-              lineMessageId: messageId,
-              status: 'PENDING',
-            },
-            select: {
-              id: true,
-              woNumber: true,
-              subject: true,
-              building: true,
-              location: true,
-              reporterName: true,
-              tel: true,
-            },
+          // FIX-024: wrap create with retry-on-P2002 — re-generate the
+          // woNumber on each attempt so concurrent LINE submissions that
+          // both compute the same WO number resolve cleanly.
+          createdWo = await withRetryOnUnique(async () => {
+            const freshWoNumber = await generateWoNumber()
+            if (!freshWoNumber) {
+              throw new Error('unable to generate woNumber')
+            }
+            return db.workOrder.create({
+              data: {
+                woNumber: freshWoNumber,
+                subject: text.slice(0, 200),
+                details: `แจ้งผ่าน LINE: ${text}`,
+                priority: 'ปกติ',
+                reporterName: binding?.reporterName ?? null,
+                tel: binding?.tel ?? null,
+                employeeCode: binding?.employeeCode ?? null,
+                submissionSource: 'line',
+                lineUserId,
+                lineMessageId: messageId,
+                status: 'PENDING',
+              },
+              select: {
+                id: true,
+                woNumber: true,
+                subject: true,
+                building: true,
+                location: true,
+                reporterName: true,
+                tel: true,
+              },
+            })
           })
           await bumpLineBindingWoCount(lineUserId)
           await db.workOrderMessage.create({
