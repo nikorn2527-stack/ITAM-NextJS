@@ -611,7 +611,7 @@ export function ItamMeterKeyboard() {
             <AnimatePresence mode="wait">
               {!selected ? (
                 <motion.div
-                  key="empty"
+                  key="meter-empty-state"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}

@@ -1413,10 +1413,10 @@ ${kpiHtml}
                       }) => {
                         const { cx, cy, payload } = props
                         if (typeof cx !== 'number' || typeof cy !== 'number') {
-                          return <g key="empty" />
+                          return <g key={`empty-${cx}-${cy}`} />
                         }
                         // Skip dot on the forecast point (it has sheets=null)
-                        if (payload?.isForecast) return <g key="skip-forecast" />
+                        if (payload?.isForecast) return <g key={`skip-${cx}-${cy}`} />
                         return (
                           <circle
                             key={`dot-${cx}-${cy}`}
@@ -1451,10 +1451,10 @@ ${kpiHtml}
                         }) => {
                           const { cx, cy, payload } = props
                           if (typeof cx !== 'number' || typeof cy !== 'number') {
-                            return <g key="empty" />
+                            return <g key={`empty-${cx}-${cy}`} />
                           }
                           // Skip the bridge dot on the last actual point
-                          if (!payload?.isForecast) return <g key="bridge" />
+                          if (!payload?.isForecast) return <g key={`bridge-${cx}-${cy}`} />
                           return (
                             <g key="forecast-dot">
                               <circle
