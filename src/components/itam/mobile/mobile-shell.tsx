@@ -28,8 +28,9 @@
 
 import * as React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Wrench, ClipboardList, Gauge, PackageOpen } from 'lucide-react'
+import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAppStore } from '@/store/app-store'
 import { MobileRepairRequest } from './mobile-repair-request'
 import { MobileMyWork } from './mobile-my-work'
 import { MobileMeterReading } from './mobile-meter-reading'
@@ -59,6 +60,7 @@ const HEADER_TITLE: Record<MobileTab, string> = {
 
 export function MobileShell() {
   const [tab, setTab] = React.useState<MobileTab>('repair')
+  const setActivePage = useAppStore((s) => s.setActivePage)
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
@@ -74,7 +76,18 @@ export function MobileShell() {
               {HEADER_TITLE[tab]}
             </h1>
           </div>
-          <span className="text-xs text-muted-foreground">ITAM Mobile</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">ITAM Mobile</span>
+            <button
+              type="button"
+              onClick={() => setActivePage('dashboard')}
+              aria-label="ออกจากโหมดมือถือ"
+              title="ออกจากโหมดมือถือ"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:border-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
         </header>
 
         {/* Main content — scrolls; bottom padding clears the fixed nav */}
