@@ -2268,9 +2268,7 @@ function openHtmlInNewTab(
   // Set title (after document is written)
   try {
     w.document.title = title
-  } catch {
-    /* noop */
-  }
+  } catch (err) { console.error('[template-editor]', err) }
 }
 
 // ─────────────────────────────────────────────────

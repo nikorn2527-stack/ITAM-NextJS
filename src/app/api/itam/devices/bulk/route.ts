@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
         })
         updated++
       } catch (err) {
-        const msg = err instanceof Error ? err.message : 'failed'
+        const msg = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'failed') : 'Internal server error'
         errors.push({ assetNo, error: msg })
         skipped++
       }
@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
           actor: user.email,
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ updated, skipped, errors, total: assetNos.length })
   } catch (err) {

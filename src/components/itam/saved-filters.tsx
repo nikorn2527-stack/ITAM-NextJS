@@ -61,9 +61,7 @@ function safeWrite(key: string, value: unknown) {
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    /* quota — ignore */
-  }
+  } catch (err) { console.error('[saved-filters]', err) }
 }
 
 function loadSaved(): SavedFilter[] {

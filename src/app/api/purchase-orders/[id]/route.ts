@@ -110,7 +110,7 @@ export async function PUT(
     return NextResponse.json({ data: updated })
   } catch (err) {
     console.error('PUT /api/purchase-orders/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to update purchase order'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update purchase order') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

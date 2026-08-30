@@ -302,7 +302,7 @@ export async function GET(req: NextRequest) {
     // ───────────────────────────────────────────────────────────────────────
     if (view === 'detail') {
       const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
-      const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
+      const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
 
       // Aggregate by device
       const byDevice = new Map<string, {

@@ -1358,9 +1358,7 @@ function CreateWorkOrderDialog({
         try {
           const dataUrl = await compressImage(f)
           compressed.push(dataUrl)
-        } catch {
-          /* skip bad file */
-        }
+        } catch (err) { console.error('[work-orders-page]', err) }
       }
       if (compressed.length === 0) {
         toast.error('อ่านไฟล์รูปไม่สำเร็จ')

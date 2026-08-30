@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status')?.trim() ?? ''
     const from = searchParams.get('from')?.trim() ?? ''
     const to = searchParams.get('to')?.trim() ?? ''
-    const limit = Math.min(200, Number(searchParams.get('limit') ?? 50))
+    const limit = Math.min(100, Number(searchParams.get('limit') ?? 50))
 
     const where: Record<string, unknown> = {}
     if (scheduleId) where.scheduleId = scheduleId
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('POST /api/pm/executions', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to create execution' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create execution') : 'Internal server error' },
       { status: 500 },
     )
   }

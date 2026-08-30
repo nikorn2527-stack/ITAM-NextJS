@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       totalRows: rows.length,
     })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Unknown error') : 'Internal server error'
     return NextResponse.json(
       { error: message },
       { status: 500 },

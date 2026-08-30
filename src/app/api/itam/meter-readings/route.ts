@@ -384,7 +384,7 @@ export async function POST(req: NextRequest) {
           actor: user.email,
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     // Best-effort notification
     void notifyMeter({
@@ -419,7 +419,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('POST /api/itam/meter-readings', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to save meter reading' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to save meter reading') : 'Internal server error' },
       { status: 500 },
     )
   }

@@ -247,7 +247,7 @@ export async function POST(
           expectedVersion: item.expectedVersion,
           expectedExists: item.expectedExists,
           status: 'error',
-          errorMessage: err instanceof Error ? err.message : String(err),
+          errorMessage: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : String(err)) : 'Internal server error',
           processedAt: new Date(),
         },
       })

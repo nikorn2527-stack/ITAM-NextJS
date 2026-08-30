@@ -90,7 +90,7 @@ export async function PUT(
     if (err instanceof Error && err.message === 'ไม่พบเทมเพลต') {
       return NextResponse.json({ error: 'ไม่พบเทมเพลต' }, { status: 404 })
     }
-    const message = err instanceof Error ? err.message : 'Failed to update template'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update template') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -127,7 +127,7 @@ export async function DELETE(
     return NextResponse.json({ success: true, id })
   } catch (err) {
     console.error('DELETE /api/templates/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to delete template'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete template') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

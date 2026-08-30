@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('GET /api/pm/calendar', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to fetch PM calendar' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to fetch PM calendar') : 'Internal server error' },
       { status: 500 },
     )
   }

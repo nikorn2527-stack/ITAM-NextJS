@@ -551,7 +551,7 @@ export async function GET(
   } catch (err) {
     console.error('GET /api/purchase-orders/[id]/print', err)
     return new NextResponse(
-      `<h1>เกิดข้อผิดพลาด</h1><p>${esc(err instanceof Error ? err.message : 'Unknown error')}</p>`,
+      `<h1>เกิดข้อผิดพลาด</h1><p>${esc(process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Unknown error') : 'Internal server error')}</p>`,
       {
         status: 500,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },

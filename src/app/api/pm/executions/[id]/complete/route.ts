@@ -101,7 +101,7 @@ export async function POST(
   } catch (err) {
     console.error('POST /api/pm/executions/[id]/complete', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to complete execution' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to complete execution') : 'Internal server error' },
       { status: 500 },
     )
   }

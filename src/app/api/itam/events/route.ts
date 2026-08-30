@@ -86,9 +86,7 @@ export async function GET(req: NextRequest) {
         unsubscribe()
         try {
           controller.close()
-        } catch {
-          /* already closed */
-        }
+        } catch (err) { console.error('[route]', err) }
       }
       req.signal.addEventListener('abort', cleanup)
       // Safety: force-close after 10 minutes (clients reconnect automatically).

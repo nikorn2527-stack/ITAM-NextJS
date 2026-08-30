@@ -138,14 +138,12 @@ export async function PUT(req: NextRequest) {
           actor: auth.user.email,
         },
       })
-    } catch {
-      /* audit non-fatal */
-    }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ data: cleaned })
   } catch (err) {
     console.error('PUT /api/settings/notification-templates', err)
-    const message = err instanceof Error ? err.message : 'Failed to save templates'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to save templates') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

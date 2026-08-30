@@ -61,7 +61,7 @@ export async function PUT(
     return NextResponse.json({ site: updated })
   } catch (err) {
     console.error('PUT /api/site-attributes/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to update site attribute'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update site attribute') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -105,7 +105,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/site-attributes/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to delete site attribute'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete site attribute') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

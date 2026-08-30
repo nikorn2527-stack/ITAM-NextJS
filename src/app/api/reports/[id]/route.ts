@@ -54,7 +54,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/reports/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to delete report'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete report') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

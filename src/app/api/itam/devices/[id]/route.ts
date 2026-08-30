@@ -107,7 +107,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           detail: JSON.stringify({ assetCode: id, changes: Object.keys(body) }),
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     // Best-effort notification
     void notifyDeviceUpdated(
@@ -159,7 +159,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           detail: JSON.stringify({ assetCode: id, site: existing.site }),
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     // Push SSE event — other tabs remove the row from their list
     publishRealtimeEvent({

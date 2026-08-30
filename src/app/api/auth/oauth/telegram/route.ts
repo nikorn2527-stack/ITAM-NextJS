@@ -39,9 +39,7 @@ export async function GET(_req: NextRequest) {
           botName: j.result.first_name ?? null,
         })
       }
-    } catch {
-      /* network failure — fall through to "configured but no username" */
-    }
+    } catch (err) { console.error('[route]', err) }
     return NextResponse.json({ configured: true })
   } catch (err) {
     console.error('GET /api/auth/oauth/telegram', err)

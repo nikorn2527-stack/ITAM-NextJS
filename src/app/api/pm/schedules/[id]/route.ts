@@ -113,7 +113,7 @@ export async function PUT(
   } catch (err) {
     console.error('PUT /api/pm/schedules/[id]', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to update PM schedule' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update PM schedule') : 'Internal server error' },
       { status: 500 },
     )
   }
@@ -152,7 +152,7 @@ export async function DELETE(
   } catch (err) {
     console.error('DELETE /api/pm/schedules/[id]', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to delete PM schedule' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete PM schedule') : 'Internal server error' },
       { status: 500 },
     )
   }

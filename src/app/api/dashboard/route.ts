@@ -216,7 +216,7 @@ export async function GET(req: NextRequest) {
     console.error('GET /api/dashboard', err)
     return NextResponse.json(
       {
-        error: err instanceof Error ? err.message : 'Failed to fetch dashboard',
+        error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to fetch dashboard') : 'Internal server error',
       },
       { status: 500 },
     )

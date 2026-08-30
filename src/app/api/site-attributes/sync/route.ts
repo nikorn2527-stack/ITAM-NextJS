@@ -74,7 +74,7 @@ export async function POST(_req: NextRequest) {
     })
   } catch (err) {
     console.error('POST /api/site-attributes/sync', err)
-    const message = err instanceof Error ? err.message : 'Failed to sync site attributes'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to sync site attributes') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

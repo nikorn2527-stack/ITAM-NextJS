@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('POST /api/auth/login', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Login failed' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Login failed') : 'Internal server error' },
       { status: 500 },
     )
   }

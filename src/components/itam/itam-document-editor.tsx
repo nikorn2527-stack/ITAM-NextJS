@@ -1874,9 +1874,7 @@ function structuredCloneSafe<T>(obj: T): T {
   if (typeof structuredClone === 'function') {
     try {
       return structuredClone(obj)
-    } catch {
-      /* fall through */
-    }
+    } catch (err) { console.error('[itam-document-editor]', err) }
   }
   return JSON.parse(JSON.stringify(obj)) as T
 }

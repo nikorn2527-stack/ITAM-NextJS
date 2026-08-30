@@ -219,9 +219,7 @@ export function TemplatePrintDialog({
       w.document.close()
       try {
         w.document.title = `พิมพ์ใบงาน ${woNumber ?? ''}`
-      } catch {
-        /* noop */
-      }
+      } catch (err) { console.error('[template-print-dialog]', err) }
       if (!openNewTab) {
         // Auto-print is already inside the rendered HTML (window.opener check)
         onOpenChange(false)

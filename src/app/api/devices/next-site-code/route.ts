@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
     })
   } catch (err) {
     console.error('GET /api/devices/next-site-code', err)
-    const message = err instanceof Error ? err.message : 'Failed to compute next site code'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to compute next site code') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

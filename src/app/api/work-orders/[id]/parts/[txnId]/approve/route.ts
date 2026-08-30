@@ -201,7 +201,7 @@ export async function POST(
       }
     }
     const message =
-      err instanceof Error ? err.message : 'Failed to approve parts request'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to approve parts request') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

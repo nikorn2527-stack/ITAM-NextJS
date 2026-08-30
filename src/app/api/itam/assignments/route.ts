@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
           actor: user.email,
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ assignment: created }, { status: 201 })
   } catch (err) {

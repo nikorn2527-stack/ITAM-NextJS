@@ -61,9 +61,7 @@ export async function POST(
         actor: auth.user.email,
       },
     })
-  } catch {
-    /* best-effort */
-  }
+  } catch (err) { console.error('[route]', err) }
 
   return NextResponse.json({
     ok: true,

@@ -207,9 +207,7 @@ export async function GET(req: NextRequest) {
           actor: email,
         },
       })
-    } catch {
-      /* audit failures must not break OAuth */
-    }
+    } catch (err) { console.error('[route]', err) }
     return redirectToHome(origin, 'oauth=pending')
   } catch (err) {
     console.error('GET /api/auth/oauth/line/callback', err)

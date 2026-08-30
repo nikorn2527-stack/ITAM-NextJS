@@ -42,6 +42,6 @@ export async function POST(
     return ok(result)
   } catch (err) {
     console.error('POST /api/v1/snapshots/[id]/verify', err)
-    return serverError(err instanceof Error ? err.message : 'Verify failed')
+    return serverError(process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Verify failed') : 'Internal server error')
   }
 }

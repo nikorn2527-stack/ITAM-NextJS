@@ -28,8 +28,6 @@ export async function POST(req: Request) {
         actor: auth.user.email,
       },
     })
-  } catch {
-    /* ignore */
-  }
+  } catch (err) { console.error('[route]', err) }
   return NextResponse.json({ ok: true })
 }

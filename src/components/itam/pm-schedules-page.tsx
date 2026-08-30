@@ -1016,7 +1016,7 @@ export function PMSchedulesPage() {
                                         if (sched?.checklist) {
                                           checklist = JSON.parse(sched.checklist)
                                         }
-                                      } catch { /* empty */ }
+                                      } catch (err) { console.error('[pm-schedules-page]', err) }
                                       setExecTarget({
                                         scheduleId: pm.scheduleId,
                                         scheduleNo: pm.scheduleNo,
@@ -1120,7 +1120,7 @@ export function PMSchedulesPage() {
                           if (sched?.checklist) {
                             parsedChecklist = JSON.parse(sched.checklist)
                           }
-                        } catch { /* empty */ }
+                        } catch (err) { console.error('[pm-schedules-page]', err) }
                         return (
                           <TableRow key={exec.id} className="text-xs">
                             <TableCell>

@@ -324,9 +324,7 @@ export async function POST(
           replacementTransferId: result.replacementTransfer.id,
         },
       )
-    } catch {
-      /* audit must not turn a committed transaction into a false failure */
-    }
+    } catch (err) { console.error('[route]', err) }
 
     publishRealtimeEvent({
       type: 'device-transferred',
@@ -355,7 +353,7 @@ export async function POST(
     return NextResponse.json(result, { status: 201 })
   } catch (err) {
     console.error('POST /api/devices/[id]/replace-on-withdraw', err)
-    const message = err instanceof Error ? err.message : 'Replace-on-withdraw failed'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Replace-on-withdraw failed') : 'Internal server error'
     return NextResponse.json({ error: message, code: 'REPLACE_WITHDRAW_FAILED' }, { status: 500 })
   }
 }

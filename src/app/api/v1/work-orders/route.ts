@@ -90,8 +90,8 @@ export async function GET(req: NextRequest) {
     const to = sp.get('to')?.trim() || null
     const page = Math.max(1, Number(sp.get('page') ?? '1') || 1)
     const limit = Math.min(
-      500,
-      Math.max(1, Number(sp.get('limit') ?? '200') || 200),
+      100,
+      Math.max(1, Number(sp.get('limit') ?? '100') || 100),
     )
 
     const where: Record<string, unknown> = { isSpecialFee: true }

@@ -10,7 +10,7 @@ import { db } from '@/lib/db'
  *   status=PENDING|APPROVED|REJECTED|all   (default PENDING)
  *   workOrderNo=WO-...                      (filter by linked WO)
  *   search=...                              (search product code/name/txn number)
- *   pageSize=...                            (default 100, max 500)
+ *   pageSize=...                            (default 100, max 100)
  */
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req, 'STOCK_VIEW')
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     const workOrderNo = searchParams.get('workOrderNo')?.trim() ?? ''
     const search = searchParams.get('search')?.trim() ?? ''
     const pageSize = Math.min(
-      500,
+      100,
       Math.max(1, Number(searchParams.get('pageSize') ?? '100') || 100),
     )
 

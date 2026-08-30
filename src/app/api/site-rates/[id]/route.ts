@@ -39,7 +39,7 @@ export async function PUT(
     return NextResponse.json({ rate: updated })
   } catch (err) {
     console.error('PUT /api/site-rates/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to update rate'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update rate') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -65,7 +65,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/site-rates/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to delete rate'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete rate') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

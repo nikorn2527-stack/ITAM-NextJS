@@ -6,7 +6,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const limit = Math.min(
       Number(searchParams.get('limit') ?? '50') || 50,
-      500,
+      100,
     )
     const entity = searchParams.get('entity')?.trim() ?? ''
     const action = searchParams.get('action')?.trim() ?? ''

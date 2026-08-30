@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
     )
   } catch (err) {
     console.error('POST /api/site-rates', err)
-    const message = err instanceof Error ? err.message : 'Failed to save rate'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to save rate') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

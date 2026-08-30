@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('POST /api/line/reply', err)
     const message =
-      err instanceof Error ? err.message : 'Failed to send LINE reply'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to send LINE reply') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

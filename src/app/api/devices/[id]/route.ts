@@ -68,7 +68,7 @@ export async function GET(
     return NextResponse.json({ device })
   } catch (err) {
     console.error('GET /api/devices/[id]', err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Failed to fetch device' }, { status: 500 })
+    return NextResponse.json({ error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to fetch device') : 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -270,7 +270,7 @@ export async function PUT(
     return NextResponse.json({ device: updated })
   } catch (err) {
     console.error('PUT /api/devices/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to update device'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update device') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -301,7 +301,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/devices/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to delete device'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete device') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

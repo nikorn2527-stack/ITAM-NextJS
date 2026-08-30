@@ -159,9 +159,7 @@ export async function POST(req: NextRequest) {
           actor: user.email,
         },
       })
-    } catch {
-      /* audit never blocks the mutation */
-    }
+    } catch (err) { console.error('[route]', err) }
 
     return created(cycle)
   } catch (err) {

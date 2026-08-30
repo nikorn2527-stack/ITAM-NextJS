@@ -175,7 +175,7 @@ export async function POST(
   } catch (err) {
     console.error('POST /api/work-orders/[id]/messages', err)
     const message =
-      err instanceof Error ? err.message : 'Failed to post message'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to post message') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

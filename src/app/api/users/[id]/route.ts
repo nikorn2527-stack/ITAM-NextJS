@@ -240,7 +240,7 @@ export async function PUT(
     return NextResponse.json({ user: publicUser(updated) })
   } catch (err) {
     console.error('PUT /api/users/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to update user'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update user') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -293,7 +293,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/users/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to delete user'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete user') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

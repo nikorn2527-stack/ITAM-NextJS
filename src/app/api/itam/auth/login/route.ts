@@ -123,6 +123,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ token, user })
   } catch (err) {
     console.error('POST /api/itam/auth/login', err)
-    return NextResponse.json({ error: 'Internal server error', detail: err instanceof Error ? err.message : String(err) }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error', detail: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : String(err)) : 'Internal server error' }, { status: 500 })
   }
 }

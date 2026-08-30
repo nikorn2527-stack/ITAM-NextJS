@@ -195,7 +195,7 @@ export async function PUT(
     return NextResponse.json({ data: updated })
   } catch (err) {
     console.error('PUT /api/stock-items/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to update stock item'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update stock item') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -229,7 +229,7 @@ export async function DELETE(
     return NextResponse.json({ data: updated })
   } catch (err) {
     console.error('DELETE /api/stock-items/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to delete stock item'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete stock item') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

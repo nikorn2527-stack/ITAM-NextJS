@@ -481,7 +481,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          err instanceof Error ? err.message : 'เรนเดอร์เทมเพลตไม่สำเร็จ',
+          process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'เรนเดอร์เทมเพลตไม่สำเร็จ') : 'Internal server error',
       },
       { status: 500 },
     )

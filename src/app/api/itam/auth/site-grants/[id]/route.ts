@@ -150,7 +150,7 @@ export async function PATCH(
   } catch (err) {
     console.error('PATCH /api/itam/auth/site-grants/[id]', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to update grant' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update grant') : 'Internal server error' },
       { status: 500 },
     )
   }
@@ -219,7 +219,7 @@ export async function DELETE(
   } catch (err) {
     console.error('DELETE /api/itam/auth/site-grants/[id]', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to delete grant' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete grant') : 'Internal server error' },
       { status: 500 },
     )
   }

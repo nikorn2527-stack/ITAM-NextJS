@@ -331,7 +331,7 @@ export async function POST(req: NextRequest) {
       if (item.action === 'create') createRows++
       else if (item.action === 'update') updateRows++
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : String(err)
+      const errorMessage = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : String(err)) : 'Internal server error'
 
       await db.syncRunItem.update({
         where: { id: item.id },

@@ -105,7 +105,7 @@ export async function POST(req: NextRequest, { params }: Params) {
 
     return NextResponse.json({ transaction: result.transaction, item: result.item }, { status: 201 })
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : String(err)) : 'Internal server error'
     if (msg === 'NOT_FOUND') {
       return NextResponse.json({ error: 'ไม่พบสินค้า' }, { status: 404 })
     }

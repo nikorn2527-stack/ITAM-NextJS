@@ -183,7 +183,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('Daily report failed:', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Unknown error' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Unknown error') : 'Internal server error' },
       { status: 500 },
     )
   }

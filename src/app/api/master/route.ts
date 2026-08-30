@@ -308,7 +308,7 @@ export async function GET(req: NextRequest) {
     }
   } catch (err) {
     console.error('GET /api/master', err)
-    const message = err instanceof Error ? err.message : 'Failed to fetch master'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to fetch master') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -350,7 +350,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ item: created }, { status: 201 })
   } catch (err) {
     console.error('POST /api/master', err)
-    const message = err instanceof Error ? err.message : 'Failed to create master item'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create master item') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

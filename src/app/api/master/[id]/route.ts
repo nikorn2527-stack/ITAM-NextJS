@@ -49,7 +49,7 @@ export async function PUT(
     return NextResponse.json({ item: updated })
   } catch (err) {
     console.error('PUT /api/master/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to update master item'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update master item') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -74,7 +74,7 @@ export async function DELETE(
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('DELETE /api/master/[id]', err)
-    const message = err instanceof Error ? err.message : 'Failed to delete master item'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete master item') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

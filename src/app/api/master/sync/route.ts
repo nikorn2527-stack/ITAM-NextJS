@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, type, updated: count })
   } catch (err) {
     console.error('POST /api/master/sync', err)
-    const message = err instanceof Error ? err.message : 'Sync failed'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Sync failed') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

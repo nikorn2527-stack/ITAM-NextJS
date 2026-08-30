@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
           detail: JSON.stringify({ category: body.categoryKey, label: body.value }),
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ item: created }, { status: 201 })
   } catch (err) {

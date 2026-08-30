@@ -71,8 +71,6 @@ function cryptoRandom(): string {
       c.getRandomValues(arr)
       return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('')
     }
-  } catch {
-    /* ignore */
-  }
+  } catch (err) { console.error('[route]', err) }
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }

@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          err instanceof Error ? err.message : 'Failed to compute material cost',
+          process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to compute material cost') : 'Internal server error',
       },
       { status: 500 },
     )

@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         errors.push({
           id: wo.woNumber ?? wo.id,
-          error: err instanceof Error ? err.message : 'Update failed',
+          error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Update failed') : 'Internal server error',
         })
       }
     }
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('POST /api/work-orders/batch-status', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed') : 'Internal server error' },
       { status: 500 },
     )
   }
