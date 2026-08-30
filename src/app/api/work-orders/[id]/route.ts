@@ -463,3 +463,13 @@ export async function PUT(
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
+
+// ── PATCH /api/work-orders/[id] — alias for PUT (QA BUG-INT-001 fix)
+// Some clients (e.g., fetch with method: 'PATCH') expect PATCH to work.
+// We delegate to the same handler as PUT.
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  return PUT(req, { params })
+}
