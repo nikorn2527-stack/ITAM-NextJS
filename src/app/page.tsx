@@ -270,6 +270,15 @@ export default function Home() {
   //
   // Pages with long content (2,378-row device table) scroll inside <main>;
   // pages with short content fit in one screen without scrolling.
+  // ── Mobile mode: full-screen MobileShell (no desktop sidebar/footer) ──
+  if (activePage === 'mobile') {
+    return (
+      <RealtimeProvider>
+        <MobileShell />
+      </RealtimeProvider>
+    )
+  }
+
   return (
     <RealtimeProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background dark:bg-slate-950">
@@ -306,7 +315,6 @@ export default function Home() {
                 {activePage === 'reports-hub' && <ReportsHub />}
                 {activePage === 'material-cost' && <MaterialCostReport />}
                 {activePage === 'pm-schedules' && <PMSchedulesPage />}
-                {activePage === 'mobile' && <MobileShell />}
                 {activePage === 'settings-v2' && <SettingsPageV2 />}
                 {activePage === 'work-orders' && <WorkOrdersPage />}
                 {activePage === 'stock' && <StockPage />}
