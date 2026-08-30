@@ -13,6 +13,16 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone } from 'lucide-react'
 import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
@@ -129,6 +139,7 @@ export function ItamSettings() {
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
   const [form, setForm] = React.useState({ category: '', code: '', label: '', displayLabel: '' })
+  const [deleteTarget, setDeleteTarget] = React.useState<MasterItem | null>(null)
 
   // Master items
   const { data: masterData, isLoading: masterLoading } = useQuery({
@@ -284,12 +295,18 @@ export function ItamSettings() {
   }
 
   async function deleteItem(item: MasterItem) {
-    if (!window.confirm(`ลบ "${item.label}"?`)) return
+    setDeleteTarget(item)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    const item = deleteTarget
     try {
       await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE' })
       toast.success('ลบแล้ว')
       await qc.invalidateQueries({ queryKey: ['itam-master'] })
     } catch { toast.error('ลบไม่สำเร็จ') }
+    finally { setDeleteTarget(null) }
   }
 
   const items = masterData?.items ?? []
@@ -705,6 +722,28 @@ export function ItamSettings() {
       {tab === 'mobile-nav' && <MobileNavConfigSection />}
         </div>
       </div>
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบ "{deleteTarget?.label ?? ''}" ใช่หรือไม่? การกระทำนี้ไม่สามารถยกเลิกได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmDelete}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              ลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

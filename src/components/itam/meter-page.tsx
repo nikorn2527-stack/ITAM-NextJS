@@ -187,7 +187,7 @@ export function MeterPage() {
     // missing; now we surface a clear message explaining the constraint.
     if (isReset && needsRemark) {
       toast.error(
-        `ค่าใหม่ (${newReadingNum.toLocaleString()}) น้อยกว่าค่าก่อนหน้า (${prevReading.toLocaleString()}) — กรุณาระบุหมายเหตุ RESET (เช่น เปลี่ยน Drum/เครื่องพิมพ์ใหม่)`,
+        `ค่าใหม่ (${newReadingNum.toLocaleString('th-TH')}) น้อยกว่าค่าก่อนหน้า (${prevReading.toLocaleString('th-TH')}) — กรุณาระบุหมายเหตุ RESET (เช่น เปลี่ยน Drum/เครื่องพิมพ์ใหม่)`,
       )
       return
     }
@@ -542,7 +542,7 @@ export function MeterPage() {
                         </TableCell>
                         <TableCell className="text-slate-700 dark:text-slate-200">{d.site}</TableCell>
                         <TableCell className="text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
-                          {(d.lastMeterBw ?? d.lastMeterReading ?? 0).toLocaleString()}
+                          {(d.lastMeterBw ?? d.lastMeterReading ?? 0).toLocaleString('th-TH')}
                         </TableCell>
                         <TableCell>
                           {remindersData?.hasActiveCycle === false ? (
@@ -596,7 +596,7 @@ export function MeterPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500 dark:text-slate-400">ค่าก่อนหน้า</span>
                   <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
-                    {prevReading.toLocaleString()}
+                    {prevReading.toLocaleString('th-TH')}
                   </span>
                 </div>
               </div>
@@ -626,7 +626,7 @@ export function MeterPage() {
                       }
                     >
                       {delta > 0 ? '+' : ''}
-                      {delta.toLocaleString()} แผ่น
+                      {delta.toLocaleString('th-TH')} แผ่น
                     </span>
                   </span>
                 </div>
@@ -663,7 +663,7 @@ export function MeterPage() {
                 <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    ค่าใหม่น้อยกว่าค่าก่อนหน้า ({delta.toLocaleString()}) ต้องระบุหมายเหตุเพื่อยืนยันการ RESET
+                    ค่าใหม่น้อยกว่าค่าก่อนหน้า ({delta.toLocaleString('th-TH')}) ต้องระบุหมายเหตุเพื่อยืนยันการ RESET
                   </span>
                 </div>
               )}
@@ -671,7 +671,7 @@ export function MeterPage() {
                 <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-200">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    ค่าเพิ่มขึ้นเกิน 20,000 แผ่น ({delta.toLocaleString()}) ระบบจะบันทึกแต่แจ้งเตือนให้ตรวจสอบ
+                    ค่าเพิ่มขึ้นเกิน 20,000 แผ่น ({delta.toLocaleString('th-TH')}) ระบบจะบันทึกแต่แจ้งเตือนให้ตรวจสอบ
                   </span>
                 </div>
               )}

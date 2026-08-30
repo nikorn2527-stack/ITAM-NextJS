@@ -299,7 +299,7 @@ export function BulkMeterDialog({
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
-                          {m.prev.toLocaleString()}
+                          {m.prev.toLocaleString('th-TH')}
                         </TableCell>
                         <TableCell className="text-right">
                           <Input
@@ -336,7 +336,7 @@ export function BulkMeterDialog({
                               }
                             >
                               {m.delta > 0 ? '+' : ''}
-                              {m.delta.toLocaleString()}
+                              {m.delta.toLocaleString('th-TH')}
                             </Badge>
                           )}
                           {m.isExceed && (

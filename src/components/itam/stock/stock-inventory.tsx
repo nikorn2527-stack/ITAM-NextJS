@@ -980,7 +980,7 @@ export function StockInventory() {
                   />
                   {form.unitCost && form.yieldPerPage && Number(form.yieldPerPage) > 0 && (
                     <div className="rounded bg-orange-50 px-2 py-1 text-[11px] text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
-                      💡 ต้นทุนต่อแผ่น = ฿{Number(form.unitCost).toLocaleString()} ÷ {Number(form.yieldPerPage).toLocaleString()} = <strong>฿{(Number(form.unitCost) / Number(form.yieldPerPage)).toFixed(2)}/แผ่น</strong>
+                      💡 ต้นทุนต่อแผ่น = ฿{Number(form.unitCost).toLocaleString('th-TH')} ÷ {Number(form.yieldPerPage).toLocaleString('th-TH')} = <strong>฿{(Number(form.unitCost) / Number(form.yieldPerPage)).toFixed(2)}/แผ่น</strong>
                     </div>
                   )}
                 </div>
@@ -1024,7 +1024,7 @@ export function StockInventory() {
                       />
                       {form.unitCost && form.usefulLifeMonths && Number(form.usefulLifeMonths) > 0 && (
                         <div className="rounded bg-violet-50 px-2 py-1 text-[11px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
-                          💡 ต้นทุนต่อเดือน = ฿{Number(form.unitCost).toLocaleString()} ÷ {form.usefulLifeMonths} = <strong>฿{(Number(form.unitCost) / Number(form.usefulLifeMonths)).toFixed(2)}/เดือน</strong>
+                          💡 ต้นทุนต่อเดือน = ฿{Number(form.unitCost).toLocaleString('th-TH')} ÷ {form.usefulLifeMonths} = <strong>฿{(Number(form.unitCost) / Number(form.usefulLifeMonths)).toFixed(2)}/เดือน</strong>
                         </div>
                       )}
                     </div>
@@ -1043,7 +1043,7 @@ export function StockInventory() {
                       />
                       {form.unitCost && form.usefulLifePages && Number(form.usefulLifePages) > 0 && (
                         <div className="rounded bg-violet-50 px-2 py-1 text-[11px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
-                          💡 ต้นทุนต่อแผ่น = ฿{Number(form.unitCost).toLocaleString()} ÷ {Number(form.usefulLifePages).toLocaleString()} = <strong>฿{(Number(form.unitCost) / Number(form.usefulLifePages)).toFixed(4)}/แผ่น</strong>
+                          💡 ต้นทุนต่อแผ่น = ฿{Number(form.unitCost).toLocaleString('th-TH')} ÷ {Number(form.usefulLifePages).toLocaleString('th-TH')} = <strong>฿{(Number(form.unitCost) / Number(form.usefulLifePages)).toFixed(4)}/แผ่น</strong>
                         </div>
                       )}
                     </div>

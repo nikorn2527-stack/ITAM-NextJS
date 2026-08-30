@@ -443,7 +443,7 @@ export function ItamRepairs() {
               <span className="text-xs font-medium">เปิดงาน</span>
             </div>
             <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.open.toLocaleString()}
+              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.open.toLocaleString('th-TH')}
             </div>
           </CardContent>
         </Card>
@@ -454,7 +454,7 @@ export function ItamRepairs() {
               <span className="text-xs font-medium">กำลังซ่อม</span>
             </div>
             <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.inProgress.toLocaleString()}
+              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.inProgress.toLocaleString('th-TH')}
             </div>
           </CardContent>
         </Card>
@@ -465,7 +465,7 @@ export function ItamRepairs() {
               <span className="text-xs font-medium">เสร็จแล้ว (เดือนนี้)</span>
             </div>
             <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.completedThisMonth.toLocaleString()}
+              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.completedThisMonth.toLocaleString('th-TH')}
             </div>
           </CardContent>
         </Card>
@@ -628,9 +628,9 @@ export function ItamRepairs() {
       {/* Footer summary */}
       {filteredLogs.length > 0 && (
         <div className="text-xs text-slate-500 dark:text-slate-400">
-          แสดง {filteredLogs.length.toLocaleString()} รายการ
+          แสดง {filteredLogs.length.toLocaleString('th-TH')} รายการ
           {filteredLogs.length !== allLogs.length && (
-            <span className="ml-1">จากทั้งหมด {allLogs.length.toLocaleString()} รายการ</span>
+            <span className="ml-1">จากทั้งหมด {allLogs.length.toLocaleString('th-TH')} รายการ</span>
           )}
         </div>
       )}

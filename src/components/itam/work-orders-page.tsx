@@ -2235,6 +2235,7 @@ function WorkOrderDetailContent({
   const [imgBusy, setImgBusy] = React.useState(false)
   const [lightboxSrc, setLightboxSrc] = React.useState<string | null>(null)
   const [deletingImgId, setDeletingImgId] = React.useState<string | null>(null)
+  const [deleteImageTarget, setDeleteImageTarget] = React.useState<WorkOrderImage | null>(null)
 
   function triggerUpload(stage: 'before' | 'onsite' | 'after') {
     setActiveStage(stage)
@@ -2353,7 +2354,12 @@ function WorkOrderDetailContent({
       toast.error('รูปนี้เป็นข้อมูลเดิม — ใช้การแก้ไขใบงานเพื่อลบ')
       return
     }
-    if (!window.confirm(`ลบรูป (${img.stage}) ใช่ไหม?`)) return
+    setDeleteImageTarget(img)
+  }
+
+  async function confirmDeleteImage() {
+    if (!deleteImageTarget) return
+    const img = deleteImageTarget
     try {
       setDeletingImgId(img.id)
       const res = await fetch(
@@ -2371,6 +2377,7 @@ function WorkOrderDetailContent({
       toast.error(e instanceof Error ? e.message : 'ลบรูปไม่สำเร็จ')
     } finally {
       setDeletingImgId(null)
+      setDeleteImageTarget(null)
     }
   }
 
@@ -4338,6 +4345,28 @@ function WorkOrderDetailContent({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete image confirmation */}
+      <AlertDialog open={!!deleteImageTarget} onOpenChange={(open) => !open && setDeleteImageTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบรูป ({deleteImageTarget?.stage ?? ''}) ใช่หรือไม่? การกระทำนี้ไม่สามารถยกเลิกได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmDeleteImage}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              ลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -1117,7 +1117,7 @@ export function MonthlyReport() {
         .sort((a, b) => (b[1].bw + b[1].color) - (a[1].bw + a[1].color))
         .slice(0, 20)
         .map(([k, v]) =>
-          `<tr><td>${escHtml(k)}</td><td>${escHtml(v.name)}</td><td style="text-align:right">${v.bw.toLocaleString()}</td><td style="text-align:right">${v.color.toLocaleString()}</td><td style="text-align:right"><strong>${(v.bw + v.color).toLocaleString()}</strong></td></tr>`,
+          `<tr><td>${escHtml(k)}</td><td>${escHtml(v.name)}</td><td style="text-align:right">${v.bw.toLocaleString('th-TH')}</td><td style="text-align:right">${v.color.toLocaleString('th-TH')}</td><td style="text-align:right"><strong>${(v.bw + v.color).toLocaleString('th-TH')}</strong></td></tr>`,
         )
         .join('')
 
@@ -1125,9 +1125,9 @@ export function MonthlyReport() {
         <section class="block">
           <h2>① รายงานสรุปการใช้กระดาษ</h2>
           <div class="kpi-grid">
-            <div class="kpi"><div class="kpi-label">การใช้กระดาษขาว</div><div class="kpi-value">${totalBw.toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
-            <div class="kpi"><div class="kpi-label">การใช้กระดาษสี</div><div class="kpi-value">${totalColor.toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
-            <div class="kpi"><div class="kpi-label">รวมทั้งหมด</div><div class="kpi-value accent">${totalPages.toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">การใช้กระดาษขาว</div><div class="kpi-value">${totalBw.toLocaleString('th-TH')}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">การใช้กระดาษสี</div><div class="kpi-value">${totalColor.toLocaleString('th-TH')}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">รวมทั้งหมด</div><div class="kpi-value accent">${totalPages.toLocaleString('th-TH')}</div><div class="kpi-unit">แผ่น</div></div>
             <div class="kpi"><div class="kpi-label">จำนวนเครื่องที่จดมิเตอร์</div><div class="kpi-value">${meterRows.length}</div><div class="kpi-unit">เครื่อง</div></div>
           </div>
           ${deviceRowsHtml ? `
@@ -1326,9 +1326,9 @@ export function MonthlyReport() {
             <td>${escHtml(r.deviceName ?? '—')}</td>
             <td>${escHtml(r.site ?? '—')}</td>
             <td>${escHtml(dateLabel)}</td>
-            <td style="text-align:right">${r.meterBw.toLocaleString()}</td>
-            <td style="text-align:right">${r.meterColor.toLocaleString()}</td>
-            <td style="text-align:right"><strong>${(r.pagesBw + r.pagesColor).toLocaleString()}</strong></td>
+            <td style="text-align:right">${r.meterBw.toLocaleString('th-TH')}</td>
+            <td style="text-align:right">${r.meterColor.toLocaleString('th-TH')}</td>
+            <td style="text-align:right"><strong>${(r.pagesBw + r.pagesColor).toLocaleString('th-TH')}</strong></td>
             <td style="text-align:center">${escHtml(typeLabel)}</td>
             <td>${escHtml(r.readBy ?? '—')}</td>
           </tr>`
@@ -1341,9 +1341,9 @@ export function MonthlyReport() {
           <h2>⑤ รายงานมิเตอร์</h2>
           <div class="kpi-grid">
             <div class="kpi"><div class="kpi-label">จำนวนรายการจดมิเตอร์</div><div class="kpi-value">${meterRows.length}</div><div class="kpi-unit">รายการ</div></div>
-            <div class="kpi"><div class="kpi-label">กระดาษขาวรวม</div><div class="kpi-value">${totalBw.toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
-            <div class="kpi"><div class="kpi-label">กระดาษสีรวม</div><div class="kpi-value">${totalColor.toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
-            <div class="kpi"><div class="kpi-label">รวมทั้งหมด</div><div class="kpi-value accent">${(totalBw + totalColor).toLocaleString()}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">กระดาษขาวรวม</div><div class="kpi-value">${totalBw.toLocaleString('th-TH')}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">กระดาษสีรวม</div><div class="kpi-value">${totalColor.toLocaleString('th-TH')}</div><div class="kpi-unit">แผ่น</div></div>
+            <div class="kpi"><div class="kpi-label">รวมทั้งหมด</div><div class="kpi-value accent">${(totalBw + totalColor).toLocaleString('th-TH')}</div><div class="kpi-unit">แผ่น</div></div>
           </div>
           <table class="data-table">
             <thead><tr>

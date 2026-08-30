@@ -538,7 +538,7 @@ export function StockPending() {
 
       {txns.length > 0 && (
         <div className="text-xs text-slate-500 dark:text-slate-400">
-          แสดง {txns.length.toLocaleString()} รายการ
+          แสดง {txns.length.toLocaleString('th-TH')} รายการ
         </div>
       )}
 

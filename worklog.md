@@ -10909,3 +10909,108 @@ Stage Summary:
 - Superadmin/admin still see the dropdown (can filter across all sites).
 - Form-based site selectors (Add Device, etc.) remain visible to all users as expected.
 - Lint = 0 errors. No compile errors in dev.log.
+
+---
+Task ID: P1-BULK-FIXES
+Agent: orchestrator (main) — ITAM-01
+Task: Fix P1 bugs from QA report — replace window.confirm() with shadcn AlertDialog (7 instances), add th-TH locale to .toLocaleString() calls (~214 instances), remove dead code files.
+
+## Fix 1: Replace window.confirm() with AlertDialog (FIX-029) — 7/7 done
+
+Pattern applied: add `deleteTarget` state, replace `if (!window.confirm(...)) return` with `setDeleteTarget(x); return`, add AlertDialog at bottom of JSX.
+
+| # | File | Original | Replacement | Confirmation Message |
+|---|------|----------|-------------|----------------------|
+| 1 | `src/components/itam/wo-options-section.tsx:126` | `window.confirm('ลบ "${label}"?')` | `setDeleteTarget({ id, label })` + `confirmDelete()` | "ต้องการลบ "{label}" ใช่หรือไม่?" |
+| 2 | `src/components/itam/contact-directory-section.tsx:160` | `window.confirm('ลบ "${e.full_name}" จากสมุดผู้ติดต่อ?')` | `setDeleteTarget(e)` + `confirmDelete()` | "ต้องการลบ "{full_name}" จากสมุดผู้ติดต่อใช่หรือไม่?" |
+| 3 | `src/components/itam/mobile/mobile-my-work.tsx:1652` | `window.confirm('ลบรูปนี้?')` | `setDeleteTarget(imageId)` + `confirmDeleteImage()` | "ต้องการลบรูปนี้ใช่หรือไม่?" |
+| 4 | `src/components/itam/itam-settings.tsx:287` | `window.confirm('ลบ "${item.label}"?')` | `setDeleteTarget(item)` + `confirmDelete()` | "ต้องการลบ "{label}" ใช่หรือไม่?" |
+| 5 | `src/components/itam/work-orders-page.tsx:2356` | `window.confirm('ลบรูป (${img.stage}) ใช่ไหม?')` | `setDeleteImageTarget(img)` + `confirmDeleteImage()` | "ต้องการลบรูป ({stage}) ใช่หรือไม่?" |
+| 6 | `src/components/itam/stock/stock-purchase-orders.tsx:348` | `window.confirm('ต้องการยกเลิกใบสั่งซื้อนี้หรือไม่?')` | `setCancelTarget(id)` + `confirmCancelPo()` | "ต้องการยกเลิกใบสั่งซื้อนี้ใช่หรือไม่?" |
+| 7 | `src/components/itam/pending-users-section.tsx:121` | `window.confirm('ปฏิเสธคำขอของ "${user.name || user.email}"?\nบัญชีนี้จะถูกลบออกจากระบบ')` | `setRejectTarget(user)` + `confirmReject()` | "ต้องการปฏิเสธคำขอของ "{name || email}" ใช่หรือไม่? บัญชีนี้จะถูกลบออกจากระบบ" |
+
+Each AlertDialog uses:
+- `bg-rose-600 text-white hover:bg-rose-700` for the destructive action button
+- `ยกเลิก` (cancel) + `ลบ`/`ยืนยัน`/`ปฏิเสธ` (action) labels
+- `open={!!target}` controlled pattern + `onOpenChange` to clear target on close
+- Existing fetch logic preserved — extracted into `confirmDelete`/`confirmCancelPo`/`confirmReject`/`confirmDeleteImage` helper functions
+- `setDeleteTarget(null)` called in `.finally()` block to ensure dialog closes even on error
+
+Imports added to each file:
+```tsx
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+```
+(work-orders-page.tsx already had these imports — reused)
+
+## Fix 2: Add th-TH locale to .toLocaleString() (FIX-030)
+
+Ran:
+```bash
+find src/components -name '*.tsx' -exec sed -i "s/\.toLocaleString()/.toLocaleString('th-TH')/g" {} \;
+find src/app -name '*.ts' -exec sed -i "s/\.toLocaleString()/.toLocaleString('th-TH')/g" {} \;
+```
+
+Replaced:
+- `src/components/` — 203 occurrences across multiple files
+- `src/app/` — 11 occurrences
+- `src/components/itam/types.ts:707` — `safeLocaleString()` helper also updated to use `'th-TH'` (was bare `value.toLocaleString()`)
+
+Verification: `grep -rn '\.toLocaleString()' src/components/ src/app/` → 0 results
+
+## Fix 3: Remove dead code files (FIX-023) — 4 files removed
+
+Investigated page.tsx routing table:
+- `activePage === 'itam-devices' || 'devices' || 'devices-page'` → `<DevicesPage />` (line 300)
+- `activePage === 'itam-work-orders'` → `<WorkOrdersPage />` (line 309)
+- `activePage === 'settings-v2'` → `<SettingsPageV2 />` (line 318)
+
+So the legacy components were imported via `dynamic()` but NEVER rendered in JSX:
+
+| File | Lines | Why Dead | Action |
+|------|-------|----------|--------|
+| `src/components/itam/itam-work-orders.tsx` | 2,226 | `ItamWorkOrders` imported dynamically in page.tsx but never rendered — `WorkOrdersPage` is used instead | Removed import + deleted file |
+| `src/components/itam/itam-devices.tsx` | 2,230 | `ItamDevices` imported dynamically in page.tsx but never rendered — `DevicesPage` is used instead | Removed import + deleted file |
+| `src/components/itam/itam-device-detail-sheet.tsx` | 1,101 | `ItamDeviceDetailSheet` only imported by `itam-devices.tsx` (now removed) | Deleted file |
+| `src/components/itam/settings-page.tsx` | 2,120 | `SettingsPage` not imported anywhere — `SettingsPageV2` + `ItamSettings` are used instead | Deleted file |
+
+Total dead code removed: **7,677 lines**.
+
+Changes to `src/app/page.tsx`:
+- Removed lines 43-45: `const ItamDevices = dynamic(() => import('@/components/itam/itam-devices').then((m) => m.ItamDevices))`
+- Removed lines 70-72: `const ItamWorkOrders = dynamic(() => import('@/components/itam/itam-work-orders').then((m) => m.ItamWorkOrders))`
+
+String identifiers `'itam-devices'` and `'itam-work-orders'` kept in `app-store.ts`, `sidebar.tsx`, `footer.tsx`, etc. — these are routing keys, not file imports, and are still handled in `page.tsx` via aliases (`'itam-devices' || 'devices' || 'devices-page'` → `<DevicesPage />`).
+
+## Verification Results
+
+| Test | Expected | Actual | Status |
+|------|----------|--------|--------|
+| `bun run lint` | 0 errors | **0 errors, 78 warnings** (all pre-existing `react-hooks/set-state-in-effect`) | ✅ |
+| `grep -rn "window.confirm" src/components/` | 0 | **0** | ✅ |
+| `grep -rn '\.toLocaleString()' src/components/ src/app/` | 0 | **0** | ✅ |
+| Dead code files removed | 4 | **4 removed (7,677 lines)** | ✅ |
+| Dead imports in page.tsx | 0 | **0** (ItamDevices + ItamWorkOrders dynamic imports removed) | ✅ |
+| `curl localhost:3000/` | 200 | **200** | ✅ |
+| dev.log compile errors | none | **none** (latest: `✓ Compiled in 1621ms`, all routes 200) | ✅ |
+
+## Constraints respected
+- ✅ Did NOT touch B4 frozen files: `retry-transaction.ts`, `wo-authz.ts`, `authorization-context.ts`, `auth-middleware.ts`, `auth-shared.ts`, `audit.ts`
+- ✅ Lint = 0 errors
+- ✅ No compile errors in dev.log
+- ✅ App loads (HTTP 200)
+
+Stage Summary:
+- All 3 P1 fixes complete.
+- 7 window.confirm() → AlertDialog conversions.
+- 214 bare `.toLocaleString()` → `.toLocaleString('th-TH')` conversions.
+- 4 dead code files (7,677 lines) removed.
+- Lint = 0 errors. App loads. No compile errors.

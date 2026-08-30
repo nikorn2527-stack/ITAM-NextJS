@@ -17,6 +17,16 @@ import {
 } from '@/components/ui/table'
 import { Check, X, RefreshCw, Users } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 interface PendingUser {
   id: string
@@ -67,6 +77,7 @@ function formatDate(iso: string): string {
 export function PendingUsersSection() {
   const qc = useQueryClient()
   const [actingId, setActingId] = React.useState<string | null>(null)
+  const [rejectTarget, setRejectTarget] = React.useState<PendingUser | null>(null)
 
   const { data, isLoading, refetch, isFetching } = useQuery<{
     users: PendingUser[]
@@ -118,10 +129,14 @@ export function PendingUsersSection() {
 
   async function reject(user: PendingUser) {
     if (actingId) return
-    if (!window.confirm(`ปฏิเสธคำขอของ "${user.name || user.email}"?\nบัญชีนี้จะถูกลบออกจากระบบ`)) {
-      return
-    }
+    setRejectTarget(user)
+  }
+
+  async function confirmReject() {
+    if (!rejectTarget) return
+    const user = rejectTarget
     setActingId(user.id)
+    setRejectTarget(null)
     try {
       const res = await fetch(`/api/itam/auth/reject/${user.id}`, {
         method: 'POST',
@@ -256,6 +271,28 @@ export function PendingUsersSection() {
           </Table>
         </div>
       </CardContent>
+
+      {/* Reject confirmation */}
+      <AlertDialog open={!!rejectTarget} onOpenChange={(open) => !open && setRejectTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการปฏิเสธ</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการปฏิเสธคำขอของ "{rejectTarget?.name || rejectTarget?.email || ''}" ใช่หรือไม่? บัญชีนี้จะถูกลบออกจากระบบ การกระทำนี้ไม่สามารถยกเลิกได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmReject}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              ปฏิเสธ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

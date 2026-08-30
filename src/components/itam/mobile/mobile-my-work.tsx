@@ -111,6 +111,16 @@ import {
   SheetDescription,
   SheetFooter,
 } from '@/components/ui/sheet'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -1464,6 +1474,7 @@ function PhotosCard({
   const [cameraTarget, setCameraTarget] = React.useState<'onsite' | 'after'>(
     'after',
   )
+  const [deleteTarget, setDeleteTarget] = React.useState<string | null>(null)
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
@@ -1649,7 +1660,12 @@ function PhotosCard({
   }
 
   async function deleteImage(imageId: string) {
-    if (!window.confirm('ลบรูปนี้?')) return
+    setDeleteTarget(imageId)
+  }
+
+  async function confirmDeleteImage() {
+    if (!deleteTarget) return
+    const imageId = deleteTarget
     try {
       const res = await fetch(
         `/api/work-orders/${encodeURIComponent(workOrderId)}/images?imageId=${encodeURIComponent(imageId)}`,
@@ -1663,6 +1679,8 @@ function PhotosCard({
       await fetchImages()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'ลบรูปไม่สำเร็จ')
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -1824,6 +1842,28 @@ function PhotosCard({
           </div>
         </div>
       )}
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบรูปนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถยกเลิกได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmDeleteImage}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              ลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

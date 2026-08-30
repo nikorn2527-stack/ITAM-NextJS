@@ -40,9 +40,6 @@ const ItamLogin = dynamic(() =>
 const ItamDashboard = dynamic(() =>
   import('@/components/itam/itam-dashboard').then((m) => m.ItamDashboard),
 )
-const ItamDevices = dynamic(() =>
-  import('@/components/itam/itam-devices').then((m) => m.ItamDevices),
-)
 const ItamMeterUnified = dynamic(() =>
   import('@/components/itam/itam-meter-unified').then((m) => m.ItamMeterUnified),
 )
@@ -66,9 +63,6 @@ const SnapshotViewer = dynamic(() =>
 )
 const ItamRepairs = dynamic(() =>
   import('@/components/itam/itam-repairs').then((m) => m.ItamRepairs),
-)
-const ItamWorkOrders = dynamic(() =>
-  import('@/components/itam/itam-work-orders').then((m) => m.ItamWorkOrders),
 )
 const ItamStock = dynamic(() =>
   import('@/components/itam/itam-stock').then((m) => m.ItamStock),

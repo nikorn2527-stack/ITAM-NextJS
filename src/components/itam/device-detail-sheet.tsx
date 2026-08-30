@@ -1448,9 +1448,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                   label="มิเตอร์ล่าสุด"
                   value={
                     <span className="font-mono tabular-nums">
-                      {(device.lastMeterBw ?? device.lastMeterReading ?? 0).toLocaleString()}
+                      {(device.lastMeterBw ?? device.lastMeterReading ?? 0).toLocaleString('th-TH')}
                       {device.lastMeterColor && device.lastMeterColor > 0 ? (
-                        <span className="ml-2 text-[10px] text-slate-400">สี {(device.lastMeterColor).toLocaleString()}</span>
+                        <span className="ml-2 text-[10px] text-slate-400">สี {(device.lastMeterColor).toLocaleString('th-TH')}</span>
                       ) : null}
                     </span>
                   }
@@ -1592,7 +1592,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                       />
                       <Tooltip
                         formatter={(v: number) => [
-                          v.toLocaleString(),
+                          v.toLocaleString('th-TH'),
                           'ค่ามิเตอร์',
                         ]}
                         labelFormatter={(l) => `วันที่ ${l}`}
@@ -1627,7 +1627,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                           {r.date}
                         </div>
                         <div className="text-sm font-medium text-slate-700 tabular-nums dark:text-slate-200">
-                          {r.reading.toLocaleString()}
+                          {r.reading.toLocaleString('th-TH')}
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -1650,7 +1650,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                           }
                         >
                           {r.delta >= 0 ? '+' : ''}
-                          {r.delta.toLocaleString()}
+                          {r.delta.toLocaleString('th-TH')}
                         </Badge>
                       </div>
                     </li>
@@ -2653,7 +2653,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
                         ค่ามิเตอร์ล่าสุด:{' '}
                         <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
-                          {(device.lastMeterReading ?? 0).toLocaleString()}
+                          {(device.lastMeterReading ?? 0).toLocaleString('th-TH')}
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-3">

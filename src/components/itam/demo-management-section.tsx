@@ -188,7 +188,7 @@ export function DemoManagementSection() {
             </Button>
           </CardTitle>
           <CardDescription>
-            รวมทั้งหมด {totalRecords.toLocaleString()} ระเบียน +{' '}
+            รวมทั้งหมด {totalRecords.toLocaleString('th-TH')} ระเบียน +{' '}
             {counts?.users ?? 0} บัญชีผู้ใช้สาธิต
           </CardDescription>
         </CardHeader>
@@ -303,7 +303,7 @@ export function DemoManagementSection() {
           <AlertDialogHeader>
             <AlertDialogTitle>ยืนยันการล้างข้อมูลสาธิต</AlertDialogTitle>
             <AlertDialogDescription>
-              การกระทำนี้จะลบ {totalRecords.toLocaleString()} ระเบียน (อุปกรณ์{' '}
+              การกระทำนี้จะลบ {totalRecords.toLocaleString('th-TH')} ระเบียน (อุปกรณ์{' '}
               {counts?.devices ?? 0}, ใบงาน {counts?.workOrders ?? 0}, สต็อก{' '}
               {counts?.stockTransactions ?? 0}, มิเตอร์ {counts?.meterReadings ?? 0})
               — ไม่สามารถยกเลิกได้ ข้อมูลจริงจะไม่ได้รับผลกระทบ
@@ -342,7 +342,7 @@ function CountTile({
         {label}
       </div>
       <div className={`mt-1 text-2xl font-bold ${color}`}>
-        {value.toLocaleString()}
+        {value.toLocaleString('th-TH')}
       </div>
     </div>
   )

@@ -57,6 +57,16 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Command,
   CommandEmpty,
   CommandGroup,
@@ -159,6 +169,7 @@ export function StockPurchaseOrders() {
   // Detail dialog
   const [detailOpen, setDetailOpen] = React.useState(false)
   const [detailId, setDetailId] = React.useState<string | null>(null)
+  const [cancelTarget, setCancelTarget] = React.useState<string | null>(null)
 
   // ── Queries ──────────────────────────────────────────────────────────
 
@@ -345,8 +356,13 @@ export function StockPurchaseOrders() {
   }
 
   function handleCancelPo(id: string) {
-    if (!window.confirm('ต้องการยกเลิกใบสั่งซื้อนี้หรือไม่?')) return
-    cancelPoMutation.mutate(id)
+    setCancelTarget(id)
+  }
+
+  function confirmCancelPo() {
+    if (!cancelTarget) return
+    cancelPoMutation.mutate(cancelTarget)
+    setCancelTarget(null)
   }
 
   const grandTotal = lines.reduce((sum, l) => {
@@ -504,7 +520,7 @@ export function StockPurchaseOrders() {
 
       {pos.length > 0 && (
         <div className="text-xs text-slate-500 dark:text-slate-400">
-          แสดง {pos.length.toLocaleString()} ใบสั่งซื้อ
+          แสดง {pos.length.toLocaleString('th-TH')} ใบสั่งซื้อ
         </div>
       )}
 
@@ -880,6 +896,28 @@ export function StockPurchaseOrders() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Cancel PO confirmation */}
+      <AlertDialog open={!!cancelTarget} onOpenChange={(open) => !open && setCancelTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการยกเลิก</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการยกเลิกใบสั่งซื้อนี้ใช่หรือไม่? การกระทำนี้ไม่สามารถยกเลิกได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmCancelPo}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              ยืนยัน
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

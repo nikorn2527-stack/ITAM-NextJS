@@ -3144,11 +3144,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         {hasMeter ? (
                           <div>
                             <div className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
-                              {lastMeterBw.toLocaleString()}
+                              {lastMeterBw.toLocaleString('th-TH')}
                             </div>
                             {lastMeterColor > 0 && (
                               <div className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                                สี: {lastMeterColor.toLocaleString()}
+                                สี: {lastMeterColor.toLocaleString('th-TH')}
                               </div>
                             )}
                             <div className="text-[10px] text-slate-400 dark:text-slate-500">
@@ -3225,7 +3225,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               <span>
                 แสดง <span className="font-semibold text-slate-700 dark:text-slate-200">{startIdx}-{endIdx}</span>
                 {' '}จาก{' '}
-                <span className="font-semibold text-slate-700 dark:text-slate-200">{totalCount.toLocaleString()}</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-200">{totalCount.toLocaleString('th-TH')}</span>
                 {' '}รายการ
               </span>
               {selectedIds.size > 0 && (
@@ -3294,7 +3294,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     aria-label="เลขหน้า"
                     inputMode="numeric"
                   />
-                  <span>/ {totalPages.toLocaleString()}</span>
+                  <span>/ {totalPages.toLocaleString('th-TH')}</span>
                 </div>
 
                 <Button

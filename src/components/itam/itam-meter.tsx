@@ -145,7 +145,7 @@ export function ItamMeter() {
       <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จดมิเตอร์ (Real DB)</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{total.toLocaleString()} รายการ</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{total.toLocaleString('th-TH')} รายการ</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {showSiteFilter && (
@@ -220,9 +220,9 @@ export function ItamMeter() {
                       <TableCell className="font-mono text-xs font-medium">{r.assetCode}</TableCell>
                       <TableCell className="text-xs">{r.device ? `${r.device.brand || ''} ${r.device.model || ''}` : '—'}</TableCell>
                       <TableCell className="text-right font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                        {r.prevMeterBw.toLocaleString()}
+                        {r.prevMeterBw.toLocaleString('th-TH')}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs tabular-nums">{r.meterBw.toLocaleString()}</TableCell>
+                      <TableCell className="text-right font-mono text-xs tabular-nums">{r.meterBw.toLocaleString('th-TH')}</TableCell>
                       <TableCell className="text-right">
                         <Badge
                           variant="outline"
@@ -234,14 +234,14 @@ export function ItamMeter() {
                                 ? 'border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300'
                                 : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400')
                           }
-                          title={`${r.prevMeterBw.toLocaleString()} → ${r.meterBw.toLocaleString()} = ${delta >= 0 ? '+' : ''}${delta.toLocaleString()}`}
+                          title={`${r.prevMeterBw.toLocaleString('th-TH')} → ${r.meterBw.toLocaleString('th-TH')} = ${delta >= 0 ? '+' : ''}${delta.toLocaleString('th-TH')}`}
                         >
-                          {delta >= 0 ? '+' : ''}{delta.toLocaleString()}
+                          {delta >= 0 ? '+' : ''}{delta.toLocaleString('th-TH')}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                          {(r.pagesBw + r.pagesColor).toLocaleString()} แผ่น
+                          {(r.pagesBw + r.pagesColor).toLocaleString('th-TH')} แผ่น
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -515,7 +515,7 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                       <TableRow key={m.assetCode} className={rowBg}>
                         <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">{m.assetCode}</TableCell>
                         <TableCell className="max-w-[180px] truncate text-xs text-slate-700 dark:text-slate-200">{m.name}</TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-xs text-slate-600 dark:text-slate-300">{m.prev.toLocaleString()}</TableCell>
+                        <TableCell className="text-right font-mono tabular-nums text-xs text-slate-600 dark:text-slate-300">{m.prev.toLocaleString('th-TH')}</TableCell>
                         <TableCell className="text-right">
                           <Input
                             type="number"
@@ -544,7 +544,7 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                                   : 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300')
                               }
                             >
-                              {m.delta > 0 ? '+' : ''}{m.delta.toLocaleString()}
+                              {m.delta > 0 ? '+' : ''}{m.delta.toLocaleString('th-TH')}
                             </Badge>
                           )}
                         </TableCell>
