@@ -34,6 +34,7 @@ export async function GET(req: NextRequest) {
 
     const now = new Date()
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const currentMonthKey = currentMonth // alias for clarity
 
     // Current calendar month date range (for "paper this month" — matches legacy dashboard)
     const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
@@ -91,7 +92,7 @@ export async function GET(req: NextRequest) {
       //    - readingMonth = เดือนที่เลือกบันทึก (เช่น 2026-07 = รอบกรกฎาคม)
       //    - ถ้าจดวันที่ 1-5 ส.ค. แต่เลือกเดือน ก.ค. → ข้อมูลเข้า ก.ค. ไม่ใช่ ส.ค.
       //    - pagesBw/pagesColor = delta per reading (computed at POST time)
-      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+
       db.meterReading.aggregate({
         _sum: { pagesBw: true, pagesColor: true },
         where: {
