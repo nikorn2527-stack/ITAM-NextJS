@@ -85,17 +85,17 @@ export async function GET(req: NextRequest) {
       }),
 
       // 3) Paper usage this month — SUM of pagesBw + pagesColor for ALL readings
-      //    recorded (by readingDate) in the current calendar month, regardless of
-      //    readingType. This represents "the amount entered this month" — what
-      //    was recorded in August = August's actual paper activity (not a delta
-      //    that would reflect last month's usage).
-      //    pagesBw/pagesColor already store the DELTA per reading (computed at
-      //    POST time), so summing them gives the true total usage recorded this
-      //    month across all statuses.
+      //    with readingMonth = current month (e.g., "2026-08").
+      //    Uses readingMonth (not readingDate) because:
+      //    - readingDate = วันที่กดบันทึกจริง (อาจเป็นต้นเดือนถัดไป เช่น 1-5 ส.ค.)
+      //    - readingMonth = เดือนที่เลือกบันทึก (เช่น 2026-07 = รอบกรกฎาคม)
+      //    - ถ้าจดวันที่ 1-5 ส.ค. แต่เลือกเดือน ก.ค. → ข้อมูลเข้า ก.ค. ไม่ใช่ ส.ค.
+      //    - pagesBw/pagesColor = delta per reading (computed at POST time)
+      const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
       db.meterReading.aggregate({
         _sum: { pagesBw: true, pagesColor: true },
         where: {
-          readingDate: { gte: monthStart, lte: monthEnd },
+          readingMonth: currentMonthKey,
           device: siteFilter,
         },
       }),
@@ -238,12 +238,12 @@ export async function GET(req: NextRequest) {
           where: { site: { in: visibleSiteNames } },
           select: { assetCode: true, site: true },
         }),
-        // Paper usage per asset this month (by readingDate, ALL readingTypes —
-        // matches the top-level "paper this month" definition)
+        // Paper usage per asset this month (by readingMonth — matches
+        // the top-level "paper this month" definition)
         db.meterReading.groupBy({
           by: ['assetCode'],
           where: {
-            readingDate: { gte: monthStart, lte: monthEnd },
+            readingMonth: currentMonthKey,
             device: { site: { in: visibleSiteNames } },
           },
           _sum: { pagesBw: true, pagesColor: true },

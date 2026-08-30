@@ -64,28 +64,25 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // ─── 2) MoM change — based on SUM of pagesBw + pagesColor recorded
-    //    (by readingDate) in each calendar month, all readingTypes.
-    //    This matches the dashboard's "paper this month" definition.
-    const curMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-    const curDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-    const curMonthEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(curDaysInMonth).padStart(2, '0')}`
-    const prevMonthStart = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-01`
-    const prevDaysInMonth = new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 0).getDate()
-    const prevMonthEnd = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-${String(prevDaysInMonth).padStart(2, '0')}`
+    // ─── 2) MoM change — based on SUM of pagesBw + pagesColor
+    //    with readingMonth = current/previous month key.
+    //    Uses readingMonth (not readingDate) because readingDate may fall in
+    //    the next calendar month (e.g., reading 1-5 Aug for July cycle).
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const prevMonthKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`
 
     const [curAgg, prevAgg] = await Promise.all([
       db.meterReading.aggregate({
         _sum: { pagesBw: true, pagesColor: true },
         where: {
-          readingDate: { gte: curMonthStart, lte: curMonthEnd },
+          readingMonth: currentMonth,
           device: siteFilter,
         },
       }),
       db.meterReading.aggregate({
         _sum: { pagesBw: true, pagesColor: true },
         where: {
-          readingDate: { gte: prevMonthStart, lte: prevMonthEnd },
+          readingMonth: prevMonthKey,
           device: siteFilter,
         },
       }),
