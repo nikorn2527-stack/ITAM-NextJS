@@ -238,9 +238,7 @@ export async function POST(req: NextRequest) {
           actor: user.email,
         },
       })
-    } catch {
-      /* audit never blocks the mutation */
-    }
+    } catch (err) { console.error('[route]', err) }
 
     // ── Best-effort: notification + realtime push ─────────────────────
     void notifyMeter({

@@ -282,7 +282,7 @@ export async function POST(
           historyId: historyRow.id,
         },
       )
-    } catch { /* audit must not turn a committed lifecycle into a false failure */ }
+    } catch (err) { console.error('[route]', err) }
 
     void notifyTransfer({
       assetCode: device.assetCode,
@@ -328,10 +328,10 @@ export async function POST(
             eventId: null,
           },
         })
-      } catch { /* best-effort recovery marker */ }
+      } catch (err) { console.error('[route]', err) }
     }
     console.error('POST /api/itam/devices/[id]/lifecycle', err)
-    const message = err instanceof Error ? err.message : 'Lifecycle update failed'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Lifecycle update failed') : 'Internal server error'
     return NextResponse.json({ error: message, code: 'LIFECYCLE_UPDATE_FAILED' }, { status: 500 })
   }
 }

@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
       searchParams.get('month')?.trim() ||
       `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     const search = searchParams.get('search')?.trim() ?? ''
-    const limit = Math.min(500, Math.max(1, parseInt(searchParams.get('limit') ?? '200', 10)))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '100', 10)))
     const includeRead = searchParams.get('includeRead') === '1'
 
     // Site-level filter

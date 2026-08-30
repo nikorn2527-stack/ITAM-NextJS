@@ -65,16 +65,14 @@ export async function POST(req: NextRequest) {
           actor: auth.user.email + (isDemoUser(auth.user) ? ' (demo)' : ''),
         },
       })
-    } catch {
-      /* audit failures must not break the reset */
-    }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ deleted: result })
   } catch (err) {
     console.error('POST /api/itam/demo/reset', err)
     return NextResponse.json(
       {
-        error: err instanceof Error ? err.message : 'Failed to reset demo data',
+        error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to reset demo data') : 'Internal server error',
       },
       { status: 500 },
     )
@@ -113,7 +111,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('GET /api/itam/demo/reset', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to fetch demo counts' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to fetch demo counts') : 'Internal server error' },
       { status: 500 },
     )
   }

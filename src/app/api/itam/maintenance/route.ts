@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
           detail: JSON.stringify({ assetCode: body.assetNo, type: body.type }),
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ log: created }, { status: 201 })
   } catch (err) {

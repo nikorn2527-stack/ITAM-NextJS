@@ -29,7 +29,7 @@
  */
 export const DEVICE_LIST_BOUNDS = {
   /** Maximum rows per page. Prevents huge single-page queries. */
-  MAX_LIMIT: 500,
+  MAX_LIMIT: 100,
   /** Default rows per page when caller doesn't specify. */
   DEFAULT_LIMIT: 100,
   /** Minimum rows per page (must be ≥ 1). */

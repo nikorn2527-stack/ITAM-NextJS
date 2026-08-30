@@ -681,9 +681,7 @@ export function ItamStickerEditor() {
           const devJson = (await devRes.json()) as { devices: { assetCode: string }[] }
           assetNo = devJson.devices[0]?.assetCode ?? null
         }
-      } catch {
-        /* ignore — fall through to sample */
-      }
+      } catch (err) { console.error('[itam-sticker-editor]', err) }
       if (!assetNo) assetNo = SAMPLE_DEVICE.assetCode
 
       const res = await fetch('/api/itam/sticker/render', {
@@ -1644,9 +1642,7 @@ function structuredCloneSafe<T>(obj: T): T {
   if (typeof structuredClone === 'function') {
     try {
       return structuredClone(obj)
-    } catch {
-      /* fall through */
-    }
+    } catch (err) { console.error('[itam-sticker-editor]', err) }
   }
   return JSON.parse(JSON.stringify(obj)) as T
 }

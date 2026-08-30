@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
       {
         valid: false,
         error: 'Internal server error',
-        detail: err instanceof Error ? err.message : String(err),
+        detail: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : String(err)) : 'Internal server error',
       },
       { status: 500 },
     )

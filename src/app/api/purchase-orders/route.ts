@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
     const page = Math.max(1, optInt(searchParams.get('page'), 1))
     const pageSize = Math.max(
       1,
-      Math.min(200, optInt(searchParams.get('pageSize'), 50)),
+      Math.min(100, optInt(searchParams.get('pageSize'), 50)),
     )
 
     const where: Record<string, unknown> = {}
@@ -267,7 +267,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ data: created.po }, { status: 201 })
   } catch (err) {
     console.error('POST /api/purchase-orders', err)
-    const message = err instanceof Error ? err.message : 'Failed to create purchase order'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create purchase order') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

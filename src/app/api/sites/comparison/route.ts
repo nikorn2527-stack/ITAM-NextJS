@@ -217,7 +217,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('GET /api/sites/comparison', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to compute site comparison' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to compute site comparison') : 'Internal server error' },
       { status: 500 },
     )
   }

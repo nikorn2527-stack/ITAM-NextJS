@@ -31,7 +31,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           detail: JSON.stringify({ id, label: body.value }),
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ item: updated })
   } catch (err) {
@@ -59,7 +59,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           detail: JSON.stringify({ id, action: 'delete' }),
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ ok: true })
   } catch (err) {

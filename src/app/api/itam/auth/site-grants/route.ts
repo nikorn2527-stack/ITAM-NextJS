@@ -285,7 +285,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('POST /api/itam/auth/site-grants', err)
     const message =
-      err instanceof Error ? err.message : 'Failed to create site grant'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create site grant') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

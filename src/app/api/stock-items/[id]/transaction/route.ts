@@ -333,7 +333,7 @@ export async function POST(
       }
     }
     const message =
-      err instanceof Error ? err.message : 'Failed to create transaction'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create transaction') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

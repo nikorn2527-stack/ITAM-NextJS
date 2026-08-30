@@ -99,9 +99,7 @@ export function QrScannerDialog() {
       for (const track of stream.getTracks()) {
         try {
           track.stop()
-        } catch {
-          /* noop */
-        }
+        } catch (err) { console.error('[qr-scanner-dialog]', err) }
       }
       streamRef.current = null
     }
@@ -132,9 +130,7 @@ export function QrScannerDialog() {
               handleScan(code.data)
               return
             }
-          } catch {
-            /* ignore frame errors */
-          }
+          } catch (err) { console.error('[qr-scanner-dialog]', err) }
         }
       }
     }

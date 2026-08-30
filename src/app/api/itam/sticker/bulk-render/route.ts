@@ -101,9 +101,7 @@ export async function POST(req: NextRequest) {
             margin: 1, width: 240, errorCorrectionLevel: 'M',
           })
           sharedQrCache.set(data, url)
-        } catch {
-          /* skip */
-        }
+        } catch (err) { console.error('[route]', err) }
       }
     }
 

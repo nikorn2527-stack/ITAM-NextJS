@@ -930,9 +930,7 @@ export function DevicesPage() {
           prev.assetCode ? prev : { ...prev, assetCode: j.code ?? '' },
         )
       }
-    } catch {
-      /* non-fatal — user can still type a code manually */
-    } finally {
+    } catch (err) { console.error('[devices-page]', err) } finally {
       generatingAssetCodeRef.current = false
     }
   }, [])
@@ -1033,9 +1031,7 @@ export function DevicesPage() {
         remark: l.Remark ?? '',
       }))
       setForm((prev) => ({ ...prev, licenses: mapped }))
-    } catch {
-      /* non-fatal */
-    } finally {
+    } catch (err) { console.error('[devices-page]', err) } finally {
       setLicensesLoading(false)
     }
   }
@@ -1084,9 +1080,7 @@ export function DevicesPage() {
       if (j.code) {
         setForm((prev) => ({ ...prev, assetSiteCode: j.code ?? '' }))
       }
-    } catch {
-      /* non-fatal */
-    } finally {
+    } catch (err) { console.error('[devices-page]', err) } finally {
       generatingCodeRef.current = false
     }
   }, [])

@@ -90,7 +90,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ settings: map })
   } catch (err) {
     console.error('PUT /api/settings', err)
-    const message = err instanceof Error ? err.message : 'Failed to update settings'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update settings') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

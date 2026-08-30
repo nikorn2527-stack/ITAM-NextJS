@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ site: created }, { status: 201 })
   } catch (err) {
     console.error('POST /api/site-attributes', err)
-    const message = err instanceof Error ? err.message : 'Failed to create site attribute'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create site attribute') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -230,7 +230,7 @@ export async function POST() {
     })
   } catch (err) {
     console.error('POST /api/seed', err)
-    const message = err instanceof Error ? err.message : 'Seed failed'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Seed failed') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

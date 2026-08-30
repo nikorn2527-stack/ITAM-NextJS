@@ -53,9 +53,7 @@ export async function DELETE(
           actor: auth.user.email,
         },
       })
-    } catch {
-      /* audit non-fatal */
-    }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ ok: true })
   } catch (err) {

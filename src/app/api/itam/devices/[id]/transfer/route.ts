@@ -273,7 +273,7 @@ export async function POST(
           siteCode: toSite,
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     // Best-effort notification
     void notifyTransfer({
@@ -311,10 +311,10 @@ export async function POST(
           where: { id: meterReadingIdForRecovery },
           data: { eventType: 'LIFECYCLE_METER_INCOMPLETE', eventId: null },
         })
-      } catch { /* best-effort recovery marker */ }
+      } catch (err) { console.error('[route]', err) }
     }
     console.error('POST /api/itam/devices/[id]/transfer', err)
-    const message = err instanceof Error ? err.message : 'Transfer failed'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Transfer failed') : 'Internal server error'
     return NextResponse.json({ error: message, code: 'TRANSFER_UPDATE_FAILED' }, { status: 500 })
   }
 }

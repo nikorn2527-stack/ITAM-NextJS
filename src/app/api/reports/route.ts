@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ report: created }, { status: 201 })
   } catch (err) {
     console.error('POST /api/reports', err)
-    const message = err instanceof Error ? err.message : 'Failed to create report'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create report') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

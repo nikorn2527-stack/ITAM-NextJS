@@ -1,5 +1,5 @@
 export const DEVICE_LIST_DEFAULT_LIMIT = 20
-export const DEVICE_LIST_MAX_LIMIT = 200
+export const DEVICE_LIST_MAX_LIMIT = 100
 export const DEVICE_LIST_MAX_PAGE = 100_000
 
 export type DeviceListPagination = {

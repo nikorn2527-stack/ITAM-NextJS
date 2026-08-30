@@ -288,7 +288,7 @@ export async function POST(req: NextRequest) {
     )
   } catch (err) {
     console.error('POST /api/users', err)
-    const message = err instanceof Error ? err.message : 'Failed to create user'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create user') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -430,7 +430,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ user: publicUser(updated) })
   } catch (err) {
     console.error('PUT /api/users', err)
-    const message = err instanceof Error ? err.message : 'Failed to update user'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update user') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

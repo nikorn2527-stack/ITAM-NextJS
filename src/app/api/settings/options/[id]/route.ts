@@ -46,9 +46,7 @@ export async function DELETE(
       try {
         const parsed = JSON.parse(row.value)
         if (Array.isArray(parsed)) arr = parsed
-      } catch {
-        /* ignore */
-      }
+      } catch (err) { console.error('[route]', err) }
     }
 
     // Find by id, OR by index when the id is a "legacy_<n>" synthetic.
@@ -95,7 +93,7 @@ export async function DELETE(
           actor: auth.user.email,
         },
       })
-    } catch { /* audit non-fatal */ }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ ok: true })
   } catch (err) {

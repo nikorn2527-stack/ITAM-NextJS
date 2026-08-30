@@ -108,9 +108,7 @@ export async function POST(req: NextRequest) {
           actor: auth.user.email,
         },
       })
-    } catch {
-      /* audit non-fatal */
-    }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ data: entry }, { status: 201 })
   } catch (err) {

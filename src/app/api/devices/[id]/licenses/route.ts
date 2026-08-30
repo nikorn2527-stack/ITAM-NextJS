@@ -101,7 +101,7 @@ export async function POST(
   } catch (err) {
     console.error('POST /api/devices/[id]/licenses', err)
     const message =
-      err instanceof Error ? err.message : 'Failed to create license'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create license') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -154,7 +154,7 @@ export async function DELETE(
   } catch (err) {
     console.error('DELETE /api/devices/[id]/licenses', err)
     const message =
-      err instanceof Error ? err.message : 'Failed to delete license'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to delete license') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -248,7 +248,7 @@ export async function PUT(
   } catch (err) {
     console.error('PUT /api/devices/[id]/licenses', err)
     const message =
-      err instanceof Error ? err.message : 'Failed to update license'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update license') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -176,7 +176,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('GET /api/search', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Search failed' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Search failed') : 'Internal server error' },
       { status: 500 },
     )
   }

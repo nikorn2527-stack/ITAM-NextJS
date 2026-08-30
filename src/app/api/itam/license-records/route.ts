@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
           detail: JSON.stringify({ software: body.software, assetCode: body.assetNo || null }),
         },
       })
-    } catch { /* ignore */ }
+    } catch (err) { console.error('[route]', err) }
 
     return NextResponse.json({ record: created }, { status: 201 })
   } catch (err) {

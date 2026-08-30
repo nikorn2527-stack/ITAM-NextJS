@@ -188,7 +188,7 @@ export async function PUT(
   } catch (err) {
     console.error('PUT /api/work-orders/[id]/reporter-edit', err)
     const message =
-      err instanceof Error ? err.message : 'Failed to edit work order'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to edit work order') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

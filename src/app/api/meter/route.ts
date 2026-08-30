@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('POST /api/meter', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to save reading' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to save reading') : 'Internal server error' },
       { status: 500 },
     )
   }

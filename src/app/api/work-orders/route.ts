@@ -319,7 +319,7 @@ export async function GET(req: NextRequest) {
     })
   } catch (err) {
     console.error('GET /api/work-orders', err)
-    const message = err instanceof Error ? err.message : 'Failed to fetch work orders'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to fetch work orders') : 'Internal server error'
     return NextResponse.json(
       { error: message, detail: err instanceof Error ? err.stack?.split('\n').slice(0, 3).join(' | ') : String(err) },
       { status: 500 },
@@ -701,7 +701,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('POST /api/work-orders', err)
     const message =
-      err instanceof Error ? err.message : 'Failed to create work order'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create work order') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -238,9 +238,7 @@ export function StickerPrintDialog({
         try {
           win.focus()
           win.print()
-        } catch {
-          /* user can print manually */
-        }
+        } catch (err) { console.error('[sticker-print-dialog]', err) }
       }, 350)
 
       // Log audit (fire-and-forget, but await to keep tidy)
@@ -263,9 +261,7 @@ export function StickerPrintDialog({
           }),
         })
         await qc.invalidateQueries({ queryKey: ['audit'] })
-      } catch {
-        /* audit failures are non-fatal */
-      }
+      } catch (err) { console.error('[sticker-print-dialog]', err) }
 
       toast.success(`เตรียมสติกเกอร์ ${selectedDevices.length} ใบสำหรับพิมพ์แล้ว`)
       onOpenChange(false)

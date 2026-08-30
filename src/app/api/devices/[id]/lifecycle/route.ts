@@ -33,7 +33,7 @@ export async function POST(
   } catch (err) {
     console.error('POST /api/devices/[id]/lifecycle', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Lifecycle update failed' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Lifecycle update failed') : 'Internal server error' },
       { status: 500 },
     )
   }

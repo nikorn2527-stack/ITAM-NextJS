@@ -173,9 +173,7 @@ export function QrScannerDialog() {
               handleDecoded(code.data)
               return // stop loop on success
             }
-          } catch {
-            /* canvas read error — try again next tick */
-          }
+          } catch (err) { console.error('[qr-scanner]', err) }
         }
       }
       attempts++
@@ -218,9 +216,7 @@ export function QrScannerDialog() {
           return
         }
       }
-    } catch {
-      /* fall through to default route */
-    }
+    } catch (err) { console.error('[qr-scanner]', err) }
     // Default: go to device detail
     toast.success(`สแกนสำเร็จ: ${assetNo}`, {
       description: 'กำลังเปิดรายละเอียดอุปกรณ์...',
@@ -256,9 +252,7 @@ export function QrScannerDialog() {
           return
         }
       }
-    } catch {
-      /* fall through */
-    }
+    } catch (err) { console.error('[qr-scanner]', err) }
     toast.success(`ค้นหา: ${assetNo}`)
     setOpen(false)
     setActivePage('itam-devices')

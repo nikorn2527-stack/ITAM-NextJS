@@ -108,7 +108,7 @@ export async function POST(
     )
   } catch (err) {
     console.error('POST /api/devices/[id]/transfer', err)
-    const message = err instanceof Error ? err.message : 'Failed to transfer'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to transfer') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

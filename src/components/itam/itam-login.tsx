@@ -173,9 +173,7 @@ export function ItamLogin() {
         const user = JSON.parse(decodeURIComponent(userJson))
         useAuthStore.getState().setSession(token, user)
         toast.success('เข้าสู่ระบบด้วย OAuth สำเร็จ')
-      } catch {
-        /* ignore parse errors */
-      }
+      } catch (err) { console.error('[itam-login]', err) }
     } else if (oauthParam === 'pending') {
       toast.info('บัญชีของคุณถูกสร้างแล้ว — รอผู้ดูแลอนุมัติ', { duration: 8000 })
     } else if (oauthParam && oauthParam.startsWith('error')) {
@@ -202,9 +200,7 @@ export function ItamLogin() {
         url.searchParams.delete('register')
         window.history.replaceState({}, '', url.toString())
       }
-    } catch {
-      /* SSR / no window */
-    }
+    } catch (err) { console.error('[itam-login]', err) }
   }, [])
 
   // Countdown for lockout

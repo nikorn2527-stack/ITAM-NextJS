@@ -11,7 +11,7 @@ export async function GET() {
     const mc = await db.masterItem.count()
     const dc = await db.masterItem.count({ where: { category: 'DeviceClassification' } })
     let rt = 0
-    try { const r = await db.$queryRawUnsafe('SELECT COUNT(*)::int as c FROM "RepairTaxonomy"'); rt = r[0].c } catch {}
+    try { const r = await db.$queryRawUnsafe('SELECT COUNT(*)::int as c FROM "RepairTaxonomy"'); rt = r[0].c } catch (err) { console.error('[route]', err) }
     return NextResponse.json({ ok: true, dbUrl: masked.slice(0, 80), isPooler, isVercelPg, masterItem: mc, deviceClassification: dc, repairTaxonomy: rt })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 })

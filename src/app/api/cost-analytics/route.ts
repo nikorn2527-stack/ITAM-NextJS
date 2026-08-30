@@ -157,7 +157,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('GET /api/cost-analytics', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to compute cost analytics' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to compute cost analytics') : 'Internal server error' },
       { status: 500 },
     )
   }

@@ -459,7 +459,7 @@ export async function PUT(
     }
     console.error('PUT /api/work-orders/[id]', err)
     const message =
-      err instanceof Error ? err.message : 'Failed to update work order'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to update work order') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -275,7 +275,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('POST /api/itam/devices/import', err)
     const message =
-      err instanceof Error ? err.message : 'Failed to import devices'
+      process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to import devices') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

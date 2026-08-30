@@ -2273,7 +2273,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ job: updated }, { status: httpStatus })
   } catch (err) {
     console.error('POST /api/import', err)
-    const message = err instanceof Error ? err.message : 'Import failed'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Import failed') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }
@@ -2287,7 +2287,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const limit = Math.min(
-      200,
+      100,
       Math.max(1, Number(searchParams.get('limit') ?? '50') || 50),
     )
     const jobs = await db.importJob.findMany({

@@ -217,7 +217,7 @@ export async function POST(
     if (err instanceof Error && err.message === 'NOT_FOUND') {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
-    const message = err instanceof Error ? err.message : 'Failed to cancel'
+    const message = process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to cancel') : 'Internal server error'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
   } catch (err) {
     console.error('GET /api/pm/schedules', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to fetch PM schedules' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to fetch PM schedules') : 'Internal server error' },
       { status: 500 },
     )
   }
@@ -160,7 +160,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('POST /api/pm/schedules', err)
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to create PM schedule' },
+      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Failed to create PM schedule') : 'Internal server error' },
       { status: 500 },
     )
   }
