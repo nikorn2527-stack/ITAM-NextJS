@@ -27,6 +27,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { withRetryOnUnique } from '@/lib/retry-unique'
 import { requireApiAuth } from '@/lib/api/auth'
 import {
   parseQuery,
@@ -248,7 +249,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const woNumber = await generateWoNumber()
     const submissionSource = isAuthed ? 'session' : 'guest'
 
     // Authed user context (if any)
@@ -277,27 +277,34 @@ export async function POST(req: NextRequest) {
       const device = await db.device.findUnique({ where: { assetCode: rawAssetCode }, select: { id: true } })
       deviceId = device?.id ?? null
     }
-    const order = await db.workOrder.create({
-      data: {
-        woNumber,
-        requestId,
-        subject,
-        building: body.building ? String(body.building).trim() : null,
-        location: body.location ? String(body.location).trim() : null,
-        details: body.details ? String(body.details) : null,
-        priority: priorityRaw,
-        reporterName: reporterName || null,
-        reporterEmail,
-        tel: tel || null,
-        employeeCode,
-        submissionSource,
-        trackable: !!tel,
-        externalMeta,
-        picBefore: body.picBefore ? String(body.picBefore) : null,
-        status: 'PENDING',
-        deviceId,
-        isSpecialFee: body.isSpecialFee === true,
-      },
+    // FIX-024: wrap create with retry-on-P2002 — the auto-generated
+    // `WO-YYYYMMDD-NNN` number races under concurrent inserts. On a unique
+    // violation, re-generate the woNumber (the winner's row is now visible
+    // to generateWoNumber's max-seq lookup) and retry.
+    const order = await withRetryOnUnique(async () => {
+      const freshWoNumber = await generateWoNumber()
+      return db.workOrder.create({
+        data: {
+          woNumber: freshWoNumber,
+          requestId,
+          subject,
+          building: body.building ? String(body.building).trim() : null,
+          location: body.location ? String(body.location).trim() : null,
+          details: body.details ? String(body.details) : null,
+          priority: priorityRaw,
+          reporterName: reporterName || null,
+          reporterEmail,
+          tel: tel || null,
+          employeeCode,
+          submissionSource,
+          trackable: !!tel,
+          externalMeta,
+          picBefore: body.picBefore ? String(body.picBefore) : null,
+          status: 'PENDING',
+          deviceId,
+          isSpecialFee: body.isSpecialFee === true,
+        },
+      })
     })
 
     // Audit log

@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
       entityId ? String(entityId) : null,
       String(summary),
       detail ?? undefined,
+      auth.user.email, // FIX-026: actor
     )
 
     return NextResponse.json({ ok: true }, { status: 201 })

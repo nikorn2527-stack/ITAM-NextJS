@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { canAccessSite } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 
 /**
  * POST /api/itam/devices/bulk
@@ -27,6 +27,8 @@ export async function POST(req: NextRequest) {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // FIX-027: build authorization context for site-scoped permission checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const body = await req.json()
     const assetNos: string[] = Array.isArray(body.assetNos) ? body.assetNos : []
@@ -54,7 +56,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Site-access check on the patch's target site (if site is being changed)
-    if (cleanPatch.site && !canAccessSite(user, String(cleanPatch.site))) {
+    // Use canAtSite so a viewer at the target site (no DEVICE_EDIT) is denied.
+    if (cleanPatch.site && !ctx.canAtSite(String(cleanPatch.site), 'DEVICE_EDIT')) {
       return NextResponse.json(
         { error: `ไม่มีสิทธิ์ย้ายอุปกรณ์ไปสาขา: ${cleanPatch.site}` },
         { status: 403 },
@@ -80,7 +83,7 @@ export async function POST(req: NextRequest) {
         skipped++
         continue
       }
-      if (!canAccessSite(user, site)) {
+      if (!ctx.canAtSite(site, 'DEVICE_EDIT')) {
         errors.push({ assetNo, error: 'no site access' })
         skipped++
         continue

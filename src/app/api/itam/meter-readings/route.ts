@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { siteFilterForUser, canAccessSite } from '@/lib/auth'
+import { siteFilterForUser } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { notifyMeter } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { demoTag } from '@/lib/demo-mode'
@@ -95,6 +96,8 @@ export async function POST(req: NextRequest) {
     const auth = await requireAuth(req, 'METER_WRITE')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // FIX-027: build authorization context for site-scoped permission checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const body = await req.json()
     // Support both assetCode (new) and assetNo (legacy client compat)
@@ -105,7 +108,8 @@ export async function POST(req: NextRequest) {
 
     const device = await db.device.findUnique({ where: { assetCode } })
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
-    if (!canAccessSite(user, device.site)) {
+    // FIX-027: use canAtSite so a viewer at this site (no METER_WRITE) is denied.
+    if (!ctx.canAtSite(device.site, 'METER_WRITE')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์จดมิเตอร์สำหรับอุปกรณ์ในสาขานี้' }, { status: 403 })
     }
 

@@ -6,6 +6,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag } from '@/lib/demo-mode'
+import { withRetryOnUnique } from '@/lib/retry-unique'
 import { STATUS_MAPPINGS } from '@/lib/csv-field-mapping'
 import {
   getActiveWoPattern,
@@ -515,14 +516,6 @@ export async function POST(req: NextRequest) {
       department = validation.department ?? null
     }
 
-    const woNumber = await generateWoNumber()
-    if (!woNumber) {
-      return NextResponse.json(
-        { error: 'สร้างเลขใบงานไม่สำเร็จ กรุณาลองอีกครั้ง' },
-        { status: 500 },
-      )
-    }
-
     // ── Derive siteCode from the linked Device (if any) ──
     // WorkOrder.siteCode is the canonical Site reference for Site-based
     // access control. For WOs with a device, we look up device.site and
@@ -576,33 +569,46 @@ export async function POST(req: NextRequest) {
 
     const specialFeeFlag = isSpecialFee === true
 
-    const created = await db.workOrder.create({
-      data: {
-        id: woNumber,       // Preserve current primary-key compatibility.
-        woNumber,           // Compatibility/display field used by existing clients.
-        systemJobNo: woNumber,
-        legacyJobNo,
-        requestId: idempotencyKey, // Store for future replay detection
-        subject: String(subject).trim(),
-        building: building ? String(building).trim() : null,
-        location: location ? String(location).trim() : null,
-        details: details ? String(details).trim() : null,
-        priority: prPriority,
-        reporterName: finalReporterName || null,
-        reporterEmail: reporterEmail ? String(reporterEmail).trim() : null,
-        tel: finalTel || null,
-        employeeCode: finalEmployeeCode || null,
-        submissionSource: source,
-        deviceId: trimmedDeviceId,
-        // Store the derived siteCode so GET scope filtering works
-        // without a JOIN to Device.
-        siteCode: derivedSiteCode,
-        picBefore: picBefore ? String(picBefore) : null,
-        externalMeta: externalMetaString,
-        isSpecialFee: specialFeeFlag,
-        status: 'PENDING', // New WOs always start as PENDING (legacy status mapping handled on import)
-        ...demoTag(demo?.user ?? null),
-      },
+    // ── Generate woNumber + create with retry-on-P2002 ──────────────────
+    // FIX-024: `generateWoNumber()` uses findFirst+exists-check which races
+    // under concurrent inserts — two requests can both compute the same
+    // WO number and both try to insert. Wrapping with withRetryOnUnique
+    // re-generates the woNumber on each attempt; the winner's row is now
+    // visible to the exists-check, so the loser's next attempt picks the
+    // next available number.
+    const created = await withRetryOnUnique(async () => {
+      const woNumber = await generateWoNumber()
+      if (!woNumber) {
+        throw new Error('สร้างเลขใบงานไม่สำเร็จ กรุณาลองอีกครั้ง')
+      }
+      return db.workOrder.create({
+        data: {
+          id: woNumber,       // Preserve current primary-key compatibility.
+          woNumber,           // Compatibility/display field used by existing clients.
+          systemJobNo: woNumber,
+          legacyJobNo,
+          requestId: idempotencyKey, // Store for future replay detection
+          subject: String(subject).trim(),
+          building: building ? String(building).trim() : null,
+          location: location ? String(location).trim() : null,
+          details: details ? String(details).trim() : null,
+          priority: prPriority,
+          reporterName: finalReporterName || null,
+          reporterEmail: reporterEmail ? String(reporterEmail).trim() : null,
+          tel: finalTel || null,
+          employeeCode: finalEmployeeCode || null,
+          submissionSource: source,
+          deviceId: trimmedDeviceId,
+          // Store the derived siteCode so GET scope filtering works
+          // without a JOIN to Device.
+          siteCode: derivedSiteCode,
+          picBefore: picBefore ? String(picBefore) : null,
+          externalMeta: externalMetaString,
+          isSpecialFee: specialFeeFlag,
+          status: 'PENDING', // New WOs always start as PENDING (legacy status mapping handled on import)
+          ...demoTag(demo?.user ?? null),
+        },
+      })
     })
 
     // ── Multi-image (WorkOrderImage, stage='before') ──

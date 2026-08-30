@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { canAccessSite } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { notifyDeviceUpdated } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { demoTag } from '@/lib/demo-mode'
 
 // GET /api/itam/devices/[id] — single device with full details
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -11,6 +12,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // FIX-027: build authorization context for site-scoped permission checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { id } = await params
     const device = await db.device.findUnique({
@@ -24,8 +27,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     })
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
-    // Site-level access control
-    if (!canAccessSite(user, device.site)) {
+    // Site-level access control — use canAtSite so a viewer at this site
+    // can VIEW but a viewer at a different site cannot.
+    if (!ctx.canAtSite(device.site, 'VIEW_DEVICES')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์เข้าถึงอุปกรณ์ในสาขานี้' }, { status: 403 })
     }
     return NextResponse.json({ device })
@@ -41,17 +45,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // FIX-027: build authorization context for site-scoped permission checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { id } = await params
     const body = await req.json()
     const existing = await db.device.findUnique({ where: { assetCode: id } })
     if (!existing) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
 
-    // Site access — both for the existing device and any new site being set
-    if (!canAccessSite(user, existing.site)) {
+    // Site access — both for the existing device and any new site being set.
+    // Use canAtSite so a viewer at this site (no DEVICE_EDIT) is denied.
+    if (!ctx.canAtSite(existing.site, 'DEVICE_EDIT')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์แก้ไขอุปกรณ์ในสาขานี้' }, { status: 403 })
     }
-    if (body.site && !canAccessSite(user, body.site)) {
+    if (body.site && !ctx.canAtSite(body.site, 'DEVICE_EDIT')) {
       return NextResponse.json({ error: `ไม่มีสิทธิ์ย้ายอุปกรณ์ไปสาขา: ${body.site}` }, { status: 403 })
     }
 
@@ -85,6 +92,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         meterMode: body.meterMode ?? existing.meterMode,
         assetSiteCode: body.assetSiteCode ?? existing.assetSiteCode,
         updatedBy: user.username || user.email,
+        ...demoTag(auth.user), // FIX-025: tag demo data for safe cleanup
       },
     })
 
@@ -95,7 +103,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           entity: 'Device',
           entityId: updated.id,
           summary: `แก้ไขอุปกรณ์ ${updated.assetCode}`,
-          actor: user.email,
+          actor: user.email, // FIX-026: actor (already present)
           detail: JSON.stringify({ assetCode: id, changes: Object.keys(body) }),
         },
       })
@@ -129,11 +137,13 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const auth = await requireAuth(req, 'DEVICE_DELETE')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // FIX-027: build authorization context for site-scoped permission checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { id } = await params
     const existing = await db.device.findUnique({ where: { assetCode: id } })
     if (!existing) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
-    if (!canAccessSite(user, existing.site)) {
+    if (!ctx.canAtSite(existing.site, 'DEVICE_DELETE')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์ลบอุปกรณ์ในสาขานี้' }, { status: 403 })
     }
 

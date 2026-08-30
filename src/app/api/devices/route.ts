@@ -350,6 +350,7 @@ export async function POST(req: NextRequest) {
         type: created.type,
         site: created.site,
       },
+      auth.user.email, // FIX-026: actor
     )
 
     // ── GAP-C01: Create INITIAL MeterReading for meterable devices ──

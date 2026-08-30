@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { demoTag } from '@/lib/demo-mode'
 
 /** Clamp warrantyMonths to 1..120, default 12. */
 function clampWarrantyMonths(v: unknown): number {
@@ -201,7 +202,11 @@ export async function PUT(
 
     const updated = await db.device.update({
       where: { id },
-      data: { ...updateData, ...statusSideEffects },
+      data: {
+        ...updateData,
+        ...statusSideEffects,
+        ...demoTag(auth.user), // FIX-025: tag demo data for safe cleanup
+      },
     })
     const changes: Record<string, { from: unknown; to: unknown }> = {}
     for (const k of EDITABLE_FIELDS) {
@@ -221,6 +226,7 @@ export async function PUT(
       id,
       `แก้ไขอุปกรณ์ ${updated.assetCode}`,
       { changes },
+      auth.user.email, // FIX-026: actor
     )
 
     // ── GAP-H08: Auto-sync new master data values ──
@@ -289,6 +295,8 @@ export async function DELETE(
       'Device',
       id,
       `ลบอุปกรณ์ ${device.assetCode} (${device.name})`,
+      undefined,
+      auth.user.email, // FIX-026: actor
     )
     return NextResponse.json({ ok: true })
   } catch (err) {

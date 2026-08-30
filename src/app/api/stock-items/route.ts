@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { withRetryOnUnique } from '@/lib/retry-unique'
+import { demoTag } from '@/lib/demo-mode'
 
 /** Parse a Float; returns null when missing/invalid. */
 function optFloat(v: unknown): number | null {
@@ -148,44 +150,57 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const productCode = body.productCode
+    const userSuppliedCode = body.productCode
       ? String(body.productCode).trim()
-      : await nextProductCode()
+      : null
 
-    // Ensure uniqueness — if the supplied (or generated) code already exists,
-    // surface a clear 400 instead of letting Prisma throw.
-    const existing = await db.stockItem.findUnique({
-      where: { productCode },
-      select: { id: true },
+    // ── Build the create payload (shared by both paths) ──────────────────
+    const buildCreateData = (productCode: string) => ({
+      productCode,
+      productName: String(body.productName).trim(),
+      category: body.category ? String(body.category).trim() : null,
+      brand: body.brand ? String(body.brand).trim() : null,
+      model: body.model ? String(body.model).trim() : null,
+      unit: body.unit ? String(body.unit).trim() : 'ชิ้น',
+      quantity: optInt(body.quantity, 0),
+      minQuantity: optInt(body.minQuantity, 0),
+      maxQuantity: optInt(body.maxQuantity, 0),
+      unitCost: optFloat(body.unitCost),
+      location: body.location ? String(body.location).trim() : null,
+      site: body.site ? String(body.site).trim() : null,
+      compatibleDevices: body.compatibleDevices
+        ? String(body.compatibleDevices).trim()
+        : null,
+      remark: body.remark ? String(body.remark).trim() : null,
+      active: body.active !== undefined ? Boolean(body.active) : true,
+      ...demoTag(auth.user), // FIX-025: tag demo data for safe cleanup
     })
-    if (existing) {
-      return NextResponse.json(
-        { error: `รหัสสินค้า ${productCode} มีอยู่แล้ว` },
-        { status: 400 },
-      )
+
+    let created: Awaited<ReturnType<typeof db.stockItem.create>>
+    if (userSuppliedCode) {
+      // User-supplied path — pre-check uniqueness for a clearer 400 error.
+      // No retry: the same code would fail again on P2002.
+      const existing = await db.stockItem.findUnique({
+        where: { productCode: userSuppliedCode },
+        select: { id: true },
+      })
+      if (existing) {
+        return NextResponse.json(
+          { error: `รหัสสินค้า ${userSuppliedCode} มีอยู่แล้ว` },
+          { status: 400 },
+        )
+      }
+      created = await db.stockItem.create({ data: buildCreateData(userSuppliedCode) })
+    } else {
+      // Auto-generated path — wrap with retry-on-P2002: re-generate the
+      // sequence number on each attempt so concurrent inserts that both
+      // compute the same `STK-NNNN` resolve cleanly (one wins, the other
+      // retries with the next code).
+      created = await withRetryOnUnique(async () => {
+        const productCode = await nextProductCode()
+        return db.stockItem.create({ data: buildCreateData(productCode) })
+      })
     }
-
-    const created = await db.stockItem.create({
-      data: {
-        productCode,
-        productName: String(body.productName).trim(),
-        category: body.category ? String(body.category).trim() : null,
-        brand: body.brand ? String(body.brand).trim() : null,
-        model: body.model ? String(body.model).trim() : null,
-        unit: body.unit ? String(body.unit).trim() : 'ชิ้น',
-        quantity: optInt(body.quantity, 0),
-        minQuantity: optInt(body.minQuantity, 0),
-        maxQuantity: optInt(body.maxQuantity, 0),
-        unitCost: optFloat(body.unitCost),
-        location: body.location ? String(body.location).trim() : null,
-        site: body.site ? String(body.site).trim() : null,
-        compatibleDevices: body.compatibleDevices
-          ? String(body.compatibleDevices).trim()
-          : null,
-        remark: body.remark ? String(body.remark).trim() : null,
-        active: body.active !== undefined ? Boolean(body.active) : true,
-      },
-    })
 
     await logAudit(
       'CREATE',
@@ -198,6 +213,7 @@ export async function POST(req: NextRequest) {
         category: created.category,
         quantity: created.quantity,
       },
+      auth.user.email, // FIX-026: actor
     )
 
     return NextResponse.json({ data: created }, { status: 201 })

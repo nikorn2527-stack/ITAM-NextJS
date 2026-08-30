@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { siteFilterForUser, canAccessSite, isAdminRole } from '@/lib/auth'
+import { siteFilterForUser } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { notifyDeviceAdded } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { parseDeviceListPagination } from '@/lib/device-list-query'
 import { DEVICE_LIST_FIELDS, DEVICE_MOBILE_LIST_FIELDS } from '@/lib/devices-bounded-list'
+import { demoTag } from '@/lib/demo-mode'
 
 // GET /api/itam/devices?search=&status=&site=&type=&page=1&limit=20
 export async function GET(req: NextRequest) {
@@ -13,6 +15,9 @@ export async function GET(req: NextRequest) {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // FIX-027: build authorization context for site-scoped permission checks
+    // (replaces legacy canAccessSite which only checked site membership).
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { searchParams } = new URL(req.url)
     const search = searchParams.get('search')?.trim() ?? ''
@@ -28,7 +33,7 @@ export async function GET(req: NextRequest) {
     const siteFilter = siteFilterForUser(user)
     if (Object.keys(siteFilter).length) (where.AND as unknown[]).push(siteFilter)
     // If the caller explicitly asks for a site they can't access → 403
-    if (site && !canAccessSite(user, site)) {
+    if (site && !ctx.canAtSite(site, 'VIEW_DEVICES')) {
       return NextResponse.json({ error: `ไม่มีสิทธิ์เข้าถึงข้อมูลของสาขา: ${site}` }, { status: 403 })
     }
     if (site) (where.AND as unknown[]).push({ site })
@@ -97,13 +102,16 @@ export async function POST(req: NextRequest) {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // FIX-027: build authorization context for site-scoped permission checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const body = await req.json()
     if (!body.assetNo) {
       return NextResponse.json({ error: 'assetNo is required' }, { status: 400 })
     }
-    // Site access check on the new device's site
-    if (body.site && !canAccessSite(user, body.site)) {
+    // Site access check on the new device's site — use canAtSite so a user
+    // with a viewer grant at the target site (no DEVICE_EDIT) is denied.
+    if (body.site && !ctx.canAtSite(body.site, 'DEVICE_EDIT')) {
       return NextResponse.json({ error: `ไม่มีสิทธิ์สร้างอุปกรณ์ในสาขา: ${body.site}` }, { status: 403 })
     }
 
@@ -137,6 +145,7 @@ export async function POST(req: NextRequest) {
         meterMode: body.meterMode || null,
         assetSiteCode: body.assetSiteCode || null,
         updatedBy: user.username || user.email,
+        ...demoTag(auth.user), // FIX-025: tag demo data for safe cleanup
       },
     })
 
@@ -148,7 +157,7 @@ export async function POST(req: NextRequest) {
           entity: 'Device',
           entityId: created.id,
           summary: `เพิ่มอุปกรณ์ ${created.assetCode}`,
-          actor: user.email,
+          actor: user.email, // FIX-026: actor (already present, just documented)
           detail: JSON.stringify({ assetCode: created.assetCode, site: created.site }),
         },
       })

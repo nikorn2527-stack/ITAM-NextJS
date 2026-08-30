@@ -4,6 +4,8 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 import { toCompatStockItem } from '@/lib/stock-compat'
+import { withRetryOnUnique } from '@/lib/retry-unique'
+import { demoTag } from '@/lib/demo-mode'
 
 function finiteNumber(value: unknown): number | undefined {
   if (value === '' || value === null || value === undefined) return undefined
@@ -82,8 +84,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'กรุณาระบุชื่อสินค้า' }, { status: 400 })
     }
 
-    const productCode = optionalText(body.productCode ?? body.itemId) ??
-      `STK-${String((await db.stockItem.count()) + 1).padStart(4, '0')}`
+    const userSuppliedCode = optionalText(body.productCode ?? body.itemId)
     const quantity = finiteNumber(body.quantity) ?? 0
     const minQuantity = finiteNumber(body.minQuantity) ?? 0
     const maxQuantity = finiteNumber(body.maxQuantity) ?? 0
@@ -96,25 +97,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ราคาต่อหน่วยต้องไม่ติดลบ' }, { status: 400 })
     }
 
-    const created = await db.stockItem.create({
-      data: {
-        productCode,
-        productName,
-        category: optionalText(body.category),
-        brand: optionalText(body.brand),
-        model: optionalText(body.model),
-        unit: optionalText(body.unit) ?? 'ชิ้น',
-        quantity,
-        minQuantity,
-        maxQuantity,
-        unitCost: unitCost ?? null,
-        totalValue: unitCost === undefined ? null : quantity * unitCost,
-        location: optionalText(body.location),
-        site: optionalText(body.site),
-        compatibleDevices: optionalText(body.compatibleDevices),
-        remark: optionalText(body.remark),
-        active: true,
-      },
+    // Wrap create with retry-on-P2002: the auto-generated `STK-NNNN` code
+    // uses `count() + 1` which races under concurrent inserts. On a unique
+    // violation, recompute the code (the count() now reflects the row
+    // inserted by the winner) and retry.
+    const created = await withRetryOnUnique(async () => {
+      const productCode = userSuppliedCode ??
+        `STK-${String((await db.stockItem.count()) + 1).padStart(4, '0')}`
+      return db.stockItem.create({
+        data: {
+          productCode,
+          productName,
+          category: optionalText(body.category),
+          brand: optionalText(body.brand),
+          model: optionalText(body.model),
+          unit: optionalText(body.unit) ?? 'ชิ้น',
+          quantity,
+          minQuantity,
+          maxQuantity,
+          unitCost: unitCost ?? null,
+          totalValue: unitCost === undefined ? null : quantity * unitCost,
+          location: optionalText(body.location),
+          site: optionalText(body.site),
+          compatibleDevices: optionalText(body.compatibleDevices),
+          remark: optionalText(body.remark),
+          active: true,
+          ...demoTag(auth.user), // FIX-025: tag demo data for safe cleanup
+        },
+      })
     })
 
     await logAudit(
