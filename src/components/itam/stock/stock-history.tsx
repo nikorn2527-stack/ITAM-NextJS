@@ -349,7 +349,7 @@ export function StockHistory() {
 
       {filtered.length > 0 && (
         <div className="text-xs text-slate-500 dark:text-slate-400">
-          แสดง {filtered.length.toLocaleString()} จาก {allTxns.length.toLocaleString()} รายการ
+          แสดง {filtered.length.toLocaleString('th-TH')} จาก {allTxns.length.toLocaleString('th-TH')} รายการ
         </div>
       )}
     </div>

@@ -1151,7 +1151,7 @@ export function ItamDocumentEditor() {
                           {draft.table.columns.map((c) => {
                             const v = (r as Record<string, unknown>)[c.key]
                             const text = c.numeric
-                              ? (typeof v === 'number' ? v.toLocaleString() : '')
+                              ? (typeof v === 'number' ? v.toLocaleString('th-TH') : '')
                               : String(v ?? '')
                             return (
                               <div

@@ -38,6 +38,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { BookUser, Plus, RefreshCw, Trash2, Phone, Search, Hash } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -81,6 +91,7 @@ export function ContactDirectorySection() {
     note: '',
     active: true,
   })
+  const [deleteTarget, setDeleteTarget] = React.useState<ContactEntry | null>(null)
 
   const { data, isLoading, isFetching } = useQuery<ListResponse>({
     queryKey: ['contact-directory'],
@@ -157,7 +168,12 @@ export function ContactDirectorySection() {
   })
 
   function handleDelete(e: ContactEntry) {
-    if (!window.confirm(`ลบ "${e.full_name}" จากสมุดผู้ติดต่อ?`)) return
+    setDeleteTarget(e)
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget) return
+    const e = deleteTarget
     fetch(`/api/settings/contact-directory/${encodeURIComponent(e.id)}`, {
       method: 'DELETE',
       headers: authHeaders(),
@@ -171,6 +187,7 @@ export function ContactDirectorySection() {
       .catch((err) => {
         toast.error(err instanceof Error ? err.message : 'ลบไม่สำเร็จ')
       })
+      .finally(() => setDeleteTarget(null))
   }
 
   function submitAdd() {
@@ -411,6 +428,28 @@ export function ContactDirectorySection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบ "{deleteTarget?.full_name ?? ''}" จากสมุดผู้ติดต่อใช่หรือไม่? การกระทำนี้ไม่สามารถยกเลิกได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmDelete}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              ลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   )
 }

@@ -445,11 +445,11 @@ function SnapshotListTab({
                 <TableCell className="text-center">R{s.revision}</TableCell>
                 <TableCell className="text-center">{statusBadge(s.status)}</TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {s.rowCount.toLocaleString()}
+                  {s.rowCount.toLocaleString('th-TH')}
                 </TableCell>
                 <TableCell className="text-right tabular-nums whitespace-nowrap">
-                  {s.totalPagesBw.toLocaleString()} /{' '}
-                  {s.totalPagesColor.toLocaleString()}
+                  {s.totalPagesBw.toLocaleString('th-TH')} /{' '}
+                  {s.totalPagesColor.toLocaleString('th-TH')}
                 </TableCell>
                 <TableCell className="text-right tabular-nums whitespace-nowrap font-medium">
                   {formatBaht(s.totalCost)}
@@ -470,7 +470,7 @@ function SnapshotListTab({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs text-slate-500">
             หน้า {pagination.page} / {pagination.totalPages} · ทั้งหมด{' '}
-            {pagination.total.toLocaleString()} รายการ
+            {pagination.total.toLocaleString('th-TH')} รายการ
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -640,15 +640,15 @@ function SnapshotDetailTab({
           />
           <Info
             label="จำนวนแถว"
-            value={`${snapshot.rowCount.toLocaleString()} แถว`}
+            value={`${snapshot.rowCount.toLocaleString('th-TH')} แถว`}
           />
           <Info
             label="หน้าขาวดำ"
-            value={`${snapshot.totalPagesBw.toLocaleString()} แผ่น`}
+            value={`${snapshot.totalPagesBw.toLocaleString('th-TH')} แผ่น`}
           />
           <Info
             label="หน้าสี"
-            value={`${snapshot.totalPagesColor.toLocaleString()} แผ่น`}
+            value={`${snapshot.totalPagesColor.toLocaleString('th-TH')} แผ่น`}
           />
           <Info
             label="ค่าใช้จ่ายรวม"
@@ -749,7 +749,7 @@ function SnapshotDetailTab({
       {/* Frozen rows */}
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
         <div className="flex-shrink-0 text-sm font-medium">
-          รายการแถวที่ถูกแช่แข็ง ({rows.length.toLocaleString()} แถว)
+          รายการแถวที่ถูกแช่แข็ง ({rows.length.toLocaleString('th-TH')} แถว)
         </div>
         <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
           <Table>
@@ -794,16 +794,16 @@ function SnapshotDetailTab({
                       {readingTypeBadge(r.readingType)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.meterBw.toLocaleString()}
+                      {r.meterBw.toLocaleString('th-TH')}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.meterColor.toLocaleString()}
+                      {r.meterColor.toLocaleString('th-TH')}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.pagesBw.toLocaleString()}
+                      {r.pagesBw.toLocaleString('th-TH')}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.pagesColor.toLocaleString()}
+                      {r.pagesColor.toLocaleString('th-TH')}
                     </TableCell>
                     <TableCell className="text-right tabular-nums whitespace-nowrap">
                       {formatBaht(r.costBw)}

@@ -307,7 +307,7 @@ function KpiCard({
   unit,
 }: KpiCardProps) {
   const animated = useCountUp(value, 500)
-  const display = format ? format(animated) : animated.toLocaleString()
+  const display = format ? format(animated) : animated.toLocaleString('th-TH')
   return (
     <Card
       className="group relative overflow-hidden shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-within:ring-2 focus-within:ring-[#f97316] focus-within:ring-offset-1 dark:focus-within:ring-offset-slate-950"

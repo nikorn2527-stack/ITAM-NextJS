@@ -147,7 +147,7 @@ function KpiCard({
             ) : (
               <div className="flex items-baseline gap-1 flex-wrap">
                 <span className="text-base font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-lg break-all">
-                  {(animated ?? 0).toLocaleString()}
+                  {(animated ?? 0).toLocaleString('th-TH')}
                 </span>
                 {unit && (
                   <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">{unit}</span>
@@ -575,19 +575,19 @@ export function ItamDashboard() {
 
     const kpiHtml = `
       <div class="kpi-grid">
-        <div class="kpi"><div class="label">อุปกรณ์ทั้งหมด</div><div class="value">${total.toLocaleString()}<span class="unit">เครื่อง</span></div></div>
-        <div class="kpi t-active"><div class="label">ใช้งานอยู่</div><div class="value">${active.toLocaleString()}<span class="unit">เครื่อง</span></div></div>
-        <div class="kpi t-spare"><div class="label">สำรอง</div><div class="value">${spare.toLocaleString()}<span class="unit">เครื่อง</span></div></div>
-        <div class="kpi t-repair"><div class="label">ส่งซ่อม</div><div class="value">${repair.toLocaleString()}<span class="unit">เครื่อง</span></div></div>
-        <div class="kpi t-paper"><div class="label">กระดาษเดือนนี้</div><div class="value">${paper.toLocaleString()}<span class="unit">แผ่น</span></div></div>
+        <div class="kpi"><div class="label">อุปกรณ์ทั้งหมด</div><div class="value">${total.toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div></div>
+        <div class="kpi t-active"><div class="label">ใช้งานอยู่</div><div class="value">${active.toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div></div>
+        <div class="kpi t-spare"><div class="label">สำรอง</div><div class="value">${spare.toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div></div>
+        <div class="kpi t-repair"><div class="label">ส่งซ่อม</div><div class="value">${repair.toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div></div>
+        <div class="kpi t-paper"><div class="label">กระดาษเดือนนี้</div><div class="value">${paper.toLocaleString('th-TH')}<span class="unit">แผ่น</span></div></div>
       </div>
       <div class="kpi-grid" style="grid-template-columns:repeat(2,1fr);margin-top:8px">
-        <div class="kpi"><div class="label">ต้องจดมิเตอร์</div><div class="value">${meterReq.toLocaleString()}<span class="unit">เครื่อง</span></div></div>
-        <div class="kpi"><div class="label">รับประกันใกล้หมด/หมดแล้ว</div><div class="value">${(warrantyExpiring + warrantyExpired).toLocaleString()}<span class="unit">เครื่อง</span></div></div>
+        <div class="kpi"><div class="label">ต้องจดมิเตอร์</div><div class="value">${meterReq.toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div></div>
+        <div class="kpi"><div class="label">รับประกันใกล้หมด/หมดแล้ว</div><div class="value">${(warrantyExpiring + warrantyExpired).toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div></div>
       </div>`
 
-    const typeRows = byType.map(t => `<tr><td>${esc(t.name)}</td><td class="num">${t.value.toLocaleString()}</td><td class="num">${total > 0 ? Math.round((t.value / total) * 100) : 0}%</td></tr>`).join('')
-    const siteRows = bySite.map(s => `<tr><td>${esc(s.siteCode)}</td><td>${esc(s.siteName || '')}</td><td class="num">${(s.deviceCount ?? 0).toLocaleString()}</td><td class="num">${(s.activeCount ?? 0).toLocaleString()}</td><td class="num">${(s.paperSheets ?? 0).toLocaleString()}</td></tr>`).join('')
+    const typeRows = byType.map(t => `<tr><td>${esc(t.name)}</td><td class="num">${t.value.toLocaleString('th-TH')}</td><td class="num">${total > 0 ? Math.round((t.value / total) * 100) : 0}%</td></tr>`).join('')
+    const siteRows = bySite.map(s => `<tr><td>${esc(s.siteCode)}</td><td>${esc(s.siteName || '')}</td><td class="num">${(s.deviceCount ?? 0).toLocaleString('th-TH')}</td><td class="num">${(s.activeCount ?? 0).toLocaleString('th-TH')}</td><td class="num">${(s.paperSheets ?? 0).toLocaleString('th-TH')}</td></tr>`).join('')
 
     const html = `<!doctype html><html lang="th"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -949,7 +949,7 @@ ${kpiHtml}
                 ) : (
                   <div className="flex items-baseline gap-1">
                     <span className="text-lg font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-xl">
-                      {(paperThisMonth ?? 0).toLocaleString()}
+                      {(paperThisMonth ?? 0).toLocaleString('th-TH')}
                     </span>
                     <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">แผ่น</span>
                   </div>
@@ -1031,7 +1031,7 @@ ${kpiHtml}
             <span>
               กระดาษเดือนนี้:{' '}
               <span className="font-semibold tabular-nums">
-                {(insightsTotals.currentMonthSheets ?? 0).toLocaleString()}
+                {(insightsTotals.currentMonthSheets ?? 0).toLocaleString('th-TH')}
               </span>{' '}
               แผ่น
             </span>
@@ -1039,7 +1039,7 @@ ${kpiHtml}
             <span>
               เดือนก่อน:{' '}
               <span className="font-semibold tabular-nums">
-                {(insightsTotals.prevMonthSheets ?? 0).toLocaleString()}
+                {(insightsTotals.prevMonthSheets ?? 0).toLocaleString('th-TH')}
               </span>{' '}
               แผ่น
             </span>
@@ -1163,7 +1163,7 @@ ${kpiHtml}
                     {showCost ? (
                       <span className={`text-xs font-semibold tabular-nums ${costColorClass}`}>
                         ≈ {costSign}
-                        {costValue.toLocaleString()} บาท/เดือน
+                        {costValue.toLocaleString('th-TH')} บาท/เดือน
                       </span>
                     ) : (
                       <span className="text-[11px] text-slate-400">ไม่มีผลกระทบต้นทุนโดยตรง</span>
@@ -1240,7 +1240,7 @@ ${kpiHtml}
                       contentStyle={tooltipStyle}
                       formatter={(v: number, n: string) => {
                         const pct = donutTotal > 0 ? ((v / donutTotal) * 100).toFixed(1) : '0'
-                        return [`${v.toLocaleString()} เครื่อง (${pct}%)`, n]
+                        return [`${v.toLocaleString('th-TH')} เครื่อง (${pct}%)`, n]
                       }}
                     />
                   </PieChart>
@@ -1248,7 +1248,7 @@ ${kpiHtml}
                 {/* Center label */}
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
                   <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                    {(donutTotal ?? 0).toLocaleString()}
+                    {(donutTotal ?? 0).toLocaleString('th-TH')}
                   </div>
                   <div className="text-xs text-slate-500 dark:text-slate-400">เครื่องทั้งหมด</div>
                 </div>
@@ -1263,7 +1263,7 @@ ${kpiHtml}
                     className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:underline dark:text-slate-300"
                   >
                     <span className="h-2.5 w-2.5 rounded-sm" style={{ background: d.color }} />
-                    {d.name} <span className="font-semibold tabular-nums">{d.value.toLocaleString()}</span>
+                    {d.name} <span className="font-semibold tabular-nums">{d.value.toLocaleString('th-TH')}</span>
                   </button>
                 ))}
               </div>
@@ -1311,7 +1311,7 @@ ${kpiHtml}
                     <ReTooltip
                       contentStyle={tooltipStyle}
                       cursor={{ fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
-                      formatter={(v: number) => [`${v.toLocaleString()} เครื่อง`, 'จำนวน']}
+                      formatter={(v: number) => [`${v.toLocaleString('th-TH')} เครื่อง`, 'จำนวน']}
                     />
                     <Bar
                       dataKey="value"
@@ -1377,7 +1377,7 @@ ${kpiHtml}
                     <ReTooltip
                       contentStyle={tooltipStyle}
                       formatter={(v: number, _n: string, p: { payload?: { month?: string; isForecast?: boolean } }) => [
-                        `${v.toLocaleString()} แผ่น`,
+                        `${v.toLocaleString('th-TH')} แผ่น`,
                         `${p?.payload?.isForecast ? 'คาดการณ์' : (p?.payload?.month ?? '')}`,
                       ]}
                       labelFormatter={() => ''}
@@ -1489,7 +1489,7 @@ ${kpiHtml}
                   <span>
                     พยากรณ์เดือนถัดไป:{' '}
                     <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
-                      ~{forecastSheets.toLocaleString()} แผ่น
+                      ~{forecastSheets.toLocaleString('th-TH')} แผ่น
                     </span>{' '}
                     <span className="text-slate-400">
                       ({forecastReliability === 'high'
@@ -1582,7 +1582,7 @@ ${kpiHtml}
                     <div className="text-xs text-slate-400">{a.assetCode} · {a.readingDate}</div>
                   </div>
                   <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                    {(a.pagesBw + a.pagesColor).toLocaleString()} แผ่น
+                    {(a.pagesBw + a.pagesColor).toLocaleString('th-TH')} แผ่น
                   </Badge>
                 </motion.div>
               ))}
@@ -1827,7 +1827,7 @@ ${kpiHtml}
                     </div>
                     <div className="mt-1.5 flex justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span>✅ ใช้งาน {s.activeCount ?? 0}</span>
-                      <span>📄 กระดาษเดือนนี้ {(s.paperSheets ?? 0).toLocaleString()} แผ่น</span>
+                      <span>📄 กระดาษเดือนนี้ {(s.paperSheets ?? 0).toLocaleString('th-TH')} แผ่น</span>
                     </div>
                   </div>
                 )
@@ -1879,9 +1879,9 @@ ${kpiHtml}
                             key={c.month}
                             className={`px-2 py-1.5 text-center font-mono tabular-nums ${txtColor}`}
                             style={{ background: heatColor(intensity) }}
-                            title={`${row.assetCode} · ${c.month}: ${c.pages.toLocaleString()} แผ่น`}
+                            title={`${row.assetCode} · ${c.month}: ${c.pages.toLocaleString('th-TH')} แผ่น`}
                           >
-                            {c.pages > 0 ? c.pages.toLocaleString() : '·'}
+                            {c.pages > 0 ? c.pages.toLocaleString('th-TH') : '·'}
                           </td>
                         )
                       })}

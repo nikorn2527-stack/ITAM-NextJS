@@ -293,7 +293,7 @@ export function PaperAnalyticsPage() {
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <KpiCard
           title="ใช้เดือนนี้"
-          value={`${thisMonthSheets.toLocaleString()} แผ่น`}
+          value={`${thisMonthSheets.toLocaleString('th-TH')} แผ่น`}
           icon={<FileText className="h-6 w-6" />}
           accent="#f97316"
           loading={monthlyLoading}
@@ -301,7 +301,7 @@ export function PaperAnalyticsPage() {
         />
         <KpiCard
           title="เฉลี่ยต่อเครื่อง"
-          value={`${avgPerDevice.toLocaleString()} แผ่น`}
+          value={`${avgPerDevice.toLocaleString('th-TH')} แผ่น`}
           icon={<Gauge className="h-6 w-6" />}
           accent="#14b8a6"
           loading={deviceLoading}
@@ -309,7 +309,7 @@ export function PaperAnalyticsPage() {
         />
         <KpiCard
           title="คาดการณ์สิ้นเดือน"
-          value={`${projected.toLocaleString()} แผ่น`}
+          value={`${projected.toLocaleString('th-TH')} แผ่น`}
           icon={<TrendingUp className="h-6 w-6" />}
           accent="#0d9488"
           loading={monthlyLoading}
@@ -317,7 +317,7 @@ export function PaperAnalyticsPage() {
         />
         <KpiCard
           title="รวมทั้งหมด"
-          value={`${totalSheets.toLocaleString()} แผ่น`}
+          value={`${totalSheets.toLocaleString('th-TH')} แผ่น`}
           icon={<CalendarDays className="h-6 w-6" />}
           accent="#0f172a"
           loading={monthlyLoading}
@@ -341,7 +341,7 @@ export function PaperAnalyticsPage() {
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: axisTickColor }} />
                 <YAxis tick={{ fontSize: 12, fill: axisTickColor }} />
                 <Tooltip
-                  formatter={(v: number) => [`${v.toLocaleString()} แผ่น`, 'ใช้กระดาษ']}
+                  formatter={(v: number) => [`${v.toLocaleString('th-TH')} แผ่น`, 'ใช้กระดาษ']}
                   contentStyle={{
                     fontSize: 12,
                     borderRadius: 8,
@@ -386,7 +386,7 @@ export function PaperAnalyticsPage() {
                   tick={{ fontSize: 11, fill: axisTickColor }}
                 />
                 <Tooltip
-                  formatter={(v: number) => [`${v.toLocaleString()} แผ่น`, 'ใช้กระดาษ']}
+                  formatter={(v: number) => [`${v.toLocaleString('th-TH')} แผ่น`, 'ใช้กระดาษ']}
                   labelFormatter={(_, payload) => {
                     const p = payload?.[0]?.payload as { full?: string } | undefined
                     return p?.full ?? ''
@@ -442,7 +442,7 @@ export function PaperAnalyticsPage() {
             />
             <KpiCard
               title="กระดาษรวม (ช่วง)"
-              value={`${(comparisonData?.totalSheets ?? 0).toLocaleString()} แผ่น`}
+              value={`${(comparisonData?.totalSheets ?? 0).toLocaleString('th-TH')} แผ่น`}
               icon={<FileText className="h-6 w-6" />}
               accent="#14b8a6"
               loading={comparisonLoading}
@@ -522,13 +522,13 @@ export function PaperAnalyticsPage() {
                             {s.activeCount}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-teal-600 dark:text-teal-400">
-                            {s.totalSheets.toLocaleString()}
+                            {s.totalSheets.toLocaleString('th-TH')}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-[#f97316] dark:text-[#fb923c]">
                             {formatBaht(s.totalCost)}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-slate-700 dark:text-slate-200">
-                            {s.avgSheetsPerDevice.toLocaleString()}
+                            {s.avgSheetsPerDevice.toLocaleString('th-TH')}
                           </td>
                           <td className="px-3 py-2 text-right">
                             {s.unreadInCycle > 0 ? (
@@ -585,7 +585,7 @@ export function PaperAnalyticsPage() {
                       formatter={(v: number, name: string) =>
                         name === 'ต้นทุน'
                           ? [formatBaht(v), 'ต้นทุน']
-                          : [`${v.toLocaleString()} แผ่น`, 'กระดาษ']
+                          : [`${v.toLocaleString('th-TH')} แผ่น`, 'กระดาษ']
                       }
                       labelFormatter={(_, payload) => {
                         const p = payload?.[0]?.payload as { full?: string } | undefined
@@ -666,7 +666,7 @@ export function PaperAnalyticsPage() {
                         </div>
                         <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                           <span className="font-semibold tabular-nums text-teal-600 dark:text-teal-400">
-                            {s.totalSheets.toLocaleString()}
+                            {s.totalSheets.toLocaleString('th-TH')}
                           </span>{' '}
                           แผ่น ·{' '}
                           <span className="tabular-nums text-[#f97316]">
@@ -734,7 +734,7 @@ export function PaperAnalyticsPage() {
             />
             <KpiCard
               title="จำนวนแผ่นรวม (ช่วง)"
-              value={`${(costData?.totalSheets ?? 0).toLocaleString()} แผ่น`}
+              value={`${(costData?.totalSheets ?? 0).toLocaleString('th-TH')} แผ่น`}
               icon={<FileText className="h-6 w-6" />}
               accent="#0d9488"
               loading={costLoading}
@@ -831,7 +831,7 @@ export function PaperAnalyticsPage() {
                       {formatBaht(s.cost)}
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {s.sheets.toLocaleString()} แผ่น
+                      {s.sheets.toLocaleString('th-TH')} แผ่น
                     </div>
                   </div>
                 ))

@@ -572,7 +572,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
                             </div>
                             {stats && stats.count > 0 && (
                               <div className="mt-0.5 text-xs text-slate-400">
-                                จดมิเตอร์ {stats.count} ครั้ง · {stats.sheets.toLocaleString()} แผ่น
+                                จดมิเตอร์ {stats.count} ครั้ง · {stats.sheets.toLocaleString('th-TH')} แผ่น
                               </div>
                             )}
                           </div>

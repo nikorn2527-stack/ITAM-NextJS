@@ -297,7 +297,7 @@ export function ItamAudit() {
             📜 ประวัติการใช้งาน (Audit Log)
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            ข้อมูลจริง {total.toLocaleString()} รายการ
+            ข้อมูลจริง {total.toLocaleString('th-TH')} รายการ
           </p>
         </div>
         <div className="flex gap-2">
@@ -470,7 +470,7 @@ export function ItamAudit() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex flex-shrink-0 items-center justify-between">
-          <span className="text-xs text-slate-500">หน้า {page} / {totalPages} ({total.toLocaleString()} รายการ)</span>
+          <span className="text-xs text-slate-500">หน้า {page} / {totalPages} ({total.toLocaleString('th-TH')} รายการ)</span>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
               <ChevronLeft className="h-4 w-4" /> ก่อนหน้า

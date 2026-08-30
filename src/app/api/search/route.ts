@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
       .map((r) => ({
         type: 'meter',
         id: r.id,
-        title: `${r.device!.assetCode} ${r.reading.toLocaleString()}`,
+        title: `${r.device!.assetCode} ${r.reading.toLocaleString('th-TH')}`,
         subtitle: `${r.date}${r.remark ? ' · ' + r.remark : ''}`,
         deviceId: r.device!.id,
       }))

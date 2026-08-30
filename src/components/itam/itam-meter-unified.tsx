@@ -271,12 +271,12 @@ function CycleCountdownBar({
       <div className="mt-3">
         <div className="mb-1 flex items-center justify-between text-xs">
           <span className="font-medium text-slate-700 dark:text-slate-200">
-            จดแล้ว <span className="text-[#f97316]">{totalRead.toLocaleString()}</span>
+            จดแล้ว <span className="text-[#f97316]">{totalRead.toLocaleString('th-TH')}</span>
             <span className="mx-1 text-slate-400">/</span>
-            ทั้งหมด {total.toLocaleString()} เครื่อง
+            ทั้งหมด {total.toLocaleString('th-TH')} เครื่อง
           </span>
           <span className="text-slate-500 dark:text-slate-400">
-            (เหลือ <span className="font-medium text-slate-700 dark:text-slate-200">{totalUnread.toLocaleString()}</span>)
+            (เหลือ <span className="font-medium text-slate-700 dark:text-slate-200">{totalUnread.toLocaleString('th-TH')}</span>)
             · {pct}%
           </span>
         </div>

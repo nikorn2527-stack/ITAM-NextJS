@@ -638,7 +638,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
                 กระดาษในช่วง
               </div>
               <div className="mt-0.5 text-sm font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                {data.paperThisMonth.toLocaleString()} แผ่น
+                {data.paperThisMonth.toLocaleString('th-TH')} แผ่น
               </div>
             </div>
           )}
@@ -652,7 +652,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
           )}
           <StatBox
             label="จำนวนแผ่นรวม"
-            value={`${data.totalSheets.toLocaleString()} แผ่น`}
+            value={`${data.totalSheets.toLocaleString('th-TH')} แผ่น`}
           />
           {typeof data.deviceCount === 'number' && (
             <StatBox label="จำนวนอุปกรณ์" value={String(data.deviceCount)} />
@@ -748,7 +748,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
                   </span>
                 </span>
                 <span className="tabular-nums font-medium text-[#f97316]">
-                  {Number(d.value ?? 0).toLocaleString()} แผ่น
+                  {Number(d.value ?? 0).toLocaleString('th-TH')} แผ่น
                 </span>
               </li>
             ))}
@@ -855,7 +855,7 @@ function formatSummaryValue(k: string, v: unknown): string {
     return formatBaht(v)
   }
   if (k === 'avgDepreciationPercent') return `${v}%`
-  return v.toLocaleString()
+  return v.toLocaleString('th-TH')
 }
 
 function StatBox({ label, value }: { label: string; value: string }) {

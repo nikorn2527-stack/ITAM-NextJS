@@ -184,7 +184,7 @@ function MiniStatCard({
             ) : (
               <div className="flex items-baseline gap-1">
                 <span className="text-lg font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100">
-                  {animated.toLocaleString()}
+                  {animated.toLocaleString('th-TH')}
                 </span>
                 {unit && (
                   <span className="shrink-0 text-[11px] font-medium text-slate-400 dark:text-slate-500">
@@ -453,14 +453,14 @@ export function CycleReportDialog({
                                   {d.site}
                                 </TableCell>
                                 <TableCell className="text-right font-mono text-xs tabular-nums text-slate-600 dark:text-slate-300">
-                                  {(d.firstReading ?? 0).toLocaleString()}
+                                  {(d.firstReading ?? 0).toLocaleString('th-TH')}
                                 </TableCell>
                                 <TableCell className="text-right font-mono text-xs tabular-nums text-slate-700 dark:text-slate-200">
-                                  {(d.lastReading ?? 0).toLocaleString()}
+                                  {(d.lastReading ?? 0).toLocaleString('th-TH')}
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <Badge className={deltaBadgeClass(d.totalDelta)}>
-                                    +{d.totalDelta.toLocaleString()}
+                                    +{d.totalDelta.toLocaleString('th-TH')}
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
@@ -484,15 +484,15 @@ export function CycleReportDialog({
                                             {r.date}
                                           </span>
                                           <span className="font-mono text-slate-600 dark:text-slate-300">
-                                            {r.prevReading.toLocaleString()}
+                                            {r.prevReading.toLocaleString('th-TH')}
                                           </span>
                                           <span className="text-slate-400">→</span>
                                           <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
-                                            {r.reading.toLocaleString()}
+                                            {r.reading.toLocaleString('th-TH')}
                                           </span>
                                           <Badge className={deltaBadgeClass(r.delta)}>
                                             {r.delta > 0 ? '+' : ''}
-                                            {r.delta.toLocaleString()}
+                                            {r.delta.toLocaleString('th-TH')}
                                           </Badge>
                                           {r.remark && (
                                             <span className="truncate text-amber-600 dark:text-amber-400">
@@ -566,11 +566,11 @@ export function CycleReportDialog({
                               <span className="font-mono">{a.date}</span>
                               <span>·</span>
                               <span className="font-mono">
-                                {a.prevReading.toLocaleString()} → {a.reading.toLocaleString()}
+                                {a.prevReading.toLocaleString('th-TH')} → {a.reading.toLocaleString('th-TH')}
                               </span>
                               <Badge className={deltaBadgeClass(a.delta)}>
                                 {a.delta > 0 ? '+' : ''}
-                                {a.delta.toLocaleString()}
+                                {a.delta.toLocaleString('th-TH')}
                               </Badge>
                               <span
                                 className={
@@ -629,7 +629,7 @@ export function CycleReportDialog({
                             </TableCell>
                             <TableCell className="text-right">
                               <Badge className={deltaBadgeClass(d.totalDelta)}>
-                                +{d.totalDelta.toLocaleString()}
+                                +{d.totalDelta.toLocaleString('th-TH')}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">

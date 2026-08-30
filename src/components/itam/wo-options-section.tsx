@@ -36,6 +36,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { ListChecks, Plus, RefreshCw, Trash2, Building2, Wrench, CheckCircle2 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -79,6 +89,7 @@ export function WoOptionsSection() {
     group: '',
     defaultPriority: 'ปกติ' as string,
   })
+  const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; label: string } | null>(null)
 
   const { data, isLoading, isFetching } = useQuery<OptionsResponse>({
     queryKey: ['wo-options-admin'],
@@ -123,7 +134,12 @@ export function WoOptionsSection() {
   })
 
   function handleDelete(id: string, label: string) {
-    if (!window.confirm(`ลบ "${label}"?`)) return
+    setDeleteTarget({ id, label })
+  }
+
+  function confirmDelete() {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
     fetch(`/api/settings/options/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       headers: authHeaders(),
@@ -138,6 +154,7 @@ export function WoOptionsSection() {
       .catch((err) => {
         toast.error(err instanceof Error ? err.message : 'ลบไม่สำเร็จ')
       })
+      .finally(() => setDeleteTarget(null))
   }
 
   function openAdd(type: OptType) {
@@ -445,6 +462,28 @@ export function WoOptionsSection() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
+            <AlertDialogDescription>
+              ต้องการลบ "{deleteTarget?.label ?? ''}" ใช่หรือไม่? การกระทำนี้ไม่สามารถยกเลิกได้
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={confirmDelete}
+              className="bg-rose-600 text-white hover:bg-rose-700"
+            >
+              ลบ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
