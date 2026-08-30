@@ -906,11 +906,11 @@ export function PMSchedulesPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={prevMonth} className="h-8 w-8 p-0">
+                  <Button size="sm" variant="outline" onClick={prevMonth} className="h-8 w-8 p-0" aria-label="เดือนก่อนหน้า">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <span className="text-sm font-semibold">{formatMonthLabel(calMonth)}</span>
-                  <Button size="sm" variant="outline" onClick={nextMonth} className="h-8 w-8 p-0">
+                  <Button size="sm" variant="outline" onClick={nextMonth} className="h-8 w-8 p-0" aria-label="เดือนถัดไป">
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                   <Button
@@ -2054,6 +2054,7 @@ function PMExecutionDialog({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="flex h-20 w-20 items-center justify-center rounded-md border-2 border-dashed border-slate-300 text-slate-400 transition hover:border-emerald-400 hover:text-emerald-500 dark:border-slate-700"
+                aria-label="ถ่ายภาพหรือเลือกรูป"
               >
                 <Camera className="h-5 w-5" />
               </button>

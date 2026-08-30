@@ -101,7 +101,7 @@ export function CameraCapture({ onCapture, className, label = 'ถ่ายภ�
       <div className="fixed inset-0 z-[9999] flex flex-col bg-black">
         <div className="flex items-center justify-between p-4">
           <span className="text-white text-sm">{label}</span>
-          <Button size="icon" variant="ghost" onClick={stopCamera} className="text-white hover:bg-white/10">
+          <Button size="icon" variant="ghost" onClick={stopCamera} className="text-white hover:bg-white/10" aria-label="ปิดกล้อง">
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -114,7 +114,7 @@ export function CameraCapture({ onCapture, className, label = 'ถ่ายภ�
           </div>
         ) : (
           <>
-            <video ref={videoRef} autoPlay playsInline className="flex-1 object-contain" />
+            <video ref={videoRef} muted autoPlay playsInline className="flex-1 object-contain" />
             <canvas ref={canvasRef} className="hidden" />
             <div className="p-6">
               <Button onClick={capture} className="w-full" size="lg">

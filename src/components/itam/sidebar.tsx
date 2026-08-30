@@ -45,7 +45,7 @@ const NAV_GROUPS: NavGroupDef[] = [
   {
     title: 'ภาพรวม',
     items: [
-      { page: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', desc: 'สรุปภาพรวมระบบ', module: 'dashboard' },
+      { page: 'dashboard', icon: LayoutDashboard, label: 'แดชบอร์ด', desc: 'สรุปภาพรวมระบบ', module: 'dashboard' },
     ],
   },
   {

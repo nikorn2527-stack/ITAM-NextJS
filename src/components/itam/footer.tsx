@@ -55,7 +55,7 @@ export function Footer() {
       </div>
       <div className="flex items-center gap-1.5">
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#f97316]" />
-        <span>Powered by PNG TEAM</span>
+        <span>ขับเคลื่อนโดย PNG TEAM</span>
       </div>
     </footer>
   )
