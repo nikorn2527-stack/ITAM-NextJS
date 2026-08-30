@@ -11332,3 +11332,330 @@ Audited every API route that accepts `pageSize` or `limit` query/body params. Ro
 (Some files appear under multiple fixes — e.g., `itam/devices/[id]/transfer/route.ts` got both a FIX-034 wrap on the error response and a FIX-040 fix on the best-effort audit catch.)
 
 Stage Summary: All 3 P2 quick fixes complete. Lint stays at 0 errors (78 pre-existing warnings unchanged). No new compile errors. No new TypeScript errors. B4 frozen files untouched. All changes are idempotent (re-running the FIX-034 script on the same files is a no-op due to the look-back guard).
+
+---
+
+## Task ID: METER-EXPLORE — Meter Reading System Exploration (Research Only)
+
+**Agent**: explore (sub-agent)
+**Scope**: Comprehensive read-only audit of the meter-reading subsystem at `/home/z/my-project`. No files were modified.
+
+### 1. Prisma Schema (`prisma/schema.prisma`)
+
+**`Device`** (lines 17–85)
+- Key meter fields: `meterRequired Boolean @default(false)`, `meterMode String?` (`TOTAL | BW_COLOR`), `lastMeterBw Int @default(0)`, `lastMeterColor Int @default(0)`.
+- `site String` (NOT a FK to `Site.code` — just a free-text code column).
+- `assetSiteCode String?` — per-site registry number (e.g. `SITE-NNNNN`).
+- Relations: `meterReadings MeterReading[]`, `transfers DeviceTransfer[]`.
+- Indexes on `parentDeviceId`, `status`, `site`. Unique on `assetCode`.
+
+**`MeterReading`** (lines 87–119)
+- Fields: `id`, `readingId String? @unique` (idempotency key), `deviceId`, `assetCode String?`, `readingDate String` (ISO date), `readingMonth String?` (YYYY-MM), `meterBw Int`, `meterColor Int`, `pagesBw Int`, `pagesColor Int`, `prevMeterBw Int`, `prevMeterColor Int`, `readingType String?` (`MONTHLY | INITIAL | FINAL | RESET | CHECKOUT | SEND_REPAIR | RETURN`), `readBy`, `remark`, location-snapshot fields (`locationAtReading`, `siteAtReading`, `buildingAtReading`, `floorAtReading`, `departmentAtReading`, `departmentCodeAtReading`), `eventType String?`, `eventId String?` (links to `DeviceTransfer.id` when the reading was created by a transfer), `isDemo Boolean`, `createdAt`.
+- Relation: `device Device @relation(... onDelete: Cascade)`.
+- Indexes on `deviceId`, `readingMonth`, `isDemo`.
+- ⚠️ **No FK or column linking a reading to a specific Cycle.** Cycles and readings are joined only via date-range overlap (`readingDate BETWEEN cycle.startDate AND cycle.endDate`) and/or `readingMonth = cycle.startDate.slice(0,7)`. There is also no per-`(deviceId, site)` uniqueness — readings are stored per-device, not per-(device, site).
+
+**`Cycle`** (lines 126–139)
+- Fields: `id`, `name`, `startDate String`, `endDate String`, `status String @default("active")` (legacy `active | ended | cancelled` OR V5 `OPEN | QUEUED | CLOSED | NONE`), `site String?` (nullable — `null` = all-sites / global cycle).
+- Indexes on `status`, `site`, `updatedAt`.
+
+**`DeviceTransfer`** (lines 144–178)
+- Fields: `id`, `logId`, `deviceId`, `assetCode`, `moveDate`, `action` (`TRANSFER | TRANSFER_SITE | STATUS_CHANGE | STATUS_AND_TRANSFER | TRANSFER_BY_LIFECYCLE`), from/to snapshot of site/assetSiteCode/building/floor/department/departmentCode/location/status, `meterReadingId String?` (FK-by-id to `MeterReading.id` but NOT declared as a Prisma relation — it is a soft link), `movedBy`, `remark`, `transferDate`, `reason`.
+- Indexes on `deviceId`, `toSite`.
+
+**`SiteAttribute`** (lines 412–427, `@@map("site_attributes")`) — paper rates live here:
+- `SiteCode String @unique`, `SiteName String?`, `PaperRateBW Decimal? @default(0.5)`, `PaperRateColor Decimal? @default(2.0)`.
+- ⚠️ Note unusual casing (`SiteCode`, `SiteName`, `PaperRateBW`, `PaperRateColor`) — legacy mapping.
+
+**`SiteRate`** (lines 444–453) — legacy `bwRate/colorRate` table, `siteCode String` indexed.
+
+**`Report`** (lines 891–900) — generic JSON snapshot table (`type`, `title`, `rangeKey`, `filters`, `data`).
+
+⚠️ **`MeterReportSnapshot` / `MeterReportSnapshotRow` / `MeterReportAmendment` models do NOT exist in `schema.prisma`**, but `src/lib/meter-snapshot.ts` references `db.meterReportSnapshot`, `db.meterReportSnapshotRow`. The file’s own comments say `// TODO: meterReportSnapshot table removed — feature disabled`. Every call is wrapped in try/catch returning `null`, so the snapshot-on-close flow silently no-ops; cycles are still flipped to `CLOSED` without an immutable snapshot being written.
+
+---
+
+### 2. API Routes — Meter Readings
+
+#### 2a. `POST /api/itam/meter-readings` — primary writer (`src/app/api/itam/meter-readings/route.ts:94-426`)
+
+Permission: `METER_WRITE` + per-site `canAtSite`. Site-scoped via `buildAuthorizationContext`.
+
+Key flow:
+1. Idempotency check via `readingId` (uses `classifyMeterWriteReplay` from `src/lib/meter-write-identity.ts`).
+2. `assertMeterMonthWritable(month, ...)` from `src/lib/meter-snapshot.ts:311` — throws if any CLOSED cycle’s `[startDate, endDate]` overlaps the target month (this is the only enforcement against retroactive edits; since snapshots are disabled, this is the sole guard).
+3. **`findValidPrevReading(assetCode, finalReadingMonth, exclusiveCurrentMonth=true)`** (`src/lib/meter-logic.ts:75`) — **EXCLUDES same-month readings** (`rowMonth >= targetMonth`) and FINAL/SEND_REPAIR. So `prevMeterBw` is always the most recent reading from a PRIOR month, never an in-month transfer reading.
+4. Same-month INITIAL/RESET fallback via `findSameMonthBaseline` (`meter-logic.ts:136`).
+5. Mode-switch detection (TOTAL ↔ BW_COLOR) via `detectModeSwitch` (`meter-logic.ts:234`).
+6. `findExistingMonthlyReading(assetCode, month)` (`meter-logic.ts:298`) — returns the **single most-recent** `readingType='MONTHLY'` row in that month (ordered by `id desc`). Stale check via `isStaleMeterReading` from `src/lib/meter-reading-contract.ts:186` rejects older-dated writes.
+7. **Upsert in `$transaction`**: if `existing && readingType==='MONTHLY'` → `tx.meterReading.update({ where: { id: existing.id }, data })`. Otherwise → `tx.meterReading.create({ data })`. Same tx also updates `device.lastMeterBw/lastMeterColor`. (`route.ts:340-363`)
+8. `pagesBw = calcPagesBw(meterBw, prevMeterBw, readingType)` = `max(0, meterBw - prevMeterBw)` for usage types; 0 for INITIAL/RESET.
+
+**Critical implication for transfer-within-month**: because Step 3 ignores same-month readings, when the user records the end-of-month MONTHLY reading after transfers have already created in-month MONTHLY rows, Step 7 finds the most-recent transfer-created MONTHLY row and OVERWRITES it in place with `prevMeterBw` reset to the prior-month value. See §5 below for the full simulation.
+
+#### 2b. `GET /api/itam/meter-readings` (`route.ts:28-77`)
+List with pagination (`page`, `limit ≤ 100`), filters: `assetCode`/`assetNo`, `month`, `site`. Site-scoped via `siteFilterForUser`.
+
+#### 2c. `GET /api/itam/meter-readings/unread` (`unread/route.ts`)
+Returns devices where `meterRequired=true && status='Active'` with no `MeterReading` row in `readingMonth=YYYY-MM`. Also pulls `lastMeterBw/lastMeterColor` from the latest ever reading (ordered by `readingDate desc`). Used by the keyboard UI to pre-fill the prev value.
+
+#### 2d. `POST /api/devices/[id]/transfer-with-meter` (`src/app/api/devices/[id]/transfer-with-meter/route.ts:1-267`) — **THE KEY ROUTE FOR THE TRANSFER SCENARIO**
+
+Permission: `DEVICE_TRANSFER`. Atomic `$transaction`:
+1. If `meterBw`/`meterColor` provided → create `MeterReading` with:
+   - `prevMeterBw = device.lastMeterBw ?? 0` (NOT `findValidPrevReading` — directly reads device’s cached last meter)
+   - `pagesBw = max(0, bw - prevBw)` — chain delta against device’s last reading
+   - `readingType = derivedReadingType = getLifecycleReadingType(device.status, toStatus)`. For an Active→Active+move transfer, `getLifecycleReadingType` returns `'MONTHLY'` (see `src/lib/meter-logic.ts:171-196`). So transfer readings are stamped as `readingType='MONTHLY'`.
+   - `readBy = movedBy`, `remark = skipMeterReason`.
+2. Updates `device.lastMeterBw/lastMeterColor` to the new meter value.
+3. Updates `device` (site, building, floor, department, location, assetSiteCode, status).
+4. Creates `DeviceTransfer` row with `meterReadingId` set to the new reading’s `id`.
+5. Links back: `tx.meterReading.update({ where: { id }, data: { eventType: action, eventId: historyRow.id } })`.
+
+**Critical observation**: this route does NOT consult `findExistingMonthlyReading` — it always `create`s a fresh row. So in a single month you can accumulate N transfer-created MONTHLY rows (R1, R2, …, RN). The end-of-month MONTHLY save via route 2a then overwrites only the most-recent one (RN), leaving R1..R(N-1) intact.
+
+#### 2e. `POST /api/itam/devices/[id]/transfer` (`src/app/api/itam/devices/[id]/transfer/route.ts:34-320`)
+The canonical transfer route (no inline meter write). Accepts a pre-existing `meterReadingId` (typically created moments earlier via 2a), validates it belongs to the device, links it to the new `DeviceTransfer` row, and stamps `readingType = derivedReadingType` (overriding whatever the writer set). Recovery hook: on failure it marks the meter reading with `eventType: 'LIFECYCLE_METER_INCOMPLETE'` so orphans are detectable.
+
+#### 2f. `POST /api/devices/[id]/transfer` (`src/app/api/devices/[id]/transfer/route.ts`)
+Legacy compatibility shim that forwards to 2e, translating `toDept`→`toDepartment`, `moveDate`→`transferDate`, etc.
+
+#### 2g. `GET/POST /api/meter` (`src/app/api/meter/route.ts`)
+Legacy compatibility route. `POST` delegates to `POST /api/itam/meter-readings` (preserves `reading`/`date`/`delta` legacy shape). `GET` supports `?aggregate=monthly` and `?aggregate=byDevice` using `_sum: { pagesBw, pagesColor }` grouped by `readingMonth` or `deviceId`. **Both aggregates SUM `pagesBw`/`pagesColor` across all rows in the month** — so if there are 3 rows (2 transfers + 1 monthly), the sum is `R1.pagesBw + R2.pagesBw + R3.pagesBw`. As shown in §5, R3 overwrites R2 → so the actual sum is `R1.pagesBw + R3.pagesBw`, which double-counts the first transfer’s delta.
+
+#### 2h. `GET /api/meter/reminders` (`src/app/api/meter/reminders/route.ts`)
+Returns unread devices within the active cycle’s `[startDate, endDate]` window. Groups readings by `assetCode` with `_max: { readingDate }` — does NOT use `readingMonth` for cycle membership, just `readingDate` BETWEEN `cycle.startDate` AND `cycle.endDate`.
+
+#### 2i. `GET / POST /api/cycles` (`src/app/api/cycles/route.ts`)
+GET auto-closes expired active cycles (`endDate < today → 'closed'`). POST creates a new cycle; if status is `active`, marks other active cycles scoped to the same `site` (or both global when `site=null`) as `ended`.
+
+#### 2j. `GET / PUT / DELETE /api/cycles/[id]` (`src/app/api/cycles/[id]/route.ts`)
+- GET (lines 7-32): fetches single cycle + tries to compute `readingCount`/`totalSheets` by querying `db.meterReading.findMany({ where: { cycleId: id }, select: { delta: true } })`. ⚠️ **`cycleId` and `delta` are NOT columns on `MeterReading`** (see schema §1). This query will throw a Prisma `Unknown argument` validation error at runtime — this route is broken.
+- PUT (lines 35-167): updates status / dates. When transitioning to `CLOSED`/`ended`, calls `createMeterReportSnapshot(cycleMonth, user.email)` from `src/lib/meter-snapshot.ts:101`. Since the snapshot tables don’t exist, `createMeterReportSnapshot` catches its own error and returns `null` — so `snapshotResult` is `null`, the cycle is still flipped to CLOSED, but the audit log mentions a null snapshot. Cycle-lock enforcement (`assertMeterMonthWritable`) is the only surviving protection against retroactive edits.
+- DELETE: refuses to delete if cycle has readings (counts by date range, since `cycleId` doesn’t exist on `MeterReading`).
+
+#### 2k. `GET /api/cycles/[id]/report` (`src/app/api/cycles/[id]/report/route.ts`)
+Also uses legacy column names: `cycleId`, `date`, `reading`, `prevReading`, `delta` — **none of which exist on `MeterReading`** (current schema uses `readingDate`, `meterBw`, `prevMeterBw`, `pagesBw`). This route is broken at the Prisma layer too.
+
+#### 2l. `GET /api/v1/meter-readings` and `POST /api/v1/meter-readings` (`src/app/api/v1/meter-readings/route.ts`)
+Standardized v1 wrapper. POST logic is *different* from 2a:
+- Does NOT call `findValidPrevReading` or `findExistingMonthlyReading`.
+- If `body.prevMeterBw` is provided uses it; else falls back to `db.meterReading.findFirst({ orderBy: { readingDate: 'desc' } })` — this CAN return an in-month transfer reading (no same-month exclusion).
+- Always `create`s a new row — no upsert. So in the transfer scenario the v1 route would correctly produce N+1 rows.
+- ⚠️ **Line 224 references `saved.id` but the variable is named `reading` (defined line 194)** — this throws a ReferenceError when the audit-log try block runs, but it’s inside a try/catch so the MeterReading row is still saved; only the audit log silently fails.
+
+#### 2m. `GET /api/itam/paper-analytics` (`src/app/api/itam/paper-analytics/route.ts`)
+Four view modes (`overview`, `ranking`, `compare3`, `detail`). Pulls `MeterReading` rows where `readingMonth IN months[]` and aggregates `pagesBw + pagesColor` per device/department/building-floor/site. **Does NOT compute cost** — only sheet counts. The only "cost" computation in the codebase lives in `buildMetersReport` (§2n) and the disabled `meter-snapshot.ts`.
+
+#### 2n. `GET /api/reports/unified?group=meters&month=YYYY-MM&site=` → `buildMetersReport` (`src/modules/reports/unified-report-builder.ts:255-473`)
+This is the **closest thing to a "billing" endpoint**. It:
+1. Pulls all devices + their `lastMeterBw/lastMeterColor`.
+2. Pulls all `MeterReading` rows where `readingMonth = month AND deviceId IN ...`.
+3. **Sums `pagesBw`/`pagesColor` across all rows per device** (line 309-321: `entry.bw += r.pagesBw ?? 0; entry.color += r.pagesColor ?? 0`).
+4. Computes cost using **hardcoded rates** `BW_RATE = 0.5` and `COLOR_RATE = 5` baht/page (line 360-361). These rates are NOT the per-site `SiteAttribute.PaperRateBW/PaperRateColor` — they are constants in code. The legacy `meter-snapshot.ts` *does* use `SiteAttribute` rates, but it’s disabled (§1).
+5. Returns `costBySite`, `costByDepartment`, `paperUsageByDevice`, `unmeteredDevices`, `monthlyComparison`.
+
+#### 2o. `GET /api/reports/monthly` (`src/app/api/reports/monthly/route.ts`)
+Delegates to `monthlyReportBuilder.build()` in `src/modules/reports/monthly-report-builder.ts:187`. This builds WorkOrder/Stock/Device summaries — **does NOT include meter readings or paper cost**. So `/api/reports/monthly` is unrelated to billing.
+
+---
+
+### 3. Frontend Components
+
+| Component | File | What it does |
+|---|---|---|
+| `ItamMeterKeyboard` | `src/components/itam/itam-meter-keyboard.tsx` (798 lines) | Keyboard-driven page. Fetches `/api/itam/meter-readings/unread?limit=500&includeRead=1`. Pre-fills BW input with `selected.lastMeterBw`. On Enter → `POST /api/itam/meter-readings` with `{ assetCode, meterBw, meterColor, prevMeterBw: selected.lastMeterBw, prevMeterColor: selected.lastMeterColor, remark, readingType: isReset ? 'RESET' : 'MONTHLY' }` (lines 300-312). Note: client passes `prevMeterBw` but the server **ignores it** and recomputes via `findValidPrevReading` — so the optimistic UI delta shown to the user may differ from what the server stores. |
+| `MobileMeterReading` | `src/components/itam/mobile/mobile-meter-reading.tsx` (1100 lines) | Mobile page. Fetches `/api/devices?limit=500` + `/api/meter/reminders`. Same POST contract as the keyboard (line 660: `fetch('/api/itam/meter-readings', {...})`). Same RESET→409 confirmation flow. |
+| `ItamMeterUnified` | `src/components/itam/itam-meter-unified.tsx` | Tabular readings view. Fetches `/api/itam/meter-readings?page=N&limit=500`. Has CSV/PDF custom export (reads up to 10k rows in pages of 500). Shows reading type badge via `readingTypeBadge()` (line 62). |
+| `ItamMeter` | `src/components/itam/itam-meter.tsx` | Older meter page. Per-device drill-down fetches `/api/itam/meter-readings?assetCode=X&limit=1`. Save button → POST `/api/itam/meter-readings`. |
+| `CycleManageDialog` | `src/components/itam/cycle-manage-dialog.tsx` (780 lines) | Cycle CRUD UI. `end/cancel/reopen` actions → `PUT /api/cycles/[id]` with status map `{ end: 'ended', cancel: 'cancelled', reopen: 'active' }` (line 269). **Does NOT use V5 `CLOSED` status** — so the snapshot-on-close branch in PUT /api/cycles/[id] (which only triggers on `CLOSED`/`ended`) fires only when `action === 'end'`. |
+| `CycleReportDialog` | `src/components/itam/cycle-report-dialog.tsx` (662 lines) | Fetches `GET /api/cycles/[id]/report` — **broken because of legacy `cycleId`/`delta` columns (see §2k)**. |
+| `MetersReport` | `src/components/itam/reports/meters-report.tsx` | Renders the `group=meters` unified report — the only UI that shows paper cost (via `formatBaht(s.totalCost)` etc.). |
+| `MonthlyReport` | `src/components/itam/monthly-report.tsx` | Renders `/api/reports/monthly` — work-order/stock/device summaries, NO meter data. |
+| `PaperAnalyticsPage` | `src/components/itam/paper-analytics-page.tsx` | Renders `/api/itam/paper-analytics` (sheet counts only, no cost). |
+| `BulkMeterDialog` | `src/components/itam/bulk-meter-dialog.tsx` | Bulk entry dialog (not examined in detail). |
+| `SnapshotViewer` | `src/components/itam/snapshot-viewer.tsx` | UI for viewing snapshots — currently dead since snapshot tables are gone. |
+
+---
+
+### 4. Lib Helpers
+
+| File | Key functions |
+|---|---|
+| `src/lib/meter-logic.ts` | `findValidPrevReading(assetCode, month, exclusive=true)` — skips same-month + FINAL/SEND_REPAIR; `findSameMonthBaseline`; `getLifecycleReadingType(toStatus, fromStatus)` — Active→Active returns `MONTHLY`; `calcPagesBw/Color(meter, prev, type)` — `max(0, meter-prev)` for usage types, 0 for INITIAL/RESET; `detectModeSwitch`; `isMeterDecreased`; `findExistingMonthlyReading` (returns single most-recent MONTHLY row in month); `isMeterRequiredDevice`. |
+| `src/lib/lifecycle-reading-type.ts` | Thin compatibility wrapper. Note argument order is swapped: `getLifecycleReadingType(fromStatus, toStatus)` here vs `(toStatus, fromStatus)` in `meter-logic.ts`. Both transfer routes import from this wrapper. |
+| `src/lib/meter-reading-contract.ts` | `validateMeterReading` / `validateMeterChannels` — pure validation, no DB; `meterPeriodKey` = `deviceId:cycle:X` or `deviceId:month:YYYY-MM`; `isStaleMeterReading` — rejects older-dated writes; `parseMeterQuery`. |
+| `src/lib/meter-snapshot.ts` | `createMeterReportSnapshot(month, by)` — **broken: references `db.meterReportSnapshot` which doesn’t exist**; wrapped in try/catch returning `null`. `assertMeterMonthWritable(month, label)` — works correctly; iterates CLOSED cycles and throws if their date range overlaps the target month. `verifyMeterReportSnapshot` — also broken (same reason). |
+| `src/lib/meter-write-identity.ts` | `classifyMeterWriteReplay` — idempotency replay/conflict detection; `normalizeMeterReadingId`. |
+| `src/lib/lifecycle-reading-type.ts` | (covered above) |
+| `src/modules/reports/unified-report-builder.ts` | `buildMetersReport(month, siteCodes)` — see §2n. Uses hardcoded rates `0.5`/`5` baht/page (NOT `SiteAttribute` rates). `previousMonthStr`, `parseMonth`, `currentMonthStr`. |
+| `src/modules/reports/report-builder.ts` | Legacy `buildDashboardSummary`, `buildCycleReport`, `buildUtilizationReport` — all reference nonexistent columns (`delta`, `date`, `reading`, `prevReading`, `lastMeterReading` on Device). **Looks like dead code** — `unified-report-builder.ts` and `monthly-report-builder.ts` are the active builders. |
+| `src/lib/asset-site-code.ts` | `getNextAssetSiteCode`, `normalizeAssetSiteCodeForCompare` — used by transfer routes for auto-generating per-site asset numbers. |
+
+---
+
+### 5. Critical Analysis — Transfers Within a Month
+
+**User’s expected behavior**: each transfer creates a separate MeterReading row keyed to the device+site. Monthly total = end-of-month reading − start-of-month reading = sum of all per-segment deltas.
+
+```
+R1: date1, start=1000, end=1050, usage=50   (transfer at site A→B)
+R2: date2, start=1050, end=1500, usage=450  (transfer at site B→C)
+R3: date3, start=1500, end=4500, usage=3000 (end-of-month MONTHLY)
+Total = 50 + 450 + 3000 = 3500 = 4500 - 1000 ✓
+```
+
+**Actual system behavior** (tracing the routes step-by-step):
+
+Setup: `device.lastMeterBw = 1000` (from September).
+
+**Transfer 1** → `POST /api/devices/[id]/transfer-with-meter`:
+- `prevBw = device.lastMeterBw = 1000`
+- `pagesBw = max(0, 1050 - 1000) = 50`
+- Creates row **R1**: `{ meterBw: 1050, prevMeterBw: 1000, pagesBw: 50, readingType: 'MONTHLY', eventType: 'TRANSFER_SITE', readingMonth: '2025-10' }`
+- Updates `device.lastMeterBw = 1050`
+
+**Transfer 2** → same route:
+- `prevBw = device.lastMeterBw = 1050`
+- `pagesBw = max(0, 1500 - 1050) = 450`
+- Creates row **R2**: `{ meterBw: 1500, prevMeterBw: 1050, pagesBw: 450, readingType: 'MONTHLY', eventType: 'TRANSFER_SITE', readingMonth: '2025-10' }`
+- Updates `device.lastMeterBw = 1500`
+
+**End-of-month MONTHLY reading (meter=4500)** → `POST /api/itam/meter-readings`:
+1. `findValidPrevReading(assetCode, '2025-10', true)` — **EXCLUDES** both R1 and R2 (same-month). Returns the September reading. `prevMeterBw = 1000`.
+2. `findExistingMonthlyReading(assetCode, '2025-10')` — finds rows with `readingType='MONTHLY'` in October. Both R1 and R2 qualify. Orders by `id desc` → returns **R2** (the most recent).
+3. `isStaleMeterReading({readingDate: Oct 31}, R2)` — Oct 31 > R2.readingDate → not stale, proceed.
+4. Branch: `existing && readingType === 'MONTHLY'` → **`tx.meterReading.update({ where: { id: R2.id }, data })`** — overwrites R2 in place:
+   - `meterBw = 4500`, `prevMeterBw = 1000` (from Step 1, NOT 1500 from R2’s original prev), `pagesBw = max(0, 4500 - 1000) = 3500`, `readingType = 'MONTHLY'`
+5. Updates `device.lastMeterBw = 4500`.
+
+**Final DB state for October**:
+```
+R1 (intact):        meterBw=1050, prevMeterBw=1000, pagesBw=50,   readingType=MONTHLY, eventType=TRANSFER_SITE
+R2 (overwritten):   meterBw=4500, prevMeterBw=1000, pagesBw=3500, readingType=MONTHLY, eventType=TRANSFER_SITE  ← was 1500/1050/450
+```
+
+**Aggregated month total** (`buildMetersReport` / `?aggregate=monthly` on `/api/meter`):
+- `totalBw = R1.pagesBw + R2.pagesBw = 50 + 3500 = 3550`
+
+**Expected**: 3500. **Actual**: 3550. **Over-count = 50** (the first transfer’s delta is double-counted).
+
+#### Root causes
+
+1. **`POST /api/itam/meter-readings` upserts the single most-recent MONTHLY row in the month** (`route.ts:342-347`), instead of always inserting a new row. This was designed for the simple case (one MONTHLY reading per device per month). When a transfer has already created a MONTHLY row, the end-of-month save clobbers it.
+2. **`findValidPrevReading` ignores same-month readings** (`meter-logic.ts:118-120`): `if (exclusiveCurrentMonth && rowMonth >= targetMonth) continue`. This means the end-of-month reading can’t chain off the most recent transfer; it jumps back to the prior month. Combined with the upsert, this means the overwritten row’s `pagesBw` = `end_of_month - prior_month_start` instead of `end_of_month - latest_transfer_end`.
+3. **Transfer readings get `readingType='MONTHLY'`** (via `getLifecycleReadingType('ACTIVE','ACTIVE')='MONTHLY'`). If they were stamped with a distinct type (e.g. `TRANSFER` or `CHECKOUT`), `findExistingMonthlyReading` would not pick them up for upsert, and the end-of-month MONTHLY save would correctly INSERT a new row instead.
+4. **`buildMetersReport` sums all rows’ `pagesBw`** — correct in principle, but coupled with bugs #1–#3 it produces the over-count.
+
+#### Per-(device, site) question
+
+**Meter readings are stored per-device, NOT per-(device, site).** The reading row captures `siteAtReading` as a free-text snapshot but no uniqueness constraint exists on `(deviceId, siteAtReading, readingMonth)`. The DeviceTransfer history records from/to site, and links back to a single MeterReading via `meterReadingId`, but there is no formal "closing reading for site A + opening reading for site B" pair. So the user’s mental model of "each transfer creates a closing-meter-reading for the previous site" is only partially implemented: the transfer-with-meter route DOES create a meter reading at the moment of transfer (which effectively serves as the "closing" reading for the previous site and the "opening" baseline for the new site), but the reading is owned by the device, not by the (device, site) pair.
+
+#### Failure modes summary
+
+| Scenario | Expected | Actual | Bug |
+|---|---|---|---|
+| 1 monthly, 0 transfers | R1: 4500-1000=3500 | R1 created with pagesBw=3500 | ✓ correct |
+| 1 transfer (mid-month) then 1 monthly | R1=ΔT1, R2=4500-1500=3000; total=ΔT1+3000 | R1 stays, R2 (transfer) overwritten with prev=1000, pagesBw=3500; total=ΔT1+3500 | ✗ over-count by ΔT1 |
+| 2 transfers then 1 monthly (this case) | R1=50, R2=450, R3=3000; total=3500 | R1 stays, R2 overwritten with prev=1000, pagesBw=3500; total=50+3500=3550 | ✗ over-count by 50 (=ΔT1) |
+| N transfers then 1 monthly | R1+R2+...+RN+R(N+1) = end-start | R1+R2+...+R(N-1) stay intact, RN overwritten; total = (Σ ΔT1..ΔT(N-1)) + (end-start) | ✗ over-count by Σ ΔT1..ΔT(N-1) |
+
+In all "transfers-then-monthly" cases, every transfer-created MONTHLY row except the last one survives intact and contributes its delta to the month total, while the last one is overwritten with `(end - prior_month_start)` — producing an over-count equal to the sum of all but the last transfer’s deltas.
+
+#### Why the user’s described "3500" works in their head but not in the DB
+
+The user’s model assumes 3 distinct rows, each chaining off the previous. The system achieves this ONLY if the end-of-month reading goes through a route that INSERTs (not UPSERTs) and that chains `prev` off the latest in-month reading. The v1 route (`/api/v1/meter-readings`) does INSERT (no upsert) and uses `findFirst({ orderBy: { readingDate: 'desc' } })` for prev (which CAN return an in-month transfer) — so the v1 route would produce the correct 3 rows. But the production UIs (`itam-meter-keyboard.tsx`, `mobile-meter-reading.tsx`) hit `/api/itam/meter-readings`, which has the upsert+skip-same-month behavior. So the bug is in the canonical writer, not the v1 writer.
+
+---
+
+### 6. Receipt / Billing ("รับบ" / receipt / invoice)
+
+There is **no dedicated receipts/invoices/billing table or API** in this codebase. Searching for `receipt|invoice|billing|รับบ|ใบเสร็จ|ใบแจ้งหนี้|ใบวางบิล` returns 17 files, but none of them implement a receipt-generation workflow:
+
+- `src/lib/meter-snapshot.ts` — the only place that computes `costBw = pagesBw * PaperRateBW` and `costColor = pagesColor * PaperRateColor` using the per-site `SiteAttribute` rates. This was meant to be the basis for monthly billing snapshots. **But the snapshot tables (`MeterReportSnapshot`, `MeterReportSnapshotRow`) were removed from the schema** — the file is full of `// TODO: meterReportSnapshot table removed — feature disabled` comments and every DB call is wrapped in try/catch returning `null`. So the snapshot/billing pipeline is currently disabled.
+- `src/modules/reports/unified-report-builder.ts` → `buildMetersReport` (§2n) — the only active "cost" computation. But it uses hardcoded rates (`BW_RATE = 0.5`, `COLOR_RATE = 5` baht/page) instead of `SiteAttribute.PaperRateBW/PaperRateColor`. So the displayed cost in `MetersReport` (`src/components/itam/reports/meters-report.tsx`) is wrong unless every site happens to use 0.5/5.
+- `src/components/itam/stock/*`, `src/components/itam/material-cost-report.tsx` — these are about stock/material costs, not meter/paper billing.
+- `src/app/api/stock-items/[id]/print/route.ts`, `src/app/api/purchase-orders/[id]/print/route.ts` — printing stock/purchase-order receipts, unrelated to meters.
+
+**Direct dependency chain**: meter readings → `pagesBw/pagesColor` per row → `buildMetersReport` SUM(pagesBw/pagesColor) per device per month → cost = sum × hardcoded rate → `MetersReport` UI display. If the per-row `pagesBw` is wrong (§5 over-count), the displayed cost is wrong by the same factor. Since the user said "the reason new receipts aren’t being issued is mainly because of this [meter] issue", the most likely interpretation is:
+
+- The user expects the monthly bill per site/department to equal `(end-of-month meter − start-of-month meter) × site rate`. 
+- The system instead computes `(sum of all pagesBw deltas in the month, including the over-counted transfer delta) × hardcoded rate`. 
+- The mismatch — both in the delta computation (over-count) and in the rate source (hardcoded 0.5/5 vs `SiteAttribute` rates) — likely causes the billing numbers to not match what the user expects, hence "new receipts aren’t being issued".
+
+Additionally, the snapshot-on-cycle-close flow (which would lock in a final billing number per month) is disabled, so there is no canonical "closed bill" record to issue a receipt against.
+
+---
+
+### 7. Summary of Findings
+
+**Schema gaps**:
+- `MeterReading` has no `cycleId` column, despite multiple routes (`cycles/[id]/route.ts:22`, `cycles/[id]/report/route.ts:80`) assuming it does → those routes throw at runtime.
+- `MeterReportSnapshot` / `MeterReportSnapshotRow` / `MeterReportAmendment` models are missing → snapshot-on-close is silently disabled.
+- No `Receipt` / `Invoice` / `Billing` table exists.
+
+**Logic bugs**:
+- **Transfer-within-month over-count** (§5): `POST /api/itam/meter-readings` upserts the most-recent MONTHLY row in place using `prev = prior-month reading` (because `findValidPrevReading` skips same-month). This clobbers the last transfer’s delta and double-counts the earlier transfers’ deltas in monthly aggregates.
+- **Cost computation uses hardcoded rates** (`0.5`/`5`) instead of per-site `SiteAttribute` rates.
+- `POST /api/v1/meter-readings:224` references `saved.id` (undefined; should be `reading.id`) → audit log silently fails.
+- `getLifecycleReadingType` argument order is swapped between `meter-logic.ts` (`toStatus, fromStatus`) and `lifecycle-reading-type.ts` (`fromStatus, toStatus`); the wrapper delegates correctly, but any future caller that bypasses the wrapper could get the wrong type.
+- `findValidPrevReading` excludes same-month readings — incompatible with the multi-reading-per-month transfer model.
+
+**Disabled features**:
+- Snapshot-on-close (`createMeterReportSnapshot` always returns `null`).
+- `verifyMeterReportSnapshot` always returns `null`.
+- `cycle/[id]/report` route crashes (Prisma validation on `cycleId`/`delta`).
+- `cycle/[id]` GET route crashes on same.
+- `report-builder.ts` (`buildDashboardSummary`, `buildCycleReport`, `buildUtilizationReport`) — references nonexistent columns, likely dead code.
+
+**Working correctly**:
+- `assertMeterMonthWritable` — correctly blocks writes to months overlapped by CLOSED cycles.
+- `POST /api/devices/[id]/transfer-with-meter` — atomic transaction; correctly creates MeterReading + DeviceTransfer + Device update.
+- Per-device `lastMeterBw/lastMeterColor` sync inside the canonical writer (`route.ts:355-362`).
+- Idempotency via `readingId` + `classifyMeterWriteReplay`.
+- Site-scoped permissions via `buildAuthorizationContext`.
+
+### 8. Recommended Next Actions (for follow-up tasks — NOT executed here)
+
+1. **Fix the transfer-within-month over-count**: Either (a) stamp transfer-created readings with a distinct `readingType` (e.g. `TRANSFER`) so `findExistingMonthlyReading` skips them and the end-of-month MONTHLY save always INSERTs a new row chaining off the most-recent in-month reading; or (b) modify `findValidPrevReading` to optionally include same-month readings (chain mode) when the writer is recording a "pure" end-of-month MONTHLY save; or (c) modify the canonical writer to skip the upsert entirely when the prior reading is itself a transfer-created row.
+2. **Restore snapshot tables** (`MeterReportSnapshot`, `MeterReportSnapshotRow`) in `schema.prisma` so cycle-close actually freezes billing data.
+3. **Fix `buildMetersReport` to use `SiteAttribute.PaperRateBW/PaperRateColor`** instead of hardcoded `0.5`/`5`.
+4. **Fix `POST /api/v1/meter-readings:224`** `saved.id` → `reading.id`.
+5. **Fix or remove `cycle/[id]/route.ts` and `cycle/[id]/report/route.ts`** — they reference nonexistent `cycleId`/`delta` columns. Either delete them or rewrite against the actual `MeterReading` schema (`readingDate BETWEEN cycle.startDate AND cycle.endDate`, `pagesBw` instead of `delta`).
+6. **Decide on the billing/receipt model**: Add a `Receipt`/`Invoice` table keyed by `(cycleId, siteId)` that snapshots the final `(endMeter - startMeter) × rate` per device when a cycle is closed. Currently there is no canonical "issued receipt" record.
+
+### Files examined (no modifications)
+
+- `prisma/schema.prisma` (lines 1-260, 412-475, 891-925)
+- `src/app/api/itam/meter-readings/route.ts` (426 lines, full)
+- `src/app/api/itam/meter-readings/unread/route.ts` (190 lines, full)
+- `src/app/api/meter/route.ts` (221 lines, full)
+- `src/app/api/meter/reminders/route.ts` (205 lines, full)
+- `src/app/api/cycles/route.ts` (120 lines, full)
+- `src/app/api/cycles/[id]/route.ts` (213 lines, full)
+- `src/app/api/cycles/[id]/report/route.ts` (226 lines, full)
+- `src/app/api/devices/[id]/transfer-with-meter/route.ts` (267 lines, full)
+- `src/app/api/devices/[id]/transfer/route.ts` (114 lines, full)
+- `src/app/api/itam/devices/[id]/transfer/route.ts` (320 lines, full)
+- `src/app/api/v1/meter-readings/route.ts` (262 lines, full)
+- `src/app/api/v1/cycles/route.ts` (169 lines, full)
+- `src/app/api/itam/paper-analytics/route.ts` (369 lines, full)
+- `src/app/api/reports/monthly/route.ts` (61 lines, full)
+- `src/app/api/reports/unified/route.ts` (164 lines, full)
+- `src/lib/meter-logic.ts` (314 lines, full)
+- `src/lib/meter-reading-contract.ts` (223 lines, full)
+- `src/lib/meter-snapshot.ts` (339 lines, full)
+- `src/lib/lifecycle-reading-type.ts` (65 lines, full)
+- `src/modules/reports/monthly-report-builder.ts` (214 lines, full)
+- `src/modules/reports/unified-report-builder.ts` (lines 1-60, 250-473)
+- `src/modules/reports/report-builder.ts` (lines 1-350)
+- `src/components/itam/itam-meter-keyboard.tsx` (lines 1-200, 280-399)
+- `src/components/itam/mobile/mobile-meter-reading.tsx` (lines 1-200)
+- `src/components/itam/cycle-manage-dialog.tsx` (lines 1-120, 258-347)
+- `src/components/itam/cycle-report-dialog.tsx` (lines 1-120)
+- `src/components/itam/reports/meters-report.tsx` (lines 1-120)
+- `src/components/itam/itam-meter-unified.tsx` (lines 470-505)
+- `src/components/itam/itam-meter.tsx` (grep only)
+- `src/components/itam/monthly-report.tsx` (lines 1-60)
+
+Stage Summary: Read-only exploration complete. The transfer-within-month scenario is mishandled by the canonical `/api/itam/meter-readings` writer (upsert + skip-same-month prev lookup) producing a small over-count equal to the sum of all but the last transfer’s deltas. Snapshot/billing pipeline is disabled (missing tables). Cost computation uses hardcoded rates instead of per-site `SiteAttribute` rates. Several cycle routes reference nonexistent `MeterReading` columns and will throw at runtime. No receipt/invoice table exists. No files were modified.
