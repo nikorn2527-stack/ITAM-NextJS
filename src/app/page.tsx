@@ -89,9 +89,8 @@ const MaterialCostReport = dynamic(() =>
 const PMSchedulesPage = dynamic(() =>
   import('@/components/itam/pm-schedules-page').then((m) => m.PMSchedulesPage),
 )
-const MobileShell = dynamic(() =>
-  import('@/components/itam/mobile').then((m) => m.MobileShell),
-)
+// MobileShell — static import (was dynamic, but dynamic failed to load on Vercel)
+import { MobileShell } from '@/components/itam/mobile'
 const SettingsPageV2 = dynamic(() =>
   import('@/components/itam/settings-page-v2').then((m) => m.SettingsPageV2),
 )
