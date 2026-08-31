@@ -14560,3 +14560,97 @@ Stage Summary:
 - Root cause: Rules of Hooks violation (useIsMobile after early return).
 - Secondary fix: middleware dynamic import for Edge Config safety.
 - Build passes, Vercel should auto-redeploy successfully.
+
+---
+
+## Task ID: LINE-OA-QR-SCAN — Auto-create WO from LINE image
+
+**Agent**: orchestrator (main)
+**Task**: User wants LINE OA flow: User → LINE → send asset code or QR image → system opens WO → admin assigns.
+
+### Completed (2 files, commit 2a244f1)
+
+#### New: src/lib/line-image-handler.ts
+Server-side image processing for LINE webhook:
+
+1. **Download image** from LINE Content API (messageId + access token)
+2. **Decode QR/barcode** using jsQR + sharp (pixel extraction)
+3. **Fallback: OCR** using Tesseract.js (read text from asset code label)
+4. **Find device** by code (assetCode, serialNumber, assetSiteCode — exact + suffix match)
+
+Functions:
+- `processLineImage(messageId, accessToken)` → ImageProcessResult
+- `buildImageReplyMessage(result, woNumber?)` → LINE reply messages
+- `findDeviceByCode(code)` → device lookup
+
+#### Updated: src/app/api/line/webhook/route.ts
+- **Previously**: images were IGNORED ("Sticker/image/audio → ignore")
+- **Now**: processes images → decodes QR → finds device → creates WO
+
+Flow when user sends image:
+1. Download image via LINE Content API
+2. Decode QR (jsQR + sharp)
+3. If no QR → OCR (Tesseract.js) to read asset code label
+4. Find device by extracted code
+5. Create WO (status=PENDING, siteCode from device)
+6. Reply with confirmation (WO number + device info)
+7. Audit log entry created
+
+#### Installed: jsqr (server-side QR decode)
+- Same library as frontend QR scanner
+- Runs in Node.js (no browser needed)
+- Uses sharp for image → pixel conversion
+
+### LINE OA Setup (user configures)
+
+**Required AppSetting keys** (Settings → OAuth):
+- `line_channel_access_token` — LINE channel access token
+- `line_channel_secret` — for webhook signature verification
+
+**Webhook URL** (set in LINE Developers Console):
+```
+POST https://your-app.vercel.app/api/line/webhook
+```
+
+### Flow Summary
+
+| Input from User | System Action |
+|----------------|----------------|
+| Text: "IT-00001" | Find device → create WO → reply |
+| QR image | Decode QR → find device → create WO → reply |
+| Photo of asset label | OCR → extract code → find device → create WO → reply |
+| Text: "สถานะ" | Reply latest WO status |
+| Text: "แจ้งซ่อม" | Reply with quick-reply menu |
+
+WO created with:
+- status: PENDING (waits for admin to assign)
+- siteCode: from device's site
+- deviceId: linked to device
+- lineUserId: LINE user ID (for tracking)
+- lineMessageId: for deduplication
+
+### Verification
+- Build: ✓ succeeded (VERCEL=1 mode)
+- jsqr + tesseract.js + sharp installed
+- Image handler compiles
+- Webhook route updated with image handling
+
+### Pushed to GitHub
+- Commit: `2a244f1` on `main` branch
+- 2 files changed (1 new, 1 modified)
+
+### User Action Required
+1. **Configure LINE OA** in Settings → OAuth:
+   - `line_channel_access_token`
+   - `line_channel_secret`
+2. **Set webhook URL** in LINE Developers Console:
+   - `https://itam-next-js.vercel.app/api/line/webhook`
+3. **Create Rich Menu** in LINE OA:
+   - Button: "แจ้งซ่อม" → opens chat
+   - Button: "สแกน QR" → opens camera
+4. **Test**: send QR image or asset code via LINE → WO should auto-create
+
+Stage Summary:
+- LINE OA integration complete: QR scan + text + OCR → auto WO creation.
+- Admin assigns WO via existing WO page (status=PENDING → IN_PROGRESS).
+- Build passes, ready for Vercel deploy.
