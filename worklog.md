@@ -14002,3 +14002,65 @@ Stage Summary:
 - 11 files changed (5 new, 6 modified).
 - Build + API tests pass.
 - Ready for Vercel deploy.
+
+---
+
+## Task ID: GLOSSARY-GENERIC — Remove Org-Specific Terms, Make App Universal
+
+**Agent**: orchestrator (main)
+**Task**: User asked to make the app generic — remove all references to specific organization types (hospital, factory) and org names (PNG TEAM, โรงพยาบาลศูนย์อุดรธานี). App should be universal.
+
+### Completed (23 files, commit 6e8c1fe)
+
+#### New: src/lib/glossary.ts
+Central glossary with standardized generic terms:
+- `ORG_NAME`: 'ชื่อองค์กร' (replaces 'ชื่อโรงพยาบาล')
+- `ORG_SHORT`: 'องค์กร' (replaces 'โรงพยาบาล'/'บริษัท')
+- `SITE`: 'สาขา' (replaces 'โรงพยาบาล'/'โรงงาน' in location context)
+- `STATUS.active`: 'ใช้งาน' (replaces 'Active')
+- `STATUS.inactive`: 'ไม่ใช้งาน' (replaces 'Inactive')
+- Industry labels: general/office/corporate/education/government/healthcare/industrial (all generic)
+- `DEFAULT_STICKER_TEXTS`: generic placeholders
+- `PATTERN_NAMES`: 'แบบแยกหน่วยงาน' (replaces 'แบบโรงพยาบาล')
+- `getTerm()`: industry-aware term lookup (all return generic now)
+
+#### Org-Specific Terms Removed
+
+| Before | After | Files |
+|--------|-------|-------|
+| 'โรงพยาบาลศูนย์อุดรธานี' | 'ชื่อองค์กร' / 'ชื่อสาขา' | sticker-template, document-editor, site-attributes, API comments |
+| 'PNG TEAM' / 'PNG TEAM IT' | dynamic orgProfile.appName (fallback 'องค์กร') | footer, layout, login, dashboard PDF, document-template, seed, maintenance |
+| 'โรงพยาบาล' (industry) | 'สถานพยาบาล' (generic) | org-profile, settings-page-v2, itam-settings |
+| 'โรงงาน' (industry) | 'อุตสาหกรรม' (generic) | org-profile, settings-page-v2, itam-settings |
+| 'แบบโรงพยาบาล (4-3-3-2)' | 'แบบแยกหน่วยงาน (4-3-3-2)' | asset-number-pattern |
+| 'เหมาะสำหรับโรงงาน/บริษัทเล็ก' | 'เหมาะสำหรับองค์กรขนาดเล็ก' | asset-number-pattern |
+| 'ชื่อโรงพยาบาล' (sticker label) | 'ชื่อองค์กร' | itam-sticker-editor |
+| 'ห้ามนำอุปกรณ์ออกจากเขตโรงพยาบาล' | 'ห้ามนำอุปกรณ์ออกจากพื้นที่' | sticker-template |
+
+#### Dynamic Org Name (footer + metadata)
+- Footer now fetches `orgProfile.appName` via `/api/settings/org-profile`
+- Falls back to 'องค์กร' if not configured
+- User sets their own org name in Settings → Organization Profile
+
+#### Verification
+- Build: ✓ succeeded (VERCEL=1 mode, no standalone)
+- 0 occurrences of 'PNG TEAM' in source code
+- 0 occurrences of 'โรงพยาบาล'/'โรงงาน' in user-facing strings
+  (only in glossary.ts comments explaining what was replaced)
+- Industry types now generic: general, office, corporate, education, government, healthcare, industrial
+
+### Impact
+- App is now truly universal — not branded for any specific organization
+- Works for hospitals, factories, offices, schools, government — all generic
+- User configures org name via Settings → Organization Profile
+- Footer/metadata/stickers all use dynamic orgProfile.appName
+
+### Pushed to GitHub
+- Commit: `6e8c1fe` on `main` branch
+- 23 files changed, 292 insertions, 50 deletions
+
+Stage Summary:
+- App is now generic/universal — no org-specific branding.
+- Glossary provides single source of truth for all UI terms.
+- Dynamic org name from OrgProfile (user-configurable).
+- Build succeeds, ready for Vercel deploy.
