@@ -51,7 +51,7 @@ export function Footer() {
     },
     staleTime: 60_000,
   })
-  const orgName = orgProfile?.appName || 'องค์กร'
+  const orgName = orgProfile?.appName || 'ระบบจัดการสินทรัพย์'
   // Note: the live clock now lives in the top-right floating TopBarClock
   // (desktop) and inside the expanded sidebar header. The footer keeps a
   // minimal copyright + page label so it stays short.
@@ -73,7 +73,7 @@ export function Footer() {
       </div>
       <div className="flex items-center gap-1.5">
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#f97316]" />
-        <span>ขับเคลื่อนโดย {orgName}</span>
+        <span>Powered by PNG TEAM</span>
       </div>
     </footer>
   )
