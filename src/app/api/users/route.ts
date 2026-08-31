@@ -18,6 +18,7 @@ import {
   type AuthUser,
 } from '@/lib/rbac'
 import { getCurrentUser } from '@/lib/auth-session'
+import { requireAuth } from '@/lib/auth-middleware'
 
 const VALID_ROLES = [
   'admin',
@@ -104,9 +105,16 @@ function publicUser(u: {
 
 /** Require admin — returns AuthUser or null. */
 async function requireAdmin(req: NextRequest): Promise<AuthUser | null> {
+  // Try Bearer token first (ITAM JWT auth)
+  const bearerAuth = await requireAuth(req, 'USER_MANAGE')
+  if (bearerAuth.ok) {
+    return bearerAuth.user as unknown as AuthUser
+  }
+  // Fall back to cookie session (legacy auth)
   const user = await getCurrentUser(req)
   if (!user) return null
-  if (user.role !== 'admin' && !user.permissions.includes('*')) return null
+  // Accept both 'admin' and 'superadmin' roles
+  if (user.role !== 'admin' && user.role !== 'superadmin' && !user.permissions.includes('*')) return null
   return user
 }
 
