@@ -118,6 +118,21 @@ export async function GET() {
     services.push({ name: 'supabase-realtime', status: 'skipped' })
   }
 
+  // ── 4b. Cloudflare R2 (optional) ──
+  if (
+    process.env.R2_ACCOUNT_ID &&
+    process.env.R2_ACCESS_KEY_ID &&
+    process.env.R2_BUCKET_NAME
+  ) {
+    services.push({
+      name: 'cloudflare-r2',
+      status: 'up',
+      detail: process.env.R2_BUCKET_NAME,
+    })
+  } else {
+    services.push({ name: 'cloudflare-r2', status: 'skipped' })
+  }
+
   // ── 5. Edge Config (optional) ──
   if (process.env.EDGE_CONFIG) {
     services.push({
