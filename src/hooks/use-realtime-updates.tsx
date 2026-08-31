@@ -1,15 +1,18 @@
 'use client'
 
 /**
- * useRealtimeUpdates — Polling-based update hook (replaces SSE).
+ * useRealtimeUpdates — Hybrid realtime hook.
  *
- * Previously this connected to /api/itam/events via EventSource (SSE).
- * SSE doesn't work on Vercel Hobby (60s function timeout) so we switched
- * to polling. The hook calls /api/itam/updates?since=<ts> every 60s
- * and invalidates the relevant TanStack Query caches.
+ * Primary: Supabase Realtime (latency < 100ms, no polling).
+ * Fallback: Polling every 60s (if Supabase not configured or disconnected).
+ *
+ * Why hybrid:
+ *   - Supabase Free: 200 concurrent connections (enough for 10-20 users)
+ *   - If realtime disabled (env not set) → falls back to polling
+ *   - If connection drops → polling kicks in automatically
  *
  * Returns:
- *   • status: 'polling' | 'closed'
+ *   • status: 'realtime' | 'polling' | 'closed'
  *   • lastEvent: the most recent RealtimeEvent | null
  *   • lastEventAt: epoch ms
  */
@@ -17,8 +20,12 @@
 import * as React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth-store'
+import {
+  isRealtimeEnabled,
+  subscribeToTables,
+} from '@/lib/supabase-realtime-client'
 
-export type RealtimeStatus = 'polling' | 'closed'
+export type RealtimeStatus = 'realtime' | 'polling' | 'closed'
 
 export interface RealtimeEventPayload {
   type:
@@ -41,7 +48,43 @@ interface RealtimeState {
   lastEventAt: number
 }
 
-const POLL_INTERVAL = 60_000 // 60 seconds
+const POLL_INTERVAL = 60_000 // 60 seconds (fallback only)
+const POLL_FALLBACK_DELAY = 5_000 // wait 5s before falling back to polling
+
+// Map DB table names → realtime event types + query keys to invalidate
+const TABLE_CONFIG: Record<string, {
+  events: RealtimeEventPayload['type'][]
+  invalidate: string[][]
+}> = {
+  Device: {
+    events: ['device-added', 'device-updated', 'device-deleted'],
+    invalidate: [['devices'], ['dashboard']],
+  },
+  MeterReading: {
+    events: ['meter-reading'],
+    invalidate: [['meter'], ['devices'], ['dashboard']],
+  },
+  WorkOrder: {
+    events: ['work-order'],
+    invalidate: [['work-orders'], ['dashboard']],
+  },
+  StockItem: {
+    events: ['stock'],
+    invalidate: [['stock-items'], ['dashboard']],
+  },
+  StockTransaction: {
+    events: ['stock'],
+    invalidate: [['stock-items'], ['stock-transactions']],
+  },
+  Cycle: {
+    events: ['cycle'],
+    invalidate: [['active-cycle'], ['cycles']],
+  },
+  AuditLog: {
+    events: ['audit'],
+    invalidate: [['audit'], ['notifications']],
+  },
+}
 
 export function useRealtimeUpdates() {
   const qc = useQueryClient()
@@ -61,9 +104,42 @@ export function useRealtimeUpdates() {
 
     let closed = false
     let pollTimer: ReturnType<typeof setTimeout> | null = null
+    let realtimeUnsub: (() => void) | null = null
     let lastTs = Date.now()
 
-    setState((s) => ({ ...s, status: 'polling' }))
+    function handleTableChange(
+      table: string,
+      payload: {
+        eventType: 'INSERT' | 'UPDATE' | 'DELETE' | '*'
+        new: Record<string, unknown>
+        old: Record<string, unknown>
+      },
+    ) {
+      const config = TABLE_CONFIG[table]
+      if (!config) return
+
+      // Build event payload
+      const eventType = config.events[0] // primary event for this table
+      const id = String(payload.new?.id ?? payload.old?.id ?? '')
+      const event: RealtimeEventPayload = {
+        type: eventType,
+        entity: table,
+        id,
+        ts: Date.now(),
+      }
+
+      setState((s) => ({
+        ...s,
+        status: 'realtime',
+        lastEvent: event,
+        lastEventAt: Date.now(),
+      }))
+
+      // Invalidate relevant query caches
+      for (const queryKey of config.invalidate) {
+        qc.invalidateQueries({ queryKey })
+      }
+    }
 
     async function poll() {
       if (closed || !token) return
@@ -82,6 +158,7 @@ export function useRealtimeUpdates() {
           lastTs = latest.ts ?? Date.now()
           setState((s) => ({
             ...s,
+            status: 'polling',
             lastEvent: latest,
             lastEventAt: Date.now(),
           }))
@@ -119,11 +196,39 @@ export function useRealtimeUpdates() {
       }
     }
 
-    poll()
+    function startPolling() {
+      if (closed) return
+      setState((s) => ({ ...s, status: 'polling' }))
+      poll()
+    }
+
+    // ── Primary: Try Supabase Realtime ──
+    if (isRealtimeEnabled()) {
+      const tables = Object.keys(TABLE_CONFIG)
+      realtimeUnsub = subscribeToTables(tables, handleTableChange)
+
+      // Fallback: also poll every 60s in case realtime misses something
+      // (Supabase Free can drop connections under load)
+      pollTimer = setTimeout(poll, POLL_INTERVAL)
+
+      // If realtime doesn't connect within 5s, mark status as polling
+      setTimeout(() => {
+        if (!closed) {
+          setState((s) => ({
+            ...s,
+            status: s.status === 'realtime' ? 'realtime' : 'polling',
+          }))
+        }
+      }, POLL_FALLBACK_DELAY)
+    } else {
+      // ── Fallback: Polling only (Supabase not configured) ──
+      startPolling()
+    }
 
     return () => {
       closed = true
       if (pollTimer) clearTimeout(pollTimer)
+      if (realtimeUnsub) realtimeUnsub()
       setState((s) => ({ ...s, status: 'closed' }))
     }
   }, [isAuthenticated, token, qc])
@@ -132,11 +237,11 @@ export function useRealtimeUpdates() {
 }
 
 /**
- * Singleton hook — keeps ONE polling loop alive for the whole app
+ * Singleton hook — keeps ONE realtime/polling loop alive for the whole app
  * (mounted once in `RealtimeProvider` at the AppShell level).
  *
  * Other components (e.g. the Sidebar status indicator) can read the
- * status without each opening their own polling loop.
+ * status without each opening their own connection.
  *
  * Implementation: a tiny external store backed by module-level state
  * updated by the single `useRealtimeUpdates()` instance inside
@@ -159,7 +264,7 @@ export function useRealtimeStatus(): RealtimeStatus {
 /**
  * Mount once at the app shell (wrap the authenticated app).
  *
- * Wires the single `useRealtimeUpdates()` polling loop into the
+ * Wires the single `useRealtimeUpdates()` loop into the
  * module-level external store so every `useRealtimeStatus()` subscriber
  * sees the same status without each running its own fetcher.
  */
