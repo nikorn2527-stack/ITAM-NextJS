@@ -62,6 +62,9 @@ interface CycleReportAnomaly {
   type: 'RESET' | 'HIGH_DELTA'
 }
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 /**
  * GET /api/cycles/[id]/report
  *

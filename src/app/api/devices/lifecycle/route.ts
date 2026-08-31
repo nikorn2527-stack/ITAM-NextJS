@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 /**
  * Lifecycle / replacement-planning endpoint.
  *

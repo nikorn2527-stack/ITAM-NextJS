@@ -11,15 +11,21 @@ import { db } from '@/lib/db'
  *   "crons": [{ "path": "/api/cron/keepalive", "schedule": "0 9 * * 1" }]
  *
  * Security: requires CRON_SECRET header (set in Vercel env vars).
+ * In development (no CRON_SECRET set), allows access without auth
+ * so manual testing works locally.
  */
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const cronSecret = process.env.CRON_SECRET
+  // If CRON_SECRET is set, require it. If not set (dev), allow without auth.
+  if (cronSecret) {
+    const authHeader = req.headers.get('authorization')
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
   }
   try {
     await db.$queryRaw`SELECT 1`
-    return NextResponse.json({ ok: true, ts: Date.now() })
+    return NextResponse.json({ ok: true, ts: Date.now(), dev: !cronSecret })
   } catch (err) {
     console.error('Keepalive failed:', err)
     return NextResponse.json(

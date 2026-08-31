@@ -40,6 +40,11 @@ function isSecretKey(key: string): boolean {
   return SECRET_KEY_PATTERNS.some((re) => re.test(key))
 }
 
+// Cache settings for 5 minutes — most config is static.
+// Note: this only affects the GET response; writes (PUT) will
+// invalidate the cache via revalidateTag or natural TTL expiry.
+export const revalidate = 300
+
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) {

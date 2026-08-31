@@ -13,6 +13,9 @@ import {
   type PersistResult,
 } from '@/lib/device-import-persistence'
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 /**
  * POST /api/itam/devices/import
  *

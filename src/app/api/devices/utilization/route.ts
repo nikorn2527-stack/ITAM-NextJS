@@ -75,6 +75,9 @@ interface UtilizationSummary {
   lowDevice: DeviceUtilization | null
 }
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 /**
  * Compute month list to display based on the range:
  * - month: last 3 months (current + 2 prior) for trend visibility

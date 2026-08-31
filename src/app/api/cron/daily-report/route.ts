@@ -51,10 +51,14 @@ interface DailyReportData {
 }
 
 export async function GET(req: NextRequest) {
-  // Auth check
-  const authHeader = req.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Auth check — if CRON_SECRET is set, require it.
+  // In development (no CRON_SECRET), allow without auth for manual testing.
+  const cronSecret = process.env.CRON_SECRET
+  if (cronSecret) {
+    const authHeader = req.headers.get('authorization')
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
   }
 
   try {

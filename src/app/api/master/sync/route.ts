@@ -4,6 +4,9 @@ import { logAudit } from '@/lib/audit'
 
 // POST /api/master/sync?type=model|dept|labels
 // Backfills parentRef / departmentCode / displayLabel on existing devices & master items.
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)

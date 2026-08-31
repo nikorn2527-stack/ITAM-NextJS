@@ -19,6 +19,9 @@ const VALID_TYPES = new Set<ReportType>([
   'work-order', 'stock', 'devices', 'all',
 ])
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 export async function GET(req: NextRequest) {
   const unavailable = moduleUnavailableResponse('reports')
   if (unavailable) return unavailable

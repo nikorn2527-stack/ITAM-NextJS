@@ -33,6 +33,11 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
 import { parseAllowedSites, normalizeSiteCode } from '@/lib/site-scope'
 
+// Cache master data for 5 minutes — it changes infrequently.
+// This reduces DB load significantly since the device form, sidebar,
+// and multiple pages all fetch master data on every load.
+export const revalidate = 300
+
 // ─────────────────────────────────────────────────────────────
 // GET handler
 // ─────────────────────────────────────────────────────────────

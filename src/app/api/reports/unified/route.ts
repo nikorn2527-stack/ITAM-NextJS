@@ -1,3 +1,6 @@
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 /**
  * GET /api/reports/unified?group=<group>&month=YYYY-MM&site=CODE|all
  *

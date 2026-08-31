@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { GoogleSheetsSync, type SheetApp } from '@/lib/google-sheets-sync'
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 /**
  * GET /api/sync/google-sheets?app=itam&gid=0
  *
