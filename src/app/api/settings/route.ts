@@ -51,7 +51,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
   try {
-    const settings = await db.appSetting.findMany()
+    const settings = await db.appSetting.findMany({
+      select: { key: true, value: true },
+    })
     const map: Record<string, string> = {}
     for (const s of settings) {
       // SECURITY: never expose secret-pattern keys via the public map.
@@ -86,7 +88,9 @@ export async function PUT(req: NextRequest) {
       }),
     )
     await Promise.all(ops)
-    const settings = await db.appSetting.findMany()
+    const settings = await db.appSetting.findMany({
+      select: { key: true, value: true },
+    })
     const map: Record<string, string> = {}
     for (const s of settings) {
       if (isSecretKey(s.key)) continue

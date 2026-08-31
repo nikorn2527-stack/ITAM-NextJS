@@ -17,7 +17,9 @@ export const maxDuration = 60
  */
 export async function POST(_req: NextRequest) {
   try {
-    const sites = await db.siteAttribute.findMany()
+    const sites = await db.siteAttribute.findMany({
+      select: { id: true, SiteCode: true, SiteName: true, PaperRateBW: true, PaperRateColor: true },
+    })
     let created = 0
     let updated = 0
     let skipped = 0

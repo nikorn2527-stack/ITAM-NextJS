@@ -22,7 +22,13 @@
     "test:concurrency": "npx tsx tests/auth/concurrency.test.ts",
     "test:all": "bun run test:auth && bun run test:integration && bun run test:concurrency",
     "test:sync": "vitest run tests/sync/",
-    "check:modules": "node scripts/check-module-manifest.mjs"
+    "check:modules": "node scripts/check-module-manifest.mjs",
+    "db:backup": "bun scripts/backup-db.ts",
+    "db:restore": "bun scripts/restore-db.ts",
+    "db:safe-migrate": "bash scripts/safe-migrate.sh",
+    "db:safe-push": "bash scripts/safe-migrate.sh --push",
+    "db:safe-migrate:prod": "bash scripts/safe-migrate.sh --production",
+    "check:drift": "bun scripts/check-schema-drift.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",

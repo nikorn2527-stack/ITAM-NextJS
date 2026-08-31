@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
 
     const [sites, rates, devices, activeCycle] = await Promise.all([
       db.site.findMany({ orderBy: { code: 'asc' } }),
-      db.siteRate.findMany(),
+      db.siteRate.findMany({ select: { siteCode: true, bwRate: true, colorRate: true } }),
       db.device.findMany({
         select: {
           id: true,
