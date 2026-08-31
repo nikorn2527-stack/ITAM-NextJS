@@ -81,8 +81,10 @@ import {
   Pin,
   Star,
   ArrowLeft,
+  Sparkles,
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
 import {
   DEFAULT_TEMPLATES,
   TEMPLATE_TYPES,
@@ -1672,8 +1674,37 @@ function WorkOrderTab() {
 export function TemplatesPage() {
   const [tab, setTab] = React.useState<TabKey>('sticker')
   const setActivePage = useAppStore((s) => s.setActivePage)
+  const [seeding, setSeeding] = React.useState(false)
+  const [seedResult, setSeedResult] = React.useState<string | null>(null)
 
   const activeTab = TABS.find((t) => t.key === tab) ?? TABS[0]
+
+  const handleSeed = async () => {
+    setSeeding(true)
+    setSeedResult(null)
+    try {
+      const token = useAuthStore.getState().token
+      const res = await fetch('/api/templates/seed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setSeedResult(`✓ ${data.message}`)
+        // Reload page after 2s to show new templates
+        setTimeout(() => window.location.reload(), 2000)
+      } else {
+        setSeedResult(`✗ ${data.error || 'Seed failed'}`)
+      }
+    } catch (err) {
+      setSeedResult(`✗ ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setSeeding(false)
+    }
+  }
 
   return (
     <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-6 p-4 md:p-6">
@@ -1682,16 +1713,38 @@ export function TemplatesPage() {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-        className="flex-shrink-0 space-y-1"
+        className="flex flex-shrink-0 items-start justify-between gap-4"
       >
-        <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
-          📄 เทมเพลต
-        </h1>
-        <p className="text-sm text-muted-foreground md:text-base">
-          จัดการเทมเพลตทั้งหมดในระบบ — สติกเกอร์ · เอกสาร PDF · ใบงาน ·
-          ใบเบิก/ใบสั่งซื้อ
-        </p>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+            📄 เทมเพลต
+          </h1>
+          <p className="text-sm text-muted-foreground md:text-base">
+            จัดการเทมเพลตทั้งหมดในระบบ — สติกเกอร์ · เอกสาร PDF · ใบงาน ·
+            ใบเบิก/ใบสั่งซื้อ
+          </p>
+        </div>
+        <Button
+          onClick={handleSeed}
+          disabled={seeding}
+          variant="outline"
+          size="sm"
+          className="shrink-0 border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10"
+        >
+          <Sparkles className={`mr-1.5 h-4 w-4 ${seeding ? 'animate-pulse' : ''}`} />
+          {seeding ? 'กำลังติดตั้ง...' : 'ติดตั้งเทมเพลตเริ่มต้น'}
+        </Button>
       </motion.div>
+
+      {seedResult && (
+        <div className={`rounded-lg border p-3 text-sm ${
+          seedResult.startsWith('✓')
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300'
+            : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300'
+        }`}>
+          {seedResult}
+        </div>
+      )}
 
       {/* Type tabs — sticker / document / work-order */}
       <div className="flex flex-shrink-0 flex-wrap gap-2">

@@ -90,7 +90,7 @@ export async function GET() {
       หน้านี้จะรีเฟรชอัตโนมัติทุก 60 วินาที
     </p>
     <div class="footer">
-      <p>IT Asset Management — Powered by องค์กร</p>
+      <p>IT Asset Management — Powered by PNG TEAM</p>
     </div>
   </div>
 </body>
