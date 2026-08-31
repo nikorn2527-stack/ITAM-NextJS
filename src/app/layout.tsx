@@ -18,17 +18,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "IT Asset Management — PNG TEAM",
+  title: "IT Asset Management",
   description:
-    "ระบบจัดการอุปกรณ์ IT (ITAM) — สำหรับ PNG TEAM. จัดการอุปกรณ์, จดมิเตอร์, วิเคราะห์การใช้กระดาษ และตั้งค่าแอป",
+    "ระบบจัดการสินทรัพย์ IT (ITAM) — จัดการอุปกรณ์, จดมิเตอร์, วิเคราะห์การใช้กระดาษ และตั้งค่าแอป",
   keywords: [
     "IT Asset Management",
     "ITAM",
-    "PNG TEAM",
+    "Asset Tracking",
     "Next.js",
     "จัดการอุปกรณ์",
+    "จดมิเตอร์",
   ],
-  authors: [{ name: "PNG TEAM" }],
+  authors: [{ name: "ITAM" }],
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

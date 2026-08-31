@@ -83,11 +83,12 @@ interface AssetPattern {
 // ────────────────────────────────────────────────────────────
 const INDUSTRY_OPTIONS = [
   { value: 'general', label: 'ทั่วไป' },
-  { value: 'hospital', label: 'โรงพยาบาล' },
-  { value: 'factory', label: 'โรงงาน' },
   { value: 'office', label: 'สำนักงาน' },
-  { value: 'school', label: 'สถาบันการศึกษา' },
+  { value: 'corporate', label: 'องค์กร' },
+  { value: 'education', label: 'สถาบันการศึกษา' },
   { value: 'government', label: 'หน่วยงานรัฐ' },
+  { value: 'healthcare', label: 'สถานพยาบาล' },
+  { value: 'industrial', label: 'อุตสาหกรรม' },
 ]
 
 const TIMEZONE_OPTIONS = [
@@ -778,7 +779,7 @@ function CreatePatternDialog({
                 id="pat-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="เช่น แบบโรงงาน, แบบโรงพยาบาล"
+                placeholder="เช่น แบบง่าย, แบบแยกหน่วยงาน"
               />
             </div>
             <div className="space-y-1.5">
@@ -868,7 +869,7 @@ function CreatePatternDialog({
               id="pat-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="อธิบายรูปแบบสั้นๆ เช่น เหมาะสำหรับโรงงาน"
+              placeholder="อธิบายรูปแบบสั้นๆ เช่น เหมาะสำหรับองค์กรขนาดเล็ก"
               rows={2}
             />
           </div>

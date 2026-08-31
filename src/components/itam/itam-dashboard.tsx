@@ -623,7 +623,7 @@ tr:nth-child(even) td { background: #fafbfc; }
 </style></head><body>
 <button class="print-btn no-print" onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button>
 <div class="header">
-  <div><div class="org">PNG TEAM</div><div class="subtitle">ITAM Dashboard Report <span style="color:#f97316;font-weight:600">⚡ ${data?.queryTimeMs ?? 0}ms</span></div></div>
+  <div><div class="org">องค์กร</div><div class="subtitle">ITAM Dashboard Report <span style="color:#f97316;font-weight:600">⚡ ${data?.queryTimeMs ?? 0}ms</span></div></div>
   <div class="meta"><div>วันที่ออกรายงาน: ${esc(generatedAt)}</div><div>ออกโดย: admin@example.com</div></div>
 </div>
 <h2 class="section">📊 สรุปตัวชี้วัดหลัก (KPI)</h2>
@@ -632,7 +632,7 @@ ${kpiHtml}
 <table><thead><tr><th>ประเภท</th><th class="num">จำนวน</th><th class="num">สัดส่วน</th></tr></thead><tbody>${typeRows || '<tr><td colspan="3" class="num">—</td></tr>'}</tbody></table>
 <h2 class="section">🏢 อุปกรณ์ตามสาขา</h2>
 <table><thead><tr><th>รหัสสาขา</th><th>ชื่อสาขา</th><th class="num">ทั้งหมด</th><th class="num">ใช้งาน</th><th class="num">กระดาษ (แผ่น)</th></tr></thead><tbody>${siteRows || '<tr><td colspan="5" class="num">—</td></tr>'}</tbody></table>
-<div class="footer"><div><span class="brand">PNG TEAM</span> — IT Asset Management</div><div>หน้า 1 · ${esc(generatedAt)}</div></div>
+<div class="footer"><div><span class="brand">องค์กร</span> — IT Asset Management</div><div>หน้า 1 · ${esc(generatedAt)}</div></div>
 <script>window.addEventListener('load', function () { setTimeout(function () { try { window.print(); } catch (e) {} }, 250); });</script>
 </body></html>`
     win.document.open()

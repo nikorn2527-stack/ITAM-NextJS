@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
     // non-superadmin with no Sites → return empty
     // explicit site=CODE → validate against user's scope (404 if out-of-scope)
     //
-    // NOTE: Device.site stores the Thai site NAME (e.g. "โรงพยาบาลศูนย์อุดรธานี"),
+    // NOTE: Device.site stores the Thai site NAME (e.g. "ชื่อสาขา (e.g. สำนักงานใหญ่)"),
     // not the site CODE (e.g. "UDH"). So when the user picks a site code from
     // the dropdown, we must resolve it to the Thai name before filtering.
     if (ctx.isSuperAdmin || ctx.globalRole === 'admin') {

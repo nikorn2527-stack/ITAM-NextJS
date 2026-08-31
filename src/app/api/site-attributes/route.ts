@@ -33,7 +33,7 @@ export async function GET() {
  *
  * Body:
  *   siteCode     — e.g. "UDH", "NKP" (required, unique, uppercase)
- *   siteName     — e.g. "โรงพยาบาลศูนย์อุดรธานี" (required)
+ *   siteName     — e.g. "ชื่อสาขา (e.g. สำนักงานใหญ่)" (required)
  *   lineOa       — LINE OA ID/Token (optional)
  *   hotline      — เบอร์ติดต่อ (optional)
  *   paperRateBw  — ฿/แผ่น ขาวดำ (optional, default 0.5)

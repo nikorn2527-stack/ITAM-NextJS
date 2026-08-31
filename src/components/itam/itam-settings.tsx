@@ -1012,11 +1012,12 @@ function AppCustomizeTab() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="general">ทั่วไป</SelectItem>
-                <SelectItem value="hospital">โรงพยาบาล</SelectItem>
-                <SelectItem value="factory">โรงงาน</SelectItem>
                 <SelectItem value="office">สำนักงาน</SelectItem>
-                <SelectItem value="school">สถาบันการศึกษา</SelectItem>
+                <SelectItem value="corporate">องค์กร</SelectItem>
+                <SelectItem value="education">สถาบันการศึกษา</SelectItem>
                 <SelectItem value="government">หน่วยงานรัฐ</SelectItem>
+                <SelectItem value="healthcare">สถานพยาบาล</SelectItem>
+                <SelectItem value="industrial">อุตสาหกรรม</SelectItem>
               </SelectContent>
             </Select>
           </div>
