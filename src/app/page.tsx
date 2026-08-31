@@ -124,6 +124,10 @@ export default function Home() {
   const isBooting = useAuthStore((s) => s.isBooting)
   const checkAuth = useAuthStore((s) => s.checkAuth)
   const [bootDone, setBootDone] = React.useState(false)
+  // Mobile detection hook — MUST be called before any early returns
+  // (Rules of Hooks: hooks can't be conditional)
+  const isMobileDevice = useIsMobile()
+  const showMobileMode = activePage === 'mobile' || isMobileDevice
 
   // ── Detect ?token= from email links (register/reset) ──
   // When present, we render the appropriate auth page directly (bypassing
@@ -244,11 +248,10 @@ export default function Home() {
   }
 
   // ── Auto-detect mobile device ──
-  // If the user is on a mobile device (narrow viewport OR mobile UA),
-  // auto-switch to MobileShell. User can override via "โหมดมือถือ" button.
-  // This runs AFTER auth check (so desktop login page still shows on desktop).
-  const isMobileDevice = useIsMobile()
-  const showMobileMode = activePage === 'mobile' || isMobileDevice
+  // showMobileMode is computed above (before early returns) to comply with
+  // Rules of Hooks. It's true when:
+  //   1. User explicitly clicks "โหมดมือถือ" button (activePage === 'mobile')
+  //   2. Auto-detected as mobile device (isMobileDevice === true)
 
   // ── If URL has ?token=xxx → render the appropriate auth page ──
   // This takes priority over both "not authenticated" (login) and
