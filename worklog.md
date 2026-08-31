@@ -13894,3 +13894,111 @@ Stage Summary:
 - Realtime + KV rate limiting + Edge Config flags + maintenance mode + Supabase Storage.
 - Build + lint + API tests all pass.
 - Ready for Vercel deploy with full infrastructure.
+
+---
+
+## Task ID: R2-APPLE-OAUTH-PERFORMANCE — Cloudflare R2 + Apple OAuth + Performance
+
+**Agent**: orchestrator (main)
+**Task**: User asked for Cloudflare R2 (not signed up yet, will do for latency), system performance optimization, and OAuth support for Gmail + Apple + LINE.
+
+### Completed (11 files, commit 1146672)
+
+#### 1. Cloudflare R2 Storage (no egress fees — 10GB free)
+- **New**: `src/lib/r2-storage.ts` — S3-compatible API via @aws-sdk/client-s3
+  - uploadFile, getFileUrl, deleteFile, fileExists, uploadImage, getSignedUrl
+  - Default folders: wo-photos, device-images, stickers, signatures, exports
+- **Upgraded**: `src/lib/storage.ts` — unified abstraction layer
+  - Auto-selects: R2 → Vercel Blob → Supabase → in-memory
+  - Single API regardless of provider
+  - Works in dev (no storage) + prod (any provider)
+
+#### 2. Apple Sign In OAuth
+- **New**: `src/app/api/auth/oauth/apple/route.ts` — initiates Apple Sign In
+  - Uses response_mode=form_post (Apple requirement)
+  - Anti-CSRF state cookie
+- **New**: `src/app/api/auth/oauth/apple/callback/route.ts`
+  - Handles form_post callback
+  - Generates client_secret JWT (ES256 signed with Apple private key)
+  - Exchanges code for tokens
+  - Existing user → JWT → redirect home
+  - New user → create pending → redirect to pending page
+- **Updated**: `src/app/api/auth/oauth/status/route.ts` — now reports apple field
+- **Schema**: Added User.googleSub + User.appleSub + User.source (with indexes)
+
+#### 3. Performance Optimizations
+- **New**: `src/lib/db-optimize.ts`
+  - `warmupConnection()` — pre-warm DB pool on cold start
+  - `batchCount()` — parallel count queries (N round-trips → 1)
+  - `parallelQueries()` — Promise.all for independent reads
+  - `transactionWrite()` — atomic writes
+  - `cleanupOldRecords()` — batch delete (avoids table lock)
+  - `getConnectionStats()` — monitoring helper
+
+#### 4. Health Check Upgrade
+- Now reports 6 services: database, vercel-blob, vercel-kv, supabase-realtime, **cloudflare-r2**, edge-config
+
+#### 5. .env.example Updates
+- R2 env vars: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL
+- Apple OAuth env vars: OAUTH_APPLE_CLIENT_ID, OAUTH_APPLE_TEAM_ID, OAUTH_APPLE_KEY_ID, OAUTH_APPLE_PRIVATE_KEY, OAUTH_APPLE_REDIRECT_URL
+
+### OAuth Providers Status
+
+| Provider | Status | Config Keys |
+|----------|--------|-------------|
+| Google | ✅ Routes exist | oauth_google_client_id, oauth_google_client_secret |
+| Apple | ✅ NEW — routes added | oauth_apple_client_id, oauth_apple_team_id, oauth_apple_key_id, oauth_apple_private_key |
+| LINE | ✅ Routes exist | oauth_line_channel_id, oauth_line_channel_secret |
+| Telegram | ✅ Routes exist | oauth_telegram_bot_token |
+
+All configurable via Settings → OAuth/External Login (AppSetting table).
+
+### Storage Provider Priority
+
+```
+1. Cloudflare R2 (preferred — no egress fees, 10GB free)
+   ↓ (if not configured)
+2. Vercel Blob (1GB free, integrated)
+   ↓ (if not configured)
+3. Supabase Storage (1GB free, RLS)
+   ↓ (if not configured)
+4. In-memory (dev only — no persistence)
+```
+
+### Verification (all passed)
+- Build: ✓ succeeded
+- /api/health: 200 + 6 service checks (770ms — DB cold start, will be faster after warmup)
+- /api/auth/oauth/status: 200 + { google: false, apple: false, line: false, telegram: false }
+- /api/itam/auth/login: 200 + JWT
+- /api/dashboard: 200 + real data
+
+### Pushed to GitHub
+- Commit: `1146672` on `main` branch
+
+### User Setup Steps
+
+**Cloudflare R2 (when ready):**
+1. Sign up: https://dash.cloudflare.com → R2 (free 10GB)
+2. Create bucket: 'itam-uploads'
+3. Create API token: R2 → Manage R2 API Tokens
+4. Set env vars: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME
+5. (Optional) Custom domain: R2 → Settings → Custom Domain → set R2_PUBLIC_URL
+
+**Apple Sign In:**
+1. Apple Developer: https://developer.apple.com → Certificates, Identifiers & Profiles
+2. Create Services ID (e.g. com.yourapp.signin)
+3. Note Team ID (10 chars from membership)
+4. Create Key (Sign In with Apple enabled)
+5. Configure in Settings → OAuth/External Login
+
+**Google + LINE:**
+- Already configured via Settings → OAuth/External Login
+- Just need Client ID + Secret from Google Cloud Console / LINE Developers
+
+Stage Summary:
+- Cloudflare R2 storage integrated (waiting for user to sign up).
+- Apple OAuth added (Google + LINE + Telegram already existed).
+- Performance optimizations: DB warmup, batch queries, parallel execution.
+- 11 files changed (5 new, 6 modified).
+- Build + API tests pass.
+- Ready for Vercel deploy.
