@@ -28,15 +28,16 @@
 
 import * as React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut } from 'lucide-react'
+import { Wrench, ClipboardList, Gauge, PackageOpen, QrCode, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { MobileRepairRequest } from './mobile-repair-request'
 import { MobileMyWork } from './mobile-my-work'
 import { MobileMeterReading } from './mobile-meter-reading'
 import { MobileStockOut } from './mobile-stock-out'
+import { MobileQRScan } from './mobile-qr-scan'
 
-export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock'
+export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock' | 'scan'
 
 interface NavItem {
   id: MobileTab
@@ -45,6 +46,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { id: 'scan',     label: 'สแกน',      icon: QrCode },
   { id: 'repair',   label: 'แจ้งซ่อม',   icon: Wrench },
   { id: 'my-work',  label: 'งานของฉัน', icon: ClipboardList },
   { id: 'meter',    label: 'จดมิเตอร์',  icon: Gauge },
@@ -52,6 +54,7 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 const HEADER_TITLE: Record<MobileTab, string> = {
+  scan: 'สแกน QR / Barcode',
   repair: 'แจ้งซ่อม',
   'my-work': 'งานของฉัน',
   meter: 'จดมิเตอร์',
@@ -59,7 +62,7 @@ const HEADER_TITLE: Record<MobileTab, string> = {
 }
 
 export function MobileShell() {
-  const [tab, setTab] = React.useState<MobileTab>('repair')
+  const [tab, setTab] = React.useState<MobileTab>('scan')
   const setActivePage = useAppStore((s) => s.setActivePage)
 
   return (
@@ -100,6 +103,7 @@ export function MobileShell() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
             >
+              {tab === 'scan' && <MobileQRScan />}
               {tab === 'repair' && <MobileRepairRequest />}
               {tab === 'my-work' && <MobileMyWork />}
               {tab === 'meter' && <MobileMeterReading />}
@@ -125,7 +129,7 @@ export function MobileShell() {
               onClick={() => setTab(item.id)}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors',
+                'flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors',
                 active
                   ? 'text-orange-500'
                   : 'text-muted-foreground hover:text-foreground',
