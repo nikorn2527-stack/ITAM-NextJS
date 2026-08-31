@@ -1,160 +1,204 @@
 /**
- * Storage Abstraction Layer — รองรับการ swap storage provider
+ * storage.ts — Unified storage abstraction layer.
  *
- * ผู้ใช้ขอให้เก็บรูปที่ Google Drive ก่อน (ไม่รู้ค่าใช้จ่าย Supabase)
- * แต่ต้องสามารถ swap ไป Supabase หรือ local ได้ในอนาคต
+ * Automatically picks the best available storage provider:
+ *   1. Cloudflare R2 (preferred — no egress fees, 10GB free, global CDN)
+ *   2. Vercel Blob (fallback — 1GB free, integrated with Vercel)
+ *   3. Supabase Storage (fallback — 1GB free, RLS support)
+ *   4. In-memory (dev only — no persistence)
  *
- * การใช้งาน:
- *   import { StorageProvider, uploadFile, getPublicUrl } from '@/lib/storage'
+ * This lets the app work in any environment without code changes:
+ *   - Dev (no storage configured): in-memory
+ *   - Vercel (Blob configured): Vercel Blob
+ *   - Production (R2 configured): Cloudflare R2
  *
- *   const url = await uploadFile(file, 'work-orders/before')
- *   // → คืน URL ที่เข้าถึงได้ (Google Drive URL หรือ Supabase URL หรือ local path)
+ * Usage:
+ *   import { uploadImage, getFileUrl, deleteFile, getStorageProvider } from '@/lib/storage'
  *
- * การเปลี่ยน provider:
- *   1. ไปที่ Settings → ทั่วไป → Storage Provider
- *   2. เลือก: google-drive | supabase | local
- *   3. ตั้งค่า credentials ใน AppSetting
- *
- * ข้อมูลเก่าที่เป็น Google Drive URL จะยังเข้าถึงได้ผ่าน URL เดิม
- * (ไม่ต้องย้ายไฟล์ — แค่เปลี่ยน provider สำหรับไฟล์ใหม่)
+ *   const provider = getStorageProvider()  // 'r2' | 'vercel-blob' | 'supabase' | 'memory'
+ *   const { url } = await uploadImage(buffer, 'jpg', 'wo-photos')
  */
 
-import { db } from '@/lib/db'
+import { isR2Configured, uploadFile as r2Upload, getFileUrl as r2GetUrl, deleteFile as r2Delete, uploadImage as r2UploadImage } from './r2-storage'
+import { isBlobConfigured } from './vercel-blob-storage'
+import { isStorageConfigured as isSupabaseConfigured, uploadImage as supabaseUploadImage, getPublicUrl as supabaseGetUrl, deleteImage as supabaseDelete } from './supabase-storage'
 
-export type StorageProvider = 'google-drive' | 'supabase' | 'local'
+export type StorageProvider = 'r2' | 'vercel-blob' | 'supabase' | 'memory'
 
-export interface StorageConfig {
-  provider: StorageProvider
-  // Google Drive
-  googleDriveFolderId?: string
-  // Supabase
-  supabaseUrl?: string
-  supabaseKey?: string
-  supabaseBucket?: string
-  // Local
-  localUploadDir?: string
+/** In-memory storage (dev only — clears on restart) */
+const memoryStore = new Map<string, { content: Buffer; contentType: string }>()
+
+/**
+ * Get the active storage provider (in priority order).
+ */
+export function getStorageProvider(): StorageProvider {
+  if (isR2Configured()) return 'r2'
+  if (isBlobConfigured()) return 'vercel-blob'
+  if (isSupabaseConfigured()) return 'supabase'
+  return 'memory'
 }
 
 /**
- * Get the current storage configuration from AppSetting.
+ * Check if any storage provider is configured.
  */
-export async function getStorageConfig(): Promise<StorageConfig> {
-  const settings = await db.appSetting.findMany()
-  const get = (key: string) => settings.find((s) => s.key === key)?.value || ''
+export function isStorageConfigured(): boolean {
+  return getStorageProvider() !== 'memory'
+}
 
-  const provider = (get('storage_provider') || 'google-drive') as StorageProvider
+/**
+ * Upload an image to the active storage provider.
+ *
+ * @param buffer — file content as Buffer or Uint8Array
+ * @param extension — file extension (jpg, png, webp)
+ * @param folder — destination folder (e.g. 'wo-photos', 'device-images')
+ * @returns { url, key, provider }
+ */
+export async function uploadImage(
+  buffer: Buffer | Uint8Array,
+  extension: string,
+  folder: string = 'uploads',
+): Promise<{ url: string; key: string; provider: StorageProvider }> {
+  const provider = getStorageProvider()
 
-  return {
-    provider,
-    googleDriveFolderId: get('google_drive_folder_id') || undefined,
-    supabaseUrl: get('supabase_url') || undefined,
-    supabaseKey: get('supabase_key') || undefined,
-    supabaseBucket: get('supabase_bucket') || undefined,
-    localUploadDir: get('local_upload_dir') || '/tmp/uploads',
+  switch (provider) {
+    case 'r2': {
+      const result = await r2UploadImage(buffer, extension, folder)
+      return { ...result, provider }
+    }
+    case 'vercel-blob': {
+      // Use Vercel Blob
+      const { uploadToBlob } = await import('./vercel-blob-storage')
+      const contentType = `image/${extension === 'jpg' ? 'jpeg' : extension}`
+      const key = `${folder}/${crypto.randomUUID()}.${extension}`
+      const result = await uploadToBlob(buffer, key, contentType)
+      return { url: result.url, key: result.pathname, provider }
+    }
+    case 'supabase': {
+      const contentType = `image/${extension === 'jpg' ? 'jpeg' : extension}`
+      const key = `${folder}/${crypto.randomUUID()}.${extension}`
+      const result = await supabaseUploadImage(buffer, key, key, contentType)
+      return { url: result.url, key: result.path, provider }
+    }
+    case 'memory': {
+      // Dev fallback — return data URL
+      const key = `${folder}/${crypto.randomUUID()}.${extension}`
+      const contentType = `image/${extension === 'jpg' ? 'jpeg' : extension}`
+      memoryStore.set(key, {
+        content: Buffer.from(buffer),
+        contentType,
+      })
+      // Return data URL for dev
+      const b64 = Buffer.from(buffer).toString('base64')
+      const dataUrl = `data:${contentType};base64,${b64}`
+      return { url: dataUrl, key, provider: 'memory' }
+    }
   }
 }
 
 /**
- * Upload a file and return a public-accessible URL.
- *
- * For Google Drive: returns the Drive preview URL (https://lh5.googleusercontent.com/d/{fileId})
- * For Supabase: returns the public URL from the bucket
- * For Local: returns a relative path (/uploads/...)
- *
- * @param fileBase64 — base64-encoded file data (without data: prefix)
- * @param mimeType — e.g. "image/jpeg"
- * @param fileName — e.g. "wo-20260812-001-before.jpg"
- * @param folder — logical folder (e.g. "work-orders", "devices", "stock")
- * @returns public URL string
+ * Get public URL for a stored file.
+ * Note: only works for R2 and Supabase (public buckets).
+ * For Vercel Blob, the URL is returned at upload time.
+ */
+export function getFileUrl(key: string): string {
+  const provider = getStorageProvider()
+
+  switch (provider) {
+    case 'r2':
+      return r2GetUrl(key)
+    case 'supabase':
+      return supabaseGetUrl('uploads', key)
+    case 'vercel-blob':
+      // Vercel Blob URLs are returned at upload time, not reconstructable
+      return ''
+    case 'memory':
+      const stored = memoryStore.get(key)
+      if (!stored) return ''
+      const b64 = stored.content.toString('base64')
+      return `data:${stored.contentType};base64,${b64}`
+  }
+}
+
+/**
+ * Delete a file from storage.
+ */
+export async function deleteFile(key: string): Promise<void> {
+  const provider = getStorageProvider()
+
+  switch (provider) {
+    case 'r2':
+      await r2Delete(key)
+      break
+    case 'supabase':
+      await supabaseDelete('uploads', key)
+      break
+    case 'vercel-blob': {
+      const { del } = await import('@vercel/blob')
+      // Vercel Blob needs full URL — caller should pass URL instead of key
+      try {
+        await del(key)
+      } catch {
+        // ignore — may not be a valid URL
+      }
+      break
+    }
+    case 'memory':
+      memoryStore.delete(key)
+      break
+  }
+}
+
+/**
+ * Upload a raw file (any content type, not just images).
  */
 export async function uploadFile(
-  fileBase64: string,
-  mimeType: string,
-  fileName: string,
-  folder: string,
-): Promise<string> {
-  const config = await getStorageConfig()
+  content: Buffer | Uint8Array | string,
+  key: string,
+  contentType: string,
+): Promise<{ url: string; key: string; provider: StorageProvider }> {
+  const provider = getStorageProvider()
 
-  switch (config.provider) {
-    case 'google-drive':
-      // Google Drive upload — ใน Apps Script ใช้ DriveApp.createFile()
-      // ใน Next.js ต้องใช้ Google Drive API (ต้องตั้งค่า OAuth หรือ Service Account)
-      // สำหรับตอนนี้: เก็บเป็น base64 data URL (ชั่วคราว จนกว่าจะตั้งค่า Drive API)
-      return `data:${mimeType};base64,${fileBase64}`
-
-    case 'supabase':
-      // Supabase Storage upload — ต้องการ supabaseUrl + key + bucket
-      // สำหรับตอนนี้: เก็บเป็น base64 data URL (ชั่วคราว จนกว่าจะตั้งค่า Supabase)
-      return `data:${mimeType};base64,${fileBase64}`
-
-    case 'local':
-      // Local file system — เก็บใน /public/uploads/{folder}/{fileName}
-      // สำหรับตอนนี้: เก็บเป็น base64 data URL (ป้องกันปัญหา permission)
-      return `data:${mimeType};base64,${fileBase64}`
-
-    default:
-      return `data:${mimeType};base64,${fileBase64}`
+  switch (provider) {
+    case 'r2': {
+      const result = await r2Upload(content, key, contentType)
+      return { url: result.url, key: result.key, provider }
+    }
+    case 'vercel-blob': {
+      const { uploadToBlob } = await import('./vercel-blob-storage')
+      const result = await uploadToBlob(content, key, contentType)
+      return { url: result.url, key: result.pathname, provider }
+    }
+    case 'supabase': {
+      const result = await supabaseUploadImage(content, 'uploads', key, contentType)
+      return { url: result.url, key: result.path, provider }
+    }
+    case 'memory': {
+      memoryStore.set(key, {
+        content: Buffer.isBuffer(content)
+          ? content
+          : Buffer.from(typeof content === 'string' ? content : content),
+        contentType,
+      })
+      const b64 = Buffer.isBuffer(content)
+        ? content.toString('base64')
+        : Buffer.from(content).toString('base64')
+      return {
+        url: `data:${contentType};base64,${b64}`,
+        key,
+        provider: 'memory',
+      }
+    }
   }
 }
 
 /**
- * Get the public URL for a stored file.
- * If the URL is already a full URL (Google Drive, Supabase), return as-is.
- * If it's a data: URL, return as-is (can be displayed directly in <img>).
+ * Get storage status for health check / dashboard.
  */
-export function getPublicUrl(url: string): string {
-  return url
-}
-
-/**
- * Check if a URL is a Google Drive URL.
- */
-export function isGoogleDriveUrl(url: string): boolean {
-  return url.includes('googleusercontent.com') || url.includes('drive.google.com')
-}
-
-/**
- * Check if a URL is a data: URL (base64 inline).
- */
-export function isDataUrl(url: string): boolean {
-  return url.startsWith('data:')
-}
-
-/**
- * Convert a Google Drive file ID to a direct-viewable URL.
- * Google Drive URLs come in many formats; this normalizes them.
- */
-export function normalizeGoogleDriveUrl(url: string): string {
-  // https://lh5.googleusercontent.com/d/{fileId} → already direct
-  if (url.includes('googleusercontent.com/d/')) return url
-
-  // https://drive.google.com/file/d/{fileId}/view → convert to direct
-  const fileIdMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)
-  if (fileIdMatch) {
-    return `https://lh5.googleusercontent.com/d/${fileIdMatch[1]}`
+export function getStorageStatus() {
+  return {
+    provider: getStorageProvider(),
+    r2: isR2Configured(),
+    vercelBlob: isBlobConfigured(),
+    supabase: isSupabaseConfigured(),
   }
-
-  // https://drive.google.com/open?id={fileId} → convert to direct
-  const openIdMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/)
-  if (openIdMatch) {
-    return `https://lh5.googleusercontent.com/d/${openIdMatch[1]}`
-  }
-
-  return url
-}
-
-/**
- * Migrate storage from one provider to another.
- * (Future feature — for now just a placeholder)
- */
-export async function migrateStorage(
-  _from: StorageProvider,
-  _to: StorageProvider,
-): Promise<{ migrated: number; failed: number }> {
-  // TODO: implement migration logic
-  // 1. Find all URLs with the old provider pattern
-  // 2. Download each file
-  // 3. Upload to the new provider
-  // 4. Update the URL in the database
-  return { migrated: 0, failed: 0 }
 }

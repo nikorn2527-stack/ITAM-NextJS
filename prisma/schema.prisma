@@ -732,6 +732,11 @@ model User {
   avatarUrl    String?
   phone        String?
   lineUserId   String?
+  // OAuth provider subject IDs (for account linking + de-duplication)
+  googleSub    String? // Google OAuth sub (stable user identifier)
+  appleSub     String? // Apple Sign In sub
+  // Registration source: 'local' | 'google_oauth' | 'apple_oauth' | 'line_oauth' | 'demo'
+  source       String? @default("local")
   lastLoginAt  String?
   isDemo       Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -742,6 +747,8 @@ model User {
   @@index([email])
   @@index([role])
   @@index([isDemo])
+  @@index([googleSub])
+  @@index([appleSub])
 }
 
 // ============================================================
