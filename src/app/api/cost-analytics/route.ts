@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
         },
         orderBy: { assetCode: 'asc' },
       }),
-      db.siteRate.findMany(),
+      db.siteRate.findMany({ select: { siteCode: true, bwRate: true, colorRate: true } }),
     ])
     const rateMap = new Map(rates.map((r) => [r.siteCode, r.bwRate]))
     const defaultRate = 0.5
