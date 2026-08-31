@@ -1,5 +1,11 @@
 'use client'
 
+// Force dynamic rendering — never prerender this page.
+// The page is a client component ('use client') and relies on browser APIs
+// (localStorage, window, navigator). SSR attempts cause BAILOUT_TO_CLIENT_SIDE_RENDERING
+// which can fail if any dependency throws during render.
+export const dynamic = 'force-dynamic'
+
 import * as React from 'react'
 import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
