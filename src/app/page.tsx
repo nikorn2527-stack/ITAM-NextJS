@@ -11,6 +11,7 @@ import { RealtimeProvider } from '@/hooks/use-realtime-updates'
 import { PwaInstallButton } from '@/components/itam/pwa-registration'
 import { QrScannerDialog } from '@/components/itam/qr-scanner'
 import { useAppStore } from '@/store/app-store'
+import { useIsMobile } from '@/hooks/use-mobile-detect'
 import {
   useAuthStore,
   hydrateAuthFromStorage,
@@ -242,6 +243,13 @@ export default function Home() {
     )
   }
 
+  // ── Auto-detect mobile device ──
+  // If the user is on a mobile device (narrow viewport OR mobile UA),
+  // auto-switch to MobileShell. User can override via "โหมดมือถือ" button.
+  // This runs AFTER auth check (so desktop login page still shows on desktop).
+  const isMobileDevice = useIsMobile()
+  const showMobileMode = activePage === 'mobile' || isMobileDevice
+
   // ── If URL has ?token=xxx → render the appropriate auth page ──
   // This takes priority over both "not authenticated" (login) and
   // "authenticated" (app shell) — the user clicked an email link and
@@ -266,7 +274,10 @@ export default function Home() {
   // Pages with long content (2,378-row device table) scroll inside <main>;
   // pages with short content fit in one screen without scrolling.
   // ── Mobile mode: full-screen MobileShell (no desktop sidebar/footer) ──
-  if (activePage === 'mobile') {
+  // Triggered when:
+  //   1. User explicitly clicks "โหมดมือถือ" button (activePage === 'mobile')
+  //   2. Auto-detected as mobile device (isMobileDevice === true)
+  if (showMobileMode) {
     return (
       <RealtimeProvider>
         <MobileShell />
