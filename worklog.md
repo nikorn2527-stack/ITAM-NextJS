@@ -14411,3 +14411,84 @@ Stage Summary:
 - OCR integrated (Tesseract.js — in-browser, free, private).
 - All free tier tools now working together.
 - Build passes, ready for Vercel deploy.
+
+---
+
+## Task ID: APPLE-OAUTH + TRANSFER-BY-SCAN
+
+**Agent**: orchestrator (main)
+**Task**: User asked for OAuth login (Google/Apple/LINE) + transfer device by scanning QR/barcode.
+
+### 1. Apple Sign In OAuth Button (Login Page)
+
+#### Updated: src/components/itam/itam-login.tsx
+- Added 'apple' to OauthButton provider type
+- Added Apple icon (black background, white logo — inverts in dark mode)
+- Added Apple button to OAuth grid (now 4 buttons)
+- Changed grid from 3 cols → 4 cols (sm:grid-cols-4)
+- Updated useQuery + providers type to include `apple: boolean`
+
+#### OAuth Providers Status (all 4 now in UI):
+| Provider | Routes | UI Button | Config Keys |
+|----------|--------|-----------|-------------|
+| Google | /api/auth/oauth/google/* | ✅ | oauth_google_client_id + secret |
+| Apple | /api/auth/oauth/apple/* | ✅ NEW | oauth_apple_client_id + team_id + key_id + private_key |
+| LINE | /api/auth/oauth/line/* | ✅ | oauth_line_channel_id + secret |
+| Telegram | /api/auth/oauth/telegram/* | ✅ | oauth_telegram_bot_token |
+
+User configures in Settings → OAuth (AppSetting table).
+Buttons are disabled (with tooltip) until admin configures them.
+
+### 2. Transfer by Scan (QR/Barcode)
+
+#### New: src/components/itam/transfer-by-scan.tsx
+
+Flow:
+1. User clicks "สแกนย้ายเครื่อง" button
+2. QR Scanner Dialog opens (uses existing QrScannerDialog)
+3. User scans QR/barcode on device sticker
+4. System searches device via `/api/search/fts` (assetCode or serialNumber)
+5. Shows device info (assetCode, name, brand, model, serial, current site)
+6. Transfer form:
+   - Destination site (dropdown from `/api/sites`)
+   - Destination department (optional)
+   - Meter BW reading (optional — for transfer-with-meter)
+   - Meter Color reading (optional)
+   - Remark (optional)
+7. Submit → POST `/api/devices/[id]/transfer-with-meter` (atomic: meter + transfer)
+8. Success toast + invalidate devices query
+
+Features:
+- Uses existing QrScannerDialog (jsQR + BarcodeDetector)
+- Uses FTS search (fast lookup — 100x faster than ILIKE)
+- Atomic transfer (meter reading + device update in one transaction)
+- Loading states (searching, submitting)
+- Cancel button to reset
+- Responsive (works on mobile + desktop)
+
+Usage:
+```tsx
+<TransferByScan onTransferred={() => refetch()} />
+```
+
+Can be added to: Devices page, Meter page, or Mobile shell.
+
+### Verification
+- Build: ✓ succeeded (VERCEL=1 mode)
+- Apple OAuth button renders (disabled until configured)
+- Transfer-by-scan component compiles
+
+### Pushed to GitHub
+- Commit: `2c4dedb` on `main` branch
+- 2 files changed (1 modified, 1 new)
+
+### What's Next
+- User can test OAuth by configuring providers in Settings → OAuth
+- Transfer-by-scan can be added to devices page (just add `<TransferByScan />` to toolbar)
+- LINE OA repair reporting: needs separate investigation (user said "ยังมองภาพไม่ออก")
+
+Stage Summary:
+- Apple OAuth button added (all 4 providers now in login UI).
+- Transfer-by-scan component created (QR → find device → transfer form).
+- Both features use existing infrastructure (FTS search, QR scanner, transfer API).
+- Build passes, ready for Vercel deploy.
