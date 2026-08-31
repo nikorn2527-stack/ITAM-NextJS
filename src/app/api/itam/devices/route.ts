@@ -26,6 +26,10 @@ export async function GET(req: NextRequest) {
     const deviceType = searchParams.get('type')?.trim() ?? ''
     // Exact-match assetNo filter (used by QR scanner smart-routing and quick-lookup)
     const assetNoExact = searchParams.get('assetNo')?.trim() ?? ''
+    // SERIAL-FIRST (METER-LOOKUP-P0): exact-match serialNumber filter for QR
+    // scanners that encode the manufacturer serial. Falls back to this when
+    // assetNoExact doesn't match (called by qr-scanner.tsx).
+    const serialExact = searchParams.get('serial')?.trim() ?? ''
     const { page, limit, skip } = parseDeviceListPagination(searchParams)
 
     const where: Record<string, unknown> = { AND: [] as unknown[] }
@@ -39,9 +43,20 @@ export async function GET(req: NextRequest) {
     if (site) (where.AND as unknown[]).push({ site })
 
     if (search) {
-      (where.AND as unknown[]).push({
+      // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries (e.g. "123"),
+      // match the SUFFIX of assetCode / serialNumber (operators read the
+      // last digits off a sticker). For non-numeric/longer queries, use
+      // contains (legacy behavior).
+      const { isNumericShortQuery } = await import('@/lib/suffix-search')
+      const isShort = isNumericShortQuery(search)
+      ;(where.AND as unknown[]).push({
         OR: [
-          { assetCode: { contains: search } },
+          isShort
+            ? { assetCode: { endsWith: search } }
+            : { assetCode: { contains: search } },
+          isShort
+            ? { serialNumber: { endsWith: search } }
+            : { serialNumber: { contains: search } },
           { type: { contains: search } },
           { brand: { contains: search } },
           { model: { contains: search } },
@@ -53,6 +68,8 @@ export async function GET(req: NextRequest) {
     if (deviceType) (where.AND as unknown[]).push({ type: { contains: deviceType } })
     // Exact-match assetNo (takes precedence over search if both are given)
     if (assetNoExact) (where.AND as unknown[]).push({ assetCode: assetNoExact })
+    // SERIAL-FIRST (METER-LOOKUP-P0): exact-match serialNumber for QR fallback
+    if (serialExact) (where.AND as unknown[]).push({ serialNumber: serialExact })
     // Collapse empty AND
     if (Array.isArray(where.AND) && where.AND.length === 0) delete where.AND
 

@@ -283,7 +283,10 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const [actMeterBw, setActMeterBw] = React.useState('')
   const [actMeterColor, setActMeterColor] = React.useState('')
   const [actMeterSkipAcknowledged, setActMeterSkipAcknowledged] = React.useState(false)
-  // Status select (for other_status)
+  // P1-2 (LIFECYCLE-METER): dedicated "skip meter reason" textarea, shown only
+  // when the user checks "มิเตอร์นับต่อเนื่อง". Separates the audit "why I skipped
+  // the meter" from the lifecycle "why I'm moving/disposing this device".
+  const [actSkipMeterReason, setActSkipMeterReason] = React.useState('')
   const [actCustomStatus, setActCustomStatus] = React.useState('')
   // Common: reason / remark
   const [actReason, setActReason] = React.useState('')
@@ -597,6 +600,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     setActMeterBw('')
     setActMeterColor('')
     setActMeterSkipAcknowledged(false)
+    setActSkipMeterReason('')
     setActCustomStatus('')
     setActReason('')
     setActionDate(todayISO())
@@ -702,6 +706,17 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     const found = all.find((a) => a.id === id)
     if (found) return found
     // Fallback static map
+    // P0-1 FIX (LIFECYCLE-METER): previously only `transfer` had `needMeter: true`,
+    // which meant the meter-reading input + skip checkbox were NOT rendered for
+    // send_repair / uninstall / dispose / return_device / receive_repair / reinstall
+    // — even though the server enforces METER_REQUIRED for all of them (via
+    // METERED_LIFECYCLE_ACTIONS in lifecycle/route.ts). This made the gate
+    // unsatisfiable through the UI.
+    //
+    // Now every meterable lifecycle action sets needMeter: true. The actual
+    // rendering condition (`cfg.needMeter && device?.meterRequired`) still gates
+    // on the device being meterable, so non-metered devices skip the prompt.
+    const deviceIsMeterable = !!device?.meterRequired
     const map: Record<
       string,
       {
@@ -717,13 +732,13 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       }
     > = {
       transfer: { id: 'transfer', icon: '🔄', label: 'ย้ายตำแหน่ง', desc: 'ย้ายไปแผนก/Site/ตำแหน่งอื่น', targetStatus: null, needLoc: true, needMeter: true },
-      send_repair: { id: 'send_repair', icon: '🔧', label: 'ส่งซ่อม', desc: 'เปลี่ยนสถานะ → In Repair', targetStatus: 'In Repair' },
-      receive_repair: { id: 'receive_repair', icon: '✅', label: 'รับซ่อมกลับ', desc: 'In Repair → Active', targetStatus: 'Active', isReinstall: true },
-      uninstall: { id: 'uninstall', icon: '📦', label: 'ถอนการติดตั้ง', desc: 'เอาออกมา ยังไม่ตัดสิน', targetStatus: 'Inactive' },
+      send_repair: { id: 'send_repair', icon: '🔧', label: 'ส่งซ่อม', desc: 'เปลี่ยนสถานะ → In Repair', targetStatus: 'In Repair', needMeter: deviceIsMeterable },
+      receive_repair: { id: 'receive_repair', icon: '✅', label: 'รับซ่อมกลับ', desc: 'In Repair → Active', targetStatus: 'Active', isReinstall: true, needMeter: deviceIsMeterable },
+      uninstall: { id: 'uninstall', icon: '📦', label: 'ถอนการติดตั้ง', desc: 'เอาออกมา ยังไม่ตัดสิน', targetStatus: 'Inactive', needMeter: deviceIsMeterable },
       mark_ready: { id: 'mark_ready', icon: '✅', label: 'เครื่องพร้อมใช้', desc: 'Inactive → In Stock', targetStatus: 'In Stock' },
-      dispose: { id: 'dispose', icon: '🗑️', label: 'จำหน่าย', desc: 'ปิดงานจริง — ขาย/ทิ้ง/เลิกใช้', targetStatus: 'Disposed' },
-      reinstall: { id: 'reinstall', icon: '♻️', label: 'ติดตั้งใหม่', desc: 'นำเครื่องกลับมาใช้', targetStatus: 'Active', needLoc: true, isReinstall: true },
-      return_device: { id: 'return_device', icon: '🔙', label: 'คืนเครื่อง', desc: 'คืนเครื่องให้เจ้าของ/ผู้ขาย', targetStatus: 'Returned' },
+      dispose: { id: 'dispose', icon: '🗑️', label: 'จำหน่าย', desc: 'ปิดงานจริง — ขาย/ทิ้ง/เลิกใช้', targetStatus: 'Disposed', needMeter: deviceIsMeterable },
+      reinstall: { id: 'reinstall', icon: '♻️', label: 'ติดตั้งใหม่', desc: 'นำเครื่องกลับมาใช้', targetStatus: 'Active', needLoc: true, isReinstall: true, needMeter: deviceIsMeterable },
+      return_device: { id: 'return_device', icon: '🔙', label: 'คืนเครื่อง', desc: 'คืนเครื่องให้เจ้าของ/ผู้ขาย', targetStatus: 'Returned', needMeter: deviceIsMeterable },
       other_status: { id: 'other_status', icon: '⚙️', label: 'เปลี่ยนสถานะอื่น', desc: 'เลือกสถานะเอง', targetStatus: null, needStatusSelect: true },
     }
     return map[id]
@@ -797,6 +812,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       // flow and call the dedicated /replace-on-withdraw route instead.
       // The replacement device's meter is not relevant here (it may be new).
       if (actReplacementEnabled && isWithdrawAction) {
+        // P0-2 (LIFECYCLE-METER): pass source device's closing meter value +
+        // skipMeterReason to the replace-on-withdraw route so the source
+        // device gets a proper FINAL/SEND_REPAIR/CHECKOUT anchor in its
+        // meter history (previously the route skipped meter capture entirely).
+        const sourceMeterBw = meterRequired && actMeterBw.trim() ? Number(actMeterBw) : null
+        const sourceMeterColor = meterRequired && actMeterColor.trim() ? Number(actMeterColor) : null
         const replaceRes = await fetch(`/api/devices/${deviceId}/replace-on-withdraw`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -805,6 +826,14 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
             toStatus: newStatus ?? cfg.targetStatus ?? device.status,
             reason: actReason.trim() || null,
             actionDate,
+            // Source device closing meter (optional but enforced by server when
+            // device.meterRequired is true and ack is not checked).
+            sourceMeterBw,
+            sourceMeterColor,
+            meterSkipAcknowledged: meterRequired && sourceMeterBw === null && actMeterSkipAcknowledged,
+            skipMeterReason: meterRequired && sourceMeterBw === null
+              ? (actSkipMeterReason.trim() || actReason.trim() || null)
+              : null,
             replacement: {
               mode: actReplacementMode,
               assetCode: actReplacementAssetCode.trim(),
@@ -894,7 +923,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
           toLocation: cfg.needLoc ? actLocation.trim() || null : device.location,
           meterReadingId,
           meterSkipAcknowledged: meterRequired && !meterReadingId && actMeterSkipAcknowledged,
-          skipMeterReason: meterRequired && !meterReadingId ? actReason.trim() || null : null,
+          skipMeterReason: meterRequired && !meterReadingId ? (actSkipMeterReason.trim() || actReason.trim() || null) : null,
           reason: actReason.trim() || null,
           actionDate,
         }),
@@ -2693,6 +2722,24 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                           ไม่มีค่ามิเตอร์ในรายการนี้ และยืนยันว่า “มิเตอร์นับต่อเนื่อง”
                         </span>
                       </label>
+                      {/* P1-2 (LIFECYCLE-METER): dedicated "เหตุผลที่ไม่จดมิเตอร์" textarea.
+                          Shown only when the user checks "มิเตอร์นับต่อเนื่อง".
+                          Separates the audit "why I skipped the meter" from the
+                          lifecycle "why I'm moving/disposing this device". */}
+                      {actMeterSkipAcknowledged && (
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                            เหตุผลที่ไม่จดมิเตอร์ <span className="text-rose-500">*</span>
+                          </Label>
+                          <Textarea
+                            value={actSkipMeterReason}
+                            onChange={(e) => setActSkipMeterReason(e.target.value)}
+                            placeholder="เช่น เครื่องพัง จดไม่ได้ / จะใช้ค่ามิเตอร์เดิม / ส่งซ่อมก่อนจด"
+                            rows={2}
+                            className="border-amber-300 text-xs focus:border-amber-500 dark:border-amber-700 dark:bg-slate-900"
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
 

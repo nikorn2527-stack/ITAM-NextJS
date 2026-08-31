@@ -29,6 +29,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { matchesSuffixOrContains } from '@/lib/suffix-search'
 import {
   Select,
   SelectContent,
@@ -277,11 +278,15 @@ export function ItamRepairs() {
     if (typeFilter !== 'all') arr = arr.filter((l) => l.type === typeFilter)
     const q = search.trim().toLowerCase()
     if (q) {
+      // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, identifier
+      // fields (assetCode, logId) match by SUFFIX (operators read the last
+      // digits off a sticker/receipt). Free-text fields (description,
+      // vendor) still use contains.
       arr = arr.filter(
         (l) =>
-          l.assetCode.toLowerCase().includes(q) ||
+          matchesSuffixOrContains(l.assetCode, q) ||
           (l.description ?? '').toLowerCase().includes(q) ||
-          (l.logId ?? '').toLowerCase().includes(q) ||
+          matchesSuffixOrContains(l.logId, q) ||
           (l.vendor ?? '').toLowerCase().includes(q),
       )
     }

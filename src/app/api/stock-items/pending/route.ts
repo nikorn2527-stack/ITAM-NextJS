@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
+import { isNumericShortQuery } from '@/lib/suffix-search'
 
 /**
  * GET /api/stock-items/pending
@@ -38,12 +39,16 @@ export async function GET(req: NextRequest) {
       where.workOrderNo = workOrderNo
     }
     if (search) {
+      // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, identifier
+      // fields (txnNumber, productCode, workOrderNo) match by SUFFIX.
+      const isShort = isNumericShortQuery(search)
+      const idOp = isShort ? { endsWith: search } : { contains: search }
       where.OR = [
-        { txnNumber: { contains: search } },
-        { productCode: { contains: search } },
+        { txnNumber: idOp },
+        { productCode: idOp },
         { productName: { contains: search } },
         { reason: { contains: search } },
-        { workOrderNo: { contains: search } },
+        { workOrderNo: idOp },
       ]
     }
 

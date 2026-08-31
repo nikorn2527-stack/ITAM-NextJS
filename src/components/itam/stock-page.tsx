@@ -65,6 +65,7 @@ import {
   Hourglass,
   Printer,
   FileDown,
+  Coins,
 } from 'lucide-react'
 
 // ---------- Types ----------
@@ -289,6 +290,15 @@ interface ItemFormState {
   site: string
   compatibleDevices: string
   remark: string
+  // ── WO-PARTS-FLOW Level 2+: cost model + expected usage defaults ──
+  costModel: string // 'fixed' | 'per-page' | 'per-hour' | 'monthly' | 'per-device'
+  expectedDevicesPerUnit: string
+  expectedHoursPerUnit: string
+  expectedPagesPerUnit: string
+  ratePerPage: string
+  ratePerHour: string
+  ratePerMonth: string
+  ratePerDevice: string
 }
 
 const EMPTY_ITEM_FORM: ItemFormState = {
@@ -306,6 +316,14 @@ const EMPTY_ITEM_FORM: ItemFormState = {
   site: '',
   compatibleDevices: '',
   remark: '',
+  costModel: 'fixed',
+  expectedDevicesPerUnit: '',
+  expectedHoursPerUnit: '',
+  expectedPagesPerUnit: '',
+  ratePerPage: '',
+  ratePerHour: '',
+  ratePerMonth: '',
+  ratePerDevice: '',
 }
 
 interface TxnFormState {
@@ -544,6 +562,14 @@ export function StockPage() {
       site: item.site ?? '',
       compatibleDevices: item.compatibleDevices ?? '',
       remark: item.remark ?? '',
+      costModel: (item as { costModel?: string | null }).costModel ?? 'fixed',
+      expectedDevicesPerUnit: (item as { expectedDevicesPerUnit?: number | null }).expectedDevicesPerUnit != null ? String((item as { expectedDevicesPerUnit?: number | null }).expectedDevicesPerUnit) : '',
+      expectedHoursPerUnit: (item as { expectedHoursPerUnit?: number | null }).expectedHoursPerUnit != null ? String((item as { expectedHoursPerUnit?: number | null }).expectedHoursPerUnit) : '',
+      expectedPagesPerUnit: (item as { expectedPagesPerUnit?: number | null }).expectedPagesPerUnit != null ? String((item as { expectedPagesPerUnit?: number | null }).expectedPagesPerUnit) : '',
+      ratePerPage: (item as { ratePerPage?: number | string | null }).ratePerPage != null ? String((item as { ratePerPage?: number | string | null }).ratePerPage) : '',
+      ratePerHour: (item as { ratePerHour?: number | string | null }).ratePerHour != null ? String((item as { ratePerHour?: number | string | null }).ratePerHour) : '',
+      ratePerMonth: (item as { ratePerMonth?: number | string | null }).ratePerMonth != null ? String((item as { ratePerMonth?: number | string | null }).ratePerMonth) : '',
+      ratePerDevice: (item as { ratePerDevice?: number | string | null }).ratePerDevice != null ? String((item as { ratePerDevice?: number | string | null }).ratePerDevice) : '',
     })
     setItemDialogOpen(true)
   }
@@ -569,6 +595,15 @@ export function StockPage() {
         site: itemForm.site || null,
         compatibleDevices: itemForm.compatibleDevices || null,
         remark: itemForm.remark || null,
+        // WO-PARTS-FLOW Level 2+: cost model + expected usage + rates
+        costModel: itemForm.costModel || null,
+        expectedDevicesPerUnit: itemForm.expectedDevicesPerUnit === '' ? null : Number(itemForm.expectedDevicesPerUnit),
+        expectedHoursPerUnit: itemForm.expectedHoursPerUnit === '' ? null : Number(itemForm.expectedHoursPerUnit),
+        expectedPagesPerUnit: itemForm.expectedPagesPerUnit === '' ? null : Number(itemForm.expectedPagesPerUnit),
+        ratePerPage: itemForm.ratePerPage === '' ? null : Number(itemForm.ratePerPage),
+        ratePerHour: itemForm.ratePerHour === '' ? null : Number(itemForm.ratePerHour),
+        ratePerMonth: itemForm.ratePerMonth === '' ? null : Number(itemForm.ratePerMonth),
+        ratePerDevice: itemForm.ratePerDevice === '' ? null : Number(itemForm.ratePerDevice),
       }
       const isEdit = Boolean(itemForm.id)
       const url = isEdit ? `/api/stock-items/${itemForm.id}` : '/api/stock-items'
@@ -1724,6 +1759,100 @@ export function StockPage() {
                 }
                 placeholder="0.00"
               />
+              <p className="text-[10px] text-slate-400">
+                ใช้สำหรับ cost model = &quot;ราคาต่อหน่วย (คงที่)&quot;
+              </p>
+            </div>
+
+            {/* ── WO-PARTS-FLOW Level 2+: cost model + rate config ── */}
+            <div className="col-span-2 rounded-lg border border-purple-200 bg-purple-50/40 p-3 dark:border-purple-800 dark:bg-purple-950/20">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-purple-700 dark:text-purple-300">
+                <Coins className="h-3.5 w-3.5" />
+                รูปแบบการคิดค่าใช้จ่าย (Cost Model)
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-[10px] text-slate-500">เลือกรูปแบบการคิดค่าใช้จ่าย</Label>
+                  <select
+                    className="mt-0.5 w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900"
+                    value={itemForm.costModel}
+                    onChange={(e) => setItemForm({ ...itemForm, costModel: e.target.value })}
+                  >
+                    <option value="fixed">ราคาต่อหน่วย (คงที่) — เช่น ตลับหมึก, อะไหล่</option>
+                    <option value="per-page">ราคาต่อหน้าพิมพ์ — เช่น สัญญาเช่าพิมพ์</option>
+                    <option value="per-hour">ราคาต่อชั่วโมง — เช่น อุปกรณ์เช่ารายชั่วโมง</option>
+                    <option value="monthly">เหมารายเดือน — เช่น ค่าบำรุงรักษารายเดือน</option>
+                    <option value="per-device">ราคาต่อเครื่อง — เช่น ค่าบริการต่อเครื่อง</option>
+                  </select>
+                </div>
+
+                {/* Conditional rate inputs based on costModel */}
+                {itemForm.costModel === 'per-page' && (
+                  <div>
+                    <Label className="text-[10px] text-slate-500">อัตราค่าบริการต่อหน้า (฿)</Label>
+                    <Input type="number" min="0" step="0.01" value={itemForm.ratePerPage}
+                      onChange={(e) => setItemForm({ ...itemForm, ratePerPage: e.target.value })}
+                      placeholder="0.50" className="h-8 text-xs" />
+                  </div>
+                )}
+                {itemForm.costModel === 'per-hour' && (
+                  <div>
+                    <Label className="text-[10px] text-slate-500">อัตราค่าบริการต่อชั่วโมง (฿)</Label>
+                    <Input type="number" min="0" step="0.01" value={itemForm.ratePerHour}
+                      onChange={(e) => setItemForm({ ...itemForm, ratePerHour: e.target.value })}
+                      placeholder="100.00" className="h-8 text-xs" />
+                  </div>
+                )}
+                {itemForm.costModel === 'monthly' && (
+                  <div>
+                    <Label className="text-[10px] text-slate-500">ค่าเหมารายเดือน (฿)</Label>
+                    <Input type="number" min="0" step="0.01" value={itemForm.ratePerMonth}
+                      onChange={(e) => setItemForm({ ...itemForm, ratePerMonth: e.target.value })}
+                      placeholder="1500.00" className="h-8 text-xs" />
+                  </div>
+                )}
+                {itemForm.costModel === 'per-device' && (
+                  <div>
+                    <Label className="text-[10px] text-slate-500">ค่าบริการต่อเครื่อง (฿)</Label>
+                    <Input type="number" min="0" step="0.01" value={itemForm.ratePerDevice}
+                      onChange={(e) => setItemForm({ ...itemForm, ratePerDevice: e.target.value })}
+                      placeholder="200.00" className="h-8 text-xs" />
+                  </div>
+                )}
+              </div>
+
+              {/* Expected usage defaults — used by parts picker */}
+              <div className="mt-3 border-t border-purple-200 pt-2 dark:border-purple-800">
+                <div className="mb-1.5 text-[10px] font-semibold text-purple-700 dark:text-purple-300">
+                  สเปกการใช้งาน (เติมอัตโนมัติในหน้าเบิกอะไหล่)
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Label className="text-[10px] text-slate-500">1 หน่วยเติมได้กี่เครื่อง</Label>
+                    <Input type="number" min="0" value={itemForm.expectedDevicesPerUnit}
+                      onChange={(e) => setItemForm({ ...itemForm, expectedDevicesPerUnit: e.target.value })}
+                      placeholder="3" className="h-8 text-xs" />
+                    <p className="text-[9px] text-slate-400">เช่น หมึกน้ำ 1 ขวด เติม 3 เครื่อง</p>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-slate-500">1 หน่วยใช้กี่ชม.</Label>
+                    <Input type="number" min="0" value={itemForm.expectedHoursPerUnit}
+                      onChange={(e) => setItemForm({ ...itemForm, expectedHoursPerUnit: e.target.value })}
+                      placeholder="8" className="h-8 text-xs" />
+                    <p className="text-[9px] text-slate-400">เช่น แบตเตอรี่ 8 ชม.</p>
+                  </div>
+                  <div>
+                    <Label className="text-[10px] text-slate-500">1 หน่วยพิมพ์กี่หน้า (Yield)</Label>
+                    <Input type="number" min="0" value={itemForm.expectedPagesPerUnit}
+                      onChange={(e) => setItemForm({ ...itemForm, expectedPagesPerUnit: e.target.value })}
+                      placeholder="6000" className="h-8 text-xs" />
+                    <p className="text-[9px] text-slate-400">เช่น หมึก 6,000 แผ่น / ดรัม 15,000 แผ่น</p>
+                  </div>
+                </div>
+                <p className="mt-2 text-[9px] italic text-slate-400">
+                  💡 ตัวอย่างสเปกมาตรฐาน: หมึก EPSON T544 = 6,000 แผ่น/ขวด · ดรัม OKI = 15,000 แผ่น/ตลับ · ตลับหมึก HP 85A = 1,600 แผ่น
+                </p>
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">

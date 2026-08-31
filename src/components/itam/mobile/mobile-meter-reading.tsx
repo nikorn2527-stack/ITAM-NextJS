@@ -103,6 +103,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
+import { matchesSuffixOrContains } from '@/lib/suffix-search'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -258,19 +259,18 @@ export function MobileMeterReading() {
   const filtered = React.useMemo(() => {
     const q = searchTerm.trim().toLowerCase()
     if (!q) return devices
-    // Suffix-aware: matches assetCode OR serialNumber containing q; if q is
-    // 4-5 digits we also match the last 4-5 chars of the serial number.
-    const isShortDigits = /^\d{4,5}$/.test(q)
+    // ── SUFFIX-AWARE SEARCH (USER-FEEDBACK, using shared helper) ──
+    // Numeric short queries (1-6 digits): match the SUFFIX of assetCode /
+    // serialNumber. Non-numeric/longer queries: legacy `.includes()`.
     return devices.filter((d) => {
-      const asset = (d.assetCode ?? '').toLowerCase()
-      const serial = (d.serialNumber ?? '').toLowerCase()
-      if (asset.includes(q)) return true
-      if (serial.includes(q)) return true
-      if (isShortDigits) {
-        if (asset.endsWith(q)) return true
-        if (serial.endsWith(q)) return true
-      }
-      return false
+      if (matchesSuffixOrContains(d.assetCode, q)) return true
+      if (matchesSuffixOrContains(d.serialNumber, q)) return true
+      // Free-text fields — always contains.
+      return (
+        (d.brand ?? '').toLowerCase().includes(q) ||
+        (d.model ?? '').toLowerCase().includes(q) ||
+        (d.department ?? '').toLowerCase().includes(q)
+      )
     })
   }, [devices, searchTerm])
 

@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { computeNextRunDate } from '@/lib/pm-schedule'
+import { isNumericShortQuery } from '@/lib/suffix-search'
 
 /**
  * GET /api/pm/schedules?active=true&site=&deviceType=&search=
@@ -26,9 +27,15 @@ export async function GET(req: NextRequest) {
     if (site) where.site = site
     if (deviceType) where.deviceType = deviceType
     if (search) {
+      // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, scheduleNo
+      // matches by SUFFIX.
+      const isShort = isNumericShortQuery(search)
+      const schedOp = isShort
+        ? { endsWith: search, mode: 'insensitive' as const }
+        : { contains: search, mode: 'insensitive' as const }
       where.OR = [
         { title: { contains: search, mode: 'insensitive' } },
-        { scheduleNo: { contains: search, mode: 'insensitive' } },
+        { scheduleNo: schedOp },
         { description: { contains: search, mode: 'insensitive' } },
       ]
     }

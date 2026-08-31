@@ -145,6 +145,33 @@ export async function PUT(
             : undefined,
         unitCost:
           body.unitCost !== undefined ? optFloat(body.unitCost) : undefined,
+        // WO-PARTS-FLOW Level 2+: cost model + expected usage + rates
+        costModel:
+          body.costModel !== undefined
+            ? body.costModel
+              ? String(body.costModel).trim()
+              : null
+            : undefined,
+        expectedDevicesPerUnit:
+          body.expectedDevicesPerUnit !== undefined
+            ? optInt(body.expectedDevicesPerUnit, 0) || null
+            : undefined,
+        expectedHoursPerUnit:
+          body.expectedHoursPerUnit !== undefined
+            ? optInt(body.expectedHoursPerUnit, 0) || null
+            : undefined,
+        expectedPagesPerUnit:
+          body.expectedPagesPerUnit !== undefined
+            ? optInt(body.expectedPagesPerUnit, 0) || null
+            : undefined,
+        ratePerPage:
+          body.ratePerPage !== undefined ? optFloat(body.ratePerPage) : undefined,
+        ratePerHour:
+          body.ratePerHour !== undefined ? optFloat(body.ratePerHour) : undefined,
+        ratePerMonth:
+          body.ratePerMonth !== undefined ? optFloat(body.ratePerMonth) : undefined,
+        ratePerDevice:
+          body.ratePerDevice !== undefined ? optFloat(body.ratePerDevice) : undefined,
         location:
           body.location !== undefined
             ? body.location

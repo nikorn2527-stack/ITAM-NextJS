@@ -221,7 +221,10 @@ export async function POST(req: NextRequest) {
         data: {
           action: 'METER_WRITE',
           entity: 'MeterReading',
-          entityId: saved.id,
+          // METER-REDESIGN: was `saved.id` (undefined variable). The actual
+          // variable holding the newly created reading is `reading` (defined
+          // above on the `db.meterReading.create` call).
+          entityId: reading.id,
           summary: `จดมิเตอร์ ${device.assetCode}: BW=${meterBw} สี=${meterColor} (${readingType})`,
           detail: JSON.stringify({
             assetCode: device.assetCode,

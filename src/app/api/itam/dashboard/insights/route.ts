@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
     //    with readingMonth = current/previous month key.
     //    Uses readingMonth (not readingDate) because readingDate may fall in
     //    the next calendar month (e.g., reading 1-5 Aug for July cycle).
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    //    NOTE: `currentMonth` is already defined above (line 33) — don't redeclare.
     const prevMonthKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`
 
     const [curAgg, prevAgg] = await Promise.all([

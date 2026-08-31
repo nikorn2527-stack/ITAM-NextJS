@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
+import { isNumericShortQuery } from '@/lib/suffix-search'
 import { toCompatStockItem } from '@/lib/stock-compat'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { demoTag } from '@/lib/demo-mode'
@@ -38,10 +39,16 @@ export async function GET(req: NextRequest) {
     if (category) (where.AND as unknown[]).push({ category })
     if (lowStock) (where.AND as unknown[]).push({ minQuantity: { gt: 0 } })
     if (q) {
+      // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, productCode
+      // matches by SUFFIX (operators read product codes off boxes/stickers).
+      const isShort = isNumericShortQuery(q)
+      const codeOp = isShort
+        ? { endsWith: q, mode: 'insensitive' as const }
+        : { contains: q, mode: 'insensitive' as const }
       ;(where.AND as unknown[]).push({
         OR: [
           { productName: { contains: q, mode: 'insensitive' } },
-          { productCode: { contains: q, mode: 'insensitive' } },
+          { productCode: codeOp },
           { brand: { contains: q, mode: 'insensitive' } },
           { model: { contains: q, mode: 'insensitive' } },
         ],

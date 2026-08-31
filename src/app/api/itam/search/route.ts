@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
+import { isNumericShortQuery } from '@/lib/suffix-search'
 
 // GET /api/itam/search?q= — global search across entities
 export async function GET(req: NextRequest) {
@@ -16,6 +17,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ results: { devices: [], master: [], meter: [], audit: [], sites: [] }, total: 0 })
     }
 
+    // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, match the SUFFIX
+    // of identifier fields (assetCode, serialNumber) — operators read the
+    // last digits off a sticker. Non-numeric/longer queries use contains.
+    const isShort = isNumericShortQuery(q)
+    const assetFragment = isShort
+      ? { assetCode: { endsWith: q } }
+      : { assetCode: { contains: q } }
+    const serialFragment = isShort
+      ? { serialNumber: { endsWith: q } }
+      : { serialNumber: { contains: q } }
+
     // Site-level filter — restrict devices + meter-readings to user's sites
     const sf = siteFilterForUser(user)
     const isSiteFiltered = Object.keys(sf).length > 0
@@ -27,11 +39,11 @@ export async function GET(req: NextRequest) {
             sf,
             {
               OR: [
-                { assetCode: { contains: q } },
+                assetFragment,
                 { type: { contains: q } },
                 { brand: { contains: q } },
                 { model: { contains: q } },
-                { serialNumber: { contains: q } },
+                serialFragment,
               ],
             },
           ],

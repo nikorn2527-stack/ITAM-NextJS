@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
+import { matchesSuffixOrContains } from '@/lib/suffix-search'
 import {
   Select,
   SelectContent,
@@ -134,13 +135,15 @@ export function StickerPrintDialog({
   const filteredDevices = React.useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return activeDevices
+    // SUFFIX-AWARE (SEARCH-FIX): identifier fields (assetCode, serialNumber)
+    // match by SUFFIX for short numeric queries.
     return activeDevices.filter(
       (d) =>
-        d.assetCode.toLowerCase().includes(q) ||
+        matchesSuffixOrContains(d.assetCode, q) ||
         d.name.toLowerCase().includes(q) ||
         d.brand.toLowerCase().includes(q) ||
         d.model.toLowerCase().includes(q) ||
-        (d.serialNumber ?? '').toLowerCase().includes(q),
+        matchesSuffixOrContains(d.serialNumber, q),
     )
   }, [activeDevices, search])
 

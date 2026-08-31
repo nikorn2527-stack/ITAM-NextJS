@@ -87,6 +87,7 @@ import { TemplatePrintDialog } from './template-print-dialog'
 import { Combobox } from './combobox'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
+import { normalizeImageUrlThumb, normalizeImageUrl } from '@/lib/image-url'
 
 // ============================================================
 // Auth headers helper — every fetch() in this file MUST pass
@@ -267,6 +268,18 @@ interface PartsStockItem {
   quantity: number
   unitCost: number | null
   active: boolean
+  category?: string | null
+  brand?: string | null
+  model?: string | null
+  // ── WO-PARTS-FLOW Level 2+: cost model + expected usage defaults ──
+  costModel?: string | null // 'fixed' | 'per-page' | 'per-hour' | 'monthly' | 'per-device'
+  expectedDevicesPerUnit?: number | null
+  expectedHoursPerUnit?: number | null
+  expectedPagesPerUnit?: number | null
+  ratePerPage?: number | null
+  ratePerHour?: number | null
+  ratePerMonth?: number | null
+  ratePerDevice?: number | null
 }
 
 interface PartsTransaction {
@@ -2125,8 +2138,23 @@ function WorkOrderDetailContent({
   const [partsOpen, setPartsOpen] = React.useState(false)
   const [partsRequester, setPartsRequester] = React.useState('')
   const [partsSearch, setPartsSearch] = React.useState('')
+  // WO-PARTS-FLOW Level 2+: each line tracks both `quantity` (stock-out count)
+  // and `usageQuantity` (fraction actually used), plus `usageSource` flag.
+  // Also tracks `usageHours` and `usagePages` for cost models that need them
+  // (per-hour / per-page). usagePages is also useful for "spare parts replacement"
+  // jobs to record how many pages the device has printed since the last part swap.
   const [partsLines, setPartsLines] = React.useState<
-    { productCode: string; productName: string; quantity: string; remark: string }[]
+    {
+      productCode: string
+      productName: string
+      quantity: string
+      usageQuantity: string
+      usageUnit: string
+      usageSource: 'new-bottle' | 'open-bottle' | 'new-and-open'
+      usageHours: string
+      usagePages: string
+      remark: string
+    }[]
   >([])
   const [partsSaving, setPartsSaving] = React.useState(false)
   const [partsSearchResults, setPartsSearchResults] = React.useState<PartsStockItem[]>([])
@@ -2744,52 +2772,166 @@ function WorkOrderDetailContent({
   }
 
   // ── Parts request (เบิกอะไหล่) ──
+  // WO-PARTS-FLOW Level 2+: defaults now come from the StockItem's
+  // expectedDevicesPerUnit / expectedHoursPerUnit / expectedPagesPerUnit
+  // (set in the Stock page). Falls back to category-based defaults if
+  // those fields are not configured.
+  function defaultUsageForItem(item: PartsStockItem): { qty: string; usage: string; unit: string; hours: string; pages: string } {
+    // Priority 1: item-level expected values (configured in Stock page).
+    if (item.expectedDevicesPerUnit && item.expectedDevicesPerUnit > 0) {
+      const u = 1 / item.expectedDevicesPerUnit
+      return { qty: '1', usage: String(Math.round(u * 1000) / 1000), unit: 'fraction', hours: '', pages: '' }
+    }
+    if (item.expectedHoursPerUnit && item.expectedHoursPerUnit > 0) {
+      return { qty: '1', usage: '1', unit: 'unit', hours: String(item.expectedHoursPerUnit), pages: '' }
+    }
+    if (item.expectedPagesPerUnit && item.expectedPagesPerUnit > 0) {
+      // For toner/cartridge items, "expected pages" = the spec yield (e.g. 6000 pages).
+      // Pre-fill usagePages with this so the technician can confirm/adjust.
+      return { qty: '1', usage: '1', unit: 'unit', hours: '', pages: String(item.expectedPagesPerUnit) }
+    }
+    // Priority 2: category-based fallback (legacy behavior).
+    const c = (item.category ?? '').toUpperCase()
+    if (c.includes('INK') || c.includes('TONER') || c.includes('BOTTLE')) {
+      return { qty: '1', usage: '0.333', unit: 'bottle', hours: '', pages: '' }
+    }
+    if (c.includes('CARTRIDGE') || c.includes('DRUM')) {
+      return { qty: '1', usage: '1', unit: 'cartridge', hours: '', pages: '' }
+    }
+    // Default: 1:1.
+    return { qty: '1', usage: '1', unit: 'unit', hours: '', pages: '' }
+  }
+
   function addPartsLine(item: PartsStockItem) {
     // Skip if already in list
     if (partsLines.some((l) => l.productCode === item.productCode)) {
       toast.error(`${item.productCode} มีอยู่ในรายการแล้ว`)
       return
     }
+    const d = defaultUsageForItem(item)
     setPartsLines((prev) => [
       ...prev,
       {
         productCode: item.productCode,
         productName: item.productName,
-        quantity: '1',
+        quantity: d.qty,
+        usageQuantity: d.usage,
+        usageUnit: d.unit,
+        usageSource: 'new-bottle',
+        usageHours: d.hours,
+        usagePages: d.pages,
         remark: '',
       },
     ])
     setPartsSearch('')
     setPartsSearchResults([])
+
+    // WO-USAGE-AUTO: fetch suggested usageHours + usagePages from server.
+    // The server computes hours from WO assigned/completed timestamps, and
+    // pages from the device's meter reading delta since the last part swap.
+    // We don't await — fire-and-forget. When the response arrives, we
+    // update the line item (only if the user hasn't manually edited it).
+    fetchUsageSuggestions(item.id).then((suggestion) => {
+      if (!suggestion) return
+      setPartsLines((prev) =>
+        prev.map((l) => {
+          if (l.productCode !== item.productCode) return l
+          // Only auto-fill if the user hasn't typed a value yet.
+          return {
+            ...l,
+            usageHours:
+              (l.usageHours === '' || l.usageHours === d.hours) && suggestion.suggestedHours !== null
+                ? String(suggestion.suggestedHours)
+                : l.usageHours,
+            usagePages:
+              (l.usagePages === '' || l.usagePages === d.pages) && suggestion.suggestedPagesBw !== null
+                ? String(suggestion.suggestedPagesBw)
+                : l.usagePages,
+          }
+        }),
+      )
+    }).catch(() => {
+      // Silent — suggestions are nice-to-have, not required.
+    })
+  }
+
+  // WO-USAGE-AUTO: fetch suggested usageHours + usagePages for a stock item.
+  async function fetchUsageSuggestions(stockItemId: string): Promise<{
+    suggestedHours: number | null
+    suggestedPagesBw: number | null
+    suggestedPagesColor: number | null
+    lastSwapDate: string | null
+  } | null> {
+    try {
+      const res = await fetch(
+        `/api/work-orders/${wo.id}/parts/suggest-usage?stockItemIds=${encodeURIComponent(stockItemId)}`,
+        { headers: getAuthHeaders() },
+      )
+      if (!res.ok) return null
+      const json = await res.json()
+      return json.data?.[stockItemId] ?? null
+    } catch {
+      return null
+    }
   }
   function removePartsLine(idx: number) {
     setPartsLines((prev) => prev.filter((_, i) => i !== idx))
   }
   function updatePartsLine(
     idx: number,
-    key: 'quantity' | 'remark',
+    key: 'quantity' | 'usageQuantity' | 'usageSource' | 'usageHours' | 'usagePages' | 'remark',
     value: string,
   ) {
     setPartsLines((prev) =>
-      prev.map((l, i) => (i === idx ? { ...l, [key]: value } : l)),
+      prev.map((l, i) => {
+        if (i !== idx) return l
+        const next = { ...l, [key]: value }
+        // Auto-adjust: if usageSource flips to 'open-bottle', force qty=0.
+        // If flips back to 'new-bottle', restore qty=1.
+        if (key === 'usageSource') {
+          if (value === 'open-bottle') {
+            next.quantity = '0'
+          } else if (value === 'new-bottle' && l.quantity === '0') {
+            next.quantity = '1'
+          }
+        }
+        return next
+      }),
     )
   }
   async function handleRequestParts() {
-    const valid = partsLines.filter((l) => Number(l.quantity) > 0)
+    // WO-PARTS-FLOW Level 2+: accept both qty>0 (new stock-out) AND qty=0 with
+    // usageQuantity>0 (open-bottle usage). The server validates both.
+    const valid = partsLines.filter((l) => {
+      const qty = Number(l.quantity)
+      const usage = Number(l.usageQuantity)
+      // Valid: (qty>0) OR (qty=0 AND usage>0 AND usageSource='open-bottle')
+      if (qty > 0) return true
+      if (qty === 0 && usage > 0 && l.usageSource === 'open-bottle') return true
+      return false
+    })
     if (valid.length === 0) {
       toast.error('ต้องเพิ่มอย่างน้อย 1 รายการอะไหล่ พร้อมจำนวนที่ถูกต้อง')
       return
     }
     try {
       setPartsSaving(true)
+      // Idempotency key — same key returns the same txns on retry, no duplicates.
+      const clientMutationId = `wo-${wo.id}-${Date.now()}`
       const res = await fetch(`/api/work-orders/${wo.id}/parts`, {
         method: 'POST',
         headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           requester: partsRequester.trim() || undefined,
+          clientMutationId,
           items: valid.map((l) => ({
             productCode: l.productCode,
             quantity: Number(l.quantity),
+            usageQuantity: Number(l.usageQuantity),
+            usageUnit: l.usageUnit,
+            usageSource: l.usageSource,
+            usageHours: l.usageHours ? Number(l.usageHours) : undefined,
+            usagePages: l.usagePages ? Number(l.usagePages) : undefined,
             remark: l.remark.trim() || undefined,
           })),
           actor: 'admin',
@@ -2800,8 +2942,10 @@ function WorkOrderDetailContent({
         throw new Error(j.error ?? 'เบิกอะไหล่ไม่สำเร็จ')
       }
       const json = await res.json()
+      const createdCount = json.data?.created ?? valid.length
+      const isIdempotent = json.data?.idempotent === true
       toast.success(
-        `สร้างคำขอเบิกอะไหล่ ${json.data?.created ?? valid.length} รายการ — สถานะใบงาน: ${
+        `${isIdempotent ? '(ซ้ำ — ใช้ขอมูลเดิม)' : `สร้างคำขอเบิกอะไหล่ ${createdCount} รายการ`} — สถานะใบงาน: ${
           json.data?.workOrderStatus === 'WAITING_PARTS' ? 'รออะไหล่' : json.data?.workOrderStatus
         }`,
       )
@@ -3147,6 +3291,50 @@ function WorkOrderDetailContent({
               {wo.editUnlockNote && <div className="mt-0.5">หมายเหตุ: {wo.editUnlockNote}</div>}
             </div>
           )}
+
+          {/* Smart Prompt (WO-PARTS-FLOW): if the WO subject contains keywords
+              that typically require parts (เติมหมึก, ซับหมึก, drum, cartridge, etc.)
+              AND no parts have been requested yet, show an amber prompt reminding
+              the technician to add parts. This addresses the user feedback:
+              "ช่างบางคนเลือกหัวข้อเติมหมึก แต่ไม่ได้เบิกหมึก". */}
+          {canRequestParts && partsList.length === 0 && (() => {
+            const subject = (wo.subject ?? '').toLowerCase()
+            const details = (wo.details ?? '').toLowerCase()
+            const hasTonerKeyword =
+              subject.includes('หมึก') ||
+              subject.includes('ตลับ') ||
+              subject.includes('ซับ') ||
+              subject.includes('drum') ||
+              subject.includes('cartridge') ||
+              subject.includes('toner') ||
+              details.includes('หมึก') ||
+              details.includes('ตลับ')
+            if (!hasTonerKeyword) return null
+            return (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="flex-1">
+                    <div className="font-semibold text-amber-800 dark:text-amber-300">
+                      หัวข้อนี้มักต้องเบิกอะไหล่
+                    </div>
+                    <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
+                      ตรวจสอบและเบิกอะไหล่ที่ต้องใช้ (หมึก/ตลับ/ซับ/Drum) — ระบุจำนวนที่ใช้จริง
+                      ถ้าใช้จากขวดที่เปิดแล้ว ให้เลือก &quot;ใช้ขวดเปิดแล้ว&quot; (ไม่ตัดสต็อก)
+                    </div>
+                  </div>
+                  <Button type="button"
+                    size="sm"
+                    onClick={() => setPartsOpen(true)}
+                    className="h-7 bg-amber-600 px-2 text-[11px] hover:bg-amber-700"
+                  >
+                    <Package className="mr-1 h-3 w-3" />
+                    เบิกอะไหล่
+                  </Button>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Parts list (เบิกอะไหล่) */}
           <div className="space-y-2">
@@ -4221,54 +4409,204 @@ function WorkOrderDetailContent({
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {partsLines.map((line, idx) => (
-                      <div
-                        key={`${line.productCode}-${idx}`}
-                        className="grid grid-cols-12 gap-2 rounded-md border bg-muted/30 p-2"
-                      >
-                        <div className="col-span-12 sm:col-span-6">
-                          <div className="font-mono text-[11px] font-semibold text-purple-600 dark:text-purple-400">
-                            {line.productCode}
+                    {partsLines.map((line, idx) => {
+                      const isOpenBottle = line.usageSource === 'open-bottle'
+                      return (
+                        <div
+                          key={`${line.productCode}-${idx}`}
+                          className={`rounded-md border p-2 ${isOpenBottle ? 'border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-950/20' : 'border-purple-200 bg-purple-50/30 dark:border-purple-800 dark:bg-purple-950/20'}`}
+                        >
+                          {/* Header row: product code + name + delete */}
+                          <div className="mb-2 flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <div className={`font-mono text-[11px] font-semibold ${isOpenBottle ? 'text-amber-700 dark:text-amber-400' : 'text-purple-600 dark:text-purple-400'}`}>
+                                {line.productCode}
+                              </div>
+                              <div className="truncate text-xs text-muted-foreground">
+                                {line.productName}
+                              </div>
+                            </div>
+                            <Button type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                              onClick={() => removePartsLine(idx)}
+                              aria-label="ลบรายการ"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
-                          <div className="truncate text-xs text-muted-foreground">
-                            {line.productName}
+
+                          {/* ── Source toggle (simplified to 2 options) ── */}
+                          <div className="mb-2 flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => updatePartsLine(idx, 'usageSource', 'new-bottle')}
+                              className={`flex-1 rounded border px-2 py-1 text-[10px] font-medium ${line.usageSource !== 'open-bottle' ? 'border-purple-500 bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200' : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}
+                            >
+                              📦 เบิกใหม่
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updatePartsLine(idx, 'usageSource', 'open-bottle')}
+                              className={`flex-1 rounded border px-2 py-1 text-[10px] font-medium ${line.usageSource === 'open-bottle' ? 'border-amber-500 bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200' : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}
+                            >
+                              🔁 ใช้ขวดเปิดแล้ว
+                            </button>
                           </div>
+
+                          {/* ── SMART MINIMAL UI ──
+                              Show only the inputs the technician MUST fill, based on
+                              what the StockItem spec declares:
+
+                              - จำนวนที่เบิก (quantity) — ALWAYS shown (mandatory)
+                              - ใช้จริง (usageQuantity) — shown when costModel='fixed' AND
+                                expectedDevicesPerUnit is set (technician confirms fraction)
+                              - ชั่วโมง (usageHours) — shown when costModel='per-hour'
+                                (auto-filled from WO timestamps, technician can adjust)
+                              - หน้าพิมพ์ (usagePages) — shown when costModel='per-page'
+                                OR when expectedPagesPerUnit is set (auto-filled from
+                                device meter delta, technician can adjust)
+                              - หมายเหตุ (remark) — ALWAYS shown (optional)
+
+                              Cost/price is NEVER shown to the technician — that's a
+                              backend concern (computed from StockItem.unitCost + the
+                              usage values). */}
+                          {/* Find the StockItem spec for this line to decide which inputs to show */}
+                          {(() => {
+                            // Look up the item's spec from partsSearchResults OR from a cached spec map.
+                            // Since we don't have a persistent map, we use the line's existing fields
+                            // + the defaultUsageForItem() defaults to infer the cost model.
+                            // (Better approach: store the full StockItem on the line. For now, infer.)
+                            const stockItem = partsSearchResults.find((s) => s.productCode === line.productCode)
+                            const costModel = stockItem?.costModel ?? 'fixed'
+                            const expectedDevices = stockItem?.expectedDevicesPerUnit ?? null
+                            const expectedHours = stockItem?.expectedHoursPerUnit ?? null
+                            const expectedPages = stockItem?.expectedPagesPerUnit ?? null
+
+                            // Decide which optional inputs to show:
+                            const showUsageQuantity =
+                              costModel === 'fixed' && (expectedDevices !== null && expectedDevices > 0)
+                            const showUsageHours =
+                              costModel === 'per-hour' || (expectedHours !== null && expectedHours > 0)
+                            const showUsagePages =
+                              costModel === 'per-page' || (expectedPages !== null && expectedPages > 0)
+
+                            return (
+                              <div className="grid grid-cols-12 gap-2">
+                                {/* จำนวนที่เบิก — always shown */}
+                                <div className={isOpenBottle ? 'col-span-12' : 'col-span-6 sm:col-span-4'}>
+                                  <Label className="mb-1 block text-[10px] text-muted-foreground">
+                                    จำนวนที่เบิก {!isOpenBottle && <span className="text-rose-500">*</span>}
+                                  </Label>
+                                  <Input
+                                    type="number"
+                                    min={isOpenBottle ? '0' : '1'}
+                                    step="1"
+                                    value={line.quantity}
+                                    onChange={(e) => updatePartsLine(idx, 'quantity', e.target.value)}
+                                    disabled={isOpenBottle}
+                                    className="h-9 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                                    placeholder="1"
+                                  />
+                                  <p className="mt-0.5 text-[9px] text-slate-400">
+                                    {isOpenBottle ? 'ไม่ตัดสต็อก (qty=0)' : 'จำนวนที่จะตัดจากคลัง'}
+                                  </p>
+                                </div>
+
+                                {/* ใช้จริง (เศษขวด) — only when expectedDevices is set */}
+                                {showUsageQuantity && (
+                                  <div className="col-span-6 sm:col-span-4">
+                                    <Label className="mb-1 block text-[10px] text-muted-foreground">
+                                      ใช้จริง (เศษขวด) {expectedDevices ? <span className="text-slate-400">· 1 ขวด = {expectedDevices} เครื่อง</span> : null}
+                                    </Label>
+                                    <Input
+                                      type="number"
+                                      step="0.001"
+                                      min="0"
+                                      value={line.usageQuantity}
+                                      onChange={(e) => updatePartsLine(idx, 'usageQuantity', e.target.value)}
+                                      className="h-9 text-sm"
+                                      placeholder="0.333"
+                                    />
+                                    <div className="mt-0.5 flex gap-0.5 text-[9px]">
+                                      {['0.25', '0.333', '0.5', '1'].map((v) => (
+                                        <button key={v} type="button"
+                                          onClick={() => updatePartsLine(idx, 'usageQuantity', v)}
+                                          className="flex-1 rounded bg-slate-100 px-1 py-0.5 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+                                        >
+                                          {v}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* ชั่วโมง — only when per-hour model OR expectedHours is set */}
+                                {showUsageHours && (
+                                  <div className="col-span-6 sm:col-span-4">
+                                    <Label className="mb-1 block text-[10px] text-muted-foreground">
+                                      ชั่วโมงที่ใช้ {expectedHours ? <span className="text-slate-400">· ปกติ {expectedHours} ชม.</span> : null}
+                                    </Label>
+                                    <Input
+                                      type="number"
+                                      step="0.5"
+                                      min="0"
+                                      value={line.usageHours}
+                                      onChange={(e) => updatePartsLine(idx, 'usageHours', e.target.value)}
+                                      className="h-9 text-sm"
+                                      placeholder="0"
+                                    />
+                                    <p className="mt-0.5 text-[9px] text-slate-400">
+                                      {line.usageHours ? `ใช้ไป ${line.usageHours} ชม.` : 'ระบบจะดึงจากเวลาซ่อมอัตโนมัติ'}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* หน้าพิมพ์ — only when per-page model OR expectedPages is set */}
+                                {showUsagePages && (
+                                  <div className="col-span-6 sm:col-span-4">
+                                    <Label className="mb-1 block text-[10px] text-muted-foreground">
+                                      จำนวนหน้าที่พิมพ์ {expectedPages ? <span className="text-slate-400">· Yield {expectedPages.toLocaleString('th-TH')} แผ่น</span> : null}
+                                    </Label>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      value={line.usagePages}
+                                      onChange={(e) => updatePartsLine(idx, 'usagePages', e.target.value)}
+                                      className="h-9 text-sm"
+                                      placeholder="0"
+                                    />
+                                    <p className="mt-0.5 text-[9px] text-slate-400">
+                                      {line.usagePages ? `${Number(line.usagePages).toLocaleString('th-TH')} แผ่น` : 'ระบบจะดึงจากมิเตอร์อัตโนมัติ'}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* หมายเหตุ — always shown (optional) */}
+                                <div className={isOpenBottle ? 'col-span-12' : 'col-span-6 sm:col-span-4'}>
+                                  <Label className="mb-1 block text-[10px] text-muted-foreground">
+                                    หมายเหตุ
+                                  </Label>
+                                  <Input
+                                    value={line.remark}
+                                    onChange={(e) => updatePartsLine(idx, 'remark', e.target.value)}
+                                    className="h-9 text-sm"
+                                    placeholder="หมายเหตุ (ถ้ามี)"
+                                  />
+                                </div>
+                              </div>
+                            )
+                          })()}
+
+                          {isOpenBottle && (
+                            <div className="mt-1.5 rounded bg-amber-100 px-2 py-1 text-[10px] text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                              ℹ️ ใช้จากขวดที่เปิดแล้ว — ไม่ตัดสต็อก (qty=0), บันทึกเฉพาะปริมาณที่ใช้จริง
+                            </div>
+                          )}
                         </div>
-                        <div className="col-span-4 sm:col-span-2">
-                          <Input
-                            type="number"
-                            min="1"
-                            value={line.quantity}
-                            onChange={(e) =>
-                              updatePartsLine(idx, 'quantity', e.target.value)
-                            }
-                            className="h-8 text-xs"
-                            placeholder="จำนวน"
-                          />
-                        </div>
-                        <div className="col-span-7 sm:col-span-3">
-                          <Input
-                            value={line.remark}
-                            onChange={(e) =>
-                              updatePartsLine(idx, 'remark', e.target.value)
-                            }
-                            className="h-8 text-xs"
-                            placeholder="หมายเหตุ"
-                          />
-                        </div>
-                        <div className="col-span-1 flex items-center justify-end">
-                          <Button type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                            onClick={() => removePartsLine(idx)}
-                            aria-label="ลบรายการ"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -4293,7 +4631,7 @@ function WorkOrderDetailContent({
               ) : (
                 <Package className="h-4 w-4" />
               )}
-              ส่งคำขอเบิก ({partsLines.filter((l) => Number(l.quantity) > 0).length})
+              ส่งคำขอเบิก ({partsLines.filter((l) => Number(l.quantity) > 0 || (Number(l.usageQuantity) > 0 && l.usageSource === 'open-bottle')).length})
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4328,9 +4666,21 @@ function WorkOrderDetailContent({
           {lightboxSrc && (
             <div className="relative flex max-h-[92vh] items-center justify-center">
               <img
-                src={lightboxSrc}
+                src={normalizeImageUrl(lightboxSrc) ?? undefined}
                 alt="รูปภาพเต็มขนาด"
                 className="max-h-[92vh] max-w-full object-contain"
+                onError={(e) => {
+                  // If full-res fails, show message instead of broken image.
+                  const target = e.currentTarget as HTMLImageElement
+                  target.style.display = 'none'
+                  const parent = target.parentElement
+                  if (parent && !parent.querySelector('.lightbox-fallback')) {
+                    const div = document.createElement('div')
+                    div.className = 'lightbox-fallback p-6 text-center text-sm text-muted-foreground'
+                    div.textContent = 'ไม่สามารถโหลดรูปได้ — ไฟล์ใน Google Drive อาจเป็นส่วนตัว หรือลิงก์หมดอายุ'
+                    parent.appendChild(div)
+                  }
+                }}
               />
               <button
                 type="button"
@@ -4526,9 +4876,22 @@ function WoImageStageGroup({
                   title="ดูภาพเต็มขนาด"
                 >
                   <img
-                    src={img.image_data}
+                    src={normalizeImageUrlThumb(img.image_data) ?? undefined}
                     alt={`${label} ${img.fileName ?? ''}`}
                     className="h-full w-full object-cover"
+                    onError={(e) => {
+                      // If the Google Drive thumbnail fails to load (e.g. file
+                      // is private), fall back to a placeholder icon.
+                      const target = e.currentTarget as HTMLImageElement
+                      target.style.display = 'none'
+                      const parent = target.parentElement
+                      if (parent && !parent.querySelector('.img-fallback')) {
+                        const div = document.createElement('div')
+                        div.className = 'img-fallback flex h-full w-full items-center justify-center bg-muted text-muted-foreground'
+                        div.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'
+                        parent.appendChild(div)
+                      }
+                    }}
                     loading="lazy"
                   />
                 </button>

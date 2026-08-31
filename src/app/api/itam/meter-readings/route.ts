@@ -100,14 +100,30 @@ export async function POST(req: NextRequest) {
     const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const body = await req.json()
-    // Support both assetCode (new) and assetNo (legacy client compat)
-    const assetCode = String(body.assetCode || body.assetNo || '').trim()
-    if (!assetCode || body.meterBw === undefined) {
+    // Support both assetCode (new) and assetNo (legacy client compat).
+    // SERIAL-FIRST (METER-LOOKUP-P0): if the identifier doesn't match an
+    // assetCode, fall back to serialNumber. This lets field operators scan
+    // a manufacturer QR sticker (which encodes the serial) and still write
+    // the meter reading without first having to look up the assetCode.
+    const identifier = String(body.assetCode || body.assetNo || '').trim()
+    if (!identifier || body.meterBw === undefined) {
       return NextResponse.json({ error: 'assetCode and meterBw required' }, { status: 400 })
     }
 
-    const device = await db.device.findUnique({ where: { assetCode } })
+    let device = await db.device.findUnique({ where: { assetCode: identifier } })
+    let matchedBy: 'assetCode' | 'serialNumber' = 'assetCode'
+    if (!device) {
+      const bySerial = await db.device.findMany({
+        where: { serialNumber: identifier },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      })
+      if (bySerial.length > 0) {
+        device = bySerial[0]
+        matchedBy = 'serialNumber'
+      }
+    }
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
+    const assetCode = device.assetCode
     // FIX-027: use canAtSite so a viewer at this site (no METER_WRITE) is denied.
     if (!ctx.canAtSite(device.site, 'METER_WRITE')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์จดมิเตอร์สำหรับอุปกรณ์ในสาขานี้' }, { status: 403 })
@@ -189,8 +205,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // ── Step 1: Find valid previous reading (PROTECTED: skip FINAL/SEND_REPAIR) ──
-    let prev = await findValidPrevReading(assetCode, finalReadingMonth, true)
+    // ── Step 1: Find valid previous reading ──
+    // METER-REDESIGN: chain within month so the end-of-month MONTHLY save
+    // correctly chains off the latest in-month reading (transfer or monthly).
+    // `prev` becomes the most-recent reading in this month — so `pagesBw`
+    // = max(0, currentMeter - latestInMonthMeter), which is the delta since
+    // the last event, not since the prior month. Combined with the upsert
+    // fix (transfer readings are 'TRANSFER' type, not 'MONTHLY', so
+    // findExistingMonthlyReading skips them), this fixes the over-count bug.
+    let prev = await findValidPrevReading(assetCode, finalReadingMonth, { chainWithinMonth: true })
 
     // ── Step 2: Same-month INITIAL/RESET fallback (Apps Script lines 619-633) ──
     let isInitial = false
@@ -204,6 +227,8 @@ export async function POST(req: NextRequest) {
           readingMonth: finalReadingMonth,
           readingDate,
           readingType: baseline.readingType,
+          meterMode: device.meterMode ?? null,
+          prevMeterMode: device.meterMode ?? null,
         }
         isInitial = true
       } else {
@@ -218,7 +243,7 @@ export async function POST(req: NextRequest) {
     // ── Step 3: Mode-switch detection (TOTAL ↔ BW_COLOR) ──
     const prevHasColor = prev ? prev.meterColor > 0 : false
     const currentHasColor = meterColor > 0
-    const { prevMeterColor: adjustedPrevColor, modeSwitched } = detectModeSwitch(
+    const { prevMeterColor: adjustedPrevColor, modeSwitched, transition } = detectModeSwitch(
       device.meterMode,
       prevHasColor,
       currentHasColor,
@@ -313,6 +338,12 @@ export async function POST(req: NextRequest) {
       pagesColor,
       prevMeterBw,
       prevMeterColor: adjustedPrevColor,
+      // METER-REDESIGN: snapshot the meter mode at the time of reading so
+      // future reads can reconstruct the chain even when device.meterMode
+      // has since changed. `prevMeterMode` records what mode the previous
+      // reading was in, so mode transitions are explicit and queryable.
+      meterMode: device.meterMode ?? null,
+      prevMeterMode: prev?.meterMode ?? device.meterMode ?? null,
       readBy: user.username || user.email,
       remark,
       readingType,
@@ -379,7 +410,9 @@ export async function POST(req: NextRequest) {
             readingType,
             reset: readingType === 'RESET',
             modeSwitched,
+            modeTransition: transition,
             isInitial,
+            meterMode: device.meterMode ?? null,
           }),
           actor: user.email,
         },
@@ -410,6 +443,7 @@ export async function POST(req: NextRequest) {
         pagesColor,
         readingType,
         modeSwitched,
+        modeTransition: transition,
         isInitial,
         updated: !!existing,
         idempotent: false,

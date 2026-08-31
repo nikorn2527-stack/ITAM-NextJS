@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
+import { matchesSuffixOrContains, isNumericShortQuery } from '@/lib/suffix-search'
 
 /**
  * GET /api/itam/meter-readings/unread
@@ -139,14 +140,30 @@ export async function GET(req: NextRequest) {
       orderBy: { assetCode: 'asc' },
     })
 
-    // Apply search filter (matches anywhere, case-insensitive in SQL via contains).
-    const searchLower = search.toLowerCase()
+    // Apply search filter.
+    // ── SUFFIX-AWARE SEARCH (USER-FEEDBACK, now using shared helper) ──
+    // Numeric short queries (1-6 digits): match the SUFFIX of identifier
+    // fields (assetCode, serialNumber, assetSiteCode). Non-numeric/longer:
+    // legacy contains match everywhere.
     const filtered = search
-      ? devices.filter((d) =>
-          [d.assetCode, d.serialNumber, d.brand, d.model, d.department, d.type, d.assetSiteCode]
+      ? devices.filter((d) => {
+          if (isNumericShortQuery(search)) {
+            // Identifier fields → suffix match
+            if (matchesSuffixOrContains(d.assetCode, search)) return true
+            if (matchesSuffixOrContains(d.serialNumber, search)) return true
+            if (matchesSuffixOrContains(d.assetSiteCode, search)) return true
+            // Text fields → contains match (legacy behavior for these fields)
+            const searchLower = search.toLowerCase()
+            return [d.brand, d.model, d.department, d.type]
+              .filter(Boolean)
+              .some((v) => String(v).toLowerCase().includes(searchLower))
+          }
+          // Non-numeric / long → contains everywhere.
+          const searchLower = search.toLowerCase()
+          return [d.assetCode, d.serialNumber, d.brand, d.model, d.department, d.type, d.assetSiteCode]
             .filter(Boolean)
-            .some((v) => String(v).toLowerCase().includes(searchLower)),
-        )
+            .some((v) => String(v).toLowerCase().includes(searchLower))
+        })
       : devices
 
     // Mark each device read/unread.

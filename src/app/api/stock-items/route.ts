@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { demoTag } from '@/lib/demo-mode'
+import { isNumericShortQuery } from '@/lib/suffix-search'
 
 /** Parse a Float; returns null when missing/invalid. */
 function optFloat(v: unknown): number | null {
@@ -64,8 +65,12 @@ export async function GET(req: NextRequest) {
     if (activeOnly) where.active = true
     if (category) where.category = category
     if (search) {
+      // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, productCode
+      // matches by SUFFIX (operators read product codes off boxes/stickers).
+      const isShort = isNumericShortQuery(search)
+      const codeOp = isShort ? { endsWith: search } : { contains: search }
       where.OR = [
-        { productCode: { contains: search } },
+        { productCode: codeOp },
         { productName: { contains: search } },
         { brand: { contains: search } },
         { model: { contains: search } },
@@ -173,6 +178,15 @@ export async function POST(req: NextRequest) {
         : null,
       remark: body.remark ? String(body.remark).trim() : null,
       active: body.active !== undefined ? Boolean(body.active) : true,
+      // WO-PARTS-FLOW Level 2+: cost model + expected usage + rates
+      costModel: body.costModel ? String(body.costModel).trim() : null,
+      expectedDevicesPerUnit: optInt(body.expectedDevicesPerUnit, 0) || null,
+      expectedHoursPerUnit: optInt(body.expectedHoursPerUnit, 0) || null,
+      expectedPagesPerUnit: optInt(body.expectedPagesPerUnit, 0) || null,
+      ratePerPage: optFloat(body.ratePerPage),
+      ratePerHour: optFloat(body.ratePerHour),
+      ratePerMonth: optFloat(body.ratePerMonth),
+      ratePerDevice: optFloat(body.ratePerDevice),
       ...demoTag(auth.user), // FIX-025: tag demo data for safe cleanup
     })
 

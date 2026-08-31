@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { isNumericShortQuery } from '@/lib/suffix-search'
 
 interface SearchDevice {
   type: 'device'
@@ -62,13 +63,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ results: EMPTY, total: 0 })
     }
 
+    // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, match the SUFFIX
+    // of identifier fields. Non-numeric/longer queries use contains.
+    const isShort = isNumericShortQuery(q)
+    const assetFragment = isShort ? { assetCode: { endsWith: q } } : { assetCode: { contains: q } }
+    const serialFragment = isShort ? { serialNumber: { endsWith: q } } : { serialNumber: { contains: q } }
+    const codeFragment = isShort ? { code: { endsWith: q } } : { code: { contains: q } }
+
     // Devices — assetCode, name, serialNumber, brand, model
     const devices = await db.device.findMany({
       where: {
         OR: [
-          { assetCode: { contains: q } },
+          assetFragment,
           { name: { contains: q } },
-          { serialNumber: { contains: q } },
+          serialFragment,
           { brand: { contains: q } },
           { model: { contains: q } },
         ],
@@ -88,7 +96,7 @@ export async function GET(req: NextRequest) {
     const masters = await db.masterItem.findMany({
       where: {
         OR: [
-          { code: { contains: q } },
+          codeFragment,
           { label: { contains: q } },
         ],
       },

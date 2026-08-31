@@ -350,14 +350,24 @@ export async function POST(
     // Block completion if there are PENDING parts requests linked to this WO.
     // Legacy imports may retain only a raw job reference, so match all stable
     // identifiers while keeping the direct WorkOrder relation authoritative.
+    //
+    // WO-PARTS-FLOW P0: only PENDING txns with quantity > 0 block completion.
+    // open-bottle usages (qty=0) don't need stock-out approval — they're
+    // recorded-usage-only and shouldn't prevent closing the WO. Awaiting
+    // qty=0 + usageQuantity>0 rows are auto-skipped.
     const jobReferences = getRepairJobReferences(wo)
     const pendingPartsWhere = {
-      approvalStatus: 'PENDING',
-      OR: [
-        { workOrderId: wo.id },
-        ...(jobReferences.length > 0
-          ? [{ workOrderNo: { in: jobReferences } }]
-          : []),
+      AND: [
+        { approvalStatus: 'PENDING' },
+        { quantity: { gt: 0 } },  // Skip qty=0 (open-bottle, no approval needed)
+        {
+          OR: [
+            { workOrderId: wo.id },
+            ...(jobReferences.length > 0
+              ? [{ workOrderNo: { in: jobReferences } }]
+              : []),
+          ],
+        },
       ],
     }
     const pendingPartsCount = await db.stockTransaction.count({
