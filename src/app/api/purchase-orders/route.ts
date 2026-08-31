@@ -4,6 +4,7 @@ import { logAudit } from '@/lib/audit'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { requireAuth } from '@/lib/auth-middleware'
 import { demoTag } from '@/lib/demo-mode'
+import { isNumericShortQuery } from '@/lib/suffix-search'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -57,8 +58,12 @@ export async function GET(req: NextRequest) {
     const where: Record<string, unknown> = {}
     if (status) where.status = status
     if (search) {
+      // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, poNumber matches
+      // by SUFFIX (operators read PO numbers off receipts).
+      const isShort = isNumericShortQuery(search)
+      const poOp = isShort ? { endsWith: search } : { contains: search }
       where.OR = [
-        { poNumber: { contains: search } },
+        { poNumber: poOp },
         { supplier: { contains: search } },
         { remark: { contains: search } },
       ]

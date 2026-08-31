@@ -36,7 +36,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
-import { Search, Keyboard, ArrowUp, ArrowDown, CornerDownLeft, CheckCircle2, AlertTriangle, Loader2, RefreshCw, X } from 'lucide-react'
+import { Search, Keyboard, ArrowUp, ArrowDown, CornerDownLeft, CheckCircle2, AlertTriangle, Loader2, RefreshCw, X, Lock } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { useAppStore } from '@/store/app-store'
 
@@ -370,6 +370,52 @@ export function ItamMeterKeyboard() {
     }
   }
 
+  async function forceCloseMonth() {
+    if (!selected) return
+    const confirmed = window.confirm(
+      `ปิดเดือนด้วยค่ามิเตอร์เดิมสำหรับ ${selected.assetCode}?\n\n` +
+      `จะใช้ค่าล่าสุด BW=${selected.lastMeterBw.toLocaleString('th-TH')} ` +
+      `เป็นค่าปิดเดือนนี้ (pages=0)\n` +
+      `เหมาะสำหรับเครื่องที่จดไม่ได้จริง เช่น เครื่องพัง/ส่งซ่อม/ถอนแล้ว\n\n` +
+      `ยืนยัน?`,
+    )
+    if (!confirmed) return
+    try {
+      setSaving(true)
+      const res = await fetch('/api/itam/meter-readings/force-close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assetCode: selected.assetCode,
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || 'Force-close failed')
+      }
+      const j = await res.json()
+      toast.success(
+        `ปิดเดือน ${selected.assetCode} ด้วยค่ามิเตอร์เดิม (BW=${j.reusedFrom?.meterBw ?? 0})`,
+        { description: 'ไม่มีการใช้กระดาษเพิ่มเติม (pages=0)' },
+      )
+      // Clear inputs and return to search
+      setBwInput('')
+      setColorInput('')
+      setRemark('')
+      setSearchInput('')
+      setSearch('')
+      setSelectedIndex(0)
+      setFocus('search')
+      void qc.invalidateQueries({ queryKey: ['itam-meter-keyboard'] })
+      void qc.invalidateQueries({ queryKey: ['itam-readings'] })
+      void qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function exportUnread() {
     if (!devices.length) {
       toast.error('ไม่มีรายการที่จะส่งออก')
@@ -576,6 +622,15 @@ export function ItamMeterKeyboard() {
                               <span className={`font-mono text-xs font-semibold ${active ? 'text-[#f97316]' : 'text-slate-700 dark:text-slate-200'}`}>
                                 {d.assetCode}
                               </span>
+                              {/* SERIAL-FIRST (USER-FEEDBACK): show serial number
+                                  prominently in the list so field operators can
+                                  match the device they're standing in front of
+                                  by reading the sticker on the machine. */}
+                              {d.serialNumber && (
+                                <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400" title={`Serial: ${d.serialNumber}`}>
+                                  SN: {d.serialNumber}
+                                </span>
+                              )}
                               {d.readThisMonth && (
                                 <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px]">
                                   ✓ จดแล้ว
@@ -592,7 +647,7 @@ export function ItamMeterKeyboard() {
                             </div>
                           </div>
                           <div className="text-right text-[10px] text-slate-400">
-                            <div>ล่าสุด {d.lastMeterBw.toLocaleString('th-TH')}</div>
+                            <div>มิเตอร์ {d.lastMeterBw.toLocaleString('th-TH')}</div>
                             {d.lastMeterColor > 0 && <div>สี {d.lastMeterColor.toLocaleString('th-TH')}</div>}
                           </div>
                         </div>
@@ -771,6 +826,16 @@ export function ItamMeterKeyboard() {
                         <CornerDownLeft className="mr-1.5 h-4 w-4" /> บันทึก + ถัดไป
                       </>
                     )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={forceCloseMonth}
+                    disabled={saving}
+                    title="ปิดเดือนด้วยค่ามิเตอร์เดิม — ใช้กับเครื่องที่จดไม่ได้จริง เช่น พัง/ส่งซ่อม/ถอนแล้ว"
+                    aria-label="ปิดเดือนด้วยค่ามิเตอร์เดิม"
+                    className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                  >
+                    <Lock className="mr-1.5 h-4 w-4" /> ปิดเดือนเดิม
                   </Button>
                   <Button
                     variant="outline"

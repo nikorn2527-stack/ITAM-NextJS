@@ -87,8 +87,16 @@ export async function GET(req: NextRequest) {
       // fields (serialNumber, ip, mac, remoteId, contractNo, vendor).
       // Remove them from list-view search to enforce list-view minimization
       // contract. Sensitive fields are searchable in detail view only.
+      //
+      // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries (e.g. "123"),
+      // match the SUFFIX of assetCode (the field operators read off device
+      // stickers). For non-numeric/longer queries, use contains (legacy).
+      const { isNumericShortQuery } = await import('@/lib/suffix-search')
+      const idFragment = isNumericShortQuery(search)
+        ? { assetCode: { endsWith: search } }
+        : { assetCode: { contains: search } }
       where.OR = [
-        { assetCode: { contains: search } },
+        idFragment,
         { name: { contains: search } },
         { brand: { contains: search } },
         { model: { contains: search } },

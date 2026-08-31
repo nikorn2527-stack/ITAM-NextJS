@@ -5,6 +5,7 @@ import { logAudit } from '@/lib/audit'
 import { notifyPartsRequested } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { resolveRepairRequester } from '@/lib/repair-identity'
+import { calculateCost, normalizeCostModel } from '@/lib/cost-model'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -12,6 +13,23 @@ function optInt(v: unknown, fallback = 0): number {
   const n = typeof v === 'number' ? v : Number(v)
   if (!Number.isFinite(n)) return fallback
   return Math.round(n)
+}
+
+/** Parse a Decimal/fractional quantity (for usageQuantity). Returns null when missing. */
+function optDecimal(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n) || n < 0) return null
+  // Round to 3 decimal places (Decimal(10,3) precision).
+  return Math.round(n * 1000) / 1000
+}
+
+/** Validate that usageSource is one of the allowed values. */
+function normalizeUsageSource(v: unknown): 'new-bottle' | 'open-bottle' | 'new-and-open' | null {
+  if (typeof v !== 'string') return null
+  const s = v.trim().toLowerCase()
+  if (s === 'new-bottle' || s === 'open-bottle' || s === 'new-and-open') return s
+  return null
 }
 
 /**
@@ -125,6 +143,35 @@ export async function POST(
       )
     }
 
+    // ── Idempotency check (WO-PARTS-FLOW P1) ──────────────────────────
+    // If clientMutationId is provided, look up any existing txn with the same
+    // key linked to this WO. If found, return the existing txns instead of
+    // creating duplicates (prevents retry storms when network is flaky).
+    const clientMutationId =
+      typeof body.clientMutationId === 'string' && body.clientMutationId.trim()
+        ? body.clientMutationId.trim()
+        : null
+    if (clientMutationId) {
+      const existing = await db.stockTransaction.findMany({
+        where: { clientMutationId, workOrderId: wo.id },
+        orderBy: { createdAt: 'desc' },
+      })
+      if (existing.length > 0) {
+        // Replay — return the original txns, no new writes.
+        return NextResponse.json(
+          {
+            data: {
+              created: existing.length,
+              workOrderStatus: wo.status,
+              transactions: existing,
+              idempotent: true,
+            },
+          },
+          { status: 200 },
+        )
+      }
+    }
+
     // Actor and requester identity come from the authenticated session.
     // Do not trust body.requester: a caller must not submit stock on behalf
     // of another user through a client-controlled field.
@@ -133,13 +180,40 @@ export async function POST(
 
     // Validate all items first (fail fast)
     const validated: Array<{
-      item: { id: string; productCode: string; productName: string; unit: string; unitCost: number | null; quantity: number }
+      item: {
+        id: string
+        productCode: string
+        productName: string
+        unit: string
+        unitCost: number | null
+        quantity: number
+        costModel?: string | null
+        ratePerPage?: unknown
+        ratePerHour?: unknown
+        ratePerMonth?: unknown
+        ratePerDevice?: unknown
+      }
       quantity: number
+      usageQuantity: number | null
+      usageUnit: string | null
+      usageSource: 'new-bottle' | 'open-bottle' | 'new-and-open' | null
+      usageHours: number | null
+      usagePages: number | null
+      usageDevices: number | null
       remark: string | null
     }> = []
     for (const raw of items) {
       const productCode = String(raw?.productCode ?? '').trim()
       const qty = optInt(raw?.quantity, 0)
+      const usageQty = optDecimal(raw?.usageQuantity)
+      const usageHours = optDecimal(raw?.usageHours)
+      const usagePages = optInt(raw?.usagePages, 0)
+      const usageDevices = optInt(raw?.usageDevices, 0)
+      const usageUnit =
+        typeof raw?.usageUnit === 'string' && raw.usageUnit.trim()
+          ? raw.usageUnit.trim()
+          : null
+      const usageSource = normalizeUsageSource(raw?.usageSource)
       const remark =
         raw?.remark && typeof raw.remark === 'string'
           ? raw.remark.trim()
@@ -150,9 +224,40 @@ export async function POST(
           { status: 400 },
         )
       }
-      if (qty <= 0) {
+      // WO-PARTS-FLOW P0: allow qty=0 when usageQuantity>0 (used from open bottle,
+      // no stock-out). Otherwise qty must be > 0 (regular stock-out).
+      // If usageQuantity is null and qty>0, default usageQuantity = qty (1:1).
+      // If usageSource is 'open-bottle', qty MUST be 0 (force no stock decrement).
+      let effectiveQty = qty
+      let effectiveUsage = usageQty
+      let effectiveSource = usageSource
+
+      if (effectiveSource === 'open-bottle') {
+        // Force qty=0 — using from already-opened bottle, no stock decrement.
+        effectiveQty = 0
+        if (effectiveUsage === null) {
+          return NextResponse.json(
+            {
+              error: `เมื่อ usageSource='open-bottle' ต้องระบุ usageQuantity สำหรับ ${productCode} (จำนวนที่ใช้จริงจากขวดเปิดแล้ว)`,
+            },
+            { status: 400 },
+          )
+        }
+      } else {
+        // 'new-bottle' (default) or 'new-and-open' → qty must be > 0.
+        if (effectiveQty <= 0) {
+          return NextResponse.json(
+            { error: `จำนวนตัดสต็อกสำหรับ ${productCode} ต้องมากกว่า 0 (หรือใช้ usageSource='open-bottle' ถ้าใช้จากขวดเปิดแล้ว)` },
+            { status: 400 },
+          )
+        }
+        // Default usageQuantity = qty (1:1 backward compat).
+        if (effectiveUsage === null) effectiveUsage = effectiveQty
+        if (effectiveSource === null) effectiveSource = 'new-bottle'
+      }
+      if (effectiveUsage !== null && effectiveUsage <= 0) {
         return NextResponse.json(
-          { error: `จำนวนสำหรับ ${productCode} ต้องมากกว่า 0` },
+          { error: `usageQuantity สำหรับ ${productCode} ต้องมากกว่า 0` },
           { status: 400 },
         )
       }
@@ -171,14 +276,42 @@ export async function POST(
           { status: 400 },
         )
       }
-      validated.push({ item, quantity: qty, remark })
+      validated.push({
+        item: {
+          id: item.id,
+          productCode: item.productCode,
+          productName: item.productName,
+          unit: item.unit,
+          unitCost: item.unitCost !== null ? Number(item.unitCost) : null,
+          quantity: item.quantity,
+          costModel: item.costModel,
+          ratePerPage: item.ratePerPage,
+          ratePerHour: item.ratePerHour,
+          ratePerMonth: item.ratePerMonth,
+          ratePerDevice: item.ratePerDevice,
+        },
+        quantity: effectiveQty,
+        usageQuantity: effectiveUsage,
+        usageUnit,
+        usageSource: effectiveSource,
+        usageHours,
+        usagePages: usagePages > 0 ? usagePages : null,
+        usageDevices: usageDevices > 0 ? usageDevices : null,
+        remark,
+      })
     }
 
     const txnDate = new Date().toISOString().slice(0, 10)
+    // WO-PARTS-FLOW P0: only flip to WAITING_PARTS if at least one item needs
+    // stock-out (qty > 0). open-bottle usages (qty=0) don't need approval,
+    // so the WO should remain in its current status (e.g. IN_PROGRESS).
+    const needsApproval = validated.some((v) => v.quantity > 0)
     const newStatus =
-      wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
-        ? wo.status
-        : 'WAITING_PARTS'
+      !needsApproval
+        ? wo.status  // open-bottle only → no status flip
+        : wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
+          ? wo.status
+          : 'WAITING_PARTS'
 
     // Create all pending transactions in a single transaction.
     // Also update the WO status if needed.
@@ -204,6 +337,16 @@ export async function POST(
           return `${prefix}${String(max + 1).padStart(3, '0')}`
         })()
 
+        // Compute cost using the item's cost model (fixed/per-page/per-hour/monthly/per-device).
+        // Falls back to unitCost × usageQuantity for backward compat (no costModel set).
+        const costValue = calculateCost(v.item, {
+          quantity: v.quantity,
+          usageQuantity: v.usageQuantity,
+          usageHours: v.usageHours,
+          usagePages: v.usagePages,
+          usageDevices: v.usageDevices,
+        })
+
         const t = await tx.stockTransaction.create({
           data: {
             txnNumber,
@@ -220,11 +363,16 @@ export async function POST(
             purpose: wo.subject,
             workOrderId: wo.id,
             workOrderNo: wo.woNumber,
-            unitCost: v.item.unitCost,
-            cost:
-              v.item.unitCost !== null
-                ? v.item.unitCost * v.quantity
-                : null,
+            unitCost: v.item.unitCost !== null ? v.item.unitCost : null,
+            // WO-PARTS-FLOW Level 2+: usage stats + cost model + idempotency
+            usageQuantity: v.usageQuantity,
+            usageUnit: v.usageUnit,
+            usageSource: v.usageSource,
+            usageHours: v.usageHours,
+            usagePages: v.usagePages,
+            usageDevices: v.usageDevices,
+            clientMutationId,
+            cost: costValue,
             txnDate,
             remark: v.remark,
             approvalStatus: 'PENDING',

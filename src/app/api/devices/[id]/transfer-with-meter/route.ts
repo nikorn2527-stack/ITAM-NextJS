@@ -124,6 +124,12 @@ export async function POST(
       let meterReadingId: string | null = null
 
       // 1. Create MeterReading (if meter values provided)
+      // METER-REDESIGN: transfer readings are stamped `readingType='TRANSFER'`
+      // (not 'MONTHLY') so they are excluded from findExistingMonthlyReading's
+      // upsert lookup at end-of-month. This ensures the end-of-month MONTHLY
+      // save INSERTs a new row chaining off the latest transfer, instead of
+      // overwriting the transfer's row (which would double-count earlier
+      // transfer deltas in monthly aggregates).
       if (meterBw !== null || meterColor !== null) {
         const bw = meterBw ?? 0
         const color = meterColor ?? 0
@@ -144,6 +150,10 @@ export async function POST(
             pagesColor,
             prevMeterBw: prevBw,
             prevMeterColor: prevColor,
+            // Snapshot the meter mode at the time of transfer so future reads
+            // can detect mode switches even when device.meterMode has changed.
+            meterMode: device.meterMode ?? null,
+            prevMeterMode: device.meterMode ?? null,
             readingType: derivedReadingType,
             readBy: movedBy,
             remark: skipMeterReason || null,

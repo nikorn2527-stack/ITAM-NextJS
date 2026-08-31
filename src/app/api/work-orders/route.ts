@@ -8,6 +8,7 @@ import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag } from '@/lib/demo-mode'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { STATUS_MAPPINGS } from '@/lib/csv-field-mapping'
+import { isNumericShortQuery } from '@/lib/suffix-search'
 import {
   getActiveWoPattern,
   generateWoNumberFromPattern,
@@ -247,12 +248,17 @@ export async function GET(req: NextRequest) {
 
     // ── Build the `search` OR clause ──
     // Used to combine with site filter via AND when both are present.
+    // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, identifier fields
+    // (woNumber, systemJobNo, legacyJobNo) match by SUFFIX — operators often
+    // type the last digits of a work-order number from a sticker/receipt.
     let searchOr: Record<string, unknown>[] | null = null
     if (search) {
+      const isShort = isNumericShortQuery(search)
+      const idOp = isShort ? { endsWith: search } : { contains: search }
       searchOr = [
-        { woNumber: { contains: search } },
-        { systemJobNo: { contains: search } },
-        { legacyJobNo: { contains: search } },
+        { woNumber: idOp },
+        { systemJobNo: idOp },
+        { legacyJobNo: idOp },
         { subject: { contains: search } },
         { building: { contains: search } },
         { location: { contains: search } },

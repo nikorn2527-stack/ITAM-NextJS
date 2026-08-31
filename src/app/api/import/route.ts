@@ -523,22 +523,35 @@ async function importMeterReadings(
   const errors: ImportError[] = []
   let processed = 0
 
-  // Cache devices by assetCode to avoid N+1 queries.
-  const assetCodes = new Set<string>()
+  // Cache devices by assetCode AND by serialNumber to avoid N+1 queries.
+  // SERIAL-FIRST (METER-LOOKUP-P0): the CSV column might contain either the
+  // internal assetCode or the manufacturer serial. We fetch by both, build
+  // two maps, and look up by assetCode first then serial as fallback.
+  const identifiers = new Set<string>()
   for (const row of rows) {
     const ac = toStr(row[iAsset])
-    if (ac) assetCodes.add(ac)
+    if (ac) identifiers.add(ac)
   }
   const devices = await db.device.findMany({
-    where: { assetCode: { in: Array.from(assetCodes) } },
+    where: {
+      OR: [
+        { assetCode: { in: Array.from(identifiers) } },
+        { serialNumber: { in: Array.from(identifiers) } },
+      ],
+    },
     select: {
       id: true,
       assetCode: true,
+      serialNumber: true,
       lastMeterBw: true,
       lastMeterColor: true,
     },
   })
   const deviceByCode = new Map(devices.map((d) => [d.assetCode, d]))
+  const deviceBySerial = new Map<string, typeof devices[number]>()
+  for (const d of devices) {
+    if (d.serialNumber) deviceBySerial.set(d.serialNumber, d)
+  }
 
   // Track which devices need their last-meter values persisted.
   const updatesByDeviceId = new Map<string, { bw: number; color: number }>()
@@ -560,11 +573,11 @@ async function importMeterReadings(
       })
       continue
     }
-    const device = deviceByCode.get(assetCode)
+    const device = deviceByCode.get(assetCode) ?? (assetCode ? deviceBySerial.get(assetCode) : undefined)
     if (!device) {
       errors.push({
         row: rowNum,
-        message: `ไม่พบอุปกรณ์ในระบบ: ${assetCode}`,
+        message: `ไม่พบอุปกรณ์ในระบบ (ลองทั้ง assetCode และ serialNumber): ${assetCode}`,
       })
       continue
     }
@@ -584,6 +597,9 @@ async function importMeterReadings(
       await db.meterReading.create({
         data: {
           deviceId: device.id,
+          // Always persist the canonical assetCode (NOT the user-input identifier,
+          // which may have been the serial).
+          assetCode: device.assetCode,
           readingDate,
           readingMonth,
           meterBw,

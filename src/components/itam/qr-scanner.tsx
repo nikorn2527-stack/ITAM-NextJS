@@ -198,23 +198,37 @@ export function QrScannerDialog() {
         navigator.vibrate(120)
       } catch (e) { console.error(String(e)) }
     }
-    // Smart routing: check if device is meter-required
+    // Smart routing: check if device is meter-required.
+    // SERIAL-FIRST (METER-LOOKUP-P0): try /api/itam/devices?assetNo= first;
+    // if no match, fall back to ?serial= so manufacturer QR stickers (which
+    // encode the serial, not our internal assetCode) work too.
+    const lookupDevice = async (code: string) => {
+      // 1. Try assetCode exact match
+      const r1 = await fetch(`/api/itam/devices?assetNo=${encodeURIComponent(code)}&limit=1`)
+      if (r1.ok) {
+        const j1 = await r1.json()
+        if (j1.devices && j1.devices.length > 0) return { device: j1.devices[0], matchedBy: 'assetCode' }
+      }
+      // 2. Fallback to serialNumber
+      const r2 = await fetch(`/api/itam/devices?serial=${encodeURIComponent(code)}&limit=1`)
+      if (r2.ok) {
+        const j2 = await r2.json()
+        if (j2.devices && j2.devices.length > 0) return { device: j2.devices[0], matchedBy: 'serialNumber' }
+      }
+      return { device: null, matchedBy: null }
+    }
     try {
-      const res = await fetch(`/api/itam/devices?assetNo=${encodeURIComponent(assetNo)}&limit=1`)
-      if (res.ok) {
-        const json = await res.json()
-        const device = json.devices && json.devices[0]
-        if (device && device.meterRequired) {
-          const devName = (device.brand || '') + ' ' + (device.model || '')
-          toast.success('สแกนสำเร็จ: ' + assetNo, {
-            description: devName.trim() + ' — ไปหน้าจดมิเตอร์',
-          })
-          stopCamera()
-          setOpen(false)
-          setActivePage('itam-meter-keyboard')
-          setPendingDeviceId(assetNo)
-          return
-        }
+      const { device, matchedBy } = await lookupDevice(assetNo)
+      if (device && device.meterRequired) {
+        const devName = (device.brand || '') + ' ' + (device.model || '')
+        toast.success('สแกนสำเร็จ: ' + assetNo, {
+          description: devName.trim() + ` — ไปหน้าจดมิเตอร์${matchedBy === 'serialNumber' ? ' (จับคู่ด้วย Serial)' : ''}`,
+        })
+        stopCamera()
+        setOpen(false)
+        setActivePage('itam-meter-keyboard')
+        setPendingDeviceId(device.assetCode) // always use the canonical assetCode for downstream lookups
+        return
       }
     } catch (err) { console.error('[qr-scanner]', err) }
     // Default: go to device detail

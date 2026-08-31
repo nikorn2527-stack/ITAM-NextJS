@@ -18,12 +18,21 @@ export async function GET(
     if (!cycle) {
       return NextResponse.json({ error: 'Cycle not found' }, { status: 404 })
     }
+    // METER-REDESIGN: MeterReading has no cycleId column (cycles and readings
+    // are linked by date-range overlap). Filter by readingDate BETWEEN
+    // cycle.startDate AND cycle.endDate, and sum pagesBw + pagesColor (not
+    // a nonexistent `delta` column).
     const readings = await db.meterReading.findMany({
-      where: { cycleId: id },
-      select: { delta: true },
+      where: {
+        readingDate: { gte: cycle.startDate, lte: cycle.endDate },
+      },
+      select: { pagesBw: true, pagesColor: true },
     })
     const readingCount = readings.length
-    const totalSheets = readings.reduce((s, r) => s + (r.delta > 0 ? r.delta : 0), 0)
+    const totalSheets = readings.reduce(
+      (s, r) => s + (r.pagesBw ?? 0) + (r.pagesColor ?? 0),
+      0,
+    )
     return NextResponse.json({ cycle, readingCount, totalSheets })
   } catch (err) {
     console.error('GET /api/cycles/[id]', err)

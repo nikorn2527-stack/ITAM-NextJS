@@ -5,6 +5,8 @@ import { canAccessSite } from '@/lib/auth'
 import { getNextAssetSiteCode } from '@/lib/asset-site-code'
 import { logAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { getLifecycleReadingType } from '@/lib/lifecycle-reading-type'
+import { demoTag } from '@/lib/demo-mode'
 
 /**
  * POST /api/devices/[id]/replace-on-withdraw
@@ -100,6 +102,32 @@ export async function POST(
       )
     }
 
+    // ── P0-2 FIX (LIFECYCLE-METER): closing meter gate for the SOURCE device ──
+    // Previously this route never enforced meter capture on the source device
+    // during withdraw + replace — leaving the source's meter history without
+    // a FINAL/SEND_REPAIR/CHECKOUT anchor. Now we mirror the gate used by the
+    // canonical lifecycle route: if source.meterRequired && no closing meter
+    // provided && user did NOT acknowledge "meter is continuous", reject 400.
+    const sourceMeterBw =
+      body.sourceMeterBw != null ? Number(body.sourceMeterBw) : null
+    const sourceMeterColor =
+      body.sourceMeterColor != null ? Number(body.sourceMeterColor) : null
+    const meterSkipAcknowledged = Boolean(body.meterSkipAcknowledged)
+    const skipMeterReason = body.skipMeterReason
+      ? String(body.skipMeterReason).trim()
+      : null
+
+    if (source.meterRequired && sourceMeterBw === null && !meterSkipAcknowledged) {
+      return NextResponse.json(
+        {
+          error:
+            'ต้องจดมิเตอร์ปิดของเครื่องเดิมก่อนถอน หรือยืนยันว่า "มิเตอร์นับต่อเนื่อง" (ใช้สำหรับเครื่องทดแทน)',
+          code: 'METER_REQUIRED',
+        },
+        { status: 400 },
+      )
+    }
+
     // ── Check replacement existence (for 'existing' mode, must exist;
     //     for 'new' mode, must NOT exist) ──
     const existingReplacement = await db.device.findFirst({
@@ -161,7 +189,54 @@ export async function POST(
     // P0-3 fix: increase transaction timeout to 30s (default 5s is too short
     // for Supabase pooler + multiple queries inside the transaction)
     const result = await db.$transaction(async (tx) => {
-      // 1) Withdraw source device
+      // 1) P0-2 FIX: Create the closing MeterReading for the SOURCE device
+      //    (if a meter value was provided). The reading is stamped with the
+      //    derived readingType (FINAL / SEND_REPAIR / CHECKOUT) so the meter
+      //    history has a proper anchor at the moment of withdrawal. Previously
+      //    this row was never created — the source device's meter chain lost
+      //    its closing anchor when replaced.
+      let sourceMeterReadingId: string | null = null
+      if (sourceMeterBw !== null || sourceMeterColor !== null) {
+        const bw = sourceMeterBw ?? 0
+        const color = sourceMeterColor ?? 0
+        const prevBw = source.lastMeterBw ?? 0
+        const prevColor = source.lastMeterColor ?? 0
+        const pagesBw = Math.max(0, bw - prevBw)
+        const pagesColor = Math.max(0, color - prevColor)
+        const derivedReadingType = getLifecycleReadingType(source.status, toStatus)
+
+        const sourceReading = await tx.meterReading.create({
+          data: {
+            deviceId: source.id,
+            assetCode: source.assetCode,
+            readingDate: actionDate,
+            readingMonth: actionDate.slice(0, 7),
+            meterBw: bw,
+            meterColor: color,
+            pagesBw,
+            pagesColor,
+            prevMeterBw: prevBw,
+            prevMeterColor: prevColor,
+            meterMode: source.meterMode ?? null,
+            prevMeterMode: source.meterMode ?? null,
+            readingType: derivedReadingType,
+            readBy: movedBy,
+            remark: skipMeterReason || [action, 'REPLACE-WITHDRAWAL'].filter(Boolean).join(' — ') || null,
+            siteAtReading: source.site ?? null,
+            ...demoTag(user),
+          },
+        })
+        sourceMeterReadingId = sourceReading.id
+
+        // Sync the source device's lastMeter so the next reader sees the
+        // updated value (consistent with transfer-with-meter route behavior).
+        await tx.device.update({
+          where: { id: source.id },
+          data: { lastMeterBw: bw, lastMeterColor: color },
+        })
+      }
+
+      // 2) Withdraw source device
       const updatedSource = await tx.device.update({
         where: { id: source.id },
         data: {
@@ -203,8 +278,17 @@ export async function POST(
           movedBy,
           remark: [action || null, reason, 'REPLACE-WITHDRAWAL'].filter(Boolean).join(' — '),
           reason,
+          meterReadingId: sourceMeterReadingId,
         },
       })
+
+      // Link meter reading back to the transfer (consistent with transfer-with-meter)
+      if (sourceMeterReadingId) {
+        await tx.meterReading.update({
+          where: { id: sourceMeterReadingId },
+          data: { eventType: 'REPLACE_WITHDRAW', eventId: sourceTransfer.id },
+        })
+      }
 
       // 2) Find-or-create replacement device
       let replacement = existingReplacement
@@ -303,6 +387,7 @@ export async function POST(
         sourceTransfer,
         replacementTransfer,
         created,
+        sourceMeterReadingId,
       }
     }, { timeout: 30_000, maxWait: 35_000 })
 
@@ -322,6 +407,7 @@ export async function POST(
           created: result.created,
           sourceTransferId: result.sourceTransfer.id,
           replacementTransferId: result.replacementTransfer.id,
+          sourceMeterReadingId: result.sourceMeterReadingId,
         },
       )
     } catch (err) { console.error('[route]', err) }

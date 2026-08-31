@@ -33,6 +33,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { matchesSuffixOrContains } from '@/lib/suffix-search'
 import {
   Select,
   SelectContent,
@@ -158,11 +159,23 @@ export function StockHistory() {
       const code = (t.productCode ?? t.stockItem?.productCode ?? '').toLowerCase()
       const name = (t.productName ?? t.stockItem?.productName ?? '').toLowerCase()
       const q = productCodeFilter.trim().toLowerCase()
-      if (q && !code.includes(q) && !name.includes(q)) return false
+      if (q && !matchesSuffixOrContains(t.productCode ?? t.stockItem?.productCode, q) && !name.includes(q)) return false
       const sq = search.trim().toLowerCase()
       if (sq) {
-        const hay = `${t.txnNumber ?? ''} ${t.productCode ?? ''} ${t.productName ?? ''} ${t.workOrderNo ?? ''} ${t.requester ?? ''} ${t.performedBy ?? ''} ${t.remark ?? ''}`.toLowerCase()
-        if (!hay.includes(sq)) return false
+        // SUFFIX-AWARE (SEARCH-FIX): identifier fields (txnNumber, productCode,
+        // workOrderNo) match by SUFFIX for short numeric queries. Free-text
+        // fields (productName, requester, performedBy, remark) use contains.
+        const idMatch =
+          matchesSuffixOrContains(t.txnNumber, sq) ||
+          matchesSuffixOrContains(t.productCode, sq) ||
+          matchesSuffixOrContains(t.workOrderNo, sq)
+        if (idMatch) return true // short-circuit
+        const textMatch =
+          (t.productName ?? '').toLowerCase().includes(sq) ||
+          (t.requester ?? '').toLowerCase().includes(sq) ||
+          (t.performedBy ?? '').toLowerCase().includes(sq) ||
+          (t.remark ?? '').toLowerCase().includes(sq)
+        if (!textMatch) return false
       }
       if (fromDate && t.txnDate < fromDate) return false
       if (toDate && t.txnDate > toDate) return false

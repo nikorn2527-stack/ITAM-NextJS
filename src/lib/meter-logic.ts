@@ -24,8 +24,15 @@ export type ReadingType =
   | 'CHECKOUT'
   | 'SEND_REPAIR'
   | 'RETURN'
+  | 'TRANSFER' // Cross-site or in-site move while staying ACTIVE (NEW — distinct from MONTHLY)
 
-export const USAGE_READING_TYPES: ReadingType[] = ['MONTHLY', 'CHECKOUT', 'RETURN']
+// USAGE_READING_TYPES now includes 'TRANSFER' so transfer readings contribute
+// to usage totals. Previously transfer readings were stamped 'MONTHLY', which
+// caused the canonical writer to upsert-overwrite them at end of month — double
+// counting earlier transfer deltas. 'TRANSFER' is excluded from upsert lookup
+// (see findExistingMonthlyReading) so end-of-month MONTHLY save always INSERTs
+// a new row chaining off the most recent in-month reading (transfer or monthly).
+export const USAGE_READING_TYPES: ReadingType[] = ['MONTHLY', 'CHECKOUT', 'RETURN', 'TRANSFER']
 export const BASELINE_READING_TYPES: ReadingType[] = ['INITIAL', 'RESET']
 /** Reading types that should be SKIPPED when looking for a previous reading */
 export const SKIP_AS_PREV_TYPES: ReadingType[] = ['FINAL', 'SEND_REPAIR']
@@ -75,7 +82,7 @@ export function normalizeReadingMonth(value: string | null | undefined): string 
 export async function findValidPrevReading(
   assetCode: string,
   readingMonth: string,
-  exclusiveCurrentMonth = true,
+  optionsOrExclusive: boolean | { chainWithinMonth?: boolean } = { chainWithinMonth: true },
 ): Promise<{
   id: string
   meterBw: number
@@ -83,11 +90,20 @@ export async function findValidPrevReading(
   readingMonth: string | null
   readingDate: string
   readingType: string | null
+  meterMode: string | null
+  prevMeterMode: string | null
 } | null> {
+  // Accept both the legacy boolean and the new options shape.
+  const opts =
+    typeof optionsOrExclusive === 'boolean'
+      ? { chainWithinMonth: !optionsOrExclusive } // legacy: exclusive=true → chain=false
+      : optionsOrExclusive
+  const chainWithinMonth = opts.chainWithinMonth ?? true
+
   const targetMonth = normalizeReadingMonth(readingMonth)
   if (!targetMonth) return null
 
-  // Fetch all readings for this device (ordered by month desc, then id desc)
+  // Fetch all readings for this device (ordered by date desc, then id desc)
   const readings = await db.meterReading.findMany({
     where: {
       assetCode,
@@ -100,8 +116,10 @@ export async function findValidPrevReading(
       readingMonth: true,
       readingDate: true,
       readingType: true,
+      meterMode: true,
+      prevMeterMode: true,
     },
-    orderBy: [{ readingMonth: 'desc' }, { id: 'desc' }],
+    orderBy: [{ readingDate: 'desc' }, { id: 'desc' }],
   })
 
   const candidates: Array<{
@@ -111,20 +129,26 @@ export async function findValidPrevReading(
     readingMonth: string | null
     readingDate: string
     readingType: string | null
+    meterMode: string | null
+    prevMeterMode: string | null
   }> = []
   for (const row of readings) {
     const rowMonth = normalizeReadingMonth(row.readingMonth || row.readingDate)
     if (!rowMonth) continue
-    // Rule 1: skip same month + future (if exclusiveCurrentMonth)
-    if (exclusiveCurrentMonth && rowMonth >= targetMonth) continue
-    if (!exclusiveCurrentMonth && rowMonth > targetMonth) continue
-    // Rule 2: skip FINAL/SEND_REPAIR
+    if (chainWithinMonth) {
+      // New behavior: skip FUTURE months only (allow same month).
+      if (rowMonth > targetMonth) continue
+    } else {
+      // Legacy behavior: skip same month + future.
+      if (rowMonth >= targetMonth) continue
+    }
+    // Rule: skip FINAL/SEND_REPAIR
     if (shouldSkipAsPrev(row.readingType)) continue
     candidates.push(row)
   }
 
   if (candidates.length === 0) return null
-  // Already sorted by month desc, then id desc from the query
+  // Already sorted by date desc, then id desc from the query
   return candidates[0]
 }
 
@@ -161,12 +185,18 @@ export async function findSameMonthBaseline(
 /**
  * ⚠️ PROTECTED #6: Determine readingType for a lifecycle status change.
  *
- * Rules (from Apps Script getLifecycleReadingType):
+ * Rules (revised — METER-REDESIGN):
  *   • DISPOSED/RETIRED/RETURNED → FINAL
  *   • IN REPAIR → SEND_REPAIR
  *   • INACTIVE/IN STOCK → CHECKOUT
  *   • ACTIVE → RETURN only if wasInactive (fromStatus was repair/inactive/stock/etc.)
- *             otherwise MONTHLY (Active→Active+move must be MONTHLY, not RETURN)
+ *   • ACTIVE → TRANSFER if fromStatus was ACTIVE (i.e. cross-site or in-site move)
+ *              — was previously returning MONTHLY, which caused the canonical
+ *              writer to upsert-overwrite the transfer reading at end of month.
+ *              Returning TRANSFER ensures transfer readings are NEVER picked up
+ *              by findExistingMonthlyReading (which only matches MONTHLY), so
+ *              end-of-month saves always INSERT a new MONTHLY row chaining off
+ *              the latest transfer reading.
  */
 export function getLifecycleReadingType(
   toStatus: string | null | undefined,
@@ -189,7 +219,12 @@ export function getLifecycleReadingType(
       f === 'DISPOSED' ||
       f === 'RETIRED' ||
       f === 'RETURNED'
-    return wasInactive ? 'RETURN' : 'MONTHLY'
+    if (wasInactive) return 'RETURN'
+    // Active→Active move (cross-site or in-site transfer while staying active):
+    // use 'TRANSFER' so this reading is distinct from end-of-month MONTHLY and
+    // will not be picked up for upsert at month end.
+    if (f === 'ACTIVE' || f === '') return 'TRANSFER'
+    return 'TRANSFER'
   }
 
   return 'CHECKOUT'
@@ -231,23 +266,58 @@ export function calcPagesColor(
  *
  * @returns { prevMeterColor, modeSwitched }
  */
+export type MeterModeTransition =
+  | 'NONE'
+  | 'TOTAL_TO_BW_COLOR'
+  | 'BW_COLOR_TO_TOTAL'
+
+/**
+ * ⚠️ PROTECTED #5 (revised — METER-REDESIGN): Detect mode-switch (TOTAL ↔ BW_COLOR).
+ *
+ * Two transitions:
+ *   1. `TOTAL → BW_COLOR`: device previously had only `meterBw` (TOTAL mode),
+ *      now reports `meterColor > 0`. The color channel is a NEW baseline — set
+ *      `prevMeterColor = currentMeterColor` so `pagesColor = 0` for this reading.
+ *      BW channel continues chaining normally.
+ *   2. `BW_COLOR → TOTAL`: device previously had separate BW+Color, now reports
+ *      only `meterBw` (TOTAL mode, color folded into BW). The color channel
+ *      stops accumulating — `pagesColor = 0`. BW channel continues chaining.
+ *
+ * The snapshots `meterMode` / `prevMeterMode` are persisted on each MeterReading
+ * row so future reads can reconstruct the chain even when device.meterMode has
+ * since changed.
+ *
+ * @returns { prevMeterColor, modeSwitched, transition }
+ */
 export function detectModeSwitch(
   currentMeterMode: string | null | undefined,
   prevHasColor: boolean,
   currentHasColor: boolean,
   prevMeterColor: number,
   currentMeterColor: number,
-): { prevMeterColor: number; modeSwitched: boolean } {
+): {
+  prevMeterColor: number
+  modeSwitched: boolean
+  transition: MeterModeTransition
+} {
   const mode = (currentMeterMode ?? '').toUpperCase()
   // If prev had no color but current does → mode switched to BW_COLOR
   if (!prevHasColor && currentHasColor && mode === 'BW_COLOR') {
-    return { prevMeterColor: currentMeterColor, modeSwitched: true }
+    return {
+      prevMeterColor: currentMeterColor, // baseline — pagesColor = 0
+      modeSwitched: true,
+      transition: 'TOTAL_TO_BW_COLOR',
+    }
   }
   // If prev had color but current doesn't → mode switched to TOTAL
   if (prevHasColor && !currentHasColor && mode === 'TOTAL') {
-    return { prevMeterColor: 0, modeSwitched: true }
+    return {
+      prevMeterColor: 0, // no color channel to compare — pagesColor = 0
+      modeSwitched: true,
+      transition: 'BW_COLOR_TO_TOTAL',
+    }
   }
-  return { prevMeterColor, modeSwitched: false }
+  return { prevMeterColor, modeSwitched: false, transition: 'NONE' }
 }
 
 /**
@@ -294,6 +364,13 @@ export function isMeterDecreased(
 /**
  * Check if a device already has a MONTHLY reading for the target month.
  * Used to decide whether to update in-place or insert new.
+ *
+ * NOTE (METER-REDESIGN): only `readingType='MONTHLY'` is matched here.
+ * Transfer readings (created by transfer-with-meter route) are stamped
+ * `'TRANSFER'` and will NOT be picked up — so the end-of-month MONTHLY
+ * save always INSERTs a new row, even when transfer readings exist in
+ * the same month. The new row chains off the most recent in-month
+ * reading via `findValidPrevReading({ chainWithinMonth: true })`.
  */
 export async function findExistingMonthlyReading(
   assetCode: string,

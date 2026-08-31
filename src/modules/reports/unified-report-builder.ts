@@ -301,6 +301,27 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
     },
   })
 
+  // ── METER-REDESIGN: load per-site paper rates from SiteAttribute ──
+  // Previously the report used hardcoded rates BW_RATE=0.5 / COLOR_RATE=5
+  // (incorrectly 5 instead of SiteAttribute default 2.0). Now we look up
+  // `SiteAttribute.PaperRateBW` and `SiteAttribute.PaperRateColor` per site.
+  // Sites without an attribute row fall back to 0.5 / 2.0 baht/page (the
+  // SiteAttribute column defaults).
+  const siteCodesInResult = Array.from(new Set(devices.map((d) => d.site).filter(Boolean)))
+  const siteAttrs = await db.siteAttribute.findMany({
+    where: { SiteCode: { in: siteCodesInResult } },
+    select: { SiteCode: true, PaperRateBW: true, PaperRateColor: true },
+  })
+  const rateBySite = new Map<string, { bw: number; color: number }>()
+  for (const sa of siteAttrs) {
+    rateBySite.set(sa.SiteCode, {
+      bw: Number(sa.PaperRateBW ?? 0.5),
+      color: Number(sa.PaperRateColor ?? 2.0),
+    })
+  }
+  const getRate = (site: string | null): { bw: number; color: number } =>
+    rateBySite.get(site ?? '') ?? { bw: 0.5, color: 2.0 }
+
   // Aggregate per device for current month
   const currByDevice = new Map<
     string,
@@ -332,6 +353,7 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
   const paperUsageByDevice = devices
     .map((d) => {
       const cur = currByDevice.get(d.id) ?? { bw: 0, color: 0, lastDate: null }
+      const rate = getRate(d.site)
       return {
         assetCode: d.assetCode,
         name: d.name,
@@ -341,13 +363,14 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
         color: cur.color,
         total: cur.bw + cur.color,
         lastReadingDate: cur.lastDate,
+        cost: Number((cur.bw * rate.bw + cur.color * rate.color).toFixed(2)),
       }
     })
     .filter((r) => r.total > 0)
     .sort((a, b) => b.total - a.total)
     .slice(0, 50)
 
-  // Cost by site
+  // Cost by site — uses each site's own PaperRateBW / PaperRateColor
   const costBySiteMap = new Map<string, { bw: number; color: number }>()
   for (const d of devices) {
     const cur = currByDevice.get(d.id) ?? { bw: 0, color: 0, lastDate: null }
@@ -356,37 +379,50 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
     entry.color += cur.color
     costBySiteMap.set(d.site, entry)
   }
-  // Assumed rates (configurable later)
-  const BW_RATE = 0.5 // ฿/page
-  const COLOR_RATE = 5 // ฿/page
   const costBySite = Array.from(costBySiteMap.entries())
-    .map(([site, v]) => ({
-      site,
-      bw: v.bw,
-      color: v.color,
-      total: v.bw + v.color,
-      cost: Number((v.bw * BW_RATE + v.color * COLOR_RATE).toFixed(2)),
-    }))
+    .map(([site, v]) => {
+      const rate = getRate(site)
+      return {
+        site,
+        bw: v.bw,
+        color: v.color,
+        total: v.bw + v.color,
+        cost: Number((v.bw * rate.bw + v.color * rate.color).toFixed(2)),
+        // Surface the rates used so the UI / receipts show transparency.
+        rates: { bw: rate.bw, color: rate.color },
+      }
+    })
     .sort((a, b) => b.cost - a.cost)
 
-  // Cost by department
-  const costByDeptMap = new Map<string, { bw: number; color: number }>()
+  // Cost by department — uses the rate of the site the department is in
+  // (looked up via the device.site → site rate).
+  const costByDeptMap = new Map<
+    string,
+    { bw: number; color: number; site: string }
+  >()
   for (const d of devices) {
     const dept = d.department ?? '-'
     const cur = currByDevice.get(d.id) ?? { bw: 0, color: 0, lastDate: null }
-    const entry = costByDeptMap.get(dept) ?? { bw: 0, color: 0 }
-    entry.bw += cur.bw
-    entry.color += cur.color
-    costByDeptMap.set(dept, entry)
+    const existingEntry = costByDeptMap.get(dept)
+    if (existingEntry) {
+      existingEntry.bw += cur.bw
+      existingEntry.color += cur.color
+    } else {
+      costByDeptMap.set(dept, { bw: cur.bw, color: cur.color, site: d.site })
+    }
   }
   const costByDepartment = Array.from(costByDeptMap.entries())
-    .map(([department, v]) => ({
-      department,
-      bw: v.bw,
-      color: v.color,
-      total: v.bw + v.color,
-      cost: Number((v.bw * BW_RATE + v.color * COLOR_RATE).toFixed(2)),
-    }))
+    .map(([department, v]) => {
+      const rate = getRate(v.site)
+      return {
+        department,
+        site: v.site,
+        bw: v.bw,
+        color: v.color,
+        total: v.bw + v.color,
+        cost: Number((v.bw * rate.bw + v.color * rate.color).toFixed(2)),
+      }
+    })
     .sort((a, b) => b.cost - a.cost)
     .slice(0, 30)
 
@@ -417,6 +453,12 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
     curColor += v.color
   }
 
+  // Total cost — sum of per-site costs (each site uses its own rate).
+  const totalCost = costBySite.reduce((s, v) => s + v.cost, 0)
+  // Average rates across all sites (weighted by usage) for the summary line.
+  const totalBwCost = costBySite.reduce((s, v) => s + v.bw * (v.rates.bw), 0)
+  const totalColorCost = costBySite.reduce((s, v) => s + v.color * (v.rates.color), 0)
+
   const monthlyComparison = [
     {
       month: previousMonth,
@@ -443,7 +485,17 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
     month,
     monthLabel: monthInfo.label,
     site: siteCodes === null ? 'all' : siteCodes.join(','),
-    rates: { bwRate: BW_RATE, colorRate: COLOR_RATE },
+    // Surface the per-site rate map for transparency (used by receipt UIs).
+    rates: {
+      // Aggregated weighted averages for the summary card.
+      avgBwRate: curBw > 0 ? Number((totalBwCost / curBw).toFixed(2)) : 0.5,
+      avgColorRate: curColor > 0 ? Number((totalColorCost / curColor).toFixed(2)) : 2.0,
+      perSite: Array.from(rateBySite.entries()).map(([site, r]) => ({
+        site,
+        bwRate: r.bw,
+        colorRate: r.color,
+      })),
+    },
     summary: {
       totalBw: curBw,
       totalColor: curColor,
@@ -451,7 +503,9 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
       deviceCount: devices.length,
       meterRequiredCount: devices.filter((d) => d.meterRequired).length,
       unmeteredCount: unmeteredDevices.length,
-      totalCost: Number((curBw * BW_RATE + curColor * COLOR_RATE).toFixed(2)),
+      // METER-REDESIGN: totalCost now uses per-site SiteAttribute rates instead
+      // of hardcoded 0.5/5 baht/page. This is the actual billable amount.
+      totalCost: Number(totalCost.toFixed(2)),
       prevMonthTotal: prevBw + prevColor,
       growthPct:
         prevBw + prevColor > 0

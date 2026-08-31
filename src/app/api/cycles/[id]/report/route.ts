@@ -17,9 +17,13 @@ function daysBetween(a: string, b: string): number {
 interface CycleReportReading {
   id: string
   date: string
-  reading: number
-  prevReading: number
-  delta: number
+  readingBw: number
+  readingColor: number
+  prevReadingBw: number
+  prevReadingColor: number
+  pagesBw: number
+  pagesColor: number
+  readingType: string | null
   remark: string | null
 }
 
@@ -32,9 +36,12 @@ interface CycleReportDevice {
   site: string
   type: string
   readings: CycleReportReading[]
-  firstReading: number | null
-  lastReading: number | null
-  totalDelta: number
+  firstReadingBw: number | null
+  lastReadingBw: number | null
+  firstReadingColor: number | null
+  lastReadingColor: number | null
+  totalDeltaBw: number
+  totalDeltaColor: number
   readingCount: number
 }
 
@@ -44,9 +51,13 @@ interface CycleReportAnomaly {
   assetCode: string
   deviceName: string
   date: string
-  reading: number
-  prevReading: number
-  delta: number
+  readingBw: number
+  readingColor: number
+  prevReadingBw: number
+  prevReadingColor: number
+  pagesBw: number
+  pagesColor: number
+  readingType: string | null
   remark: string | null
   type: 'RESET' | 'HIGH_DELTA'
 }
@@ -75,10 +86,16 @@ export async function GET(
       return NextResponse.json({ error: 'Cycle not found' }, { status: 404 })
     }
 
-    // Fetch all readings for this cycle, ordered chronologically per device
+    // Fetch all readings for this cycle, ordered chronologically per device.
+    // METER-REDESIGN: MeterReading has no cycleId / date / reading / prevReading
+    // / delta columns. Filter by readingDate BETWEEN cycle.startDate AND
+    // cycle.endDate, and select the actual columns: readingDate, meterBw,
+    // meterColor, prevMeterBw, prevMeterColor, pagesBw, pagesColor, readingType.
     const readings = await db.meterReading.findMany({
-      where: { cycleId: id },
-      orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+      where: {
+        readingDate: { gte: cycle.startDate, lte: cycle.endDate },
+      },
+      orderBy: [{ readingDate: 'asc' }, { createdAt: 'asc' }],
       include: {
         device: {
           select: {
@@ -112,9 +129,12 @@ export async function GET(
           site: dev.site,
           type: dev.type,
           readings: [],
-          firstReading: null,
-          lastReading: null,
-          totalDelta: 0,
+          firstReadingBw: null,
+          lastReadingBw: null,
+          firstReadingColor: null,
+          lastReadingColor: null,
+          totalDeltaBw: 0,
+          totalDeltaColor: 0,
           readingCount: 0,
         })
       }
@@ -122,42 +142,59 @@ export async function GET(
 
       const cycleReading: CycleReportReading = {
         id: r.id,
-        date: r.date,
-        reading: r.reading,
-        prevReading: r.prevReading,
-        delta: r.delta,
+        date: r.readingDate,
+        readingBw: r.meterBw,
+        readingColor: r.meterColor,
+        prevReadingBw: r.prevMeterBw,
+        prevReadingColor: r.prevMeterColor,
+        pagesBw: r.pagesBw,
+        pagesColor: r.pagesColor,
+        readingType: r.readingType,
         remark: r.remark,
       }
       entry.readings.push(cycleReading)
       entry.readingCount += 1
-      if (entry.firstReading === null) entry.firstReading = r.reading
-      entry.lastReading = r.reading
-      entry.totalDelta += r.delta
+      if (entry.firstReadingBw === null) entry.firstReadingBw = r.meterBw
+      if (entry.firstReadingColor === null) entry.firstReadingColor = r.meterColor
+      entry.lastReadingBw = r.meterBw
+      entry.lastReadingColor = r.meterColor
+      entry.totalDeltaBw += r.pagesBw
+      entry.totalDeltaColor += r.pagesColor
 
-      // Anomaly detection
-      if (r.delta < 0) {
+      // Anomaly detection — based on actual pagesBw/pagesColor deltas,
+      // not a nonexistent `delta` field.
+      const readingTypeUpper = (r.readingType ?? '').toUpperCase()
+      if (readingTypeUpper === 'RESET') {
         anomalies.push({
           readingId: r.id,
           deviceId: dev.id,
           assetCode: dev.assetCode,
           deviceName: dev.name,
-          date: r.date,
-          reading: r.reading,
-          prevReading: r.prevReading,
-          delta: r.delta,
+          date: r.readingDate,
+          readingBw: r.meterBw,
+          readingColor: r.meterColor,
+          prevReadingBw: r.prevMeterBw,
+          prevReadingColor: r.prevMeterColor,
+          pagesBw: r.pagesBw,
+          pagesColor: r.pagesColor,
+          readingType: r.readingType,
           remark: r.remark,
           type: 'RESET',
         })
-      } else if (r.delta > 20000) {
+      } else if (r.pagesBw > 20000 || r.pagesColor > 20000) {
         anomalies.push({
           readingId: r.id,
           deviceId: dev.id,
           assetCode: dev.assetCode,
           deviceName: dev.name,
-          date: r.date,
-          reading: r.reading,
-          prevReading: r.prevReading,
-          delta: r.delta,
+          date: r.readingDate,
+          readingBw: r.meterBw,
+          readingColor: r.meterColor,
+          prevReadingBw: r.prevMeterBw,
+          prevReadingColor: r.prevMeterColor,
+          pagesBw: r.pagesBw,
+          pagesColor: r.pagesColor,
+          readingType: r.readingType,
           remark: r.remark,
           type: 'HIGH_DELTA',
         })
@@ -172,12 +209,15 @@ export async function GET(
     // Summary
     const totalReadings = readings.length
     const totalSheets = readings.reduce(
-      (sum, r) => sum + (r.delta > 0 ? r.delta : 0),
+      (sum, r) => sum + (r.pagesBw ?? 0) + (r.pagesColor ?? 0),
       0,
     )
     const avgDelta =
       devices.length > 0
-        ? Math.round(devices.reduce((s, d) => s + d.totalDelta, 0) / devices.length)
+        ? Math.round(
+            devices.reduce((s, d) => s + d.totalDeltaBw + d.totalDeltaColor, 0) /
+              devices.length,
+          )
         : 0
     const deviceCount = devices.length
 
