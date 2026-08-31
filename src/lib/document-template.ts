@@ -631,7 +631,7 @@ export function renderPDFFromTemplate(
     const footerHtml = `<div style="position:absolute;left:${canvas.margin}mm;right:${canvas.margin}mm;bottom:${canvas.margin}mm;height:${footer.height}mm">
         <div style="display:flex;justify-content:space-between;align-items:flex-end;font-size:${footer.fontSize ?? 8}pt;color:${footer.color ?? '#94a3b8'};border-top:1px solid #e2e8f0;padding-top:1mm">
           <div>${escapeHtml(footerText)}</div>
-          <div>PNG TEAM — IT Asset Management</div>
+          <div>องค์กร — IT Asset Management</div>
         </div>
         <div style="display:flex;gap:8mm;margin-top:1mm">${sigHtml}</div>
       </div>`

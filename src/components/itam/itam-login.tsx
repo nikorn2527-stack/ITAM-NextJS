@@ -293,7 +293,7 @@ export function ItamLogin() {
             </ul>
           </div>
           <div className="text-xs text-white/60">
-            Powered by PNG TEAM · v1.0
+            Powered by ITAM · v1.0
           </div>
         </div>
 

@@ -660,7 +660,7 @@ export function ItamDocumentEditor() {
             title: draft.name || 'ตัวอย่างเอกสาร',
             rows: SAMPLE_ROWS,
             month: 'ม.ค. 2569',
-            siteName: 'โรงพยาบาลศูนย์อุดรธานี',
+            siteName: 'ชื่อสาขา',  // generic — user sets their own
             contractNo: 'CTR-2569-001',
           },
         }),
@@ -1196,7 +1196,7 @@ export function ItamDocumentEditor() {
                       onMouseDown={(e) => e.stopPropagation()}
                     >
                       <div>{draft.footer.content}</div>
-                      <div>PNG TEAM</div>
+                      <div>องค์กร</div>
                     </div>
                     {/* Alignment guides (dashed lines) — Apps Script parity */}
                     {guides.x.map((gx, i) => (

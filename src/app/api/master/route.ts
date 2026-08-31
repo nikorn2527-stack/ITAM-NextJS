@@ -197,7 +197,7 @@ export async function GET(req: NextRequest) {
 
       case 'buildings': {
         // Pull from MasterItem(category='Building') instead of Device table.
-        // Device.site stores Thai text (e.g. "โรงพยาบาลศูนย์อุดรธานี") not site codes (e.g. "UDH").
+        // Device.site stores Thai text (e.g. "ชื่อสาขา (e.g. สำนักงานใหญ่)") not site codes (e.g. "UDH").
         // MasterItem has siteCode field that matches site codes.
         const effectiveSite = resolveSite()
         if (effectiveSite === '__FORBIDDEN__') {

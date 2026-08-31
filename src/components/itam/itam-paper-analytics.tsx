@@ -279,7 +279,7 @@ tr:nth-child(even) td { background: #fafbfc; }
 </style></head><body>
 <button class="print-btn no-print" onclick="window.print()">🖨 พิมพ์ / บันทึก PDF</button>
 <button class="close-btn no-print" onclick="window.close()" style="position:fixed;top:12px;right:100px;background:#64748b;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">✕ ปิด</button>
-<div class="header"><div><div class="org">PNG TEAM</div><div class="subtitle">ITAM Paper Analytics Report</div></div><div class="meta"><div>วันที่ออกรายงาน: ${esc(generatedAt)}</div><div>ช่วงเดือน: ${esc(monthStart)} → ${esc(monthEnd)}</div></div></div>
+<div class="header"><div><div class="org">องค์กร</div><div class="subtitle">ITAM Paper Analytics Report</div></div><div class="meta"><div>วันที่ออกรายงาน: ${esc(generatedAt)}</div><div>ช่วงเดือน: ${esc(monthStart)} → ${esc(monthEnd)}</div></div></div>
 <h2 class="section">📊 ตัวชี้วัดหลัก</h2>
 ${kpiHtml}
 <h2 class="section">📈 การใช้กระดาษรายเดือน</h2>

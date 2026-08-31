@@ -183,7 +183,7 @@ export async function POST() {
     // Default app settings
     await db.appSetting.createMany({
       data: [
-        { key: 'orgName', value: 'PNG TEAM IT' },
+        { key: 'orgName', value: 'องค์กรของคุณ' },
         { key: 'defaultSite', value: 'HQ' },
         { key: 'enablePasswordLogin', value: 'true' },
         { key: 'stickerTemplate', value: 'template-1' },

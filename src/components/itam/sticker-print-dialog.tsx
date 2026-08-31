@@ -183,7 +183,7 @@ export function StickerPrintDialog({
   )
 
   const sizeOption = SIZE_OPTIONS.find((s) => s.value === size)!
-  const orgLabel = orgName?.trim() || 'PNG TEAM IT'
+  const orgLabel = orgName?.trim() || 'องค์กรของคุณ'
 
   // Build a sample preview sticker (using the first selected device or a placeholder)
   const sampleDevice: Device | null = selectedDevices[0] ?? null
