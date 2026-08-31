@@ -14492,3 +14492,71 @@ Stage Summary:
 - Transfer-by-scan component created (QR → find device → transfer form).
 - Both features use existing infrastructure (FTS search, QR scanner, transfer API).
 - Build passes, ready for Vercel deploy.
+
+---
+
+## Task ID: P0-FIX-PAGE-CRASH — 'This page couldn't load' on Vercel
+
+**Agent**: orchestrator (main)
+**Task**: User showed screenshot of browser error 'This page couldn't load' on Vercel production.
+
+### Root Cause Analysis
+
+#### Cause 1: Rules of Hooks violation (PRIMARY)
+- `useIsMobile()` was called AFTER early returns in page.tsx:
+  ```
+  if (!bootDone) return <BootScreen />  // ← early return
+  ...
+  const isMobileDevice = useIsMobile()  // ← hook after return = VIOLATION
+  ```
+- React requires hooks to be called in the same order on every render
+- Conditional hook calls crash the page during hydration
+- Error manifested as browser "This page couldn't load" error
+
+#### Cause 2: Middleware static import (SECONDARY)
+- `import { get } from '@vercel/edge-config'` at module level
+- If the package fails to load on Vercel Edge runtime, ALL requests crash
+- Even with `if (process.env.EDGE_CONFIG)` check, the import itself
+  could fail at module initialization
+
+### Fixes Applied
+
+#### Fix 1: src/app/page.tsx — Hook order
+- Moved `useIsMobile()` + `showMobileMode` to the TOP of the component
+  (before any early returns)
+- All hooks now called unconditionally → complies with Rules of Hooks
+
+#### Fix 2: src/middleware.ts — Dynamic import
+- Replaced `import { get } from '@vercel/edge-config'` with dynamic import
+- Created `safeGet<T>()` helper:
+  1. Returns null if EDGE_CONFIG not configured
+  2. Uses `await import('@vercel/edge-config')` (lazy load)
+  3. Catches any error → returns null (don't block traffic)
+- Middleware now never crashes, even if Edge Config is unavailable
+
+### Verification
+- Build: ✓ succeeded (VERCEL=1 mode)
+- Hooks order: useIsMobile now before all early returns ✓
+- Middleware: safe dynamic import, won't crash on missing Edge Config ✓
+
+### Pushed to GitHub
+- Commit: `37edb29` on `main` branch
+- 2 files changed
+
+### Lesson Learned
+When adding hooks to components with early returns:
+```tsx
+// ❌ WRONG — hook after return
+if (!ready) return <Loading />
+const data = useHook()  // crashes on re-render
+
+// ✅ CORRECT — all hooks before returns
+const data = useHook()
+if (!ready) return <Loading />
+```
+
+Stage Summary:
+- Vercel "This page couldn't load" error fixed.
+- Root cause: Rules of Hooks violation (useIsMobile after early return).
+- Secondary fix: middleware dynamic import for Edge Config safety.
+- Build passes, Vercel should auto-redeploy successfully.
