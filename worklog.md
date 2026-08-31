@@ -14064,3 +14064,89 @@ Stage Summary:
 - Glossary provides single source of truth for all UI terms.
 - Dynamic org name from OrgProfile (user-configurable).
 - Build succeeds, ready for Vercel deploy.
+
+---
+
+## Task ID: DEFAULT-TEMPLATES + RESTORE-PNG-TEAM
+
+**Agent**: orchestrator (main)
+**Task**: User wants default templates for work orders, documents, reports + keep "Powered by PNG TEAM" (their team).
+
+### Completed (5 files, commit 27c2cc9)
+
+#### 1. Restored "Powered by PNG TEAM"
+User clarified: PNG TEAM is their own dev team — keep this credit.
+
+| File | Change |
+|------|--------|
+| footer.tsx | 'ขับเคลื่อนโดย {orgName}' → 'Powered by PNG TEAM' |
+| itam-login.tsx | 'Powered by ITAM' → 'Powered by PNG TEAM' |
+| maintenance/route.ts | restored 'Powered by PNG TEAM' |
+
+Note: Org name (orgProfile.appName) still dynamic — user changes org name
+in Settings, but "Powered by PNG TEAM" stays as dev team credit.
+
+#### 2. Default Templates Seeding System
+
+**New endpoint: POST /api/templates/seed**
+
+Auto-seeds ALL default templates if missing:
+
+**DocumentTemplate table (6 templates):**
+- work-order: ใบแจ้งซ่อน (header + device-info + problem + assignment + footer)
+- stock-in: ใบรับเข้า
+- stock-out: ใบเบิก
+- purchase-order: ใบสั่งซื้อ
+- pdf: รายงาน PDF
+- sticker: สติกเกอร์ (canvas-based)
+
+**AppSetting sticker_template_* (2 templates):**
+- sticker_template_standard (75×36mm, QR + asset code + serial)
+- sticker_template_large (larger format)
+
+**AppSetting document_template_* (4 report templates):**
+- document_template_report_default — รายงานมาตรฐาน (generic)
+- document_template_meter_report — รายงานการจดมิเตอร์ (landscape)
+- document_template_wo_summary — สรุปใบงานประจำเดือน
+- document_template_device_list — รายการอุปกรณ์ (landscape)
+
+All idempotent — safe to call multiple times.
+
+#### 3. UI: "ติดตั้งเทมเพลตเริ่มต้น" Button
+Added to Templates page header (top-right):
+- Orange outline button with Sparkles icon
+- Click → POST /api/templates/seed
+- Shows success/error message
+- Auto-reloads page after 2s to show new templates
+
+### Template Coverage (12 total defaults)
+
+| Category | Type | Count |
+|----------|------|-------|
+| DocumentTemplate table | work-order, stock-in, stock-out, purchase-order, pdf, sticker | 6 |
+| Sticker templates (AppSetting) | standard, large | 2 |
+| Document report templates (AppSetting) | report, meter, WO summary, device list | 4 |
+| **Total** | | **12** |
+
+### Verification
+- Build: ✓ succeeded (VERCEL=1 mode)
+- DB already had 6 DocumentTemplate defaults
+- New endpoint will seed the missing 6 AppSetting templates
+
+### Pushed to GitHub
+- Commit: `27c2cc9` on `main` branch
+- 5 files changed, 332 insertions, 12 deletions
+
+### User Flow
+1. Login as admin
+2. Go to 📄 เทมเพลต page
+3. Click "ติดตั้งเทมเพลตเริ่มต้น" button (top-right)
+4. System seeds 12 default templates
+5. Page auto-reloads → all templates visible
+6. User can customize or create new templates from there
+
+Stage Summary:
+- "Powered by PNG TEAM" restored (dev team credit).
+- Default templates system complete: 12 templates across 3 storage locations.
+- One-click seed button in UI.
+- Build succeeds, ready for Vercel deploy.
