@@ -14002,3 +14002,46 @@ Stage Summary:
 - 11 files changed (5 new, 6 modified).
 - Build + API tests pass.
 - Ready for Vercel deploy.
+
+---
+
+## Task ID: VERCEL-BUILD-FIX — .nft.json ENOENT Error
+
+**Agent**: orchestrator (main)
+**Task**: Vercel build failed with "ENOENT: no such file or directory, open '.next/next-server.js.nft.json'"
+
+### Root Cause
+`next.config.ts` had `output: 'standalone'` enabled for production builds. This mode is designed for self-hosted deployments (Docker, VPS) and changes the build output structure. Vercel doesn't need standalone mode — it handles deployment automatically. When standalone is enabled on Vercel, the build produces a different file structure that causes Vercel's platform to fail finding `.nft.json`.
+
+### Fix
+Updated `next.config.ts` to detect Vercel via `process.env.VERCEL` (set automatically by Vercel during build):
+
+```typescript
+const isVercel = !!process.env.VERCEL
+const isDev = process.env.NODE_ENV === 'development'
+const useStandalone = !isVercel && !isDev
+
+const nextConfig: NextConfig = {
+  ...(useStandalone && { output: 'standalone' as const }),
+  // ...
+}
+```
+
+Now:
+- **Vercel build**: VERCEL=1 → no standalone → build succeeds
+- **Sandbox self-hosted**: no VERCEL → standalone → works for local testing
+- **Dev mode**: no standalone → saves memory
+
+### Verification
+- Build with `VERCEL=1` env var: ✓ succeeded
+- No `.nft.json` ENOENT error
+- All routes compiled correctly
+- Middleware + maintenance route still work
+
+### Commit
+- `10a9d86` on `main` branch
+- Pushed to GitHub — Vercel will auto-redeploy
+
+Stage Summary:
+- Vercel build error fixed. `output: 'standalone'` now only applies to self-hosted, not Vercel.
+- User should see successful Vercel deploy within ~2 minutes of push.
