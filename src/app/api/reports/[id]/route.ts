@@ -3,6 +3,9 @@ import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { requireAuth } from '@/lib/auth-middleware'
 import { reportsService } from '@/modules/reports'
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

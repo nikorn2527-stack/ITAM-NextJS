@@ -24,6 +24,9 @@ function toJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJso
   return value as Prisma.InputJsonValue
 }
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
   // 1. Auth — use ADMIN (not SYNC_RUN, B4 frozen rule)
   const auth = await requireAuth(req, 'ADMIN')

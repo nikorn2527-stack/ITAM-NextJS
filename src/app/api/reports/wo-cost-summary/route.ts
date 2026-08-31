@@ -3,6 +3,9 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { siteFilterForUser } from '@/lib/auth'
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 /**
  * GET /api/reports/wo-cost-summary?from=YYYY-MM-DD&to=YYYY-MM-DD&site=&groupBy=device|month|category
  *

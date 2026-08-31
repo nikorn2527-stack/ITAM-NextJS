@@ -32,6 +32,9 @@ function bridgeModuleFromTarget(target: string): LegacyBridgeModule | null {
   return isLegacyBridgeModule(candidate) ? candidate : null
 }
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
   // 1. Auth + AuthorizationContext
   const auth = await requireAuth(req, 'ADMIN')

@@ -21,6 +21,9 @@ import { requireAuth } from '@/lib/auth-middleware'
  * anyone (including unauthenticated callers) could enumerate every
  * Site and harvest contact tokens.
  */
+// Cache sites for 5 minutes — list changes infrequently.
+export const revalidate = 300
+
 export async function GET(req: NextRequest) {
   // ── Require authentication ──
   // Even read-only access to the Site list is gated because the table

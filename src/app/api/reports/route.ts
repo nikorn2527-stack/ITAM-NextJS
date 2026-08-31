@@ -10,6 +10,9 @@ import {
   type ReportType,
 } from '@/modules/reports'
 
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 export async function GET(req: NextRequest) {
   const unavailable = moduleUnavailableResponse('reports')
   if (unavailable) return unavailable

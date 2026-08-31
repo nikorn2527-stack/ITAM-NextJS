@@ -1921,6 +1921,9 @@ async function dispatchAppsScriptImport(
 //   • ถ้ามี field `source` → Apps Script legacy import
 //   • ถ้าไม่มี → ใช้ jobType แบบเดิม
 // ============================================================
+// Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req, 'IMPORT_DATA')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
