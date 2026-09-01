@@ -268,7 +268,10 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json()
-    const required = ['assetCode', 'name', 'brand', 'model', 'type', 'status', 'site']
+    // Apply defaults for optional fields that have sensible defaults
+    if (!body.status) body.status = 'active'
+    if (!body.site) body.site = 'HQ'
+    const required = ['assetCode', 'name', 'brand', 'model', 'type']
     for (const k of required) {
       if (body[k] === undefined || body[k] === null || body[k] === '') {
         return NextResponse.json(
