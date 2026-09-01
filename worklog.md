@@ -14654,3 +14654,58 @@ Stage Summary:
 - LINE OA integration complete: QR scan + text + OCR → auto WO creation.
 - Admin assigns WO via existing WO page (status=PENDING → IN_PROGRESS).
 - Build passes, ready for Vercel deploy.
+
+---
+
+## Task ID: SENTRY + RESEND — Error Tracking + Email Integration
+
+**Agent**: orchestrator (main)
+**Task**: User provided Sentry DSN + Resend API key. Install and configure both.
+
+### 1. Sentry (Error Tracking)
+- **Free tier**: 5,000 errors/month + 50 session replays/month
+- **Packages**: @sentry/nextjs installed
+- **Config files** (3 new):
+  - `sentry.client.config.ts` — client-side error capture
+  - `sentry.server.config.ts` — server-side (API routes, SSR)
+  - `sentry.edge.config.ts` — Edge runtime (middleware)
+- `instrumentation.ts` — Next.js auto-init hook
+- **Features**:
+  - 10% transaction sampling (free tier friendly)
+  - Strips authorization headers + cookies before sending
+  - Disabled in development
+  - Ignores noisy errors (NEXT_NOT_FOUND, NEXT_REDIRECT)
+
+### 2. Resend (Email)
+- **Free tier**: 3,000 emails/month + 100/day
+- **Package**: resend installed
+- **New**: `src/lib/resend-email.ts`
+  - `sendEmail()` — generic sender
+  - `sendPasswordResetEmail()` — branded reset template
+  - `sendNotificationEmail()` — WO/low stock alerts
+  - `sendRegistrationEmail()` — welcome + pending approval
+- **Templates**: Thai, branded orange, Powered by PNG TEAM footer
+
+### 3. Vercel env vars (configured via API)
+| Variable | Prod | Preview |
+|----------|------|---------|
+| NEXT_PUBLIC_SENTRY_DSN | ✅ | ✅ |
+| RESEND_API_KEY | ✅ | ✅ |
+| CRON_SECRET | ✅ | ✅ |
+| R2_ACCOUNT_ID | ✅ | ✅ |
+| R2_ACCESS_KEY_ID | ✅ | ✅ |
+| R2_SECRET_ACCESS_KEY | ✅ | ✅ |
+| R2_BUCKET_NAME | ✅ | ✅ |
+| R2_PUBLIC_URL | ✅ | ✅ |
+
+### Verification
+- Build: ✓ succeeded (webpack, 40s, 124/124 pages)
+- Sentry initialized (client + server + edge)
+- Resend email helper ready
+
+### Pushed to GitHub
+- Commit: `4e0b4da` on `main` branch
+- 5 new files + 2 modified (package.json + lock)
+
+### Remaining: Better Stack (uptime monitoring)
+User hasn't signed up yet — optional, can add later.
