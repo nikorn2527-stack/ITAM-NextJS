@@ -238,9 +238,12 @@ export async function buildAuthorizationContext(
   const globalRole = normalizeRole(user.role)
   const isSuperAdmin = globalRole === 'superadmin'
   const isGlobalAdmin = globalRole === 'admin'
+  // Demo users bypass site grants — they're for testing only.
+  // They can read all data and write (tagged isDemo:true) at any site.
+  const isDemoUser = user.isDemo === true
 
-  // superadmin and admin bypass Site grants — both have access to everything
-  if (isSuperAdmin || isGlobalAdmin) {
+  // superadmin, admin, AND demo users bypass Site grants
+  if (isSuperAdmin || isGlobalAdmin || isDemoUser) {
     const globalPerms = getRolePermissions(globalRole)
     return {
       userId,
@@ -252,7 +255,7 @@ export async function buildAuthorizationContext(
       effectivePermissions: globalPerms,
       usedLegacyFallback: false,
       can: (perm) => globalPerms.includes(perm),
-      canAtSite: () => true, // superadmin/admin has all permissions at every Site
+      canAtSite: () => true, // demo/admin has all permissions at every Site
       canAccessSite: () => true,
       siteWhere: () => ({}),
       roleAtSite: () => globalRole,

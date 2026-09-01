@@ -161,7 +161,7 @@ export async function GET(req: NextRequest) {
       }),
 
       // 7) All site attributes (small table, needed for per-site stats)
-      db.siteAttribute.findMany(),
+      db.siteAttribute.findMany({ select: { id: true, SiteCode: true, SiteName: true, PaperRateBW: true, PaperRateColor: true, Hotline: true, LineOA: true } }),
     ])
 
     // ── Process status groups into canonical KPI buckets ───────────────────

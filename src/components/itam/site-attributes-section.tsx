@@ -515,7 +515,7 @@ export function SiteAttributesSection() {
                 id="sa-site-name"
                 value={form.siteName}
                 onChange={(e) => setForm({ ...form, siteName: e.target.value })}
-                placeholder="เช่น โรงพยาบาลศูนย์อุดรธานี"
+                placeholder="เช่น สำนักงานใหญ่, สาขากรุงเทพ"
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
             </div>

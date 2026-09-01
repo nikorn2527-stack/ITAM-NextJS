@@ -54,7 +54,7 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
   const rangeStart = data?.range?.start ?? null
   const rangeEnd = data?.range?.end ?? null
 
-  const org = orgName?.trim() || 'PNG TEAM'
+  const org = orgName?.trim() || 'องค์กร'
 
   const total = data?.totals?.total ?? 0
   const active = data?.totals?.active ?? 0
@@ -320,7 +320,7 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
 
     <div class="footer">
       <div>
-        <span class="brand">PNG TEAM</span> — IT Asset Management
+        <span class="brand">องค์กร</span> — IT Asset Management
       </div>
       <div>
         หน้า 1 · ออกรายงานเมื่อ ${escapeHtml(generatedAt)}

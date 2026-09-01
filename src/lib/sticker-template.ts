@@ -70,11 +70,11 @@ export interface StickerSettings {
 }
 
 export const DEFAULT_STICKER_SETTINGS: StickerSettings = {
-  companyName: 'PNG TEAM IT',
-  hospitalName: 'โรงพยาบาลศูนย์อุดรธานี',
-  footerNote: 'ห้ามนำอุปกรณ์ออกจากเขตโรงพยาบาล — กรุณาติดต่อ IT หากพบปัญหา',
-  hotline: '061-234-5678',
-  lineOALink: '@pngteam',
+  companyName: 'Your Organization',
+  hospitalName: 'ชื่อองค์กร',  // generic — user sets their own name in Settings
+  footerNote: 'ห้ามนำอุปกรณ์ออกจากพื้นที่ — กรุณาติดต่อ IT หากพบปัญหา',
+  hotline: '000-000-0000',
+  lineOALink: '@your-org',
 }
 
 // ─── 18 supported variables (mirror of Apps Script Section 6) ─────────────
@@ -108,14 +108,14 @@ export const SAMPLE_DEVICE: StickerDeviceData = {
   type: 'PRINTER',
   brand: 'HP',
   model: 'LaserJet Pro M404',
-  building: 'ตึก 69 ปี',
+  building: 'อาคาร A',
   floor: '1',
-  department: 'เภสัชกรรม',
-  departmentCode: 'PHA-001',
-  location: 'ห้องยา OPD',
-  site: 'โรงพยาบาลศูนย์อุดรธานี',
+  department: 'ฝ่ายเทคโนโลยีสารสนเทศ',
+  departmentCode: 'IT-001',
+  location: 'ห้องประชุม 1',
+  site: 'สำนักงานใหญ่',
   contractNo: 'CTR-2025-001',
-  vendor: 'PNG TEAM CO.,LTD',
+  vendor: 'Your Vendor Co.,Ltd',
 }
 
 // ─── Device data shape used for variable substitution ────────────────────

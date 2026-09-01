@@ -1553,7 +1553,7 @@ export function ItamStickerEditor() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">ชื่อโรงพยาบาล {'({{hospitalName}})'}</Label>
+                <Label className="text-xs">ชื่อองค์กร {'({{hospitalName}})'}</Label>
                 <Input
                   value={settingsForm.hospitalName}
                   onChange={(e) => setSettingsForm({ ...settingsForm, hospitalName: e.target.value })}

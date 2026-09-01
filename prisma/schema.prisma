@@ -124,6 +124,11 @@ model MeterReading {
   @@index([deviceId])
   @@index([readingMonth])
   @@index([isDemo])
+  // Composite indexes for common query patterns
+  @@index([deviceId, readingMonth])       // meter readings per device per month
+  @@index([readingType, readingDate])     // filter by type + date range
+  @@index([readingDate])                  // date range queries (dashboard)
+  @@index([deviceId, readingDate])        // latest reading per device
 }
 
 // ============================================================
@@ -670,6 +675,10 @@ model StockTransaction {
   @@index([clientMutationId])
   @@index([workOrderId])
   @@index([workOrderNo])
+  // Composite indexes for common query patterns
+  @@index([type, createdAt])              // stock-in/out by date
+  @@index([stockItemId, type, createdAt]) // transaction history per item
+  @@index([approvalStatus, createdAt])    // pending approvals sorted by date
 }
 
 // ============================================================

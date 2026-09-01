@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
         },
         select: { pagesBw: true, pagesColor: true },
       }),
-      db.siteRate.findMany(),
+      db.siteRate.findMany({ select: { siteCode: true, bwRate: true, colorRate: true } }),
     ])
 
     const stockItemMap = buildStockItemMap(stockItems as never)
