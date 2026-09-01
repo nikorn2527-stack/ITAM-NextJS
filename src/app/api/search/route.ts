@@ -138,16 +138,21 @@ export async function GET(req: NextRequest) {
     }))
 
     // Master items — code, label (suffix-aware for short numeric)
-    const codeWhere = isShort
-      ? { OR: [{ code: { endsWith: q } }, { code: { contains: q } }] }
-      : { code: { contains: q } }
     const masters = await db.masterItem.findMany({
-      where: {
-        OR: [
-          codeWhere,
-          { label: { contains: q } },
-        ],
-      },
+      where: isShort
+        ? {
+            OR: [
+              { code: { endsWith: q } },
+              { code: { contains: q } },
+              { label: { contains: q } },
+            ],
+          }
+        : {
+            OR: [
+              { code: { contains: q } },
+              { label: { contains: q } },
+            ],
+          },
       take: 5,
       orderBy: { code: 'asc' },
     })
