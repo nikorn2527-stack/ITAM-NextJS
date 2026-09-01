@@ -275,6 +275,16 @@ export async function PUT(
   }
 }
 
+// PATCH /api/devices/[id] — delegate to PUT (partial update)
+// Some frontend code uses PATCH instead of PUT; both should work.
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  // Delegate to PUT — same handler accepts partial fields
+  return PUT(req, { params })
+}
+
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

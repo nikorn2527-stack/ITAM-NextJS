@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { db } from '@/lib/db'
 import { withRetryOnUnique } from '@/lib/retry-unique'
+import { logAudit } from '@/lib/audit'
 
 /**
  * POST /api/line/webhook
@@ -388,12 +389,6 @@ export async function POST(req: NextRequest) {
 
       if (type === 'message') {
         const msg = (evt.message ?? {}) as Record<string, unknown>
-        if (msg.type !== 'text') {
-          // Sticker/image/audio → ignore for now
-          continue
-        }
-        const text = String(msg.text ?? '').trim()
-        if (!text) continue
         const messageId = String(msg.id ?? '')
 
         // ── Deduplicate LINE messages by messageId ──
@@ -411,6 +406,77 @@ export async function POST(req: NextRequest) {
             continue
           }
         }
+
+        // ── IMAGE: QR/barcode scan from device sticker ──
+        if (msg.type === 'image') {
+          // Process image: decode QR + find device + create WO
+          if (settings.channelAccessToken) {
+            try {
+              const { processLineImage, buildImageReplyMessage } = await import('@/lib/line-image-handler')
+
+              const result = await processLineImage(
+                messageId,
+                settings.channelAccessToken,
+              )
+
+              let woNumber: string | undefined
+
+              // If device found → create WO
+              if (result.device) {
+                const d = result.device
+                const wo = await withRetryOnUnique(
+                  () => db.workOrder.create({
+                    data: {
+                      subject: `แจ้งซ่อมผ่าน LINE (สแกน QR) — ${d.assetCode ?? 'ไม่ระบุรหัส'}`,
+                      details: `แจ้งโดย: LINE user ${lineUserId}\nวิธี: สแกน${result.method === 'qr' ? 'QR code' : 'รูปภาพ (OCR)'}\nรหัสที่อ่านได้: ${result.code ?? '-'}`,
+                      reporterName: `LINE ${lineUserId}`,
+                      tel: '',
+                      status: 'PENDING',
+                      submissionSource: 'line',
+                      trackable: true,
+                      lineUserId,
+                      lineMessageId: messageId,
+                      deviceId: d.id,
+                      siteCode: d.site,
+                      isDemo: false,
+                    },
+                  }),
+                  { maxRetries: 3 },
+                )
+                woNumber = wo.woNumber ?? undefined
+
+                await logAudit(
+                  'CREATE',
+                  'WorkOrder',
+                  wo.id,
+                  `LINE webhook: auto-created WO ${woNumber} from image scan (device: ${d.assetCode})`,
+                  { lineUserId, messageId, method: result.method, deviceId: d.id },
+                ).catch(() => {})
+              }
+
+              // Reply with result
+              const replyMessages = buildImageReplyMessage(result, woNumber)
+              await reply(replyToken, replyMessages, settings)
+              handled++
+            } catch (err) {
+              console.error('[line-webhook] Image processing failed:', err)
+              await reply(
+                replyToken,
+                [{ type: 'text', text: '⚠️ ไม่สามารถประมวลผลรูปภาพได้ กรุณาลองอีกครั้งหรือพิมพ์รหัสเครื่องแทน' }],
+                settings,
+              ).catch(() => {})
+            }
+          }
+          continue
+        }
+
+        // Sticker/audio/video → ignore (only text + image supported)
+        if (msg.type !== 'text') {
+          continue
+        }
+
+        const text = String(msg.text ?? '').trim()
+        if (!text) continue
 
         // Persist LineBinding (so we know this user exists)
         await upsertLineBinding(lineUserId)

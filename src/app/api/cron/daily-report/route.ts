@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
       woPending,
       meterReadings,
       stockTxns,
-      stockLow,
+      stockLowRaw,
       newDevices,
       warrantyExpiring,
       auditLogs,
@@ -112,10 +112,9 @@ export async function GET(req: NextRequest) {
       db.stockTransaction.count({
         where: { createdAt: { gte: yesterdayStart, lte: yesterdayEnd } },
       }),
-      // Low-stock items (below reorder point)
-      db.stockItem.count({
-        where: { quantity: { lte: db.stockItem.fields.minQuantity } },
-      }),
+      // Low-stock items (quantity <= minQuantity)
+      // Use raw SQL because Prisma doesn't support column-to-column comparison
+      db.$queryRaw`SELECT COUNT(*)::int as c FROM "StockItem" WHERE quantity <= "minQuantity"`,
       // New devices added yesterday
       db.device.count({
         where: { createdAt: { gte: yesterdayStart, lte: yesterdayEnd } },
@@ -142,6 +141,11 @@ export async function GET(req: NextRequest) {
         take: 1,
       }),
     ])
+
+    // Convert raw query result to number (raw returns [{c: number}])
+    const stockLow = Array.isArray(stockLowRaw) && stockLowRaw[0]
+      ? Number((stockLowRaw[0] as { c: number }).c)
+      : 0
 
     const report: DailyReportData = {
       date: dateStr,

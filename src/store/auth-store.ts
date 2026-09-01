@@ -216,7 +216,18 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'itam-auth',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => {
+        // SSR-safe: localStorage only available in browser
+        if (typeof window === 'undefined') {
+          // Return a no-op storage for server-side rendering
+          return {
+            getItem: () => null,
+            setItem: () => {},
+            removeItem: () => {},
+          }
+        }
+        return localStorage
+      }),
       partialize: (s) => ({ user: s.user, token: s.token, isAuthenticated: s.isAuthenticated }),
     },
   ),

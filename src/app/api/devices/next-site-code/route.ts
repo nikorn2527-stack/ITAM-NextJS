@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Resolve site name: accept either a site CODE (e.g. "UDH") or a site
-    // NAME (e.g. "โรงพยาบาลศูนย์อุดรธานี"). Look up via SiteAttribute first.
+    // NAME (e.g. "ชื่อสาขา (e.g. สำนักงานใหญ่)"). Look up via SiteAttribute first.
     let siteName = siteParam
     const upper = siteParam.toUpperCase()
 

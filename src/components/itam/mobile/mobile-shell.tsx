@@ -28,15 +28,17 @@
 
 import * as React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut } from 'lucide-react'
+import { Wrench, ClipboardList, Gauge, PackageOpen, QrCode, LogOut, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
 import { MobileRepairRequest } from './mobile-repair-request'
 import { MobileMyWork } from './mobile-my-work'
 import { MobileMeterReading } from './mobile-meter-reading'
 import { MobileStockOut } from './mobile-stock-out'
+import { MobileQRScan } from './mobile-qr-scan'
 
-export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock'
+export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock' | 'scan'
 
 interface NavItem {
   id: MobileTab
@@ -45,6 +47,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { id: 'scan',     label: 'สแกน',      icon: QrCode },
   { id: 'repair',   label: 'แจ้งซ่อม',   icon: Wrench },
   { id: 'my-work',  label: 'งานของฉัน', icon: ClipboardList },
   { id: 'meter',    label: 'จดมิเตอร์',  icon: Gauge },
@@ -52,6 +55,7 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 const HEADER_TITLE: Record<MobileTab, string> = {
+  scan: 'สแกน QR / Barcode',
   repair: 'แจ้งซ่อม',
   'my-work': 'งานของฉัน',
   meter: 'จดมิเตอร์',
@@ -59,8 +63,21 @@ const HEADER_TITLE: Record<MobileTab, string> = {
 }
 
 export function MobileShell() {
-  const [tab, setTab] = React.useState<MobileTab>('repair')
+  const [tab, setTab] = React.useState<MobileTab>('scan')
   const setActivePage = useAppStore((s) => s.setActivePage)
+  const logout = useAuthStore((s) => s.logout)
+
+  const handleExit = () => {
+    // Exit mobile mode → back to desktop layout
+    setActivePage('dashboard')
+  }
+
+  const handleLogout = () => {
+    // Real logout — clear token + redirect to login
+    logout()
+    // Force page reload to clear all state
+    window.location.href = '/'
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
@@ -76,14 +93,25 @@ export function MobileShell() {
               {HEADER_TITLE[tab]}
             </h1>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">ITAM Mobile</span>
+          <div className="flex items-center gap-1">
+            <span className="mr-1 text-xs text-muted-foreground">ITAM Mobile</span>
+            {/* Exit mobile mode → back to desktop */}
             <button
               type="button"
-              onClick={() => setActivePage('dashboard')}
+              onClick={handleExit}
               aria-label="ออกจากโหมดมือถือ"
               title="ออกจากโหมดมือถือ"
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:border-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+            {/* Real logout — clear token */}
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="ออกจากระบบ"
+              title="ออกจากระบบ"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-700 dark:border-rose-800 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
             >
               <LogOut className="h-4 w-4" />
             </button>
@@ -100,6 +128,7 @@ export function MobileShell() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.18, ease: 'easeOut' }}
             >
+              {tab === 'scan' && <MobileQRScan />}
               {tab === 'repair' && <MobileRepairRequest />}
               {tab === 'my-work' && <MobileMyWork />}
               {tab === 'meter' && <MobileMeterReading />}
@@ -125,7 +154,7 @@ export function MobileShell() {
               onClick={() => setTab(item.id)}
               aria-current={active ? 'page' : undefined}
               className={cn(
-                'flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-medium transition-colors',
+                'flex h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium transition-colors',
                 active
                   ? 'text-orange-500'
                   : 'text-muted-foreground hover:text-foreground',

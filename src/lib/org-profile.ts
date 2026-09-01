@@ -124,13 +124,15 @@ export async function updateOrgProfile(updates: Partial<OrgProfile>): Promise<Or
 }
 
 /**
- * Industry type labels (Thai).
+ * Industry type labels (Thai) — generic, not org-specific.
+ * Uses @/lib/glossary as single source of truth.
  */
 export const INDUSTRY_LABELS: Record<string, string> = {
   general: 'ทั่วไป',
-  hospital: 'โรงพยาบาล',
-  factory: 'โรงงาน',
   office: 'สำนักงาน',
-  school: 'สถาบันการศึกษา',
+  corporate: 'องค์กร',
+  education: 'สถาบันการศึกษา',
   government: 'หน่วยงานรัฐ',
+  healthcare: 'สถานพยาบาล',
+  industrial: 'อุตสาหกรรม',
 }

@@ -25,7 +25,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { get } from '@vercel/edge-config'
 
 // Paths that bypass maintenance mode check
 const BYPASS_PATHS = [
@@ -41,77 +40,73 @@ const BYPASS_PATHS = [
 
 export const config = {
   matcher: [
-    /*
-     * Match all paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico
-     * - public assets
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|woff|woff2)$).*)',
   ],
+}
+
+/**
+ * Safely get a value from Edge Config.
+ * Returns null if Edge Config is not configured or the get fails.
+ * Uses dynamic import to avoid module-level crashes on Vercel.
+ */
+async function safeGet<T>(key: string): Promise<T | null> {
+  if (!process.env.EDGE_CONFIG) return null
+  try {
+    const { get } = await import('@vercel/edge-config')
+    return await get<T>(key)
+  } catch {
+    // Edge Config not available or error — don't block traffic
+    return null
+  }
 }
 
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname
 
   // ── Maintenance mode check (Edge Config) ──
-  if (process.env.EDGE_CONFIG) {
-    try {
-      const maintenanceMode = await get<boolean>('feature.maintenanceMode')
-      if (maintenanceMode) {
-        // Allow bypass paths
-        if (BYPASS_PATHS.some((p) => path.startsWith(p))) {
-          return NextResponse.next()
-        }
-
-        // API routes get JSON 503
-        if (path.startsWith('/api/')) {
-          return NextResponse.json(
-            {
-              error: 'ระบบอยู่ในช่วงปิดบำรุง กรุณาลองใหม่ภายหลัง',
-              maintenance: true,
-              retryAfter: 300,
-            },
-            { status: 503, headers: { 'Retry-After': '300' } },
-          )
-        }
-
-        // HTML pages get maintenance page
-        const maintenanceUrl = new URL('/maintenance', req.url)
-        return NextResponse.rewrite(maintenanceUrl)
-      }
-    } catch (err) {
-      // Edge Config error — don't block traffic
-      console.warn('[middleware] Edge Config error:', err)
+  const maintenanceMode = await safeGet<boolean>('feature.maintenanceMode')
+  if (maintenanceMode) {
+    // Allow bypass paths
+    if (BYPASS_PATHS.some((p) => path.startsWith(p))) {
+      return NextResponse.next()
     }
+
+    // API routes get JSON 503
+    if (path.startsWith('/api/')) {
+      return NextResponse.json(
+        {
+          error: 'ระบบอยู่ในช่วงปิดบำรุง กรุณาลองใหม่ภายหลัง',
+          maintenance: true,
+          retryAfter: 300,
+        },
+        { status: 503, headers: { 'Retry-After': '300' } },
+      )
+    }
+
+    // HTML pages get maintenance page
+    const maintenanceUrl = new URL('/maintenance', req.url)
+    return NextResponse.rewrite(maintenanceUrl)
   }
 
   // ── Read-only mode (block writes) ──
-  if (process.env.EDGE_CONFIG) {
-    try {
-      const readOnly = await get<boolean>('feature.readOnly')
-      if (readOnly && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
-        // Allow login + cron
-        if (
-          path.startsWith('/api/itam/auth/') ||
-          path.startsWith('/api/cron/')
-        ) {
-          return NextResponse.next()
-        }
+  const readOnly = await safeGet<boolean>('feature.readOnly')
+  if (readOnly && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    // Allow login + cron
+    if (
+      path.startsWith('/api/itam/auth/') ||
+      path.startsWith('/api/cron/')
+    ) {
+      return NextResponse.next()
+    }
 
-        if (path.startsWith('/api/')) {
-          return NextResponse.json(
-            {
-              error: 'ระบบอยู่ในโหมดอ่านอย่างเดียว (บำรุงระบบ) — ไม่สามารถบันทึกข้อมูลได้',
-              readOnly: true,
-            },
-            { status: 503 },
-          )
-        }
-      }
-    } catch (err) {
-      console.warn('[middleware] Edge Config read-only check error:', err)
+    if (path.startsWith('/api/')) {
+      return NextResponse.json(
+        {
+          error: 'ระบบอยู่ในโหมดอ่านอย่างเดียว (บำรุงระบบ) — ไม่สามารถบันทึกข้อมูลได้',
+          readOnly: true,
+        },
+        { status: 503 },
+      )
     }
   }
 

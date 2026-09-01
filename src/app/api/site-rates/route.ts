@@ -2,12 +2,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 
+// Cache site rates for 5 minutes — changes infrequently
+export const revalidate = 300
+
 export async function GET() {
   try {
-    const rates = await db.siteRate.findMany({
-      orderBy: { siteCode: 'asc' },
-    })
-    const sites = await db.site.findMany()
+    // Parallel queries with select to reduce payload
+    const [rates, sites] = await Promise.all([
+      db.siteRate.findMany({
+        orderBy: { siteCode: 'asc' },
+        select: { id: true, siteCode: true, bwRate: true, colorRate: true, effectiveFrom: true, effectiveTo: true, isActive: true },
+      }),
+      db.site.findMany({
+        select: { id: true, code: true, name: true },
+      }),
+    ])
     const siteNameMap = new Map(sites.map((s) => [s.code, s.name]))
 
     // Auto-seed default rates for sites that don't yet have one
