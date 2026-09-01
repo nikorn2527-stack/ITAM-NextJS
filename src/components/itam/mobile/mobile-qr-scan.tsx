@@ -31,8 +31,12 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { QrScannerDialog } from '@/components/itam/qr-scanner-dialog'
 import { useAuthStore } from '@/store/auth-store'
+
+// Dynamic import QrScannerDialog — jsqr is CommonJS, breaks if loaded statically
+const QrScannerDialog = React.lazy(() =>
+  import('@/components/itam/qr-scanner-dialog').then((m) => ({ default: m.QrScannerDialog }))
+)
 
 interface Device {
   id: string
@@ -296,13 +300,17 @@ export function MobileQRScan() {
         </div>
       )}
 
-      {/* QR Scanner Dialog */}
-      <QrScannerDialog
-        open={scanOpen}
-        onOpenChange={setScanOpen}
-        onScan={handleScan}
-        title="สแกน QR/Barcode ที่สติกเกอร์อุปกรณ์"
-      />
+      {/* QR Scanner Dialog — lazy loaded with Suspense fallback */}
+      {scanOpen && (
+        <React.Suspense fallback={<div className="p-4 text-center text-sm">กำลังโหลดกล้อง...</div>}>
+          <QrScannerDialog
+            open={scanOpen}
+            onOpenChange={setScanOpen}
+            onScan={handleScan}
+            title="สแกน QR/Barcode ที่สติกเกอร์อุปกรณ์"
+          />
+        </React.Suspense>
+      )}
     </div>
   )
 }
