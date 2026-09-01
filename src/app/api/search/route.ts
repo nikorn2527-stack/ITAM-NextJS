@@ -66,24 +66,69 @@ export async function GET(req: NextRequest) {
     // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, match the SUFFIX
     // of identifier fields. Non-numeric/longer queries use contains.
     const isShort = isNumericShortQuery(q)
-    const assetFragment = isShort ? { assetCode: { endsWith: q } } : { assetCode: { contains: q } }
-    const serialFragment = isShort ? { serialNumber: { endsWith: q } } : { serialNumber: { contains: q } }
-    const codeFragment = isShort ? { code: { endsWith: q } } : { code: { contains: q } }
 
-    // Devices — assetCode, name, serialNumber, brand, model
-    const devices = await db.device.findMany({
-      where: {
-        OR: [
-          assetFragment,
-          { name: { contains: q } },
-          serialFragment,
-          { brand: { contains: q } },
-          { model: { contains: q } },
-        ],
-      },
-      take: 8,
-      orderBy: { assetCode: 'asc' },
-    })
+    // For short numeric queries, search identifier fields FIRST (suffix match)
+    // Only search text fields (name, brand, model) if no identifier matches.
+    let devices
+    if (isShort) {
+      // Step 1: Try suffix match on assetCode, serialNumber, assetSiteCode
+      devices = await db.device.findMany({
+        where: {
+          OR: [
+            { assetCode: { endsWith: q } },
+            { serialNumber: { endsWith: q } },
+            { assetSiteCode: { endsWith: q } },
+          ],
+        },
+        take: 8,
+        orderBy: { assetCode: 'asc' },
+      })
+
+      // Step 2: If no suffix matches, try contains on identifier fields
+      if (devices.length === 0) {
+        devices = await db.device.findMany({
+          where: {
+            OR: [
+              { assetCode: { contains: q } },
+              { serialNumber: { contains: q } },
+              { assetSiteCode: { contains: q } },
+            ],
+          },
+          take: 8,
+          orderBy: { assetCode: 'asc' },
+        })
+      }
+
+      // Step 3: If still no matches, try text fields (brand, model, name)
+      if (devices.length === 0) {
+        devices = await db.device.findMany({
+          where: {
+            OR: [
+              { name: { contains: q } },
+              { brand: { contains: q } },
+              { model: { contains: q } },
+            ],
+          },
+          take: 8,
+          orderBy: { assetCode: 'asc' },
+        })
+      }
+    } else {
+      // Non-numeric query — search all fields with contains
+      devices = await db.device.findMany({
+        where: {
+          OR: [
+            { assetCode: { contains: q } },
+            { name: { contains: q } },
+            { serialNumber: { contains: q } },
+            { brand: { contains: q } },
+            { model: { contains: q } },
+          ],
+        },
+        take: 8,
+        orderBy: { assetCode: 'asc' },
+      })
+    }
     const deviceResults: SearchDevice[] = devices.map((d) => ({
       type: 'device',
       id: d.id,
@@ -92,11 +137,14 @@ export async function GET(req: NextRequest) {
       url: null,
     }))
 
-    // Master items — code, label
+    // Master items — code, label (suffix-aware for short numeric)
+    const codeWhere = isShort
+      ? { OR: [{ code: { endsWith: q } }, { code: { contains: q } }] }
+      : { code: { contains: q } }
     const masters = await db.masterItem.findMany({
       where: {
         OR: [
-          codeFragment,
+          codeWhere,
           { label: { contains: q } },
         ],
       },
