@@ -490,9 +490,12 @@ export async function POST(req: NextRequest) {
     let department: string | null = null
 
     // ── Guest contact validation (skip for external WOs and session users) ──
+    // Demo users bypass guest validation — they're for testing only.
+    const isDemoUser = demo?.user?.isDemo === true || staffUser?.isDemo === true
     if (
       source === 'guest' &&
       !externalFlag &&
+      !isDemoUser &&
       skipGuestValidation !== true
     ) {
       if (!finalReporterName || !finalTel) {
