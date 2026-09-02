@@ -146,6 +146,12 @@ export function MobileRepairRequest() {
 
   // ── Auth-aware reporter info (for submissionSource='session') ──
   const user = useAuthStore((s) => s.user)
+  const token = useAuthStore((s) => s.token)
+
+  // Helper: get auth headers for fetch
+  function getAuthHeaders(): Record<string, string> {
+    return token ? { Authorization: `Bearer ${token}` } : {}
+  }
 
   // ── Search effect (debounced 300ms) ──
   React.useEffect(() => {
@@ -163,14 +169,39 @@ export function MobileRepairRequest() {
       setSearchError(null)
       setShowResults(true)
       try {
-        const params = new URLSearchParams({ search: q, limit: '10' })
-        const res = await fetch(`/api/devices?${params.toString()}`)
+        // Use search API with suffix-aware matching (short numeric → suffix first)
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
+          headers: getAuthHeaders(),
+        })
         if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          throw new Error(j.error ?? 'ค้นหาไม่สำเร็จ')
+          // Fallback to devices endpoint
+          const params = new URLSearchParams({ search: q, limit: '10' })
+          const fallbackRes = await fetch(`/api/devices?${params.toString()}`, {
+            headers: getAuthHeaders(),
+          })
+          if (!fallbackRes.ok) {
+            const j = await fallbackRes.json().catch(() => ({}))
+            throw new Error(j.error ?? 'ค้นหาไม่สำเร็จ')
+          }
+          const json = (await fallbackRes.json()) as { devices?: DeviceLite[] }
+          setResults((json.devices ?? []).slice(0, 8))
+          return
         }
-        const json = (await res.json()) as { devices?: DeviceLite[] }
-        setResults((json.devices ?? []).slice(0, 8))
+        const data = await res.json()
+        const searchResults = data.results?.devices ?? []
+        // Map search results to DeviceLite format
+        const mapped: DeviceLite[] = searchResults.map((d: { id: string; title: string; subtitle: string }) => {
+          const parts = d.title.split(' · ')
+          const subParts = (d.subtitle || '').split(' · ')
+          return {
+            id: d.id,
+            assetCode: parts[0] ?? '',
+            name: parts.slice(1).join(' · ') ?? '',
+            serialNumber: subParts[0] ?? '',
+            site: subParts[1] ?? '',
+          }
+        })
+        setResults(mapped.slice(0, 8))
       } catch (e) {
         setResults([])
         setSearchError(e instanceof Error ? e.message : 'ค้นหาไม่สำเร็จ')
