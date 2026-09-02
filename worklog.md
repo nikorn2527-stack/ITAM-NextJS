@@ -14709,3 +14709,44 @@ Stage Summary:
 
 ### Remaining: Better Stack (uptime monitoring)
 User hasn't signed up yet — optional, can add later.
+
+---
+
+## Task ID: UX-IMPROVEMENTS — Remove Scan Tab + Smart Search
+
+**Agent**: orchestrator (main)
+**Task**: User feedback: scan tab redundant, search needs to be smarter, app not friendly for external users.
+
+### Changes Made
+
+#### 1. Removed "สแกน" tab from MobileShell
+- Back to 4 tabs: แจ้งซ่อม, งานของฉัน, จดมิเตอร์, เบิกของ
+- Default tab: 'repair' (was 'scan')
+- Font size: back to text-[11px] (4 tabs fit fine)
+- Scan functionality now lives in "แจ้งซ่อม" tab's device search (already existed)
+
+#### 2. Smart search in MobileRepairRequest
+- Changed from `/api/devices?search=` to `/api/search?q=`
+- Uses 3-step priority search:
+  1. Suffix match (serialNumber ending with query)
+  2. Contains on identifiers
+  3. Contains on text fields
+- Auto-debounced 300ms (no need to press Enter)
+- Results show instantly as user types
+- Fallback to /api/devices if /api/search fails
+
+#### 3. External/guest user friendliness
+- Already had guest flow (no login required)
+- Guest contact validation (name + phone)
+- External WOs for locations not in system
+- Demo users bypass all validations
+- The confusion was from extra "สแกน" tab — now removed
+
+### Pushed to GitHub
+- Commit: `658e6ef` on `main` branch
+- Deploy verified on Vercel (gitCommit: 658e6ef)
+
+Stage Summary:
+- MobileShell simplified to 4 tabs (no redundant scan tab).
+- Search is smart (suffix-aware, auto-debounced).
+- App is friendlier for both logged-in users and external guests.
