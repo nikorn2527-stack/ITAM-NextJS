@@ -67,6 +67,7 @@ import {
   ScanLine,
   Building2,
   Printer,
+  QrCode,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -139,6 +140,7 @@ export function MobileRepairRequest() {
   //    so we can keep the full-screen overlay consistent with the rest of
   //    the app and avoid pulling another dep into the mobile bundle). ──
   const [cameraOpen, setCameraOpen] = React.useState(false)
+  const [qrScanOpen, setQrScanOpen] = React.useState(false)
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
@@ -437,34 +439,46 @@ export function MobileRepairRequest() {
 
           {!selected ? (
             <div className="p-4">
-              {/* Search input with icon + scan button */}
+              {/* Search input with icon + QR scan button */}
               <div ref={resultsRef} className="relative">
-                <div className="relative flex items-center">
-                  <Search className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    inputMode="search"
-                    autoComplete="off"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    onFocus={() => results.length > 0 && setShowResults(true)}
-                    placeholder="รหัสอุปกรณ์ / Serial Number"
-                    aria-label="ค้นหาอุปกรณ์ด้วยรหัสหรือหมายเลขซีเรียล"
-                    className="h-12 rounded-lg pl-9 pr-12 text-base"
-                  />
-                  {searchTerm && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchTerm('')
-                        setResults([])
-                      }}
-                      aria-label="ล้างคำค้นหา"
-                      className="absolute right-2 flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
+                <div className="relative flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      inputMode="search"
+                      autoComplete="off"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onFocus={() => results.length > 0 && setShowResults(true)}
+                      placeholder="รหัสอุปกรณ์ / Serial"
+                      aria-label="ค้นหาอุปกรณ์"
+                      className="h-12 rounded-lg pl-9 pr-9 text-base"
+                    />
+                    {searchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearchTerm('')
+                          setResults([])
+                        }}
+                        aria-label="ล้าง"
+                        className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  {/* QR Scan button */}
+                  <button
+                    type="button"
+                    onClick={() => setQrScanOpen(true)}
+                    aria-label="สแกน QR Code"
+                    title="สแกน QR"
+                    className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border border-orange-300 bg-orange-50 text-orange-600 transition-colors hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-400 dark:hover:bg-orange-950/60"
+                  >
+                    <QrCode className="h-5 w-5" />
+                  </button>
                 </div>
 
                 {/* Dropdown results */}
@@ -810,6 +824,18 @@ function SelectedDeviceCard({ device }: { device: DeviceLite }) {
           </div>
         </div>
       </div>
+
+      {/* Inline QR Scanner overlay */}
+      {qrScanOpen && (
+        <InlineQRScanner
+          onScan={(value) => {
+            setSearchTerm(value)
+            setQrScanOpen(false)
+            toast.success(`สแกนได้: ${value}`)
+          }}
+          onClose={() => setQrScanOpen(false)}
+        />
+      )}
     </div>
   )
 }
@@ -958,4 +984,223 @@ function readFileAsDataUrl(file: File): Promise<string> {
     reader.onerror = () => reject(reader.error)
     reader.readAsDataURL(file)
   })
+}
+
+// ── Inline QR Scanner ─────────────────────────────────────────────────
+// Self-contained QR scanner overlay — uses camera + jsQR (dynamic import)
+// No dependency on QrScannerDialog (which uses global store + CommonJS).
+
+function InlineQRScanner({
+  onScan,
+  onClose,
+}: {
+  onScan: (value: string) => void
+  onClose: () => void
+}) {
+  const videoRef = React.useRef<HTMLVideoElement | null>(null)
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
+  const streamRef = React.useRef<MediaStream | null>(null)
+  const rafRef = React.useRef<number | null>(null)
+  const stoppedRef = React.useRef(false)
+  const [status, setStatus] = React.useState<'starting' | 'scanning' | 'error' | 'manual'>('starting')
+  const [errorMsg, setErrorMsg] = React.useState('')
+  const [manualValue, setManualValue] = React.useState('')
+
+  React.useEffect(() => {
+    startCamera()
+    return () => stopCamera()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function startCamera() {
+    setStatus('starting')
+    setErrorMsg('')
+    stoppedRef.current = false
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('browser-not-supported')
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      })
+      streamRef.current = stream
+
+      const video = videoRef.current
+      if (!video) return
+
+      video.srcObject = stream
+      video.setAttribute('playsinline', 'true')
+      await video.play()
+      setStatus('scanning')
+      tick()
+    } catch (e) {
+      const err = e as Error
+      if (err.name === 'NotAllowedError') {
+        setErrorMsg('ไม่ได้อนุญาตกล้อง — กรุณาอนุญาตในการตั้งค่าเบราว์เซอร์ หรือพิมพ์รหัสเครื่องด้านล่าง')
+      } else if (err.name === 'NotFoundError') {
+        setErrorMsg('ไม่พบกล้องในอุปกรณ์นี้ — พิมพ์รหัสเครื่องด้านล่างแทน')
+      } else {
+        setErrorMsg('เปิดกล้องไม่ได้ — พิมพ์รหัสเครื่องด้านล่างแทน')
+      }
+      setStatus('manual')
+    }
+  }
+
+  function stopCamera() {
+    stoppedRef.current = true
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+    const stream = streamRef.current
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        try { track.stop() } catch { /* ignore */ }
+      }
+      streamRef.current = null
+    }
+  }
+
+  async function tick() {
+    if (stoppedRef.current) return
+
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
+      rafRef.current = requestAnimationFrame(tick)
+      return
+    }
+
+    const w = video.videoWidth
+    const h = video.videoHeight
+    if (w === 0 || h === 0) {
+      rafRef.current = requestAnimationFrame(tick)
+      return
+    }
+
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) {
+      rafRef.current = requestAnimationFrame(tick)
+      return
+    }
+
+    ctx.drawImage(video, 0, 0, w, h)
+    const imageData = ctx.getImageData(0, 0, w, h)
+
+    try {
+      // Dynamic import jsQR (CommonJS — lazy load to avoid SSR crash)
+      const { default: jsQR } = await import('jsqr')
+      const code = jsQR(imageData.data, w, h, {
+        inversionAttempts: 'dontInvert',
+      })
+
+      if (code && code.data) {
+        stopCamera()
+        onScan(code.data.trim())
+        return
+      }
+    } catch {
+      // jsQR failed to load — fall back to manual mode
+      setStatus('manual')
+      setErrorMsg('ไม่สามารถสแกน QR ได้ — พิมพ์รหัสเครื่องด้านล่างแทน')
+      return
+    }
+
+    rafRef.current = requestAnimationFrame(tick)
+  }
+
+  function handleManualSubmit() {
+    const v = manualValue.trim()
+    if (!v) return
+    onScan(v)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-black">
+      {/* Header */}
+      <div className="flex items-center justify-between bg-black/80 px-4 py-3 pt-[env(safe-area-inset-top)]">
+        <span className="text-sm font-medium text-white">สแกน QR Code</span>
+        <button
+          type="button"
+          onClick={() => { stopCamera(); onClose() }}
+          aria-label="ปิด"
+          className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      {/* Camera / Manual */}
+      {status === 'starting' || status === 'scanning' ? (
+        <div className="relative flex-1">
+          <video
+            ref={videoRef}
+            className="h-full w-full object-cover"
+            playsInline
+            muted
+          />
+          <canvas ref={canvasRef} className="hidden" />
+
+          {/* Scan overlay frame */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <div className="h-48 w-48 rounded-xl border-2 border-orange-500 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]" />
+          </div>
+
+          {/* Hint text */}
+          <div className="absolute inset-x-0 bottom-20 px-6 text-center">
+            <p className="text-sm text-white/80">
+              {status === 'starting' ? 'กำลังเปิดกล้อง...' : 'นำกล้องไปที่ QR Code บนสติกเกอร์อุปกรณ์'}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-6">
+          {errorMsg && (
+            <div className="mb-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+              {errorMsg}
+            </div>
+          )}
+
+          {/* Retry camera button */}
+          <button
+            type="button"
+            onClick={startCamera}
+            className="mb-4 flex w-full items-center justify-center gap-2 rounded-lg border border-orange-300 bg-orange-50 py-3 text-sm font-medium text-orange-600 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-400"
+          >
+            <Camera className="h-5 w-5" />
+            ลองเปิดกล้องอีกครั้ง
+          </button>
+
+          {/* Manual entry */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              พิมพ์รหัสเครื่อง
+            </label>
+            <input
+              type="text"
+              value={manualValue}
+              onChange={(e) => setManualValue(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleManualSubmit()}
+              placeholder="เช่น IT-00001 หรือ SN12345"
+              className="h-12 w-full rounded-lg border border-slate-300 px-4 text-base dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={handleManualSubmit}
+              disabled={!manualValue.trim()}
+              className="h-12 w-full rounded-lg bg-orange-500 text-white font-medium disabled:opacity-50"
+            >
+              ยืนยัน
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
