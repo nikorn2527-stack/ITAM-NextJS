@@ -31,10 +31,26 @@ import { useAppStore } from '@/store/app-store'
  * and runs jsQR on each frame. Supports a manual-entry fallback for browsers
  * / devices where camera access is unavailable or denied.
  */
-export function QrScannerDialog() {
-  const open = useAppStore((s) => s.qrScannerOpen)
-  const setOpen = useAppStore((s) => s.setQrScannerOpen)
+export interface QrScannerDialogProps {
+  /** Controlled open state — if provided, overrides global store */
+  open?: boolean
+  /** Called when dialog should close */
+  onOpenChange?: (open: boolean) => void
+  /** Called when a QR/barcode is scanned — if provided, overrides global store */
+  onScan?: (value: string) => void
+}
+
+export function QrScannerDialog(props?: QrScannerDialogProps) {
+  // Support both controlled (props) and uncontrolled (global store) modes
+  const storeOpen = useAppStore((s) => s.qrScannerOpen)
+  const storeSetOpen = useAppStore((s) => s.setQrScannerOpen)
   const publishQrScan = useAppStore((s) => s.publishQrScan)
+
+  const open = props?.open ?? storeOpen
+  const setOpen = (v: boolean) => {
+    if (props?.onOpenChange) props.onOpenChange(v)
+    else storeSetOpen(v)
+  }
 
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -141,7 +157,12 @@ export function QrScannerDialog() {
     const v = value.trim()
     if (!v) return
     stopCamera()
-    publishQrScan(v)
+    if (props?.onScan) {
+      props.onScan(v)
+    } else {
+      publishQrScan(v)
+    }
+    setOpen(false)
     toast.success(`สแกนสำเร็จ: ${v.length > 60 ? v.slice(0, 60) + '…' : v}`)
   }
 
@@ -152,7 +173,12 @@ export function QrScannerDialog() {
       return
     }
     setManualValue('')
-    publishQrScan(v)
+    if (props?.onScan) {
+      props.onScan(v)
+    } else {
+      publishQrScan(v)
+    }
+    setOpen(false)
     toast.success(`ส่งค่า: ${v.length > 60 ? v.slice(0, 60) + '…' : v}`)
   }
 
