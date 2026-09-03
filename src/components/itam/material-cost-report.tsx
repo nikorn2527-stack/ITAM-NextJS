@@ -49,6 +49,21 @@ import {
 import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth-store'
 import { canSelectSite } from './types'
+import { CustomColumnSelector, type ColumnDef } from './custom-column-selector'
+import { ReportBarChart, ReportPieChart } from './report-charts'
+
+// Column definitions for material cost report
+const COST_REPORT_COLUMNS: ColumnDef[] = [
+  { key: 'productCode', label: 'รหัส', default: true },
+  { key: 'productName', label: 'ชื่อสินค้า', default: true },
+  { key: 'category', label: 'หมวดหมู่', default: true },
+  { key: 'quantity', label: 'จำนวน', default: true },
+  { key: 'unit', label: 'หน่วย', default: false },
+  { key: 'unitCost', label: 'ราคา/หน่วย', default: true },
+  { key: 'totalCost', label: 'มูลค่ารวม', default: true },
+  { key: 'site', label: 'สาขา', default: false },
+  { key: 'costType', label: 'ประเภทต้นทุน', default: false },
+]
 import {
   Droplet,
   Wrench,
@@ -178,6 +193,7 @@ function depreciationLabel(method: string | null | undefined): string {
 export function MaterialCostReport() {
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
+  const [selectedColumns, setSelectedColumns] = React.useState<string[]>([])
 
   // ── Site filter visibility — only show if user can select among multiple sites ──
   const authUser = useAuthStore((s) => s.user)
@@ -377,6 +393,12 @@ export function MaterialCostReport() {
                 <Download className="mr-1 h-3.5 w-3.5" />
                 CSV
               </Button>
+              <CustomColumnSelector
+                storageKey="material-cost-cols"
+                columns={COST_REPORT_COLUMNS}
+                selected={selectedColumns}
+                onChange={setSelectedColumns}
+              />
             </div>
           </div>
         </CardHeader>

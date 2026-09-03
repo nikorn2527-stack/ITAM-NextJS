@@ -61,7 +61,7 @@ export function WorkOrdersReport({ data, isDark }: { data: any; isDark: boolean 
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <SectionCard title="ประวัติช่าง" icon={<Users className="h-4 w-4" />} accent="#3b82f6">
+        <SectionCard title="ประวัติช่าง" icon={<Users className="h-4 w-4" />} accent="#0d9488">
           <div className="max-h-80 overflow-y-auto">
             <Table>
               <TableHeader className="sticky top-0 bg-background">
