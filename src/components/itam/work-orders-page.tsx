@@ -3131,8 +3131,8 @@ function WorkOrderDetailContent({
         </div>
       </div>
 
-      {/* Body — scrollable */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Body — scrollable (with max-height for desktop) */}
+      <div className="flex-1 overflow-y-auto sm:max-h-[calc(92vh-8rem)]">
         <div className="space-y-4 px-4 py-4 sm:px-5">
           {/* External block */}
           {external && (
