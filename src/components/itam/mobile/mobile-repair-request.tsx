@@ -192,15 +192,30 @@ export function MobileRepairRequest() {
         const data = await res.json()
         const searchResults = data.results?.devices ?? []
         // Map search results to DeviceLite format
+        // subtitle format: "S/N: XXX | Brand Model · Site"
         const mapped: DeviceLite[] = searchResults.map((d: { id: string; title: string; subtitle: string }) => {
-          const parts = d.title.split(' · ')
-          const subParts = (d.subtitle || '').split(' · ')
+          const titleParts = d.title.split(' · ')
+          const assetCode = titleParts[0] ?? ''
+          const name = titleParts.slice(1).join(' · ') ?? ''
+
+          // Parse subtitle: "S/N: XXX | Brand Model · Site"
+          const subtitle = d.subtitle || ''
+          let serialNumber = ''
+          let site = ''
+          if (subtitle.includes('S/N:')) {
+            const snPart = subtitle.split('S/N:')[1]?.split('|')[0]?.trim() ?? ''
+            serialNumber = snPart
+            const afterPipe = subtitle.split('|')[1]?.trim() ?? ''
+            const sitePart = afterPipe.split('·').pop()?.trim() ?? ''
+            site = sitePart
+          }
+
           return {
             id: d.id,
-            assetCode: parts[0] ?? '',
-            name: parts.slice(1).join(' · ') ?? '',
-            serialNumber: subParts[0] ?? '',
-            site: subParts[1] ?? '',
+            assetCode,
+            name,
+            serialNumber,
+            site,
           }
         })
         setResults(mapped.slice(0, 8))
@@ -525,10 +540,18 @@ export function MobileRepairRequest() {
                                     {d.name}
                                   </span>
                                 </div>
-                                <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                                  {[d.brand, d.model].filter(Boolean).join(' ') || '—'}
-                                  {d.serialNumber ? ` · S/N ${d.serialNumber}` : ''}
-                                  {d.site ? ` · ${d.site}` : ''}
+                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+                                  {d.serialNumber && (
+                                    <span className="rounded bg-blue-50 px-1.5 py-0.5 font-mono font-medium text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+                                      S/N: {d.serialNumber}
+                                    </span>
+                                  )}
+                                  <span className="text-muted-foreground">
+                                    {[d.brand, d.model].filter(Boolean).join(' ') || '—'}
+                                  </span>
+                                  {d.site && (
+                                    <span className="text-muted-foreground">· {d.site}</span>
+                                  )}
                                 </div>
                               </div>
                               <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />

@@ -133,7 +133,7 @@ export async function GET(req: NextRequest) {
       type: 'device',
       id: d.id,
       title: `${d.assetCode} · ${d.name}`,
-      subtitle: `${d.brand} ${d.model} · ${d.site}`,
+      subtitle: `S/N: ${d.serialNumber ?? '-'} | ${d.brand ?? ''} ${d.model ?? ''} · ${d.site ?? ''}`,
       url: null,
     }))
 
