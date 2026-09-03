@@ -4,7 +4,7 @@ import { logAudit } from '@/lib/audit'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
-import { demoTag } from '@/lib/demo-mode'
+import { demoTag, demoFilter } from '@/lib/demo-mode'
 import {
   clampPageAndLimit,
   buildPaginationMeta,
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
       limit: Number(searchParams.get('limit') ?? '100') || 100,
     })
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { ...demoFilter(auth.user) }
     if (search) {
       // ── Search only NON-SENSITIVE fields ──────────────────────────
       // Audit (ITAM-02) REQUEST CHANGES: search clause included sensitive

@@ -32,18 +32,24 @@ export function isDemoUser(user: DemoAwareUser | null | undefined): boolean {
 }
 
 /**
- * Build a Prisma `where` fragment that restricts reads to demo-safe rows.
+ * Build a Prisma `where` fragment that filters data based on demo status.
  *
- * Demo users can SEE everything (real + demo data) for an authentic
- * preview experience, so this returns an empty filter by design.
- * Real users obviously see everything too.
+ * - Demo users: see everything (real + demo data) for authentic preview
+ * - Real users: see ONLY real data (isDemo != true) — demo data is HIDDEN
  *
- * Use this to keep the read paths consistent — even though it's currently
- * a no-op, calling it on every list endpoint makes future tightening
- * (e.g. hiding real PII from demo users) a one-line change.
+ * Use this on every list endpoint to enforce demo data isolation:
+ *   const where = { ...filters, ...demoFilter(auth.user) }
  */
-export function demoFilter(_user: DemoAwareUser | null | undefined): Record<string, unknown> {
-  return {}
+export function demoFilter(user: DemoAwareUser | null | undefined): Record<string, unknown> {
+  // Demo users see everything (no filter)
+  if (isDemoUser(user)) return {}
+  // Real users see ONLY non-demo data (isDemo = false OR null)
+  return {
+    OR: [
+      { isDemo: false },
+      { isDemo: null },
+    ],
+  }
 }
 
 /**
