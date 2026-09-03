@@ -151,7 +151,7 @@ export function StockDashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-stretch">
         {/* Low stock alert list */}
         <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="p-4">

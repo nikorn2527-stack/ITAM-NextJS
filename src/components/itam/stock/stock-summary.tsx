@@ -291,7 +291,7 @@ export function StockSummary() {
         </Card>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-2 xl:items-start">
+      <div className="grid gap-3 xl:grid-cols-2 xl:items-stretch">
       {/* Summary by product */}
       <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader className="px-3 py-2.5 md:px-4">

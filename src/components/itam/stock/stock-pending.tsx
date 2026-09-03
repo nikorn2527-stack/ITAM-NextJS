@@ -387,7 +387,7 @@ export function StockPending() {
       {/* Pending table — fills remaining height (Issue 3) */}
       <Card className="flex min-h-0 flex-1 flex-col border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardContent className="min-h-0 flex-1 p-0">
-          <div className="itam-scroll min-h-0 flex-1 overflow-auto">
+          <div className="itam-scroll max-h-[calc(100vh-20rem)] min-h-[300px] overflow-auto">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
