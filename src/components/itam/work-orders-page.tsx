@@ -88,6 +88,7 @@ import { Combobox } from './combobox'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
 import { normalizeImageUrlThumb, normalizeImageUrl } from '@/lib/image-url'
+import { PaginationBar } from './pagination-bar'
 
 // ============================================================
 // Auth headers helper — every fetch() in this file MUST pass
@@ -1010,31 +1011,15 @@ export function WorkOrdersPage() {
         </Card>
       )}
 
-      {/* Pagination */}
+      {/* Pagination — unified PaginationBar */}
       {pagination && pagination.totalPages > 1 && (
-        <div className="mt-2 flex flex-shrink-0 flex-col items-center gap-2 sm:flex-row sm:justify-between">
-          <p className="text-sm text-muted-foreground">
-            ทั้งหมด {pagination.total} รายการ • หน้า {pagination.page} / {pagination.totalPages}
-          </p>
-          <div className="flex items-center gap-1">
-            <Button type="button"
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              ก่อนหน้า
-            </Button>
-            <Button type="button"
-              variant="outline"
-              size="sm"
-              disabled={page >= pagination.totalPages}
-              onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
-            >
-              ถัดไป
-            </Button>
-          </div>
-        </div>
+        <PaginationBar
+          page={page}
+          pageSize={pagination.pageSize}
+          total={pagination.total}
+          totalPages={pagination.totalPages}
+          onPageChange={setPage}
+        />
       )}
 
       {/* Create dialog */}

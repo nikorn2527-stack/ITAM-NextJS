@@ -118,6 +118,7 @@ import { downloadCsv, dateStamp } from '@/lib/csv'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
+import { PaginationBar } from './pagination-bar'
 
 /** Build fetch headers with the user's JWT (if logged in). */
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -3215,98 +3216,15 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
             </Table>
           </div>
 
-          {/* Pagination footer — shows range, total, per-page selector, prev/next, page input */}
-          <div className="mt-3 flex flex-shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-              <span>
-                แสดง <span className="font-semibold text-slate-700 dark:text-slate-200">{startIdx}-{endIdx}</span>
-                {' '}จาก{' '}
-                <span className="font-semibold text-slate-700 dark:text-slate-200">{totalCount.toLocaleString('th-TH')}</span>
-                {' '}รายการ
-              </span>
-              {selectedIds.size > 0 && (
-                <span className="text-[#f97316] dark:text-[#fb923c]">
-                  · เลือก {selectedIds.size} เครื่อง
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Per-page selector */}
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-                <span>หน้าละ</span>
-                <Select value={String(pageSize)} onValueChange={(v) => setPageSize(Number(v))}>
-                  <SelectTrigger className="h-8 w-[68px] text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(Math.max(1, currentPage - 1))}
-                  disabled={currentPage <= 1}
-                  aria-label="หน้าก่อนหน้า"
-                  className="h-8 gap-1 px-2 text-xs dark:bg-slate-800 dark:border-slate-700"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                  ก่อนหน้า
-                </Button>
-
-                {/* Page input — type a page number to jump */}
-                <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-                  <span className="hidden sm:inline">หน้า</span>
-                  <Input
-                    value={pageInput}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^0-9]/g, '')
-                      setPageInput(v)
-                    }}
-                    onBlur={() => {
-                      const n = parseInt(pageInput, 10)
-                      if (!isNaN(n) && n >= 1 && n <= totalPages) {
-                        setPage(n)
-                      } else {
-                        setPageInput(String(currentPage))
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        const n = parseInt(pageInput, 10)
-                        if (!isNaN(n) && n >= 1 && n <= totalPages) {
-                          setPage(n)
-                        } else {
-                          setPageInput(String(currentPage))
-                        }
-                      }
-                    }}
-                    className="h-8 w-14 text-center text-xs dark:bg-slate-800 dark:border-slate-700"
-                    aria-label="เลขหน้า"
-                    inputMode="numeric"
-                  />
-                  <span>/ {totalPages.toLocaleString('th-TH')}</span>
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
-                  disabled={currentPage >= totalPages}
-                  aria-label="หน้าถัดไป"
-                  className="h-8 gap-1 px-2 text-xs dark:bg-slate-800 dark:border-slate-700"
-                >
-                  ถัดไป
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </div>
-          </div>
+          {/* Pagination — unified PaginationBar */}
+          <PaginationBar
+            page={currentPage}
+            pageSize={pageSize}
+            total={totalCount}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            onPageSizeChange={setPageSize}
+          />
         </CardContent>
       </Card>
 
