@@ -15666,3 +15666,62 @@ Bugs ที่ยังไม่ได้แก้ในรอบนี้ (จ�
 - DATA-04: phantom sites (HQ/BKK) — ต้อง backfill device.site field (data migration)
 - DATA-05: low stock count off-by-one (1 record diff) — minor
 - ACL-01: permission matrix testing — ต้องทดสอบด้วยบัญชี non-admin
+
+---
+Task ID: deploy-and-verify-production
+Agent: orchestrator (main)
+Task: Deploy รอบถัดไป + ตรวจสอบ production ใช้งานได้ปกติ + แก้ bugs ที่เหลือให้เรียบร้อย
+
+Work Log:
+- ตรวจสอบ production deploy รอบแรก (commit 205a15c) — สำเร็จ
+  * Login ทำงาน: demo_admin → ได้ token
+  * Dashboard API: total=2,394, active=2,161, repair=6, inactive=11
+  * WebAuthn login/begin: rpId="itam-next-js.vercel.app" (auto-detected)
+
+- แก้ DATA-04 phantom sites:
+  * สร้าง scripts/backfill-device-sites.ts
+  * Backfill 16 devices ที่มี phantom site (UDH-short 7, NKP-short 1, HQ 7, BKK 1)
+  * UDH → "โรงพยาบาลศูนย์อุดรธานี"
+  * NKP → "โรงพยาบาลนครพนม"
+  * HQ/BKK → "PPIT" (demo/test devices default)
+  * ผลลัพธ์: 4 sites ที่ valid, sum = 2,394 = total ✅
+
+- แก้ DATA-05 low stock count off-by-one:
+  * src/app/api/stock-items/route.ts
+  * Stats + filtered list ใช้ rule เดียวกัน: minQuantity > 0 AND quantity <= minQuantity
+  * ก่อน: stats 30 แต่ list 29 (off-by-one เพราะ minQuantity=0 ถูกนับใน stats แต่ไม่อยู่ใน list)
+  * หลัง: stats 29, list 29 (match) ✅
+
+- ทดสอบ ACL-01 permission matrix บน production:
+  * viewer POST /api/devices → 403 ✅ (blocked at API level)
+  * viewer GET /api/devices → 200 ✅ (read access)
+  * admin GET /api/users → 200 ✅ (admin access)
+  * Backend enforces permissions even when frontend hides buttons
+
+- Commit + push (51d68bf): "fix: DATA-04 phantom sites + DATA-05 low stock count"
+- รอ Vercel deploy เสร็จ (90 วินาที)
+
+- ตรวจสอบ production หลัง deploy:
+  1. Dashboard: total=2,394, active=2,161, repair=6, inactive=11, sites=4 ✅
+  2. Reports/unified: total=2,394, active=2,161, repair=6 ✅ (consistent)
+  3. Sites: sum of site devices = 2,394 = total ✅
+  4. WebAuthn login: rpId=itam-next-js.vercel.app ✅
+  5. WebAuthn register: rpId=itam-next-js.vercel.app, user=demo_admin@itam.demo ✅
+  6. ACL: viewer POST→403, GET→200 ✅
+  7. Low stock: stats=29, list=29 (match) ✅
+
+Stage Summary:
+- ✅ DATA-01: total consistent (2,394) across dashboard + reports
+- ✅ DATA-02: active consistent (2,161) across dashboard + reports
+- ✅ DATA-03: meter reading API rejects future dates
+- ✅ DATA-04: no phantom sites (4 sites, sum matches total)
+- ✅ DATA-05: low stock count matches list (29 = 29)
+- ✅ DATA-06: status normalization (Active/ACTIVE/active → "Active")
+- ✅ UI-01: KpiCard loading skeleton (no more 0 during load)
+- ✅ UX-01: sidebar pointer events (touch devices supported)
+- ✅ ACL-01: permission matrix verified (viewer blocked at API)
+- ✅ WebAuthn fingerprint login (Touch ID / Face ID / Windows Hello)
+- ✅ Production deploy: https://itam-next-js.vercel.app/ — ใช้งานได้ปกติ
+
+Bugs ที่เหลือ (low priority):
+- inactive count ต่างเล็กน้อย (dashboard 11 vs reports 3) — เพราะ dashboard รวม Lost/Unknown เข้า inactive แต่ reports แยก — ไม่ใช่ bug จริง
