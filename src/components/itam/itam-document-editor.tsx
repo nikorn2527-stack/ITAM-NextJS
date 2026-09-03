@@ -1400,63 +1400,95 @@ export function ItamDocumentEditor() {
                   </div>
                 </TabsContent>
 
-                {/* Column picker */}
-                <TabsContent value="columns" className="mt-0 space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                    คอลัมน์ตาราง ({draft?.table.columns.length ?? 0})
-                  </Label>
-                  <div className="space-y-1">
+                {/* Column picker — improved with width slider + drag hint */}
+                <TabsContent value="columns" className="mt-0 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      คอลัมน์ตาราง ({draft?.table.columns.length ?? 0})
+                    </Label>
+                    <span className="text-[10px] text-slate-400">
+                      ความกว้างรวม: {(draft?.table.columns.reduce((sum, c) => sum + c.width, 0) ?? 0).toFixed(0)}mm
+                      {draft && draft.table.columns.reduce((s, c) => s + c.width, 0) > 190 && (
+                        <span className="ml-1 text-rose-500">(อาจล้นหน้ากระดาษ A4)</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
                     {(draft?.table.columns ?? []).map((c, i) => (
                       <div
                         key={c.key}
-                        className="flex items-center gap-1 rounded border border-slate-200 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-800"
+                        className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-800"
                       >
-                        <button
-                          type="button"
-                          onClick={() => moveColumn(i, -1)}
-                          disabled={i === 0}
-                          className="text-slate-400 hover:text-slate-700 disabled:opacity-30"
-                          title="เลื่อนขึ้น"
-                          aria-label="เลื่อนคอลัมน์ขึ้น"
-                        >
-                          <ChevronUp className="h-3 w-3" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => moveColumn(i, 1)}
-                          disabled={i === (draft?.table.columns.length ?? 0) - 1}
-                          className="text-slate-400 hover:text-slate-700 disabled:opacity-30"
-                          title="เลื่อนลง"
-                          aria-label="เลื่อนคอลัมน์ลง"
-                        >
-                          <ChevronDown className="h-3 w-3" />
-                        </button>
+                        {/* Up/Down */}
+                        <div className="flex flex-col">
+                          <button
+                            type="button"
+                            onClick={() => moveColumn(i, -1)}
+                            disabled={i === 0}
+                            className="text-slate-400 hover:text-slate-700 disabled:opacity-30"
+                            title="เลื่อนขึ้น"
+                          >
+                            <ChevronUp className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveColumn(i, 1)}
+                            disabled={i === (draft?.table.columns.length ?? 0) - 1}
+                            className="text-slate-400 hover:text-slate-700 disabled:opacity-30"
+                            title="เลื่อนลง"
+                          >
+                            <ChevronDown className="h-3 w-3" />
+                          </button>
+                        </div>
+                        {/* Label */}
                         <Input
                           value={c.label}
                           onChange={(e) => updateColumn(i, { label: e.target.value })}
                           className="h-7 flex-1 text-[11px] dark:bg-slate-900 dark:border-slate-700"
+                          title="ชื่อคอลัมน์"
                         />
-                        <Input
-                          type="number"
-                          value={c.width}
-                          onChange={(e) => updateColumn(i, { width: Number(e.target.value) || 5 })}
-                          className="h-7 w-12 text-[11px] dark:bg-slate-900 dark:border-slate-700"
-                          title="ความกว้าง (mm)"
-                        />
+                        {/* Width — slider + number */}
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="range"
+                            min="5"
+                            max="40"
+                            value={c.width}
+                            onChange={(e) => updateColumn(i, { width: Number(e.target.value) })}
+                            className="h-1 w-16 cursor-pointer accent-orange-500"
+                            title={`ความกว้าง: ${c.width}mm`}
+                          />
+                          <Input
+                            type="number"
+                            value={c.width}
+                            onChange={(e) => updateColumn(i, { width: Number(e.target.value) || 5 })}
+                            className="h-7 w-12 text-[11px] dark:bg-slate-900 dark:border-slate-700"
+                            title="ความกว้าง (mm)"
+                          />
+                          <span className="text-[9px] text-slate-400">mm</span>
+                        </div>
+                        {/* Delete */}
                         <button
                           type="button"
                           onClick={() => removeColumn(i)}
-                          className="text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                          className="flex h-6 w-6 items-center justify-center rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                           title="ลบคอลัมน์"
-                          aria-label="ลบคอลัมน์"
                         >
                           <X className="h-3 w-3" />
                         </button>
                       </div>
                     ))}
+                    {(draft?.table.columns.length ?? 0) === 0 && (
+                      <div className="py-4 text-center text-xs text-slate-400">
+                        ยังไม่มีคอลัมน์ — เพิ่มจากด้านล่าง
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-2">
-                    <div className="mb-1 text-[10px] text-slate-500">เพิ่มคอลัมน์:</div>
+                  {/* Add columns */}
+                  <div className="mt-2 rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+                    <div className="mb-1.5 text-[10px] font-medium text-slate-500">
+                      เพิ่มคอลัมน์ (คลิกเพื่อเพิ่ม):
+                    </div>
                     <div className="flex flex-wrap gap-1">
                       {AVAILABLE_TABLE_COLUMNS
                         .filter((c) => !draft?.table.columns.some((x) => x.key === c.key))
@@ -1465,11 +1497,15 @@ export function ItamDocumentEditor() {
                             key={c.key}
                             type="button"
                             onClick={() => addColumn(c.key)}
-                            className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-600 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-orange-700 dark:hover:bg-orange-950 dark:hover:text-orange-300"
+                            className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] text-slate-600 transition-colors hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-orange-700 dark:hover:bg-orange-950 dark:hover:text-orange-300"
                           >
                             + {c.label}
+                            <span className="ml-1 text-slate-400">{c.defaultWidth}mm</span>
                           </button>
                         ))}
+                      {AVAILABLE_TABLE_COLUMNS.filter((c) => !draft?.table.columns.some((x) => x.key === c.key)).length === 0 && (
+                        <span className="text-[10px] text-slate-400">เพิ่มครบทั้ง 21 คอลัมน์แล้ว</span>
+                      )}
                     </div>
                   </div>
                 </TabsContent>
