@@ -58,6 +58,9 @@ export function StockTabs() {
           <TabsTrigger value="dashboard" className="gap-1.5" onClick={() => setTab("dashboard")}>
             <LayoutDashboard className="h-3.5 w-3.5" /> ภาพรวม
           </TabsTrigger>
+          <TabsTrigger value="pending" className="gap-1.5" onClick={() => setTab("pending")}>
+            <Clock className="h-3.5 w-3.5" /> รออนุมัติ
+          </TabsTrigger>
           <TabsTrigger value="inventory" className="gap-1.5" onClick={() => setTab("inventory")}>
             <Package className="h-3.5 w-3.5" /> คลังสินค้า
           </TabsTrigger>
@@ -66,9 +69,6 @@ export function StockTabs() {
           </TabsTrigger>
           <TabsTrigger value="out" className="gap-1.5" onClick={() => setTab("out")}>
             <ArrowUpCircle className="h-3.5 w-3.5" /> เบิกออก
-          </TabsTrigger>
-          <TabsTrigger value="pending" className="gap-1.5" onClick={() => setTab("pending")}>
-            <Clock className="h-3.5 w-3.5" /> รออนุมัติ
           </TabsTrigger>
           <TabsTrigger value="po" className="gap-1.5" onClick={() => setTab("po")}>
             <FileText className="h-3.5 w-3.5" /> ใบสั่งซื้อ

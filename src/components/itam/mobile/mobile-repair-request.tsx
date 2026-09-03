@@ -144,6 +144,10 @@ export function MobileRepairRequest() {
   const [problemCategories, setProblemCategories] = React.useState<{ id: string; label: string; group?: string }[]>([])
   const [subjectOptions, setSubjectOptions] = React.useState<{ id?: string; value: string; default_priority?: string; group?: string }[]>([])
   const [selectedSubjects, setSelectedSubjects] = React.useState<string[]>([])
+  const [buildingOptions, setBuildingOptions] = React.useState<{ id: string; label: string; group?: string }[]>([])
+  const [isExternal, setIsExternal] = React.useState(false)
+  const [externalClientName, setExternalClientName] = React.useState('')
+  const [externalPhone, setExternalPhone] = React.useState('')
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
@@ -180,6 +184,15 @@ export function MobileRepairRequest() {
         if (subjects.length > 0) {
           setSubjectOptions(subjects)
         }
+        // Load building options (from same API)
+        const buildings = data.buildings ?? []
+        setBuildingOptions(
+          buildings.map((b: { id?: string; value: string; group?: string }) => ({
+            id: b.id ?? b.value,
+            label: b.value,
+            group: b.group,
+          }))
+        )
       } catch {
         // If fetch fails, keep empty → fallback to text input
       }
@@ -493,30 +506,49 @@ export function MobileRepairRequest() {
           onClose={() => setQrScanOpen(false)}
         />
       )}
-      {/* Step 1: Device search */}
+      {/* Step 1: Device search OR External job */}
       <Card className="gap-0 py-0">
         <CardContent className="px-0 py-0">
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div className="flex items-center gap-2">
               <StepBadge n={1} />
-              <span className="text-sm font-semibold">ค้นหาอุปกรณ์</span>
+              <span className="text-sm font-semibold">{isExternal ? 'งานนอก' : 'ค้นหาอุปกรณ์'}</span>
             </div>
-            {selected && (
+            <div className="flex items-center gap-2">
+              {/* Toggle: Internal vs External */}
               <button
                 type="button"
                 onClick={() => {
+                  setIsExternal(!isExternal)
                   setSelected(null)
                   setSearchTerm('')
                   setResults([])
                 }}
-                className="text-xs font-medium text-orange-600 hover:underline"
+                className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                  isExternal
+                    ? 'border-teal-500 bg-teal-500 text-white'
+                    : 'border-slate-300 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                }`}
               >
-                เปลี่ยนอุปกรณ์
+                {isExternal ? 'งานนอก ✓' : 'งานนอก'}
               </button>
-            )}
+              {selected && !isExternal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelected(null)
+                    setSearchTerm('')
+                    setResults([])
+                  }}
+                  className="text-xs font-medium text-orange-600 hover:underline"
+                >
+                  เปลี่ยนอุปกรณ์
+                </button>
+              )}
+            </div>
           </div>
 
-          {!selected ? (
+          {!selected && !isExternal ? (
             <div className="p-4">
               {/* Search input with icon + QR scan button */}
               <div ref={resultsRef} className="relative">
@@ -639,14 +671,40 @@ export function MobileRepairRequest() {
                 พิมพ์รหัสอุปกรณ์ หรือ Serial Number อย่างน้อย 1 ตัวอักษรเพื่อค้นหา
               </p>
             </div>
+          ) : isExternal ? (
+            <div className="space-y-3 p-4">
+              <div className="rounded-lg bg-teal-50 p-3 text-xs text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
+                งานนอกสถานที่ — สำหรับงานที่ไม่ได้เกี่ยวข้องกับอุปกรณ์ในระบบ
+                (เช่น ลูกค้าภายนอก, สาขาอื่น, งานนอกสถานที่)
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">ชื่อลูกค้า / สถานที่ <span className="text-rose-500">*</span></Label>
+                <Input
+                  value={externalClientName}
+                  onChange={(e) => setExternalClientName(e.target.value)}
+                  placeholder="เช่น บริษัท ABC, สาขา NKP"
+                  className="h-12 text-base"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">เบอร์ติดต่อ <span className="text-xs text-slate-400">(ไม่บังคับ)</span></Label>
+                <Input
+                  value={externalPhone}
+                  onChange={(e) => setExternalPhone(e.target.value)}
+                  placeholder="เช่น 081-234-5678"
+                  className="h-12 text-base"
+                  inputMode="tel"
+                />
+              </div>
+            </div>
           ) : (
             <SelectedDeviceCard device={selected} />
           )}
         </CardContent>
       </Card>
 
-      {/* Step 2: Repair request form (only shown once a device is selected) */}
-      {selected && (
+      {/* Step 2: Repair request form (shown when device selected OR external) */}
+      {(selected || isExternal) && (
         <Card className="gap-0 py-0">
           <CardContent className="px-0 py-0">
             <div className="flex items-center gap-2 border-b px-4 py-3">
