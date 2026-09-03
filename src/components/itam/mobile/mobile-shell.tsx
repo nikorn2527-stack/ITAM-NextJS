@@ -45,8 +45,8 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'repair',   label: 'แจ้งซ่อม',   icon: Wrench },
   { id: 'my-work',  label: 'งานของฉัน', icon: ClipboardList },
+  { id: 'repair',   label: 'แจ้งซ่อม',   icon: Wrench },
   { id: 'meter',    label: 'จดมิเตอร์',  icon: Gauge },
   { id: 'stock',    label: 'เบิกของ',    icon: PackageOpen },
 ]
@@ -59,7 +59,7 @@ const HEADER_TITLE: Record<MobileTab, string> = {
 }
 
 export function MobileShell() {
-  const [tab, setTab] = React.useState<MobileTab>('repair')
+  const [tab, setTab] = React.useState<MobileTab>('my-work')
   const setActivePage = useAppStore((s) => s.setActivePage)
   const logout = useAuthStore((s) => s.logout)
 
