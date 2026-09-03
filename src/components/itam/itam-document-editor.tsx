@@ -1068,7 +1068,7 @@ export function ItamDocumentEditor() {
                         </span>
                       ))}
                     </div>
-                    {/* Boundary box showing actual page size */}
+                    {/* Boundary box showing actual page size — with footer indicator */}
                     <div
                       style={{
                         position: 'absolute',
@@ -1178,7 +1178,7 @@ export function ItamDocumentEditor() {
                         … ({SAMPLE_ROWS.length} แถวตัวอย่างในพรีวิว)
                       </div>
                     </div>
-                    {/* Footer area */}
+                    {/* Footer area — visible in canvas with clear boundary */}
                     <div
                       style={{
                         position: 'absolute',
@@ -1186,17 +1186,21 @@ export function ItamDocumentEditor() {
                         right: `${draft.canvas.margin}mm`,
                         bottom: `${draft.canvas.margin}mm`,
                         height: `${draft.footer.height}mm`,
-                        borderTop: '1px solid #e2e8f0',
+                        background: '#fef3c7',
+                        borderTop: '2px solid #f59e0b',
                         paddingTop: '1mm',
                         fontSize: `${draft.footer.fontSize ?? 8}pt`,
                         color: draft.footer.color ?? '#94a3b8',
                         display: 'flex',
                         justifyContent: 'space-between',
+                        alignItems: 'center',
                       }}
                       onMouseDown={(e) => e.stopPropagation()}
                     >
-                      <div>{draft.footer.content}</div>
-                      <div>องค์กร</div>
+                      <div>{draft.footer.content || '— ไม่มีเนื้อหาท้ายกระดาษ —'}</div>
+                      <div style={{ fontSize: '7pt', color: '#f59e0b', fontWeight: 600 }}>
+                        ท้ายกระดาษ (footer)
+                      </div>
                     </div>
                     {/* Alignment guides (dashed lines) — Apps Script parity */}
                     {guides.x.map((gx, i) => (
