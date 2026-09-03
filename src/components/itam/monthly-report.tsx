@@ -83,6 +83,24 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth-store'
 import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
+import { CustomColumnSelector, type ColumnDef } from './custom-column-selector'
+
+// Column definitions for monthly report tables
+const MONTHLY_REPORT_COLUMNS: ColumnDef[] = [
+  { key: 'assetCode', label: 'รหัสอุปกรณ์', default: true },
+  { key: 'name', label: 'ชื่อ', default: true },
+  { key: 'brand', label: 'ยี่ห้อ', default: true },
+  { key: 'model', label: 'รุ่น', default: true },
+  { key: 'serialNumber', label: 'S/N', default: true },
+  { key: 'site', label: 'สาขา', default: true },
+  { key: 'department', label: 'แผนก', default: false },
+  { key: 'meterBw', label: 'มิเตอร์ ขาวดำ', default: false },
+  { key: 'meterColor', label: 'มิเตอร์ สี', default: false },
+  { key: 'pagesBw', label: 'แผ่น ขาวดำ', default: false },
+  { key: 'pagesColor', label: 'แผ่น สี', default: false },
+  { key: 'cost', label: 'ค่าใช้จ่าย', default: false },
+  { key: 'status', label: 'สถานะ', default: false },
+]
 import {
   Wrench,
   CheckCircle2,
@@ -714,6 +732,7 @@ export function MonthlyReport() {
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
   const [reportType, setReportType] = React.useState<ReportType>('all')
+  const [selectedColumns, setSelectedColumns] = React.useState<string[]>([])
 
   // ── Print dialog state (Task ID: MONTHLY-REPORT-PRINT) ──
   const [printDialogOpen, setPrintDialogOpen] = React.useState(false)
@@ -1743,6 +1762,12 @@ export function MonthlyReport() {
                 <Download className="mr-1 h-3.5 w-3.5" />
                 CSV
               </Button>
+              <CustomColumnSelector
+                storageKey="monthly-report-cols"
+                columns={MONTHLY_REPORT_COLUMNS}
+                selected={selectedColumns}
+                onChange={setSelectedColumns}
+              />
             </div>
           </div>
         </CardHeader>
