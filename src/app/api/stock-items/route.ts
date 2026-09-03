@@ -91,10 +91,12 @@ export async function GET(req: NextRequest) {
       }),
     ])
 
-    // Apply the low-stock rule (quantity <= minQuantity) post-fetch when requested.
+    // Apply the low-stock rule (quantity <= minQuantity AND minQuantity > 0).
+    // Bug DATA-05 fix: previously counted items with minQuantity=0 (no reorder point set)
+    // as "low stock" — inflating the count by 1 vs the actual list shown.
     let filtered = items
     if (lowStock === '1') {
-      filtered = items.filter((it) => it.quantity <= it.minQuantity)
+      filtered = items.filter((it) => it.minQuantity > 0 && it.quantity <= it.minQuantity)
     }
 
     // ---- Stats (computed on the full active set, ignoring pagination) ----
@@ -111,7 +113,8 @@ export async function GET(req: NextRequest) {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
     const stats = {
       total: allActive.length,
-      lowStock: allActive.filter((it) => it.quantity <= it.minQuantity).length,
+      // Bug DATA-05 fix: only count items that actually need reordering (minQuantity > 0)
+      lowStock: allActive.filter((it) => it.minQuantity > 0 && it.quantity <= it.minQuantity).length,
       totalValue: allActive.reduce(
         (sum, it) => sum + (it.unitCost ?? 0) * it.quantity,
         0,
