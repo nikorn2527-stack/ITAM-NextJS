@@ -1163,29 +1163,53 @@ function InlineQRScanner({
     }
 
     ctx.drawImage(video, 0, 0, w, h)
-    const imageData = ctx.getImageData(0, 0, w, h)
 
+    // Clean scanned value helper
+    const cleanValue = (raw: string) =>
+      raw
+        .replace(/[*`\[\]{}()<>]/g, '')
+        .replace(/^\*+|\*+$/g, '')
+        .trim()
+
+    // ── Try BarcodeDetector API first (supports QR + 2D barcodes) ──
+    // Browser built-in, supports: qr_code, code_128, code_39, ean_13, ean_8, etc.
+    if ('BarcodeDetector' in window) {
+      try {
+        // @ts-expect-error — BarcodeDetector is not in TS types yet
+        const detector = new window.BarcodeDetector({
+          formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'code_93', 'codabar', 'itf'],
+        })
+        const barcodes = await detector.detect(video)
+        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+          const cleaned = cleanValue(barcodes[0].rawValue)
+          if (cleaned) {
+            onScan(cleaned)
+            return
+          }
+        }
+      } catch {
+        // BarcodeDetector failed — fall through to jsQR
+      }
+    }
+
+    // ── Fallback: jsQR (QR codes only) ──
     try {
-      // Dynamic import jsQR (CommonJS — lazy load to avoid SSR crash)
+      const imageData = ctx.getImageData(0, 0, w, h)
       const { default: jsQR } = await import('jsqr')
       const code = jsQR(imageData.data, w, h, {
         inversionAttempts: 'dontInvert',
       })
 
       if (code && code.data) {
-        // Clean scanned value: remove *, brackets, and other non-alphanumeric chars
-        // that barcode scanners sometimes add (e.g. *IT-001* → IT-001)
-        const cleaned = code.data
-          .replace(/[*`\[\]{}()<>]/g, '') // remove wrapper chars
-          .replace(/^\*+|\*+$/g, '') // remove leading/trailing *
-          .trim()
-        onScan(cleaned)
-        return
+        const cleaned = cleanValue(code.data)
+        if (cleaned) {
+          onScan(cleaned)
+          return
+        }
       }
     } catch {
-      // jsQR failed to load — fall back to manual mode
       setStatus('manual')
-      setErrorMsg('ไม่สามารถสแกน QR ได้ — พิมพ์รหัสเครื่องด้านล่างแทน')
+      setErrorMsg('ไม่สามารถสแกนได้ — พิมพ์รหัสเครื่องด้านล่างแทน')
       return
     }
 
