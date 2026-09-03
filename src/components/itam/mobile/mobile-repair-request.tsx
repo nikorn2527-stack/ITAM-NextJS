@@ -941,6 +941,11 @@ function SuccessScreen({
   deviceLabel: string
   onNew: () => void
 }) {
+  // Generate print URL using woNumber (print route accepts woNumber as ID)
+  const printUrl80 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-80`
+  const printUrl58 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-58`
+  const printUrlA4 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=a4-portrait`
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.98 }}
@@ -1022,41 +1027,34 @@ function SuccessScreen({
             </Button>
           </div>
 
-          {/* Print ticket (thermal printer) */}
-          <div className="mt-3 grid w-full grid-cols-2 gap-2">
+          {/* Print tickets */}
+          <div className="mt-3 grid w-full grid-cols-3 gap-2">
             <Button
               type="button"
               variant="outline"
-              className="h-12 text-xs"
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.open(
-                    `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-80`,
-                    '_blank',
-                    'noopener,noreferrer',
-                  )
-                }
-              }}
+              className="h-12 text-[11px]"
+              onClick={() => window.open(printUrl80, '_blank', 'noopener,noreferrer')}
             >
-              <Printer className="mr-2 h-4 w-4" />
-              พิมพ์ 80mm
+              <Printer className="mr-1 h-4 w-4" />
+              80mm
             </Button>
             <Button
               type="button"
               variant="outline"
-              className="h-12 text-xs"
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.open(
-                    `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-58`,
-                    '_blank',
-                    'noopener,noreferrer',
-                  )
-                }
-              }}
+              className="h-12 text-[11px]"
+              onClick={() => window.open(printUrl58, '_blank', 'noopener,noreferrer')}
             >
-              <Printer className="mr-2 h-4 w-4" />
-              พิมพ์ 58mm
+              <Printer className="mr-1 h-4 w-4" />
+              58mm
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 text-[11px]"
+              onClick={() => window.open(printUrlA4, '_blank', 'noopener,noreferrer')}
+            >
+              <Printer className="mr-1 h-4 w-4" />
+              A4
             </Button>
           </div>
         </CardContent>
