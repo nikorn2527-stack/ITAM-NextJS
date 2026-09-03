@@ -141,8 +141,9 @@ export function MobileRepairRequest() {
   //    the app and avoid pulling another dep into the mobile bundle). ──
   const [cameraOpen, setCameraOpen] = React.useState(false)
   const [qrScanOpen, setQrScanOpen] = React.useState(false)
-  const [problemCategories, setProblemCategories] = React.useState<{ id: string; label: string }[]>([])
-  const [subjectOptions, setSubjectOptions] = React.useState<{ id?: string; value: string; default_priority?: string }[]>([])
+  const [problemCategories, setProblemCategories] = React.useState<{ id: string; label: string; group?: string }[]>([])
+  const [subjectOptions, setSubjectOptions] = React.useState<{ id?: string; value: string; default_priority?: string; group?: string }[]>([])
+  const [selectedSubjects, setSelectedSubjects] = React.useState<string[]>([])
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
@@ -171,7 +172,8 @@ export function MobileRepairRequest() {
         setProblemCategories(
           subjects.map((s: { id?: string; value: string; group?: string }) => ({
             id: s.id ?? s.value,
-            label: s.group ? `[${s.group}] ${s.value}` : s.value,
+            label: s.value,
+            group: s.group,
           }))
         )
         // Also load priorities from subjects (auto-set when selecting)
@@ -222,34 +224,55 @@ export function MobileRepairRequest() {
         }
         const data = await res.json()
         const searchResults = data.results?.devices ?? []
-        // Map search results to DeviceLite format
-        // subtitle format: "S/N: XXX | Brand Model · Site"
-        const mapped: DeviceLite[] = searchResults.map((d: { id: string; title: string; subtitle: string }) => {
-          const titleParts = d.title.split(' · ')
-          const assetCode = titleParts[0] ?? ''
-          const name = titleParts.slice(1).join(' · ') ?? ''
-
-          // Parse subtitle: "S/N: XXX | Brand Model · Site"
-          const subtitle = d.subtitle || ''
-          let serialNumber = ''
-          let site = ''
-          if (subtitle.includes('S/N:')) {
-            const snPart = subtitle.split('S/N:')[1]?.split('|')[0]?.trim() ?? ''
-            serialNumber = snPart
-            const afterPipe = subtitle.split('|')[1]?.trim() ?? ''
-            const sitePart = afterPipe.split('·').pop()?.trim() ?? ''
-            site = sitePart
-          }
-
-          return {
-            id: d.id,
-            assetCode,
-            name,
-            serialNumber,
-            site,
-          }
-        })
-        setResults(mapped.slice(0, 8))
+        // Fetch full device details for each search result (to get brand, model, type, etc.)
+        const fullDevices = await Promise.all(
+          searchResults.slice(0, 8).map(async (d: { id: string; title: string; subtitle: string }) => {
+            try {
+              const detailRes = await fetch(`/api/devices/${d.id}`, { headers: getAuthHeaders() })
+              if (detailRes.ok) {
+                const detail = await detailRes.json()
+                const dev = detail.device ?? detail
+                return {
+                  id: dev.id ?? d.id,
+                  assetCode: dev.assetCode ?? '',
+                  name: dev.name ?? '',
+                  brand: dev.brand ?? null,
+                  model: dev.model ?? null,
+                  type: dev.type ?? null,
+                  site: dev.site ?? null,
+                  building: dev.building ?? null,
+                  location: dev.location ?? null,
+                  serialNumber: dev.serialNumber ?? null,
+                  status: dev.status ?? null,
+                } as DeviceLite
+              }
+            } catch { /* ignore — use basic info */ }
+            // Fallback: parse from search result
+            const titleParts = d.title.split(' · ')
+            const subtitle = d.subtitle || ''
+            let serialNumber = ''
+            let site = ''
+            if (subtitle.includes('S/N:')) {
+              serialNumber = subtitle.split('S/N:')[1]?.split('|')[0]?.trim() ?? ''
+              const afterPipe = subtitle.split('|')[1]?.trim() ?? ''
+              site = afterPipe.split('·').pop()?.trim() ?? ''
+            }
+            return {
+              id: d.id,
+              assetCode: titleParts[0] ?? '',
+              name: titleParts.slice(1).join(' · ') ?? '',
+              brand: null,
+              model: null,
+              type: null,
+              site,
+              building: null,
+              location: null,
+              serialNumber,
+              status: null,
+            } as DeviceLite
+          })
+        )
+        setResults(fullDevices.filter(Boolean))
       } catch (e) {
         setResults([])
         setSearchError(e instanceof Error ? e.message : 'ค้นหาไม่สำเร็จ')
@@ -379,14 +402,13 @@ export function MobileRepairRequest() {
   // ── Submit ──
   async function handleSubmit() {
     setSubmitError(null)
-    if (!subject.trim()) {
-      setSubmitError('กรุณาระบุประเภทปัญหา')
+    if (!subject.trim() && selectedSubjects.length === 0) {
+      setSubmitError('กรุณาเลือกประเภทปัญหาอย่างน้อย 1 อัน')
       return
     }
-    if (!description.trim()) {
-      setSubmitError('กรุณาระบุรายละเอียดอาการ')
-      return
-    }
+    // Combine selected subjects into subject field
+    const finalSubject = selectedSubjects.length > 0 ? selectedSubjects.join(', ') : subject.trim()
+    // Description is optional — user might select problem type only
     if (!selected) {
       setSubmitError('กรุณาเลือกอุปกรณ์ที่จะแจ้งซ่อม')
       return
@@ -400,7 +422,7 @@ export function MobileRepairRequest() {
     setSubmitting(true)
     try {
       const payload: Record<string, unknown> = {
-        subject: subject.trim(),
+        subject: finalSubject,
         details: description.trim(),
         priority: prOpt.value,
         deviceId: selected.id,
@@ -633,41 +655,67 @@ export function MobileRepairRequest() {
             </div>
 
             <div className="space-y-4 p-4">
-              {/* Subject — dropdown from MasterItem (problem categories) */}
+              {/* Subject — multi-select chips from /api/settings/options */}
               <div className="space-y-1.5">
                 <Label htmlFor="mrr-subject" className="text-sm font-medium">
                   ประเภทปัญหา <span className="text-rose-500">*</span>
+                  <span className="ml-1 text-xs text-slate-400">(เลือกได้หลายอัน)</span>
                 </Label>
                 {problemCategories.length > 0 ? (
-                  <select
-                    id="mrr-subject"
-                    value={subject}
-                    onChange={(e) => {
-                      setSubject(e.target.value)
-                      // Auto-set priority from selected subject
-                      const opt = subjectOptions.find((s) => s.value === e.target.value)
-                      if (opt?.default_priority) {
-                        const priMap: Record<string, PriorityKey> = {
-                          'ปกติ': 'low',
-                          'ปานกลาง': 'medium',
-                          'สูง': 'high',
-                          'ด่วน': 'urgent',
-                        }
-                        const pri = priMap[opt.default_priority]
-                        if (pri) setPriority(pri)
-                      }
-                    }}
-                    className="h-12 w-full rounded-lg border border-slate-300 bg-background px-3 text-base dark:border-slate-700 dark:bg-slate-800"
-                    aria-required="true"
-                  >
-                    <option value="">— เลือกประเภทปัญหา —</option>
-                    {problemCategories.map((cat) => (
-                      <option key={cat.id} value={cat.label.includes(']') ? cat.label.split('] ')[1] : cat.label}>
-                        {cat.label}
-                      </option>
-                    ))}
-                    <option value="อื่นๆ">อื่นๆ (ระบุในรายละเอียด)</option>
-                  </select>
+                  <div className="flex flex-wrap gap-1.5">
+                    {problemCategories.map((cat) => {
+                      const isSelected = selectedSubjects.includes(cat.label)
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setSelectedSubjects(selectedSubjects.filter((s) => s !== cat.label))
+                            } else {
+                              setSelectedSubjects([...selectedSubjects, cat.label])
+                            }
+                            // Auto-set priority from highest selected
+                            const allSelected = isSelected
+                              ? selectedSubjects.filter((s) => s !== cat.label)
+                              : [...selectedSubjects, cat.label]
+                            const priorities = allSelected.map((s) => {
+                              const opt = subjectOptions.find((o) => o.value === s)
+                              return opt?.default_priority
+                            })
+                            const priMap: Record<string, PriorityKey> = {
+                              'ปกติ': 'low', 'ปานกลาง': 'medium', 'สูง': 'high', 'ด่วน': 'urgent',
+                            }
+                            // Pick highest priority
+                            if (priorities.includes('ด่วน')) setPriority('urgent')
+                            else if (priorities.includes('สูง')) setPriority('high')
+                            else if (priorities.includes('ปานกลาง')) setPriority('medium')
+                            else if (priorities.includes('ปกติ')) setPriority('low')
+                          }}
+                          className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                            isSelected
+                              ? 'border-orange-500 bg-orange-500 text-white'
+                              : 'border-slate-300 bg-white text-slate-600 hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {cat.label}
+                        </button>
+                      )
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSubjects([...selectedSubjects, 'อื่นๆ'])
+                      }}
+                      className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                        selectedSubjects.includes('อื่นๆ')
+                          ? 'border-orange-500 bg-orange-500 text-white'
+                          : 'border-slate-300 bg-white text-slate-600 hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                      }`}
+                    >
+                      อื่นๆ
+                    </button>
+                  </div>
                 ) : (
                   <Input
                     id="mrr-subject"
@@ -679,6 +727,12 @@ export function MobileRepairRequest() {
                     aria-required="true"
                   />
                 )}
+                {/* Sync selectedSubjects to subject for submission */}
+                {selectedSubjects.length > 0 && (
+                  <p className="text-xs text-slate-500">
+                    เลือกแล้ว: {selectedSubjects.join(', ')}
+                  </p>
+                )}
               </div>
 
               {/* Description */}
@@ -687,7 +741,7 @@ export function MobileRepairRequest() {
                   htmlFor="mrr-description"
                   className="text-sm font-medium"
                 >
-                  รายละเอียดอาการ <span className="text-rose-500">*</span>
+                  รายละเอียดอาการ <span className="text-xs text-slate-400">(ไม่บังคับ)</span>
                 </Label>
                 <Textarea
                   id="mrr-description"
@@ -797,7 +851,6 @@ export function MobileRepairRequest() {
                   type="file"
                   accept="image/*"
                   multiple
-                  capture="environment"
                   onChange={onFileChange}
                   className="hidden"
                   aria-hidden="true"
