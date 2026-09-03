@@ -606,15 +606,15 @@ export function StockInventory() {
             <Table className="min-w-[700px]">
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
-                  <TableHead className="w-28">รหัสสินค้า</TableHead>
-                  <TableHead className="min-w-[200px]">ชื่อสินค้า</TableHead>
-                  <TableHead className="w-24 text-right">คงเหลือ</TableHead>
-                  <TableHead className="w-20">หน่วย</TableHead>
-                  <TableHead className="w-28 text-right">ราคา/หน่วย</TableHead>
-                  <TableHead className="w-32 text-right">มูลค่ารวม</TableHead>
-                  <TableHead className="w-24 text-right">จุดสั่งซื้อซ้ำ</TableHead>
-                  <TableHead className="w-24">สถานะ</TableHead>
-                  <TableHead className="w-72 text-right">จัดการ</TableHead>
+                  <TableHead className="w-28 whitespace-nowrap">รหัสสินค้า</TableHead>
+                  <TableHead className="min-w-[200px] whitespace-nowrap">ชื่อสินค้า</TableHead>
+                  <TableHead className="w-24 whitespace-nowrap text-right">คงเหลือ</TableHead>
+                  <TableHead className="w-20 whitespace-nowrap">หน่วย</TableHead>
+                  <TableHead className="w-28 whitespace-nowrap text-right">ราคา/หน่วย</TableHead>
+                  <TableHead className="w-32 whitespace-nowrap text-right">มูลค่ารวม</TableHead>
+                  <TableHead className="w-24 whitespace-nowrap text-right">จุดสั่งซื้อซ้ำ</TableHead>
+                  <TableHead className="w-24 whitespace-nowrap">สถานะ</TableHead>
+                  <TableHead className="w-72 whitespace-nowrap text-right">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -646,15 +646,15 @@ export function StockInventory() {
                         onClick={() => openDetail(item)}
                         className={`cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 ${!item.active ? 'opacity-50' : ''}`}
                       >
-                        <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
+                        <TableCell className="whitespace-nowrap font-mono text-xs text-slate-600 dark:text-slate-300">
                           {item.productCode}
                         </TableCell>
                         <TableCell>
-                          <div className="font-medium text-slate-800 dark:text-slate-100">
+                          <div className="max-w-[250px] truncate font-medium text-slate-800 dark:text-slate-100" title={item.productName ?? ''}>
                             {item.productName}
                           </div>
                           {(item.brand || item.model) && (
-                            <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                            <div className="max-w-[250px] truncate text-[11px] text-slate-500 dark:text-slate-400" title={[item.brand, item.model].filter(Boolean).join(' · ')}>
                               {[item.brand, item.model].filter(Boolean).join(' · ')}
                             </div>
                           )}

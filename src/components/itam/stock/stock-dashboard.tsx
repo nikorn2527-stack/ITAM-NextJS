@@ -166,14 +166,14 @@ export function StockDashboard() {
                 {lowStockItems.length} รายการ
               </Badge>
             </div>
-            <div className="itam-scroll max-h-96 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-700">
-              <Table>
+            <div className="itam-scroll max-h-96 overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
+              <Table className="w-full min-w-[500px]">
                 <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                   <TableRow>
-                    <TableHead className="h-8 text-xs">รหัส</TableHead>
-                    <TableHead className="h-8 text-xs">ชื่อสินค้า</TableHead>
-                    <TableHead className="h-8 text-xs text-right">คงเหลือ</TableHead>
-                    <TableHead className="h-8 text-xs text-right">ต่ำสุด</TableHead>
+                    <TableHead className="h-8 whitespace-nowrap text-xs">รหัส</TableHead>
+                    <TableHead className="h-8 whitespace-nowrap text-xs">ชื่อสินค้า</TableHead>
+                    <TableHead className="h-8 whitespace-nowrap text-right text-xs">คงเหลือ</TableHead>
+                    <TableHead className="h-8 whitespace-nowrap text-right text-xs">ต่ำสุด</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -193,22 +193,22 @@ export function StockDashboard() {
                   ) : (
                     lowStockItems.map((item) => (
                       <TableRow key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                        <TableCell className="font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                        <TableCell className="whitespace-nowrap font-mono text-[11px] text-slate-600 dark:text-slate-300">
                           {item.productCode}
                         </TableCell>
                         <TableCell className="text-xs">
-                          <div className="font-medium text-slate-800 dark:text-slate-100">
+                          <div className="max-w-[200px] truncate font-medium text-slate-800 dark:text-slate-100" title={item.productName ?? ''}>
                             {item.productName}
                           </div>
                           {item.brand && (
-                            <div className="truncate text-[10px] text-slate-500">{item.brand}</div>
+                            <div className="max-w-[200px] truncate text-[10px] text-slate-500" title={item.brand}>{item.brand} {item.model}</div>
                           )}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-xs font-bold text-rose-600 dark:text-rose-400">
+                        <TableCell className="whitespace-nowrap text-right font-mono text-xs font-bold text-rose-600 dark:text-rose-400">
                           {formatInt(item.quantity)}
                           <span className="ml-1 text-[10px] font-normal text-slate-400">{item.unit}</span>
                         </TableCell>
-                        <TableCell className="text-right font-mono text-xs text-slate-500 dark:text-slate-400">
+                        <TableCell className="whitespace-nowrap text-right font-mono text-xs text-slate-500 dark:text-slate-400">
                           {formatInt(item.minQuantity)}
                         </TableCell>
                       </TableRow>
