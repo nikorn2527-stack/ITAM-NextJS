@@ -429,6 +429,17 @@ export function MobileRepairRequest() {
   // ── Main form ──
   return (
     <div className="flex flex-col gap-3">
+      {/* Inline QR Scanner overlay — at top level so it always renders */}
+      {qrScanOpen && (
+        <InlineQRScanner
+          onScan={(value) => {
+            setSearchTerm(value)
+            setQrScanOpen(false)
+            toast.success(`สแกนได้: ${value}`)
+          }}
+          onClose={() => setQrScanOpen(false)}
+        />
+      )}
       {/* Step 1: Device search */}
       <Card className="gap-0 py-0">
         <CardContent className="px-0 py-0">
@@ -852,18 +863,6 @@ function SelectedDeviceCard({ device }: { device: DeviceLite }) {
           </div>
         </div>
       </div>
-
-      {/* Inline QR Scanner overlay */}
-      {qrScanOpen && (
-        <InlineQRScanner
-          onScan={(value) => {
-            setSearchTerm(value)
-            setQrScanOpen(false)
-            toast.success(`สแกนได้: ${value}`)
-          }}
-          onClose={() => setQrScanOpen(false)}
-        />
-      )}
     </div>
   )
 }
