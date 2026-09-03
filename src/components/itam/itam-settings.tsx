@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useWebAuthn } from '@/hooks/use-webauthn'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -23,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2 } from 'lucide-react'
 import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
@@ -63,6 +64,7 @@ type SettingsTab =
   | 'number-patterns'
   | 'wo-patterns'
   | 'demo'
+  | 'my-biometrics'
 
 interface SettingsTabGroup {
   title: string
@@ -86,7 +88,11 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
     title: 'ระบบ',
     items: [
       { value: 'users', label: 'จัดการผู้ใช้', icon: Users },
-      { value: 'permissions', label: 'สิทธิ์ผู้ใช้', icon: Shield },
+      // Bug Group G fix: hide "สิทธิ์ผู้ใช้" tab — was a duplicate of
+      // "จัดการผู้ใช้" (rendered <UserManagementSection />) and never
+      // had its own permissions/role view. Commented out until a proper
+      // RolePermission manager is implemented.
+      // { value: 'permissions', label: 'สิทธิ์ผู้ใช้', icon: Shield },
       { value: 'mobile-nav', label: 'เมนูมือถือ', icon: Smartphone },
       { value: 'pending', label: 'รออนุมัติ', icon: Users },
       { value: 'demo', label: '🧪 สาธิตระบบ', icon: FlaskConical },
@@ -104,6 +110,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
     items: [
       { value: 'customize', label: 'ปรับแต่งแอป', icon: Palette },
       { value: 'oauth', label: 'OAuth/External Login', icon: KeyRound },
+      { value: 'my-biometrics', label: 'ลายนิ้วมือของฉัน', icon: Fingerprint },
     ],
   },
 ]
@@ -248,12 +255,17 @@ export function ItamSettings() {
   }
 
   // Sites
-  // BUG-SETTINGS-009 fix: was fetching /api/itam/sites which returns 500
-  // (different route shape). The canonical sites endpoint is /api/sites.
+  // Bug Group E fix: switch to /api/itam/sites (returns SiteAttribute
+  // + deviceCount + activeCount). The old /api/sites endpoint returns
+  // a flat shape without deviceCount/activeCount, which made the
+  // "สาขา (ภาพรวม)" tab show 0 เครื่อง for every site.
+  // /api/itam/sites also returns the original SiteAttribute fields
+  // (SiteCode, SiteName, PaperRateBW, PaperRateColor) plus lowercase
+  // aliases (siteCode, siteName, paperRateBw, paperRateColor).
   const { data: sitesData, isLoading: sitesLoading } = useQuery({
-    queryKey: ['itam-sites'],
+    queryKey: ['itam-sites-overview'],
     queryFn: async () => {
-      const res = await fetch('/api/sites')
+      const res = await fetch('/api/itam/sites', { headers: authHeaders() })
       if (!res.ok) throw new Error('Failed')
       return res.json() as Promise<{ sites: Site[] }>
     },
@@ -376,8 +388,6 @@ export function ItamSettings() {
           {tab === 'pending' && <PendingUsersSection />}
 
           {tab === 'users' && <UserManagementSection />}
-
-          {tab === 'permissions' && <UserManagementSection />}
 
       {tab === 'master' && (
         <>
@@ -720,6 +730,8 @@ export function ItamSettings() {
       {tab === 'demo' && <DemoManagementSection />}
 
       {tab === 'mobile-nav' && <MobileNavConfigSection />}
+
+      {tab === 'my-biometrics' && <MyBiometricsSection />}
         </div>
       </div>
 
@@ -1240,6 +1252,169 @@ function MobileNavConfigSection() {
         >
           {saving ? 'กำลังบันทึก...' : '💾 บันทึกการตั้งค่า'}
         </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MyBiometricsSection — จัดการลายนิ้วมือของผู้ใช้ปัจจุบัน
+// ─────────────────────────────────────────────────────────────────────────
+// ลงทะเบียน Touch ID / Face ID / Windows Hello / Android fingerprint
+// หลังจากลงทะเบียนแล้ว ผู้ใช้สามารถ login ด้วยลายนิ้วมือแทน password ได้
+// ─────────────────────────────────────────────────────────────────────────
+function MyBiometricsSection() {
+  const { isSupported, register, listCredentials, removeCredential, loading } = useWebAuthn()
+  const [credentials, setCredentials] = React.useState<Array<{
+    id: string
+    deviceType: string | null
+    name: string | null
+    createdAt: string
+    lastUsedAt: string | null
+  }>>([])
+  const [refreshing, setRefreshing] = React.useState(false)
+  const [newName, setNewName] = React.useState('')
+
+  const refresh = React.useCallback(async () => {
+    setRefreshing(true)
+    try {
+      const list = await listCredentials()
+      setCredentials(list)
+    } finally {
+      setRefreshing(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  React.useEffect(() => {
+    refresh()
+  }, [refresh])
+
+  async function handleRegister() {
+    const result = await register(newName.trim() || undefined)
+    if (result?.verified) {
+      toast.success(`ลงทะเบียน "${result.name ?? 'ลายนิ้วมือ'}" สำเร็จ`)
+      setNewName('')
+      refresh()
+    }
+  }
+
+  async function handleRemove(id: string, name: string | null) {
+    if (!confirm(`ยืนยันลบ "${name ?? 'ลายนิ้วมือ'}" ?`)) return
+    const ok = await removeCredential(id)
+    if (ok) {
+      toast.success('ลบลายนิ้วมือเรียบร้อย')
+      refresh()
+    } else {
+      toast.error('ลบไม่สำเร็จ')
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+          <Fingerprint className="h-5 w-5 text-[#f97316]" />
+          ลายนิ้วมือของฉัน (Touch ID / Face ID / Windows Hello)
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          ลงทะเบียนลายนิ้วมือของอุปกรณ์นี้เพื่อใช้ login โดยไม่ต้องกรอก password.
+          รองรับ Touch ID, Face ID, Windows Hello, ลายนิ้วมือ Android และ security key.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!isSupported ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+            <p className="font-medium">⚠️ เบราว์เซอร์นี้ไม่รองรับลายนิ้วมือ</p>
+            <p className="mt-1 text-xs">กรุณาใช้ Chrome / Safari / Edge เวอร์ชันใหม่, หรืออนุญาตให้เบราว์เซอร์เข้าถึง Platform Authenticator.</p>
+          </div>
+        ) : (
+          <>
+            {/* Register new credential */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+              <h4 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">ลงทะเบียนอุปกรณ์ใหม่</h4>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="ชื่อเล่น เช่น iPhone ของผม, Mac ส่วนตัว"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  className="flex-1 text-sm"
+                  maxLength={50}
+                />
+                <Button
+                  onClick={handleRegister}
+                  disabled={loading}
+                  className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  ลงทะเบียน
+                </Button>
+              </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                หลังกดปุ่ม เบราว์เซอร์จะถามยืนยันลายนิ้วมือ/ใบหน้า. ทำตามขั้นตอนบนหน้าจอ.
+              </p>
+            </div>
+
+            {/* List of registered credentials */}
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  ลายนิ้วมือที่ลงทะเบียน ({credentials.length})
+                </h4>
+                <Button variant="ghost" size="sm" onClick={refresh} disabled={refreshing}>
+                  {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  รีเฟรช
+                </Button>
+              </div>
+              {credentials.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-muted-foreground dark:border-slate-700">
+                  <Fingerprint className="mx-auto mb-2 h-8 w-8 opacity-30" />
+                  ยังไม่ได้ลงทะเบียนลายนิ้วมือ
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {credentials.map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Fingerprint className="h-5 w-5 text-[#f97316]" />
+                        <div>
+                          <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
+                            {c.name ?? 'ลายนิ้วมือ'}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {c.deviceType ?? 'webauthn'} · ลงทะเบียน {new Date(c.createdAt).toLocaleDateString('th-TH')}
+                            {c.lastUsedAt && ` · ใช้ล่าสุด ${new Date(c.lastUsedAt).toLocaleDateString('th-TH')}`}
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemove(c.id, c.name)}
+                        className="text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Help section */}
+            <div className="rounded-lg bg-slate-50 p-3 text-[11px] text-muted-foreground dark:bg-slate-800/30">
+              <p className="font-medium">💡 วิธีใช้งาน:</p>
+              <ol className="mt-1 ml-4 list-decimal space-y-0.5">
+                <li>ลงทะเบียนลายนิ้วมือของอุปกรณ์นี้ (ด้านบน)</li>
+                <li>ครั้งต่อไปที่ login — กรอก email แล้วกดปุ่ม &quot;เข้าสู่ระบบด้วยลายนิ้วมือ&quot;</li>
+                <li>เบราว์เซอร์จะถามยืนยันลายนิ้วมือ ไม่ต้องกรอก password</li>
+              </ol>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   )

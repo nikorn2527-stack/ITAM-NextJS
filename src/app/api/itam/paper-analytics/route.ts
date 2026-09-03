@@ -226,6 +226,7 @@ export async function GET(req: NextRequest) {
       const devices = Array.from(byDevice.entries())
         .map(([assetNo, v]) => ({
           assetNo,
+          assetCode: assetNo, // alias for front-end compatibility
           brand: v.brand,
           model: v.model,
           site: v.site,
@@ -284,7 +285,8 @@ export async function GET(req: NextRequest) {
         .map((d) => {
           const totals = last3.map((m) => (d.months[m]?.bw ?? 0) + (d.months[m]?.color ?? 0))
           const total = totals.reduce((a, b) => a + b, 0)
-          return { ...d, totals, total }
+          // Alias assetCode (front-end expects assetCode, not assetNo)
+          return { ...d, assetCode: d.assetNo, totals, total }
         })
         .filter((r) => r.total > 0)
         .sort((a, b) => b.total - a.total)
@@ -346,6 +348,7 @@ export async function GET(req: NextRequest) {
       const allRows = Array.from(byDevice.values())
         .map((d) => ({
           ...d,
+          assetCode: d.assetNo, // alias for front-end compatibility
           total: d.bw + d.color,
           monthCount: d.months.size,
         }))

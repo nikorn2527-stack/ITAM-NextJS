@@ -1099,6 +1099,73 @@ export function ItamDocumentEditor() {
                         pointerEvents: 'none',
                       }}
                     />
+                    {/* Page edge labels — clear indication of where the paper ends */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '1mm',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        fontSize: '7pt',
+                        color: '#ef4444',
+                        background: 'rgba(255,255,255,0.9)',
+                        padding: '0 2mm',
+                        borderRadius: '2px',
+                        pointerEvents: 'none',
+                        fontWeight: 600,
+                      }}
+                    >
+                      ↑ ขอบกระดาษด้านบน (Top edge)
+                    </div>
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: '1mm',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        fontSize: '7pt',
+                        color: '#ef4444',
+                        background: 'rgba(255,255,255,0.9)',
+                        padding: '0 2mm',
+                        borderRadius: '2px',
+                        pointerEvents: 'none',
+                        fontWeight: 600,
+                        zIndex: 50,
+                      }}
+                    >
+                      ↓ ขอบกระดาษด้านล่าง (Bottom edge) — ท้ายกระดาษจริง
+                    </div>
+                    {/* Bottom margin measurement guide */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: '0',
+                        right: '0',
+                        bottom: `${draft.canvas.margin}mm`,
+                        height: '0',
+                        borderTop: '1px dotted #10b981',
+                        pointerEvents: 'none',
+                        zIndex: 40,
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        right: '1mm',
+                        bottom: `${draft.canvas.margin / 2}mm`,
+                        transform: 'translateY(50%)',
+                        fontSize: '7pt',
+                        color: '#10b981',
+                        background: 'rgba(255,255,255,0.9)',
+                        padding: '0 2mm',
+                        borderRadius: '2px',
+                        pointerEvents: 'none',
+                        fontWeight: 600,
+                        zIndex: 41,
+                      }}
+                    >
+                      Margin {draft.canvas.margin}mm →
+                    </div>
                     {/* Header elements */}
                     {[...draft.elements]
                       .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
@@ -1178,30 +1245,104 @@ export function ItamDocumentEditor() {
                         … ({SAMPLE_ROWS.length} แถวตัวอย่างในพรีวิว)
                       </div>
                     </div>
-                    {/* Footer area — visible in canvas with clear boundary */}
-                    <div
-                      style={{
-                        position: 'absolute',
-                        left: `${draft.canvas.margin}mm`,
-                        right: `${draft.canvas.margin}mm`,
-                        bottom: `${draft.canvas.margin}mm`,
-                        height: `${draft.footer.height}mm`,
-                        background: '#fef3c7',
-                        borderTop: '2px solid #f59e0b',
-                        paddingTop: '1mm',
-                        fontSize: `${draft.footer.fontSize ?? 8}pt`,
-                        color: draft.footer.color ?? '#94a3b8',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                    >
-                      <div>{draft.footer.content || '— ไม่มีเนื้อหาท้ายกระดาษ —'}</div>
-                      <div style={{ fontSize: '7pt', color: '#f59e0b', fontWeight: 600 }}>
-                        ท้ายกระดาษ (footer)
-                      </div>
-                    </div>
+                    {/* Footer area — EXACT match to PDF output (render the same HTML structure as renderPDFFromTemplate) */}
+                    {(() => {
+                      // Mirror of renderPDFFromTemplate() footer rendering — keep in sync!
+                      // Variable substitution preview (use sample values so user sees real output)
+                      const previewVars: Record<string, string> = {
+                        '{{pageNumber}}': '1',
+                        '{{totalPages}}': '3',
+                        '{{pdfPageCount}}': '1/3',
+                        '{{printedAt}}': new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' }),
+                        '{{reportTitle}}': draft.name || 'รายงานเอกสาร',
+                        '{{month}}': 'ม.ค. 2569',
+                        '{{siteName}}': 'ชื่อสาขา',
+                        '{{contractNo}}': 'CTR-2569-001',
+                        '{{deviceCount}}': String(SAMPLE_ROWS.length),
+                      }
+                      let footerText = draft.footer.content ?? ''
+                      for (const [k, v] of Object.entries(previewVars)) {
+                        footerText = footerText.split(k).join(v)
+                      }
+                      const sigs = draft.footer.signatures ?? []
+                      const fontSize = draft.footer.fontSize ?? 8
+                      const color = draft.footer.color ?? '#94a3b8'
+                      return (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: `${draft.canvas.margin}mm`,
+                            right: `${draft.canvas.margin}mm`,
+                            bottom: `${draft.canvas.margin}mm`,
+                            height: `${draft.footer.height}mm`,
+                            // Visual hint: subtle highlight so user can see the area,
+                            // but renders to transparent in PDF (PDF uses no background)
+                            background: 'repeating-linear-gradient(45deg, rgba(254,243,199,0.45) 0 4px, rgba(254,243,199,0.25) 4px 8px)',
+                            borderTop: '1px solid #e2e8f0', // matches PDF
+                            outline: '1px dashed #f59e0b',
+                            outlineOffset: '-1px',
+                            fontSize: `${fontSize}pt`,
+                            color,
+                            overflow: 'hidden',
+                          }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          title={`ท้ายกระดาษ · ความสูง ${draft.footer.height}mm · ระยะจากขอบล่าง ${draft.canvas.margin}mm`}
+                        >
+                          {/* Top row: footer text (left) + org name (right) — matches PDF exactly */}
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-end',
+                            paddingTop: '1mm',
+                            paddingLeft: '2mm',
+                            paddingRight: '2mm',
+                            color,
+                            fontSize: `${fontSize}pt`,
+                          }}>
+                            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70%' }}>
+                              {footerText || '— ไม่มีเนื้อหาท้ายกระดาษ —'}
+                            </div>
+                            <div style={{ color, fontSize: `${fontSize}pt` }}>
+                              องค์กร — IT Asset Management
+                            </div>
+                          </div>
+                          {/* Bottom row: signature boxes — matches PDF exactly */}
+                          {sigs.length > 0 && (
+                            <div style={{ display: 'flex', gap: '8mm', marginTop: '1mm', paddingLeft: '2mm', paddingRight: '2mm' }}>
+                              {sigs.map((s, i) => (
+                                <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+                                  <div style={{
+                                    marginTop: '4mm',
+                                    borderTop: '1px solid #475569',
+                                    paddingTop: '1mm',
+                                    fontSize: `${fontSize}pt`,
+                                    color: '#475569',
+                                  }}>
+                                    {s || `— ช่องที่ ${i + 1} —`}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* Floating badge: makes it clear this is the footer area */}
+                          <div style={{
+                            position: 'absolute',
+                            top: '-7px',
+                            right: '4px',
+                            background: '#f59e0b',
+                            color: 'white',
+                            fontSize: '7pt',
+                            fontWeight: 600,
+                            padding: '1px 4px',
+                            borderRadius: '2px',
+                            pointerEvents: 'none',
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.2)',
+                          }}>
+                            FOOTER · {draft.footer.height}mm
+                          </div>
+                        </div>
+                      )
+                    })()}
                     {/* Alignment guides (dashed lines) — Apps Script parity */}
                     {guides.x.map((gx, i) => (
                       <div
@@ -1544,18 +1685,109 @@ export function ItamDocumentEditor() {
                 {/* Footer settings */}
                 <TabsContent value="footer" className="mt-0 space-y-2">
                   <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">Footer</Label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                    💡 Footer จะถูกพิมพ์ที่ท้ายทุกหน้า (ตำแหน่ง bottom = margin) ตัวอย่างใน canvas ด้านซ้ายคือสิ่งที่จะพิมพ์ออกมาจริง รวมช่องลงนามด้วย
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
                     <NumInput label="ความสูง (mm)" value={draft?.footer.height ?? 18} onChange={(v) => draft && setDraft({ ...draft, footer: { ...draft.footer, height: v } })} step={1} min={5} />
                     <NumInput label="ขนาด Font" value={draft?.footer.fontSize ?? 8} onChange={(v) => draft && setDraft({ ...draft, footer: { ...draft.footer, fontSize: v } })} step={0.5} min={5} />
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">สีตัวอักษร</Label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="color"
+                          value={draft?.footer.color ?? '#94a3b8'}
+                          onChange={(e) => draft && setDraft({ ...draft, footer: { ...draft.footer, color: e.target.value } })}
+                          className="h-8 w-10 cursor-pointer rounded border border-slate-200 dark:border-slate-700"
+                        />
+                        <Input
+                          value={draft?.footer.color ?? ''}
+                          onChange={(e) => draft && setDraft({ ...draft, footer: { ...draft.footer, color: e.target.value } })}
+                          className="text-xs dark:bg-slate-800 dark:border-slate-700"
+                        />
+                      </div>
+                    </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">เนื้อหา (รองรับ {'{{pageNumber}}'}, {'{{totalPages}}'})</Label>
+                    <Label className="text-xs">เนื้อหา (รองรับ {'{{pageNumber}}'}, {'{{totalPages}}'}, {'{{printedAt}}'}, {'{{pdfPageCount}}'})</Label>
                     <Textarea
                       value={draft?.footer.content ?? ''}
                       onChange={(e) => draft && setDraft({ ...draft, footer: { ...draft.footer, content: e.target.value } })}
-                      rows={4}
+                      rows={3}
                       className="text-xs dark:bg-slate-800 dark:border-slate-700"
                     />
+                    {/* Variable quick-insert for footer */}
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {['{{pageNumber}}', '{{totalPages}}', '{{pdfPageCount}}', '{{printedAt}}', '{{reportTitle}}', '{{month}}', '{{siteName}}'].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => draft && setDraft({ ...draft, footer: { ...draft.footer, content: (draft.footer.content ?? '') + ' ' + v } })}
+                          className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[9px] text-slate-600 hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-orange-700 dark:hover:bg-orange-950 dark:hover:text-orange-300"
+                        >
+                          + {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Signatures editor — lets user add/remove/edit signature labels */}
+                  <div className="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        ช่องลงนาม ({draft?.footer.signatures?.length ?? 0})
+                      </Label>
+                      <span className="text-[10px] text-slate-400">
+                        แสดงที่ท้ายทุกหน้า ใต้บรรทัด footer
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {(draft?.footer.signatures ?? []).map((s, i) => (
+                        <div key={i} className="flex items-center gap-1.5">
+                          <span className="w-5 text-[10px] text-slate-400">{i + 1}.</span>
+                          <Input
+                            value={s}
+                            onChange={(e) => {
+                              if (!draft) return
+                              const next = [...(draft.footer.signatures ?? [])]
+                              next[i] = e.target.value
+                              setDraft({ ...draft, footer: { ...draft.footer, signatures: next } })
+                            }}
+                            className="h-7 flex-1 text-[11px] dark:bg-slate-900 dark:border-slate-700"
+                            placeholder={`ชื่อตำแหน่ง เช่น ผู้จัดทำ`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!draft) return
+                              const next = [...(draft.footer.signatures ?? [])]
+                              next.splice(i, 1)
+                              setDraft({ ...draft, footer: { ...draft.footer, signatures: next } })
+                            }}
+                            className="flex h-6 w-6 items-center justify-center rounded text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                            title="ลบช่องลงนาม"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          if (!draft) return
+                          const next = [...(draft.footer.signatures ?? []), '']
+                          setDraft({ ...draft, footer: { ...draft.footer, signatures: next } })
+                        }}
+                        className="h-7 w-full justify-center text-[10px] dark:border-slate-700 dark:bg-slate-800"
+                      >
+                        <Plus className="h-3 w-3" /> เพิ่มช่องลงนาม
+                      </Button>
+                      {(draft?.footer.signatures?.length ?? 0) === 0 && (
+                        <div className="text-[10px] text-slate-400 text-center py-1">
+                          ยังไม่มีช่องลงนาม — เพิ่มเพื่อแสดงในท้ายกระดาษ
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </TabsContent>
 

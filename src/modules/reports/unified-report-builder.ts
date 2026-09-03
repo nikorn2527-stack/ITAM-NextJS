@@ -11,6 +11,7 @@
  */
 import { reportReadRepository } from './report-read-repository'
 import { db } from '@/lib/db'
+import { normalizeStatus, isActiveStatus } from '@/lib/status-utils'
 
 export type ReportGroup =
   | 'devices'
@@ -109,10 +110,12 @@ export async function buildDevicesReport(siteCodes: string[] | null) {
 
   const total = devices.length
 
-  // by status
+  // by status — bug DATA-06 fix: normalize status (Active/ACTIVE/active/ใช้งาน → 'Active')
+  // so KPI counts are consistent across all modules.
   const statusMap = new Map<string, number>()
   for (const d of devices) {
-    statusMap.set(d.status, (statusMap.get(d.status) ?? 0) + 1)
+    const canonical = normalizeStatus(d.status)
+    statusMap.set(canonical, (statusMap.get(canonical) ?? 0) + 1)
   }
   const byStatus = Array.from(statusMap.entries())
     .map(([name, value]) => ({
@@ -135,10 +138,36 @@ export async function buildDevicesReport(siteCodes: string[] | null) {
     }))
     .sort((a, b) => b.value - a.value)
 
-  // by site
+  // by site (Bug Group H fix)
+  // ──────────────────────────────────────────────────────────────────
+  // Device.site is a free-text field that may contain EITHER a
+  // SiteCode ("UDH") OR a SiteName ("โรงพยาบาลศูนย์อุดรธานี").
+  // Without canonicalization, the same physical site appears twice in
+  // the chart (e.g. "โรงพยาบาลศูนย์อุดรธานี" 2231 + "UDH" 7).
+  // Fix: load SiteAttribute, build a SiteName→SiteCode lookup, and
+  // aggregate by canonical SiteCode so duplicates merge.
+  // ──────────────────────────────────────────────────────────────────
+  const siteAttrs = await db.siteAttribute.findMany({
+    select: { SiteCode: true, SiteName: true },
+  })
+  const nameToCode = new Map<string, string>()
+  for (const sa of siteAttrs) {
+    if (sa.SiteName) nameToCode.set(sa.SiteName, sa.SiteCode)
+  }
+  const resolveSiteCode = (rawSite: string): string => {
+    // If the raw value IS already a known SiteCode, use it directly.
+    const upper = rawSite.toUpperCase()
+    for (const sa of siteAttrs) {
+      if (sa.SiteCode.toUpperCase() === upper) return sa.SiteCode
+    }
+    // Otherwise look up by SiteName.
+    return nameToCode.get(rawSite) ?? rawSite
+  }
+
   const siteMap = new Map<string, number>()
   for (const d of devices) {
-    siteMap.set(d.site, (siteMap.get(d.site) ?? 0) + 1)
+    const code = resolveSiteCode(d.site)
+    siteMap.set(code, (siteMap.get(code) ?? 0) + 1)
   }
   const bySite = Array.from(siteMap.entries())
     .map(([name, value]) => ({ name, value }))
@@ -271,6 +300,7 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
       meterRequired: true,
       lastMeterBw: true,
       lastMeterColor: true,
+      status: true, // bug DATA-02 fix: needed for isActiveStatus filter
     },
   })
 
@@ -426,9 +456,10 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
     .sort((a, b) => b.cost - a.cost)
     .slice(0, 30)
 
-  // Unmetered devices (meterRequired=true but no reading this month)
+  // Unmetered devices (meterRequired=true + Active status but no reading this month)
+  // bug DATA-02 fix: previously didn't filter by status, leading to mismatch with dashboard
   const unmeteredDevices = devices
-    .filter((d) => d.meterRequired && !currByDevice.has(d.id))
+    .filter((d) => d.meterRequired && isActiveStatus(d.status) && !currByDevice.has(d.id))
     .map((d) => ({
       assetCode: d.assetCode,
       name: d.name,
@@ -501,7 +532,7 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
       totalColor: curColor,
       totalSheets: curBw + curColor,
       deviceCount: devices.length,
-      meterRequiredCount: devices.filter((d) => d.meterRequired).length,
+      meterRequiredCount: devices.filter((d) => d.meterRequired && isActiveStatus(d.status)).length,
       unmeteredCount: unmeteredDevices.length,
       // METER-REDESIGN: totalCost now uses per-site SiteAttribute rates instead
       // of hardcoded 0.5/5 baht/page. This is the actual billable amount.

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { resolveHeaderIndexes } from '@/lib/device-import-contract'
 import {
   FIELD_MAPPINGS,
   STATUS_MAPPINGS,
@@ -139,24 +140,35 @@ function toFloat(v: string | undefined): number | null {
 // ------------------------------------------------------------
 // Per-type importers. Each returns { processed, errors }.
 // ------------------------------------------------------------
+
 async function importDevices(
   rows: string[][],
   headers: string[],
 ): Promise<{ processed: number; errors: ImportError[] }> {
-  const idx = (name: string) =>
-    headers.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase())
-  const iAsset = idx('assetCode')
-  const iName = idx('name')
-  const iBrand = idx('brand')
-  const iModel = idx('model')
-  const iType = idx('type')
-  const iSerial = idx('serialNumber')
-  const iStatus = idx('status')
-  const iSite = idx('site')
-  const iDept = idx('department')
-  const iLoc = idx('location')
-  const iPurchase = idx('purchaseDate')
-  const iWarranty = idx('warrantyMonths')
+  // Use alias-aware lookup so legacy/Thai headers (e.g. รหัสสินทรัพย์,
+  // asset_no) work in addition to canonical camelCase names.
+  // resolveHeaderIndexes() is the canonical alias resolver shared with
+  // the Apps Script import mode (HEADER_ALIASES in device-import-contract.ts).
+  const fields = resolveHeaderIndexes(headers)
+
+  // Map canonical import-contract fields → import-route local column index.
+  // For canonical fields not covered by HEADER_ALIASES (e.g. `name`), fall
+  // back to the case-insensitive header name match.
+  const fallbackIdx = (name: string): number =>
+    headers.findIndex((h) => h.replace(/^\uFEFF/, '').trim().toLowerCase() === name.toLowerCase())
+
+  const iAsset = fields.assetNo ?? fallbackIdx('assetCode')
+  const iName = fallbackIdx('name')
+  const iBrand = fields.brand ?? fallbackIdx('brand')
+  const iModel = fields.model ?? fallbackIdx('model')
+  const iType = fields.deviceType ?? fallbackIdx('type')
+  const iSerial = fields.serial ?? fallbackIdx('serialNumber')
+  const iStatus = fields.status ?? fallbackIdx('status')
+  const iSite = fields.site ?? fallbackIdx('site')
+  const iDept = fields.department ?? fallbackIdx('department')
+  const iLoc = fields.location ?? fallbackIdx('location')
+  const iPurchase = fields.installDate ?? fallbackIdx('purchaseDate')
+  const iWarranty = fallbackIdx('warrantyMonths')
 
   const VALID_STATUSES = new Set([
     'active',

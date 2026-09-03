@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, getAllowedSites } from '@/lib/auth'
-import { bucketizeStatusGroups } from '@/lib/status-utils'
+import { ACTIVE_STATUS_VARIANTS, bucketizeStatusGroups } from '@/lib/status-utils'
 
 // GET /api/itam/dashboard — optimized dashboard stats from real data
 //
@@ -145,9 +145,10 @@ export async function GET(req: NextRequest) {
         ORDER BY ml."readingMonth"
       `,
 
-      // 5) Meter-required device count
+      // 5) Meter-required device count — bug DATA-06 fix: use ACTIVE_STATUS_VARIANTS
+      // to handle inconsistent status casing in DB (Active, ACTIVE, active, ใช้งาน).
       db.device.count({
-        where: { ...siteFilter, meterRequired: true, status: 'Active' },
+        where: { ...siteFilter, meterRequired: true, status: { in: ACTIVE_STATUS_VARIANTS } },
       }),
 
       // 6) Recent meter readings (5)
@@ -228,10 +229,10 @@ export async function GET(req: NextRequest) {
           where: { site: { in: visibleSiteNames } },
           _count: { status: true },
         }),
-        // Active devices grouped by site
+        // Active devices grouped by site — bug DATA-06 fix: case-insensitive variants
         db.device.groupBy({
           by: ['site'],
-          where: { site: { in: visibleSiteNames }, status: 'Active' },
+          where: { site: { in: visibleSiteNames }, status: { in: ACTIVE_STATUS_VARIANTS } },
           _count: { status: true },
         }),
         // Device→site mapping (assetCode + site only, ~2,378 rows)

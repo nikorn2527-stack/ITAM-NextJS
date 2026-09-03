@@ -22,7 +22,7 @@ export function MetersReport({ data, isDark }: { data: any; isDark: boolean }) {
     <>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
         <SummaryCard title="กระดาษรวม" value={formatNumber(s.totalSheets)} icon={<FileText className="h-5 w-5" />} accent="#0d9488" hint={`ขาวดำ ${formatNumber(s.totalBw)} + สี ${formatNumber(s.totalColor)}`} />
-        <SummaryCard title="ค่าใช้จ่ายรวม" value={formatBaht(s.totalCost)} icon={<DollarSign className="h-5 w-5" />} accent="#f97316" hint={`อัตรา BW ฿${data.rates.bwRate} / สี ฿${data.rates.colorRate}`} />
+        <SummaryCard title="ค่าใช้จ่ายรวม" value={formatBaht(s.totalCost)} icon={<DollarSign className="h-5 w-5" />} accent="#f97316" hint={`อัตรา BW ฿${data.rates?.avgBwRate ?? data.rates?.bwRate ?? 0} / สี ฿${data.rates?.avgColorRate ?? data.rates?.colorRate ?? 0}`} />
         <SummaryCard title="เครื่องที่ต้องจด" value={formatNumber(s.meterRequiredCount)} icon={<Gauge className="h-5 w-5" />} accent="#0d9488" hint={`จาก ${formatNumber(s.deviceCount)} เครื่อง`} />
         <SummaryCard title="ยังไม่จดมิเตอร์" value={formatNumber(s.unmeteredCount)} icon={<AlertTriangle className="h-5 w-5" />} accent="#ef4444" hint="ค้างจดในเดือนนี้" />
       </div>

@@ -752,6 +752,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   siteGrants UserSiteGrant[]
+  webauthnCredentials WebAuthnCredential[]
 
   @@index([email])
   @@index([role])
@@ -1164,4 +1165,29 @@ model PMExecution {
   @@index([status])
   @@index([scheduledDate])
   @@index([isDemo])
+}
+
+// ============================================================
+// 30) WebAuthnCredential — ลายนิ้วมือ / Face ID / Touch ID / Passkey
+// ============================================================
+// รองรับ WebAuthn (FIDO2) login — ผู้ใช้ลงทะเบียน biometric จากอุปกรณ์
+// แล้ว login ด้วย fingerprint แทน password ได้.
+//
+// Supports: Touch ID (macOS/iOS), Face ID (iOS), Windows Hello,
+// Android fingerprint, hardware security keys (YubiKey).
+// ============================================================
+model WebAuthnCredential {
+  id              String   @id // base64url credential ID (สำหรับ lookup)
+  userId          String
+  publicKey       Bytes    // COSE public key
+  counter         Int      @default(0) // signature counter (replay protection)
+  deviceType      String?  // 'touchid' | 'faceid' | 'windows-hello' | 'android-fingerprint' | 'security-key'
+    transports       String? // comma-separated: 'internal,hybrid,usb,nfc,ble'
+  name            String?  // ชื่อที่ผู้ใช้ตั้งให้ device (e.g. "iPhone ของผม")
+  createdAt       DateTime @default(now())
+  lastUsedAt      DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

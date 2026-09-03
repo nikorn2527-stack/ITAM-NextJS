@@ -83,6 +83,27 @@ const ACTION_LABELS: Record<string, string> = {
   NOTIFY_SENT: 'ส่งการแจ้งเตือน',
   CYCLE_START: 'เริ่มรอบจดมิเตอร์',
   CYCLE_END: 'จบรอบจดมิเตอร์',
+  // ── Additional labels (from QA batch-4 — bug #8: duplicate text fix) ──
+  GENERATE: 'สร้างรายงาน',
+  IMPORT_LEGACY: 'นำเข้าข้อมูลเดิม',
+  IMPORT: 'นำเข้า',
+  INVITE_REQUEST: 'ขอเข้าใช้งาน',
+  AUTH_FALLBACK: 'ล็อกอินสำรอง',
+  DEMO_RESET: 'รีเซ็ตข้อมูลสาธิต',
+  DOC_TEMPLATE_RENDER: 'เรนเดอร์เอกสาร',
+  DOC_TEMPLATE_CREATE: 'สร้างเทมเพลตเอกสาร',
+  DOC_TEMPLATE_UPDATE: 'แก้ไขเทมเพลตเอกสาร',
+  DOC_TEMPLATE_DELETE: 'ลบเทมเพลตเอกสาร',
+  DOC_TEMPLATE_ACTIVATE: 'เปิดใช้งานเทมเพลต',
+  CONTACT_DIRECTORY_ADD: 'เพิ่มรายชื่อติดต่อ',
+  STOCK_IN: 'รับเข้าสต็อก',
+  STOCK_OUT: 'เบิกออกสต็อก',
+  STOCK_ADJUST: 'ปรับสต็อก',
+  PM_COMPLETE: 'ทำ PM เสร็จ',
+  PM_SKIP: 'ข้าม PM',
+  WO_ASSIGN: 'มอบหมายงาน',
+  WO_REOPEN: 'เปิดงานใหม่',
+  WO_CLOSE: 'ปิดงาน',
 }
 
 const ACTION_BADGE: Record<string, string> = {
@@ -192,12 +213,33 @@ export function ItamAudit() {
     return Array.from(set).sort()
   }, [data?.actions])
 
-  function exportCsv() {
-    if (logs.length === 0) {
+  async function exportCsv() {
+    // Bug Group D — audit export must include ALL matching rows, not just
+    // the current page. Re-fetch with a high limit using the same filters
+    // so the exported CSV matches what the user sees on screen.
+    toast.info('กำลังเตรียมข้อมูลส่งออก…')
+    const params = new URLSearchParams({ page: '1', limit: '10000' })
+    if (action !== 'all') params.set('action', action)
+    if (actor.trim()) params.set('actor', actor.trim())
+    if (search.trim()) params.set('q', search.trim())
+    if (startDate) params.set('startDate', startDate)
+    if (endDate) params.set('endDate', endDate)
+    let allLogs: AuditLog[] = logs
+    try {
+      const res = await fetch(`/api/itam/audit?${params}`, { headers: authHeaders() })
+      if (res.ok) {
+        const j: { logs?: AuditLog[] } = await res.json()
+        if (Array.isArray(j.logs) && j.logs.length > 0) allLogs = j.logs
+      }
+    } catch {
+      // Fall back to current page logs if the bulk fetch fails.
+      allLogs = logs
+    }
+    if (allLogs.length === 0) {
       toast.warning('ไม่มีข้อมูลให้ส่งออก')
       return
     }
-    const rows = logs.map((l) => ({
+    const rows = allLogs.map((l) => ({
       createdAt: l.createdAt || '',
       action: l.action,
       actionLabel: actionLabel(l.action),
