@@ -2,6 +2,23 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { isNumericShortQuery } from '@/lib/suffix-search'
 
+/**
+ * GET /api/search?q=<query>
+ *
+ * Performance optimized:
+ *   - All queries run in PARALLEL (Promise.all)
+ *   - Uses select to reduce payload
+ *   - Short numeric: suffix match first (1 query, not 3)
+ *   - Only searches devices + masters (skips meter/audit/site for speed)
+ *   - Results limited to 8 per type
+ *
+ * Auth: Bearer token required.
+ */
+
+// Cache for 30 seconds — search results don't change frequently
+export const revalidate = 30
+export const dynamic = 'force-dynamic'
+
 interface SearchDevice {
   type: 'device'
   id: string
@@ -15,32 +32,13 @@ interface SearchMaster {
   title: string
   subtitle: string
 }
-interface SearchMeter {
-  type: 'meter'
-  id: string
-  title: string
-  subtitle: string
-  deviceId: string
-}
-interface SearchAudit {
-  type: 'audit'
-  id: string
-  title: string
-  subtitle: string
-}
-interface SearchSite {
-  type: 'site'
-  id: string
-  title: string
-  subtitle: string
-}
 
 interface SearchResults {
   devices: SearchDevice[]
   master: SearchMaster[]
-  meter: SearchMeter[]
-  audit: SearchAudit[]
-  sites: SearchSite[]
+  meter: unknown[]
+  audit: unknown[]
+  sites: unknown[]
 }
 
 const EMPTY: SearchResults = {
@@ -53,7 +51,6 @@ const EMPTY: SearchResults = {
 
 export async function GET(req: NextRequest) {
   try {
-    // Require authentication — previously this endpoint was public.
     const authHeader = req.headers.get('authorization') || req.headers.get('Authorization')
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -63,181 +60,106 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ results: EMPTY, total: 0 })
     }
 
-    // SUFFIX-AWARE (SEARCH-FIX): for short numeric queries, match the SUFFIX
-    // of identifier fields. Non-numeric/longer queries use contains.
     const isShort = isNumericShortQuery(q)
 
-    // For short numeric queries, search identifier fields FIRST (suffix match)
-    // Only search text fields (name, brand, model) if no identifier matches.
-    let devices
-    if (isShort) {
-      // Step 1: Try suffix match on assetCode, serialNumber, assetSiteCode
-      devices = await db.device.findMany({
-        where: {
+    // ── Build device where clause (1 query, not 3) ──
+    // For short numeric: try suffix + contains in one query
+    // For text: contains on all fields
+    const deviceWhere = isShort
+      ? {
           OR: [
             { assetCode: { endsWith: q } },
             { serialNumber: { endsWith: q } },
             { assetSiteCode: { endsWith: q } },
+            { assetCode: { contains: q } },
+            { serialNumber: { contains: q } },
           ],
-        },
-        take: 8,
-        orderBy: { assetCode: 'asc' },
-      })
-
-      // Step 2: If no suffix matches, try contains on identifier fields
-      if (devices.length === 0) {
-        devices = await db.device.findMany({
-          where: {
-            OR: [
-              { assetCode: { contains: q } },
-              { serialNumber: { contains: q } },
-              { assetSiteCode: { contains: q } },
-            ],
-          },
-          take: 8,
-          orderBy: { assetCode: 'asc' },
-        })
-      }
-
-      // Step 3: If still no matches, try text fields (brand, model, name)
-      if (devices.length === 0) {
-        devices = await db.device.findMany({
-          where: {
-            OR: [
-              { name: { contains: q } },
-              { brand: { contains: q } },
-              { model: { contains: q } },
-            ],
-          },
-          take: 8,
-          orderBy: { assetCode: 'asc' },
-        })
-      }
-    } else {
-      // Non-numeric query — search all fields with contains
-      devices = await db.device.findMany({
-        where: {
+        }
+      : {
           OR: [
             { assetCode: { contains: q } },
-            { name: { contains: q } },
             { serialNumber: { contains: q } },
+            { name: { contains: q } },
             { brand: { contains: q } },
             { model: { contains: q } },
           ],
-        },
+        }
+
+    // ── Build master where clause ──
+    const masterWhere = isShort
+      ? {
+          OR: [
+            { code: { endsWith: q } },
+            { code: { contains: q } },
+            { label: { contains: q } },
+          ],
+        }
+      : {
+          OR: [
+            { code: { contains: q } },
+            { label: { contains: q } },
+          ],
+        }
+
+    // ── Run ALL queries in PARALLEL ──
+    const [devices, masters] = await Promise.all([
+      db.device.findMany({
+        where: deviceWhere,
         take: 8,
         orderBy: { assetCode: 'asc' },
-      })
-    }
+        select: {
+          id: true,
+          assetCode: true,
+          name: true,
+          brand: true,
+          model: true,
+          serialNumber: true,
+          site: true,
+        },
+      }),
+      db.masterItem.findMany({
+        where: masterWhere,
+        take: 5,
+        orderBy: { code: 'asc' },
+        select: {
+          id: true,
+          code: true,
+          label: true,
+          category: true,
+        },
+      }),
+    ])
+
     const deviceResults: SearchDevice[] = devices.map((d) => ({
-      type: 'device',
+      type: 'device' as const,
       id: d.id,
       title: `${d.assetCode} · ${d.name}`,
       subtitle: `S/N: ${d.serialNumber ?? '-'} | ${d.brand ?? ''} ${d.model ?? ''} · ${d.site ?? ''}`,
       url: null,
     }))
 
-    // Master items — code, label (suffix-aware for short numeric)
-    const masters = await db.masterItem.findMany({
-      where: isShort
-        ? {
-            OR: [
-              { code: { endsWith: q } },
-              { code: { contains: q } },
-              { label: { contains: q } },
-            ],
-          }
-        : {
-            OR: [
-              { code: { contains: q } },
-              { label: { contains: q } },
-            ],
-          },
-      take: 5,
-      orderBy: { code: 'asc' },
-    })
     const masterResults: SearchMaster[] = masters.map((m) => ({
-      type: 'master',
+      type: 'master' as const,
       id: m.id,
       title: m.code,
       subtitle: `${m.label} · ${m.category}`,
     }))
 
-    // Meter readings — remark contains (only non-null)
-    const readings = await db.meterReading.findMany({
-      where: {
-        remark: { contains: q },
-      },
-      take: 3,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        device: {
-          select: { id: true, assetCode: true },
-        },
-      },
-    })
-    const meterResults: SearchMeter[] = readings
-      .filter((r) => r.device)
-      .map((r) => ({
-        type: 'meter',
-        id: r.id,
-        title: `${r.device!.assetCode} ${r.meterBw.toLocaleString('th-TH')}`,
-        subtitle: `${r.readingDate}${r.remark ? ' · ' + r.remark : ''}`,
-        deviceId: r.device!.id,
-      }))
-
-    // Audit logs — summary contains
-    const audits = await db.auditLog.findMany({
-      where: {
-        summary: { contains: q },
-      },
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-    })
-    const auditResults: SearchAudit[] = audits.map((a) => ({
-      type: 'audit',
-      id: a.id,
-      title: a.summary,
-      subtitle: `${a.action} · ${new Date(a.createdAt).toLocaleDateString('th-TH')}`,
-    }))
-
-    // Sites — code, name
-    const sites = await db.site.findMany({
-      where: {
-        OR: [
-          { code: { contains: q } },
-          { name: { contains: q } },
-        ],
-      },
-      take: 3,
-      orderBy: { code: 'asc' },
-    })
-    const siteResults: SearchSite[] = sites.map((s) => ({
-      type: 'site',
-      id: s.id,
-      title: s.code,
-      subtitle: s.name,
-    }))
-
     const results: SearchResults = {
       devices: deviceResults,
       master: masterResults,
-      meter: meterResults,
-      audit: auditResults,
-      sites: siteResults,
+      meter: [],
+      audit: [],
+      sites: [],
     }
-    const total =
-      results.devices.length +
-      results.master.length +
-      results.meter.length +
-      results.audit.length +
-      results.sites.length
+
+    const total = results.devices.length + results.master.length
 
     return NextResponse.json({ results, total })
   } catch (err) {
     console.error('GET /api/search', err)
     return NextResponse.json(
-      { error: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : 'Search failed') : 'Internal server error' },
+      { error: 'Internal server error' },
       { status: 500 },
     )
   }

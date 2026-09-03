@@ -155,7 +155,7 @@ export function MobileRepairRequest() {
     return token ? { Authorization: `Bearer ${token}` } : {}
   }
 
-  // ── Search effect (debounced 300ms) ──
+  // ── Search effect (debounced 200ms — faster response) ──
   React.useEffect(() => {
     if (selected) return // do not re-search while a device is selected
     const q = searchTerm.trim()
@@ -225,7 +225,7 @@ export function MobileRepairRequest() {
       } finally {
         setSearching(false)
       }
-    }, 300)
+    }, 200)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
