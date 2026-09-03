@@ -34,10 +34,75 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth-store'
+import { CustomColumnSelector, type ColumnDef } from './custom-column-selector'
+import { ReportBarChart, ReportPieChart } from './report-charts'
 import {
   Cpu, Gauge, Wrench, Package, Activity, ShieldCheck,
   FileText, Download, RefreshCw, CalendarDays, Printer,
 } from 'lucide-react'
+
+// Column definitions for each report group
+const REPORT_COLUMNS: Record<ReportGroup, ColumnDef[]> = {
+  devices: [
+    { key: 'assetCode', label: 'รหัส', default: true },
+    { key: 'name', label: 'ชื่อ', default: true },
+    { key: 'brand', label: 'ยี่ห้อ', default: true },
+    { key: 'model', label: 'รุ่น', default: true },
+    { key: 'serialNumber', label: 'S/N', default: true },
+    { key: 'status', label: 'สถานะ', default: true },
+    { key: 'site', label: 'สาขา', default: true },
+    { key: 'department', label: 'แผนก', default: false },
+    { key: 'warrantyEnd', label: 'ประกัน', default: false },
+    { key: 'purchasePrice', label: 'ราคา', default: false },
+  ],
+  workorders: [
+    { key: 'woNumber', label: 'เลขที่', default: true },
+    { key: 'subject', label: 'หัวข้อ', default: true },
+    { key: 'status', label: 'สถานะ', default: true },
+    { key: 'priority', label: 'เร่งด่วน', default: true },
+    { key: 'reporterName', label: 'ผู้แจ้ง', default: true },
+    { key: 'assignedTo', label: 'ผู้รับผิดชอบ', default: false },
+    { key: 'createdAt', label: 'วันที่แจ้ง', default: false },
+    { key: 'closedAt', label: 'วันที่ปิด', default: false },
+    { key: 'siteCode', label: 'สาขา', default: false },
+  ],
+  meters: [
+    { key: 'assetCode', label: 'รหัส', default: true },
+    { key: 'readingMonth', label: 'เดือน', default: true },
+    { key: 'meterBw', label: 'มิเตอร์ ขาวดำ', default: true },
+    { key: 'meterColor', label: 'มิเตอร์ สี', default: true },
+    { key: 'pagesBw', label: 'แผ่น ขาวดำ', default: true },
+    { key: 'pagesColor', label: 'แผ่น สี', default: true },
+    { key: 'readingType', label: 'ประเภท', default: false },
+    { key: 'readBy', label: 'ผู้จด', default: false },
+  ],
+  stock: [
+    { key: 'productCode', label: 'รหัส', default: true },
+    { key: 'productName', label: 'ชื่อ', default: true },
+    { key: 'quantity', label: 'คงเหลือ', default: true },
+    { key: 'minQuantity', label: 'ต่ำสุด', default: true },
+    { key: 'unit', label: 'หน่วย', default: false },
+    { key: 'unitCost', label: 'ราคา/หน่วย', default: false },
+    { key: 'totalValue', label: 'มูลค่ารวม', default: false },
+    { key: 'site', label: 'สาขา', default: false },
+  ],
+  maintenance: [
+    { key: 'assetCode', label: 'รหัสอุปกรณ์', default: true },
+    { key: 'subject', label: 'ปัญหา', default: true },
+    { key: 'status', label: 'สถานะ', default: true },
+    { key: 'assignedTo', label: 'ช่าง', default: true },
+    { key: 'createdAt', label: 'วันที่รับ', default: false },
+    { key: 'closedAt', label: 'วันที่ปิด', default: false },
+  ],
+  approvals: [
+    { key: 'type', label: 'ประเภท', default: true },
+    { key: 'status', label: 'สถานะ', default: true },
+    { key: 'requestedBy', label: 'ผู้ขอ', default: true },
+    { key: 'approvedBy', label: 'ผู้อนุมัติ', default: false },
+    { key: 'createdAt', label: 'วันที่ขอ', default: false },
+    { key: 'approvedAt', label: 'วันที่อนุมัติ', default: false },
+  ],
+}
 import {
   currentMonthValue, formatMonthLabel, formatDateTime,
 } from './reports/shared'
@@ -80,6 +145,7 @@ export function ReportsHub() {
   const [activeGroup, setActiveGroup] = React.useState<ReportGroup>('devices')
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
+  const [selectedColumns, setSelectedColumns] = React.useState<string[]>([])
 
   // ── Site filter visibility — only show if user can select among multiple sites ──
   const authUser = useAuthStore((s) => s.user)
@@ -242,6 +308,13 @@ export function ReportsHub() {
                 <Download className="mr-1 h-3.5 w-3.5" />
                 CSV
               </Button>
+              {/* Custom column selector */}
+              <CustomColumnSelector
+                storageKey={`reports-${activeGroup}-cols`}
+                columns={REPORT_COLUMNS[activeGroup] || []}
+                selected={selectedColumns}
+                onChange={setSelectedColumns}
+              />
               {/* พิมพ์ PDF — Task ID: FIX-1-2-EXPORT-PRINT */}
               <Button
                 size="sm"

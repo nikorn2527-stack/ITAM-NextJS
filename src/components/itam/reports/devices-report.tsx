@@ -23,14 +23,14 @@ export function DevicesReport({ data, isDark }: { data: any; isDark: boolean }) 
   return (
     <>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
-        <SummaryCard title="อุปกรณ์ทั้งหมด" value={formatNumber(s.total)} icon={<Cpu className="h-5 w-5" />} accent="#6366f1" hint="ในระบบ" />
+        <SummaryCard title="อุปกรณ์ทั้งหมด" value={formatNumber(s.total)} icon={<Cpu className="h-5 w-5" />} accent="#f97316" hint="ในระบบ" />
         <SummaryCard title="ใช้งานอยู่" value={formatNumber(s.active)} icon={<CheckCircle2 className="h-5 w-5" />} accent="#10b981" hint={`${s.total > 0 ? Math.round((s.active / s.total) * 100) : 0}% ของทั้งหมด`} />
         <SummaryCard title="ประกันใกล้หมด" value={formatNumber(s.warrantyExpiringCount)} icon={<AlertTriangle className="h-5 w-5" />} accent="#f59e0b" hint="ภายใน 90 วัน" />
         <SummaryCard title="ประกันหมดแล้ว" value={formatNumber(s.warrantyExpiredCount)} icon={<XCircle className="h-5 w-5" />} accent="#ef4444" hint="หมดอายุแล้ว" />
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <SectionCard title="สัดส่วนตามสถานะ" icon={<Activity className="h-4 w-4" />} accent="#6366f1">
+        <SectionCard title="สัดส่วนตามสถานะ" icon={<Activity className="h-4 w-4" />} accent="#f97316">
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
