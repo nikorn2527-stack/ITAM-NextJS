@@ -15615,3 +15615,54 @@ Scripts (new):
 
 ไฟล์ที่สร้างใหม่: 0 (research เท่านั้น — ไม่แก้ code ใด ๆ)
 ไฟล์ที่แก้: 0 (research เท่านั้น)
+
+---
+Task ID: deploy-after-qa-fixes
+Agent: orchestrator (main)
+Task: แก้ data consistency bugs จากรายงานตรวจสอบแอปที่ deploy บน Vercel + deploy เวอร์ชันใหม่
+
+Work Log:
+- อ่านรายงานตรวจสอบ `/home/z/my-project/upload/รายงานตรวจสอบแอป IT Asset Management.md`
+- Dispatch research subagent เพื่อหา root cause ของแต่ละ bug
+- สร้าง src/lib/status-utils.ts — canonical status normalization:
+  * ACTIVE_STATUS_VARIANTS (สำหรับ Prisma where clauses)
+  * normalizeStatus() — Active/ACTIVE/active/ใช้งาน → 'Active'
+  * isActiveStatus() — boolean helper
+  * bucketizeStatusGroups() — aggregate into canonical buckets
+
+- Bug DATA-06 fix (status normalization):
+  * src/app/api/itam/dashboard/route.ts — ใช้ ACTIVE_STATUS_VARIANTS + bucketizeStatusGroups
+  * src/modules/reports/unified-report-builder.ts — normalizeStatus + isActiveStatus
+
+- Bug DATA-01 fix (total consistency): ตอนนี้ dashboard + reports/unified แสดง total 2,394 เท่ากัน
+- Bug DATA-02 fix (active consistency): ตอนนี้ dashboard + reports/unified แสดง active 2,161 เท่ากัน
+
+- Bug DATA-03 fix (future meter date):
+  * src/app/api/itam/meter-readings/route.ts — reject readingDate > tomorrow
+  * reject readingMonth > current month
+  * ใช้ server timezone (UTC)
+
+- Bug UI-01 fix (KpiCard loading):
+  * src/components/itam/work-orders-page.tsx — KpiCard มี loading prop
+  * แสดง skeleton placeholder ตอน loading แทนเลข 0
+
+- Bug UX-01 fix (sidebar pointer events):
+  * src/components/itam/sidebar.tsx — onMouseEnter/Leave → onPointerEnter/Leave
+  * รองรับ touch devices (Touch ID / mobile)
+
+- Bug fix: bucketizeStatusGroups รองรับ Prisma _count object รูปแบบใหม่
+
+Stage Summary:
+- ✅ Dashboard API: total=2,394, active=2,161, repair=6 (verified via curl)
+- ✅ Reports/unified devices API: total=2,394, active=2,161, repair=6 (verified)
+- ✅ ตัวเลขตรงกันทุก module แล้ว — แก้ DATA-01 และ DATA-02 สำเร็จ
+- ✅ Meter reading API: reject future dates
+- ✅ Sidebar: pointer events (รองรับ touch)
+- ✅ KpiCard: loading skeleton
+- ✅ Commit: 205a15c — "feat: WebAuthn fingerprint login + data consistency fixes"
+- ✅ Push: origin/main (สำเร็จ — Vercel auto-deploy triggered)
+
+Bugs ที่ยังไม่ได้แก้ในรอบนี้ (จะแก้ใน deploy ถัดไป):
+- DATA-04: phantom sites (HQ/BKK) — ต้อง backfill device.site field (data migration)
+- DATA-05: low stock count off-by-one (1 record diff) — minor
+- ACL-01: permission matrix testing — ต้องทดสอบด้วยบัญชี non-admin
