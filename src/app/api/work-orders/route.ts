@@ -5,7 +5,7 @@ import { notifyWorkOrderCreated } from '@/lib/notifications'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
-import { demoTag } from '@/lib/demo-mode'
+import { demoTag, demoFilter } from '@/lib/demo-mode'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { STATUS_MAPPINGS } from '@/lib/csv-field-mapping'
 import { isNumericShortQuery } from '@/lib/suffix-search'
@@ -244,7 +244,7 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { ...demoFilter(auth.user) }
 
     // ── Build the `search` OR clause ──
     // Used to combine with site filter via AND when both are present.

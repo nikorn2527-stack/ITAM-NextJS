@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { withRetryOnUnique } from '@/lib/retry-unique'
-import { demoTag } from '@/lib/demo-mode'
+import { demoTag, demoFilter } from '@/lib/demo-mode'
 import { isNumericShortQuery } from '@/lib/suffix-search'
 
 /** Parse a Float; returns null when missing/invalid. */
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       Math.min(100, optInt(searchParams.get('pageSize'), 50)),
     )
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { ...demoFilter(auth.user) }
     if (activeOnly) where.active = true
     if (category) where.category = category
     if (search) {

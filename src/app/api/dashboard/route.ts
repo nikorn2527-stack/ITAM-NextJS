@@ -1,5 +1,6 @@
 // ============================================================
 import { requireAuth } from '@/lib/auth-middleware'
+import { demoFilter } from '@/lib/demo-mode'
 // Dashboard API (Task ID: RBAC-DASHBOARD)
 // ============================================================
 // GET /api/dashboard
@@ -111,17 +112,22 @@ export async function GET(req: NextRequest) {
     const USAGE_TYPES = ['MONTHLY', 'CHECKOUT', 'RETURN']
     const usageWhere = { ...readingWhere, readingType: { in: USAGE_TYPES } }
 
+    // Demo filter — real users don't see demo data
+    const demoWhere = demoFilter(auth.user)
+
     // ── PARALLEL: all independent queries ──────────────────────────────────
     const [statusGroups, typeGroups, usageByAsset, paperAgg, recent] = await Promise.all([
       // 1) All device counts by status — single groupBy
       db.device.groupBy({
         by: ['status'],
+        where: demoWhere,
         _count: { status: true },
       }),
 
       // 2) Device counts by type — single groupBy
       db.device.groupBy({
         by: ['type'],
+        where: demoWhere,
         _count: { type: true },
       }),
 
