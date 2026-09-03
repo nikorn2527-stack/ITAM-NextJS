@@ -56,6 +56,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     const q = (new URL(req.url).searchParams.get('q') ?? '').trim()
+    const searchType = (new URL(req.url).searchParams.get('type') ?? 'all').trim()
     if (q.length < 2) {
       return NextResponse.json({ results: EMPTY, total: 0 })
     }
@@ -101,7 +102,9 @@ export async function GET(req: NextRequest) {
           ],
         }
 
-    // ── Run ALL queries in PARALLEL ──
+    // ── Run queries in PARALLEL (skip masters if type=devices) ──
+    const shouldSearchMasters = searchType === 'all' || searchType === 'masters'
+
     const [devices, masters] = await Promise.all([
       db.device.findMany({
         where: deviceWhere,
@@ -117,17 +120,19 @@ export async function GET(req: NextRequest) {
           site: true,
         },
       }),
-      db.masterItem.findMany({
-        where: masterWhere,
-        take: 5,
-        orderBy: { code: 'asc' },
-        select: {
-          id: true,
-          code: true,
-          label: true,
-          category: true,
-        },
-      }),
+      shouldSearchMasters
+        ? db.masterItem.findMany({
+            where: masterWhere,
+            take: 5,
+            orderBy: { code: 'asc' },
+            select: {
+              id: true,
+              code: true,
+              label: true,
+              category: true,
+            },
+          })
+        : Promise.resolve([]),
     ])
 
     const deviceResults: SearchDevice[] = devices.map((d) => ({
