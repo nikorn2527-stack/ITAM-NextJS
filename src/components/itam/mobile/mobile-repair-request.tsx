@@ -713,67 +713,67 @@ export function MobileRepairRequest() {
             </div>
 
             <div className="space-y-4 p-4">
-              {/* Subject — multi-select chips from /api/settings/options */}
-              <div className="space-y-1.5">
-                <Label htmlFor="mrr-subject" className="text-sm font-medium">
-                  ประเภทปัญหา <span className="text-rose-500">*</span>
-                  <span className="ml-1 text-xs text-slate-400">(เลือกได้หลายอัน)</span>
+              {/* Step 2a: เลือกอาการ — แยกตามกลุ่ม อ่านง่าย */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">
+                  อาการที่พบ <span className="text-rose-500">*</span>
                 </Label>
                 {problemCategories.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {problemCategories.map((cat) => {
-                      const isSelected = selectedSubjects.includes(cat.label)
-                      return (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          onClick={() => {
-                            if (isSelected) {
-                              setSelectedSubjects(selectedSubjects.filter((s) => s !== cat.label))
-                            } else {
-                              setSelectedSubjects([...selectedSubjects, cat.label])
-                            }
-                            // Auto-set priority from highest selected
-                            const allSelected = isSelected
-                              ? selectedSubjects.filter((s) => s !== cat.label)
-                              : [...selectedSubjects, cat.label]
-                            const priorities = allSelected.map((s) => {
-                              const opt = subjectOptions.find((o) => o.value === s)
-                              return opt?.default_priority
-                            })
-                            const priMap: Record<string, PriorityKey> = {
-                              'ปกติ': 'low', 'ปานกลาง': 'medium', 'สูง': 'high', 'ด่วน': 'urgent',
-                            }
-                            // Pick highest priority
-                            if (priorities.includes('ด่วน')) setPriority('urgent')
-                            else if (priorities.includes('สูง')) setPriority('high')
-                            else if (priorities.includes('ปานกลาง')) setPriority('medium')
-                            else if (priorities.includes('ปกติ')) setPriority('low')
-                          }}
-                          className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                            isSelected
-                              ? 'border-orange-500 bg-orange-500 text-white'
-                              : 'border-slate-300 bg-white text-slate-600 hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                          }`}
-                        >
-                          {cat.label}
-                        </button>
-                      )
-                    })}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedSubjects([...selectedSubjects, 'อื่นๆ'])
-                      }}
-                      className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                        selectedSubjects.includes('อื่นๆ')
-                          ? 'border-orange-500 bg-orange-500 text-white'
-                          : 'border-slate-300 bg-white text-slate-600 hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                      }`}
-                    >
-                      อื่นๆ
-                    </button>
-                  </div>
+                  (() => {
+                    // Group categories by group name
+                    const groups = problemCategories.reduce((acc, cat) => {
+                      const g = cat.group || 'อื่นๆ'
+                      if (!acc[g]) acc[g] = []
+                      acc[g].push(cat)
+                      return acc
+                    }, {} as Record<string, typeof problemCategories>)
+                    return (
+                      <div className="space-y-2">
+                        {Object.entries(groups).map(([groupName, cats]) => (
+                          <div key={groupName}>
+                            <div className="mb-1 text-[10px] font-medium text-slate-400">{groupName}</div>
+                            <div className="flex flex-wrap gap-1">
+                              {cats.map((cat) => {
+                                const isSelected = selectedSubjects.includes(cat.label)
+                                return (
+                                  <button
+                                    key={cat.id}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isSelected) {
+                                        setSelectedSubjects(selectedSubjects.filter((s) => s !== cat.label))
+                                      } else {
+                                        setSelectedSubjects([...selectedSubjects, cat.label])
+                                      }
+                                      // Auto-set priority
+                                      const allSelected = isSelected
+                                        ? selectedSubjects.filter((s) => s !== cat.label)
+                                        : [...selectedSubjects, cat.label]
+                                      const priorities = allSelected.map((s) => {
+                                        const opt = subjectOptions.find((o) => o.value === s)
+                                        return opt?.default_priority
+                                      })
+                                      if (priorities.includes('ด่วน')) setPriority('urgent')
+                                      else if (priorities.includes('สูง')) setPriority('high')
+                                      else if (priorities.includes('ปานกลาง')) setPriority('medium')
+                                      else if (priorities.includes('ปกติ')) setPriority('low')
+                                    }}
+                                    className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+                                      isSelected
+                                        ? 'border-orange-500 bg-orange-500 text-white'
+                                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                    }`}
+                                  >
+                                    {cat.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })()
                 ) : (
                   <Input
                     id="mrr-subject"
@@ -782,32 +782,22 @@ export function MobileRepairRequest() {
                     placeholder="เช่น เครื่องพิมพ์ไม่ทำงาน"
                     maxLength={200}
                     className="h-12 text-base"
-                    aria-required="true"
                   />
-                )}
-                {/* Sync selectedSubjects to subject for submission */}
-                {selectedSubjects.length > 0 && (
-                  <p className="text-xs text-slate-500">
-                    เลือกแล้ว: {selectedSubjects.join(', ')}
-                  </p>
                 )}
               </div>
 
-              {/* Description */}
+              {/* Step 2b: รายละเอียดเพิ่มเติม — ไม่บังคับ */}
               <div className="space-y-1.5">
-                <Label
-                  htmlFor="mrr-description"
-                  className="text-sm font-medium"
-                >
-                  รายละเอียดอาการ <span className="text-xs text-slate-400">(ไม่บังคับ)</span>
+                <Label htmlFor="mrr-description" className="text-sm font-medium">
+                  รายละเอียดเพิ่มเติม <span className="text-xs text-slate-400">(ถ้ามี)</span>
                 </Label>
                 <Textarea
                   id="mrr-description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="อธิบายอาการ / สิ่งที่เกิดขึ้น / เมื่อไหร่ที่พบปัญหา"
-                  rows={4}
-                  maxLength={1000}
+                  placeholder="เช่น เกิดตอนบ่ายโมง พิมพ์ได้ครึ่งหน้าแล้วหยุด..."
+                  rows={3}
+                  maxLength={500}
                   className="min-h-24 text-base"
                   aria-required="true"
                 />
