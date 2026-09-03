@@ -487,10 +487,15 @@ export function MobileRepairRequest() {
                   {/* QR Scan button */}
                   <button
                     type="button"
-                    onClick={() => setQrScanOpen(true)}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      console.log('[QR] button clicked, opening scanner')
+                      setQrScanOpen(true)
+                    }}
                     aria-label="สแกน QR Code"
                     title="สแกน QR"
-                    className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border border-orange-300 bg-orange-50 text-orange-600 transition-colors hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-400 dark:hover:bg-orange-950/60"
+                    className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border border-orange-300 bg-orange-50 text-orange-600 transition-colors hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-400 dark:hover:bg-orange-950/60 z-10"
                   >
                     <QrCode className="h-5 w-5" />
                   </button>
