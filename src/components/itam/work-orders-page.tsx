@@ -1062,11 +1062,13 @@ function KpiCard({
   value,
   icon,
   color,
+  loading = false,
 }: {
   label: string
   value: number
   icon: React.ReactNode
   color: keyof typeof KPI_COLORS | string
+  loading?: boolean
 }) {
   return (
     <Card className="gap-0 py-4">
@@ -1079,7 +1081,14 @@ function KpiCard({
           {icon}
         </div>
         <div className="min-w-0">
-          <div className="text-2xl font-bold leading-tight">{value}</div>
+          {/* Bug UI-01 fix: distinguish loading state from real 0 values */}
+          <div className="text-2xl font-bold leading-tight">
+            {loading ? (
+              <span className="inline-block h-7 w-12 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+            ) : (
+              value.toLocaleString('en-US')
+            )}
+          </div>
           <div className="truncate text-xs text-muted-foreground">{label}</div>
         </div>
       </CardContent>

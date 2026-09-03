@@ -59,7 +59,7 @@ import { LegacyImportSection } from './legacy-import-section'
 import { ManualSyncPreviewSection } from './manual-sync-preview-section'
 
 // ============================================================
-// ข้อ 3: นำเข้าข้อมูล — อัปโหลด Excel/CSV แยกตามประเภท
+// ข้อ 3: นำเข้าข้อมูล — อัปโหลด CSV แยกตามประเภท
 // ============================================================
 
 type JobType = 'device' | 'work-order' | 'stock' | 'meter-reading'
@@ -465,7 +465,7 @@ export function ImportPage() {
             นำเข้าข้อมูล
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            อัปโหลดไฟล์ Excel/CSV — แยกตามประเภทข้อมูล
+            อัปโหลดไฟล์ CSV — แยกตามประเภทข้อมูล
           </p>
         </div>
 

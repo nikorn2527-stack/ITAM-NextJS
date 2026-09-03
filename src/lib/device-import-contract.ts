@@ -107,6 +107,33 @@ const HEADER_ALIASES: Record<string, string[]> = {
   remark: ['remark', 'หมายเหตุ'],
 }
 
+/**
+ * Alias-aware header lookup. Given a list of CSV header strings,
+ * returns a map of canonicalField → column index, matching each
+ * header (case-insensitive, trimmed) against HEADER_ALIASES.
+ *
+ * Used by /api/import/route.ts `importDevices` so manual uploads
+ * can use the same legacy aliases as Apps Script mode (e.g.
+ * "asset_no", "รหัสสินทรัพย์", "assetcode" all → assetNo).
+ */
+export function resolveHeaderIndexes(
+  headers: string[],
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  headers.forEach((raw, i) => {
+    const normalized = raw.replace(/^\uFEFF/, '').trim().toLowerCase()
+    if (!normalized) return
+    for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+      if (out[field] !== undefined) continue
+      if (aliases.includes(normalized)) {
+        out[field] = i
+        return
+      }
+    }
+  })
+  return out
+}
+
 function normalizeHeader(value: string): string {
   return value.replace(/^\uFEFF/, '').trim().toLowerCase()
 }

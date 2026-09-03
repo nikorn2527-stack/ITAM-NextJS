@@ -24,6 +24,33 @@ import type { StockItem, StockTransaction } from '@prisma/client'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
+/**
+ * Coerce a Prisma Decimal (which serializes to string over JSON) to a JS number.
+ * Returns null if the value is null/undefined/NaN. This is the root-cause fix
+ * for "Drum ฿30,003,000" bug where "3000"+"3000" produced string concat.
+ */
+function toNumber(v: unknown): number | null {
+  if (v == null) return null
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null
+  if (typeof v === 'string') {
+    // Strip non-numeric chars (commas, baht sign, whitespace) then parse
+    const cleaned = v.replace(/[^0-9.\-]/g, '')
+    if (cleaned === '' || cleaned === '-' || cleaned === '.') return null
+    const n = Number(cleaned)
+    return Number.isFinite(n) ? n : null
+  }
+  // Decimal instance from Prisma has .toNumber() — try it
+  if (typeof v === 'object' && v !== null && 'toNumber' in v && typeof (v as { toNumber: unknown }).toNumber === 'function') {
+    try {
+      const n = (v as { toNumber: () => number }).toNumber()
+      return Number.isFinite(n) ? n : null
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
 export type CostType = 'consumable' | 'spare_part' | 'service'
 export type DepreciationMethod = 'straight_line' | 'usage_based'
 
@@ -228,14 +255,20 @@ export function calcWorkOrderCost(
 
   for (const tx of transactions) {
     const item = stockItemMap.get(tx.stockItemId)
-    const unitCost = tx.unitCost ?? item?.unitCost ?? null
-    const quantity = tx.quantity ?? 0
-    const lineCost = tx.cost ?? calcLineCost(unitCost, quantity)
+    // Cast via toNumber() because Prisma Decimal serializes to string in JSON,
+    // which causes string concat instead of numeric addition.
+    const itemUnitCost = toNumber(item?.unitCost)
+    const itemYieldPerPage = toNumber(item?.yieldPerPage)
+    const itemUsefulLifeMonths = toNumber(item?.usefulLifeMonths)
+    const itemUsefulLifePages = toNumber(item?.usefulLifePages)
+    const unitCost = toNumber(tx.unitCost) ?? itemUnitCost
+    const quantity = toNumber(tx.quantity) ?? 0
+    const lineCost = toNumber(tx.cost) ?? calcLineCost(unitCost, quantity)
     const costType = item?.costType ?? null
-    const yieldPerPage = item?.yieldPerPage ?? null
+    const yieldPerPage = itemYieldPerPage
     const depMethod = item?.depreciationMethod ?? null
-    const lifeMonths = item?.usefulLifeMonths ?? null
-    const lifePages = item?.usefulLifePages ?? null
+    const lifeMonths = itemUsefulLifeMonths
+    const lifePages = itemUsefulLifePages
 
     let costPerPage: number | null = null
     let costPerMonth: number | null = null
@@ -328,9 +361,14 @@ export function calcMonthlyMaterialCost(
 
   for (const tx of monthOutTxns) {
     const item = stockItemMap.get(tx.stockItemId)
-    const unitCost = tx.unitCost ?? item?.unitCost ?? null
-    const quantity = tx.quantity ?? 0
-    const lineCost = tx.cost ?? calcLineCost(unitCost, quantity)
+    // Cast via toNumber() because Prisma Decimal serializes to string in JSON.
+    const itemUnitCost = toNumber(item?.unitCost)
+    const itemYieldPerPage = toNumber(item?.yieldPerPage)
+    const itemUsefulLifeMonths = toNumber(item?.usefulLifeMonths)
+    const itemUsefulLifePages = toNumber(item?.usefulLifePages)
+    const unitCost = toNumber(tx.unitCost) ?? itemUnitCost
+    const quantity = toNumber(tx.quantity) ?? 0
+    const lineCost = toNumber(tx.cost) ?? calcLineCost(unitCost, quantity)
     const costType = item?.costType ?? null
 
     if (costType === 'consumable') {
@@ -342,8 +380,8 @@ export function calcMonthlyMaterialCost(
         totalBottles: 0,
         unitCost,
         totalCost: 0,
-        yieldPerPage: item?.yieldPerPage ?? null,
-        costPerPage: calcInkCostPerPage(unitCost, item?.yieldPerPage ?? null),
+        yieldPerPage: itemYieldPerPage,
+        costPerPage: calcInkCostPerPage(unitCost, itemYieldPerPage),
         coveragePages: null,
       }
       cur.totalBottles += quantity
@@ -359,15 +397,15 @@ export function calcMonthlyMaterialCost(
         unitCost,
         totalCost: 0,
         depreciationMethod: item?.depreciationMethod ?? null,
-        usefulLifeMonths: item?.usefulLifeMonths ?? null,
-        usefulLifePages: item?.usefulLifePages ?? null,
+        usefulLifeMonths: itemUsefulLifeMonths,
+        usefulLifePages: itemUsefulLifePages,
         costPerMonth:
           item?.depreciationMethod === 'straight_line'
-            ? calcSparePartCostPerMonth(unitCost, item?.usefulLifeMonths ?? null)
+            ? calcSparePartCostPerMonth(unitCost, itemUsefulLifeMonths)
             : null,
         costPerPage:
           item?.depreciationMethod === 'usage_based'
-            ? calcSparePartCostPerPage(unitCost, item?.usefulLifePages ?? null)
+            ? calcSparePartCostPerPage(unitCost, itemUsefulLifePages)
             : null,
       }
       cur.totalItems += quantity

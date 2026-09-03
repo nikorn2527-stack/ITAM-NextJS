@@ -58,6 +58,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
+import { useAuthStore } from '@/store/auth-store'
 
 // ── Types ───────────────────────────────────────────────────────────────
 

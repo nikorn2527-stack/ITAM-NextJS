@@ -12,18 +12,33 @@ export async function GET(req: Request) {
 
     const userSites = getAllowedSites(user)
     const sites = await db.siteAttribute.findMany({
-      orderBy: { siteCode: 'asc' },
+      orderBy: { SiteCode: 'asc' },
     })
     // Site-level filter — restrict the visible site list
-    const visibleSites = userSites === 'ALL' ? sites : sites.filter((s) => userSites.includes(s.siteName || ''))
+    const visibleSites = userSites === 'ALL' ? sites : sites.filter((s) => userSites.includes(s.SiteName || ''))
 
     const sitesWithCounts = await Promise.all(
       visibleSites.map(async (s) => {
-        const deviceCount = await db.device.count({ where: { site: s.siteName || '' } })
+        const deviceCount = await db.device.count({ where: { site: s.SiteName || '' } })
         const activeCount = await db.device.count({
-          where: { site: s.siteName || '', status: 'Active' },
+          where: { site: s.SiteName || '', status: 'Active' },
         })
-        return { ...s, deviceCount, activeCount }
+        // Normalize field names for front-end (lowercase aliases) + return original
+        // SiteAttribute fields (SiteCode, SiteName, PaperRateBW, PaperRateColor).
+        // Bug Group E fix: include lowercase paperRateBw/paperRateColor aliases
+        // so the "สาขา (ภาพรวม)" tab in Settings reads the SAME rate that
+        // "จัดการสาขา" writes — both source from SiteAttribute (single source
+        // of truth). Previously "สาขา (ภาพรวม)" used 0.5/2 fallback because
+        // the lowercase alias was missing.
+        return {
+          ...s,
+          siteCode: s.SiteCode,
+          siteName: s.SiteName,
+          paperRateBw: s.PaperRateBW,
+          paperRateColor: s.PaperRateColor,
+          deviceCount,
+          activeCount,
+        }
       }),
     )
 

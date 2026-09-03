@@ -312,7 +312,7 @@ export function Sidebar() {
         const res = await fetch('/api/settings/org-profile')
         if (!res.ok) return null
         const j = await res.json()
-        return j.profile
+        return j?.profile ?? null
       } catch {
         return null
       }
@@ -814,8 +814,11 @@ export function Sidebar() {
           Light mode: bg-slate-50 with border-slate-300 (3-tier hierarchy — page bg slate-50,
           sidebar slate-50, cards white). */}
       <aside
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        // Bug UX-01 fix: pointer events fire for both mouse + touch (Touch ID).
+        // onMouseEnter/Leave don't fire on touch devices, causing sidebar to
+        // expand but not change content (require double-click).
+        onPointerEnter={() => setHovered(true)}
+        onPointerLeave={() => setHovered(false)}
         aria-label="Main navigation (desktop)"
         className={cn(
           'fixed bottom-0 left-0 top-0 z-[100] hidden flex-col overflow-hidden border-r border-slate-300 bg-slate-50 text-slate-900 transition-all duration-200 ease-out md:flex dark:border-white/10 dark:bg-[#0f172a] dark:text-white',

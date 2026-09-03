@@ -1674,6 +1674,7 @@ function WorkOrderTab() {
 export function TemplatesPage() {
   const [tab, setTab] = React.useState<TabKey>('sticker')
   const setActivePage = useAppStore((s) => s.setActivePage)
+  const queryClient = useQueryClient()
   const [seeding, setSeeding] = React.useState(false)
   const [seedResult, setSeedResult] = React.useState<string | null>(null)
 
@@ -1694,13 +1695,23 @@ export function TemplatesPage() {
       const data = await res.json()
       if (res.ok) {
         setSeedResult(`✓ ${data.message}`)
-        // Reload page after 2s to show new templates
-        setTimeout(() => window.location.reload(), 2000)
+        // Bug Group F fix: do NOT redirect (was window.location.reload()
+        // which reset activePage to 'dashboard' on next mount). Instead,
+        // invalidate templates queries so each tab's list re-fetches,
+        // and stay on the current Templates page so the user can verify
+        // the new templates populated. Toast provides immediate feedback.
+        toast.success(data.message || 'ติดตั้งเทมเพลตเริ่มต้นสำเร็จ')
+        await queryClient.invalidateQueries({ queryKey: ['templates'] })
+        await queryClient.invalidateQueries({ queryKey: ['sticker-templates'] })
+        await queryClient.invalidateQueries({ queryKey: ['document-templates'] })
       } else {
         setSeedResult(`✗ ${data.error || 'Seed failed'}`)
+        toast.error(data.error || 'ติดตั้งเทมเพลตเริ่มต้นล้มเหลว')
       }
     } catch (err) {
-      setSeedResult(`✗ ${err instanceof Error ? err.message : String(err)}`)
+      const msg = err instanceof Error ? err.message : String(err)
+      setSeedResult(`✗ ${msg}`)
+      toast.error(msg)
     } finally {
       setSeeding(false)
     }

@@ -136,6 +136,24 @@ export async function POST(req: NextRequest) {
     const readingDate = typeof body.readingDate === 'string' && body.readingDate.trim()
       ? body.readingDate.trim()
       : new Date().toISOString().slice(0, 10)
+
+    // ── Bug DATA-03 fix: reject future dates (server timezone authoritative) ──
+    // Server uses UTC today's date; client may have wrong timezone/clock skew.
+    // Allow today + up to 1 day tolerance for timezone edge cases.
+    const todayUtc = new Date()
+    const todayStr = todayUtc.toISOString().slice(0, 10)
+    const tomorrowStr = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    if (readingDate > tomorrowStr) {
+      return NextResponse.json({
+        error: `วันที่จดมิเตอร์ (${readingDate}) เป็นวันในอนาคต — กรุณาตรวจสอบวันที่ (วันนี้ ${todayStr})`,
+      }, { status: 400 })
+    }
+    if (finalReadingMonth > todayStr.slice(0, 7)) {
+      return NextResponse.json({
+        error: `เดือนมิเตอร์ (${finalReadingMonth}) เป็นเดือนในอนาคต — ไม่สามารถจดล่วงหน้าได้`,
+      }, { status: 400 })
+    }
+
     const readingId = normalizeMeterReadingId(body.readingId)
     const remark = typeof body.remark === 'string' ? body.remark.trim() || null : null
     const cycleId = typeof body.cycleId === 'string' ? body.cycleId.trim() || null : null
