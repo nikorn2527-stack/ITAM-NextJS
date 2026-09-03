@@ -9,8 +9,13 @@
     {
       "path": "/api/cron/daily-report",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/sync-legacy",
+      "schedule": "0 2 * * *"
     }
   ],
+  "regions": ["sin1"],
   "framework": "nextjs",
   "github": {
     "silent": true
