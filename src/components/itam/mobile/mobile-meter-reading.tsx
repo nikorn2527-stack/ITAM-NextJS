@@ -351,7 +351,7 @@ export function MobileMeterReading() {
   // ── Render: main ──
   return (
     <div className="flex flex-col gap-3">
-      {/* ── Progress + cycle info ── */}
+      {/* ── Progress + cycle info + current month ── */}
       <Card className="gap-0 py-0">
         <CardContent className="px-0 py-0">
           <div className="p-4">
@@ -373,6 +373,14 @@ export function MobileMeterReading() {
                       ยังไม่มีรอบจดมิเตอร์ที่เปิดอยู่
                     </p>
                   )}
+                  {/* Show current month — prevents wrong month saves */}
+                  <p className="mt-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    เดือนที่จด: {(() => {
+                      const now = new Date()
+                      const thMonths = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+                      return thMonths[now.getMonth()] + ' ' + (now.getFullYear() + 543)
+                    })()}
+                  </p>
                 </div>
               </div>
               <button
