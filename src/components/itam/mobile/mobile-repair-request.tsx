@@ -172,7 +172,8 @@ export function MobileRepairRequest() {
       setShowResults(true)
       try {
         // Use search API with suffix-aware matching (short numeric → suffix first)
-        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, {
+        // type=devices → skip masters query for faster response
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&type=devices`, {
           headers: getAuthHeaders(),
         })
         if (!res.ok) {
