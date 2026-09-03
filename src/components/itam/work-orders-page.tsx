@@ -1305,19 +1305,51 @@ function CreateWorkOrderDialog({
     setDeviceLoading(true)
     const t = setTimeout(async () => {
       try {
-        const params = new URLSearchParams({ search: form.deviceSearch.trim() })
-        const res = await fetch(`/api/devices?${params.toString()}`, {
+        // Use /api/search (suffix-aware) — same as mobile repair request
+        const res = await fetch(`/api/search?q=${encodeURIComponent(form.deviceSearch.trim())}&type=devices`, {
           headers: getAuthHeaders(),
         })
-        if (!res.ok) return
-        const json = await res.json()
-        if (!cancelled) setDeviceResults((json.devices ?? []).slice(0, 8))
+        if (!res.ok) {
+          // Fallback to /api/devices
+          const params = new URLSearchParams({ search: form.deviceSearch.trim() })
+          const fallbackRes = await fetch(`/api/devices?${params.toString()}`, {
+            headers: getAuthHeaders(),
+          })
+          if (!fallbackRes.ok) return
+          const json = await fallbackRes.json()
+          if (!cancelled) setDeviceResults((json.devices ?? []).slice(0, 8))
+          return
+        }
+        const data = await res.json()
+        const searchResults = data.results?.devices ?? []
+        // Map search results to device format
+        const mapped = searchResults.map((d: { id: string; title: string; subtitle: string }) => {
+          const titleParts = d.title.split(' · ')
+          const subtitle = d.subtitle || ''
+          let serialNumber = ''
+          let site = ''
+          if (subtitle.includes('S/N:')) {
+            serialNumber = subtitle.split('S/N:')[1]?.split('|')[0]?.trim() ?? ''
+            const afterPipe = subtitle.split('|')[1]?.trim() ?? ''
+            site = afterPipe.split('·').pop()?.trim() ?? ''
+          }
+          return {
+            id: d.id,
+            assetCode: titleParts[0] ?? '',
+            name: titleParts.slice(1).join(' · ') ?? '',
+            serialNumber,
+            brand: '',
+            model: '',
+            site,
+          }
+        })
+        if (!cancelled) setDeviceResults(mapped.slice(0, 8))
       } catch {
         if (!cancelled) setDeviceResults([])
       } finally {
         if (!cancelled) setDeviceLoading(false)
       }
-    }, 300)
+    }, 200)
     return () => {
       cancelled = true
       clearTimeout(t)
