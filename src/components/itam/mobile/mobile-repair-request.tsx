@@ -141,6 +141,7 @@ export function MobileRepairRequest() {
   //    the app and avoid pulling another dep into the mobile bundle). ──
   const [cameraOpen, setCameraOpen] = React.useState(false)
   const [qrScanOpen, setQrScanOpen] = React.useState(false)
+  const [problemCategories, setProblemCategories] = React.useState<{ id: string; label: string }[]>([])
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
@@ -154,6 +155,32 @@ export function MobileRepairRequest() {
   function getAuthHeaders(): Record<string, string> {
     return token ? { Authorization: `Bearer ${token}` } : {}
   }
+
+  // ── Fetch problem categories from MasterItem ──
+  React.useEffect(() => {
+    async function loadCategories() {
+      try {
+        const res = await fetch('/api/master?category=RepairSubject', {
+          headers: getAuthHeaders(),
+        })
+        if (!res.ok) {
+          // Try fallback categories
+          const res2 = await fetch('/api/master?category=WO_Category', {
+            headers: getAuthHeaders(),
+          })
+          if (!res2.ok) return
+          const data2 = await res2.json()
+          setProblemCategories((data2.items ?? []).map((m: { id: string; label: string }) => ({ id: m.id, label: m.label })))
+          return
+        }
+        const data = await res.json()
+        setProblemCategories((data.items ?? []).map((m: { id: string; label: string }) => ({ id: m.id, label: m.label })))
+      } catch {
+        // If fetch fails, keep empty → fallback to text input
+      }
+    }
+    loadCategories()
+  }, [])
 
   // ── Search effect (debounced 200ms — faster response) ──
   React.useEffect(() => {
@@ -603,20 +630,38 @@ export function MobileRepairRequest() {
             </div>
 
             <div className="space-y-4 p-4">
-              {/* Subject */}
+              {/* Subject — dropdown from MasterItem (problem categories) */}
               <div className="space-y-1.5">
                 <Label htmlFor="mrr-subject" className="text-sm font-medium">
                   ประเภทปัญหา <span className="text-rose-500">*</span>
                 </Label>
-                <Input
-                  id="mrr-subject"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  placeholder="เช่น เครื่องพิมพ์ไม่ทำงาน"
-                  maxLength={200}
-                  className="h-12 text-base"
-                  aria-required="true"
-                />
+                {problemCategories.length > 0 ? (
+                  <select
+                    id="mrr-subject"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    className="h-12 w-full rounded-lg border border-slate-300 bg-background px-3 text-base dark:border-slate-700 dark:bg-slate-800"
+                    aria-required="true"
+                  >
+                    <option value="">— เลือกประเภทปัญหา —</option>
+                    {problemCategories.map((cat) => (
+                      <option key={cat.id} value={cat.label}>
+                        {cat.label}
+                      </option>
+                    ))}
+                    <option value="อื่นๆ">อื่นๆ (ระบุในรายละเอียด)</option>
+                  </select>
+                ) : (
+                  <Input
+                    id="mrr-subject"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    placeholder="เช่น เครื่องพิมพ์ไม่ทำงาน"
+                    maxLength={200}
+                    className="h-12 text-base"
+                    aria-required="true"
+                  />
+                )}
               </div>
 
               {/* Description */}
@@ -1128,8 +1173,13 @@ function InlineQRScanner({
       })
 
       if (code && code.data) {
-        stopCamera()
-        onScan(code.data.trim())
+        // Clean scanned value: remove *, brackets, and other non-alphanumeric chars
+        // that barcode scanners sometimes add (e.g. *IT-001* → IT-001)
+        const cleaned = code.data
+          .replace(/[*`\[\]{}()<>]/g, '') // remove wrapper chars
+          .replace(/^\*+|\*+$/g, '') // remove leading/trailing *
+          .trim()
+        onScan(cleaned)
         return
       }
     } catch {
@@ -1143,9 +1193,11 @@ function InlineQRScanner({
   }
 
   function handleManualSubmit() {
-    const v = manualValue.trim()
-    if (!v) return
-    onScan(v)
+    const raw = manualValue.trim()
+    if (!raw) return
+    // Clean manual input too (remove * etc.)
+    const cleaned = raw.replace(/[*`\[\]{}()<>]/g, '').trim()
+    onScan(cleaned)
   }
 
   return (

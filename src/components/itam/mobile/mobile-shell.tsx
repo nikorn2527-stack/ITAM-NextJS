@@ -27,7 +27,6 @@
  */
 
 import * as React from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
@@ -114,20 +113,10 @@ export function MobileShell() {
 
         {/* Main content — scrolls; bottom padding clears the fixed nav */}
         <main className="flex-1 overflow-y-auto px-3 pb-24 pt-3">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={tab}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.18, ease: 'easeOut' }}
-            >
-              {tab === 'repair' && <MobileRepairRequest />}
-              {tab === 'my-work' && <MobileMyWork />}
-              {tab === 'meter' && <MobileMeterReading />}
-              {tab === 'stock' && <MobileStockOut />}
-            </motion.div>
-          </AnimatePresence>
+          {tab === 'repair' && <MobileRepairRequest />}
+          {tab === 'my-work' && <MobileMyWork />}
+          {tab === 'meter' && <MobileMeterReading />}
+          {tab === 'stock' && <MobileStockOut />}
         </main>
       </div>
 
@@ -156,11 +145,7 @@ export function MobileShell() {
               <Icon className="h-5 w-5" />
               <span className="leading-none">{item.label}</span>
               {active && (
-                <motion.span
-                  layoutId="mobile-nav-indicator"
-                  className="absolute top-0 h-0.5 w-10 rounded-full bg-orange-500"
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
-                />
+                <span className="absolute top-0 h-0.5 w-10 rounded-full bg-orange-500" />
               )}
             </button>
           )
