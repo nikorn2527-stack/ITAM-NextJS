@@ -142,6 +142,7 @@ export function MobileRepairRequest() {
   const [cameraOpen, setCameraOpen] = React.useState(false)
   const [qrScanOpen, setQrScanOpen] = React.useState(false)
   const [problemCategories, setProblemCategories] = React.useState<{ id: string; label: string }[]>([])
+  const [subjectOptions, setSubjectOptions] = React.useState<{ id?: string; value: string; default_priority?: string }[]>([])
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
@@ -156,25 +157,27 @@ export function MobileRepairRequest() {
     return token ? { Authorization: `Bearer ${token}` } : {}
   }
 
-  // ── Fetch problem categories from MasterItem ──
+  // ── Fetch problem categories from /api/settings/options (same as desktop WO) ──
   React.useEffect(() => {
     async function loadCategories() {
       try {
-        const res = await fetch('/api/master?category=RepairSubject', {
+        const res = await fetch('/api/settings/options', {
           headers: getAuthHeaders(),
         })
-        if (!res.ok) {
-          // Try fallback categories
-          const res2 = await fetch('/api/master?category=WO_Category', {
-            headers: getAuthHeaders(),
-          })
-          if (!res2.ok) return
-          const data2 = await res2.json()
-          setProblemCategories((data2.items ?? []).map((m: { id: string; label: string }) => ({ id: m.id, label: m.label })))
-          return
-        }
+        if (!res.ok) return
         const data = await res.json()
-        setProblemCategories((data.items ?? []).map((m: { id: string; label: string }) => ({ id: m.id, label: m.label })))
+        // data.subjects = [{ id, group, value, default_priority }]
+        const subjects = data.subjects ?? []
+        setProblemCategories(
+          subjects.map((s: { id?: string; value: string; group?: string }) => ({
+            id: s.id ?? s.value,
+            label: s.group ? `[${s.group}] ${s.value}` : s.value,
+          }))
+        )
+        // Also load priorities from subjects (auto-set when selecting)
+        if (subjects.length > 0) {
+          setSubjectOptions(subjects)
+        }
       } catch {
         // If fetch fails, keep empty → fallback to text input
       }
@@ -639,13 +642,27 @@ export function MobileRepairRequest() {
                   <select
                     id="mrr-subject"
                     value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
+                    onChange={(e) => {
+                      setSubject(e.target.value)
+                      // Auto-set priority from selected subject
+                      const opt = subjectOptions.find((s) => s.value === e.target.value)
+                      if (opt?.default_priority) {
+                        const priMap: Record<string, PriorityKey> = {
+                          'ปกติ': 'low',
+                          'ปานกลาง': 'medium',
+                          'สูง': 'high',
+                          'ด่วน': 'urgent',
+                        }
+                        const pri = priMap[opt.default_priority]
+                        if (pri) setPriority(pri)
+                      }
+                    }}
                     className="h-12 w-full rounded-lg border border-slate-300 bg-background px-3 text-base dark:border-slate-700 dark:bg-slate-800"
                     aria-required="true"
                   >
                     <option value="">— เลือกประเภทปัญหา —</option>
                     {problemCategories.map((cat) => (
-                      <option key={cat.id} value={cat.label}>
+                      <option key={cat.id} value={cat.label.includes(']') ? cat.label.split('] ')[1] : cat.label}>
                         {cat.label}
                       </option>
                     ))}
