@@ -123,6 +123,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
+import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -1967,6 +1968,11 @@ function StatusUpdateSheet({
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
+  // Keyboard-aware: detect keyboard height + auto-scroll to focused input
+  // Bug fix: previously when keyboard appeared, it covered the textarea +
+  // "ยืนยัน" button, making it impossible to see what was typed or submit.
+  const { keyboardHeight, scrollRef } = useKeyboardAware()
+
   // Camera overlay state
   const [cameraOpen, setCameraOpen] = React.useState(false)
   const videoRef = React.useRef<HTMLVideoElement>(null)
@@ -2220,7 +2226,13 @@ function StatusUpdateSheet({
     >
       <SheetContent
         side="bottom"
-        className="mx-auto max-h-[90vh] w-full max-w-md overflow-y-auto p-0"
+        ref={scrollRef}
+        // Bug fix: when keyboard opens, shrink max height so sheet fits above keyboard
+        // + use dvh (dynamic viewport height) which accounts for mobile browser UI
+        style={{
+          maxHeight: keyboardHeight > 0 ? `calc(100dvh - ${keyboardHeight}px)` : '90dvh',
+        }}
+        className="mx-auto w-full max-w-md overflow-y-auto p-0 transition-[max-height] duration-200"
       >
         <SheetHeader className="pb-2">
           <div className="flex items-center gap-2">
