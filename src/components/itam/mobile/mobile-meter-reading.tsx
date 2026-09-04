@@ -103,6 +103,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
+import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
 import { matchesSuffixOrContains } from '@/lib/suffix-search'
 
 // ── Types ─────────────────────────────────────────────────────────────

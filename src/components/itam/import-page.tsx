@@ -933,7 +933,7 @@ export function ImportPage() {
         open={!!errorDialog}
         onOpenChange={(o) => !o && setErrorDialog(null)}
       >
-        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[80dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <AlertCircle className="h-5 w-5 text-amber-500" />

@@ -219,7 +219,7 @@ export function BulkMeterDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
+      <DialogContent className="max-h-[90dvh] overflow-hidden sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
             <ClipboardList className="h-5 w-5 text-[#f97316]" />

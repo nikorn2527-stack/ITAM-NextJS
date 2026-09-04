@@ -667,7 +667,7 @@ export function LegacyImportSection() {
         open={!!resultDialog}
         onOpenChange={(o) => !o && setResultDialog(null)}
       >
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               {resultDialog?.job.status === 'completed' ? (

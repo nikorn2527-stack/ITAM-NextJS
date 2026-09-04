@@ -251,3 +251,39 @@ body {
     box-shadow: 0 0 0 6px rgba(244, 63, 94, 0);
   }
 }
+
+/* ── Keyboard-aware fix for mobile forms ─────────────────────────── */
+/* Bug fix: when keyboard opens on mobile, it covers input fields + submit buttons.
+   This CSS ensures:
+   1. Sheets/dialogs use dvh (dynamic viewport height) which shrinks when keyboard opens
+   2. Focused inputs auto-scroll into view above the keyboard
+   3. Content stays scrollable so buttons are always reachable */
+
+/* Use dvh for any element that uses vh — dvh accounts for mobile browser UI + keyboard */
+@media (max-width: 768px) {
+  /* When an input/textarea is focused, scroll it into view smoothly */
+  input:focus,
+  textarea:focus,
+  select:focus,
+  [contenteditable="true"]:focus {
+    scroll-margin-bottom: 120px; /* leave space above keyboard */
+  }
+
+  /* Ensure sheet/dialog content can scroll above keyboard */
+  [data-slot="sheet-content"],
+  [data-slot="dialog-content"],
+  [data-vaul-drawer] {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Sticky footer buttons stay above keyboard */
+  [data-slot="sheet-footer"] {
+    flex-shrink: 0;
+  }
+}
+
+/* Smooth scroll behavior for form fields */
+html {
+  scroll-behavior: smooth;
+}

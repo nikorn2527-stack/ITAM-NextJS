@@ -98,6 +98,7 @@ import {
 } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
+import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -565,7 +566,7 @@ export function MobileStockOut() {
 
       {/* ── Issue sheet (bottom) ── */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent side="bottom" className="mx-auto max-h-[90vh] max-w-md overflow-y-auto p-0">
+        <SheetContent side="bottom" className="mx-auto max-h-[90dvh] max-w-md overflow-y-auto p-0">
           {selected && (
             <IssueSheetBody
               item={selected}
