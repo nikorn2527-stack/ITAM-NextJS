@@ -119,10 +119,20 @@ export function MobileShell() {
 
         {/* Main content — scrolls; bottom padding clears the fixed nav */}
         <main className="flex-1 overflow-y-auto px-3 pb-24 pt-3">
-          {tab === 'repair' && <MobileRepairRequest />}
-          {tab === 'my-work' && <MobileMyWork />}
-          {tab === 'meter' && <MobileMeterReading />}
-          {tab === 'stock' && <MobileStockOut />}
+          {/* Keep-alive tabs: render once, hide inactive with CSS.
+              Preserves form state (search, draft inputs) when switching tabs. */}
+          <MobileKeepAliveTab active={tab === 'repair'}>
+            <MobileRepairRequest />
+          </MobileKeepAliveTab>
+          <MobileKeepAliveTab active={tab === 'my-work'}>
+            <MobileMyWork />
+          </MobileKeepAliveTab>
+          <MobileKeepAliveTab active={tab === 'meter'}>
+            <MobileMeterReading />
+          </MobileKeepAliveTab>
+          <MobileKeepAliveTab active={tab === 'stock'}>
+            <MobileStockOut />
+          </MobileKeepAliveTab>
         </main>
       </div>
 
@@ -157,6 +167,31 @@ export function MobileShell() {
           )
         })}
       </nav>
+    </div>
+  )
+}
+
+// ── MobileKeepAliveTab ────────────────────────────────────────────────
+// Renders children once (lazy mount on first activation), then keeps
+// them mounted but hidden when inactive. Preserves form state when
+// switching between mobile tabs (งานของฉัน / แจ้งซ่อม / จดมิเตอร์ / เบิกของ).
+//
+function MobileKeepAliveTab({
+  active,
+  children,
+}: {
+  active: boolean
+  children: React.ReactNode
+}) {
+  const [mounted, setMounted] = React.useState(active)
+  React.useEffect(() => {
+    if (active && !mounted) setMounted(true)
+  }, [active, mounted])
+
+  if (!mounted) return null
+  return (
+    <div style={{ display: active ? 'block' : 'none' }} aria-hidden={!active}>
+      {children}
     </div>
   )
 }
