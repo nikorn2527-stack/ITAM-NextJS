@@ -799,7 +799,7 @@ export function MobileRepairRequest() {
                   rows={3}
                   maxLength={500}
                   className="min-h-24 text-base"
-                  aria-required="true"
+                  aria-required="false"
                 />
                 <p className="text-right text-xs text-muted-foreground">
                   {description.length}/1000
