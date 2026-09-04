@@ -100,8 +100,11 @@ export async function GET(req: NextRequest) {
     }
 
     // ---- Stats (computed on the full active set, ignoring pagination) ----
+    // Bug fix: stats must also apply demoFilter so demo users see only demo stock counts
+    const statsWhere: Record<string, unknown> = { ...demoFilter(auth.user) }
+    if (activeOnly) statsWhere.active = true
     const allActive = await db.stockItem.findMany({
-      where: activeOnly ? { active: true } : undefined,
+      where: statsWhere,
       select: {
         quantity: true,
         unitCost: true,
