@@ -15871,3 +15871,49 @@ Next actions / recommendations:
 - Optional: เพิ่ม StockTransaction records สำหรับ demo stock items (stock-in/stock-out history) ถ้าต้องการให้หน้า Stock History มีข้อมูลให้ทดสอบ
 - Optional: เพิ่ม WorkOrderPart records สำหรับ demo WOs ที่ status=WAITING_PARTS/COMPLETED เพื่อทดสอบ cost summary + parts flow
 
+
+---
+Task ID: sync-legacy-app-and-demo-isolation
+Agent: orchestrator (main)
+Task: ซิงค์ข้อมูลจาก app เดิม + แก้ demo user เห็นข้อมูลจริง+demo รวมกัน
+
+Work Log:
+- ตรวจสอบ sync endpoints: /api/sync/google-sheets, /api/sync/run, /api/cron/sync-legacy
+- ตรวจสอบ concept demo/real แยก: demoFilter() ใน src/lib/demo-mode.ts
+- พบ root cause: demoFilter() return {} (no filter) สำหรับ demo user → เห็นข้อมูลทั้งหมด
+- แก้ demoFilter() ให้ demo user เห็นเฉพาะ { isDemo: true }
+- สร้าง scripts/expand-demo-data.ts เพิ่ม demo data: Devices 15→115, WOs 40→90, Stock 9→39, Meter 8→100, PM 1→6
+- สร้าง docs/SYNC-GOOGLE-SHEETS.md — คู่มือ sync ข้อมูลจาก Google Sheets
+- พบว่า 6 endpoints ไม่ได้ใช้ demoFilter: dashboard, devices, stock, meter-readings, paper-analytics, cost-analytics/material
+- แก้ทั้ง 6 endpoints ให้ merge demoFilter เข้า siteFilter
+- พบ root cause จริง: toAuthUser() ไม่ include isDemo field → auth.user.isDemo เป็น undefined → isDemoUser() return false
+- แก้ AuthUser interface + toAuthUser() ให้ include isDemo
+- แก้ dashboard bySite queries ที่ใช้ visibleSiteNames โดยไม่ผ่าน demoFilter
+
+Commits (push แล้วทั้งหมด):
+- 693a85d: fix: demo users now see ONLY demo data
+- b11d96c: feat: expand demo data + sync documentation
+- 0a32029: fix: apply demoFilter to dashboard + devices + stock + meter + paper + cost APIs
+- 02abf0d: fix: AuthUser interface + toAuthUser() now carry isDemo flag (ROOT CAUSE)
+- 4a9ec6c: fix: dashboard bySite queries now also apply demoFilter
+- b0ea47e: chore: force redeploy
+
+Stage Summary:
+- ✅ demoFilter() แก้ให้ demo user เห็นเฉพาะ demo data
+- ✅ toAuthUser() include isDemo flag (root cause fix)
+- ✅ 6 endpoints ใช้ demoFilter ครบ
+- ✅ demo data ขยาย: Devices 115, WOs 90, Stock 39, Meter 100, PM 6
+- ✅ Sync documentation: docs/SYNC-GOOGLE-SHEETS.md
+- ⚠️ Vercel deploy: รอ build เสร็จ (อาจใช้เวลานานกว่าปกติ)
+- 📋 User ต้องตั้ง env vars บน Vercel: GOOGLE_SHEETS_ID_ITAM, GOOGLE_SHEETS_ID_SERVICES, GOOGLE_SHEETS_ID_STOCK
+
+⚠️ หมายเหตุ: หลัง push commit ล่าสุด Vercel ยังแสดงข้อมูลเดิม (2,494 devices)
+อาจเป็นเพราะ:
+1. Vercel build ยังไม่เสร็จ (ใช้เวลา 3-5 นาที)
+2. Vercel build fail (ต้องตรวจสอบ logs ที่ Vercel dashboard)
+3. Build cache ยังใช้ของเดิม
+
+ให้ user ตรวจสอบ:
+- เข้า https://vercel.com/dashboard → Project → Deployments
+- ดูว่า deployment ล่าสุด status = Ready หรือ Error
+- ถ้า Error ให้ดู Build Logs เพื่อหาสาเหตุ
