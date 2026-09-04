@@ -379,7 +379,7 @@ export function LifecycleDashboard() {
 
       {/* Full lifecycle table dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-hidden sm:max-w-4xl dark:border-slate-800 dark:bg-slate-900">
+        <DialogContent className="max-h-[90dvh] overflow-hidden sm:max-w-4xl dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <RefreshCw className="h-4 w-4 text-[#f97316]" />

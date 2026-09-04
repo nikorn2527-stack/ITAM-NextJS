@@ -77,6 +77,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
+import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
 
 // ── Types ─────────────────────────────────────────────────────────────
 

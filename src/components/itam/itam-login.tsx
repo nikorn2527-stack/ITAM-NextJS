@@ -614,7 +614,7 @@ function RegisterDialog({
         onOpenChange(v)
       }}
     >
-      <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
         <DialogHeader>
           <DialogTitle>ขอเข้าใช้งานระบบ ITAM</DialogTitle>
           <DialogDescription>

@@ -1603,7 +1603,7 @@ export function StockPage() {
 
       {/* ===== Item add/edit dialog ===== */}
       <Dialog open={itemDialogOpen} onOpenChange={setItemDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl dark:border-slate-800 dark:bg-slate-900">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="text-slate-800 dark:text-slate-100">
               {itemForm.id ? '✏️ แก้ไขสินค้า' : '➕ เพิ่มสินค้าใหม่'}
@@ -2103,7 +2103,7 @@ export function StockPage() {
 
       {/* ===== Detail dialog ===== */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl dark:border-slate-800 dark:bg-slate-900">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <Eye className="h-4 w-4 text-slate-500" />
@@ -2468,7 +2468,7 @@ export function StockPage() {
 
       {/* ===== Purchase order dialog ===== */}
       <Dialog open={poDialogOpen} onOpenChange={setPoDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl dark:border-slate-800 dark:bg-slate-900">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <ShoppingCart className="h-4 w-4 text-teal-600" />

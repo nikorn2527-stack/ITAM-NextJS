@@ -3840,7 +3840,7 @@ function WorkOrderDetailContent({
 
       {/* Complete dialog */}
       <AlertDialog open={completeOpen} onOpenChange={setCompleteOpen}>
-        <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
+        <AlertDialogContent className="max-h-[90dvh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>ปิดงาน</AlertDialogTitle>
             <AlertDialogDescription>
@@ -4210,7 +4210,7 @@ function WorkOrderDetailContent({
 
       {/* Reporter edit dialog */}
       <Dialog open={reporterEditOpen} onOpenChange={setReporterEditOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[560px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit3 className="h-5 w-5 text-amber-500" />

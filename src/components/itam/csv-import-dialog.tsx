@@ -542,7 +542,7 @@ export function CsvImportDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
             <UploadCloud className="h-5 w-5 text-[#f97316]" />

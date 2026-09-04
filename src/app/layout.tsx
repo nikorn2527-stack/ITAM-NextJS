@@ -52,6 +52,11 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   viewportFit: "cover",
+  // Bug fix: when keyboard opens on mobile, resize the viewport (not overlay)
+  // so forms + buttons stay visible above the keyboard.
+  // interactive-widget=resizes-content makes the layout viewport shrink
+  // when the keyboard appears — no JS needed.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
