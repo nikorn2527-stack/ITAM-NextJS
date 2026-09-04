@@ -202,8 +202,25 @@ export function QrScannerDialog() {
     rafRef.current = setTimeout(tick, 250) as unknown as ReturnType<typeof setTimeout>
   }
 
-  // ── Handle decoded QR — smart routing (meter-required → meter entry, else detail) ──
+  // ── Handle decoded QR — Smart QR routing + legacy fallback ──
   async function handleDecoded(raw: string) {
+    // ── Check if this is a Smart QR URL (/qr/{type}/{id}?action=xxx) ──
+    const smartMatch = raw.match(/\/qr\/([dAsw])\/([a-zA-Z0-9_-]+)/i)
+    if (smartMatch) {
+      // Smart QR — redirect to the QR router page
+      const url = raw.startsWith('http') ? raw : `${window.location.origin}${raw.startsWith('/') ? '' : '/'}${raw}`
+      // Haptic feedback
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate(120) } catch { /* ignore */ }
+      }
+      toast.success('สแกน Smart QR สำเร็จ', { description: 'กำลังเปิด...' })
+      stopCamera()
+      setOpen(false)
+      window.location.href = url
+      return
+    }
+
+    // ── Legacy QR: parse assetCode / serial ──
     const assetNo = parseAssetNo(raw)
     setLastScan(raw)
     if (!assetNo) {
