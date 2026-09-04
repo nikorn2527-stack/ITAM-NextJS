@@ -15962,3 +15962,28 @@ Stage Summary:
   * ลบ null fields ก่อน update (ไม่ทำลายข้อมูลเดิม)
   * มี dry-run mode ให้ตรวจสอบก่อน sync จริง
   * ใช้ HEADER_ALIASES เหมือน manual import
+
+---
+Task ID: fix-keyboard-blocks-mobile-input
+Agent: orchestrator (main)
+Task: แก้ปัญหาคีย์บอร์ดบนมือถือบัง input field + ปุ่มบันทึก (จาก screenshot ที่ user ส่งมา)
+
+Work Log:
+- รับ screenshot แสดงคีย์บอร์ดบัง "หมายเหตุ / รายละเอียด" textarea + ปุ่ม "ยืนยัน" ใน mobile StatusUpdateSheet
+- สร้าง src/hooks/use-keyboard-aware.ts:
+  * ใช้ visualViewport API (modern browser standard) detect ความสูงคีย์บอร์ด
+  * Auto-scroll focused input ให้อยู่เหนือคีย์บอร์ด
+  * รองรับ iOS Safari + Chrome Android
+- แก้ mobile-my-work.tsx StatusUpdateSheet:
+  * import useKeyboardAware hook
+  * Sheet maxHeight = calc(100dvh - keyboardHeight)px เมื่อคีย์บอร์ดขึ้น
+  * ใช้ dvh (dynamic viewport height) แทน vh — รองรับ mobile browser UI bar
+  * transition-[max-height] duration-200 — smooth animation
+  * overflow-y-auto — content เลื่อนขึ้นเหนือคีย์บอร์ด
+
+Stage Summary:
+- ✅ สร้าง src/hooks/use-keyboard-aware.ts (visualViewport API + auto-scroll)
+- ✅ แก้ StatusUpdateSheet ใน mobile-my-work.tsx (ปรับ maxHeight ตามคีย์บอร์ด)
+- ✅ Commit 1023789 + push + Vercel deploy สำเร็จ
+- ✅ Dev server restart แล้ว pick up code ใหม่ — demo isolation ทำงาน (90 WOs)
+- 📝 Production deploy verified: gitCommit=1023789
