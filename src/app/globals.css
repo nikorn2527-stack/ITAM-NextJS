@@ -287,3 +287,16 @@ body {
 html {
   scroll-behavior: smooth;
 }
+
+/* ── Placeholder text — ลดความเข้มให้จางลง เพื่อไม่ให้สับสนกับข้อความจริง ── */
+/* Bug: placeholder text เข้มเกินไป ทำให้ผู้ใช้คิดว่าเป็นข้อความที่พิมพ์แล้ว */
+input::placeholder,
+textarea::placeholder {
+  color: rgb(203 213 225 / 0.5); /* slate-300 at 50% opacity */
+  opacity: 1;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: rgb(100 116 139 / 0.4); /* slate-500 at 40% opacity */
+  opacity: 1;
+}

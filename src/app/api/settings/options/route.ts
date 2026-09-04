@@ -78,7 +78,6 @@ const DEFAULT_SUBJECTS: SubjectOption[] = [
   { group: 'อื่นๆ', value: 'ขอติดตั้งอุปกรณ์ใหม่', default_priority: 'ปกติ' },
   { group: 'อื่นๆ', value: 'ขอย้ายเครื่อง/ที่ตั้ง', default_priority: 'ปกติ' },
   { group: 'อื่นๆ', value: 'ขอข้อมูล/คู่มือ', default_priority: 'ปกติ' },
-  { group: 'อื่นๆ', value: 'งานนอกสถานที่ / ลูกค้าภายนอก', default_priority: 'ปานกลาง' },
   { group: 'อื่นๆ', value: 'อื่นๆ (ระบุในรายละเอียด)', default_priority: 'ปกติ' },
 ]
 
