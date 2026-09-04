@@ -1968,10 +1968,36 @@ function StatusUpdateSheet({
   const [submitting, setSubmitting] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
+  // Resolution selector state — for 'complete' action, user can pick
+  // from standard resolution options (43 items in 5 groups) + type extra.
+  const [selectedResolutions, setSelectedResolutions] = React.useState<string[]>([])
+  const [resolutionOptions, setResolutionOptions] = React.useState<
+    Array<{ id?: string; value: string; group?: string }>
+  >([])
+  const [resOptionsLoaded, setResOptionsLoaded] = React.useState(false)
+
   // Keyboard-aware: detect keyboard height + auto-scroll to focused input
-  // Bug fix: previously when keyboard appeared, it covered the textarea +
-  // "ยืนยัน" button, making it impossible to see what was typed or submit.
   const { keyboardHeight, scrollRef } = useKeyboardAware()
+
+  // Load resolution options from /api/settings/options (lazy — only when
+  // 'complete' action is opened the first time)
+  React.useEffect(() => {
+    if (!action || action.endpoint !== 'complete' || resOptionsLoaded) return
+    setResOptionsLoaded(true)
+    fetch('/api/settings/options', {
+      headers: {
+        Authorization: `Bearer ${useAuthStore.getState()?.token ?? ''}`,
+      },
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        const resolutions = data.resolutions ?? []
+        setResolutionOptions(resolutions)
+      })
+      .catch(() => {
+        // silent fail — fallback to free-text only
+      })
+  }, [action, resOptionsLoaded])
 
   // Camera overlay state
   const [cameraOpen, setCameraOpen] = React.useState(false)
@@ -1984,6 +2010,7 @@ function StatusUpdateSheet({
   React.useEffect(() => {
     setRemark('')
     setPhotos([])
+    setSelectedResolutions([])
     setError(null)
   }, [action?.key])
 
@@ -2150,14 +2177,22 @@ function StatusUpdateSheet({
         toast.success(`อัปเดตเป็น "${transitionLabel}" แล้ว`)
       } else if (action.endpoint === 'complete') {
         // POST /complete — sets COMPLETED + workCompletedAt + closedAt
+        // Combine selected resolutions + free-text note into the resolution field
+        const combinedResolution = [
+          ...selectedResolutions,
+          note.trim(),
+        ].filter(Boolean).join('\n')
         const res = await fetch(
           `/api/work-orders/${encodeURIComponent(workOrderId)}/complete`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              note,
-              resolution: note,
+              note: combinedResolution || note,
+              resolution: combinedResolution || note,
+              resolutionGroup: selectedResolutions.length > 0
+                ? resolutionOptions.find((o) => o.value === selectedResolutions[0])?.group ?? null
+                : null,
               picAfter: firstPhoto,
               actor: actorName,
             }),
@@ -2249,21 +2284,51 @@ function StatusUpdateSheet({
         </SheetHeader>
 
         <div className="space-y-4 px-4 pb-4">
-          {/* Resolution — ผลการแก้ไข (only for 'complete' action) */}
+          {/* Resolution selector — เลือกวิธีแก้ไขจากข้อมูลมาตรฐาน (only for 'complete' action) */}
+          {action.endpoint === 'complete' && resolutionOptions.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">
+                วิธีแก้ไขปัญหา
+                <span className="ml-2 text-[10px] text-slate-400 font-normal">
+                  (เลือกได้หลายข้อ · จากข้อมูลมาตรฐาน)
+                </span>
+              </Label>
+              <ResolutionSelector
+                options={resolutionOptions}
+                selected={selectedResolutions}
+                onChange={setSelectedResolutions}
+              />
+              {selectedResolutions.length > 0 && (
+                <div className="rounded-md bg-emerald-50 dark:bg-emerald-950/30 p-2 text-xs">
+                  <span className="text-emerald-700 dark:text-emerald-300 font-medium">
+                    เลือกแล้ว {selectedResolutions.length} ข้อ:
+                  </span>{' '}
+                  <span className="text-slate-600 dark:text-slate-300">
+                    {selectedResolutions.join(', ')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Resolution text — ผลการแก้ไข (free text, for 'complete' action) */}
           {action.endpoint === 'complete' && (
             <div className="space-y-1.5">
               <Label htmlFor="mmw-resolution" className="text-sm font-medium">
-                ผลการแก้ไข / สิ่งที่ทำไป <span className="ml-1 text-rose-500">*</span>
+                รายละเอียดเพิ่มเติม
+                <span className="ml-2 text-xs text-slate-400 font-normal">
+                  {selectedResolutions.length > 0 ? '(เพิ่มเติมจากที่เลือก)' : '(บอกผลที่ทำ)'}
+                </span>
               </Label>
               <Textarea
                 id="mmw-resolution"
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
                 placeholder="บอกผลที่ทำ เช่น เปลี่ยน Drum"
-                rows={4}
+                rows={3}
                 maxLength={1000}
                 className="text-base"
-                aria-required={action.remarkRequired}
+                aria-required={action.remarkRequired && selectedResolutions.length === 0}
               />
               <p className="text-right text-[11px] text-muted-foreground">
                 {remark.length}/1000
@@ -2472,4 +2537,114 @@ async function uploadPhotos(
       // silent — best-effort upload
     }
   }
+}
+
+// ── ResolutionSelector ────────────────────────────────────────────────
+// เลือกวิธีแก้ไขปัญหาแบบ multi-select — จัดกลุ่มตาม resolution group
+// (ซ่อมสำเร็จ / เปลี่ยนอะไหล่ / ปรับแต่ง / ส่งซ่อมภายนอก / อื่นๆ)
+// Collapsible sections + checkbox multi-select (เหมือน ProblemCategorySelector)
+//
+function ResolutionSelector({
+  options,
+  selected,
+  onChange,
+}: {
+  options: Array<{ id?: string; value: string; group?: string }>
+  selected: string[]
+  onChange: (next: string[]) => void
+}) {
+  const groups = React.useMemo(() => {
+    const map = new Map<string, typeof options>()
+    for (const opt of options) {
+      const g = opt.group || 'อื่นๆ'
+      if (!map.has(g)) map.set(g, [])
+      map.get(g)!.push(opt)
+    }
+    return Array.from(map.entries())
+  }, [options])
+
+  const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+    new Set(groups.length > 0 ? [groups[0][0]] : []),
+  )
+
+  const toggleGroup = (g: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(g)) next.delete(g)
+      else next.add(g)
+      return next
+    })
+  }
+
+  const toggleItem = (value: string) => {
+    if (selected.includes(value)) {
+      onChange(selected.filter((s) => s !== value))
+    } else {
+      onChange([...selected, value])
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {groups.map(([groupName, items]) => {
+        const isExpanded = expandedGroups.has(groupName)
+        const count = items.filter((i) => selected.includes(i.value)).length
+        return (
+          <div
+            key={groupName}
+            className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700"
+          >
+            <button
+              type="button"
+              onClick={() => toggleGroup(groupName)}
+              className="flex w-full items-center justify-between px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
+              aria-expanded={isExpanded}
+            >
+              <span className="flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  {groupName}
+                </span>
+                {count > 0 && (
+                  <span className="rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {count}
+                  </span>
+                )}
+              </span>
+              <span className="text-xs text-slate-400">
+                {items.length} ข้อ
+                <span className="ml-1 inline-block transition-transform" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)' }}>
+                  ›
+                </span>
+              </span>
+            </button>
+            {isExpanded && (
+              <div className="space-y-1 border-t border-slate-100 p-2 dark:border-slate-700">
+                {items.map((item) => {
+                  const isSelected = selected.includes(item.value)
+                  return (
+                    <label
+                      key={item.id ?? item.value}
+                      className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+                        isSelected
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
+                          : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleItem(item.value)}
+                        className="h-4 w-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500"
+                      />
+                      <span className="flex-1">{item.value}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
