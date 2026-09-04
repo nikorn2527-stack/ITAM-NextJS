@@ -30,6 +30,7 @@ import * as React from 'react'
 import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut, ArrowLeft } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
+import { useSwipeBack } from '@/hooks/use-swipe-back'
 import { useAuthStore } from '@/store/auth-store'
 import { MobileRepairRequest } from './mobile-repair-request'
 import { MobileMyWork } from './mobile-my-work'
@@ -71,6 +72,10 @@ export function MobileShell() {
     logout()
     window.location.href = '/'
   }
+
+  // Swipe gesture: swipe right from left edge → exit mobile mode (back to dashboard)
+  // This gives users a native-feeling "back" gesture on mobile.
+  useSwipeBack({ onBack: handleExit })
 
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">

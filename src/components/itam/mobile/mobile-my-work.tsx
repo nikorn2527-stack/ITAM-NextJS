@@ -591,7 +591,7 @@ export function MobileMyWork() {
                   setSearchTerm(e.target.value)
                   setPage(1)
                 }}
-                placeholder="ค้นหาเลขใบงาน / หัวข้อ / ผู้แจ้ง / สถานที่"
+                placeholder="เลขใบงาน / หัวข้อ / สถานที่"
                 aria-label="ค้นหาใบงาน"
                 className="h-11 rounded-lg pl-9 pr-9 text-base"
               />
@@ -2259,7 +2259,7 @@ function StatusUpdateSheet({
                 id="mmw-resolution"
                 value={remark}
                 onChange={(e) => setRemark(e.target.value)}
-                placeholder="ระบุผลการแก้ไข เช่น เปลี่ยน Drum, ทำความสะอาดหัวพิมพ์, ปรับ calibration..."
+                placeholder="บอกผลที่ทำ เช่น เปลี่ยน Drum"
                 rows={4}
                 maxLength={1000}
                 className="text-base"

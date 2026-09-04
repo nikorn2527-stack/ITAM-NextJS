@@ -59,7 +59,22 @@ interface AppState {
    */
   lastQrScan: string | null
   qrScanNonce: number
+  /**
+   * Page navigation history stack — supports back/forward navigation.
+   * When user navigates to a new page, current page is pushed to history.
+   * goBack() pops the last entry. This preserves form state via sessionStorage.
+   */
+  pageHistory: ActivePage[]
+  pageForwardStack: ActivePage[]
   setActivePage: (page: ActivePage) => void
+  /** Navigate back to previous page (pops history stack). Returns true if back was possible. */
+  goBack: () => boolean
+  /** Navigate forward (if user went back). Returns true if forward was possible. */
+  goForward: () => boolean
+  /** Check if back navigation is possible. */
+  canGoBack: () => boolean
+  /** Check if forward navigation is possible. */
+  canGoForward: () => boolean
   toggleSidebar: () => void
   closeSidebar: () => void
   setPendingDeviceId: (id: string | null) => void
@@ -82,7 +97,7 @@ interface AppState {
   clearLastQrScan: () => void
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   activePage: 'dashboard',
   sidebarOpen: false,
   pendingDeviceId: null,
@@ -95,7 +110,42 @@ export const useAppStore = create<AppState>((set) => ({
   qrScannerOpen: false,
   lastQrScan: null,
   qrScanNonce: 0,
-  setActivePage: (page) => set({ activePage: page }),
+  pageHistory: [],
+  pageForwardStack: [],
+  setActivePage: (page) =>
+    set((s) => ({
+      // Push current page to history (unless same page or initial dashboard)
+      pageHistory:
+        s.activePage === page
+          ? s.pageHistory
+          : [...s.pageHistory, s.activePage].slice(-20), // cap at 20 entries
+      pageForwardStack: [], // clear forward stack on new navigation
+      activePage: page,
+    })),
+  goBack: () => {
+    const { pageHistory, pageForwardStack, activePage } = get()
+    if (pageHistory.length === 0) return false
+    const previous = pageHistory[pageHistory.length - 1]
+    set({
+      activePage: previous,
+      pageHistory: pageHistory.slice(0, -1),
+      pageForwardStack: [...pageForwardStack, activePage].slice(-20),
+    })
+    return true
+  },
+  goForward: () => {
+    const { pageForwardStack, pageHistory, activePage } = get()
+    if (pageForwardStack.length === 0) return false
+    const next = pageForwardStack[pageForwardStack.length - 1]
+    set({
+      activePage: next,
+      pageForwardStack: pageForwardStack.slice(0, -1),
+      pageHistory: [...pageHistory, activePage].slice(-20),
+    })
+    return true
+  },
+  canGoBack: () => get().pageHistory.length > 0,
+  canGoForward: () => get().pageForwardStack.length > 0,
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   closeSidebar: () => set({ sidebarOpen: false }),
   setPendingDeviceId: (id) => set({ pendingDeviceId: id }),
