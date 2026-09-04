@@ -1288,9 +1288,11 @@ function SuccessScreen({
   onNew: () => void
 }) {
   // Generate print URL using woNumber (print route accepts woNumber as ID)
-  const printUrl80 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-80`
-  const printUrl58 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-58`
-  const printUrlA4 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=a4-portrait`
+  // Token is passed via query param so window.open doesn't need auth headers
+  const token = typeof window !== 'undefined' ? localStorage.getItem('itam.token') ?? '' : ''
+  const printUrl80 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-80&t=${encodeURIComponent(token)}`
+  const printUrl58 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-58&t=${encodeURIComponent(token)}`
+  const printUrlA4 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=a4-portrait&t=${encodeURIComponent(token)}`
 
   return (
     <motion.div
@@ -1352,8 +1354,9 @@ function SuccessScreen({
               className="h-12"
               onClick={() => {
                 if (typeof window !== 'undefined') {
+                  // Open the public WO view page (UI, not raw JSON)
                   window.open(
-                    `/api/public/work-orders/${encodeURIComponent(woNumber)}`,
+                    `/wo/${encodeURIComponent(woNumber)}`,
                     '_blank',
                     'noopener,noreferrer',
                   )
