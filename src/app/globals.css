@@ -292,11 +292,13 @@ html {
 /* Bug: placeholder text เข้มเกินไป ทำให้ผู้ใช้คิดว่าเป็นข้อความที่พิมพ์แล้ว */
 input::placeholder,
 textarea::placeholder {
-  color: rgb(203 213 225 / 0.5); /* slate-300 at 50% opacity */
+  color: rgb(203 213 225 / 0.35); /* slate-300 at 35% opacity — จางกว่าข้อความจริง */
   opacity: 1;
+  font-weight: 300; /* ตัวบางกว่าข้อความจริง (normal=400) */
 }
 .dark input::placeholder,
 .dark textarea::placeholder {
-  color: rgb(100 116 139 / 0.4); /* slate-500 at 40% opacity */
+  color: rgb(100 116 139 / 0.3); /* slate-500 at 30% opacity */
   opacity: 1;
+  font-weight: 300;
 }

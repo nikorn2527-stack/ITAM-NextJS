@@ -703,7 +703,7 @@ export function MobileRepairRequest() {
                 <Input
                   value={externalClientName}
                   onChange={(e) => setExternalClientName(e.target.value)}
-                  placeholder="เช่น บริษัท ABC, สาขา NKP"
+                  placeholder="บริษัท / สาขา"
                   className="h-12 text-base"
                 />
               </div>
@@ -712,7 +712,7 @@ export function MobileRepairRequest() {
                 <Input
                   value={externalPhone}
                   onChange={(e) => setExternalPhone(e.target.value)}
-                  placeholder="เช่น 081-234-5678"
+                  placeholder="เบอร์โทร"
                   className="h-12 text-base"
                   inputMode="tel"
                 />
@@ -795,7 +795,7 @@ export function MobileRepairRequest() {
                   id="mrr-onsite-desc"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="อธิบายลักษณะหน้างานที่เห็น เช่น เครื่องติดไฟแต่ไม่พิมพ์ มีเสียงดังผิดปกติ หรืออาการที่ต้องสำรวจเพิ่ม..."
+                  placeholder="บอกลักษณะที่เห็น เช่น ติดไฟแต่ไม่พิมพ์"
                   rows={4}
                   maxLength={1000}
                   className="min-h-24 text-base"
@@ -815,7 +815,7 @@ export function MobileRepairRequest() {
                   id="mrr-remark"
                   value={remark}
                   onChange={(e) => setRemark(e.target.value)}
-                  placeholder="เช่น เบอร์ติดต่อสำรอง, เวลาที่สะดวกให้ช่างมา..."
+                  placeholder="เบอร์ติดต่อสำรอง / เวลาสะดวก"
                   maxLength={200}
                   className="h-12 text-base"
                 />
@@ -1143,7 +1143,7 @@ function ProblemCategorySelector({
                             type="text"
                             value={otherDetail}
                             onChange={(e) => onOtherDetailChange(e.target.value)}
-                            placeholder="ระบุอาการเสียที่พบ..."
+                            placeholder="ระบุอาการเสีย"
                             maxLength={200}
                             className="h-10 text-sm"
                             aria-label="ระบุอาการเสียอื่นๆ"

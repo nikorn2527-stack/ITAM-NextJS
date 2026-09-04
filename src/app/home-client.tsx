@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import dynamic from 'next/dynamic'
-import { motion, AnimatePresence } from 'framer-motion'
+// framer-motion removed — using CSS transitions instead (lighter, no jank)
 import { Sidebar } from '@/components/itam/sidebar'
 import { Footer } from '@/components/itam/footer'
 import { GlobalSearch } from '@/components/itam/global-search'
@@ -14,7 +14,7 @@ const QrScannerDialog = dynamic(() =>
   import('@/components/itam/qr-scanner').then((m) => m.QrScannerDialog),
   { ssr: false },
 )
-import { useAppStore } from '@/store/app-store'
+import { useAppStore, type ActivePage } from '@/store/app-store'
 import { useIsMobile } from '@/hooks/use-mobile-detect'
 import {
   useAuthStore,
@@ -123,6 +123,14 @@ const AuthResetPage = dynamic(() =>
 
 export function HomePage() {
   const activePage = useAppStore((s) => s.activePage)
+  // Helper: check if a page key is currently active (handles aliases)
+  const isActive = React.useCallback(
+    (page: ActivePage | ActivePage[]) => {
+      const pages = Array.isArray(page) ? page : [page]
+      return pages.includes(activePage)
+    },
+    [activePage],
+  )
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const isBooting = useAuthStore((s) => s.isBooting)
   const checkAuth = useAuthStore((s) => s.checkAuth)
@@ -298,42 +306,67 @@ export function HomePage() {
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:ml-14">
           <main className="flex-1 overflow-x-hidden overflow-y-auto pt-14 md:pt-0">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activePage}
-                className="h-full"
-                initial={{ opacity: 0, x: 10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                transition={{ duration: 0.22, ease: 'easeOut' }}
-              >
-                {activePage === 'dashboard' && <ItamDashboard />}
-                {activePage === 'itam' && <ItamDashboard />}
-                {(activePage === 'itam-devices' || activePage === 'devices' || activePage === 'devices-page') && <DevicesPage />}
-                {(activePage === 'itam-meter' || activePage === 'meter' || activePage === 'itam-meter-keyboard') && <ItamMeterUnified />}
-                {activePage === 'itam-sticker-editor' && <ItamStickerEditor />}
-                {activePage === 'itam-document-editor' && <ItamDocumentEditor />}
-                {(activePage === 'itam-paper-analytics' || activePage === 'paper-analytics') && <ItamPaperAnalytics />}
-                {(activePage === 'itam-settings' || activePage === 'settings') && <ItamSettings />}
-                {activePage === 'itam-audit' && <ItamAudit />}
-                {activePage === 'itam-snapshot-viewer' && <SnapshotViewer />}
-                {activePage === 'itam-repairs' && <ItamRepairs />}
-                {activePage === 'itam-work-orders' && <WorkOrdersPage />}
-                {activePage === 'itam-stock' && <ItamStock />}
-                {/* ── Restored pages (were missing from main) ── */}
-                {activePage === 'import' && <ImportPage />}
-                {activePage === 'templates' && <TemplatesPage />}
-                {activePage === 'monthly-report' && <MonthlyReport />}
-                {activePage === 'reports-hub' && <ReportsHub />}
-                {activePage === 'material-cost' && <MaterialCostReport />}
-                {activePage === 'pm-schedules' && <PMSchedulesPage />}
-                {activePage === 'settings-v2' && <SettingsPageV2 />}
-                {activePage === 'work-orders' && <WorkOrdersPage />}
-                {activePage === 'stock' && <StockPage />}
-                {activePage === 'meter-page' && <MeterPage />}
-                {activePage === 'paper-analytics-page' && <PaperAnalyticsPage />}
-              </motion.div>
-            </AnimatePresence>
+            {/* Keep-alive pattern: render all pages once, hide inactive with CSS.
+                This preserves form state (search filters, draft inputs) when
+                navigating between pages — no more "start over" when going back.
+                Only render the active page on first visit (lazy mount) then keep. */}
+            <KeepAlivePage active={isActive('dashboard') || isActive('itam')}>
+              <ItamDashboard />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-devices') || isActive('devices') || isActive('devices-page')}>
+              <DevicesPage />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-meter') || isActive('meter') || isActive('itam-meter-keyboard')}>
+              <ItamMeterUnified />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-work-orders') || isActive('work-orders')}>
+              <WorkOrdersPage />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-stock') || isActive('stock')}>
+              <StockPage />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-paper-analytics') || isActive('paper-analytics') || isActive('paper-analytics-page')}>
+              <ItamPaperAnalytics />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('reports-hub')}>
+              <ReportsHub />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('material-cost')}>
+              <MaterialCostReport />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('monthly-report')}>
+              <MonthlyReport />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('pm-schedules')}>
+              <PMSchedulesPage />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('templates')}>
+              <TemplatesPage />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('import')}>
+              <ImportPage />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-settings') || isActive('settings') || isActive('settings-v2')}>
+              <ItamSettings />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-audit')}>
+              <ItamAudit />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-snapshot-viewer')}>
+              <SnapshotViewer />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-repairs')}>
+              <ItamRepairs />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-sticker-editor')}>
+              <ItamStickerEditor />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('itam-document-editor')}>
+              <ItamDocumentEditor />
+            </KeepAlivePage>
+            <KeepAlivePage active={isActive('meter-page')}>
+              <MeterPage />
+            </KeepAlivePage>
           </main>
           <Footer />
         </div>
@@ -409,4 +442,39 @@ function TokenRouter({ token }: { token: string }) {
     window.history.replaceState({}, '', url.toString())
   }
   return <ItamLogin />
+}
+
+// ─── KeepAlivePage ────────────────────────────────────────────────────
+// Renders children once (lazy mount on first activation), then keeps
+// them mounted but hidden (display: none) when inactive.
+// This preserves component state (form inputs, scroll position, filters)
+// when navigating between pages — no more "start over" when going back.
+//
+// Pattern: similar to Vue's <keep-alive> or React's Offscreen component.
+// Uses CSS display:none (not visibility:hidden) so inactive pages don't
+// consume layout/paint resources.
+//
+function KeepAlivePage({
+  active,
+  children,
+}: {
+  active: boolean
+  children: React.ReactNode
+}) {
+  const [mounted, setMounted] = React.useState(active)
+  // Mount on first activation, then keep mounted
+  React.useEffect(() => {
+    if (active && !mounted) setMounted(true)
+  }, [active, mounted])
+
+  if (!mounted) return null
+  return (
+    <div
+      style={{ display: active ? 'block' : 'none' }}
+      aria-hidden={!active}
+      className={active ? 'h-full' : ''}
+    >
+      {children}
+    </div>
+  )
 }
