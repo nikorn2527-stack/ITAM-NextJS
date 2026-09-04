@@ -130,6 +130,7 @@ export function MobileRepairRequest() {
   // ── Form state ──
   const [subject, setSubject] = React.useState('')
   const [description, setDescription] = React.useState('')
+  const [remark, setRemark] = React.useState('')
   const [priority, setPriority] = React.useState<PriorityKey>('medium')
   const [images, setImages] = React.useState<string[]>([]) // base64 data URLs
   const [submitting, setSubmitting] = React.useState(false)
@@ -434,9 +435,16 @@ export function MobileRepairRequest() {
 
     setSubmitting(true)
     try {
+      // Combine description + remark into details field for the API
+      // (description = ลักษณะหน้างาน, remark = หมายเหตุเพิ่มเติม)
+      const combinedDetails = [
+        description.trim(),
+        remark.trim() ? `หมายเหตุ: ${remark.trim()}` : '',
+      ].filter(Boolean).join('\n\n')
+
       const payload: Record<string, unknown> = {
         subject: finalSubject,
-        details: description.trim(),
+        details: combinedDetails,
         priority: prOpt.value,
         deviceId: selected.id,
         building: selected.building ?? null,
@@ -469,6 +477,7 @@ export function MobileRepairRequest() {
   function resetForm() {
     setSubject('')
     setDescription('')
+    setRemark('')
     setPriority('medium')
     setImages([])
     setSelected(null)
@@ -713,67 +722,32 @@ export function MobileRepairRequest() {
             </div>
 
             <div className="space-y-4 p-4">
-              {/* Step 2a: เลือกอาการ — แยกตามกลุ่ม อ่านง่าย */}
+              {/* Step 2a: เลือกอาการ — แยกตามกลุ่มแบบ collapsible sections (ไม่กองรวมที่เดียว) */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">
                   อาการที่พบ <span className="text-rose-500">*</span>
+                  <span className="ml-2 text-[10px] text-slate-400 font-normal">
+                    (เลือกได้หลายหัวข้อ · จากข้อมูลมาตรฐาน)
+                  </span>
                 </Label>
                 {problemCategories.length > 0 ? (
-                  (() => {
-                    // Group categories by group name
-                    const groups = problemCategories.reduce((acc, cat) => {
-                      const g = cat.group || 'อื่นๆ'
-                      if (!acc[g]) acc[g] = []
-                      acc[g].push(cat)
-                      return acc
-                    }, {} as Record<string, typeof problemCategories>)
-                    return (
-                      <div className="space-y-2">
-                        {Object.entries(groups).map(([groupName, cats]) => (
-                          <div key={groupName}>
-                            <div className="mb-1 text-[10px] font-medium text-slate-400">{groupName}</div>
-                            <div className="flex flex-wrap gap-1">
-                              {cats.map((cat) => {
-                                const isSelected = selectedSubjects.includes(cat.label)
-                                return (
-                                  <button
-                                    key={cat.id}
-                                    type="button"
-                                    onClick={() => {
-                                      if (isSelected) {
-                                        setSelectedSubjects(selectedSubjects.filter((s) => s !== cat.label))
-                                      } else {
-                                        setSelectedSubjects([...selectedSubjects, cat.label])
-                                      }
-                                      // Auto-set priority
-                                      const allSelected = isSelected
-                                        ? selectedSubjects.filter((s) => s !== cat.label)
-                                        : [...selectedSubjects, cat.label]
-                                      const priorities = allSelected.map((s) => {
-                                        const opt = subjectOptions.find((o) => o.value === s)
-                                        return opt?.default_priority
-                                      })
-                                      if (priorities.includes('ด่วน')) setPriority('urgent')
-                                      else if (priorities.includes('สูง')) setPriority('high')
-                                      else if (priorities.includes('ปานกลาง')) setPriority('medium')
-                                      else if (priorities.includes('ปกติ')) setPriority('low')
-                                    }}
-                                    className={`rounded-md border px-2 py-1 text-xs transition-colors ${
-                                      isSelected
-                                        ? 'border-orange-500 bg-orange-500 text-white'
-                                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                                    }`}
-                                  >
-                                    {cat.label}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )
-                  })()
+                  <ProblemCategorySelector
+                    categories={problemCategories}
+                    subjectOptions={subjectOptions}
+                    selected={selectedSubjects}
+                    onChange={(next) => {
+                      setSelectedSubjects(next)
+                      // Auto-set priority based on selected subjects
+                      const priorities = next.map((s) => {
+                        const opt = subjectOptions.find((o) => o.value === s)
+                        return opt?.default_priority
+                      })
+                      if (priorities.includes('ด่วน')) setPriority('urgent')
+                      else if (priorities.includes('สูง')) setPriority('high')
+                      else if (priorities.includes('ปานกลาง')) setPriority('medium')
+                      else if (priorities.includes('ปกติ')) setPriority('low')
+                    }}
+                  />
                 ) : (
                   <Input
                     id="mrr-subject"
@@ -784,26 +758,53 @@ export function MobileRepairRequest() {
                     className="h-12 text-base"
                   />
                 )}
+                {/* Show selected subjects summary */}
+                {selectedSubjects.length > 0 && (
+                  <div className="rounded-md bg-orange-50 dark:bg-orange-950/30 p-2 text-xs">
+                    <span className="text-orange-700 dark:text-orange-300 font-medium">
+                      เลือกแล้ว {selectedSubjects.length} หัวข้อ:
+                    </span>{' '}
+                    <span className="text-slate-600 dark:text-slate-300">
+                      {selectedSubjects.join(', ')}
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* Step 2b: รายละเอียดเพิ่มเติม — ไม่บังคับ */}
+              {/* Step 2b: คำอธิบายลักษณะหน้างาน (สำหรับช่างสำรวจ) */}
               <div className="space-y-1.5">
-                <Label htmlFor="mrr-description" className="text-sm font-medium">
-                  รายละเอียดเพิ่มเติม <span className="text-xs text-slate-400">(ถ้ามี)</span>
+                <Label htmlFor="mrr-onsite-desc" className="text-sm font-medium">
+                  ลักษณะหน้างาน / สิ่งที่พบเห็น
+                  <span className="ml-1 text-xs text-slate-400">(สำหรับช่างสำรวจ)</span>
                 </Label>
                 <Textarea
-                  id="mrr-description"
+                  id="mrr-onsite-desc"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="เช่น เกิดตอนบ่ายโมง พิมพ์ได้ครึ่งหน้าแล้วหยุด..."
-                  rows={3}
-                  maxLength={500}
+                  placeholder="อธิบายลักษณะหน้างานที่เห็น เช่น เครื่องติดไฟแต่ไม่พิมพ์ มีเสียงดังผิดปกติ หรืออาการที่ต้องสำรวจเพิ่ม..."
+                  rows={4}
+                  maxLength={1000}
                   className="min-h-24 text-base"
                   aria-required="false"
                 />
                 <p className="text-right text-xs text-muted-foreground">
                   {description.length}/1000
                 </p>
+              </div>
+
+              {/* Step 2c: หมายเหตุเพิ่มเติม (optional) */}
+              <div className="space-y-1.5">
+                <Label htmlFor="mrr-remark" className="text-sm font-medium">
+                  หมายเหตุเพิ่มเติม <span className="text-xs text-slate-400">(ถ้ามี)</span>
+                </Label>
+                <Input
+                  id="mrr-remark"
+                  value={remark}
+                  onChange={(e) => setRemark(e.target.value)}
+                  placeholder="เช่น เบอร์ติดต่อสำรอง, เวลาที่สะดวกให้ช่างมา..."
+                  maxLength={200}
+                  className="h-12 text-base"
+                />
               </div>
 
               {/* Priority */}
@@ -981,6 +982,146 @@ export function MobileRepairRequest() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────
+
+/**
+ * ProblemCategorySelector — เลือกประเภทปัญหาแบบ multi-select
+ * จัดกลุ่มตาม RepairGroup (ไม่ใช่กองรวมที่เดียว) — collapsible sections
+ *
+ * Features:
+ *   - แต่ละ group เป็น section แยก มี header + collapse/expand
+ *   - แต่ละ item เป็น checkbox (multi-select)
+ *   - แสดง count ของที่เลือกในแต่ละ group
+ *   - กลุ่มแรกขยายอัตโนมัติ
+ */
+function ProblemCategorySelector({
+  categories,
+  subjectOptions,
+  selected,
+  onChange,
+}: {
+  categories: Array<{ id: string; label: string; group?: string }>
+  subjectOptions: Array<{ id?: string; value: string; default_priority?: string; group?: string }>
+  selected: string[]
+  onChange: (next: string[]) => void
+}) {
+  // Group categories by group name
+  const groups = React.useMemo(() => {
+    const map = new Map<string, typeof categories>()
+    for (const cat of categories) {
+      const g = cat.group || 'อื่นๆ'
+      if (!map.has(g)) map.set(g, [])
+      map.get(g)!.push(cat)
+    }
+    return Array.from(map.entries())
+  }, [categories])
+
+  // First group expanded by default
+  const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+    new Set(groups.length > 0 ? [groups[0][0]] : []),
+  )
+
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupName)) {
+        next.delete(groupName)
+      } else {
+        next.add(groupName)
+      }
+      return next
+    })
+  }
+
+  const toggleSubject = (label: string) => {
+    if (selected.includes(label)) {
+      onChange(selected.filter((s) => s !== label))
+    } else {
+      onChange([...selected, label])
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {groups.map(([groupName, cats]) => {
+        const isExpanded = expandedGroups.has(groupName)
+        const selectedInGroup = cats.filter((c) => selected.includes(c.label))
+        const selectedCount = selectedInGroup.length
+
+        return (
+          <div
+            key={groupName}
+            className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700"
+          >
+            {/* Group header — clickable to expand/collapse */}
+            <button
+              type="button"
+              onClick={() => toggleGroup(groupName)}
+              className="flex w-full items-center justify-between px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-800"
+              aria-expanded={isExpanded}
+            >
+              <span className="flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  {groupName}
+                </span>
+                {selectedCount > 0 && (
+                  <span className="rounded-full bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {selectedCount}
+                  </span>
+                )}
+              </span>
+              <span className="text-xs text-slate-400">
+                {cats.length} หัวข้อ
+                <span className="ml-1 inline-block transition-transform" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0)' }}>
+                  ›
+                </span>
+              </span>
+            </button>
+
+            {/* Items — checkbox list */}
+            {isExpanded && (
+              <div className="space-y-1 border-t border-slate-100 p-2 dark:border-slate-700">
+                {cats.map((cat) => {
+                  const isSelected = selected.includes(cat.label)
+                  const opt = subjectOptions.find((o) => o.value === cat.label)
+                  const priority = opt?.default_priority
+
+                  return (
+                    <label
+                      key={cat.id}
+                      className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+                        isSelected
+                          ? 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300'
+                          : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSubject(cat.label)}
+                        className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
+                      />
+                      <span className="flex-1">{cat.label}</span>
+                      {priority && (
+                        <span className={`text-[10px] ${
+                          priority === 'ด่วน' ? 'text-rose-500' :
+                          priority === 'สูง' ? 'text-orange-500' :
+                          priority === 'ปานกลาง' ? 'text-amber-500' :
+                          'text-slate-400'
+                        }`}>
+                          {priority}
+                        </span>
+                      )}
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 function StepBadge({ n }: { n: number }) {
   return (
