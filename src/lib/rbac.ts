@@ -234,6 +234,8 @@ export interface AuthUser {
   permissions: string[]
   allowedSites: string | null
   active: boolean
+  /** Demo users see only demo data (isDemo=true), real users see only real data */
+  isDemo?: boolean | null
 }
 
 /**
@@ -249,6 +251,7 @@ export function toAuthUser(user: {
   permissions?: string | null
   allowedSites?: string | null
   active: boolean
+  isDemo?: boolean | null
 }): AuthUser {
   let customPerms: string[] | null = null
   if (user.permissions) {
@@ -271,6 +274,8 @@ export function toAuthUser(user: {
     permissions: getUserPermissions(user.role, customPerms),
     allowedSites: user.allowedSites ?? null,
     active: user.active,
+    // Carry through the isDemo flag so demoFilter() can isolate demo vs real data
+    isDemo: user.isDemo ?? false,
   }
 }
 
