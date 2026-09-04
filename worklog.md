@@ -15748,3 +15748,126 @@ Stage Summary:
 - แก้แล้ว: aria-required="false" ตรงกับพฤติกรรมจริง
 - Commit: 2a09b8e
 - Push: origin/main → Vercel auto-deploy
+
+---
+Task ID: expand-demo-data
+Agent: demo data seeder
+Task: สร้าง script `scripts/expand-demo-data.ts` เพื่อเพิ่ม demo data ให้ครบพอใช้งาน + ทดสอบได้จริง หลังจาก `demoFilter()` ใน `src/lib/demo-mode.ts` ถูกแก้ให้ demo user เห็นเฉพาะ `isDemo: true` เท่านั้น (ทำให้ demo data ที่มีอยู่ 15 devices / 40 WOs / 9 stock / 8 meter readings ไม่พอใช้)
+
+Work Log:
+- อ่าน worklog section ล่าสุด + ตรวจสอบ state ปัจจุบันของ demo data ผ่าน Prisma:
+  * Devices=15, WorkOrders=40, StockItems=9, MeterReadings=8, PMSchedules=1, SiteAttributes(isDemo)=0
+  * ตรวจพบว่า SiteAttribute PPIT มี `isDemo: false` (ต้องแก้ให้เป็น true)
+  * ตรวจพบว่า demo meter readings เดิมอ้างถึง real devices (asset "2377", "100" ฯลฯ) ไม่ใช่ demo devices — ทำให้ demoFilter กรองไม่ตรง
+
+- ตรวจสอบ `prisma/schema.prisma` เพื่อทำความเข้าใจ fields ที่มีในแต่ละ model:
+  * Device: assetCode (unique), type, status, site, brand, model, meterRequired, meterMode, lastMeterBw, lastMeterColor, isDemo
+  * WorkOrder: woNumber (unique), subject, details, location, priority, reporterName, tel, status, siteCode, assignedTo, resolution, isDemo
+  * StockItem: productCode (unique), productName, category, brand, quantity, minQuantity, maxQuantity, unitCost, site, isDemo
+  * MeterReading: deviceId, readingDate, readingMonth, readingType, meterBw, meterColor, pagesBw, pagesColor, isDemo
+  * PMSchedule: scheduleNo (unique), title, frequency, nextRunDate, lastRunDate, deviceId, isDemo
+  * SiteAttribute: SiteCode (unique), SiteName, isDemo
+
+- ตรวจสอบ canonical status/priority values ที่แอปใช้:
+  * Device status: 'Active', 'Inactive', 'In Repair', 'Spare' (จาก `src/lib/status-utils.ts`)
+  * WO status: 'PENDING', 'IN_PROGRESS', 'WAITING_PARTS', 'COMPLETED', 'CANCELLED' (จาก `src/app/api/work-orders/route.ts`) — *ไม่ใช่ AWAITING_PARTS ตามที่ task เขียน*
+  * WO priority: 'ปกติ', 'ปานกลาง', 'สูง', 'ด่วน' (Thai — ไม่ใช่ LOW/MEDIUM/HIGH/URGENT)
+
+- สร้าง `scripts/expand-demo-data.ts` (~510 บรรทัด) พร้อมแนวคิดหลัก:
+  * **Idempotent** — ใช้ `upsert` บน unique keys (assetCode, productCode, woNumber, scheduleNo, SiteCode) และ `findFirst` check สำหรับ MeterReading/PMExecution (ไม่มี unique constraint)
+  * **Deterministic** — ใช้ Mulberry32 PRNG ที่ seeded (เลข seed ตายตัว) เพื่อให้ re-run ให้ผลเหมือนเดิม ไม่ใช้ Math.random
+  * **Sequential awaits** (ไม่ใช้ Promise.all) เพราะ DATABASE_URL มี `connection_limit=1` — ถ้ารัน parallel จะ queue/block
+  * **Standalone PrismaClient** (ไม่ import `src/lib/db` เพราะ global cache นั้น tune สำหรับ Next.js HMR ไม่ใช่ CLI)
+  * **All records tagged `isDemo: true`** ให้สามารถล้างได้ผ่าน POST /api/itam/demo/reset
+  * **Progress log** ทุก 25 records + summary table ท้าย script
+
+- ข้อมูลที่เพิ่ม:
+  1. **Devices 100 รายการ** (DEMO-DEV-001 … DEMO-DEV-100):
+     - type กระจาย 5 ประเภท: PRINTER LASER (12), PRINTER INKJET (10), PRINTER THERMAL (5), SCANNERS (7), BARCODE SCANNERS (5) — cycle ผ่าน catalogue
+     - brand จริง: HP, Canon, Brother, Epson, KYOCERA, Ricoh (+ Honeywell, Zebra, Datalogic, Fujitsu, Bixolon, Star สำหรับ scanners)
+     - site กระจาย 4 สาขา: UDH, NKP, MECUD, PPIT (ใช้ SiteName เต็ม เช่น "โรงพยาบาลศูนย์อุดรธานี")
+     - status กระจาย: Active (~70%), Inactive (~10%), In Repair (~10%), Spare (~10%) — based on index % 10
+     - meterRequired: true สำหรับ printers/thermal (69 devices), false สำหรับ scanners/barcode
+     - meterMode: สุ่ม TOTAL/BW_COLOR
+     - lastMeterBw: 0-60000, lastMeterColor: 0-8000 (เฉพาะ BW_COLOR mode)
+     - purchaseDate, serialNumber, location (ชั้น 1/2/3, ห้องจ่ายยา, OPD, IPD, ER ฯลฯ)
+
+  2. **Work Orders 50 รายการ** (DEMO-WO-006 … DEMO-WO-055 — ต่อจาก DEMO-WO-001..005 ที่มีอยู่):
+     - status กระจาย: PENDING × 12, IN_PROGRESS × 12, WAITING_PARTS × 8, COMPLETED × 13, CANCELLED × 5
+     - priority สุ่ม weighted: ปกติ (~40%), ปานกลาง (~30%), สูง (~20%), ด่วน (~10%)
+     - subject: 14 หัวข้อซ่อมจริง (เครื่องพิมพ์ไม่ทำงาน, กระดาษติดบ่อย, หมึกหมดด่วน, ฯลฯ)
+     - location: 10 ที่ตั้ง (ชั้น 1 OPD, ห้องจ่ายยา, ER, ฯลฯ)
+     - reporterName/tel: ชื่อ-เบอร์ Thai 10 ชุด
+     - assignedTo: demo_admin/demo_tech สำหรับ IN_PROGRESS/COMPLETED
+     - createdAt: กระจาย 0-90 วันที่ผ่านมา (3 เดือน)
+     - resolution: กรอกสำหรับ COMPLETED/CANCELLED
+
+  3. **Stock Items 30 รายการ** (DEMO-STK-001 … DEMO-STK-030):
+     - category กระจาย: DRUM (5), INK (7), TONER (8), SPARE_PART (6), OTHER (4)
+     - brand: Brother, HP, Canon, Epson, KYOCERA, Ricoh, Double A, Fujitsu, Honeywell ฯลฯ
+     - quantity + minQuantity + maxQuantity + unitCost + totalValue (auto-calc)
+     - site: กระจาย UDH/NKP/MECUD/PPIT
+     - low stock cases: DEMO-STK-013 (qty=2, min=5), DEMO-STK-016 (qty=0, min=3), DEMO-STK-023 (qty=1, min=3), DEMO-STK-026 (qty=1, min=3), DEMO-STK-012 (qty=0, min=2), DEMO-STK-030 (qty=2, min=2) — ~8 low stock items
+
+  4. **Meter Readings 92 รายการใหม่** (total 100 หลังรวมกับของเดิม):
+     - อ้างถึง 69 demo devices ที่ meterRequired=true (DEMO-DEV-* + DEMO-PRN-*)
+     - readingMonth: 2026-09 (71 readings) + 2026-08 (29 readings สำหรับ 1 ใน 3 device)
+     - readingType: 'MONTHLY' ทั้งหมด
+     - meterBw/meterColor: คำนวณย้อนจาก device.lastMeterBw (ลบ delta สำหรับ previous month)
+     - pagesBw/pagesColor: delta จาก previous reading
+     - prevMeterBw/prevMeterColor: meter - pages
+     - meterMode: snapshot จาก device.meterMode
+     - readBy: 'demo_admin@itam.demo'
+
+  5. **PM Schedules 5 รายการใหม่** (DEMO-PM-001..005) + 5 PMExecutions:
+     - 2 PENDING (nextRunDate ในอนาคต: +7, +30 วัน) — สร้าง PENDING execution ด้วย
+     - 3 COMPLETED (lastRunDate ในอดีต: -7, -30, -60 วัน) — สร้าง COMPLETED execution ด้วย
+     - อ้างถึง 5 demo devices (PRINTER LASER, PRINTER INKJET, PRINTER THERMAL)
+     - frequency: monthly / quarterly
+     - มี title, description, checklist text, assignedTo, createdBy
+
+  6. **SiteAttribute PPIT** — update `isDemo: true` (ก่อนหน้านี้เป็น false)
+     - ตรวจสอบทั้ง 4 sites: UDH/NKP/MECUD ยังเป็น false (real sites — ไม่แก้), PPIT updated → true
+
+- รัน script ครั้งแรก: 116.2s — ทุก model สร้างใหม่หมด (created=100/50/30/92/5/5/0, updated=0/0/0/0/0/0/1)
+- รัน script ครั้งที่ 2 (idempotency test): 107.5s — ทุก model updated/skipped ไม่มี created ใหม่ (updated=100/50/30/0/5/0/0, skipped=0/0/0/92/0/5/1) ✅ idempotent confirmed
+- Final counts: Devices=115, WorkOrders=90, StockItems=39, MeterReadings=100, PMSchedules=6, PMExecutions=5, SiteAttributes(isDemo)=1
+
+Stage Summary:
+- ✅ ไฟล์ที่สร้าง: `scripts/expand-demo-data.ts` (~510 บรรทัด, idempotent, standalone, sequential)
+- ✅ รัน script สำเร็จ (ครั้งแรก created ทั้งหมด, ครั้งที่สอง updated/skipped — idempotent)
+- ✅ Demo data counts เพิ่มขึ้นครบตาม target:
+  - Devices: 15 → 115 (+100, target ≥100) ✅
+  - WorkOrders: 40 → 90 (+50, target ≥50) ✅
+  - StockItems: 9 → 39 (+30, target ≥30) ✅
+  - MeterReadings: 8 → 100 (+92, target ~100) ✅
+  - PMSchedules: 1 → 6 (+5, target +5) ✅
+  - PMExecutions: 0 → 5 (+5) ✅
+  - SiteAttributes(isDemo): 0 → 1 (PPIT) ✅
+- ✅ ข้อมูลกระจายหลาย status/type/site/priority/category ตามที่ task ระบุ
+- ✅ ทุก record มี `isDemo: true` (verify ผ่าน Prisma count where isDemo=true)
+- ✅ Idempotent — รันซ้ำ 2 ครั้ง ได้ final state เหมือนกัน
+- ✅ มี progress log + summary table ตามที่ task ระบุ
+
+ปัญหาที่เจอ + การแก้:
+- Task spec ระบุ WO status 'AWAITING_PARTS' แต่ canonical ของแอปคือ 'WAITING_PARTS' (ตรวจสอบจาก `src/app/api/work-orders/route.ts:22`) → ใช้ WAITING_PARTS ตามที่แอปต้องการ
+- Task spec ระบุ priority 'LOW/MEDIUM/HIGH/URGENT' แต่ canonical ของแอปเป็น Thai: 'ปกติ/ปานกลาง/สูง/ด่วน' (จาก `src/app/api/work-orders/route.ts:27`) → ใช้ Thai priorities
+- Task spec ระบุ field `problemType` และ `actor` ใน WorkOrder แต่ไม่มี column เหล่านี้ใน schema → ฝัง problemType ลงใน `details` text, ใช้ `assignedTo` แทน actor
+- Task spec ระบุ type 'PRINTER LASER, PRINTER INKJET, PRINTER THERMAL, SCANNERS, BARCODE SCANNERS' — schema column `type` เป็น String อิสระ (ไม่ใช่ enum) → ใช้ค่าเหล่านั้นได้ตรง ๆ
+- pre-existing demo devices มี site value หลายรูปแบบ (บ้าง "PPIT" บ้าง "โรงพยาบาลศูนย์อุดรธานี") → ใช้ SiteName เต็มสำหรับ UDH/NKP/MECUD และ "PPIT" สำหรับ PPIT (เพราะ SiteAttribute.SiteName ของ PPIT คือ "PPIT")
+- Demo meter readings ที่มีอยู่เดิม (8 records) อ้างถึง real devices (asset "2377" ฯลฯ) — ไม่ได้แตะเพราะเป็น history ที่ทดสอบไปแล้ว; แต่ record ใหม่ 92 รายการอ้างถึง demo devices ถูกต้อง
+- ไม่ใช้ `db.$transaction([...])` batch transaction เพราะอาจเกิน Prisma limit บน Supabase transaction-mode pooler; ใช้ sequential awaits แทน (ปลอดภัย + ตรงไปตรงมา)
+- Script ใช้ standalone `new PrismaClient()` ไม่ import `src/lib/db` เพราะ global cache ของ lib/db tune สำหรับ Next.js HMR (auto-switch port 5432→6543, log queries) ไม่เหมาะกับ CLI use
+
+Files created:
+- `scripts/expand-demo-data.ts` (new, ~510 บรรทัด)
+
+Files modified:
+- (none — script-only change; demoFilter() in src/lib/demo-mode.ts was already updated by previous task)
+
+Next actions / recommendations:
+- ทดสอบ login เป็น demo_admin → เข้าหน้า Devices/WorkOrders/Stock/Meter/PM แล้วตรวจสอบว่าเห็นข้อมูลครบ
+- ทดสอบ POST /api/itam/demo/reset → ล้าง demo data ทั้งหมด → รัน `bun run scripts/expand-demo-data.ts` อีกครั้ง → ควรได้ counts เดิม
+- Optional: เพิ่ม StockTransaction records สำหรับ demo stock items (stock-in/stock-out history) ถ้าต้องการให้หน้า Stock History มีข้อมูลให้ทดสอบ
+- Optional: เพิ่ม WorkOrderPart records สำหรับ demo WOs ที่ status=WAITING_PARTS/COMPLETED เพื่อทดสอบ cost summary + parts flow
+
