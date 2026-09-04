@@ -1,21 +1,20 @@
 /**
  * demo-mode.ts — Demo Mode helpers (Task ID: DEMO-MODE-E2E-TESTS).
  *
- * Demo users (`User.isDemo === true`) can use the full app without
- * affecting real data:
- *   • READ  — they see the same data as their real-role counterpart
- *             (no row-level filtering; the demoFilter() helper returns
- *             an empty object on purpose so demo users can browse the
- *             real dataset for an authentic preview).
- *   • WRITE — every record they create is tagged with `isDemo: true`
- *             via demoTag(). This makes it trivial to wipe all demo
- *             data later (POST /api/itam/demo/reset deletes every row
- *             where isDemo = true) without ever touching real rows.
+ * Demo users (`User.isDemo === true`) ใช้งานแอปได้เต็มรูปแบบโดยไม่กระทบข้อมูลจริง:
+ *   • READ  — เห็นเฉพาะข้อมูล demo (isDemo = true) เท่านั้น เพื่อให้ทดสอบได้แบบ isolated
+ *             ไม่เห็นข้อมูลจริงของผู้ใช้คนอื่น ป้องกันการอ่าน/screenshot ข้อมูลจริงระหว่างทดสอบ
+ *   • WRITE — ทุก record ที่สร้างจะถูก tag `isDemo: true` อัตโนมัติผ่าน demoTag()
+ *             ทำให้ลบได้ง่าย (POST /api/itam/demo/reset ลบทุก row ที่ isDemo = true)
  *
- * These helpers are tiny on purpose: demo behaviour is enforced at the
- * route layer (each POST endpoint calls demoTag() when building the
- * Prisma `data` payload), not via Prisma middleware. That keeps the
- * isolation logic co-located with the write sites and easy to audit.
+ * Real users (`User.isDemo` เป็น false หรือ null):
+ *   • READ  — เห็นเฉพาะข้อมูลจริง (isDemo != true) — ข้อมูล demo ถูกซ่อน
+ *   • WRITE — สร้าง record ปกติ (isDemo = false)
+ *
+ * Concept นี้ทำให้ demo กับ production แยกจากกันอย่างสมบูรณ์:
+ *   - demo user ทำอะไรก็อยู่ใน demo scope
+ *   - real user ไม่เห็นอะไรที่ demo user สร้าง
+ *   - ล้าง demo data ได้โดยไม่กระทบจริง
  */
 
 /** Minimal user shape needed by the helpers. */
@@ -34,22 +33,35 @@ export function isDemoUser(user: DemoAwareUser | null | undefined): boolean {
 /**
  * Build a Prisma `where` fragment that filters data based on demo status.
  *
- * - Demo users: see everything (real + demo data) for authentic preview
- * - Real users: see ONLY real data (isDemo != true) — demo data is HIDDEN
+ * - Demo users: เห็นเฉพาะข้อมูล demo (isDemo = true) — isolated from real data
+ * - Real users: เห็นเฉพาะข้อมูลจริง (isDemo = false หรือ null) — demo data ถูกซ่อน
  *
  * Use this on every list endpoint to enforce demo data isolation:
  *   const where = { ...filters, ...demoFilter(auth.user) }
  */
 export function demoFilter(user: DemoAwareUser | null | undefined): Record<string, unknown> {
-  // Demo users see everything (no filter)
-  if (isDemoUser(user)) return {}
-  // Real users see ONLY non-demo data (isDemo = false OR null)
+  // Demo users see ONLY demo data (isolated from real production data)
+  if (isDemoUser(user)) return { isDemo: true }
+  // Real users see ONLY non-demo data (isDemo = false OR null) — demo data is HIDDEN
   return {
     OR: [
       { isDemo: false },
       { isDemo: null },
     ],
   }
+}
+
+/**
+ * Build a Prisma `data` fragment that tags a created/updated record as
+ * belonging to the demo scope. Returns `{ isDemo: true }` for demo users,
+ * `{}` for real users (so the column keeps its DB default of `false`).
+ *
+ * Spread this into every create payload:
+ *   `await db.device.create({ data: { ...payload, ...demoTag(user) } })`
+ */
+export function demoTag(user: DemoAwareUser | null | undefined): { isDemo?: true } {
+  if (!isDemoUser(user)) return {}
+  return { isDemo: true }
 }
 
 /**
