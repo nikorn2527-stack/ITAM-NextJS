@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
+import { demoFilter } from '@/lib/demo-mode'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { notifyMeter } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
     if (month) (where.AND as unknown[]).push({ readingMonth: month })
 
     // Site-level filter via the device relation
-    const siteFilter = siteFilterForUser(user)
+    const siteFilter = { ...siteFilterForUser(user), ...demoFilter(user) }
     if (Object.keys(siteFilter).length) {
       // non-superadmin: restrict to allowed sites
       (where.AND as unknown[]).push({ device: siteFilter })

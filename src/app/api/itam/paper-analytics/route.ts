@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
+import { demoFilter } from '@/lib/demo-mode'
 
 /**
  * GET /api/itam/paper-analytics
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const view = (searchParams.get('view') ?? 'overview').trim()
-    const siteFilter = siteFilterForUser(user)
+    const siteFilter = { ...siteFilterForUser(user), ...demoFilter(user) }
     const now = new Date()
 
     // Compute month range
