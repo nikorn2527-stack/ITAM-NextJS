@@ -122,6 +122,7 @@ model MeterReading {
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
   @@index([deviceId])
   @@index([readingMonth])
   @@index([isDemo])
@@ -145,8 +146,9 @@ model Cycle {
   status    String   @default("active")
   site      String? // nullable — null = all sites (global cycle)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime? @updatedAt
 
+  isDemo    Boolean  @default(false)
   @@index([status])
   @@index([site])
   @@index([updatedAt])
@@ -188,6 +190,7 @@ model DeviceTransfer {
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
   @@index([deviceId])
   @@index([toSite])
 }
@@ -336,6 +339,7 @@ model WorkOrderMessage {
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
   @@index([workOrderId])
 }
 
@@ -353,6 +357,7 @@ model WorkOrderReview {
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
   @@index([workOrderId])
 }
 
@@ -371,6 +376,7 @@ model WorkOrderImage {
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
   @@index([workOrderId])
   @@index([stage])
   @@map("work_order_images")
@@ -422,6 +428,7 @@ model LicenseRecord {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  isDemo    Boolean  @default(false)
   @@index([Asset_No])
   @@map("license_records")
 }
@@ -459,6 +466,8 @@ model Site {
   phone     String?
   createdAt DateTime @default(now())
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([name])
 }
 
@@ -471,8 +480,9 @@ model SiteRate {
   bwRate    Decimal  @default(0.5) @db.Decimal(12, 2)
   colorRate Decimal  @default(2.0) @db.Decimal(12, 2)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime? @updatedAt
 
+  isDemo    Boolean  @default(false)
   @@index([siteCode])
 }
 
@@ -494,6 +504,7 @@ model MasterItem {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  isDemo    Boolean  @default(false)
   @@index([category])
   @@index([code])
 }
@@ -599,6 +610,8 @@ model StockItemRateHistory {
 
   stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([stockItemId])
   @@index([effectiveFrom])
   @@index([costModel])
@@ -678,6 +691,7 @@ model StockTransaction {
   stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
   device    Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
+  updatedAt DateTime? @updatedAt
   @@index([stockItemId])
   @@index([type])
   @@index([approvalStatus])
@@ -731,6 +745,7 @@ model PurchaseOrderItem {
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   stockItem     StockItem     @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
   @@index([purchaseOrderId])
   @@index([stockItemId])
   @@index([isDemo])
@@ -801,6 +816,7 @@ model Role {
   grants      UserSiteGrant[]
   permissions RolePermission[]
 
+  isDemo    Boolean  @default(false)
   @@index([active])
 }
 
@@ -821,6 +837,8 @@ model Permission {
 
   roles RolePermission[]
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([resource])
   @@index([active])
 }
@@ -840,6 +858,8 @@ model RolePermission {
   permission Permission @relation(fields: [permissionCode], references: [code], onDelete: Cascade)
 
   @@id([roleCode, permissionCode])
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([permissionCode])
 }
 
@@ -872,6 +892,7 @@ model UserSiteGrant {
   role Role @relation(fields: [roleCode], references: [code], onDelete: Restrict)
 
   @@id([userId, siteCode])
+  isDemo    Boolean  @default(false)
   @@index([siteCode, active])
   @@index([userId, active])
   @@index([roleCode, active])
@@ -905,6 +926,7 @@ model AuditLog {
   isDemo    Boolean  @default(false)
   createdAt DateTime @default(now())
 
+  updatedAt DateTime? @updatedAt
   @@index([entity, entityId])
   @@index([action])
   @@index([createdAt])
@@ -921,7 +943,7 @@ model AppSetting {
   key       String   @unique
   value     String
   isDemo    Boolean  @default(false)
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime? @updatedAt
   createdAt DateTime @default(now())
 
   @@index([isDemo])
@@ -941,6 +963,7 @@ model AssetNumberPattern {
   seqStart      Int      @default(1)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  isDemo    Boolean  @default(false)
   @@index([isActive])
 }
 
@@ -958,6 +981,7 @@ model WoNumberPattern {
   seqStart      Int      @default(1)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  isDemo    Boolean  @default(false)
   @@index([isActive])
 }
 
@@ -979,6 +1003,7 @@ model OrganizationProfile {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  isDemo    Boolean  @default(false)
   @@index([appName])
 }
 
@@ -995,7 +1020,8 @@ model DocumentTemplate {
   isDefault Boolean  @default(false)
   isFixed   Boolean  @default(false)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime? @updatedAt
+  isDemo    Boolean  @default(false)
   @@index([type])
 }
 
@@ -1015,6 +1041,8 @@ model ImportJob {
   uploadedBy    String?
   createdAt     DateTime  @default(now())
   completedAt   DateTime?
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([status])
 }
 
@@ -1032,6 +1060,7 @@ model LineBinding {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  isDemo    Boolean  @default(false)
   @@index([lineUserId])
 }
 
@@ -1047,6 +1076,8 @@ model Report {
   data      String
   format    String   @default("json")
   createdAt DateTime @default(now())
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([type])
 }
 
@@ -1065,6 +1096,8 @@ model PasswordResetToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([email])
   @@index([token])
 }
@@ -1098,6 +1131,8 @@ model SyncRun {
   items        SyncRunItem[]
   createdAt    DateTime      @default(now())
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([source, target, status])
   @@index([triggeredBy])
   @@index([siteScope, createdAt])
@@ -1125,6 +1160,8 @@ model SyncRunItem {
   entityType      String?
   processedAt     DateTime?
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([syncRunId, action])
   @@index([externalKey])
   @@index([syncRunId, status])
@@ -1220,6 +1257,8 @@ model WebAuthnCredential {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([userId])
 }
 
