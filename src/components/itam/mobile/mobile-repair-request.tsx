@@ -132,6 +132,7 @@ export function MobileRepairRequest() {
   const [subject, setSubject] = React.useState('')
   const [description, setDescription] = React.useState('')
   const [remark, setRemark] = React.useState('')
+  const [otherDetail, setOtherDetail] = React.useState('') // for "อื่นๆ" selection
   const [priority, setPriority] = React.useState<PriorityKey>('medium')
   const [images, setImages] = React.useState<string[]>([]) // base64 data URLs
   const [submitting, setSubmitting] = React.useState(false)
@@ -422,7 +423,16 @@ export function MobileRepairRequest() {
       return
     }
     // Combine selected subjects into subject field
-    const finalSubject = selectedSubjects.length > 0 ? selectedSubjects.join(', ') : subject.trim()
+    // If "อื่นๆ (ระบุในรายละเอียด)" is selected + user typed detail,
+    // append it to the subject so technicians see the specific symptom.
+    const OTHER_LABEL = 'อื่นๆ (ระบุในรายละเอียด)'
+    const subjectsWithDetail = selectedSubjects.map((s) => {
+      if (s === OTHER_LABEL && otherDetail.trim()) {
+        return `อื่นๆ: ${otherDetail.trim()}`
+      }
+      return s
+    })
+    const finalSubject = subjectsWithDetail.length > 0 ? subjectsWithDetail.join(', ') : subject.trim()
     // Description is optional — user might select problem type only
     if (!selected) {
       setSubmitError('กรุณาเลือกอุปกรณ์ที่จะแจ้งซ่อม')
@@ -479,6 +489,7 @@ export function MobileRepairRequest() {
     setSubject('')
     setDescription('')
     setRemark('')
+    setOtherDetail('')
     setPriority('medium')
     setImages([])
     setSelected(null)
@@ -748,6 +759,8 @@ export function MobileRepairRequest() {
                       else if (priorities.includes('ปานกลาง')) setPriority('medium')
                       else if (priorities.includes('ปกติ')) setPriority('low')
                     }}
+                    otherDetail={otherDetail}
+                    onOtherDetailChange={setOtherDetail}
                   />
                 ) : (
                   <Input
@@ -993,17 +1006,22 @@ export function MobileRepairRequest() {
  *   - แต่ละ item เป็น checkbox (multi-select)
  *   - แสดง count ของที่เลือกในแต่ละ group
  *   - กลุ่มแรกขยายอัตโนมัติ
+ *   - เมื่อเลือก "อื่นๆ" จะมีช่อง input ให้ระบุอาการเสียเพิ่ม
  */
 function ProblemCategorySelector({
   categories,
   subjectOptions,
   selected,
   onChange,
+  otherDetail,
+  onOtherDetailChange,
 }: {
   categories: Array<{ id: string; label: string; group?: string }>
   subjectOptions: Array<{ id?: string; value: string; default_priority?: string; group?: string }>
   selected: string[]
   onChange: (next: string[]) => void
+  otherDetail: string
+  onOtherDetailChange: (value: string) => void
 }) {
   // Group categories by group name
   const groups = React.useMemo(() => {
@@ -1040,6 +1058,10 @@ function ProblemCategorySelector({
       onChange([...selected, label])
     }
   }
+
+  // Check if "อื่นๆ (ระบุในรายละเอียด)" is selected — needs detail input
+  const OTHER_LABEL = 'อื่นๆ (ระบุในรายละเอียด)'
+  const isOtherSelected = selected.includes(OTHER_LABEL)
 
   return (
     <div className="space-y-2">
@@ -1085,34 +1107,50 @@ function ProblemCategorySelector({
                   const isSelected = selected.includes(cat.label)
                   const opt = subjectOptions.find((o) => o.value === cat.label)
                   const priority = opt?.default_priority
+                  const isOtherItem = cat.label === OTHER_LABEL
 
                   return (
-                    <label
-                      key={cat.id}
-                      className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
-                        isSelected
-                          ? 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300'
-                          : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleSubject(cat.label)}
-                        className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
-                      />
-                      <span className="flex-1">{cat.label}</span>
-                      {priority && (
-                        <span className={`text-[10px] ${
-                          priority === 'ด่วน' ? 'text-rose-500' :
-                          priority === 'สูง' ? 'text-orange-500' :
-                          priority === 'ปานกลาง' ? 'text-amber-500' :
-                          'text-slate-400'
-                        }`}>
-                          {priority}
-                        </span>
+                    <div key={cat.id}>
+                      <label
+                        className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+                          isSelected
+                            ? 'bg-orange-50 text-orange-700 dark:bg-orange-950/30 dark:text-orange-300'
+                            : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSubject(cat.label)}
+                          className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-500"
+                        />
+                        <span className="flex-1">{cat.label}</span>
+                        {priority && (
+                          <span className={`text-[10px] ${
+                            priority === 'ด่วน' ? 'text-rose-500' :
+                            priority === 'สูง' ? 'text-orange-500' :
+                            priority === 'ปานกลาง' ? 'text-amber-500' :
+                            'text-slate-400'
+                          }`}>
+                            {priority}
+                          </span>
+                        )}
+                      </label>
+                      {/* When "อื่นๆ" is selected, show input for specifying the symptom */}
+                      {isOtherItem && isSelected && (
+                        <div className="mt-1 pl-6">
+                          <Input
+                            type="text"
+                            value={otherDetail}
+                            onChange={(e) => onOtherDetailChange(e.target.value)}
+                            placeholder="ระบุอาการเสียที่พบ..."
+                            maxLength={200}
+                            className="h-10 text-sm"
+                            aria-label="ระบุอาการเสียอื่นๆ"
+                          />
+                        </div>
                       )}
-                    </label>
+                    </div>
                   )
                 })}
               </div>

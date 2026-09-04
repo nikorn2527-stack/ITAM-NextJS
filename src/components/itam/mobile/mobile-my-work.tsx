@@ -2249,34 +2249,56 @@ function StatusUpdateSheet({
         </SheetHeader>
 
         <div className="space-y-4 px-4 pb-4">
-          {/* Remark */}
-          <div className="space-y-1.5">
-            <Label htmlFor="mmw-remark" className="text-sm font-medium">
-              หมายเหตุ / รายละเอียด
-              {action.remarkRequired && (
-                <span className="ml-1 text-rose-500">*</span>
-              )}
-            </Label>
-            <Textarea
-              id="mmw-remark"
-              value={remark}
-              onChange={(e) => setRemark(e.target.value)}
-              placeholder={
-                action.endpoint === 'complete'
-                  ? 'ระบุผลการแก้ไข / สิ่งที่ทำไป (เช่น เปลี่ยน Drum, ทำความสะอาดหัวพิมพ์)'
-                  : action.endpoint === 'message'
+          {/* Resolution — ผลการแก้ไข (only for 'complete' action) */}
+          {action.endpoint === 'complete' && (
+            <div className="space-y-1.5">
+              <Label htmlFor="mmw-resolution" className="text-sm font-medium">
+                ผลการแก้ไข / สิ่งที่ทำไป <span className="ml-1 text-rose-500">*</span>
+              </Label>
+              <Textarea
+                id="mmw-resolution"
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+                placeholder="ระบุผลการแก้ไข เช่น เปลี่ยน Drum, ทำความสะอาดหัวพิมพ์, ปรับ calibration..."
+                rows={4}
+                maxLength={1000}
+                className="text-base"
+                aria-required={action.remarkRequired}
+              />
+              <p className="text-right text-[11px] text-muted-foreground">
+                {remark.length}/1000
+              </p>
+            </div>
+          )}
+
+          {/* Remark — หมายเหตุเพิ่มเติม (for all actions) */}
+          {action.endpoint !== 'complete' && (
+            <div className="space-y-1.5">
+              <Label htmlFor="mmw-remark" className="text-sm font-medium">
+                หมายเหตุ / รายละเอียด
+                {action.remarkRequired && (
+                  <span className="ml-1 text-rose-500">*</span>
+                )}
+              </Label>
+              <Textarea
+                id="mmw-remark"
+                value={remark}
+                onChange={(e) => setRemark(e.target.value)}
+                placeholder={
+                  action.endpoint === 'message'
                     ? 'บันทึกการส่งคืน (เช่น ส่งคืนที่ตู้ XYZ, ผู้รับ: คุณ A)'
                     : 'หมายเหตุเพิ่มเติม (ถ้ามี)'
-              }
-              rows={3}
-              maxLength={1000}
-              className="text-base"
-              aria-required={action.remarkRequired}
-            />
-            <p className="text-right text-[11px] text-muted-foreground">
-              {remark.length}/1000
-            </p>
-          </div>
+                }
+                rows={3}
+                maxLength={1000}
+                className="text-base"
+                aria-required={action.remarkRequired}
+              />
+              <p className="text-right text-[11px] text-muted-foreground">
+                {remark.length}/1000
+              </p>
+            </div>
+          )}
 
           {/* Photo capture (optional) */}
           {action.photoOptional && (
