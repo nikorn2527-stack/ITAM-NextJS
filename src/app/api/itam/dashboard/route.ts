@@ -224,22 +224,25 @@ export async function GET(req: NextRequest) {
     let bySite: SiteStat[] = []
 
     if (visibleSiteNames.length > 0) {
+      // Site-level filter that ALSO carries the demo-filter (isDemo flag)
+      // so demo users see ONLY demo devices, real users see ONLY real data.
+      const siteWhere = { ...siteFilter, site: { in: visibleSiteNames } }
       const [deviceBySite, activeBySite, devicesForSiteMap, paperByAsset] = await Promise.all([
         // All devices grouped by site
         db.device.groupBy({
           by: ['site'],
-          where: { site: { in: visibleSiteNames } },
+          where: siteWhere,
           _count: { status: true },
         }),
         // Active devices grouped by site — bug DATA-06 fix: case-insensitive variants
         db.device.groupBy({
           by: ['site'],
-          where: { site: { in: visibleSiteNames }, status: { in: ACTIVE_STATUS_VARIANTS } },
+          where: { ...siteWhere, status: { in: ACTIVE_STATUS_VARIANTS } },
           _count: { status: true },
         }),
         // Device→site mapping (assetCode + site only, ~2,378 rows)
         db.device.findMany({
-          where: { site: { in: visibleSiteNames } },
+          where: siteWhere,
           select: { assetCode: true, site: true },
         }),
         // Paper usage per asset this month (by readingMonth — matches
@@ -248,7 +251,7 @@ export async function GET(req: NextRequest) {
           by: ['assetCode'],
           where: {
             readingMonth: currentMonthKey,
-            device: { site: { in: visibleSiteNames } },
+            device: siteWhere,
           },
           _sum: { pagesBw: true, pagesColor: true },
         }),
