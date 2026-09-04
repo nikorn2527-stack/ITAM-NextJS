@@ -13,7 +13,7 @@
 
 import * as React from 'react'
 import { toast } from 'sonner'
-import { Plus, Trash2, Pencil, Keyboard, Mouse, Monitor, Cable, Battery, Usb, Printer, Package } from 'lucide-react'
+import { Plus, Trash2, Pencil, Keyboard, Mouse, Monitor, Cable, Battery, Usb, Printer, Package, QrCode } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,6 +26,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { useAuthStore } from '@/store/auth-store'
+import { generateAccessoryQrUrl, getActionLabel } from '@/lib/smart-qr'
 
 // ── Accessory types ──────────────────────────────────────────────────
 const ACCESSORY_TYPES = [
@@ -172,6 +173,81 @@ export function DeviceAccessoriesSection({ deviceId }: { deviceId: string }) {
     }
   }
 
+  /**
+   * Print accessory sticker — generates a QR code that, when scanned,
+   * opens the device detail page (showing the accessory + parent device).
+   *
+   * The QR encodes: /qr/a/{shortId}?action=view
+   * When scanned: resolves to parent device + highlights the accessory.
+   */
+  function printAccessorySticker(acc: typeof accessories[0]) {
+    const typeMeta = getTypeMeta(acc.accessoryType)
+    const qrUrl = generateAccessoryQrUrl(acc.id, 'view')
+
+    // Open a print window with the sticker layout
+    const printWindow = window.open('', '_blank', 'width=400,height=300')
+    if (!printWindow) {
+      toast.error('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัป')
+      return
+    }
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>สติกเกอร์อุปกรณ์ต่อพ่วง — ${typeMeta.label}</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: 'Sukhumvit Set', 'Noto Sans Thai', 'Tahoma', sans-serif; }
+          .sticker {
+            width: 180px; height: 100px;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 4mm;
+            display: flex; flex-direction: column; gap: 2mm;
+          }
+          .header { display: flex; align-items: center; gap: 2mm; }
+          .type-badge {
+            background: #f97316; color: white;
+            font-size: 7pt; font-weight: 700;
+            padding: 1px 4px; border-radius: 2px;
+          }
+          .brand-model { font-size: 8pt; color: #1e293b; font-weight: 600; }
+          .serial { font-size: 7pt; color: #64748b; }
+          .qr-area { display: flex; align-items: center; gap: 3mm; }
+          .qr-code { width: 55px; height: 55px; }
+          .info { font-size: 6pt; color: #94a3b8; line-height: 1.3; }
+          @media print { body { margin: 0; } }
+        </style>
+      </head>
+      <body>
+        <div class="sticker">
+          <div class="header">
+            <span class="type-badge">${typeMeta.label}</span>
+            <span class="brand-model">${acc.brand ?? ''} ${acc.model ?? ''}</span>
+          </div>
+          <div class="qr-area">
+            <img class="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrUrl)}" alt="QR" />
+            <div>
+              <div class="serial">S/N: ${acc.serialNumber ?? '—'}</div>
+              <div class="info">สแกน QR เพื่อดูข้อมูล</div>
+              <div class="info">อุปกรณ์ต่อพ่วง</div>
+            </div>
+          </div>
+        </div>
+        <script>
+          window.onload = function() {
+            setTimeout(function() { window.print(); }, 500);
+          };
+        </script>
+      </body>
+      </html>
+    `)
+    printWindow.document.close()
+    toast.success('เปิดหน้าพิมพ์สติกเกอร์แล้ว')
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
@@ -219,10 +295,19 @@ export function DeviceAccessoriesSection({ deviceId }: { deviceId: string }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button size="ghost" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(acc)}>
+                  <Button size="ghost" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(acc)} title="แก้ไข">
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="ghost" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => handleDelete(acc.id)}>
+                  <Button
+                    size="ghost"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-[#f97316]"
+                    onClick={() => printAccessorySticker(acc)}
+                    title="พิมพ์สติกเกอร์ QR"
+                  >
+                    <QrCode className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="ghost" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => handleDelete(acc.id)} title="ลบ">
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>

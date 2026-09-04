@@ -541,11 +541,19 @@ export function MobileRepairRequest() {
       {qrScanOpen && (
         <InlineQRScanner
           onScan={(value) => {
+            // Check if Smart QR URL — redirect to QR router
+            const smartMatch = value.match(/\/qr\/([dAsw])\/([a-zA-Z0-9_-]+)/i)
+            if (smartMatch) {
+              const url = value.startsWith('http') ? value : `${window.location.origin}${value.startsWith('/') ? '' : '/'}${value}`
+              setQrScanOpen(false)
+              toast.success('สแกน Smart QR สำเร็จ — กำลังเปิด...')
+              window.location.href = url
+              return
+            }
+
             if (isExternal) {
-              // External work mode — fill scanned code field
               setExternalScannedCode(value)
             } else {
-              // Normal repair mode — fill search term to find device
               setSearchTerm(value)
             }
             setQrScanOpen(false)
