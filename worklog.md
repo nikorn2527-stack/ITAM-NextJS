@@ -15725,3 +15725,26 @@ Stage Summary:
 
 Bugs ที่เหลือ (low priority):
 - inactive count ต่างเล็กน้อย (dashboard 11 vs reports 3) — เพราะ dashboard รวม Lost/Unknown เข้า inactive แต่ reports แยก — ไม่ใช่ bug จริง
+
+---
+Task ID: fix-mobile-repair-form-validation
+Agent: orchestrator (main)
+Task: ตรวจสอบ bug ในหน้าแจ้งซ่อม (mobile) จาก screenshot ที่ user ส่งมา
+
+Work Log:
+- รับ screenshot `/home/z/my-project/upload/Screenshot_20260904-080159_Chrome.png`
+- ใช้ VLM วิเคราะห์ภาพ 3 รอบ — ผลไม่คงที่ (บ้างบอก success toast บ้างบอก warning)
+- เปิด mobile mode ใน agent-browser ทดสอบฟอร์มแจ้งซ่อมจริง
+- ค้นหาใน source code: พบว่าใน `mobile-repair-request.tsx` บรรทัด 802:
+  * Textarea "รายละเอียดเพิ่มเติม (ถ้ามี)" มี `aria-required="true"`
+  * ทั้งที่ label บอก "(ถ้ามี)" = optional
+  * และ code comment บรรทัด 789 บอก "ไม่บังคับ"
+  * และใน handleSubmit() ไม่ได้ validate description (แค่ subject)
+- แก้ไข: aria-required="false" ให้ตรงกับพฤติกรรมจริง
+
+Stage Summary:
+- Bug: textarea ที่ label บอก optional แต่มี aria-required=true (contradictory)
+- ผลกระทบ: browser screen readers + validation UI แสดงเป็น required field ผิดๆ
+- แก้แล้ว: aria-required="false" ตรงกับพฤติกรรมจริง
+- Commit: 2a09b8e
+- Push: origin/main → Vercel auto-deploy
