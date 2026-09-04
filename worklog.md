@@ -15987,3 +15987,46 @@ Stage Summary:
 - ✅ Commit 1023789 + push + Vercel deploy สำเร็จ
 - ✅ Dev server restart แล้ว pick up code ใหม่ — demo isolation ทำงาน (90 WOs)
 - 📝 Production deploy verified: gitCommit=1023789
+
+---
+Task ID: fix-mobile-repair-form-grouped-multiselect
+Agent: orchestrator (main)
+Task: แก้หน้าแจ้งซ่อมให้เลือกจากข้อมูลมาตรฐานแบบหลายหัวข้อ + มีช่อง comment ลักษณะหน้างาน
+
+Work Log:
+- อ่าน feedback จาก user:
+  * ตัวเลือกจากข้อมูลมาตรฐาน (Repair Subjects)
+  * เลือกหลายหัวข้อ แต่ไม่ใช่กองรวมที่เดียว — จัดกลุ่ม
+  * มีช่อง comment ลักษณะหน้างาน เพื่อช่างสำรวจ
+
+- สร้าง ProblemCategorySelector component:
+  * จัดกลุ่มตาม RepairGroup (4 groups: อาการทั่วไป/Printer/Network/อื่นๆ)
+  * Collapsible sections (กลุ่มแรกขยายอัตโนมัติ)
+  * Checkbox multi-select
+  * แสดง selected count badge ต่อกลุ่ม
+  * แสดง priority label ต่อ item (color-coded: ด่วน=แดง/สูง=ส้ม/ปานกลาง=เหลือง/ปกติ=เทา)
+
+- แก้ฟอร์มแจ้งซ่อม:
+  * เปลี่ยนจาก chips กองรวม → ProblemCategorySelector (grouped collapsible)
+  * เพิ่ม "ลักษณะหน้างาน / สิ่งที่พบเห็น" textarea (4 rows, 1000 chars)
+    — สำหรับอธิบายลักษณะหน้างานให้ช่างสำรวจ
+  * เพิ่ม "หมายเหตุเพิ่มเติม" input (เบอร์ติดต่อสำรอง, เวลาสะดวก)
+  * Submit: description + remark → combined details field
+  * Reset form: clear remark ด้วย
+  * Show selected subjects summary (count + names)
+
+- Verified บน production (commit 708bbac):
+  * 4 groups แสดงถูกต้อง: อาการทั่วไป(12)/Printer(10)/Network(7)/อื่นๆ(6)
+  * กลุ่มแรก expanded, อื่นๆ collapsed
+  * Multi-select: เลือก "ไฟไม่ติด" + "ไวรัส/มัลแวร์" พร้อมกันได้ (both checked=true)
+  * Priority labels แสดงถูกต้อง (สูง, ปานกลาง, ปกติ)
+  * "ลักษณะหน้างาน" textarea แสดง
+  * "หมายเหตุเพิ่มเติม" input แสดง
+
+Stage Summary:
+- ✅ สร้าง ProblemCategorySelector (collapsible grouped multi-select)
+- ✅ แก้ฟอร์มแจ้งซ่อม: 4 groups แยก + multi-select checkbox
+- ✅ เพิ่ม "ลักษณะหน้างาน" textarea สำหรับช่างสำรวจ
+- ✅ เพิ่ม "หมายเหตุเพิ่มเติม" input
+- ✅ Deploy สำเร็จ (gitCommit: 708bbac)
+- ✅ Verified บน production ด้วย agent-browser
