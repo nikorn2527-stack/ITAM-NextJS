@@ -16067,3 +16067,49 @@ Stage Summary:
 - ✅ Per-component: useKeyboardAware hook ใน 3 ไฟล์ที่ขาด
 - ✅ Deploy สำเร็จ (gitCommit: 9945321)
 - ✅ Verified ทุกฟอร์มบน production
+
+---
+Task ID: keep-alive-swipe-placeholder
+Agent: orchestrator (main)
+Task: ปรับ placeholder + swipe gesture + keep-alive navigation (desktop + mobile)
+
+Work Log:
+1. Placeholder สั้นกระชับ + จางลง:
+   - mobile-repair-request.tsx: 5 placeholders สั้นลง
+     * "อธิบายลักษณะหน้างานที่เห็น..." → "บอกลักษณะที่เห็น เช่น ติดไฟแต่ไม่พิมพ์"
+     * "เช่น เบอร์ติดต่อสำรอง, เวลาที่สะดวก..." → "เบอร์ติดต่อสำรอง / เวลาสะดวก"
+     * etc.
+   - mobile-my-work.tsx: 2 placeholders สั้นลง
+   - globals.css: opacity 50%→35% (light) + 40%→30% (dark) + font-weight 300
+
+2. Swipe gesture (use-swipe-back.ts hook):
+   - ปัดขวาจากขอบซ้าย → back navigation
+   - ปัดซ้ายจากขอบขวา → forward navigation
+   - touch events, edge detection, threshold 50px
+   - Mobile shell: swipe right → exit mobile mode
+
+3. Keep-alive pages (desktop):
+   - Created KeepAlivePage component
+   - All 18 pages use keep-alive pattern (render once, hide with display:none)
+   - Form state (search, filters, drafts) preserved when navigating
+   - Lazy mount: only render when first activated
+   - Removed framer-motion AnimatePresence (lighter)
+
+4. Keep-alive tabs (mobile):
+   - Created MobileKeepAliveTab component
+   - 4 mobile tabs (งานของฉัน/แจ้งซ่อม/จดมิเตอร์/เบิกของ) use keep-alive
+   - Verified: type "TEST_KEEP_ALIVE" in repair search → switch to my-work → switch back → text preserved!
+
+5. Navigation history stack:
+   - app-store: added pageHistory + pageForwardStack
+   - goBack()/goForward()/canGoBack()/canGoForward()
+   - Cap at 20 entries to prevent memory leak
+
+Stage Summary:
+- ✅ Placeholder สั้น + จาง (opacity 35%, font-weight 300)
+- ✅ Swipe gesture สำหรับ mobile (ปัดซ้าย/ขวา)
+- ✅ Keep-alive desktop pages (18 pages)
+- ✅ Keep-alive mobile tabs (4 tabs)
+- ✅ Navigation history stack (back/forward)
+- ✅ Deploy สำเร็จ (gitCommit: f4fc40e)
+- ✅ Verified: form state preserved when switching tabs
