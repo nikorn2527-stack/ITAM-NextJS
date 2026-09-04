@@ -86,6 +86,7 @@ import {
 } from './cascading-dropdown'
 import { useAppStore } from '@/store/app-store'
 import { parseAssetNo } from '@/lib/asset-qr'
+import { DeviceAccessoriesSection } from './device-accessories-section'
 
 interface Props {
   deviceId: string | null
@@ -2028,6 +2029,13 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
             )}
           </section>
         </div>
+
+        {/* ── Accessories / Peripherals ── */}
+        {device && (
+          <div className="px-4 pb-4">
+            <DeviceAccessoriesSection deviceId={device.id} />
+          </div>
+        )}
 
         <SheetFooter className="flex-row gap-2 border-t border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
           <Button

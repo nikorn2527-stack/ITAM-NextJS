@@ -78,6 +78,7 @@ model Device {
   workOrders        WorkOrder[]
   stockTransactions StockTransaction[]
   pmSchedules       PMSchedule[]
+  accessories       DeviceAccessory[]
 
   @@index([parentDeviceId])
   @@index([status])
@@ -1182,11 +1183,7 @@ model WebAuthnCredential {
   publicKey       Bytes    // COSE public key
   counter         Int      @default(0) // signature counter (replay protection)
   deviceType      String?  // 'touchid' | 'faceid' | 'windows-hello' | 'android-fingerprint' | 'security-key'
-<<<<<<< HEAD
   transports      String?  // comma-separated: 'internal,hybrid,usb,nfc,ble'
-=======
-    transports       String? // comma-separated: 'internal,hybrid,usb,nfc,ble'
->>>>>>> 27ce21c67ab6752c2b53a53e3d634c4c98a53727
   name            String?  // ชื่อที่ผู้ใช้ตั้งให้ device (e.g. "iPhone ของผม")
   createdAt       DateTime @default(now())
   lastUsedAt      DateTime?
@@ -1194,4 +1191,38 @@ model WebAuthnCredential {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ============================================================
+// 31) DeviceAccessory — อุปกรณ์ต่อพ่วง (Accessories/Peripherals)
+// ============================================================
+// อุปกรณ์ที่ต่อพ่วงกับอุปกรณ์หลัก เช่น:
+//   - คีย์บอร์ด, เมาส์, จอภาพ, สแกนเนอร์เสริม
+//   - สายแลน, อะแดปเตอร์, UPS, USB hub
+//   - หัวพิมพ์เสริม, ถาดกระดาษเสริม
+//
+// 1 อุปกรณ์หลัก → ได้หลายอุปกรณ์ต่อพ่วง
+// สามารถย้ายระหว่างอุปกรณ์ได้ (change parentDeviceId)
+// ============================================================
+model DeviceAccessory {
+  id              String   @id @default(cuid())
+  parentDeviceId  String   // FK → Device.id (อุปกรณ์หลักที่ต่อพ่วงอยู่)
+  accessoryType   String   // ประเภท: KEYBOARD | MOUSE | MONITOR | SCANNER | CABLE | ADAPTER | UPS | HUB | PRINTHEAD | TRAY | OTHER
+  brand           String?  // ยี่ห้อ
+  model           String?  // รุ่น
+  serialNumber    String?  // หมายเลขซีเรียล
+  status          String   @default("Active") // Active | Inactive | In Repair | Disposed
+  installedDate   String?  // วันที่ติดตั้ง (ISO date)
+  removedDate     String?  // วันที่ถอดออก (ถ้ามี)
+  remark          String?  // หมายเหตุ
+  isDemo          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  parentDevice    Device   @relation(fields: [parentDeviceId], references: [id], onDelete: Cascade)
+
+  @@index([parentDeviceId])
+  @@index([accessoryType])
+  @@index([status])
+  @@index([isDemo])
 }
