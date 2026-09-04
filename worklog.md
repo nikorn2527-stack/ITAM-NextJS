@@ -15917,3 +15917,48 @@ Stage Summary:
 - เข้า https://vercel.com/dashboard → Project → Deployments
 - ดูว่า deployment ล่าสุด status = Ready หรือ Error
 - ถ้า Error ให้ดู Build Logs เพื่อหาสาเหตุ
+
+---
+Task ID: fix-build-error-and-safe-sync
+Agent: orchestrator (main)
+Task: แก้ build error (duplicate demoTag) + ทำให้ sync-legacy safe ตามที่ user เตือนเรื่องหัวตาราง
+
+Work Log:
+- รับ screenshot แสดง Build Error: "the name demoTag is defined multiple times"
+- ตรวจสอบไฟล์ demo-mode.ts: พบ demoTag ประกาศซ้ำที่บรรทัด 62 + 75
+- ลบ duplicate definition ออก (เหลือบรรทัด 62 เดียว)
+- ตรวจสอบ sync-legacy/route.ts: พบว่าใช้ cols[N] แบบ hardcoded position
+  → อันตราย! ถ้า Google Sheets เปลี่ยนหัวตาราง ข้อมูลจะใส่ผิด field
+- เขียนใหม่ทั้งหมดให้:
+  1. อ่าน header row จาก CSV แทนการใช้ cols[N]
+  2. ใช้ HEADER_ALIASES (รองรับ Thai + English + camelCase)
+  3. เพิ่ม dry-run mode: ?dryRun=1
+  4. ใช้ upsert แทน create/update
+  5. ลบ null fields ก่อน update (ไม่ทำลายข้อมูลเดิม)
+  6. ใช้ parseDeviceImportCsv() + validateDeviceImportRows()
+  7. normalizeStatus() ก่อนเขียน
+  8. isDemo: false tag สำหรับ synced data
+  9. บันทึก headersDetected + fieldsMapped ใน audit log
+  10. บันทึก error 5 รายการแรกใน errors_detail
+
+- แก้ stock-items stats ที่ไม่ใช้ demoFilter (allActive query)
+
+Commits:
+- c9d04cd: fix: build error (duplicate demoTag) + sync-legacy header-aware safe sync
+- 324e5fd: fix: stock-items stats now apply demoFilter
+
+Stage Summary:
+- ✅ Build error แก้แล้ว — Vercel deploy สำเร็จ (gitCommit: 324e5fd)
+- ✅ Demo isolation ทำงานครบ:
+  * Dashboard: total=115 (was 2,494) ✅
+  * Stock: total=39 (was 92) ✅
+- ✅ Sync-legacy ปลอดภัย:
+  * อ่าน header row แทน cols[N]
+  * รองรับ Thai/English/camelCase headers
+  * dry-run mode + upsert + null-safe updates
+  * validation + error logging
+- ✅ Sync จะไม่ทำลายข้อมูลจริง เพราะ:
+  * ใช้ upsert (ไม่ create ใหม่ถ้ามีอยู่แล้ว)
+  * ลบ null fields ก่อน update (ไม่ทำลายข้อมูลเดิม)
+  * มี dry-run mode ให้ตรวจสอบก่อน sync จริง
+  * ใช้ HEADER_ALIASES เหมือน manual import
