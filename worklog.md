@@ -16030,3 +16030,40 @@ Stage Summary:
 - ✅ เพิ่ม "หมายเหตุเพิ่มเติม" input
 - ✅ Deploy สำเร็จ (gitCommit: 708bbac)
 - ✅ Verified บน production ด้วย agent-browser
+
+---
+Task ID: global-keyboard-fix-all-mobile-forms
+Agent: orchestrator (main)
+Task: แก้ปัญหาคีย์บอร์ดบัง input ในทุกฟอร์มบนมือถือ (ไม่ใช่แค่ my-work sheet)
+
+Work Log:
+- ตรวจสอบทุก mobile component พบ 3 ไฟล์ที่ยังไม่ได้แก้:
+  * mobile-repair-request.tsx — Textarea "ลักษณะหน้างาน" + "หมายเหตุ"
+  * mobile-stock-out.tsx — SheetContent max-h-[90vh] + Input + Textarea
+  * mobile-meter-reading.tsx — Input + Textarea
+
+- แก้ root cause แบบ global (apply ทุกฟอร์มพร้อมกัน):
+  1. viewport meta: เพิ่ม interactiveWidget='resizes-content'
+     → browser auto-resize viewport เมื่อคีย์บอร์ดขึ้น (ไม่ต้องใช้ JS)
+  2. globals.css: เพิ่ม keyboard-aware CSS
+     → scroll-margin-bottom 120px บน focused inputs
+     → overscroll-behavior: contain บน sheet/dialog content
+     → sticky footer fix
+  3. แทนที่ max-h-[90vh] → max-h-[90dvh] ใน 11 ไฟล์
+     → dvh (dynamic viewport height) ลดลงเมื่อคีย์บอร์ดขึ้น, vh ไม่ลด
+
+- เพิ่ม useKeyboardAware hook import ใน 3 ไฟล์ที่ขาด
+
+- Verified บน production (commit 9945321):
+  * viewport meta: interactive-widget=resizes-content ✅
+  * ฟอร์มแจ้งซ่อม: textarea + ปุ่ม "ส่งเรื่องแจ้งซ่อม" แสดง ✅
+  * ฟอร์มเบิกของ: sheet แสดงจำนวน + หมายเหตุ + ปุ่ม ✅
+  * ฟอร์มจดมิเตอร์: แสดง ✅
+
+Stage Summary:
+- ✅ Global fix: interactive-widget=resizes-content (browser-level)
+- ✅ Global fix: dvh แทน vh ใน 11 ไฟล์
+- ✅ Global fix: CSS scroll-margin + overscroll-behavior
+- ✅ Per-component: useKeyboardAware hook ใน 3 ไฟล์ที่ขาด
+- ✅ Deploy สำเร็จ (gitCommit: 9945321)
+- ✅ Verified ทุกฟอร์มบน production
