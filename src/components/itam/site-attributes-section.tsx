@@ -104,8 +104,15 @@ const EMPTY_FORM = {
  * Build a `baht` formatter for the per-page paper rate. Avoids Intl
  * polyfill issues in sandboxed runtimes.
  */
-function formatBaht(value: number | null | undefined, fallback = 0): string {
-  const n = typeof value === 'number' && !Number.isNaN(value) ? value : fallback
+function formatBaht(value: number | string | null | undefined, fallback = 0): string {
+  let n = fallback
+  if (typeof value === 'number' && !Number.isNaN(value)) {
+    n = value
+  } else if (typeof value === 'string') {
+    // Prisma Decimal serializes to string — parse it
+    const parsed = Number(value)
+    if (!Number.isNaN(parsed)) n = parsed
+  }
   return n.toFixed(2).replace(/\.00$/, '')
 }
 
@@ -146,9 +153,17 @@ export function SiteAttributesSection() {
       telegramChatId: site.TelegramChatId ?? '',
       emailAddress: site.EmailAddress ?? '',
       paperRateBw:
-        typeof site.PaperRateBW === 'number' ? site.PaperRateBW : 0.5,
+        typeof site.PaperRateBW === 'number'
+          ? site.PaperRateBW
+          : typeof site.PaperRateBW === 'string'
+            ? Number(site.PaperRateBW)
+            : 0.5,
       paperRateColor:
-        typeof site.PaperRateColor === 'number' ? site.PaperRateColor : 2.0,
+        typeof site.PaperRateColor === 'number'
+          ? site.PaperRateColor
+          : typeof site.PaperRateColor === 'string'
+            ? Number(site.PaperRateColor)
+            : 2.0,
     })
     setDialogOpen(true)
   }
