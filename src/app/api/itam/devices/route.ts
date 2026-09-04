@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
+import { demoFilter } from '@/lib/demo-mode'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { notifyDeviceAdded } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     const where: Record<string, unknown> = { AND: [] as unknown[] }
     // ── Site-level filter: non-admin users only see their allowedSites ──
-    const siteFilter = siteFilterForUser(user)
+    const siteFilter = { ...siteFilterForUser(user), ...demoFilter(user) }
     if (Object.keys(siteFilter).length) (where.AND as unknown[]).push(siteFilter)
     // If the caller explicitly asks for a site they can't access → 403
     if (site && !ctx.canAtSite(site, 'VIEW_DEVICES')) {

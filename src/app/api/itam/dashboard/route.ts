@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, getAllowedSites } from '@/lib/auth'
 import { ACTIVE_STATUS_VARIANTS, bucketizeStatusGroups } from '@/lib/status-utils'
+import { demoFilter } from '@/lib/demo-mode'
 
 // GET /api/itam/dashboard — optimized dashboard stats from real data
 //
@@ -29,7 +30,8 @@ export async function GET(req: NextRequest) {
     const t0 = Date.now()
 
     // ── Site-level filter: restrict all queries to the user's allowed sites
-    const siteFilter = siteFilterForUser(user)
+    // ── Demo filter: demo users see ONLY demo data, real users see ONLY real data
+    const siteFilter = { ...siteFilterForUser(user), ...demoFilter(user) }
     const userSites = getAllowedSites(user)
 
     const now = new Date()
