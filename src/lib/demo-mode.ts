@@ -63,16 +63,3 @@ export function demoTag(user: DemoAwareUser | null | undefined): { isDemo?: true
   if (!isDemoUser(user)) return {}
   return { isDemo: true }
 }
-
-/**
- * Build a Prisma `data` fragment that tags a created/updated record as
- * belonging to the demo scope. Returns `{ isDemo: true }` for demo users,
- * `{}` for real users (so the column keeps its DB default of `false`).
- *
- * Spread this into every create payload:
- *   `await db.device.create({ data: { ...payload, ...demoTag(user) } })`
- */
-export function demoTag(user: DemoAwareUser | null | undefined): { isDemo?: true } {
-  if (!isDemoUser(user)) return {}
-  return { isDemo: true }
-}
