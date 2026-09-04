@@ -150,6 +150,7 @@ export function MobileRepairRequest() {
   const [buildingOptions, setBuildingOptions] = React.useState<{ id: string; label: string; group?: string }[]>([])
   const [isExternal, setIsExternal] = React.useState(false)
   const [externalClientName, setExternalClientName] = React.useState('')
+  const [externalScannedCode, setExternalScannedCode] = React.useState('')
   const [externalPhone, setExternalPhone] = React.useState('')
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
@@ -434,8 +435,13 @@ export function MobileRepairRequest() {
     })
     const finalSubject = subjectsWithDetail.length > 0 ? subjectsWithDetail.join(', ') : subject.trim()
     // Description is optional — user might select problem type only
-    if (!selected) {
+    // External work doesn't need a device — just client name
+    if (!selected && !isExternal) {
       setSubmitError('กรุณาเลือกอุปกรณ์ที่จะแจ้งซ่อม')
+      return
+    }
+    if (isExternal && !externalClientName.trim()) {
+      setSubmitError('กรุณาระบุชื่อลูกค้า / สถานที่')
       return
     }
     const prOpt = PRIORITIES.find((p) => p.key === priority)
@@ -464,6 +470,18 @@ export function MobileRepairRequest() {
         reporterName: user?.name ?? user?.username ?? user?.email ?? null,
         actor: user?.email ?? user?.name ?? null,
         picBeforeImages: images,
+      }
+      // External work — include client name + phone + scanned code in details
+      if (isExternal) {
+        const externalParts = [
+          externalClientName.trim() ? `ลูกค้า/สถานที่: ${externalClientName.trim()}` : '',
+          externalPhone.trim() ? `เบอร์: ${externalPhone.trim()}` : '',
+          externalScannedCode.trim() ? `รหัสสแกน: ${externalScannedCode.trim()}` : '',
+        ].filter(Boolean).join('\n')
+        if (externalParts) {
+          payload.details = externalParts + (combinedDetails ? '\n\n' + combinedDetails : '')
+        }
+        payload.deviceId = null // external work — no device in system
       }
       const res = await fetch('/api/work-orders', {
         method: 'POST',
@@ -497,6 +515,9 @@ export function MobileRepairRequest() {
     setResults([])
     setSubmitError(null)
     setSuccessWoNumber(null)
+    setExternalClientName('')
+    setExternalScannedCode('')
+    setExternalPhone('')
   }
 
   // ── Success screen ──
@@ -520,7 +541,13 @@ export function MobileRepairRequest() {
       {qrScanOpen && (
         <InlineQRScanner
           onScan={(value) => {
-            setSearchTerm(value)
+            if (isExternal) {
+              // External work mode — fill scanned code field
+              setExternalScannedCode(value)
+            } else {
+              // Normal repair mode — fill search term to find device
+              setSearchTerm(value)
+            }
             setQrScanOpen(false)
             toast.success(`สแกนได้: ${value}`)
           }}
@@ -697,6 +724,36 @@ export function MobileRepairRequest() {
               <div className="rounded-lg bg-teal-50 p-3 text-xs text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
                 งานนอกสถานที่ — สำหรับงานที่ไม่ได้เกี่ยวข้องกับอุปกรณ์ในระบบ
                 (เช่น ลูกค้าภายนอก, สาขาอื่น, งานนอกสถานที่)
+              </div>
+              {/* QR/Barcode scan — สแกนอุปกรณ์ที่หน้างาน */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">สแกน QR / Barcode หน้างาน <span className="text-xs text-slate-400">(ถ้ามี)</span></Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={externalScannedCode}
+                    onChange={(e) => setExternalScannedCode(e.target.value)}
+                    placeholder="สแกนหรือพิมพ์รหัส"
+                    className="h-12 flex-1 text-base"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setQrScanOpen(true)
+                    }}
+                    aria-label="สแกน QR/Barcode"
+                    title="สแกน QR/Barcode"
+                    className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border border-teal-300 bg-teal-50 text-teal-600 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-400 z-10"
+                  >
+                    <QrCode className="h-5 w-5" />
+                  </button>
+                </div>
+                {externalScannedCode && (
+                  <p className="text-[11px] text-teal-600 dark:text-teal-400">
+                    ✓ สแกนได้: {externalScannedCode}
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">ชื่อลูกค้า / สถานที่ <span className="text-rose-500">*</span></Label>

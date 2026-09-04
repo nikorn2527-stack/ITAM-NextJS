@@ -461,10 +461,7 @@ export function ItamLogin() {
           {/* ── Fingerprint / Biometric login (Touch ID / Face ID / Windows Hello) ── */}
           <FingerprintLogin
             email={username}
-            onSuccess={(token, user) => {
-              // Reuse same login flow as password
-              login(token, user as never)
-            }}
+            onSuccess={(token, user) => { login(token, user as never) }}
             primaryColor={primaryColor}
           />
 
@@ -1156,9 +1153,6 @@ function OauthButton({
 // ─────────────────────────────────────────────────────────────────────────
 // FingerprintLogin — ล็อกอินด้วยลายนิ้วมือ / Face ID / Touch ID / Windows Hello
 // ─────────────────────────────────────────────────────────────────────────
-// ใช้ WebAuthn (FIDO2) — มาตรฐานเดียวกับ Apple Passkey, Google Password Manager.
-// ผู้ใช้ต้องลงทะเบียนก่อน (หลัง login ด้วย password แล้วไปที่ Settings → บัญชีของฉัน)
-// ─────────────────────────────────────────────────────────────────────────
 function FingerprintLogin({
   email,
   onSuccess,
@@ -1168,42 +1162,19 @@ function FingerprintLogin({
   onSuccess: (token: string, user: unknown) => void
   primaryColor: string
 }) {
-  const { isSupported, login, loading, error, clearError } = useWebAuthn()
-  const [showUnsupportedHint, setShowUnsupportedHint] = React.useState(false)
+  const { isSupported, login, loading } = useWebAuthn()
 
-  if (!isSupported) {
-    // Don't render anything if browser doesn't support WebAuthn — silent fallback to password.
-    // But show a small hint when user clicks the (hidden) fingerprint area.
-    if (!showUnsupportedHint) return null
-    return (
-      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-        <div className="flex items-start gap-2">
-          <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-          <div>
-            <p className="font-medium">เบราว์เซอร์นี้ไม่รองรับล็อกอินด้วยลายนิ้วมือ</p>
-            <p className="mt-0.5 opacity-80">กรุณาใช้ Chrome / Safari / Edge เวอร์ชันใหม่ หรือ login ด้วย password</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  if (!isSupported) return null
 
   const handleFingerprint = async () => {
-    clearError()
-    // Need email to find user's credentials
     if (!email || email.trim() === '') {
       toast.info('กรุณากรอกชื่อผู้ใช้ / อีเมลก่อน แล้วกดลายนิ้วมือ')
       return
     }
-    // If user typed username (not email), try to resolve email — but for simplicity,
-    // accept either since the API does case-insensitive match on email field.
-    // Users who registered with username only may need to use email for fingerprint login.
     const result = await login(email.trim())
     if (result) {
       toast.success('ยืนยันตัวตนด้วยลายนิ้วมือสำเร็จ')
       onSuccess(result.token, result.user)
-    } else if (error) {
-      toast.error(error)
     }
   }
 

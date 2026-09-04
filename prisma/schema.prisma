@@ -1182,7 +1182,11 @@ model WebAuthnCredential {
   publicKey       Bytes    // COSE public key
   counter         Int      @default(0) // signature counter (replay protection)
   deviceType      String?  // 'touchid' | 'faceid' | 'windows-hello' | 'android-fingerprint' | 'security-key'
+<<<<<<< HEAD
+  transports      String?  // comma-separated: 'internal,hybrid,usb,nfc,ble'
+=======
     transports       String? // comma-separated: 'internal,hybrid,usb,nfc,ble'
+>>>>>>> 27ce21c67ab6752c2b53a53e3d634c4c98a53727
   name            String?  // ชื่อที่ผู้ใช้ตั้งให้ device (e.g. "iPhone ของผม")
   createdAt       DateTime @default(now())
   lastUsedAt      DateTime?

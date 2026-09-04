@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
+import { demoFilter } from '@/lib/demo-mode'
 import {
   buildStockItemMap,
   calcMonthlyMaterialCost,
@@ -49,9 +50,11 @@ export async function GET(req: NextRequest) {
 
     // ── Fetch all OUT transactions in the month ──
     // StockTransaction.txnDate is ISO string (YYYY-MM-DD), so we filter by string range.
+    // Apply demoFilter so demo users see only demo data, real users see only real data.
     const where: Record<string, unknown> = {
       type: 'OUT',
       txnDate: { gte: startDate, lte: endDate },
+      ...demoFilter(auth.user),
     }
     if (siteFilter !== 'all') {
       // Filter by StockItem.site via relation — we need a nested where.
