@@ -112,9 +112,17 @@ export async function decodeSession(
   }
 
   // ── Legacy format: plain Base64 JSON (deprecated) ──
-  // SECURITY: We still accept these so existing sessions don't break,
-  // but they are NOT secure — anyone with the userId can forge one.
-  // We log a deprecation warning to track when migration is complete.
+  // SECURITY: In production, we NO LONGER accept legacy Base64 sessions
+  // — they are forgeable. Users with old cookies will be logged out and
+  // must log in again to get a fresh signed JWT.
+  //
+  // In development (non-production), we still accept legacy tokens so
+  // existing dev sessions don't break during testing.
+  if (process.env.NODE_ENV === 'production') {
+    // Reject legacy Base64 tokens in production — forces re-login.
+    return null
+  }
+
   try {
     const json = Buffer.from(token, 'base64').toString('utf8')
     const parsed = JSON.parse(json) as SessionPayload
@@ -126,15 +134,11 @@ export async function decodeSession(
       return null
     }
     if (parsed.exp < Date.now()) return null
-    // Deprecation warning — helps track when all sessions have migrated.
-    // (Only logs in non-production to avoid log spam.)
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn(
-        '[auth-session] DEPRECATED: accepting legacy Base64 session for user',
-        parsed.email,
-        '— should be migrated to signed JWT',
-      )
-    }
+    console.warn(
+      '[auth-session] DEPRECATED: accepting legacy Base64 session for user',
+      parsed.email,
+      '— should be migrated to signed JWT',
+    )
     return parsed
   } catch {
     return null
