@@ -2,7 +2,7 @@
 
 > สำหรับทีมที่จะรับงานต่อ
 > วันที่: 5 กันยายน 2026
-> Commit ล่าสุด: `53c62d9` (security: fix P0 issues)
+> Commit ล่าสุด: `7d1cd0f` (security: P0-2 harden — reject legacy sessions)
 > Production: https://itam-next-js.vercel.app/
 
 ---
@@ -222,37 +222,54 @@ https://itam-next-js.vercel.app/qr/d/eg52u316?action=repair
 
 ## 🚀 สิ่งที่ควรทำต่อ (priority order)
 
-### ✅ ทำเสร็จแล้ว (commit `d411de6` + `53c62d9`)
+### ✅ ทำเสร็จแล้วทั้งหมด (commits `d411de6` + `53c62d9` + `60b7887` + `7d1cd0f`)
 
+#### LINE integration (เรื่องที่ 1)
 - ✅ **Gap 1** — เชื่อม `PublicReporter.lineUserId` → `WorkOrder.lineUserId`
 - ✅ **Gap 2 (บางส่วน)** — `bot_prompt=aggressive` ใน LINE Login URL
 - ✅ **Gap 3** — `PENDING_REVIEW` ใน `VALID_STATUSES` + `VALID_SOURCES` เพิ่ม `line_liff`, `public_qr`, `line`
 - ✅ **Gap 5** — Auto-fill ข้อมูลเดิม (มีอยู่แล้วใน code)
-- ✅ **P0-1** — ลบ `google-service-account.json` จาก Git + เพิ่ม `.gitignore` + อ่านจาก env var
+
+#### อุปกรณ์ต่อพ่วง (เรื่องที่ 2 — ทำตั้งแต่ commit `16d7959`)
+- ✅ DeviceAccessory model + CRUD APIs
+- ✅ Import/Export CSV
+- ✅ Sticker button (ใช้ StickerPrintDialog + qrContentFor)
+- ✅ Device Set children section + parent banner
+- ✅ Replace device dialog + API (transaction + demo guard)
+
+#### Security P0 fixes (ตาม audit report)
+- ✅ **P0-1 (code)** — ลบ `google-service-account.json` จาก Git + เพิ่ม `.gitignore` + อ่านจาก env var `GOOGLE_APPLICATION_CREDENTIALS_JSON`
+- ✅ **P0-1 (user action)** — Revoke key เดิม + สร้าง key ใหม่ + ตั้ง env var ใน Vercel ✅
+- ✅ **P0-2** — Migrate legacy Base64 session → signed JWT (HS256 via jose) + reject legacy in production
 - ✅ **P0-3a** — ปิด `/api/seed` ใน production
 - ✅ **P0-3b** — เพิ่ม `ADMIN` auth ให้ `/api/notifications/send`
 - ✅ **P0-3c** — เพิ่ม `VIEW_AUDIT` auth ให้ `/api/audit`
 
-### ⏳ ยังเหลือ (ทีมที่รับต่อควรทำ)
+### ⏳ ยังเหลือ (P1-P2 — ไม่ critical)
 
-1. **⚠️ P0-1 (user action required)** — Revoke Google service-account key เดิมใน Google Cloud IAM และสร้าง key ใหม่
-   - ไปที่ https://console.cloud.google.com/iam-admin/serviceaccounts
-   - เลือก service account → Keys → ลบ key เดิม + สร้าง key ใหม่ (JSON)
-   - เก็บ key ใหม่ใน Vercel env var `GOOGLE_APPLICATION_CREDENTIALS_JSON` (ค่าทั้งหมดของ JSON)
-   - **สำคัญ**: key เดิมที่ leak ผ่าน Git ยังใช้งานได้จนกว่าจะ revoke ที่ Google
-
-2. **P0-2** — Legacy session cookie ใช้ Base64 ไม่มีลายเซ็น (`src/lib/legacy-session.ts`)
-   - แนะนำ: migrate ไปใช้ `jose` JWT signed with `JWT_SECRET`
-   - หรือปิด `/api/auth/login` legacy และใช้แค่ `/api/itam/auth/login`
-
-3. **Gap 2 ทาง B** — LIFF integration (4-8 ชั่วโมง)
+1. **Gap 2 ทาง B** — LIFF integration (4-8 ชั่วโมง)
    - ต้องสร้าง LIFF app ใน LINE Developers Console
-   - ตั้งค่า LIFF URL → เปิดใน LINE app โดยตรง
+   - ตั้งค่า LIFF URL → เปิดใน LINE app โดยตรง (ไม่ต้อง login ซ้ำ)
 
-4. **Gap 4** — ขอ phone scope จาก LINE (รอ review 3-5 วัน)
+2. **Gap 4** — ขอ phone scope จาก LINE (รอ review 3-5 วัน)
    - ใน LINE Console → Channel → Permissions → ขอ "Phone number" scope
 
-5. **P1-P2 อื่น ๆ** — ตาม audit report (ดูไฟล์ audit ใน repo หรือบทสนทนา)
+3. **P1** — เปิด TypeScript และ lint gate ใน build (ปิด `ignoreBuildErrors`)
+   - ต้องแก้ type errors ที่ค้างอยู่ก่อน
+
+4. **P1** — แก้ dependency installation (`npm ci` ไม่ผ่านเพราะ peer dep conflict)
+
+5. **P1** — แยก TypeScript scope (ตอนนี้รวมไฟล์ scripts/tests ทั้งหมด)
+
+6. **P1** — แก้ snapshot feature ที่อ้าง model ซึ่งถูกลบ (`meterReportSnapshot`)
+
+7. **P2** — ลดขนาด component และ route (work-orders-page.tsx 214KB, devices-page.tsx 175KB, etc.)
+
+8. **P2** — เปิด ESLint rules ที่ถูกปิดกลับทีละชุด
+
+9. **P2** — ทำ structured logging (แทน console.log กระจัดกระจาย)
+
+10. **P2** — ทำความสะอาด repository (backup files, *.tsbuildinfo, PR metadata)
 
 ---
 
