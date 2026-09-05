@@ -24,8 +24,11 @@ export type RepairCompletionValidation =
 
 const MAX_LENGTHS: Record<keyof NormalizedRepairCompletionInput, number> = {
   note: 2_000,
-  picAfter: 2_048,
-  picOnsite: 2_048,
+  // picAfter / picOnsite: base64 image data — a 1024px JPEG at 0.7 quality
+  // is typically 50,000–200,000 characters. Allow up to 500,000 to be safe.
+  // (Previously was 2,048 which rejected ALL real photos.)
+  picAfter: 500_000,
+  picOnsite: 500_000,
   resolution: 2_000,
   resolutionGroup: 120,
 }
