@@ -1,6 +1,6 @@
 {
-  "buildCommand": "rm -rf node_modules/.prisma node_modules/@prisma/client .next && npx prisma generate && npx prisma db push --accept-data-loss && next build --webpack",
-  "installCommand": "npm install --legacy-peer-deps --force",
+  "buildCommand": "npx prisma generate && npx prisma db push --accept-data-loss && next build --webpack",
+  "installCommand": "npm install --legacy-peer-deps",
   "crons": [
     {
       "path": "/api/cron/keepalive",
