@@ -2,7 +2,7 @@
 
 > สำหรับทีมที่จะรับงานต่อ
 > วันที่: 5 กันยายน 2026
-> Commit ล่าสุด: `ca883cf`
+> Commit ล่าสุด: `53c62d9` (security: fix P0 issues)
 > Production: https://itam-next-js.vercel.app/
 
 ---
@@ -157,20 +157,14 @@ const VALID_STATUSES = [
 
 ---
 
-### Gap 5: Auto-fill ข้อมูลเดิม — ยังไม่ได้ทำ
+### Gap 5: Auto-fill ข้อมูลเดิม — ✅ ทำแล้ว
 
-**ปัญหา:**
-- คนที่เคยแจ้งซ่อมแล้ว (มี PublicReporter record) → ครั้งต่อไปยังต้องกรอกชื่อ+เบอร์+อีเมลใหม่
-- น่าจะ auto-fill ข้อมูลเดิมให้
+**สถานะ:** เสร็จแล้ว (commit เดิม)
 
-**วิธีแก้:**
-1. สร้าง endpoint `/api/public/reporter/me?lineUserId=xxx`
-   - ค้น PublicReporter โดย `lineUserId`
-   - Return `{ name, phone, email, reportCount, lastReportAt }` หรือ 404
-2. แก้ `public-repair-form.tsx`:
-   - ใน `useEffect` ตอนมี `lineSession?.userId` → fetch `/api/public/reporter/me`
-   - ถ้าเจอ → `setName(data.name)`, `setPhone(data.phone)`, `setEmail(data.email)`
-   - user เห็นข้อมูลตัวเองอยู่แล้ว แค่เลือกปัญหา + ส่ง
+- `/api/public/reporter/me?siteCode=xxx` endpoint มีอยู่แล้ว (ทำใน Phase 2-c)
+- `public-repair-form.tsx` มี auto-fill logic อยู่แล้ว (บรรทัด 190-229)
+- เมื่อ user login LINE แล้ว → ระบบ fetch `/api/public/reporter/me` → auto-fill ชื่อ+เบอร์+อีเมล
+- user เห็นข้อมูลตัวเองอยู่แล้ว แค่เลือกปัญหา + ส่ง
 
 ---
 
@@ -228,12 +222,37 @@ https://itam-next-js.vercel.app/qr/d/eg52u316?action=repair
 
 ## 🚀 สิ่งที่ควรทำต่อ (priority order)
 
-1. **Gap 1** — เชื่อม `PublicReporter.lineUserId` → `WorkOrder.lineUserId` (10 นาที)
-2. **Gap 3** — เพิ่ม `PENDING_REVIEW` ใน `VALID_STATUSES` (5 นาที)
-3. **Gap 5** — Auto-fill ข้อมูลเดิม (1-2 ชั่วโมง)
-4. **Gap 2 ทาง A** — เพิ่ม `bot_prompt=aggressive` (15 นาที — ต้องตั้งใน LINE Console ด้วย)
-5. **Gap 2 ทาง B** — LIFF integration (4-8 ชั่วโมง — ต้องสร้าง LIFF app ใน LINE Console)
-6. **Gap 4** — ขอ phone scope จาก LINE (รอ review 3-5 วัน)
+### ✅ ทำเสร็จแล้ว (commit `d411de6` + `53c62d9`)
+
+- ✅ **Gap 1** — เชื่อม `PublicReporter.lineUserId` → `WorkOrder.lineUserId`
+- ✅ **Gap 2 (บางส่วน)** — `bot_prompt=aggressive` ใน LINE Login URL
+- ✅ **Gap 3** — `PENDING_REVIEW` ใน `VALID_STATUSES` + `VALID_SOURCES` เพิ่ม `line_liff`, `public_qr`, `line`
+- ✅ **Gap 5** — Auto-fill ข้อมูลเดิม (มีอยู่แล้วใน code)
+- ✅ **P0-1** — ลบ `google-service-account.json` จาก Git + เพิ่ม `.gitignore` + อ่านจาก env var
+- ✅ **P0-3a** — ปิด `/api/seed` ใน production
+- ✅ **P0-3b** — เพิ่ม `ADMIN` auth ให้ `/api/notifications/send`
+- ✅ **P0-3c** — เพิ่ม `VIEW_AUDIT` auth ให้ `/api/audit`
+
+### ⏳ ยังเหลือ (ทีมที่รับต่อควรทำ)
+
+1. **⚠️ P0-1 (user action required)** — Revoke Google service-account key เดิมใน Google Cloud IAM และสร้าง key ใหม่
+   - ไปที่ https://console.cloud.google.com/iam-admin/serviceaccounts
+   - เลือก service account → Keys → ลบ key เดิม + สร้าง key ใหม่ (JSON)
+   - เก็บ key ใหม่ใน Vercel env var `GOOGLE_APPLICATION_CREDENTIALS_JSON` (ค่าทั้งหมดของ JSON)
+   - **สำคัญ**: key เดิมที่ leak ผ่าน Git ยังใช้งานได้จนกว่าจะ revoke ที่ Google
+
+2. **P0-2** — Legacy session cookie ใช้ Base64 ไม่มีลายเซ็น (`src/lib/legacy-session.ts`)
+   - แนะนำ: migrate ไปใช้ `jose` JWT signed with `JWT_SECRET`
+   - หรือปิด `/api/auth/login` legacy และใช้แค่ `/api/itam/auth/login`
+
+3. **Gap 2 ทาง B** — LIFF integration (4-8 ชั่วโมง)
+   - ต้องสร้าง LIFF app ใน LINE Developers Console
+   - ตั้งค่า LIFF URL → เปิดใน LINE app โดยตรง
+
+4. **Gap 4** — ขอ phone scope จาก LINE (รอ review 3-5 วัน)
+   - ใน LINE Console → Channel → Permissions → ขอ "Phone number" scope
+
+5. **P1-P2 อื่น ๆ** — ตาม audit report (ดูไฟล์ audit ใน repo หรือบทสนทนา)
 
 ---
 
