@@ -321,6 +321,14 @@ model WorkOrder {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // ── Public QR Repair Submission ──
+  // When a work order is submitted via public QR scan (no staff login),
+  // `publicReporterId` links to the PublicReporter record (LINE-verified
+  // or anonymous with phone). `submissionSource` is reused for the source
+  // flag: 'guest' (default), 'line_liff', 'public_qr', 'app'.
+  publicReporterId String?
+  publicReporter   PublicReporter? @relation(fields: [publicReporterId], references: [id], onDelete: SetNull)
+
   device   Device?            @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   messages WorkOrderMessage[]
   reviews  WorkOrderReview[]
@@ -335,6 +343,7 @@ model WorkOrder {
   @@index([isSpecialFee])
   @@index([siteCode, status, createdAt])
   @@index([version])
+  @@index([publicReporterId])
 }
 
 // ============================================================
@@ -475,9 +484,24 @@ model SiteAttribute {
   PaperRateColor Decimal? @default(2.0) @db.Decimal(12, 2) // ฿/แผ่น สี
   TelegramChatId String?  @map("TelegramChatId") // Telegram chat ID สำหรับสาขา
   EmailAddress   String?  @map("EmailAddress") // อีเมลสาขาสำหรับรับแจ้งเตือน
+
+  // ── LINE Login (public QR scan → repair flow) ──
+  // PPIT (single org) uses ONE shared LINE Login Channel. But each site
+  // has its OWN LINE OA (for friend add + notifications). When a public
+  // reporter logs in via LINE Login, we auto-friend them to the site's
+  // LINE OA so they can receive status updates via that OA.
+  // LiffId is optional — used only if we deploy as a LIFF app (in-LINE).
+  LiffId                 String?  @map("LiffId")
+  LiffAutoFriendLine     String?  @map("LiffAutoFriendLine") // LINE OA handle to auto-friend on login
+  // Public repair rate-limit per site (per phone/day, per IP/day)
+  PublicRepairDailyLimit Int     @default(3) // max WO/phone/day
+  PublicRepairIpDailyLimit Int    @default(10) // max WO/IP/day
+
   isDemo         Boolean  @default(false)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
+
+  publicReporters PublicReporter[]
 
   @@map("site_attributes")
   @@index([isDemo])
@@ -1321,5 +1345,62 @@ model DeviceAccessory {
   @@index([parentDeviceId])
   @@index([accessoryType])
   @@index([status])
+  @@index([isDemo])
+}
+
+// ============================================================
+// 32) PublicReporter — ผู้แจ้งซ่อมจาก QR สาธารณะ
+// ============================================================
+// บุคคลภายนอกที่สแกน QR บนอุปกรณ์แล้วแจ้งซ่อม โดยไม่มี account พนักงาน
+// ระบุตัวตนได้ 3 ระดับ:
+//   - Tier 1: LINE Login + phone scope → phoneVerified=true (อัตโนมัติ)
+//   - Tier 2: LINE Login ไม่มี phone → มี lineUserId แต่ไม่รู้เบอร์ (staff โทร verify)
+//   - Tier 3: กรอกเบอร์+ชื่อ manual → phoneVerified=false (staff โทร verify)
+//
+// Unique key: (siteCode, phone) และ (siteCode, lineUserId)
+// → คนจากสาขา A ไม่ปนกับสาขา B ถ้าแจ้งหลายสาขา
+//
+// Anti-spam:
+//   - isBlocked: staff แบนเบอร์ได้
+//   - reportCount/lastReportAt: ตรวจ anomaly แจ้งเยอะผิดปกติ
+// ============================================================
+model PublicReporter {
+  id              String   @id @default(cuid())
+  siteCode        String   // สาขาที่แจ้ง (PPIT, UDH, NKP, MECUD...)
+  // Anonymous identification (Tier 3)
+  phone           String?  // เบอร์มือถือ (Thai: 08X-XXX-XXXX)
+  name            String?  // ชื่อ-สกุล (ผู้แจ้ง manual)
+  email           String?
+  // LINE identification (Tier 1+2)
+  lineUserId      String?  // LINE userId (sub claim — unique per LINE Login channel)
+  lineDisplayName String?
+  linePictureUrl  String?
+  lineScopePhone  String?  // เบอร์จาก LINE phone scope (ถ้ามี)
+  // Verification status
+  phoneVerified   Boolean  @default(false)  // true เมื่อ verify ผ่าน LINE phone scope หรือ OTP
+  verifiedAt      DateTime?
+  verifiedMethod  String?  // 'line_phone_scope' | 'manual_call' | 'otp_sms' (future)
+  // Anti-spam / moderation
+  isBlocked       Boolean  @default(false)
+  blockedReason   String?
+  blockedAt       DateTime?
+  blockedBy       String?  // staff user id ที่แบน
+  reportCount     Int      @default(0)
+  lastReportAt    DateTime?
+  // Metadata
+  defaultDeviceId String?  // อุปกรณ์ที่แจ้งล่าสุด (hint สำหรับ UI)
+  isDemo          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  siteAttribute   SiteAttribute? @relation(fields: [siteCode], references: [SiteCode], onDelete: Restrict)
+  workOrders      WorkOrder[]
+
+  @@unique([siteCode, phone])
+  @@unique([siteCode, lineUserId])
+  @@index([siteCode])
+  @@index([phone])
+  @@index([lineUserId])
+  @@index([isBlocked])
   @@index([isDemo])
 }
