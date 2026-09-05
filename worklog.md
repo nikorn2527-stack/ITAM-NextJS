@@ -17051,3 +17051,37 @@ Next steps for user (after deploy):
 5. Configure SiteAttribute per site: LiffId, LiffAutoFriendLine, PublicRepairDailyLimit (default 3)
 6. Test public QR flow: print a sticker → scan with phone (no login) → see public device card → click "แจ้งซ่อมด้วย LINE" → login → submit → see success
 7. Test replace device: open device detail → click "เปลี่ยนเครื่องหลัก" → select new device → toggle items → submit → verify old device status=Replaced + items moved
+
+---
+Task ID: SYSTEM-ARCHITECTURE-MAPPING
+Agent: research-subagent
+Task: Map the entire ITAM system architecture
+
+Work Log:
+- Read root config: package.json (Next 16, Prisma 6.19, 42 deps, Supabase+Vercel+Bun runtime), next.config.ts (standalone only when self-hosted), vercel.json (3 crons: keepalive/daily-report/sync-legacy; region sin1), public/manifest.json (PWA "ITAM").
+- Read prisma/schema.prisma (1,407 lines, 42 models — full inventory of Device/WorkOrder/StockItem/SiteAttribute/PublicReporter/etc. with line refs).
+- Read notifications.ts (967 lines) end-to-end — found sendLINE/sendTelegram/sendEmail + 8 notify* helpers (notifyWorkOrderCreated/Assigned/Completed/Cancelled/Message/PartsRequested/PartsApproved + stock/meter/device helpers). Loaded settings from AppSetting table.
+- Grepped callers of notifyWorkOrder* helpers — confirmed they fire from /api/work-orders (POST), /api/work-orders/[id]/{assign,complete,cancel,messages}, /api/public/repairs.
+- Grepped db.workOrder.create — found 7 distinct WO creation paths (main, v1, public QR, LINE webhook 3 sub-flows, CSV import, sync/run, sync/runs/retry, legacy-bridge-apply).
+- Read /api/work-orders/route.ts (716 lines) — main staff+guest WO create with idempotency (requestId), demoFilter, guest contact validation, siteCode derivation from device.
+- Read /api/public/repairs/route.ts (688 lines) — NEW public QR repair flow with 3-tier identity (LINE+phone / LINE-only / anonymous phone), per-phone + per-IP rate limiting, PublicReporter upsert.
+- Read /api/work-orders/[id]/{assign,complete,cancel,messages,images}/route.ts — assignment auto-advances PENDING→IN_PROGRESS; complete handles parts sub-flow (auto-approve vs PENDING) and triggers notifyWorkOrderCompleted (push to wo.lineUserId).
+- Read /api/line/webhook/route.ts (741 lines) — LINE OA webhook with HMAC-SHA256 signature verification, follow/message/postback events, image→QR→device flow, text→device-code→WO flow, default text→WO flow. Uses LINE Reply API (not Push). No notifyWorkOrderCreated call.
+- Read /api/line/reply/route.ts — staff-initiated LINE push to specific lineUserId.
+- Read src/lib/line-login.ts + line-session.ts + /api/auth/line/{login,callback,logout,me}/route.ts — separate LINE Login v2.1 channel for public QR repair reporters; sets 24h line_session cookie (base64-encoded JSON, HTTP-only).
+- Read src/components/itam/mobile/mobile-my-work.tsx (2,650 lines) + mobile-shell.tsx — confirmed "แอปช่าง" is the mobile view of THIS Next.js app, NOT a separate app. Triggered by use-mobile-detect.ts (viewport < 768px or mobile UA). 4 bottom-nav tabs (My Work / Repair / Meter / Stock). Same JWT auth, same API routes as desktop.
+- Read src/components/public/public-repair-form.tsx + public-repair-success.tsx — multi-tier public form.
+- Read src/app/qr/[type]/[id]/page.tsx — Smart QR router that decides staff vs public flow.
+- Read src/app/wo/[id]/page.tsx — public WO tracking page.
+- Read src/lib/r2-storage.ts + vercel-blob-storage.ts + supabase-storage.ts + storage.ts — all storage abstraction libs are fully implemented but ZERO import sites outside themselves. Photos are stored as base64 data URLs in WorkOrderImage.image_data (1.5MB cap, 12 images per stage). Storage abstraction is dead code waiting to be wired.
+- Read src/lib/demo-mode.ts + site-scope.ts + authorization-context.ts + wo-authz.ts — Phase 1 RBAC: UserSiteGrant with site-scoped canAtSite(siteCode, perm); demoFilter/demoTag for demo vs real isolation.
+- Read mini-services/staging-apps-script/index.ts — Bun-served mock of legacy Apps Script Web App on port 3030 for G2 real-token tests.
+- Read src/lib/google-sheets-sync.ts + sync-adapter.ts + /api/sync/run/route.ts + /api/cron/{keepalive,daily-report,sync-legacy}/route.ts — confirmed 3 sync mechanisms (Google Sheets CSV / Apps Script HTTP / in-DB legacy bridge) + 3 cron jobs.
+- Read src/lib/site-scope.ts + /api/site-attributes/route.ts + prisma/seed.ts — confirmed TWO site models (Site legacy + SiteAttribute rich), per-site LineOA/Hotline/TelegramChatId/EmailAddress/LiffId/LiffAutoFriendLine/PublicRepairDailyLimit.
+
+Stage Summary:
+- Report saved to /home/z/my-project/SYSTEM-ARCHITECTURE.md (8 sections, ~700 lines, every claim cited with file:line).
+- KEY INSIGHT 1 — Complete WO lifecycle: 7 distinct creation endpoints feed into a single WorkOrder table. Status flows PENDING → IN_PROGRESS → WAITING_PARTS ⇄ IN_PROGRESS → COMPLETED (or → CANCELLED). Closure endpoint at /api/work-orders/[id]/complete sets workCompletedAt + closedAt + resolution + resolutionGroup + detailsAdmin and triggers notifyWorkOrderCompleted.
+- KEY INSIGHT 2 — LINE OA push notifications fire on WO creation (notifyWorkOrderCreated), assignment (notifyWorkOrderAssigned), completion (notifyWorkOrderCompleted), cancellation (notifyWorkOrderCancelled), and chat messages (notifyWorkOrderMessage). All go through sendLINE() in src/lib/notifications.ts:308-352 which calls api.line.me/v2/bot/message/push. On WO completion, the push targets wo.lineUserId (the reporter's LINE ID) — but ONLY succeeds if (a) AppSetting.line_channel_access_token is configured, (b) notify_enabled is not 'false', (c) the reporter has added the LINE OA as a friend.
+- KEY INSIGHT 3 — "แอปช่าง" is NOT a separate app. It is the mobile view of the ITAM Next.js app, triggered by use-mobile-detect.ts based on viewport width + UA. MobileShell renders 4 tabs (My Work / Repair / Meter / Stock) using the same JWT auth, same API routes, same Prisma client, same DB as desktop. PWA manifest + service worker present.
+- KEY INSIGHT 4 — New Public QR Repair system does NOT auto-friend the site's LINE OA. SiteAttribute.LiffAutoFriendLine field exists in schema but is never used in code. This means Tier 1/2 reporters (LINE-logged-in via /api/auth/line/callback) are NOT automatically added as friends of the LINE OA, so the notifyWorkOrderCompleted push to their lineUserId will silently 401. Other gaps: PENDING_REVIEW status is set but not in VALID_STATUSES allowlist (staff can't filter for it); V1 API endpoints intentionally omit notifications; storage abstraction libs (R2/Blob/Supabase) are dead code with zero call sites — photos bloat the Postgres DB as base64 strings.
