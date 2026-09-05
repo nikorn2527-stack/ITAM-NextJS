@@ -90,7 +90,6 @@ import { useAppStore } from '@/store/app-store'
 import { parseAssetNo } from '@/lib/asset-qr'
 import { DeviceAccessoriesSection } from './device-accessories-section'
 import {
-  DeviceSetChildrenSection,
   DeviceSetParentBanner,
 } from './device-set-children-section'
 import { ReplaceDeviceDialog } from './replace-device-dialog'
@@ -2133,24 +2132,18 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
           </section>
         </div>
 
-        {/* ── Accessories / Peripherals ── */}
+        {/* ── อุปกรณ์ในชุด (unified: อุปกรณ์ต่อพ่วง + Device Set children) ── */}
+        {/* MERGE-ACCESSORY-DEVICE-SET: previously this was 2 separate sections
+            (DeviceAccessoriesSection + DeviceSetChildrenSection). Now merged
+            into a single section with a toggle in the Add dialog: "new" creates
+            a DeviceAccessory row; "existing" links an existing Device as a
+            child by PATCHing its parentDeviceId. */}
         {device && (
           <div className="px-4 pb-4">
-            <DeviceAccessoriesSection deviceId={device.id} parentDevice={device} />
-          </div>
-        )}
-
-        {/* ── Device Set: children of this device ── */}
-        {/* ใช้ DeviceSetChildrenSection จากไฟล์ device-set-children-section.tsx
-            (ย้ายออกจากไฟล์นี้เพื่อให้ reuse ได้ในหลายจุด)
-            ส่ง initialChildren + loading มาเพื่อใช้ react-query ที่ fetch แล้ว
-            (device-detail-sheet มี childDevices query อยู่แล้ว — ไม่ต้อง fetch ซ้ำ) */}
-        {device && (
-          <div className="px-4 pb-4">
-            <DeviceSetChildrenSection
+            <DeviceAccessoriesSection
               deviceId={device.id}
-              setLabel={device.setLabel}
-              initialChildren={(childDevices ?? []).map((c) => ({
+              parentDevice={device}
+              childDevices={(childDevices ?? []).map((c) => ({
                 id: c.id,
                 assetCode: c.assetCode,
                 name: c.name,
@@ -2160,7 +2153,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                 status: c.status,
                 setPosition: c.setPosition ?? null,
               }))}
-              loading={childrenLoading}
+              childrenLoading={childrenLoading}
               onChildClick={(childId) => {
                 // Reuse the existing pending-device mechanism (set by other
                 // actions like replace-on-withdraw when a new replacement is
@@ -2170,6 +2163,10 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                 setTimeout(() => {
                   useAppStore.getState().setPendingDeviceId(childId)
                 }, 100)
+              }}
+              onChildrenChange={() => {
+                qc.invalidateQueries({ queryKey: ['device-children', deviceId] })
+                qc.invalidateQueries({ queryKey: ['devices'] })
               }}
             />
           </div>

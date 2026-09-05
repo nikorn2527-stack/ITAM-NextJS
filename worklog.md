@@ -17085,3 +17085,63 @@ Stage Summary:
 - KEY INSIGHT 2 — LINE OA push notifications fire on WO creation (notifyWorkOrderCreated), assignment (notifyWorkOrderAssigned), completion (notifyWorkOrderCompleted), cancellation (notifyWorkOrderCancelled), and chat messages (notifyWorkOrderMessage). All go through sendLINE() in src/lib/notifications.ts:308-352 which calls api.line.me/v2/bot/message/push. On WO completion, the push targets wo.lineUserId (the reporter's LINE ID) — but ONLY succeeds if (a) AppSetting.line_channel_access_token is configured, (b) notify_enabled is not 'false', (c) the reporter has added the LINE OA as a friend.
 - KEY INSIGHT 3 — "แอปช่าง" is NOT a separate app. It is the mobile view of the ITAM Next.js app, triggered by use-mobile-detect.ts based on viewport width + UA. MobileShell renders 4 tabs (My Work / Repair / Meter / Stock) using the same JWT auth, same API routes, same Prisma client, same DB as desktop. PWA manifest + service worker present.
 - KEY INSIGHT 4 — New Public QR Repair system does NOT auto-friend the site's LINE OA. SiteAttribute.LiffAutoFriendLine field exists in schema but is never used in code. This means Tier 1/2 reporters (LINE-logged-in via /api/auth/line/callback) are NOT automatically added as friends of the LINE OA, so the notifyWorkOrderCompleted push to their lineUserId will silently 401. Other gaps: PENDING_REVIEW status is set but not in VALID_STATUSES allowlist (staff can't filter for it); V1 API endpoints intentionally omit notifications; storage abstraction libs (R2/Blob/Supabase) are dead code with zero call sites — photos bloat the Postgres DB as base64 strings.
+
+---
+Task ID: MERGE-ACCESSORY-DEVICE-SET
+Agent: refactor-subagent
+Task: Merge DeviceAccessory + Device Set UI into single unified flow
+
+Work Log:
+- Read context: prisma/schema.prisma (DeviceAccessory + Device.parentDeviceId self-FK), device-accessories-section.tsx (409 lines), device-set-children-section.tsx, device-detail-sheet.tsx (around lines 998-1024 for childDevices query + lines 2136-2176 for render), devices-page.tsx (Device Set tab 2084-2177 + DeviceParentCombobox + ParentDeviceInfo at lines 3635/3735).
+- Confirmed API surface: POST /api/devices/[id]/accessories (create accessory) + PUT /api/devices/[id] (already accepts parentDeviceId; optStr() in route.ts:31 maps '' → null, so unlink works by sending empty string). No new endpoints needed.
+- Step 1 — Rewrote `src/components/itam/device-accessories-section.tsx` (~816 lines):
+  * Renamed card title from "อุปกรณ์ต่อพ่วง" to "อุปกรณ์ในชุด" (covers both peripheral + set member concepts).
+  * Added new props: `childDevices?: DeviceSetChildLite[]`, `childrenLoading?`, `onChildClick?`, `onChildrenChange?`.
+  * Added `mode: 'new' | 'existing'` state in the Add dialog with a RadioGroup toggle at top (hidden when editing an existing accessory).
+  * Mode "new": existing form (Type/Brand/Model/Serial/Status/Remark) → POST /api/devices/[id]/accessories (or PATCH for edit) — unchanged.
+  * Mode "existing": inline device search combobox (debounced 300ms, excludes self, shows assetCode/name/type/brand/model/serial/site) → PUT /api/devices/[selectedId] with body `{ parentDeviceId: currentDevice.id }` to link as child.
+  * Unified list with badges: 🔌 "ต่อพ่วง" (orange) for DeviceAccessory rows, 📦 "ในชุด" (teal) for child Device rows (with assetCode shown in mono).
+  * Per-row actions: accessory rows keep edit/print-sticker/delete; child device rows have open-detail (ExternalLink) + unlink (Unlink icon → PUT with parentDeviceId=null).
+  * Used shadcn/ui RadioGroup + Popover + Command (same as devices-page DeviceParentCombobox pattern).
+  * Fixed react-hooks/set-state-in-effect warning on the debounced search by deferring synchronous clear through `Promise.resolve().then()` (matching the pattern in device-set-children-section.tsx).
+- Step 2 — Updated `src/components/itam/device-detail-sheet.tsx`:
+  * Removed `DeviceSetChildrenSection` from the import (kept `DeviceSetParentBanner` — still rendered when current device is itself a child of another device).
+  * Replaced the two stacked sections (DeviceAccessoriesSection + DeviceSetChildrenSection) with a single `<DeviceAccessoriesSection>` call that receives `childDevices`, `childrenLoading`, `onChildClick`, and `onChildrenChange` (the latter invalidates `['device-children', deviceId]` + `['devices']` so the parent react-query refetches after a link/unlink).
+  * Same pending-device mechanism for `onChildClick` (close sheet + setTimeout → setPendingDeviceId).
+- Step 3 — Simplified `src/components/itam/devices-page.tsx` "ชุดอุปกรณ์" tab (Option A — keep tab but minimize):
+  * Removed the `DeviceParentCombobox` call (search-and-link is now done from the parent device's detail sheet).
+  * Removed the redundant "Serial Number ของอุปกรณ์นี้ (ถ้าไม่มีในระบบ)" field (the new flow handles "non-system peripheral" by creating a DeviceAccessory instead).
+  * Added a teal hint box: "💡 เพิ่มอุปกรณ์ลูก: เปิดหน้ารายละเอียดของอุปกรณ์นี้ → กด 'เพิ่ม' ในส่วน 'อุปกรณ์ในชุด' → เลือก 'เลือกจากที่มีในระบบ'".
+  * When `form.parentDeviceId` is set, show parent info read-only (ParentDeviceInfo still used) + an amber "ถอดการผูกจากอุปกรณ์หลัก (unlink)" button (sets `parentDeviceId: ''` — server's optStr() maps '' → null on save).
+  * When not set, show a neutral "อุปกรณ์หลักในชุด (Parent): ไม่มี" panel.
+  * Kept `setLabel` + `setPosition` fields (these describe the current device's role in the set — still useful even when the parent is configured elsewhere).
+  * Kept the warning banner about "อุปกรณ์ลูกในชุด" (still relevant if this device is a child).
+  * Left `DeviceParentCombobox` function definition in place (now dead code) — top-level function decls are not flagged by `no-unused-vars`, so this doesn't add lint errors. Can be removed in a future cleanup.
+- Step 4 — Lint check: `bun run lint` → 104 problems (1 error, 103 warnings).
+  * 0 new errors. The 1 pre-existing error is `src/app/api/auth/oauth/apple/callback/route.ts:99` — explicitly OK to leave per task spec.
+  * Actually 1 FEWER warning than before my changes (was 104 warnings → now 103), because the rewrite of device-accessories-section.tsx dropped an "Unused eslint-disable directive" that was in the old file.
+  * Verified by `npx eslint <each-modified-file>`: device-accessories-section.tsx has only the same `loadAccessories()` set-state-in-effect warning that was present in the original file (line 132 → now line 225). device-detail-sheet.tsx and devices-page.tsx warnings are all on lines I didn't touch.
+
+Stage Summary:
+- ✅ Unified UI: both "create new peripheral" and "link existing device" flows now happen in the SAME dialog (DeviceAccessoriesSection) in the device detail sheet, behind a radio toggle.
+- ✅ Unified list with badges: 🔌 "ต่อพ่วง" (DeviceAccessory) + 📦 "ในชุด" (child Device) shown in one place.
+- ✅ Unlink child device: amber Unlink button on child rows (PUT parentDeviceId=null) — mirrors the unlink button on the edit form's Device Set tab.
+- ✅ No API changes: reuses POST /api/devices/[id]/accessories and PUT /api/devices/[id] (which already accepts parentDeviceId).
+- ✅ devices-page.tsx "ชุดอุปกรณ์" tab kept but minimized — only manages this device's own role (setLabel/setPosition + read-only parent info + unlink). The "add child" primary flow is now in the parent device's detail sheet, matching user feedback "มันควรจะต้องเป็นเหมือนกันซิในเมื่อมันทำงานแบบเดียวกัน".
+- ✅ Lint: 0 new errors, 1 fewer warning than before.
+
+Files Modified (3):
+- src/components/itam/device-accessories-section.tsx (full rewrite — 409 → ~816 lines, +unified list, +2-mode dialog, +device search, +child unlink)
+- src/components/itam/device-detail-sheet.tsx (import: removed DeviceSetChildrenSection, kept DeviceSetParentBanner; render: merged two sections into one DeviceAccessoriesSection call with new props)
+- src/components/itam/devices-page.tsx (Device Set tab simplified — removed DeviceParentCombobox call + Serial Number field, added unlink button + hint box; setLabel/setPosition kept)
+
+Files NOT modified (still in use):
+- src/components/itam/device-set-children-section.tsx — DeviceSetParentBanner still exported and used; DeviceSetChildrenSection still exported (now only used internally if anyone calls it directly — currently zero call sites in the repo after this refactor). Could be cleaned up later, but kept to minimize blast radius.
+
+Next steps for user:
+1. Test the new unified flow: open any device detail sheet → click "เพิ่ม" in "อุปกรณ์ในชุด" section → try both modes:
+   a. "สร้างใหม่" — fill form, save, see new row with 🔌 badge.
+   b. "เลือกจากที่มีในระบบ" — search for another device, select, save → see it appear with 📦 badge + assetCode.
+2. Test unlink: click the amber Unlink icon on a child device row → confirm → child row disappears from this list (and parentDeviceId is cleared on the child).
+3. Test edit-form Device Set tab: open edit form for a child device → "ชุดอุปกรณ์" tab → parent info shows read-only + click "ถอดการผูก" → save → device is unlinked.
+4. (Optional cleanup, separate task) Remove the now-unused DeviceSetChildrenSection export and DeviceParentCombobox function in a follow-up commit if confirmed not needed elsewhere.

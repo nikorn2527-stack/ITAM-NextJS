@@ -2084,14 +2084,22 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               {/* ═══════════════════════════════════════════════════════
                   Tab 3: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
                   ─────────────────────────────────────────────────────
-                  Lets the user mark this device as belonging to a "set":
-                  • If this is a parent device, leave parent empty — children
-                    will be assigned their own parentDeviceId via this same UI.
-                  • If this is a child device, pick the parent device from
-                    the combobox (search by assetCode or name).
+                  MERGE-ACCESSORY-DEVICE-SET: simplified — the primary flow
+                  for adding children (or peripherals) is now done from the
+                  parent device's detail sheet (DeviceAccessoriesSection with
+                  "เพิ่มอุปกรณ์ในชุด" modal that supports both "new accessory"
+                  and "link existing device" modes).
+
+                  This tab now only manages the CURRENT device's role in a
+                  set:
                   • setLabel = a free-text name for the whole set (shared
                     across all members — e.g. "ชุดเครื่องพิมพ์ห้องจ่ายยา").
                   • setPosition = optional ordering inside the set (1, 2, 3…).
+                  • parentDeviceId (read-only here) — if this device is itself
+                    a child of another device, show the parent info + an
+                    "unlink" button. To CHANGE the parent, open that parent's
+                    detail sheet and add this device via the new "เพิ่มอุปกรณ์ในชุด"
+                    flow.
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="set" className="space-y-4">
                 <div className="rounded-lg border border-teal-200 bg-white p-4 shadow-sm dark:border-teal-900/40 dark:bg-slate-900">
@@ -2104,20 +2112,36 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     จะอ้างอิงมาที่เครื่องหลักผ่าน parent
                   </p>
 
-                  {/* ── Parent device search (Combobox) ── */}
-                  <Field label="อุปกรณ์หลักในชุด (Parent)">
-                    <DeviceParentCombobox
-                      value={form.parentDeviceId}
-                      onChange={(id) => setForm({ ...form, parentDeviceId: id })}
-                      excludeId={form.id}
-                      authHeaders={authHeaders}
-                    />
-                  </Field>
+                  {/* ── Hint: how to add children (now done from detail sheet) ── */}
+                  <div className="mb-3 rounded-md border border-teal-300 bg-teal-50/60 px-3 py-2 text-[11px] text-teal-700 dark:border-teal-700 dark:bg-teal-950/30 dark:text-teal-300">
+                    💡 <strong>เพิ่มอุปกรณ์ลูก:</strong> เปิดหน้ารายละเอียดของอุปกรณ์นี้
+                    → กด "เพิ่ม" ในส่วน "อุปกรณ์ในชุด" → เลือก "เลือกจากที่มีในระบบ"
+                    เพื่อค้นหาอุปกรณ์ที่จะผูกเป็นลูกในชุด
+                  </div>
 
-                  {/* ── Parent device info (auto-filled) ── */}
-                  {form.parentDeviceId && (
-                    <div className="mb-3 rounded-md border border-teal-300 bg-teal-50/60 px-3 py-2 text-xs dark:border-teal-700 dark:bg-teal-950/30">
-                      <ParentDeviceInfo deviceId={form.parentDeviceId} authHeaders={authHeaders} />
+                  {/* ── Parent device info (read-only, with unlink button) ── */}
+                  {form.parentDeviceId ? (
+                    <div className="mb-3 space-y-2">
+                      <Field label="อุปกรณ์หลักในชุด (Parent)">
+                        <div className="rounded-md border border-teal-300 bg-teal-50/60 px-3 py-2 text-xs dark:border-teal-700 dark:bg-teal-950/30">
+                          <ParentDeviceInfo deviceId={form.parentDeviceId} authHeaders={authHeaders} />
+                        </div>
+                      </Field>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setForm({ ...form, parentDeviceId: '' })}
+                        className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                      >
+                        <X className="mr-1 h-3.5 w-3.5" />
+                        ถอดการผูกจากอุปกรณ์หลัก (unlink)
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
+                      อุปกรณ์หลักในชุด (Parent): <strong>ไม่มี</strong> —
+                      เครื่องนี้เป็นเครื่องหลักของตัวเอง (หรือยังไม่ได้ผูกเป็นลูกของชุดใด)
                     </div>
                   )}
 
@@ -2147,22 +2171,6 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       />
                       <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
                         ชื่อที่ใช้เรียกชุด — ใส่เหมือนกันทุกเครื่องในชุด
-                      </p>
-                    </Field>
-                  </div>
-
-                  {/* ── Child device serial (for devices not in system yet) ── */}
-                  <div className="mt-3">
-                    <Field label="Serial Number ของอุปกรณ์นี้ (ถ้าไม่มีในระบบ)">
-                      <Input
-                        value={form.serialNumber}
-                        onChange={(e) =>
-                          setForm({ ...form, serialNumber: e.target.value })
-                        }
-                        placeholder="เช่น D6J222613811 — ใช้สำหรับอุปกรณ์ที่ยังไม่มีในระบบ"
-                      />
-                      <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
-                        ถ้าอุปกรณ์นี้มีในระบบแล้ว ใส่ Serial เพื่อเชื่อมข้อมูลอัตโนมัติ
                       </p>
                     </Field>
                   </div>
