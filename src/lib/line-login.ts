@@ -93,8 +93,13 @@ export function buildLineLoginUrl(state: string, redirectUri?: string): string {
   url.searchParams.set('redirect_uri', finalRedirect)
   url.searchParams.set('state', state)
   url.searchParams.set('scope', LINE_LOGIN_CONFIG.scope)
-  // bot_prompt=normal shows the consent screen with friend options visible
-  url.searchParams.set('bot_prompt', 'normal')
+  // bot_prompt=aggressive — opens the "add LINE OA as friend" screen
+  // automatically after the user logs in (if they haven't added the OA
+  // linked to this LINE Login channel yet). This is critical for the
+  // public QR repair flow: the WO completion notification uses LINE Push
+  // API, which requires the user to have added the OA as a friend first.
+  // Without this, push messages will silently fail with 401.
+  url.searchParams.set('bot_prompt', 'aggressive')
   return url.toString()
 }
 

@@ -18,6 +18,7 @@ import {
 // Allowed status values
 const VALID_STATUSES = new Set([
   'PENDING',
+  'PENDING_REVIEW',
   'IN_PROGRESS',
   'WAITING_PARTS',
   'COMPLETED',
@@ -26,7 +27,7 @@ const VALID_STATUSES = new Set([
 
 const VALID_PRIORITIES = new Set(['ปกติ', 'ปานกลาง', 'สูง', 'ด่วน'])
 
-const VALID_SOURCES = new Set(['session', 'guest'])
+const VALID_SOURCES = new Set(['session', 'guest', 'line_liff', 'public_qr', 'line'])
 
 function pad3(n: number): string {
   return String(n).padStart(3, '0')

@@ -582,6 +582,10 @@ export async function POST(req: NextRequest) {
 
       const reporterName = body.lineDisplayName ?? body.name ?? 'ผู้แจ้งซ่อม'
       const reporterTel = body.phone || body.lineScopePhone || null
+      // Use lineUserId from body OR fall back to the reporter's stored lineUserId
+      // (defensive — in case the client forgets to send it)
+      const effectiveLineUserId =
+        body.lineUserId ?? (reporter as { lineUserId?: string | null }).lineUserId ?? null
 
       return db.workOrder.create({
         data: {
@@ -599,7 +603,7 @@ export async function POST(req: NextRequest) {
           reporterName,
           reporterEmail: body.email ?? null,
           tel: reporterTel,
-          lineUserId: body.lineUserId ?? null,
+          lineUserId: effectiveLineUserId,
           building: device.building,
           location: device.location,
           trackable: true, // Public users get tracking
