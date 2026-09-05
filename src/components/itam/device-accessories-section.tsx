@@ -9,11 +9,14 @@
  *   - เพิ่มอุปกรณ์ต่อพ่วงใหม่
  *   - แก้ไข / ลบ
  *   - เปลี่ยนสถานะ (Active → Inactive → Disposed)
+ *   - พิมพ์สติกเกอร์ (StickerPrintDialog) — สติกเกอร์ใช้ QR เฉพาะของ accessory
+ *     (เข้า /qr/a/{shortId}?action=view) และข้อมูลอุปกรณ์ต่อพ่วงผสมกับข้อมูล
+ *     อุปกรณ์หลัก (site/department/building/floor/…)
  */
 
 import * as React from 'react'
 import { toast } from 'sonner'
-import { Plus, Trash2, Pencil, Keyboard, Mouse, Monitor, Cable, Battery, Usb, Printer, Package, QrCode } from 'lucide-react'
+import { Plus, Trash2, Pencil, Keyboard, Mouse, Monitor, Cable, Battery, Usb, Printer, Package } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,7 +29,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { useAuthStore } from '@/store/auth-store'
-import { generateAccessoryQrUrl, getActionLabel } from '@/lib/smart-qr'
+import { generateAccessoryQrUrl } from '@/lib/smart-qr'
+import { StickerPrintDialog } from './sticker-print-dialog'
+import type { Device } from './types'
 
 // ── Accessory types ──────────────────────────────────────────────────
 const ACCESSORY_TYPES = [
@@ -59,7 +64,30 @@ function getStatusMeta(status: string) {
 }
 
 // ── Component ────────────────────────────────────────────────────────
-export function DeviceAccessoriesSection({ deviceId }: { deviceId: string }) {
+export function DeviceAccessoriesSection({
+  deviceId,
+  parentDevice,
+}: {
+  deviceId: string
+  /**
+   * Parent device data — used to build the sticker print payload (we mix
+   * accessory fields with parent device's site/department/building/etc).
+   * Optional for backward-compat (the section still works without it, just
+   * without the sticker print feature).
+   */
+  parentDevice?: Pick<
+    Device,
+    | 'id'
+    | 'assetCode'
+    | 'assetSiteCode'
+    | 'site'
+    | 'building'
+    | 'floor'
+    | 'department'
+    | 'departmentCode'
+    | 'location'
+  > | null
+}) {
   const token = useAuthStore((s) => s.token)
   const [accessories, setAccessories] = React.useState<Array<{
     id: string; accessoryType: string; brand: string | null; model: string | null
@@ -68,6 +96,12 @@ export function DeviceAccessoriesSection({ deviceId }: { deviceId: string }) {
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingId, setEditingId] = React.useState<string | null>(null)
+  // ── Sticker print dialog state ──
+  // When the user clicks the Printer icon on an accessory row, we build a
+  // fake "Device" payload for the StickerPrintDialog and open it. The
+  // qrContentFor prop encodes the accessory's smart-qr URL.
+  const [stickerOpen, setStickerOpen] = React.useState(false)
+  const [stickerDevices, setStickerDevices] = React.useState<Device[]>([])
 
   // Form state
   const [formType, setFormType] = React.useState('KEYBOARD')
@@ -174,78 +208,49 @@ export function DeviceAccessoriesSection({ deviceId }: { deviceId: string }) {
   }
 
   /**
-   * Print accessory sticker — generates a QR code that, when scanned,
-   * opens the device detail page (showing the accessory + parent device).
+   * Open the StickerPrintDialog for a single accessory.
    *
-   * The QR encodes: /qr/a/{shortId}?action=view
-   * When scanned: resolves to parent device + highlights the accessory.
+   * Builds a "fake" Device payload that mixes accessory fields (brand, model,
+   * serialNumber, type) with the parent device's location fields (site,
+   * building, floor, department). The assetCode is set to
+   * `<parent.assetCode>-A<position>` so the printed label clearly identifies
+   * it as an accessory of the parent device.
+   *
+   * The QR content is overridden via the `qrContentFor` prop to encode the
+   * accessory's Smart QR URL (/qr/a/{shortId}?action=view) instead of the
+   * parent device's asset code.
    */
-  function printAccessorySticker(acc: typeof accessories[0]) {
-    const typeMeta = getTypeMeta(acc.accessoryType)
-    const qrUrl = generateAccessoryQrUrl(acc.id, 'view')
-
-    // Open a print window with the sticker layout
-    const printWindow = window.open('', '_blank', 'width=400,height=300')
-    if (!printWindow) {
-      toast.error('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัป')
+  function openAccessorySticker(acc: typeof accessories[0], position: number) {
+    if (!parentDevice) {
+      toast.error('ไม่พบข้อมูลอุปกรณ์หลัก — ไม่สามารถพิมพ์สติกเกอร์ได้')
       return
     }
+    const typeMeta = getTypeMeta(acc.accessoryType)
+    // Build a "fake" Device payload for the StickerPrintDialog.
+    // The StickerPrintDialog expects Device-shaped objects, so we cast via
+    // `as unknown as Device` after filling in the fields it reads.
+    const fakeDevice = {
+      id: acc.id,
+      // Suffix the parent's assetCode with `-A1`, `-A2`, … to keep the
+      // accessory visually associated with its parent on the printed label.
+      assetCode: `${parentDevice.assetCode}-A${position}`,
+      name: typeMeta.label,
+      brand: acc.brand ?? '',
+      model: acc.model ?? '',
+      type: typeMeta.label,
+      serialNumber: acc.serialNumber ?? '',
+      // Force "Active" status so the dialog's disposed-device filter doesn't
+      // hide the accessory (accessory status uses the same vocabulary).
+      status: 'Active',
+      site: parentDevice.site ?? '',
+      department: parentDevice.department ?? null,
+      departmentCode: parentDevice.departmentCode ?? null,
+      assetSiteCode: parentDevice.assetSiteCode ?? null,
+      purchaseDate: acc.installedDate ?? null,
+    } as unknown as Device
 
-    printWindow.document.write(`
-      <!doctype html>
-      <html>
-      <head>
-        <meta charset="utf-8" />
-        <title>สติกเกอร์อุปกรณ์ต่อพ่วง — ${typeMeta.label}</title>
-        <style>
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: 'Sukhumvit Set', 'Noto Sans Thai', 'Tahoma', sans-serif; }
-          .sticker {
-            width: 180px; height: 100px;
-            border: 1px solid #e2e8f0;
-            border-radius: 4px;
-            padding: 4mm;
-            display: flex; flex-direction: column; gap: 2mm;
-          }
-          .header { display: flex; align-items: center; gap: 2mm; }
-          .type-badge {
-            background: #f97316; color: white;
-            font-size: 7pt; font-weight: 700;
-            padding: 1px 4px; border-radius: 2px;
-          }
-          .brand-model { font-size: 8pt; color: #1e293b; font-weight: 600; }
-          .serial { font-size: 7pt; color: #64748b; }
-          .qr-area { display: flex; align-items: center; gap: 3mm; }
-          .qr-code { width: 55px; height: 55px; }
-          .info { font-size: 6pt; color: #94a3b8; line-height: 1.3; }
-          @media print { body { margin: 0; } }
-        </style>
-      </head>
-      <body>
-        <div class="sticker">
-          <div class="header">
-            <span class="type-badge">${typeMeta.label}</span>
-            <span class="brand-model">${acc.brand ?? ''} ${acc.model ?? ''}</span>
-          </div>
-          <div class="qr-area">
-            <img class="qr-code" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrUrl)}" alt="QR" />
-            <div>
-              <div class="serial">S/N: ${acc.serialNumber ?? '—'}</div>
-              <div class="info">สแกน QR เพื่อดูข้อมูล</div>
-              <div class="info">อุปกรณ์ต่อพ่วง</div>
-            </div>
-          </div>
-        </div>
-        <script>
-          window.onload = function() {
-            setTimeout(function() { window.print(); }, 500);
-          };
-        </script>
-      </body>
-      </html>
-    `)
-    printWindow.document.close()
-    toast.success('เปิดหน้าพิมพ์สติกเกอร์แล้ว')
+    setStickerDevices([fakeDevice])
+    setStickerOpen(true)
   }
 
   return (
@@ -267,10 +272,11 @@ export function DeviceAccessoriesSection({ deviceId }: { deviceId: string }) {
             ยังไม่มีอุปกรณ์ต่อพ่วง — กด "เพิ่ม" เพื่อเพิ่ม
           </p>
         ) : (
-          accessories.map((acc) => {
+          accessories.map((acc, idx) => {
             const typeMeta = getTypeMeta(acc.accessoryType)
             const statusMeta = getStatusMeta(acc.status)
             const Icon = typeMeta.icon
+            const accessoryPosition = idx + 1
             return (
               <div
                 key={acc.id}
@@ -302,10 +308,11 @@ export function DeviceAccessoriesSection({ deviceId }: { deviceId: string }) {
                     size="ghost"
                     variant="ghost"
                     className="h-7 w-7 p-0 text-[#f97316]"
-                    onClick={() => printAccessorySticker(acc)}
-                    title="พิมพ์สติกเกอร์ QR"
+                    onClick={() => openAccessorySticker(acc, accessoryPosition)}
+                    disabled={!parentDevice}
+                    title="พิมพ์สติกเกอร์อุปกรณ์ต่อพ่วง"
                   >
-                    <QrCode className="h-3.5 w-3.5" />
+                    <Printer className="h-3.5 w-3.5" />
                   </Button>
                   <Button size="ghost" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => handleDelete(acc.id)} title="ลบ">
                     <Trash2 className="h-3.5 w-3.5" />
@@ -379,6 +386,24 @@ export function DeviceAccessoriesSection({ deviceId }: { deviceId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Sticker print dialog (per-accessory) */}
+      <StickerPrintDialog
+        open={stickerOpen}
+        onOpenChange={setStickerOpen}
+        devices={stickerDevices}
+        dialogTitle={
+          <span className="flex items-center gap-2">
+            <Printer className="h-5 w-5 text-[#f97316]" />
+            🖨️ พิมพ์สติกเกอร์อุปกรณ์ต่อพ่วง
+          </span>
+        }
+        dialogDescription="QR บนสติกเกอร์จะลิงก์ไปยังหน้าดูข้อมูลอุปกรณ์ต่อพ่วงโดยตรง (/qr/a/{shortId}?action=view)"
+        // Override QR content — encode the accessory's Smart QR URL instead of
+        // the asset code. The fake device's `id` is the accessory's id, so we
+        // can resolve the URL from the device payload here.
+        qrContentFor={(d) => generateAccessoryQrUrl(d.id, 'view')}
+      />
     </Card>
   )
 }

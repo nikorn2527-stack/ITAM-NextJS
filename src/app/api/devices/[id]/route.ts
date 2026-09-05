@@ -200,6 +200,38 @@ export async function PUT(
       }
     }
 
+    // ── Demo cross-contamination guard: Device Set parent move ──
+    // If the client is changing `parentDeviceId`, ensure the new parent has
+    // the same `isDemo` flag as this device. Otherwise a demo device could
+    // be linked to a real device (or vice versa), which would make demo
+    // cleanup unsafe.
+    if (
+      updateData.parentDeviceId !== undefined &&
+      updateData.parentDeviceId !== null &&
+      updateData.parentDeviceId !== before.parentDeviceId
+    ) {
+      const newParent = await db.device.findUnique({
+        where: { id: updateData.parentDeviceId },
+        select: { isDemo: true, status: true },
+      })
+      if (!newParent) {
+        return NextResponse.json(
+          { error: 'อุปกรณ์หลักในชุดที่ระบุไม่มีในระบบ', code: 'PARENT_NOT_FOUND' },
+          { status: 404 },
+        )
+      }
+      if (newParent.isDemo !== before.isDemo) {
+        return NextResponse.json(
+          {
+            error:
+              'อุปกรณ์หลักและอุปกรณ์ลูกมีสถานะ demo ต่างกัน — ไม่สามารถจัดเข้าชุดเดียวกันได้',
+            code: 'DEMO_MISMATCH',
+          },
+          { status: 400 },
+        )
+      }
+    }
+
     const updated = await db.device.update({
       where: { id },
       data: {

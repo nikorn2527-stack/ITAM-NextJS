@@ -70,6 +70,11 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get('search')?.trim() ?? ''
     const status = searchParams.get('status')?.trim() ?? ''
     const siteParam = searchParams.get('site')?.trim() ?? ''
+    // ── Device Set filter: parentDeviceId=ID returns only children in the set.
+    // ── Device Set filter: parentDeviceId=none returns only top-level devices.
+    // Used by the device detail sheet's "อุปกรณ์ในชุด" section.
+    const parentDeviceIdParam = searchParams.get('parentDeviceId')?.trim() ?? ''
+    const excludeReplaced = searchParams.get('excludeReplaced') === '1'
     // ── Bounded pagination: clamp page + limit to safe bounds ──
     // Previously: inline Math.min/Math.max with hardcoded 500/100.
     // Now: uses pure helper that also handles NaN, Infinity, fractional.
@@ -125,6 +130,22 @@ export async function GET(req: NextRequest) {
         // Fallback: case-insensitive contains
         where.status = { contains: status, mode: 'insensitive' }
       }
+    }
+
+    // ── Device Set filter ──
+    // parentDeviceId=ID  → only direct children of that device
+    // parentDeviceId=none → only top-level devices (no parent)
+    // omit                → no filter (children + top-level both returned)
+    if (parentDeviceIdParam) {
+      if (parentDeviceIdParam.toLowerCase() === 'none') {
+        where.parentDeviceId = null
+      } else {
+        where.parentDeviceId = parentDeviceIdParam
+      }
+    }
+    // excludeReplaced=1 → hide devices that have been replaced (replacedById != null)
+    if (excludeReplaced) {
+      where.replacedById = null
     }
 
     // ── Site scope enforcement via authorization context ──

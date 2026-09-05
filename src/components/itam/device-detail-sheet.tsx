@@ -21,6 +21,7 @@ import {
   SheetDescription,
   SheetFooter,
 } from '@/components/ui/sheet'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -53,6 +54,7 @@ import {
   MapPin,
   ShieldAlert,
   User,
+  RefreshCw,
   UserPlus,
   Undo2,
   ClipboardList,
@@ -87,6 +89,11 @@ import {
 import { useAppStore } from '@/store/app-store'
 import { parseAssetNo } from '@/lib/asset-qr'
 import { DeviceAccessoriesSection } from './device-accessories-section'
+import {
+  DeviceSetChildrenSection,
+  DeviceSetParentBanner,
+} from './device-set-children-section'
+import { ReplaceDeviceDialog } from './replace-device-dialog'
 
 interface Props {
   deviceId: string | null
@@ -203,6 +210,15 @@ function actionToneClass(id: string): { border: string; text: string } {
       }
   }
 }
+
+// ── DeviceSetChildrenSection ───────────────────────────────────────────
+// Component สำหรับแสดง "อุปกรณ์ในชุด" (children ของ device ปัจจุบัน) และ
+// "อุปกรณ์นี้อยู่ในชุดของ: …" banner (parent info) ถูกย้ายไปอยู่ในไฟล์แยก:
+//   src/components/itm/device-set-children-section.tsx
+// เพื่อให้ reuse ได้ในหลายจุด (เช่น mobile sheet, future device-set page)
+// และลดขนาดของ device-detail-sheet.tsx
+//
+// การ render จริงอยู่ที่บรรทัด ~2240 (DeviceSetChildrenSection) และ ~1432 (banner)
 
 export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const open = Boolean(deviceId)
@@ -323,6 +339,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     { value: 'Subscription', label: 'Subscription' },
     { value: 'Open License', label: 'Open License' },
   ]
+
+  // ── "เปลี่ยนเครื่องหลัก" dialog state ──
+  const [replaceOpen, setReplaceOpen] = React.useState(false)
 
   // Available status options for "other status" select
   const STATUS_OPTIONS_FOR_ACTION = [
@@ -502,6 +521,10 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     },
     enabled: Boolean(deviceId),
   })
+
+  // Note: the "child devices" + "parent device" useQuery hooks are declared
+  // AFTER `const device = deviceData?.device` (further down) because they
+  // depend on the loaded device row (parentDeviceId, etc). See around line 1097.
 
   function openLicenseDialog(existing?: LicenseRecord) {
     if (existing) {
@@ -967,6 +990,39 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   })
 
   const device = deviceData?.device
+
+  // ── Device Set: fetch child devices (devices whose parentDeviceId === this.id) ──
+  // Uses the new ?parentDeviceId=<id> filter on GET /api/devices. Declared
+  // here (after `device` is defined) because the parent-device query depends
+  // on `device.parentDeviceId`.
+  const { data: childDevices, isLoading: childrenLoading } = useQuery<Device[]>({
+    queryKey: ['device-children', deviceId],
+    queryFn: async () => {
+      if (!deviceId) return []
+      const res = await fetch(`/api/devices?parentDeviceId=${encodeURIComponent(deviceId)}&limit=100`)
+      if (!res.ok) return []
+      const json = await res.json()
+      return (json.devices ?? []) as Device[]
+    },
+    enabled: Boolean(deviceId),
+  })
+
+  // ── Device Set: fetch parent device (if this device is itself a child) ──
+  // Only fires when device.parentDeviceId is set. The result is the parent's
+  // full Device row, used to render the "อุปกรณ์นี้อยู่ในชุดของ: …" banner.
+  const parentDeviceId = device?.parentDeviceId ?? null
+  const { data: parentDevice } = useQuery<Device | null>({
+    queryKey: ['device-parent', parentDeviceId],
+    queryFn: async () => {
+      if (!parentDeviceId) return null
+      const res = await fetch(`/api/devices/${encodeURIComponent(parentDeviceId)}`)
+      if (!res.ok) return null
+      const json = await res.json()
+      return (json.device ?? null) as Device | null
+    },
+    enabled: Boolean(parentDeviceId),
+  })
+
   const sortedReadings = React.useMemo(
     () =>
       (readings ?? [])
@@ -1291,6 +1347,53 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
             }
             return null
           })()}
+
+          {/* ── "อุปกรณ์นี้อยู่ในชุดของ …" banner (shown only when device is a child) ── */}
+          {/* ใช้ DeviceSetParentBanner จากไฟล์ device-set-children-section.tsx
+              (ย้ายออกจากไฟล์นี้เพื่อให้ reuse ได้) */}
+          {device && parentDevice && (
+            <DeviceSetParentBanner
+              parentDevice={{
+                id: parentDevice.id,
+                assetCode: parentDevice.assetCode,
+                name: parentDevice.name,
+              }}
+              setLabel={device.setLabel}
+              setPosition={device.setPosition}
+              onOpenParent={(parentId) => {
+                // ปิด sheet ปัจจุบันก่อน เพื่อกัน stacking ของ sheet
+                onClose()
+                // Defer to next tick ให้ Sheet close animation เริ่มก่อน
+                setTimeout(() => {
+                  useAppStore.getState().setPendingDeviceId(parentId)
+                }, 100)
+              }}
+            />
+          )}
+
+          {/* ── "เครื่องนี้ถูกแทนที่แล้ว" banner (shown only when device.replacedById is set) ── */}
+          {device && device.replacedById && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <RefreshCw className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold">
+                  🔄 เครื่องนี้ถูกเปลี่ยนทดแทนแล้ว (Replaced)
+                </div>
+                {device.replacedAt && (
+                  <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-300">
+                    เมื่อ {formatThaiDateTime(
+                      typeof device.replacedAt === 'string'
+                        ? device.replacedAt
+                        : new Date(device.replacedAt).toISOString(),
+                    )}
+                  </div>
+                )}
+                <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                  ใช้อุปกรณ์ต่อพ่วง/การมอบหมาย/แผน PM กับเครื่องใหม่ต่อไป
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Current assignee card */}
           {device && (
@@ -2033,7 +2136,42 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
         {/* ── Accessories / Peripherals ── */}
         {device && (
           <div className="px-4 pb-4">
-            <DeviceAccessoriesSection deviceId={device.id} />
+            <DeviceAccessoriesSection deviceId={device.id} parentDevice={device} />
+          </div>
+        )}
+
+        {/* ── Device Set: children of this device ── */}
+        {/* ใช้ DeviceSetChildrenSection จากไฟล์ device-set-children-section.tsx
+            (ย้ายออกจากไฟล์นี้เพื่อให้ reuse ได้ในหลายจุด)
+            ส่ง initialChildren + loading มาเพื่อใช้ react-query ที่ fetch แล้ว
+            (device-detail-sheet มี childDevices query อยู่แล้ว — ไม่ต้อง fetch ซ้ำ) */}
+        {device && (
+          <div className="px-4 pb-4">
+            <DeviceSetChildrenSection
+              deviceId={device.id}
+              setLabel={device.setLabel}
+              initialChildren={(childDevices ?? []).map((c) => ({
+                id: c.id,
+                assetCode: c.assetCode,
+                name: c.name,
+                brand: c.brand,
+                model: c.model,
+                type: c.type,
+                status: c.status,
+                setPosition: c.setPosition ?? null,
+              }))}
+              loading={childrenLoading}
+              onChildClick={(childId) => {
+                // Reuse the existing pending-device mechanism (set by other
+                // actions like replace-on-withdraw when a new replacement is
+                // created). Closing this sheet first prevents stacking.
+                onClose()
+                // Defer to next tick so the Sheet close animation can start.
+                setTimeout(() => {
+                  useAppStore.getState().setPendingDeviceId(childId)
+                }, 100)
+              }}
+            />
           </div>
         )}
 
@@ -2056,6 +2194,20 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
             🔄 ย้ายอุปกรณ์
           </Button>
           <Button
+            variant="outline"
+            onClick={() => setReplaceOpen(true)}
+            disabled={!device || device.status === 'Replaced'}
+            title={
+              device?.status === 'Replaced'
+                ? 'อุปกรณ์นี้ถูกเปลี่ยนทดแทนไปแล้ว — ไม่สามารถเปลี่ยนซ้ำได้'
+                : 'เปลี่ยนเครื่องหลัก — โอน accessories/ชุด/การมอบหมาย/แผน PM ไปยังเครื่องใหม่'
+            }
+            className="flex-1 border-[#0d9488]/40 text-[#0d9488] hover:bg-[#0d9488]/10 focus-visible:ring-2 focus-visible:ring-[#0d9488] focus-visible:ring-offset-1 dark:border-[#14b8a6]/40 dark:text-[#14b8a6] dark:focus-visible:ring-offset-slate-950"
+          >
+            <RefreshCw className="h-4 w-4" />
+            เปลี่ยนเครื่องหลัก
+          </Button>
+          <Button
             onClick={handleEdit}
             disabled={!device || !onEdit}
             className="flex-1 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
@@ -2065,6 +2217,22 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
           </Button>
         </SheetFooter>
       </SheetContent>
+
+      {/* "เปลี่ยนเครื่องหลัก" sub-dialog */}
+      <ReplaceDeviceDialog
+        open={replaceOpen}
+        onOpenChange={setReplaceOpen}
+        oldDevice={device}
+        onReplaced={() => {
+          // Refresh the queries so the sheet reflects the new status
+          // immediately. The dialog itself invalidates the broader device
+          // list + dashboard + audit queries.
+          qc.invalidateQueries({ queryKey: ['device-detail', deviceId] })
+          qc.invalidateQueries({ queryKey: ['device-children', deviceId] })
+          qc.invalidateQueries({ queryKey: ['device-assignments', deviceId] })
+          qc.invalidateQueries({ queryKey: ['device-licenses', deviceId] })
+        }}
+      />
 
       {/* Transfer sub-dialog */}
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>

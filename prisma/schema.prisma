@@ -79,6 +79,7 @@ model Device {
   stockTransactions StockTransaction[]
   pmSchedules       PMSchedule[]
   accessories       DeviceAccessory[]
+  licenses          LicenseRecord[]   // PUBLIC-QR-PHASE-1-SCHEMA — real FK from LicenseRecord.deviceId
 
   @@index([parentDeviceId])
   @@index([status])
@@ -418,7 +419,7 @@ model WorkOrderPart {
 model LicenseRecord {
   id          String   @id @default(cuid())
   License_ID  String?
-  Asset_No    String? // links to Device.assetCode
+  Asset_No    String? // links to Device.assetCode (legacy — kept for back-compat)
   Software    String
   LicenseType String? // OEM | Volume | Retail | Subscription | Open License
   License_Key String?
@@ -428,8 +429,24 @@ model LicenseRecord {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // ── PUBLIC-QR-PHASE-1-SCHEMA: real FK to Device (replaces legacy Asset_No
+  //     string lookup). Nullable so the migration script can backfill
+  //     existing rows in place (see scripts/migrate-license-device-id.ts).
+  //     onDelete: SetNull so deleting a Device keeps the license record
+  //     (audit trail) instead of cascading the delete.
+  deviceId    String?
+  device      Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  // ── PUBLIC-QR-PHASE-1-SCHEMA: active flag — when a device is replaced and
+  //     moveLicenses=false, the licenses on the old device get deactivated
+  //     (isActive=false) instead of being deleted, preserving the audit
+  //     trail of "this license was issued for that device".
+  isActive    Boolean  @default(true)
+
   isDemo    Boolean  @default(false)
   @@index([Asset_No])
+  @@index([deviceId])
+  @@index([isActive])
+  @@index([isDemo])
   @@map("license_records")
 }
 

@@ -266,12 +266,15 @@ export function buildDefaultTemplate(): StickerTemplate {
       fontSize: 5, fontWeight: 500, color: '#64748b', align: 'left',
       zIndex: 1,
     },
-    // 14 — hotline + lineOA
+    // 14 — hotline + LINE OA — "สแกนเพื่อแจ้งซ่อม"
+    // เดิม: "โทร: {{hotline}} · LINE: {{lineOA}}"
+    // ใหม่: สั้นลง ให้พื้นที่สำหรับ QR และ assetSiteCode
+    // (ผู้ใช้สแกน QR แล้วเข้า LINE Login อัตโนมัติ — ไม่ต้องพิมพ์ @lineOA บนสติกเกอร์แล้ว)
     {
       id: genElementId(),
       type: 'text',
       x: 1.5, y: 27.5, width: 50, height: 2.5,
-      content: 'โทร: {{hotline}} · LINE: {{lineOA}}',
+      content: 'สแกน QR เพื่อแจ้งซ่อม · โทร {{hotline}}',
       fontSize: 5.5, fontWeight: 700, color: '#f97316', align: 'left',
       zIndex: 1,
     },
