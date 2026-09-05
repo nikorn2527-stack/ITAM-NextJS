@@ -293,6 +293,12 @@ export async function GET(
     )
   } catch (err) {
     console.error('GET /api/public/devices/[shortId]', err)
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+    const message = err instanceof Error ? err.message : String(err)
+    // Include the error message in the response so we can debug production
+    // runtime errors (Vercel logs are hard to access via API).
+    return NextResponse.json(
+      { error: 'Internal error', detail: message },
+      { status: 500 },
+    )
   }
 }
