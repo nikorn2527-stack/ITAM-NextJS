@@ -28,12 +28,18 @@ export const LINE_LOGIN_CONFIG = {
    * Scopes requested from the user:
    *   • profile  — displayName, pictureUrl, userId
    *   • openid   — id_token (carries sub = LINE userId)
-   *   • phone    — phone number (requires LINE review — leave off for now)
+   *   • phone    — phone number (requires LINE review before it works)
    *
-   * When phone scope is approved by LINE, append 'phone' here and read
-   * phone_number from the id_token to mark reporters as Tier 1 (phone-verified).
+   * IMPORTANT: The 'phone' scope requires explicit approval from LINE.
+   * Without approval, login may still succeed but the id_token will not
+   * contain phone_number, and the user will fall through to Tier 2.
+   *
+   * Setup steps:
+   *   1. Go to LINE Developers Console → Channel → Permissions
+   *   2. Request "Phone number" scope (requires 3-5 business days review)
+   *   3. After approval, this scope will work automatically
    */
-  scope: 'profile openid',
+  scope: 'profile openid phone',
   /**
    * Redirect URI registered in LINE Developers Console.
    * Must be HTTPS in production. Override via env for non-default domains.

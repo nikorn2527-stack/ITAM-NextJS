@@ -187,6 +187,48 @@ export function PublicRepairForm({
   const canSubmit =
     subjectValid && phoneValid && nameValid && !submitting
 
+  // ── Auto-fill from previous PublicReporter record ──
+  // When the user has a LINE session, fetch their previously stored
+  // profile (name, phone, email) so they don't have to re-type it on
+  // subsequent submissions. Only pre-fill empty fields (don't overwrite
+  // if the user has already started typing).
+  const [autoFillLoaded, setAutoFillLoaded] = React.useState(false)
+  React.useEffect(() => {
+    if (!lineSession?.userId) {
+      setAutoFillLoaded(true)
+      return
+    }
+    let cancelled = false
+    fetch(
+      `/api/public/reporter/me?siteCode=${encodeURIComponent(siteCode)}`,
+      { credentials: 'same-origin' },
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.data) {
+          setAutoFillLoaded(true)
+          return
+        }
+        const data = json.data as {
+          name: string | null
+          phone: string | null
+          email: string | null
+        }
+        // Only fill empty fields — don't overwrite user input.
+        setName((prev) => prev || (data.name ?? ''))
+        setPhone((prev) => prev || (data.phone ?? ''))
+        setEmail((prev) => prev || (data.email ?? ''))
+        setAutoFillLoaded(true)
+      })
+      .catch(() => {
+        // Network error — don't block form, just proceed without autofill
+        setAutoFillLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [lineSession?.userId, siteCode])
+
   // ── Submit handler ──
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
