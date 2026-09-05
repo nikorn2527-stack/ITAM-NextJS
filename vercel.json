@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npx prisma generate && npx prisma db push --accept-data-loss && next build --webpack",
+  "buildCommand": "rm -rf node_modules/.prisma && npx prisma generate && npx prisma db push --accept-data-loss && next build --webpack",
   "installCommand": "npm install --legacy-peer-deps",
   "crons": [
     {
