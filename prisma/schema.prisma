@@ -70,6 +70,16 @@ model Device {
   setLabel       String? // ชื่อชุด เช่น "ชุดเครื่องพิมพ์ห้องจ่ายยา"
   setPosition    Int? // ลำดับในชุด (1, 2, 3, …)
 
+  // ── Device Replacement ──
+  // When this device is replaced by a newer one, `replacedById` points
+  // to the new device. Smart QR scan on the old device will then redirect
+  // to the new one (so the sticker on the old physical box still works).
+  // Self-FK; onDelete: SetNull so deleting the new device doesn't cascade.
+  replacedById    String?
+  replacedBy      Device?  @relation("DeviceReplacement", fields: [replacedById], references: [id], onDelete: SetNull)
+  replacedByFrom  Device[] @relation("DeviceReplacement")
+  replacedAt      DateTime?
+
   // Relations (other models reference Device via deviceId)
   meterReadings     MeterReading[]
   transfers         DeviceTransfer[]
@@ -85,6 +95,7 @@ model Device {
   @@index([status])
   @@index([site])
   @@index([serialNumber])
+  @@index([replacedById])
 }
 
 model MeterReading {
