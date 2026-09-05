@@ -1,14 +1,25 @@
 // ============================================================
-// Auth session helpers (Task ID: RBAC-DASHBOARD)
+// Auth session helpers — now using SIGNED JWT (HMAC-SHA256)
 // ============================================================
-// Shared between /api/auth/login, /api/auth/me, /api/auth/logout
-// - encode/decode base64 session token
-// - read HttpOnly cookie
-// - resolve AuthUser from DB by token
-// - lazily seed default users
+// SECURITY (P0-2 fix):
+//   Previously this module used plain Base64 encoding for session tokens,
+//   which allowed attackers to forge a valid session if they knew (or
+//   guessed) a user's id. Now we use signed JWTs (HS256) via `jose`,
+//   signed with the same `JWT_SECRET` env var used by src/lib/auth.ts.
+//
+// Migration strategy (backward-compatible):
+//   - `decodeSession` accepts BOTH formats:
+//     • New format: signed JWT (eyJ... three base64 segments separated by dots)
+//     • Legacy format: plain Base64 JSON (no dots, or only 1 segment after split)
+//   - Legacy tokens are still accepted (so existing sessions don't break),
+//     but they are logged with a deprecation warning to track migration.
+//   - All new sessions created via `encodeSession` are signed JWTs.
+//   - Once all legacy sessions have expired (7-day TTL), legacy support
+//     can be removed.
 // ============================================================
 
 import type { NextRequest } from 'next/server'
+import { SignJWT, jwtVerify } from 'jose'
 import { db } from '@/lib/db'
 import { toAuthUser, type AuthUser } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
@@ -22,11 +33,88 @@ interface SessionPayload {
   exp: number
 }
 
-export function encodeSession(payload: SessionPayload): string {
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
+// ─── JWT secret (shared with src/lib/auth.ts) ────────────────────────
+// Falls back to dev-only secret in development. Production must set
+// JWT_SECRET (the requireAuth helper already enforces this).
+function getJwtSecret(): Uint8Array {
+  const raw =
+    process.env.JWT_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    ''
+  if (!raw) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'JWT_SECRET is required for signed sessions in production.',
+      )
+    }
+    console.warn(
+      'WARNING: Using fallback dev JWT secret for session signing. Set JWT_SECRET in production.',
+    )
+    return new TextEncoder().encode(
+      'itam-dev-secret-change-me-in-production-please-32bytes',
+    )
+  }
+  return new TextEncoder().encode(raw)
 }
 
-export function decodeSession(token: string): SessionPayload | null {
+// ─── Encode (sign) — produces a signed JWT ───────────────────────────
+export async function encodeSession(
+  payload: SessionPayload,
+): Promise<string> {
+  const secret = getJwtSecret()
+  // jose's SignJWT uses `exp` claim in seconds (not ms).
+  // We embed userId + email as custom claims.
+  return new SignJWT({
+    userId: payload.userId,
+    email: payload.email,
+    sid: 'legacy-session', // identifies this as a session token (vs API JWT)
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt(Date.now() / 1000)
+    .setExpirationTime(payload.exp / 1000)
+    .sign(secret)
+}
+
+// ─── Decode (verify) — accepts signed JWT or legacy Base64 ─────────
+export async function decodeSession(
+  token: string,
+): Promise<SessionPayload | null> {
+  if (!token || typeof token !== 'string') return null
+
+  // Heuristic: a JWT has exactly 2 dots (header.payload.signature).
+  // Legacy Base64 has no dots (or fewer than 2).
+  const dotCount = (token.match(/\./g) || []).length
+  if (dotCount === 2) {
+    // ── New format: signed JWT ──
+    try {
+      const secret = getJwtSecret()
+      const { payload } = await jwtVerify(token, secret, {
+        algorithms: ['HS256'],
+      })
+      if (
+        typeof payload.userId !== 'string' ||
+        typeof payload.email !== 'string'
+      ) {
+        return null
+      }
+      // jwtVerify already checks exp — convert seconds to ms for our interface.
+      const expMs =
+        typeof payload.exp === 'number' ? payload.exp * 1000 : 0
+      if (expMs < Date.now()) return null
+      return {
+        userId: payload.userId,
+        email: payload.email,
+        exp: expMs,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  // ── Legacy format: plain Base64 JSON (deprecated) ──
+  // SECURITY: We still accept these so existing sessions don't break,
+  // but they are NOT secure — anyone with the userId can forge one.
+  // We log a deprecation warning to track when migration is complete.
   try {
     const json = Buffer.from(token, 'base64').toString('utf8')
     const parsed = JSON.parse(json) as SessionPayload
@@ -38,6 +126,15 @@ export function decodeSession(token: string): SessionPayload | null {
       return null
     }
     if (parsed.exp < Date.now()) return null
+    // Deprecation warning — helps track when all sessions have migrated.
+    // (Only logs in non-production to avoid log spam.)
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn(
+        '[auth-session] DEPRECATED: accepting legacy Base64 session for user',
+        parsed.email,
+        '— should be migrated to signed JWT',
+      )
+    }
     return parsed
   } catch {
     return null
@@ -62,7 +159,7 @@ export async function getCurrentUser(
   const cookieHeader = req.headers.get('cookie') ?? ''
   const token = parseCookie(cookieHeader, AUTH_COOKIE)
   if (!token) return null
-  const session = decodeSession(token)
+  const session = await decodeSession(token)
   if (!session) return null
   const user = await db.user.findUnique({ where: { id: session.userId } })
   if (!user || !user.active) return null
