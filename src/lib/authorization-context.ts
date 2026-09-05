@@ -239,8 +239,12 @@ export async function buildAuthorizationContext(
   const isSuperAdmin = globalRole === 'superadmin'
   const isGlobalAdmin = globalRole === 'admin'
 
-  // superadmin and admin bypass Site grants — both have access to everything
-  if (isSuperAdmin || isGlobalAdmin) {
+  // superadmin, admin, and demo users bypass Site grants — all have access to everything.
+  // Demo users (isDemo=true) are sandbox users that need full visibility for testing.
+  // Non-demo users with allowedSites='ALL' still go through the grant check below
+  // (fail-closed) for security reasons — they must have explicit UserSiteGrant rows.
+  const isDemo = Boolean((user as AuthUser & { isDemo?: boolean | null }).isDemo)
+  if (isSuperAdmin || isGlobalAdmin || isDemo) {
     const globalPerms = getRolePermissions(globalRole)
     return {
       userId,

@@ -16,6 +16,7 @@ import {
 // Allowed status values
 const VALID_STATUSES = new Set([
   'PENDING',
+  'PENDING_REVIEW', // Gap 3: WOs from public QR (Tier 2/3) use this status
   'IN_PROGRESS',
   'WAITING_PARTS',
   'COMPLETED',
