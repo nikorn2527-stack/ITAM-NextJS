@@ -202,7 +202,7 @@ export async function GET(req: NextRequest) {
     //   legacy rows that haven't been backfilled with siteCode yet.
     // non-superadmin with no grants → empty list (fail-closed).
     let siteFilter: Record<string, unknown> | null = null
-    if (ctx.isSuperAdmin || ctx.globalRole === 'admin') {
+    if (ctx.isSuperAdmin || ctx.globalRole === 'admin' || auth.isDemo) {
       // superadmin: apply optional `site` param filter if provided
       if (siteParam) {
         siteFilter = {
