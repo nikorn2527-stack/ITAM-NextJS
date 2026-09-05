@@ -61,6 +61,22 @@ interface ResolvedDevice {
 }
 
 export default function SmartQrRouterPage() {
+  // Wrap in Suspense because useSearchParams must be inside a Suspense
+  // boundary during static generation, otherwise `next build` fails.
+  return (
+    <React.Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+          <Loader2 className="h-12 w-12 animate-spin text-[#f97316]" />
+        </div>
+      }
+    >
+      <SmartQrRouterInner />
+    </React.Suspense>
+  )
+}
+
+function SmartQrRouterInner() {
   const params = useParams<{ type: string; id: string }>()
   const searchParams = useSearchParams()
   const router = useRouter()
