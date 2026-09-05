@@ -72,6 +72,18 @@ const ACTION_LABELS: Record<string, string> = {
 }
 
 export default function LineLoginPage() {
+  // Wrap the inner component in Suspense to satisfy Next.js static generation
+  // (useSearchParams must be inside a Suspense boundary when the page is
+  // rendered at build time). Without this, `next build` fails with:
+  //   "useSearchParams() should be wrapped in a suspense boundary at page"
+  return (
+    <React.Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950"><div className="text-sm text-slate-400">กำลังโหลด...</div></div>}>
+      <LineLoginInner />
+    </React.Suspense>
+  )
+}
+
+function LineLoginInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
 
