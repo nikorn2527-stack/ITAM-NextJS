@@ -63,3 +63,10 @@ db/custom.db
 db/*.db
 .vercel
 .env*
+
+# Credentials — NEVER commit real secrets to Git
+google-service-account.json
+*.pem
+*.key
+backups/
+*.tsbuildinfo

@@ -4,6 +4,7 @@ import {
   type NotificationChannel,
   type NotificationTemplate,
 } from '@/lib/notifications'
+import { requireAuth } from '@/lib/auth-middleware'
 
 /**
  * POST /api/notifications/send
@@ -22,10 +23,11 @@ import {
  *     entity?: string,
  *   }
  *
- * NOTE (PART 3 — Single User System):
- *   `actor` should be supplied from auth context (the logged-in User.email
- *   or User.id). Until NextAuth integration is wired in, the caller may
- *   pass `actor` in the body as a fallback. Replace this once auth lands.
+ * SECURITY (P0):
+ *   This endpoint was previously unauthenticated — anyone could send
+ *   notifications (spam, fake audit actor, etc.). Now requires ADMIN
+ *   permission. The `actor` field is taken from the auth context, NOT
+ *   from the request body, so callers can't impersonate other users.
  *
  * Returns: { ok: true }
  */
@@ -49,6 +51,15 @@ const VALID_TEMPLATES = new Set<NotificationTemplate>([
 ])
 
 export async function POST(req: NextRequest) {
+  // ── P0 Security: require ADMIN permission ──
+  const auth = await requireAuth(req, 'ADMIN')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+  // Authenticated actor — overrides any `actor` field in the body to
+  // prevent impersonation.
+  const authActor = auth.row.email || auth.row.username || 'unknown'
+
   try {
     const body = await req.json()
     const {
@@ -58,7 +69,7 @@ export async function POST(req: NextRequest) {
       lineUserId,
       telegramChatId,
       email,
-      actor,
+      // `actor` from body is intentionally ignored — we use authActor above
       entityId,
       entity,
     } = body as Record<string, unknown>
@@ -98,7 +109,7 @@ export async function POST(req: NextRequest) {
       telegramChatId:
         typeof telegramChatId === 'string' ? telegramChatId : undefined,
       email: typeof email === 'string' ? email : undefined,
-      actor: typeof actor === 'string' ? actor : undefined,
+      actor: authActor, // override body.actor with authenticated identity
       entityId: typeof entityId === 'string' ? entityId : undefined,
       entity: typeof entity === 'string' ? entity : undefined,
     })
