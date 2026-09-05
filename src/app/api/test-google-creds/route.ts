@@ -2,31 +2,36 @@ import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-// TEMPORARY: verify GOOGLE_APPLICATION_CREDENTIALS_JSON env var is set
+// TEMPORARY: diagnose JSON parsing issue with GOOGLE_APPLICATION_CREDENTIALS_JSON
 // DELETE this file after testing.
 export async function GET() {
   const json = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
-  const path = process.env.GOOGLE_APPLICATION_CREDENTIALS
 
-  let jsonValid = false
-  let jsonError: string | null = null
-  if (json) {
-    try {
-      const parsed = JSON.parse(json)
-      jsonValid = !!parsed.client_email && !!parsed.private_key
-    } catch (e) {
-      jsonError = e instanceof Error ? e.message : String(e)
-    }
+  if (!json) {
+    return NextResponse.json({ error: 'env var not set' })
   }
 
+  // Show length + last 200 chars + chars around position 2402
+  const around2402 = json.substring(2300, 2500)
+  const last200 = json.substring(json.length - 200)
+
+  // Try to find what's at position 2402
+  const char2402 = json.charAt(2402)
+  const char2401 = json.charAt(2401)
+  const char2400 = json.charAt(2400)
+
+  // Count opening and closing braces
+  const openBraces = (json.match(/\{/g) || []).length
+  const closeBraces = (json.match(/\}/g) || []).length
+
   return NextResponse.json({
-    has_json_env: !!json,
-    json_length: json ? json.length : 0,
-    json_valid: jsonValid,
-    json_error: jsonError,
-    json_starts_with: json ? json.substring(0, 40) + '...' : null,
-    has_path_env: !!path,
-    path_value: path || null,
-    node_env: process.env.NODE_ENV,
+    json_length: json.length,
+    char_2400: char2400,
+    char_2401: char2401,
+    char_2402: char2402,
+    around_2402: around2402,
+    last_200_chars: last200,
+    open_braces: openBraces,
+    close_braces: closeBraces,
   })
 }
