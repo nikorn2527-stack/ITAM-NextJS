@@ -76,6 +76,26 @@ interface Props {
   onOpenChange: (open: boolean) => void
   devices: Device[]
   orgName?: string | null
+  /**
+   * Optional override for the QR code content of each device.
+   * Default: encode `device.assetCode` (the historical behavior).
+   *
+   * Pass a function that returns a string (e.g. the Smart QR URL) to encode
+   * something different — used by the accessory-sticker flow where we want
+   * the QR to point at `/qr/a/{shortId}?action=view` instead of the asset code.
+   *
+   * Return `null`/`undefined` to fall back to the asset code for that device.
+   */
+  qrContentFor?: (device: Device) => string | null | undefined
+  /**
+   * Optional title override (e.g. "พิมพ์สติกเกอร์อุปกรณ์ต่อพ่วง").
+   * Defaults to "🏷️ พิมพ์สติกเกอร์อุปกรณ์".
+   */
+  dialogTitle?: React.ReactNode
+  /**
+   * Optional description override shown under the title.
+   */
+  dialogDescription?: React.ReactNode
 }
 
 function escapeHtml(s: string): string {
@@ -117,6 +137,9 @@ export function StickerPrintDialog({
   onOpenChange,
   devices,
   orgName,
+  qrContentFor,
+  dialogTitle,
+  dialogDescription,
 }: Props) {
   const qc = useQueryClient()
   const [size, setSize] = React.useState<StickerSize>('medium')
@@ -204,7 +227,10 @@ export function StickerPrintDialog({
       if (withQr) {
         for (const d of selectedDevices) {
           try {
-            const url = await QRCode.toDataURL(d.assetCode, {
+            // Allow caller to override QR content (used by accessory stickers
+            // where the QR should encode the smart-qr URL, not the asset code).
+            const qrData = qrContentFor?.(d) ?? d.assetCode
+            const url = await QRCode.toDataURL(qrData, {
               margin: 1,
               width: 200,
               errorCorrectionLevel: 'M',
@@ -291,10 +317,12 @@ export function StickerPrintDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
             <Tag className="h-5 w-5 text-[#f97316]" />
-            🏷️ พิมพ์สติกเกอร์อุปกรณ์
+            {dialogTitle ?? (
+              <>🏷️ พิมพ์สติกเกอร์อุปกรณ์</>
+            )}
           </DialogTitle>
           <DialogDescription>
-            สร้างสติกเกอร์ฉลากอุปกรณ์สำหรับติดเครื่อง
+            {dialogDescription ?? 'สร้างสติกเกอร์ฉลากอุปกรณ์สำหรับติดเครื่อง'}
           </DialogDescription>
         </DialogHeader>
 

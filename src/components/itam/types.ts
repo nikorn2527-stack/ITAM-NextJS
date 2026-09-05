@@ -61,6 +61,20 @@ export interface Device {
   purchasePrice: number | null
   salvageValue: number | null
   usefulLife: number | null
+  // ── Device Set (Task ID 9) ──
+  /** Self-FK to parent device if this device is part of a "set" (e.g. UPS attached to a printer). */
+  parentDeviceId?: string | null
+  /** Optional label for the whole set (e.g. "ชุดเครื่องพิมพ์ห้องจ่ายยา"). */
+  setLabel?: string | null
+  /** 1-based position within the set. */
+  setPosition?: number | null
+  // ── Device Replacement ──
+  /** Self-FK to the device that replaced this one (if any). */
+  replacedById?: string | null
+  /** When this device was replaced (set together with replacedById). */
+  replacedAt?: string | null
+  /** Demo-data tag — true for seeded demo records (used by replace API guard). */
+  isDemo?: boolean
   createdAt: string
   updatedAt: string
 }
