@@ -602,6 +602,14 @@ export const STICKER_SIZE_PRESETS: StickerSizePreset[] = [
   { id: 'label-60x40', label: 'Label 60 × 40 mm', width: 60, height: 40 },
   { id: 'label-100x50', label: 'Label 100 × 50 mm', width: 100, height: 50 },
   { id: 'square-50', label: 'Square 50 × 50 mm', width: 50, height: 50 },
+  // ── Continuous label tape widths (Brother PT-P950NW / Dymo) ──
+  // Height = 0 means "auto" (continuous feed — height follows content)
+  { id: 'tape-12', label: 'เทปม้วน 12 mm (Brother/Dymo)', width: 12, height: 0 },
+  { id: 'tape-18', label: 'เทปม้วน 18 mm', width: 18, height: 0 },
+  { id: 'tape-24', label: 'เทปม้วน 24 mm', width: 24, height: 0 },
+  { id: 'tape-29', label: 'เทปม้วน 29 mm', width: 29, height: 0 },
+  { id: 'tape-36', label: 'เทปม้วน 36 mm (Brother PT-P950NW)', width: 36, height: 0 },
+  { id: 'tape-50', label: 'เทปม้วน 50 mm', width: 50, height: 0 },
   { id: 'custom', label: 'กำหนดเอง...', width: 0, height: 0 },
 ]
 
@@ -633,8 +641,15 @@ export function resolveStickerCanvas(
     return { width: w, height: h, unit: 'mm' }
   }
   const preset = STICKER_SIZE_PRESETS.find((p) => p.id === presetId)
-  if (!preset || preset.width <= 0 || preset.height <= 0) {
+  if (!preset || preset.width <= 0) {
     return { width: 75.2, height: 36, unit: 'mm' }
+  }
+  // Continuous label tape (height=0): use a default height of 36mm
+  // The actual height will be determined by the printer (continuous feed).
+  // We use 36mm as a reasonable default for preview — the @page CSS will
+  // tell the printer the exact dimensions.
+  if (preset.height <= 0) {
+    return { width: preset.width, height: 36, unit: 'mm' }
   }
   return { width: preset.width, height: preset.height, unit: 'mm' }
 }

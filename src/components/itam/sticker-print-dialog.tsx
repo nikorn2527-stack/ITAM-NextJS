@@ -545,16 +545,15 @@ export function StickerPrintDialog({
         stickersHtml.push(stickerHtml)
       }
 
-      // STICKER-EDITOR-DEEP-REVIEW: compute proper cols for label sizes
-      // (label sizes go to A4-grid mode in buildPrintDocument; passing cols=1
-      // would print only 1 sticker per A4 page, very wasteful for bulk prints).
-      // For canvas-as-page mode (A4/A5/large), buildPrintDocument ignores cols
-      // and uses colsEffective=1, so this calculation is a no-op there.
-      const isLandscape = canvas.width > canvas.height
-      const pageWidthForGrid = isLandscape ? 297 : 210
-      const cols = calculateGridColumns(canvas.width, pageWidthForGrid)
-
-      const html = buildPrintDocument(stickersHtml, template, cols)
+      // STICKER-SYSTEM-REWRITE: ALWAYS use canvas-as-page mode.
+      // Each sticker prints on its own page sized to the sticker canvas.
+      // This is correct for:
+      // - Label printers (Brother PT-P950NW, Dymo) — page = label size
+      // - A4 printers — one sticker per A4 page (can be cut later)
+      // No more A4 grid mode — it caused "3 sheets" + wrong layout.
+      const html = buildPrintDocument(stickersHtml, template, 1, {
+        pageSizeMode: 'canvas',
+      })
 
       // Use a hidden iframe to print without opening a new window/tab.
       // This matches the behavior of the old Apps Script app (no popup).
