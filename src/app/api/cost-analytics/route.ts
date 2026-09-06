@@ -85,8 +85,9 @@ export async function GET(req: NextRequest) {
       }),
       db.siteRate.findMany({ select: { siteCode: true, bwRate: true, colorRate: true } }),
     ])
-    const rateMap = new Map(rates.map((r) => [r.siteCode, r.bwRate]))
-    const defaultRate = 0.5
+    const rateMap = new Map(rates.map((r) => [r.siteCode, { bwRate: r.bwRate ?? 0.5, colorRate: r.colorRate ?? 2.0 }]))
+    const defaultBwRate = 0.5
+    const defaultColorRate = 2.0
 
     const meterableDevices = devices.filter((d) =>
       METERABLE_TYPES.includes(d.type),
@@ -100,26 +101,38 @@ export async function GET(req: NextRequest) {
       select: { deviceId: true, pagesBw: true, pagesColor: true },
     })
 
-    const usageByDevice = new Map<string, number>()
+    // Track BW and Color pages SEPARATELY so we can apply different rates.
+    const usageByDeviceBw = new Map<string, number>()
+    const usageByDeviceColor = new Map<string, number>()
     for (const r of readings) {
-      const cur = usageByDevice.get(r.deviceId) ?? 0
-      // Total sheets = BW pages + Color pages
-      const sheets = (r.pagesBw ?? 0) + (r.pagesColor ?? 0)
-      usageByDevice.set(r.deviceId, cur + sheets)
+      const curBw = usageByDeviceBw.get(r.deviceId) ?? 0
+      const curColor = usageByDeviceColor.get(r.deviceId) ?? 0
+      usageByDeviceBw.set(r.deviceId, curBw + (r.pagesBw ?? 0))
+      usageByDeviceColor.set(r.deviceId, curColor + (r.pagesColor ?? 0))
     }
 
     const deviceRows = meterableDevices.map((d) => {
-      const sheets = usageByDevice.get(d.id) ?? 0
-      const rate = rateMap.get(d.site) ?? defaultRate
-      const cost = Math.round(sheets * rate * 100) / 100
+      const bwSheets = usageByDeviceBw.get(d.id) ?? 0
+      const colorSheets = usageByDeviceColor.get(d.id) ?? 0
+      const sheets = bwSheets + colorSheets
+      const rates = rateMap.get(d.site) ?? { bwRate: defaultBwRate, colorRate: defaultColorRate }
+      const bwCost = Math.round(bwSheets * rates.bwRate * 100) / 100
+      const colorCost = Math.round(colorSheets * rates.colorRate * 100) / 100
+      const cost = Math.round((bwCost + colorCost) * 100) / 100
       return {
         id: d.id,
         assetCode: d.assetCode,
         name: d.name,
         site: d.site,
         sheets,
-        rate,
+        bwSheets,
+        colorSheets,
+        rate: rates.bwRate, // backward compat — show BW rate in the rate column
+        bwRate: rates.bwRate,
+        colorRate: rates.colorRate,
         cost,
+        bwCost,
+        colorCost,
       }
     })
     deviceRows.sort((a, b) => b.cost - a.cost)

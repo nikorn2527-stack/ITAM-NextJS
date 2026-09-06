@@ -103,21 +103,35 @@ export async function GET(req: NextRequest) {
 
     const stockItemMap = buildStockItemMap(stockItems as never)
 
-    // Actual printed pages = Σ(pagesBw + pagesColor)
-    const actualPrintedPages = readings.reduce(
-      (s, r) => s + (r.pagesBw ?? 0) + (r.pagesColor ?? 0),
-      0,
-    )
+    // Actual printed pages — track BW and Color SEPARATELY for correct rate calculation
+    const actualBwPages = readings.reduce((s, r) => s + (r.pagesBw ?? 0), 0)
+    const actualColorPages = readings.reduce((s, r) => s + (r.pagesColor ?? 0), 0)
+    const actualPrintedPages = actualBwPages + actualColorPages
 
-    // Compute average paper rate (฿/แผ่น) across sites
-    // If site filter is set, use only that site's rate; else use mean of all sites.
+    // Compute average paper rate (฿/แผ่น) — weighted by BW + Color pages
+    // BUGFIX: Previously used only bwRate for ALL pages (BW + Color combined).
+    // Now: cost = (bwPages × bwRate) + (colorPages × colorRate), then
+    // meterCostPerPage = totalCost / totalPages (weighted average).
     let meterCostPerPage: number | null = null
     if (siteFilter !== 'all') {
       const siteRate = siteRates.find((r) => r.siteCode === siteFilter)
-      meterCostPerPage = siteRate?.bwRate ?? null
+      const bwRate = siteRate?.bwRate ?? 0.5
+      const colorRate = siteRate?.colorRate ?? 2.0
+      const totalCost = (actualBwPages * bwRate) + (actualColorPages * colorRate)
+      meterCostPerPage = actualPrintedPages > 0
+        ? Math.round((totalCost / actualPrintedPages) * 100) / 100
+        : bwRate
     } else if (siteRates.length > 0) {
-      const sum = siteRates.reduce((s, r) => s + (r.bwRate ?? 0), 0)
-      meterCostPerPage = Math.round((sum / siteRates.length) * 100) / 100
+      // Weighted average across all sites
+      let totalCost = 0
+      for (const r of siteRates) {
+        const bwRate = r.bwRate ?? 0.5
+        const colorRate = r.colorRate ?? 2.0
+        totalCost += (actualBwPages * bwRate) + (actualColorPages * colorRate)
+      }
+      meterCostPerPage = actualPrintedPages > 0
+        ? Math.round((totalCost / actualPrintedPages) * 100) / 100
+        : 0.5
     }
     // Fallback default rate
     if (meterCostPerPage == null) meterCostPerPage = 0.5
