@@ -7,6 +7,7 @@
  */
 
 import QRCode from 'qrcode'
+import { generateStickerQrData } from '@/lib/smart-qr'
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -77,7 +78,7 @@ export const DEFAULT_STICKER_SETTINGS: StickerSettings = {
   lineOALink: '@your-org',
 }
 
-// ─── 18 supported variables (mirror of Apps Script Section 6) ─────────────
+// ─── 19 supported variables (mirror of Apps Script Section 6 + {{QrUrl}}) ─
 export const STICKER_VARIABLES: string[] = [
   '{{companyName}}',
   '{{hospitalName}}',
@@ -98,10 +99,17 @@ export const STICKER_VARIABLES: string[] = [
   '{{hotline}}',
   '{{footerNote}}',
   '{{lineOA}}',
+  // Smart QR URL — encodes /qr/d/<shortId>?action=repair so phone cameras
+  // open the ITAM repair page directly when scanned. Use this in the QR
+  // element's `content` field (replaces the legacy {{AssetNo}} which only
+  // showed plain text on scan).
+  '{{QrUrl}}',
 ]
 
 // ─── Sample device used by the editor Preview modal ───────────────────────
 export const SAMPLE_DEVICE: StickerDeviceData = {
+  // Sample cuid so {{QrUrl}} renders a real-looking URL in the editor preview.
+  id: 'clxxxxxxxxxxxxxxxxxxxxxxxx',
   assetCode: 'IT-00001',
   assetSiteCode: 'UDH-00001',
   serialNumber: 'SN12345678',
@@ -120,6 +128,8 @@ export const SAMPLE_DEVICE: StickerDeviceData = {
 
 // ─── Device data shape used for variable substitution ────────────────────
 export interface StickerDeviceData {
+  /** Full device id (cuid) — needed to generate Smart QR URL for {{QrUrl}}. */
+  id?: string
   assetCode: string
   assetSiteCode: string | null
   serialNumber: string | null
@@ -286,11 +296,13 @@ export function buildDefaultTemplate(canvas?: StickerCanvas): StickerTemplate {
       zIndex: 1,
     },
     // 15 — QR code (right side, below header)
+    // Uses {{QrUrl}} (Smart QR URL) so phone cameras open the ITAM repair
+    // page on scan. Legacy templates using {{AssetNo}} still work.
     {
       id: genElementId(),
       type: 'qr',
       x: W - 22.2 * u, y: 13 * u, width: 21 * u, height: 21 * u,
-      content: '{{AssetNo}}',
+      content: '{{QrUrl}}',
       zIndex: 1,
     },
     // 16 — footer divider
@@ -363,7 +375,7 @@ export function buildMinimalTemplate(canvas: StickerCanvas): StickerTemplate {
     {
       id: genElementId(), type: 'qr',
       x: qrX, y: qrY, width: qrSize, height: qrSize,
-      content: '{{AssetNo}}', zIndex: 1,
+      content: '{{QrUrl}}', zIndex: 1,
     },
   ]
 
@@ -397,7 +409,7 @@ export function buildQrOnlyTemplate(canvas: StickerCanvas): StickerTemplate {
     {
       id: genElementId(), type: 'qr',
       x: qrX, y: qrY, width: qrSize, height: qrSize,
-      content: '{{AssetNo}}', zIndex: 1,
+      content: '{{QrUrl}}', zIndex: 1,
     },
     {
       id: genElementId(), type: 'text',
@@ -466,7 +478,7 @@ export function buildCompactTemplate(canvas: StickerCanvas): StickerTemplate {
   elements.push({
     id: genElementId(), type: 'qr',
     x: qrX, y: qrY, width: qrSize, height: qrSize,
-    content: '{{AssetNo}}', zIndex: 1,
+    content: '{{QrUrl}}', zIndex: 1,
   })
 
   return {
@@ -544,7 +556,7 @@ export function buildDetailedTemplate(canvas: StickerCanvas): StickerTemplate {
   elements.push({
     id: genElementId(), type: 'qr',
     x: qrX, y: qrY, width: qrSize, height: qrSize,
-    content: '{{AssetNo}}', zIndex: 1,
+    content: '{{QrUrl}}', zIndex: 1,
   })
   // Footer note + divider
   elements.push(
@@ -666,6 +678,13 @@ export function substituteVariables(
     '{{hotline}}': settings.hotline || '',
     '{{footerNote}}': settings.footerNote || '',
     '{{lineOA}}': settings.lineOALink || '',
+    // Smart QR URL — encode /qr/d/<shortId>?action=repair so phone cameras
+    // open the ITAM repair page on scan (vs. {{AssetNo}} which shows plain
+    // text on scan). Falls back to assetCode if device.id is missing (e.g.
+    // preview without a real device loaded).
+    '{{QrUrl}}': device?.id
+      ? generateStickerQrData('d', device.id, 'repair')
+      : device?.assetCode || '',
   }
   let out = text
   for (const [k, val] of Object.entries(v)) {

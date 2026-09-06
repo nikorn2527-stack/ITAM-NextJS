@@ -62,7 +62,10 @@ function makeElement(type: StickerElementType): StickerElement {
     return { ...base, type, width: 20, height: 20, content: '', source: '' }
   }
   if (type === 'qr') {
-    return { ...base, type, width: 15, height: 15, content: '{{AssetNo}}' }
+    // APPENDIX-D: default to {{QrUrl}} (Smart QR URL) so phone cameras open
+    // the ITAM repair page when scanned. The previous default {{AssetNo}}
+    // only encoded the asset code as plain text (scanners couldn't open it).
+    return { ...base, type, width: 15, height: 15, content: '{{QrUrl}}' }
   }
   // rect
   return { ...base, type, width: 30, height: 5, background: '#f97316', border: 'none', borderRadius: 0 }
@@ -1447,11 +1450,11 @@ export function ItamStickerEditor() {
                       <Input
                         value={selectedEl.content ?? ''}
                         onChange={(e) => updateSelectedElement({ content: e.target.value })}
-                        placeholder="{{AssetNo}}"
+                        placeholder="{{QrUrl}}"
                         className="text-xs dark:bg-slate-800 dark:border-slate-700"
                       />
                       <p className="text-[10px] text-slate-400">
-                        ค่าเริ่มต้นใช้ {'{{AssetNo}}'} เพื่อสร้าง QR จากรหัสอุปกรณ์
+                        💡 ใช้ตัวแปร {'{{QrUrl}}'} ในอิลิเมนต์ QR เพื่อสแกนแล้วเปิดหน้าแจ้งซ่อมอัตโนมัติ (ส่ง URL ไปยัง Smart QR Router แทนข้อความธรรมดา) — หากใช้ {'{{AssetNo}}'} QR จะเป็นรหัสอุปกรณ์แบบข้อความ
                       </p>
                     </div>
                   )}

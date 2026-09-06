@@ -80,9 +80,11 @@ export async function POST(req: NextRequest) {
       for (const d of devices) {
         // STICKER-EDITOR-DEEP-REVIEW: StickerDeviceData fields must be
         //   assetCode / serialNumber / type  (NOT assetNo / serial / deviceType).
+        // APPENDIX-D: also pass `id` so {{QrUrl}} generates the Smart QR URL.
         // See render/route.ts for the full comment — the wrong names caused
         // blank substitutions in printed stickers.
         const deviceData: StickerDeviceData = {
+          id: d.id,
           assetCode: d.assetCode, assetSiteCode: d.assetSiteCode, serialNumber: d.serialNumber,
           type: d.type, brand: d.brand, model: d.model,
           building: d.building, floor: d.floor, department: d.department,
@@ -118,6 +120,7 @@ export async function POST(req: NextRequest) {
         continue
       }
       const deviceData: StickerDeviceData = {
+        id: d.id,
         assetCode: d.assetCode, assetSiteCode: d.assetSiteCode, serialNumber: d.serialNumber,
         type: d.type, brand: d.brand, model: d.model,
         building: d.building, floor: d.floor, department: d.department,

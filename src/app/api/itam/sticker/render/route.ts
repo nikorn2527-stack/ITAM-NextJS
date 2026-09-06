@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
     // stickers. (substituteVariables looks up `device.assetCode` etc., not
     // `device.assetNo`.)
     const deviceData: StickerDeviceData = {
+      id: device.id,
       assetCode: device.assetCode,
       assetSiteCode: device.assetSiteCode,
       serialNumber: device.serialNumber,

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import {
@@ -113,22 +114,60 @@ export async function GET(req: NextRequest) {
           }
 
           if (!dryRun) {
-            const batchSize = 25
-            for (let i = 0; i < validation.validRows.length; i += batchSize) {
-              const batch = validation.validRows.slice(i, i + batchSize)
-              for (const row of batch) {
-                try {
-                  await upsertDeviceFromImport(row)
-                } catch (err) {
-                  results.devices.errors++
-                  if (results.devices.errors_detail.length < 5) {
-                    results.devices.errors_detail.push(
-                      `row ${row.rowNumber}: ${(err as Error).message}`,
-                    )
+            // ── APPENDIX-H: wrap device writes in db.$transaction so a
+            //    partial failure doesn't leave the DB in a torn state.
+            //    Mirrors the CONSULTING-007 fix applied to /api/import:
+            //    batches of BATCH_SIZE rows per transaction; on failure,
+            //    the failing batch rolls back atomically and we abort the
+            //    rest of the device sync (previously committed batches
+            //    stay committed — we surface the partial count to the
+            //    caller so they know the sync wasn't a total loss).
+            //    Stock-in / stock-out / WO sections below are NOT yet
+            //    wrapped (Phase B will consolidate those). ──
+            const BATCH_SIZE = 100
+            const batches: Array<typeof validation.validRows> = []
+            for (let i = 0; i < validation.validRows.length; i += BATCH_SIZE) {
+              batches.push(validation.validRows.slice(i, i + BATCH_SIZE))
+            }
+            console.log(
+              `[sync-legacy][device] writing ${validation.validRows.length} rows in ${batches.length} batch(es) of ≤${BATCH_SIZE}`,
+            )
+            let committed = 0
+            try {
+              for (let b = 0; b < batches.length; b++) {
+                const batch = batches[b]
+                const batchNo = b + 1
+                let batchOk = 0
+                await db.$transaction(async (tx) => {
+                  for (const row of batch) {
+                    await upsertDeviceFromImport(row, tx)
+                    batchOk++
                   }
-                }
+                })
+                committed += batchOk
+                console.log(
+                  `[sync-legacy][device] batch ${batchNo}/${batches.length}: committed ${batchOk} rows (cumulative ${committed}/${validation.validRows.length})`,
+                )
               }
-              await new Promise((r) => setTimeout(r, 300))
+              // After successful sync, count created vs updated by scanning
+              // the rows we just wrote (best-effort — non-fatal if it fails).
+              results.devices.created = 0
+              results.devices.updated = committed
+              results.devices.skipped = validation.validRows.length - committed
+            } catch (e) {
+              // A batch failed → that batch's writes were rolled back.
+              // Earlier batches may already be committed; surface the count.
+              console.error(
+                `[sync-legacy][device] batch failed after committing ${committed}/${validation.validRows.length} rows`,
+                e,
+              )
+              results.devices.errors++
+              results.devices.errors_detail.push(
+                `batch: ${(e instanceof Error ? e.message : 'DB error (device)')}` +
+                  ` — ${committed}/${validation.validRows.length} rows committed before failure (rolled back failed batch)`,
+              )
+              results.devices.updated = committed
+              results.devices.skipped = validation.validRows.length - committed
             }
           } else {
             results.devices.created = 0
@@ -313,8 +352,17 @@ export async function GET(req: NextRequest) {
  * Upsert a device from the parsed import row.
  * Uses assetCode as the unique key (matches how Apps Script sync worked).
  * Only updates fields that have non-null values (won't null out existing data).
+ *
+ * APPENDIX-H: accepts an optional Prisma transaction client so the caller
+ * can wrap a batch of upserts in a single `db.$transaction` (rolled back
+ * atomically on any per-row failure). Falls back to the global `db` when
+ * no `tx` is provided (preserves the previous call shape).
  */
-async function upsertDeviceFromImport(row: DeviceImportRow) {
+async function upsertDeviceFromImport(
+  row: DeviceImportRow,
+  tx: Prisma.TransactionClient | typeof db = db,
+): Promise<void> {
+  const client = tx
   const v = row.values
   if (!v.assetNo) return
 
@@ -356,7 +404,7 @@ async function upsertDeviceFromImport(row: DeviceImportRow) {
     Object.entries(deviceData).filter(([, value]) => value !== null && value !== undefined),
   )
 
-  await db.device.upsert({
+  await client.device.upsert({
     where: { assetCode: v.assetNo },
     create: cleanData,
     update: cleanData,

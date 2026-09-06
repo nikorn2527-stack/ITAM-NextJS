@@ -16,26 +16,33 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Parallel queries with select to reduce payload
+    // APPENDIX-F: query SiteAttribute (the live sites master) instead of the
+    // legacy `Site` table (which has 0 rows in production). Field mapping:
+    //   Site.code   → SiteAttribute.SiteCode
+    //   Site.name   → SiteAttribute.SiteName
+    // We keep the { id, code, name } response shape so existing callers
+    // don't break (the front-end still consumes `code` / `name`).
     const [rates, sites] = await Promise.all([
       db.siteRate.findMany({
         orderBy: { siteCode: 'asc' },
         select: { id: true, siteCode: true, bwRate: true, colorRate: true, effectiveFrom: true, effectiveTo: true, isActive: true },
       }),
-      db.site.findMany({
-        select: { id: true, code: true, name: true },
+      db.siteAttribute.findMany({
+        select: { id: true, SiteCode: true, SiteName: true },
       }),
     ])
-    const siteNameMap = new Map(sites.map((s) => [s.code, s.name]))
+    const siteNameMap = new Map(
+      sites.map((s) => [s.SiteCode, s.SiteName ?? s.SiteCode] as const),
+    )
 
     // Auto-seed default rates for sites that don't yet have one
     const sitesWithoutRate = sites.filter(
-      (s) => !rates.some((r) => r.siteCode === s.code),
+      (s) => !rates.some((r) => r.siteCode === s.SiteCode),
     )
     if (sitesWithoutRate.length > 0) {
       await db.siteRate.createMany({
         data: sitesWithoutRate.map((s) => ({
-          siteCode: s.code,
+          siteCode: s.SiteCode,
           bwRate: 0.5,
           colorRate: 2.0,
         })),
@@ -96,7 +103,11 @@ export async function POST(req: NextRequest) {
       )
     }
     const code = String(siteCode).trim()
-    const site = await db.site.findUnique({ where: { code } })
+    // APPENDIX-F: look up SiteAttribute by SiteCode (was: Site.code).
+    const site = await db.siteAttribute.findUnique({
+      where: { SiteCode: code },
+      select: { SiteCode: true, SiteName: true },
+    })
     if (!site) {
       return NextResponse.json(
         { error: `Site not found: ${code}` },
@@ -137,7 +148,8 @@ export async function POST(req: NextRequest) {
         rate: {
           id: rate.id,
           siteCode: rate.siteCode,
-          siteName: site.name,
+          // APPENDIX-F: use SiteAttribute.SiteName (was: site.name).
+          siteName: site.SiteName ?? code,
           bwRate: rate.bwRate,
           colorRate: rate.colorRate,
           createdAt: rate.createdAt,

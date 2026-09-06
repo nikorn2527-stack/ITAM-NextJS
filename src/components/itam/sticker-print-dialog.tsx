@@ -62,6 +62,7 @@ import {
 } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { matchesSuffixOrContains } from '@/lib/suffix-search'
+import { generateStickerQrData } from '@/lib/smart-qr'
 import { Printer, Search, Loader2, Tag, QrCode, Ruler, LayoutTemplate, Star } from 'lucide-react'
 import type { Device } from './types'
 import {
@@ -115,6 +116,7 @@ interface Props {
 // ─── Device → StickerDeviceData ──────────────────────────────────────────
 function deviceToStickerData(d: Device): StickerDeviceData {
   return {
+    id: d.id, // APPENDIX-D: needed so {{QrUrl}} generates the Smart QR URL.
     assetCode: d.assetCode,
     assetSiteCode: d.assetSiteCode ?? null,
     serialNumber: d.serialNumber ?? null,
@@ -363,7 +365,12 @@ export function StickerPrintDialog({
     let cancelled = false
     setPreviewLoading(true)
     const deviceData = sampleDevice ? deviceToStickerData(sampleDevice) : null
-    const qrOverride = sampleDevice ? (qrContentFor?.(sampleDevice) ?? null) : null
+    // APPENDIX-D: default the QR override to the Smart QR URL when no
+    // caller-supplied override exists — this ensures preview renders the
+    // scannable URL even for legacy templates that still use {{AssetNo}}.
+    const qrOverride = sampleDevice
+      ? (qrContentFor?.(sampleDevice) ?? generateStickerQrData('d', sampleDevice.id, 'repair'))
+      : null
     Promise.resolve()
       .then(async () => {
         const cache = await buildQrCacheForDevice(deviceData, template, settings, qrOverride)
@@ -397,14 +404,16 @@ export function StickerPrintDialog({
     }
     setPrinting(true)
     try {
-      // Pre-generate QR data URLs (assetCode) for each device if withQr is on.
+      // Pre-generate QR data URLs for each device if withQr is on.
+      // APPENDIX-D: default to the Smart QR URL (so phone cameras open the
+      // ITAM repair page on scan) instead of the raw assetCode. The
+      // `qrContentFor` prop (used by accessory stickers) still wins.
       const qrMap = new Map<string, string>()
       if (withQr) {
         for (const d of selectedDevices) {
           try {
-            // Allow caller to override QR content (used by accessory stickers
-            // where the QR should encode the smart-qr URL, not the asset code).
-            const qrData = qrContentFor?.(d) ?? d.assetCode
+            const qrData =
+              qrContentFor?.(d) ?? generateStickerQrData('d', d.id, 'repair')
             const url = await QRCode.toDataURL(qrData, {
               margin: 1,
               width: 200,

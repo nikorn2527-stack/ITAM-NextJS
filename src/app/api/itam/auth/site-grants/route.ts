@@ -160,10 +160,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Validate that the Site exists in the master
-    const site = await db.site.findUnique({
-      where: { code: siteCode },
-      select: { code: true, name: true },
+    // APPENDIX-F: validate the Site exists in the live sites master
+    // (SiteAttribute) instead of the dead `Site` table. Field mapping:
+    //   Site.code   → SiteAttribute.SiteCode
+    //   Site.name   → SiteAttribute.SiteName
+    const site = await db.siteAttribute.findUnique({
+      where: { SiteCode: siteCode },
+      select: { SiteCode: true, SiteName: true },
     })
     if (!site) {
       return NextResponse.json(

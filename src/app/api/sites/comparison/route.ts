@@ -78,8 +78,17 @@ export async function GET(req: NextRequest) {
       ? computeRange(rawRange)
       : computeRange('month')
 
+    // APPENDIX-F: query SiteAttribute (the live sites master) instead of the
+    // legacy `Site` table. Field mapping:
+    //   Site.code   → SiteAttribute.SiteCode
+    //   Site.name   → SiteAttribute.SiteName
+    // We keep the { code, name } shape so downstream code (siteNames map,
+    // allSiteCodes set) doesn't need to change.
     const [sites, rates, devices, activeCycle] = await Promise.all([
-      db.site.findMany({ orderBy: { code: 'asc' } }),
+      db.siteAttribute.findMany({
+        orderBy: { SiteCode: 'asc' },
+        select: { SiteCode: true, SiteName: true },
+      }),
       db.siteRate.findMany({ select: { siteCode: true, bwRate: true, colorRate: true } }),
       db.device.findMany({
         select: {
@@ -102,9 +111,17 @@ export async function GET(req: NextRequest) {
     const rateMap = new Map(rates.map((r) => [r.siteCode, r.bwRate]))
     const defaultRate = 0.5
 
+    // Normalize SiteAttribute rows back to { code, name } shape so the rest
+    // of the function (which was written against the old Site model) keeps
+    // working unchanged. This is the minimal-diff migration path.
+    const siteRows = sites.map((s) => ({
+      code: s.SiteCode,
+      name: s.SiteName ?? s.SiteCode,
+    }))
+
     // Build per-site skeletons including any sites that exist in DB even with 0 devices.
     // Also include devices whose site doesn't appear in the sites table (treat as a row).
-    const siteNames = new Map(sites.map((s) => [s.code, s.name]))
+    const siteNames = new Map(siteRows.map((s) => [s.code, s.name]))
     const deviceBySite = new Map<string, typeof devices>()
     for (const d of devices) {
       const list = deviceBySite.get(d.site) ?? []
@@ -114,7 +131,7 @@ export async function GET(req: NextRequest) {
 
     // Resolve the set of site codes (union of sites table + devices.site).
     const allSiteCodes = new Set<string>([
-      ...sites.map((s) => s.code),
+      ...siteRows.map((s) => s.code),
       ...devices.map((d) => d.site),
     ])
 
