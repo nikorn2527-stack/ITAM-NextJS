@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { checkRateLimit, getClientIP } from '@/lib/rate-limit-kv'
 
 // ============================================================
 // Public QR Scan → Device Info API (NO AUTH REQUIRED)
@@ -8,6 +9,12 @@ import { db } from '@/lib/db'
 //
 // Returns a SANITIZED subset of device fields safe for public
 // consumption (no serials, no IP/MAC, no purchase info, no PII).
+//
+// Rate limit: 60 requests/hour per IP (prevents enumeration of
+// all device locations across all sites).
+// ============================================================
+
+const DEVICE_VIEW_RATE_LIMIT = 60 // per hour per IP
 //
 // `shortId` may be:
 //   • last 8 chars of a Device.id (cuid) — primary (Smart QR)
@@ -195,6 +202,17 @@ export async function GET(
   { params }: { params: Promise<{ shortId: string }> },
 ) {
   try {
+    // Rate limit — prevents enumeration of device locations
+    const clientIP = getClientIP(req)
+    const rlKey = `public-device-view:${clientIP}`
+    const rl = await checkRateLimit(rlKey, DEVICE_VIEW_RATE_LIMIT)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'คำขอเกินขีดจำกัด — กรุณาลองใหม่ภายหลัง' },
+        { status: 429, headers: { 'Retry-After': '3600' } },
+      )
+    }
+
     const { shortId } = await params
     if (!shortId) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
