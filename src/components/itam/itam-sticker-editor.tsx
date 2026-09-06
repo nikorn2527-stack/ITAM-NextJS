@@ -236,6 +236,9 @@ function WorkspaceElement({
       wordBreak: 'break-word',
       overflow: 'hidden',
       fontFamily: '"Sukhumvit Set","Noto Sans Thai","Tahoma","Segoe UI",sans-serif',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      justifyContent: el.valign === 'center' ? 'center' : el.valign === 'bottom' ? 'flex-end' : 'flex-start',
     })
     content = el.content
       ? substituteVariables(
@@ -250,6 +253,8 @@ function WorkspaceElement({
           },
         )
       : '​'
+    // Wrap in span for proper flex text rendering
+    content = content ? <span style={{ display: 'block', width: '100%' }}>{content}</span> : '​'
   } else if (el.type === 'rect') {
     Object.assign(style, {
       background: el.background || 'transparent',
@@ -1355,7 +1360,7 @@ export function ItamStickerEditor() {
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs">จัดวาง</Label>
+                          <Label className="text-xs">จัดวางแนวนอน</Label>
                           <Select
                             value={selectedEl.align ?? 'left'}
                             onValueChange={(v) => updateSelectedElement({ align: v as 'left' | 'center' | 'right' })}
@@ -1367,6 +1372,22 @@ export function ItamStickerEditor() {
                               <SelectItem value="left">ซ้าย</SelectItem>
                               <SelectItem value="center">กลาง</SelectItem>
                               <SelectItem value="right">ขวา</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">จัดวางแนวตั้ง</Label>
+                          <Select
+                            value={selectedEl.valign ?? 'top'}
+                            onValueChange={(v) => updateSelectedElement({ valign: v as 'top' | 'center' | 'bottom' })}
+                          >
+                            <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="top">ชิดบน</SelectItem>
+                              <SelectItem value="center">กลาง</SelectItem>
+                              <SelectItem value="bottom">ชิดล่าง</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>

@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { requireAuth } from '@/lib/auth-middleware'
 
 /**
  * PUT /api/site-attributes/[id]
  *
  * Update a SiteAttribute row. Also syncs the change into MasterItem
  * (category='Site') so the master-data UI stays consistent.
+ *
+ * Auth: ADMIN only — site attributes include LINE OA tokens, hotlines,
+ * and other contact info that should only be modified by admins.
  */
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // P0 Security: require ADMIN — site attributes include LINE OA + hotline
+  const auth = await requireAuth(req, 'ADMIN')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
   try {
     const { id } = await params
     const body = await req.json()

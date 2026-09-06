@@ -43,6 +43,8 @@ export interface StickerElement {
   fontWeight?: number // 100..900
   color?: string      // hex / css color
   align?: 'left' | 'center' | 'right'
+  /** Vertical alignment for text elements */
+  valign?: 'top' | 'center' | 'bottom'
   /** For text: the text content with {{variables}}. For image: src url. For qr: data to encode. */
   content?: string
   /** Optional source identifier (e.g. for image — same as content but kept separate to allow future ref types) */
@@ -736,8 +738,13 @@ function renderElement(
     const fontWeight = el.fontWeight ?? 500
     const color = el.color ?? '#1e293b'
     const align = el.align ?? 'left'
+    const valign = el.valign ?? 'top'
+    // Use flexbox for both horizontal + vertical alignment.
+    // flex-direction:column + justify-content controls vertical (valign).
+    // text-align controls horizontal (align) for multi-line text.
+    const justifyCss = valign === 'center' ? 'center' : valign === 'bottom' ? 'flex-end' : 'flex-start'
     // white-space: pre-wrap so multi-line content (\n) is preserved.
-    return `<div class="stk-el stk-text" style="${baseStyle};font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};text-align:${align};overflow:hidden;line-height:1.15;white-space:pre-wrap;word-break:break-word">${escapeHtml(substituted)}</div>`
+    return `<div class="stk-el stk-text" style="${baseStyle};display:flex;flex-direction:column;justify-content:${justifyCss};font-size:${fontSize}pt;font-weight:${fontWeight};color:${color};text-align:${align};overflow:hidden;line-height:1.15;white-space:pre-wrap;word-break:break-word"><span style="display:block;width:100%">${escapeHtml(substituted)}</span></div>`
   }
 
   if (el.type === 'rect') {
