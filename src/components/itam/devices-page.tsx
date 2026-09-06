@@ -411,6 +411,9 @@ export function DevicesPage() {
   const [exporting, setExporting] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [stickerOpen, setStickerOpen] = React.useState(false)
+  // When set, StickerPrintDialog shows only this device (from row "สติกเกอร์" button).
+  // When null, shows all devices (from toolbar "พิมพ์หลายเครื่อง" button).
+  const [singlePrintDeviceId, setSinglePrintDeviceId] = React.useState<string | null>(null)
   const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
   // STICKER-PREVIEW-FIX-FINAL: per-row Printer-icon button calls
   // `printSingleSticker(device)` directly (no dialog). Track which device
@@ -3345,7 +3348,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setStickerOpen(true)}
+                onClick={() => {
+                  setSinglePrintDeviceId(null)
+                  setStickerOpen(true)
+                }}
                 disabled={(devices ?? []).length === 0}
                 aria-label="พิมพ์สติกเกอร์หลายเครื่อง"
                 title="เลือกอุปกรณ์หลายเครื่องแล้วพิมพ์เป็นชุด"
@@ -3753,17 +3759,15 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => printSingleSticker(d)}
-                            disabled={!!printingSingleId}
+                            onClick={() => {
+                              setSinglePrintDeviceId(d.id)
+                              setStickerOpen(true)
+                            }}
                             aria-label="พิมพ์สติกเกอร์อุปกรณ์นี้"
-                            title="พิมพ์สติกเกอร์อุปกรณ์นี้ทันที (1 ใบ)"
+                            title="พิมพ์สติกเกอร์อุปกรณ์นี้"
                             className="h-7 gap-1 px-2 text-[11px] dark:bg-slate-800 dark:border-slate-700"
                           >
-                            {printingSingleId === d.id ? (
-                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Printer className="h-3.5 w-3.5" />
-                            )}
+                            <Printer className="h-3.5 w-3.5" />
                             สติกเกอร์
                           </Button>
                         </div>
@@ -3880,11 +3884,18 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
         totalRows={totalCount}
       />
 
-      {/* Sticker print */}
+      {/* Sticker print — when singlePrintDeviceId is set, only show that device */}
       <StickerPrintDialog
         open={stickerOpen}
-        onOpenChange={setStickerOpen}
-        devices={devices ?? []}
+        onOpenChange={(open) => {
+          setStickerOpen(open)
+          if (!open) setSinglePrintDeviceId(null)
+        }}
+        devices={
+          singlePrintDeviceId
+            ? (devices ?? []).filter((d) => d.id === singlePrintDeviceId)
+            : (devices ?? [])
+        }
         orgName={settings?.orgName ?? null}
       />
 
