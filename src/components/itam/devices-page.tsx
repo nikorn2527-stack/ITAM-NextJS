@@ -2109,8 +2109,9 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                             building: '',
                             floor: '',
                             room: '',
+                            assetSiteCode: '', // clear old site code so new one auto-generates
                           }))
-                          if (!form.id && !form.assetSiteCode) {
+                          if (!form.id) {
                             void fetchNextSiteCode(v)
                           }
                         }}

@@ -240,11 +240,11 @@ function WorkspaceElement({
           el.content,
           SAMPLE_DEVICE,
           settings ?? {
-            companyName: 'PPIT',
-            hospitalName: 'โรงพยาบาล',
-            hotline: '000-000-0000',
-            lineOALink: '@ppit',
-            footerNote: 'ห้ามนำอุปกรณ์ออกจากพื้นที่',
+            companyName: '',
+            hospitalName: '',
+            hotline: '',
+            lineOALink: '',
+            footerNote: '',
           },
         )
       : '​'
