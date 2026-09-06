@@ -81,6 +81,8 @@ import {
   Eye,
   X,
   Calculator,
+  ChevronRight,
+  Unlock,
 } from 'lucide-react'
 import { formatThaiDate, relativeTime, type Site, canSelectSite } from './types'
 import { TemplatePrintDialog } from './template-print-dialog'
@@ -429,6 +431,9 @@ function parseExternalMeta(raw: string | null): ExternalMeta | null {
 // Main component
 // ============================================================
 interface NewFormState {
+  // Task ID: UX-GAPS-3-ITEMS — wizard step 1: pick job type first, then
+  // show only the relevant fields in step 2. '' = step 1 (no selection yet).
+  jobType: '' | 'internal' | 'external' | 'guest'
   subject: string
   subjectGroup: string
   building: string
@@ -455,6 +460,7 @@ interface NewFormState {
 }
 
 const EMPTY_FORM: NewFormState = {
+  jobType: '',
   subject: '',
   subjectGroup: '',
   building: '',
@@ -654,13 +660,16 @@ export function WorkOrdersPage() {
       toast.error('กรุณาระบุประเภทปัญหา')
       return
     }
-    if (form.isExternal) {
+    // ── Per-job-type validation (Task ID: UX-GAPS-3-ITEMS) ──
+    // internal: no required reporter fields (uses logged-in user)
+    // external: clientName required
+    // guest:    reporterName + tel required (ContactDirectory verification)
+    if (form.jobType === 'external') {
       if (!form.clientName.trim()) {
         toast.error('กรุณาระบุชื่อลูกค้าสำหรับงานนอก')
         return
       }
-    } else {
-      // Internal: guest must provide name + phone for verification
+    } else if (form.jobType === 'guest') {
       if (!form.reporterName.trim() || !form.tel.trim()) {
         toast.error('ผู้แจ้ง (Guest) ต้องระบุชื่อและเบอร์โทร เพื่อยืนยันตัวตน')
         return
@@ -673,10 +682,24 @@ export function WorkOrdersPage() {
         details: form.details.trim() || null,
         priority: form.priority,
         picBeforeImages: form.picBeforeImages,
-        submissionSource: 'guest',
         isSpecialFee: form.isSpecialFee === true,
       }
-      if (form.isExternal) {
+      if (form.jobType === 'internal') {
+        // Staff submission via session — reporter is the logged-in user.
+        // Skip guest contact validation; building/location/device still
+        // optional.
+        payload.submissionSource = 'session'
+        payload.reporterName = form.reporterName.trim() || authUser?.name || null
+        payload.reporterEmail = authUser?.email ?? null
+        payload.tel = form.tel.trim() || null
+        payload.employeeCode = form.employeeCode.trim() || null
+        payload.building = form.building.trim() || null
+        payload.location = form.location.trim() || null
+        payload.deviceId = form.deviceId || null
+        payload.skipGuestValidation = true
+      } else if (form.jobType === 'external') {
+        // External client work — uses externalMeta, skips ContactDirectory.
+        payload.submissionSource = 'guest'
         payload.isExternal = true
         payload.externalMeta = {
           clientName: form.clientName.trim(),
@@ -689,6 +712,8 @@ export function WorkOrdersPage() {
         payload.tel = form.tel.trim() || null
         payload.skipGuestValidation = true
       } else {
+        // Guest flow — walk-in reporter requires ContactDirectory verification.
+        payload.submissionSource = 'guest'
         payload.reporterName = form.reporterName.trim()
         payload.tel = form.tel.trim()
         payload.employeeCode = form.employeeCode.trim() || null
@@ -1042,6 +1067,7 @@ export function WorkOrdersPage() {
         onSubmit={handleCreate}
         subjects={optionsQuery.data?.subjects ?? []}
         buildings={optionsQuery.data?.buildings ?? []}
+        authUser={authUser}
       />
 
       {/* Detail dialog */}
@@ -1274,6 +1300,7 @@ function CreateWorkOrderDialog({
   onSubmit,
   subjects,
   buildings,
+  authUser,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -1283,6 +1310,7 @@ function CreateWorkOrderDialog({
   onSubmit: () => void
   subjects: SubjectOption[]
   buildings: BuildingOption[]
+  authUser: ReturnType<typeof useAuthStore.getState>['user']
 }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [picBusy, setPicBusy] = React.useState(false)
@@ -1478,25 +1506,115 @@ function CreateWorkOrderDialog({
 
         <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-0 sm:py-1">
           <div className="grid gap-3">
-            {/* External mode toggle */}
-            <div className="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2.5">
-              <div className="flex items-start gap-2">
-                <PackageOpen className="mt-0.5 h-4 w-4 text-teal-600 dark:text-teal-400" />
-                <div>
-                  <div className="text-sm font-medium">ลูกค้าภายนอก / นอกสถานที่</div>
-                  <div className="text-xs text-muted-foreground">
-                    เปิดเมื่องานไม่ได้อยู่ในระบบ (เช่น ลูกค้าบริษัทอื่น)
+            {/* ── Step 1: Job type selector (Task ID: UX-GAPS-3-ITEMS) ──
+                When no jobType is picked yet, show the 3-option wizard.
+                After selection, show a compact banner + "เปลี่ยน" button. */}
+            {form.jobType === '' ? (
+              <div className="grid gap-3">
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <div className="text-sm font-semibold">เลือกประเภทงาน</div>
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    เลือกประเภทงานก่อน — ระบบจะแสดงเฉพาะฟิลด์ที่เกี่ยวข้อง
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm((s) => ({ ...s, jobType: 'internal', isExternal: false }))
+                  }
+                  className="flex w-full items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition-colors hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-orange-700 dark:hover:bg-orange-950/30"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-600 dark:bg-orange-950 dark:text-orange-300">
+                    <Building2 className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">งานภายใน</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      พนักงานแจ้งซ่อมเองผ่านบัญชีล็อกอิน — ใช้ข้อมูลผู้ใช้ล็อกอินเป็นผู้แจ้ง (ไม่ต้องกรอกชื่อ-เบอร์)
+                    </div>
+                  </div>
+                  <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm((s) => ({ ...s, jobType: 'external', isExternal: true }))
+                  }
+                  className="flex w-full items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition-colors hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-orange-700 dark:hover:bg-orange-950/30"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-300">
+                    <PackageOpen className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">งานลูกค้าภายนอก</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      ลูกค้าภายนอก/นอกสถานที่ — ระบุชื่อลูกค้า + สถานที่ + เบอร์ติดต่อ
+                    </div>
+                  </div>
+                  <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm((s) => ({ ...s, jobType: 'guest', isExternal: false }))
+                  }
+                  className="flex w-full items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition-colors hover:border-orange-300 hover:bg-orange-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-orange-700 dark:hover:bg-orange-950/30"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-300">
+                    <User className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">ผู้ใช้ทั่วไป</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      ผู้ใช้เดินเข้ามาแจ้งซ่อม — ต้องระบุชื่อ+เบอร์โทร เพื่อยืนยันตัวตนกับสมุดผู้ติดต่อ
+                    </div>
+                  </div>
+                  <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
               </div>
-              <Switch
-                checked={form.isExternal}
-                onCheckedChange={(v) =>
-                  setForm((s) => ({ ...s, isExternal: v }))
-                }
-                aria-label="เปิดโหมดลูกค้าภายนอก"
-              />
-            </div>
+            ) : (
+              <div className="grid gap-3">
+                {/* Selected job type banner — compact, with "เปลี่ยน" button */}
+                <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3 py-2.5">
+                  <div className="flex items-start gap-2">
+                    {form.jobType === 'internal' && (
+                      <Building2 className="mt-0.5 h-4 w-4 text-orange-600 dark:text-orange-400" />
+                    )}
+                    {form.jobType === 'external' && (
+                      <PackageOpen className="mt-0.5 h-4 w-4 text-teal-600 dark:text-teal-400" />
+                    )}
+                    {form.jobType === 'guest' && (
+                      <User className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    )}
+                    <div>
+                      <div className="text-sm font-medium">
+                        {form.jobType === 'internal' && 'งานภายใน'}
+                        {form.jobType === 'external' && 'งานลูกค้าภายนอก'}
+                        {form.jobType === 'guest' && 'ผู้ใช้ทั่วไป'}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {form.jobType === 'internal' &&
+                          'ใช้ข้อมูลผู้ใช้ล็อกอินเป็นผู้แจ้ง'}
+                        {form.jobType === 'external' &&
+                          'ลูกค้าภายนอก/นอกสถานที่'}
+                        {form.jobType === 'guest' &&
+                          'ผู้แจ้งต้องยืนยันตัวตนกับสมุดผู้ติดต่อ'}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() =>
+                      setForm((s) => ({ ...s, jobType: '', isExternal: false }))
+                    }
+                    disabled={saving}
+                    className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    เปลี่ยนประเภทงาน
+                  </Button>
+                </div>
 
             {/* Subject dropdown (grouped) */}
             <div className="grid gap-1.5">
@@ -1907,7 +2025,22 @@ function CreateWorkOrderDialog({
               />
             </div>
 
-            {/* Reporter block */}
+            {/* Reporter block — hidden for internal mode (uses logged-in user).
+                Task ID: UX-GAPS-3-ITEMS */}
+            {form.jobType === 'internal' ? (
+              <div className="grid gap-1 rounded-lg border bg-muted/40 p-3">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  ผู้แจ้ง (พนักงานล็อกอิน)
+                </div>
+                <div className="text-sm">
+                  {authUser?.name ?? authUser?.email ?? 'ผู้ใช้ล็อกอินปัจจุบัน'}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  ระบบจะใช้ข้อมูลผู้ใช้ล็อกอินเป็นผู้แจ้ง (submissionSource = session)
+                </div>
+              </div>
+            ) : (
             <div className="grid gap-2 rounded-lg border bg-card p-3">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                 <ShieldCheck className="h-3.5 w-3.5" />
@@ -1990,6 +2123,9 @@ function CreateWorkOrderDialog({
                 </div>
               )}
             </div>
+            )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -2005,7 +2141,7 @@ function CreateWorkOrderDialog({
           </Button>
           <Button type="button"
             onClick={onSubmit}
-            disabled={saving || !form.subject.trim() || form.subject === '__custom__'}
+            disabled={saving || form.jobType === '' || !form.subject.trim() || form.subject === '__custom__'}
             className="min-h-11 w-full bg-orange-500 hover:bg-orange-600 sm:w-auto"
           >
             {saving ? (
@@ -2156,6 +2292,14 @@ function WorkOrderDetailContent({
   const [cancelOpen, setCancelOpen] = React.useState(false)
   const [cancelReason, setCancelReason] = React.useState('')
   const [canceling, setCanceling] = React.useState(false)
+
+  // ── Edit-unlock (Task ID: UX-GAPS-3-ITEMS) ──
+  // Admin-only action: unlock a terminal WO (COMPLETED/CANCELLED) so it
+  // can be edited again. Calls POST /api/work-orders/[id]/edit-unlock.
+  const [unlockOpen, setUnlockOpen] = React.useState(false)
+  const [unlockNote, setUnlockNote] = React.useState('')
+  const [unlocking, setUnlocking] = React.useState(false)
+  const authUser = useAuthStore((s) => s.user)
 
   // Reporter edit
   const [reporterEditOpen, setReporterEditOpen] = React.useState(false)
@@ -2567,6 +2711,15 @@ function WorkOrderDetailContent({
   const canChat = wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
   const canReporterEdit = wo.status === 'PENDING'
   const canRequestParts = wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
+  // ── Edit-unlock (Task ID: UX-GAPS-3-ITEMS) ──
+  // Admin-only: visible when the WO is terminal (COMPLETED/CANCELLED),
+  // not already unlocked, AND the current user is an admin (role-based OR
+  // explicit ADMIN permission grant — matches the v1 PUT route's check).
+  const isTerminalWo = wo.status === 'COMPLETED' || wo.status === 'CANCELLED'
+  const isAdminUser =
+    authUser?.role === 'admin' || authUser?.role === 'superadmin'
+  const canUnlockEdit =
+    isTerminalWo && !wo.editUnlockActive && isAdminUser
   // PENDING_REVIEW → staff approves the submission (Tier 2/3 from LINE/public).
   // Approving transitions the WO into the normal queue (PENDING) so the
   // assign/complete/cancel actions become available.
@@ -2637,6 +2790,36 @@ function WorkOrderDetailContent({
       toast.error(e instanceof Error ? e.message : 'อนุมัติไม่สำเร็จ')
     } finally {
       setApproving(false)
+    }
+  }
+
+  // ── Edit-unlock handler (Task ID: UX-GAPS-3-ITEMS) ──
+  // POST /api/work-orders/[id]/edit-unlock with { active: true, note }.
+  // On success: refresh the WO detail (edit button will now be enabled
+  // for the reporter / admin) and close the confirmation dialog.
+  async function handleUnlockEdit() {
+    try {
+      setUnlocking(true)
+      const res = await fetch(`/api/work-orders/${wo.id}/edit-unlock`, {
+        method: 'POST',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          active: true,
+          note: unlockNote.trim() || 'ปลดล็อกเพื่อแก้ไขข้อมูลที่ผิดพลาด',
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'ปลดล็อกไม่สำเร็จ')
+      }
+      toast.success('ปลดล็อกการแก้ไขเรียบร้อย — สามารถแก้ไขใบงานได้แล้ว')
+      setUnlockOpen(false)
+      setUnlockNote('')
+      onMutated()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'ปลดล็อกไม่สำเร็จ')
+    } finally {
+      setUnlocking(false)
     }
   }
 
@@ -3844,6 +4027,21 @@ function WorkOrderDetailContent({
             <span className="sm:hidden">แก้ไข</span>
           </Button>
         )}
+        {/* ── Admin-only: unlock terminal WO for editing (Task ID: UX-GAPS-3-ITEMS) ── */}
+        {canUnlockEdit && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setUnlockOpen(true)}
+            className="order-7 min-h-11 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950"
+            title="ปลดล็อกการแก้ไข (admin เท่านั้น)"
+          >
+            <Unlock className="h-4 w-4" />
+            <span className="hidden sm:inline">ปลดล็อกการแก้ไข</span>
+            <span className="sm:hidden">ปลดล็อก</span>
+          </Button>
+        )}
         {/* Spacer: order-8 puts it AFTER the action buttons (order-1..order-7)
             and BEFORE the Close button (order-last). P2 fix: previously the
             spacer had default order=0, so it landed before all positive-order
@@ -4274,6 +4472,58 @@ function WorkOrderDetailContent({
                 <XCircle className="h-4 w-4" />
               )}
               ยกเลิกใบงาน
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Edit-unlock confirmation dialog (Task ID: UX-GAPS-3-ITEMS) ── */}
+      <AlertDialog open={unlockOpen} onOpenChange={setUnlockOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Unlock className="h-5 w-5 text-orange-500" />
+              ปลดล็อกการแก้ไขใบงาน
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              ใบงาน {wo.woNumber} อยู่ในสถานะ {wo.status}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+              ⚠️ การปลดล็อกจะทำให้สามารถแก้ไขใบงานที่ปิดไปแล้วได้อีกครั้ง
+              ใช้สำหรับกรณีแก้ไขข้อมูลที่ผิดพลาดเท่านั้น
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="unlock-note">
+                หมายเหตุ <span className="text-[10px] text-slate-400">(ไม่บังคับ)</span>
+              </Label>
+              <Textarea
+                id="unlock-note"
+                value={unlockNote}
+                onChange={(e) => setUnlockNote(e.target.value)}
+                placeholder="ระบุเหตุผลในการปลดล็อก เช่น แก้ไขข้อมูลที่ผิดพลาด..."
+                className="min-h-[60px]"
+              />
+            </div>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unlocking}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              disabled={unlocking}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void handleUnlockEdit()
+              }}
+              className="bg-orange-500 hover:bg-orange-600"
+            >
+              {unlocking ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Unlock className="h-4 w-4" />
+              )}
+              ปลดล็อกการแก้ไข
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

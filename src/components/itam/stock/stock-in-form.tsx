@@ -60,6 +60,7 @@ import {
   Loader2,
   Save,
   ScanLine,
+  QrCode,
 } from 'lucide-react'
 import {
   type StockItem,
@@ -70,6 +71,7 @@ import {
   PRIMARY_BTN,
 } from './shared'
 import { Combobox } from '../combobox'
+import { QrScannerDialog } from '../qr-scanner-dialog'
 
 interface StockListResponse {
   data: StockItem[]
@@ -119,6 +121,12 @@ export function StockInForm() {
     remark: '',
   })
   const [lines, setLines] = React.useState<LineItem[]>([newLineItem()])
+  // QR/barcode scan dialog state (Task ID: UX-GAPS-3-ITEMS).
+  // On scan: look up the matching StockItem by productCode (or partial
+  // name) and drop it into the first empty line — or append a new line
+  // if all rows are already filled.
+  const [scanOpen, setScanOpen] = React.useState(false)
+  const [scanTargetKey, setScanTargetKey] = React.useState<string | null>(null)
 
   // Fetch the product list to drive the picker.
   const { data, isLoading } = useQuery<StockListResponse>({
@@ -216,6 +224,79 @@ export function StockInForm() {
     setLines((arr) => [...arr, newLineItem()])
   }
 
+  // ── Scan-to-add (Task ID: UX-GAPS-3-ITEMS) ──
+  // The `scanTargetKey` lets a per-row scan button fill a specific line;
+  // when null, the scan fills the first empty line or appends a new one.
+  function openScannerForLine(key?: string) {
+    setScanTargetKey(key ?? null)
+    setScanOpen(true)
+  }
+
+  function findProductByCode(code: string): StockItem | undefined {
+    const v = code.trim().toLowerCase()
+    if (!v) return undefined
+    return (
+      products.find((p) => p.productCode.toLowerCase() === v) ??
+      products.find((p) => p.productCode.toLowerCase().includes(v)) ??
+      products.find((p) => p.productName.toLowerCase().includes(v))
+    )
+  }
+
+  function applyScanToLine(key: string, p: StockItem) {
+    setLines((arr) =>
+      arr.map((l) =>
+        l.key === key
+          ? {
+              ...l,
+              stockItemId: p.id,
+              productCode: p.productCode,
+              productName: p.productName,
+              unit: p.unit,
+              unitPrice: p.unitCost != null ? String(p.unitCost) : l.unitPrice,
+              pickerOpen: false,
+            }
+          : l,
+      ),
+    )
+  }
+
+  function handleScanResult(code: string) {
+    setScanOpen(false)
+    setScanTargetKey(null)
+    const v = code.trim()
+    if (!v) return
+    if (products.length === 0) {
+      toast.error('ยังไม่มีรายการสินค้าในระบบ')
+      return
+    }
+    const match = findProductByCode(v)
+    if (!match) {
+      toast.error(`ไม่พบสินค้าที่ตรงกับ "${v}"`)
+      return
+    }
+    if (scanTargetKey) {
+      applyScanToLine(scanTargetKey, match)
+    } else {
+      // Pick into the first empty line; if none, append a new filled line.
+      const emptyLine = lines.find((l) => !l.stockItemId)
+      if (emptyLine) {
+        applyScanToLine(emptyLine.key, match)
+      } else {
+        const newLine: LineItem = {
+          ...newLineItem(),
+          stockItemId: match.id,
+          productCode: match.productCode,
+          productName: match.productName,
+          unit: match.unit,
+          unitPrice: match.unitCost != null ? String(match.unitCost) : '',
+          pickerOpen: false,
+        }
+        setLines((arr) => [...arr, newLine])
+      }
+    }
+    toast.success(`สแกนพบ: ${match.productCode} — ${match.productName}`)
+  }
+
   function submit() {
     if (!form.txnDate) {
       toast.error('กรุณาระบุวันที่')
@@ -306,11 +387,25 @@ export function StockInForm() {
       {/* Line items */}
       <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <CardTitle className="text-sm">รายการสินค้า</CardTitle>
-            <Button size="sm" variant="outline" onClick={addLine} className="dark:bg-slate-800 dark:border-slate-700">
-              <Plus className="h-4 w-4" /> เพิ่มรายการ
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openScannerForLine()}
+                disabled={isLoading || products.length === 0}
+                title="สแกน QR/บาร์โค้ดเพื่อเพิ่มรายการ"
+                className="border-orange-300 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/40"
+              >
+                <QrCode className="h-4 w-4" />
+                <ScanLine className="h-3.5 w-3.5" />
+                สแกน
+              </Button>
+              <Button size="sm" variant="outline" onClick={addLine} className="dark:bg-slate-800 dark:border-slate-700">
+                <Plus className="h-4 w-4" /> เพิ่มรายการ
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -468,6 +563,16 @@ export function StockInForm() {
           </Button>
         </div>
       </div>
+
+      {/* QR/barcode scanner dialog (Task ID: UX-GAPS-3-ITEMS) */}
+      <QrScannerDialog
+        open={scanOpen}
+        onOpenChange={(v) => {
+          setScanOpen(v)
+          if (!v) setScanTargetKey(null)
+        }}
+        onScan={handleScanResult}
+      />
     </div>
   )
 }

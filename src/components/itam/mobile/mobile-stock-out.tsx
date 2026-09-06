@@ -80,6 +80,7 @@ import {
   Plus,
   Link2,
   Unlink,
+  QrCode,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -99,6 +100,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
 import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
+import { QrScannerDialog } from '@/components/itam/qr-scanner-dialog'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -205,6 +207,10 @@ export function MobileStockOut() {
   const [searchTerm, setSearchTerm] = React.useState('')
   const [selected, setSelected] = React.useState<StockItemLite | null>(null)
   const [sheetOpen, setSheetOpen] = React.useState(false)
+  // QR/barcode scan dialog state (Task ID: UX-GAPS-3-ITEMS).
+  // On scan: drop the code into the search box — the debounced reload
+  // filters the list so the user can tap the matching item.
+  const [scanOpen, setScanOpen] = React.useState(false)
 
   // ── Pending approvals ──
   const [pending, setPending] = React.useState<PendingTxn[]>([])
@@ -295,6 +301,34 @@ export function MobileStockOut() {
     void loadPending()
   }
 
+  // ── Scan handler (Task ID: UX-GAPS-3-ITEMS) ──
+  // Drop the scanned code into the search box; the debounced reload
+  // narrows the list. If exactly one item matches, auto-open the issue
+  // sheet for it so the user can complete the issue in one tap.
+  function handleScanResult(code: string) {
+    setScanOpen(false)
+    const v = code.trim()
+    if (!v) return
+    setSearchTerm(v)
+    // Defer the auto-pick so the items list has time to refresh.
+    setTimeout(() => {
+      setItems((prev) => {
+        const lower = v.toLowerCase()
+        const match =
+          prev.find((it) => it.productCode.toLowerCase() === lower) ??
+          prev.find((it) => it.productCode.toLowerCase().includes(lower)) ??
+          prev.find((it) => it.productName.toLowerCase().includes(lower))
+        if (match && match.quantity > 0) {
+          setSelected(match)
+          setSheetOpen(true)
+        } else if (match && match.quantity <= 0) {
+          toast.error(`สินค้า "${match.productName}" หมดสต็อก`)
+        }
+        return prev
+      })
+    }, 450)
+  }
+
   // ── Render: loading ──
   if (loading) {
     return <LoadingState />
@@ -350,28 +384,40 @@ export function MobileStockOut() {
 
       {/* ── Sticky search bar ── */}
       <div className="sticky top-14 z-10 -mx-3 bg-background/95 px-3 pb-1 pt-2 backdrop-blur">
-        <div className="relative flex items-center">
-          <Search className="pointer-events-none absolute left-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="text"
-            inputMode="search"
-            autoComplete="off"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="รหัสสินค้า / ชื่อ / ยี่ห้อ"
-            aria-label="ค้นหารายการสินค้า"
-            className="h-12 rounded-lg pl-9 pr-9 text-base"
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => setSearchTerm('')}
-              aria-label="ล้างคำค้นหา"
-              className="absolute right-2 flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              inputMode="search"
+              autoComplete="off"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="รหัสสินค้า / ชื่อ / ยี่ห้อ"
+              aria-label="ค้นหารายการสินค้า"
+              className="h-12 rounded-lg pl-9 pr-9 text-base"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                aria-label="ล้างคำค้นหา"
+                className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setScanOpen(true)}
+            aria-label="สแกน QR/บาร์โค้ด"
+            title="สแกน QR/บาร์โค้ดเพื่อค้นหาสินค้า"
+            className="h-12 shrink-0 border-orange-300 px-3 text-orange-700 hover:bg-orange-50 hover:text-orange-800 dark:border-orange-700 dark:text-orange-300 dark:hover:bg-orange-950/40"
+          >
+            <QrCode className="h-5 w-5" />
+          </Button>
         </div>
         <p className="mt-1 px-1 text-[11px] text-muted-foreground">
           แสดง {items.length} รายการ
@@ -576,6 +622,13 @@ export function MobileStockOut() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* QR/barcode scanner dialog (Task ID: UX-GAPS-3-ITEMS) */}
+      <QrScannerDialog
+        open={scanOpen}
+        onOpenChange={setScanOpen}
+        onScan={handleScanResult}
+      />
     </div>
   )
 }
