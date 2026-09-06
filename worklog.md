@@ -18520,3 +18520,122 @@ After my changes: only the 1 pre-existing `downloadCsv` error remains in `device
 - **No template picker for single-print.** Per spec, the per-row button prints immediately using the active template. The user must use the editor's ⭐ button to set the active template. If they want to print with a different template, they should use the toolbar "พิมพ์หลายเกอร์" button which opens the dialog (where the template dropdown is available).
 - **Settings fetch failure is non-fatal.** If `/api/itam/sticker/settings` returns non-OK or rejects, `printSingleSticker` falls back to `DEFAULT_STICKER_SETTINGS` + the global `orgName` from `/api/settings`. The print still works — it just uses default hotline/footer text.
 - **Audit log entry includes `single: true`** so we can distinguish single-device prints from batch prints in the audit trail.
+
+---
+
+## Task ID: STICKER-SYSTEM-REWRITE
+
+**Agent:** sticker-system rewrite subagent (STICKER-SYSTEM-REWRITE)
+**Task:** Fix the broken sticker preview system. User complaint: "แบบที่มีมาให้ก็ยังไม่ตรงเลยแสดงผลไม่ตรงตามที่แสดงผมว่าต้องไล่ใหม่ทั้งหมด" — even default templates don't match the displayed output; redo the whole sticker system.
+
+### Root causes (verified)
+
+1. **Settings used the GLOBAL org name instead of sticker-specific settings.** In `sticker-print-dialog.tsx` the `settings` `useMemo` only read `orgName` (the global org name from `/api/settings`) for BOTH `companyName` AND `hospitalName`. A user who customized their sticker header / hotline / footer note / LINE OA link in the ItamStickerEditor (which writes to AppSetting keys `stickerCompanyName`, `stickerHospitalName`, `stickerFooterNote`, `stickerHotline`, `stickerLineOALink`) saw those edits silently dropped in the dialog's preview + print output. The single-print path in `devices-page.tsx` already had this right (`printSingleSticker` fetches `/api/itam/sticker/settings`); the dialog was the straggler.
+
+2. **Preview container CSS mismatched the inner HTML's mm→px conversion.** The outer preview wrapper had `style={{ width: ${canvas.width * 3.78 * previewScale}px, height: ${canvas.height * 3.78 * previewScale}px }}` while the inner sticker HTML (from `renderStickerFromTemplate`) uses `width:${canvas.width}mm;height:${canvas.height}mm`. The `3.78` constant assumes 96 DPI; on higher-DPI displays the browser converts mm→px at a different rate, so the wrapper's pixel size didn't always match the inner content's natural pixel size — causing visible mismatch (extra empty space or overflow).
+
+3. **Preview already used the same HTML engine as print (no fix needed).** Verified that both the preview effect (lines ~477–511) and `handlePrint` (lines ~521–560) call `buildQrCacheForDevice` + `renderStickerFromTemplate` with the same arguments — they share the same code path. The only difference is print wraps the per-sticker HTML array with `buildPrintDocument` (which adds `@page` rules + the multi-sticker grid). The preview shows one sticker's HTML, identical to one cell in the print grid. This was already fixed in the prior revision (STICKER-PREVIEW-FIX-FINAL). Confirmed still in place — no change required.
+
+### Fixes applied
+
+#### Fix 1 — Fetch sticker-specific settings via `useQuery`
+
+`src/components/itam/sticker-print-dialog.tsx`
+
+Added a new `useQuery` (query key `['sticker-settings']`, `enabled: open`) that fetches `/api/itam/sticker/settings` — the same endpoint `printSingleSticker` in `devices-page.tsx` uses. The endpoint already exists at `src/app/api/itam/sticker/settings/route.ts` and returns `{ settings: { companyName, hospitalName, footerNote, hotline, lineOALink } }` from `getStickerSettings()` in `sticker-settings-store.ts` (which reads the five AppSetting rows). No new endpoint was needed (Fix 5 in the task spec was a no-op — the API was already there).
+
+Rewrote the `settings` `useMemo` to prefer sticker-specific server values, with fallback chain: **sticker-specific server value → global org name (for `companyName`/`hospitalName` only) → bundled `DEFAULT_STICKER_SETTINGS`**. Empty/whitespace server values are skipped (so a blank `stickerHospitalName` in AppSetting doesn't blank out the rendered sticker — falls through to the global org name). The fallback to the global org name is intentional: it ensures we never print a sticker with a blank header, matching `printSingleSticker`'s behavior.
+
+Added a derived `settingsSource: 'sticker' | 'global' | 'default'` label for the debug strip (Fix 4).
+
+#### Fix 2 — Preview container no longer sets explicit pixel width/height
+
+`src/components/itam/sticker-print-dialog.tsx`
+
+Removed `width` and `height` from the preview wrapper's inline style. The inner sticker HTML already carries `width:${canvas.width}mm;height:${canvas.height}mm` (from `renderStickerFromTemplate`), so letting the browser convert mm→px natively means the wrapper's layout box matches the inner content's natural pixel size at the user's actual DPI. No more `3.78`-assumption mismatch.
+
+The wrapper now only has `transform: scale(${previewScale})` + `transformOrigin: 'center top'` — purely visual scaling. The outer container's `overflow-auto` + `maxHeight: 350` (bumped from 320) handles stickers taller than the visible area via scrollbar.
+
+Also rewrote `previewScale` to be based on the **CONTAINER width** instead of fitting both width and height:
+```ts
+const stickerWidthPx = canvas.width * 3.78
+const containerWidthPx = 380
+return Math.min(1, containerWidthPx / stickerWidthPx)
+```
+The `3.78` is still used here but only as an *estimate* for choosing scale (close enough — exact pixel size doesn't matter for the scale factor, only the rough ratio). `Math.min(1, …)` keeps small stickers at scale=1 (no up-scaling). For an A4 sticker (210mm wide), this gives scale=0.479; for the user's 75.2mm sticker, scale=1.
+
+#### Fix 3 — Preview ↔ print parity (already in place, verified)
+
+The preview `useEffect` (lines ~477–511) and `handlePrint` (lines ~521–560) both use:
+- `buildQrCacheForDevice(deviceData, template, settings, qrOverride)` to pre-generate QR data URLs
+- `renderStickerFromTemplate(deviceData, template, settings, { qrCache: cache })` to render the sticker HTML
+
+The QR override uses the APPENDIX-D Smart QR URL fallback (`qrContentFor?.(device) ?? generateStickerQrData('d', device.id, 'repair')`) in both paths. The only divergence is `handlePrint` then wraps the per-sticker HTML array with `buildPrintDocument(stickersHtml, template, cols)` to add the `@page` rules + multi-sticker grid; the preview shows one sticker's HTML directly (which is what one cell of the print grid looks like). **No code change required** — just verified and documented.
+
+#### Fix 4 — Debug strip below the preview
+
+`src/components/itam/sticker-print-dialog.tsx`
+
+Added a small dashed-border strip BELOW the preview pane showing:
+- **เทมเพลต:** template name (saved template name + "(บันทึก)" or preset label)
+- **ขนาด:** canvas size in mm (W × H)
+- **แหล่งการตั้งค่า:** settings source — "สติกเกอร์ (เฉพาะ)" / "ชื่อองค์กรทั่วไป" / "ค่าเริ่มต้น"
+- **อุปกรณ์ตัวอย่าง:** asset code + name of the device being previewed
+
+This lets the user verify at a glance EXACTLY what is being rendered — addressing the original complaint that "default templates don't match what's shown". If the debug strip says "สติกเกอร์ (เฉพาะ)" and shows the right template name + canvas size, the preview will match the print output.
+
+#### Fix 5 — API endpoint verification (already exists)
+
+`src/app/api/itam/sticker/settings/route.ts` already exists with:
+- `GET` handler that requires `VIEW_DEVICES` auth and returns `NextResponse.json({ settings })` from `getStickerSettings()`
+- `PUT` handler that requires `SYSTEM_CONFIG` auth and saves updates via `saveStickerSettings()`
+- Field-length caps (200 / 200 / 500 / 100 / 200 chars)
+- Audit log on PUT (`STICKER_SETTINGS_UPDATE` action)
+
+The shape returned (`{ settings: { companyName, hospitalName, footerNote, hotline, lineOALink } }`) matches exactly what the new `useQuery` in the dialog expects. The underlying `sticker-settings-store.ts` already reads from the five AppSetting keys (`stickerCompanyName`, `stickerHospitalName`, `stickerFooterNote`, `stickerHotline`, `stickerLineOALink`) with sensible defaults.
+
+No new file was created.
+
+### Lint check
+
+- Baseline (before my changes): `1 error, 105 warnings` — the single error is the pre-existing `@typescript-eslint/no-require-imports` violation in `src/app/api/auth/oauth/apple/callback/route.ts:99` (unrelated to stickers).
+- After my changes: `1 error, 105 warnings` — **SAME baseline. 0 new lint errors, 0 new lint warnings introduced.**
+
+### TypeScript check (`bunx tsc --noEmit`)
+
+- Baseline TS errors on `sticker-print-dialog.tsx`: 0 (the prior revision STICKER-PREVIEW-FIX-FINAL already cleared the 2 pre-existing TS2304 errors for `withQr` / `stickersHtml`).
+- After my changes: 0 errors on `sticker-print-dialog.tsx`. The new `useQuery` returns `unknown` from `res.json()`, but TypeScript is OK with this because we access it via optional chaining (`stickerSettingsData?.settings?.companyName?.trim()`) which yields `string | undefined`, then `|| orgName?.trim() || DEFAULT_STICKER_SETTINGS.companyName` collapses to `string`. The `settingsSource` derived value uses a ternary chain that always produces a literal string union.
+- `devices-page.tsx`: still 1 pre-existing error (TS2345 on `downloadCsv(devices-...csv, rows, DEVICE_CSV_HEADERS)` line 1453 — `Device[]` vs `Record<string, unknown>[]`, unrelated to stickers, untouched by my changes).
+
+### Files modified (1)
+
+1. `src/components/itam/sticker-print-dialog.tsx`:
+   - Added `useQuery(['sticker-settings'])` to fetch sticker-specific settings from `/api/itam/sticker/settings`.
+   - Rewrote the `settings` `useMemo` to prefer sticker-specific server values (with fallback chain: server → global org name → defaults).
+   - Added `settingsSource` derived label for the debug strip.
+   - Removed explicit `width`/`height` (in px) from the preview wrapper's inline style; the inner sticker HTML's `width:${canvas.width}mm` controls the natural size; the wrapper only applies `transform: scale()`.
+   - Rewrote `previewScale` to be based on the container width (380px estimate) instead of fitting both width and height.
+   - Bumped preview container `maxHeight` from 320 to 350.
+   - Added a dashed-border debug strip below the preview showing template name, canvas size, settings source, and the device being previewed.
+
+### No files created
+
+The API endpoint `/api/itam/sticker/settings/route.ts` already existed with the correct shape; no new file was needed. (The task spec referenced `/api/itm/sticker/settings/route.ts` — typo; the actual project uses `/api/itam/...` consistently for all sticker endpoints.)
+
+### Behavior summary
+
+| User action | Before | After |
+| --- | --- | --- |
+| User customizes sticker header / hotline / footer / LINE OA in the editor | Dialog preview + print still showed the global org name + bundled default hotline/footer (customization was silently dropped) | Dialog preview + print show the sticker-specific values from AppSetting. Falls back to global org name if a sticker-specific field is blank. |
+| User opens dialog on a high-DPI display | Preview wrapper's `3.78`-based pixel dimensions didn't match the inner sticker's native mm→px conversion, causing visible empty space or overflow | Preview wrapper has no explicit pixel dimensions; inner HTML's mm dimensions determine the natural size at the user's actual DPI |
+| User wants to verify what's being rendered | No way to tell from the UI which template / settings source / device is being previewed | Debug strip below the preview shows template name + canvas size + settings source + sample device |
+| Print button clicked | Already worked (prior revision STICKER-PREVIEW-FIX-FINAL fixed the TS2304 `stickersHtml` crash) | Same — no change. Print still uses the same `renderStickerFromTemplate` engine as preview, so preview ↔ print parity is guaranteed. |
+
+### Notes for the team
+
+- **`stickerSettingsData` is `unknown` from `res.json()`** — the query function returns `Promise<unknown>`. We could add a runtime Zod schema for safety, but the optional-chaining + `?.trim() || …` fallback chain handles any shape gracefully (an unexpected response shape just causes the fallbacks to kick in). Keeping it loose matches the existing pattern in `devices-page.tsx`'s `printSingleSticker`.
+- **The `3.78` constant is still used in `previewScale`** as an estimate. This is OK because the scale factor only needs to be *approximately* right — if the sticker is ~285px wide (75.2mm @ 96dpi) we want scale=1; if it's ~794px wide (210mm A4) we want scale~0.48. The exact pixel size at higher DPI doesn't change which bucket we fall into. The bug only manifested when `3.78` was used to set the *layout box* (where 1px matters); using it for the scale ratio is fine.
+- **`previewScale` only considers width now, not height.** A very tall sticker (e.g. 50×300mm) would have scale=1 and rely on the container's `overflow-auto` to scroll. The previous code fit both dimensions; I changed this because the task spec explicitly asked for width-only scaling. If users complain about tall stickers overflowing, we can re-add a height constraint (`Math.min(scaleX, scaleY)`).
+- **The dialog and `printSingleSticker` now use the SAME settings source.** Both prefer sticker-specific server settings → global org name → defaults. Previously only the single-print path was correct; now the dialog matches. This was the core user complaint ("แสดงผลไม่ตรงตามที่แสดง") — different code paths produced different sticker text depending on which button the user clicked.
+- **`getStickerSettings()` reads five separate AppSetting rows in parallel** via `Promise.all` (in `sticker-settings-store.ts`). On first run with no settings configured, all five return `null` and the function returns the bundled defaults. So a fresh install never shows a blank sticker.
+- **The debug strip is intentionally tiny (text-[10px])** so it doesn't compete visually with the preview. The dashed border + slate-50 background signals "metadata, not part of the sticker". If the user finds it noisy in production, we can add a "hide debug info" toggle later.

@@ -241,6 +241,26 @@ export function StickerPrintDialog({
   const savedTemplates = tplData?.templates ?? []
   const activeSavedId = tplData?.activeId ?? null
 
+  // ── Sticker-specific settings (STICKER-SYSTEM-REWRITE) ───────────────────
+  // Fetch sticker-specific companyName / hospitalName / hotline /
+  // footerNote / lineOALink from /api/itam/sticker/settings (which reads the
+  // AppSetting rows: stickerCompanyName, stickerHospitalName, stickerFooterNote,
+  // stickerHotline, stickerLineOALink).
+  //
+  // Why: previously the dialog used the GLOBAL org name for BOTH
+  // companyName AND hospitalName, so a user who customized their sticker
+  // header / hotline / footer in the editor saw those edits silently dropped
+  // in the dialog's preview + print output. This matches what
+  // `printSingleSticker` in devices-page.tsx already does.
+  const { data: stickerSettingsData } = useQuery({
+    queryKey: ['sticker-settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/itam/sticker/settings')
+      return res.ok ? res.json() : null
+    },
+    enabled: open,
+  })
+
   // ── Sticker prefs (size + template) — loaded once on mount ─────────────
   const [prefs, setPrefs] = React.useState<StickerPrintPrefs>(() => ({
     sizePresetId: 'default',
@@ -413,13 +433,36 @@ export function StickerPrintDialog({
     [savedTemplate, presetCanvas],
   )
 
+  // STICKER-SYSTEM-REWRITE: prefer sticker-specific server settings
+  // (companyName / hospitalName / hotline / footerNote / lineOALink) over
+  // the global org name. Empty server values fall back to the global org
+  // name (so we never print a blank header), then to the bundled defaults.
+  const stickerSettings = stickerSettingsData?.settings
+  const settingsSource: 'sticker' | 'global' | 'default' = stickerSettings
+    ? 'sticker'
+    : orgName?.trim()
+      ? 'global'
+      : 'default'
   const settings: StickerSettings = React.useMemo(
     () => ({
       ...DEFAULT_STICKER_SETTINGS,
-      companyName: orgName?.trim() || DEFAULT_STICKER_SETTINGS.companyName,
-      hospitalName: orgName?.trim() || DEFAULT_STICKER_SETTINGS.hospitalName,
+      companyName:
+        stickerSettings?.companyName?.trim() ||
+        orgName?.trim() ||
+        DEFAULT_STICKER_SETTINGS.companyName,
+      hospitalName:
+        stickerSettings?.hospitalName?.trim() ||
+        orgName?.trim() ||
+        DEFAULT_STICKER_SETTINGS.hospitalName,
+      footerNote:
+        stickerSettings?.footerNote?.trim() ||
+        DEFAULT_STICKER_SETTINGS.footerNote,
+      hotline: stickerSettings?.hotline?.trim() || DEFAULT_STICKER_SETTINGS.hotline,
+      lineOALink:
+        stickerSettings?.lineOALink?.trim() ||
+        DEFAULT_STICKER_SETTINGS.lineOALink,
     }),
-    [orgName],
+    [stickerSettings, orgName],
   )
 
   // ── Live preview (async) ────────────────────────────────────────────────
@@ -554,20 +597,18 @@ export function StickerPrintDialog({
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────
-  // For very wide/tall canvases (e.g. A4), preview needs to scale down to fit
-  // the dialog. We compute a scale factor that fits the longest side into
-  // 320px (preview container width ~ 320-440px on most screens).
+  // STICKER-SYSTEM-REWRITE: preview scale is based on the CONTAINER width
+  // (not the canvas). We estimate the dialog content area at ~380px on
+  // desktop, ~300px on mobile — Math.min(1, …) keeps small stickers at
+  // scale=1 (no up-scaling). The container itself has overflow-auto +
+  // maxHeight so anything taller than the box scrolls.
   const previewScale = React.useMemo(() => {
     // 1mm ≈ 3.78px @ 96dpi
-    const pxW = canvas.width * 3.78
-    const pxH = canvas.height * 3.78
-    const maxW = 360
-    const maxH = 280
-    const sx = maxW / pxW
-    const sy = maxH / pxH
-    return Math.min(1, sx, sy)
-  }, [canvas.width, canvas.height])
+    const stickerWidthPx = canvas.width * 3.78
+    const containerWidthPx = 380
+    if (stickerWidthPx <= 0) return 1
+    return Math.min(1, containerWidthPx / stickerWidthPx)
+  }, [canvas.width])
 
   const isCustomSize = prefs.sizePresetId === 'custom'
   const usingSavedTemplate = !!savedTemplate
@@ -765,9 +806,18 @@ export function StickerPrintDialog({
             <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
               ตัวอย่างสติกเกอร์ (พรีวิว)
             </Label>
+            {/*
+             * STICKER-SYSTEM-REWRITE: the preview wrapper does NOT set
+             * width/height in pixels. The inner sticker HTML (rendered by
+             * `renderStickerFromTemplate`, the SAME engine `handlePrint`
+             * uses) carries its own `width:${canvas.width}mm;height:${canvas.height}mm`
+             * inline styles — letting the browser convert mm→px natively
+             * means the wrapper always matches the inner content (no DPI
+             * mismatch). The `transform: scale()` is purely visual.
+             */}
             <div
               className="overflow-auto rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40"
-              style={{ minHeight: 120, maxHeight: 320 }}
+              style={{ minHeight: 120, maxHeight: 350 }}
             >
               {previewLoading ? (
                 <div className="flex items-center justify-center gap-2 py-6 text-xs text-slate-400 dark:text-slate-500">
@@ -780,8 +830,6 @@ export function StickerPrintDialog({
                     style={{
                       transform: `scale(${previewScale})`,
                       transformOrigin: 'center top',
-                      width: `${canvas.width * 3.78 * previewScale}px`,
-                      height: `${canvas.height * 3.78 * previewScale}px`,
                     }}
                     // Render the template-engine HTML — uses the same
                     // .stk-sticker / .stk-el classes as the print document.
@@ -794,6 +842,53 @@ export function StickerPrintDialog({
                   <span className="text-xs">เลือกอุปกรณ์ด้านล่างเพื่อดูตัวอย่าง</span>
                 </div>
               )}
+            </div>
+            {/*
+             * STICKER-SYSTEM-REWRITE: small debug strip below the preview so
+             * the user can verify EXACTLY what is being rendered — template
+             * name (saved or preset), canvas size in mm, where the sticker
+             * text came from (sticker-specific server settings vs global
+             * org name vs defaults), and which device is being previewed.
+             */}
+            <div className="rounded-md border border-dashed border-slate-200 bg-slate-50/50 px-2.5 py-1.5 text-[10px] leading-relaxed text-slate-500 dark:border-slate-700 dark:bg-slate-800/20 dark:text-slate-400">
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                <span>
+                  <span className="font-medium text-slate-600 dark:text-slate-300">
+                    เทมเพลต:
+                  </span>{' '}
+                  {usingSavedTemplate
+                    ? `${savedTemplate!.name} (บันทึก)`
+                    : `เพรสเซ็ต: ${
+                        STICKER_TEMPLATE_PRESETS.find(
+                          (p) => p.id === prefs.templatePresetId,
+                        )?.label ?? prefs.templatePresetId
+                      }`}
+                </span>
+                <span>
+                  <span className="font-medium text-slate-600 dark:text-slate-300">
+                    ขนาด:
+                  </span>{' '}
+                  {canvas.width.toFixed(1)} × {canvas.height.toFixed(1)} มม.
+                </span>
+                <span>
+                  <span className="font-medium text-slate-600 dark:text-slate-300">
+                    แหล่งการตั้งค่า:
+                  </span>{' '}
+                  {settingsSource === 'sticker'
+                    ? 'สติกเกอร์ (เฉพาะ)'
+                    : settingsSource === 'global'
+                      ? 'ชื่อองค์กรทั่วไป'
+                      : 'ค่าเริ่มต้น'}
+                </span>
+                <span>
+                  <span className="font-medium text-slate-600 dark:text-slate-300">
+                    อุปกรณ์ตัวอย่าง:
+                  </span>{' '}
+                  {sampleDevice
+                    ? `${sampleDevice.assetCode} · ${sampleDevice.name}`
+                    : '—'}
+                </span>
+              </div>
             </div>
           </div>
 
