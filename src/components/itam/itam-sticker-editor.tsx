@@ -236,13 +236,17 @@ function WorkspaceElement({
       fontFamily: '"Sukhumvit Set","Noto Sans Thai","Tahoma","Segoe UI",sans-serif',
     })
     content = el.content
-      ? substituteVariables(el.content, SAMPLE_DEVICE, settings ?? {
-          companyName: 'PPIT',
-          hospitalName: 'โรงพยาบาล',
-          hotline: '000-000-0000',
-          lineOALink: '@ppit',
-          footerNote: 'ห้ามนำอุปกรณ์ออกจากพื้นที่',
-        })
+      ? substituteVariables(
+          el.content,
+          SAMPLE_DEVICE,
+          settings ?? {
+            companyName: 'PPIT',
+            hospitalName: 'โรงพยาบาล',
+            hotline: '000-000-0000',
+            lineOALink: '@ppit',
+            footerNote: 'ห้ามนำอุปกรณ์ออกจากพื้นที่',
+          },
+        )
       : '​'
   } else if (el.type === 'rect') {
     Object.assign(style, {
