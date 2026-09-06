@@ -62,7 +62,7 @@ import { ManualSyncPreviewSection } from './manual-sync-preview-section'
 // ข้อ 3: นำเข้าข้อมูล — อัปโหลด CSV แยกตามประเภท
 // ============================================================
 
-type JobType = 'device' | 'work-order' | 'stock' | 'meter-reading'
+type JobType = 'device' | 'work-order' | 'stock' | 'meter-reading' | 'accessory'
 
 interface ImportTypeDef {
   id: JobType
@@ -182,6 +182,36 @@ const IMPORT_TYPES: ImportTypeDef[] = [
       remark: '',
     },
   },
+  {
+    // ── Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM (Part B) ──
+    // Endpoint: POST /api/devices/accessories/import (NOT /api/import)
+    // Response shape: { data: { total, created, updated, skipped, errors, jobId } }
+    // (different from /api/import which returns { job: ImportJob }).
+    id: 'accessory',
+    icon: '🔌',
+    title: 'อุปกรณ์ต่อพ่วง',
+    desc: 'นำเข้าอุปกรณ์ต่อพ่วงแบบหลายตัว (เชื่อมกับอุปกรณ์ที่มีอยู่แล้ว)',
+    headers: [
+      { key: 'parent_asset_code', label: 'parent_asset_code' },
+      { key: 'accessory_type', label: 'accessory_type' },
+      { key: 'brand', label: 'brand' },
+      { key: 'model', label: 'model' },
+      { key: 'serial_number', label: 'serial_number' },
+      { key: 'status', label: 'status' },
+      { key: 'installed_date', label: 'installed_date' },
+      { key: 'remark', label: 'remark' },
+    ],
+    sample: {
+      parent_asset_code: 'IT-00001',
+      accessory_type: 'KEYBOARD',
+      brand: 'Logitech',
+      model: 'K380',
+      serial_number: 'LOG-001',
+      status: 'Active',
+      installed_date: '2024-01-15',
+      remark: 'คีย์บอร์ดไร้สาย',
+    },
+  },
 ]
 
 interface ImportJob {
@@ -237,6 +267,8 @@ function jobTypeLabel(t: string): string {
       return 'มิเตอร์'
     case 'master-data':
       return 'ข้อมูลมาตรฐาน'
+    case 'accessory':
+      return 'อุปกรณ์ต่อพ่วง'
     default:
       // Legacy import types are stored as "legacy:{sheetId}"
       if (t.startsWith('legacy:')) {
@@ -346,10 +378,58 @@ export function ImportPage() {
   })
 
   // ---- Upload mutation ----
+  // Routes to TWO different endpoints based on jobType:
+  //   • device | work-order | stock | meter-reading → POST /api/import
+  //     (response: { job: ImportJob })
+  //   • accessory → POST /api/devices/accessories/import
+  //     (response: { data: { total, created, updated, skipped, errors, jobId } })
+  //     — synthesised into an ImportJob shape so the rest of the UI
+  //       (history table, error dialog) keeps working without forking.
   const uploadMutation = useMutation({
     mutationFn: async (vars: { file: File; jobType: JobType }) => {
       const fd = new FormData()
       fd.append('file', vars.file)
+      if (vars.jobType === 'accessory') {
+        // Accessory endpoint — different response shape, see route.ts.
+        const res = await fetch('/api/devices/accessories/import', {
+          method: 'POST',
+          body: fd,
+        })
+        const json = await res.json()
+        if (!res.ok) {
+          throw new Error(json?.error ?? 'อัปโหลดไม่สำเร็จ')
+        }
+        const data = json.data as {
+          total: number
+          created: number
+          updated: number
+          skipped: number
+          errors: ImportError[]
+          jobId: string
+        }
+        // Synthesise an ImportJob so the existing UI (history table +
+        // error dialog) keeps working. The accessory endpoint doesn't
+        // return the full ImportJob record, just a jobId + counts.
+        const synth: ImportJob = {
+          id: data.jobId,
+          jobType: 'accessory',
+          fileName: vars.file.name,
+          fileType: 'csv',
+          status: 'completed',
+          totalRows: data.total,
+          processedRows: data.created + data.updated,
+          errorRows: data.skipped + data.errors.length,
+          errors:
+            data.errors.length > 0
+              ? JSON.stringify(data.errors.slice(0, 200))
+              : null,
+          uploadedBy: null,
+          createdAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        }
+        return synth
+      }
+      // Default: device / work-order / stock / meter-reading
       fd.append('jobType', vars.jobType)
       const res = await fetch('/api/import', {
         method: 'POST',
@@ -380,6 +460,11 @@ export function ImportPage() {
         qc.invalidateQueries({ queryKey: ['stock-items'] })
       } else if (job.jobType === 'meter-reading') {
         qc.invalidateQueries({ queryKey: ['meter'] })
+      } else if (job.jobType === 'accessory') {
+        // Accessories live under a device — invalidate the devices list +
+        // any open device-detail-sheet so the new rows show up.
+        qc.invalidateQueries({ queryKey: ['devices'] })
+        qc.invalidateQueries({ queryKey: ['device-accessories'] })
       }
       qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
@@ -495,7 +580,7 @@ export function ImportPage() {
           </h2>
           {/* On mobile: horizontal scrollable row of compact cards so the
               upload area below stays in the viewport. On sm+: 2-4 col grid. */}
-          <div className="flex gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-4">
+          <div className="flex gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-5">
             {IMPORT_TYPES.map((t) => {
               const active = selectedType === t.id
               return (
@@ -863,7 +948,7 @@ export function ImportPage() {
                     ขั้นตอนการใช้งาน
                   </h3>
                   <ol className="ml-4 list-decimal space-y-1.5 text-sm text-slate-600 dark:text-slate-300">
-                    <li>เลือกประเภทข้อมูลที่จะนำเข้า (อุปกรณ์ / แจ้งซ่อม / สต๊อก / มิเตอร์)</li>
+                    <li>เลือกประเภทข้อมูลที่จะนำเข้า (อุปกรณ์ / แจ้งซ่อม / สต๊อก / มิเตอร์ / อุปกรณ์ต่อพ่วง)</li>
                     <li>คลิก &quot;ดาวน์โหลดเทมเพลต&quot; เพื่อดาวน์โหลดไฟล์ CSV ตัวอย่างพร้อมหัวคอลัมน์ที่ถูกต้อง</li>
                     <li>เปิดไฟล์เทมเพลตใน Excel หรือโปรแกรมตกแต่ง CSV แล้วกรอกข้อมูลในแต่ละแถว</li>
                     <li>บันทึกไฟล์เป็น CSV (UTF-8) — หากใช้ Excel เลือก &quot;CSV UTF-8 (Comma delimited)&quot;</li>

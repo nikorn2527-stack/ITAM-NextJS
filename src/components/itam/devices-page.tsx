@@ -179,6 +179,60 @@ export interface LicenseRow {
   remark: string // Remark
 }
 
+/**
+ * PendingAccessory — mirrors the DeviceAccessory Prisma model.
+ *
+ * Stored in the device Add/Edit form's local state until the user clicks
+ * "บันทึก" (Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM). After the device is
+ * created/updated, save() POSTs each row to /api/devices/[id]/accessories.
+ *
+ * `id` is present when loaded from DB (edit mode) — rows with an id are
+ * PUT-updated; rows without an id are POST-created.
+ */
+export interface PendingAccessory {
+  id?: string // present when loaded from DB (edit mode)
+  accessoryType: string // KEYBOARD | MOUSE | MONITOR | ...
+  brand: string
+  model: string
+  serialNumber: string
+  status: string // Active | Inactive | In Repair | Disposed
+  installedDate: string // yyyy-mm-dd (optional)
+  remark: string
+  /** Set when the user marks a row for deletion on edit mode. */
+  _pendingDelete?: boolean
+}
+
+const ACCESSORY_TYPES_INLINE = [
+  { value: 'KEYBOARD', label: 'คีย์บอร์ด' },
+  { value: 'MOUSE', label: 'เมาส์' },
+  { value: 'MONITOR', label: 'จอภาพ' },
+  { value: 'SCANNER', label: 'สแกนเนอร์เสริม' },
+  { value: 'CABLE', label: 'สาย / แลน' },
+  { value: 'ADAPTER', label: 'อะแดปเตอร์' },
+  { value: 'UPS', label: 'UPS / สำรองไฟ' },
+  { value: 'HUB', label: 'USB Hub' },
+  { value: 'PRINTHEAD', label: 'หัวพิมพ์' },
+  { value: 'TRAY', label: 'ถาดกระดาษเสริม' },
+  { value: 'OTHER', label: 'อื่นๆ' },
+] as const
+
+const ACCESSORY_STATUSES_INLINE = [
+  { value: 'Active', label: 'ใช้งานอยู่' },
+  { value: 'Inactive', label: 'ไม่ใช้งาน' },
+  { value: 'In Repair', label: 'ส่งซ่อม' },
+  { value: 'Disposed', label: 'ตัดจ่าย' },
+] as const
+
+const EMPTY_ACCESSORY: PendingAccessory = {
+  accessoryType: 'KEYBOARD',
+  brand: '',
+  model: '',
+  serialNumber: '',
+  status: 'Active',
+  installedDate: '',
+  remark: '',
+}
+
 const EMPTY_LICENSE: LicenseRow = {
   licenseId: '',
   software: '',
@@ -245,6 +299,11 @@ interface FormState {
   setPosition: string      // "" = unset
   // ── License / Software (NEW) ──
   licenses: LicenseRow[]
+  // ── Inline Accessories (Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM) ──
+  // Local state only — POSTed to /api/devices/[id]/accessories after the
+  // device is created/updated. Best-effort: failures don't fail the device
+  // save (logged via toast.warning).
+  accessories: PendingAccessory[]
 }
 
 /**
@@ -302,6 +361,7 @@ const EMPTY_FORM: FormState = {
   setLabel: '',
   setPosition: '',
   licenses: [],
+  accessories: [],
 }
 
 const METER_MODE_OPTIONS = [
@@ -992,10 +1052,54 @@ export function DevicesPage() {
         ? String((d as unknown as { setPosition?: number | null }).setPosition)
         : '',
       licenses: [],
+      accessories: [],
     })
     setDialogOpen(true)
     // Load existing licenses for this device (edit mode only)
     void loadDeviceLicenses(d.id)
+    // Load existing accessories for this device (edit mode only)
+    void loadDeviceAccessories(d.id)
+  }
+
+  // ── Load accessories for an existing device (edit mode) ──
+  // Mirrors loadDeviceLicenses() — fetches the device's existing accessories
+  // and populates form.accessories so the user can edit/remove them inline.
+  // For new devices, accessories are kept in local state and POSTed after
+  // the device is created (see save()).
+  const [accessoriesLoading, setAccessoriesLoading] = React.useState(false)
+  async function loadDeviceAccessories(deviceId: string) {
+    setAccessoriesLoading(true)
+    try {
+      const res = await fetch(`/api/devices/${deviceId}/accessories`, {
+        headers: authHeaders(),
+      })
+      if (!res.ok) return
+      const j = (await res.json()) as {
+        accessories?: Array<{
+          id: string
+          accessoryType: string
+          brand: string | null
+          model: string | null
+          serialNumber: string | null
+          status: string
+          installedDate: string | null
+          remark: string | null
+        }>
+      }
+      const mapped: PendingAccessory[] = (j.accessories ?? []).map((a) => ({
+        id: a.id,
+        accessoryType: a.accessoryType ?? 'OTHER',
+        brand: a.brand ?? '',
+        model: a.model ?? '',
+        serialNumber: a.serialNumber ?? '',
+        status: a.status ?? 'Active',
+        installedDate: a.installedDate ?? '',
+        remark: a.remark ?? '',
+      }))
+      setForm((prev) => ({ ...prev, accessories: mapped }))
+    } catch (err) { console.error('[devices-page]', err) } finally {
+      setAccessoriesLoading(false)
+    }
   }
 
   // ── Load licenses for an existing device (edit mode) ──
@@ -1059,6 +1163,31 @@ export function DevicesPage() {
     }))
   }
 
+  // ── Accessory helpers (local state CRUD — mirrors the license helpers) ──
+  // On new devices: stored in local state until save() POSTs them.
+  // On edit devices: existing rows (with .id) are PATCH-updated, new rows
+  // (no .id) are POST-created, and removed rows are DELETE-called.
+  function addAccessory() {
+    setForm((prev) => ({
+      ...prev,
+      accessories: [...prev.accessories, { ...EMPTY_ACCESSORY }],
+    }))
+  }
+  function updateAccessory(idx: number, patch: Partial<PendingAccessory>) {
+    setForm((prev) => ({
+      ...prev,
+      accessories: prev.accessories.map((a, i) =>
+        i === idx ? { ...a, ...patch } : a,
+      ),
+    }))
+  }
+  function removeAccessory(idx: number) {
+    setForm((prev) => ({
+      ...prev,
+      accessories: prev.accessories.filter((_, i) => i !== idx),
+    }))
+  }
+
   // ── Auto-generate assetSiteCode when the user picks a site ──
   // Calls /api/devices/next-site-code?site=<code> and fills the field.
   // Only auto-fills on CREATE (when the field is empty) — on edit, the
@@ -1102,10 +1231,12 @@ export function DevicesPage() {
     }
     try {
       setSaving(true)
-      // Omit licenses from the device payload — they're saved separately
-      // via /api/devices/[id]/licenses after the device is created/updated.
-      const { licenses: _licenses, ...deviceFields } = form
+      // Omit licenses + accessories from the device payload — they're saved
+      // separately via /api/devices/[id]/licenses + /api/devices/[id]/accessories
+      // after the device is created/updated.
+      const { licenses: _licenses, accessories: _accessories, ...deviceFields } = form
       void _licenses
+      void _accessories
       const payload = {
         ...deviceFields,
         assetSiteCode: form.assetSiteCode || null,
@@ -1203,6 +1334,52 @@ export function DevicesPage() {
         if (failed > 0) {
           toast.warning(
             `บันทึกอุปกรณ์แล้ว แต่ ${failed} รายการ License ไม่สำเร็จ`,
+          )
+        }
+      }
+      // ── Sync accessories (Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM) ──
+      // After the device is created/updated, POST each new accessory row and
+      // PATCH each existing one. Best-effort — failures don't fail the device
+      // save (logged via toast.warning). Mirrors the license sync block above.
+      if (savedDeviceId && form.accessories.length > 0) {
+        const accessoryResults = await Promise.allSettled(
+          form.accessories
+            .filter((a) => a.accessoryType.trim() !== '')
+            .map((a) => {
+              const body = {
+                accessoryType: a.accessoryType,
+                brand: a.brand.trim() || null,
+                model: a.model.trim() || null,
+                serialNumber: a.serialNumber.trim() || null,
+                status: a.status,
+                installedDate: a.installedDate || null,
+                remark: a.remark.trim() || null,
+              }
+              if (a.id) {
+                // Existing accessory — PATCH update
+                return fetch(
+                  `/api/devices/${savedDeviceId}/accessories/${a.id}`,
+                  {
+                    method: 'PATCH',
+                    headers: authHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify(body),
+                  },
+                )
+              }
+              // New accessory — POST create
+              return fetch(`/api/devices/${savedDeviceId}/accessories`, {
+                method: 'POST',
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify(body),
+              })
+            }),
+        )
+        const accFailed = accessoryResults.filter(
+          (r) => r.status === 'rejected',
+        ).length
+        if (accFailed > 0) {
+          toast.warning(
+            `บันทึกอุปกรณ์แล้ว แต่ ${accFailed} รายการอุปกรณ์ต่อพ่วงไม่สำเร็จ`,
           )
         }
       }
@@ -1647,14 +1824,17 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               </span>
             </div>
 
-            {/* ── Tabs: 3 sections ──
+            {/* ── Tabs: 5 sections ──
                 Tab 1: 📍 สถานที่ติดตั้ง (สาขา + รหัส + อาคาร/ชั้น/แผนก + ตำแหน่ง/ห้อง)
                 Tab 2: 💻 อุปกรณ์ (สถานะ, Type/Brand/Model, IP/MAC, กลุ่มอุปกรณ์, โหมดมิเตอร์)
-                Tab 3: ⚙️ ขั้นสูง (Remote ID, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ) */}
+                Tab 3: 🔌 อุปกรณ์ต่อพ่วง (inline accessories — POST'd after device save)
+                Tab 4: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
+                Tab 5: ⚙️ ขั้นสูง (Remote ID, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ) */}
             <Tabs defaultValue="location" className="w-full">
-              <TabsList className="mb-4 grid w-full grid-cols-4">
+              <TabsList className="mb-4 grid w-full grid-cols-3 sm:grid-cols-5">
                 <TabsTrigger value="location" onClick={() => {}}>📍 สถานที่ติดตั้ง</TabsTrigger>
                 <TabsTrigger value="device" onClick={() => {}}>💻 อุปกรณ์</TabsTrigger>
+                <TabsTrigger value="accessories" onClick={() => {}}>🔌 อุปกรณ์ต่อพ่วง</TabsTrigger>
                 <TabsTrigger value="set" onClick={() => {}}>📦 ชุดอุปกรณ์</TabsTrigger>
                 <TabsTrigger value="advanced" onClick={() => {}}>⚙️ ขั้นสูง</TabsTrigger>
               </TabsList>
@@ -2082,7 +2262,194 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 3: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
+                  Tab 3: 🔌 อุปกรณ์ต่อพ่วง (inline accessory editor)
+                  ─────────────────────────────────────────────────────
+                  Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM
+
+                  Lets the user add accessories AT THE SAME TIME as the device
+                  (no need to save the device first, then open the detail
+                  sheet, then add each accessory — single submit creates the
+                  device + all accessories in one go).
+
+                  • New device: rows are stored in local form.accessories[]
+                    state — save() POSTs them to /api/devices/[id]/accessories
+                    AFTER the device is created.
+                  • Edit device: existing accessories are loaded into the form
+                    on openEdit() — save() PATCHes rows with an .id and POSTs
+                    rows without an .id.
+
+                  Best-effort: if any accessory save fails, the device save
+                  is NOT rolled back (logged via toast.warning).
+                  ═══════════════════════════════════════════════════════ */}
+              <TabsContent value="accessories" className="space-y-4">
+                <div className="rounded-lg border border-orange-200 bg-white p-4 shadow-sm dark:border-orange-900/40 dark:bg-slate-900">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400">
+                      🔌 อุปกรณ์ต่อพ่วง ({form.accessories.length})
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addAccessory}
+                      className="border-[#f97316]/30 text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c]/30 dark:text-[#fb923c]"
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" />
+                      เพิ่มอุปกรณ์ต่อพ่วง
+                    </Button>
+                  </div>
+
+                  <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                    เพิ่มอุปกรณ์ต่อพ่วง (คีย์บอร์ด, เมาส์, จอภาพ, …) ได้พร้อมกับการสร้างอุปกรณ์หลัก —
+                    บันทึกครั้งเดียว ระบบจะสร้างทั้งอุปกรณ์และอุปกรณ์ต่อพ่วงทั้งหมดให้
+                  </p>
+
+                  {accessoriesLoading && (
+                    <div className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+                      กำลังโหลดอุปกรณ์ต่อพ่วงที่มีอยู่...
+                    </div>
+                  )}
+
+                  {form.accessories.length === 0 && !accessoriesLoading ? (
+                    <div className="rounded-md border border-dashed border-orange-300 bg-orange-50/40 px-4 py-8 text-center dark:border-orange-800/50 dark:bg-orange-950/10">
+                      <div className="mb-1 text-sm font-medium text-orange-700 dark:text-orange-300">
+                        ยังไม่มีอุปกรณ์ต่อพ่วง
+                      </div>
+                      <div className="text-xs text-orange-600/80 dark:text-orange-400/80">
+                        กด &quot;เพิ่มอุปกรณ์ต่อพ่วง&quot; เพื่อสร้าง (เพิ่มได้หลายตัว)
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {form.accessories.map((acc, idx) => {
+                        const typeLabel =
+                          ACCESSORY_TYPES_INLINE.find((t) => t.value === acc.accessoryType)?.label ??
+                          acc.accessoryType
+                        return (
+                          <div
+                            key={acc.id ?? `new-acc-${idx}`}
+                            className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
+                          >
+                            {/* ── Row header: index + DB badge + delete ── */}
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <span className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-orange-100 text-[10px] font-bold text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
+                                  {idx + 1}
+                                </span>
+                                {typeLabel}
+                                {acc.id && (
+                                  <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                    {acc.id.slice(-8)}
+                                  </span>
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeAccessory(idx)}
+                                className="rounded p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                title="ลบอุปกรณ์ต่อพ่วงนี้"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+
+                            {/* ── Form fields (responsive grid) ── */}
+                            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              <Field label="ประเภท" required>
+                                <Select
+                                  value={acc.accessoryType}
+                                  onValueChange={(v) =>
+                                    updateAccessory(idx, { accessoryType: v })
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="— เลือกประเภท —" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {ACCESSORY_TYPES_INLINE.map((t) => (
+                                      <SelectItem key={t.value} value={t.value}>
+                                        {t.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                              <Field label="ชื่อ / ยี่ห้อ">
+                                <Input
+                                  value={acc.brand}
+                                  onChange={(e) =>
+                                    updateAccessory(idx, { brand: e.target.value })
+                                  }
+                                  placeholder="เช่น Logitech"
+                                />
+                              </Field>
+                              <Field label="รุ่น">
+                                <Input
+                                  value={acc.model}
+                                  onChange={(e) =>
+                                    updateAccessory(idx, { model: e.target.value })
+                                  }
+                                  placeholder="เช่น K380"
+                                />
+                              </Field>
+                              <Field label="Serial Number">
+                                <Input
+                                  value={acc.serialNumber}
+                                  onChange={(e) =>
+                                    updateAccessory(idx, { serialNumber: e.target.value })
+                                  }
+                                  placeholder="S/N..."
+                                  className="font-mono text-xs"
+                                />
+                              </Field>
+                              <Field label="สถานะ">
+                                <Select
+                                  value={acc.status}
+                                  onValueChange={(v) =>
+                                    updateAccessory(idx, { status: v })
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {ACCESSORY_STATUSES_INLINE.map((s) => (
+                                      <SelectItem key={s.value} value={s.value}>
+                                        {s.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                              <Field label="วันที่ติดตั้ง">
+                                <Input
+                                  type="date"
+                                  value={acc.installedDate}
+                                  onChange={(e) =>
+                                    updateAccessory(idx, { installedDate: e.target.value })
+                                  }
+                                />
+                              </Field>
+                              <Field label="หมายเหตุ">
+                                <Input
+                                  value={acc.remark}
+                                  onChange={(e) =>
+                                    updateAccessory(idx, { remark: e.target.value })
+                                  }
+                                  placeholder="หมายเหตุ (ถ้ามี)"
+                                />
+                              </Field>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* ═══════════════════════════════════════════════════════
+                  Tab 4: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
                   ─────────────────────────────────────────────────────
                   MERGE-ACCESSORY-DEVICE-SET: simplified — the primary flow
                   for adding children (or peripherals) is now done from the
@@ -2185,7 +2552,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 4: ⚙️ ขั้นสูง
+                  Tab 5: ⚙️ ขั้นสูง
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="advanced" className="space-y-4">
                 {/* ── License / Software ── */}

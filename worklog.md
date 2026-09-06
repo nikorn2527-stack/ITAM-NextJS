@@ -17145,3 +17145,60 @@ Next steps for user:
 2. Test unlink: click the amber Unlink icon on a child device row → confirm → child row disappears from this list (and parentDeviceId is cleared on the child).
 3. Test edit-form Device Set tab: open edit form for a child device → "ชุดอุปกรณ์" tab → parent info shows read-only + click "ถอดการผูก" → save → device is unlinked.
 4. (Optional cleanup, separate task) Remove the now-unused DeviceSetChildrenSection export and DeviceParentCombobox function in a follow-up commit if confirmed not needed elsewhere.
+
+---
+Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM
+Agent: refactor-subagent
+Task: Inline accessory section in Device Add/Edit form + CSV import UI
+
+Work Log:
+- Read context: worklog (MERGE-ACCESSORY-DEVICE-SET — established the unified DeviceAccessoriesSection with radio toggle for "อุปกรณ์" vs "ชุดอุปกรณ์ต่อพ่วง"), devices-page.tsx (FormState at L201, EMPTY_FORM at L320, openEdit at L939, save() at L1227, Tabs at L1831, License editor pattern at L2219-2337), device-accessories-section.tsx (the existing unified modal), import-page.tsx (IMPORT_TYPES at L76, uploadMutation at L381, jobTypeLabel at L228), and /api/devices/accessories/import/route.ts (existing CSV import endpoint — response shape `{ data: { total, created, updated, skipped, errors, jobId } }`).
+- Confirmed: API surface needed no changes. POST /api/devices/[id]/accessories (create) + PATCH /api/devices/[id]/accessories/[accId] (update) + GET /api/devices/[id]/accessories (list) already exist.
+- Part A — Inline accessory section in Device Add/Edit form (devices-page.tsx):
+  * Added `PendingAccessory` interface (exported) + `ACCESSORY_TYPES_INLINE` / `ACCESSORY_STATUSES_INLINE` constants + `EMPTY_ACCESSORY` default row.
+  * Added `accessories: PendingAccessory[]` to FormState + EMPTY_FORM (mirrors the licenses pattern).
+  * Updated `openEdit()` to also call `loadDeviceAccessories(d.id)` so existing accessories populate the form in edit mode.
+  * Added `loadDeviceAccessories(deviceId)` — fetches GET /api/devices/[id]/accessories, maps to PendingAccessory[] (with .id).
+  * Added `addAccessory()` / `updateAccessory(idx, patch)` / `removeAccessory(idx)` local-state CRUD helpers (mirror the license helpers).
+  * Added new tab "🔌 อุปกรณ์ต่อพ่วง" between "💻 อุปกรณ์" and "📦 ชุดอุปกรณ์". Changed TabsList grid from `grid-cols-4` → `grid-cols-3 sm:grid-cols-5` (responsive: 3 across on mobile so labels stay readable, 5 across on sm+).
+  * TabsContent renders: orange-themed section header with count badge + "เพิ่มอุปกรณ์ต่อพ่วง" button (orange-accent outline), explanatory text, loading state, empty state ("ยังไม่มีอุปกรณ์ต่อพ่วง — กด 'เพิ่มอุปกรณ์ต่อพ่วง' เพื่อสร้าง (เพิ่มได้หลายตัว)"), and per-row card with index badge + DB-id badge + delete (Trash2) + 7-field responsive grid (Type/Brand/Model/Serial/Status/InstalledDate/Remark) using the shared Field component.
+  * Modified `save()` to also omit `accessories` from the device payload (alongside `licenses`), then after the license sync block, sync accessories via Promise.allSettled: POST new rows (no .id) to /api/devices/[id]/accessories, PATCH existing rows (with .id) to /api/devices/[id]/accessories/[id]. Best-effort: failures don't fail the device save — toast.warning(`บันทึกอุปกรณ์แล้ว แต่ N รายการอุปกรณ์ต่อพ่วงไม่สำเร็จ`).
+  * Updated tab numbering comments (Tab 3 = 🔌 อุปกรณ์ต่อพ่วง, Tab 4 = 📦 ชุดอุปกรณ์, Tab 5 = ⚙️ ขั้นสูง).
+- Part B — CSV import UI for accessories (import-page.tsx):
+  * Added `'accessory'` to JobType union.
+  * Added new IMPORT_TYPES entry: id=`accessory`, icon=🔌, title=`อุปกรณ์ต่อพ่วง`, desc=`นำเข้าอุปกรณ์ต่อพ่วงแบบหลายตัว (เชื่อมกับอุปกรณ์ที่มีอยู่แล้ว)`, headers = `parent_asset_code,accessory_type,brand,model,serial_number,status,installed_date,remark` (matching the API route), with sample row.
+  * Updated `jobTypeLabel()` to return `อุปกรณ์ต่อพ่วง` for `'accessory'`.
+  * Modified `uploadMutation.mutationFn` to branch on jobType:
+    - `'accessory'` → POST /api/devices/accessories/import (multipart form, NO jobType field), response shape `{ data: { total, created, updated, skipped, errors, jobId } }` — synthesised into an ImportJob so the existing UI (history table + error dialog) keeps working without forking.
+    - default → existing POST /api/import flow (unchanged).
+  * Added `accessory` branch in `onSuccess` to invalidate `['devices']` + `['device-accessories']` queries so device detail sheets refresh.
+  * Updated import-type selector grid from `lg:grid-cols-4` → `lg:grid-cols-5` to fit the 5th card.
+  * Updated instructions step text from "(อุปกรณ์ / แจ้งซ่อม / สต๊อก / มิเตอร์)" → "(อุปกรณ์ / แจ้งซ่อม / สต๊อก / มิเตอร์ / อุปกรณ์ต่อพ่วง)".
+- Lint check: `bun run lint` → 104 problems (1 error, 103 warnings). 0 new errors. 0 new warnings. The 1 pre-existing error is `src/app/api/auth/oauth/apple/callback/route.ts:99` (explicitly OK per task spec). Verified via `npx eslint devices-page.tsx import-page.tsx` → 0 errors, only pre-existing react-hooks/set-state-in-effect warnings on existing effects (lines I didn't touch).
+- TypeScript check: `bunx tsc --noEmit` — only pre-existing errors in modified files (devices-page.tsx:1434 `downloadCsv(...)` Device[] vs Record<string,unknown>[] — was on line 1257 before my additions pushed it down; device-accessories-section.tsx Button size="ghost" typo — also pre-existing). No new TS errors introduced.
+
+Stage Summary:
+- ✅ Part A (primary): User can now add accessories AT THE SAME TIME as creating/editing a device — single submit creates Device + DeviceAccessories + (existing) Device Set links. Saves 1 round-trip per device for the "device + 1 accessory" case, and N round-trips for "device + N accessories" (was N+1 submissions, now 1). For the user's reported pain point (100 devices × 5 accessories = 600 submissions), this reduces to 100 submissions.
+- ✅ Inline editor: orange-themed card with count badge + add button + responsive grid (Type/Brand/Model/Serial/Status/InstalledDate/Remark) per row. Empty state, loading state, and per-row DB-id badge + delete button all match the existing License editor pattern for visual consistency.
+- ✅ Best-effort save: accessory creation/update failures don't roll back the device save (logged via toast.warning). Mirrors the existing license sync behavior.
+- ✅ Edit mode: existing accessories are loaded via GET /api/devices/[id]/accessories on openEdit(); they're PATCH-updated on save. New rows (no .id) are POST-created.
+- ✅ Part B (secondary): User can now bulk-import accessories via CSV from the Import page. Routes to the existing /api/devices/accessories/import endpoint (which was previously API-only with no UI). The 5th IMPORT_TYPES card "🔌 อุปกรณ์ต่อพ่วง" appears in the import type selector alongside อุปกรณ์ / แจ้งซ่อม / สต๊อก / มิเตอร์. CSV format matches the API: `parent_asset_code,accessory_type,brand,model,serial_number,status,installed_date,remark`.
+- ✅ Result display: synthesised ImportJob (with totalRows / processedRows / errorRows / errors JSON) flows through the existing history table + error-detail dialog without forking the UI. Errors from the accessory API (e.g. "ไม่พบอุปกรณ์หลัก IT-99999") render in the same error-detail dialog as device import errors.
+- ✅ No API changes — reuses existing endpoints: GET/POST /api/devices/[id]/accessories, PATCH /api/devices/[id]/accessories/[id], POST /api/devices/accessories/import.
+- ✅ Lint: 0 new errors, 0 new warnings.
+- ✅ Mobile responsive: TabsList uses `grid-cols-3 sm:grid-cols-5` so labels stay readable on mobile; accessory form fields use `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`; import-type selector uses `lg:grid-cols-5`.
+
+Files Modified (2):
+- src/components/itam/devices-page.tsx (~3780 → ~4148 lines, +368 lines: PendingAccessory interface, ACCESSORY_TYPES_INLINE/ACCESSORY_STATUSES_INLINE/EMPTY_ACCESSORY consts, accessories FormState field + EMPTY_FORM default, loadDeviceAccessories + addAccessory/updateAccessory/removeAccessory helpers, new "🔌 อุปกรณ์ต่อพ่วง" tab with inline editor, save() accessory sync block, tab numbering comments updated).
+- src/components/itam/import-page.tsx (~1022 → ~1055 lines, +33 lines: `'accessory'` JobType, new IMPORT_TYPES entry, `jobTypeLabel` case, uploadMutation branching to /api/devices/accessories/import with ImportJob synthesis, `['device-accessories']` invalidation, `lg:grid-cols-5` grid, instructions text updated).
+
+Files NOT modified (still in use):
+- src/app/api/devices/accessories/import/route.ts — already exists with the correct response shape; no changes needed.
+- src/components/itam/device-accessories-section.tsx — the existing unified accessory modal in the device detail sheet still works for adding accessories AFTER the device is created (separate flow from the inline editor in the Add/Edit form).
+
+Next steps for user:
+1. Test the inline accessory flow:
+   a. Add mode: open "เพิ่มอุปกรณ์" → go to "🔌 อุปกรณ์ต่อพ่วง" tab → click "เพิ่มอุปกรณ์ต่อพ่วง" → fill 1+ rows → fill required fields on other tabs → click "บันทึก" → device + accessories created in single submit. Verify via device detail sheet (accessories appear in "อุปกรณ์ในชุด" section with 🔌 badge).
+   b. Edit mode: open an existing device → "🔌 อุปกรณ์ต่อพ่วง" tab → existing accessories pre-loaded → edit a row → add a new row → click "บันทึก" → PATCH for existing, POST for new.
+2. Test CSV import: open "นำเข้าข้อมูล" page → click "🔌 อุปกรณ์ต่อพ่วง" card → download template → fill CSV (parent_asset_code = existing device's assetCode) → upload → verify history row shows total/processed/error counts; click row to see error detail.
+3. (Optional enhancement, separate task) Add a "ลบ" (DELETE) button on existing accessory rows in the inline editor so users can delete (not just edit) accessories from within the Add/Edit form. Currently delete happens via the device detail sheet's accessory section.
