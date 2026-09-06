@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-middleware'
 
 function esc(input: unknown): string {
   if (input === null || input === undefined) return ''
@@ -60,9 +61,18 @@ function statusLabel(s: string): string {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  // P0 Security: require auth — PO print contains financial data (unitCost)
+  // Support token via query param for programmatic print (e.g. window.open from staff UI)
+  const auth = await requireAuth(req, 'VIEW_DASHBOARD')
+  if (!auth.ok) {
+    return new NextResponse(
+      '<h1>กรุณาเข้าสู่ระบบ</h1><p>ต้องเข้าสู่ระบบเพื่อพิมพ์ใบสั่งซื้อ</p>',
+      { status: 401, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+    )
+  }
   try {
     const { id } = await params
 
