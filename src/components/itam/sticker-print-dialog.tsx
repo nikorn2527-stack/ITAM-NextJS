@@ -3,27 +3,40 @@
 /**
  * sticker-print-dialog.tsx — print dialog for device stickers.
  *
- * STICKER-CUSTOM-SIZE (current revision):
- *   The dialog now uses the template-engine pipeline from `sticker-template.ts`
- *   (STICKER_SIZE_PRESETS + STICKER_TEMPLATE_PRESETS + renderStickerFromTemplate
- *   + buildPrintDocument) instead of its own bespoke sticker HTML builder.
+ * STICKER-EDITOR-DEEP-REVIEW (current revision):
+ *   Root-cause fix for the user complaint "sticker doesn't match what I
+ *   designed — even the size is wrong": the previous revision (STICKER-
+ *   CUSTOM-SIZE) only let the user pick from 5 built-in *preset* templates.
+ *   Custom templates the user designed in the ItamStickerEditor (and saved
+ *   to the server via /api/itam/sticker/templates) were NOT loaded into the
+ *   dialog — so no matter what the user designed, the dialog printed one of
+ *   the 5 presets. The displayed size also mismatched because presets use
+ *   their own canvas, not the saved template's canvas.
  *
- *   User flow:
- *     1. Pick a size (preset dropdown OR custom W/H fields in mm)
- *     2. Pick a template (default / minimal / qr-only / compact / detailed)
- *     3. Live preview updates as you change settings
- *     4. Pick devices (existing multi-select list)
- *     5. Click "พิมพ์สติกเกอร์" — opens a print window with the template-rendered
- *        HTML. The @page CSS is sized to match the sticker canvas (auto mode)
- *        so it works for label printers (one sticker per page) AND for A4
- *        bulk printing (grid of stickers per A4 sheet).
+ *   Fix:
+ *     1. The dialog now fetches the user's saved templates via
+ *        GET /api/itam/sticker/templates (alongside the built-in presets).
+ *     2. The template dropdown shows BOTH groups: "เทมเพลตที่บันทึก"
+ *        (saved) + "เทมเพลตสำเร็จ" (presets).
+ *     3. When a saved template is selected, its own canvas size is used
+ *        (the size-preset dropdown is hidden + read-only text shows the
+ *        saved canvas dims). The preset size is bypassed entirely.
+ *     4. When a preset is selected, the existing flow applies (preset
+ *        builder + size preset → canvas).
+ *     5. By default the active saved template is selected on first open.
+ *     6. Print now passes the correct cols to buildPrintDocument for label
+ *        sizes (via calculateGridColumns) so bulk label printing fits the
+ *        A4 grid instead of 1 sticker per page.
  *
- *   The size + template preferences are persisted to localStorage via
- *   `sticker-print-prefs.ts` so the dialog remembers the user's last choice.
+ * STICKER-CUSTOM-SIZE (prior revision, still applies):
+ *   - 9 size presets + 5 template presets + custom W/H inputs.
+ *   - Live preview uses renderStickerFromTemplate (template engine).
+ *   - @page CSS uses the canvas size (auto mode) for label-printer + A4.
+ *   - Preferences persisted to localStorage via sticker-print-prefs.ts.
  */
 
 import * as React from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
@@ -33,7 +46,9 @@ import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
@@ -47,7 +62,7 @@ import {
 } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { matchesSuffixOrContains } from '@/lib/suffix-search'
-import { Printer, Search, Loader2, Tag, QrCode, Ruler, LayoutTemplate } from 'lucide-react'
+import { Printer, Search, Loader2, Tag, QrCode, Ruler, LayoutTemplate, Star } from 'lucide-react'
 import type { Device } from './types'
 import {
   STICKER_SIZE_PRESETS,
@@ -57,6 +72,7 @@ import {
   substituteVariables,
   renderStickerFromTemplate,
   buildPrintDocument,
+  calculateGridColumns,
   type StickerCanvas,
   type StickerDeviceData,
   type StickerElement,
@@ -165,20 +181,66 @@ export function StickerPrintDialog({
 }: Props) {
   const qc = useQueryClient()
 
+  // ── Saved sticker templates (server-side) — STICKER-EDITOR-DEEP-REVIEW ──
+  // Fetch the user's designed templates from /api/itam/sticker/templates
+  // (the same store the ItamStickerEditor writes to). When the user has a
+  // saved template marked as active, we auto-select it on first open so the
+  // dialog prints what the user actually designed.
+  const { data: tplData } = useQuery({
+    queryKey: ['sticker-templates'],
+    queryFn: async () => {
+      const res = await fetch('/api/itam/sticker/templates')
+      if (!res.ok) throw new Error('Failed to load sticker templates')
+      return res.json() as Promise<{ templates: StickerTemplate[]; activeId: string | null }>
+    },
+    enabled: open,
+  })
+  const savedTemplates = tplData?.templates ?? []
+  const activeSavedId = tplData?.activeId ?? null
+
   // ── Sticker prefs (size + template) — loaded once on mount ─────────────
   const [prefs, setPrefs] = React.useState<StickerPrintPrefs>(() => ({
     sizePresetId: 'default',
     customWidth: 75.2,
     customHeight: 36,
     templatePresetId: 'default',
+    savedTemplateId: null,
   }))
   const [prefsLoaded, setPrefsLoaded] = React.useState(false)
+  const [autoSelectAttempted, setAutoSelectAttempted] = React.useState(false)
 
   React.useEffect(() => {
     if (!open || prefsLoaded) return
     setPrefs(loadStickerPrintPrefs())
     setPrefsLoaded(true)
   }, [open, prefsLoaded])
+
+  // Auto-select the active saved template on first open (only if the user
+  // hasn't already chosen a template — i.e. savedTemplateId is null AND the
+  // preset is still the default 'default'). This is the key UX fix: the
+  // sticker the user designed + marked active is now the default print option.
+  React.useEffect(() => {
+    if (!open || !prefsLoaded || autoSelectAttempted) return
+    if (!savedTemplates.length || !activeSavedId) {
+      setAutoSelectAttempted(true)
+      return
+    }
+    if (prefs.savedTemplateId) {
+      setAutoSelectAttempted(true)
+      return
+    }
+    // Only auto-select if the user hasn't customized (still on 'default' preset).
+    if (prefs.templatePresetId !== 'default') {
+      setAutoSelectAttempted(true)
+      return
+    }
+    setPrefs((prev) => {
+      const next = { ...prev, savedTemplateId: activeSavedId }
+      saveStickerPrintPrefs(next)
+      return next
+    })
+    setAutoSelectAttempted(true)
+  }, [open, prefsLoaded, autoSelectAttempted, savedTemplates, activeSavedId, prefs.savedTemplateId, prefs.templatePresetId])
 
   function updatePrefs(patch: Partial<StickerPrintPrefs>) {
     setPrefs((prev) => {
@@ -239,18 +301,44 @@ export function StickerPrintDialog({
   )
 
   // ── Resolve canvas + template from prefs ───────────────────────────────
-  const canvas: StickerCanvas = React.useMemo(
+  // Two paths (STICKER-EDITOR-DEEP-REVIEW):
+  //   1. savedTemplateId set → use the saved server-side template + its canvas
+  //   2. otherwise → use the preset builder + size-preset canvas
+  const presetCanvas: StickerCanvas = React.useMemo(
     () => resolveStickerCanvas(prefs.sizePresetId, prefs.customWidth, prefs.customHeight),
     [prefs.sizePresetId, prefs.customWidth, prefs.customHeight],
   )
 
+  const savedTemplate: StickerTemplate | null = React.useMemo(() => {
+    if (!prefs.savedTemplateId) return null
+    const found = savedTemplates.find((t) => t.id === prefs.savedTemplateId)
+    return found ?? null
+  }, [prefs.savedTemplateId, savedTemplates])
+
+  // If the saved template id is stale (deleted by another session), fall back
+  // to the preset flow + clear the saved id from prefs.
+  React.useEffect(() => {
+    if (prefs.savedTemplateId && prefsLoaded && tplData && !savedTemplate) {
+      updatePrefs({ savedTemplateId: null })
+    }
+  }, [prefs.savedTemplateId, prefsLoaded, tplData, savedTemplate])
+
   const template: StickerTemplate = React.useMemo(() => {
+    if (savedTemplate) return savedTemplate
     const preset = STICKER_TEMPLATE_PRESETS.find((p) => p.id === prefs.templatePresetId)
     if (!preset) {
-      return STICKER_TEMPLATE_PRESETS[0].build(canvas)
+      return STICKER_TEMPLATE_PRESETS[0].build(presetCanvas)
     }
-    return preset.build(canvas)
-  }, [prefs.templatePresetId, canvas])
+    return preset.build(presetCanvas)
+  }, [savedTemplate, prefs.templatePresetId, presetCanvas])
+
+  // Effective canvas — when a saved template is selected, use ITS canvas
+  // (not the size-preset canvas). This is the fix for the user's complaint
+  // that the displayed size didn't match what they designed.
+  const canvas: StickerCanvas = React.useMemo(
+    () => (savedTemplate ? savedTemplate.canvas : presetCanvas),
+    [savedTemplate, presetCanvas],
+  )
 
   const settings: StickerSettings = React.useMemo(
     () => ({
@@ -321,7 +409,16 @@ export function StickerPrintDialog({
         stickersHtml.push(html)
       }
 
-      const html = buildPrintDocument(stickersHtml, template, 1)
+      // STICKER-EDITOR-DEEP-REVIEW: compute proper cols for label sizes
+      // (label sizes go to A4-grid mode in buildPrintDocument; passing cols=1
+      // would print only 1 sticker per A4 page, very wasteful for bulk prints).
+      // For canvas-as-page mode (A4/A5/large), buildPrintDocument ignores cols
+      // and uses colsEffective=1, so this calculation is a no-op there.
+      const isLandscape = canvas.width > canvas.height
+      const pageWidthForGrid = isLandscape ? 297 : 210
+      const cols = calculateGridColumns(canvas.width, pageWidthForGrid)
+
+      const html = buildPrintDocument(stickersHtml, template, cols)
 
       const win = window.open('', '_blank')
       if (!win) {
@@ -359,6 +456,9 @@ export function StickerPrintDialog({
               canvasWidth: canvas.width,
               canvasHeight: canvas.height,
               templatePreset: prefs.templatePresetId,
+              savedTemplateId: prefs.savedTemplateId,
+              savedTemplateName: savedTemplate?.name ?? null,
+              cols,
             },
           }),
         })
@@ -392,6 +492,27 @@ export function StickerPrintDialog({
   }, [canvas.width, canvas.height])
 
   const isCustomSize = prefs.sizePresetId === 'custom'
+  const usingSavedTemplate = !!savedTemplate
+
+  // Composite select value for the template dropdown — encodes whether the
+  // current selection is a saved template or a preset. Format: "saved:<id>" or
+  // "preset:<id>". STICKER-EDITOR-DEEP-REVIEW.
+  const templateSelectValue = usingSavedTemplate
+    ? `saved:${savedTemplate!.id}`
+    : `preset:${prefs.templatePresetId}`
+
+  function handleTemplateSelect(composite: string) {
+    if (composite.startsWith('saved:')) {
+      const id = composite.slice('saved:'.length)
+      updatePrefs({ savedTemplateId: id })
+      return
+    }
+    if (composite.startsWith('preset:')) {
+      const id = composite.slice('preset:'.length)
+      updatePrefs({ savedTemplateId: null, templatePresetId: id })
+      return
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -415,60 +536,101 @@ export function StickerPrintDialog({
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {/* Size preset dropdown */}
+              {/* Size preset dropdown — disabled when a saved template is
+                  selected (saved templates have their own canvas). */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
                   ขนาดสติกเกอร์
                 </Label>
-                <Select
-                  value={prefs.sizePresetId}
-                  onValueChange={(v) => updatePrefs({ sizePresetId: v })}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STICKER_SIZE_PRESETS.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {usingSavedTemplate ? (
+                  // Read-only display of the saved template's canvas size
+                  <div className="flex h-9 items-center rounded-md border border-slate-200 bg-slate-100 px-3 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    {canvas.width.toFixed(1)} × {canvas.height.toFixed(1)} มม.
+                    <span className="ml-2 text-[10px] text-slate-400 dark:text-slate-500">
+                      (จากเทมเพลต)
+                    </span>
+                  </div>
+                ) : (
+                  <Select
+                    value={prefs.sizePresetId}
+                    onValueChange={(v) => updatePrefs({ sizePresetId: v })}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STICKER_SIZE_PRESETS.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
                 <p className="text-[10px] text-slate-400 dark:text-slate-500">
                   ขนาดปัจจุบัน: {canvas.width.toFixed(1)} × {canvas.height.toFixed(1)} มม.
                 </p>
               </div>
 
-              {/* Template preset dropdown */}
+              {/* Template dropdown — shows saved templates (if any) + presets */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
                   เทมเพลต / รูปแบบ
                 </Label>
                 <Select
-                  value={prefs.templatePresetId}
-                  onValueChange={(v) => updatePrefs({ templatePresetId: v })}
+                  value={templateSelectValue}
+                  onValueChange={handleTemplateSelect}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {STICKER_TEMPLATE_PRESETS.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.label}
-                      </SelectItem>
-                    ))}
+                    {savedTemplates.length > 0 && (
+                      <SelectGroup>
+                        <SelectLabel className="text-[10px] uppercase tracking-wide text-slate-500">
+                          เทมเพลตที่บันทึก
+                        </SelectLabel>
+                        {savedTemplates.map((t) => (
+                          <SelectItem key={`saved-${t.id}`} value={`saved:${t.id}`}>
+                            <span className="flex items-center gap-1.5">
+                              {activeSavedId === t.id && (
+                                <Star className="h-3 w-3 fill-[#f97316] text-[#f97316]" />
+                              )}
+                              <span className="truncate">{t.name}</span>
+                              <span className="ml-1 font-mono text-[10px] text-slate-400">
+                                {t.canvas.width}×{t.canvas.height}
+                              </span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
+                    <SelectGroup>
+                      <SelectLabel className="text-[10px] uppercase tracking-wide text-slate-500">
+                        เทมเพลตสำเร็จ
+                      </SelectLabel>
+                      {STICKER_TEMPLATE_PRESETS.map((p) => (
+                        <SelectItem key={`preset-${p.id}`} value={`preset:${p.id}`}>
+                          {p.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
                 <p className="text-[10px] text-slate-400 dark:text-slate-500">
                   <LayoutTemplate className="mr-1 inline h-3 w-3 align-text-bottom" />
                   เทมเพลต: {template.name}
+                  {usingSavedTemplate && (
+                    <span className="ml-1 text-[#f97316]">· ใช้ canvas ของเทมเพลต</span>
+                  )}
                 </p>
               </div>
             </div>
 
-            {/* Custom size inputs (only when "custom" is selected) */}
-            {isCustomSize && (
+            {/* Custom size inputs (only when "custom" is selected AND no
+                saved template is active — saved templates have their own
+                canvas, so the custom W/H inputs don't apply). */}
+            {isCustomSize && !usingSavedTemplate && (
               <div className="grid grid-cols-2 gap-3 rounded-md border border-dashed border-slate-300 bg-white p-2 dark:border-slate-700 dark:bg-slate-900/60">
                 <div className="space-y-1">
                   <Label

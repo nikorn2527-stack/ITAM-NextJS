@@ -207,26 +207,62 @@ function buildDeviceRepairUrl(deviceId: string): string {
 // ============================================================
 
 // ============================================================
-// Helpers — LineBinding upsert (records that this LINE user exists)
+// Helpers — sync LINE profile into PublicReporter
+// ------------------------------------------------------------
+// PHASE-3-LINEBINDING-MIGRATION:
+//   The legacy `LineBinding` table is being retired. All "person who
+//   reported via LINE" data now lives in `PublicReporter`, keyed by
+//   `(siteCode, lineUserId)` unique — so one LINE user can be a
+//   reporter at multiple sites.
+//
+//   The webhook doesn't know which site a LINE user is at (it has no
+//   device/QR context until the user actually scans a sticker), so it
+//   CANNOT create a PublicReporter record directly. PublicReporter
+//   records are created on the public repair form submission (which
+//   has the device/site context).
+//
+//   What the webhook CAN do is best-effort profile sync: when a LINE
+//   user sends a message or follows the OA, look up any existing
+//   PublicReporter rows matching this lineUserId and fill in their
+//   `lineDisplayName` if it's currently null. This way, the welcome
+//   displayName we get from the LINE profile gets backfilled into
+//   any already-created PublicReporter rows.
+//
+//   See: scripts/migrate-linebinding-to-public-reporter.ts for the
+//   one-time backfill of historical LineBinding rows.
 // ============================================================
 
-async function upsertLineBinding(
+async function syncLineProfileToPublicReporter(
   lineUserId: string,
   displayName?: string,
 ): Promise<void> {
+  // No displayName → nothing to sync (lineUserId alone is already
+  // captured when the PublicReporter record was created via the
+  // public repair form).
+  if (!displayName) return
   try {
-    await db.lineBinding.upsert({
-      where: { lineUserId },
-      create: {
+    // Update all PublicReporter rows for this lineUserId (a user may
+    // be a reporter at multiple sites). Only fills in null display
+    // names — never overwrites an existing value.
+    const result = await db.publicReporter.updateMany({
+      where: {
         lineUserId,
-        lineDisplayName: displayName ?? null,
+        lineDisplayName: null,
       },
-      update: {
-        lineDisplayName: displayName ?? undefined,
+      data: {
+        lineDisplayName: displayName,
       },
     })
+    if (result.count > 0) {
+      console.debug(
+        `[line-webhook] synced lineDisplayName into ${result.count} PublicReporter row(s)`,
+      )
+    }
   } catch (err) {
-    console.error('[line-webhook] upsertLineBinding failed:', err)
+    console.error(
+      '[line-webhook] syncLineProfileToPublicReporter failed:',
+      err,
+    )
   }
 }
 
@@ -398,7 +434,12 @@ export async function POST(req: NextRequest) {
 
       if (type === 'follow') {
         // ── Welcome message ──
-        await upsertLineBinding(
+        // Best-effort sync of the LINE displayName we just received into
+        // any pre-existing PublicReporter rows for this user. The
+        // webhook itself never creates PublicReporter records (it has no
+        // siteCode context — that comes from the QR/device scan in the
+        // public repair form). See syncLineProfileToPublicReporter docs.
+        await syncLineProfileToPublicReporter(
           lineUserId,
           (evt as { profile?: { displayName?: string } }).profile
             ?.displayName,
@@ -573,8 +614,13 @@ export async function POST(req: NextRequest) {
         const text = String(msg.text ?? '').trim()
         if (!text) continue
 
-        // Persist LineBinding (so we know this user exists)
-        await upsertLineBinding(lineUserId)
+        // Best-effort profile sync (no displayName available for plain
+        // text messages — LINE only sends the profile on follow/unfollow
+        // events. This is a no-op for the text-message branch; kept here
+        // as a placeholder so future code that fetches the profile from
+        // the LINE API can plug in here without restructuring the call
+        // site).
+        // See syncLineProfileToPublicReporter() docs above.
 
         // ── Branch 1: status lookup ──
         if (startsWithAny(text, STATUS_KEYWORDS)) {

@@ -61,11 +61,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ไม่มีเทมเพลตสติกเกอร์ในระบบ' }, { status: 500 })
     }
 
+    // STICKER-EDITOR-DEEP-REVIEW: field names must match the StickerDeviceData
+    // interface in sticker-template.ts (assetCode / serialNumber / type) — the
+    // previous code used `assetNo` / `serial` / `deviceType`, which left
+    // {{AssetNo}} / {{Serial}} / {{Type}} substitutions blank in printed
+    // stickers. (substituteVariables looks up `device.assetCode` etc., not
+    // `device.assetNo`.)
     const deviceData: StickerDeviceData = {
-      assetNo: device.assetCode,
+      assetCode: device.assetCode,
       assetSiteCode: device.assetSiteCode,
-      serial: device.serialNumber,
-      deviceType: device.type,
+      serialNumber: device.serialNumber,
+      type: device.type,
       brand: device.brand,
       model: device.model,
       building: device.building,

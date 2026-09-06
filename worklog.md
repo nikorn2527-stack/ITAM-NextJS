@@ -17510,3 +17510,440 @@ Next steps for user:
    - Click "อนุมัติ" → status should change to PENDING, the Approve button should disappear, and the Assign/Cancel buttons should appear.
 5. **(Optional future enhancement — not in this task)**: Add a default sort that puts PENDING_REVIEW above PENDING in the Work Orders list. Would require either a CASE WHEN expression in raw SQL or a sort-key field on WorkOrder. Staff can already filter by PENDING_REVIEW via the dropdown for now.
 6. **(Optional future enhancement — not in this task)**: Migrate the `LineBinding` table to `PublicReporter` (Phase 3 per the original plan). The webhook still upserts LineBinding records to track who's a friend — but since it no longer creates WOs from text, the LineBinding is mostly a passive record now. Phase 3 can fold it into PublicReporter (which has a richer schema: phone verification, default device, blocked flag, etc.).
+
+---
+Task ID: STICKER-EDITOR-DEEP-REVIEW
+Agent: ui-ux-audit-subagent
+Task: Sticker doesn't match user's design + displayed size is wrong — deep review + fix
+
+User Complaint:
+- "สติกเกอร์ไม่ตรงตามแบบที่ผมสร้างเลยแม่แต่น้อย แสดงขนาดก็ไม่ตรง"
+  (Sticker doesn't match what I designed at all, even the displayed size is wrong)
+
+Investigation:
+- Re-read STICKER-CUSTOM-SIZE section (worklog lines 17207+) for prior context.
+- Read the 4 sticker files end-to-end:
+  * src/components/itam/itam-sticker-editor.tsx (1655 lines) — the visual
+    editor (saves templates to server via /api/itam/sticker/templates).
+  * src/components/itam/sticker-print-dialog.tsx (was 510 lines post-custom-size).
+  * src/lib/sticker-template.ts (1012 lines) — types + build*Template +
+    substituteVariables + renderStickerFromTemplate + buildPrintDocument.
+  * src/lib/sticker-print-prefs.ts (was 79 lines).
+- Read both API sticker render routes end-to-end:
+  * src/app/api/itam/sticker/render/route.ts
+  * src/app/api/itam/sticker/bulk-render/route.ts
+- Ran VLM on the two uploaded mockup images:
+  * /home/z/my-project/upload/pasted_image_1788641621964.png — shows an
+    accessory-add modal (NOT a sticker mockup).
+  * /home/z/my-project/upload/pasted_image_1788641665544.png — shows the
+    "จัดการอุปกรณ์ต่อพ่วง" / Device Set UI (NOT a sticker mockup).
+  * Both were screenshots from an earlier accessory/Device Set task — they do
+    not contain a sticker design. The user's "design" lives in the
+    ItamStickerEditor (server-side saved sticker templates).
+
+Root Causes Identified (3):
+
+  ROOT CAUSE 1 — StickerPrintDialog ignored the user's saved templates.
+  The previous revision (STICKER-CUSTOM-SIZE) wired the dialog to a fixed set
+  of 5 *preset* template builders (default, minimal, qr-only, compact,
+  detailed) — NOT to the user's saved templates from the ItamStickerEditor
+  (server-side store at /api/itam/sticker/templates). So no matter what the
+  user designed + set as "active" in the editor, the dialog printed one of
+  the 5 presets. THAT is the user's "sticker doesn't match what I designed"
+  complaint — the dialog simply never loaded their saved design.
+
+  ROOT CAUSE 2 — Wrong field names in API routes (blank substitutions).
+  Both /api/itam/sticker/render/route.ts and /api/itam/sticker/bulk-render/route.ts
+  constructed StickerDeviceData with WRONG field names:
+    assetNo:    device.assetCode      ← should be `assetCode:`
+    serial:     device.serialNumber   ← should be `serialNumber:`
+    deviceType: device.type           ← should be `type:`
+  But substituteVariables() in sticker-template.ts looks up
+  `device.assetCode`, `device.serialNumber`, `device.type` — NOT the wrong
+  names. Result: {{AssetNo}}, {{Serial}}, {{Type}} all substituted to empty
+  strings in any sticker rendered via the API. This affected:
+    - The ItamStickerEditor's "พรีวิว" button (uses /api/itam/sticker/render).
+    - Any flow using sticker-print-helpers.ts (printSingleSticker /
+      printBulkStickers) — e.g. per-row sticker print in devices-page or
+      accessory flows if they fall through to the API path.
+  The StickerPrintDialog itself was unaffected (it uses renderStickerFromTemplate
+  client-side via the deviceToStickerData helper which already used the
+  correct field names).
+
+  ROOT CAUSE 3 — buildPrintDocument always called with cols=1.
+  In sticker-print-dialog.tsx, handlePrint() called
+  `buildPrintDocument(stickersHtml, template, 1)` — passing cols=1.
+  For label sizes (50×30, 60×40, 75.2×36, etc.), buildPrintDocument uses
+  A4-grid mode (auto: sticker area < A5 area), so cols is honored. With
+  cols=1, bulk label printing produced 1 sticker per A4 page — very wasteful
+  (should fit 4 cols × 9 rows = 36 stickers per A4 sheet for 50×30mm).
+
+  Also explains the "แสดงขนาดก็ไม่ตรง" complaint: the dialog's size display
+  always showed the size PRESET (default = 75.2×36mm), never the user's saved
+  template's canvas size (which could be e.g. 100×50 or 50×30). The displayed
+  size didn't match what the user designed because the dialog never loaded
+  their saved canvas.
+
+Fixes Applied (5 files):
+
+  FIX 1 (ROOT CAUSE 1) — Make StickerPrintDialog fetch + use saved templates.
+  File: src/components/itam/sticker-print-dialog.tsx
+    - Added a `useQuery` to fetch the user's saved templates + active id
+      from GET /api/itam/sticker/templates (same store the editor writes to).
+      Query is enabled only when the dialog is open (no extra requests when
+      closed). Cache key: ['sticker-templates'] (shared with the editor's
+      existing query, so edits propagate without re-fetching).
+    - Added `savedTemplateId` to prefs (see FIX 2).
+    - The template dropdown now shows TWO groups via shadcn SelectGroup:
+      "เทมเพลตที่บันทึก" (saved templates) + "เทมเพลตสำเร็จ" (presets).
+      Each saved template row shows its name + canvas dims + a star icon if
+      it's the active template. Selecting a saved template sets
+      `prefs.savedTemplateId`; selecting a preset clears it.
+    - When a saved template is selected:
+      * Its OWN canvas size is used (over-rides the size preset dropdown).
+        This is the fix for "แสดงขนาดก็ไม่ตรง" — the size now matches the
+        user's designed canvas.
+      * The size-preset dropdown is replaced with a read-only display
+        showing the saved canvas dims + "(จากเทมเพลต)" note.
+      * The custom W/H inputs are hidden (saved templates have their own
+        canvas, so custom W/H doesn't apply).
+    - Auto-select on first open: if the user has an active saved template
+      AND hasn't already customized (savedTemplateId is null AND
+      templatePresetId is still 'default'), the dialog auto-selects the
+      active saved template. This is the key UX fix — the user's designed
+      sticker is now the default print option.
+    - Stale-id cleanup: if the saved template id is no longer present in the
+      server list (deleted by another session), the dialog clears
+      savedTemplateId and falls back to the preset flow.
+    - Audit log payload now includes savedTemplateId, savedTemplateName,
+      and cols for traceability.
+
+  FIX 2 — Extend StickerPrintPrefs with savedTemplateId + v1→v2 migration.
+  File: src/lib/sticker-print-prefs.ts
+    - Added `savedTemplateId: string | null` to the interface + defaults.
+    - Bumped storage key from `:v1` to `:v2` (different schema).
+    - On first load with no v2 key, attempt migration from v1 (preserves
+      the user's prior size preset + custom W/H + template preset; sets
+      savedTemplateId=null). Writes the migrated prefs to v2 so subsequent
+      loads skip the migration.
+    - Validates each field type on load (no schema injection / NaN leaks).
+
+  FIX 3 (ROOT CAUSE 2) — Fix StickerDeviceData field names in API routes.
+  Files:
+    - src/app/api/itam/sticker/render/route.ts
+    - src/app/api/itam/sticker/bulk-render/route.ts
+    - Both: changed `assetNo:` → `assetCode:`, `serial:` → `serialNumber:`,
+      `deviceType:` → `type:` (matches the StickerDeviceData interface in
+      sticker-template.ts). The render route constructs the deviceData once;
+      the bulk-render route constructs it in 2 places (the QR-pre-generation
+      loop AND the per-device render loop) — both fixed.
+    - Added a code comment block explaining the field-name contract so the
+      bug doesn't regress.
+    - This fix means the ItamStickerEditor's "พรีวิว" button now correctly
+      substitutes {{AssetNo}} / {{Serial}} / {{Type}} (previously these
+      were blank in the preview).
+    - The sticker-print-helpers.ts tests are unaffected (they mock the API
+      response, not the deviceData construction).
+
+  FIX 4 (ROOT CAUSE 3) — Pass correct cols to buildPrintDocument.
+  File: src/components/itam/sticker-print-dialog.tsx
+    - Replaced `buildPrintDocument(stickersHtml, template, 1)` with:
+        const isLandscape = canvas.width > canvas.height
+        const pageWidthForGrid = isLandscape ? 297 : 210
+        const cols = calculateGridColumns(canvas.width, pageWidthForGrid)
+        const html = buildPrintDocument(stickersHtml, template, cols)
+      This computes the proper column count for label sizes (e.g. 4 cols for
+      50×30mm on A4 portrait, 3 cols for 75.2×36mm on A4 landscape, etc.).
+      For canvas-as-page mode (A4/A5/large sizes), buildPrintDocument ignores
+      cols and uses colsEffective=1, so this calc is a no-op there.
+    - Imported `calculateGridColumns` from sticker-template.ts (was already
+      exported, just wasn't being used by the dialog).
+
+  FIX 5 — Doc-comments updated.
+  File: src/components/itam/sticker-print-dialog.tsx
+    - Updated the top-of-file JSDoc to describe the STICKER-EDITOR-DEEP-REVIEW
+      changes alongside the STICKER-CUSTOM-SIZE baseline.
+
+Not Modified (intentionally):
+  - src/components/itam/itam-sticker-editor.tsx — the visual editor itself
+    is unchanged. Its existing fetch to /api/itam/sticker/templates (for the
+    sidebar list) and /api/itam/sticker/render (for the preview button) now
+    benefit from FIX 3 automatically (preview substitutions now show real
+    AssetNo/Serial/Type instead of blanks). No code change needed here.
+  - src/components/itam/sticker-print-helpers.ts — client-side helpers for
+    the API-render path. Unchanged. Tests pass (17 pass / 1 pre-existing
+    fail — same as baseline).
+  - src/lib/sticker-settings-store.ts — server-side sticker template store.
+    Unchanged.
+  - src/lib/sticker-template.ts — template engine. Unchanged.
+
+Lint check (post-fix):
+  `bun run lint` → 108 problems (1 error, 107 warnings).
+  - 1 error: pre-existing `src/app/api/auth/oauth/apple/callback/route.ts:99`
+    no-require-imports (NOT touched by this task — same as baseline).
+  - +2 warnings vs baseline (105→107): both `react-hooks/set-state-in-effect`
+    in sticker-print-dialog.tsx (lines 225 + 322 — the auto-select effect
+    and the stale-id cleanup effect). Same pattern as the existing 2
+    warnings from STICKER-CUSTOM-SIZE (load prefs from localStorage on
+    first open; show loading spinner during async render). Unavoidable for
+    the "sync server state → local prefs on first open" UX. 0 new errors.
+
+TypeScript check (post-fix):
+  `bunx tsc --noEmit` (with NODE_OPTIONS=--max-old-space-size=6144) →
+  0 errors in modified files (sticker-print-dialog.tsx, sticker-print-prefs.ts,
+  render/route.ts, bulk-render/route.ts). All remaining TS errors are
+  pre-existing in scripts/ + examples/ (not in my code paths).
+
+Test results:
+  `bun test tests/sticker-print-helpers.test.ts` → 17 pass / 1 fail.
+  Same pass/fail count as baseline. The 1 failure
+  ("printSingleSticker > throws when window.open returns null (popup blocked)")
+  is a test-isolation issue with the mock setup — pre-existing, not caused
+  by this task.
+
+Stage Summary:
+  - ✅ ROOT CAUSE 1 fixed: print dialog now loads + lets user pick their
+    server-saved designed templates (not just the 5 presets). The active
+    saved template is auto-selected on first open.
+  - ✅ ROOT CAUSE 2 fixed: API routes use correct StickerDeviceData field
+    names → {{AssetNo}} / {{Serial}} / {{Type}} substitutions now work in
+    the editor preview + any API-render flow.
+  - ✅ ROOT CAUSE 3 fixed: bulk label printing now uses the proper column
+    count (4 cols for 50×30mm on A4 portrait, etc.) instead of 1 sticker
+    per A4 page.
+  - ✅ "แสดงขนาดก็ไม่ตรง" fixed: when a saved template is selected, the
+    size display shows the saved canvas's actual dimensions (with a
+    "(จากเทมเพลต)" note), not the size preset's dimensions.
+  - ✅ Backward compat: v1→v2 localStorage migration preserves user's prior
+    preset selection. Dialog props API unchanged (qrContentFor, dialogTitle,
+    dialogDescription all still work). sticker-print-helpers.ts unchanged.
+    sticker-settings-store.ts unchanged. ItamStickerEditor unchanged.
+  - ✅ 0 new lint errors. 2 new warnings (set-state-in-effect — matches
+    existing codebase pattern).
+  - ✅ 0 new TypeScript errors in modified files.
+  - ✅ Tests: 17/18 pass (same as baseline).
+
+Files Modified (4):
+  - src/components/itam/sticker-print-dialog.tsx
+      (added useQuery for /api/itam/sticker/templates; added savedTemplateId
+      flow; template dropdown now has saved + preset groups; size dropdown
+      becomes read-only when a saved template is selected; auto-select active
+      saved template on first open; compute proper cols for buildPrintDocument)
+  - src/lib/sticker-print-prefs.ts
+      (added savedTemplateId field; bumped storage key to :v2; added v1→v2
+      migration with field validation)
+  - src/app/api/itam/sticker/render/route.ts
+      (fixed StickerDeviceData field names: assetNo→assetCode, serial→
+      serialNumber, deviceType→type — fixes blank {{AssetNo}}/{{Serial}}/
+      {{Type}} substitutions in API-rendered stickers + editor preview)
+  - src/app/api/itam/sticker/bulk-render/route.ts
+      (same field-name fix in both locations — the QR pre-gen loop + the
+      per-device render loop)
+
+Next steps for user:
+  1. Open the sticker editor (settings → 🎨 ตัวออกแบบสติกเกอร์). Verify the
+     "พรีวิว" button now shows the actual Asset Code, Serial, and Type
+     (previously these were blank due to the API field-name bug).
+  2. Design a sticker template (or modify the default one), set its canvas
+     to e.g. 100×50mm, save, and click ⭐ to mark it as active.
+  3. Open device detail or devices page → click "พิมพ์สติกเกอร์". The print
+     dialog should:
+     a. Auto-select your designed active template on first open.
+     b. The size dropdown should show your template's canvas dims
+        (e.g. 100×50mm) as read-only with a "(จากเทมเพลต)" note.
+     c. The live preview should match what you designed — same elements,
+        same positions, same canvas size.
+     d. Click "พิมพ์สติกเกอร์" — the print window should open with the
+        sticker at the correct size + template.
+  4. If you want to print using a preset instead: open the template
+     dropdown → pick from "เทมเพลตสำเร็จ" (default, minimal, qr-only,
+     compact, detailed). The size dropdown becomes editable again, and
+     the preset builder uses the selected size preset's canvas.
+  5. For bulk label printing (e.g. 50×30mm label size + many devices):
+     the print window should now fit ~36 stickers per A4 sheet (4 cols ×
+     9 rows) instead of 1 sticker per page.
+
+---
+Task ID: PHASE-3-LINEBINDING-MIGRATION
+Agent: data-migration-subagent
+Task: Migrate the legacy `LineBinding` table into `PublicReporter` so all "person who reported via LINE" data lives in one place. (Phase 1 of LINE-WEBHOOK-FIX-PHASES-1-2-4 closed the webhook WO-creation bypass; LineBinding is now a passive legacy record — Phase 3 folds it into the richer PublicReporter schema.)
+
+Investigation:
+- Read recent worklog section `LINE-WEBHOOK-FIX-PHASES-1-2-4` (worklog lines 17366+) for context on the security model change. Verified that Phase 1's file-header JSDoc + the closing note (line 17512) explicitly listed this Phase 3 migration as a follow-up.
+- Read `prisma/schema.prisma`:
+  - `LineBinding` (lines 1104-1117): `lineUserId @unique`, `lineDisplayName?`, `reporterName?`, `tel?`, `employeeCode?`, `workOrderCount @default(0)`, timestamps, `isDemo`. NO siteCode — global.
+  - `PublicReporter` (lines 1367-1406): `siteCode` (FK → SiteAttribute.SiteCode, onDelete: Restrict), `phone?`, `name?`, `email?`, `lineUserId?`, `lineDisplayName?`, `linePictureUrl?`, `lineScopePhone?`, `phoneVerified @default(false)`, `verifiedAt?`, `verifiedMethod?`, `isBlocked @default(false)`, `reportCount @default(0)`, `lastReportAt?`, `defaultDeviceId?`, `isDemo`. Two unique constraints: `(siteCode, phone)` and `(siteCode, lineUserId)` — one LINE user can be a reporter at multiple sites.
+  - `WorkOrder` (lines 262-347): has `lineUserId?`, `siteCode?` (Phase 0 transitional direct site reference), `deviceId?` (FK → Device), and `publicReporterId?` (FK → PublicReporter). Used to backfill LineBinding's missing siteCode.
+  - `Device` (lines 17-96): has `site String` (e.g. "PPIT", "UDH"). Used as fallback when WorkOrder.siteCode is null.
+  - `SiteAttribute` (line 477): `SiteCode @unique` (e.g. "PPIT", "UDH"). PublicReporter.siteCode has FK to this — must validate before creating.
+- Read `src/app/api/line/webhook/route.ts`:
+  - `upsertLineBinding(lineUserId, displayName?)` (was lines 213-231): passive `db.lineBinding.upsert` recording that the LINE user exists. No gate logic — just persistence.
+  - Two call sites: `follow` event (passed LINE profile displayName) and `message` text branch (passed only lineUserId, no displayName).
+- Read `scripts/migrate-license-device-id.ts` for the standalone-script pattern: `new PrismaClient()` (NOT the Next.js cached one), `bun run scripts/...`, prints progress + summary + final-state verification, exits 0 on success / 1 on fatal error.
+- Searched `src/` for `lineBinding|LineBinding`: found 3 files. `src/lib/db.ts` (lines 34-35) — accessor-existence sanity check on the cached global PrismaClient (defensive check for HMR/schema drift, not actual model usage). `src/app/api/line/webhook/route.ts` — the upsertLineBinding helper + 2 call sites. (Also found `scripts/backup-db.ts` line 67 — table-name string in backup list, and `scripts/verify-merge.sh` line 75 — obsolete check expecting 3+ `lineBinding.findFirst` occurrences; both pre-existing and out of scope.)
+
+### Step 2 — Migration script created: `scripts/migrate-linebinding-to-public-reporter.ts` (NEW, 286 lines)
+
+Standalone script using `new PrismaClient()` (matches `migrate-license-device-id.ts` pattern). Run with `bun run scripts/migrate-linebinding-to-public-reporter.ts`.
+
+**Strategy:**
+1. Load all LineBindings.
+2. Cache valid siteCodes from SiteAttribute (FK target).
+3. For each binding:
+   a. Find most-recent WorkOrder with `lineUserId === binding.lineUserId` (orderBy createdAt desc).
+   b. Resolve siteCode: prefer `WorkOrder.siteCode`; else fall back to `Device.site` via `WorkOrder.deviceId`.
+   c. If no WO found → skip (orphan, logged with reason).
+   d. If resolved siteCode not in SiteAttribute → skip (FK would fail, logged with reason).
+   e. Upsert PublicReporter by `(siteCode, lineUserId)`:
+      - **Merge (exists):** `reportCount = max(existing, binding.workOrderCount)`; `lastReportAt` bumped if WO.createdAt is newer; `lineDisplayName` set only if currently null. Conservative merge — never overwrites existing values (idempotent: re-running on a fully-synced row is a no-op).
+      - **Create (new):** `siteCode + lineUserId + lineDisplayName + name=reporterName + phone=tel + phoneVerified=false + reportCount=workOrderCount + lastReportAt=WO.createdAt`. Preserves the legacy `reporterName`/`tel` manual fields from the old "register contact" flow.
+4. Print summary: total, migrated (new), merged (updated), skipped-orphan, skipped-invalid-site, errors. Includes orphan reason list + final-state verification (total PublicReporters, with-lineUserId count, remaining LineBindings count).
+5. **DO NOT delete LineBinding records** — left intact for safety. The model + table can be dropped in a future cleanup task after confirming the migration succeeded.
+
+**Idempotency:**
+- Re-running on already-migrated rows: finds existing PublicReporter, checks `lineDisplayName` already set + `reportCount >= binding.workOrderCount` + `lastReportAt` already newer → no DB write (skipped as no-op merge).
+- No destructive operations (no DELETE, no UPDATE on LineBinding).
+
+### Step 3 — Remaining LineBinding references cleaned up in `src/`
+
+| File | Before | After |
+|---|---|---|
+| `src/app/api/line/webhook/route.ts` | `upsertLineBinding()` helper calling `db.lineBinding.upsert`; 2 call sites (follow event + message text branch) | Replaced with `syncLineProfileToPublicReporter()` calling `db.publicReporter.updateMany` (fills null `lineDisplayName` on existing PublicReporter rows for this `lineUserId`). Follow event still passes the LINE profile displayName. Message text branch's `upsertLineBinding(lineUserId)` call removed (LINE doesn't send profile with messages, so the call was a no-op for the new function anyway — left a comment block explaining the design choice). Updated comment block above the helper explaining the migration rationale + pointing at the migration script. |
+| `src/lib/db.ts` (lines 34-35) | `(globalForPrisma.prisma as unknown as { lineBinding?: unknown }).lineBinding` — accessor-existence sanity check on cached global PrismaClient | **Left unchanged.** This is a defensive HMR/schema-drift check (not actual model usage). Since the LineBinding model still exists in `schema.prisma` (Step 4 — don't delete the model), the accessor still exists on PrismaClient and the check remains valid. If the model is dropped in a future cleanup, this check must also be removed — flagged for the future cleanup task. |
+| `scripts/backup-db.ts` (line 67) | `'lineBinding'` in the table-name backup list | **Left unchanged.** The table still exists (we're not dropping it), so backup should still include it. When the table is eventually dropped, remove this entry too. |
+| `scripts/verify-merge.sh` (line 75) | `check "findFirst in webhook (3+ occurrences)" "grep -c 'lineBinding.findFirst' src/app/api/line/webhook/route.ts | head -1" "3"` | **Left unchanged (pre-existing obsolete check).** This check was already failing before this task (the webhook only had `lineBinding.upsert`, not `findFirst`). It's a leftover from an earlier merge verification. Out of scope — flagged for cleanup. |
+
+### Step 4 — LineBinding model in `prisma/schema.prisma` left intact
+
+Lines 1104-1117 unchanged. Model + table remain in place. The migration script + webhook no longer write to it, but reads are still safe (in case any admin UI or reporting query joins on it). The model + table can be dropped in a future cleanup task after the user confirms the migration succeeded in production.
+
+### Schema regen side-effect
+
+While validating TypeScript on the new script, `bunx tsc --noEmit` reported `Property 'publicReporter' does not exist on type PrismaClient` errors — not just on my new file but also on the existing `src/app/api/public/repairs/route.ts` (lines 433, 468) and `src/app/api/public/reporter/me/route.ts` (line 50). Root cause: the generated Prisma client in `node_modules/.prisma/client` was stale — `PublicReporter` had been added to `schema.prisma` but `prisma generate` hadn't been re-run. Ran `bunx prisma generate` to regenerate the client (281ms, 0 errors). After regen: **0 TypeScript errors in my new/modified files** (`scripts/migrate-linebinding-to-public-reporter.ts`, `src/app/api/line/webhook/route.ts`). The pre-existing publicReporter errors in the other two files are also resolved.
+
+### Lint check
+- `bun run lint`: **1 error + 107 warnings** — same single pre-existing error (`src/app/api/auth/oauth/apple/callback/route.ts:99` — `no-require-imports`, unrelated to this task). Warning count went up by 2 vs the Phase 1-2-4 baseline (105→107) — verified by per-file filter that **none of my new/modified files appear in the lint output**. The 2 extra warnings are from unrelated files modified by later tasks (sticker editor etc.) and are pre-existing relative to this task.
+
+### TypeScript check
+- `bunx tsc --noEmit` (after `prisma generate`): **0 errors in my new/modified files**. Pre-existing errors in `scripts/migrate-bulk.ts` + `scripts/migrate-to-supabase.ts` (missing `better-sqlite3` module) + `src/app/api/public/work-orders/[id]/route.ts` (Date vs string type mismatch) — all untouched by this task.
+
+Stage Summary:
+- ✅ Migration script created: `scripts/migrate-linebinding-to-public-reporter.ts` (286 lines). Standalone, idempotent, non-destructive (no DELETE). Resolves siteCode via WO history + Device fallback; validates against SiteAttribute FK before insert; merges conservatively (max reportCount, fill-null displayName, bump lastReportAt only if newer).
+- ✅ Webhook `upsertLineBinding` removed; replaced with `syncLineProfileToPublicReporter` (best-effort displayName sync into existing PublicReporter rows — the webhook never creates PublicReporter records because it lacks siteCode context; that happens in the public repair form).
+- ✅ LineBinding model + table left intact in `schema.prisma` for safety (Step 4). Future cleanup task can drop both after production verification.
+- ✅ Lint: 0 new errors, 0 new warnings introduced (none of my files in lint output).
+- ✅ TypeScript: 0 new errors in my files (after `prisma generate` regen).
+
+Files Created (1):
+- `scripts/migrate-linebinding-to-public-reporter.ts` (286 lines): standalone migration script — `new PrismaClient()`, prints progress + summary + final-state verification, idempotent, non-destructive.
+
+Files Modified (1):
+- `src/app/api/line/webhook/route.ts` (841 lines, -19 net from the old upsertLineBinding helper + 2 call sites, +59 net for the new syncLineProfileToPublicReporter helper + updated comment block + 2 updated call sites with explanatory comments): replaced `upsertLineBinding` (db.lineBinding.upsert) with `syncLineProfileToPublicReporter` (db.publicReporter.updateMany for null displayName fill-in). Updated file header comment block to document the Phase 3 migration rationale + point at the migration script.
+
+Files NOT modified (intentionally):
+- `prisma/schema.prisma` — Step 4 says don't delete LineBinding. Model + table left intact for safety. Future cleanup task can drop them after production verification.
+- `src/lib/db.ts` — the `lineBinding` accessor-existence sanity check on the cached global PrismaClient is a defensive HMR/schema-drift check (not actual model usage). Since the LineBinding model still exists in schema, the accessor still exists on PrismaClient and the check remains valid. Flagged for removal in the future cleanup task that drops the LineBinding model.
+- `scripts/backup-db.ts` — `'lineBinding'` in the table-name backup list. The table still exists, so backup should still include it. Remove when the table is dropped.
+- `scripts/verify-merge.sh` line 75 — pre-existing obsolete check expecting 3+ `lineBinding.findFirst` occurrences in the webhook (the webhook only ever had `upsert`, never `findFirst`). Left as-is — out of scope.
+
+Next steps for user:
+1. **Run the migration script** in a staging/dev environment first:
+   ```bash
+   bun run scripts/migrate-linebinding-to-public-reporter.ts
+   ```
+   Verify the summary: count of migrated/merged/skipped/errors. Spot-check a few PublicReporter rows by `lineUserId` to confirm displayName/reportCount/lastReportAt look right.
+2. **Run the migration in production** after staging verification. The script is idempotent — safe to re-run if anything goes wrong.
+3. **Verify the webhook still works**: send a `follow` event to the LINE OA → check the server logs for `[line-webhook] synced lineDisplayName into N PublicReporter row(s)` debug message (only fires when there's a matching PublicReporter with null displayName — usually 0 rows for brand-new LINE users who haven't reported yet, which is correct).
+4. **(Optional future cleanup — NOT in this task)** After confirming the migration succeeded in production (e.g. 1-2 weeks of stable operation with no rollback needed):
+   - Remove `LineBinding` model from `prisma/schema.prisma`.
+   - Run `prisma db push --accept-data-loss` (or a `DROP TABLE "LineBinding"` migration) to drop the table.
+   - Remove the `lineBinding` accessor-existence check from `src/lib/db.ts` (lines 34-35).
+   - Remove `'lineBinding'` from the backup list in `scripts/backup-db.ts` (line 67).
+   - Remove or update the obsolete `lineBinding.findFirst` check in `scripts/verify-merge.sh` (line 75).
+   - Consider a final reporter-stats reconciliation: for any PublicReporter created via migration, `phoneVerified` is `false` — staff may want to manually verify phone numbers for high-volume reporters.
+
+---
+Task ID: AUDIT-VERIFICATION-FINAL
+Agent: verification-subagent
+Task: Verify that ALL audit recommendations from both audit reports (#1 security, #2 additional fixes, #3 workflow, #4 UX) have been actually addressed in the code. Read actual code — don't trust worklog claims. Verification only — DO NOT modify any code.
+
+## Verification methodology
+
+For each of the 21 audit items, I executed the suggested grep/ls/git command from the audit checklist AND read the actual source file (Read tool) to verify the implementation is real — not just a stub or comment. Where the audit asked for a "should have" list (e.g., PENDING_REVIEW should have filter + label + badge + approve button), I confirmed every listed sub-item.
+
+## Final verification table
+
+| # | Audit item | Status | Evidence |
+|---|---|---|---|
+| 1 | `google-service-account.json` removed from Git + `.gitignore` entries | ✅ | `git ls-files \| grep google-service-account` → empty. `.gitignore` includes `google-service-account.json`, `*.pem`, `*.key`, `backups/`, `*.tsbuildinfo`. Also verified no `.pem`/`.key` files in git index. |
+| 2 | Legacy session uses signed JWT (jose HS256); prod rejects legacy base64 | ✅ | `src/lib/auth-session.ts`: imports `SignJWT, jwtVerify` from `jose` (line 22); `encodeSession` builds a signed JWT with `setProtectedHeader({ alg: 'HS256' })` (line 72); `decodeSession` rejects legacy base64 tokens in production (lines 121–124). |
+| 3a | `/api/seed` blocked in production | ✅ | `src/app/api/seed/route.ts` lines 21–33: returns 403 if `NODE_ENV === 'production' && ALLOW_SEED_IN_PRODUCTION !== '1'`. |
+| 3b | `/api/notifications/send` requires ADMIN auth | ✅ | `src/app/api/notifications/send/route.ts` line 55: `requireAuth(req, 'ADMIN')`. Body's `actor` field is overridden by authenticated identity (lines 59–60) to prevent impersonation. |
+| 3c | `/api/audit` requires VIEW_AUDIT auth | ✅ | `src/app/api/audit/route.ts` line 9: `requireAuth(req, 'VIEW_AUDIT')`. |
+| 6 | `/api/notifications` (GET list) requires auth | ✅ | `src/app/api/notifications/route.ts` line 76: `requireAuth(req, 'ADMIN')` — actually stricter than audit asked (any auth); requires ADMIN. |
+| 7 | `/api/site-attributes` requires auth | ✅ | `src/app/api/site-attributes/route.ts` line 19 (GET): `requireAuth(req)` — any authenticated user (staff can read); POST at line 57 requires ADMIN. |
+| 8 | `/api/site-rates` requires auth | ✅ | `src/app/api/site-rates/route.ts` line 13 (GET): `requireAuth(req)`. |
+| 9 | v1 WO PUT — non-admin can't set `editUnlockActive: true` | ✅ | `src/app/api/v1/work-orders/[id]/route.ts` lines 187–197: explicit `isAdmin` check before the assignment; returns `forbidden('ต้องเป็น admin เท่านั้นที่ปลดล็อกการแก้ไขได้')` if non-admin attempts to set `editUnlockActive === true`. |
+| 10 | AlertDialogAction async-click bug fixed across all files | ✅ | All ~30 `<AlertDialogAction onClick={...}>` occurrences in `src/components/itam/` use the `e.preventDefault()` + `void asyncFn()` pattern. Spot-checked site-attributes-section, mobile-my-work, devices-page, work-orders-page, templates-page, stock-inventory, stock-purchase-orders, pm-schedules-page, etc. No remaining synchronous async-click bugs. |
+| 11 | `line-session.ts` encrypted with AES-256-GCM | ✅ | `src/lib/line-session.ts` line 61: `const ALGO = 'aes-256-gcm'`. `encryptSession` (line 84) uses `crypto.createCipheriv(ALGO, key, iv)` with random IV + `getAuthTag()`. `decryptSession` (line 98) verifies auth tag. Backward-compat legacy base64 fallback present (lines 174–187) with deprecation warning — acceptable during rollout window. |
+| 12 | LINE webhook doesn't create WOs directly anymore; replies with link | ✅ | `grep "db.workOrder.create" src/app/api/line/webhook/route.ts` → ZERO matches. The "device code matches" branch (lines 702–734) calls `buildDeviceRepairUrl(device.id)` and replies with a LINE button-template containing the URL — user lands on `/report/general` (public repair form) which routes through the PublicReporter verification pipeline (Tier 1 → PENDING, Tier 2/3 → PENDING_REVIEW). |
+| 13 | `/api/public/devices/lookup` exists | ✅ | `ls src/app/api/public/devices/lookup/route.ts` → file exists, 232 lines, real implementation. Intentionally unauthenticated (public lookup) with per-IP rate limit (30/hour). Returns sanitized fields only (no raw serials, no IP/MAC, no PII). |
+| 14 | `/report/general` page exists | ✅ | `ls src/app/report/general/page.tsx` → file exists, 683 lines, real implementation. Mobile-first public repair form: user types asset code → `/api/public/devices/lookup` → matches display → opens `<PublicRepairForm>` (PublicReporter pipeline). Works in LINE in-app browser + regular browsers. |
+| 15 | PENDING_REVIEW in staff UI (filter + Thai label + badge color + approve button) | ✅ | `src/components/itam/work-orders-page.tsx`:<br>• Filter option: line 339 `STATUS_OPTIONS` includes `{ value: 'PENDING_REVIEW', label: 'รอตรวจสอบ' }`<br>• Thai label: 'รอตรวจสอบ' (line 339)<br>• Badge color: line 370–372 `statusBadgeClass` returns orange (`border-orange-300 bg-orange-100 text-orange-800 ... dark:border-orange-700 dark:bg-orange-950 dark:text-orange-200`)<br>• KPI stat: line 757–761 ("รอตรวจสอบ" with `stats.PENDING_REVIEW ?? 0`)<br>• Approve button: lines 3753–3766 (`canApprove = wo.status === 'PENDING_REVIEW'` at line 2573; `handleApprove` PUTs `status: 'PENDING'` at line 2620–2639) |
+| 16 | Stock module QR/barcode scanning (desktop + mobile) | ❌ | NOT IMPLEMENTED. `grep -rn "QrCode\|ScanLine\|barcode" src/components/itam/stock/` → only `stock-in-form.tsx:62: ScanLine,` (a dead import — icon imported but never rendered in JSX). `mobile-stock-out.tsx` has zero scan/QR/barcode references. Existing QR scanner infra (`qr-scanner-dialog.tsx`, `transfer-by-scan.tsx`, `mobile-qr-scan.tsx`) is wired up only for DEVICE transfers + mobile repair request — NOT for stock-in/stock-out. **Status: PENDING.** Recommend adding a "scan to add line item" button in `stock-in-form.tsx` (desktop) + a scan-first flow in `mobile-stock-out.tsx`. |
+| 17 | WO form: select job type first (internal/external/guest) before showing fields | ❌ | PARTIAL/NOT DONE. `src/components/itam/work-orders-page.tsx` `CreateWorkOrderDialog` (lines 1268+): the form uses a single `<Switch checked={form.isExternal}>` toggle (line 1492) to flip between internal vs external modes — all fields are shown in one big dialog, no progressive disclosure or "step 1: choose job type" wizard. There's no explicit "guest" mode selector either — guest is implied when staff fills the form on behalf of an unverified reporter (submissionSource='guest' is hardcoded at line 676). The audit's recommended UX pattern (select job type FIRST → then show only relevant fields) is not implemented. **Status: PENDING.** Note: this is a UX recommendation, not a security issue. |
+| 18 | Lock editUnlockActive in UI (only show to admins) | ⚠️ | PARTIAL. `src/components/itam/work-orders-page.tsx` has NO toggle button in the UI for `editUnlockActive` — only a read-only display banner (lines 3357–3368) shown when `wo.editUnlockActive === true`. The dedicated `/api/work-orders/[id]/edit-unlock` POST route exists but is not called from any UI component I could find. Server-side: v1 WO PUT (item 9) enforces `isAdmin` for setting `editUnlockActive=true` (✅). However, the separate `/api/work-orders/[id]/edit-unlock` route (lines 14–19 comment) was deliberately switched from `ADMIN` → `WO_ASSIGN` at the WO's site scope — meaning a non-admin with `WO_ASSIGN` permission at a site CAN still unlock a terminal WO through this endpoint (no UI exposes it, but the API endpoint accepts it). **Status: security goal met (no UI exposes the toggle to non-admins), but UX gap (no admin unlock button in UI) AND a latent inconsistency** — recommend either (a) gating the `/api/work-orders/[id]/edit-unlock` route with `isAdmin` too, or (b) adding an admin-only "ปลดล็อกแก้ไข" button in the WO detail UI that calls this route. |
+| 19 | Money fields use Decimal (not Float) | ✅ | `grep "Float" prisma/schema.prisma` → ZERO matches. All money/rate/cost fields use `Decimal? @db.Decimal(12, 2)` (or `Decimal(10, 2)`/`Decimal(10, 3)` for usage hours/quantity). Verified across Device.purchasePrice, Device.salvageValue, WorkOrder.cost, WorkOrderPart.unitCost/totalCost, SiteAttribute.PaperRateBW/Color, SiteRate.bwRate/colorRate, StockTransaction.unitCost/totalValue, MasterItem.ratePerPage/Hour/Month/Device, etc. |
+| 20 | `WorkOrderPart` model exists | ✅ | `prisma/schema.prisma` line 412: `model WorkOrderPart` with fields id, workOrderId (FK to WorkOrder, onDelete: Cascade), stockItemId (FK to StockItem, optional), productCode, productName, quantity (Int), unitCost (Decimal 12,2), totalCost (Decimal 12,2), status (default PENDING), requestedBy, approvedBy, approvedAt, timestamps. Indexes on workOrderId, status, stockItemId. |
+| 21 | AuditLog has userId, ipAddress, userAgent, isDemo | ✅ | `prisma/schema.prisma` lines 956–988 (`model AuditLog`): includes `userId String?` (line 975), `ipAddress String?` (line 976), `userAgent String?` (line 977), `isDemo Boolean @default(false)` (line 978). Indexes on `[userId]` (line 986) and `[isDemo]` (line 987). Comment (lines 970–974) notes these are populated by `audit-enhanced.ts` wrapper; the legacy `audit.ts` stores values in `detail._meta` until refactored. |
+
+## Summary scorecard
+
+- **Verified ✅**: 18 of 21 items (1, 2, 3a, 3b, 3c, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 19, 20, 21)
+- **Not done / Partial ❌**: 3 items (16, 17, 18)
+  - Item 16 (Stock QR/barcode scanning) — fully missing
+  - Item 17 (WO form job-type-first) — partial (uses Switch toggle, no progressive disclosure)
+  - Item 18 (Lock editUnlockActive in UI) — security goal met (no UI toggle), but UX gap (no admin button) + latent inconsistency between v1 PUT route (isAdmin required) and `/edit-unlock` route (WO_ASSIGN only)
+
+## Additional issues found while reviewing (NOT in original audit list)
+
+1. **Dead import**: `src/components/itam/stock/stock-in-form.tsx:62` imports `ScanLine` from lucide-react but never renders the icon anywhere in the JSX. This is the leftover artifact of an aborted attempt to add scan support (item 16). Safe to remove; will be removed when item 16 is properly implemented.
+
+2. **Inconsistent edit-unlock authorization model**: The codebase has TWO ways to set `editUnlockActive`:
+   - **`PUT /api/v1/work-orders/[id]`** (item 9) — requires `isAdmin` (matches audit Fix #2 ✅)
+   - **`POST /api/work-orders/[id]/edit-unlock`** — requires only `WO_ASSIGN` at site scope (no `isAdmin` check). The file's header comment (lines 14–19) explicitly notes this was changed from `ADMIN` to `WO_ASSIGN` to fix a cross-site escalation bug, but the side effect is that ANY non-admin with `WO_ASSIGN` permission at a site can still unlock a terminal WO via this endpoint.
+   
+   This means the audit Fix #2 ("non-admin can't set `editUnlockActive: true`") is technically NOT fully enforced across all endpoints — it's only enforced on the v1 PUT path. If the audit's intent was that ONLY admins can unlock terminal WOs, the `/edit-unlock` endpoint should also require `isAdmin`. If the intent was that any WO_ASSIGN at the site can unlock (current behavior), then the v1 PUT restriction is unnecessary. **Recommend the team decide on one model and apply it consistently.** Not a regression introduced by audit work — pre-existing design tension.
+
+3. **Backward-compat legacy base64 cookie paths**: Both `src/lib/auth-session.ts` (legacy base64 session tokens, lines 121–145) and `src/lib/line-session.ts` (legacy base64 line_session cookie, lines 174–187) retain fallback paths that accept the OLD unencrypted format. The auth-session one is properly gated: production rejects legacy base64 entirely (line 121–124). The line-session one is NOT production-gated — it accepts legacy base64 in production too, just logs a warning. Given the 24h TTL on line_session, this is probably fine after 24h post-deploy, but it should be removed once the rollout is confirmed stable. **Recommend adding a TODO with a date or a feature flag for removing these legacy paths.**
+
+4. **No admin unlock UI button** (related to item 18): The `/api/work-orders/[id]/edit-unlock` endpoint exists and works, but no UI component calls it. Admins wanting to unlock a terminal WO for editing have to either (a) call the API directly with curl, or (b) use the v1 PUT route with `editUnlockActive: true` in the body (which is admin-gated). If the team intended for the dedicated UI button to exist, it's missing.
+
+5. **`scripts/verify-merge.sh` line 75**: Pre-existing obsolete check expecting 3+ `lineBinding.findFirst` occurrences in the webhook — already noted in the PHASE-3-LINEBINDING-MIGRATION worklog section. Out of scope here but worth cleaning up.
+
+6. **`src/lib/db.ts` lines 34–35**: `lineBinding` accessor-existence sanity check still references the (still-existing) LineBinding model. The PHASE-3-LINEBINDING-MIGRATION worklog flagged this for future cleanup once the LineBinding model is dropped. Out of scope here.
+
+## Conclusion
+
+Of the 21 audit items verified by reading actual code (not just trusting the worklog):
+
+- **18 items are fully implemented and verified** in the codebase. The fixes are real, not stubs.
+- **3 items are not fully addressed**:
+  - **#16 Stock QR/barcode scanning** — entirely missing; needs new feature work.
+  - **#17 WO form "select job type first" UX** — partial; uses a Switch toggle instead of the recommended progressive-disclosure wizard.
+  - **#18 Lock editUnlockActive in UI** — security goal met (no UI exposes the toggle to non-admins), but the audit's specific phrasing implies an admin-only button should exist; additionally there's an authorization-model inconsistency between the two endpoints that can set `editUnlockActive`.
+
+The user's frustration about "fixes weren't done properly" is partially justified for items 16 and 17 (genuine gaps), but the security-critical items (1–14) are all genuinely fixed and verifiable in code. The remaining gaps are mostly UX recommendations, not regressions.
+
+Files NOT modified (verification-only task):
+- (no files modified — this is a verification-only subagent)
+
+Next steps for the team:
+1. **Item 16**: Implement QR/barcode scanning in `stock-in-form.tsx` (desktop) and `mobile-stock-out.tsx` (mobile). The `QrScannerDialog` component already exists at `src/components/itam/qr-scanner-dialog.tsx` and is used by `transfer-by-scan.tsx` and `mobile-qr-scan.tsx` — pattern can be copied. Remove the dead `ScanLine` import once the icon is actually used.
+2. **Item 17**: Refactor `CreateWorkOrderDialog` in `work-orders-page.tsx` to use a 2-step wizard: step 1 = choose job type (internal/external/guest), step 2 = show only the relevant fields. Or alternatively use a tab/segmented control at the top with progressive disclosure.
+3. **Item 18**: Decide on the authorization model for `editUnlockActive` and apply it consistently:
+   - Option A (strict, matches audit Fix #2 intent): also gate `/api/work-orders/[id]/edit-unlock` with `isAdmin`.
+   - Option B (permissive, current behavior): keep `WO_ASSIGN` at site scope, but document that non-admin assigners can unlock terminal WOs at their site.
+   - Either way: add an admin-only "ปลดล็อกแก้ไข" button in the WO detail UI (visible only when `wo.status === 'COMPLETED' || wo.status === 'CANCELLED'` AND `user.role === 'admin'`).
+4. **Cleanup**: Remove the dead `ScanLine` import in `stock-in-form.tsx:62`. Add a removal date / feature flag for the legacy base64 fallback paths in `line-session.ts` (lines 174–187) and `auth-session.ts` (lines 121–145).
+
