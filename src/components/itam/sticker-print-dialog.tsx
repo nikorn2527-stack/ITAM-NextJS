@@ -24,9 +24,10 @@
  *     4. When a preset is selected, the existing flow applies (preset
  *        builder + size preset → canvas).
  *     5. By default the active saved template is selected on first open.
- *     6. Print now passes the correct cols to buildPrintDocument for label
- *        sizes (via calculateGridColumns) so bulk label printing fits the
- *        A4 grid instead of 1 sticker per page.
+ *     6. Print always uses canvas-as-page mode (1 sticker per page).
+ *        A4 grid mode was removed — it caused layout issues.
+ *        For bulk printing on A4 paper, users print one sticker per
+ *        page and cut manually.
  *
  * STICKER-CUSTOM-SIZE (prior revision, still applies):
  *   - 9 size presets + 5 template presets + custom W/H inputs.

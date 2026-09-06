@@ -719,6 +719,7 @@ function renderElement(
   const zIndex = el.zIndex ?? 0
   const rotation = el.rotation ?? 0
   const baseStyle = [
+    'position:absolute',
     `left:${el.x}mm`,
     `top:${el.y}mm`,
     `width:${el.width}mm`,
@@ -960,16 +961,6 @@ export function buildPrintDocument(
   <div class="page">
     ${stickersHtml.join('\n')}
   </div>
-  <script>
-    // Auto-print after layout settles
-    (function () {
-      if (document.readyState === 'complete') doPrint();
-      else window.addEventListener('load', doPrint);
-      function doPrint() {
-        setTimeout(function () { try { window.focus(); window.print(); } catch (e) {} }, 300);
-      }
-    })();
-  </script>
 </body>
 </html>`
 }
