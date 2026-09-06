@@ -14,6 +14,7 @@ export const MODULE_NAMES = [
   'dashboard',
   'reports',
   'paper-analytics',
+  'pm', // Phase 4.4: PM (Preventive Maintenance) — was missing
   'import',
   'templates',
   'stickers',
@@ -44,6 +45,7 @@ export const MODULES: Readonly<Record<ModuleName, ModuleDefinition>> = {
   dashboard: { required: false, enabled: true, dependencies: ['devices', 'meters', 'stock', 'work-orders'] },
   reports: { required: false, enabled: true, dependencies: ['devices', 'meters', 'stock', 'work-orders'] },
   'paper-analytics': { required: false, enabled: true, dependencies: ['meters', 'devices'] },
+  pm: { required: false, enabled: true, dependencies: ['devices', 'work-orders'] }, // Phase 4.4
   import: { required: false, enabled: true, dependencies: ['devices', 'stock', 'audit'] },
   templates: { required: false, enabled: true, dependencies: ['authorization'] },
   stickers: { required: false, enabled: true, dependencies: ['devices', 'templates'] },

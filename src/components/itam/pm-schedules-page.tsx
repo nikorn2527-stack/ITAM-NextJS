@@ -1643,13 +1643,14 @@ export function PMSchedulesPage() {
                 />
               </div>
               <div className="flex items-end gap-2">
-                <label className="flex cursor-pointer items-center gap-2 rounded-md border bg-card px-3 py-2 text-xs">
+                <label className="flex cursor-not-allowed items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-xs opacity-60">
                   <Switch
-                    checked={form.autoCreateWO}
-                    onCheckedChange={(c) => setForm((f) => ({ ...f, autoCreateWO: c }))}
+                    checked={false}
+                    disabled
                   />
                   <span className="text-muted-foreground">
                     สร้างใบงานอัตโนมัติเมื่อถึงเวลา
+                    <span className="ml-1 text-[10px] text-amber-600">(เร็ว ๆ นี้)</span>
                   </span>
                 </label>
               </div>

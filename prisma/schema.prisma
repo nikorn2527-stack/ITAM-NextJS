@@ -58,6 +58,14 @@ model Device {
   updatedAt       DateTime @updatedAt
   updatedBy       String?  @default("System")
 
+  // ── Asset Tag (Phase 2.6 — future RFID/NFC/BLE support) ──
+  // Physical tag identifier for asset tracking beyond QR stickers.
+  // Currently unused — field reserved so future hardware integration
+  // (USB RFID reader, BLE beacons, NFC tags) doesn't need schema migration.
+  // tagType defaults to QR (current system uses Smart QR URLs).
+  tagId           String?
+  tagType         String   @default("QR") // QR | BARCODE | NFC | RFID_UHF | BLE
+
   // ── Device Set / Parent-Child (Task ID 9, Phase 2) ──
   // Lets devices be grouped as a "set": e.g. a printer (parent) with
   // its UPS, network card, paper tray (children). Children may or may not
@@ -1442,4 +1450,64 @@ model PublicReporter {
   @@index([lineUserId])
   @@index([isBlocked])
   @@index([isDemo])
+}
+
+// ============================================================
+// 33) StockCountSession — รอบนับสต็อก/ตรวจนับครุภัณฑ์ (Phase 5)
+// ============================================================
+// ใช้สำหรับนับสต็อกจริง (Stock Take) หรือตรวจนับครุภัณฑ์ (Asset Verification)
+// scope: STOCK_ITEM = นับสินค้าคงคลัง, DEVICE = ตรวจนับอุปกรณ์
+// ============================================================
+model StockCountSession {
+  id          String   @id @default(cuid())
+  name        String   // ชื่อรอบนับ เช่น "นับสต็อกประจำเดือน ก.ย. 2026"
+  scope       String   @default("STOCK_ITEM") // STOCK_ITEM | DEVICE
+  siteCode    String?  // สาขาที่นับ (null = ทุกสาขา)
+  status      String   @default("OPEN") // OPEN | CLOSED | CANCELLED
+  startedAt   DateTime @default(now())
+  closedAt    DateTime?
+  createdBy   String?
+  note        String?
+  isDemo      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       StockCountItem[]
+
+  @@index([scope])
+  @@index([status])
+  @@index([siteCode])
+  @@index([isDemo])
+}
+
+model StockCountItem {
+  id              String   @id @default(cuid())
+  sessionId       String
+  session         StockCountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Target: either a StockItem (scope=STOCK_ITEM) or a Device (scope=DEVICE)
+  targetId        String   // FK → StockItem.id หรือ Device.id (ไม่ใช้ relation FK เพราะ scope เปลี่ยนได้)
+  targetCode      String?  // productCode หรือ assetCode (เก็บ snapshot)
+
+  // Expected values (snapshot จากระบบตอนเริ่มรอบ)
+  expectedQty     Int?     // สำหรับ STOCK_ITEM
+  expectedLocation String? // สำหรับ DEVICE (building/floor/room)
+
+  // Counted values (กรอกโดยผู้นับ)
+  countedQty      Int?     // จำนวนจริงที่นับได้
+  countedLocation String?  // ตำแหน่งจริงที่พบ (สำหรับ DEVICE)
+  countedBy       String?
+  countedAt       DateTime?
+
+  // Result
+  variance        Int?     // ผลต่าง (counted - expected) สำหรับ STOCK_ITEM
+  status          String   @default("PENDING") // PENDING | COUNTED | NOT_FOUND | WRONG_LOCATION
+  note            String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([targetId])
+  @@index([status])
 }
