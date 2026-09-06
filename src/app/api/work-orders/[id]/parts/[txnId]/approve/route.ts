@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { withSerializableRetry } from '@/lib/retry-transaction'
 
 /**
  * POST /api/work-orders/[id]/parts/[txnId]/approve
@@ -43,7 +44,7 @@ export async function POST(
         ? body.note.trim()
         : null
 
-    const resultTxn = await db.$transaction(async (tx) => {
+    const resultTxn = await withSerializableRetry(async (tx) => {
       const txn = await tx.stockTransaction.findUnique({
         where: { id: txnId },
       })
