@@ -17947,3 +17947,325 @@ Next steps for the team:
    - Either way: add an admin-only "ปลดล็อกแก้ไข" button in the WO detail UI (visible only when `wo.status === 'COMPLETED' || wo.status === 'CANCELLED'` AND `user.role === 'admin'`).
 4. **Cleanup**: Remove the dead `ScanLine` import in `stock-in-form.tsx:62`. Add a removal date / feature flag for the legacy base64 fallback paths in `line-session.ts` (lines 174–187) and `auth-session.ts` (lines 121–145).
 
+---
+
+Task ID: CONSULTING-007-IMPORT-TEMPLATES
+Agent: subagent (general-purpose)
+Task: Consulting report fixes — (1) wrap device imports in db.$transaction
+  + plan endpoint consolidation; (2) extend template variable catalog with
+  12 device fields; (3) annotate dead code in settings-page-v2.tsx.
+
+Work Log:
+
+- Read recent worklog sections for context. Found the project has THREE
+  device-import endpoints:
+    a. `/api/import` (2336 lines) — main file-upload endpoint used by
+       `import-page.tsx`. Used `db.device.createMany` directly with no
+       transaction wrap. The consulting report's Issue #1 was about
+       this file.
+    b. `/api/devices/import` (470 lines) — JSON-array endpoint used by
+       `csv-import-dialog.tsx`. ALREADY wraps writes in
+       `db.$transaction` (lines 417-434) — was safe before this task.
+    c. `/api/itam/devices/import` (287 lines) — cleanest separation
+       (contract + persistence split). Has its own
+       `db.$transaction` for updates in `device-import-persistence.ts`
+       (lines 199-223), but `createMany` for inserts is a single
+       statement (already atomic).
+
+## Issue #1 — Phase A (transaction wrap on /api/import)
+
+- **File: `/home/z/my-project/src/app/api/import/route.ts`**
+  - Located `importDevices()` at line 144. The device-write section
+    was a single `db.device.createMany({ data: filtered })` call
+    at lines 265-291 with a bare try/catch — any DB error mid-way
+    through `createMany` would leave rows already inserted (Prisma
+    `createMany` is not transactional by default in MySQL without
+    an explicit transaction wrap, especially across batches).
+  - Replaced the single `createMany` with a batched transaction
+    loop:
+      * Splits `filtered` rows into batches of `BATCH_SIZE = 100`
+        (avoid long row-lock contention on large imports).
+      * Each batch runs in `db.$transaction(async (tx) => { ... })`
+        using `tx.device.createMany` (not `db.`).
+      * On batch success: `console.log` progress (batch i/N +
+        cumulative count) — sufficient progress feedback per spec.
+      * On batch failure: Prisma rolls back the failed batch
+        atomically. Earlier batches stay committed (we can't
+        un-commit a closed transaction). Returns the partial
+        `processed` count + an error message that explicitly notes
+        the partial state — e.g.:
+          "DB error (device) — 700/1000 rows committed before
+           failure (rolled back failed batch)"
+        Previously, the same failure would silently drop all
+        committed rows (returning `processed: 0`), so the user
+        had no idea the import was partial.
+  - Did NOT refactor the rest of the file (stock-in, stock-out,
+    work-order, meter-reading sections unchanged — they're noted
+    for Phase B).
+
+## Issue #1 — Phase B (consolidate endpoints, partial)
+
+- **Analysis: contract superset check**
+  - Compared `device-import-contract.ts`'s `HEADER_ALIASES` (25
+    fields) against `/api/import`'s `importDevices` (12 fields:
+    assetCode, name, brand, model, type, serialNumber, status,
+    site, department, location, purchaseDate, warrantyMonths).
+  - Result: contract was MISSING 2 fields:
+      * `name` — `/api/import` required it; contract previously
+        derived it from `deviceType` as a fallback.
+      * `warrantyMonths` — `/api/import` had it; contract only
+        had `warrantyEnd`.
+  - The other 10 fields mapped cleanly (assetCode→assetNo,
+    type→deviceType, serialNumber→serial, purchaseDate→installDate,
+    etc.).
+
+- **File: `/home/z/my-project/src/lib/device-import-contract.ts`**
+  - Added `name` to `DEVICE_IMPORT_FIELDS`, `DeviceImportValues`,
+    `HEADER_ALIASES` (`['name', 'ชื่อ', 'ชื่ออุปกรณ์']`), and
+    `rowValues()` (returns `cell('name')`).
+  - Added `warrantyMonths` to `DEVICE_IMPORT_FIELDS` (as
+    `Int | null` since it's a Prisma `Int` column),
+    `DeviceImportValues`, `HEADER_ALIASES` (with Thai alias
+    `'รับประกัน(เดือน)'` to match csv-import-dialog's alias list),
+    and `rowValues()`.
+  - Added a new `intCell()` helper for parsing the
+    `warrantyMonths` cell.
+  - Contract is now a true superset of `/api/import`'s 12 device
+    columns.
+
+- **File: `/home/z/my-project/src/lib/device-import-persistence.ts`**
+  - Updated `toPrismaData()`:
+      * `name` now prefers `v.name` and falls back to `v.deviceType`
+        then `'Unknown'` (preserves legacy behavior when CSV omits
+        the `name` column).
+      * `warrantyMonths` now writes `v.warrantyMonths ?? 12`
+        (matches the Prisma schema default).
+
+- **File: `/home/z/my-project/src/components/itam/csv-import-dialog.tsx`**
+  - Did NOT switch the endpoint from `/api/devices/import` to
+    `/api/itam/devices/import`. Documented why in a 23-line
+    comment block above the `fetch('/api/devices/import', ...)` call:
+      * The contract is STILL missing these dialog-only fields:
+        `purchasePrice`, `lastMeterBw`, `lastMeterColor`,
+        `parentDeviceId` (Device Set — cuid/assetCode resolution),
+        `setLabel`, `setPosition`, `parentRef`, `displayLabel`.
+      * Switching would silently drop these fields for users who
+        relied on them (notably the Device Set fields added in
+        Task 9 Phase 2).
+      * Critically: `/api/devices/import` already wraps writes in
+        `db.$transaction` (lines 417-434), so this dialog is
+        already transaction-safe. Phase B here is consolidation,
+        not a safety fix.
+      * Listed the 8 fields that must be added to the contract
+        before this dialog can be safely routed to
+        `/api/itam/devices/import`.
+
+- **File: `/home/z/my-project/src/components/itam/import-page.tsx`**
+  - Did NOT switch the device path from `/api/import` to
+    `/api/itam/devices/import`. Documented why in a 19-line comment
+    above the `fetch('/api/import', ...)` call:
+      * This page's history table relies on `ImportJob` records
+        that `/api/import` creates. The `/api/itam/devices/import`
+        endpoint does NOT create an `ImportJob` row — it only
+        writes a `logAudit` entry — so switching would silently
+        drop device imports from the history panel.
+      * Same dialog-only field gap as above (purchasePrice, Device
+        Set, etc.).
+      * Critically: the Phase A fix already wrapped
+        `/api/import`'s device writes in `db.$transaction`
+        (batched at 100 rows/batch), so this path is already
+        transaction-safe.
+
+- Did NOT delete `/api/devices/import` or `/api/import` (per
+  Phase B instruction #5).
+
+## Issue #2 — Template variables missing device fields
+
+- **File: `/home/z/my-project/src/lib/template-editor.ts`**
+  - Added 12 entries to `TEMPLATE_VARIABLES` array, all in
+    group `'อุปกรณ์'`:
+    Group 1 ("ต้องมีเร็วสุด" — priority):
+      * `{ key: 'deviceStatus', label: 'สถานะอุปกรณ์' }`
+        (uses `device` prefix because `status` is already used
+        by work-order status — the interpolation regex
+        `/\{(\w+)\}/g` is case-sensitive + key-exact, so
+        `{deviceStatus}` and `{status}` coexist without
+        ambiguity).
+      * `{ key: 'deviceType', label: 'ประเภทอุปกรณ์' }`
+      * `{ key: 'currentAssignee', label: 'ผู้ใช้งานปัจจุบัน' }`
+      * `{ key: 'warrantyEnd', label: 'วันหมดประกัน' }`
+    Group 2 ("เอกสารครุภัณฑ์"):
+      * `{ key: 'purchaseDate', label: 'วันที่ซื้อ' }`
+      * `{ key: 'purchasePrice', label: 'ราคาทุน' }`
+      * `{ key: 'vendor', label: 'ผู้จำหน่าย' }`
+      * `{ key: 'contractNo', label: 'เลขที่สัญญา' }`
+    Group 3 ("IT asset label"):
+      * `{ key: 'ip', label: 'IP Address' }`
+      * `{ key: 'mac', label: 'MAC Address' }`
+      * `{ key: 'floor', label: 'ชั้น' }`
+      * `{ key: 'room', label: 'ห้อง' }`
+  - Added the same 12 fields as optional strings to
+    `TemplateRenderData` interface.
+  - Added sample values to `SAMPLE_DATA` so the editor's Preview
+    button shows realistic content:
+      * `deviceStatus: 'Active'`, `deviceType: 'PRINTER'`,
+        `currentAssignee: 'คุณสมชาย บัญชีการ'`
+      * `warrantyEnd` and `purchaseDate` formatted via
+        `new Date(...).toLocaleDateString('th-TH')` — Thai
+        Buddhist-Era date format.
+      * `purchasePrice: '฿15,500.00'` — Thai Baht symbol + 2
+        decimals + thousands separator (matches existing
+        `totalPrice: '5,500.00'` pattern but with currency).
+      * `vendor`, `contractNo`, `ip`, `mac`, `floor`, `room` —
+        realistic placeholder values.
+
+- **File: `/home/z/my-project/src/app/api/templates/[id]/render/route.ts`**
+  - Added two new helper functions for consistent formatting:
+      * `formatDeviceDate(iso)` — wraps
+        `new Date(iso).toLocaleDateString('th-TH')` with a
+        fallback to the raw string on parse failure. Used for
+        `warrantyEnd` and `purchaseDate` (both stored as
+        free-form `String?` in the schema).
+      * `formatBaht(v)` — uses `Intl.NumberFormat('th-TH', {
+        style: 'currency', currency: 'THB', minimumFractionDigits:
+        2, maximumFractionDigits: 2 })` to produce `฿1,234.56`
+        format. Accepts `Prisma.Decimal`, `number`, or `string`
+        (Prisma's `Decimal` column type can come back as any of
+        these depending on call site).
+  - Extended the `db.workOrder.findUnique({ include: { device: {
+    select: { ... } } } })` call to fetch the 12 new device
+    fields: `type, status, currentAssignee, warrantyEnd,
+    purchaseDate, purchasePrice, vendor, contractNo, ip, mac,
+    floor, room`. (Previously only fetched 7 fields: `id,
+    assetCode, name, brand, model, serialNumber, site`.)
+  - Added the 12 new fields to the returned `TemplateRenderData`
+    object. All default to `'—'` (em-dash) when the device or
+    its field is null/undefined, so templates print a clear
+    placeholder rather than leaving a blank spot that looks
+    like a rendering bug. Dates go through `formatDeviceDate()`,
+    `purchasePrice` goes through `formatBaht()`.
+
+## Issue #3 — Settings refactor (just note, don't fix)
+
+- **File: `/home/z/my-project/src/components/itam/settings-page-v2.tsx`**
+  - Verified whether the file is dead code:
+      * `grep -r "settings-page-v2"` found TWO import sites:
+        1. `src/app/home-client.tsx:98-100`:
+           `const SettingsPageV2 = dynamic(() => import(...).then((m) => m.SettingsPageV2))`
+        2. `src/components/itam/itam-settings.tsx:32`:
+           `import { AssetPatternTab, WoPatternTab } from './settings-page-v2'`
+      * `grep -r "<SettingsPageV2" found ZERO usage. The dynamic
+        import in home-client.tsx is registered but NEVER rendered
+        (no JSX usage).
+      * `AssetPatternTab` and `WoPatternTab` ARE rendered
+        (itam-settings.tsx lines 726 and 728).
+  - Conclusion: the FILE is NOT fully dead — it has 3 named
+    exports, 2 of which are active. Only the `SettingsPageV2`
+    named export is dead (its dynamic import is leftover
+    scaffolding from a prototyped SettingsPageV2 tab).
+  - Added a 27-line comment block at the top of the file
+    (BEFORE the `'use client'` directive) that:
+      * Includes the literal string `// DEAD CODE — never rendered.
+        See CONSULTING-PLAN-TEMPLATES-IMPORT-SETTINGS-007.md for
+        migration plan.` (per the user's spec).
+      * Documents the 3-export status (dead vs. active).
+      * Lists exact file:line references for the dead dynamic
+        import and the active tab usages.
+      * Outlines a 4-step safe-removal plan (delete SettingsPageV2
+        function, delete dynamic import, keep/split
+        AssetPatternTab + WoPatternTab, optionally rename file).
+  - Did NOT touch `itam-settings.tsx` or perform any refactor
+    (per the user's "just note, don't fix" instruction).
+
+## Lint check
+
+- Baseline (without my changes): `1 error, 107 warnings` —
+  the single error is a pre-existing `@typescript-eslint/no-require-imports`
+  violation in `src/app/api/auth/oauth/apple/callback/route.ts:99`
+  (unrelated to this task).
+- After my changes: `1 error, 107 warnings` — SAME baseline.
+  **0 new lint errors, 0 new lint warnings introduced.**
+- TypeScript check (`bunx tsc --noEmit`): all 8 files I modified
+  compile cleanly. (Pre-existing merge conflicts in
+  `device-detail-sheet.tsx` and `sticker-print-dialog.tsx` cause
+  TypeScript errors, but those are unrelated to this task —
+  they're leftover from an in-progress merge that pre-dates my
+  session. They surface as `git status` shows `Unmerged paths`.)
+
+## Files Modified (8)
+
+1. `/home/z/my-project/src/app/api/import/route.ts`
+   — Phase A: wrapped `importDevices()` device writes in batched
+     `db.$transaction` (100 rows/batch), added progress console.log,
+     added partial-commit error reporting.
+
+2. `/home/z/my-project/src/lib/device-import-contract.ts`
+   — Phase B: added `name` + `warrantyMonths` to
+     `DEVICE_IMPORT_FIELDS`, `DeviceImportValues`,
+     `HEADER_ALIASES`, `rowValues()`. Added `intCell()` helper.
+     Contract is now a true superset of `/api/import`'s 12 device
+     columns.
+
+3. `/home/z/my-project/src/lib/device-import-persistence.ts`
+   — Phase B: updated `toPrismaData()` to prefer `v.name` over
+     `v.deviceType` for the `name` field, and to write
+     `v.warrantyMonths ?? 12` (matches schema default).
+
+4. `/home/z/my-project/src/components/itam/csv-import-dialog.tsx`
+   — Phase B: documented why this dialog still calls
+     `/api/devices/import` (which already has `db.$transaction`)
+     instead of migrating to `/api/itam/devices/import` (which
+     lacks 8 dialog-only fields). NO endpoint switch performed.
+
+5. `/home/z/my-project/src/components/itam/import-page.tsx`
+   — Phase B: documented why the device path stays on
+     `/api/import` (Phase A made it transaction-safe; the
+     `/api/itam/devices/import` alternative doesn't create
+     `ImportJob` history records and lacks 8 fields this page's
+     dialog exposes). NO endpoint switch performed.
+
+6. `/home/z/my-project/src/lib/template-editor.ts`
+   — Issue #2: added 12 new device fields to
+     `TEMPLATE_VARIABLES` (group `'อุปกรณ์'`),
+     `TemplateRenderData` interface, and `SAMPLE_DATA`.
+
+7. `/home/z/my-project/src/app/api/templates/[id]/render/route.ts`
+   — Issue #2: added 12 new device fields to the
+     `db.workOrder.findUnique({ device: { select: { ... } } })`
+     query and to the returned `TemplateRenderData` object.
+     Added `formatDeviceDate()` and `formatBaht()` helpers for
+     consistent formatting.
+
+8. `/home/z/my-project/src/components/itam/settings-page-v2.tsx`
+   — Issue #3: added a 27-line DEAD CODE annotation block at the
+     top of the file, including the literal
+     `// DEAD CODE — never rendered. See CONSULTING-PLAN-TEMPLATES-IMPORT-SETTINGS-007.md for migration plan.`
+     string. Verified that only the `SettingsPageV2` named export
+     is dead; `AssetPatternTab` and `WoPatternTab` are active.
+
+## Notes for the team
+
+- The `device` prefix on `deviceStatus` / `deviceType` template
+  keys is deliberate: the existing `status` key is used by
+  work-order templates, and the interpolation regex
+  `/\{(\w+)\}/g` is case-sensitive. So `{status}` → WO status,
+  `{deviceStatus}` → device status. They coexist cleanly.
+
+- For Phase B completion (future task): add these 8 fields to
+  `device-import-contract.ts` and `device-import-persistence.ts`:
+  `purchasePrice`, `lastMeterBw`, `lastMeterColor`,
+  `parentDeviceId` (cuid/assetCode resolution), `setLabel`,
+  `setPosition`, `parentRef`, `displayLabel`. Then route
+  `csv-import-dialog.tsx` from `/api/devices/import` to
+  `/api/itam/devices/import`. For `import-page.tsx`, additionally
+  add `ImportJob` creation to `/api/itam/devices/import` so the
+  history table keeps working.
+
+- The Phase A batch size of 100 is conservative; on Supabase /
+  Vercel Postgres it can probably be bumped to 500 without lock
+  contention. Left at 100 to be safe across DB providers.
+
+- The `console.log` progress feedback in `importDevices()` uses
+  the prefix `[import][device]` for grep-ability. If the team
+  later wants structured progress (e.g. SSE for live progress
+  bar), the log calls are the natural place to hook in.

@@ -93,6 +93,47 @@ function formatDateOnly(iso: string | null | undefined): string {
 }
 
 // ─────────────────────────────────────────────────────
+// CONSULTING-007: device field formatters
+// ─────────────────────────────────────────────────────
+
+/**
+ * Format an ISO/loose date string as a Thai-locale date-only string.
+ * Device fields like `warrantyEnd` and `purchaseDate` are stored as
+ * free-form strings (the schema is `String?`), so we tolerate anything
+ * Date can parse and fall back to the raw string on parse failure.
+ *
+ * Locale: 'th-TH' — uses Buddhist Era (B.E.) year by default. If the
+ * team later wants Gregorian, change the locale to 'en-GB' here.
+ */
+function formatDeviceDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleDateString('th-TH')
+  } catch {
+    return String(iso)
+  }
+}
+
+/**
+ * Format a Decimal/number/string money value as "฿1,234.56".
+ * The Prisma Device.purchasePrice column is `Decimal @db.Decimal(12, 2)`,
+ * so the value can come back as a Prisma.Decimal, a number, or a string
+ * depending on the call site. We normalise to 2 decimal places + the
+ * Thai Baht symbol + thousands separators.
+ */
+function formatBaht(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '—'
+  const n = typeof v === 'number' ? v : Number(String(v))
+  if (!Number.isFinite(n)) return String(v)
+  return new Intl.NumberFormat('th-TH', {
+    style: 'currency',
+    currency: 'THB',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(n)
+}
+
+// ─────────────────────────────────────────────────────
 // Build render data from a work order
 // ─────────────────────────────────────────────────────
 
@@ -111,6 +152,19 @@ async function buildDataFromWo(
           model: true,
           serialNumber: true,
           site: true,
+          // ── CONSULTING-007: 12 new device fields for template variables ──
+          type: true,
+          status: true,
+          currentAssignee: true,
+          warrantyEnd: true,
+          purchaseDate: true,
+          purchasePrice: true,
+          vendor: true,
+          contractNo: true,
+          ip: true,
+          mac: true,
+          floor: true,
+          room: true,
         },
       },
     },
@@ -194,6 +248,23 @@ async function buildDataFromWo(
     model: wo.device?.model ?? '—',
     serial: wo.device?.serialNumber ?? '—',
     productName: wo.device?.name ?? '—',
+    // ── CONSULTING-007: 12 new device fields ──────────────────────────
+    // All default to '—' so the template prints a clear placeholder when
+    // the device row is missing the field, rather than leaving a blank
+    // spot that looks like a rendering bug.
+    deviceStatus: wo.device?.status ?? '—',
+    deviceType: wo.device?.type ?? '—',
+    currentAssignee: wo.device?.currentAssignee ?? '—',
+    warrantyEnd: formatDeviceDate(wo.device?.warrantyEnd),
+    purchaseDate: formatDeviceDate(wo.device?.purchaseDate),
+    purchasePrice: formatBaht(wo.device?.purchasePrice),
+    vendor: wo.device?.vendor ?? '—',
+    contractNo: wo.device?.contractNo ?? '—',
+    ip: wo.device?.ip ?? '—',
+    mac: wo.device?.mac ?? '—',
+    floor: wo.device?.floor ?? '—',
+    room: wo.device?.room ?? '—',
+    // ── End CONSULTING-007 device fields ──────────────────────────────
     orgName: 'ระบบจัดการสินทรัพย์',
     printDate: formatDate(new Date().toISOString()),
     workOrderItems,

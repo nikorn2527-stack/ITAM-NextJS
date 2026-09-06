@@ -431,6 +431,24 @@ export function ImportPage() {
       }
       // Default: device / work-order / stock / meter-reading
       fd.append('jobType', vars.jobType)
+      // ── CONSULTING-007 Phase B (partial) ──────────────────────────
+      // The device path stays on `/api/import` for now (rather than
+      // migrating to `/api/itam/devices/import`) for two reasons:
+      //   1. This page's history table relies on `ImportJob` records
+      //      that `/api/import` creates. The `/api/itam/devices/import`
+      //      endpoint does NOT create an `ImportJob` row — it only
+      //      writes a `logAudit` entry — so switching would silently
+      //      drop device imports from the history panel.
+      //   2. The contract at `src/lib/device-import-contract.ts` is
+      //      now a true superset of `/api/import`'s 12 device columns
+      //      (added `name` + `warrantyMonths` as part of this task),
+      //      BUT it still lacks `purchasePrice`, `parentDeviceId`,
+      //      `setLabel`, `setPosition`, etc. — migrating this path
+      //      would lose those capabilities.
+      // The Phase A fix already wrapped `/api/import` device writes in
+      // `db.$transaction` (batched at 100 rows/batch), so this path is
+      // already transaction-safe. Phase B here is consolidation, not a
+      // safety fix. See worklog CONSULTING-007-IMPORT-TEMPLATES.
       const res = await fetch('/api/import', {
         method: 'POST',
         body: fd,

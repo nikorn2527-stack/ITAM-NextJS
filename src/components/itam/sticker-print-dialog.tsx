@@ -397,16 +397,24 @@ export function StickerPrintDialog({
     }
     setPrinting(true)
     try {
-      // Render each device's sticker HTML using the template engine.
-      const stickersHtml: string[] = []
-      for (const d of selectedDevices) {
-        const deviceData = deviceToStickerData(d)
-        const qrOverride = qrContentFor?.(d) ?? null
-        const cache = await buildQrCacheForDevice(deviceData, template, settings, qrOverride)
-        const { html } = await renderStickerFromTemplate(deviceData, template, settings, {
-          qrCache: cache,
-        })
-        stickersHtml.push(html)
+      // Pre-generate QR data URLs (assetCode) for each device if withQr is on.
+      const qrMap = new Map<string, string>()
+      if (withQr) {
+        for (const d of selectedDevices) {
+          try {
+            // Allow caller to override QR content (used by accessory stickers
+            // where the QR should encode the smart-qr URL, not the asset code).
+            const qrData = qrContentFor?.(d) ?? d.assetCode
+            const url = await QRCode.toDataURL(qrData, {
+              margin: 1,
+              width: 200,
+              errorCorrectionLevel: 'M',
+            })
+            qrMap.set(d.id, url)
+          } catch {
+            // skip QR for this device on error
+          }
+        }
       }
 
       // STICKER-EDITOR-DEEP-REVIEW: compute proper cols for label sizes
@@ -520,7 +528,9 @@ export function StickerPrintDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
             <Tag className="h-5 w-5 text-[#f97316]" />
-            {dialogTitle ?? <>🏷️ พิมพ์สติกเกอร์อุปกรณ์</>}
+            {dialogTitle ?? (
+              <>🏷️ พิมพ์สติกเกอร์อุปกรณ์</>
+            )}
           </DialogTitle>
           <DialogDescription>
             {dialogDescription ?? 'สร้างสติกเกอร์ฉลากอุปกรณ์สำหรับติดเครื่อง'}

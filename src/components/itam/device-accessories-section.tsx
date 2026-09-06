@@ -3,34 +3,20 @@
 /**
  * DeviceAccessoriesSection — ส่วนจัดการ "อุปกรณ์ในชุด" (รวมทั้งอุปกรณ์ต่อพ่วง + อุปกรณ์ลูกในชุด)
  *
- * ผู้ใช้ให้ feedback ว่า "มันควรจะต้องเป็นเหมือนกันซิในเมื่อมันทำงานแบบเดียวกัน"
- * จึง merge 2 flow ที่เคยแยกกัน (DeviceAccessory กับ Device.parentDeviceId)
- * เข้าไว้ใน modal เดียวกัน โดยมี toggle 2 โหมด:
- *
- *   1. "สร้างใหม่ (ไม่มีในระบบ)" → กรอก form ประเภท/ยี่ห้อ/รุ่น/serial →
- *      save ลง table `DeviceAccessory` (POST /api/devices/[id]/accessories)
- *
- *   2. "เลือกจากที่มีในระบบ" → ค้นหา Device ที่มีอยู่แล้ว แล้วเชื่อมเป็น
- *      Device Set (PATCH parentDeviceId บน device ลูก ผ่าน PUT /api/devices/[childId])
- *
- * รายการแสดงผลรวมทั้ง 2 ประเภท พร้อม badge แยก:
- *   - 🔌 "ต่อพ่วง" สำหรับ DeviceAccessory (ไม่มี assetCode ของตัวเอง)
- *   - 📦 "ในชุด"  สำหรับ Device ที่เป็น child (มี assetCode ของตัวเอง)
- *
- * ฟีเจอร์เดิมทั้งหมดยังใช้ได้:
- *   - แก้ไข/ลบ accessory
- *   - เปลี่ยนสถานะ accessory
- *   - พิมพ์สติกเกอร์ accessory (StickerPrintDialog — QR เฉพาะของ accessory)
- *   - คลิก child device → เปิด detail ของ child (ผ่าน onChildClick)
- *   - "unlink" child device → ลบ parentDeviceId (กลับเป็นอิสระ)
+ * แสดงใน device detail (desktop + mobile)
+ * ฟีเจอร์:
+ *   - แสดงรายการอุปกรณ์ต่อพ่วงทั้งหมดของอุปกรณ์นี้
+ *   - เพิ่มอุปกรณ์ต่อพ่วงใหม่
+ *   - แก้ไข / ลบ
+ *   - เปลี่ยนสถานะ (Active → Inactive → Disposed)
+ *   - พิมพ์สติกเกอร์ (StickerPrintDialog) — สติกเกอร์ใช้ QR เฉพาะของ accessory
+ *     (เข้า /qr/a/{shortId}?action=view) และข้อมูลอุปกรณ์ต่อพ่วงผสมกับข้อมูล
+ *     อุปกรณ์หลัก (site/department/building/floor/…)
  */
 
 import * as React from 'react'
 import { toast } from 'sonner'
-import {
-  Plus, Trash2, Pencil, Keyboard, Mouse, Monitor, Cable, Battery, Usb, Printer,
-  Package, Unlink, ExternalLink, ChevronsUpDown, Check,
-} from 'lucide-react'
+import { Plus, Trash2, Pencil, Keyboard, Mouse, Monitor, Cable, Battery, Usb, Printer, Package, ChevronsUpDown, Check } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,7 +37,6 @@ import {
 } from '@/components/ui/command'
 import { useAuthStore } from '@/store/auth-store'
 import { generateAccessoryQrUrl } from '@/lib/smart-qr'
-import { normalizeStatus } from '@/lib/status-utils'
 import { StickerPrintDialog } from './sticker-print-dialog'
 import type { Device } from './types'
 
@@ -135,10 +120,6 @@ function statusLabelFor(canonical: string): string {
 export function DeviceAccessoriesSection({
   deviceId,
   parentDevice,
-  childDevices,
-  childrenLoading,
-  onChildClick,
-  onChildrenChange,
 }: {
   deviceId: string
   /**
@@ -159,18 +140,6 @@ export function DeviceAccessoriesSection({
     | 'departmentCode'
     | 'location'
   > | null
-  /**
-   * Child devices (Device rows whose parentDeviceId === this.id).
-   * Passed from device-detail-sheet's react-query (same as the old
-   * DeviceSetChildrenSection used to receive via initialChildren).
-   */
-  childDevices?: DeviceSetChildLite[]
-  /** Loading state for childDevices (when fetched externally) */
-  childrenLoading?: boolean
-  /** Click handler for child device rows — typically opens the child's detail sheet */
-  onChildClick?: (childId: string) => void
-  /** Called after a child is added/unlinked — so the parent can refetch */
-  onChildrenChange?: () => void
 }) {
   const token = useAuthStore((s) => s.token)
   const [accessories, setAccessories] = React.useState<Array<{
@@ -181,6 +150,9 @@ export function DeviceAccessoriesSection({
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingId, setEditingId] = React.useState<string | null>(null)
   // ── Sticker print dialog state ──
+  // When the user clicks the Printer icon on an accessory row, we build a
+  // fake "Device" payload for the StickerPrintDialog and open it. The
+  // qrContentFor prop encodes the accessory's smart-qr URL.
   const [stickerOpen, setStickerOpen] = React.useState(false)
   const [stickerDevices, setStickerDevices] = React.useState<Device[]>([])
 
@@ -378,25 +350,6 @@ export function DeviceAccessoriesSection({
     }
   }
 
-  async function handleUnlinkChild(childId: string) {
-    if (!confirm('ยืนยันถอดอุปกรณ์นี้ออกจากชุด? (ตัวเครื่องจะยังอยู่ในระบบ แค่ไม่ถูกผูกเป็นอุปกรณ์ลูกของเครื่องนี้อีก)')) return
-    try {
-      const res = await fetch(`/api/devices/${childId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ parentDeviceId: null }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.error ?? 'ถอดออกจากชุดไม่สำเร็จ')
-      }
-      toast.success('ถอดอุปกรณ์ออกจากชุดเรียบร้อย')
-      onChildrenChange?.()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ถอดไม่สำเร็จ')
-    }
-  }
-
   /**
    * Open the StickerPrintDialog for a single accessory.
    *
@@ -417,14 +370,20 @@ export function DeviceAccessoriesSection({
     }
     const typeMeta = getTypeMeta(acc.accessoryType)
     // Build a "fake" Device payload for the StickerPrintDialog.
+    // The StickerPrintDialog expects Device-shaped objects, so we cast via
+    // `as unknown as Device` after filling in the fields it reads.
     const fakeDevice = {
       id: acc.id,
+      // Suffix the parent's assetCode with `-A1`, `-A2`, … to keep the
+      // accessory visually associated with its parent on the printed label.
       assetCode: `${parentDevice.assetCode}-A${position}`,
       name: typeMeta.label,
       brand: acc.brand ?? '',
       model: acc.model ?? '',
       type: typeMeta.label,
       serialNumber: acc.serialNumber ?? '',
+      // Force "Active" status so the dialog's disposed-device filter doesn't
+      // hide the accessory (accessory status uses the same vocabulary).
       status: 'Active',
       site: parentDevice.site ?? '',
       department: parentDevice.department ?? null,
@@ -469,124 +428,58 @@ export function DeviceAccessoriesSection({
           </div>
         ) : (
           <>
-            {/* ── DeviceAccessory rows (อุปกรณ์ต่อพ่วง — ไม่มีในระบบ) ── */}
-            {accessories.map((acc, idx) => {
-              const typeMeta = getTypeMeta(acc.accessoryType)
-              const statusMeta = getStatusMeta(acc.status)
-              const Icon = typeMeta.icon
-              const accessoryPosition = idx + 1
-              return (
-                <div
-                  key={acc.id}
-                  className="flex items-center gap-3 rounded-lg border border-slate-200 p-2.5 dark:border-slate-700"
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-300">
-                    <Icon className="h-4 w-4" />
+          {accessories.map((acc, idx) => {
+            const typeMeta = getTypeMeta(acc.accessoryType)
+            const statusMeta = getStatusMeta(acc.status)
+            const Icon = typeMeta.icon
+            const accessoryPosition = idx + 1
+            return (
+              <div
+                key={acc.id}
+                className="flex items-center gap-3 rounded-lg border border-slate-200 p-2.5 dark:border-slate-700"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-orange-50 text-orange-600 dark:bg-orange-950/40 dark:text-orange-300">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {typeMeta.label}
+                    </span>
+                    <Badge variant="outline" className="px-1.5 py-0 text-[10px] bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800">
+                      🔌 ต่อพ่วง
+                    </Badge>
+                    <Badge variant="outline" className={`px-1.5 py-0 text-[10px] ${statusMeta.color}`}>
+                      {statusMeta.label}
+                    </Badge>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                        {typeMeta.label}
-                      </span>
-                      <Badge variant="outline" className="px-1.5 py-0 text-[10px] bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-800">
-                        🔌 ต่อพ่วง
-                      </Badge>
-                      <Badge variant="outline" className={`px-1.5 py-0 text-[10px] ${statusMeta.color}`}>
-                        {statusMeta.label}
-                      </Badge>
-                    </div>
-                    <div className="truncate text-[11px] text-muted-foreground">
-                      {acc.brand} {acc.model}
-                      {acc.serialNumber && ` · S/N: ${acc.serialNumber}`}
-                      {acc.installedDate && ` · ติดตั้ง: ${acc.installedDate}`}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button size="ghost" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(acc)} title="แก้ไข">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="ghost"
-                      variant="ghost"
-                      className="h-7 w-7 p-0 text-[#f97316]"
-                      onClick={() => openAccessorySticker(acc, accessoryPosition)}
-                      disabled={!parentDevice}
-                      title="พิมพ์สติกเกอร์อุปกรณ์ต่อพ่วง"
-                    >
-                      <Printer className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="ghost" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => handleDelete(acc.id)} title="ลบ">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                  <div className="truncate text-[11px] text-muted-foreground">
+                    {acc.brand} {acc.model}
+                    {acc.serialNumber && ` · S/N: ${acc.serialNumber}`}
+                    {acc.installedDate && ` · ติดตั้ง: ${acc.installedDate}`}
                   </div>
                 </div>
-              )
-            })}
-
-            {/* ── Child Device rows (อุปกรณ์ในชุด — มีในระบบ) ── */}
-            {(childDevices ?? []).map((child, idx) => {
-              const canonical = normalizeStatus(child.status)
-              const position =
-                typeof child.setPosition === 'number' ? child.setPosition : idx + 1
-              return (
-                <div
-                  key={child.id}
-                  className="flex items-center gap-3 rounded-lg border border-slate-200 p-2.5 dark:border-slate-700"
-                >
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-teal-50 text-xs font-semibold text-teal-600 dark:bg-teal-950/40 dark:text-teal-300">
-                    #{position}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
-                        {child.assetCode}
-                      </span>
-                      <Badge variant="outline" className="px-1.5 py-0 text-[10px] bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-800">
-                        📦 ในชุด
-                      </Badge>
-                      <Badge className={`px-1.5 py-0 text-[10px] ${statusBadgeClassFor(canonical)}`}>
-                        {statusLabelFor(canonical)}
-                      </Badge>
-                    </div>
-                    <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                      {child.name}
-                    </div>
-                    <div className="truncate text-[11px] text-muted-foreground">
-                      {(child.brand || child.model) && (
-                        <span className="truncate">
-                          {child.brand ?? ''}
-                          {child.brand && child.model ? ' ' : ''}
-                          {child.model ?? ''}
-                        </span>
-                      )}
-                      {child.type && ` · ${child.type}`}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {onChildClick && (
-                      <Button
-                        size="ghost"
-                        variant="ghost"
-                        className="h-7 w-7 p-0"
-                        onClick={() => onChildClick(child.id)}
-                        title="เปิดรายละเอียดอุปกรณ์"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                    <Button
-                      size="ghost"
-                      variant="ghost"
-                      className="h-7 w-7 p-0 text-amber-600"
-                      onClick={() => handleUnlinkChild(child.id)}
-                      title="ถอดออกจากชุด (unlink)"
-                    >
-                      <Unlink className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                <div className="flex items-center gap-1">
+                  <Button size="ghost" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(acc)} title="แก้ไข">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="ghost"
+                    variant="ghost"
+                    className="h-7 w-7 p-0 text-[#f97316]"
+                    onClick={() => openAccessorySticker(acc, accessoryPosition)}
+                    disabled={!parentDevice}
+                    title="พิมพ์สติกเกอร์อุปกรณ์ต่อพ่วง"
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="ghost" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => handleDelete(acc.id)} title="ลบ">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
-              )
-            })}
+              </div>
+            )
+          })}
           </>
         )}
       </CardContent>

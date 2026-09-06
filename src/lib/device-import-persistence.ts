@@ -50,7 +50,9 @@ function toPrismaData(row: DeviceImportRow, actor: string) {
   const v = row.values
   const data: Record<string, unknown> = {
     assetCode: v.assetNo,
-    name: v.deviceType ?? 'Unknown', // name is required, fallback if missing
+    // CONSULTING-007: prefer explicit `name` field; fall back to deviceType
+    // (legacy contract behavior) when CSV omits the name column.
+    name: v.name ?? v.deviceType ?? 'Unknown',
     brand: v.brand ?? 'Unknown',
     model: v.model ?? 'Unknown',
     type: (v.deviceType ?? 'OTHER').toUpperCase(),
@@ -64,6 +66,9 @@ function toPrismaData(row: DeviceImportRow, actor: string) {
     floor: v.floor,
     purchaseDate: v.installDate,
     warrantyEnd: v.warrantyEnd,
+    // CONSULTING-007: warrantyMonths is now part of the contract; default
+    // to 12 (matches Prisma schema default) when CSV omits the column.
+    warrantyMonths: v.warrantyMonths ?? 12,
     vendor: v.vendor,
     contractNo: v.contractNo,
     costCenter: v.costCenter,

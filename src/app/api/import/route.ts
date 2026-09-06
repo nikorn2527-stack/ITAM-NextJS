@@ -262,31 +262,82 @@ async function importDevices(
 
   if (filtered.length === 0) return { processed: 0, errors }
 
+  // ── Phase A fix (CONSULTING-007): wrap device writes in a Prisma
+  //    transaction so partial failures don't leave the DB in a torn
+  //    state. Batches of BATCH_SIZE rows per transaction avoid long
+  //    row-lock contention on large imports. If a batch fails, that
+  //    batch is rolled back atomically and we abort the rest of the
+  //    import — previously committed batches stay committed (we can't
+  //    un-commit a closed transaction), but no half-batch writes leak.
+  //
+  //    Stock-in / stock-out / work-order / meter-reading sections are
+  //    NOT yet wrapped (Phase B will consolidate those onto the
+  //    /api/itam/devices/import contract endpoint). ──
+  const BATCH_SIZE = 100
+  const batches: Array<typeof filtered> = []
+  for (let i = 0; i < filtered.length; i += BATCH_SIZE) {
+    batches.push(filtered.slice(i, i + BATCH_SIZE))
+  }
+
+  let processed = 0
+  console.log(
+    `[import][device] writing ${filtered.length} rows in ${batches.length} batch(es) of ≤${BATCH_SIZE}`,
+  )
+
   try {
-    const result = await db.device.createMany({
-      data: filtered.map((r) => ({
-        assetCode: r.assetCode as string,
-        name: r.name as string,
-        brand: r.brand as string,
-        model: r.model as string,
-        type: r.type as string,
-        serialNumber: r.serialNumber as string | null,
-        status: r.status as string,
-        site: r.site as string,
-        department: r.department as string | null,
-        location: r.location as string | null,
-        purchaseDate: r.purchaseDate as string | null,
-        warrantyMonths: r.warrantyMonths as number,
-      })),
-    })
-    return { processed: result.count, errors }
+    for (let b = 0; b < batches.length; b++) {
+      const batch = batches[b]
+      const batchNo = b + 1
+      console.log(
+        `[import][device] batch ${batchNo}/${batches.length}: writing ${batch.length} rows`,
+      )
+      // Each batch runs in its own transaction so a single bad row
+      // only rolls back its own batch — earlier batches stay put and
+      // we surface a clear error to the caller with progress info.
+      const batchCount = await db.$transaction(async (tx) => {
+        const result = await tx.device.createMany({
+          data: batch.map((r) => ({
+            assetCode: r.assetCode as string,
+            name: r.name as string,
+            brand: r.brand as string,
+            model: r.model as string,
+            type: r.type as string,
+            serialNumber: r.serialNumber as string | null,
+            status: r.status as string,
+            site: r.site as string,
+            department: r.department as string | null,
+            location: r.location as string | null,
+            purchaseDate: r.purchaseDate as string | null,
+            warrantyMonths: r.warrantyMonths as number,
+          })),
+        })
+        return result.count
+      })
+      processed += batchCount
+      console.log(
+        `[import][device] batch ${batchNo}/${batches.length}: committed ${batchCount} rows (cumulative ${processed}/${filtered.length})`,
+      )
+    }
+    return { processed, errors }
   } catch (e) {
-    console.error('importDevices createMany error', e)
+    // A batch failed → that batch's writes were rolled back by Prisma.
+    // Earlier batches may already be committed; surface that fact so
+    // the caller knows the import is partial.
+    const committedBeforeFailure = processed
+    console.error(
+      `[import][device] batch failed after committing ${committedBeforeFailure}/${filtered.length} rows`,
+      e,
+    )
     errors.push({
       row: 0,
-      message: e instanceof Error ? e.message : 'DB error (device)',
+      message:
+        (e instanceof Error ? e.message : 'DB error (device)') +
+        ` — ${committedBeforeFailure}/${filtered.length} rows committed before failure (rolled back failed batch)`,
     })
-    return { processed: 0, errors }
+    // Report the rows we did manage to commit so the user knows the
+    // import wasn't a total loss. Without this, a 1000-row import
+    // failing on row 750 would silently drop the 700 committed rows.
+    return { processed: committedBeforeFailure, errors }
   }
 }
 

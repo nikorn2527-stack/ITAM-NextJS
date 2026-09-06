@@ -1,3 +1,31 @@
+// DEAD CODE — never rendered. See CONSULTING-PLAN-TEMPLATES-IMPORT-SETTINGS-007.md
+// for migration plan.
+//
+// ── CONSULTING-007 verification notes ────────────────────────────────────
+// This file is NOT fully dead — it has THREE named exports, only ONE of
+// which is dead:
+//   • `SettingsPageV2` (line ~1419) — DEAD.
+//     Dynamically imported in `src/app/home-client.tsx` lines 98-100:
+//       const SettingsPageV2 = dynamic(() =>
+//         import('@/components/itam/settings-page-v2').then((m) => m.SettingsPageV2))
+//     But never rendered — there is no `<SettingsPageV2 />` JSX usage
+//     anywhere in the codebase. The dynamic import is leftover scaffolding
+//     from when a SettingsPageV2 tab was being prototyped.
+//   • `AssetPatternTab` — ACTIVE. Rendered by itam-settings.tsx line 726:
+//       {tab === 'number-patterns' && <AssetPatternTab />}
+//   • `WoPatternTab` — ACTIVE. Rendered by itam-settings.tsx line 728:
+//       {tab === 'wo-patterns' && <WoPatternTab />}
+//
+// Safe-removal plan:
+//   1. Delete the `SettingsPageV2` function (lines ~1419 to end of file).
+//   2. Delete the dead dynamic-import lines in home-client.tsx (98-100).
+//   3. Keep AssetPatternTab + WoPatternTab in this file (or split them
+//      into their own modules — out of scope here).
+//   4. After the SettingsPageV2 export is removed, this comment can be
+//      deleted and the file renamed to e.g. `settings-patterns.tsx`
+//      to reflect its new role as the patterns-only module.
+// ── End CONSULTING-007 verification notes ────────────────────────────────
+
 'use client'
 
 import * as React from 'react'

@@ -204,6 +204,25 @@ export const TEMPLATE_VARIABLES: VariableMeta[] = [
   { key: 'model', label: 'รุ่น', group: 'อุปกรณ์' },
   { key: 'serial', label: 'S/N', group: 'อุปกรณ์' },
   { key: 'productName', label: 'ชื่อสินค้า', group: 'อุปกรณ์' },
+  // ── CONSULTING-007: Device field group 1 — "ต้องมีเร็วสุด" (priority) ──
+  // Keys use `device` prefix where they'd otherwise collide with work-order
+  // fields (e.g. `status` is the WO status; `deviceStatus` is the device
+  // status). Interpolation is case-sensitive + key-exact, so this avoids
+  // ambiguity in templates that mix WO + device context.
+  { key: 'deviceStatus', label: 'สถานะอุปกรณ์', group: 'อุปกรณ์' },
+  { key: 'deviceType', label: 'ประเภทอุปกรณ์', group: 'อุปกรณ์' },
+  { key: 'currentAssignee', label: 'ผู้ใช้งานปัจจุบัน', group: 'อุปกรณ์' },
+  { key: 'warrantyEnd', label: 'วันหมดประกัน', group: 'อุปกรณ์' },
+  // ── CONSULTING-007: Device field group 2 — "เอกสารครุภัณฑ์" ──
+  { key: 'purchaseDate', label: 'วันที่ซื้อ', group: 'อุปกรณ์' },
+  { key: 'purchasePrice', label: 'ราคาทุน', group: 'อุปกรณ์' },
+  { key: 'vendor', label: 'ผู้จำหน่าย', group: 'อุปกรณ์' },
+  { key: 'contractNo', label: 'เลขที่สัญญา', group: 'อุปกรณ์' },
+  // ── CONSULTING-007: Device field group 3 — "IT asset label" ──
+  { key: 'ip', label: 'IP Address', group: 'อุปกรณ์' },
+  { key: 'mac', label: 'MAC Address', group: 'อุปกรณ์' },
+  { key: 'floor', label: 'ชั้น', group: 'อุปกรณ์' },
+  { key: 'room', label: 'ห้อง', group: 'อุปกรณ์' },
   // Stock
   { key: 'quantity', label: 'จำนวน', group: 'สต็อก' },
   { key: 'unit', label: 'หน่วย', group: 'สต็อก' },
@@ -235,6 +254,24 @@ export interface TemplateRenderData {
   model?: string
   serial?: string
   productName?: string
+  // ── CONSULTING-007: Device fields (12 new) ─────────────────────────
+  // All optional — populated by /api/templates/[id]/render when a
+  // workOrderId is supplied and the WO has a linked device. For the
+  // preview-only path (no WO), SAMPLE_DATA below provides placeholder
+  // values so the editor preview shows realistic content.
+  deviceStatus?: string
+  deviceType?: string
+  currentAssignee?: string
+  warrantyEnd?: string // formatted Thai date string
+  purchaseDate?: string // formatted Thai date string
+  purchasePrice?: string // formatted "฿1,234.56" string
+  vendor?: string
+  contractNo?: string
+  ip?: string
+  mac?: string
+  floor?: string
+  room?: string
+  // ── End CONSULTING-007 device fields ──────────────────────────────
   quantity?: string
   unit?: string
   totalPrice?: string
@@ -265,6 +302,20 @@ export const SAMPLE_DATA: TemplateRenderData = {
   model: 'LaserJet Pro M404',
   serial: 'VNB2345678',
   productName: 'เครื่องปริ้นเลเซอร์ HP',
+  // ── CONSULTING-007: 12 device fields (sample values for preview) ──
+  deviceStatus: 'Active',
+  deviceType: 'PRINTER',
+  currentAssignee: 'คุณสมชาย บัญชีการ',
+  warrantyEnd: new Date('2027-08-12').toLocaleDateString('th-TH'),
+  purchaseDate: new Date('2024-08-12').toLocaleDateString('th-TH'),
+  purchasePrice: '฿15,500.00',
+  vendor: 'บริษัท คอมเทค จำกัด',
+  contractNo: 'CT-2024-00827',
+  ip: '192.168.1.231',
+  mac: 'A4:5E:60:8C:23:17',
+  floor: '4',
+  room: '401',
+  // ── End CONSULTING-007 device fields ──
   quantity: '1',
   unit: 'เครื่อง',
   totalPrice: '5,500.00',
