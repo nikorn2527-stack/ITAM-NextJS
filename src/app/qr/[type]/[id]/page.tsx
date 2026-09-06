@@ -25,7 +25,7 @@
 
 import * as React from 'react'
 import { useParams, useSearchParams, useRouter } from 'next/navigation'
-import { Loader2, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle, CheckCircle2, Wrench, Eye, Gauge, Printer as PrinterIcon, ArrowLeftRight, ShieldCheck } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
 import {
@@ -60,6 +60,88 @@ interface ResolvedDevice {
   shortId: string
 }
 
+// ── Extended QrAction with checkin ──
+type StaffAction = QrAction | 'checkin'
+
+// ── Staff Action Selector Component ────────────────────────────────────
+function StaffActionSelector({
+  device,
+  defaultAction,
+  onSelect,
+}: {
+  device: ResolvedDevice
+  defaultAction: QrAction
+  onSelect: (action: StaffAction) => void
+}) {
+  const actions: { value: StaffAction; label: string; icon: typeof Wrench; color: string }[] = [
+    { value: 'repair', label: 'แจ้งซ่อม', icon: Wrench, color: 'text-orange-600 bg-orange-50 dark:bg-orange-950/30' },
+    { value: 'view', label: 'ดูข้อมูล', icon: Eye, color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/30' },
+    { value: 'meter', label: 'จดมิเตอร์', icon: Gauge, color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/30' },
+    { value: 'transfer', label: 'ย้ายอุปกรณ์', icon: ArrowLeftRight, color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/30' },
+    { value: 'sticker', label: 'พิมพ์สติกเกอร์', icon: PrinterIcon, color: 'text-slate-600 bg-slate-50 dark:bg-slate-800/50' },
+    { value: 'checkin', label: 'เช็คอินปฏิบัติงาน', icon: ShieldCheck, color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30' },
+  ]
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-4 px-3 sm:py-8 sm:px-4">
+      <div className="mx-auto max-w-md space-y-4">
+        {/* Device info header */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/40">
+              <CheckCircle2 className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {device.name || 'อุปกรณ์'}
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {device.brand} {device.model}
+              </p>
+              <p className="mt-0.5 font-mono text-xs text-[#f97316]">
+                {device.assetCode}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Action selector */}
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
+            เลือกการดำเนินการ
+          </h2>
+          <div className="grid grid-cols-2 gap-2">
+            {actions.map((a) => {
+              const Icon = a.icon
+              const isDefault = a.value === defaultAction
+              return (
+                <button
+                  key={a.value}
+                  onClick={() => onSelect(a.value)}
+                  className={cn(
+                    'flex flex-col items-center gap-2 rounded-lg border p-3 text-xs font-medium transition-colors',
+                    isDefault
+                      ? 'border-[#f97316] bg-orange-50 dark:bg-orange-950/20'
+                      : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50',
+                  )}
+                >
+                  <div className={cn('flex h-10 w-10 items-center justify-center rounded-full', a.color)}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <span className="text-slate-700 dark:text-slate-200">{a.label}</span>
+                  {isDefault && (
+                    <span className="text-[10px] text-[#f97316]">แนะนำ</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SmartQrRouterPage() {
   // Wrap in Suspense because useSearchParams must be inside a Suspense
   // boundary during static generation, otherwise `next build` fails.
@@ -90,7 +172,7 @@ function SmartQrRouterInner() {
   const id = params.id
 
   const [staffStatus, setStaffStatus] = React.useState<
-    'loading' | 'success' | 'error' | 'unauthorized'
+    'loading' | 'success' | 'error' | 'unauthorized' | 'action_select'
   >('loading')
   const [staffDevice, setStaffDevice] = React.useState<ResolvedDevice | null>(null)
 
@@ -181,40 +263,27 @@ function SmartQrRouterInner() {
         })
         setStaffStatus('success')
 
-        // Route based on action
-        setTimeout(() => {
-          if (cancelled) return
-          switch (action) {
-            case 'repair':
-              setPendingDeviceId(result.deviceId)
-              setActivePage('itam-work-orders')
-              toast.success(`สแกนสำเร็จ — เปิดหน้าแจ้งซ่อม`)
-              break
-            case 'view':
-              setPendingDeviceId(result.deviceId)
-              setActivePage('itam-devices')
-              toast.success(`สแกนสำเร็จ — เปิดข้อมูลอุปกรณ์`)
-              break
-            case 'meter':
-              setPendingDeviceId(result.deviceId)
-              setActivePage('itam-meter-keyboard')
-              toast.success(`สแกนสำเร็จ — เปิดหน้าจดมิเตอร์`)
-              break
-            case 'sticker':
-              setPendingDeviceId(result.deviceId)
-              setActivePage('itam-devices')
-              toast.info(`สแกนสำเร็จ — กดปุ่มพิมพ์สติกเกอร์เพื่อพิมพ์`)
-              break
-            case 'transfer':
-              setPendingDeviceId(result.deviceId)
-              setActivePage('itam-devices')
-              toast.success(`สแกนสำเร็จ — เปิดหน้าย้ายอุปกรณ์`)
-              break
-            default:
-              setActivePage('itam-devices')
-          }
-          router.push('/')
-        }, 1200)
+        // ── Staff Action Selector ──
+        // Instead of auto-redirecting based on the QR's encoded action,
+        // show an action selector so the technician can choose what to do.
+        // The encoded action is pre-selected but they can change it.
+        // (If action=view, still auto-redirect to device detail after a moment.)
+        if (action !== 'view') {
+          // Show action selector — user picks what to do
+          setTimeout(() => {
+            if (cancelled) return
+            setStaffStatus('action_select')
+          }, 800)
+        } else {
+          // view → auto-redirect to device detail
+          setTimeout(() => {
+            if (cancelled) return
+            setPendingDeviceId(result.deviceId)
+            setActivePage('itam-devices')
+            toast.success(`สแกนสำเร็จ — เปิดข้อมูลอุปกรณ์`)
+            router.push('/')
+          }, 1200)
+        }
       } catch (err) {
         if (cancelled) return
         console.error('[Smart QR] resolve failed:', err)
@@ -294,6 +363,51 @@ function SmartQrRouterInner() {
         />
       )
     }
+
+    // ── Staff Action Selector ──
+    // Technician scans QR → sees device info + action menu → picks what to do
+    if (staffStatus === 'action_select' && staffDevice) {
+      return (
+        <StaffActionSelector
+          device={staffDevice}
+          defaultAction={action}
+          onSelect={(selectedAction) => {
+            setPendingDeviceId(staffDevice.deviceId)
+            switch (selectedAction) {
+              case 'repair':
+                setActivePage('itam-work-orders')
+                toast.success(`เปิดหน้าแจ้งซ่อม`)
+                break
+              case 'view':
+                setActivePage('itam-devices')
+                toast.success(`เปิดข้อมูลอุปกรณ์`)
+                break
+              case 'meter':
+                setActivePage('itam-meter-keyboard')
+                toast.success(`เปิดหน้าจดมิเตอร์`)
+                break
+              case 'sticker':
+                setActivePage('itam-devices')
+                toast.info(`กดปุ่มพิมพ์สติกเกอร์เพื่อพิมพ์`)
+                break
+              case 'transfer':
+                setActivePage('itam-devices')
+                toast.success(`เปิดหน้าย้ายอุปกรณ์`)
+                break
+              case 'checkin':
+                // Check-in: confirm technician is on-site
+                toast.success(`✅ ยืนยันเข้าปฏิบัติงานที่อุปกรณ์นี้แล้ว`)
+                setActivePage('itam-devices')
+                break
+              default:
+                setActivePage('itam-devices')
+            }
+            router.push('/')
+          }}
+        />
+      )
+    }
+
     return (
       <FullPageMessage
         icon={Loader2}
