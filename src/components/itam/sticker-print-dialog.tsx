@@ -167,12 +167,23 @@ function deviceToStickerData(d: Device): StickerDeviceData {
     model: d.model ?? null,
     building: d.building ?? null,
     floor: d.floor ?? null,
+    room: (d as Record<string, unknown>).room as string | null ?? null,
     department: d.department ?? null,
     departmentCode: d.departmentCode ?? null,
     location: d.location ?? null,
     site: d.site ?? null,
     contractNo: d.contractNo ?? null,
     vendor: d.vendor ?? null,
+    status: (d as Record<string, unknown>).status as string | null ?? null,
+    currentAssignee: (d as Record<string, unknown>).currentAssignee as string | null ?? null,
+    warrantyEnd: (d as Record<string, unknown>).warrantyEnd as string | null ?? null,
+    purchaseDate: (d as Record<string, unknown>).purchaseDate as string | null ?? null,
+    purchasePrice: (d as Record<string, unknown>).purchasePrice as string | number | null ?? null,
+    ip: (d as Record<string, unknown>).ip as string | null ?? null,
+    mac: (d as Record<string, unknown>).mac as string | null ?? null,
+    // licenses will be fetched separately by the API render route;
+    // for client-side preview, we leave it empty (SAMPLE_DEVICE has them)
+    licenses: [],
   }
 }
 

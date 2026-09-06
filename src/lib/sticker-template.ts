@@ -110,6 +110,21 @@ export const STICKER_VARIABLES: string[] = [
   '{{Ip}}',
   '{{Mac}}',
   '{{QrUrl}}',
+  // License variables (auto-generated based on device's licenses)
+  '{{LicenseCount}}',
+  '{{LicenseList}}',
+  '{{License1_Software}}',
+  '{{License1_Key}}',
+  '{{License1_Type}}',
+  '{{License1_Expiry}}',
+  '{{License2_Software}}',
+  '{{License2_Key}}',
+  '{{License2_Type}}',
+  '{{License2_Expiry}}',
+  '{{License3_Software}}',
+  '{{License3_Key}}',
+  '{{License3_Type}}',
+  '{{License3_Expiry}}',
 ]
 
 // ─── Sample device used by the editor Preview modal ───────────────────────
@@ -124,12 +139,33 @@ export const SAMPLE_DEVICE: StickerDeviceData = {
   model: 'LaserJet Pro M404',
   building: 'อาคาร A',
   floor: '1',
+  room: 'ห้อง 101',
   department: 'ฝ่ายเทคโนโลยีสารสนเทศ',
   departmentCode: 'IT-001',
   location: 'ห้องประชุม 1',
   site: 'สำนักงานใหญ่',
   contractNo: 'CTR-2025-001',
   vendor: 'Your Vendor Co.,Ltd',
+  status: 'Active',
+  currentAssignee: 'คุณสมชาย',
+  warrantyEnd: '2025-12-31',
+  purchaseDate: '2024-01-15',
+  purchasePrice: '15000',
+  ip: '192.168.1.10',
+  mac: 'AA:BB:CC:DD:EE:FF',
+  // Sample licenses for {{LicenseList}} and {{LicenseN_*}} variables
+  licenses: [
+    { software: 'Microsoft Office 365', licenseKey: 'XXXX-XXXX-XXXX', licenseType: 'Subscription', expiryDate: '2025-12-31' },
+    { software: 'Adobe Acrobat Pro', licenseKey: 'YYYY-YYYY-YYYY', licenseType: 'Volume', expiryDate: '2026-06-30' },
+  ],
+}
+
+// ─── License data for multi-license sticker variables ───────────────────
+export interface StickerLicenseData {
+  software: string
+  licenseKey: string | null
+  licenseType: string | null
+  expiryDate: string | null
 }
 
 // ─── Device data shape used for variable substitution ────────────────────
@@ -158,6 +194,8 @@ export interface StickerDeviceData {
   purchasePrice: string | number | null
   ip: string | null
   mac: string | null
+  /** Licenses associated with this device (for {{LicenseList}}, {{LicenseN_*}}) */
+  licenses?: StickerLicenseData[]
 }
 
 // ─── ID generator ────────────────────────────────────────────────────────
@@ -668,6 +706,21 @@ export function resolveStickerCanvas(
   return { width: preset.width, height: preset.height, unit: 'mm' }
 }
 
+// ─── Build License1-3 variables from device.licenses array ─────────────
+function buildLicenseVars(licenses: StickerLicenseData[] | undefined): Record<string, string> {
+  const v: Record<string, string> = {}
+  if (!licenses || licenses.length === 0) return v
+  for (let i = 0; i < Math.min(3, licenses.length); i++) {
+    const lic = licenses[i]
+    const n = i + 1
+    v[`{{License${n}_Software}}`] = lic.software || ''
+    v[`{{License${n}_Key}}`] = lic.licenseKey || ''
+    v[`{{License${n}_Type}}`] = lic.licenseType || ''
+    v[`{{License${n}_Expiry}}`] = lic.expiryDate || ''
+  }
+  return v
+}
+
 // ─── Variable substitution ────────────────────────────────────────────────
 function escapeHtml(s: string): string {
   return s
@@ -718,6 +771,13 @@ export function substituteVariables(
     '{{QrUrl}}': device?.id
       ? generateStickerQrData('d', device.id, 'repair')
       : device?.assetCode || '',
+    // ── License variables (auto-generated from device.licenses) ──
+    '{{LicenseCount}}': device?.licenses?.length ? String(device.licenses.length) : '0',
+    '{{LicenseList}}': device?.licenses?.length
+      ? device.licenses.map((l, i) => `${i + 1}. ${l.software}${l.licenseKey ? ` (${l.licenseKey})` : ''}${l.expiryDate ? ` หมดอายุ: ${l.expiryDate}` : ''}`).join('\n')
+      : '',
+    // License1-3: auto-generate from device.licenses array
+    ...buildLicenseVars(device?.licenses),
   }
   let out = text
   for (const [k, val] of Object.entries(v)) {
