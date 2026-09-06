@@ -92,6 +92,7 @@ export const STICKER_VARIABLES: string[] = [
   '{{Model}}',
   '{{Building}}',
   '{{Floor}}',
+  '{{Room}}',
   '{{Department}}',
   '{{DepartmentCode}}',
   '{{Location}}',
@@ -101,10 +102,13 @@ export const STICKER_VARIABLES: string[] = [
   '{{hotline}}',
   '{{footerNote}}',
   '{{lineOA}}',
-  // Smart QR URL — encodes /qr/d/<shortId>?action=repair so phone cameras
-  // open the ITAM repair page directly when scanned. Use this in the QR
-  // element's `content` field (replaces the legacy {{AssetNo}} which only
-  // showed plain text on scan).
+  '{{DeviceStatus}}',
+  '{{CurrentAssignee}}',
+  '{{WarrantyEnd}}',
+  '{{PurchaseDate}}',
+  '{{PurchasePrice}}',
+  '{{Ip}}',
+  '{{Mac}}',
   '{{QrUrl}}',
 ]
 
@@ -140,12 +144,20 @@ export interface StickerDeviceData {
   model: string | null
   building: string | null
   floor: string | null
+  room: string | null
   department: string | null
   departmentCode: string | null
   location: string | null
   site: string | null
   contractNo: string | null
   vendor: string | null
+  status: string | null
+  currentAssignee: string | null
+  warrantyEnd: string | null
+  purchaseDate: string | null
+  purchasePrice: string | number | null
+  ip: string | null
+  mac: string | null
 }
 
 // ─── ID generator ────────────────────────────────────────────────────────
@@ -686,6 +698,7 @@ export function substituteVariables(
     '{{Model}}': device?.model || '',
     '{{Building}}': device?.building || '',
     '{{Floor}}': device?.floor || '',
+    '{{Room}}': device?.room || '',
     '{{Department}}': device?.department || '',
     '{{DepartmentCode}}': device?.departmentCode || '',
     '{{Location}}': device?.location || '',
@@ -695,10 +708,13 @@ export function substituteVariables(
     '{{hotline}}': settings.hotline || '',
     '{{footerNote}}': settings.footerNote || '',
     '{{lineOA}}': settings.lineOALink || '',
-    // Smart QR URL — encode /qr/d/<shortId>?action=repair so phone cameras
-    // open the ITAM repair page on scan (vs. {{AssetNo}} which shows plain
-    // text on scan). Falls back to assetCode if device.id is missing (e.g.
-    // preview without a real device loaded).
+    '{{DeviceStatus}}': device?.status || '',
+    '{{CurrentAssignee}}': device?.currentAssignee || '',
+    '{{WarrantyEnd}}': device?.warrantyEnd || '',
+    '{{PurchaseDate}}': device?.purchaseDate || '',
+    '{{PurchasePrice}}': device?.purchasePrice != null ? `฿${Number(device.purchasePrice).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '',
+    '{{Ip}}': device?.ip || '',
+    '{{Mac}}': device?.mac || '',
     '{{QrUrl}}': device?.id
       ? generateStickerQrData('d', device.id, 'repair')
       : device?.assetCode || '',
