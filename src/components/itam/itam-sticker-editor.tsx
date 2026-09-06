@@ -202,12 +202,14 @@ function WorkspaceElement({
   exceedsBounds,
   onMouseDown,
   onResizeMouseDown,
+  settings,
 }: {
   el: StickerElement
   selected: boolean
   exceedsBounds: boolean
   onMouseDown: (e: React.MouseEvent, id: string) => void
   onResizeMouseDown: (e: React.MouseEvent, id: string) => void
+  settings: StickerSettings | null
 }) {
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -1085,6 +1087,7 @@ export function ItamStickerEditor() {
                             exceedsBounds={elementExceedsBounds(el, draft.canvas)}
                             onMouseDown={onElementMouseDown}
                             onResizeMouseDown={onResizeMouseDown}
+                            settings={settings ?? null}
                           />
                         ))}
                       {/* Alignment guides (dashed lines) — Apps Script parity */}
