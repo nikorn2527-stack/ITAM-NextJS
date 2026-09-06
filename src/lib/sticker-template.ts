@@ -858,12 +858,12 @@ export function buildPrintDocument(
   const margin = 8
 
   const mode: StickerPageSizeMode = options.pageSizeMode ?? 'auto'
-  // Auto: canvas-as-page when sticker area >= A5 area (148 × 210 = 31,080 mm²).
-  // This catches A4, A5, and any custom size that's "page-like". Smaller
-  // label sizes go to A4-grid mode.
-  const stickerArea = width * height
-  const useCanvasAsPage =
-    mode === 'canvas' || (mode === 'auto' && stickerArea >= 148 * 210)
+  // ALWAYS use canvas-as-page mode: each sticker prints on its own page
+  // sized exactly to the sticker's canvas dimensions. This matches the
+  // old Apps Script app behavior and works correctly with label printers
+  // (Brother PT-P950NW etc.) which expect the page size to match the
+  // label size.
+  const useCanvasAsPage = true
 
   let pageWidthMm: number
   let pageHeightMm: number
