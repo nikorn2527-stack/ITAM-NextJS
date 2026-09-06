@@ -113,6 +113,47 @@ interface Props {
   dialogDescription?: React.ReactNode
 }
 
+// ─── Print via hidden iframe (no new window/tab) ────────────────────────
+// This matches the behavior of the old Apps Script app — the browser's
+// print dialog opens directly without opening a new tab/window.
+function printViaIframe(html: string) {
+  if (typeof document === 'undefined') return
+  // Remove any existing print iframe
+  const existing = document.getElementById('sticker-print-iframe')
+  if (existing) existing.remove()
+  // Create hidden iframe
+  const iframe = document.createElement('iframe')
+  iframe.id = 'sticker-print-iframe'
+  iframe.style.position = 'fixed'
+  iframe.style.right = '0'
+  iframe.style.bottom = '0'
+  iframe.style.width = '0'
+  iframe.style.height = '0'
+  iframe.style.border = '0'
+  iframe.style.opacity = '0'
+  document.body.appendChild(iframe)
+  const doc = iframe.contentWindow?.document
+  if (!doc) {
+    console.error('[printViaIframe] cannot access iframe document')
+    return
+  }
+  doc.open()
+  doc.write(html)
+  doc.close()
+  // Give the browser a tick to layout + load QR images
+  setTimeout(() => {
+    try {
+      iframe.contentWindow?.focus()
+      iframe.contentWindow?.print()
+      // Remove iframe after print dialog closes (delay to let it finish)
+      setTimeout(() => iframe.remove(), 1000)
+    } catch (err) {
+      console.error('[printViaIframe] print failed:', err)
+      iframe.remove()
+    }
+  }, 500)
+}
+
 // ─── Device → StickerDeviceData ──────────────────────────────────────────
 function deviceToStickerData(d: Device): StickerDeviceData {
   return {
@@ -472,24 +513,9 @@ export function StickerPrintDialog({
 
       const html = buildPrintDocument(stickersHtml, template, cols)
 
-      const win = window.open('', '_blank')
-      if (!win) {
-        toast.error('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ — กรุณาอนุญาตป๊อปอัป')
-        setPrinting(false)
-        return
-      }
-      win.document.open()
-      win.document.write(html)
-      win.document.close()
-      // Give the browser a tick to layout before printing
-      setTimeout(() => {
-        try {
-          win.focus()
-          win.print()
-        } catch (err) {
-          console.error('[sticker-print-dialog]', err)
-        }
-      }, 350)
+      // Use a hidden iframe to print without opening a new window/tab.
+      // This matches the behavior of the old Apps Script app (no popup).
+      printViaIframe(html)
 
       // Log audit (fire-and-forget)
       try {
