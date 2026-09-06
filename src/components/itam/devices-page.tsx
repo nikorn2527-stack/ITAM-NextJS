@@ -75,12 +75,10 @@ import {
   Search,
   Download,
   Upload,
-  Tag,
   PackageOpen,
   X,
   ArrowRight,
   History,
-  QrCode,
   ChevronLeft,
   ChevronRight,
   Sparkles,
@@ -96,6 +94,8 @@ import {
   Clock,
   ChevronsUpDown,
   Check,
+  Printer,
+  Layers,
 } from 'lucide-react'
 import {
   type Device,
@@ -119,6 +119,18 @@ import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
 import { PaginationBar } from './pagination-bar'
+import {
+  buildDefaultTemplate,
+  renderStickerFromTemplate,
+  buildPrintDocument,
+  DEFAULT_STICKER_SETTINGS,
+  type StickerDeviceData,
+  type StickerElement,
+  type StickerSettings,
+  type StickerTemplate,
+} from '@/lib/sticker-template'
+import { generateStickerQrData } from '@/lib/smart-qr'
+import QRCode from 'qrcode'
 
 /** Build fetch headers with the user's JWT (if logged in). */
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -400,6 +412,10 @@ export function DevicesPage() {
   const [importOpen, setImportOpen] = React.useState(false)
   const [stickerOpen, setStickerOpen] = React.useState(false)
   const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
+  // STICKER-PREVIEW-FIX-FINAL: per-row Printer-icon button calls
+  // `printSingleSticker(device)` directly (no dialog). Track which device
+  // is currently being rendered so we can show a spinner on its button.
+  const [printingSingleId, setPrintingSingleId] = React.useState<string | null>(null)
 
   // Bulk operations state
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
@@ -1437,6 +1453,170 @@ export function DevicesPage() {
       toast.error(e instanceof Error ? e.message : 'Export failed')
     } finally {
       setExporting(false)
+    }
+  }
+
+  // ── STICKER-PREVIEW-FIX-FINAL: Single-device sticker print ─────────────
+  //
+  // Per-row "Printer" icon calls this directly — no dialog, no device-list
+  // selection step. The sticker is rendered using the SAME template engine
+  // (renderStickerFromTemplate + buildPrintDocument) the dialog uses, so
+  // the printed output always matches what the live preview in the dialog
+  // shows.
+  //
+  // Template resolution priority:
+  //   1. Server-side active saved template (the one marked ⭐ in the editor)
+  //   2. First saved template if no `activeId` is recorded
+  //   3. buildDefaultTemplate() if the user has no saved templates at all
+  //
+  // Settings (companyName / hospitalName / hotline / footerNote / lineOALink)
+  // are fetched from /api/itam/sticker/settings so the single-print output
+  // matches what the dialog would produce. Falls back to the global org
+  // name + DEFAULT_STICKER_SETTINGS when the API is unavailable.
+  async function printSingleSticker(device: Device) {
+    if (printingSingleId) return
+    setPrintingSingleId(device.id)
+    try {
+      // 1) Fetch active saved template (server-side) + sticker settings.
+      const [tplRes, settingsRes] = await Promise.all([
+        fetch('/api/itam/sticker/templates'),
+        fetch('/api/itam/sticker/settings').catch(() => null),
+      ])
+      if (!tplRes.ok) throw new Error('โหลดเทมเพลตสติกเกอร์ไม่สำเร็จ')
+      const tplData = (await tplRes.json()) as {
+        templates: StickerTemplate[]
+        activeId: string | null
+      }
+      const active =
+        (tplData.activeId &&
+          tplData.templates.find((t) => t.id === tplData.activeId)) ||
+        tplData.templates.find((t) => !t.isDefault) ||
+        tplData.templates[0] ||
+        buildDefaultTemplate()
+      const template: StickerTemplate = active
+
+      // 2) Build StickerSettings — prefer sticker-specific server settings;
+      //    fall back to global org name + defaults when API is unavailable.
+      let stickerSettings: StickerSettings = {
+        ...DEFAULT_STICKER_SETTINGS,
+        companyName: settings?.orgName?.trim() || DEFAULT_STICKER_SETTINGS.companyName,
+        hospitalName: settings?.orgName?.trim() || DEFAULT_STICKER_SETTINGS.hospitalName,
+      }
+      if (settingsRes && settingsRes.ok) {
+        const j = (await settingsRes.json()) as { settings?: StickerSettings }
+        if (j.settings) {
+          stickerSettings = {
+            ...DEFAULT_STICKER_SETTINGS,
+            ...j.settings,
+            // Don't let an empty server value blank out the org name.
+            companyName:
+              (j.settings.companyName ?? '').trim() ||
+              settings?.orgName?.trim() ||
+              DEFAULT_STICKER_SETTINGS.companyName,
+            hospitalName:
+              (j.settings.hospitalName ?? '').trim() ||
+              settings?.orgName?.trim() ||
+              DEFAULT_STICKER_SETTINGS.hospitalName,
+          }
+        }
+      }
+
+      // 3) Build the per-device QR cache (honors the {{QrUrl}} Smart QR
+      //    substitution so phone cameras open the ITAM repair page).
+      const deviceData: StickerDeviceData = {
+        id: device.id,
+        assetCode: device.assetCode,
+        assetSiteCode: device.assetSiteCode ?? null,
+        serialNumber: device.serialNumber ?? null,
+        type: device.type ?? null,
+        brand: device.brand ?? null,
+        model: device.model ?? null,
+        building: device.building ?? null,
+        floor: device.floor ?? null,
+        department: device.department ?? null,
+        departmentCode: device.departmentCode ?? null,
+        location: device.location ?? null,
+        site: device.site ?? null,
+        contractNo: device.contractNo ?? null,
+        vendor: device.vendor ?? null,
+      }
+      const qrOverride = generateStickerQrData('d', device.id, 'repair')
+      const qrCache = new Map<string, string>()
+      for (const el of template.elements as readonly StickerElement[]) {
+        if (el.type !== 'qr') continue
+        const data =
+          (el.content ?? '').replace(/\{\{QrUrl\}\}/g, qrOverride) ||
+          device.assetCode
+        if (!data || qrCache.has(data)) continue
+        try {
+          const url = await QRCode.toDataURL(qrOverride, {
+            margin: 1,
+            width: 240,
+            errorCorrectionLevel: 'M',
+          })
+          qrCache.set(data, url)
+        } catch {
+          // skip on QR generation error
+        }
+      }
+
+      // 4) Render + open print window (1 sticker, cols=1 → 1 per page).
+      const { html: stickerHtml } = await renderStickerFromTemplate(
+        deviceData,
+        template,
+        stickerSettings,
+        { qrCache },
+      )
+      const html = buildPrintDocument([stickerHtml], template, 1)
+
+      const printWin = window.open('', '_blank')
+      if (!printWin) {
+        toast.error('กรุณาอนุญาตป๊อปอัปเพื่อเปิดหน้าพิมพ์')
+        return
+      }
+      printWin.document.open()
+      printWin.document.write(html)
+      printWin.document.close()
+      setTimeout(() => {
+        try {
+          printWin.focus()
+          printWin.print()
+        } catch (err) {
+          console.error('[printSingleSticker]', err)
+        }
+      }, 350)
+
+      // Fire-and-forget audit log.
+      try {
+        await fetch('/api/audit/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'PRINT',
+            entity: 'Device',
+            entityId: device.id,
+            summary: `พิมพ์สติกเกอร์อุปกรณ์เดี่ยว ${device.assetCode}`,
+            detail: {
+              count: 1,
+              deviceIds: [device.id],
+              canvasWidth: template.canvas.width,
+              canvasHeight: template.canvas.height,
+              savedTemplateId: template.id,
+              savedTemplateName: template.name,
+              single: true,
+            },
+          }),
+        })
+        await qc.invalidateQueries({ queryKey: ['audit'] })
+      } catch (err) {
+        console.error('[printSingleSticker]', err)
+      }
+
+      toast.success(`เตรียมสติกเกอร์ ${device.assetCode} สำหรับพิมพ์แล้ว`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'พิมพ์สติกเกอร์ไม่สำเร็จ')
+    } finally {
+      setPrintingSingleId(null)
     }
   }
 
@@ -3167,11 +3347,12 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                 variant="outline"
                 onClick={() => setStickerOpen(true)}
                 disabled={(devices ?? []).length === 0}
-                aria-label="พิมพ์สติกเกอร์"
+                aria-label="พิมพ์สติกเกอร์หลายเครื่อง"
+                title="เลือกอุปกรณ์หลายเครื่องแล้วพิมพ์เป็นชุด"
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
-                <Tag className="h-4 w-4" />
-                <span className="hidden sm:inline">พิมพ์สติกเกอร์</span>
+                <Layers className="h-4 w-4" />
+                <span className="hidden sm:inline">พิมพ์หลายเครื่อง</span>
               </Button>
               <Button
                 variant="outline"
@@ -3572,12 +3753,17 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           <Button
                             size="sm"
                             variant="outline"
-                onClick={() => setStickerOpen(true)}
-                            aria-label="พิมพ์สติกเกอร์"
-                            title="พิมพ์สติกเกอร์"
+                            onClick={() => printSingleSticker(d)}
+                            disabled={!!printingSingleId}
+                            aria-label="พิมพ์สติกเกอร์อุปกรณ์นี้"
+                            title="พิมพ์สติกเกอร์อุปกรณ์นี้ทันที (1 ใบ)"
                             className="h-7 gap-1 px-2 text-[11px] dark:bg-slate-800 dark:border-slate-700"
                           >
-                            <QrCode className="h-3.5 w-3.5" />
+                            {printingSingleId === d.id ? (
+                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Printer className="h-3.5 w-3.5" />
+                            )}
                             สติกเกอร์
                           </Button>
                         </div>

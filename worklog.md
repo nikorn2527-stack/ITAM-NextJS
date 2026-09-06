@@ -18397,3 +18397,126 @@ Fix H (1): `src/app/api/cron/sync-legacy/route.ts`.
 - **PM "due soon" includes overdue items.** A PM schedule whose `nextRunDate` is in the past still appears in `pmDueSoonItems`. This is so the daily report surfaces stale PM schedules that were never executed — silently dropping them would hide the problem.
 - **Prisma schema drift is a known issue.** Several pre-existing TS errors come from code that references fields (`warrantyExpiry`, `effectiveFrom`, `delta`, `cycleId`, `date`) that don't exist in the current `prisma/schema.prisma`. Either the schema needs to be updated to add these fields, or the code needs to be updated to use the actual field names. This is out of scope for this task — flagging it for the team.
 - **`stickersHtml` undefined in sticker-print-dialog.tsx** is a pre-existing bug from an in-progress merge (the `handlePrint` function references `stickersHtml` and `withQr` that are never declared in scope). This task did NOT fix it because the spec said to leave the `qrContentFor` fallback as-is. The bug should be fixed in a separate PR — the print flow likely needs to call `/api/itam/sticker/bulk-render` to get the rendered HTML, then pass it to `buildPrintDocument`.
+
+---
+
+## Task ID: STICKER-PREVIEW-FIX-FINAL
+
+**Agent:** critical-fix subagent (STICKER-PREVIEW-FIX-FINAL)
+**Task:** Fix the two sticker UX regressions the user filed — (1) the "พิมพ์สติกเกอร์" dialog preview didn't match the template the user designed (and the canvas size showed A4 instead of the user's 75.2 × 36 mm design), and (2) the per-row "สติกเกอร์" button in the Devices page opened the full multi-select dialog instead of printing that one device's sticker immediately.
+
+### Root cause
+
+#### Issue 1 — preview shows the wrong template + wrong canvas
+
+Three independent defects combined to produce the user-visible bug:
+
+1. **Stale localStorage prefs gated the auto-select (landmine).** The previous revision (STICKER-EDITOR-DEEP-REVIEW) introduced an `autoSelectAttempted` flag that ran ONCE per session. It only auto-selected the active saved template when `prefs.savedTemplateId === null` AND `prefs.templatePresetId === 'default'`. If the user had previously opened the dialog in another session and selected (say) the `a4` size preset or any non-default template preset, those prefs persisted in `localStorage['itam:sticker-print-prefs:v2']` and the auto-select was skipped forever after. The dialog then rendered whatever stale preset the prefs pointed at — which is exactly why the user saw an A4-sized preview with the minimal-template-ish layout (PPIT header + จ่าหน้าผู้รับสินค้า + Asset No. DEMO-COPIER-001 + QR) instead of their own 75.2 × 36 mm design.
+
+2. **Broken `withQr` / `stickersHtml` references in `handlePrint` (TS2304).** The previous-but-one revision (commit `4f21282` — "fix: sticker QR → Smart QR URL") left two unresolved identifiers in `handlePrint`:
+   - `if (withQr) { ... }` (line 412) — `withQr` was never declared, so the QR pre-generation loop was always skipped.
+   - `buildPrintDocument(stickersHtml, template, cols)` (line 438) — `stickersHtml` was never declared, so `stickersHtml.join('\n')` inside `buildPrintDocument` would have thrown `TypeError: Cannot read properties of undefined` the moment the user clicked "พิมพ์สติกเกอร์ (N ใบ)".
+   
+   The APPENDIX-D-C-F-H-FIXES worklog explicitly flagged this as a pre-existing bug to fix in a separate PR — this is that PR.
+
+3. **No mechanism to resync prefs to the server-side active template.** Even if the auto-select had run, it could only set `savedTemplateId` to a *string id*. There was no logic to detect when the active server template id had changed (e.g. user activated a different template in the editor since the last dialog open) and update prefs accordingly.
+
+#### Issue 2 — per-row button opened the full multi-select dialog
+
+In `devices-page.tsx`, both the toolbar `Tag`-icon button ("พิมพ์สติกเกอร์") AND the per-row `QrCode`-icon button ("สติกเกอร์") called `setStickerOpen(true)`, opening the full multi-select StickerPrintDialog. The user just wanted to print that one device's sticker immediately — no device list, no template picker.
+
+### Fixes applied
+
+#### Fix A — Dialog: always prefer the active saved template
+
+`src/components/itam/sticker-print-dialog.tsx`
+
+- Removed the `autoSelectAttempted` one-shot flag and the entire "only auto-select when prefs is empty + still on default preset" branch.
+- Added a `userOverrideRef = React.useRef(false)` that gates resync. The new effect (runs whenever `open`, `prefsLoaded`, `tplData`, `activeSavedId`, `prefs.savedTemplateId`, or `prefs.templatePresetId` change):
+  - If `!open || !prefsLoaded || !tplData || userOverrideRef.current` → no-op.
+  - Else computes `desiredSavedId = activeSavedId ?? null`:
+    - When `prefs.savedTemplateId !== desiredSavedId` → call `updatePrefs(...)` to resync. When clearing (no active template), it also resets `templatePresetId` to `'default'` so the user gets the default preset instead of whatever stale preset was in localStorage.
+    - Else if there's no active saved template but `templatePresetId !== 'default'`, also reset it to default.
+- Added a sibling effect that resets `userOverrideRef.current = false` whenever `open` transitions to `false` — so on the next dialog reopen, the resync runs again. (The user's manual override survives within one session but doesn't persist across dialog close→open cycles.)
+- `handleTemplateSelect` now sets `userOverrideRef.current = true` BEFORE applying the user's choice, so the manual selection survives the rest of the session.
+
+#### Fix B — Dialog: restore the `handlePrint` render loop
+
+`src/components/itam/sticker-print-dialog.tsx`
+
+- Removed the broken `if (withQr) { ... qrMap.set(d.id, url) ... }` block. The `withQr` toggle was always undefined so QR pre-generation never ran anyway. Whether a sticker has a QR code is controlled by the template itself (via `el.type === 'qr'` elements), so a separate toggle is unnecessary.
+- Restored the proper per-device render loop that was present before commit `4f21282`:
+  ```ts
+  const stickersHtml: string[] = []
+  for (const d of selectedDevices) {
+    const deviceData = deviceToStickerData(d)
+    const qrOverride = qrContentFor?.(d) ?? generateStickerQrData('d', d.id, 'repair')
+    const cache = await buildQrCacheForDevice(deviceData, template, settings, qrOverride)
+    const { html: stickerHtml } = await renderStickerFromTemplate(
+      deviceData, template, settings, { qrCache: cache },
+    )
+    stickersHtml.push(stickerHtml)
+  }
+  const html = buildPrintDocument(stickersHtml, template, cols)
+  ```
+  This uses the SAME `renderStickerFromTemplate` engine the live preview uses (line ~393 in the preview effect), guaranteeing preview ↔ print parity. The QR cache is built per-device using the APPENDIX-D Smart QR URL fallback (so phone cameras open the ITAM repair page on scan), with the `qrContentFor` prop (used by accessory stickers) still winning when supplied.
+- Both TS2304 errors are now resolved (`tsc --noEmit` no longer flags them).
+
+#### Fix C — Devices page: per-row Printer-icon button + batch button
+
+`src/components/itam/devices-page.tsx`
+
+- Added a new `printSingleSticker(device: Device)` async function (lines ~1476–1623). It:
+  1. Fetches the active saved template + sticker settings in parallel (`/api/itam/sticker/templates` + `/api/itam/sticker/settings`).
+  2. Resolves the template priority: `activeId` → first non-default → first → `buildDefaultTemplate()` (final fallback).
+  3. Builds `StickerSettings`, preferring the sticker-specific server settings; falls back to the global org name + `DEFAULT_STICKER_SETTINGS` when the API is unavailable. Empty `companyName`/`hospitalName` from the server are filled in from the global `settings.orgName` so we never print a blank header.
+  4. Builds a per-device QR cache honoring `{{QrUrl}}` substitution → Smart QR URL.
+  5. Renders the sticker HTML via `renderStickerFromTemplate` (same engine as the dialog).
+  6. Opens `window.open('', '_blank')`, writes `buildPrintDocument([stickerHtml], template, 1)` (cols=1 → 1 sticker per page), waits 350ms, then calls `printWin.print()`.
+  7. Fire-and-forgets an audit log (`PRINT` action with `single: true`).
+- Added a `printingSingleId` state to disable the per-row button (and show a `RefreshCw` spinner) while that device's sticker is being rendered.
+- Changed the per-row button:
+  - Was: `<QrCode>` icon, label "สติกเกอร์", `onClick={() => setStickerOpen(true)}` (opened the multi-select dialog).
+  - Now: `<Printer>` icon, label "สติกเกอร์", `onClick={() => printSingleSticker(d)}`, `disabled={!!printingSingleId}`. The icon swaps to `<RefreshCw className="animate-spin" />` while that specific row is rendering. Title: "พิมพ์สติกเกอร์อุปกรณ์นี้ทันที (1 ใบ)".
+- Changed the toolbar batch button:
+  - Was: `<Tag>` icon, label "พิมพ์สติกเกอร์".
+  - Now: `<Layers>` icon, label "พิมพ์หลายเครื่อง", title "เลือกอุปกรณ์หลายเครื่องแล้วพิมพ์เป็นชุด". Still calls `setStickerOpen(true)` to open the multi-select dialog (unchanged).
+- Removed unused `Tag` and `QrCode` imports (no other usages in this file). Added `Printer` and `Layers` to the lucide-react imports.
+- Added new imports from `@/lib/sticker-template`: `buildDefaultTemplate`, `renderStickerFromTemplate`, `buildPrintDocument`, `DEFAULT_STICKER_SETTINGS`, and types `StickerDeviceData`, `StickerElement`, `StickerSettings`, `StickerTemplate`. Added `generateStickerQrData` from `@/lib/smart-qr` and `QRCode` from `qrcode`.
+
+### Lint check
+
+- Baseline (before my changes): `1 error, 107 warnings` (the single error is the pre-existing `@typescript-eslint/no-require-imports` violation in `src/app/api/auth/oauth/apple/callback/route.ts:99` — unrelated to stickers).
+- After my changes: `1 error, 105 warnings` — SAME single pre-existing error. **2 warnings REMOVED** (the previous `autoSelectAttempted`-related setState-in-effect cascade was eliminated by replacing it with a ref-gated single effect that calls `updatePrefs`). **0 new lint errors, 0 new lint warnings introduced.**
+
+### TypeScript check (`bunx tsc --noEmit`)
+
+Baseline TS errors on my modified files:
+- `sticker-print-dialog.tsx`: 2 errors (TS2304 `withQr`, TS2304 `stickersHtml`) — both pre-existing, both now FIXED.
+- `devices-page.tsx`: 1 error (TS2345 `Device[]` vs `Record<string, unknown>[]` on line 1434 in `handleExport` — pre-existing in `downloadCsv(devices-...csv, rows, DEVICE_CSV_HEADERS)`, untouched by my changes; my added imports push it to line 1450).
+
+After my changes: only the 1 pre-existing `downloadCsv` error remains in `devices-page.tsx`. The 2 TS2304 errors in `sticker-print-dialog.tsx` are gone. **Net -2 TS errors.**
+
+### Files modified (2)
+
+1. `src/components/itam/sticker-print-dialog.tsx` — replaced the `autoSelectAttempted` one-shot with a `userOverrideRef`-gated resync effect (always prefer the active saved template on dialog open unless the user has manually overridden this session); restored the proper per-device render loop in `handlePrint` (fixes the TS2304 `withQr`/`stickersHtml` errors); made `handleTemplateSelect` set `userOverrideRef.current = true` so the manual choice survives within the session.
+2. `src/components/itam/devices-page.tsx` — added `printSingleSticker(device)` function; changed the per-row sticker button to call it directly (Printer icon, shows spinner while rendering); changed the toolbar batch button to use a Layers icon with label "พิมพ์หลายเครื่อง"; removed unused `Tag`/`QrCode` imports; added `Printer`/`Layers` icons + sticker-template/smart-qr/qrcode imports.
+
+### Behavior summary
+
+| User action | Before | After |
+| --- | --- | --- |
+| Open "พิมพ์สติกเกอร์" dialog with a stale `templatePresetId='a4'` in localStorage | Showed the A4 minimal preset (wrong template + wrong canvas) | Always renders the active saved template from the server (or default preset if no active saved template exists). The user's designed 75.2 × 36 mm template wins. |
+| Open dialog after activating a different template in the editor | Still showed the previously-active template (prefs were sticky) | Re-syncs to the newly-activated template on every dialog open |
+| Click "พิมพ์สติกเกอร์ (N ใบ)" button in the dialog | `TypeError: Cannot read properties of undefined (reading 'join')` from `buildPrintDocument` (because `stickersHtml` was undefined) | Renders each selected device's sticker via `renderStickerFromTemplate`, prints correctly |
+| Click per-row "สติกเกอร์" (Printer icon) button | Opened the multi-select dialog (user had to find the device again, then click Print) | Prints that device's sticker immediately using the active template — no dialog |
+| Click toolbar "พิมพ์หลายเครื่อง" (Layers icon) button | Opened the multi-select dialog (label was "พิมพ์สติกเกอร์") | Same behavior, clearer label "พิมพ์หลายเครื่อง" + Layers icon to distinguish from per-row print |
+
+### Notes for the team
+
+- **`userOverrideRef` is intentionally a ref, not state.** Setting it doesn't trigger a re-render — the new auto-select effect reads the latest value via the ref. Resetting it on dialog close (not on open) avoids a re-render storm when the dialog toggles.
+- **`printSingleSticker` calls `/api/itam/sticker/settings` to fetch the sticker-specific `companyName`/`hospitalName`/`hotline`/`footerNote`/`lineOALink`.** The dialog does NOT do this — it only uses the global org name. The single-print path is more accurate; the dialog should be updated to match in a follow-up if desired (currently out of scope).
+- **`printSingleSticker` opens `cols=1` (one sticker per page)** via `buildPrintDocument([stickerHtml], template, 1)`. For label-printer mode (canvas area < A5), `buildPrintDocument` enters A4-grid mode but with cols=1, so you'd still get 1 sticker per A4 sheet. For larger canvases (A4, A5, custom page-like sizes), it enters canvas-as-page mode (1 sticker per page). This matches the user's expectation of "print this one device's sticker".
+- **No template picker for single-print.** Per spec, the per-row button prints immediately using the active template. The user must use the editor's ⭐ button to set the active template. If they want to print with a different template, they should use the toolbar "พิมพ์หลายเกอร์" button which opens the dialog (where the template dropdown is available).
+- **Settings fetch failure is non-fatal.** If `/api/itam/sticker/settings` returns non-OK or rejects, `printSingleSticker` falls back to `DEFAULT_STICKER_SETTINGS` + the global `orgName` from `/api/settings`. The print still works — it just uses default hotline/footer text.
+- **Audit log entry includes `single: true`** so we can distinguish single-device prints from batch prints in the audit trail.

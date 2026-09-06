@@ -209,7 +209,6 @@ export function StickerPrintDialog({
     savedTemplateId: null,
   }))
   const [prefsLoaded, setPrefsLoaded] = React.useState(false)
-  const [autoSelectAttempted, setAutoSelectAttempted] = React.useState(false)
 
   React.useEffect(() => {
     if (!open || prefsLoaded) return
@@ -217,32 +216,63 @@ export function StickerPrintDialog({
     setPrefsLoaded(true)
   }, [open, prefsLoaded])
 
-  // Auto-select the active saved template on first open (only if the user
-  // hasn't already chosen a template — i.e. savedTemplateId is null AND the
-  // preset is still the default 'default'). This is the key UX fix: the
-  // sticker the user designed + marked active is now the default print option.
+  // ── Auto-select logic — STICKER-PREVIEW-FIX-FINAL ───────────────────────
+  //
+  // REQUIREMENT (from user complaint):
+  //   The dialog MUST always print the sticker template the user designed in
+  //   the editor and marked as active — not whatever preset the localStorage
+  //   prefs happened to remember from a previous session.
+  //
+  // The previous revision (STICKER-EDITOR-DEEP-REVIEW) only auto-selected the
+  // active saved template *once* per session AND only when prefs was empty +
+  // still on the default preset. That left a landmine: if the user previously
+  // selected an A4 preset (or a saved template that has since been deleted)
+  // the prefs would persist a stale `savedTemplateId` / `sizePresetId`, the
+  // auto-select would skip, and the preview would render whatever stale
+  // template was in localStorage — which is exactly the bug the user filed
+  // ("preview shows an A4 document with PPIT + จ่าหน้า + Asset No. +
+  // DEMO-COPIER-001, size is A4 not 75.2×36").
+  //
+  // New behavior:
+  //   - On every dialog open, we resync `prefs.savedTemplateId` to the
+  //     server-side active id (or clear it to fall back to the default
+  //     preset) — UNLESS the user has already manually picked a different
+  //     template via the dropdown THIS session.
+  //   - A `userOverrideThisSession` ref gates the resync so the user's
+  //     manual choice survives the open state flipping during one session.
+  //   - When the user closes & reopens the dialog, we resync again — the
+  //     active server template always wins eventually.
+  const userOverrideRef = React.useRef(false)
+
+  // Reset the per-session override flag whenever the dialog closes so that
+  // on the next open we resync to the active saved template again.
   React.useEffect(() => {
-    if (!open || !prefsLoaded || autoSelectAttempted) return
-    if (!savedTemplates.length || !activeSavedId) {
-      setAutoSelectAttempted(true)
-      return
+    if (!open) {
+      userOverrideRef.current = false
     }
-    if (prefs.savedTemplateId) {
-      setAutoSelectAttempted(true)
-      return
+  }, [open])
+
+  React.useEffect(() => {
+    if (!open || !prefsLoaded) return
+    if (!tplData) return
+    if (userOverrideRef.current) return
+
+    const desiredSavedId = activeSavedId ?? null
+    if (prefs.savedTemplateId !== desiredSavedId) {
+      // Resync to the server-side active template. When clearing (no active
+      // template), we also reset the preset id so the user gets the default
+      // preset, not whatever they happened to pick last time.
+      const patch: Partial<StickerPrintPrefs> =
+        desiredSavedId === null
+          ? { savedTemplateId: null, templatePresetId: 'default' }
+          : { savedTemplateId: desiredSavedId }
+      updatePrefs(patch)
+    } else if (desiredSavedId === null && prefs.templatePresetId !== 'default') {
+      // Even when there's no active saved template, ensure we fall back to
+      // the default preset (not a stale A4/minimal preset).
+      updatePrefs({ templatePresetId: 'default' })
     }
-    // Only auto-select if the user hasn't customized (still on 'default' preset).
-    if (prefs.templatePresetId !== 'default') {
-      setAutoSelectAttempted(true)
-      return
-    }
-    setPrefs((prev) => {
-      const next = { ...prev, savedTemplateId: activeSavedId }
-      saveStickerPrintPrefs(next)
-      return next
-    })
-    setAutoSelectAttempted(true)
-  }, [open, prefsLoaded, autoSelectAttempted, savedTemplates, activeSavedId, prefs.savedTemplateId, prefs.templatePresetId])
+  }, [open, prefsLoaded, tplData, activeSavedId, prefs.savedTemplateId, prefs.templatePresetId])
 
   function updatePrefs(patch: Partial<StickerPrintPrefs>) {
     setPrefs((prev) => {
@@ -404,26 +434,31 @@ export function StickerPrintDialog({
     }
     setPrinting(true)
     try {
-      // Pre-generate QR data URLs for each device if withQr is on.
-      // APPENDIX-D: default to the Smart QR URL (so phone cameras open the
-      // ITAM repair page on scan) instead of the raw assetCode. The
-      // `qrContentFor` prop (used by accessory stickers) still wins.
-      const qrMap = new Map<string, string>()
-      if (withQr) {
-        for (const d of selectedDevices) {
-          try {
-            const qrData =
-              qrContentFor?.(d) ?? generateStickerQrData('d', d.id, 'repair')
-            const url = await QRCode.toDataURL(qrData, {
-              margin: 1,
-              width: 200,
-              errorCorrectionLevel: 'M',
-            })
-            qrMap.set(d.id, url)
-          } catch {
-            // skip QR for this device on error
-          }
-        }
+      // STICKER-PREVIEW-FIX-FINAL: render each selected device's sticker HTML
+      // using the *same* template engine + canvas that the live preview used.
+      // The previous revision left `stickersHtml` and `withQr` as unresolved
+      // references (TypeScript TS2304) — the dialog's print button would
+      // crash at runtime the moment it was clicked. The fix restores the
+      // original render-each-device loop and always includes QR (whether a
+      // sticker has a QR element is controlled by the template itself, so a
+      // separate `withQr` toggle is no longer needed).
+      //
+      // APPENDIX-D: default the QR data to the Smart QR URL so phone cameras
+      // open the ITAM repair page on scan. The `qrContentFor` prop (used by
+      // accessory stickers) still wins when supplied.
+      const stickersHtml: string[] = []
+      for (const d of selectedDevices) {
+        const deviceData = deviceToStickerData(d)
+        const qrOverride =
+          qrContentFor?.(d) ?? generateStickerQrData('d', d.id, 'repair')
+        const cache = await buildQrCacheForDevice(deviceData, template, settings, qrOverride)
+        const { html: stickerHtml } = await renderStickerFromTemplate(
+          deviceData,
+          template,
+          settings,
+          { qrCache: cache },
+        )
+        stickersHtml.push(stickerHtml)
       }
 
       // STICKER-EDITOR-DEEP-REVIEW: compute proper cols for label sizes
@@ -519,6 +554,10 @@ export function StickerPrintDialog({
     : `preset:${prefs.templatePresetId}`
 
   function handleTemplateSelect(composite: string) {
+    // STICKER-PREVIEW-FIX-FINAL: a manual dropdown change means the user has
+    // overridden the auto-synced active template; we must NOT clobber their
+    // choice with the server's active id during this session.
+    userOverrideRef.current = true
     if (composite.startsWith('saved:')) {
       const id = composite.slice('saved:'.length)
       updatePrefs({ savedTemplateId: id })
