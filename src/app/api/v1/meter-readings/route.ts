@@ -2,6 +2,24 @@
  * /api/v1/meter-readings — list + create meter readings (v1 standardized shape).
  *
  * ════════════════════════════════════════════════════════════════════════
+ * METER ROUTE DECISION (Phase 4.6) — DO NOT MERGE
+ * ════════════════════════════════════════════════════════════════════════
+ * There are three meter-related route trees in this codebase. They look
+ * redundant but serve DISTINCT purposes — see the header comment in
+ * /api/meter/route.ts for the full table.
+ *
+ * This file is the EXTERNAL API (v1) — stable contract for third-party
+ * integrations. Uses the standardized `{ data, pagination, meta }`
+ * envelope via `@/lib/api/response`. Internally reuses the same write
+ * helpers (findValidPrevReading, assertMeterMonthWritable) as the main
+ * /api/itam/meter-readings route so business rules stay consistent.
+ *
+ * DO NOT collapse this with /api/itam/meter-readings/* — different
+ * auth helpers (requireApiAuth vs requireAuth), different response
+ * envelopes, different versioning promises.
+ * ════════════════════════════════════════════════════════════════════════
+ *
+ * ════════════════════════════════════════════════════════════════════════
  * GET /api/v1/meter-readings
  * ════════════════════════════════════════════════════════════════════════
  *   Auth: VIEW_DEVICES

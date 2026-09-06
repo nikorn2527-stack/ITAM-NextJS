@@ -7,6 +7,7 @@ import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag, demoFilter } from '@/lib/demo-mode'
 import { withRetryOnUnique } from '@/lib/retry-unique'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { STATUS_MAPPINGS } from '@/lib/csv-field-mapping'
 import { isNumericShortQuery } from '@/lib/suffix-search'
 import {
@@ -155,6 +156,11 @@ function normalizeExternalMeta(input: unknown): {
 }
 
 export async function GET(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  // Returns 404 MODULE_DISABLED when the 'work-orders' module is disabled.
+  const moduleCheck = moduleUnavailableResponse('work-orders')
+  if (moduleCheck) return moduleCheck
+
   // ── Authentication: require an authenticated session ──
   // Previously this route returned work orders with NO auth check at all
   // — anyone hitting the endpoint could see every WO in the system
@@ -336,6 +342,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  // Guest submissions are accepted even when the module is "disabled"
+  // because the public QR repair flow depends on WO creation. So we only
+  // gate the staff-side here; the guest-side check happens later via the
+  // submissionSource branch.
+  const moduleCheck = moduleUnavailableResponse('work-orders')
+  if (moduleCheck) return moduleCheck
+
   try {
     // ── Auth flow: guest vs. authenticated staff ──
     //

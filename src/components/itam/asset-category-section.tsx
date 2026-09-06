@@ -12,7 +12,8 @@ import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Plus, Pencil, Trash2, Loader2, Package } from 'lucide-react'
+import { Plus, Pencil, Trash2, Loader2, Package, Printer } from 'lucide-react'
+import { useAuthStore } from '@/store/auth-store'
 
 interface AssetCategory {
   id: string
@@ -35,6 +36,8 @@ export function AssetCategorySection() {
   const qc = useQueryClient()
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingId, setEditingId] = React.useState<string | null>(null)
+  const [printing, setPrinting] = React.useState(false)
+  const [groupMode, setGroupMode] = React.useState<'site' | 'type'>('site')
   const [form, setForm] = React.useState({
     code: '', name: '', usefulLifeYears: '5', depreciationMethod: 'STRAIGHT_LINE',
     decliningRate: '', minCapitalizeValue: '10000', salvageValuePct: '0', active: true,
@@ -118,6 +121,35 @@ export function AssetCategorySection() {
 
   const categories = data?.categories ?? []
 
+  // ── Phase 3.2: Asset Register print ──
+  // Opens /api/reports/asset-register in a new tab. The endpoint returns
+  // text/html (a printable asset register) and auto-opens the browser
+  // print dialog. groupMode lets the user pick "group by site" vs "by type".
+  async function handlePrintRegister() {
+    if (printing) return
+    setPrinting(true)
+    try {
+      // Bearer token can't be sent in headers for window.open — fall back
+      // to the `t` query param that auth-middleware's extractBearer()
+      // recognizes. Matches the pattern in license-management-section.tsx.
+      const token = useAuthStore.getState()?.token
+      const params = new URLSearchParams({ groupBy: groupMode })
+      if (token) params.set('t', token)
+      const url = `/api/reports/asset-register?${params.toString()}`
+      const w = window.open(url, '_blank', 'noopener,noreferrer')
+      if (!w) {
+        toast.error('เบราว์เซอร์บล็อกการเปิดหน้าต่าง — กรุณาอนุญาต pop-up แล้วลองอีกครั้ง')
+      } else {
+        toast.success('กำลังเปิดทะเบียนทรัพย์สินในแท็บใหม่ — กด Ctrl/Cmd+P เพื่อพิมพ์เป็น PDF')
+      }
+    } catch (e) {
+      toast.error('เปิดทะเบียนไม่สำเร็จ')
+    } finally {
+      // Give the browser a moment to open the tab before re-enabling the button
+      setTimeout(() => setPrinting(false), 800)
+    }
+  }
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
@@ -125,9 +157,31 @@ export function AssetCategorySection() {
           <Package className="h-4 w-4 text-[#f97316]" />
           หมวดหมู่สินทรัพย์ ({categories.length})
         </CardTitle>
-        <Button size="sm" onClick={openAdd} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
-          <Plus className="mr-1 h-3.5 w-3.5" /> เพิ่ม
-        </Button>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Select value={groupMode} onValueChange={(v) => setGroupMode(v as 'site' | 'type')}>
+            <SelectTrigger className="h-8 w-[140px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="site">จัดกลุ่มตามสาขา</SelectItem>
+              <SelectItem value="type">จัดกลุ่มตามประเภท</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handlePrintRegister}
+            disabled={printing}
+            title="พิมพ์รายการทะเบียนทรัพย์สินทั้งหมดเป็น PDF"
+            className="border-[#f97316]/40 text-[#c2410c] hover:bg-[#fff7ed] dark:border-[#f97316]/30 dark:text-[#fdba74] dark:hover:bg-[#431407]"
+          >
+            {printing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Printer className="mr-1 h-3.5 w-3.5" />}
+            พิมพ์ทะเบียนทรัพย์สิน
+          </Button>
+          <Button size="sm" onClick={openAdd} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
+            <Plus className="mr-1 h-3.5 w-3.5" /> เพิ่ม
+          </Button>
+        </div>
       </CardHeader>
       <CardContent>
         {isLoading ? (

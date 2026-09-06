@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { computeNextRunDate } from '@/lib/pm-schedule'
 import { isNumericShortQuery } from '@/lib/suffix-search'
 
@@ -12,6 +13,10 @@ import { isNumericShortQuery } from '@/lib/suffix-search'
  * Auth: VIEW_DASHBOARD (read-only for now).
  */
 export async function GET(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  const moduleCheck = moduleUnavailableResponse('pm')
+  if (moduleCheck) return moduleCheck
+
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
@@ -74,6 +79,10 @@ export async function GET(req: NextRequest) {
  * Creates a new PM schedule + computes nextRunDate.
  */
 export async function POST(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  const moduleCheck = moduleUnavailableResponse('pm')
+  if (moduleCheck) return moduleCheck
+
   const auth = await requireAuth(req, 'WO_CREATE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {

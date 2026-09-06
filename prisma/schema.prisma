@@ -88,6 +88,13 @@ model Device {
   replacedByFrom  Device[] @relation("DeviceReplacement")
   replacedAt      DateTime?
 
+  // ── Phase 4.2: Soft-delete ──
+  // Set by future soft-delete handlers instead of `db.device.delete()`.
+  // Existing DELETE endpoints currently hard-delete — a follow-up task will
+  // migrate them to set deletedAt = now() and filter reads by deletedAt IS NULL.
+  // Kept optional so existing rows are unaffected.
+  deletedAt       DateTime?
+
   // Relations (other models reference Device via deviceId)
   meterReadings     MeterReading[]
   transfers         DeviceTransfer[]
@@ -104,6 +111,7 @@ model Device {
   @@index([site])
   @@index([serialNumber])
   @@index([replacedById])
+  @@index([deletedAt]) // Phase 4.2: soft-delete index
 }
 
 model MeterReading {
@@ -143,9 +151,15 @@ model MeterReading {
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
   updatedAt DateTime? @updatedAt
+  // ── Phase 4.2: Soft-delete ──
+  // Optional timestamp; when set, the reading is considered deleted but kept
+  // for audit. Existing DELETE endpoints still hard-delete — a follow-up
+  // task will migrate them to set deletedAt = now().
+  deletedAt DateTime?
   @@index([deviceId])
   @@index([readingMonth])
   @@index([isDemo])
+  @@index([deletedAt]) // Phase 4.2: soft-delete index
   // Composite indexes for common query patterns
   @@index([deviceId, readingMonth])       // meter readings per device per month
   @@index([readingType, readingDate])     // filter by type + date range
@@ -343,6 +357,12 @@ model WorkOrder {
   images   WorkOrderImage[]
   parts    WorkOrderPart[]
 
+  // ── Phase 4.2: Soft-delete ──
+  // Optional timestamp; when set, the WO is considered deleted but kept for
+  // audit. Existing DELETE endpoints still hard-delete — a follow-up task
+  // will migrate them to set deletedAt = now().
+  deletedAt DateTime?
+
   @@index([status])
   @@index([legacyJobNo])
   @@index([assignedTo])
@@ -352,6 +372,7 @@ model WorkOrder {
   @@index([siteCode, status, createdAt])
   @@index([version])
   @@index([publicReporterId])
+  @@index([deletedAt]) // Phase 4.2: soft-delete index
 }
 
 // ============================================================
@@ -636,11 +657,18 @@ model StockItem {
   workOrderParts     WorkOrderPart[]
   rateHistory        StockItemRateHistory[]
 
+  // ── Phase 4.2: Soft-delete ──
+  // Optional timestamp; when set, the item is considered deleted but kept
+  // for audit (preserves transaction history FK references). Existing DELETE
+  // endpoints still hard-delete — a follow-up task will migrate them.
+  deletedAt DateTime?
+
   @@index([productCode])
   @@index([category])
   @@index([costType])
   @@index([costModel])
   @@index([isDemo])
+  @@index([deletedAt]) // Phase 4.2: soft-delete index
 }
 
 // ============================================================
@@ -1301,11 +1329,18 @@ model PMSchedule {
   device     Device?       @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   executions PMExecution[]
 
+  // ── Phase 4.2: Soft-delete ──
+  // Optional timestamp; when set, the schedule is considered deleted but
+  // kept for audit (preserves PMExecution FK references). Existing DELETE
+  // endpoints still hard-delete — a follow-up task will migrate them.
+  deletedAt DateTime?
+
   @@index([active, nextRunDate])
   @@index([frequency])
   @@index([site])
   @@index([deviceType])
   @@index([isDemo])
+  @@index([deletedAt]) // Phase 4.2: soft-delete index
 }
 
 // ============================================================

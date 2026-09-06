@@ -3,6 +3,18 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
 
+// ════════════════════════════════════════════════════════════════════════
+// METER ROUTE DECISION (Phase 4.6) — see /api/meter/route.ts header.
+// This file is the REMINDER branch of the legacy `/api/meter/*` tree:
+//   • GET /api/meter/reminders  — finds meter-required devices that have
+//     NOT been read in the currently active cycle (countdown list).
+//
+// It is intentionally kept separate from the main CRUD surface at
+// /api/itam/meter-readings/* and from the v1 external API at
+// /api/v1/meter-readings/*. DO NOT merge — different concerns, different
+// response shapes.
+// ════════════════════════════════════════════════════════════════════════
+
 /**
  * Meter reminders endpoint.
  *

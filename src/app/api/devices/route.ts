@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag, demoFilter } from '@/lib/demo-mode'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
   clampPageAndLimit,
   buildPaginationMeta,
@@ -49,6 +50,13 @@ function optBool(v: unknown): boolean {
 }
 
 export async function GET(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  // Returns 404 MODULE_DISABLED when the 'devices' module is disabled
+  // in src/config/modules.ts. Done BEFORE auth so a disabled module has no
+  // observable API surface at all (matches the pattern in /api/reports/*).
+  const moduleCheck = moduleUnavailableResponse('devices')
+  if (moduleCheck) return moduleCheck
+
   // ── Authentication: require VIEW_DEVICES permission ──
   // Previously this route returned full device records (including
   // serialNumber, IP/MAC, vendor/contract info) with no auth check.
@@ -270,6 +278,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  const moduleCheck = moduleUnavailableResponse('devices')
+  if (moduleCheck) return moduleCheck
+
   // ── Authentication: require DEVICE_EDIT permission ──
   // Previously this route treated auth as optional (fail-open), allowing
   // unauthenticated device creation. This is a Blocker security fix.

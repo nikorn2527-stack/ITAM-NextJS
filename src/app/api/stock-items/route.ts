@@ -5,6 +5,7 @@ import { logAudit } from '@/lib/audit'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { demoTag, demoFilter } from '@/lib/demo-mode'
 import { isNumericShortQuery } from '@/lib/suffix-search'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /** Parse a Float; returns null when missing/invalid. */
 function optFloat(v: unknown): number | null {
@@ -45,6 +46,10 @@ async function nextProductCode(): Promise<string> {
 }
 
 export async function GET(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  const moduleCheck = moduleUnavailableResponse('stock')
+  if (moduleCheck) return moduleCheck
+
   const auth = await requireAuth(req, 'STOCK_VIEW')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -148,6 +153,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  const moduleCheck = moduleUnavailableResponse('stock')
+  if (moduleCheck) return moduleCheck
+
   const auth = await requireAuth(req, 'STOCK_IN')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
