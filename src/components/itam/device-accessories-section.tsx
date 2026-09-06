@@ -448,7 +448,7 @@ export function DeviceAccessoriesSection({
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
         <CardTitle className="flex items-center gap-2 text-sm">
           <Usb className="h-4 w-4 text-[#f97316]" />
-          อุปกรณ์ในชุด ({totalCount})
+          จัดการอุปกรณ์ต่อพ่วง ({totalCount})
         </CardTitle>
         <Button size="sm" variant="outline" onClick={openAdd} className="h-7 text-xs">
           <Plus className="mr-1 h-3.5 w-3.5" /> เพิ่ม
@@ -598,13 +598,11 @@ export function DeviceAccessoriesSection({
             <DialogTitle>
               {editingId
                 ? 'แก้ไขอุปกรณ์ต่อพ่วง'
-                : mode === 'new'
-                  ? 'เพิ่มอุปกรณ์ในชุด'
-                  : 'เพิ่มอุปกรณ์จากระบบเข้าชุด'}
+                : 'จัดการอุปกรณ์ต่อพ่วง'}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              เลือกประเภทของอุปกรณ์ที่จะเพิ่ม — "สร้างใหม่" สำหรับอุปกรณ์ต่อพ่วงที่ไม่มีในระบบ
-              (เช่น เมาส์/คีย์บอร์ด), "เลือกจากระบบ" สำหรับอุปกรณ์ที่มี assetCode อยู่แล้ว
+              สำหรับจัดการข้อมูลอุปกรณ์ต่อพ่วง — "อุปกรณ์" สำหรับบันทึกข้อมูลอุปกรณ์ต่อพ่วง (ไม่มีชุด/ซื้อเป็นชุด),
+              "ชุดอุปกรณ์" สำหรับบันทึก assetCode ของชุด
             </DialogDescription>
           </DialogHeader>
 
@@ -612,7 +610,7 @@ export function DeviceAccessoriesSection({
             {/* ── Mode toggle (hidden when editing an existing accessory) ── */}
             {!editingId && (
               <div className="space-y-1.5">
-                <Label className="text-xs">เลือกประเภท</Label>
+                <Label className="text-xs">ประเภทข้อมูล</Label>
                 <RadioGroup
                   value={mode}
                   onValueChange={(v) => setMode(v as 'new' | 'existing')}
@@ -629,10 +627,10 @@ export function DeviceAccessoriesSection({
                     <RadioGroupItem value="new" id="mode-new" className="mt-0.5" />
                     <div className="min-w-0">
                       <div className="font-medium text-slate-700 dark:text-slate-200">
-                        🆕 สร้างใหม่ (ไม่มีในระบบ)
+                        📁 อุปกรณ์ (ไม่ซื้อเป็นชุด)
                       </div>
                       <div className="text-[11px] text-muted-foreground">
-                        กรอก ประเภท/ยี่ห้อ/รุ่น/serial ของอุปกรณ์ต่อพ่วง — เก็บในตาราง DeviceAccessory
+                        สำหรับ จัดการ/เพิ่ม/แก้ไข/serial ข้อมูลอุปกรณ์ต่อพ่วง — ใช้ตาราง DeviceAccessory
                       </div>
                     </div>
                   </label>
@@ -647,10 +645,10 @@ export function DeviceAccessoriesSection({
                     <RadioGroupItem value="existing" id="mode-existing" className="mt-0.5" />
                     <div className="min-w-0">
                       <div className="font-medium text-slate-700 dark:text-slate-200">
-                        🔗 เลือกจากที่มีในระบบ
+                        🔗 ชุดอุปกรณ์ต่อพ่วง
                       </div>
                       <div className="text-[11px] text-muted-foreground">
-                        ค้นหา assetCode/serial/name ของ Device ที่มีอยู่แล้ว แล้วเชื่อมเป็น Device Set
+                        สำหรับ assetCode/serial/name ของ Device ที่เป็นชุด — ใช้ตาราง Device Set
                       </div>
                     </div>
                   </label>
@@ -676,7 +674,7 @@ export function DeviceAccessoriesSection({
                 {/* Brand + Model */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">ยี่ห้อ</Label>
+                    <Label className="text-xs">ชื่อ</Label>
                     <Input value={formBrand} onChange={(e) => setFormBrand(e.target.value)} placeholder="Logitech" className="text-sm" />
                   </div>
                   <div className="space-y-1.5">
@@ -800,7 +798,7 @@ export function DeviceAccessoriesSection({
               disabled={mode === 'existing' && !selectedChildId}
               className="bg-[#f97316] text-white hover:bg-[#ea580c] disabled:opacity-50"
             >
-              {editingId ? 'บันทึก' : mode === 'new' ? 'เพิ่ม' : 'เพิ่มเข้าชุด'}
+              {editingId ? 'บันทึก' : 'บันทึก'}
             </Button>
           </DialogFooter>
         </DialogContent>
