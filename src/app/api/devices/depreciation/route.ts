@@ -85,6 +85,24 @@ export async function GET(req: NextRequest) {
       orderBy: { assetCode: 'asc' },
     })
 
+    // Phase 2: Fetch all AssetCategories so we can use them as fallback
+    // when a device doesn't have usefulLife/salvageValue set manually.
+    const categories = await db.assetCategory.findMany({
+      where: { active: true },
+    }).catch(() => []) // graceful: if table doesn't exist yet, skip
+    // Build a lookup map by code (e.g. "IT-COMPUTER" → AssetCategory)
+    // Also build a type-name → code map (e.g. "COMPUTER" → "IT-COMPUTER")
+    // so devices matched by type string can find their category.
+    const catByCode = new Map(categories.map((c) => [c.code, c]))
+    const catByType = new Map<string, typeof categories[0]>()
+    for (const c of categories) {
+      // Match by name (case-insensitive) or by code suffix
+      const nameLower = c.name.toLowerCase()
+      const codeSuffix = c.code.split('-').pop()?.toLowerCase()
+      catByType.set(nameLower, c)
+      if (codeSuffix) catByType.set(codeSuffix, c)
+    }
+
     const items: DepreciationDevice[] = []
     let totalOriginal = 0
     let totalBookValue = 0
@@ -94,7 +112,18 @@ export async function GET(req: NextRequest) {
     for (const d of devices) {
       const price = d.purchasePrice ? Number(d.purchasePrice) : null
       const salvage = d.salvageValue ? Number(d.salvageValue) : 0
-      const life = d.usefulLife ?? null
+      let life = d.usefulLife ?? null
+
+      // Phase 2: If device doesn't have usefulLife, try to get it from
+      // AssetCategory (matched by device type string).
+      let categoryMatch: typeof categories[0] | undefined
+      if (d.type) {
+        const typeLower = d.type.toLowerCase()
+        categoryMatch = catByType.get(typeLower)
+      }
+      if (life == null && categoryMatch?.usefulLifeYears) {
+        life = categoryMatch.usefulLifeYears
+      }
 
       // Skip devices without purchase price
       if (price == null || price <= 0) {

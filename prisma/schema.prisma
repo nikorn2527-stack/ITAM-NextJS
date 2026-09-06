@@ -1052,11 +1052,50 @@ model OrganizationProfile {
   timezone         String   @default("Asia/Bangkok")
   currency         String   @default("THB")
   allowExcelImport Boolean  @default(true)
+
+  // ── Phase 3: Financial policy fields ──
+  // Fiscal year start month (1-12). Thai gov = 10 (Oct), private = 1 (Jan).
+  fiscalYearStartMonth  Int  @default(1)
+  // Minimum value to capitalize as fixed asset (฿). Items below this are
+  // expensed immediately. Default ฿10,000 (typical Thai private sector).
+  defaultCapitalizeThreshold  Decimal? @default(10000) @db.Decimal(12, 2)
+  // Terminology: "ครุภัณฑ์" (gov) or "Fixed Asset" (private) or "ทรัพย์สิน"
+  assetTerminology  String  @default("ครุภัณฑ์")
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
   isDemo    Boolean  @default(false)
   @@index([appName])
+}
+
+// ============================================================
+// 24b) AssetCategory — หมวดหมู่สินทรัพย์ (ค่าเสื่อมราคา/อายุใช้งานมาตรฐาน)
+// ============================================================
+// แยกจาก Device.type (string อิสระ) เพื่อให้ตั้งค่านโยบายได้ที่ส่วนกลาง
+// เจ้าหน้าที่ไม่ต้องกรอกอายุการใช้งานทุกเครื่อง — ดึงจากหมวดหมู่อัตโนมัติ
+// ============================================================
+model AssetCategory {
+  id                 String   @id @default(cuid())
+  code               String   @unique // เช่น IT-COMPUTER, IT-PRINTER, IT-NETWORK
+  name               String   // ชื่อหมวดหมู่ เช่น "คอมพิวเตอร์"
+  // อายุการใช้งานมาตรฐาน (ปี) — ใช้เป็น default ถ้า Device.usefulLife ไม่ได้กรอก
+  usefulLifeYears    Int      @default(5)
+  // วิธีคำนวณค่าเสื่อมราคา: STRAIGHT_LINE | DECLINING_BALANCE
+  depreciationMethod String   @default("STRAIGHT_LINE")
+  // อัตราลดต้นทุนทบต้น (เปอร์เซ็นต์ต่อปี) — ใช้เมื่อเลือก DECLINING_BALANCE
+  decliningRate      Decimal? @db.Decimal(5, 2) // เช่น 30.00 = 30%/ปี
+  // เกณฑ์มูลค่าขั้นต่ำที่ต้องขึ้นทะเบียนเป็นครุภัณฑ์ (฿) — ต่ำกว่านี้ไม่ต้อง
+  minCapitalizeValue Decimal? @default(10000) @db.Decimal(12, 2)
+  // มูลค่าซากเป็นเปอร์เซ็นต์ของราคาซื้อ (0-100)
+  salvageValuePct    Decimal  @default(0) @db.Decimal(5, 2)
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  isDemo    Boolean  @default(false)
+  @@index([code])
+  @@index([active])
 }
 
 // ============================================================

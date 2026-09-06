@@ -24,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2 } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package } from 'lucide-react'
 import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
@@ -36,6 +36,7 @@ import { UserManagementSection } from './user-management-section'
 import { OauthSection } from './oauth-section'
 import { DemoManagementSection } from './demo-management-section'
 import { LicenseManagementSection } from './license-management-section'
+import { AssetCategorySection } from './asset-category-section'
 import { useAuthStore } from '@/store/auth-store'
 
 /** Build fetch headers with the user's JWT (if logged in). */
@@ -86,6 +87,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'wo-patterns', label: 'เลขใบงาน', icon: FileText },
       { value: 'sites', label: 'สาขา (ภาพรวม)', icon: Building2 },
       { value: 'licenses', label: 'ลิขสิทธิ์ซอฟต์แวร์', icon: KeyRound },
+      { value: 'asset-categories', label: 'หมวดหมู่สินทรัพย์', icon: Package },
     ],
   },
   {
@@ -738,6 +740,7 @@ export function ItamSettings() {
       {tab === 'my-biometrics' && <MyBiometricsSection />}
 
       {tab === 'licenses' && <LicenseManagementSection />}
+      {tab === 'asset-categories' && <AssetCategorySection />}
         </div>
       </div>
 
