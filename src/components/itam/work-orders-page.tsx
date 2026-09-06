@@ -336,6 +336,7 @@ interface PartsListApiResponse {
 // ============================================================
 const STATUS_OPTIONS = [
   { value: 'all', label: 'สถานะทั้งหมด' },
+  { value: 'PENDING_REVIEW', label: 'รอตรวจสอบ' },
   { value: 'PENDING', label: 'รอดำเนินการ' },
   { value: 'IN_PROGRESS', label: 'กำลังซ่อม' },
   { value: 'WAITING_PARTS', label: 'รออะไหล่' },
@@ -366,6 +367,9 @@ function statusLabel(status: string): string {
 
 function statusBadgeClass(status: string): string {
   switch (status) {
+    case 'PENDING_REVIEW':
+      // More saturated than PENDING's amber — needs immediate attention.
+      return 'border-orange-300 bg-orange-100 text-orange-800 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-200'
     case 'PENDING':
       return 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
     case 'IN_PROGRESS':
@@ -748,7 +752,13 @@ export function WorkOrdersPage() {
       </div>
 
       {/* KPI stats bar */}
-      <div className="grid flex-shrink-0 grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid flex-shrink-0 grid-cols-2 gap-3 lg:grid-cols-5">
+        <KpiCard
+          label="รอตรวจสอบ"
+          value={stats.PENDING_REVIEW ?? 0}
+          icon={<AlertTriangle className="h-5 w-5" />}
+          color="orange"
+        />
         <KpiCard
           label="รอดำเนินการ"
           value={stats.PENDING ?? 0}
@@ -1051,6 +1061,7 @@ export function WorkOrdersPage() {
 // ============================================================
 const KPI_COLORS: Record<string, string> = {
   amber: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  orange: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
   blue: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
   emerald:
     'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
@@ -2113,6 +2124,12 @@ function WorkOrderDetailContent({
   const [assignNote, setAssignNote] = React.useState(wo.assignmentNote ?? '')
   const [assigning, setAssigning] = React.useState(false)
 
+  // Approve (PENDING_REVIEW → PENDING)
+  // Tier 2/3 submissions from LINE/public land in PENDING_REVIEW and need
+  // staff approval before they enter the normal work queue. Approving
+  // transitions the WO to PENDING (which then unlocks Assign/Complete).
+  const [approving, setApproving] = React.useState(false)
+
   // Complete
   const [completeOpen, setCompleteOpen] = React.useState(false)
   const [completeNote, setCompleteNote] = React.useState('')
@@ -2550,6 +2567,10 @@ function WorkOrderDetailContent({
   const canChat = wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED'
   const canReporterEdit = wo.status === 'PENDING'
   const canRequestParts = wo.status === 'IN_PROGRESS' || wo.status === 'WAITING_PARTS'
+  // PENDING_REVIEW → staff approves the submission (Tier 2/3 from LINE/public).
+  // Approving transitions the WO into the normal queue (PENDING) so the
+  // assign/complete/cancel actions become available.
+  const canApprove = wo.status === 'PENDING_REVIEW'
 
   // Resolution groups for the dropdown
   const resolutionGroups = React.useMemo(() => {
@@ -2588,6 +2609,34 @@ function WorkOrderDetailContent({
       toast.error(e instanceof Error ? e.message : 'มอบหมายไม่สำเร็จ')
     } finally {
       setAssigning(false)
+    }
+  }
+
+  // Approve a PENDING_REVIEW WO → transition to PENDING (normal queue).
+  // Uses the same PUT /api/work-orders/[id] route as the WO editor,
+  // with a status-only payload. The route's VALID_STATUSES allowlist
+  // accepts PENDING, so this is a safe state transition. Authorization
+  // is WO_ASSIGN at the WO's Site (verified by loadAuthorizedWorkOrder).
+  async function handleApprove() {
+    try {
+      setApproving(true)
+      const res = await fetch(`/api/work-orders/${wo.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          status: 'PENDING',
+        }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'อนุมัติไม่สำเร็จ')
+      }
+      toast.success('อนุมัติใบงานแล้ว — เข้าสู่คิวปกติ')
+      onMutated()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'อนุมัติไม่สำเร็จ')
+    } finally {
+      setApproving(false)
     }
   }
 
@@ -3701,6 +3750,21 @@ function WorkOrderDetailContent({
           ยกเลิก) so they're visible on row 1 on mobile; secondary actions
           (พิมพ์, ผู้แจ้งแก้ไข) come after since they're less time-critical. */}
       <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t bg-white px-3 py-3 dark:bg-slate-900 sm:px-5">
+        {canApprove && (
+          <Button type="button"
+            size="sm"
+            onClick={() => void handleApprove()}
+            disabled={approving}
+            className="order-1 min-h-11 w-full bg-emerald-600 hover:bg-emerald-700 sm:w-auto"
+          >
+            {approving ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <ShieldCheck className="h-4 w-4" />
+            )}
+            อนุมัติ
+          </Button>
+        )}
         {canComplete && (
           <Button type="button"
             size="sm"

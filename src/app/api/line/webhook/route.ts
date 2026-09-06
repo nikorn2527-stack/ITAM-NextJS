@@ -1,38 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { db } from '@/lib/db'
-import { withRetryOnUnique } from '@/lib/retry-unique'
-import { logAudit } from '@/lib/audit'
+import { findDeviceByCode } from '@/lib/device-lookup'
+import { generateDeviceQrUrl } from '@/lib/smart-qr'
 
 /**
  * POST /api/line/webhook
  *
  * LINE Messaging API webhook endpoint.
  *
+ * SECURITY MODEL (post LINE-WEBHOOK-FIX-PHASES-1-2-4):
+ *   The webhook NEVER creates a WorkOrder directly. Anyone who adds the
+ *   LINE OA as a friend can send a message — so unverified input is
+ *   treated as a hint, not as a WO. Instead, the webhook replies with
+ *   one of:
+ *     • A link to the Smart QR page (/qr/d/{shortId}?action=repair) when
+ *       the user's text or scanned image resolves to a known device.
+ *       The QR page hosts the PublicReporter verification pipeline
+ *       (Tier 1 LINE+phone-scope → PENDING; Tier 2/3 → PENDING_REVIEW).
+ *     • A quick-reply menu (scan QR / open /report/general) for free
+ *       text that does not match a device.
+ *     • A status lookup ("ติดตาม" / "สถานะ") for the user's latest WO.
+ *     • A help menu ("แจ้งซ่อม") with instructions.
+ *
  * Flow:
  *   1. Verify X-Line-Signature header against HMAC-SHA256 of the raw body
  *      (using the `line_channel_secret` AppSetting).
  *   2. Parse the events array.
- *   3. For each event:
- *      - message (text):
- *          • If text matches a Device serialNumber/assetCode → find device,
- *            create a WorkOrder with device info, reply with confirmation.
- *          • If text starts with "ติดตาม" or "สถานะ" → find the user's latest
- *            WorkOrder (by lineUserId), reply with its status.
- *          • If text is "แจ้งซ่อม" / "แจ้ง" → reply with a quick-reply
- *            menu asking for the problem description.
- *          • Otherwise → create a WorkOrder with subject=text, reply
- *            "สร้างใบงานแล้ว WO-XXXX".
- *      - follow: welcome message + link to register contact.
- *      - postback: handle the chosen action (e.g. start a new WO).
- *   4. The lineUserId is stored on the WorkOrder (lineUserId field).
+ *   3. For each message event:
+ *      - If text matches a Device serialNumber/assetCode → reply with
+ *        the device's Smart QR repair link.
+ *      - If text starts with "ติดตาม" or "สถานะ" → reply with the
+ *        latest WO status for this lineUserId.
+ *      - If text is "แจ้งซ่อม" / "แจ้ง" → reply with the help menu.
+ *      - Otherwise → reply with a quick-reply menu offering "📷 สแกน QR
+ *        ที่เครื่อง" and "📝 แจ้งซ่อมไม่ระบุเครื่อง" (/report/general).
+ *      - Image (QR/barcode scan) → if device resolved, reply with the
+ *        Smart QR repair link; otherwise reply with the help menu.
+ *   4. follow events welcome the user with the same menu.
  *
  * Configuration (AppSetting keys):
  *   - line_channel_access_token  — required to call Reply API
  *   - line_channel_secret        — required to verify signature
  *
- * When the access token is not configured, the webhook still creates the
- * WorkOrder and logs what the reply would have been (useful for local dev).
+ * When the access token is not configured, the webhook still computes
+ * the reply text and logs what would have been sent (useful for local
+ * dev). It still NEVER creates a WorkOrder.
  */
 
 // ============================================================
@@ -81,15 +94,52 @@ function safeEqual(a: string, b: string): boolean {
 // LINE API helpers
 // ============================================================
 
+/**
+ * A LINE message — supports plain text plus the template/button messages
+ * we use to offer quick-reply actions when the user's text does not match
+ * a device. The shape mirrors LINE's Messaging API reply body.
+ */
+type LineMessage =
+  | { type: 'text'; text: string }
+  | {
+      type: 'template'
+      altText: string
+      template: {
+        type: 'buttons'
+        text: string
+        actions: Array<
+          | {
+              type: 'uri'
+              label: string
+              uri: string
+            }
+          | {
+              type: 'message'
+              label: string
+              text: string
+            }
+        >
+      }
+    }
+
 async function replyMessage(
   replyToken: string,
-  messages: Array<{ type: 'text'; text: string }>,
+  messages: LineMessage[],
   accessToken?: string,
 ): Promise<void> {
   if (!accessToken) {
     console.log(
       `[line-webhook] (log only) reply token=${replyToken.slice(0, 8)}…\n` +
-        messages.map((m) => m.text).join('\n---\n'),
+        messages
+          .map((m) =>
+            m.type === 'text'
+              ? m.text
+              : `[template] ${m.altText}\n${m.template.text}\n` +
+                m.template.actions
+                  .map((a) => `  - ${a.label}: ${a.type === 'uri' ? a.uri : a.text}`)
+                  .join('\n'),
+          )
+          .join('\n---\n'),
     )
     return
   }
@@ -114,41 +164,47 @@ async function replyMessage(
 }
 
 // ============================================================
-// Helpers — WO number generation (mirror of work-orders/route.ts)
+// Helpers — Smart QR link construction
 // ============================================================
 
-function pad3(n: number): string {
-  return String(n).padStart(3, '0')
+/**
+ * Build a public-origin base URL for the Smart QR link we send back to
+ * the user. We try (in order):
+ *   1. `NEXT_PUBLIC_PUBLIC_BASE_URL` env var (recommended — set to the
+ *      public-facing site URL, e.g. https://itam.example.com).
+ *   2. `NEXT_PUBLIC_SITE_URL` env var.
+ *   3. `VERCEL_URL` (auto-set on Vercel deployments).
+ *   4. '' (empty) — the /qr/d/{shortId}?action=repair link becomes a
+ *      relative path. Most LINE clients open the link in an external
+ *      browser, which then resolves the absolute URL via the Referer.
+ *      (Last-resort fallback — set NEXT_PUBLIC_PUBLIC_BASE_URL to avoid.)
+ */
+function getPublicBaseUrl(): string {
+  const env =
+    process.env.NEXT_PUBLIC_PUBLIC_BASE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '')
+  return env.replace(/\/+$/, '')
 }
 
-async function generateWoNumber(): Promise<string | null> {
-  const now = new Date()
-  const ymd =
-    `${now.getFullYear()}` +
-    `${String(now.getMonth() + 1).padStart(2, '0')}` +
-    `${String(now.getDate()).padStart(2, '0')}`
-  const prefix = `WO-${ymd}-`
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const last = await db.workOrder.findFirst({
-      where: { woNumber: { startsWith: prefix } },
-      orderBy: { woNumber: 'desc' },
-      select: { woNumber: true },
-    })
-    let nextSeq = 1
-    if (last?.woNumber) {
-      const m = last.woNumber.match(/(\d+)$/)
-      if (m) nextSeq = parseInt(m[1], 10) + 1
-    }
-    nextSeq += attempt
-    const candidate = `${prefix}${pad3(nextSeq)}`
-    const exists = await db.workOrder.findUnique({
-      where: { woNumber: candidate },
-      select: { id: true },
-    })
-    if (!exists) return candidate
-  }
-  return null
+/**
+ * Build the Smart QR repair URL for a device. Uses generateDeviceQrUrl
+ * with the server-side public base URL — the result is what we send to
+ * LINE so the user can tap and land on the public repair flow.
+ */
+function buildDeviceRepairUrl(deviceId: string): string {
+  return generateDeviceQrUrl(deviceId, 'repair', getPublicBaseUrl())
 }
+
+// ============================================================
+// Helpers — WO number generation removed
+// ------------------------------------------------------------
+// The webhook no longer creates WorkOrders directly (see the security
+// model in the file header). All WO creation now flows through the
+// public repair form (POST /api/public/repairs) via the Smart QR link
+// we send back to the user. That route handles its own WO-number
+// generation and reporter verification.
+// ============================================================
 
 // ============================================================
 // Helpers — LineBinding upsert (records that this LINE user exists)
@@ -174,17 +230,6 @@ async function upsertLineBinding(
   }
 }
 
-async function bumpLineBindingWoCount(lineUserId: string): Promise<void> {
-  try {
-    await db.lineBinding.update({
-      where: { lineUserId },
-      data: { workOrderCount: { increment: 1 } },
-    })
-  } catch {
-    // ignore — the upsert above may have failed in dev
-  }
-}
-
 // ============================================================
 // Helpers — text classification
 // ============================================================
@@ -197,41 +242,37 @@ function startsWithAny(text: string, prefixes: string[]): boolean {
 }
 
 /**
- * Try to find a device by serialNumber or assetCode (exact match, case-insensitive).
+ * Resolve an arbitrary user-typed code (assetCode OR serialNumber) to a
+ * device, returning the small subset of fields the webhook needs for
+ * the reply text. Returns `null` if no device matches.
+ *
+ * Delegates to the shared `findDeviceByCode` helper in
+ * `src/lib/device-lookup.ts` (assetCode-first, serialNumber-fallback,
+ * deterministic tiebreaker on duplicates).
  */
-async function findDeviceByCode(
+async function resolveDeviceForReply(
   text: string,
-): Promise<{ id: string; assetCode: string; name: string; site: string; building: string | null; location: string | null; department: string | null } | null> {
-  const code = text.trim()
-  if (!code) return null
-  // Try assetCode (case-insensitive — SQLite default is case-insensitive for ASCII)
-  const byAsset = await db.device.findUnique({
-    where: { assetCode: code },
-    select: {
-      id: true,
-      assetCode: true,
-      name: true,
-      site: true,
-      building: true,
-      location: true,
-      department: true,
-    },
-  })
-  if (byAsset) return byAsset
-  // Try serialNumber — findFirst because serialNumber is not unique
-  const bySerial = await db.device.findFirst({
-    where: { serialNumber: code },
-    select: {
-      id: true,
-      assetCode: true,
-      name: true,
-      site: true,
-      building: true,
-      location: true,
-      department: true,
-    },
-  })
-  return bySerial ?? null
+): Promise<{
+  id: string
+  assetCode: string
+  name: string
+  site: string
+  building: string | null
+  location: string | null
+  department: string | null
+} | null> {
+  const match = await findDeviceByCode(text)
+  if (!match) return null
+  const d = match.device
+  return {
+    id: d.id,
+    assetCode: d.assetCode,
+    name: d.name,
+    site: d.site,
+    building: d.building,
+    location: d.location,
+    department: d.department,
+  }
 }
 
 /**
@@ -365,10 +406,11 @@ export async function POST(req: NextRequest) {
         const welcome =
           'ยินดีต้อนรับสู่ระบบแจ้งซ่อม 🙌\n\n' +
           'คุณสามารถ:\n' +
-          '• พิมพ์ "แจ้งซ่อม" เพื่อเริ่มแจ้งงานใหม่\n' +
+          '• พิมพ์ "แจ้งซ่อม" เพื่อดูวิธีแจ้งงานใหม่\n' +
           '• พิมพ์ "ติดตาม" หรือ "สถานะ" เพื่อดูสถานะใบงานล่าสุด\n' +
-          '• พิมพ์รหัสทรัพย์สิน (เช่น ASSET-00001) เพื่อแจ้งซ่อมเฉพาะเครื่อง\n' +
-          '• หรือพิมพ์ปัญหาตรง ๆ ระบบจะสร้างใบงานให้ทันที'
+          '• พิมพ์รหัสทรัพย์สิน หรือ เลขซีเรียล (เช่น IT-00001) เพื่อเปิดลิงก์แจ้งซ่อมเฉพาะเครื่อง\n' +
+          '• ส่งรูป QR code ที่ติดอยู่บนเครื่อง ระบบจะส่งลิงก์แจ้งซ่อมกลับมา\n' +
+          '• หรือพิมพ์ปัญหาโดยไม่ระบุรหัสเครื่อง — ระบบจะตอบด้วยเมนูให้เลือกวิธีแจ้งซ่อม'
         if (replyToken) {
           await replyMessage(
             replyToken,
@@ -392,79 +434,132 @@ export async function POST(req: NextRequest) {
         const messageId = String(msg.id ?? '')
 
         // ── Deduplicate LINE messages by messageId ──
-        // LINE may retry webhook delivery if it doesn't receive a 200 in time,
-        // which can cause duplicate WorkOrder creation. We check if a WO with
-        // this lineMessageId already exists before processing.
-        if (messageId) {
-          const existing = await db.workOrder.findFirst({
-            where: { lineMessageId: messageId },
-            select: { id: true, woNumber: true },
-          })
-          if (existing) {
-            // Already processed — skip silently (LINE expects 200)
-            console.log(`[line-webhook] skipping duplicate messageId=${messageId} (WO ${existing.woNumber ?? existing.id})`)
-            continue
-          }
-        }
+        // LINE may retry webhook delivery if it doesn't receive a 200 in
+        // time. We previously deduped by checking for a WorkOrder with
+        // this lineMessageId — but the webhook no longer creates WOs.
+        // LINE's replyToken is single-use (one reply per token), so a
+        // retried webhook would simply fail on replyMessage. We accept
+        // this minor double-processing risk (the user gets one reply per
+        // successful reply API call; the duplicate fails silently).
 
         // ── IMAGE: QR/barcode scan from device sticker ──
+        // SECURITY: previously this branch created a WorkOrder directly
+        // (status=PENDING, submissionSource='line') — bypassing the
+        // PublicReporter verification pipeline. Now it ONLY resolves the
+        // scanned code to a device and replies with the Smart QR repair
+        // link, so the user lands on the same public repair form as a
+        // QR-scanned user (Tier 1/2/3 verification applies).
         if (msg.type === 'image') {
-          // Process image: decode QR + find device + create WO
           if (settings.channelAccessToken) {
             try {
-              const { processLineImage, buildImageReplyMessage } = await import('@/lib/line-image-handler')
+              const { processLineImage } = await import('@/lib/line-image-handler')
 
               const result = await processLineImage(
                 messageId,
                 settings.channelAccessToken,
               )
 
-              let woNumber: string | undefined
-
-              // If device found → create WO
+              let replyText: string
               if (result.device) {
                 const d = result.device
-                const wo = await withRetryOnUnique(
-                  () => db.workOrder.create({
-                    data: {
-                      subject: `แจ้งซ่อมผ่าน LINE (สแกน QR) — ${d.assetCode ?? 'ไม่ระบุรหัส'}`,
-                      details: `แจ้งโดย: LINE user ${lineUserId}\nวิธี: สแกน${result.method === 'qr' ? 'QR code' : 'รูปภาพ (OCR)'}\nรหัสที่อ่านได้: ${result.code ?? '-'}`,
-                      reporterName: `LINE ${lineUserId}`,
-                      tel: '',
-                      status: 'PENDING',
-                      submissionSource: 'line',
-                      trackable: true,
-                      lineUserId,
-                      lineMessageId: messageId,
-                      deviceId: d.id,
-                      siteCode: d.site,
-                      isDemo: false,
-                    },
-                  }),
-                  { maxRetries: 3 },
+                const repairUrl = buildDeviceRepairUrl(d.id)
+                replyText =
+                  `✅ พบอุปกรณ์: ${d.name ?? '-'} (${d.assetCode ?? '-'})\n` +
+                  `กดลิงก์เพื่อแจ้งซ่อมอุปกรณ์นี้:\n${repairUrl}`
+                await logAuditLine(
+                  'LINE_IMAGE_DEVICE_FOUND',
+                  d.id,
+                  `LINE webhook: image scan resolved to device ${d.assetCode} — replied with repair link`,
+                  {
+                    method: result.method,
+                    code: result.code ?? null,
+                    assetCode: d.assetCode,
+                  },
+                  lineUserId,
                 )
-                woNumber = wo.woNumber ?? undefined
-
-                await logAudit(
-                  'CREATE',
-                  'WorkOrder',
-                  wo.id,
-                  `LINE webhook: auto-created WO ${woNumber} from image scan (device: ${d.assetCode})`,
-                  { lineUserId, messageId, method: result.method, deviceId: d.id },
-                ).catch(() => {})
+              } else {
+                // Image didn't resolve to a device — offer the menu
+                replyText =
+                  `⚠️ ${result.error ?? 'ไม่พบอุปกรณ์จากรูปภาพ'}\n\n` +
+                  `คุณสามารถ:\n` +
+                  `• พิมพ์รหัสทรัพย์สิน หรือ เลขซีเรียลของเครื่อง\n` +
+                  `• พิมพ์ "แจ้งซ่อม" เพื่อดูวิธีแจ้งงานใหม่\n` +
+                  `• หรือกดปุ่มด้านล่างเพื่อแจ้งซ่อมไม่ระบุเครื่อง`
+                await logAuditLine(
+                  'LINE_IMAGE_NO_DEVICE',
+                  null,
+                  `LINE webhook: image scan did not resolve to a device`,
+                  {
+                    method: result.method,
+                    code: result.code ?? null,
+                    error: result.error ?? null,
+                  },
+                  lineUserId,
+                )
               }
 
-              // Reply with result
-              const replyMessages = buildImageReplyMessage(result, woNumber)
-              await reply(replyToken, replyMessages, settings)
+              if (replyToken) {
+                const messages: LineMessage[] = result.device
+                  ? [
+                      {
+                        type: 'template',
+                        altText: `พบอุปกรณ์ ${result.device.name ?? '-'} — กดเพื่อแจ้งซ่อม`,
+                        template: {
+                          type: 'buttons',
+                          text: replyText,
+                          actions: [
+                            {
+                              type: 'uri',
+                              label: '🔧 แจ้งซ่อมอุปกรณ์นี้',
+                              uri: buildDeviceRepairUrl(result.device.id),
+                            },
+                          ],
+                        },
+                      },
+                    ]
+                  : [
+                      {
+                        type: 'template',
+                        altText: 'เลือกวิธีแจ้งซ่อม',
+                        template: {
+                          type: 'buttons',
+                          text: replyText,
+                          actions: [
+                            {
+                              type: 'uri',
+                              label: '📝 แจ้งซ่อมไม่ระบุเครื่อง',
+                              uri: `${getPublicBaseUrl()}/report/general`,
+                            },
+                            {
+                              type: 'message',
+                              label: '📷 สแกน QR ที่เครื่อง',
+                              text: 'แจ้งซ่อม',
+                            },
+                          ],
+                        },
+                      },
+                    ]
+                await replyMessage(
+                  replyToken,
+                  messages,
+                  settings.channelAccessToken,
+                )
+              }
               handled++
             } catch (err) {
               console.error('[line-webhook] Image processing failed:', err)
-              await reply(
-                replyToken,
-                [{ type: 'text', text: '⚠️ ไม่สามารถประมวลผลรูปภาพได้ กรุณาลองอีกครั้งหรือพิมพ์รหัสเครื่องแทน' }],
-                settings,
-              ).catch(() => {})
+              if (replyToken) {
+                await replyMessage(
+                  replyToken,
+                  [
+                    {
+                      type: 'text',
+                      text: '⚠️ ไม่สามารถประมวลผลรูปภาพได้ กรุณาลองอีกครั้งหรือพิมพ์รหัสเครื่องแทน',
+                    },
+                  ],
+                  settings.channelAccessToken,
+                )
+              }
             }
           }
           continue
@@ -521,14 +616,36 @@ export async function POST(req: NextRequest) {
         // ── Branch 2: report keyword → send quick-reply menu ──
         if (REPORT_KEYWORDS.includes(text)) {
           const menu =
-            'กรุณาเลือกประเภทปัญหา หรือพิมพ์บอกรายละเอียดเพิ่มเติม:\n\n' +
-            '• พิมพ์รหัสทรัพย์สิน (เช่น ASSET-00001) เพื่อแจ้งซ่อมเฉพาะเครื่อง\n' +
+            'กรุณาเลือกวิธีแจ้งซ่อม หรือพิมพ์รายละเอียดเพิ่มเติม:\n\n' +
+            '• พิมพ์รหัสทรัพย์สิน หรือ เลขซีเรียล (เช่น IT-00001) เพื่อแจ้งซ่อมเฉพาะเครื่อง\n' +
             '• พิมพ์ "ติดตาม" เพื่อดูสถานะใบงานล่าสุด\n' +
-            '• หรือพิมพ์ปัญหา เช่น "เครื่องพิมพ์ไม่ติด ที่ฝ่ายบัญชี"'
+            '• หรือกดปุ่มด้านล่างเพื่อแจ้งซ่อมโดยไม่ระบุเครื่อง'
           if (replyToken) {
+            const messages: LineMessage[] = [
+              {
+                type: 'template',
+                altText: 'เลือกวิธีแจ้งซ่อม',
+                template: {
+                  type: 'buttons',
+                  text: menu,
+                  actions: [
+                    {
+                      type: 'uri',
+                      label: '📝 แจ้งซ่อมไม่ระบุเครื่อง',
+                      uri: `${getPublicBaseUrl()}/report/general`,
+                    },
+                    {
+                      type: 'message',
+                      label: '📷 สแกน QR ที่เครื่อง',
+                      text: 'แจ้งซ่อม',
+                    },
+                  ],
+                },
+              },
+            ]
             await replyMessage(
               replyToken,
-              [{ type: 'text', text: menu }],
+              messages,
               settings.channelAccessToken,
             )
           }
@@ -536,172 +653,108 @@ export async function POST(req: NextRequest) {
           continue
         }
 
-        // ── Branch 3: text matches a device code ──
-        const device = await findDeviceByCode(text)
-        let createdWo:
-          | (Pick<
-              {
-                id: string
-                woNumber: string | null
-                subject: string
-                building: string | null
-                location: string | null
-              },
-              'id' | 'woNumber' | 'subject' | 'building' | 'location'
-            > & { reporterName: string | null; tel: string | null })
-          | null = null
+        // ── Branch 3: text matches a device code → reply with Smart QR link ──
+        // SECURITY: previously this branch created a WorkOrder directly
+        // (status=PENDING, submissionSource='line'). Now it ONLY resolves
+        // the code to a device and replies with the Smart QR repair link,
+        // so the user lands on the public repair form (PublicReporter
+        // verification pipeline applies — Tier 1 → PENDING, Tier 2/3 →
+        // PENDING_REVIEW).
+        const device = await resolveDeviceForReply(text)
         if (device) {
-          const woNumber = await generateWoNumber()
-          if (woNumber) {
-            // Pull reporter info from LineBinding if available
-            const binding = await db.lineBinding.findFirst({
-              where: { lineUserId },
-              select: { reporterName: true, tel: true, employeeCode: true },
-            })
-            // FIX-024: wrap create with retry-on-P2002 — re-generate the
-            // woNumber on each attempt so concurrent LINE submissions that
-            // both compute the same WO number resolve cleanly.
-            createdWo = await withRetryOnUnique(async () => {
-              const freshWoNumber = await generateWoNumber()
-              if (!freshWoNumber) {
-                throw new Error('unable to generate woNumber')
-              }
-              return db.workOrder.create({
-                data: {
-                  woNumber: freshWoNumber,
-                  subject: `แจ้งซ่อมอุปกรณ์: ${device.name} (${device.assetCode})`,
-                  building: device.building,
-                  location: device.location,
-                  details: `แจ้งผ่าน LINE — รหัสทรัพย์สิน: ${device.assetCode}\nอุปกรณ์: ${device.name}\nสาขา: ${device.site}${device.department ? `\nแผนก: ${device.department}` : ''}`,
-                  priority: 'ปกติ',
-                  reporterName: binding?.reporterName ?? null,
-                  tel: binding?.tel ?? null,
-                  employeeCode: binding?.employeeCode ?? null,
-                  submissionSource: 'line',
-                  deviceId: device.id,
-                  lineUserId,
-                  lineMessageId: messageId,
-                  status: 'PENDING',
-                },
-                select: {
-                  id: true,
-                  woNumber: true,
-                  subject: true,
-                  building: true,
-                  location: true,
-                  reporterName: true,
-                  tel: true,
-                },
-              })
-            })
-            await bumpLineBindingWoCount(lineUserId)
-            await db.workOrderMessage.create({
-              data: {
-                workOrderId: createdWo.id,
-                message: `แจ้งซ่อมผ่าน LINE: ${text}`,
-                author: binding?.reporterName ?? `line:${lineUserId}`,
-                authorRole: 'reporter',
-              },
-            })
-            await logAuditLine(
-              'WO_CREATE',
-              createdWo.id,
-              `สร้างใบแจ้งซ่อม ${createdWo.woNumber} ผ่าน LINE (device ${device.assetCode})`,
-              {
-                woNumber: createdWo.woNumber,
-                subject: createdWo.subject,
-                assetCode: device.assetCode,
-              },
-              lineUserId,
-            )
-          }
+          const repairUrl = buildDeviceRepairUrl(device.id)
+          const replyText =
+            `✅ พบอุปกรณ์: ${device.name} (${device.assetCode})\n` +
+            `สาขา: ${device.site}${device.building ? ` • ${device.building}` : ''}${device.location ? ` • ${device.location}` : ''}\n\n` +
+            `กดลิงก์เพื่อแจ้งซ่อมอุปกรณ์นี้:\n${repairUrl}`
           if (replyToken) {
-            const reply = createdWo
-              ? `✅ สร้างใบงานแล้ว ${createdWo.woNumber}\n` +
-                `อุปกรณ์: ${device.name} (${device.assetCode})\n` +
-                `ที่ตั้ง: ${device.building ?? '-'} ${device.location ?? ''}\n\n` +
-                `เจ้าหน้าที่จะติดต่อกลับโดยเร็วครับ`
-              : `ไม่สามารถสร้างใบงานได้ กรุณาลองอีกครั้ง`
+            const messages: LineMessage[] = [
+              {
+                type: 'template',
+                altText: `พบอุปกรณ์ ${device.name} (${device.assetCode}) — กดเพื่อแจ้งซ่อม`,
+                template: {
+                  type: 'buttons',
+                  text: replyText,
+                  actions: [
+                    {
+                      type: 'uri',
+                      label: '🔧 แจ้งซ่อมอุปกรณ์นี้',
+                      uri: repairUrl,
+                    },
+                  ],
+                },
+              },
+            ]
             await replyMessage(
               replyToken,
-              [{ type: 'text', text: reply }],
+              messages,
               settings.channelAccessToken,
             )
           }
-          handled++
-          continue
-        }
-
-        // ── Branch 4: default → create a WO with the text as subject ──
-        const woNumber = await generateWoNumber()
-        if (woNumber) {
-          const binding = await db.lineBinding.findFirst({
-            where: { lineUserId },
-            select: { reporterName: true, tel: true, employeeCode: true },
-          })
-          // FIX-024: wrap create with retry-on-P2002 — re-generate the
-          // woNumber on each attempt so concurrent LINE submissions that
-          // both compute the same WO number resolve cleanly.
-          createdWo = await withRetryOnUnique(async () => {
-            const freshWoNumber = await generateWoNumber()
-            if (!freshWoNumber) {
-              throw new Error('unable to generate woNumber')
-            }
-            return db.workOrder.create({
-              data: {
-                woNumber: freshWoNumber,
-                subject: text.slice(0, 200),
-                details: `แจ้งผ่าน LINE: ${text}`,
-                priority: 'ปกติ',
-                reporterName: binding?.reporterName ?? null,
-                tel: binding?.tel ?? null,
-                employeeCode: binding?.employeeCode ?? null,
-                submissionSource: 'line',
-                lineUserId,
-                lineMessageId: messageId,
-                status: 'PENDING',
-              },
-              select: {
-                id: true,
-                woNumber: true,
-                subject: true,
-                building: true,
-                location: true,
-                reporterName: true,
-                tel: true,
-              },
-            })
-          })
-          await bumpLineBindingWoCount(lineUserId)
-          await db.workOrderMessage.create({
-            data: {
-              workOrderId: createdWo.id,
-              message: text,
-              author: binding?.reporterName ?? `line:${lineUserId}`,
-              authorRole: 'reporter',
-            },
-          })
           await logAuditLine(
-            'WO_CREATE',
-            createdWo.id,
-            `สร้างใบแจ้งซ่อม ${createdWo.woNumber} ผ่าน LINE`,
+            'LINE_TEXT_DEVICE_FOUND',
+            device.id,
+            `LINE webhook: text resolved to device ${device.assetCode} — replied with repair link`,
             {
-              woNumber: createdWo.woNumber,
-              subject: createdWo.subject,
+              assetCode: device.assetCode,
+              site: device.site,
+              rawText: text,
             },
             lineUserId,
           )
+          handled++
+          continue
         }
+
+        // ── Branch 4: free text, no device match → quick-reply menu ──
+        // SECURITY: previously this branch created a WorkO directly with
+        // status=PENDING. Now it offers the user two safe paths:
+        //   1. Open /report/general (Phase 2 page) to find their device
+        //      by assetCode/serial and submit via the verified form.
+        //   2. Scan the QR sticker on the device (replies with the help
+        //      menu so they can send an image).
         if (replyToken) {
-          const reply = createdWo
-            ? `✅ สร้างใบงานแล้ว ${createdWo.woNumber}\nหัวข้อ: ${createdWo.subject}\n\nเจ้าหน้าที่จะติดต่อกลับโดยเร็วครับ`
-            : `ไม่สามารถสร้างใบงานได้ กรุณาลองอีกครั้ง`
+          const menuText =
+            `ไม่พบอุปกรณ์ที่ตรงกับ "${text.slice(0, 60)}"\n\n` +
+            `คุณสามารถ:\n` +
+            `• พิมพ์รหัสทรัพย์สิน หรือ เลขซีเรียลของเครื่องใหม่อีกครั้ง\n` +
+            `• พิมพ์ "ติดตาม" เพื่อดูสถานะใบงานล่าสุด\n` +
+            `• หรือกดปุ่มด้านล่างเพื่อแจ้งซ่อมโดยไม่ระบุเครื่อง`
+          const messages: LineMessage[] = [
+            {
+              type: 'template',
+              altText: 'เลือกวิธีแจ้งซ่อม',
+              template: {
+                type: 'buttons',
+                text: menuText,
+                actions: [
+                  {
+                    type: 'uri',
+                    label: '📝 แจ้งซ่อมไม่ระบุเครื่อง',
+                    uri: `${getPublicBaseUrl()}/report/general`,
+                  },
+                  {
+                    type: 'message',
+                    label: '📷 สแกน QR ที่เครื่อง',
+                    text: 'แจ้งซ่อม',
+                  },
+                ],
+              },
+            },
+          ]
           await replyMessage(
             replyToken,
-            [{ type: 'text', text: reply }],
+            messages,
             settings.channelAccessToken,
           )
         }
+        await logAuditLine(
+          'LINE_TEXT_NO_DEVICE',
+          null,
+          `LINE webhook: free-text did not match a device — replied with menu`,
+          { rawText: text.slice(0, 200) },
+          lineUserId,
+        )
         handled++
         continue
       }

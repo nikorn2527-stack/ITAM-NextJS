@@ -306,6 +306,7 @@ export async function GET(req: NextRequest) {
       _count: true,
     })
     const stats: Record<string, number> = {
+      PENDING_REVIEW: 0,
       PENDING: 0,
       IN_PROGRESS: 0,
       WAITING_PARTS: 0,

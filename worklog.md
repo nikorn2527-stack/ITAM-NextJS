@@ -17361,3 +17361,152 @@ Stage Summary:
   - lib: `line-session.ts`
   - components: 19 files listed above under Fix #3
 - No new lint or type errors. Pre-existing sticker-template / sticker-print-dialog changes (not part of this task) remain untouched in the working tree.
+
+---
+Task ID: LINE-WEBHOOK-FIX-PHASES-1-2-4
+Agent: webhook-refactor-subagent
+Task: Close the LINE webhook security gap (anyone-who-adds-the-OA-as-friend → WO directly with PENDING), add a "lookup by serial/asset code" path so users don't need a printed QR sticker, and teach the staff UI about the PENDING_REVIEW safety-net status.
+
+Work Log:
+- Read recent worklog sections (SECURITY-AUDIT-FIXES + sticker-template refactor) for context. Verified `src/lib/device-lookup.ts` already exists with a shared `findDeviceByCode` helper (assetCode-first, serialNumber fallback, deterministic tiebreaker). Verified `src/lib/smart-qr.ts` exports `generateDeviceQrUrl(deviceId, action, baseUrl)`. Verified `src/lib/rate-limit-kv.ts` exports `checkRateLimit` + `getClientIP` + `RATE_LIMITS`. Verified `/api/public/devices/[shortId]` returns a sanitized device payload shape. Verified `PublicRepairForm` (`src/components/public/public-repair-form.tsx`) accepts `deviceShortId + siteCode + tier + lineSession + deviceInfo + onSuccess + onCancel` props. Verified `/api/work-orders/route.ts` already had `PENDING_REVIEW` in its `VALID_STATUSES` allowlist (so filtering by PENDING_REVIEW works out of the box). Verified `/api/work-orders/[id]/route.ts` PUT accepts `body.status` and validates against its own `VALID_STATUSES` (PENDING is allowed — so the Approve button's `PUT { status: 'PENDING' }` works).
+
+### Phase 1 — Close webhook vulnerability (file: `src/app/api/line/webhook/route.ts`, 741 → 794 lines)
+
+**Behavior change (per the audit table):**
+| User action | Old behavior | New behavior |
+|---|---|---|
+| Text "ติดตาม" / "สถานะ" | Show latest WO status | **Unchanged** |
+| Text "แจ้งซ่อม" / help | Show help menu | **Updated** — now a LINE template message with 2 buttons: "📝 แจ้งซ่อมไม่ระบุเครื่อง" (URI → /report/general) + "📷 สแกน QR ที่เครื่อง" (message hint) |
+| Text = asset code or serial → device found | Create WO directly (PENDING, submissionSource='line') | **Reply with LINE buttons template** containing "🔧 แจ้งซ่อมอุปกรณ์นี้" (URI → /qr/d/{shortId}?action=repair) |
+| Image with QR/barcode → device resolved | Create WO directly (PENDING, submissionSource='line') | **Reply with LINE buttons template** containing "🔧 แจ้งซ่อมอุปกรณ์นี้" (URI → /qr/d/{shortId}?action=repair) |
+| Image with no device match | Reply with buildImageReplyMessage() | **Reply with LINE buttons template** (2 actions: /report/general URI + scan-QR hint) |
+| Free text (no device match) | Create WO with subject=text (PENDING, submissionSource='line') | **Reply with LINE buttons template** (2 actions: /report/general URI + scan-QR hint) |
+| Follow event | Welcome message | **Updated** — removed the "พิมพ์ปัญหาตรง ๆ ระบบจะสร้างใบงานให้ทันที" line (no longer true); added the new paths |
+
+**Implementation:**
+- Added imports: `findDeviceByCode` from `@/lib/device-lookup` (shared — replaces the local copy), `generateDeviceQrUrl` from `@/lib/smart-qr`. Removed imports: `logAudit` (no longer called — only `logAuditLine` is used), `withRetryOnUnique` (no WO creation anymore).
+- Added a `LineMessage` discriminated union type (`text | template`) so `replyMessage` can send both plain text and LINE buttons-template messages. Updated `replyMessage`'s debug-log format to print template actions when no access token is configured (local dev).
+- Added `getPublicBaseUrl()` helper — reads `NEXT_PUBLIC_PUBLIC_BASE_URL` → `NEXT_PUBLIC_SITE_URL` → `VERCEL_URL` (auto-set on Vercel) → '' fallback. Used so the `/qr/d/{shortId}?action=repair` link we send to LINE is a fully-qualified URL (LINE's tappable URI action requires absolute URLs).
+- Added `buildDeviceRepairUrl(deviceId)` → wraps `generateDeviceQrUrl(deviceId, 'repair', getPublicBaseUrl())`.
+- Added `resolveDeviceForReply(text)` → calls the shared `findDeviceByCode` and returns the small subset of fields the webhook needs for the reply text (id, assetCode, name, site, building, location, department).
+- **Deleted** the local `findDeviceByCode` function (was lines 283-319) — now uses the shared one.
+- **Deleted** `generateWoNumber`, `pad3`, `bumpLineBindingWoCount` — these were only used by the WO-creation paths that no longer exist. Left a comment block explaining why they're gone.
+- **Removed** the dedup-by-lineMessageId check (was scanning WorkOrder table for an existing WO with the same lineMessageId). The webhook no longer creates WOs with lineMessageId, so the check would always return null. LINE's `replyToken` is single-use anyway, so a retried webhook delivery fails silently on the second reply call (acceptable).
+- **Branch 1 (status lookup)**: unchanged.
+- **Branch 2 (แจ้งซ่อม keyword)**: now replies with a LINE buttons-template message with 2 actions (open /report/general URI + scan-QR message hint).
+- **Branch 3 (text matches device)**: replies with a LINE buttons-template message containing "🔧 แจ้งซ่อมอุปกรณ์นี้" (URI → Smart QR repair URL). Includes device name, assetCode, site, building, location in the body text. Logs `LINE_TEXT_DEVICE_FOUND` audit entry (was `WO_CREATE`).
+- **Branch 4 (free text, no device match)**: replies with a LINE buttons-template message containing "📝 แจ้งซ่อมไม่ระบุเครื่อง" (URI → /report/general) + "📷 สแกน QR ที่เครื่อง" (message hint). Logs `LINE_TEXT_NO_DEVICE` audit entry (was `WO_CREATE`).
+- **Image path**: removed the `db.workOrder.create` block (which was already broken — it referenced an undefined `reply` function — so the catch-all error handler was logging an unhandled ReferenceError on every image scan). Now: processLineImage returns the device info; if device resolved → reply with the Smart QR repair URL buttons-template; else → reply with the help-menu buttons-template. Also removed the `buildImageReplyMessage` import (no longer needed — we build the reply locally). Logs `LINE_IMAGE_DEVICE_FOUND` or `LINE_IMAGE_NO_DEVICE` audit entries (was `CREATE`).
+- Updated file-header JSDoc to document the new security model: webhook NEVER creates WorkOrders directly. All WO creation now flows through POST /api/public/repairs via the Smart QR link we send back.
+
+### Phase 2a — New API: `/api/public/devices/lookup` (file: `src/app/api/public/devices/lookup/route.ts`, NEW, 232 lines)
+
+- Public (no auth) — same model as `/api/public/devices/[shortId]`.
+- `GET /api/public/devices/lookup?code=SN12345&siteCode=PPIT` — accepts an arbitrary identifier (assetCode OR serialNumber) and an optional siteCode filter.
+- Returns a sanitized subset (no serialNumber raw, no IP/MAC, no PII):
+  ```json
+  {
+    "data": {
+      "matches": [
+        { "shortId": "abc12345", "assetCode": "IT-001", "name": "HP LaserJet", "brand": "HP", "model": "M404", "type": "Printer", "site": "PPIT", "building": "A", "floor": "1", "room": "101", "location": "...", "department": "...", "assetSiteCode": "PPIT", "displayLabel": "HP LaserJet M404", "replaced": false },
+        ...
+      ],
+      "count": 1,
+      "query": { "code": "SN12345", "siteCode": "PPIT" }
+    }
+  }
+  ```
+- If no matches → 200 with `{ data: { matches: [], count: 0, query: {...} } }` (NOT 404 — lets the UI render a friendly "not found" message without branching on status).
+- Lookup strategy: 2 DB queries (assetCode unique lookup + serialNumber findMany) → dedup by device.id → optional siteCode filter. Serial-number matches are capped at 10 to keep the response payload sane.
+- Rate limit: 30 lookups per IP per hour (using the shared `checkRateLimit` from `@/lib/rate-limit-kv`). Returns 429 with `Retry-After` + `X-RateLimit-Limit` + `X-RateLimit-Remaining` headers when exceeded.
+- Uses `force-dynamic` + `no-store` cache headers (device state changes often).
+
+### Phase 2b — New page: `/report/general` (file: `src/app/report/general/page.tsx`, NEW, 510 lines)
+
+- Public page (no staff auth) — works in both LINE in-app browser and regular browsers.
+- Wrapped in `<React.Suspense>` (Next.js 16 requirement for useSearchParams).
+- Layout:
+  - Header (sticky): "แจ้งซ่อมอุปกรณ์" with a back button (when in a sub-step).
+  - Search form: input for "รหัสทรัพย์สิน หรือ เลขซีเรียล" + optional "รหัสสาขา" filter + "ค้นหาอุปกรณ์" button (orange-500 brand color).
+  - Results area:
+    - 1 match → auto-select + jump to the form step (deviceShortId from match.shortId, siteCode from match.site, tier auto-detected from lineSession).
+    - Multiple matches → list of `<DeviceMatchCard>` (assetCode + name + brand/model + building/floor/room/location/department + "เปลี่ยนเครื่องแล้ว" badge if replaced). Click → opens form for that device.
+    - 0 matches → friendly "ไม่พบอุปกรณ์ — ลองตรวจสอบรหัส หรือติดต่อเจ้าหน้าที่" card with "ค้นหาใหม่" + "ติดต่อเจ้าหน้าที่" buttons.
+- Form step: reuses `<PublicRepairForm>` (the same component used by the QR scan flow). Props:
+  - `deviceShortId` = `match.shortId` (last 8 chars of device.id — matches what `/qr/d/{shortId}` expects).
+  - `siteCode` = `match.site ?? match.assetSiteCode ?? 'UNKNOWN'`.
+  - `tier` = `'line'` if `lineSession` present, else `'anonymous'`. Tier can be switched via a "สลับเป็นแจ้งซ่อมด้วย..." button at the bottom.
+  - `lineSession` (mapped from useLineSession hook).
+  - `deviceInfo` = `{ assetCode, name, brand, model, site, location: building • location • department }`.
+- LINE session auto-fill: uses `useLineSession()` hook (same as the QR scan page). Shows a status indicator at the bottom of the search form: "ล็อกอิน LINE แล้วในชื่อ ..." (green) or "ยังไม่ได้ล็อกอิน LINE — ต้องกรอกชื่อและเบอร์เอง" (with a "เข้าสู่ระบบด้วย LINE" link to `/api/auth/line/login?redirect=...`).
+- URL params: pre-fills `code` + `siteCode` from `?code=IT-001&siteCode=PPIT` query params and auto-runs the search on mount. Useful when the LINE OA replies with a deep link to `/report/general?code=IT-001` (currently the OA sends a buttons-template with the URL, so the user can navigate manually; future enhancement: a smart deep-link that auto-fills + searches).
+- Success step: renders a custom success card (woNumber + "ติดตามสถานะ" button → /wo/{woNumber} + "แจ้งซ่อมเครื่องอื่น" button → reset to search step). Notes the `requiresVerification` flag (PENDING_REVIEW WOs need staff callback).
+- Mobile-first: `max-w-md` container, sticky header, full-width primary buttons (`min-h-11` = 44px touch target), grid-cols-1 on mobile.
+- Lint-clean: refactored the initial-URL-search effect to use lazy `useState` initializers (no setState-in-effect). The `initialSearchFiredRef` guards against re-triggering on `searchParams` updates.
+
+### Phase 4 — Staff UI for PENDING_REVIEW (file: `src/components/itam/work-orders-page.tsx`, 4980 → 5001 lines +21)
+
+1. **Filter dropdown** (`STATUS_OPTIONS`): added `{ value: 'PENDING_REVIEW', label: 'รอตรวจสอบ' }` at the TOP of the list (above PENDING) so staff see it first. The list API (`/api/work-orders?status=PENDING_REVIEW`) already accepted this value (was in `VALID_STATUSES` before this task).
+2. **Status labels** (`statusLabel`): now returns "รอตรวจสอบ" for PENDING_REVIEW — works automatically since `statusLabel` looks up STATUS_OPTIONS.
+3. **Status badge color** (`statusBadgeClass`): added `case 'PENDING_REVIEW'` with `border-orange-300 bg-orange-100 text-orange-800 dark:border-orange-700 dark:bg-orange-950 dark:text-orange-200`. More saturated than PENDING's amber so it stands out as "needs attention". No new blue/indigo introduced (PENDING_REVIEW uses orange — the brand color used elsewhere in the codebase).
+4. **KPI bar**: changed grid from `lg:grid-cols-4` → `lg:grid-cols-5` and added a 5th `<KpiCard>` for PENDING_REVIEW count, with `AlertTriangle` icon (already imported) + new `orange` color entry in `KPI_COLORS`.
+5. **Approve button**: added `canApprove = wo.status === 'PENDING_REVIEW'` near the other `can*` flags. Added `approving` state + `handleApprove()` handler that calls `PUT /api/work-orders/${wo.id}` with `{ status: 'PENDING' }` (the route's `VALID_STATUSES` allowlist accepts PENDING, and the route's WO_ASSIGN auth check applies). Added the button in the detail-dialog action bar as `order-1` (before Complete's order-1 — they're mutually exclusive so no conflict). Uses `bg-emerald-600 hover:bg-emerald-700` (same green as the Complete button — signals "go ahead"). Icon: `ShieldCheck` (already imported) + `RefreshCw` spinner when approving.
+6. **Default sort**: NOT changed. The list API currently sorts by `createdAt: 'desc'` only. Adding PENDING_REVIEW-first sort would require either raw SQL (CASE WHEN expression) or a sort-key computed field — out of scope for this task. Staff can filter by PENDING_REVIEW via the dropdown or watch the new KPI count. Noted as a future enhancement.
+
+### Phase 4 — Stats init map (file: `src/app/api/work-orders/route.ts`, +1 line)
+
+- Added `PENDING_REVIEW: 0` to the `stats` initial map (was missing — though the for-loop on line 316 sets `stats[g.status] = g._count` for every group returned, including PENDING_REVIEW, the initial map was missing it. Now the UI can safely read `stats.PENDING_REVIEW` without `?? 0` fallback even when there are 0 PENDING_REVIEW WOs).
+
+### Lint check
+- `bun run lint` reports 1 ERROR (pre-existing in `src/app/api/auth/oauth/apple/callback/route.ts` line 99 — `no-require-imports`, unrelated to my changes) + 105 warnings (all pre-existing `react-hooks/set-state-in-effect` patterns, the same baseline as SECURITY-AUDIT-FIXES).
+- **0 NEW errors** + **0 NEW warnings** introduced by this task (verified by per-file lint filter — none of my new/modified files appear in the lint output except the 1 unused-eslint-disable I fixed during a refactoring pass).
+- TypeScript check (`bunx tsc --noEmit` with `NODE_OPTIONS=--max-old-space-size=8192`): 0 errors in my new/modified files (`api/line/webhook/route.ts`, `api/public/devices/lookup/route.ts`, `app/report/general/page.tsx`, `api/work-orders/route.ts`). The 2 tsc errors in `work-orders-page.tsx` (`Property 'department' does not exist on type 'NewFormState'` at line 1717 + `tone` type mismatch at line 3098) are both PRE-EXISTING — they're in code paths I didn't touch (the CreateWorkOrderDialog form state + a timeline rendering helper).
+
+Stage Summary:
+- ✅ Phase 1: LINE webhook no longer creates WorkOrders directly. All WO creation flows through the public repair form via the Smart QR link, so the PublicReporter verification pipeline (Tier 1 LINE+phone-scope → PENDING; Tier 2/3 → PENDING_REVIEW) applies uniformly.
+- ✅ Phase 2a: New public lookup API at `/api/public/devices/lookup` — 30 lookups/IP/hour, returns sanitized device list (assetCode OR serialNumber, optional siteCode filter).
+- ✅ Phase 2b: New public page at `/report/general` — search by code, auto-fill from URL params, reuses PublicRepairForm, mobile-responsive, Suspense-wrapped.
+- ✅ Phase 4: Staff UI now recognizes PENDING_REVIEW — filter dropdown option, Thai label, orange badge, KPI card with AlertTriangle icon, green "อนุมัติ" button in the detail dialog (transitions PENDING_REVIEW → PENDING via PUT /api/work-orders/[id]).
+- ✅ Lint: 0 new errors, 0 new warnings.
+- ✅ TypeScript: 0 new errors in my files (2 pre-existing errors in work-orders-page.tsx untouched).
+
+Files Modified (3):
+- `src/app/api/line/webhook/route.ts` (741 → 794 lines, +53 net): removed WO-creation paths + local helpers (findDeviceByCode, generateWoNumber, pad3, bumpLineBindingWoCount), added shared imports (findDeviceByCode, generateDeviceQrUrl), added LineMessage type + LINE buttons-template replies for all branches, added getPublicBaseUrl + buildDeviceRepairUrl helpers, updated file-header JSDoc.
+- `src/components/itam/work-orders-page.tsx` (4980 → 5001 lines, +21 net): added PENDING_REVIEW to STATUS_OPTIONS + statusBadgeClass + KPI_COLORS (orange) + 5th KPI card + canApprove flag + approving state + handleApprove handler + Approve button in detail dialog action bar.
+- `src/app/api/work-orders/route.ts` (+1 line): added PENDING_REVIEW: 0 to the stats initial map.
+
+Files Created (2):
+- `src/app/api/public/devices/lookup/route.ts` (232 lines): new public device-lookup endpoint — 30/IP/hour rate limit, sanitized device list (assetCode OR serialNumber, optional siteCode filter), 200 with empty array on no-match.
+- `src/app/report/general/page.tsx` (510 lines): new public repair-report page — code search + device match list + PublicRepairForm reuse, LINE session auto-fill, Suspense-wrapped, mobile-first.
+
+Files NOT modified (intentionally):
+- `src/lib/status-utils.ts` — the user's note said "add PENDING_REVIEW there too if needed". After review: status-utils.ts is for DEVICE statuses (Active/Inactive/In Repair/Spare/Retired/Lost), not WorkOrder statuses. PENDING_REVIEW is a WorkOrder status, so adding it to `ACTIVE_STATUS_VARIANTS` (used in Prisma `where` clauses for devices) would be incorrect. Left unchanged.
+- `src/lib/device-lookup.ts` — already exports the shared `findDeviceByCode`. The webhook now uses it (was previously duplicating the logic locally). No changes needed.
+- `src/lib/line-image-handler.ts` — its `processLineImage` returns `{ device, code, method, error, rawText }`. The webhook now uses these fields directly to build the reply message (no longer calls `buildImageReplyMessage` from this module — that helper is now dead code but kept for backward compat in case other callers exist).
+- `src/app/api/work-orders/[id]/route.ts` — the PUT route's `VALID_STATUSES` already accepts PENDING (so the Approve button's `PUT { status: 'PENDING' }` works). Did NOT add PENDING_REVIEW to `VALID_STATUSES` (intentional — once approved, staff shouldn't be able to push a WO back to PENDING_REVIEW via the standard PUT; that would be a workflow violation).
+- `src/lib/smart-qr.ts` — exports `generateDeviceQrUrl` already; no changes needed.
+- `src/lib/rate-limit-kv.ts` — exports `checkRateLimit` + `getClientIP` already; no changes needed.
+
+Next steps for user:
+1. **Configure `NEXT_PUBLIC_PUBLIC_BASE_URL`** in your Vercel env vars (or `.env.local`) — the webhook uses it to build absolute `/qr/d/{shortId}?action=repair` URLs in the LINE replies. Without it, the webhook falls back to `NEXT_PUBLIC_SITE_URL` → `VERCEL_URL` → empty (relative path, which won't be tappable in LINE's mobile client).
+2. **Test the LINE webhook flow**:
+   - Send a friend request to the LINE OA → should get the updated welcome message.
+   - Send "แจ้งซ่อม" → should get a buttons-template with "📝 แจ้งซ่อมไม่ระบุเครื่อง" (opens /report/general) + "📷 สแกน QR ที่เครื่อง" (sends "แจ้งซ่อม" message back).
+   - Send a known asset code (e.g. "IT-001") → should get a buttons-template with "🔧 แจ้งซ่อมอุปกรณ์นี้" that opens `/qr/d/{shortId}?action=repair`.
+   - Send free text (e.g. "เครื่องพิมพ์ไม่ติด") → should get the 2-button menu (NOT a WO confirmation — verify no WO is created).
+   - Send "ติดตาม" → should still show the latest WO status (unchanged).
+   - Send an image (QR code on a device sticker) → should get the device's repair link buttons-template.
+3. **Test the /report/general page**:
+   - Visit `/report/general` in a browser → should see the search form.
+   - Type a valid asset code → should auto-jump to the form (single match) or show a device list (multiple matches).
+   - Type an invalid code → should see the "ไม่พบอุปกรณ์" card.
+   - Test with `?code=IT-001&siteCode=PPIT` query params → should auto-run the search on mount.
+   - Test in LINE in-app browser (open the link from a LINE chat) → should work the same as a regular browser.
+4. **Test the staff UI**:
+   - Have a Tier 2/3 user submit a public repair (via /qr/d/{shortId}?action=repair without LINE login, or via /report/general with anonymous tier) → should land as PENDING_REVIEW.
+   - Open the Work Orders page → should see the new orange "รอตรวจสอบ" KPI card with count.
+   - Filter by PENDING_REVIEW → should show only PENDING_REVIEW WOs.
+   - Open a PENDING_REVIEW WO → should see the green "อนุมัติ" button at the bottom of the detail dialog.
+   - Click "อนุมัติ" → status should change to PENDING, the Approve button should disappear, and the Assign/Cancel buttons should appear.
+5. **(Optional future enhancement — not in this task)**: Add a default sort that puts PENDING_REVIEW above PENDING in the Work Orders list. Would require either a CASE WHEN expression in raw SQL or a sort-key field on WorkOrder. Staff can already filter by PENDING_REVIEW via the dropdown for now.
+6. **(Optional future enhancement — not in this task)**: Migrate the `LineBinding` table to `PublicReporter` (Phase 3 per the original plan). The webhook still upserts LineBinding records to track who's a friend — but since it no longer creates WOs from text, the LineBinding is mostly a passive record now. Phase 3 can fold it into PublicReporter (which has a richer schema: phone verification, default device, blocked flag, etc.).
