@@ -403,6 +403,33 @@ export function DevicesPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM)
   const [saving, setSaving] = React.useState(false)
+  // ── Quick Add mode (Task ID: LICENSE-PAGE-PLUS-QUICK-ADD, Task B) ──
+  // When true, the Add/Edit dialog renders a simplified single-section form
+  // with only the essential fields (site, assetCode, name, type, brand, model,
+  // serial, status). Persisted in localStorage so the user's preference
+  // survives reloads. Switching to "Full" mode brings back the 5-tab layout.
+  const QUICK_ADD_LS_KEY = 'itam:device-form:quick-add'
+  const [quickAdd, setQuickAdd] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.localStorage.getItem(QUICK_ADD_LS_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleQuickAdd = React.useCallback(() => {
+    setQuickAdd((prev) => {
+      const next = !prev
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(QUICK_ADD_LS_KEY, next ? '1' : '0')
+        }
+      } catch {
+        // localStorage may be unavailable (private mode) — ignore.
+      }
+      return next
+    })
+  }, [])
   const [deleteTarget, setDeleteTarget] = React.useState<Device | null>(null)
   const [deleting, setDeleting] = React.useState(false)
   const [detailDeviceId, setDetailDeviceId] = React.useState<string | null>(
@@ -1930,6 +1957,29 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* ── Quick Add / Full mode toggle ──
+                (Task ID: LICENSE-PAGE-PLUS-QUICK-ADD, Task B)
+                Shows the OTHER mode's label so the user knows what they'll
+                switch TO. Persistence handled by toggleQuickAdd (localStorage). */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={toggleQuickAdd}
+              disabled={saving}
+              title={
+                quickAdd
+                  ? 'สลับเป็นโหมดเต็ม — แสดงทุกฟิลด์ (5 แท็บ)'
+                  : 'สลับเป็นโหมดเพิ่มด่วน — กรอกเฉพาะฟิลด์จำเป็น'
+              }
+              className={
+                quickAdd
+                  ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+              }
+            >
+              {quickAdd ? '📋 แบบเต็ม' : '⚡ เพิ่มด่วน'}
+            </Button>
             <Button
               variant="outline"
               onClick={() => setDialogOpen(false)}
@@ -1943,7 +1993,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               disabled={saving}
               className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              {saving ? 'กำลังบันทึก...' : '💾 บันทึกอุปกรณ์'}
+              {saving
+                ? 'กำลังบันทึก...'
+                : quickAdd
+                  ? '⚡ บันทึก (เพิ่มด่วน)'
+                  : '💾 บันทึกอุปกรณ์'}
             </Button>
           </div>
         </div>
@@ -1951,6 +2005,19 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
         {/* ── Scrollable Body ── */}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+            {quickAdd ? (
+              <QuickAddForm
+                form={form}
+                setForm={setForm}
+                visibleSites={visibleSites}
+                deviceTypes={deviceTypes}
+                brandsData={brandsData}
+                deviceClassifications={deviceClassifications}
+                nameManuallyEditedRef={nameManuallyEditedRef}
+                fetchNextAssetCode={fetchNextAssetCode}
+              />
+            ) : (
+              <>
             {/* ── SN Scanner (always visible at top) ──
                 Scan a barcode → auto-fills the Serial Number field (in อุปกรณ์ tab).
                 Useful for quickly entering SN without manual typing.
@@ -3072,6 +3139,8 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                 </div>
               </TabsContent>
             </Tabs>
+              </>
+            )}
 
             {/* ── Bottom spacing ── */}
             <div className="h-16" />
@@ -3093,7 +3162,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
             disabled={saving}
             className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
-            {saving ? 'กำลังบันทึก...' : '💾 บันทึกอุปกรณ์'}
+            {saving
+              ? 'กำลังบันทึก...'
+              : quickAdd
+                ? '⚡ บันทึก (เพิ่มด่วน)'
+                : '💾 บันทึกอุปกรณ์'}
           </Button>
         </div>
       </div>
@@ -4038,6 +4111,257 @@ function KpiCard({
         {value.toLocaleString('th-TH')}
       </span>
     </button>
+  )
+}
+
+// ── Quick Add form (Task ID: LICENSE-PAGE-PLUS-QUICK-ADD, Task B) ────────
+// Simplified single-section form for bulk device entry. Shows only the
+// essential fields (site, assetCode, name, type, brand, model, serial,
+// status). User can fill in the rest later via Edit.
+//
+// The QuickAddForm shares the SAME form state as the full form (so the
+// parent's `save()` works unchanged — it just sends fewer fields because
+// the rest are empty strings, which the API maps to null). The auto-name
+// generation effect in the parent also still fires (it only needs
+// form.brand + form.model, both of which are in the Quick Add form).
+//
+// On mobile, all fields stack vertically (grid-cols-1). On sm+ screens
+// we use a 2-column layout for the non-assetCode fields.
+interface DeviceClassificationLite {
+  category: string
+  code: string
+  label: string
+  parentRef?: string | null
+  deviceType?: string | null
+  brand?: string | null
+  model?: string | null
+}
+
+interface QuickAddFormProps {
+  form: FormState
+  setForm: React.Dispatch<React.SetStateAction<FormState>>
+  visibleSites: Site[]
+  deviceTypes: { id: string; name: string }[] | undefined
+  brandsData: { id: string; name: string; typeId: string }[] | undefined
+  deviceClassifications: DeviceClassificationLite[]
+  nameManuallyEditedRef: React.MutableRefObject<boolean>
+  fetchNextAssetCode: () => Promise<void>
+}
+
+function QuickAddForm({
+  form,
+  setForm,
+  visibleSites,
+  deviceTypes,
+  brandsData,
+  deviceClassifications,
+  nameManuallyEditedRef,
+  fetchNextAssetCode,
+}: QuickAddFormProps) {
+  return (
+    <div className="space-y-4">
+      {/* ── Banner explaining the mode ── */}
+      <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+        <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <div>
+          <strong>โหมดเพิ่มด่วน</strong> — กรอกเฉพาะฟิลด์จำเป็น บันทึกได้เร็วขึ้น
+          สามารถกลับมาแก้ไขรายละเอียด (อาคาร/ชั้น/ห้อง, IP/MAC, รับประกัน, ฯลฯ)
+          ทีหลังผ่านปุ่ม &quot;✏️ แก้ไข&quot; ในรายการอุปกรณ์ได้
+        </div>
+      </div>
+
+      {/* ── Single-section form card ── */}
+      <div className="rounded-lg border border-amber-200 bg-white p-4 shadow-sm dark:border-amber-900/40 dark:bg-slate-900">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+          ⚡ ข้อมูลอุปกรณ์ (เพิ่มด่วน)
+        </div>
+
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+          {/* ── สาขา ── */}
+          <Field label="สาขา" required>
+            <Select
+              value={form.site}
+              onValueChange={(v) => {
+                setForm((prev) => ({ ...prev, site: v }))
+                // Auto-generate assetCode is handled by the parent's
+                // openAdd() effect (calls fetchNextAssetCode on dialog
+                // open). Here we just commit the site selection.
+              }}
+            >
+              <SelectTrigger className="w-full" id="qa-site">
+                <SelectValue placeholder="— เลือกสาขา —" />
+              </SelectTrigger>
+              <SelectContent>
+                {visibleSites.length === 0 && (
+                  <SelectItem value="__none__" disabled>
+                    — ยังไม่มีสาขาที่เข้าถึงได้ —
+                  </SelectItem>
+                )}
+                {visibleSites.map((s) => (
+                  <SelectItem key={s.code} value={s.code}>
+                    {s.code} — {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          {/* ── รหัสอุปกรณ์ (with auto-generate button) ── */}
+          <Field label="รหัสอุปกรณ์" required>
+            <div className="relative">
+              <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                id="qa-assetCode"
+                value={form.assetCode}
+                onChange={(e) =>
+                  setForm({ ...form, assetCode: e.target.value })
+                }
+                placeholder="สร้างอัตโนมัติ เช่น 2379"
+                className="bg-amber-50/50 pl-8 font-mono dark:bg-amber-950/10"
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => void fetchNextAssetCode()}
+                disabled={Boolean(form.id)}
+                title="สร้างเลขถัดไปอัตโนมัติ"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-[#f97316] hover:bg-[#f97316]/10 disabled:opacity-40 dark:text-[#fb923c]"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </Field>
+
+          {/* ── ชื่ออุปกรณ์ (auto from brand+model) ── */}
+          <Field
+            label="ชื่ออุปกรณ์"
+            required
+            hint="สร้างอัตโนมัติจาก แบรนด์ + รุ่น — แก้ไขได้ถ้าต้องการ"
+          >
+            <Input
+              id="qa-name"
+              value={form.name}
+              onChange={(e) => {
+                nameManuallyEditedRef.current = true
+                setForm({ ...form, name: e.target.value })
+              }}
+              placeholder="สร้างอัตโนมัติ เช่น BROTHER HL-L5210DN"
+              className="bg-amber-50/50 dark:bg-amber-950/10"
+            />
+          </Field>
+
+          {/* ── สถานะ (default 'active') ── */}
+          <Field label="สถานะ" required>
+            <Select
+              value={form.status}
+              onValueChange={(v) => setForm({ ...form, status: v })}
+            >
+              <SelectTrigger className="w-full" id="qa-status">
+                <SelectValue placeholder="เลือกสถานะ" />
+              </SelectTrigger>
+              <SelectContent>
+                {DEVICE_STATUS_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          {/* ── ประเภท (Type) ── */}
+          <Field label="ประเภท (Type)" required>
+            <Combobox
+              value={form.type}
+              onChange={(v) =>
+                setForm({ ...form, type: v, brand: '', model: '' })
+              }
+              items={(deviceTypes ?? []).map((t) => ({
+                value: t.name,
+                label: t.name,
+              }))}
+              placeholder="เลือกหรือพิมพ์ประเภท เช่น PRINTER LASER"
+              emptyText="ไม่พบประเภท"
+            />
+          </Field>
+
+          {/* ── แบรนด์ (Brand) ── */}
+          <Field label="แบรนด์ (Brand)" required>
+            <Combobox
+              value={form.brand}
+              onChange={(v) => setForm({ ...form, brand: v, model: '' })}
+              items={(brandsData ?? []).map((b) => ({
+                value: b.name,
+                label: b.name,
+              }))}
+              placeholder="เลือกหรือพิมพ์แบรนด์ เช่น BROTHER"
+              emptyText="ไม่พบแบรนด์"
+            />
+          </Field>
+
+          {/* ── รุ่น (Model) — selects + auto-fills brand/type ── */}
+          <Field
+            label="รุ่น (Model)"
+            required
+            hint="เลือกรุ่นแล้ว แบรนด์/ประเภท auto"
+          >
+            <Combobox
+              value={form.model}
+              onChange={(v) => {
+                const match = deviceClassifications.find(
+                  (c) =>
+                    (c.model ?? '').toLowerCase() === v.toLowerCase(),
+                )
+                if (match) {
+                  setForm((prev) => ({
+                    ...prev,
+                    model: v,
+                    brand: match.brand ?? prev.brand,
+                    type: match.deviceType ?? prev.type,
+                  }))
+                } else {
+                  setForm((prev) => ({ ...prev, model: v }))
+                }
+              }}
+              items={Array.from(
+                new Set(
+                  deviceClassifications
+                    .map((c) => c.model)
+                    .filter((m): m is string => Boolean(m)),
+                ),
+              )
+                .sort()
+                .map((m) => ({ value: m, label: m }))}
+              placeholder="เลือกรุ่น เช่น HL-L5210DN"
+              emptyText="ไม่พบรุ่น — พิมพ์เพื่อเพิ่มใหม่"
+            />
+          </Field>
+
+          {/* ── Serial Number (optional) ── */}
+          <Field label="Serial Number">
+            <div className="relative">
+              <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                id="qa-serialNumber"
+                value={form.serialNumber}
+                onChange={(e) =>
+                  setForm({ ...form, serialNumber: e.target.value })
+                }
+                placeholder="สแกนหรือพิมพ์ SN"
+                className="pl-8 font-mono text-xs"
+              />
+            </div>
+          </Field>
+        </div>
+
+        {/* ── Hint: required fields reminder ── */}
+        <div className="mt-4 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+          <span className="font-semibold text-[#f97316]">*</span>
+          <span>ฟิลด์จำเป็น — บันทึกได้หลังกรอกครบทุกฟิลด์ที่มี</span>
+          <span className="font-semibold text-[#f97316]">*</span>
+        </div>
+      </div>
+    </div>
   )
 }
 

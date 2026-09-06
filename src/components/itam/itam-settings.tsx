@@ -35,6 +35,7 @@ import { PendingUsersSection } from './pending-users-section'
 import { UserManagementSection } from './user-management-section'
 import { OauthSection } from './oauth-section'
 import { DemoManagementSection } from './demo-management-section'
+import { LicenseManagementSection } from './license-management-section'
 import { useAuthStore } from '@/store/auth-store'
 
 /** Build fetch headers with the user's JWT (if logged in). */
@@ -64,7 +65,9 @@ type SettingsTab =
   | 'number-patterns'
   | 'wo-patterns'
   | 'demo'
+  | 'mobile-nav'
   | 'my-biometrics'
+  | 'licenses'
 
 interface SettingsTabGroup {
   title: string
@@ -82,6 +85,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'number-patterns', label: 'รูปแบบเลขทะเบียน', icon: Hash },
       { value: 'wo-patterns', label: 'เลขใบงาน', icon: FileText },
       { value: 'sites', label: 'สาขา (ภาพรวม)', icon: Building2 },
+      { value: 'licenses', label: 'ลิขสิทธิ์ซอฟต์แวร์', icon: KeyRound },
     ],
   },
   {
@@ -732,6 +736,8 @@ export function ItamSettings() {
       {tab === 'mobile-nav' && <MobileNavConfigSection />}
 
       {tab === 'my-biometrics' && <MyBiometricsSection />}
+
+      {tab === 'licenses' && <LicenseManagementSection />}
         </div>
       </div>
 
