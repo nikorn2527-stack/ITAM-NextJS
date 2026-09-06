@@ -158,7 +158,7 @@ function printViaIframe(html: string) {
 // ─── Device → StickerDeviceData ──────────────────────────────────────────
 function deviceToStickerData(d: Device): StickerDeviceData {
   return {
-    id: d.id, // APPENDIX-D: needed so {{QrUrl}} generates the Smart QR URL.
+    id: d.id,
     assetCode: d.assetCode,
     assetSiteCode: d.assetSiteCode ?? null,
     serialNumber: d.serialNumber ?? null,
@@ -167,22 +167,20 @@ function deviceToStickerData(d: Device): StickerDeviceData {
     model: d.model ?? null,
     building: d.building ?? null,
     floor: d.floor ?? null,
-    room: (d as Record<string, unknown>).room as string | null ?? null,
+    room: d.room ?? null,
     department: d.department ?? null,
     departmentCode: d.departmentCode ?? null,
     location: d.location ?? null,
     site: d.site ?? null,
     contractNo: d.contractNo ?? null,
     vendor: d.vendor ?? null,
-    status: (d as Record<string, unknown>).status as string | null ?? null,
-    currentAssignee: (d as Record<string, unknown>).currentAssignee as string | null ?? null,
-    warrantyEnd: (d as Record<string, unknown>).warrantyEnd as string | null ?? null,
-    purchaseDate: (d as Record<string, unknown>).purchaseDate as string | null ?? null,
-    purchasePrice: (d as Record<string, unknown>).purchasePrice as string | number | null ?? null,
-    ip: (d as Record<string, unknown>).ip as string | null ?? null,
-    mac: (d as Record<string, unknown>).mac as string | null ?? null,
-    // licenses will be fetched separately by the API render route;
-    // for client-side preview, we leave it empty (SAMPLE_DEVICE has them)
+    status: d.status ?? null,
+    currentAssignee: d.currentAssignee ?? null,
+    warrantyEnd: d.warrantyEnd ?? null,
+    purchaseDate: d.purchaseDate ?? null,
+    purchasePrice: d.purchasePrice ?? null,
+    ip: d.ip ?? null,
+    mac: d.mac ?? null,
     licenses: [],
   }
 }
