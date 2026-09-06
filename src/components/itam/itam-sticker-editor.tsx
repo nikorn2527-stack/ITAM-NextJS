@@ -1524,7 +1524,14 @@ export function ItamStickerEditor() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteMutation.isPending}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteTplId && deleteMutation.mutate(deleteTplId)}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                if (deleteTplId) {
+                  deleteMutation.mutate(deleteTplId, {
+                    onSuccess: () => setDeleteTplId(null),
+                  })
+                }
+              }}
               disabled={deleteMutation.isPending}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >

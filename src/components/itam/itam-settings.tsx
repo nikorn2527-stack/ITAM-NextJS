@@ -748,7 +748,10 @@ export function ItamSettings() {
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
-              onClick={confirmDelete}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void confirmDelete()
+              }}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
               ลบ

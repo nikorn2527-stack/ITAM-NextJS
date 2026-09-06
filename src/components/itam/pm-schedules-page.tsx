@@ -1745,9 +1745,13 @@ export function PMSchedulesPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
-                if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
-                setDeleteTarget(null)
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                if (deleteTarget) {
+                  deleteMutation.mutate(deleteTarget.id, {
+                    onSuccess: () => setDeleteTarget(null),
+                  })
+                }
               }}
               className="bg-rose-600 hover:bg-rose-700"
             >

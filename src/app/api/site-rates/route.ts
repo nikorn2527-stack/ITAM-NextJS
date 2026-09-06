@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { requireAuth } from '@/lib/auth-middleware'
 
 // Cache site rates for 5 minutes — changes infrequently
 export const revalidate = 300
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // ── P0 Security: require authentication ──
+  // Site rates are internal financial data; staff need read access but the
+  // endpoint must not be publicly callable.
+  const auth = await requireAuth(req)
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     // Parallel queries with select to reduce payload
     const [rates, sites] = await Promise.all([
@@ -66,6 +75,13 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  // ── P0 Security: require ADMIN permission for writes ──
+  // Setting/changing paper rates is an admin-only operation.
+  const auth = await requireAuth(req, 'ADMIN')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const body = await req.json()
     const { siteCode, bwRate, colorRate } = body as {

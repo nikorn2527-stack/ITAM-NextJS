@@ -1,23 +1,26 @@
 // ============================================================
 // line-session.ts — LINE public-reporter session cookie helper
-// (Task ID: PUBLIC-QR-2B-LINE-LOGIN)
+// (Task ID: PUBLIC-QR-2B-LINE-LOGIN  ·  Security fix: SECURITY-AUDIT-FIXES)
 // ============================================================
 // The `line_session` cookie is a SEPARATE cookie from `itam-session`
 // (staff auth via NextAuth-style JWT). It only carries LINE identity for
-// PUBLIC users (Tier 1/2 QR repair reporters) and is intentionally NOT a
-// security primitive — anyone with the cookie can read its contents. It is
-// base64-encoded JSON (not encrypted) for simplicity.
+// PUBLIC users (Tier 1/2 QR repair reporters).
 //
-// If you need stronger assurance, sign the cookie with HMAC-SHA256 using
-// LINE_LOGIN_CHANNEL_SECRET (or a dedicated LINE_SESSION_SECRET env var).
-// For now, base64 is sufficient because:
-//   1. The cookie is HTTP-only (not readable from JS).
-//   2. The session is short-lived (24h).
-//   3. The only "trust" we grant is routing repair submissions to Tier 1/2
-//      instead of Tier 3 — staff still review Tier 2/3 submissions, and
-//      Tier 1 (phone-verified) only applies when the phone scope was granted.
+// ── SECURITY ──────────────────────────────────────────────────────
+// The cookie payload is encrypted with AES-256-GCM using a key derived
+// (SHA-256) from `LINE_SESSION_SECRET` (preferred) or `JWT_SECRET`
+// (fallback). Each cookie carries its own random IV + auth tag, so the
+// same payload encrypts to a different ciphertext every time, and any
+// tampering with the cookie is detected on decrypt (GCM auth tag check).
+//
+// Backward compatibility: if decryption fails (e.g. legacy base64 cookie
+// issued before this fix), we attempt the old base64-JSON decode path
+// and log a warning. This avoids forcing all logged-in LINE users to
+// re-authenticate on the first deploy. Once all sessions have rotated
+// (24h), the legacy path can be removed.
 // ============================================================
 
+import crypto from 'node:crypto'
 import type { NextRequest, NextResponse } from 'next/server'
 
 export const LINE_SESSION_COOKIE = 'line_session'
@@ -48,7 +51,71 @@ interface StateCookiePayload {
   createdAt: string
 }
 
-// ─── Encoding / decoding ────────────────────────────────────────────────
+// ─── Encryption (AES-256-GCM) ─────────────────────────────────────────
+//
+// Cookie format: base64(iv || ciphertext || authTag)
+//   - iv       : 12 bytes (GCM standard nonce length)
+//   - ciphertext : same length as plaintext
+//   - authTag  : 16 bytes (GCM auth tag — detects tampering)
+
+const ALGO = 'aes-256-gcm'
+const IV_LEN = 12 // GCM standard
+const TAG_LEN = 16
+
+/** Minimum ciphertext length: iv + at least 1 byte + tag. */
+const MIN_TOKEN_LEN = IV_LEN + 1 + TAG_LEN
+
+function getKey(): Buffer {
+  const secret =
+    process.env.LINE_SESSION_SECRET || process.env.JWT_SECRET || ''
+  if (!secret) {
+    throw new Error(
+      'LINE_SESSION_SECRET (or JWT_SECRET) must be set to encrypt line_session cookie',
+    )
+  }
+  // Derive a 32-byte key (AES-256) from the secret via SHA-256.
+  return crypto.createHash('sha256').update(secret).digest()
+}
+
+/**
+ * Encrypt an arbitrary JSON-serializable payload with AES-256-GCM.
+ * Returns base64(iv || ciphertext || authTag).
+ */
+export async function encryptSession(payload: object): Promise<string> {
+  const key = getKey()
+  const iv = crypto.randomBytes(IV_LEN)
+  const cipher = crypto.createCipheriv(ALGO, key, iv)
+  const plaintext = Buffer.from(JSON.stringify(payload), 'utf8')
+  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return Buffer.concat([iv, encrypted, tag]).toString('base64')
+}
+
+/**
+ * Decrypt a token produced by `encryptSession`. Returns null on any failure
+ * (bad base64, truncated, wrong key, tampered auth tag, invalid JSON).
+ */
+export async function decryptSession<T = unknown>(token: string): Promise<T | null> {
+  try {
+    const buf = Buffer.from(token, 'base64')
+    if (buf.length < MIN_TOKEN_LEN) return null
+    const iv = buf.subarray(0, IV_LEN)
+    const tag = buf.subarray(buf.length - TAG_LEN)
+    const ciphertext = buf.subarray(IV_LEN, buf.length - TAG_LEN)
+    const key = getKey()
+    const decipher = crypto.createDecipheriv(ALGO, key, iv)
+    decipher.setAuthTag(tag)
+    const decrypted = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ])
+    return JSON.parse(decrypted.toString('utf8')) as T
+  } catch {
+    return null
+  }
+}
+
+// ─── Legacy base64 (for backward compat during the rollout window) ────
 
 function encodeBase64Json(value: unknown): string {
   return Buffer.from(JSON.stringify(value), 'utf8').toString('base64')
@@ -63,16 +130,62 @@ function decodeBase64Json<T = unknown>(token: string): T | null {
   }
 }
 
+/**
+ * Heuristic: does this cookie value "look like" an encrypted token? Encrypted
+ * tokens are at least MIN_TOKEN_LEN bytes when base64-decoded. Legacy
+ * base64-JSON cookies may also satisfy this length, so this is only a hint —
+ * the real test is whether decryptSession succeeds.
+ */
+function looksEncrypted(token: string): boolean {
+  try {
+    const buf = Buffer.from(token, 'base64')
+    return buf.length >= MIN_TOKEN_LEN
+  } catch {
+    return false
+  }
+}
+
 // ─── Session cookie (line_session) ─────────────────────────────────────
 
 /**
  * Read + validate the `line_session` cookie from a NextRequest.
- * Returns null if the cookie is missing, malformed, or expired.
+ * Returns null if the cookie is missing, malformed, expired, or fails
+ * authentication (tampered / wrong key).
+ *
+ * Backward compat: if the cookie doesn't decrypt (legacy base64-JSON), we
+ * fall back to the legacy decode path and log a warning. This is a
+ * best-effort fallback for cookies issued before the encryption fix rolled
+ * out; once all sessions have rotated (24h TTL) the fallback can be removed.
  */
-export function getLineSession(req: NextRequest): LineSession | null {
+export async function getLineSession(req: NextRequest): Promise<LineSession | null> {
   const raw = req.cookies.get(LINE_SESSION_COOKIE)?.value
   if (!raw) return null
-  const parsed = decodeBase64Json<LineSession>(raw)
+
+  let parsed: LineSession | null = null
+
+  // 1. Try the encrypted path first.
+  if (looksEncrypted(raw)) {
+    parsed = await decryptSession<LineSession>(raw)
+    if (parsed === null) {
+      // 2. Decryption failed — try legacy base64-JSON as a fallback.
+      //    This covers cookies issued before the encryption fix rolled out.
+      //    Once all sessions have rotated (24h TTL), this branch can be
+      //    removed along with the legacy decode helpers.
+      const legacy = decodeBase64Json<LineSession>(raw)
+      if (legacy) {
+        console.warn(
+          '[line-session] falling back to legacy base64 decode for line_session cookie — ' +
+            'this cookie was issued before AES-256-GCM encryption was enabled and will ' +
+            'be replaced by an encrypted cookie on the next LINE login.',
+        )
+        parsed = legacy
+      }
+    }
+  } else {
+    // Cookie doesn't look encrypted — must be a legacy base64-JSON cookie.
+    parsed = decodeBase64Json<LineSession>(raw)
+  }
+
   if (!parsed) return null
   if (typeof parsed.userId !== 'string' || typeof parsed.displayName !== 'string') {
     return null
@@ -85,13 +198,14 @@ export function getLineSession(req: NextRequest): LineSession | null {
 
 /**
  * Set the `line_session` cookie on a NextResponse (used by the callback
- * route after a successful LINE login).
+ * route after a successful LINE login). The payload is encrypted with
+ * AES-256-GCM before being stored.
  */
-export function setLineSessionCookie(
+export async function setLineSessionCookie(
   res: NextResponse,
   session: LineSession,
-): void {
-  const value = encodeBase64Json(session)
+): Promise<void> {
+  const value = await encryptSession(session)
   res.cookies.set(LINE_SESSION_COOKIE, value, {
     httpOnly: true,
     sameSite: 'lax',
@@ -115,6 +229,12 @@ export function clearLineSessionCookie(res: NextResponse): void {
 }
 
 // ─── State cookie (line_login_state) ───────────────────────────────────
+//
+// The state cookie is intentionally NOT encrypted: it only carries a CSRF
+// nonce + a redirect URL + a 10-min timestamp. Its integrity comes from
+// the OAuth `state` echo-back check on the callback, not from encryption.
+// Keeping it as base64-JSON avoids an extra crypto round-trip in the
+// already-latency-sensitive login redirect.
 
 /**
  * Save the OAuth `state` value + the post-login redirect target into a

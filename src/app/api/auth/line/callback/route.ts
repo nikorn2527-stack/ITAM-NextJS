@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
     }
     const redirect = stateCookie.redirect
     const res = redirectToOriginal(origin, redirect)
-    setLineSessionCookie(res, session)
+    await setLineSessionCookie(res, session)
     return res
   } catch (err) {
     console.error('GET /api/auth/line/callback', err)

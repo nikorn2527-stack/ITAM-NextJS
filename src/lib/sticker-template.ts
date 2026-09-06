@@ -148,13 +148,23 @@ export function genTemplateId(): string {
 }
 
 // ─── Build the 17-element default template (matches Apps Script) ──────────
-export function buildDefaultTemplate(): StickerTemplate {
+// Accepts an optional `canvas` so the same template can be re-laid out for
+// different sticker sizes (A4, A5, label sizes, custom). When omitted, the
+// original 75.2 × 36 mm default canvas is used (backward-compat with all
+// existing callers — e.g. `getStickerTemplates()` seeding).
+export function buildDefaultTemplate(canvas?: StickerCanvas): StickerTemplate {
+  const c = canvas ?? { width: 75.2, height: 36, unit: 'mm' }
+  const W = c.width
+  const H = c.height
+  // Scale factor relative to the original 75.2 × 36 design. We scale by the
+  // smaller axis so fonts stay readable on any aspect ratio.
+  const u = Math.min(W / 75.2, H / 36)
   const elements: StickerElement[] = [
     // 1 — header bar
     {
       id: genElementId(),
       type: 'rect',
-      x: 0, y: 0, width: 75.2, height: 5,
+      x: 0, y: 0, width: W, height: 5 * u,
       background: '#f97316',
       zIndex: 0,
     },
@@ -162,7 +172,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 0.6, width: 40, height: 3.8,
+      x: 1.5 * u, y: 0.6 * u, width: 40 * u, height: 3.8 * u,
       content: '{{companyName}}',
       fontSize: 9, fontWeight: 800, color: '#ffffff', align: 'left',
       zIndex: 1,
@@ -171,7 +181,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 42, y: 0.6, width: 32, height: 3.8,
+      x: W - 33.2 * u, y: 0.6 * u, width: 32 * u, height: 3.8 * u,
       content: '{{hospitalName}}',
       fontSize: 6.5, fontWeight: 600, color: '#ffffff', align: 'right',
       zIndex: 1,
@@ -180,7 +190,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 6, width: 30, height: 2,
+      x: 1.5 * u, y: 6 * u, width: 30 * u, height: 2 * u,
       content: 'Asset No.',
       fontSize: 5, fontWeight: 500, color: '#64748b', align: 'left',
       zIndex: 1,
@@ -189,7 +199,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 8, width: 45, height: 4,
+      x: 1.5 * u, y: 8 * u, width: 45 * u, height: 4 * u,
       content: '{{AssetNo}}',
       fontSize: 11, fontWeight: 800, color: '#f97316', align: 'left',
       zIndex: 1,
@@ -198,7 +208,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 47, y: 6, width: 27, height: 2,
+      x: W - 28.2 * u, y: 6 * u, width: 27 * u, height: 2 * u,
       content: 'Site Code',
       fontSize: 5, fontWeight: 500, color: '#64748b', align: 'right',
       zIndex: 1,
@@ -207,7 +217,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 47, y: 8, width: 27, height: 4,
+      x: W - 28.2 * u, y: 8 * u, width: 27 * u, height: 4 * u,
       content: '{{AssetSiteCode}}',
       fontSize: 10, fontWeight: 800, color: '#0d9488', align: 'right',
       zIndex: 1,
@@ -216,7 +226,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 12.5, width: 50, height: 2.5,
+      x: 1.5 * u, y: 12.5 * u, width: Math.min(50 * u, W - 25 * u), height: 2.5 * u,
       content: '{{Brand}} {{Model}}',
       fontSize: 6.5, fontWeight: 700, color: '#1e293b', align: 'left',
       zIndex: 1,
@@ -225,7 +235,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 15, width: 50, height: 2.5,
+      x: 1.5 * u, y: 15 * u, width: Math.min(50 * u, W - 25 * u), height: 2.5 * u,
       content: '{{Type}} · SN: {{Serial}}',
       fontSize: 5.5, fontWeight: 500, color: '#475569', align: 'left',
       zIndex: 1,
@@ -234,7 +244,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 17.5, width: 50, height: 2.5,
+      x: 1.5 * u, y: 17.5 * u, width: Math.min(50 * u, W - 25 * u), height: 2.5 * u,
       content: '{{Site}} / อาคาร {{Building}} / ชั้น {{Floor}}',
       fontSize: 5.5, fontWeight: 500, color: '#475569', align: 'left',
       zIndex: 1,
@@ -243,7 +253,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 20, width: 50, height: 2.5,
+      x: 1.5 * u, y: 20 * u, width: Math.min(50 * u, W - 25 * u), height: 2.5 * u,
       content: '{{Department}} ({{DepartmentCode}})',
       fontSize: 5.5, fontWeight: 500, color: '#475569', align: 'left',
       zIndex: 1,
@@ -252,7 +262,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 22.5, width: 50, height: 2.5,
+      x: 1.5 * u, y: 22.5 * u, width: Math.min(50 * u, W - 25 * u), height: 2.5 * u,
       content: 'ที่ตั้ง: {{Location}}',
       fontSize: 5.5, fontWeight: 500, color: '#475569', align: 'left',
       zIndex: 1,
@@ -261,19 +271,16 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 25, width: 50, height: 2.5,
+      x: 1.5 * u, y: 25 * u, width: Math.min(50 * u, W - 25 * u), height: 2.5 * u,
       content: 'สัญญา: {{ContractNo}} · ผู้ขาย: {{Vendor}}',
       fontSize: 5, fontWeight: 500, color: '#64748b', align: 'left',
       zIndex: 1,
     },
-    // 14 — hotline + LINE OA — "สแกนเพื่อแจ้งซ่อม"
-    // เดิม: "โทร: {{hotline}} · LINE: {{lineOA}}"
-    // ใหม่: สั้นลง ให้พื้นที่สำหรับ QR และ assetSiteCode
-    // (ผู้ใช้สแกน QR แล้วเข้า LINE Login อัตโนมัติ — ไม่ต้องพิมพ์ @lineOA บนสติกเกอร์แล้ว)
+    // 14 — hotline + "สแกน QR เพื่อแจ้งซ่อม"
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 27.5, width: 50, height: 2.5,
+      x: 1.5 * u, y: 27.5 * u, width: Math.min(50 * u, W - 25 * u), height: 2.5 * u,
       content: 'สแกน QR เพื่อแจ้งซ่อม · โทร {{hotline}}',
       fontSize: 5.5, fontWeight: 700, color: '#f97316', align: 'left',
       zIndex: 1,
@@ -282,7 +289,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'qr',
-      x: 53, y: 13, width: 21, height: 21,
+      x: W - 22.2 * u, y: 13 * u, width: 21 * u, height: 21 * u,
       content: '{{AssetNo}}',
       zIndex: 1,
     },
@@ -290,7 +297,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'rect',
-      x: 1.5, y: 30.5, width: 72, height: 0.2,
+      x: 1.5 * u, y: H - 5.5 * u, width: W - 3 * u, height: 0.2 * u,
       background: '#cbd5e1',
       zIndex: 0,
     },
@@ -298,7 +305,7 @@ export function buildDefaultTemplate(): StickerTemplate {
     {
       id: genElementId(),
       type: 'text',
-      x: 1.5, y: 31, width: 72, height: 4,
+      x: 1.5 * u, y: H - 5 * u, width: W - 3 * u, height: 4 * u,
       content: '{{footerNote}}',
       fontSize: 4.5, fontWeight: 500, color: '#94a3b8', align: 'center',
       zIndex: 1,
@@ -309,10 +316,315 @@ export function buildDefaultTemplate(): StickerTemplate {
     id: 'tpl-default',
     name: 'เทมเพลตเริ่มต้น (Default)',
     isDefault: true,
-    canvas: { width: 75.2, height: 36, unit: 'mm' },
+    canvas: c,
     overflow: 'clip',
     elements,
   }
+}
+
+// ─── Minimal template — org name + asset code + brand/model + QR only ────
+export function buildMinimalTemplate(canvas: StickerCanvas): StickerTemplate {
+  const W = canvas.width
+  const H = canvas.height
+  const headerH = Math.max(4, H * 0.12)
+  const qrSize = Math.min(W * 0.32, (H - headerH) * 0.85)
+  const qrX = W - qrSize - W * 0.025
+  const qrY = headerH + Math.max(0, ((H - headerH) - qrSize) / 2)
+  const leftW = Math.max(10, qrX - W * 0.025)
+  const startX = W * 0.025
+  const rowH = Math.max(2.5, H * 0.08)
+
+  const elements: StickerElement[] = [
+    { id: genElementId(), type: 'rect', x: 0, y: 0, width: W, height: headerH, background: '#f97316', zIndex: 0 },
+    {
+      id: genElementId(), type: 'text',
+      x: startX, y: headerH * 0.2, width: W * 0.7, height: headerH * 0.6,
+      content: '{{companyName}}', fontSize: Math.max(7, headerH * 0.65),
+      fontWeight: 800, color: '#ffffff', align: 'left', zIndex: 1,
+    },
+    {
+      id: genElementId(), type: 'text',
+      x: startX, y: headerH + H * 0.04, width: leftW, height: rowH * 1.5,
+      content: '{{AssetNo}}', fontSize: Math.max(11, H * 0.14),
+      fontWeight: 800, color: '#f97316', align: 'left', zIndex: 1,
+    },
+    {
+      id: genElementId(), type: 'text',
+      x: startX, y: headerH + H * 0.04 + rowH * 1.5, width: leftW, height: rowH,
+      content: '{{hospitalName}}', fontSize: Math.max(6, H * 0.08),
+      fontWeight: 600, color: '#1e293b', align: 'left', zIndex: 1,
+    },
+    {
+      id: genElementId(), type: 'text',
+      x: startX, y: headerH + H * 0.04 + rowH * 2.5, width: leftW, height: rowH,
+      content: '{{Brand}} {{Model}}', fontSize: Math.max(6, H * 0.08),
+      fontWeight: 500, color: '#475569', align: 'left', zIndex: 1,
+    },
+    {
+      id: genElementId(), type: 'qr',
+      x: qrX, y: qrY, width: qrSize, height: qrSize,
+      content: '{{AssetNo}}', zIndex: 1,
+    },
+  ]
+
+  return {
+    id: 'tpl-minimal',
+    name: 'มินิมอล (Minimal)',
+    isDefault: false,
+    canvas,
+    overflow: 'clip',
+    elements,
+  }
+}
+
+// ─── QR-only template — asset code + large QR + scan hint ─────────────────
+export function buildQrOnlyTemplate(canvas: StickerCanvas): StickerTemplate {
+  const W = canvas.width
+  const H = canvas.height
+  const topH = Math.max(6, H * 0.18)
+  const bottomH = Math.max(4, H * 0.12)
+  const qrSize = Math.min(W * 0.7, H - topH - bottomH - 2)
+  const qrX = (W - qrSize) / 2
+  const qrY = topH + Math.max(0, (H - topH - bottomH - qrSize) / 2)
+
+  const elements: StickerElement[] = [
+    {
+      id: genElementId(), type: 'text',
+      x: W * 0.05, y: topH * 0.2, width: W * 0.9, height: topH * 0.7,
+      content: '{{AssetNo}}', fontSize: Math.max(10, topH * 0.6),
+      fontWeight: 800, color: '#f97316', align: 'center', zIndex: 1,
+    },
+    {
+      id: genElementId(), type: 'qr',
+      x: qrX, y: qrY, width: qrSize, height: qrSize,
+      content: '{{AssetNo}}', zIndex: 1,
+    },
+    {
+      id: genElementId(), type: 'text',
+      x: W * 0.05, y: H - bottomH, width: W * 0.9, height: bottomH * 0.9,
+      content: 'สแกน QR เพื่อแจ้งซ่อม', fontSize: Math.max(6, bottomH * 0.5),
+      fontWeight: 700, color: '#475569', align: 'center', zIndex: 1,
+    },
+  ]
+
+  return {
+    id: 'tpl-qr-only',
+    name: 'เฉพาะ QR (QR Only)',
+    isDefault: false,
+    canvas,
+    overflow: 'clip',
+    elements,
+  }
+}
+
+// ─── Compact template — key fields (asset / brand / site / location) + QR ─
+export function buildCompactTemplate(canvas: StickerCanvas): StickerTemplate {
+  const W = canvas.width
+  const H = canvas.height
+  const headerH = Math.max(4, H * 0.12)
+  const qrSize = Math.min(W * 0.32, (H - headerH) * 0.7)
+  const qrX = W - qrSize - W * 0.025
+  const qrY = headerH + Math.max(0, ((H - headerH) - qrSize) / 2)
+  const leftW = Math.max(10, qrX - W * 0.025)
+  const startX = W * 0.025
+  const rowH = Math.max(2.5, H * 0.085)
+  let y = headerH + H * 0.03
+
+  function nextRow(content: string, fontSize: number, fontWeight: number, color: string): StickerElement {
+    const el: StickerElement = {
+      id: genElementId(), type: 'text',
+      x: startX, y, width: leftW, height: rowH,
+      content, fontSize, fontWeight, color, align: 'left', zIndex: 1,
+    }
+    y += rowH + 0.5
+    return el
+  }
+
+  const elements: StickerElement[] = [
+    { id: genElementId(), type: 'rect', x: 0, y: 0, width: W, height: headerH, background: '#f97316', zIndex: 0 },
+    {
+      id: genElementId(), type: 'text',
+      x: startX, y: headerH * 0.2, width: W * 0.7, height: headerH * 0.6,
+      content: '{{companyName}}', fontSize: Math.max(7, headerH * 0.65),
+      fontWeight: 800, color: '#ffffff', align: 'left', zIndex: 1,
+    },
+    {
+      id: genElementId(), type: 'text',
+      x: startX, y, width: leftW, height: rowH * 1.5,
+      content: '{{AssetNo}}', fontSize: Math.max(11, H * 0.14),
+      fontWeight: 800, color: '#f97316', align: 'left', zIndex: 1,
+    },
+  ]
+  y += rowH * 1.5 + 0.5
+  elements.push(
+    nextRow('{{hospitalName}}', Math.max(6, H * 0.08), 600, '#1e293b'),
+    nextRow('{{Brand}} {{Model}}', Math.max(6, H * 0.08), 500, '#475569'),
+    nextRow('{{Type}} · SN: {{Serial}}', Math.max(5.5, H * 0.07), 500, '#64748b'),
+    nextRow('{{Site}} / อาคาร {{Building}} / ชั้น {{Floor}}', Math.max(5.5, H * 0.07), 500, '#475569'),
+    nextRow('{{Department}} ({{DepartmentCode}})', Math.max(5.5, H * 0.07), 500, '#475569'),
+  )
+  elements.push({
+    id: genElementId(), type: 'qr',
+    x: qrX, y: qrY, width: qrSize, height: qrSize,
+    content: '{{AssetNo}}', zIndex: 1,
+  })
+
+  return {
+    id: 'tpl-compact',
+    name: 'กระชับ (Compact)',
+    isDefault: false,
+    canvas,
+    overflow: 'clip',
+    elements,
+  }
+}
+
+// ─── Detailed template — default + contract/vendor + hotline (larger) ────
+// Same as default but laid out for medium-large canvases (>= A7) — for very
+// small label sizes, fall back to compact instead.
+export function buildDetailedTemplate(canvas: StickerCanvas): StickerTemplate {
+  const W = canvas.width
+  const H = canvas.height
+  const headerH = Math.max(5, H * 0.13)
+  const qrSize = Math.min(W * 0.3, (H - headerH) * 0.55)
+  const qrX = W - qrSize - W * 0.025
+  const qrY = headerH + Math.max(0, ((H - headerH) - qrSize) / 2)
+  const leftW = Math.max(15, qrX - W * 0.025)
+  const startX = W * 0.025
+  const rowH = Math.max(2.5, H * 0.075)
+  let y = headerH + H * 0.03
+
+  function nextRow(content: string, fontSize: number, fontWeight: number, color: string): StickerElement {
+    const el: StickerElement = {
+      id: genElementId(), type: 'text',
+      x: startX, y, width: leftW, height: rowH,
+      content, fontSize, fontWeight, color, align: 'left', zIndex: 1,
+    }
+    y += rowH + 0.4
+    return el
+  }
+
+  const elements: StickerElement[] = [
+    { id: genElementId(), type: 'rect', x: 0, y: 0, width: W, height: headerH, background: '#f97316', zIndex: 0 },
+    {
+      id: genElementId(), type: 'text',
+      x: startX, y: headerH * 0.2, width: W * 0.7, height: headerH * 0.6,
+      content: '{{companyName}}', fontSize: Math.max(7, headerH * 0.65),
+      fontWeight: 800, color: '#ffffff', align: 'left', zIndex: 1,
+    },
+    {
+      id: genElementId(), type: 'text',
+      x: W - qrX, y: headerH * 0.2, width: qrX - W * 0.025, height: headerH * 0.6,
+      content: '{{hospitalName}}', fontSize: Math.max(6, headerH * 0.5),
+      fontWeight: 600, color: '#ffffff', align: 'right', zIndex: 1,
+    },
+    {
+      id: genElementId(), type: 'text',
+      x: startX, y, width: leftW, height: rowH * 1.5,
+      content: '{{AssetNo}}', fontSize: Math.max(11, H * 0.13),
+      fontWeight: 800, color: '#f97316', align: 'left', zIndex: 1,
+    },
+    {
+      id: genElementId(), type: 'text',
+      x: qrX, y, width: qrSize, height: rowH,
+      content: '{{AssetSiteCode}}', fontSize: Math.max(7, H * 0.09),
+      fontWeight: 700, color: '#0d9488', align: 'right', zIndex: 1,
+    },
+  ]
+  y += rowH * 1.5 + 0.5
+  elements.push(
+    nextRow('{{Brand}} {{Model}}', Math.max(7, H * 0.08), 700, '#1e293b'),
+    nextRow('{{Type}} · SN: {{Serial}}', Math.max(6, H * 0.07), 500, '#475569'),
+    nextRow('{{Site}} / อาคาร {{Building}} / ชั้น {{Floor}}', Math.max(6, H * 0.07), 500, '#475569'),
+    nextRow('{{Department}} ({{DepartmentCode}})', Math.max(6, H * 0.07), 500, '#475569'),
+    nextRow('ที่ตั้ง: {{Location}}', Math.max(6, H * 0.07), 500, '#475569'),
+    nextRow('สัญญา: {{ContractNo}} · ผู้ขาย: {{Vendor}}', Math.max(5.5, H * 0.06), 500, '#64748b'),
+    nextRow('สแกน QR เพื่อแจ้งซ่อม · โทร {{hotline}}', Math.max(6, H * 0.07), 700, '#f97316'),
+  )
+  elements.push({
+    id: genElementId(), type: 'qr',
+    x: qrX, y: qrY, width: qrSize, height: qrSize,
+    content: '{{AssetNo}}', zIndex: 1,
+  })
+  // Footer note + divider
+  elements.push(
+    {
+      id: genElementId(), type: 'rect',
+      x: startX, y: H - H * 0.13, width: W - 2 * startX, height: 0.2,
+      background: '#cbd5e1', zIndex: 0,
+    },
+    {
+      id: genElementId(), type: 'text',
+      x: startX, y: H - H * 0.1, width: W - 2 * startX, height: H * 0.09,
+      content: '{{footerNote}}', fontSize: Math.max(4.5, H * 0.05),
+      fontWeight: 500, color: '#94a3b8', align: 'center', zIndex: 1,
+    },
+  )
+
+  return {
+    id: 'tpl-detailed',
+    name: 'ละเอียด (Detailed)',
+    isDefault: false,
+    canvas,
+    overflow: 'clip',
+    elements,
+  }
+}
+
+// ─── Sticker size presets (paper / label sizes) ────────────────────────────
+export interface StickerSizePreset {
+  id: string
+  label: string
+  /** Width in mm (0 means "use custom width field") */
+  width: number
+  /** Height in mm (0 means "use custom height field") */
+  height: number
+}
+
+export const STICKER_SIZE_PRESETS: StickerSizePreset[] = [
+  { id: 'default', label: '75.2 × 36 mm (default)', width: 75.2, height: 36 },
+  { id: 'a4', label: 'A4 (210 × 297 mm)', width: 210, height: 297 },
+  { id: 'a5', label: 'A5 (148 × 210 mm)', width: 148, height: 210 },
+  { id: 'a7', label: 'A7 (74 × 105 mm)', width: 74, height: 105 },
+  { id: 'label-50x30', label: 'Label 50 × 30 mm', width: 50, height: 30 },
+  { id: 'label-60x40', label: 'Label 60 × 40 mm', width: 60, height: 40 },
+  { id: 'label-100x50', label: 'Label 100 × 50 mm', width: 100, height: 50 },
+  { id: 'square-50', label: 'Square 50 × 50 mm', width: 50, height: 50 },
+  { id: 'custom', label: 'กำหนดเอง...', width: 0, height: 0 },
+]
+
+// ─── Sticker template presets (form layouts) ──────────────────────────────
+export interface StickerTemplatePreset {
+  id: string
+  label: string
+  /** Returns a fresh StickerTemplate laid out for the given canvas size. */
+  build: (canvas: StickerCanvas) => StickerTemplate
+}
+
+export const STICKER_TEMPLATE_PRESETS: StickerTemplatePreset[] = [
+  { id: 'default', label: 'ดีฟอลต์ (ครบทุกฟิลด์)', build: (c) => buildDefaultTemplate(c) },
+  { id: 'minimal', label: 'มินิมอล (เฉพาะ asset + ชื่อ + QR)', build: (c) => buildMinimalTemplate(c) },
+  { id: 'qr-only', label: 'เฉพาะ QR (สำหรับสแกน)', build: (c) => buildQrOnlyTemplate(c) },
+  { id: 'compact', label: 'กระชับ (ฟิลด์สำคัญ)', build: (c) => buildCompactTemplate(c) },
+  { id: 'detailed', label: 'ละเอียด (รวม contract + vendor)', build: (c) => buildDetailedTemplate(c) },
+]
+
+// ─── Resolve a (presetId, customW, customH) tuple into a StickerCanvas ────
+export function resolveStickerCanvas(
+  presetId: string,
+  customWidth: number,
+  customHeight: number,
+): StickerCanvas {
+  if (presetId === 'custom') {
+    const w = Math.max(10, Math.min(500, Number(customWidth) || 75.2))
+    const h = Math.max(10, Math.min(500, Number(customHeight) || 36))
+    return { width: w, height: h, unit: 'mm' }
+  }
+  const preset = STICKER_SIZE_PRESETS.find((p) => p.id === presetId)
+  if (!preset || preset.width <= 0 || preset.height <= 0) {
+    return { width: 75.2, height: 36, unit: 'mm' }
+  }
+  return { width: preset.width, height: preset.height, unit: 'mm' }
 }
 
 // ─── Variable substitution ────────────────────────────────────────────────
@@ -502,19 +814,72 @@ export function calculateGridColumns(
 }
 
 // ─── Build a full standalone print document HTML ─────────────────────────
+//
+// Page-size strategy (STICKER-CUSTOM-SIZE):
+//   - 'auto' (default): if the sticker canvas is large (>= A5 area), use the
+//     canvas itself as the page (one sticker per page, label-printer mode).
+//     Otherwise use A4 with a grid layout (cols × auto-rows).
+//   - 'a4':    always A4 with grid.
+//   - 'canvas': always canvas-size page (one sticker per page).
+//
+// The `@page` size + orientation are set to match the chosen page size, and
+// the .page grid uses the canvas dimensions for the cells.
+export type StickerPageSizeMode = 'auto' | 'a4' | 'canvas'
+
 export function buildPrintDocument(
   stickersHtml: string[],
   template: StickerTemplate,
   cols: number,
+  options: { pageSizeMode?: StickerPageSizeMode } = {},
 ): string {
   const { width, height } = template.canvas
   // Page orientation: if width > height, use landscape
   const orientation = width > height ? 'landscape' : 'portrait'
-  // A4 size
-  const pageWidth = orientation === 'landscape' ? 297 : 210
-  const pageHeight = orientation === 'landscape' ? 210 : 297
   const gap = 4
   const margin = 8
+
+  const mode: StickerPageSizeMode = options.pageSizeMode ?? 'auto'
+  // Auto: canvas-as-page when sticker area >= A5 area (148 × 210 = 31,080 mm²).
+  // This catches A4, A5, and any custom size that's "page-like". Smaller
+  // label sizes go to A4-grid mode.
+  const stickerArea = width * height
+  const useCanvasAsPage =
+    mode === 'canvas' || (mode === 'auto' && stickerArea >= 148 * 210)
+
+  let pageWidthMm: number
+  let pageHeightMm: number
+  let pageMarginMm: number
+  let colsEffective: number
+  let pageGapMm: number
+
+  if (useCanvasAsPage) {
+    // One sticker per page; canvas == page.
+    pageWidthMm = width
+    pageHeightMm = height
+    pageMarginMm = 0
+    colsEffective = 1
+    pageGapMm = 0
+  } else {
+    // A4 sheet with grid layout.
+    pageWidthMm = orientation === 'landscape' ? 297 : 210
+    pageHeightMm = orientation === 'landscape' ? 210 : 297
+    pageMarginMm = margin
+    colsEffective = Math.max(1, cols)
+    pageGapMm = gap
+  }
+
+  // CSS `@page size` keyword. Use 'A4' for the standard sheet; otherwise
+  // emit explicit mm dimensions (works for label printers + non-standard sizes).
+  const pageSizeCss =
+    useCanvasAsPage
+      ? `${pageWidthMm}mm ${pageHeightMm}mm`
+      : `A4 ${orientation}`
+
+  // Build the grid CSS. When using canvas-as-page, the grid is 1 column (no
+  // gap); otherwise it's a real grid with the requested cols.
+  const gridTemplate = useCanvasAsPage
+    ? `grid-template-columns: ${width}mm; grid-auto-rows: ${height}mm; gap: 0;`
+    : `grid-template-columns: repeat(${colsEffective}, ${width}mm); grid-auto-rows: ${height}mm; gap: ${pageGapMm}mm;`
 
   return `<!doctype html>
 <html lang="th">
@@ -530,11 +895,9 @@ export function buildPrintDocument(
     background: #ffffff;
   }
   .page {
-    padding: ${margin}mm;
+    padding: ${pageMarginMm}mm;
     display: grid;
-    grid-template-columns: repeat(${cols}, ${width}mm);
-    grid-auto-rows: ${height}mm;
-    gap: ${gap}mm;
+    ${gridTemplate}
     justify-content: start;
   }
   .stk-sticker {
@@ -545,11 +908,11 @@ export function buildPrintDocument(
   .stk-sticker + .stk-sticker { /* keep spacing tidy */ }
   @media print {
     @page {
-      size: A4 ${orientation};
-      margin: ${margin}mm;
+      size: ${pageSizeCss};
+      margin: ${pageMarginMm}mm;
     }
     body { background: #ffffff; }
-    .page { padding: 0; gap: ${gap}mm; }
+    .page { padding: 0; gap: ${pageGapMm}mm; }
     .stk-sticker { border: none; }
   }
   /* screen preview tweak */

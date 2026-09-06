@@ -1857,7 +1857,10 @@ function PhotosCard({
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
-              onClick={confirmDeleteImage}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void confirmDeleteImage()
+              }}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
               ลบ

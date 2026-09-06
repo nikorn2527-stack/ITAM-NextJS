@@ -578,7 +578,8 @@ function StickerTab() {
               type="button"
               className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
               disabled={deleteMutation.isPending}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
               }}
             >
@@ -966,7 +967,8 @@ function DocumentTab() {
               type="button"
               className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
               disabled={deleteMutation.isPending}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
               }}
             >
@@ -1646,7 +1648,8 @@ function WorkOrderTab() {
                 type="button"
                 className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
                 disabled={deleteMutation.isPending}
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault() // prevent Radix auto-close before async completes
                   if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
                 }}
               >

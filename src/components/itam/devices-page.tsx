@@ -3624,7 +3624,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           <AlertDialogFooter>
             <AlertDialogCancel disabled={bulkAction}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={applyBulkDelete}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void applyBulkDelete()
+              }}
               disabled={bulkAction}
               className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
@@ -3654,7 +3657,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmDelete}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void confirmDelete()
+              }}
               disabled={deleting}
               className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >

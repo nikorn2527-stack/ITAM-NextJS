@@ -521,7 +521,10 @@ export function ReportsSection() {
             <AlertDialogFooter>
               <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
               <AlertDialogAction
-                onClick={confirmDelete}
+                onClick={(e) => {
+                  e.preventDefault() // prevent Radix auto-close before async completes
+                  void confirmDelete()
+                }}
                 disabled={deleting}
                 className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >

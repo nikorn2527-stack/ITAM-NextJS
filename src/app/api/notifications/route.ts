@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-middleware'
 
 // --- Types ---
 type Severity = 'expired' | 'expiring' | 'warning' | 'info'
@@ -68,7 +69,15 @@ function addMonthsISO(iso: string, months: number): Date {
   return d
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  // ── P0 Security: require ADMIN permission ──
+  // Notifications surface warranty/meter/cycle/audit info that should not be
+  // publicly accessible. Previously this endpoint had NO auth check at all.
+  const auth = await requireAuth(req, 'ADMIN')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const notifications: Notif[] = []
 

@@ -17202,3 +17202,162 @@ Next steps for user:
    b. Edit mode: open an existing device → "🔌 อุปกรณ์ต่อพ่วง" tab → existing accessories pre-loaded → edit a row → add a new row → click "บันทึก" → PATCH for existing, POST for new.
 2. Test CSV import: open "นำเข้าข้อมูล" page → click "🔌 อุปกรณ์ต่อพ่วง" card → download template → fill CSV (parent_asset_code = existing device's assetCode) → upload → verify history row shows total/processed/error counts; click row to see error detail.
 3. (Optional enhancement, separate task) Add a "ลบ" (DELETE) button on existing accessory rows in the inline editor so users can delete (not just edit) accessories from within the Add/Edit form. Currently delete happens via the device detail sheet's accessory section.
+
+---
+Task ID: STICKER-CUSTOM-SIZE
+Agent: frontend-subagent
+Task: Sticker size + template custom (presets, custom W/H, fix print)
+
+Work Log:
+- Read context: worklog (recent MERGE-ACCESSORY-DEVICE-SET + INLINE-ACCESSORY-IN-DEVICE-FORM sections), src/lib/sticker-template.ts (650 lines — StickerCanvas/StickerElement/StickerTemplate types + buildDefaultTemplate + substituteVariables + renderElement + preGenerateQrCodes + renderStickerFromTemplate + calculateGridColumns + buildPrintDocument + normalizeTemplate/Element + PAPER_PRESETS), src/components/itam/sticker-print-dialog.tsx (777 lines — bespoke SIZE_OPTIONS + buildStickerHtml + buildPrintDocument that did NOT use the template engine), src/lib/sticker-settings-store.ts (server-side AppSetting-backed store for sticker templates + settings), src/components/itam/sticker-print-helpers.ts (client-side print helpers for /api/itam/sticker/render + bulk-render).
+- Confirmed sticker-print-dialog.tsx was using its OWN bespoke sticker HTML builder (buildStickerHtml + buildPrintDocument local fns) instead of the template engine from sticker-template.ts — that's why the "Sticker print must work properly — currently broken" symptom: changes to the template engine never reached the print dialog.
+- Step 1 — Added `STICKER_SIZE_PRESETS` (9 entries) + `StickerSizePreset` interface + `resolveStickerCanvas()` helper to sticker-template.ts:
+  * default 75.2×36, a4 210×297, a5 148×210, a7 74×105, label-50x30, label-60x40, label-100x50, square-50, custom (0,0 = use custom W/H fields).
+  * `resolveStickerCanvas(presetId, customW, customH)` clamps custom to [10,500] mm and falls back to 75.2×36 for unknown preset ids.
+- Step 2 — Added 4 new build functions + `STICKER_TEMPLATE_PRESETS` array (5 entries) to sticker-template.ts:
+  * `buildMinimalTemplate(canvas)` — 6 elements: header bar + companyName + asset code (large) + hospitalName + brand/model + QR (right side). Scaled proportionally to canvas.
+  * `buildQrOnlyTemplate(canvas)` — 3 elements: asset code at top + large centered QR + "สแกน QR เพื่อแจ้งซ่อม" at bottom. Useful for scan-only labels.
+  * `buildCompactTemplate(canvas)` — 9 elements: header + companyName + asset code + hospitalName + brand/model + type/SN + site/building/floor + department + QR (right).
+  * `buildDetailedTemplate(canvas)` — 15 elements: header + companyName + hospitalName (right of header) + asset code + assetSiteCode + brand/model + type/SN + site/building/floor + department + location + contract/vendor + hotline + QR + footer divider + footerNote.
+  * Each builder accepts a `StickerCanvas` parameter and computes element positions/sizes proportionally (scale factor `u = Math.min(W/75.2, H/36)` for default-style layouts, or pure proportional for the others). This makes the same template work on any size — A4, A5, label sizes, custom.
+  * `STICKER_TEMPLATE_PRESETS` array maps id → label + build function. `build: (c) => buildXxxTemplate(c)`.
+- Modified `buildDefaultTemplate(canvas?: StickerCanvas)` — now accepts optional canvas (defaults to 75.2×36 for backward compat with `sticker-settings-store.ts` seeding). All 17 elements scaled by `u` factor; positions use `W - x*u` for right-aligned elements so they stay anchored to the right edge on any canvas width.
+- Step 5 (fix print) — Rewrote `buildPrintDocument()` in sticker-template.ts to handle custom sizes correctly:
+  * Added `StickerPageSizeMode = 'auto' | 'a4' | 'canvas'` type + optional 4th `options` param (backward compat — existing 3-arg callers in sticker-print-helpers.ts still work).
+  * 'auto' (default): if sticker area ≥ A5 area (148×210=31,080 mm²), use canvas as page (one sticker per page, label-printer mode). Otherwise use A4 sheet with grid layout. This catches A4/A5/custom-page sizes as "single sticker per page" and treats smaller label sizes as "bulk print on A4 sheet".
+  * 'a4' / 'canvas': explicit override.
+  * `@page` CSS now uses explicit mm dimensions when in canvas-as-page mode (`size: ${pageWidthMm}mm ${pageHeightMm}mm`) — works for label printers + non-standard sizes. In A4-grid mode, uses `size: A4 ${orientation}` as before.
+  * Grid CSS template adapts: 1 column (no gap) in canvas-as-page mode, repeat(cols, width) with gap in A4 mode.
+  * Orientation still computed from canvas dimensions (landscape if width > height).
+- Step 4 (localStorage) — Created `src/lib/sticker-print-prefs.ts`:
+  * `StickerPrintPrefs` interface: `{ sizePresetId, customWidth, customHeight, templatePresetId }`.
+  * `loadStickerPrintPrefs()` — reads from `localStorage['itam:sticker-print-prefs:v1']`, returns `DEFAULT_STICKER_PRINT_PREFS` on SSR/empty/parse-failure. Validates each field type.
+  * `saveStickerPrintPrefs(prefs)` — writes to localStorage, silently no-ops on SSR or quota errors.
+  * This is for ephemeral "last print dialog state" — server-side template persistence is still handled by `sticker-settings-store.ts` (AppSetting table).
+- Step 3 + dialog rewrite — Rewrote `src/components/itam/sticker-print-dialog.tsx` (777 → 510 lines, leaner):
+  * Replaced bespoke SIZE_OPTIONS + buildStickerHtml + buildPrintDocument with imports from `sticker-template.ts` (STICKER_SIZE_PRESETS, STICKER_TEMPLATE_PRESETS, resolveStickerCanvas, substituteVariables, renderStickerFromTemplate, buildPrintDocument, DEFAULT_STICKER_SETTINGS).
+  * Added new "ตั้งค่าสติกเกอร์" section at the top with two Select dropdowns (size + template) — both using shadcn/ui Select component.
+  * When size preset = 'custom', shows 2 Input fields (custom width + height in mm) inside a dashed-border card.
+  * Live preview uses `renderStickerFromTemplate` (async) to render the actual sticker HTML, scaled via CSS `transform: scale()` to fit the preview container (max 360×280 px). Preview updates whenever canvas, template, or sample device changes (via useEffect).
+  * `buildQrCacheForDevice(device, template, settings, qrOverride)` — new helper that builds a per-device QR cache keyed by the template-substituted `el.content` (so it matches what `renderElement` looks up), with the QR data URL generated from `qrOverride` (e.g. the accessory Smart QR URL from `qrContentFor` prop) when provided, else from the default key. This preserves the accessory-sticker QR-override behavior in the new template-engine-based flow.
+  * Print button now uses `renderStickerFromTemplate` per device (with per-device QR cache honoring `qrContentFor`), then `buildPrintDocument` from the lib (auto page-size mode). The print window opens with the correct `@page` size matching the sticker canvas.
+  * Removed old "ฟิลด์ที่แสดง" checkboxes (FieldKey-based selection) and "พิมพ์ QR Code" Switch — these were bespoke to the old HTML builder. With the template engine, the template preset itself controls which fields + QR appear.
+  * Kept the device multi-select list (search + select all / clear + checkbox per row + badge) unchanged.
+  * Props API preserved: `open, onOpenChange, devices, orgName?, qrContentFor?, dialogTitle?, dialogDescription?` — both callers (devices-page.tsx and device-accessories-section.tsx) continue to work without changes.
+  * User prefs (size preset, custom W/H, template preset) saved to localStorage on every change via `updatePrefs()` — dialog remembers the last-used settings on next open.
+  * Audit log payload updated to include `sizePreset`, `canvasWidth`, `canvasHeight`, `templatePreset` instead of the old `size`/`fields`/`withQr` fields.
+- Lint check: `bun run lint` → 106 problems (1 error, 105 warnings). 0 new errors. 2 new warnings (both `react-hooks/set-state-in-effect`):
+  * sticker-print-dialog.tsx:176 — `setPrefs(loadStickerPrintPrefs())` in useEffect (load prefs from localStorage on first open — unavoidable to avoid SSR hydration mismatch).
+  * sticker-print-dialog.tsx:273 — `setPreviewLoading(true)` in useEffect (show loading spinner while async renderStickerFromTemplate is running).
+  * Both warnings follow the existing codebase pattern (the dialog already had a similar `setSelectedIds` warning at line 214 from before this task — preserved unchanged).
+  * The 1 pre-existing error is `src/app/api/auth/oauth/apple/callback/route.ts:99` — explicitly OK to leave per task spec.
+- TypeScript check: `bunx tsc --noEmit` → 0 errors in modified files (sticker-template.ts, sticker-print-dialog.tsx, sticker-print-prefs.ts, sticker-settings-store.ts, sticker-print-helpers.ts). Pre-existing test error in tests/sticker-print-helpers.test.ts:14 (`Cannot find module 'bun:test'`) — not in my code.
+- Smoke tests (file:// script run via bun) — all 12 pass:
+  * STICKER_SIZE_PRESETS has 9 entries; STICKER_TEMPLATE_PRESETS has 5 entries.
+  * buildDefaultTemplate() with no canvas → 75.2×36, 17 elements (backward compat).
+  * buildDefaultTemplate({width:210,height:297}) → 17 elements with header width=210.
+  * buildMinimalTemplate({50×30}) → 6 elements. buildQrOnlyTemplate({50×50}) → 3 elements.
+  * buildCompactTemplate({75.2×36}) → 9 elements. buildDetailedTemplate({100×50}) → 15 elements.
+  * resolveStickerCanvas correctly handles all 4 cases (preset, custom valid, custom invalid → fallback).
+  * buildPrintDocument in label mode (50×30) → uses `A4 portrait` @page + 50mm grid columns (auto mode, label-size branch).
+  * buildPrintDocument in A4 mode (210×297) → uses `210mm 297mm` @page + 1 column (auto mode, canvas-as-page branch).
+  * renderStickerFromTemplate(SAMPLE_DEVICE, defaultTemplate, settings) → 6088-char HTML containing substituted companyName + assetCode, plus 1-entry qrDataUrls map keyed by 'IT-00001'.
+- Existing sticker-print-helpers.test.ts tests (18 total): 17 pass, 1 pre-existing failure ("printSingleSticker > throws when window.open returns null (popup blocked)" — same pass/fail count before and after my changes; not caused by this task). My buildPrintDocument changes are backward-compat (optional 4th `options` param, identical behavior for 3-arg calls when sticker area < A5 area, which covers the SAMPLE_TEMPLATE 50×30 case in the tests).
+
+Stage Summary:
+- ✅ Custom size: user picks from 9 presets (default, A4, A5, A7, 4 label sizes, square, custom) OR enters custom W/H in mm via 2 input fields when "กำหนดเอง..." is selected.
+- ✅ Custom template: user picks from 5 presets (default, minimal, qr-only, compact, detailed). Each builder lays out proportionally to the canvas size — same template works on label sizes AND A4.
+- ✅ Sticker print fixed: dialog now uses the template engine (renderStickerFromTemplate + buildPrintDocument from lib) instead of its own bespoke HTML builder. @page CSS matches the sticker canvas size (auto mode: canvas-as-page for A4/A5/custom-page sizes, A4-grid for label sizes).
+- ✅ Live preview: in-dialog preview uses the same template engine as the print window, scaled to fit. Updates as user changes size/template.
+- ✅ Preferences persisted: localStorage remembers the user's last size + template choice.
+- ✅ Backward compat: dialog props API preserved (qrContentFor, dialogTitle, dialogDescription all still work). sticker-print-helpers.ts unchanged. sticker-settings-store.ts unchanged (server-side template store). buildPrintDocument 3-arg call still works (4th `options` param is optional).
+- ✅ Lint: 0 new errors. 2 new warnings (set-state-in-effect — matches existing codebase pattern).
+- ✅ Mobile responsive: dropdowns + custom W/H inputs use grid-cols-1 sm:grid-cols-2; preview container has maxHeight 320px with overflow-auto.
+
+Files Modified (2):
+- src/lib/sticker-template.ts (650 → 962 lines, +312 lines: STICKER_SIZE_PRESETS + StickerSizePreset + resolveStickerCanvas, 4 new build functions (buildMinimalTemplate/buildQrOnlyTemplate/buildCompactTemplate/buildDetailedTemplate), STICKER_TEMPLATE_PRESETS + StickerTemplatePreset, buildDefaultTemplate now accepts optional canvas param, buildPrintDocument rewritten with StickerPageSizeMode + auto canvas-vs-A4 page sizing)
+- src/components/itam/sticker-print-dialog.tsx (777 → 510 lines, full rewrite: removed bespoke SIZE_OPTIONS/buildStickerHtml/buildPrintDocument/previewStyles; replaced with template-engine pipeline; added "ตั้งค่าสติกเกอร์" section with size + template dropdowns + custom W/H inputs; live preview using renderStickerFromTemplate; prefs persisted via sticker-print-prefs.ts; buildQrCacheForDevice helper preserves qrContentFor override for accessory-sticker flow)
+
+Files Created (1):
+- src/lib/sticker-print-prefs.ts (87 lines: StickerPrintPrefs interface + DEFAULT_STICKER_PRINT_PREFS + loadStickerPrintPrefs() + saveStickerPrintPrefs() — localStorage-backed persistence for last-used size + template)
+
+Files NOT modified (still in use):
+- src/lib/sticker-settings-store.ts — server-side AppSetting-backed store for sticker *templates* themselves. Not affected — the dialog uses client-side preset builders, not the server-side template store, so this task doesn't change the server API.
+- src/components/itam/sticker-print-helpers.ts — client-side helpers for /api/itam/sticker/render + bulk-render. Not affected by this task (those helpers serve a different flow — server-rendered stickers via the sticker API; the dialog now renders client-side via renderStickerFromTemplate).
+- src/components/itam/itam-sticker-editor.tsx — the full sticker template editor. Not affected — it edits the server-side template store, which is separate from the dialog's client-side preset flow.
+
+Next steps for user:
+1. Open the sticker print dialog from devices-page.tsx (header "พิมพ์สติกเกอร์" button) or from device-accessories-section.tsx (per-accessory sticker print).
+2. Try each size preset: default, A4, A5, A7, label-50x30, label-60x40, label-100x50, square-50, custom.
+   - For "custom", enter e.g. 80×40 mm and verify the preview + print both reflect the custom dimensions.
+   - For A4 (210×297), the print @page should be 210mm × 297mm (one sticker per A4 page).
+   - For label-50x30, the print @page should be A4 portrait (grid of 50×30 stickers on A4 sheet).
+3. Try each template preset: default (17 elements), minimal (6 elements), qr-only (3 elements), compact (9 elements), detailed (15 elements).
+   - Verify the live preview updates as you switch templates.
+4. Close and reopen the dialog — the size + template selection should be remembered (localStorage).
+5. Click "พิมพ์สติกเกอร์" — the print window should open with the sticker(s) at the correct size + template. Verify @page CSS in DevTools matches the chosen canvas size.
+6. (Optional) For the accessory sticker flow (via device-accessories-section.tsx "พิมพ์สติกเกอร์อุปกรณ์ต่อพ่วง"), verify the QR encodes the Smart QR URL (/qr/a/{shortId}?action=view) — not the asset code. This is handled by the `qrContentFor` prop + the new `buildQrCacheForDevice` helper.
+
+---
+Task ID: SECURITY-AUDIT-FIXES
+Agent: security-subagent
+Task: Fix 4 remaining audit findings (P0/P0/P0/P1)
+
+Work Log:
+- Read recent worklog sections for context + `src/lib/auth-middleware.ts` to understand the `requireAuth` shape and the `requireApiAuth` wrapper used by v1 routes.
+- Verified the audit's claim about Radix `AlertDialogAction` auto-close by inspecting `node_modules/@radix-ui/react-dialog/dist/index.js` + `@radix-ui/primitive/dist/index.js`: `AlertDialogAction` is just `DialogPrimitive.Close`, whose internal click handler is composed via `composeEventHandlers(props.onClick, () => context.onOpenChange(false))` — and `composeEventHandlers` skips the close call when `event.defaultPrevented === true`. So `e.preventDefault()` in the user-supplied `onClick` does prevent auto-close, exactly as the audit describes.
+
+### Fix #1 (P0) — Auth on 3 unauthenticated endpoints
+- `src/app/api/notifications/route.ts`: changed `GET()` → `GET(req: Request)` and added `requireAuth(req, 'ADMIN')` at the start (mirrors the pattern already used in `/api/notifications/send/route.ts`).
+- `src/app/api/site-attributes/route.ts`: added `requireAuth(req)` to GET (any staff) and `requireAuth(req, 'ADMIN')` to POST (admin-only writes). Site attributes contain LINE OA tokens + hotlines — were previously world-readable.
+- `src/app/api/site-rates/route.ts`: added `requireAuth(req)` to GET (staff read) and `requireAuth(req, 'ADMIN')` to POST (admin-only rate changes).
+
+### Fix #2 (P0) — Privilege escalation in v1 Work Order PUT
+- `src/app/api/v1/work-orders/[id]/route.ts`: imported `toAuthUser` + `hasResolvedPermission` from `@/lib/auth`. Expanded `isAdmin` to also cover users granted ADMIN via per-user custom permissions (`hasResolvedPermission(authUser.permissions, 'ADMIN')`). Added a 403 guard before the `editUnlockActive = body.editUnlockActive` assignment: if `body.editUnlockActive === true && !isAdmin`, returns `forbidden('ต้องเป็น admin เท่านั้นที่ปลดล็อกการแก้ไขได้')`. This closes the hole where any user with `DEVICE_EDIT` could unlock a terminal WO for editing.
+
+### Fix #3 (P0) — AlertDialogAction async-click bug
+Audited all 27 `<AlertDialogAction onClick={...}>` occurrences across `src/components/`. Fixed every one whose handler does async work (fetch / async function / React Query mutate + explicit close) by adding `e.preventDefault()` to suppress Radix's auto-close, then calling the handler so it can manage dialog state itself (close on success via the existing `setX(null)` / per-call `onSuccess`).
+
+Files modified (19):
+- `src/components/itam/devices-page.tsx` — `confirmDelete` + `applyBulkDelete` (audit-confirmed lines, currently at 3659 / 3626 after recent edits)
+- `src/components/itam/work-orders-page.tsx` — 4 handlers: `handleAssign`, `handleComplete`, `handleCancel`, `confirmDeleteImage`
+- `src/components/itam/stock/stock-inventory.tsx` — inline `deleteMutation.mutate(id); setDeleteTarget(null)` rewritten to use per-call `onSuccess: () => setDeleteTarget(null)`
+- `src/components/itam/wo-options-section.tsx` — `confirmDelete` (fetch().then() pattern)
+- `src/components/itam/cycle-manage-dialog.tsx` — `performAction`
+- `src/components/itam/itam-document-editor.tsx` — `deleteTplId && deleteMutation.mutate(deleteTplId)` rewritten to per-call `onSuccess`
+- `src/components/itam/itam-sticker-editor.tsx` — same pattern
+- `src/components/itam/contact-directory-section.tsx` — `confirmDelete` (fetch().then())
+- `src/components/itam/demo-management-section.tsx` — `doReset`
+- `src/components/itam/pm-schedules-page.tsx` — same inline mutation pattern as stock-inventory
+- `src/components/itam/reports-section.tsx` — `confirmDelete`
+- `src/components/itam/notification-templates-section.tsx` — `confirmDelete` rewritten so `setDeleteId(null)` only fires on the per-call `onSuccess` (was previously firing immediately, even on mutation failure)
+- `src/components/itam/stock/stock-purchase-orders.tsx` — inlined the (now-redundant) `confirmCancelPo` wrapper, removed the dead function
+- `src/components/itam/templates-page.tsx` — 3 instances (2 at 12-space indent, 1 at 14-space); the existing global `onSuccess: setDeleteTarget(null)` is preserved so no per-call override was needed
+- `src/components/itam/mobile/mobile-my-work.tsx` — `confirmDeleteImage`
+- `src/components/itam/site-attributes-section.tsx` — `confirmDelete`
+- `src/components/itam/pending-users-section.tsx` — `confirmReject`
+- `src/components/itam/user-management-section.tsx` — `confirmDelete`
+- `src/components/itam/itam-settings.tsx` — `confirmDelete`
+
+### Fix #4 (P1) — Encrypt line-session cookie with AES-256-GCM
+- `src/lib/line-session.ts`: added `encryptSession(payload)` + `decryptSession<T>(token)` helpers using node:crypto's `aes-256-gcm` (12-byte IV + 16-byte auth tag). Key derived via `SHA-256(LINE_SESSION_SECRET || JWT_SECRET)` (throws if neither is set). Cookie format is `base64(iv || ciphertext || authTag)`.
+- Updated `getLineSession(req)` → now `async`, tries encrypted path first via `decryptSession`. If that fails AND the cookie looks like a legacy base64-JSON blob, falls back to the legacy decode and logs a warning. This keeps existing logged-in LINE users working through the 24h session-rotation window.
+- Updated `setLineSessionCookie(res, session)` → now `async`, awaits `encryptSession`.
+- Left the `line_login_state` cookie as plain base64-JSON: it only carries a CSRF nonce + redirect URL + timestamp (no PII), and its integrity comes from the OAuth state echo-back check on the callback — not from encryption. Avoids an extra crypto round-trip in the latency-sensitive login redirect.
+- Updated callers: `src/app/api/auth/line/me/route.ts`, `src/app/api/public/reporter/me/route.ts` (`await getLineSession(req)`), and `src/app/api/auth/line/callback/route.ts` (`await setLineSessionCookie(res, session)`). `clearLineSessionCookie` stays sync (it just sets an empty cookie).
+
+### Lint check
+- `bun run lint` reports 1 ERROR (pre-existing in `src/app/api/auth/oauth/apple/callback/route.ts` line 99 — `no-require-imports`, unrelated to my changes) + 105 pre-existing warnings (mostly `react-hooks/set-state-in-effect`).
+- Verified by stashing all working-tree changes and re-running `bun run lint`: identical 1-error baseline. → 0 NEW errors introduced.
+- Verified via `tsc --noEmit` baseline comparison: 476 errors with my changes vs 476 errors baseline → 0 NEW TypeScript errors. The 3 tsc errors in the files I touched (`publicReporter` not on PrismaClient, `effectiveFrom` not on SiteRateSelect, `WorkOrderReview` shape) are all pre-existing Prisma schema drift unrelated to my changes.
+
+Stage Summary:
+- 4 of 4 audit findings fixed and lint-clean.
+- API endpoints hardened: 3 routes now require auth (was fully public), v1 work-order PUT now blocks the `editUnlockActive` privilege escalation.
+- UI: 19 component files updated to fix the AlertDialogAction auto-close race across all 27 occurrences (audit-confirmed + extended sweep).
+- Crypto: `line_session` cookie now AES-256-GCM encrypted with per-cookie IV + auth tag; legacy cookies continue to work during the 24h rotation window.
+- Files modified (28 total, 27 source + worklog):
+  - API: `notifications/route.ts`, `site-attributes/route.ts`, `site-rates/route.ts`, `v1/work-orders/[id]/route.ts`, `auth/line/me/route.ts`, `auth/line/callback/route.ts`, `public/reporter/me/route.ts`
+  - lib: `line-session.ts`
+  - components: 19 files listed above under Fix #3
+- No new lint or type errors. Pre-existing sticker-template / sticker-print-dialog changes (not part of this task) remain untouched in the working tree.

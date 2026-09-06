@@ -23,6 +23,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { requireApiAuth } from '@/lib/api/auth'
+import { toAuthUser, hasResolvedPermission } from '@/lib/auth'
 import {
   ok,
   badRequest,
@@ -100,7 +101,13 @@ export async function PUT(
   if (!auth.ok) return auth.response
   const { user } = auth.ctx
   const userEmail = user.email
-  const isAdmin = user.role === 'admin' || user.role === 'superadmin'
+  // Admin = role-based check OR explicit ADMIN permission grant (covers users
+  // who have been granted ADMIN via per-user custom permissions).
+  const authUser = toAuthUser(user)
+  const isAdmin =
+    user.role === 'admin' ||
+    user.role === 'superadmin' ||
+    hasResolvedPermission(authUser.permissions, 'ADMIN')
 
   const { id } = await params
 
@@ -176,6 +183,18 @@ export async function PUT(
     }
 
     if (newStatus) data.status = newStatus
+
+    // ── P0 Security: editUnlockActive privilege escalation ──
+    // Only ADMIN users may set editUnlockActive=true. Without this check, any
+    // user with DEVICE_EDIT could unlock a COMPLETED/CANCELLED work order for
+    // editing — bypassing the terminal-status lock above.
+    if (
+      typeof body.editUnlockActive === 'boolean' &&
+      body.editUnlockActive &&
+      !isAdmin
+    ) {
+      return forbidden('ต้องเป็น admin เท่านั้นที่ปลดล็อกการแก้ไขได้')
+    }
 
     // Boolean fields
     if (typeof body.editUnlockActive === 'boolean') {

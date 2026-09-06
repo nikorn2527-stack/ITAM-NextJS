@@ -664,7 +664,10 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
           <AlertDialogFooter>
             <AlertDialogCancel disabled={acting}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={performAction}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void performAction()
+              }}
               disabled={acting}
               className={
                 actionTarget?.action === 'cancel' || actionTarget?.action === 'delete'

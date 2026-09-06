@@ -32,7 +32,7 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   try {
-    const session = getLineSession(req)
+    const session = await getLineSession(req)
     if (!session) {
       return NextResponse.json(
         { error: 'Not authenticated', data: null },

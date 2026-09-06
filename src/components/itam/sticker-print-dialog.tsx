@@ -1,5 +1,27 @@
 'use client'
 
+/**
+ * sticker-print-dialog.tsx — print dialog for device stickers.
+ *
+ * STICKER-CUSTOM-SIZE (current revision):
+ *   The dialog now uses the template-engine pipeline from `sticker-template.ts`
+ *   (STICKER_SIZE_PRESETS + STICKER_TEMPLATE_PRESETS + renderStickerFromTemplate
+ *   + buildPrintDocument) instead of its own bespoke sticker HTML builder.
+ *
+ *   User flow:
+ *     1. Pick a size (preset dropdown OR custom W/H fields in mm)
+ *     2. Pick a template (default / minimal / qr-only / compact / detailed)
+ *     3. Live preview updates as you change settings
+ *     4. Pick devices (existing multi-select list)
+ *     5. Click "พิมพ์สติกเกอร์" — opens a print window with the template-rendered
+ *        HTML. The @page CSS is sized to match the sticker canvas (auto mode)
+ *        so it works for label printers (one sticker per page) AND for A4
+ *        bulk printing (grid of stickers per A4 sheet).
+ *
+ *   The size + template preferences are persisted to localStorage via
+ *   `sticker-print-prefs.ts` so the dialog remembers the user's last choice.
+ */
+
 import * as React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -8,9 +30,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
-import { Checkbox } from '@/components/ui/checkbox'
-import { matchesSuffixOrContains } from '@/lib/suffix-search'
 import {
   Select,
   SelectContent,
@@ -26,50 +45,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Printer, Search, Loader2, QrCode, Tag } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { matchesSuffixOrContains } from '@/lib/suffix-search'
+import { Printer, Search, Loader2, Tag, QrCode, Ruler, LayoutTemplate } from 'lucide-react'
 import type { Device } from './types'
-
-type StickerSize = 'small' | 'medium' | 'large'
-
-interface SizeOption {
-  value: StickerSize
-  label: string
-  cols: number
-  widthMM: number
-  heightMM: number
-}
-
-const SIZE_OPTIONS: SizeOption[] = [
-  { value: 'small', label: 'เล็ก 50×30mm', cols: 4, widthMM: 50, heightMM: 30 },
-  { value: 'medium', label: 'กลาง 70×40mm', cols: 3, widthMM: 70, heightMM: 40 },
-  { value: 'large', label: 'ใหญ่ 100×50mm', cols: 2, widthMM: 100, heightMM: 50 },
-]
-
-type FieldKey =
-  | 'assetCode'
-  | 'name'
-  | 'brandModel'
-  | 'site'
-  | 'department'
-  | 'serialNumber'
-  | 'purchaseDate'
-
-interface FieldOption {
-  key: FieldKey
-  label: string
-}
-
-const FIELD_OPTIONS: FieldOption[] = [
-  { key: 'assetCode', label: 'รหัสอุปกรณ์' },
-  { key: 'name', label: 'ชื่อ' },
-  { key: 'brandModel', label: 'แบรนด์/รุ่น' },
-  { key: 'site', label: 'สาขา' },
-  { key: 'department', label: 'แผนก' },
-  { key: 'serialNumber', label: 'SN' },
-  { key: 'purchaseDate', label: 'วันที่ซื้อ' },
-]
-
-const DEFAULT_FIELDS: FieldKey[] = ['assetCode', 'name', 'site']
+import {
+  STICKER_SIZE_PRESETS,
+  STICKER_TEMPLATE_PRESETS,
+  DEFAULT_STICKER_SETTINGS,
+  resolveStickerCanvas,
+  substituteVariables,
+  renderStickerFromTemplate,
+  buildPrintDocument,
+  type StickerCanvas,
+  type StickerDeviceData,
+  type StickerElement,
+  type StickerSettings,
+  type StickerTemplate,
+} from '@/lib/sticker-template'
+import {
+  loadStickerPrintPrefs,
+  saveStickerPrintPrefs,
+  type StickerPrintPrefs,
+} from '@/lib/sticker-print-prefs'
 
 interface Props {
   open: boolean
@@ -98,40 +96,64 @@ interface Props {
   dialogDescription?: React.ReactNode
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-function renderFieldValue(d: Device, key: FieldKey): string {
-  switch (key) {
-    case 'assetCode':
-      return d.assetCode
-    case 'name':
-      return d.name
-    case 'brandModel':
-      return `${d.brand} ${d.model}`.trim()
-    case 'site':
-      return d.site
-    case 'department':
-      return d.department ?? ''
-    case 'serialNumber':
-      return d.serialNumber ?? ''
-    case 'purchaseDate':
-      return d.purchaseDate ?? ''
-    default:
-      return ''
+// ─── Device → StickerDeviceData ──────────────────────────────────────────
+function deviceToStickerData(d: Device): StickerDeviceData {
+  return {
+    assetCode: d.assetCode,
+    assetSiteCode: d.assetSiteCode ?? null,
+    serialNumber: d.serialNumber ?? null,
+    type: d.type ?? null,
+    brand: d.brand ?? null,
+    model: d.model ?? null,
+    building: d.building ?? null,
+    floor: d.floor ?? null,
+    department: d.department ?? null,
+    departmentCode: d.departmentCode ?? null,
+    location: d.location ?? null,
+    site: d.site ?? null,
+    contractNo: d.contractNo ?? null,
+    vendor: d.vendor ?? null,
   }
 }
 
-function fieldLabel(key: FieldKey): string {
-  return FIELD_OPTIONS.find((f) => f.key === key)?.label ?? key
+// ─── Build a per-device QR cache honoring `qrContentFor` overrides ────────
+// The cache key matches what `renderElement` would look up (i.e. the
+// template-substituted `el.content`, falling back to `device.assetCode`).
+// The cache value is the actual QR data URL — generated from `qrOverride`
+// when provided, else from the default key.
+//
+// `device` may be null (no sample device available); in that case we still
+// walk the template so the preview can render a placeholder QR.
+async function buildQrCacheForDevice(
+  device: StickerDeviceData | null,
+  template: StickerTemplate,
+  settings: StickerSettings,
+  qrOverride?: string | null,
+): Promise<Map<string, string>> {
+  const cache = new Map<string, string>()
+  for (const el of template.elements as readonly StickerElement[]) {
+    if (el.type !== 'qr') continue
+    const defaultData =
+      substituteVariables(el.content ?? '', device, settings) ||
+      device?.assetCode ||
+      ''
+    if (!defaultData || cache.has(defaultData)) continue
+    const qrData = qrOverride ?? defaultData
+    try {
+      const url = await QRCode.toDataURL(qrData, {
+        margin: 1,
+        width: 240,
+        errorCorrectionLevel: 'M',
+      })
+      cache.set(defaultData, url)
+    } catch {
+      // skip on error
+    }
+  }
+  return cache
 }
 
+// ─── Component ────────────────────────────────────────────────────────────
 export function StickerPrintDialog({
   open,
   onOpenChange,
@@ -142,9 +164,31 @@ export function StickerPrintDialog({
   dialogDescription,
 }: Props) {
   const qc = useQueryClient()
-  const [size, setSize] = React.useState<StickerSize>('medium')
-  const [fields, setFields] = React.useState<FieldKey[]>(DEFAULT_FIELDS)
-  const [withQr, setWithQr] = React.useState(true)
+
+  // ── Sticker prefs (size + template) — loaded once on mount ─────────────
+  const [prefs, setPrefs] = React.useState<StickerPrintPrefs>(() => ({
+    sizePresetId: 'default',
+    customWidth: 75.2,
+    customHeight: 36,
+    templatePresetId: 'default',
+  }))
+  const [prefsLoaded, setPrefsLoaded] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!open || prefsLoaded) return
+    setPrefs(loadStickerPrintPrefs())
+    setPrefsLoaded(true)
+  }, [open, prefsLoaded])
+
+  function updatePrefs(patch: Partial<StickerPrintPrefs>) {
+    setPrefs((prev) => {
+      const next = { ...prev, ...patch }
+      saveStickerPrintPrefs(next)
+      return next
+    })
+  }
+
+  // ── Device selection state (unchanged from previous version) ────────────
   const [search, setSearch] = React.useState('')
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [printing, setPrinting] = React.useState(false)
@@ -158,8 +202,6 @@ export function StickerPrintDialog({
   const filteredDevices = React.useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return activeDevices
-    // SUFFIX-AWARE (SEARCH-FIX): identifier fields (assetCode, serialNumber)
-    // match by SUFFIX for short numeric queries.
     return activeDevices.filter(
       (d) =>
         matchesSuffixOrContains(d.assetCode, q) ||
@@ -170,7 +212,6 @@ export function StickerPrintDialog({
     )
   }, [activeDevices, search])
 
-  // Default-select all filtered active devices when dialog opens / device list changes
   React.useEffect(() => {
     if (open) {
       setSelectedIds(new Set(activeDevices.map((d) => d.id)))
@@ -185,19 +226,11 @@ export function StickerPrintDialog({
       return next
     })
   }
-
   function selectAll() {
     setSelectedIds(new Set(filteredDevices.map((d) => d.id)))
   }
-
   function clearAll() {
     setSelectedIds(new Set())
-  }
-
-  function toggleField(key: FieldKey) {
-    setFields((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
-    )
   }
 
   const selectedDevices = React.useMemo(
@@ -205,53 +238,90 @@ export function StickerPrintDialog({
     [activeDevices, selectedIds],
   )
 
-  const sizeOption = SIZE_OPTIONS.find((s) => s.value === size)!
-  const orgLabel = orgName?.trim() || 'องค์กรของคุณ'
+  // ── Resolve canvas + template from prefs ───────────────────────────────
+  const canvas: StickerCanvas = React.useMemo(
+    () => resolveStickerCanvas(prefs.sizePresetId, prefs.customWidth, prefs.customHeight),
+    [prefs.sizePresetId, prefs.customWidth, prefs.customHeight],
+  )
 
-  // Build a sample preview sticker (using the first selected device or a placeholder)
-  const sampleDevice: Device | null = selectedDevices[0] ?? null
+  const template: StickerTemplate = React.useMemo(() => {
+    const preset = STICKER_TEMPLATE_PRESETS.find((p) => p.id === prefs.templatePresetId)
+    if (!preset) {
+      return STICKER_TEMPLATE_PRESETS[0].build(canvas)
+    }
+    return preset.build(canvas)
+  }, [prefs.templatePresetId, canvas])
 
+  const settings: StickerSettings = React.useMemo(
+    () => ({
+      ...DEFAULT_STICKER_SETTINGS,
+      companyName: orgName?.trim() || DEFAULT_STICKER_SETTINGS.companyName,
+      hospitalName: orgName?.trim() || DEFAULT_STICKER_SETTINGS.hospitalName,
+    }),
+    [orgName],
+  )
+
+  // ── Live preview (async) ────────────────────────────────────────────────
+  // Uses the first selected device (or a placeholder device) to render an
+  // in-dialog preview sticker HTML. Re-renders when canvas, template, or
+  // sample device changes.
+  const [previewHtml, setPreviewHtml] = React.useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = React.useState(false)
+
+  const sampleDevice: Device | null = selectedDevices[0] ?? activeDevices[0] ?? null
+
+  React.useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setPreviewLoading(true)
+    const deviceData = sampleDevice ? deviceToStickerData(sampleDevice) : null
+    const qrOverride = sampleDevice ? (qrContentFor?.(sampleDevice) ?? null) : null
+    Promise.resolve()
+      .then(async () => {
+        const cache = await buildQrCacheForDevice(deviceData, template, settings, qrOverride)
+        const { html } = await renderStickerFromTemplate(deviceData, template, settings, {
+          qrCache: cache,
+        })
+        return html
+      })
+      .then((html) => {
+        if (!cancelled) {
+          setPreviewHtml(html)
+          setPreviewLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPreviewHtml(null)
+          setPreviewLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, sampleDevice, template, settings, qrContentFor])
+
+  // ── Print ──────────────────────────────────────────────────────────────
   async function handlePrint() {
     if (selectedDevices.length === 0) {
       toast.error('กรุณาเลือกอุปกรณ์อย่างน้อย 1 เครื่อง')
       return
     }
-    if (fields.length === 0) {
-      toast.error('กรุณาเลือกฟิลด์ที่จะแสดงอย่างน้อย 1 ฟิลด์')
-      return
-    }
     setPrinting(true)
     try {
-      // Pre-generate QR data URLs (assetCode) for each device if withQr is on.
-      const qrMap = new Map<string, string>()
-      if (withQr) {
-        for (const d of selectedDevices) {
-          try {
-            // Allow caller to override QR content (used by accessory stickers
-            // where the QR should encode the smart-qr URL, not the asset code).
-            const qrData = qrContentFor?.(d) ?? d.assetCode
-            const url = await QRCode.toDataURL(qrData, {
-              margin: 1,
-              width: 200,
-              errorCorrectionLevel: 'M',
-            })
-            qrMap.set(d.id, url)
-          } catch {
-            // skip QR for this device on error
-          }
-        }
+      // Render each device's sticker HTML using the template engine.
+      const stickersHtml: string[] = []
+      for (const d of selectedDevices) {
+        const deviceData = deviceToStickerData(d)
+        const qrOverride = qrContentFor?.(d) ?? null
+        const cache = await buildQrCacheForDevice(deviceData, template, settings, qrOverride)
+        const { html } = await renderStickerFromTemplate(deviceData, template, settings, {
+          qrCache: cache,
+        })
+        stickersHtml.push(html)
       }
 
-      const stickersHtml = selectedDevices
-        .map((d) => buildStickerHtml(d, fields, withQr ? (qrMap.get(d.id) ?? null) : null, orgLabel))
-        .join('\n')
-
-      const html = buildPrintDocument(
-        stickersHtml,
-        sizeOption,
-        fields.length,
-        withQr,
-      )
+      const html = buildPrintDocument(stickersHtml, template, 1)
 
       const win = window.open('', '_blank')
       if (!win) {
@@ -267,10 +337,12 @@ export function StickerPrintDialog({
         try {
           win.focus()
           win.print()
-        } catch (err) { console.error('[sticker-print-dialog]', err) }
+        } catch (err) {
+          console.error('[sticker-print-dialog]', err)
+        }
       }, 350)
 
-      // Log audit (fire-and-forget, but await to keep tidy)
+      // Log audit (fire-and-forget)
       try {
         await fetch('/api/audit/log', {
           method: 'POST',
@@ -283,14 +355,17 @@ export function StickerPrintDialog({
             detail: {
               count: selectedDevices.length,
               deviceIds: selectedDevices.map((d) => d.id),
-              size,
-              fields,
-              withQr,
+              sizePreset: prefs.sizePresetId,
+              canvasWidth: canvas.width,
+              canvasHeight: canvas.height,
+              templatePreset: prefs.templatePresetId,
             },
           }),
         })
         await qc.invalidateQueries({ queryKey: ['audit'] })
-      } catch (err) { console.error('[sticker-print-dialog]', err) }
+      } catch (err) {
+        console.error('[sticker-print-dialog]', err)
+      }
 
       toast.success(`เตรียมสติกเกอร์ ${selectedDevices.length} ใบสำหรับพิมพ์แล้ว`)
       onOpenChange(false)
@@ -301,15 +376,22 @@ export function StickerPrintDialog({
     }
   }
 
-  // ----- Sample preview sticker (live, in-dialog) -----
-  const previewHtml = sampleDevice
-    ? buildStickerHtml(
-        sampleDevice,
-        fields,
-        null, // preview shows QR placeholder block, no real image needed
-        orgLabel,
-      )
-    : null
+  // ── Render ──────────────────────────────────────────────────────────────
+  // For very wide/tall canvases (e.g. A4), preview needs to scale down to fit
+  // the dialog. We compute a scale factor that fits the longest side into
+  // 320px (preview container width ~ 320-440px on most screens).
+  const previewScale = React.useMemo(() => {
+    // 1mm ≈ 3.78px @ 96dpi
+    const pxW = canvas.width * 3.78
+    const pxH = canvas.height * 3.78
+    const maxW = 360
+    const maxH = 280
+    const sx = maxW / pxW
+    const sy = maxH / pxH
+    return Math.min(1, sx, sy)
+  }, [canvas.width, canvas.height])
+
+  const isCustomSize = prefs.sizePresetId === 'custom'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -317,9 +399,7 @@ export function StickerPrintDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
             <Tag className="h-5 w-5 text-[#f97316]" />
-            {dialogTitle ?? (
-              <>🏷️ พิมพ์สติกเกอร์อุปกรณ์</>
-            )}
+            {dialogTitle ?? <>🏷️ พิมพ์สติกเกอร์อุปกรณ์</>}
           </DialogTitle>
           <DialogDescription>
             {dialogDescription ?? 'สร้างสติกเกอร์ฉลากอุปกรณ์สำหรับติดเครื่อง'}
@@ -327,79 +407,141 @@ export function StickerPrintDialog({
         </DialogHeader>
 
         <div className="itam-scroll max-h-[68vh] space-y-4 overflow-y-auto pr-1">
-          {/* Format options */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                ขนาดสติกเกอร์
-              </Label>
-              <Select value={size} onValueChange={(v) => setSize(v as StickerSize)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SIZE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                จัดวาง {sizeOption.cols} คอลัมน์ต่อแถวเมื่อพิมพ์
-              </p>
+          {/* ── Sticker settings: size + template ── */}
+          <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-800/20">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <Ruler className="h-3.5 w-3.5" />
+              ตั้งค่าสติกเกอร์
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                ฟิลด์ที่แสดง
-              </Label>
-              <div className="flex flex-wrap gap-2 rounded-md border border-slate-200 p-2 dark:border-slate-800">
-                {FIELD_OPTIONS.map((f) => (
-                  <label
-                    key={f.key}
-                    className="flex cursor-pointer items-center gap-1.5 rounded border border-slate-100 bg-slate-50 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-300 dark:hover:bg-slate-800"
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* Size preset dropdown */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  ขนาดสติกเกอร์
+                </Label>
+                <Select
+                  value={prefs.sizePresetId}
+                  onValueChange={(v) => updatePrefs({ sizePresetId: v })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STICKER_SIZE_PRESETS.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                  ขนาดปัจจุบัน: {canvas.width.toFixed(1)} × {canvas.height.toFixed(1)} มม.
+                </p>
+              </div>
+
+              {/* Template preset dropdown */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  เทมเพลต / รูปแบบ
+                </Label>
+                <Select
+                  value={prefs.templatePresetId}
+                  onValueChange={(v) => updatePrefs({ templatePresetId: v })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STICKER_TEMPLATE_PRESETS.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                  <LayoutTemplate className="mr-1 inline h-3 w-3 align-text-bottom" />
+                  เทมเพลต: {template.name}
+                </p>
+              </div>
+            </div>
+
+            {/* Custom size inputs (only when "custom" is selected) */}
+            {isCustomSize && (
+              <div className="grid grid-cols-2 gap-3 rounded-md border border-dashed border-slate-300 bg-white p-2 dark:border-slate-700 dark:bg-slate-900/60">
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="stk-custom-w"
+                    className="text-[11px] font-medium text-slate-600 dark:text-slate-300"
                   >
-                    <Checkbox
-                      checked={fields.includes(f.key)}
-                      onCheckedChange={() => toggleField(f.key)}
-                    />
-                    {f.label}
-                  </label>
-                ))}
+                    ความกว้าง (มม.)
+                  </Label>
+                  <Input
+                    id="stk-custom-w"
+                    type="number"
+                    min={10}
+                    max={500}
+                    step={0.1}
+                    value={prefs.customWidth || ''}
+                    onChange={(e) =>
+                      updatePrefs({ customWidth: Number(e.target.value) || 0 })
+                    }
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="stk-custom-h"
+                    className="text-[11px] font-medium text-slate-600 dark:text-slate-300"
+                  >
+                    ความสูง (มม.)
+                  </Label>
+                  <Input
+                    id="stk-custom-h"
+                    type="number"
+                    min={10}
+                    max={500}
+                    step={0.1}
+                    value={prefs.customHeight || ''}
+                    onChange={(e) =>
+                      updatePrefs({ customHeight: Number(e.target.value) || 0 })
+                    }
+                    className="h-8 text-sm"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
-          {/* QR toggle */}
-          <div className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
-            <div className="flex items-center gap-2">
-              <QrCode className="h-4 w-4 text-[#f97316]" />
-              <div>
-                <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                  พิมพ์ QR Code
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  สร้าง QR จากรหัสอุปกรณ์ (assetCode)
-                </div>
-              </div>
-            </div>
-            <Switch checked={withQr} onCheckedChange={setWithQr} />
-          </div>
-
-          {/* Live preview */}
+          {/* ── Live preview ── */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
               ตัวอย่างสติกเกอร์ (พรีวิว)
             </Label>
             <div
-              className="overflow-hidden rounded-md border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40"
-              style={{ minHeight: 80 }}
+              className="overflow-auto rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/40"
+              style={{ minHeight: 120, maxHeight: 320 }}
             >
-              {previewHtml ? (
-                <div
-                  className="sticker-preview"
-                  dangerouslySetInnerHTML={{ __html: previewHtml }}
-                />
+              {previewLoading ? (
+                <div className="flex items-center justify-center gap-2 py-6 text-xs text-slate-400 dark:text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  กำลังเตรียมตัวอย่าง...
+                </div>
+              ) : previewHtml ? (
+                <div className="flex justify-center">
+                  <div
+                    style={{
+                      transform: `scale(${previewScale})`,
+                      transformOrigin: 'center top',
+                      width: `${canvas.width * 3.78 * previewScale}px`,
+                      height: `${canvas.height * 3.78 * previewScale}px`,
+                    }}
+                    // Render the template-engine HTML — uses the same
+                    // .stk-sticker / .stk-el classes as the print document.
+                    dangerouslySetInnerHTML={{ __html: previewHtml }}
+                  />
+                </div>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-2 py-6 text-slate-400 dark:text-slate-500">
                   <Tag className="h-6 w-6 text-slate-300 dark:text-slate-600" />
@@ -409,7 +551,7 @@ export function StickerPrintDialog({
             </div>
           </div>
 
-          {/* Device selection */}
+          {/* ── Device selection ── */}
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
@@ -509,269 +651,4 @@ export function StickerPrintDialog({
       </DialogContent>
     </Dialog>
   )
-}
-
-/* ---------- HTML builders for the print window ---------- */
-
-function buildStickerHtml(
-  d: Device,
-  fields: FieldKey[],
-  qrDataUrl: string | null,
-  orgLabel: string,
-): string {
-  const lines = fields
-    .map((k) => {
-      const value = renderFieldValue(d, k)
-      if (!value) return ''
-      const isAssetCode = k === 'assetCode'
-      const lbl = fieldLabel(k)
-      return `
-        <div class="row ${isAssetCode ? 'row-code' : ''}">
-          <span class="lbl">${escapeHtml(lbl)}</span>
-          <span class="val">${escapeHtml(value)}</span>
-        </div>
-      `
-    })
-    .filter(Boolean)
-    .join('')
-
-  const qrBlock = qrDataUrl
-    ? `<div class="qr"><img src="${qrDataUrl}" alt="QR" /></div>`
-    : ''
-
-  return `
-    <div class="sticker">
-      <div class="sticker-top">
-        <span class="org">${escapeHtml(orgLabel)}</span>
-        <span class="accent"></span>
-      </div>
-      <div class="sticker-body">
-        <div class="fields">${lines}</div>
-        ${qrBlock}
-      </div>
-      <div class="sticker-bottom">IT Asset Management</div>
-    </div>
-  `
-}
-
-function buildPrintDocument(
-  stickersHtml: string,
-  sizeOption: SizeOption,
-  fieldCount: number,
-  withQr: boolean,
-): string {
-  const { cols, widthMM, heightMM } = sizeOption
-  return `<!doctype html>
-<html lang="th">
-<head>
-<meta charset="utf-8" />
-<title>สติกเกอร์อุปกรณ์ IT</title>
-<style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: "Sukhumvit Set","Noto Sans Thai","Tahoma","Segoe UI",sans-serif;
-    color: #1e293b;
-    background: #ffffff;
-  }
-  .page { padding: 8mm; }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(${cols}, 1fr);
-    gap: 4mm;
-  }
-  .sticker {
-    border: 1px dashed #94a3b8;
-    border-radius: 4px;
-    padding: 2mm 2.5mm;
-    width: ${widthMM}mm;
-    height: ${heightMM}mm;
-    min-height: ${heightMM}mm;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    background: #ffffff;
-    overflow: hidden;
-    page-break-inside: avoid;
-  }
-  .sticker-top {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    border-bottom: 1px solid #f1f5f9;
-    padding-bottom: 1mm;
-    margin-bottom: 1mm;
-  }
-  .sticker-top .org {
-    font-size: 8pt;
-    font-weight: 700;
-    color: #0f172a;
-    letter-spacing: 0.04em;
-  }
-  .sticker-top .accent {
-    flex: 1;
-    height: 2px;
-    background: linear-gradient(90deg, #f97316 0%, #fb923c 100%);
-    border-radius: 2px;
-  }
-  .sticker-body {
-    display: flex;
-    gap: 2mm;
-    flex: 1;
-    align-items: center;
-  }
-  .fields {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4mm;
-  }
-  .row {
-    display: flex;
-    align-items: baseline;
-    gap: 3px;
-    font-size: 7.5pt;
-    line-height: 1.2;
-  }
-  .row .lbl {
-    color: #64748b;
-    font-size: 6.5pt;
-    min-width: 28px;
-  }
-  .row .val {
-    color: #1e293b;
-    word-break: break-all;
-  }
-  .row-code .val {
-    font-size: 10pt;
-    font-weight: 800;
-    letter-spacing: 0.02em;
-    color: #f97316;
-  }
-  .qr {
-    flex-shrink: 0;
-  }
-  .qr img {
-    width: 22mm;
-    height: 22mm;
-    display: block;
-  }
-  .sticker-bottom {
-    border-top: 1px solid #f1f5f9;
-    padding-top: 1mm;
-    margin-top: 1mm;
-    font-size: 6pt;
-    color: #94a3b8;
-    text-align: center;
-    letter-spacing: 0.05em;
-  }
-  @media print {
-    @page { size: A4; margin: 10mm; }
-    body { background: #ffffff; }
-    .sticker { border-color: #94a3b8; }
-  }
-</style>
-</head>
-<body>
-  <div class="page">
-    <div class="grid">
-      ${stickersHtml}
-    </div>
-  </div>
-</body>
-</html>`
-}
-
-/* ---------- Inline preview styles ----------
-   The preview sticker uses the same class names as the print document so the
-   look is consistent; we re-declare a minimal CSS block scoped to
-   .sticker-preview so it renders cleanly inside the dialog.
-*/
-const previewStyles = `
-.sticker-preview .sticker {
-  width: 100%;
-  min-height: 60px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 6px;
-  padding: 8px 10px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  background: #ffffff;
-}
-.sticker-preview .sticker-top {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  border-bottom: 1px solid #f1f5f9;
-  padding-bottom: 4px;
-  margin-bottom: 4px;
-}
-.sticker-preview .sticker-top .org {
-  font-size: 9px;
-  font-weight: 700;
-  color: #0f172a;
-}
-.sticker-preview .sticker-top .accent {
-  flex: 1;
-  height: 2px;
-  background: linear-gradient(90deg, #f97316 0%, #fb923c 100%);
-  border-radius: 2px;
-}
-.sticker-preview .sticker-body {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.sticker-preview .fields {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.sticker-preview .row {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  font-size: 11px;
-}
-.sticker-preview .row .lbl { color: #64748b; font-size: 10px; min-width: 40px; }
-.sticker-preview .row .val { color: #1e293b; }
-.sticker-preview .row-code .val {
-  font-size: 14px;
-  font-weight: 800;
-  color: #f97316;
-}
-.sticker-preview .qr {
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
-  color: #94a3b8;
-}
-.sticker-preview .sticker-bottom {
-  border-top: 1px solid #f1f5f9;
-  padding-top: 4px;
-  margin-top: 4px;
-  font-size: 9px;
-  color: #94a3b8;
-  text-align: center;
-}
-`
-
-// Inject the preview styles once on the client side.
-if (typeof document !== 'undefined') {
-  const id = 'sticker-preview-styles'
-  if (!document.getElementById(id)) {
-    const el = document.createElement('style')
-    el.id = id
-    el.textContent = previewStyles
-    document.head.appendChild(el)
-  }
 }

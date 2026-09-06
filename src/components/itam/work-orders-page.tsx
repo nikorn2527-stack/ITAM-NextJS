@@ -3827,7 +3827,10 @@ function WorkOrderDetailContent({
             <AlertDialogAction
               type="button"
               disabled={assigning || !techName.trim()}
-              onClick={() => handleAssign()}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void handleAssign()
+              }}
             >
               {assigning ? (
                 <RefreshCw className="h-4 w-4 animate-spin" />
@@ -4152,7 +4155,8 @@ function WorkOrderDetailContent({
             <AlertDialogAction
               type="button"
               disabled={completing}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
                 void handleComplete()
               }}
               className="bg-emerald-600 hover:bg-emerald-700"
@@ -4194,7 +4198,10 @@ function WorkOrderDetailContent({
             <AlertDialogAction
               type="button"
               disabled={canceling || !cancelReason.trim()}
-              onClick={() => handleCancel()}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void handleCancel()
+              }}
               className="bg-rose-600 hover:bg-rose-700"
             >
               {canceling ? (
@@ -4734,7 +4741,10 @@ function WorkOrderDetailContent({
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
-              onClick={confirmDeleteImage}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void confirmDeleteImage()
+              }}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
               ลบ

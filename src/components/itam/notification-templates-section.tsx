@@ -269,8 +269,10 @@ export function NotificationTemplatesSection() {
   function confirmDelete() {
     if (!deleteId) return
     const next = templates.filter((t) => t.id !== deleteId)
-    saveMutation.mutate(next)
-    setDeleteId(null)
+    // Close the dialog only after the mutation succeeds; onError shows a toast.
+    saveMutation.mutate(next, {
+      onSuccess: () => setDeleteId(null),
+    })
   }
 
   function toggleEnabled(t: TemplateEntry, value: boolean) {
@@ -728,7 +730,10 @@ export function NotificationTemplatesSection() {
           <AlertDialogFooter>
             <AlertDialogCancel className="dark:bg-slate-800 dark:border-slate-700">ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmDelete}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                confirmDelete()
+              }}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
               ลบเทมเพลต

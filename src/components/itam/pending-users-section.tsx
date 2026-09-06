@@ -285,7 +285,10 @@ export function PendingUsersSection() {
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
-              onClick={confirmReject}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void confirmReject()
+              }}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
               ปฏิเสธ
