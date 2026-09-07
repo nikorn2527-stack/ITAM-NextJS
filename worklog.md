@@ -19201,3 +19201,57 @@ Work Log:
 1. ไม่ต้องแก้ frontend หลายจุด (ลด regression risk)
 2. formatBaht defense-in-depth ป้องกัน crash แบบเดียวในอนาคตทั้งโปรเจกต์
 3. status mapping ที่ถูกต้องทำให้ badge แสดงผลถูกต้อง (ก่อนหน้านี้ทุกแถวแสดง badge "ใหม่" ผิดหมด)
+
+---
+Task ID: PRODUCTION-DEPLOY-010
+Agent: main agent
+Task: Deploy fix ขึ้น Vercel production — ผู้ใช้ยังเห็น error เพราะ production ยังใช้ commit เก่า
+
+## สถานะก่อนแก้
+- Production (https://itam-next-js.vercel.app/) ยังใช้ commit ede72e1 (เก่า) ที่มี bug `bookValue` field
+- ผมแก้ใน sandbox แล้ว (commit dae8daa) แต่ยังไม่ได้ push ขึ้น Vercel
+- ผู้ใช้เห็น error "This page couldn't load" จริงบน production เพราะ code ยังไม่ deploy
+
+Work Log:
+- **Commit + Push การแก้ทั้งหมด** (commit dae8daa):
+  - field name drift fix (bookValue → currentValue)
+  - formatBaht null-safe
+  - SQLite migration
+  - Turbopack transpilePackages
+  - global-error auto-recovery
+  - SW self-unregister
+  - NotificationLog (Bug B)
+  - MeterReportAmendment (Bug L)
+  - module manifest drift fix
+- **พบปัญหาใหม่**: schema ใช้ `provider = "sqlite"` แต่ Vercel ใช้ PostgreSQL (Supabase) → build fail
+- **แก้ด้วย auto-detect script** (commit ad9c275):
+  - สร้าง `scripts/set-prisma-provider.mjs` — auto-detect provider จาก DATABASE_URL
+    - URL starts with `file:` → sqlite (sandbox)
+    - URL starts with `postgres` → postgresql (Vercel)
+    - URL starts with `mysql` → mysql
+  - แก้ `vercel.json` buildCommand ให้รัน script ก่อน prisma generate
+- **รอ Vercel deploy** (~3 นาที):
+  - ตรวจ chunk hash: `webpack-de033a8c7f20342d` (เก่า) → `webpack-2c7599207876a7aa` (ใหม่) ✅
+  - ตรวจ EarlySW marker: พบใน production HTML ✅
+  - ตรวจ currentValue field: พบใน production chunks ✅ (ไม่ใช่ bookValue อีก)
+- **Verify production**:
+  - Login page: HTTP 200 ✅
+  - Page size: 18411 bytes (ปกติ)
+  - Agent Browser: login page โหลดสมบูรณ์ ไม่มี errors
+  - `/api/devices/depreciation`: คืน 401 (ต้อง login) — ไม่ crash
+
+## Files created/modified (deploy)
+1. `scripts/set-prisma-provider.mjs` — สร้างใหม่ — auto-detect prisma provider จาก DATABASE_URL
+2. `vercel.json` — เพิ่ม `node scripts/set-prisma-provider.mjs` ใน buildCommand ก่อน prisma generate
+
+## Stage Summary
+- ✅ Push ขึ้น Vercel สำเร็จ (commit dae8daa + ad9c275)
+- ✅ Vercel deploy สำเร็จ — chunk hash เปลี่ยน (build ใหม่)
+- ✅ Production มี code ใหม่: EarlySW marker + currentValue field (ไม่ใช่ bookValue)
+- ✅ Login page โหลดสมบูรณ์ ไม่มี errors
+- ✅ แก้ SQLite/PostgreSQL provider conflict ด้วย auto-detect script
+
+## หมายเหตุ
+- Production ใช้ PostgreSQL (Supabase) — schema auto-switch ได้แล้ว
+- ผู้ใช้ต้อง login ด้วย production credentials (nikorn2527@gmail.com) เพื่อทดสอบ dashboard จริง
+- ถ้ายังเห็น error หลัง login อาจมี field mismatch อื่นที่ต้องแก้เพิ่ม
