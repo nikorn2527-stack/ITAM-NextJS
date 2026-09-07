@@ -19,7 +19,7 @@ export async function DELETE(req: NextRequest) {
   const credId = new URL(req.url).searchParams.get('id')
   if (!credId) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   const cred = await db.webAuthnCredential.findUnique({ where: { id: credId } })
-  if (!cred || cred.userId !== auth.user.id) return NextResponse.json({ error: 'ไม่พบลายนิ้วมือ หรือไม่ใช่ของคุณ' }, { status: 404 })
+  if (!cred || cred.userId !== auth.user.id) return NextResponse.json({ error: 'ไม่พบPasskey หรือไม่ใช่ของคุณ' }, { status: 404 })
   await db.webAuthnCredential.delete({ where: { id: credId } })
   return NextResponse.json({ ok: true })
 }

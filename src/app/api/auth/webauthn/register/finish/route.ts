@@ -16,15 +16,15 @@ export async function POST(req: NextRequest) {
     const expectedChallenge = getChallenge(`reg:${user.id}`)
     if (!expectedChallenge) return NextResponse.json({ error: 'Challenge expired — กรุณาเริ่มใหม่' }, { status: 400 })
     const verification = await finishRegistration({ body: body.credential, expectedChallenge, config })
-    if (!verification.verified || !verification.registrationInfo) return NextResponse.json({ error: 'การยืนยันลายนิ้วมือล้มเหลว' }, { status: 400 })
+    if (!verification.verified || !verification.registrationInfo) return NextResponse.json({ error: 'การยืนยันPasskeyล้มเหลว' }, { status: 400 })
     const info = verification.registrationInfo
     const credentialId = info.credentialID
-    const credentialName = body.name ?? body.deviceType ?? 'ลายนิ้วมือ'
+    const credentialName = body.name ?? body.deviceType ?? 'Passkey'
     await db.webAuthnCredential.create({
       data: { id: credentialId, userId: user.id, publicKey: Buffer.from(info.credentialPublicKey), counter: info.counter, deviceType: body.deviceType ?? null, transports: (info.credentialDeviceType ?? '') as string, name: credentialName },
     })
     deleteChallenge(`reg:${user.id}`)
-    await logAudit('AUTH_FALLBACK', 'User', user.id, `ลงทะเบียนลายนิ้วมือสำเร็จ: "${credentialName}"`, { credentialId, deviceType: body.deviceType }, user.email).catch(() => {})
+    await logAudit('AUTH_FALLBACK', 'User', user.id, `ลงทะเบียนPasskeyสำเร็จ: "${credentialName}"`, { credentialId, deviceType: body.deviceType }, user.email).catch(() => {})
     return NextResponse.json({ verified: true, credentialId, name: credentialName })
   } catch (err) {
     console.error('POST /api/auth/webauthn/register/finish', err)

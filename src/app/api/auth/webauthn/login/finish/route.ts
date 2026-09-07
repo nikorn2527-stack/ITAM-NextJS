@@ -22,14 +22,14 @@ export async function POST(req: NextRequest) {
     const credentialBody = body.credential as { id?: string }
     if (!credentialBody?.id) return NextResponse.json({ error: 'Invalid credential response' }, { status: 400 })
     const credential = user.webauthnCredentials.find((c) => c.id === credentialBody.id)
-    if (!credential) return NextResponse.json({ error: 'ไม่พบลายนิ้วมือที่ลงทะเบียนไว้' }, { status: 404 })
+    if (!credential) return NextResponse.json({ error: 'ไม่พบPasskeyที่ลงทะเบียนไว้' }, { status: 404 })
     const config = getWebAuthnConfig(req)
     try {
       const verification = await finishAuthentication({
         body: body.credential, expectedChallenge, config,
         credential: { id: credential.id, publicKey: new Uint8Array(credential.publicKey), counter: credential.counter },
       })
-      if (!verification.verified || !verification.authenticationInfo) return NextResponse.json({ error: 'การยืนยันลายนิ้วมือล้มเหลว' }, { status: 401 })
+      if (!verification.verified || !verification.authenticationInfo) return NextResponse.json({ error: 'การยืนยันPasskeyล้มเหลว' }, { status: 401 })
       await db.webAuthnCredential.update({
         where: { id: credential.id },
         data: { counter: verification.authenticationInfo.newCounter, lastUsedAt: new Date() },
@@ -37,11 +37,11 @@ export async function POST(req: NextRequest) {
       deleteChallenge(challengeKey)
       const token = await createToken({ email: user.email, role: user.role, name: user.name, username: user.username, allowedSites: user.allowedSites })
       const authUser = toAuthUser(user)
-      await logAudit('LOGIN', 'User', user.id, `เข้าสู่ระบบด้วยลายนิ้วมือ: "${credential.name ?? 'ลายนิ้วมือ'}"`, { method: 'webauthn', credentialId: credential.id }, user.email).catch(() => {})
+      await logAudit('LOGIN', 'User', user.id, `เข้าสู่ระบบด้วยPasskey: "${credential.name ?? 'Passkey'}"`, { method: 'webauthn', credentialId: credential.id }, user.email).catch(() => {})
       return NextResponse.json({ token, user: authUser })
     } catch (verifyErr) {
       console.error('WebAuthn verify failed', verifyErr)
-      return NextResponse.json({ error: 'ยืนยันลายนิ้วมือไม่สำเร็จ — กรุณาลองใหม่หรือใช้ password' }, { status: 401 })
+      return NextResponse.json({ error: 'ยืนยันPasskeyไม่สำเร็จ — กรุณาลองใหม่หรือใช้ password' }, { status: 401 })
     }
   } catch (err) {
     console.error('POST /api/auth/webauthn/login/finish', err)

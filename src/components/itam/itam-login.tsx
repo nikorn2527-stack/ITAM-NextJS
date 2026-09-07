@@ -1163,7 +1163,7 @@ function OauthButton({
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// FingerprintLogin — ล็อกอินด้วยลายนิ้วมือ / Face ID / Touch ID / Windows Hello
+// FingerprintLogin — ล็อกอินด้วยPasskey / Face ID / Touch ID / Windows Hello
 // ─────────────────────────────────────────────────────────────────────────
 function FingerprintLogin({
   email,
@@ -1180,12 +1180,12 @@ function FingerprintLogin({
 
   const handleFingerprint = async () => {
     if (!email || email.trim() === '') {
-      toast.info('กรุณากรอกชื่อผู้ใช้ / อีเมลก่อน แล้วกดลายนิ้วมือ')
+      toast.info('กรุณากรอกชื่อผู้ใช้ / อีเมลก่อน แล้วกด Passkey')
       return
     }
     const result = await login(email.trim())
     if (result) {
-      toast.success('ยืนยันตัวตนด้วยลายนิ้วมือสำเร็จ')
+      toast.success('ยืนยันตัวตนด้วย Passkey สำเร็จ')
       onSuccess(result.token, result.user)
     }
   }
@@ -1203,22 +1203,22 @@ function FingerprintLogin({
           backgroundColor: `${primaryColor}08`,
         }}
         className="group flex h-11 w-full items-center justify-center gap-2.5 rounded-lg border-2 text-sm font-medium transition-all hover:bg-[var(--brand)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/50 disabled:cursor-not-allowed disabled:opacity-60"
-        title="เข้าสู่ระบบด้วยลายนิ้วมือ / Touch ID / Face ID"
+        title="เข้าสู่ระบบด้วย Passkey / Touch ID / Face ID"
       >
         {loading ? (
           <>
             <Loader2 className="h-5 w-5 animate-spin" />
-            กรุณายืนยันลายนิ้วมือ...
+            กรุณายืนยันตัวตนด้วย Passkey...
           </>
         ) : (
           <>
             <Fingerprint className="h-5 w-5 transition-transform group-hover:scale-110" />
-            เข้าสู่ระบบด้วยลายนิ้วมือ
+            เข้าสู่ระบบด้วย Passkey
           </>
         )}
       </button>
       <p className="mt-1.5 text-center text-[10px] text-slate-400 dark:text-slate-500">
-        Touch ID · Face ID · Windows Hello · ลายนิ้วมือ Android
+        Touch ID · Face ID · Windows Hello · Security Key
       </p>
     </div>
   )

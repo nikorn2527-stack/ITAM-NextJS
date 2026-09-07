@@ -52,7 +52,7 @@ export function useWebAuthn() {
   }
 
   async function register(name?: string) {
-    if (!isSupported) { setError('เบราว์เซอร์นี้ไม่รองรับลายนิ้วมือ'); return null }
+    if (!isSupported) { setError('เบราว์เซอร์นี้ไม่รองรับ Passkey'); return null }
     setLoading(true); setError(null)
     try {
       const token = getToken()
@@ -67,7 +67,7 @@ export function useWebAuthn() {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ credential, deviceType: detectDeviceType(), name: name ?? null }),
       })
-      if (!finishRes.ok) { const j = await finishRes.json().catch(() => ({})); throw new Error(j.error ?? 'ยืนยันลายนิ้วมือล้มเหลว') }
+      if (!finishRes.ok) { const j = await finishRes.json().catch(() => ({})); throw new Error(j.error ?? 'ยืนยัน Passkey ล้มเหลว') }
       const result = await finishRes.json()
       return { verified: true, name: result.name }
     } catch (e) {
@@ -78,7 +78,7 @@ export function useWebAuthn() {
   }
 
   async function login(email: string) {
-    if (!isSupported) { setError('เบราว์เซอร์นี้ไม่รองรับลายนิ้วมือ'); return null }
+    if (!isSupported) { setError('เบราว์เซอร์นี้ไม่รองรับ Passkey'); return null }
     setLoading(true); setError(null)
     try {
       const beginRes = await fetch('/api/auth/webauthn/login/begin', {
@@ -92,7 +92,7 @@ export function useWebAuthn() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, credential }),
       })
-      if (!finishRes.ok) { const j = await finishRes.json().catch(() => ({})); throw new Error(j.error ?? 'ยืนยันลายนิ้วมือล้มเหลว') }
+      if (!finishRes.ok) { const j = await finishRes.json().catch(() => ({})); throw new Error(j.error ?? 'ยืนยัน Passkey ล้มเหลว') }
       return await finishRes.json()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)

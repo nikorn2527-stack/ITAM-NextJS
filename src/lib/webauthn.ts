@@ -1,7 +1,7 @@
 /**
  * webauthn.ts — WebAuthn / Passkey helpers (server-side).
  *
- * รองรับล็อกอินด้วยลายนิ้วมือ/ใบหน้า — Touch ID, Face ID, Windows Hello,
+ * รองรับล็อกอินด้วยPasskey/ใบหน้า — Touch ID, Face ID, Windows Hello,
  * Android fingerprint, hardware security keys.
  *
  * rpID = current host (works on localhost + production domain).

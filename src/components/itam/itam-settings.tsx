@@ -122,7 +122,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
     items: [
       { value: 'customize', label: 'ปรับแต่งแอป', icon: Palette },
       { value: 'oauth', label: 'OAuth/External Login', icon: KeyRound },
-      { value: 'my-biometrics', label: 'ลายนิ้วมือของฉัน', icon: Fingerprint },
+      { value: 'my-biometrics', label: 'Passkey ของฉัน', icon: Fingerprint },
     ],
   },
 ]
@@ -1284,10 +1284,10 @@ function MobileNavConfigSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// MyBiometricsSection — จัดการลายนิ้วมือของผู้ใช้ปัจจุบัน
+// MyBiometricsSection — จัดการPasskeyของผู้ใช้ปัจจุบัน
 // ─────────────────────────────────────────────────────────────────────────
 // ลงทะเบียน Touch ID / Face ID / Windows Hello / Android fingerprint
-// หลังจากลงทะเบียนแล้ว ผู้ใช้สามารถ login ด้วยลายนิ้วมือแทน password ได้
+// หลังจากลงทะเบียนแล้ว ผู้ใช้สามารถ login ด้วยPasskeyแทน password ได้
 // ─────────────────────────────────────────────────────────────────────────
 function MyBiometricsSection() {
   const { isSupported, register, listCredentials, removeCredential, loading } = useWebAuthn()
@@ -1319,17 +1319,17 @@ function MyBiometricsSection() {
   async function handleRegister() {
     const result = await register(newName.trim() || undefined)
     if (result?.verified) {
-      toast.success(`ลงทะเบียน "${result.name ?? 'ลายนิ้วมือ'}" สำเร็จ`)
+      toast.success(`ลงทะเบียน "${result.name ?? 'Passkey'}" สำเร็จ`)
       setNewName('')
       refresh()
     }
   }
 
   async function handleRemove(id: string, name: string | null) {
-    if (!confirm(`ยืนยันลบ "${name ?? 'ลายนิ้วมือ'}" ?`)) return
+    if (!confirm(`ยืนยันลบ Passkey "${name ?? 'Passkey'}" ?`)) return
     const ok = await removeCredential(id)
     if (ok) {
-      toast.success('ลบลายนิ้วมือเรียบร้อย')
+      toast.success('ลบ Passkey เรียบร้อย')
       refresh()
     } else {
       toast.error('ลบไม่สำเร็จ')
@@ -1341,18 +1341,18 @@ function MyBiometricsSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base md:text-lg">
           <Fingerprint className="h-5 w-5 text-[#f97316]" />
-          ลายนิ้วมือของฉัน (Touch ID / Face ID / Windows Hello)
+          Passkey ของฉัน (Touch ID / Face ID / Windows Hello / Security Key)
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          ลงทะเบียนลายนิ้วมือของอุปกรณ์นี้เพื่อใช้ login โดยไม่ต้องกรอก password.
-          รองรับ Touch ID, Face ID, Windows Hello, ลายนิ้วมือ Android และ security key.
+          ลงทะเบียน Passkey ของอุปกรณ์นี้เพื่อใช้ login โดยไม่ต้องกรอก password.
+          รองรับ Touch ID, Face ID, Windows Hello, Passkey Android และ security key (YubiKey).
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {!isSupported ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-            <p className="font-medium">⚠️ เบราว์เซอร์นี้ไม่รองรับลายนิ้วมือ</p>
-            <p className="mt-1 text-xs">กรุณาใช้ Chrome / Safari / Edge เวอร์ชันใหม่, หรืออนุญาตให้เบราว์เซอร์เข้าถึง Platform Authenticator.</p>
+            <p className="font-medium">⚠️ เบราว์เซอร์นี้ไม่รองรับ Passkey</p>
+            <p className="mt-1 text-xs">กรุณาใช้ Chrome / Safari / Edge เวอร์ชันใหม่, หรือเปิดผ่าน HTTPS (ไม่ใช่ HTTP).</p>
           </div>
         ) : (
           <>
@@ -1377,7 +1377,7 @@ function MyBiometricsSection() {
                 </Button>
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                หลังกดปุ่ม เบราว์เซอร์จะถามยืนยันลายนิ้วมือ/ใบหน้า. ทำตามขั้นตอนบนหน้าจอ.
+                หลังกดปุ่ม เบราว์เซอร์จะถามยืนยันตัวตน (fingerprint/ใบหน้า/security key). ทำตามขั้นตอนบนหน้าจอ.
               </p>
             </div>
 
@@ -1385,7 +1385,7 @@ function MyBiometricsSection() {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  ลายนิ้วมือที่ลงทะเบียน ({credentials.length})
+                  Passkey ที่ลงทะเบียน ({credentials.length})
                 </h4>
                 <Button variant="ghost" size="sm" onClick={refresh} disabled={refreshing}>
                   {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -1395,7 +1395,7 @@ function MyBiometricsSection() {
               {credentials.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-muted-foreground dark:border-slate-700">
                   <Fingerprint className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                  ยังไม่ได้ลงทะเบียนลายนิ้วมือ
+                  ยังไม่ได้ลงทะเบียน Passkey
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1408,7 +1408,7 @@ function MyBiometricsSection() {
                         <Fingerprint className="h-5 w-5 text-[#f97316]" />
                         <div>
                           <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                            {c.name ?? 'ลายนิ้วมือ'}
+                            {c.name ?? 'Passkey'}
                           </div>
                           <div className="text-[11px] text-muted-foreground">
                             {c.deviceType ?? 'webauthn'} · ลงทะเบียน {new Date(c.createdAt).toLocaleDateString('th-TH')}
@@ -1434,9 +1434,9 @@ function MyBiometricsSection() {
             <div className="rounded-lg bg-slate-50 p-3 text-[11px] text-muted-foreground dark:bg-slate-800/30">
               <p className="font-medium">💡 วิธีใช้งาน:</p>
               <ol className="mt-1 ml-4 list-decimal space-y-0.5">
-                <li>ลงทะเบียนลายนิ้วมือของอุปกรณ์นี้ (ด้านบน)</li>
-                <li>ครั้งต่อไปที่ login — กรอก email แล้วกดปุ่ม &quot;เข้าสู่ระบบด้วยลายนิ้วมือ&quot;</li>
-                <li>เบราว์เซอร์จะถามยืนยันลายนิ้วมือ ไม่ต้องกรอก password</li>
+                <li>ลงทะเบียน Passkey ของอุปกรณ์นี้ (ด้านบน)</li>
+                <li>ครั้งต่อไปที่ login — กรอก email แล้วกดปุ่ม &quot;เข้าสู่ระบบด้วย Passkey&quot;</li>
+                <li>เบราว์เซอร์จะถามยืนยันตัวตน ไม่ต้องกรอก password</li>
               </ol>
             </div>
           </>

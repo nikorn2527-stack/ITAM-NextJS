@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ options })
       }
       if (!user.active) return NextResponse.json({ error: 'บัญชีถูกระงับการใช้งาน' }, { status: 403 })
-      if (user.webauthnCredentials.length === 0) return NextResponse.json({ error: 'บัญชีนี้ยังไม่ได้ลงทะเบียนลายนิ้วมือ — กรุณา login ด้วย password แล้วลงทะเบียนก่อน' }, { status: 400 })
+      if (user.webauthnCredentials.length === 0) return NextResponse.json({ error: 'บัญชีนี้ยังไม่ได้ลงทะเบียนPasskey — กรุณา login ด้วย password แล้วลงทะเบียนก่อน' }, { status: 400 })
       allowedCredentials = user.webauthnCredentials.map((c) => ({ id: c.id, transports: c.transports ?? '' }))
     }
     const options = await beginAuthentication({ config, allowedCredentials })
