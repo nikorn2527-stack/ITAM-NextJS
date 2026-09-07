@@ -1721,7 +1721,7 @@ export function TemplatesPage() {
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-6 p-4 md:p-6">
+    <div className="flex h-full w-full flex-col gap-4 p-3 md:p-4 lg:p-5">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -1730,7 +1730,7 @@ export function TemplatesPage() {
         className="flex flex-shrink-0 items-start justify-between gap-4"
       >
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+          <h1 className="text-xl font-bold tracking-tight md:text-2xl">
             📄 เทมเพลต
           </h1>
           <p className="text-sm text-muted-foreground md:text-base">
