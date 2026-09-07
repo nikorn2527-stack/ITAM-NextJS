@@ -598,7 +598,7 @@ export function ImportPage() {
           </h2>
           {/* On mobile: horizontal scrollable row of compact cards so the
               upload area below stays in the viewport. On sm+: 2-4 col grid. */}
-          <div className="flex gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {IMPORT_TYPES.map((t) => {
               const active = selectedType === t.id
               return (
