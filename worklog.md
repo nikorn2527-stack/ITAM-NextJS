@@ -19486,3 +19486,81 @@ Security outcome:
   with the same response shapes — they are intentionally unauthenticated and use
   inline findFirst (not the shared `findWorkOrder` helper) so the post-fix grep audit
   shows zero direct helper invocations.
+
+---
+Task ID: P0-AUTHZ-SNAPSHOT-FIX-014
+Agent: main agent + 2 subagents
+Task: แก้ P0 สองจุดที่ผู้ใช้รายงาน — v1 work-orders authz ไม่ครบ + Snapshots menu พัง
+
+## P0-1: v1 work-orders cross-site privilege escalation (CLOSED)
+
+### สถานะก่อนแก้
+- ทีมสร้างฟังก์ชัน `loadAuthorizedWorkOrderV1()` ใน `_shared.ts` ถูกต้องแล้ว
+- แต่เรียกใช้แค่ 1/7 ไฟล์ (route.ts list เท่านั้น)
+- อีก 6 ไฟล์ยังใช้ `findWorkOrder()` ตรงๆ ไม่เช็คสิทธิ์สาขา → cross-site escalation
+
+### การแก้ (subagent V1-WO-AUTHZ-FIX-014)
+แก้ครบ 8 handlers ใน 6 ไฟล์:
+
+| ไฟล์ | Handler | Permission |
+|---|---|---|
+| [id]/route.ts | GET | WO_VIEW_ALL |
+| [id]/route.ts | PUT | WO_ASSIGN |
+| [id]/assign/route.ts | POST | WO_ASSIGN |
+| [id]/cancel/route.ts | POST | WO_CANCEL |
+| [id]/complete/route.ts | POST | WO_COMPLETE |
+| [id]/review/route.ts | POST | WO_VIEW_ALL |
+| [id]/messages/route.ts | GET + POST | WO_VIEW_ALL |
+
+Pattern: `findWorkOrder(id) + notFound()` → `loadAuthorizedWorkOrderV1(req, id, '<perm>') + { wo, auth }`
+- ลบ duplicate `requireAuth` calls (helper ทำ auth ภายใน)
+- Guest-access paths (reporterTel match) ยังทำงาน — ใช้ inline findFirst ไม่ใช่ helper
+
+### Verify
+- `grep findWorkOrder src/app/api/v1/work-orders/[id]/` → empty ✅
+- `grep requireApiAuth|auth.ctx|toAuthUser` → empty ✅
+- TypeScript: 0 errors ✅
+- Lint: เท่า baseline ✅
+- API test: `/api/v1/work-orders/test-id/assign` → 404 (not crash) ✅
+
+## P0-2: Snapshots menu broken (REMOVED)
+
+### สถานะก่อนแก้
+- Prisma models `meterReportSnapshot` + `meterReportSnapshotRow` ถูกลบจาก schema ไปแล้ว
+- แต่ 4 API routes + snapshot-viewer.tsx + sidebar menu ยังเรียกใช้ → crash 100%
+- มี TODO comments บอกว่า "feature disabled" แต่โค้ดยังทำงานเหมือนเปิดอยู่
+
+### การแก้ (เลือกทางที่ 2: ลบให้ครบ)
+ลบไฟล์ทั้งหมด:
+- `src/components/itam/snapshot-viewer.tsx` (deleted)
+- `src/app/api/v1/snapshots/route.ts` (deleted)
+- `src/app/api/v1/snapshots/[id]/route.ts` (deleted)
+- `src/app/api/v1/snapshots/[id]/rows/route.ts` (deleted)
+- `src/app/api/v1/snapshots/[id]/verify/route.ts` (deleted)
+
+แก้ sidebar.tsx:
+- ลบ menu entry `{ page: 'itam-snapshot-viewer', ... }`
+- ลบ page-to-module mapping `'itam-snapshot-viewer': 'audit'`
+
+แก้ home-client.tsx:
+- ลบ `SnapshotViewer` dynamic import
+- ลบ `<KeepAlivePage active={isActive('itam-snapshot-viewer')}>` block
+
+### สิ่งที่เก็บไว้
+- `src/lib/meter-snapshot.ts` — เก็บไว้เพราะ `assertMeterMonthWritable()` ใช้งานจริง (อ่าน db.cycle ไม่ใช่ meterReportSnapshot)
+- `createMeterReportSnapshot()` — มี early-return null อยู่แล้ว (ปลอดภัย ไม่ crash)
+- `verifyMeterReportSnapshot()` — ไม่มี caller แล้ว (ลบ route ไปแล้ว) แต่เก็บโค้ดไว้เผื่อต้องการ re-enable ในอนาคต
+
+### Verify
+- Agent Browser: Snapshots menu หายไปจาก nav แล้ว ✅
+- ไม่มี crash เมื่อโหลดหน้า Dashboard ✅
+
+## Stage Summary
+- ✅ P0-1 (v1 work-orders authz): แก้ครบ 8 handlers ใน 6 ไฟล์ — cross-site escalation closed
+- ✅ P0-2 (Snapshots menu): ลบให้ครบวงจร — ลบ 5 ไฟล์ + แก้ sidebar + home-client
+- ✅ TypeScript: 0 errors
+- ✅ Lint: 1 error + 105 warnings (ลด 1 warning เพราะลบ dashboard-page.tsx ไป)
+- ✅ Push สำเร็จ (commit df58fcb)
+
+## หมายเหตุ
+ผู้ใช้ชี้ให้เห็น pattern ที่เจอซ้ำ: "เขียน fix ถูกจุดแล้ว แต่ wiring ไม่ครบ" — แนะนำให้ทีมเพิ่มขั้นตอน grep หาทุกจุดที่เรียกฟังก์ชันเก่าก่อนปิดงานแก้บั๊กทุกครั้ง
