@@ -559,11 +559,11 @@ export function ImportPage() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 lg:px-8">
-      <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6">
+    <div className="flex h-full flex-col bg-slate-50 px-3 py-4 dark:bg-slate-950 sm:px-4 lg:px-5">
+      <div className="flex h-full w-full flex-col gap-4">
         {/* Header */}
         <div className="flex flex-shrink-0 flex-col gap-1">
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-800 dark:text-slate-100">
+          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-800 dark:text-slate-100 sm:text-2xl">
             <span aria-hidden>📥</span>
             นำเข้าข้อมูล
           </h1>
@@ -573,7 +573,7 @@ export function ImportPage() {
         </div>
 
         {/* Tab switcher: manual import vs legacy Apps Script import */}
-        <Tabs defaultValue="manual" className="flex min-h-0 w-full flex-1 flex-col gap-6">
+        <Tabs defaultValue="manual" className="flex min-h-0 w-full flex-1 flex-col gap-4">
           <TabsList className="flex-shrink-0 bg-slate-100 dark:bg-slate-800">
             <TabsTrigger value="manual" onClick={() => {}} className="gap-1.5">
               <Upload className="h-3.5 w-3.5" />
