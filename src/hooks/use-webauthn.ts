@@ -52,9 +52,18 @@ export function useWebAuthn() {
   }
 
   async function register(name?: string) {
-    if (!isSupported) { setError('เบราว์เซอร์นี้ไม่รองรับ Passkey'); return null }
+    if (!isSupported) { setError('เบราว์เซอร์นี้ไม่รองรับ Passkey — กรุณาใช้ Chrome/Safari/Edge บน HTTPS'); return null }
     setLoading(true); setError(null)
     try {
+      // Pre-check: warn if no platform authenticator (but still allow
+      // security key / cross-platform registration)
+      if (window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable) {
+        const hasPlatform = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        if (!hasPlatform) {
+          // Don't block — user may have a USB security key. Just warn.
+          console.info('[Passkey] No platform authenticator — will try cross-platform (security key)')
+        }
+      }
       const token = getToken()
       const beginRes = await fetch('/api/auth/webauthn/register/begin', {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -72,7 +81,21 @@ export function useWebAuthn() {
       return { verified: true, name: result.name }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('abort')) setError(msg)
+      // Don't show toast if user cancelled
+      if (msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('abort')) {
+        setError(null)
+        return null
+      }
+      // Friendly error messages for common failures
+      let friendly = msg
+      if (msg.includes('NotAllowed') || msg.includes('allowed')) {
+        friendly = 'การยืนยันตัวตนถูกปฏิเสธ — อาจเป็นเพราะเบราว์เซอร์ไม่มี authenticator หรือคุณปฏิเสธการยืนยัน. ลองใช้ Chrome/Safari บนมือถือ หรือเสียบ security key.'
+      } else if (msg.includes('InvalidState') || msg.includes('already registered')) {
+        friendly = 'อุปกรณ์นี้ลงทะเบียนไว้แล้ว — ลอง login ด้วย Passkey แทน'
+      } else if (msg.includes('Abort')) {
+        friendly = 'การลงทะเบียนถูกยกเลิก'
+      }
+      setError(friendly)
       return null
     } finally { setLoading(false) }
   }
