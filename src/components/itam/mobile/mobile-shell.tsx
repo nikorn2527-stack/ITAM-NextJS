@@ -27,7 +27,7 @@
  */
 
 import * as React from 'react'
-import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut, ArrowLeft } from 'lucide-react'
+import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut, ArrowLeft, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useSwipeBack } from '@/hooks/use-swipe-back'
@@ -36,8 +36,9 @@ import { MobileRepairRequest } from './mobile-repair-request'
 import { MobileMyWork } from './mobile-my-work'
 import { MobileMeterReading } from './mobile-meter-reading'
 import { MobileStockOut } from './mobile-stock-out'
+import { MobileAccount } from './mobile-account'
 
-export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock'
+export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock' | 'account'
 
 interface NavItem {
   id: MobileTab
@@ -50,6 +51,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'repair',   label: 'แจ้งซ่อม',   icon: Wrench },
   { id: 'meter',    label: 'จดมิเตอร์',  icon: Gauge },
   { id: 'stock',    label: 'เบิกของ',    icon: PackageOpen },
+  { id: 'account',  label: 'บัญชี',      icon: User },
 ]
 
 const HEADER_TITLE: Record<MobileTab, string> = {
@@ -57,6 +59,7 @@ const HEADER_TITLE: Record<MobileTab, string> = {
   'my-work': 'งานของฉัน',
   meter: 'จดมิเตอร์',
   stock: 'เบิกของ',
+  account: 'บัญชีของฉัน',
 }
 
 export function MobileShell() {
@@ -132,6 +135,9 @@ export function MobileShell() {
           </MobileKeepAliveTab>
           <MobileKeepAliveTab active={tab === 'stock'}>
             <MobileStockOut />
+          </MobileKeepAliveTab>
+          <MobileKeepAliveTab active={tab === 'account'}>
+            <MobileAccount />
           </MobileKeepAliveTab>
         </main>
       </div>
