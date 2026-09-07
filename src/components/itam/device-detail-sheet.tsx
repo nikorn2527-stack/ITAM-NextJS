@@ -1583,7 +1583,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                     <span className="font-mono tabular-nums">
                       {(device.lastMeterBw ?? device.lastMeterReading ?? 0).toLocaleString('th-TH')}
                       {device.lastMeterColor && device.lastMeterColor > 0 ? (
-                        <span className="ml-2 text-[10px] text-slate-400">สี {(device.lastMeterColor).toLocaleString('th-TH')}</span>
+                        <span className="ml-2 text-[10px] text-slate-400">สี {(device.lastMeterColor ?? 0).toLocaleString('th-TH')}</span>
                       ) : null}
                     </span>
                   }
@@ -1725,7 +1725,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                       />
                       <Tooltip
                         formatter={(v: number) => [
-                          v.toLocaleString('th-TH'),
+                          (Number(v) || 0).toLocaleString('th-TH'),
                           'ค่ามิเตอร์',
                         ]}
                         labelFormatter={(l) => `วันที่ ${l}`}
@@ -1760,7 +1760,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                           {r.date}
                         </div>
                         <div className="text-sm font-medium text-slate-700 tabular-nums dark:text-slate-200">
-                          {r.reading.toLocaleString('th-TH')}
+                          {(r.reading ?? 0).toLocaleString('th-TH')}
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -1783,7 +1783,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                           }
                         >
                           {r.delta >= 0 ? '+' : ''}
-                          {r.delta.toLocaleString('th-TH')}
+                          {(r.delta ?? 0).toLocaleString('th-TH')}
                         </Badge>
                       </div>
                     </li>

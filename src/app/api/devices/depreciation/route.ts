@@ -28,6 +28,8 @@ interface DepreciationDevice {
   assetCode: string
   name: string
   type: string
+  brand?: string
+  model?: string
   site: string
   purchasePrice: number
   salvageValue: number
@@ -35,11 +37,25 @@ interface DepreciationDevice {
   purchaseDate: string | null
   annualDepreciation: number
   accumulatedDepreciation: number
-  bookValue: number
+  // currentValue = bookValue (renamed to match the frontend contract in
+  // src/components/itam/types.ts:DepreciationDevice). The frontend expects
+  // `currentValue`, NOT `bookValue` — sending `bookValue` causes
+  // `d.currentValue` to be undefined in the .map() render, which crashes
+  // formatBaht(undefined) with "Cannot read properties of undefined
+  // (reading 'toLocaleString')".
+  currentValue: number
+  // ageInMonths = yearsElapsed × 12 (frontend expects months, not years).
+  ageInMonths: number
   depreciationPercent: number
   yearsElapsed: number
   fullyDepreciated: boolean
-  status: 'calculated' | 'no_price' | 'no_life' | 'no_date'
+  // status mapped to the frontend's DepreciationStatus union:
+  //   'depreciating' — calculation succeeded, not yet fully depreciated
+  //   'depreciated'  — fully depreciated (bookValue <= salvageValue)
+  //   'new'          — yearsElapsed < 1 (purchased this year)
+  //   'no_price' / 'no_life' — kept for API debug, but frontend maps them
+  //   to 'new' badge (safe default).
+  status: 'depreciating' | 'depreciated' | 'new' | 'calculated' | 'no_price' | 'no_life' | 'no_date'
 }
 
 function calculateYearsElapsed(purchaseDate: string | null): number {
@@ -130,7 +146,8 @@ export async function GET(req: NextRequest) {
         items.push({
           id: d.id, assetCode: d.assetCode, name: d.name, type: d.type, site: d.site,
           purchasePrice: 0, salvageValue: 0, usefulLife: 0, purchaseDate: d.purchaseDate,
-          annualDepreciation: 0, accumulatedDepreciation: 0, bookValue: 0,
+          annualDepreciation: 0, accumulatedDepreciation: 0, currentValue: 0,
+          ageInMonths: 0,
           depreciationPercent: 0, yearsElapsed: 0, fullyDepreciated: false,
           status: 'no_price',
         })
@@ -142,7 +159,8 @@ export async function GET(req: NextRequest) {
         items.push({
           id: d.id, assetCode: d.assetCode, name: d.name, type: d.type, site: d.site,
           purchasePrice: price, salvageValue: salvage, usefulLife: 0, purchaseDate: d.purchaseDate,
-          annualDepreciation: 0, accumulatedDepreciation: 0, bookValue: price,
+          annualDepreciation: 0, accumulatedDepreciation: 0, currentValue: price,
+          ageInMonths: 0,
           depreciationPercent: 0, yearsElapsed: 0, fullyDepreciated: false,
           status: 'no_life',
         })
@@ -159,16 +177,26 @@ export async function GET(req: NextRequest) {
       const depreciationPercent = price > 0 ? (accumulatedDepreciation / price) * 100 : 0
       const fullyDepreciated = bookValue <= salvage || yearsElapsed >= life
 
+      // Map to the frontend's DepreciationStatus union:
+      //   - fullyDepreciated → 'depreciated'
+      //   - yearsElapsed < 1 → 'new' (purchased this year, not yet depreciating)
+      //   - otherwise → 'depreciating'
+      const mappedStatus: 'depreciated' | 'depreciating' | 'new' =
+        fullyDepreciated ? 'depreciated'
+        : yearsElapsed < 1 ? 'new'
+        : 'depreciating'
+
       items.push({
         id: d.id, assetCode: d.assetCode, name: d.name, type: d.type, site: d.site,
         purchasePrice: price, salvageValue: salvage, usefulLife: life, purchaseDate: d.purchaseDate,
         annualDepreciation: Math.round(annualDepreciation * 100) / 100,
         accumulatedDepreciation: Math.round(accumulatedDepreciation * 100) / 100,
-        bookValue: Math.round(bookValue * 100) / 100,
+        currentValue: Math.round(bookValue * 100) / 100,
+        ageInMonths: Math.round(yearsElapsed * 12),
         depreciationPercent: Math.round(depreciationPercent * 100) / 100,
         yearsElapsed: Math.round(yearsElapsed * 100) / 100,
         fullyDepreciated,
-        status: 'calculated',
+        status: mappedStatus,
       })
 
       totalOriginal += price
@@ -181,7 +209,7 @@ export async function GET(req: NextRequest) {
       ? Math.round((totalDepreciated / totalOriginal) * 10000) / 100
       : 0
 
-    const calculatedCount = items.filter((i) => i.status === 'calculated').length
+    const calculatedCount = items.filter((i) => i.status === 'depreciating' || i.status === 'depreciated').length
 
     return NextResponse.json({
       configured: true,

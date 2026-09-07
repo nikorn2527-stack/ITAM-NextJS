@@ -128,8 +128,10 @@ export async function GET(req: NextRequest) {
         where: { createdAt: { gte: yesterdayStart, lte: yesterdayEnd } },
       }),
       // Low-stock items (quantity <= minQuantity)
-      // Use raw SQL because Prisma doesn't support column-to-column comparison
-      db.$queryRaw`SELECT COUNT(*)::int as c FROM "StockItem" WHERE quantity <= "minQuantity"`,
+      // Use raw SQL because Prisma doesn't support column-to-column comparison.
+      // SQLite-compatible: CAST instead of PostgreSQL's ::int cast.
+      // (PostgreSQL would accept either; SQLite only accepts CAST.)
+      db.$queryRaw`SELECT CAST(COUNT(*) AS INTEGER) as c FROM "StockItem" WHERE quantity <= "minQuantity"`,
       // New devices added yesterday
       db.device.count({
         where: { createdAt: { gte: yesterdayStart, lte: yesterdayEnd } },

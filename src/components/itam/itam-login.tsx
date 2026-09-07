@@ -104,13 +104,25 @@ export function ItamLogin() {
   const [lockedUntil, setLockedUntil] = React.useState<number | null>(null)
 
   // ── Organization profile (dynamic branding) ───────────────────────
-  const { data: profile } = useQuery<OrgProfile>({
+  // NOTE: This endpoint requires VIEW_DEVICES auth. On the login page the user
+  // is not yet authenticated, so the API returns 401. We must swallow that
+  // case (return null) instead of returning undefined — React Query throws
+  // "Query data cannot be undefined" otherwise, which crashes the login page
+  // in production builds.
+  const { data: profile } = useQuery<OrgProfile | null>({
     queryKey: ['org-profile'],
-    queryFn: () =>
-      fetch('/api/settings/org-profile')
-        .then((r) => r.json())
-        .then((d) => d.profile as OrgProfile),
+    queryFn: async () => {
+      try {
+        const res = await fetch('/api/settings/org-profile')
+        if (!res.ok) return null
+        const j = await res.json()
+        return (j?.profile as OrgProfile) ?? null
+      } catch {
+        return null
+      }
+    },
     staleTime: 5 * 60 * 1000,
+    retry: false,
   })
 
   const appName = profile?.appName || 'ระบบจัดการสินทรัพย์'

@@ -184,7 +184,7 @@ function MiniStatCard({
             ) : (
               <div className="flex items-baseline gap-1">
                 <span className="text-lg font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100">
-                  {animated.toLocaleString('th-TH')}
+                  {(animated ?? 0).toLocaleString('th-TH')}
                 </span>
                 {unit && (
                   <span className="shrink-0 text-[11px] font-medium text-slate-400 dark:text-slate-500">
@@ -460,7 +460,7 @@ export function CycleReportDialog({
                                 </TableCell>
                                 <TableCell className="text-right">
                                   <Badge className={deltaBadgeClass(d.totalDelta)}>
-                                    +{d.totalDelta.toLocaleString('th-TH')}
+                                    +{(d.totalDelta ?? 0).toLocaleString('th-TH')}
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
@@ -484,15 +484,15 @@ export function CycleReportDialog({
                                             {r.date}
                                           </span>
                                           <span className="font-mono text-slate-600 dark:text-slate-300">
-                                            {r.prevReading.toLocaleString('th-TH')}
+                                            {(r.prevReading ?? 0).toLocaleString('th-TH')}
                                           </span>
                                           <span className="text-slate-400">→</span>
                                           <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
-                                            {r.reading.toLocaleString('th-TH')}
+                                            {(r.reading ?? 0).toLocaleString('th-TH')}
                                           </span>
                                           <Badge className={deltaBadgeClass(r.delta)}>
                                             {r.delta > 0 ? '+' : ''}
-                                            {r.delta.toLocaleString('th-TH')}
+                                            {(r.delta ?? 0).toLocaleString('th-TH')}
                                           </Badge>
                                           {r.remark && (
                                             <span className="truncate text-amber-600 dark:text-amber-400">
@@ -566,11 +566,11 @@ export function CycleReportDialog({
                               <span className="font-mono">{a.date}</span>
                               <span>·</span>
                               <span className="font-mono">
-                                {a.prevReading.toLocaleString('th-TH')} → {a.reading.toLocaleString('th-TH')}
+                                {(a.prevReading ?? 0).toLocaleString('th-TH')} → {(a.reading ?? 0).toLocaleString('th-TH')}
                               </span>
                               <Badge className={deltaBadgeClass(a.delta)}>
                                 {a.delta > 0 ? '+' : ''}
-                                {a.delta.toLocaleString('th-TH')}
+                                {(a.delta ?? 0).toLocaleString('th-TH')}
                               </Badge>
                               <span
                                 className={
@@ -629,7 +629,7 @@ export function CycleReportDialog({
                             </TableCell>
                             <TableCell className="text-right">
                               <Badge className={deltaBadgeClass(d.totalDelta)}>
-                                +{d.totalDelta.toLocaleString('th-TH')}
+                                +{(d.totalDelta ?? 0).toLocaleString('th-TH')}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">

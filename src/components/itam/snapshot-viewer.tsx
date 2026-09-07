@@ -150,7 +150,7 @@ function getAuthHeaders(): HeadersInit {
 
 // ── Format helpers ──────────────────────────────────────────────────────
 
-function formatBaht(n: number): string {
+function formatBaht(n: number | null | undefined): string {
   const v = typeof n === 'number' && isFinite(n) ? n : 0
   return (
     '฿' +
@@ -161,10 +161,11 @@ function formatBaht(n: number): string {
   )
 }
 
-function formatThaiDate(iso: string): string {
+function formatThaiDate(iso: string | null | undefined): string {
   try {
+    if (!iso) return '—'
     const d = new Date(iso)
-    if (isNaN(d.getTime())) return iso
+    if (isNaN(d.getTime())) return String(iso)
     return d.toLocaleString('th-TH', {
       year: 'numeric',
       month: 'short',
@@ -446,11 +447,11 @@ function SnapshotListTab({
                 <TableCell className="text-center">R{s.revision}</TableCell>
                 <TableCell className="text-center">{statusBadge(s.status)}</TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {s.rowCount.toLocaleString('th-TH')}
+                  {(s.rowCount ?? 0).toLocaleString('th-TH')}
                 </TableCell>
                 <TableCell className="text-right tabular-nums whitespace-nowrap">
-                  {s.totalPagesBw.toLocaleString('th-TH')} /{' '}
-                  {s.totalPagesColor.toLocaleString('th-TH')}
+                  {(s.totalPagesBw ?? 0).toLocaleString('th-TH')} /{' '}
+                  {(s.totalPagesColor ?? 0).toLocaleString('th-TH')}
                 </TableCell>
                 <TableCell className="text-right tabular-nums whitespace-nowrap font-medium">
                   {formatBaht(s.totalCost)}
@@ -471,7 +472,7 @@ function SnapshotListTab({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="text-xs text-slate-500">
             หน้า {pagination.page} / {pagination.totalPages} · ทั้งหมด{' '}
-            {pagination.total.toLocaleString('th-TH')} รายการ
+            {(pagination.total ?? 0).toLocaleString('th-TH')} รายการ
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -641,15 +642,15 @@ function SnapshotDetailTab({
           />
           <Info
             label="จำนวนแถว"
-            value={`${snapshot.rowCount.toLocaleString('th-TH')} แถว`}
+            value={`${(snapshot.rowCount ?? 0).toLocaleString('th-TH')} แถว`}
           />
           <Info
             label="หน้าขาวดำ"
-            value={`${snapshot.totalPagesBw.toLocaleString('th-TH')} แผ่น`}
+            value={`${(snapshot.totalPagesBw ?? 0).toLocaleString('th-TH')} แผ่น`}
           />
           <Info
             label="หน้าสี"
-            value={`${snapshot.totalPagesColor.toLocaleString('th-TH')} แผ่น`}
+            value={`${(snapshot.totalPagesColor ?? 0).toLocaleString('th-TH')} แผ่น`}
           />
           <Info
             label="ค่าใช้จ่ายรวม"
@@ -795,16 +796,16 @@ function SnapshotDetailTab({
                       {readingTypeBadge(r.readingType)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.meterBw.toLocaleString('th-TH')}
+                      {(r.meterBw ?? 0).toLocaleString('th-TH')}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.meterColor.toLocaleString('th-TH')}
+                      {(r.meterColor ?? 0).toLocaleString('th-TH')}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.pagesBw.toLocaleString('th-TH')}
+                      {(r.pagesBw ?? 0).toLocaleString('th-TH')}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {r.pagesColor.toLocaleString('th-TH')}
+                      {(r.pagesColor ?? 0).toLocaleString('th-TH')}
                     </TableCell>
                     <TableCell className="text-right tabular-nums whitespace-nowrap">
                       {formatBaht(r.costBw)}

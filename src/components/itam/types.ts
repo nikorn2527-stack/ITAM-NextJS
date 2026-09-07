@@ -425,7 +425,13 @@ export function formatDateTime(iso: string | null | undefined): string {
   }
 }
 
-export function formatBaht(value: number): string {
+export function formatBaht(value: number | null | undefined): string {
+  // Defense-in-depth: never crash on null/undefined/NaN. Returns '฿0.00'
+  // instead of throwing "Cannot read properties of undefined (reading
+  // 'toLocaleString')". This protects 70+ call sites across the app
+  // (stock, repairs, reports, dashboard, depreciation) from API field-name
+  // drift or missing data.
+  if (value == null || !Number.isFinite(value)) return '฿0.00'
   return `฿${value.toLocaleString('th-TH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

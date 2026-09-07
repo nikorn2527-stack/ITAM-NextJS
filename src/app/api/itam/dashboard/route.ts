@@ -106,43 +106,65 @@ export async function GET(req: NextRequest) {
       // 4) Paper usage trend (6 months) — DELTA calculation per month.
       //    For each month, get the latest reading and the reading before it,
       //    then compute delta = latest - previous (per device), then sum.
+      //
+      //    SQLite-compatible: uses ROW_NUMBER() window function instead of
+      //    PostgreSQL's SELECT DISTINCT ON, and MAX(0, ...) instead of GREATEST.
+      //    SQLite has supported window functions since 3.25 (Sep 2018).
       db.$queryRaw`
-        WITH monthly_latest AS (
-          SELECT DISTINCT ON (mr."deviceId", mr."readingMonth")
+        WITH ranked_latest AS (
+          SELECT
             mr."deviceId",
             mr."readingMonth",
             mr."pagesBw" as latest_bw,
             mr."pagesColor" as latest_color,
-            mr."readingDate"
+            mr."readingDate",
+            ROW_NUMBER() OVER (
+              PARTITION BY mr."deviceId", mr."readingMonth"
+              ORDER BY mr."readingDate" DESC
+            ) as rn
           FROM "MeterReading" mr
           WHERE mr."readingMonth" IN (${Prisma.join(trendMonthKeys)})
             AND mr."readingType" IN ('MONTHLY', 'CHECKOUT', 'RETURN')
             AND (mr."pagesBw" > 0 OR mr."pagesColor" > 0)
-          ORDER BY mr."deviceId", mr."readingMonth", mr."readingDate" DESC
         ),
-        monthly_previous AS (
-          SELECT DISTINCT ON (ml."deviceId", ml."readingMonth")
+        monthly_latest AS (
+          SELECT "deviceId", "readingMonth", latest_bw, latest_color, "readingDate"
+          FROM ranked_latest
+          WHERE rn = 1
+        ),
+        ranked_previous AS (
+          SELECT
             ml."deviceId",
             ml."readingMonth",
             mr."pagesBw" as prev_bw,
-            mr."pagesColor" as prev_color
+            mr."pagesColor" as prev_color,
+            ROW_NUMBER() OVER (
+              PARTITION BY ml."deviceId", ml."readingMonth"
+              ORDER BY mr."readingDate" DESC
+            ) as rn
           FROM monthly_latest ml
           JOIN "MeterReading" mr ON mr."deviceId" = ml."deviceId"
             AND mr."readingDate" < ml."readingDate"
             AND mr."readingType" IN ('MONTHLY', 'CHECKOUT', 'RETURN')
             AND (mr."pagesBw" > 0 OR mr."pagesColor" > 0)
-          ORDER BY ml."deviceId", ml."readingMonth", mr."readingDate" DESC
+        ),
+        monthly_previous AS (
+          SELECT "deviceId", "readingMonth", prev_bw, prev_color
+          FROM ranked_previous
+          WHERE rn = 1
         )
         SELECT
-          ml."readingMonth",
+          ml."readingMonth" as readingMonth,
           COALESCE(SUM(
-            GREATEST(0, ml.latest_bw - COALESCE(mp.prev_bw, 0))
+            MAX(0, ml.latest_bw - COALESCE(mp.prev_bw, 0))
           ), 0) as delta_bw,
           COALESCE(SUM(
-            GREATEST(0, ml.latest_color - COALESCE(mp.prev_color, 0))
+            MAX(0, ml.latest_color - COALESCE(mp.prev_color, 0))
           ), 0) as delta_color
         FROM monthly_latest ml
-        LEFT JOIN monthly_previous mp ON mp."deviceId" = ml."deviceId" AND mp."readingMonth" = ml."readingMonth"
+        LEFT JOIN monthly_previous mp
+          ON mp."deviceId" = ml."deviceId"
+          AND mp."readingMonth" = ml."readingMonth"
         GROUP BY ml."readingMonth"
         ORDER BY ml."readingMonth"
       `,

@@ -1240,7 +1240,7 @@ ${kpiHtml}
                       contentStyle={tooltipStyle}
                       formatter={(v: number, n: string) => {
                         const pct = donutTotal > 0 ? ((v / donutTotal) * 100).toFixed(1) : '0'
-                        return [`${v.toLocaleString('th-TH')} เครื่อง (${pct}%)`, n]
+                        return [`${(Number(v) || 0).toLocaleString('th-TH')} เครื่อง (${pct}%)`, n]
                       }}
                     />
                   </PieChart>
@@ -1263,7 +1263,7 @@ ${kpiHtml}
                     className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:underline dark:text-slate-300"
                   >
                     <span className="h-2.5 w-2.5 rounded-sm" style={{ background: d.color }} />
-                    {d.name} <span className="font-semibold tabular-nums">{d.value.toLocaleString('th-TH')}</span>
+                    {d.name} <span className="font-semibold tabular-nums">{(d.value ?? 0).toLocaleString('th-TH')}</span>
                   </button>
                 ))}
               </div>
@@ -1311,7 +1311,7 @@ ${kpiHtml}
                     <ReTooltip
                       contentStyle={tooltipStyle}
                       cursor={{ fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
-                      formatter={(v: number) => [`${v.toLocaleString('th-TH')} เครื่อง`, 'จำนวน']}
+                      formatter={(v: number) => [`${(Number(v) || 0).toLocaleString('th-TH')} เครื่อง`, 'จำนวน']}
                     />
                     <Bar
                       dataKey="value"
@@ -1377,7 +1377,7 @@ ${kpiHtml}
                     <ReTooltip
                       contentStyle={tooltipStyle}
                       formatter={(v: number, _n: string, p: { payload?: { month?: string; isForecast?: boolean } }) => [
-                        `${v.toLocaleString('th-TH')} แผ่น`,
+                        `${(Number(v) || 0).toLocaleString('th-TH')} แผ่น`,
                         `${p?.payload?.isForecast ? 'คาดการณ์' : (p?.payload?.month ?? '')}`,
                       ]}
                       labelFormatter={() => ''}
@@ -1489,7 +1489,7 @@ ${kpiHtml}
                   <span>
                     พยากรณ์เดือนถัดไป:{' '}
                     <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
-                      ~{forecastSheets.toLocaleString('th-TH')} แผ่น
+                      ~{(forecastSheets ?? 0).toLocaleString('th-TH')} แผ่น
                     </span>{' '}
                     <span className="text-slate-400">
                       ({forecastReliability === 'high'
@@ -1582,7 +1582,7 @@ ${kpiHtml}
                     <div className="text-xs text-slate-400">{a.assetCode} · {a.readingDate}</div>
                   </div>
                   <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                    {(a.pagesBw + a.pagesColor).toLocaleString('th-TH')} แผ่น
+                    {((a.pagesBw ?? 0) + (a.pagesColor ?? 0)).toLocaleString('th-TH')} แผ่น
                   </Badge>
                 </motion.div>
               ))}
@@ -1872,16 +1872,16 @@ ${kpiHtml}
                         <div className="truncate">{row.deviceName}</div>
                       </td>
                       {row.months.map(c => {
-                        const intensity = c.pages / maxPages
+                        const intensity = (c.pages ?? 0) / maxPages
                         const txtColor = intensity > 0.55 ? 'text-white' : 'text-slate-700 dark:text-slate-200'
                         return (
                           <td
                             key={c.month}
                             className={`px-2 py-1.5 text-center font-mono tabular-nums ${txtColor}`}
                             style={{ background: heatColor(intensity) }}
-                            title={`${row.assetCode} · ${c.month}: ${c.pages.toLocaleString('th-TH')} แผ่น`}
+                            title={`${row.assetCode} · ${c.month}: ${(c.pages ?? 0).toLocaleString('th-TH')} แผ่น`}
                           >
-                            {c.pages > 0 ? c.pages.toLocaleString('th-TH') : '·'}
+                            {(c.pages ?? 0) > 0 ? (c.pages ?? 0).toLocaleString('th-TH') : '·'}
                           </td>
                         )
                       })}

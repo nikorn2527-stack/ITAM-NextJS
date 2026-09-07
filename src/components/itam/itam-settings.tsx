@@ -24,13 +24,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList, Activity } from 'lucide-react'
 import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
 import { WoOptionsSection } from './wo-options-section'
 import { AssetPatternTab, WoPatternTab } from './settings-page-v2'
 import { NotificationTemplatesSection } from './notification-templates-section'
+import { NotificationLogSection } from './notification-log-section'
 import { PendingUsersSection } from './pending-users-section'
 import { UserManagementSection } from './user-management-section'
 import { OauthSection } from './oauth-section'
@@ -57,6 +58,7 @@ type SettingsTab =
   | 'sites'
   | 'notifications'
   | 'notification-templates'
+  | 'notification-logs'
   | 'customize'
   | 'contacts'
   | 'wo-options'
@@ -112,6 +114,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
     items: [
       { value: 'notifications', label: 'การแจ้งเตือน', icon: Bell },
       { value: 'notification-templates', label: 'เทมเพลตข้อความ', icon: MessageSquare },
+      { value: 'notification-logs', label: 'สถิติการส่ง', icon: Activity },
     ],
   },
   {
@@ -727,6 +730,8 @@ export function ItamSettings() {
 
       {/* ── ปรับแต่งแอป tab — appName, logo, tagline, search fields ── */}
       {tab === 'notification-templates' && <NotificationTemplatesSection />}
+
+      {tab === 'notification-logs' && <NotificationLogSection />}
 
       {tab === 'oauth' && <OauthSection />}
 

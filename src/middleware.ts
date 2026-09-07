@@ -110,5 +110,15 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  return NextResponse.next()
+  // ── Dev-mode cache-busting ──
+  // Force the browser (especially the preview-panel iframe) to always fetch
+  // fresh HTML in dev mode. Without this, the iframe caches stale chunk URLs
+  // across dev server restarts and shows "This page couldn't load".
+  const res = NextResponse.next()
+  if (process.env.NODE_ENV === 'development') {
+    res.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    res.headers.set('Pragma', 'no-cache')
+    res.headers.set('Expires', '0')
+  }
+  return res
 }

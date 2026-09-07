@@ -33,6 +33,20 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
   reactStrictMode: false,
+  // Transpile recharts + react-smooth + victory-vendor so Turbopack bundles
+  // their ESM source correctly. Without this, Turbopack's module graph gets
+  // confused by recharts' nested react-is dependency and throws:
+  //   "Module react-is was instantiated but the module factory is not available"
+  // at runtime after HMR. Webpack handles this automatically; Turbopack needs
+  // the explicit hint.
+  transpilePackages: ['recharts', 'react-smooth', 'victory-vendor', 'react-is'],
+  // Allow the preview panel iframe origin to access dev resources (HMR,
+  // stack frames). Without this, Next.js blocks cross-origin requests from
+  // the preview-chat-*.space-z.ai domain, which breaks error overlay +
+  // dev tools inside the iframe.
+  allowedDevOrigins: [
+    'preview-chat-83638d36-a9f3-41e4-9454-74f96640bc93.space-z.ai',
+  ],
 };
 
 export default nextConfig;

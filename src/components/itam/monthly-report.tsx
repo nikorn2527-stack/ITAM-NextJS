@@ -297,8 +297,8 @@ function formatMonthLabel(month: string): string {
   }
 }
 
-function formatBaht(value: number): string {
-  return `฿${value.toLocaleString('th-TH', {
+function formatBaht(value: number | null | undefined): string {
+  return `฿${(Number(value) || 0).toLocaleString('th-TH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
@@ -892,7 +892,7 @@ export function MonthlyReport() {
     rows.push(['รายงานรายเดือน', formatMonthLabel(data.month)])
     rows.push(['สาขา', site === 'all' ? 'ทั้งหมด' : site])
     rows.push(['ประเภท', reportType])
-    rows.push(['สร้างเมื่อ', new Date(data.generatedAt).toLocaleString('th-TH')])
+    rows.push(['สร้างเมื่อ', data.generatedAt ? new Date(data.generatedAt).toLocaleString('th-TH') : '—'])
     rows.push([])
 
     if (data.workOrders) {
@@ -1081,7 +1081,7 @@ export function MonthlyReport() {
   }): string {
     const { sections, report, meterRows, deviceRows, siteLabel } = opts
     const monthLabel = formatMonthLabel(report.month)
-    const generatedLabel = new Date(report.generatedAt).toLocaleString('th-TH')
+    const generatedLabel = report.generatedAt ? new Date(report.generatedAt).toLocaleString('th-TH') : '—'
     const todayLabel = new Date().toLocaleString('th-TH')
 
     // Group helpers
@@ -1345,9 +1345,9 @@ export function MonthlyReport() {
             <td>${escHtml(r.deviceName ?? '—')}</td>
             <td>${escHtml(r.site ?? '—')}</td>
             <td>${escHtml(dateLabel)}</td>
-            <td style="text-align:right">${r.meterBw.toLocaleString('th-TH')}</td>
-            <td style="text-align:right">${r.meterColor.toLocaleString('th-TH')}</td>
-            <td style="text-align:right"><strong>${(r.pagesBw + r.pagesColor).toLocaleString('th-TH')}</strong></td>
+            <td style="text-align:right">${(r.meterBw ?? 0).toLocaleString('th-TH')}</td>
+            <td style="text-align:right">${(r.meterColor ?? 0).toLocaleString('th-TH')}</td>
+            <td style="text-align:right"><strong>${((r.pagesBw ?? 0) + (r.pagesColor ?? 0)).toLocaleString('th-TH')}</strong></td>
             <td style="text-align:center">${escHtml(typeLabel)}</td>
             <td>${escHtml(r.readBy ?? '—')}</td>
           </tr>`
@@ -1829,7 +1829,7 @@ export function MonthlyReport() {
                 {site === 'all' ? 'ทุกสาขา' : `สาขา ${site}`}
               </Badge>
               <span className="text-[11px]">
-                สร้างเมื่อ {new Date(data.generatedAt).toLocaleString('th-TH')}
+                สร้างเมื่อ {data.generatedAt ? new Date(data.generatedAt).toLocaleString('th-TH') : '—'}
               </span>
             </div>
           )}

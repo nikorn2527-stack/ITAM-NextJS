@@ -8,8 +8,20 @@
 //   • Never cache POST/PUT/DELETE — those need the live server.
 //
 // Versioned cache name so a bump in CACHE_VERSION invalidates old caches.
+//
+// DEV-MODE SELF-UNREGISTER:
+//   Next.js dev mode (Turbopack) generates chunk URLs that change on every
+//   rebuild. If a production-registered SW serves stale chunks to the dev
+//   server, the browser throws "module factory is not available" and the
+//   page crashes with "This page couldn't load".
+//
+//   To prevent this, the SW detects dev mode (via a /__itam-dev-mode marker
+//   fetch returning 204) and UNREGISTERS ITSELF + clears all caches. The
+//   pwa-registration.tsx component also skips registration in dev, but this
+//   is a defensive second layer for users who previously visited the
+//   production site and still have the SW installed.
 
-const CACHE_VERSION = 'v1'
+const CACHE_VERSION = 'v2'
 const SHELL_CACHE = `itam-shell-${CACHE_VERSION}`
 const API_CACHE = `itam-api-${CACHE_VERSION}`
 
@@ -41,6 +53,36 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
+      // ── DEV-MODE SELF-UNREGISTER ──
+      // Detect dev mode by fetching a marker endpoint that only exists in dev.
+      // In dev, Next.js serves /_next/static/* with short-lived cache; in
+      // production these are immutable. If the marker returns 204, we're in
+      // dev mode and should NOT run the SW at all (it would serve stale
+      // chunks and crash the page).
+      try {
+        const probe = await fetch('/api/dev-sw-probe', { cache: 'no-store' })
+        if (probe.status === 204) {
+          console.info('[SW] dev mode detected — self-unregistering + clearing caches')
+          const allKeys = await caches.keys()
+          await Promise.all(allKeys.map((k) => caches.delete(k)))
+          const regs = await self.registration?.unregister?.()
+          if (regs) {
+            // Tell all open clients to reload so the SW is fully gone.
+            const clients = await self.clients.matchAll({ type: 'window' })
+            for (const c of clients) {
+              try {
+                await c.navigate(c.url)
+              } catch {
+                // ignore
+              }
+            }
+          }
+          return
+        }
+      } catch {
+        // Probe failed (404 in production, or network error) — assume production.
+      }
+
       const keys = await caches.keys()
       await Promise.all(
         keys

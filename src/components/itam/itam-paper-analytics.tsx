@@ -238,15 +238,15 @@ export function ItamPaperAnalytics() {
     const k = data.kpi
     const kpiHtml = `
       <div class="kpi-grid">
-        <div class="kpi"><div class="label">แผ่นรวม</div><div class="value">${k.totalSheets.toLocaleString('th-TH')}</div></div>
-        <div class="kpi t-bw"><div class="label">ขาวดำ</div><div class="value">${k.totalBw.toLocaleString('th-TH')}</div></div>
-        <div class="kpi t-color"><div class="label">สี</div><div class="value">${k.totalColor.toLocaleString('th-TH')}</div></div>
-        <div class="kpi t-cur"><div class="label">เดือนล่าสุด</div><div class="value">${k.curMonth.toLocaleString('th-TH')}</div></div>
-        <div class="kpi t-mom"><div class="label">MoM</div><div class="value">${k.momPct > 0 ? '+' : ''}${k.momPct}%</div></div>
-        <div class="kpi t-avg"><div class="label">เฉลี่ย/เดือน</div><div class="value">${k.avgPerMonth.toLocaleString('th-TH')}</div></div>
+        <div class="kpi"><div class="label">แผ่นรวม</div><div class="value">${(k.totalSheets ?? 0).toLocaleString('th-TH')}</div></div>
+        <div class="kpi t-bw"><div class="label">ขาวดำ</div><div class="value">${(k.totalBw ?? 0).toLocaleString('th-TH')}</div></div>
+        <div class="kpi t-color"><div class="label">สี</div><div class="value">${(k.totalColor ?? 0).toLocaleString('th-TH')}</div></div>
+        <div class="kpi t-cur"><div class="label">เดือนล่าสุด</div><div class="value">${(k.curMonth ?? 0).toLocaleString('th-TH')}</div></div>
+        <div class="kpi t-mom"><div class="label">MoM</div><div class="value">${(k.momPct ?? 0) > 0 ? '+' : ''}${k.momPct ?? 0}%</div></div>
+        <div class="kpi t-avg"><div class="label">เฉลี่ย/เดือน</div><div class="value">${(k.avgPerMonth ?? 0).toLocaleString('th-TH')}</div></div>
       </div>`
-    const monthlyHtml = data.monthly.map((m) => `<tr><td>${esc(m.month)}</td><td class="num">${m.bw.toLocaleString('th-TH')}</td><td class="num">${m.color.toLocaleString('th-TH')}</td><td class="num">${m.total.toLocaleString('th-TH')}</td></tr>`).join('')
-    const topDeptHtml = data.topDept.map((d, i) => `<tr><td>${i + 1}</td><td>${esc(d.name)}</td><td class="num">${d.sheets.toLocaleString('th-TH')}</td></tr>`).join('')
+    const monthlyHtml = data.monthly.map((m) => `<tr><td>${esc(m.month)}</td><td class="num">${(m.bw ?? 0).toLocaleString('th-TH')}</td><td class="num">${(m.color ?? 0).toLocaleString('th-TH')}</td><td class="num">${(m.total ?? 0).toLocaleString('th-TH')}</td></tr>`).join('')
+    const topDeptHtml = data.topDept.map((d, i) => `<tr><td>${i + 1}</td><td>${esc(d.name)}</td><td class="num">${(d.sheets ?? 0).toLocaleString('th-TH')}</td></tr>`).join('')
     const html = `<!doctype html><html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ITAM Paper Analytics Report</title>
@@ -463,7 +463,7 @@ ${kpiHtml}
                         <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
                         <XAxis dataKey="month" tick={{ fill: axisColor, fontSize: 11 }} />
                         <YAxis tick={{ fill: axisColor, fontSize: 11 }} tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`} />
-                        <ReTooltip contentStyle={tooltipStyle} formatter={(v: number, n: string) => [v.toLocaleString('th-TH'), n === 'bw' ? 'ขาวดำ' : n === 'color' ? 'สี' : 'รวม']} />
+                        <ReTooltip contentStyle={tooltipStyle} formatter={(v: number, n: string) => [(Number(v) || 0).toLocaleString('th-TH'), n === 'bw' ? 'ขาวดำ' : n === 'color' ? 'สี' : 'รวม']} />
                         <Legend formatter={(v: string) => v === 'bw' ? 'ขาวดำ' : v === 'color' ? 'สี' : v} />
                         <Bar dataKey="bw" name="bw" stackId="a" fill="#0d9488" radius={[0, 0, 0, 0]} />
                         <Bar dataKey="color" name="color" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
@@ -492,7 +492,7 @@ ${kpiHtml}
                               <span className="font-medium text-slate-700 dark:text-slate-200">
                                 {i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}.`} {d.name}
                               </span>
-                              <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-300">{d.sheets.toLocaleString('th-TH')}</span>
+                              <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-300">{(d.sheets ?? 0).toLocaleString('th-TH')}</span>
                             </div>
                             <div className="h-2 w-full overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
                               <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.5 }} className="h-full rounded bg-gradient-to-r from-orange-400 to-orange-600" />
@@ -521,7 +521,7 @@ ${kpiHtml}
                                 {i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}.`} <span className="font-mono">{d.assetCode}</span>
                                 <span className="ml-1 text-slate-400">{d.brand} {d.model}</span>
                               </span>
-                              <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-300">{d.sheets.toLocaleString('th-TH')}</span>
+                              <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-300">{(d.sheets ?? 0).toLocaleString('th-TH')}</span>
                             </div>
                             <div className="h-2 w-full overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
                               <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.5 }} className="h-full rounded bg-gradient-to-r from-teal-400 to-teal-600" />
@@ -610,17 +610,17 @@ ${kpiHtml}
                             const isMax = t === Math.max(...r.totals)
                             return (
                               <TableCell key={m} className={`text-right tabular-nums text-xs ${isMax ? 'font-semibold text-[#f97316]' : ''}`}>
-                                {t > 0 ? t.toLocaleString('th-TH') : '—'}
-                                {detail && (detail.bw > 0 || detail.color > 0) && (
+                                {t > 0 ? (t ?? 0).toLocaleString('th-TH') : '—'}
+                                {detail && ((detail.bw ?? 0) > 0 || (detail.color ?? 0) > 0) && (
                                   <div className="text-[10px] text-slate-400">
-                                    {detail.bw.toLocaleString('th-TH')}BW / {detail.color.toLocaleString('th-TH')}สี
+                                    {(detail.bw ?? 0).toLocaleString('th-TH')}BW / {(detail.color ?? 0).toLocaleString('th-TH')}สี
                                   </div>
                                 )}
                               </TableCell>
                             )
                           })}
                           <TableCell className="text-right tabular-nums text-xs font-bold text-slate-700 dark:text-slate-200">
-                            {r.total.toLocaleString('th-TH')}
+                            {(r.total ?? 0).toLocaleString('th-TH')}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -646,7 +646,7 @@ ${kpiHtml}
                 <CardTitle className="text-base">
                   รายละเอียดการใช้กระดาษ
                   <span className="ml-2 text-xs font-normal text-slate-500">
-                    {detailQuery.data.pagination.total.toLocaleString('th-TH')} เครื่อง · {detailQuery.data.months.length} เดือน
+                    {(detailQuery.data.pagination.total ?? 0).toLocaleString('th-TH')} เครื่อง · {detailQuery.data.months.length} เดือน
                   </span>
                 </CardTitle>
                 <Button variant="outline" size="sm" onClick={() => exportCsvFromRows(detailQuery.data!.rows.map((r) => ({
@@ -693,9 +693,9 @@ ${kpiHtml}
                           <TableCell className="text-xs">{r.building || '—'}</TableCell>
                           <TableCell className="text-xs">{r.floor || '—'}</TableCell>
                           <TableCell className="text-xs">{r.department || '—'}</TableCell>
-                          <TableCell className="text-right tabular-nums text-xs">{r.bw.toLocaleString('th-TH')}</TableCell>
-                          <TableCell className="text-right tabular-nums text-xs">{r.color.toLocaleString('th-TH')}</TableCell>
-                          <TableCell className="text-right tabular-nums text-xs font-semibold text-[#f97316]">{r.total.toLocaleString('th-TH')}</TableCell>
+                          <TableCell className="text-right tabular-nums text-xs">{(r.bw ?? 0).toLocaleString('th-TH')}</TableCell>
+                          <TableCell className="text-right tabular-nums text-xs">{(r.color ?? 0).toLocaleString('th-TH')}</TableCell>
+                          <TableCell className="text-right tabular-nums text-xs font-semibold text-[#f97316]">{(r.total ?? 0).toLocaleString('th-TH')}</TableCell>
                           <TableCell className="text-right tabular-nums text-xs">
                             <Badge variant="outline" className="font-mono text-[10px]">{r.monthCount}/{detailQuery.data!.months.length}</Badge>
                           </TableCell>
@@ -712,7 +712,7 @@ ${kpiHtml}
           {detailQuery.data && detailQuery.data.pagination.totalPages > 1 && (
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-slate-500">
-                หน้า {page} / {detailQuery.data.pagination.totalPages} ({detailQuery.data.pagination.total.toLocaleString('th-TH')} รายการ)
+                หน้า {page} / {detailQuery.data.pagination.totalPages} ({(detailQuery.data.pagination.total ?? 0).toLocaleString('th-TH')} รายการ)
               </span>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="dark:bg-slate-800 dark:border-slate-700">
@@ -757,7 +757,7 @@ function KpiCard({
           <div className="min-w-0 flex-1">
             <div className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{title}</div>
             <div className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-2xl">
-              {value.toLocaleString('th-TH')}{suffix}
+              {(Number(value) || 0).toLocaleString('th-TH')}{suffix}
             </div>
           </div>
         </div>
@@ -794,7 +794,7 @@ function RankingCard({
                   <span className="truncate font-medium text-slate-700 dark:text-slate-200">
                     {i < 3 ? ['🥇', '🥈', '🥉'][i] : `${i + 1}.`} {String(r[nameKey] ?? '')}
                   </span>
-                  <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-300">{total.toLocaleString('th-TH')}</span>
+                  <span className="font-semibold tabular-nums text-slate-600 dark:text-slate-300">{(Number(total) || 0).toLocaleString('th-TH')}</span>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
                   <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.5 }} className="h-full rounded" style={{ background: accent }} />
