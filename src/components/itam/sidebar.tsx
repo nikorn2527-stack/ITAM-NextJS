@@ -68,7 +68,14 @@ const NAV_GROUPS: NavGroupDef[] = [
       { page: 'reports-hub', icon: BarChart3, label: 'ศูนย์รายงาน', desc: 'รายงาน 5 กลุ่ม + อนุมัติ', module: 'reports' },
       { page: 'material-cost', icon: Coins, label: 'ต้นทุนวัสดุ', desc: 'หมึก/อะไหล่/บริการ + สอบทาน', module: 'reports' },
       { page: 'monthly-report', icon: CalendarClock, label: 'รายงานรายเดือน', desc: 'สรุปการใช้งานรายเดือน', module: 'reports' },
-      { page: 'itam-snapshot-viewer', icon: Lock, label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์', module: 'meters' },
+      // ── REMOVED: Snapshots menu ──
+      // The meterReportSnapshot / meterReportSnapshotRow Prisma models were
+      // removed from schema.prisma in an earlier migration, but the 4 v1 API
+      // routes (/api/v1/snapshots/*) + snapshot-viewer.tsx component still
+      // referenced them → every call crashed with "Cannot read properties of
+      // undefined (reading 'findFirst')" → users saw a blank/error page.
+      // Feature is intentionally disabled (per existing TODO comments).
+      // Removed: { page: 'itam-snapshot-viewer', icon: Lock, label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์', module: 'meters' },
     ],
   },
   {
@@ -213,7 +220,7 @@ export function Sidebar() {
     templates: 'templates',
     import: 'import',
     'monthly-report': 'paperAnalytics',
-    'itam-snapshot-viewer': 'audit',
+    // Removed: 'itam-snapshot-viewer': 'audit', (snapshot feature disabled — models removed from schema)
     'itam-settings': 'settings',
     settings: 'settings',
     'itam-audit': 'audit',

@@ -63,9 +63,7 @@ const ItamSettings = dynamic(() =>
 const ItamAudit = dynamic(() =>
   import('@/components/itam/itam-audit').then((m) => m.ItamAudit),
 )
-const SnapshotViewer = dynamic(() =>
-  import('@/components/itam/snapshot-viewer').then((m) => m.SnapshotViewer),
-)
+// REMOVED: SnapshotViewer dynamic import — feature disabled (Prisma models removed from schema)
 const ItamRepairs = dynamic(() =>
   import('@/components/itam/itam-repairs').then((m) => m.ItamRepairs),
 )
@@ -352,9 +350,7 @@ export function HomePage() {
             <KeepAlivePage active={isActive('itam-audit')}>
               <ItamAudit />
             </KeepAlivePage>
-            <KeepAlivePage active={isActive('itam-snapshot-viewer')}>
-              <SnapshotViewer />
-            </KeepAlivePage>
+            {/* REMOVED: Snapshots page — feature disabled (Prisma models removed from schema) */}
             <KeepAlivePage active={isActive('itam-repairs')}>
               <ItamRepairs />
             </KeepAlivePage>

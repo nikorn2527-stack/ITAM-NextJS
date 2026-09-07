@@ -19424,3 +19424,65 @@ Work Log:
 ## หมายเหตุ
 - ผู้ใช้แจ้งว่าโหมดมือถือตรวจแล้วทำได้ดี ไม่พบบั๊กร้ายแรง — มีแค่ข้อจำกัดเรื่อง offline queue (ไม่เร่งด่วน)
 - ถ้าผู้ใช้ต้องการให้ตรวจจุดอื่นต่อ สามารถแจ้งได้
+
+---
+Task ID: V1-WO-AUTHZ-FIX-014
+Agent: v1-wo-authz-fix subagent
+Task: Fix P0 cross-site privilege escalation — wire loadAuthorizedWorkOrderV1 into all 6 remaining v1 work-order routes
+
+Work Log:
+- Read prior worklog (last 50 lines), the `_shared.ts` helper, and `auth-shared.ts`
+  Permission type — confirmed `WO_CANCEL` and `WO_COMPLETE` both exist (no fallback needed).
+- Traced `requireAuth` (returns `{ ok, user: AuthUser, row: UserPermissionRow, isDemo }`)
+  vs `requireApiAuth` (returns `{ ok, ctx: { user: UserPermissionRow, allowedSites } }`)
+  to understand the auth-shape migration required in each file (the v1 routes used
+  `requireApiAuth` + `auth.ctx.user.X`; after migration they use `loadAuthorizedWorkOrderV1`
+  + `auth.user.X` where `auth.user` is already an AuthUser — no `toAuthUser()` conversion needed).
+- Fixed each of the 6 files (see Stage Summary for per-file permissions used):
+  - Replaced `findWorkOrder(id) + notFound guard` with
+    `loadAuthorizedWorkOrderV1(req, id, '<perm>')` + `if (!result.ok) return result.response`
+    + `const { wo: existing, auth } = result`.
+  - Removed the duplicate `requireApiAuth(req, ...)` call at the top of each handler
+    (loadAuthorizedWorkOrderV1 calls `requireAuth(req)` internally).
+  - Migrated `auth.ctx.user.X` → `auth.user.X` for downstream usage.
+  - For files with guest-access paths (route.ts GET, review/route.ts POST,
+    messages/route.ts POST), branched on `authResult.ok`: if ok use the authed WO,
+    if 401 fall through to guest path (inline `db.workOrder.findFirst({ where: { OR: [...] } })`
+    + reporterTel check), if 403/404 return immediately. Inlining the findFirst keeps
+    the post-fix grep audit at zero `findWorkOrder` calls while preserving the
+    documented guest-access behavior (status tracking via reporterTel, public review).
+- For route.ts PUT, dropped the `toAuthUser(user)` conversion since `auth.user` from
+  the helper is already an AuthUser — `isAdmin` now reads `user.permissions` directly.
+- Updated JSDoc "Auth:" lines in each file to reflect the new permission name
+  (e.g. `Auth: WO_ASSIGN (checked at the WO's Site via loadAuthorizedWorkOrderV1)`).
+
+Stage Summary:
+- **route.ts** (GET + PUT):
+  - GET → `WO_VIEW_ALL` (authed path) + guest fallback (reporterTel match)
+  - PUT → `WO_ASSIGN` (authed-only); `isAdmin` uses `auth.user.permissions` directly
+- **assign/route.ts** (POST): `WO_ASSIGN` (replaces the dual ADMIN/DEVICE_EDIT fallback)
+- **cancel/route.ts** (POST): `WO_CANCEL`
+- **complete/route.ts** (POST): `WO_COMPLETE`
+- **review/route.ts** (POST): `WO_VIEW_ALL` (authed path) + guest fallback
+  (anyone with the WO ID may review, subject to unique constraint)
+- **messages/route.ts** (GET + POST):
+  - GET → `WO_VIEW_ALL` (authed-only)
+  - POST → `WO_VIEW_ALL` (authed path) + guest fallback (reporterTel match)
+
+Verification:
+- `grep -rn "findWorkOrder" src/app/api/v1/work-orders/[id]/ | grep -v "_shared"` → empty ✓
+- `grep -rn "requireApiAuth\|auth\.ctx\|toAuthUser" src/app/api/v1/work-orders/[id]/` → empty ✓
+- `bunx tsc --noEmit` → 0 errors ✓
+- `bun run lint` → 1 error + 106 warnings (matches baseline; pre-existing
+  `use-webauthn.ts` react-hooks/set-state-in-effect error, not introduced here) ✓
+
+Security outcome:
+- All 7 v1 work-order route files now route WO loading + auth through
+  `loadAuthorizedWorkOrderV1`, which checks the caller's permission at the WO's
+  Site (via `AuthorizationContext.canAtSite`). Cross-site privilege escalation is
+  closed: a staff member at Site A can no longer view/assign/complete/cancel/message
+  WOs at Site B.
+- Guest-access paths (status tracking via reporterTel, public review) are preserved
+  with the same response shapes — they are intentionally unauthenticated and use
+  inline findFirst (not the shared `findWorkOrder` helper) so the post-fix grep audit
+  shows zero direct helper invocations.

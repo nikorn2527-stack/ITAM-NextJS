@@ -1,7 +1,7 @@
 /**
  * POST /api/v1/work-orders/[id]/complete — mark a work order as completed.
  *
- * Auth: DEVICE_EDIT
+ * Auth: WO_COMPLETE (checked at the WO's Site via loadAuthorizedWorkOrderV1).
  * Body: { detailsAdmin?, picAfter? }
  *   - Set status = COMPLETED, workCompletedAt = now, closedAt = now
  *   - Audit log: WO_COMPLETE
@@ -11,29 +11,28 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
-import { requireApiAuth } from '@/lib/api/auth'
 import {
   ok,
-  notFound,
   conflict,
   serverError,
 } from '@/lib/api/response'
-import { findWorkOrder } from '../../_shared'
+import { loadAuthorizedWorkOrderV1 } from '../../_shared'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireApiAuth(req, 'DEVICE_EDIT')
-  if (!auth.ok) return auth.response
-  const { user } = auth.ctx
-  const userEmail = user.email
-
   const { id } = await params
 
   try {
-    const existing = await findWorkOrder(id)
-    if (!existing) return notFound('work order')
+    // P0 Security: loadAuthorizedWorkOrderV1 authenticates the caller AND
+    // checks WO_COMPLETE at the WO's Site, preventing cross-site privilege
+    // escalation (a staff member at Site A can no longer complete WOs at Site B).
+    const result = await loadAuthorizedWorkOrderV1(req, id, 'WO_COMPLETE')
+    if (!result.ok) return result.response
+    const { wo: existing, auth } = result
+    const user = auth.user
+    const userEmail = user.email
 
     // Can't complete an already-cancelled order.
     if (existing.status === 'CANCELLED') {
