@@ -53,7 +53,11 @@ export async function beginRegistration(opts: {
       transports: (c.transports ?? []).split(',') as AuthenticatorTransport[],
     })),
     authenticatorSelection: {
-      authenticatorAttachment: 'platform',
+      // Don't force 'platform' — allow BOTH platform (Touch ID/Face ID/
+      // Windows Hello) AND cross-platform (USB security key, Bluetooth
+      // phone). This fixes the bug where users without a platform
+      // authenticator couldn't register at all.
+      // authenticatorAttachment: 'platform',  ← removed (too restrictive)
       residentKey: 'preferred',
       userVerification: 'preferred',
     },

@@ -14,7 +14,19 @@ export function useWebAuthn() {
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    setIsSupported(typeof window !== 'undefined' && 'PublicKeyCredential' in window && !!navigator.credentials)
+    // WebAuthn requires:
+    //   1. window.PublicKeyCredential (the API exists)
+    //   2. navigator.credentials (the Credentials Management API)
+    //   3. Secure context (HTTPS or localhost)
+    const hasApi = typeof window !== 'undefined'
+      && 'PublicKeyCredential' in window
+      && !!navigator.credentials
+    // Secure context check — WebAuthn ONLY works on HTTPS or localhost.
+    // If served over plain HTTP (e.g. a preview IP without TLS), the API
+    // exists but every call silently fails.
+    const isSecure = typeof window !== 'undefined'
+      && (window.isSecureContext || window.location.hostname === 'localhost')
+    setIsSupported(hasApi && isSecure)
   }, [])
 
   const getToken = (): string | null => {
