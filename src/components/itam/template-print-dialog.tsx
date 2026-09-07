@@ -29,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Checkbox } from '@/components/ui/checkbox'
+import { useAuthStore } from '@/store/auth-store'
 import {
   Dialog,
   DialogContent,
@@ -97,7 +98,11 @@ export function TemplatePrintDialog({
   const templatesQuery = useQuery<DocumentTemplate[]>({
     queryKey: ['templates', 'work-order'],
     queryFn: async () => {
-      const res = await fetch('/api/templates?type=work-order')
+      const res = await fetch('/api/templates?type=work-order', {
+        headers: useAuthStore.getState()?.token
+          ? { Authorization: `Bearer ${useAuthStore.getState()!.token}` }
+          : {},
+      })
       if (!res.ok) throw new Error('โหลดเทมเพลตไม่สำเร็จ')
       const j = await res.json()
       return (j.templates ?? []) as DocumentTemplate[]
@@ -159,7 +164,12 @@ export function TemplatePrintDialog({
         `/api/work-orders/${workOrderId}/print-template`,
         {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(useAuthStore.getState()?.token
+              ? { Authorization: `Bearer ${useAuthStore.getState()!.token}` }
+              : {}),
+          },
           body: JSON.stringify({
             printTemplateId: templateId,
             setAsDefault: rememberForAll,
@@ -196,7 +206,12 @@ export function TemplatePrintDialog({
     try {
       const res = await fetch(`/api/templates/${selectedId}/render`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(useAuthStore.getState()?.token
+            ? { Authorization: `Bearer ${useAuthStore.getState()!.token}` }
+            : {}),
+        },
         body: JSON.stringify({ workOrderId }),
       })
       if (!res.ok) {

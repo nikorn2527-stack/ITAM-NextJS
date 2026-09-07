@@ -174,6 +174,14 @@ export function DeviceAccessoriesSection({
   const [searchResults, setSearchResults] = React.useState<Device[]>([])
   const [searchLoading, setSearchLoading] = React.useState(false)
 
+  // ── Child devices (linked via parentDeviceId) ──
+  // Fetched alongside accessories so totalCount reflects both.
+  // Previously this variable was referenced but never declared, causing
+  // "childDevices is not defined" → DeviceAccessoriesSection crash →
+  // device detail sheet won't open.
+  const [childDevices, setChildDevices] = React.useState<Device[]>([])
+  const [childrenLoading, setChildrenLoading] = React.useState(false)
+
   const totalCount = accessories.length + (childDevices?.length ?? 0)
 
   // Load accessories
