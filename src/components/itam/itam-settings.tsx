@@ -24,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList, Activity } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList, Activity, User, Camera, Save } from 'lucide-react'
 import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
@@ -71,6 +71,7 @@ type SettingsTab =
   | 'demo'
   | 'mobile-nav'
   | 'my-biometrics'
+  | 'my-profile'
   | 'licenses'
   | 'stock-count'
 
@@ -122,6 +123,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
     items: [
       { value: 'customize', label: 'ปรับแต่งแอป', icon: Palette },
       { value: 'oauth', label: 'OAuth/External Login', icon: KeyRound },
+      { value: 'my-profile', label: 'โปรไฟล์ของฉัน', icon: User },
       { value: 'my-biometrics', label: 'Passkey ของฉัน', icon: Fingerprint },
     ],
   },
@@ -746,6 +748,7 @@ export function ItamSettings() {
       {tab === 'mobile-nav' && <MobileNavConfigSection />}
 
       {tab === 'my-biometrics' && <MyBiometricsSection />}
+      {tab === 'my-profile' && <MyProfileSection />}
 
       {tab === 'licenses' && <LicenseManagementSection />}
       {tab === 'asset-categories' && <AssetCategorySection />}
@@ -1277,6 +1280,201 @@ function MobileNavConfigSection() {
           className="bg-[#f97316] text-white hover:bg-[#ea580c]"
         >
           {saving ? 'กำลังบันทึก...' : '💾 บันทึกการตั้งค่า'}
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MyProfileSection — แก้โปรไฟล์ + อัปโหลดรูปโปรไฟล์ของตัวเอง
+// ─────────────────────────────────────────────────────────────────────────
+function MyProfileSection() {
+  const { user: authUser, fetchMe } = useAuthStore()
+  const token = useAuthStore((s) => s.token)
+  const [loading, setLoading] = React.useState(true)
+  const [saving, setSaving] = React.useState(false)
+  const [name, setName] = React.useState('')
+  const [phone, setPhone] = React.useState('')
+  const [department, setDepartment] = React.useState('')
+  const [avatarUrl, setAvatarUrl] = React.useState<string | null>(null)
+  const [email, setEmail] = React.useState('')
+  const [username, setUsername] = React.useState('')
+  const [role, setRole] = React.useState('')
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const loadProfile = React.useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/itam/auth/me/profile', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) return
+      const { user } = await res.json()
+      setName(user.name ?? '')
+      setPhone(user.phone ?? '')
+      setDepartment(user.department ?? '')
+      setAvatarUrl(user.avatarUrl ?? null)
+      setEmail(user.email ?? '')
+      setUsername(user.username ?? '')
+      setRole(user.role ?? '')
+    } finally {
+      setLoading(false)
+    }
+  }, [token])
+
+  React.useEffect(() => {
+    loadProfile()
+  }, [loadProfile])
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('รูปใหญ่เกินไป (สูงสุด 5MB)')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const maxDim = 256
+        let { width, height } = img
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width)
+          width = maxDim
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height)
+          height = maxDim
+        }
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        ctx.drawImage(img, 0, 0, width, height)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
+        setAvatarUrl(dataUrl)
+      }
+      img.src = reader.result as string
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/itam/auth/me/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ name, avatarUrl, phone, department }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
+      }
+      toast.success('บันทึกโปรไฟล์แล้ว')
+      await fetchMe()
+      await loadProfile()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          กำลังโหลด...
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+          <User className="h-5 w-5 text-[#f97316]" />
+          โปรไฟล์ของฉัน
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          แก้ไขข้อมูลส่วนตัว + รูปโปรไฟล์ — ผู้ใช้ทุกคนแก้ได้เอง
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt="avatar"
+                className="h-20 w-20 rounded-full object-cover border-2 border-slate-200 dark:border-slate-700"
+              />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700">
+                <User className="h-8 w-8 text-slate-400" />
+              </div>
+            )}
+          </div>
+          <div className="space-y-1">
+            <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={saving}>
+              <Camera className="mr-2 h-4 w-4" />
+              {avatarUrl ? 'เปลี่ยนรูป' : 'อัปโหลดรูป'}
+            </Button>
+            {avatarUrl && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setAvatarUrl(null)} disabled={saving} className="text-red-500 hover:text-red-600">
+                ลบรูป
+              </Button>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              รองรับ JPG/PNG · ย่ออัตโนมัติ 256×256 · สูงสุด 5MB
+            </p>
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm">ชื่อ-นามสกุล</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} placeholder="เช่น นิกร ศรีสุข" className="text-sm" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm">เบอร์โทร</Label>
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} placeholder="เช่น 081-234-5678" className="text-sm" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm">แผนก</Label>
+          <Input value={department} onChange={(e) => setDepartment(e.target.value)} maxLength={100} placeholder="เช่น IT" className="text-sm" />
+        </div>
+        <div className="rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800/50">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <span className="text-muted-foreground">อีเมล:</span>
+              <br />
+              <span className="font-medium">{email}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Username:</span>
+              <br />
+              <span className="font-medium">{username || '—'}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">บทบาท:</span>
+              <br />
+              <span className="font-medium">{role}</span>
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            หากต้องการเปลี่ยนอีเมล/username/บทบาท ติดต่อแอดมิน
+          </p>
+        </div>
+        <Button onClick={handleSave} disabled={saving} className="w-full bg-[#f97316] text-white hover:bg-[#ea580c]">
+          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          บันทึกโปรไฟล์
         </Button>
       </CardContent>
     </Card>
