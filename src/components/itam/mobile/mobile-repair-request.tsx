@@ -997,6 +997,7 @@ export function MobileRepairRequest() {
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  capture="environment"
                   multiple
                   onChange={onFileChange}
                   className="hidden"
