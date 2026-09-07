@@ -851,6 +851,7 @@ function AppCustomizeTab() {
     searchFields: 'assetNo,serial,brand,model',
   })
   const [saving, setSaving] = React.useState(false)
+  const logoFileRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
     if (profile) {
@@ -995,15 +996,78 @@ function AppCustomizeTab() {
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">โลโก้ (emoji หรือ URL รูปภาพ)</Label>
+            <Label className="text-xs">โลโก้ (emoji, URL รูปภาพ หรืออัปโหลดไฟล์)</Label>
             <Input
               value={form.logoUrl}
               onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
               placeholder="📦 หรือ https://example.com/logo.png"
               className="dark:bg-slate-800 dark:border-slate-700"
             />
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => logoFileRef.current?.click()}
+                disabled={saving}
+              >
+                <Camera className="mr-1.5 h-3.5 w-3.5" />
+                อัปโหลดรูป
+              </Button>
+              {form.logoUrl.startsWith('data:image/') && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setForm({ ...form, logoUrl: '' })}
+                  disabled={saving}
+                  className="text-red-500 hover:text-red-600"
+                >
+                  ลบรูป
+                </Button>
+              )}
+              <input
+                ref={logoFileRef}
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  if (file.size > 2 * 1024 * 1024) {
+                    toast.error('รูปใหญ่เกินไป (สูงสุด 2MB)')
+                    return
+                  }
+                  const reader = new FileReader()
+                  reader.onload = () => {
+                    const img = new Image()
+                    img.onload = () => {
+                      const canvas = document.createElement('canvas')
+                      const maxDim = 128
+                      let { width, height } = img
+                      if (width > height && width > maxDim) {
+                        height = Math.round((height * maxDim) / width)
+                        width = maxDim
+                      } else if (height > maxDim) {
+                        width = Math.round((width * maxDim) / height)
+                        height = maxDim
+                      }
+                      canvas.width = width
+                      canvas.height = height
+                      const ctx = canvas.getContext('2d')
+                      if (!ctx) return
+                      ctx.drawImage(img, 0, 0, width, height)
+                      const dataUrl = canvas.toDataURL('image/png')
+                      setForm({ ...form, logoUrl: dataUrl })
+                    }
+                    img.src = reader.result as string
+                  }
+                  reader.readAsDataURL(file)
+                }}
+                className="hidden"
+              />
+            </div>
             <p className="text-[11px] text-slate-500">
-              💡 ใช้ emoji (เช่น 📦 🖨️ 💻) หรือวาง URL รูปภาพ (PNG/SVG, แนะนำขนาด 32×32px)
+              💡 ใช้ emoji (เช่น 📦 🖨️ 💻), วาง URL รูปภาพ, หรือกดอัปโหลดไฟล์ (PNG/SVG, แนะนำ 32×32px, สูงสุด 2MB)
             </p>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
