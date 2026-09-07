@@ -19255,3 +19255,117 @@ Work Log:
 - Production ใช้ PostgreSQL (Supabase) — schema auto-switch ได้แล้ว
 - ผู้ใช้ต้อง login ด้วย production credentials (nikorn2527@gmail.com) เพื่อทดสอบ dashboard จริง
 - ถ้ายังเห็น error หลัง login อาจมี field mismatch อื่นที่ต้องแก้เพิ่ม
+
+---
+Task ID: TOLOCALESTRING-GUARD-011
+Agent: toLocaleString-guard subagent
+Task: Add null-guards to all unsafe .toLocaleString() calls
+
+Work Log:
+- อ่าน worklog ล่าสุด (PRODUCTION-DEPLOY-010) เพื่อเข้าใจงานก่อนหน้า — formatBaht null-safe + bookValue→currentValue fix ทำไปแล้ว
+- รัน grep เพื่อหา unsafe `.toLocaleString('th-TH')` calls ทั้งหมดใน `src/components/` (filter ออก `?? `, `?.`, `Number(`, `parseInt`, `parseFloat`, `new Date`) — เจอ 70+ candidates
+- วิเคราะห์แต่ละ match ใน 11 ไฟล์ใน focus list ทีละบรรทัด:
+  - เช็คว่า value มาจาก API response หรือ local computed variable
+  - เช็คว่ามี upstream guard (`?? 0`, `?? prevBw`, ฯลฯ) อยู่แล้วหรือไม่
+  - เช็คว่าอยู่ใน JSX conditional ที่ TypeScript narrowing ช่วยหรือไม่ (`x !== null &&`)
+  - เช็คว่าอยู่ใน discriminated union narrowing (`saveState.kind === 'saved'`)
+
+Files modified (3):
+1. `src/components/itam/mobile/mobile-stock-out.tsx` — 4 guards
+   - L498 `it.quantity` (API-derived StockItemLite.quantity) → `(it.quantity ?? 0)`
+   - L599 `p.quantity` (API-derived PendingTxn.quantity) → `(p.quantity ?? 0)`
+   - L839 `success.balanceAfter` (จาก `json.data.transaction.balanceAfter`) → `(success.balanceAfter ?? 0)`
+   - L889 `item.quantity` (prop ที่ส่งต่อจาก API-derived state) → `(item.quantity ?? 0)`
+   - (skip L833 `success.quantity` เพราะ set จาก `qtyNum` หลัง early-return check `qtyNum === null`)
+   - (skip L942 `qtyNum` เพราะ narrowed by `qtyNum !== null &&` บน L940)
+   - (skip L944 `Math.max(...)` เพราะ Math.max always returns number)
+
+2. `src/components/itam/dashboard-pdf-export.tsx` — 5 guards (+ 2 redundant guards ใน Math.round)
+   - L69 `s.value` (จาก `data.byStatus`) → `(s.value ?? 0)` (เพิ่ม `(s.value ?? 0)` ใน Math.round ด้วย เพื่อ consistency)
+   - L79 `t.value` (จาก `data.byType`) → `(t.value ?? 0)`
+   - L93 `d.value` (จาก `data.topUsage`) → `(d.value ?? 0)`
+   - L104 `a.reading` (จาก `data.recentActivity`) → `(a.reading ?? 0)`
+   - L105 `a.delta` (จาก `data.recentActivity`) → `(a.delta ?? 0)` ใน ternary
+   - (skip L48 `now` เพราะ `new Date()` — Date handles null)
+   - (skip L257-273 `total/active/spare/repair/paper` เพราะมี upstream `?? 0` บน L59-63)
+
+3. `src/components/itam/pagination-bar.tsx` — 1 guard
+   - L92 `total` (prop typed `number` แต่ parent อาจส่ง API-derived value) → `(total ?? 0)`
+
+Files analyzed but NO changes needed (already safe):
+- `src/components/itam/mobile/mobile-meter-reading.tsx` — prevBw/prevColor มี `?? 0` upstream; deltaBw/deltaColor narrowed by `!== null &&`; saveState fields narrowed by discriminated union + `?? prevBw`/`?? 0` upstream
+- `src/components/itam/mobile/mobile-my-work.tsx` — L417 `d.toLocaleString` เป็น `new Date()` (safe)
+- `src/components/itam/bulk-meter-dialog.tsx` — m.prev/m.delta เป็น local computed ที่มี `?? 0` upstream (L107) และ computed as number (L111)
+- `src/components/itam/monthly-report.tsx` — v.bw/v.color เป็น Map values ที่ init ด้วย 0 และ `+= r.pagesBw || 0`; totalBw/totalColor เป็น `reduce(... || 0, 0)` — always numbers
+- `src/components/itam/material-cost-report.tsx` — L161/L169 `n.toLocaleString` อยู่ในฟังก์ชัน `formatBaht`/`formatInt` ที่มี `if (n == null || isNaN(n)) return '—'` guard ก่อน
+- `src/components/itam/pending-users-section.tsx` — L60 `d.toLocaleString` เป็น `new Date()` (safe)
+- `src/components/itam/import-page.tsx` — L246 `d.toLocaleString` เป็น `new Date()` (safe)
+- `src/components/itam/device-detail-sheet.tsx` — grep ไม่ match เพราะทุก call มี `?? 0` หรือ `Number()` หรือ `new Date` อยู่แล้ว
+
+Verify:
+- `bunx tsc --noEmit 2>&1 | grep -cE "error TS"` → **0 errors** (baseline 0) ✅
+- `bun run lint` → **107 problems (1 error, 106 warnings)** (baseline 1 error + 106 warnings) ✅ — no new errors/warnings introduced
+
+Stage Summary:
+- 3 files modified, 10 null-guards added (รวม 2 redundant guards ใน Math.round expressions ของ dashboard-pdf-export)
+- TypeScript: 0 errors (เท่า baseline)
+- Lint: 1 error + 106 warnings (เท่า baseline ทุกประการ — ไม่มี warnings ใหม่)
+- ทุก unsafe toLocaleString call ใน focus list ถูก guard หรือ verify ว่า safe ผ่าน upstream guards/narrowing แล้ว
+- ไม่ refactor working code — เฉพาะ `?? 0` guards เท่านั้นที่ถูก add ในจุดที่ value มาจาก API response โดยตรง
+
+---
+Task ID: PRINT-MEDIA-QUERY-012
+Agent: print-media-query subagent
+Task: Refactor print from window.open to @media print (3 files)
+
+Work Log:
+- อ่าน worklog ท้าย (PRODUCTION-DEPLOY-010 / null-guard work) เพื่อเข้าใจ baseline: 0 TS errors, 1 lint error + 106 warnings
+- grep `window.open` ใน `src/components/itam/` เพื่อ confirm จุดที่ต้อง refactor ใน 3 files:
+  - `monthly-report.tsx` lines ~871 (openSpecialFeeApprovalReport) + ~1566 (handlePrintReport)
+  - `template-print-dialog.tsx` line ~227 (handlePrint — เปิดพรีวิว / พิมพ์)
+  - `wo-print-form.tsx` line ~279 (openStandalone — เปิดหน้าใหม่ button)
+- อ่านแต่ละ file + globals.css + component JSX endings เพื่อวางแผนจุด insert print container และ state
+
+Files modified (4):
+1. `src/app/globals.css` — append global print CSS:
+   - `.print-only { display: none }` (hidden on screen)
+   - `@media print`: `body * { visibility: hidden }` → reveal `.print-only` + children only; pin to top-left; `display: block !important`
+   - hide app chrome: `[data-sidebar]`, `[data-header]`, `[data-slot='sidebar']`, `[data-slot='dialog-content']`, `[data-slot='sheet-content']`, `[role=dialog]`
+   - hide embedded print-btn-bar: `.print-btn-bar { display: none !important }`
+
+2. `src/components/itam/monthly-report.tsx` — 2 `window.open` → print container:
+   - add `const [printHtml, setPrintHtml] = React.useState('')`
+   - `openSpecialFeeApprovalReport` (L~871): replace `window.open('','_blank') + w.document.write(html)` → `setPrintHtml(html); setTimeout(print,50); setTimeout(clear,1000)`
+   - `handlePrintReport` (L~1566): same pattern + `setPrintDialogOpen(false)`
+   - add hidden `<div className="print-only" dangerouslySetInnerHTML={{ __html: printHtml }} />` ก่อนปิด root `<div className="print-area ...">`
+   - existing `@page` rules + `<style>` ใน generated HTML คงไว้ (inject ผ่าน dangerouslySetInnerHTML — `<style>` tags apply globally, `@page` cascade ทำงาน)
+
+3. `src/components/itam/template-print-dialog.tsx` — 1 `window.open` → print container:
+   - add `const [printHtml, setPrintHtml] = React.useState('')`
+   - `handlePrint` (L~227): replace `window.open('','_blank','noopener,noreferrer') + w.document.write(html)` → `setPrintHtml(html); setTimeout(print,50); setTimeout(clear,1000); onOpenChange(false)`
+   - rename param `openNewTab` → `_openNewTab` (ทั้งสองปุ่ม "เปิดพรีวิว"/"พิมพ์" ใช้ container เดียวกันแล้ว — keep param for call-site clarity, underscore = intentionally unused)
+   - wrap return ใน `<>...</>` fragment; เพิ่ม `.print-only` div เป็น sibling ของ `<Dialog>` (อยู่นอก Dialog portal จะได้ไม่ถูก clip โดย overlay)
+
+4. `src/components/itam/wo-print-form.tsx` — 1 `window.open` → fetch + print container:
+   - add `const [printHtml, setPrintHtml] = React.useState('')`
+   - `openStandalone` (L~279): เดิม `window.open(url, '_blank')` (url = `/api/work-orders/${wo.id}/print?paper=${paper}`) → เปลี่ยนเป็น `fetch(url) → res.text() → setPrintHtml(html); setTimeout(print,50); setTimeout(clear,1000)`
+   - add `.print-only` div หลัง `<style jsx global>`
+   - **CSS conflict resolution:** component มี local `@media print` CSS ที่ show `.print-area` (in-page preview) อยู่แล้ว → เมื่อ `.print-only` active ทั้งสองจะ visible พร้อมกัน. แก้โดยเพิ่ม `:has()` rule:
+     `body:has(.print-only) .print-area, body:has(.print-only) .print-area * { visibility: hidden !important }`
+     — ซ่อน in-page preview เมื่อมี standalone container (รองรับ :has() ใน modern browsers: Chrome 105+, Safari 15.4+, Firefox 121+)
+   - "พิมพ์" button (`handlePrint` → `window.print()`) ใช้ in-page `.print-area` อยู่แล้ว — ไม่เปลี่ยน (already correct)
+   - existing `@page { size: ${spec.pageRule}; margin: 12mm }` คงไว้
+
+Verify:
+- `bunx tsc --noEmit | grep -cE "error TS"` → **0 errors** (baseline 0) ✅
+- `bun run lint` → **107 problems (1 error, 106 warnings)** (baseline 1 error + 106 warnings) ✅ — ไม่มี warnings ใหม่
+- `grep window.open` ใน 3 files → **0 matches** ✅
+- dev.log → compiles cleanly, `GET / 200` ✅
+
+Stage Summary:
+- 4 files modified (globals.css + 3 component files)
+- Behavior change: pressing "พิมพ์"/"เปิดพรีวิว"/"เปิดหน้าใหม่" ไม่เปิด tab/window ใหม่ — `window.print()` บนหน้าปัจจุบัน + global `@media print` CSS ซ่อน app chrome แล้ว reveal เฉพาะ `.print-only` subtree
+- `@page` size/margin rules (A4/A5/sticker/work-order) คงไว้ — อยู่ใน `<style>` ของ injected HTML (apply globally via dangerouslySetInnerHTML)
+- ไม่มี pop-up blocker issues (no `window.open` to block)
+- ไม่ refactor working code อื่น — `handlePrint` ของ wo-print-form ที่ใช้ `window.print()` อยู่แล้วคงไว้
+

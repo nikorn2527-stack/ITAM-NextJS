@@ -93,6 +93,10 @@ export function TemplatePrintDialog({
   const [rendering, setRendering] = React.useState(false)
   const [savingChoice, setSavingChoice] = React.useState(false)
   const [showPicker, setShowPicker] = React.useState(false)
+  // ── In-page print container (Task ID: PRINT-MEDIA-QUERY-012) ──
+  // Rendered template HTML is injected into a hidden `.print-only` div,
+  // then window.print() fires on the SAME page (no new tab/window).
+  const [printHtml, setPrintHtml] = React.useState('')
 
   // ── Fetch work-order templates ──
   const templatesQuery = useQuery<DocumentTemplate[]>({
@@ -197,7 +201,10 @@ export function TemplatePrintDialog({
   }
 
   // ── Render & print ──
-  async function handlePrint(openNewTab: boolean) {
+  // The `openNewTab` flag is kept for call-site clarity (เปิดพรีวิว vs พิมพ์)
+  // but both paths now use the in-page `.print-only` container — no new
+  // tab/window is opened (Task ID: PRINT-MEDIA-QUERY-012).
+  async function handlePrint(_openNewTab: boolean) {
     if (!selectedId) {
       toast.error('กรุณาเลือกเทมเพลตก่อน')
       return
@@ -223,24 +230,12 @@ export function TemplatePrintDialog({
       if (rememberForWo || rememberForAll) {
         void saveChoice(selectedId)
       }
-      // Open in new tab
-      const w = window.open('', '_blank', 'noopener,noreferrer')
-      if (!w) {
-        toast.error('เบราว์เซอร์บล็อก pop-up — กรุณาอนุญาต')
-        return
-      }
-      w.document.open()
-      w.document.write(html)
-      w.document.close()
-      try {
-        w.document.title = `พิมพ์ใบงาน ${woNumber ?? ''}`
-      } catch (err) { console.error('[template-print-dialog]', err) }
-      if (!openNewTab) {
-        // Auto-print is already inside the rendered HTML (window.opener check)
-        onOpenChange(false)
-      } else {
-        onOpenChange(false)
-      }
+      // ── Inject into hidden print container + fire window.print()
+      // on the SAME page (Task ID: PRINT-MEDIA-QUERY-012). ──
+      setPrintHtml(html)
+      setTimeout(() => window.print(), 50)
+      setTimeout(() => setPrintHtml(''), 1000)
+      onOpenChange(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'พิมพ์ไม่สำเร็จ')
     } finally {
@@ -249,7 +244,8 @@ export function TemplatePrintDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px]">
         <DialogHeader className="border-b px-5 py-3">
           <DialogTitle className="flex items-center gap-2 text-base">
@@ -487,5 +483,19 @@ export function TemplatePrintDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+      {/* ── Hidden print container (Task ID: PRINT-MEDIA-QUERY-012) ──
+           Injects the rendered template HTML and is revealed only in
+           @media print via the global `.print-only` rule in globals.css.
+           Rendered OUTSIDE the Dialog so it is not clipped by the
+           Dialog's portal overlay. */}
+      {printHtml && (
+        <div
+          className="print-only"
+          dangerouslySetInnerHTML={{ __html: printHtml }}
+          aria-hidden
+        />
+      )}
+    </>
   )
 }

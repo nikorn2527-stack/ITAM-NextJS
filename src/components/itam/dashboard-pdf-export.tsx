@@ -66,8 +66,8 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
     .map(
       (s) => `<tr>
         <td>${escapeHtml(s.name)}</td>
-        <td class="num">${s.value.toLocaleString('th-TH')}</td>
-        <td class="num">${total > 0 ? Math.round((s.value / total) * 100) : 0}%</td>
+        <td class="num">${(s.value ?? 0).toLocaleString('th-TH')}</td>
+        <td class="num">${total > 0 ? Math.round(((s.value ?? 0) / total) * 100) : 0}%</td>
       </tr>`,
     )
     .join('')
@@ -76,8 +76,8 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
     .map(
       (t) => `<tr>
         <td>${escapeHtml(t.name)}</td>
-        <td class="num">${t.value.toLocaleString('th-TH')}</td>
-        <td class="num">${total > 0 ? Math.round((t.value / total) * 100) : 0}%</td>
+        <td class="num">${(t.value ?? 0).toLocaleString('th-TH')}</td>
+        <td class="num">${total > 0 ? Math.round(((t.value ?? 0) / total) * 100) : 0}%</td>
       </tr>`,
     )
     .join('')
@@ -90,7 +90,7 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
         <td class="num">${i + 1}</td>
         <td>${escapeHtml(d.name)}</td>
         <td>${escapeHtml(d.assetCode)}</td>
-        <td class="num">${d.value.toLocaleString('th-TH')}</td>
+        <td class="num">${(d.value ?? 0).toLocaleString('th-TH')}</td>
       </tr>`,
     )
     .join('')
@@ -101,8 +101,8 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
       (a) => `<tr>
         <td>${escapeHtml(a.deviceName)}</td>
         <td>${escapeHtml(a.assetCode)}</td>
-        <td class="num">${a.reading.toLocaleString('th-TH')}</td>
-        <td class="num">${a.delta > 0 ? '+' + a.delta.toLocaleString('th-TH') : '-'}</td>
+        <td class="num">${(a.reading ?? 0).toLocaleString('th-TH')}</td>
+        <td class="num">${a.delta > 0 ? '+' + (a.delta ?? 0).toLocaleString('th-TH') : '-'}</td>
         <td>${escapeHtml(a.date)}</td>
       </tr>`,
     )
