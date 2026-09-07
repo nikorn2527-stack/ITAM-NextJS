@@ -19715,3 +19715,34 @@ Stage Summary:
 2. The PM module has a real authz gap (P1) — site-scoped users can read/update/complete PM schedules outside their site. Recommend a follow-up task to add `buildAuthorizationContext` + `canAtSite` checks (mirroring the itam/devices pattern).
 3. The Import module has multiple P1 torn-state risks in `importMeterReadings` and `importStock`. Recommend a follow-up task to wrap all per-row DB writes in transactions (the devices importer already does this correctly — copy that pattern).
 4. The Audit log module's generic POST endpoint (`/api/audit/log`) uses too permissive a permission. Recommend tightening to `VIEW_AUDIT` or a new `LOG_AUDIT` write permission.
+
+---
+Task ID: AUDIT-FINDINGS-FIX-018
+Agent: audit-findings-fix subagent
+Task: Fix 4 P1 audit findings (PM authz, Import transaction, Audit log perm, DeviceAccessory audit)
+
+Work Log:
+- Read worklog.md tail (last ~40 lines) — confirmed the 4 P1 findings from DEADCODE-AUDIT-016 and baseline (0 TS errors, 1 lint error + 105 warnings).
+- Issue 1 (PM module missing site authz): inspected `src/app/api/pm/schedules/[id]/route.ts`, `src/app/api/pm/executions/route.ts`, `src/app/api/pm/executions/[id]/complete/route.ts`; mirrored the itam/devices pattern (`buildAuthorizationContext` + `canAtSite`/`canAccessSite`). Added a `derivePMScheduleSite` helper that returns `normalizeSiteCode(schedule.site ?? schedule.device?.site)` — falls back to the device's site when the schedule itself has no site, and returns null ("all sites") when neither is set (no check applies). For GET on schedules/[id]: `ctx.canAccessSite(site)` deny → 404. For PUT/DELETE on schedules/[id] and POST on executions: `ctx.canAtSite(site, 'WO_CREATE')` deny → 404. PUT also checks the NEW site when `body.site` changes. For GET /api/pm/executions (list): filtered the query by `schedule.site IN ctx.siteScope.siteCodes` (with `site: null` always visible). For POST /api/pm/executions/[id]/complete: included `schedule.device.site` in the findUnique so the site can be derived. Returns 404 (not 403) on denial to avoid leaking existence, matching the `loadAuthorizedWorkOrder` convention.
+- Issue 2 (Import missing transaction wrapping): inspected `src/app/api/import/route.ts` `importMeterReadings` (lines 573-704); confirmed each `db.meterReading.create` and `db.device.update` ran in its own implicit transaction. Refactored into two phases: (1) validation loop that builds `readingsToInsert[]` (no DB writes — same validation as before: missing assetCode/readingDate/device errors), (2) a single `db.$transaction(async (tx) => { ... })` that runs all `tx.meterReading.create` calls followed by all `tx.device.update` calls. If the transaction throws, the entire batch rolls back and we surface a clear error (`transaction rolled back; 0/N rows committed`) and reset `processed = 0`. Mirrors the `importDevices` batch-transaction pattern (line 297). Validation logic unchanged.
+- Issue 3 (Audit log POST permission too permissive): inspected `src/app/api/audit/log/route.ts`; confirmed POST used `VIEW_DASHBOARD` (read permission). Changed to `requireAuth(req, 'ADMIN')` — only superadmin/admin roles can write audit entries via this generic endpoint. Verified callers (`sticker-print-dialog.tsx`, `devices-page.tsx`) all wrap the POST in try/catch fire-and-forget, so non-admin users silently lose client-side audit logging but no functionality breaks. The task explicitly recommended ADMIN for POST.
+- Issue 4 (DeviceAccessory missing audit log): inspected `src/app/api/devices/[id]/accessories/[accessoryId]/route.ts`; confirmed PATCH and DELETE had no `logAudit` calls. Added `import { logAudit } from '@/lib/audit'`, and after successful PATCH/DELETE call `logAudit('UPDATE'/'DELETE', 'DeviceAccessory', accessoryId, summary, detail, auth.user.email).catch(() => {})`. PATCH detail captures `parentDeviceId` + `changes` (the body fields being modified). DELETE first fetches the existing row (`accessoryType, brand, model, serialNumber`) before deletion so the audit entry records what was removed.
+
+Stage Summary:
+Files modified:
+- `src/app/api/pm/schedules/[id]/route.ts` — added buildAuthorizationContext + site checks on GET/PUT/DELETE; added `derivePMScheduleSite` helper; PUT now also blocks moving a schedule to a site where the caller lacks WO_CREATE.
+- `src/app/api/pm/executions/route.ts` — added buildAuthorizationContext; GET list now scoped by `ctx.siteScope`; POST verifies `canAtSite(scheduleSite, 'WO_CREATE')` after loading the schedule.
+- `src/app/api/pm/executions/[id]/complete/route.ts` — added buildAuthorizationContext; verifies `canAtSite(executionSite, 'WO_CREATE')` after loading the execution + schedule.
+- `src/app/api/import/route.ts` — refactored `importMeterReadings` into validation + write phases; all writes now run inside a single `db.$transaction`.
+- `src/app/api/audit/log/route.ts` — POST permission changed from `VIEW_DASHBOARD` → `ADMIN`.
+- `src/app/api/devices/[id]/accessories/[accessoryId]/route.ts` — added `logAudit` calls on PATCH and DELETE.
+
+Verify:
+- `bunx tsc --noEmit 2>&1 | grep -cE "error TS"` → **0 errors** ✅ (matches baseline)
+- `bun run lint 2>&1 | tail -3` → **1 error + 105 warnings** ✅ (matches baseline; the 1 error is pre-existing `react-hooks/set-state-in-effect`, none on edited files)
+- No new lint warnings on any of the 6 edited files (confirmed by filtering lint output for the modified paths).
+
+Notes / Recommendations:
+1. The audit-log POST tightening (issue 3) means non-admin users will silently fail to log client-side actions via `/api/audit/log` (the fire-and-forget fetch in `sticker-print-dialog.tsx` and `devices-page.tsx` will get 403). This is intentional per the audit finding. If client-side audit logging for non-admins is still desired, consider: (a) creating a dedicated endpoint that only accepts a fixed allow-list of action/entity pairs (e.g. PRINT/Device only), or (b) moving the audit logging into the server-side mutation routes themselves.
+2. The import-meter-readings refactor changes per-row DB error behaviour: previously a single bad row was skipped and the rest imported; now any DB error aborts the entire transaction. This is the intended transactional integrity fix — partial imports that left torn state are no longer possible. If per-row resilience is needed, the next step would be a pre-flight duplicate check (query existing (deviceId, readingDate) pairs and skip them before the transaction).
+3. The PM site-authz fix uses `canAccessSite` for reads and `canAtSite(site, 'WO_CREATE')` for writes. Schedules with `site: null` (and no device) bypass the check — treated as "all sites" / global. If a stricter policy is desired (deny global schedules for non-superadmins), that's a follow-up.

@@ -619,6 +619,29 @@ async function importMeterReadings(
   // Track which devices need their last-meter values persisted.
   const updatesByDeviceId = new Map<string, { bw: number; color: number }>()
 
+  // ── Phase 1: validation (no DB writes). ──
+  // P1 FIX (AUDIT-FINDINGS-FIX-018): previously each `db.meterReading.create`
+  // and `db.device.update` ran in its own implicit transaction, so a failure
+  // midway left torn state (some meterReadings committed, some devices'
+  // lastMeterBw/lastMeterColor stale). Now we validate every row first, then
+  // wrap all the writes in a single `db.$transaction` so partial failure
+  // rolls back atomically.
+  const readingsToInsert: Array<{
+    deviceId: string
+    assetCode: string
+    readingDate: string
+    readingMonth: string
+    meterBw: number
+    meterColor: number
+    pagesBw: number
+    pagesColor: number
+    prevMeterBw: number
+    prevMeterColor: number
+    readBy: string
+    remark: string
+    rowNum: number
+  }> = []
+
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r]
     const rowNum = r + 2
@@ -656,47 +679,77 @@ async function importMeterReadings(
     const pagesColor = Math.max(0, meterColor - prevMeterColor)
     const readingMonth = readingDate.slice(0, 7) // YYYY-MM
 
-    try {
-      await db.meterReading.create({
-        data: {
-          deviceId: device.id,
-          // Always persist the canonical assetCode (NOT the user-input identifier,
-          // which may have been the serial).
-          assetCode: device.assetCode,
-          readingDate,
-          readingMonth,
-          meterBw,
-          meterColor,
-          pagesBw,
-          pagesColor,
-          prevMeterBw,
-          prevMeterColor,
-          readingType: 'MONTHLY',
-          readBy: toStr(row[iReadBy]),
-          remark: toStr(row[iRemark]),
-        },
-      })
-      // Remember the new last-meter so the next row for this device sees it.
-      updatesByDeviceId.set(device.id, { bw: meterBw, color: meterColor })
-      processed++
-    } catch (e) {
-      console.error('importMeterReadings create error', e)
-      errors.push({
-        row: rowNum,
-        message: e instanceof Error ? e.message : 'DB error (meter-reading)',
-      })
-    }
+    readingsToInsert.push({
+      deviceId: device.id,
+      // Always persist the canonical assetCode (NOT the user-input identifier,
+      // which may have been the serial).
+      assetCode: device.assetCode,
+      readingDate,
+      readingMonth,
+      meterBw,
+      meterColor,
+      pagesBw,
+      pagesColor,
+      prevMeterBw,
+      prevMeterColor,
+      readBy: toStr(row[iReadBy]),
+      remark: toStr(row[iRemark]),
+      rowNum,
+    })
+    // Remember the new last-meter so the next row for this device sees it.
+    updatesByDeviceId.set(device.id, { bw: meterBw, color: meterColor })
   }
 
-  // Persist the updated last-meter values back to the device rows.
-  for (const [deviceId, val] of updatesByDeviceId) {
+  // ── Phase 2: writes (single transaction). ──
+  // All `meterReading.create` calls + the trailing `device.update` calls run
+  // inside one Prisma transaction. If any write fails, the entire batch
+  // rolls back — no torn state.
+  if (readingsToInsert.length > 0) {
     try {
-      await db.device.update({
-        where: { id: deviceId },
-        data: { lastMeterBw: val.bw, lastMeterColor: val.color },
+      await db.$transaction(async (tx) => {
+        for (const r of readingsToInsert) {
+          await tx.meterReading.create({
+            data: {
+              deviceId: r.deviceId,
+              assetCode: r.assetCode,
+              readingDate: r.readingDate,
+              readingMonth: r.readingMonth,
+              meterBw: r.meterBw,
+              meterColor: r.meterColor,
+              pagesBw: r.pagesBw,
+              pagesColor: r.pagesColor,
+              prevMeterBw: r.prevMeterBw,
+              prevMeterColor: r.prevMeterColor,
+              readingType: 'MONTHLY',
+              readBy: r.readBy,
+              remark: r.remark,
+            },
+          })
+          processed++
+        }
+
+        // Persist the updated last-meter values back to the device rows
+        // (inside the same transaction so they commit/roll back atomically
+        // with the meterReadings).
+        for (const [deviceId, val] of updatesByDeviceId) {
+          await tx.device.update({
+            where: { id: deviceId },
+            data: { lastMeterBw: val.bw, lastMeterColor: val.color },
+          })
+        }
       })
     } catch (e) {
-      console.error('importMeterReadings device update error', e)
+      console.error('importMeterReadings transaction error', e)
+      // Transaction rolled back — nothing was committed. Surface a clear
+      // error so the caller knows the import failed wholesale (rather than
+      // the previous partial-success behaviour that left torn state).
+      errors.push({
+        row: 0,
+        message:
+          (e instanceof Error ? e.message : 'DB error (meter-reading)') +
+          ` — transaction rolled back; 0/${readingsToInsert.length} rows committed`,
+      })
+      processed = 0
     }
   }
 

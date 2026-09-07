@@ -7,11 +7,14 @@ import { logAudit } from '@/lib/audit'
  * records (e.g. printing stickers). Server-side mutations should call
  * `logAudit()` directly from their route handlers instead.
  *
- * SECURITY: requires authentication to prevent attackers from spamming /
- * forging audit log entries via anonymous POST.
+ * SECURITY: requires authentication + ADMIN permission to prevent attackers
+ * from spamming / forging audit log entries. P1 FIX (AUDIT-FINDINGS-FIX-018):
+ * previously this used `VIEW_DASHBOARD` (a read-only permission granted to
+ * every authenticated user) which meant any viewer could write arbitrary
+ * entries to the audit log via this endpoint. Now restricted to ADMIN.
  */
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth(req, 'VIEW_DASHBOARD')
+  const auth = await requireAuth(req, 'ADMIN')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
