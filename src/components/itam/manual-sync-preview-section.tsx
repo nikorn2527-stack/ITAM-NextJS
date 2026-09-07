@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/store/auth-store'
 
 type PreviewAction = 'create' | 'update' | 'skip' | 'error'
 
@@ -79,7 +80,12 @@ export function ManualSyncPreviewSection() {
     try {
       const response = await fetch('/api/sync/preview', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify({
           source,
           target: 'work-order',

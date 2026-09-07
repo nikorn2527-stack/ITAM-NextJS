@@ -22,6 +22,7 @@ import {
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { MASTER_CATEGORIES, type MasterItem } from './types'
+import { useAuthStore } from '@/store/auth-store'
 
 export interface MasterFormState {
   id?: string
@@ -100,7 +101,12 @@ export function MasterDataModal({
       const method = isEdit ? 'PUT' : 'POST'
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify(payload),
       })
       if (!res.ok) {

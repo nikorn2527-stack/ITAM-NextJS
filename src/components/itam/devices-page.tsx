@@ -599,7 +599,7 @@ export function DevicesPage() {
   const { data: settings } = useQuery<Record<string, string>>({
     queryKey: ['settings'],
     queryFn: async () => {
-      const res = await fetch('/api/settings')
+      const res = await fetch('/api/settings', { headers: authHeaders() })
       if (!res.ok) return {}
       const json = await res.json()
       return (json.settings ?? {}) as Record<string, string>
@@ -1246,6 +1246,7 @@ export function DevicesPage() {
     try {
       const res = await fetch(
         `/api/devices/next-site-code?site=${encodeURIComponent(siteCode)}`,
+        { headers: authHeaders() },
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -1446,6 +1447,7 @@ export function DevicesPage() {
       setDeleting(true)
       const res = await fetch(`/api/devices/${deleteTarget.id}`, {
         method: 'DELETE',
+        headers: authHeaders(),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -1509,8 +1511,8 @@ export function DevicesPage() {
     try {
       // 1) Fetch active saved template (server-side) + sticker settings.
       const [tplRes, settingsRes] = await Promise.all([
-        fetch('/api/itam/sticker/templates'),
-        fetch('/api/itam/sticker/settings').catch(() => null),
+        fetch('/api/itam/sticker/templates', { headers: authHeaders() }),
+        fetch('/api/itam/sticker/settings', { headers: authHeaders() }).catch(() => null),
       ])
       if (!tplRes.ok) throw new Error('โหลดเทมเพลตสติกเกอร์ไม่สำเร็จ')
       const tplData = (await tplRes.json()) as {
@@ -1620,7 +1622,7 @@ export function DevicesPage() {
       try {
         await fetch('/api/audit/log', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             action: 'PRINT',
             entity: 'Device',
@@ -1814,7 +1816,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     try {
       await fetch('/api/audit/log', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ action, entity: 'Device', summary, detail }),
       })
     } catch {
@@ -1830,7 +1832,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
       ids.map((id) =>
         fetch(`/api/devices/${id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ status: bulkStatus }),
         }),
       ),
@@ -1866,7 +1868,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
       ids.map((id) =>
         fetch(`/api/devices/${id}/transfer`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ toSite: bulkSite, transferDate: today }),
         }),
       ),
@@ -1899,7 +1901,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     setBulkAction(true)
     const ids = Array.from(selectedIds)
     const results = await Promise.allSettled(
-      ids.map((id) => fetch(`/api/devices/${id}`, { method: 'DELETE' })),
+      ids.map((id) => fetch(`/api/devices/${id}`, { method: 'DELETE', headers: authHeaders() })),
     )
     const ok = results.filter((r) => r.status === 'fulfilled').length
     const fail = results.length - ok

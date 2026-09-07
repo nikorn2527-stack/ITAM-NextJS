@@ -124,6 +124,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
 import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
+import { addToQueue } from '@/lib/offline-queue'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -535,7 +536,12 @@ export function MobileMyWork() {
       const techName = user?.name ?? user?.username ?? user?.email ?? ''
       if (onlyMine && techName) params.set('assignedTo', techName)
 
-      const res = await fetch(`/api/work-orders?${params.toString()}`)
+      const res = await fetch(`/api/work-orders?${params.toString()}`, {
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t ? { Authorization: `Bearer ${t}` } : {}
+        })(),
+      })
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string }
         throw new Error(j.error ?? 'โหลดรายการไม่สำเร็จ')
@@ -1026,6 +1032,12 @@ function DetailView({
     try {
       const res = await fetch(
         `/api/work-orders/${encodeURIComponent(workOrderId)}`,
+        {
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t ? { Authorization: `Bearer ${t}` } : {}
+          })(),
+        },
       )
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string }
@@ -1490,6 +1502,12 @@ function PhotosCard({
     try {
       const res = await fetch(
         `/api/work-orders/${encodeURIComponent(workOrderId)}/images`,
+        {
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t ? { Authorization: `Bearer ${t}` } : {}
+          })(),
+        },
       )
       if (!res.ok) return
       const json = (await res.json()) as {
@@ -1635,7 +1653,12 @@ function PhotosCard({
           `/api/work-orders/${encodeURIComponent(workOrderId)}/images`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: (() => {
+              const t = useAuthStore.getState()?.token
+              return t
+                ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+                : { 'Content-Type': 'application/json' }
+            })(),
             body: JSON.stringify({
               stage: img.stage,
               image_data: img.data,
@@ -1670,7 +1693,13 @@ function PhotosCard({
     try {
       const res = await fetch(
         `/api/work-orders/${encodeURIComponent(workOrderId)}/images?imageId=${encodeURIComponent(imageId)}`,
-        { method: 'DELETE' },
+        {
+          method: 'DELETE',
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t ? { Authorization: `Bearer ${t}` } : {}
+          })(),
+        },
       )
       if (!res.ok) {
         const j = (await res.json().catch(() => ({}))) as { error?: string }
@@ -2132,6 +2161,16 @@ function StatusUpdateSheet({
       return
     }
     setSubmitting(true)
+    // Capture the primary request for offline-queue fallback.
+    // Only the FIRST fetch in each branch is queued — secondary requests
+    // (photo uploads, message posts) are best-effort and use .catch(() => undefined)
+    // already, so they degrade gracefully on their own.
+    let queuedRequest: {
+      url: string
+      method: 'POST' | 'PUT'
+      body: unknown
+      label: string
+    } | null = null
     try {
       const note = remark.trim()
       const firstPhoto = photos[0] ?? null
@@ -2145,11 +2184,22 @@ function StatusUpdateSheet({
         if (note) {
           body.detailsAdmin = note
         }
+        queuedRequest = {
+          url: `/api/work-orders/${encodeURIComponent(workOrderId)}`,
+          method: 'PUT',
+          body,
+          label: `เปลี่ยนสถานะเป็น ${STATUS_META[action.targetStatus]?.label ?? action.targetStatus} (WO ${workOrderId})`,
+        }
         const res = await fetch(
           `/api/work-orders/${encodeURIComponent(workOrderId)}`,
           {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: (() => {
+              const t = useAuthStore.getState()?.token
+              return t
+                ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+                : { 'Content-Type': 'application/json' }
+            })(),
             body: JSON.stringify(body),
           },
         )
@@ -2168,7 +2218,12 @@ function StatusUpdateSheet({
           `/api/work-orders/${encodeURIComponent(workOrderId)}/messages`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: (() => {
+              const t = useAuthStore.getState()?.token
+              return t
+                ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+                : { 'Content-Type': 'application/json' }
+            })(),
             body: JSON.stringify({
               message: msg,
               author: actorName,
@@ -2185,20 +2240,32 @@ function StatusUpdateSheet({
           ...selectedResolutions,
           note.trim(),
         ].filter(Boolean).join('\n')
+        const body = {
+          note: combinedResolution || note,
+          resolution: combinedResolution || note,
+          resolutionGroup: selectedResolutions.length > 0
+            ? resolutionOptions.find((o) => o.value === selectedResolutions[0])?.group ?? null
+            : null,
+          picAfter: firstPhoto,
+          actor: actorName,
+        }
+        queuedRequest = {
+          url: `/api/work-orders/${encodeURIComponent(workOrderId)}/complete`,
+          method: 'POST',
+          body,
+          label: `ปิดงาน WO ${workOrderId}`,
+        }
         const res = await fetch(
           `/api/work-orders/${encodeURIComponent(workOrderId)}/complete`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              note: combinedResolution || note,
-              resolution: combinedResolution || note,
-              resolutionGroup: selectedResolutions.length > 0
-                ? resolutionOptions.find((o) => o.value === selectedResolutions[0])?.group ?? null
-                : null,
-              picAfter: firstPhoto,
-              actor: actorName,
-            }),
+            headers: (() => {
+              const t = useAuthStore.getState()?.token
+              return t
+                ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+                : { 'Content-Type': 'application/json' }
+            })(),
+            body: JSON.stringify(body),
           },
         )
         if (!res.ok) {
@@ -2216,17 +2283,29 @@ function StatusUpdateSheet({
         const msg = note
           ? `ส่งคืนอุปกรณ์แล้ว — ${note}`
           : 'ส่งคืนอุปกรณ์แล้ว'
+        const body = {
+          message: msg,
+          author: actorName,
+          authorRole: 'admin',
+          actor: actorName,
+        }
+        queuedRequest = {
+          url: `/api/work-orders/${encodeURIComponent(workOrderId)}/messages`,
+          method: 'POST',
+          body,
+          label: `ส่งคืนอุปกรณ์ WO ${workOrderId}`,
+        }
         const res = await fetch(
           `/api/work-orders/${encodeURIComponent(workOrderId)}/messages`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              message: msg,
-              author: actorName,
-              authorRole: 'admin',
-              actor: actorName,
-            }),
+            headers: (() => {
+              const t = useAuthStore.getState()?.token
+              return t
+                ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+                : { 'Content-Type': 'application/json' }
+            })(),
+            body: JSON.stringify(body),
           },
         )
         if (!res.ok) {
@@ -2236,7 +2315,12 @@ function StatusUpdateSheet({
         // Also append to detailsAdmin via PUT
         await fetch(`/api/work-orders/${encodeURIComponent(workOrderId)}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t
+              ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+              : { 'Content-Type': 'application/json' }
+          })(),
           body: JSON.stringify({
             detailsAdmin: note ? `ส่งคืนอุปกรณ์: ${note}` : 'ส่งคืนอุปกรณ์แล้ว',
             actor: actorName,
@@ -2249,6 +2333,16 @@ function StatusUpdateSheet({
 
       await onDone()
     } catch (e) {
+      // Offline queue fallback — only when the network is actually down,
+      // not on server-side validation errors (those still surface to the user).
+      if (!navigator.onLine && queuedRequest) {
+        addToQueue(queuedRequest)
+        toast.success('บันทึกไว้ในคิว จะส่งอัตโนมัติเมื่อออนไลน์')
+        // Close the action sheet so the technician can continue with the
+        // next work order; the queue will replay the request when online.
+        onClose()
+        return
+      }
       setError(e instanceof Error ? e.message : 'อัปเดตไม่สำเร็จ')
     } finally {
       setSubmitting(false)
@@ -2530,7 +2624,12 @@ async function uploadPhotos(
     try {
       await fetch(`/api/work-orders/${encodeURIComponent(workOrderId)}/images`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify({
           stage,
           image_data: dataUrl,

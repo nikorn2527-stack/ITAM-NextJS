@@ -78,6 +78,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
 import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
+import { addToQueue } from '@/lib/offline-queue'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -162,8 +163,8 @@ export function MobileRepairRequest() {
   const token = useAuthStore((s) => s.token)
 
   // Helper: get auth headers for fetch
-  function getAuthHeaders(): Record<string, string> {
-    return token ? { Authorization: `Bearer ${token}` } : {}
+  function getAuthHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) }
   }
 
   // ── Fetch problem categories from /api/settings/options (same as desktop WO) ──
@@ -451,6 +452,8 @@ export function MobileRepairRequest() {
     }
 
     setSubmitting(true)
+    // Declare outside try so the catch block can read it for offline-queue fallback.
+    let payload: Record<string, unknown> | null = null
     try {
       // Combine description + remark into details field for the API
       // (description = ลักษณะหน้างาน, remark = หมายเหตุเพิ่มเติม)
@@ -459,7 +462,7 @@ export function MobileRepairRequest() {
         remark.trim() ? `หมายเหตุ: ${remark.trim()}` : '',
       ].filter(Boolean).join('\n\n')
 
-      const payload: Record<string, unknown> = {
+      payload = {
         subject: finalSubject,
         details: combinedDetails,
         priority: prOpt.value,
@@ -485,7 +488,7 @@ export function MobileRepairRequest() {
       }
       const res = await fetch('/api/work-orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
@@ -497,6 +500,22 @@ export function MobileRepairRequest() {
       setSuccessWoNumber(woNumber)
       toast.success(`สร้างใบแจ้งซ่อม ${woNumber ?? ''} แล้ว`)
     } catch (e) {
+      // Offline queue fallback — only when the network is actually down,
+      // not on server-side validation errors (those still surface to the user).
+      if (!navigator.onLine && payload) {
+        addToQueue({
+          url: '/api/work-orders',
+          method: 'POST',
+          body: payload,
+          label: `แจ้งซ่อม: ${finalSubject || 'รายการใหม่'}`,
+        })
+        toast.success('บันทึกไว้ในคิว จะส่งอัตโนมัติเมื่อออนไลน์')
+        // Reset the form so the technician can move on; the success screen
+        // is not shown because the WO number isn't known yet — the queue
+        // retry will create it in the background once connectivity returns.
+        resetForm()
+        return
+      }
       setSubmitError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     } finally {
       setSubmitting(false)

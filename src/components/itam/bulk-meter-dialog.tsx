@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/table'
 import { AlertTriangle, Loader2, ClipboardList } from 'lucide-react'
 import type { Device, Cycle } from './types'
+import { useAuthStore } from '@/store/auth-store'
 
 interface Props {
   open: boolean
@@ -172,7 +173,12 @@ export function BulkMeterDialog({
         toSave.map(({ device, meta }) =>
           fetch('/api/meter', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: (() => {
+              const t = useAuthStore.getState()?.token
+              return t
+                ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+                : { 'Content-Type': 'application/json' }
+            })(),
             body: JSON.stringify({
               deviceId: device.id,
               reading: meta.next,

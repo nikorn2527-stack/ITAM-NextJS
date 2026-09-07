@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select'
 import type { DashboardRangeKey } from './types'
 import { DASHBOARD_RANGE_OPTIONS } from './types'
+import { useAuthStore } from '@/store/auth-store'
 
 interface MonthlyReading {
   month: string // YYYY-MM
@@ -127,7 +128,9 @@ export function UtilizationSection({
   const { data, isLoading } = useQuery<UtilizationData>({
     queryKey: ['devices-utilization', range],
     queryFn: async () => {
-      const res = await fetch(`/api/devices/utilization?range=${range}`)
+      const res = await fetch(`/api/devices/utilization?range=${range}`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) throw new Error('Failed to load utilization')
       return res.json()
     },

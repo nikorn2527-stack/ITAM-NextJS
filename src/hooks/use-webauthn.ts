@@ -18,7 +18,25 @@ export function useWebAuthn() {
   }, [])
 
   const getToken = (): string | null => {
-    try { return localStorage.getItem('itam.token') } catch { return null }
+    // Try zustand-persisted auth store first (itam-auth key, shape: {state:{token:...}})
+    try {
+      const raw = localStorage.getItem('itam-auth')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        const token = parsed?.state?.token
+        if (typeof token === 'string' && token.length > 0) return token
+      }
+    } catch {
+      // ignore parse error
+    }
+    // Fallback: legacy direct key (used by older auth flows)
+    try {
+      const t = localStorage.getItem('itam.token')
+      if (t) return t
+    } catch {
+      // ignore
+    }
+    return null
   }
 
   async function register(name?: string) {

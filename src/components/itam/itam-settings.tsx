@@ -165,7 +165,7 @@ export function ItamSettings() {
     queryKey: ['itam-master', category],
     queryFn: async () => {
       const params = category !== 'all' ? `?category=${category}` : ''
-      const res = await fetch(`/api/itam/master-items${params}`)
+      const res = await fetch(`/api/itam/master-items${params}`, { headers: authHeaders() })
       if (!res.ok) throw new Error('Failed')
       return res.json() as Promise<{ items: MasterItem[] }>
     },
@@ -300,14 +300,14 @@ export function ItamSettings() {
     try {
       if (editItem) {
         const res = await fetch(`/api/itam/master-items/${editItem.id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(form),
         })
         if (!res.ok) throw new Error('Failed')
         toast.success('แก้ไขแล้ว')
       } else {
         const res = await fetch('/api/itam/master-items', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(form),
         })
         if (!res.ok) throw new Error('Failed')
@@ -326,7 +326,7 @@ export function ItamSettings() {
     if (!deleteTarget) return
     const item = deleteTarget
     try {
-      await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE' })
+      await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE', headers: authHeaders() })
       toast.success('ลบแล้ว')
       await qc.invalidateQueries({ queryKey: ['itam-master'] })
     } catch { toast.error('ลบไม่สำเร็จ') }
@@ -810,7 +810,7 @@ function AppCustomizeTab() {
     queryKey: ['org-profile'],
     queryFn: async () => {
       try {
-        const res = await fetch('/api/settings/org-profile')
+        const res = await fetch('/api/settings/org-profile', { headers: authHeaders() })
         if (!res.ok) return null
         const j = await res.json()
         return j.profile ?? null
@@ -826,7 +826,7 @@ function AppCustomizeTab() {
     queryKey: ['app-customization'],
     queryFn: async () => {
       try {
-        const res = await fetch('/api/settings')
+        const res = await fetch('/api/settings', { headers: authHeaders() })
         if (!res.ok) return 'assetNo,serial,brand,model'
         const j = await res.json()
         // /api/settings returns { settings: { key: value, ... } }
@@ -1134,7 +1134,7 @@ function MobileNavConfigSection() {
   const { data: settingsData } = useQuery({
     queryKey: ['mobile-nav-config-settings'],
     queryFn: async () => {
-      const res = await fetch('/api/settings')
+      const res = await fetch('/api/settings', { headers: authHeaders() })
       if (!res.ok) return { settings: [] }
       return res.json()
     },
@@ -1175,7 +1175,7 @@ function MobileNavConfigSection() {
     try {
       const res = await fetch('/api/settings', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           mobileNavConfig: JSON.stringify(config),
         }),

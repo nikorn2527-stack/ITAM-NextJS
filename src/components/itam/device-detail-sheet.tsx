@@ -73,6 +73,7 @@ import {
   PackagePlus,
 } from 'lucide-react'
 import type { Device, MeterReading, DeviceTransfer, Site, Assignment, LicenseRecord } from './types'
+import { useAuthStore } from '@/store/auth-store'
 import {
   statusBadgeClass,
   statusLabel,
@@ -458,7 +459,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     queryKey: ['device-detail', deviceId],
     queryFn: async () => {
       if (!deviceId) return null
-      const res = await fetch(`/api/devices/${deviceId}`)
+      const res = await fetch(`/api/devices/${deviceId}`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return null
       const json = await res.json()
       return { device: json.device as Device }
@@ -472,7 +475,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     queryKey: ['device-meter', deviceId],
     queryFn: async () => {
       if (!deviceId) return []
-      const res = await fetch(`/api/meter?deviceId=${deviceId}`)
+      const res = await fetch(`/api/meter?deviceId=${deviceId}`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return []
       const json = await res.json()
       return (json.readings ?? []) as MeterReading[]
@@ -486,7 +491,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     queryKey: ['device-transfers', deviceId],
     queryFn: async () => {
       if (!deviceId) return []
-      const res = await fetch(`/api/devices/${deviceId}/transfer`)
+      const res = await fetch(`/api/devices/${deviceId}/transfer`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return []
       const json = await res.json()
       return (json.transfers ?? []) as DeviceTransfer[]
@@ -500,7 +507,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     queryKey: ['device-assignments', deviceId],
     queryFn: async () => {
       if (!deviceId) return []
-      const res = await fetch(`/api/devices/${deviceId}/assign`)
+      const res = await fetch(`/api/devices/${deviceId}/assign`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return []
       const json = await res.json()
       return (json.assignments ?? []) as Assignment[]
@@ -514,7 +523,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     queryKey: ['device-licenses', deviceId],
     queryFn: async () => {
       if (!deviceId) return []
-      const res = await fetch(`/api/devices/${deviceId}/licenses`)
+      const res = await fetch(`/api/devices/${deviceId}/licenses`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return []
       const json = await res.json()
       return (json.licenses ?? []) as LicenseRecord[]
@@ -572,7 +583,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
         : `/api/devices/${deviceId}/licenses`
       const res = await fetch(url, {
         method: isEditing ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
@@ -596,7 +612,10 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       setDeletingLicenseId(id)
       const res = await fetch(
         `/api/devices/${deviceId}/licenses?licenseId=${encodeURIComponent(id)}`,
-        { method: 'DELETE' },
+        {
+          method: 'DELETE',
+          headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+        },
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -660,7 +679,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     const t = setTimeout(async () => {
       try {
         const params = new URLSearchParams({ search: q, limit: '5' })
-        const res = await fetch(`/api/devices?${params.toString()}`)
+        const res = await fetch(`/api/devices?${params.toString()}`, {
+          headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+        })
         if (!res.ok) {
           if (!cancelled) setActReplacementLookup({ state: 'error', message: 'HTTP ' + res.status })
           return
@@ -844,7 +865,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
         const sourceMeterColor = meterRequired && actMeterColor.trim() ? Number(actMeterColor) : null
         const replaceRes = await fetch(`/api/devices/${deviceId}/replace-on-withdraw`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t
+              ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+              : { 'Content-Type': 'application/json' }
+          })(),
           body: JSON.stringify({
             action: actionId,
             toStatus: newStatus ?? cfg.targetStatus ?? device.status,
@@ -911,7 +937,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
           .join(' — ')
         const meterRes = await fetch('/api/meter', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t
+              ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+              : { 'Content-Type': 'application/json' }
+          })(),
           body: JSON.stringify({
             deviceId,
             reading: Number(actMeterBw),
@@ -935,7 +966,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
 
       const lifecycleRes = await fetch(`/api/devices/${deviceId}/lifecycle`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify({
           action: actionId,
           toStatus: newStatus ?? device.status,
@@ -982,7 +1018,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const { data: sites } = useQuery<Site[]>({
     queryKey: ['sites'],
     queryFn: async () => {
-      const res = await fetch('/api/sites')
+      const res = await fetch('/api/sites', {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return []
       const json = await res.json()
       return json.sites as Site[]
@@ -999,7 +1037,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     queryKey: ['device-children', deviceId],
     queryFn: async () => {
       if (!deviceId) return []
-      const res = await fetch(`/api/devices?parentDeviceId=${encodeURIComponent(deviceId)}&limit=100`)
+      const res = await fetch(`/api/devices?parentDeviceId=${encodeURIComponent(deviceId)}&limit=100`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return []
       const json = await res.json()
       return (json.devices ?? []) as Device[]
@@ -1015,7 +1055,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
     queryKey: ['device-parent', parentDeviceId],
     queryFn: async () => {
       if (!parentDeviceId) return null
-      const res = await fetch(`/api/devices/${encodeURIComponent(parentDeviceId)}`)
+      const res = await fetch(`/api/devices/${encodeURIComponent(parentDeviceId)}`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return null
       const json = await res.json()
       return (json.device ?? null) as Device | null
@@ -1090,7 +1132,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       }
       const res = await fetch(`/api/devices/${device.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify(body),
       })
       if (!res.ok) {
@@ -1166,7 +1213,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       setAssigning(true)
       const res = await fetch(`/api/devices/${device.id}/assign`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify({
           assignee: aAssignee.trim(),
           assigneeRole: aRole.trim() || null,
@@ -1201,7 +1253,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       setReturning(true)
       const res = await fetch(`/api/devices/${device.id}/return`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify({
           actualReturnDate: rReturnDate,
           notes: rNotes.trim() || null,
@@ -1244,7 +1301,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       setTransferring(true)
       const res = await fetch(`/api/devices/${device.id}/transfer`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify({
           toSite: tSite,
           toDept: tDept.trim() || null,

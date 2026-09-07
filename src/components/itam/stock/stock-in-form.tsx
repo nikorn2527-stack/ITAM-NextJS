@@ -72,6 +72,7 @@ import {
 } from './shared'
 import { Combobox } from '../combobox'
 import { QrScannerDialog } from '../qr-scanner-dialog'
+import { useAuthStore } from '@/store/auth-store'
 
 interface StockListResponse {
   data: StockItem[]
@@ -143,7 +144,9 @@ export function StockInForm() {
     queryKey: ['master-all-vendors'],
     queryFn: async () => {
       try {
-        const res = await fetch('/api/master?category=Vendor')
+        const res = await fetch('/api/master?category=Vendor', {
+          headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+        })
         if (!res.ok) return []
         const j = await res.json()
         return ((j.items ?? []) as { code: string; label: string }[])

@@ -29,6 +29,7 @@ import {
   depreciationLabel,
 } from './types'
 import { useAppStore } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
 
 interface MiniCardProps {
   label: string
@@ -121,7 +122,9 @@ export function DepreciationSection() {
   const { data, isLoading } = useQuery<DepreciationData>({
     queryKey: ['depreciation'],
     queryFn: async () => {
-      const res = await fetch('/api/devices/depreciation')
+      const res = await fetch('/api/devices/depreciation', {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) throw new Error('Failed to fetch depreciation')
       return res.json()
     },

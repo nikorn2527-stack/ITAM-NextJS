@@ -19564,3 +19564,154 @@ Pattern: `findWorkOrder(id) + notFound()` → `loadAuthorizedWorkOrderV1(req, id
 
 ## หมายเหตุ
 ผู้ใช้ชี้ให้เห็น pattern ที่เจอซ้ำ: "เขียน fix ถูกจุดแล้ว แต่ wiring ไม่ครบ" — แนะนำให้ทีมเพิ่มขั้นตอน grep หาทุกจุดที่เรียกฟังก์ชันเก่าก่อนปิดงานแก้บั๊กทุกครั้ง
+
+---
+Task ID: MOBILE-OFFLINE-CHART-017
+Agent: mobile-offline-chart subagent
+Task: Add offline queue for mobile + improve dashboard chart styling
+
+Work Log:
+- Read worklog.md (baseline 0 TS errors, 1 lint error + 105 warnings).
+- Created `src/lib/offline-queue.ts` — localStorage-backed queue with
+  getQueue / addToQueue / processQueue / clearQueue, MAX_RETRIES=3,
+  auto-retry on `online` event, reads Bearer token from `itam-auth`
+  (zustand persist key) for authenticated retries.
+- Hooked offline queue into 4 mobile form pages. Pattern: in the catch
+  block, `if (!navigator.onLine) → addToQueue(...) → toast.success('บันทึกไว้ในคิว จะส่งอัตโนมัติเมื่อออนไลน์')`.
+  Existing error handling preserved as fallback. Each page declares the
+  request body in a `let` outside `try` so the catch block can read it.
+  - `mobile-repair-request.tsx` (POST /api/work-orders) — queues repair
+    submissions; calls resetForm() so technician can move on.
+  - `mobile-stock-out.tsx` (POST /api/stock-items/[id]/transaction) —
+    queues stock-out; closes sheet via onClose().
+  - `mobile-meter-reading.tsx` (POST /api/itam/meter-readings) — queues
+    meter readings; skips the 2-step confirmReset flow (let existing
+    error UI handle it) to avoid retry-loop 409s; calls onSaved().
+  - `mobile-my-work.tsx` (PUT /api/work-orders/[id], POST /complete,
+    POST /messages) — captures the primary request per branch into a
+    `queuedRequest` let; secondary requests (photo uploads, side
+    messages) already use .catch(() => undefined) and degrade on their
+    own; closes sheet via onClose() after queueing.
+- Dashboard chart polish in `src/components/itam/itam-dashboard.tsx`:
+  - tooltipStyle: borderRadius 8 → 10, stronger boxShadow
+    (0 8px 24px -4px + 0 2px 6px), added transition + backdropFilter blur.
+  - Pie: animationDuration 700 → 800, added `animationEasing="ease-out"`.
+  - Bar: animationDuration 700 → 800 + `animationEasing="ease-out"`;
+    added 3-stop `barTealGrad` (was 2-stop) for richer gradient;
+    added new `barOrangeActiveGrad` (orange #fb923c → #f97316 → #ea580c);
+    added `activeBar={{ fill: 'url(#barOrangeActiveGrad)', stroke: '#f97316', strokeWidth: 1 }}`
+    for orange hover highlight.
+  - Area (actual + forecast): added `animationEasing="ease-out"`;
+    dot r=3 fill=#0d9488 strokeWidth=0 → r=4 fill=white stroke=#0d9488 strokeWidth=2
+    (matches the `dot={{ r: 4, strokeWidth: 2 }}` spec for line charts);
+    activeDot r=5 → r=6.
+- Verified:
+  - `bunx tsc --noEmit` → 0 errors.
+  - `bun run lint` → 1 error + 105 warnings (unchanged from baseline).
+    All mobile-file warnings shown are pre-existing "Avoid calling
+    setState() directly within an effect" patterns, not introduced
+    by this task.
+
+Stage Summary:
+- Created: src/lib/offline-queue.ts (new, 114 lines)
+- Modified mobile form pages (offline queue added):
+  - src/components/itam/mobile/mobile-repair-request.tsx
+  - src/components/itam/mobile/mobile-stock-out.tsx
+  - src/components/itam/mobile/mobile-meter-reading.tsx
+  - src/components/itam/mobile/mobile-my-work.tsx
+- Modified dashboard: src/components/itam/itam-dashboard.tsx
+- TS: 0 errors. Lint: 1 error + 105 warnings (matches baseline).
+- No tests touched.
+
+---
+Task ID: DEADCODE-AUDIT-016
+Agent: deadcode-audit subagent
+Task: Delete settings-page-v2.tsx + audit Sticker/PM/Import/Audit modules
+
+Work Log:
+- Read worklog.md (last 60 lines) to confirm baseline (TS=0 errors, Lint=1 error+105 warnings).
+- Verified settings-page-v2.tsx imports: found 2 importers (NOT pure dead code):
+    • src/app/home-client.tsx lines 96-98 — dead dynamic import of `SettingsPageV2` (no `<SettingsPageV2 />` JSX anywhere)
+    • src/components/itam/itam-settings.tsx line 32 — ACTIVE imports `AssetPatternTab, WoPatternTab`
+- Per task constraint "if imports exist, skip deletion" → did NOT delete the file.
+  Instead did surgical dead-code removal:
+    • Removed dead `SettingsPageV2` function (lines 1443-1525) from settings-page-v2.tsx.
+    • Removed dead dynamic-import lines 96-98 from home-client.tsx.
+    • Removed orphaned `'settings-v2'` page-id references in 3 files:
+        - src/app/home-client.tsx line 344 (isActive('settings-v2') removed)
+        - src/store/app-store.ts line 29 (`| 'settings-v2'` removed from ActivePage union)
+        - src/components/itam/footer.tsx line 26 (`'settings-v2': 'ตั้งค่า',` removed)
+    • Replaced 27-line CONSULTING-007 comment block at top of settings-page-v2.tsx with a 4-line note.
+- Audited Sticker system files (itam-sticker-editor.tsx, sticker-print-dialog.tsx, sticker-template.ts, sticker-print-helpers.ts, sticker-settings-store.ts, 6 API routes).
+- Audited PM module (pm-schedule.ts, pm-schedules-page.tsx, 5 PM API routes).
+- Audited Import/Export CSV (api/import/route.ts 2387 lines, api/devices/import/route.ts, api/itam/devices/import/route.ts, device-import-persistence.ts).
+- Audited Audit log module (api/audit/route.ts, api/audit/log/route.ts, lib/audit.ts, lib/bulk-audit.ts, plus spot-checks on devices/[id]/{transfer,assign,replace,return,lifecycle},accessories/[accessoryId]).
+- Ran final TS + lint verification (0 TS errors; 1 lint error + 105 warnings — matches baseline; no new issues introduced).
+
+Stage Summary:
+
+### Files deleted
+- (none — file-level deletion skipped because AssetPatternTab + WoPatternTab are active exports imported by itam-settings.tsx)
+
+### Dead code removed (in-place)
+- src/components/itam/settings-page-v2.tsx: removed dead `SettingsPageV2` function (~83 lines) + 27-line stale comment block (replaced with 4-line note).
+- src/app/home-client.tsx: removed dead `SettingsPageV2` dynamic-import scaffolding (3 lines) + removed `isActive('settings-v2')` from KeepAlivePage active check.
+- src/store/app-store.ts: removed `'settings-v2'` from `ActivePage` union type.
+- src/components/itam/footer.tsx: removed `'settings-v2': 'ตั้งค่า'` label.
+
+### Audit findings — Sticker system (4 issues, no P0)
+| Severity | File | Issue | Recommended fix |
+|----------|------|-------|------------------|
+| P1 | src/app/api/itam/sticker/render/route.ts (line 70-86) + bulk-render/route.ts (line 86-93, 122-129) | `deviceData` mapping omits many Device fields (status, currentAssignee, warrantyEnd, purchaseDate, purchasePrice, ip, mac, room, licenses) → sticker variables {{DeviceStatus}}, {{WarrantyEnd}}, {{PurchasePrice}}, {{Ip}}, {{Mac}}, {{Room}}, {{License1_*}} silently render blank | Add missing fields to StickerDeviceData mapping in both routes (mirror sticker-print-dialog.tsx `deviceToStickerData`) |
+| P2 | src/lib/sticker-template.ts (line 947-1049) | `buildPrintDocument` has `useCanvasAsPage = true` hardcoded → `mode` param + `cols` param + A4-grid branch (lines 980-1000) are dead code | Remove dead branches or wire up A4 mode behind a feature flag |
+| P2 | src/components/itam/sticker-print-dialog.tsx (line 120-156) + sticker-print-helpers.ts (line 82-115) | Two near-identical `printViaIframe` / `openPrintWindow` implementations (code duplication) | Consolidate to a single shared helper |
+| P2 | src/lib/sticker-template.ts (line 196-223 buildQrCacheForDevice in dialog vs 856-882 preGenerateQrCodes in lib) | Duplicated QR-cache generation logic | Reuse `preGenerateQrCodes` from lib in dialog |
+
+### Audit findings — PM module (5 issues, no P0)
+| Severity | File | Issue | Recommended fix |
+|----------|------|-------|------------------|
+| P1 | src/app/api/pm/schedules/[id]/route.ts (GET/PUT/DELETE) + pm/executions/route.ts (POST) + pm/executions/[id]/complete/route.ts | None of these routes check that the caller has site access to the schedule's `site` — a user could read/update/delete/complete PM schedules for sites they don't have access to (authz bypass) | Add `buildAuthorizationContext` + `canAtSite(schedule.site, perm)` check (mirror itam/devices/[id]/transfer/route.ts) |
+| P1 | src/app/api/pm/executions/route.ts POST (line 105-108) | Updates `schedule.lastRunDate` to `body.scheduledDate` immediately when PENDING execution is created — `lastRunDate` should be set on COMPLETED, not on PENDING creation (misleading state) | Move `lastRunDate` update to /complete route (after status=COMPLETED) |
+| P1 | src/app/api/pm/calendar/route.ts (line 70-110) | N+1 query: for each (schedule × date-in-month) it does `db.pMExecution.findFirst`. With many schedules × many dates this is O(N×M) DB calls per calendar render | Bulk-fetch existing executions for the month in one query, build a Map for lookup |
+| P2 | src/app/api/pm/calendar/route.ts + pm/executions/route.ts + pm/executions/[id]/complete/route.ts | Missing `moduleUnavailableResponse('pm')` gate that sibling routes (pm/schedules GET+POST) have — inconsistent module gating | Add the same gate at the top of each handler |
+| P2 | src/lib/pm-schedule.ts (line 78-81 computeNextRunDate 'custom' + line 246-257 generateScheduledDatesForMonth 'custom') | 'custom' frequency uses `intervalDays` from today, ignoring `startDate`; calendar display uses `epochDays % intervalDays` which doesn't account for startDate alignment | Honor `startDate` for custom frequency (compute next run as startDate + n*intervalDays where n = ceil((today-startDate)/intervalDays)) |
+
+### Audit findings — Import/Export CSV (5 issues, no P0)
+| Severity | File | Issue | Recommended fix |
+|----------|------|-------|------------------|
+| P1 | src/app/api/import/route.ts `importMeterReadings` (line 573-704) | Each `db.meterReading.create` (line 660) + each `db.device.update` for lastMeterBw/Color (line 694) is NOT wrapped in a transaction → partial-failure leaves torn state (meterReadings committed but device.lastMeterBw stale, or some rows committed and others not) | Wrap the per-row create + device update in `db.$transaction` (or batch all creates + all updates in one transaction like devices importer does) |
+| P1 | src/app/api/import/route.ts `importWorkOrders` (line 437) | Audit log passes actor=`'system'` instead of `auth.user.email` → all CSV-imported work orders are attributed to "system", losing who actually ran the import | Pass `auth.user.email` to logAudit() |
+| P1 | src/lib/device-import-persistence.ts (line 60) | `status: (v.status ?? 'Active').toLowerCase()` stores lowercase status values ('active', 'spare', 'repair', 'disposed') — but `/api/devices/import/route.ts` (STATUS_CANONICAL at line 103) stores canonical form ('Active', 'In Stock', 'In Repair', 'Disposed'). Two import routes produce inconsistent status values → queries by status break | Either normalize to canonical form here, or align both routes to use the same STATUS_CANONICAL map |
+| P2 | src/app/api/import/route.ts `importWorkOrders` (line 372-379) | woNumber generation has a TOCTOU race: `findFirst` then `seq++` then `create`. Two concurrent imports could collide on woNumber (mitigated by collision check at line 407 which falls back to DB-auto-gen, but still a race window) | Use a DB sequence or wrap in an advisory lock |
+| P2 | src/app/api/devices/import/route.ts (line 436) | `const skipped = skippedByMode + errors.filter((e) => e.row !== 0).length - skippedByMode` simplifies to `errors.filter((e) => e.row !== 0).length` (skippedByMode cancels itself out). The variable is dead — final count is just errors with non-zero row. Misleading and skippedByMode is unused | Simplify formula or use the correct count (skippedByMode + count of skip-action byRow entries) |
+
+### Audit findings — Audit log module (4 issues, no P0)
+| Severity | File | Issue | Recommended fix |
+|----------|------|-------|------------------|
+| P1 | src/app/api/audit/log/route.ts (line 14) | POST endpoint uses `VIEW_DASHBOARD` permission — a READ permission — for WRITING audit log entries. Any user with view-dashboard can forge/spam audit log entries via this generic endpoint | Use a more restrictive permission (e.g. `VIEW_AUDIT` or add a new `LOG_AUDIT` permission), or restrict to authenticated mutations only |
+| P1 | src/app/api/devices/[id]/accessories/[accessoryId]/route.ts (PATCH line 5 + DELETE line 31) | Neither PATCH nor DELETE writes an audit log entry — accessory updates and deletes happen silently with no trail | Add `logAudit('UPDATE'/'DELETE', 'DeviceAccessory', accessoryId, ...)` calls |
+| P2 | src/app/api/audit/route.ts GET | No site-scoping — a user with VIEW_AUDIT can read audit logs from ALL sites (not just their own). Multi-tenant visibility concern | Filter by `siteCode` based on caller's `allowedSites` (super-admin sees all) |
+| P2 | src/lib/audit.ts `logAudit` + lib/bulk-audit.ts `logBulkAudit` | All errors are silently swallowed (console.error only) — no metric/alert on audit-log failure. Compliance-critical actions could lose their audit trail with zero visibility | Consider emitting a metric / writing to a fallback log table on failure |
+
+### Audit gaps checked — confirmed OK
+- Device DELETE: `api/devices/[id]/route.ts` line 335 ✅, `api/itam/devices/[id]/route.ts` line 152 ✅
+- Device UPDATE: `api/devices/[id]/route.ts` line 255 ✅, `api/itam/devices/[id]/route.ts` line 100 ✅
+- Device TRANSFER: `api/itam/devices/[id]/transfer/route.ts` line 247 ✅ (legacy `api/devices/[id]/transfer/route.ts` delegates)
+- Device ASSIGN: `api/devices/[id]/assign/route.ts` line 111 ✅
+- Device REPLACE: `api/devices/[id]/replace/route.ts` line 273 ✅, `replace-on-withdraw` line 396 ✅
+- Device RETURN: `api/devices/[id]/return/route.ts` line 56 ✅
+- Device LIFECYCLE: `api/itam/devices/[id]/lifecycle/route.ts` line 268 ✅ (legacy delegates)
+- Stock-item PUT/DELETE: `api/stock-items/[id]/route.ts` lines 214, 249 ✅
+- All Sticker routes log audit (templates POST/PUT/DELETE/activate, settings PUT, render POST, bulk-render POST) ✅
+- All PM routes log audit (schedules POST/PUT/DELETE, executions POST, executions/[id]/complete POST) ✅
+
+### Verify
+- `bunx tsc --noEmit 2>&1 | grep -cE "error TS"` → **0 errors** ✅ (matches baseline)
+- `bun run lint 2>&1 | tail -3` → **1 error + 105 warnings** ✅ (matches baseline; the 1 error is pre-existing `react-hooks/set-state-in-effect` not introduced by this task)
+- No new lint warnings on edited files (settings-page-v2.tsx, home-client.tsx, app-store.ts, footer.tsx)
+
+### Notes / Recommendations
+1. The user's task description assumed `settings-page-v2.tsx` was entirely dead ("confirmed unused, only 3 tabs vs 16 in the real settings"). The truth is more nuanced: the `SettingsPageV2` wrapper component (3 tabs) was dead, but the file also contains `AssetPatternTab` + `WoPatternTab` which are ACTIVE in itam-settings.tsx. The dead wrapper was removed; the active tabs were preserved. Consider renaming the file to `settings-patterns.tsx` (per CONSULTING-007 note) in a follow-up task.
+2. The PM module has a real authz gap (P1) — site-scoped users can read/update/complete PM schedules outside their site. Recommend a follow-up task to add `buildAuthorizationContext` + `canAtSite` checks (mirroring the itam/devices pattern).
+3. The Import module has multiple P1 torn-state risks in `importMeterReadings` and `importStock`. Recommend a follow-up task to wrap all per-row DB writes in transactions (the devices importer already does this correctly — copy that pattern).
+4. The Audit log module's generic POST endpoint (`/api/audit/log`) uses too permissive a permission. Recommend tightening to `VIEW_AUDIT` or a new `LOG_AUDIT` write permission.

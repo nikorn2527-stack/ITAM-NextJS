@@ -37,6 +37,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
+import { useAuthStore } from '@/store/auth-store'
 
 interface ReportCycle {
   id: string
@@ -236,7 +237,9 @@ export function CycleReportDialog({
     queryKey: ['cycle-report', cycleId],
     queryFn: async () => {
       if (!cycleId) return null
-      const res = await fetch(`/api/cycles/${cycleId}/report`)
+      const res = await fetch(`/api/cycles/${cycleId}/report`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) throw new Error('Failed to load report')
       return res.json()
     },

@@ -108,7 +108,9 @@ export function ItamMeter() {
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) })
       if (siteFilter !== 'all') params.set('site', siteFilter)
-      const res = await fetch(`/api/itam/meter-readings?${params.toString()}`)
+      const res = await fetch(`/api/itam/meter-readings?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      })
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
@@ -120,7 +122,7 @@ export function ItamMeter() {
       setSaving(true)
       const res = await fetch('/api/itam/meter-readings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ assetCode, meterBw: Number(meterBw), remark: remark || null }),
       })
       if (!res.ok) {
@@ -329,7 +331,10 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const { data: devicesData, isLoading: devicesLoading } = useQuery<DevicesResponse>({
     queryKey: ['itam-devices-bulk', 'meter-required'],
     queryFn: async () => {
-      const res = await fetch('/api/itam/devices?limit=100')
+      const token = useAuthStore.getState()?.token
+      const res = await fetch('/api/itam/devices?limit=100', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
@@ -355,7 +360,12 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
     setLastReadingsLoaded(false)
     Promise.all(
       eligibleDevices.map(d =>
-        fetch(`/api/itam/meter-readings?assetCode=${encodeURIComponent(d.assetCode)}&limit=1`)
+        fetch(`/api/itam/meter-readings?assetCode=${encodeURIComponent(d.assetCode)}&limit=1`, {
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t ? { Authorization: `Bearer ${t}` } : {}
+          })(),
+        })
           .then(r => r.ok ? r.json() : null)
           .then(j => {
             const r = j?.readings?.[0]
@@ -415,7 +425,12 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
         toSave.map(m =>
           fetch('/api/itam/meter-readings', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: (() => {
+              const t = useAuthStore.getState()?.token
+              return t
+                ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+                : { 'Content-Type': 'application/json' }
+            })(),
             body: JSON.stringify({
               assetCode: m.assetCode,
               meterBw: m.next,

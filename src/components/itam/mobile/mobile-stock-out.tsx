@@ -101,6 +101,7 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
 import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
 import { QrScannerDialog } from '@/components/itam/qr-scanner-dialog'
+import { addToQueue } from '@/lib/offline-queue'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -230,7 +231,12 @@ export function MobileStockOut() {
       })
       const q = searchTerm.trim()
       if (q) params.set('search', q)
-      const res = await fetch(`/api/stock-items?${params.toString()}`)
+      const res = await fetch(`/api/stock-items?${params.toString()}`, {
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t ? { Authorization: `Bearer ${t}` } : {}
+        })(),
+      })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error ?? 'โหลดรายการไม่สำเร็จ')
@@ -270,6 +276,12 @@ export function MobileStockOut() {
           status: 'PENDING',
           pageSize: '20',
         }).toString()}`,
+        {
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t ? { Authorization: `Bearer ${t}` } : {}
+          })(),
+        },
       )
       if (!res.ok) {
         throw new Error('โหลดรายการรออนุมัติไม่สำเร็จ')
@@ -691,6 +703,12 @@ function IssueSheetBody({ item, onClose, onIssued }: IssueSheetBodyProps) {
             search: q,
             pageSize: '10',
           }).toString()}`,
+          {
+            headers: (() => {
+              const t = useAuthStore.getState()?.token
+              return t ? { Authorization: `Bearer ${t}` } : {}
+            })(),
+          },
         )
         if (!res.ok) throw new Error('ค้นหาใบงานไม่สำเร็จ')
         const json = (await res.json()) as WorkOrderSearchResponse
@@ -730,8 +748,10 @@ function IssueSheetBody({ item, onClose, onIssued }: IssueSheetBodyProps) {
       return
     }
     setSubmitting(true)
+    // Declare outside try so the catch block can read it for offline-queue fallback.
+    let body: Record<string, unknown> | null = null
     try {
-      const body: Record<string, unknown> = {
+      body = {
         type: 'OUT',
         quantity: qtyNum,
         txnDate: new Date().toISOString().slice(0, 10),
@@ -753,7 +773,12 @@ function IssueSheetBody({ item, onClose, onIssued }: IssueSheetBodyProps) {
         `/api/stock-items/${encodeURIComponent(item.id)}/transaction`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t
+              ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+              : { 'Content-Type': 'application/json' }
+          })(),
           body: JSON.stringify(body),
         },
       )
@@ -773,6 +798,21 @@ function IssueSheetBody({ item, onClose, onIssued }: IssueSheetBodyProps) {
       })
       onIssued(updatedItem, json.data.transaction.txnNumber ?? null)
     } catch (e) {
+      // Offline queue fallback — only when the network is actually down,
+      // not on server-side errors (e.g. "สต็อกไม่พอ").
+      if (!navigator.onLine && body) {
+        addToQueue({
+          url: `/api/stock-items/${encodeURIComponent(item.id)}/transaction`,
+          method: 'POST',
+          body,
+          label: `เบิกของ: ${item.productName} ×${qtyNum ?? 0} ${item.unit ?? ''}`.trim(),
+        })
+        toast.success('บันทึกไว้ในคิว จะส่งอัตโนมัติเมื่อออนไลน์')
+        // Close the sheet so the technician can scan the next item; the
+        // queue will replay the transaction when connectivity returns.
+        onClose()
+        return
+      }
       setError(e instanceof Error ? e.message : 'เบิกของไม่สำเร็จ')
     } finally {
       setSubmitting(false)

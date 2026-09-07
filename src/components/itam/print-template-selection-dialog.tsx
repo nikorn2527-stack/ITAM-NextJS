@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { FileText, Star, Eye, Plus, Check } from 'lucide-react'
 import { toast } from 'sonner'
+import { useAuthStore } from '@/store/auth-store'
 
 export interface PrintTemplate {
   id: string
@@ -65,7 +66,9 @@ export function PrintTemplateSelectionDialog({
   const { data: templates, isLoading } = useQuery<PrintTemplate[]>({
     queryKey: ['print-templates', templateType],
     queryFn: async () => {
-      const res = await fetch(`/api/templates?type=${templateType}`)
+      const res = await fetch(`/api/templates?type=${templateType}`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return []
       const json = await res.json()
       return (json.templates ?? []) as PrintTemplate[]

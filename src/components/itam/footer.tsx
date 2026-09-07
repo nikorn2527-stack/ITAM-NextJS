@@ -1,6 +1,7 @@
 'use client'
 
 import { useAppStore } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
 import { useQuery } from '@tanstack/react-query'
 
 const PAGE_LABELS: Record<string, string> = {
@@ -23,7 +24,6 @@ const PAGE_LABELS: Record<string, string> = {
   'pm-schedules': 'ตาราง PM',
   templates: 'เทมเพลต',
   'monthly-report': 'รายงานรายเดือน',
-  'settings-v2': 'ตั้งค่า',
   'paper-analytics-page': 'วิเคราะห์กระดาษ',
   'meter-page': 'มิเตอร์',
   'itam-repairs': 'ซ่อมบำรุง',
@@ -41,7 +41,9 @@ export function Footer() {
     queryKey: ['org-profile'],
     queryFn: async () => {
       try {
-        const res = await fetch('/api/settings/org-profile')
+        const res = await fetch('/api/settings/org-profile', {
+          headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+        })
         if (!res.ok) return null
         const j = await res.json()
         return j.profile ?? null
