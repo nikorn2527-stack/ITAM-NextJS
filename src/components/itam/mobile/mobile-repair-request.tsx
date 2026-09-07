@@ -157,6 +157,7 @@ export function MobileRepairRequest() {
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const cameraInputRef = React.useRef<HTMLInputElement>(null)
 
   // ── Auth-aware reporter info (for submissionSource='session') ──
   const user = useAuthStore((s) => s.user)
@@ -972,16 +973,18 @@ export function MobileRepairRequest() {
 
                 {/* Capture / pick buttons */}
                 <div className="grid grid-cols-2 gap-2">
+                  {/* Camera button — opens the device's native camera app directly */}
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={openCamera}
+                    onClick={() => cameraInputRef.current?.click()}
                     disabled={images.length >= MAX_IMAGES}
                     className="h-12"
                   >
                     <Camera className="mr-2 h-4 w-4" />
                     ถ่ายภาพ
                   </Button>
+                  {/* Gallery button — opens the photo picker (gallery only) */}
                   <Button
                     type="button"
                     variant="outline"
@@ -993,12 +996,22 @@ export function MobileRepairRequest() {
                     เลือกจากคลัง
                   </Button>
                 </div>
+                {/* Gallery input — NO capture attribute → opens photo picker (gallery) */}
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   multiple
+                  onChange={onFileChange}
+                  className="hidden"
+                  aria-hidden="true"
+                />
+                {/* Camera input — capture=environment → opens native camera app (rear camera) */}
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
                   onChange={onFileChange}
                   className="hidden"
                   aria-hidden="true"

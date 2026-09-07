@@ -1492,6 +1492,7 @@ function PhotosCard({
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const cameraInputRef = React.useRef<HTMLInputElement>(null)
 
   const user = useAuthStore((s) => s.user)
   const uploadedBy = user?.email ?? user?.name ?? user?.username ?? null
@@ -1820,7 +1821,6 @@ function PhotosCard({
           type="file"
           accept="image/*"
           multiple
-          capture="environment"
           onChange={onFileChange}
           className="hidden"
           aria-hidden="true"
@@ -2037,6 +2037,7 @@ function StatusUpdateSheet({
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const cameraInputRef = React.useRef<HTMLInputElement>(null)
 
   // Reset when action changes
   React.useEffect(() => {
@@ -2524,7 +2525,6 @@ function StatusUpdateSheet({
                 type="file"
                 accept="image/*"
                 multiple
-                capture="environment"
                 onChange={onFileChange}
                 className="hidden"
                 aria-hidden="true"
