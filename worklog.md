@@ -19369,3 +19369,58 @@ Stage Summary:
 - ไม่มี pop-up blocker issues (no `window.open` to block)
 - ไม่ refactor working code อื่น — `handlePrint` ของ wo-print-form ที่ใช้ `window.print()` อยู่แล้วคงไว้
 
+
+---
+Task ID: DOC-CHECKLIST-IMPLEMENT-013
+Agent: main agent
+Task: ทำตามเอกสารข้อกำหนดที่ผู้ใช้ส่งมา — เช็กลิสต์ตรวจ error + @media print refactor + ตรวจ Dashboard/Cost Analytics/User Management
+
+## สถานะก่อนแก้
+- ผู้ใช้ส่งเอกสาร 2 ชุด:
+  1. เช็กลิสต์ตรวจ error ที่ยังไม่หาย (grep .toLocaleString ที่ไม่มี guard + เตือน formatBaht ซ้อนกัน + ลบ dashboard-page.tsx legacy)
+  2. ข้อกำหนดเปลี่ยนการพิมพ์ไม่ให้เปิดแท็บใหม่ (window.open → @media print, 3 ไฟล์)
+- ผู้ใช้ถามว่าต้องการให้สุ่มตรวจจุดไหนต่อ (Dashboard/Cost Analytics หรือ User Management UI)
+
+Work Log:
+- **ลบ legacy dashboard-page.tsx**:
+  - ตรวจว่าไม่ถูก import ใช้งานจริง (มีแค่ comments อ้างถึงใน itam-dashboard.tsx)
+  - ลบไฟล์ทิ้งเพื่อกัน dev แก้ผิดไฟล์ + กัน formatBaht ซ้อนกัน 2 ตัว
+- **แก้ unsafe .toLocaleString() calls** (subagent TOLOCALESTRING-GUARD-011):
+  - grep หาจุดที่ไม่มี guard ทั้งโปรเจกต์
+  - เพิ่ม `?? 0` guards ใน 3 ไฟล์:
+    - `mobile-stock-out.tsx` (4 guards: API-derived quantity/balanceAfter)
+    - `dashboard-pdf-export.tsx` (5 guards: byStatus/byType/topUsage values)
+    - `pagination-bar.tsx` (1 guard: total prop)
+  - ไฟล์อื่นๆ ตรวจแล้วปลอดภัย (มี guard อยู่แล้ว หรือเป็น new Date() ที่ปลอดภัย)
+- **Refactor @media print** (subagent PRINT-MEDIA-QUERY-012):
+  - เพิ่ม global CSS ใน `globals.css`: `.print-only { display: none }` + `@media print` block ที่ซ่อน `body *` แล้วโชว์เฉพาะ `.print-only`
+  - `monthly-report.tsx`: แก้ 2 print calls (special-fee + regular report) — เปลี่ยน window.open → setPrintHtml + setTimeout(window.print)
+  - `template-print-dialog.tsx`: แก้ 1 print call — เปลี่ยน window.open → container + window.print
+  - `wo-print-form.tsx`: แก้ 1 print call — เปลี่ยน window.open(url) → fetch(url) + setPrintHtml + window.print
+  - ผล: กด "พิมพ์" แล้ว browser print dialog ขึ้นบนหน้าเดิม ไม่เปิดแท็บใหม่
+- **ตรวจ Dashboard/Cost Analytics/User Management UI** (ตามที่ผู้ใช้ถาม):
+  - Dashboard: โหลดสมบูรณ์ มี Smart Insights + กราฟ + แผนเปลี่ยนทดแทน ไม่มี errors
+  - Cost Analytics (ต้นทุนวัสดุ): โหลดสมบูรณ์ แสดงข้อมูลจริง (฿14,600 รวม) + สัดส่วนต้นทุน + หมึกพิมพ์ + อะไหล่
+  - User Management (Settings → จัดการผู้ใช้): โหลดสมบูรณ์ มี heading "ผู้ใช้ทั้งหมด" + มี React warning เรื่อง key prop (ไม่ร้ายแรง)
+
+## Files modified/deleted
+1. `src/components/itam/dashboard-page.tsx` — DELETED (legacy, unused, duplicate formatBaht)
+2. `src/components/itam/mobile/mobile-stock-out.tsx` — เพิ่ม 4 null-guards
+3. `src/components/itam/dashboard-pdf-export.tsx` — เพิ่ม 5 null-guards
+4. `src/components/itam/pagination-bar.tsx` — เพิ่ม 1 null-guard
+5. `src/app/globals.css` — เพิ่ม `.print-only` + `@media print` block
+6. `src/components/itam/monthly-report.tsx` — เปลี่ยน 2 window.open → @media print
+7. `src/components/itam/template-print-dialog.tsx` — เปลี่ยน 1 window.open → @media print
+8. `src/components/itam/wo-print-form.tsx` — เปลี่ยน 1 window.open → @media print
+
+## Stage Summary
+- ✅ ลบ legacy dashboard-page.tsx (กัน formatBaht ซ้อนกัน + กัน dev แก้ผิดไฟล์)
+- ✅ เพิ่ม null-guards 10 จุด ใน 3 ไฟล์ (ป้องกัน toLocaleString crash แบบเดียวกับที่เกิดบน production)
+- ✅ Refactor print 3 ไฟล์ จาก window.open → @media print (ไม่เปิดแท็บใหม่)
+- ✅ ตรวจ Dashboard + Cost Analytics + User Management — ทั้ง 3 โหลดสมบูรณ์ ไม่มี errors ร้ายแรง
+- ✅ TypeScript: 0 errors, Lint: เท่า baseline
+- ✅ Push สำเร็จ (commit 4c39e98)
+
+## หมายเหตุ
+- ผู้ใช้แจ้งว่าโหมดมือถือตรวจแล้วทำได้ดี ไม่พบบั๊กร้ายแรง — มีแค่ข้อจำกัดเรื่อง offline queue (ไม่เร่งด่วน)
+- ถ้าผู้ใช้ต้องการให้ตรวจจุดอื่นต่อ สามารถแจ้งได้
