@@ -572,15 +572,7 @@ export function ImportPage() {
           <TabsList className="flex-shrink-0 bg-slate-100 dark:bg-slate-800">
             <TabsTrigger value="manual" onClick={() => {}} className="gap-1.5">
               <Upload className="h-3.5 w-3.5" />
-              นำเข้าใหม่ (Manual)
-            </TabsTrigger>
-            <TabsTrigger value="legacy" onClick={() => {}} className="gap-1.5">
-              <Database className="h-3.5 w-3.5" />
-              นำเข้าจากระบบเก่า (Apps Script)
-            </TabsTrigger>
-            <TabsTrigger value="sync-preview" className="gap-1.5">
-              <RefreshCw className="h-3.5 w-3.5" />
-              Preview Sync (ไม่เขียน)
+              นำเข้าข้อมูล (CSV)
             </TabsTrigger>
           </TabsList>
 
@@ -764,16 +756,6 @@ export function ImportPage() {
             </Card>
           </motion.div>
         )}
-          </TabsContent>
-
-          {/* ─── Legacy Apps Script import tab ─── */}
-          <TabsContent value="legacy" className="min-h-0 flex-1 overflow-y-auto">
-            <LegacyImportSection />
-          </TabsContent>
-
-          {/* ─── Repair preview-only sync tab ─── */}
-          <TabsContent value="sync-preview" className="min-h-0 flex-1 overflow-y-auto">
-            <ManualSyncPreviewSection />
           </TabsContent>
         </Tabs>
 
