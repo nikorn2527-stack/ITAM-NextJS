@@ -3592,7 +3592,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           {/* Table */}
           {/* Table — fills remaining height of the Card. overflow-x-auto for mobile horizontal scroll. */}
           <div className="itam-scroll mt-4 min-h-0 flex-1 overflow-auto overflow-x-auto rounded-md border border-slate-300 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <Table className="min-w-[800px]">
+            <Table className="w-full">
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   {hasDevices && isColVisible('assetCode') && (
@@ -3775,7 +3775,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       )}
                       {/* มิเตอร์ล่าสุด */}
                       {isColVisible('meter') && (
-                      <TableCell className="min-w-[100px]">
+                      <TableCell className="w-auto">
                         {hasMeter ? (
                           <div>
                             <div className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">

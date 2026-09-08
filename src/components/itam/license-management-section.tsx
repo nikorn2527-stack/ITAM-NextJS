@@ -735,11 +735,11 @@ export function LicenseManagementSection() {
           <Table>
             <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur dark:bg-slate-900/95">
               <TableRow>
-                <TableHead className="min-w-[160px]">Software</TableHead>
-                <TableHead className="min-w-[140px]">License ID</TableHead>
-                <TableHead className="min-w-[200px]">อุปกรณ์</TableHead>
-                <TableHead className="min-w-[120px]">ประเภท</TableHead>
-                <TableHead className="min-w-[140px]">วันหมดอายุ</TableHead>
+                <TableHead className="w-auto">Software</TableHead>
+                <TableHead className="w-auto">License ID</TableHead>
+                <TableHead className="w-auto">อุปกรณ์</TableHead>
+                <TableHead className="w-auto">ประเภท</TableHead>
+                <TableHead className="w-auto">วันหมดอายุ</TableHead>
                 <TableHead className="min-w-[110px] text-center">สถานะ</TableHead>
                 <TableHead className="min-w-[80px] text-center">จำนวน</TableHead>
                 <TableHead className="min-w-[110px] text-right">จัดการ</TableHead>

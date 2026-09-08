@@ -143,7 +143,7 @@ export function ItamMeter() {
   const totalPages = data?.pagination.totalPages ?? 0
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 p-4 md:p-6">
+    <div className="flex h-full w-full flex-col gap-3 p-3 md:p-4">
       <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จดมิเตอร์ (Real DB)</h1>

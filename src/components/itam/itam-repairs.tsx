@@ -413,7 +413,7 @@ export function ItamRepairs() {
   // ── Render ───────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 p-4 md:p-6">
+    <div className="flex h-full w-full flex-col gap-3 p-3 md:p-4">
       {/* Header */}
       <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -528,14 +528,14 @@ export function ItamRepairs() {
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
                   <TableHead className="w-28">เลขที่</TableHead>
-                  <TableHead className="min-w-[180px]">รหัสอุปกรณ์</TableHead>
+                  <TableHead className="w-auto">รหัสอุปกรณ์</TableHead>
                   <TableHead className="w-24">ประเภท</TableHead>
                   <TableHead className="w-28">สถานะ</TableHead>
                   <TableHead className="w-32">วันที่เริ่ม</TableHead>
                   <TableHead className="w-32">วันที่เสร็จ</TableHead>
                   <TableHead className="w-28 text-right">ค่าซ่อม</TableHead>
                   <TableHead className="w-32">ร้านซ่อม</TableHead>
-                  <TableHead className="min-w-[200px]">คำอธิบาย</TableHead>
+                  <TableHead className="w-auto">คำอธิบาย</TableHead>
                   <TableHead className="w-20 text-right">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>

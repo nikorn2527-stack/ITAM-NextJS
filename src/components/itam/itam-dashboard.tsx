@@ -319,7 +319,7 @@ function CycleProgressWidget({
               </div>
             </div>
 
-            <div className="flex min-w-[180px] flex-1 flex-col gap-2">
+            <div className="flex w-auto flex-1 flex-col gap-2">
               <div>
                 <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
                   <span>ความคืบหน้ารอบ</span>
@@ -863,7 +863,7 @@ ${kpiHtml}
   const kpiWidget = (
     <>
       {/* KPI row — 5 cards on lg */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+      <div className="grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
         <KpiCard
           title="อุปกรณ์ทั้งหมด"
           value={total}
