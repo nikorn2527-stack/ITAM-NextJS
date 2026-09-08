@@ -67,7 +67,7 @@ export function MobileAccount() {
   }
 
   return (
-    <div className="space-y-4 p-4 pb-24">
+    <div className="space-y-4 px-3 pb-24 sm:px-4">
       <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 dark:border-orange-800 dark:bg-orange-950/30">
         <h2 className="flex items-center gap-2 text-lg font-semibold text-orange-700 dark:text-orange-300">
           <Fingerprint className="h-5 w-5" />

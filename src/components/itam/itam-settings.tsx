@@ -1178,7 +1178,7 @@ function MobileNavConfigSection() {
     { value: 'viewer', label: 'ผู้ดู' },
   ]
 
-  // All nav pages that can be toggled
+  // All nav pages that can be toggled — SIDEBAR pages (desktop responsive)
   const NAV_PAGES = [
     { page: 'dashboard', label: '📊 Dashboard' },
     { page: 'itam-devices', label: '💻 จัดการอุปกรณ์' },
@@ -1195,6 +1195,16 @@ function MobileNavConfigSection() {
     { page: 'itam-settings', label: '⚙️ ตั้งค่าระบบ' },
     { page: 'itam-audit', label: '📜 ประวัติการใช้งาน' },
     { page: 'mobile', label: '📱 โหมดมือถือ' },
+  ]
+
+  // MobileShell (แอปมือถือ) tabs — the 4 bottom-nav buttons that users
+  // see when they open the app on a phone. 'account' (บัญชี) is NOT
+  // listed here because it can't be disabled (logout must remain accessible).
+  const MOBILE_APP_TABS = [
+    { page: 'mobileapp-my-work', label: '📋 งานของฉัน' },
+    { page: 'mobileapp-repair',  label: '🔧 แจ้งซ่อม' },
+    { page: 'mobileapp-meter',   label: '📈 จดมิเตอร์' },
+    { page: 'mobileapp-stock',   label: '📦 เบิกของ' },
   ]
 
   // Load config from AppSetting
@@ -1336,6 +1346,42 @@ function MobileNavConfigSection() {
         <div className="rounded-md bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800/40 dark:text-slate-400">
           💡 <strong>มือถือ</strong> = ผู้ใช้เห็นเฉพาะเมนูที่เปิดไว้ (เมื่อเข้าผ่านหน้าจอ &lt; 768px)<br />
           💡 <strong>เดสก์ท็อป</strong> = ผู้ใช้เห็นทุกเมนู (ยกเว้นที่ปิดไว้)
+        </div>
+
+        {/* ── แอปมือถือ (MobileShell) tabs ── */}
+        <div className="mt-4 rounded-md border border-orange-200 bg-orange-50/50 p-3 dark:border-orange-800/50 dark:bg-orange-950/20">
+          <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-orange-700 dark:text-orange-300">
+            <Smartphone className="h-4 w-4" />
+            แอปมือถือ (MobileShell) — ปุ่มแถบล่างบนมือถือจริง
+          </h4>
+          <p className="mb-3 text-[11px] text-orange-600/80 dark:text-orange-400/80">
+            ปุ่ม "บัญชี" ไม่สามารถปิดได้ (ต้องมี logout เสมอ)
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {MOBILE_APP_TABS.map((t) => {
+              const visible = roleConfig[t.page] ?? true
+              return (
+                <label
+                  key={t.page}
+                  className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs transition ${
+                    visible
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
+                      : 'border-slate-300 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800/50'
+                  }`}
+                >
+                  <Switch
+                    checked={visible}
+                    onCheckedChange={(v) => togglePage(selectedRole, t.page, v)}
+                    className="scale-75"
+                  />
+                  <span>{t.label}</span>
+                </label>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-orange-600/70 dark:text-orange-400/70">
+            การเปลี่ยนแปลงมีผลใน 30 วินาที หลังบันทึก (cache refresh)
+          </p>
         </div>
 
         <Button
