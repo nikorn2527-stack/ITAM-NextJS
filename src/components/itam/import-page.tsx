@@ -602,17 +602,14 @@ export function ImportPage() {
                       : 'border-slate-200 bg-white hover:border-[#f97316]/40 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-[#fb923c]/40 dark:hover:bg-slate-800',
                   )}
                 >
-                  <span className="text-2xl sm:text-3xl" aria-hidden>
+                  <span className="text-xl sm:text-2xl" aria-hidden>
                     {t.icon}
                   </span>
-                  <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 sm:text-base">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 sm:text-sm">
                     {t.title}
                   </span>
-                  <span className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">
+                  <span className="hidden text-[10px] text-slate-500 dark:text-slate-400 sm:block">
                     {t.desc}
-                  </span>
-                  <span className="mt-1 font-mono text-[10px] text-slate-400 dark:text-slate-500">
-                    ({t.id})
                   </span>
                   {active && (
                     <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#f97316] text-white">
@@ -634,14 +631,11 @@ export function ImportPage() {
             transition={{ duration: 0.2 }}
           >
             <Card className="border-slate-200 dark:border-slate-800">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-2 text-sm text-slate-800 dark:text-slate-100">
                   <span aria-hidden>{selectedTypeDef.icon}</span>
                   2. อัปโหลดไฟล์ — {selectedTypeDef.title}
                 </CardTitle>
-                <CardDescription>
-                  เลือกไฟล์ CSV (UTF-8) ที่มีคอลัมน์ตรงกับเทมเพลต ระบบจะบันทึกและประมวลผลทันที
-                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {/* Drop zone */}
@@ -659,13 +653,13 @@ export function ImportPage() {
                     }
                   }}
                   className={cn(
-                    'flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-4 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 sm:py-6',
+                    'flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-3 py-2.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950',
                     dragOver
                       ? 'border-[#f97316] bg-[#f97316]/5'
                       : 'border-slate-300 bg-slate-50 hover:border-[#f97316] hover:bg-[#f97316]/5 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-[#fb923c]',
                   )}
                 >
-                  <Upload className="h-8 w-8 text-slate-400 dark:text-slate-500 sm:h-10 sm:w-10" />
+                  <Upload className="h-6 w-6 text-slate-400 dark:text-slate-500" />
                   <div className="space-y-1">
                     <div className="text-sm font-medium text-slate-700 dark:text-slate-200">
                       {file ? (
