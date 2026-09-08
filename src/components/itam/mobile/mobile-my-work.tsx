@@ -2228,7 +2228,7 @@ function StatusUpdateSheet({
             body: JSON.stringify({
               message: msg,
               author: actorName,
-              authorRole: 'admin',
+              authorRole: (user?.role ?? 'user') as 'admin' | 'staff' | 'reporter' | 'system',
               actor: actorName,
             }),
           },
@@ -2287,7 +2287,7 @@ function StatusUpdateSheet({
         const body = {
           message: msg,
           author: actorName,
-          authorRole: 'admin',
+          authorRole: (user?.role ?? 'user') as 'admin' | 'staff' | 'reporter' | 'system',
           actor: actorName,
         }
         queuedRequest = {

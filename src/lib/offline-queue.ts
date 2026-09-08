@@ -25,10 +25,19 @@ interface QueuedRequest {
   timestamp: number
   retries: number
   label: string // human-readable description for UI
+  /** Client-generated UUID to prevent duplicate processing on retry.
+   * Server-side endpoints should check this header and return 200
+   * (idempotent success) if the same key was already processed. */
+  idempotencyKey: string
 }
 
 const QUEUE_KEY = 'itam.offline-queue'
 const MAX_RETRIES = 3
+/** In-memory lock to prevent concurrent processQueue() runs.
+ * Without this, the 'online' event listener + the addToQueue() setTimeout
+ * could both fire processQueue() at the same time, reading the same
+ * queue from localStorage and sending duplicate requests. */
+let isProcessing = false
 
 export function getQueue(): QueuedRequest[] {
   try {
@@ -39,18 +48,22 @@ export function getQueue(): QueuedRequest[] {
   }
 }
 
-export function addToQueue(req: Omit<QueuedRequest, 'id' | 'timestamp' | 'retries'>): void {
+export function addToQueue(req: Omit<QueuedRequest, 'id' | 'timestamp' | 'retries' | 'idempotencyKey'>): void {
   try {
     const queue = getQueue()
+    // Generate idempotency key — server can use this to deduplicate
+    // (e.g. stock-items/[id]/transaction checks if key already processed)
+    const idempotencyKey = `idem_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
     queue.push({
       ...req,
       id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      idempotencyKey,
       timestamp: Date.now(),
       retries: 0,
     })
     localStorage.setItem(QUEUE_KEY, JSON.stringify(queue))
-    // Trigger retry when back online
-    if (navigator.onLine) setTimeout(processQueue, 1000)
+    // Trigger retry when back online (non-blocking, guarded by isProcessing)
+    if (navigator.onLine) setTimeout(() => { void processQueue() }, 1000)
   } catch {
     // localStorage may be full (large photo payloads) — silently drop
     // to avoid crashing the form. Caller can fall back to its own error UI.
@@ -58,48 +71,60 @@ export function addToQueue(req: Omit<QueuedRequest, 'id' | 'timestamp' | 'retrie
 }
 
 export async function processQueue(): Promise<{ processed: number; failed: number }> {
-  const queue = getQueue()
-  if (queue.length === 0) return { processed: 0, failed: 0 }
+  // Guard against concurrent runs (addToQueue setTimeout + 'online' event)
+  if (isProcessing) return { processed: 0, failed: 0 }
+  isProcessing = true
 
-  // Get auth token
-  let token: string | null = null
   try {
-    const raw = localStorage.getItem('itam-auth')
-    if (raw) token = JSON.parse(raw)?.state?.token ?? null
-  } catch {
-    // ignore — proceed without auth (server will 401 and the request stays queued)
-  }
+    const queue = getQueue()
+    if (queue.length === 0) return { processed: 0, failed: 0 }
 
-  let processed = 0
-  let failed = 0
-  const remaining: QueuedRequest[] = []
-
-  for (const req of queue) {
+    // Get auth token
+    let token: string | null = null
     try {
-      const res = await fetch(req.url, {
-        method: req.method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(req.body),
-      })
-      if (res.ok) {
-        processed++
-      } else {
+      const raw = localStorage.getItem('itam-auth')
+      if (raw) token = JSON.parse(raw)?.state?.token ?? null
+    } catch {
+      // ignore — proceed without auth (server will 401 and the request stays queued)
+    }
+
+    let processed = 0
+    let failed = 0
+    const remaining: QueuedRequest[] = []
+
+    for (const req of queue) {
+      try {
+        const res = await fetch(req.url, {
+          method: req.method,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            // Idempotency key — server-side endpoints that support
+            // deduplication should check this header. If the same key
+          // was already processed, return 200 (idempotent success).
+            'X-Idempotency-Key': req.idempotencyKey,
+          },
+          body: JSON.stringify(req.body),
+        })
+        if (res.ok) {
+          processed++
+        } else {
+          req.retries++
+          if (req.retries < MAX_RETRIES) remaining.push(req)
+          else failed++
+        }
+      } catch {
         req.retries++
         if (req.retries < MAX_RETRIES) remaining.push(req)
         else failed++
       }
-    } catch {
-      req.retries++
-      if (req.retries < MAX_RETRIES) remaining.push(req)
-      else failed++
     }
-  }
 
-  localStorage.setItem(QUEUE_KEY, JSON.stringify(remaining))
-  return { processed, failed }
+    localStorage.setItem(QUEUE_KEY, JSON.stringify(remaining))
+    return { processed, failed }
+  } finally {
+    isProcessing = false
+  }
 }
 
 export function clearQueue(): void {
@@ -109,6 +134,6 @@ export function clearQueue(): void {
 // Auto-process when back online
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
-    setTimeout(processQueue, 2000)
+    setTimeout(() => { void processQueue() }, 2000)
   })
 }
