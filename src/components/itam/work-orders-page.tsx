@@ -744,7 +744,7 @@ export function WorkOrdersPage() {
   }
 
   return (
-    <div className="flex h-full flex-col p-3 md:p-4">
+    <div className="flex h-full w-full flex-col p-3 md:p-4">
       {/* Header */}
       <div className="flex flex-shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>

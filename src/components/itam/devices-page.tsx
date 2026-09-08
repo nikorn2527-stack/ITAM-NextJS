@@ -2006,7 +2006,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
 
         {/* ── Scrollable Body ── */}
         <div className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+          <div className="w-full px-4 py-4 sm:px-6">
             {quickAdd ? (
               <QuickAddForm
                 form={form}

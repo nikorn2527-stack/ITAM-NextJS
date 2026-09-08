@@ -413,7 +413,7 @@ export function ItamRepairs() {
   // ── Render ───────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4 md:p-6">
+    <div className="flex h-full w-full flex-col gap-4 p-4 md:p-6">
       {/* Header */}
       <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>

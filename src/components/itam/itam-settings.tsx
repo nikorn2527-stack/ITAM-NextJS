@@ -342,7 +342,7 @@ export function ItamSettings() {
   const sites = sitesData?.sites ?? []
 
   return (
-    <div className="flex h-full flex-col p-3 md:p-4">
+    <div className="flex h-full w-full flex-col p-3 md:p-4">
       <div className="mb-3 flex flex-shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ตั้งค่าระบบ</h1>
