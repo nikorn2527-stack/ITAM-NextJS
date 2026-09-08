@@ -19781,3 +19781,71 @@ Stage Summary:
 - Backward compat: `stickerHospitalName` DB key still read at runtime (fallback when `stickerOrgName` is missing). No data migration required; existing user settings survive the rename.
 - TS status: 0 errors. Lint status: 1 pre-existing error (apple OAuth callback require-import) + 108 warnings (all pre-existing setState-in-effect patterns). No new lint issues introduced.
 - Note: Task description listed `src/lib/org-profile.ts` as a file to rename `hospitalName` → `orgName`, but that file has no `hospitalName` field (it uses `appName` for the org name + already has `assetTerminology`). No edit was needed there.
+
+---
+Task ID: SYNC-REWRITE-012
+Agent: sync-legacy rewrite subagent
+Task: Rewrite /api/cron/sync-legacy to sync ALL 12 entities (was only 3) using Service-Account Google Sheets API v4 instead of public CSV export URLs.
+
+Work Log:
+- Read the source-of-truth field mapping doc `qa-reports/LEGACY-FIELD-MAPPING-REFERENCE-008.md` (all 12 sheet tabs + their column → Prisma-field mappings) and cross-referenced against `src/lib/csv-field-mapping.ts` (FIELD_MAPPINGS, STATUS_MAPPINGS, mapCsvRow, parseBool, parseDate, parseDateTime, toInt, toFloat).
+- Read `src/lib/google-sheets-service.ts` (the new Service-Account fetchSheet API) + verified it returns `SheetRow[]` (header-keyed row objects, no CSV text round-trip needed).
+- Read `prisma/schema.prisma` to verify which fields exist on each target model so I could honor the constraint "If a field doesn't exist in the Prisma model, skip it (don't add to schema)". Confirmed 12 target models: Device, MeterReading, DeviceTransfer, User, AppSetting, MasterItem, SiteAttribute (+ SiteRate), WorkOrder, StockItem, StockTransaction (IN/OUT), PurchaseOrder. Noted that:
+  - MeterReading has both `id` (cuid PK) and `readingId` (@unique, nullable). FIELD_MAPPINGS.meterReading maps `reading_id → 'id'` — I re-purpose that raw value as `readingId` for the upsert WHERE clause (the cuid PK stays auto-generated).
+  - DeviceTransfer has both `id` and `logId` (@unique, nullable). Same handling — `Log_ID → 'logId'`.
+  - AppSetting has no `remark` field (csv mapping `Description → 'remark'` is silently dropped — Description value is omitted).
+  - MasterItem, SiteRate, StockTransaction, PurchaseOrder have NO @unique constraint → can't use Prisma `upsert({ where: { ... } })`. Used findFirst+update/create pattern with a pre-loaded `Map<cacheKey, id>` cache to avoid N+1 queries.
+  - PurchaseOrder has no `stockItemId / quantityOrdered / unitPrice / quantityReceived` fields (those live on PurchaseOrderItem). Per the "skip fields not on model" constraint, those legacy columns are dropped on the PO header sync.
+  - StockTransaction stores `purchaseOrderNo` as a plain string (no FK to PurchaseOrder), so the `PurchaseOrderNo → purchaseOrderId` mapping from csv-field-mapping was re-purposed as the string `purchaseOrderNo` instead.
+  - WorkOrder's `subject String` is NOT NULL with no default → empty legacy subjects default to `'ไม่ระบุ'`. Same for `Device.site`, `StockItem.productName`, etc.
+
+Rewrote `src/app/api/cron/sync-legacy/route.ts` (449 → 1049 lines) to:
+- Replace `fetch(CSV export URL)` with `fetchSheet('itam'|'services'|'stock', sheetName)` from `@/lib/google-sheets-service` (Service Account auth, no more "Anyone with link" requirement).
+- Replace ad-hoc `parseCSVLine` + alias `idx(...)` lookups with the shared `mapCsvRow(row, FIELD_MAPPINGS.X)` layer so column matching is uniform across all 12 entities (Thai + English + camelCase via the existing `normalizeKey` fallback).
+- Replace `mapWOStatus()` ad-hoc helper with `STATUS_MAPPINGS.workOrder[legacyStatus]` (covers emoji-Thai statuses + English fallbacks).
+- Add a shared `batchWrite<T>(rows, writeFn, label, dryRun)` helper that wraps each batch of BATCH_SIZE=50 rows in `db.$transaction` — partial failure rolls back the failing batch atomically without aborting the other 11 entities (each entity has its own try/catch wrapper around its section).
+- Add `clean()` helper that strips null/undefined from update payloads so existing DB data is preserved when a legacy sheet cell is empty (matches the existing device-sync behavior).
+- Pre-load two FK lookup caches at the start of the request so deviceId/stockItemId lookups resolve even when the parent row was synced in an earlier run:
+  - `assetCodeToDeviceId` (Device.id by assetCode) — used by MeterReading + DeviceTransfer
+  - `productCodeToStockItemId` (StockItem.id by productCode) — used by StockTransaction IN/OUT
+- Per-entity dedup caches (loaded once before each entity's batch loop, not per row):
+  - `masterItemCache` (Map<`${category}|${code}`, id>) for MasterItem
+  - `siteRateCache` (Map<siteCode, id>) for SiteRate
+  - `poCache` (Map<poNumber, id>) for PurchaseOrder
+  - `inTxnCache` / `outTxnCache` (Map<txnNumber, id>, scoped by type=IN|OUT) for StockTransaction dedup
+- Each entity returns `{ fetched, updated, errors, error }` and the final JSON response includes a `results` object covering all 12 entities, plus the audit log line summarizes all 12 with `~updated/e errors` shorthand.
+- Kept existing safety features: CRON_SECRET auth (`Bearer` header), `?dryRun=1` (skips all DB writes), `isDemo: false` on every synced row (production data).
+- Bug fix: WorkOrder sheet tab name was `All_WO` (wrong) in the old code → now `Data` per LEGACY-FIELD-MAPPING-008 §12 (the Services app's WorkOrder tab is literally named "Data").
+- Bug fix: WorkOrder dedup key was `woNumber` (which is null for legacy rows) → now `requestId` (the legacy numeric `id`), which IS @unique and present in every row.
+
+The 12 entities synced (in execution order so FK lookups resolve correctly):
+   1. Devices         (itam: All_Devices)         → Device          (upsert by assetCode)
+   2. MeterReadings   (itam: Meter_Readings)      → MeterReading    (lookup deviceId by assetCode; upsert by readingId)
+   3. DeviceTransfers (itam: Location_History)    → DeviceTransfer  (lookup deviceId by assetCode; upsert by logId)
+   4. Users           (itam: User_Permissions)     → User            (upsert by email)
+   5. AppSettings     (itam: App_Settings)         → AppSetting      (upsert by key; Description column dropped)
+   6. MasterItems     (itam: Master_Items)        → MasterItem      (findFirst by category+code; GroupName/ParentRef/DepartmentCode all funnel into the right fields per spec)
+   7. SiteAttributes  (itam: Site_Attributes)      → SiteAttribute + SiteRate (upsert SiteAttribute by SiteCode; findFirst SiteRate by siteCode)
+   8. WorkOrders      (services: Data)             → WorkOrder       (upsert by requestId; status via STATUS_MAPPINGS.workOrder)
+   9. StockItems      (stock: Products)            → StockItem       (upsert by productCode)
+  10. PurchaseOrders  (stock: PurchaseOrders)      → PurchaseOrder   (findFirst by poNumber; status via STATUS_MAPPINGS.purchaseOrder)
+  11. StockTransactions IN  (stock: StockIn)       → StockTransaction type=IN  (lookup stockItemId by productCode; findFirst by txnNumber+type=IN; purchaseOrderNo stored as string)
+  12. StockTransactions OUT (stock: StockOut)       → StockTransaction type=OUT (lookup stockItemId by productCode; findFirst by txnNumber+type=OUT; workOrderNo stored as string)
+
+Files modified:
+  - src/app/api/cron/sync-legacy/route.ts (complete rewrite — 449 → 1049 lines)
+
+Verification:
+- `bunx tsc --noEmit` (with NODE_OPTIONS=--max-old-space-size=4096 to avoid OOM on the large project): 0 TS errors.
+- `bun run lint`: 1 error + 109 warnings — the 1 error is the pre-existing `@typescript-eslint/no-require-imports` rule in `src/app/api/auth/oauth/apple/callback/route.ts:99` (NOT touched by this task). The 109 warnings are all pre-existing `react-hooks/set-state-in-effect` patterns + unused `eslint-disable` directives — confirmed none mention `sync-legacy` in the lint output.
+
+Stage Summary:
+- 0 entities skipped — all 12 are wired up.
+- The rewrite drops the old `parseDeviceImportCsv + validateDeviceImportRows` device path in favor of the uniform FIELD_MAPPINGS+mapCsvRow flow used by all 12 entities (matches the existing /api/import CSV upload route's pattern, so behavior is consistent).
+- Field-mapping deviations (all documented inline in the route + matched against the constraint "skip fields not on the Prisma model"):
+  - AppSetting: Description column dropped (no `remark` field on model).
+  - PurchaseOrder: stockItemId/quantityOrdered/unitPrice/quantityReceived dropped (those live on PurchaseOrderItem, not PurchaseOrder — out of scope per the 12-entity list).
+  - StockTransaction IN: PurchaseOrderNo stored as `purchaseOrderNo` string (no FK on the model).
+  - MeterReading: `reading_id` mapped to `readingId` (the @unique nullable field), NOT to `id` (cuid PK).
+  - DeviceTransfer: `Log_ID` mapped to `logId` (the @unique nullable field), NOT to `id` (cuid PK).
+- Pre-existing 3-entity behavior (Device/WorkOrder/StockItem) is preserved — the rewrite is a strict superset; existing audit log summaries + dry-run mode + CRON_SECRET auth all still work.
