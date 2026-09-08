@@ -19917,3 +19917,493 @@ ALSO NOTED (not bugs, just observations):
 - Site_Attributes: route defaults PaperRateBW to 0.5 and PaperRateColor to 2.0 if parsing fails (lines 594-596). Schema confirms these are the model defaults (lines 512-513). Not in doc but reasonable.
 
 VERDICT: NEEDS FIXES. Sheet tab names: 12/12 ✓. Field mappings: 10/12 essentially correct, 2/12 have significant issues (Site_Attributes model divergence, PurchaseOrders line-item data loss). 1 P0 (Device installDate) will crash the sync on first run. 3 P1s lose or misroute data. Recommend: fix P0 first (drop installDate from Device payload OR re-add to schema), then resolve P1s, then doc reconciliation for P2/P3.
+
+---
+Task ID: SYNC-READINESS-AUDIT-014
+Agent: sync-readiness-audit subagent
+Task: Full sync readiness audit — every possible failure point (12 entities, 7 checks)
+
+Work Log:
+
+CONTEXT: User is migrating from legacy Google Sheets apps to ITAM-NextJS. If sync fails on migration day = total data loss (legacy apps shut down). Audit must be thorough — every field, every failure path.
+
+FILES READ:
+- /home/z/my-project/src/app/api/cron/sync-legacy/route.ts (1050 lines)
+- /home/z/my-project/src/lib/google-sheets-service.ts (175 lines)
+- /home/z/my-project/src/lib/csv-field-mapping.ts (915 lines)
+- /home/z/my-project/src/lib/status-utils.ts (170 lines)
+- /home/z/my-project/src/lib/audit.ts (42 lines)
+- /home/z/my-project/src/lib/db.ts (Prisma client config)
+- /home/z/my-project/prisma/schema.prisma (1645 lines, all 12 models cross-checked)
+- /home/z/my-project/vercel.json
+- /home/z/my-project/.env (env var presence check)
+- /home/z/my-project/.env.example
+
+═══════════════════════════════════════════════════════════════
+CHECK 1: Prisma model fields vs sync payload fields (per entity)
+═══════════════════════════════════════════════════════════════
+
+Method: For each entity, extracted every key in the `payload` object passed to `tx.<model>.upsert/create`, then verified the key exists in the corresponding Prisma model in schema.prisma.
+
+1. Device (route lines 201-234, schema lines 17-116)
+   ✓ All 27 payload fields exist on Device model:
+     assetCode, name, brand, model, type, serialNumber, status, site,
+     department, departmentCode, assetSiteCode, location, building, floor,
+     contractNo, vendor, ip, mac, remoteId, installDate, uninstallDate,
+     warrantyEnd, deviceGroup, costCenter, meterRequired, meterMode, remark,
+     updatedBy, isDemo.
+   ✓ installDate IS in schema (line 44 — `installDate String?`).
+     NOTE: prior audit (SYNC-FIELD-MAPPING-AUDIT) flagged this as P0;
+     this audit confirms installDate IS present in current schema.
+     Either prior audit was on older schema, or schema was patched since.
+   SAFE.
+
+2. MeterReading (route lines 292-312, schema lines 118-169)
+   ✓ All 17 payload fields exist on MeterReading model:
+     readingId, deviceId, assetCode, readingDate, readingMonth, meterBw,
+     meterColor, pagesBw, pagesColor, prevMeterBw, prevMeterColor,
+     readingType, readBy, remark, siteAtReading, buildingAtReading,
+     floorAtReading, departmentAtReading, isDemo.
+   SAFE.
+
+3. DeviceTransfer (route lines 365-385, schema lines 195-231)  ❌❌❌ P0 ❌❌❌
+   ✗ FAIL — payload writes 4 fields that DO NOT EXIST on the model:
+     - payload.fromDept        → schema has fromDepartment     (line 209)
+     - payload.toDept          → schema has toDepartment       (line 216)
+     - payload.fromDeptCode    → schema has fromDepartmentCode (line 210)
+     - payload.toDeptCode      → schema has toDepartmentCode   (line 217)
+   Source of mismatch: csv-field-mapping.ts lines 93-96 maps:
+     From_Department    → 'fromDept'
+     To_Department      → 'toDept'
+     From_DepartmentCode → 'fromDeptCode'
+     To_DepartmentCode  → 'toDeptCode'
+   But DeviceTransfer Prisma model uses full names (fromDepartment, etc).
+   CONSEQUENCE: Every single Location_History row will throw
+     `PrismaClientValidationError: Unknown argument 'fromDept'.`
+   The error is caught per-batch (50 rows) inside batchWrite() — so
+   the whole sync does NOT crash. But 100% of Location_History rows
+   are lost (every batch fails with the same error). The other 11
+   entities continue to sync. So sync "succeeds" but Location_History
+   data is 100% lost.
+   SEVERITY: P0 (full data loss for one entity on migration day).
+   FIX: Either (a) change csv-field-mapping.ts to map to
+   fromDepartment/toDepartment/fromDepartmentCode/toDepartmentCode,
+   or (b) change route.ts payload keys to match schema names. Option
+   (a) is cleaner (one source of truth for the field name).
+
+4. User (route lines 427-438, schema lines 846-883)
+   ✓ All 10 payload fields exist on User model:
+     email, role, active, name, username, passwordHash, remark,
+     allowedSites, lastLoginAt, isDemo.
+   SAFE.
+
+5. AppSetting (route lines 476-480, schema lines 1126-1135)
+   ✓ All 3 payload fields exist on AppSetting model: key, value, isDemo.
+   NOTE: csv-field-mapping maps Description → 'remark' (line 125), but
+   route doesn't write data.remark (AppSetting has no remark field).
+   SAFE.
+
+6. MasterItem (route lines 524-536, schema lines 574-592)
+   ✓ All 8 payload fields exist on MasterItem model:
+     category, code, label, parentRef, displayLabel, siteCode, active, isDemo.
+   SAFE.
+
+7. SiteAttribute (route lines 598-606, schema lines 507-538)  + SiteRate
+   ✓ All 7 SiteAttribute payload fields exist:
+     SiteCode, SiteName, LineOA, Hotline, PaperRateBW, PaperRateColor, isDemo.
+   ✓ All 4 SiteRate payload fields exist:
+     siteCode, bwRate, colorRate, isDemo.
+   SAFE.
+
+8. WorkOrder (route lines 667-700, schema lines 285-377)
+   ✓ All 31 payload fields exist on WorkOrder model:
+     requestId, legacyJobNo, subject, status, building, location, details,
+     externalMeta, reporterName, tel, employeeCode, submissionSource,
+     picBefore, picOnsite, picAfter, detailsAdmin, dateAdmin, acceptStatus,
+     editUnlockActive, editUnlockBy, editUnlockAt, editUnlockNote,
+     workCompletedAt, closedAt, canceledAt, priority, assignedTo,
+     assignedBy, assignedAt, assignmentNote, trackable, isDemo.
+   SAFE.
+
+9. StockItem (route lines 736-749, schema lines 597-673)
+   ✓ All 9 payload fields exist on StockItem model:
+     productCode, productName, quantity, unit, unitCost, minQuantity,
+     active, lastUpdated, isDemo.
+   SAFE.
+
+10. PurchaseOrder (route lines 807-816, schema lines 801-818)
+    ✓ All 7 payload fields exist on PurchaseOrder model:
+      poNumber, orderDate, supplier, status, totalValue, createdBy, isDemo.
+    SAFE.
+
+11. StockTransaction IN (route lines 891-905, schema lines 712-796)
+    ✓ All 12 payload fields exist on StockTransaction model:
+      txnNumber, stockItemId, productCode, type, quantity, cost, vendor,
+      performedBy, remark, purchaseOrderNo, txnDate, isDemo.
+    SAFE.
+
+12. StockTransaction OUT (route lines 975-990, schema lines 712-796)
+    ✓ All 13 payload fields exist on StockTransaction model:
+      txnNumber, stockItemId, productCode, type, quantity, requester,
+      department, purpose, approver, approvedAt, workOrderNo, txnDate, isDemo.
+    SAFE.
+
+Check 1 summary: 11/12 entities SAFE. 1/12 (DeviceTransfer) P0 — 4 unknown
+fields will cause 100% data loss for Location_History on first run.
+
+═══════════════════════════════════════════════════════════════
+CHECK 2: Google Sheets API v4 auth
+═══════════════════════════════════════════════════════════════
+
+Source: src/lib/google-sheets-service.ts
+
+• GOOGLE_SERVICE_ACCOUNT_KEY not set?
+  - getAuthClient() (line 47-79) throws 'No Google Service Account key configured.'
+  - fetchSheet() wraps getSheetsClient() in try/catch (line 110-117) and
+    catches the throw at line 139, console.error's, returns [].
+  - Result: route sees fetched=0, no rows synced, no error surfaced to caller.
+  SAFE in terms of not crashing. But SILENT FAILURE mode is dangerous
+  on migration day (user can't tell if sheet is empty or auth failed).
+
+• Auth failures (bad key, expired token, wrong scope)?
+  - Same catch at line 139. Returns []. SAFE but SILENT.
+
+• Sheet-not-found (wrong tab name)?
+  - Google Sheets API v4 throws HTTP 400 with "Unable to parse range:
+    no tab named 'All_Devices'".
+  - Caught at line 139. Returns []. SAFE but SILENT.
+  - 12 tab names hard-coded in route.ts: All_Devices, Meter_Readings,
+    Location_History, User_Permissions, App_Settings, Master_Items,
+    Site_Attributes, Data, Products, StockIn, StockOut, PurchaseOrders.
+    If any tab name in the legacy sheet changes, sync silently syncs 0 rows.
+
+• Rate limits (429 RESOURCE_EXHAUSTED)?
+  - Caught at line 139. Returns []. NO RETRY logic.
+  - On migration day with 12 sequential fetches, the service account
+    may hit Google's 100 req/100s/user limit if multiple crons overlap.
+    Result: some sheets return [] silently → partial data loss.
+
+• Local .env file: contains ONLY DATABASE_URL. None of:
+    GOOGLE_SERVICE_ACCOUNT_KEY, GOOGLE_SHEETS_ID_ITAM,
+    GOOGLE_SHEETS_ID_SERVICES, GOOGLE_SHEETS_ID_STOCK, CRON_SECRET
+  are set in sandbox .env. If production Vercel env is similarly
+  configured, sync will silently succeed with 0 rows synced.
+  SEVERITY: P1 — configuration required before migration day.
+
+Check 2 summary: All errors are caught (no crashes), but error visibility is
+zero — sync reports `ok: true` with all-zero counts. Need to add explicit
+error surfacing (e.g. fetchSheet should return {rows, error} or throw, and
+route should propagate the error message to the response).
+
+═══════════════════════════════════════════════════════════════
+CHECK 3: Transaction batch error handling
+═══════════════════════════════════════════════════════════════
+
+Source: route.ts lines 98-131 (batchWrite), per-entity try/catch blocks.
+
+• Proper rollback on failure?
+  ✓ YES. Each batch of BATCH_SIZE=50 rows is wrapped in
+    db.$transaction(async (tx) => { for row of batch: await writeFn(row, tx) }).
+    If any writeFn throws, the entire batch's tx rolls back. Earlier
+    batches (already committed) survive.
+
+• If one entity fails, does it continue with the next?
+  ✓ YES. Each of the 12 entities is wrapped in its own try/catch
+    (e.g. lines 185-251 for Device, 256-333 for MeterReading, etc).
+    Errors are stored in `results.<entity>.error`, the loop continues
+    to the next entity. The sync response returns `ok: true` even if
+    all 12 entities failed.
+
+• Are errors properly captured and returned?
+  ⚠️ PARTIAL. batchWrite() captures `lastError` (only the LAST batch's
+    error message). If 20 batches all fail with the same PrismaClient
+    ValidationError, only the last one's message is stored. The route
+    surfaces this as `results.<entity>.error`. The audit log captures
+    per-entity updated/error counts but not full error messages.
+  ⚠️ The error count is correct (errors += batch.length), but the user
+    can't tell WHICH rows in the batch failed (the entire batch is lost
+    even if only one row is bad).
+
+• No retry logic for failed batches.
+  ⚠️ Once a batch fails, it's gone. For the DeviceTransfer P0, every
+    batch fails, so 100% of rows are lost. For transient errors (e.g.
+    DB connection blip), the batch is also lost with no retry.
+
+Check 3 summary: Transaction rollback is correct. Per-entity isolation is
+correct. Error capture is partial — last-error only, no per-row detail.
+No retry logic for transient failures.
+
+═══════════════════════════════════════════════════════════════
+CHECK 4: FK lookup failures
+═══════════════════════════════════════════════════════════════
+
+• MeterReading references assetCode not in Device?
+  - Lines 263-268: const deviceId = assetCodeToDeviceId.get(assetCode)
+    if (!deviceId) { results.meterReadings.errors++; continue }
+  ✓ SAFE — row skipped, counted as error, sync continues.
+  ⚠️ Silent — user can't tell which assetCode was missing.
+
+• DeviceTransfer references assetCode not in Device?
+  - Lines 345-350: same pattern.
+  ✓ SAFE — same as MeterReading.
+
+• StockTransaction IN references productCode not in StockItem?
+  - Lines 858-866: const stockItemId = productCodeToStockItemId.get(productCode)
+    if (!stockItemId) { results.stockTransactionsIn.errors++; continue }
+  ✓ SAFE.
+
+• StockTransaction OUT references productCode not in StockItem?
+  - Lines 944-951: same pattern.
+  ✓ SAFE.
+
+• Pre-load FK caches (lines 172-180):
+  ✓ existingDevices and existingStockItems are pre-loaded before any
+    sync runs. So even if a MeterReading references a device that wasn't
+    re-synced THIS run but exists in the DB, the lookup succeeds.
+  ✓ Device sync (entity 1) and StockItem sync (entity 9) populate
+    the cache with newly created IDs (lines 240, 755).
+
+• Ordering: Devices (1) → MeterReadings (2) → DeviceTransfers (3). ✓
+  StockItems (9) → PurchaseOrders (10) → StockIn (11) → StockOut (12). ✓
+  Cache is populated before downstream consumers.
+
+Check 4 summary: All FK lookups gracefully skip missing refs. SAFE.
+Risk: if a Device sync fails (e.g. due to schema mismatch in another
+audit), all 5000+ MeterReadings that reference it are also lost. But
+this is correct cascade behavior, not a bug.
+
+═══════════════════════════════════════════════════════════════
+CHECK 5: Vercel timeout (60 seconds)
+═══════════════════════════════════════════════════════════════
+
+Source: route.ts line 61 `export const maxDuration = 60`, vercel.json
+  crons entry (line 14: /api/cron/sync-legacy, schedule 0 2 * * *).
+
+• Pagination? NO.
+  - fetchSheet() uses `${sheetName}!A:Z` (line 112) — fetches the
+    ENTIRE sheet in one request. Google Sheets API v4 supports up to
+    10M cells per request, so no API-level pagination needed.
+  - But: the response payload (e.g. 5000 rows × 21 cols = 105k cells)
+    takes ~2-5s to download + parse per sheet.
+
+• Sequential vs parallel?
+  ❌ ALL 12 entities are processed SEQUENTIALLY. fetchMultipleSheets()
+    exists in google-sheets-service.ts (line 149) and uses Promise.all
+    for parallelism — but route.ts NEVER calls it. Each fetchSheet is
+    awaited in turn.
+
+• Estimated runtime with production data volume (~25k rows total):
+  - 12 fetchSheet calls × ~1-3s each = 12-36s
+  - Pre-load queries (4 SELECT *): ~1-2s
+  - ~500 batches × ~50-200ms each (sequential $transaction round-trips)
+    = 25-100s
+  - Total realistic: 35-150s
+  - 60s Vercel Hobby limit: HIGH RISK OF TIMEOUT
+
+• What happens on timeout?
+  - Vercel kills the function. Already-committed batches survive
+    (each batch is its own committed transaction).
+  - Response: 504 Gateway Timeout (or 500 if Vercel returns differently).
+  - logAudit() at line 1017 is NEVER reached → no audit record.
+  - User sees "timeout" with no detail of which entities synced.
+  - Entities 1-8 (Device, MeterReading, DeviceTransfer, User, AppSetting,
+    MasterItem, SiteAttribute, WorkOrder) likely complete.
+  - Entities 9-12 (StockItem, PurchaseOrder, StockIn, StockOut) likely
+    LOST — and these are the most critical business data.
+
+SEVERITY: P0 — likely to fail on first run with real production data.
+
+RECOMMENDED FIX:
+  (a) Increase maxDuration to 300 (Vercel Pro plan) and update vercel.json.
+  (b) Split the single route into 12 sub-routes (one per entity), each
+      triggered by separate cron jobs OR chained via background queue.
+  (c) Parallelize the 12 fetchSheet calls using fetchMultipleSheets().
+  (d) Increase BATCH_SIZE to 200-500 to reduce tx round-trips.
+  (e) Move logAudit() to fire per-entity (not at the end) so partial
+      progress is recorded even on timeout.
+
+Check 5 summary: P0. Sync will likely time out on production data volume.
+
+═══════════════════════════════════════════════════════════════
+CHECK 6: Status mapping completeness
+═══════════════════════════════════════
+
+• WorkOrder status (route lines 663-666, STATUS_MAPPINGS.workOrder lines 283-305):
+  - Maps emoji+Thai ('🟠รอดำเนินการ', '🔵สำรวจหน้างาน/แก้ไข', etc.) to enum.
+  - Maps English fallbacks (PENDING, IN_PROGRESS, etc.).
+  - Maps loose Thai (without emoji).
+  - UNRECOGNIZED STATUS: falls through to `data.status || 'PENDING'` →
+    writes the raw value (e.g. 'ทดสอบ' or 'foo') to the DB.
+  - Schema: WorkOrder.status is `String @default("PENDING")` — accepts any string.
+  - SEVERITY: P2 — won't crash, but status column may be polluted with
+    arbitrary legacy strings. Dashboard filters (e.g. "show all PENDING")
+    will miss rows with non-canonical statuses.
+
+• PurchaseOrder status (route lines 800-806, STATUS_MAPPINGS.purchaseOrder lines 333-343):
+  - Maps Open/Partial/Received/Cancelled + lowercase variants.
+  - Whitelist check: if not in ['open','partial','received','cancelled'],
+    falls back to 'open'. SAFE.
+
+• Device status (route line 200, normalizeStatus in status-utils.ts):
+  - Synonyms table maps common variants (Active, ACTIVE, ใช้งาน, etc.).
+  - UNRECOGNIZED STATUS: returns the raw input string (line 82).
+  - Schema: Device.status is `String @default("Active")` — accepts any string.
+  - SEVERITY: P2 — same as WorkOrder. Status column may be polluted.
+
+• StockItem active (route lines 743-746, STATUS_MAPPINGS.stockItem lines 308-317):
+  - Maps Active/Inactive/TRUE/FALSE/1/0 to 'true'/'false' strings.
+  - Falls back to parseBool default (false) on unrecognized.
+  - SAFE.
+
+Check 6 summary: All status mappings handle common cases. Unrecognized
+statuses are written raw to DB (P2 — pollution, no crash).
+
+═══════════════════════════════════════════════════════════════
+CHECK 7: Data type conversions
+═══════════════════════════════════════════════════════════════
+
+Source: csv-field-mapping.ts helpers (lines 612-706).
+
+• parseInt on non-numeric strings?
+  ✓ SAFE. Route uses toInt(v) which:
+    - returns fallback (default 0) for null/undefined/empty
+    - returns Math.floor(Number(t)) for parseable strings
+    - returns fallback for NaN
+  All Int fields use toInt. NO direct parseInt calls.
+
+• parseFloat on non-numeric strings?
+  ✓ SAFE. Route uses toFloat(v) which returns null for non-numeric.
+  All Decimal/Float fields use toFloat with explicit null fallback.
+
+• Date parsing on invalid dates?
+  ✓ SAFE. parseDate(v) returns null on bad input.
+  - For non-nullable date fields (MeterReading.readingDate, DeviceTransfer.transferDate,
+    StockTransaction.txnDate, PurchaseOrder.orderDate), the route SKIPS the
+    row OR falls back to today's date (depending on entity).
+  - For DateTime fields (WorkOrder.assignedAt etc.), parseDateTime(v)
+    returns null on bad input. Schema fields are nullable DateTime?.
+  NO direct `new Date(...)` calls without isNaN check.
+
+• Boolean parsing on non-boolean strings?
+  ✓ SAFE. parseBool(v) returns false for any unrecognized string.
+  All Boolean fields use parseBool.
+
+• Decimal field precision:
+  - SiteAttribute.PaperRateBW is `Decimal? @default(0.5)`. Route writes
+    toFloat(...) ?? 0.5 — JS number passed to Prisma converts to Decimal.
+    SAFE for typical rate values (0.5, 2.0, etc.).
+  - StockItem.unitCost is `Decimal?`. Route writes toFloat(data.unitCost)
+    which may be null. SAFE.
+  - StockTransaction.cost is `Decimal?`. SAFE.
+  - PurchaseOrder.totalValue is `Decimal?`. SAFE.
+
+• Non-nullable String fields without fallback?
+  - Device.name: `data.brand && data.model ? '${brand} ${model}' : data.assetCode` ✓
+  - Device.brand: `data.brand || ''` ✓
+  - Device.model: `data.model || ''` ✓
+  - Device.type: `data.type || ''` ✓
+  - Device.site: `data.site || ''` ✓
+  - WorkOrder.subject: `data.subject || 'ไม่ระบุ'` ✓
+  - StockItem.productName: `data.productName || 'ไม่ระบุ'` ✓
+  - StockItem.unit: `data.unit || 'ชิ้น'` ✓
+  - DeviceTransfer.toSite: `data.toSite || 'ไม่ระบุ'` ✓
+  All non-nullable String fields have fallbacks. SAFE.
+
+Check 7 summary: All data type conversions are defensive. SAFE.
+
+═══════════════════════════════════════════════════════════════
+ADDITIONAL FINDINGS (not in the 7 checks but worth flagging)
+═══════════════════════════════════════════════════════════════
+
+• Audit log fires only at end (route line 1017):
+  If sync times out before reaching line 1017, NO audit record is created.
+  User has zero visibility into what was synced. P1.
+  FIX: move logAudit() inside each entity's try/catch (per-entity audit).
+
+• logAudit() call uses .catch(() => {}) (line 1034) — silent failure.
+  Acceptable for audit (audit must not break sync), but means audit
+  failures are invisible. P3.
+
+• CRON_SECRET auth (route lines 134-140):
+  - If CRON_SECRET is set, route checks Bearer token. ✓
+  - If CRON_SECRET is NOT set, route is wide open (no auth). ⚠️
+  - Local .env has NO CRON_SECRET. If production Vercel env is similarly
+    configured, anyone can POST to /api/cron/sync-legacy and trigger
+    a full re-sync. P2 (security, not sync failure).
+
+• Reading sheet headers (google-sheets-service line 123):
+  - `headers = rows[0].map((h) => String(h).trim())` — assumes first
+    row is always the header. If a legacy sheet has been edited to
+    remove the header row, the route will treat data as headers and
+    nothing will map. SILENT FAILURE.
+
+• Map stockTransaction cache poison (route lines 916, 1001):
+  - `if (payload.txnNumber) inTxnCache.set(payload.txnNumber, '')` —
+    sets a sentinel empty string for newly-created txns. Later lookups
+    `inTxnCache.get(payload.txnNumber)` return '' (falsy) → next time
+    the same txnNumber comes through (within the same sync), the route
+    will create a DUPLICATE instead of skipping.
+  - Risk: if the legacy sheet has duplicate txnNumbers, the second
+    occurrence creates a duplicate StockTransaction row.
+  - P2 (duplicate data, no crash).
+
+Stage Summary:
+- Overall verdict: NEEDS FIXES (NOT READY FOR MIGRATION DAY)
+- Confidence level: 30% that sync will work on first run with full
+  production data volume.
+
+P0 issues (must fix before migration):
+  1. DeviceTransfer payload writes 4 non-existent fields (fromDept, toDept,
+     fromDeptCode, toDeptCode) — schema has fromDepartment/toDepartment/
+     fromDepartmentCode/toDepartmentCode. 100% of Location_History rows
+     will fail with PrismaClientValidationError. The other 11 entities
+     survive (per-batch isolation), but Location_History data is lost.
+     FIX: change csv-field-mapping.ts lines 93-96 OR route.ts lines
+     372-375 to use full Department names.
+  2. Vercel 60s timeout — sync of ~25k rows across 12 sequential entities
+     + 12 sequential sheet fetches will exceed 60s. logAudit() never
+     fires on timeout → zero audit trail. Entities 9-12 (StockItem,
+     PurchaseOrder, StockIn, StockOut) — the most critical business
+     data — are most likely to be lost.
+     FIX: (a) bump maxDuration to 300 + upgrade Vercel plan; (b) split
+     into 12 sub-routes; (c) parallelize sheet fetches; (d) move
+     logAudit per-entity.
+
+P1 issues (high risk of silent data loss):
+  3. Google Sheets fetchSheet() silently returns [] on auth failure /
+     sheet-not-found / rate limit. Sync reports ok:true with all-zero
+     counts. User cannot distinguish "sheet is empty" from "auth failed".
+     FIX: fetchSheet should throw or return {rows, error}; route should
+     propagate the error message to the response.
+  4. Local .env has NO GOOGLE_SERVICE_ACCOUNT_KEY, GOOGLE_SHEETS_ID_*,
+     CRON_SECRET. If production Vercel env is similarly configured,
+     sync silently syncs 0 rows. User must verify these are set in
+     Vercel project env BEFORE migration day.
+  5. No retry logic on Google Sheets API rate limits (429).
+  6. logAudit() fires only at end — on timeout, no audit record.
+     FIX: move logAudit per-entity.
+
+P2 issues (data quality, not crash):
+  7. Unrecognized WorkOrder/Device statuses written raw to DB
+     (dashboard filters will miss these rows).
+  8. StockTransaction cache uses '' sentinel for newly-created txns
+     → duplicates possible if legacy sheet has duplicate txnNumbers.
+  9. FK lookup failures (missing deviceId/stockItemId) silently skip
+     rows — user can't tell which rows were lost.
+ 10. CRON_SECRET not set → route is wide open (security, not sync).
+
+P3 issues (cosmetic):
+ 11. batchWrite only captures lastError (one message per entity).
+ 12. AppSetting ignores Description field (csv maps to 'remark' but
+     AppSetting has no remark field — intentional, documented in code).
+
+VERDICT: NEEDS FIXES. NOT READY FOR MIGRATION DAY.
+Two P0s must be fixed before migration:
+  (1) DeviceTransfer field name mismatch — fix csv-field-mapping.ts
+      OR route.ts to use schema names (fromDepartment etc.).
+  (2) Vercel 60s timeout — bump to 300 + split route into per-entity
+      sub-routes OR add parallelization + per-entity audit logging.
+Plus 4 P1s that risk silent data loss if env vars / Google auth / rate
+limits fail. Recommend: dry-run mode (?dryRun=1) is implemented and
+SHOULD be used for a full dry-run with production data volume BEFORE
+shutting down legacy apps.

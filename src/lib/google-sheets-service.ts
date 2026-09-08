@@ -96,15 +96,26 @@ function getSheetsClient() {
  * @param range Optional range override (default: entire sheet)
  * @returns Array of row objects (keys from header row). Empty array on error.
  */
+export interface FetchSheetResult {
+  rows: SheetRow[]
+  error?: string // if set, rows is empty and this explains why
+}
+
+/**
+ * Fetch a single sheet (tab) as an array of row objects.
+ * Returns { rows, error } — check `error` to distinguish "sheet is empty"
+ * from "auth failed / sheet not found / rate limited".
+ */
 export async function fetchSheet(
   app: SheetApp,
   sheetName: string,
   range?: string,
-): Promise<SheetRow[]> {
+): Promise<FetchSheetResult> {
   const spreadsheetId = SHEET_IDS[app]
   if (!spreadsheetId) {
-    console.warn(`[google-sheets-service] No GOOGLE_SHEETS_ID_${app.toUpperCase()} in env`)
-    return []
+    const error = `No GOOGLE_SHEETS_ID_${app.toUpperCase()} env var set`
+    console.warn(`[google-sheets-service] ${error}`)
+    return { rows: [], error }
   }
 
   try {
@@ -117,9 +128,8 @@ export async function fetchSheet(
     })
 
     const rows = response.data.values
-    if (!rows || rows.length === 0) return []
+    if (!rows || rows.length === 0) return { rows: [] }
 
-    // First row = headers
     const headers = rows[0].map((h) => String(h).trim())
     const result: SheetRow[] = []
 
@@ -135,10 +145,11 @@ export async function fetchSheet(
       result.push(obj)
     }
 
-    return result
+    return { rows: result }
   } catch (err) {
-    console.error(`[google-sheets-service] fetchSheet(${app}, ${sheetName}) failed:`, err)
-    return []
+    const error = err instanceof Error ? err.message : String(err)
+    console.error(`[google-sheets-service] fetchSheet(${app}, ${sheetName}) failed:`, error)
+    return { rows: [], error }
   }
 }
 

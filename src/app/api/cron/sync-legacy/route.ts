@@ -58,7 +58,7 @@ import { normalizeStatus } from '@/lib/status-utils'
  * Auth: CRON_SECRET (Vercel cron auto-sends this).
  */
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 /** Rows per `db.$transaction` batch. Larger = fewer tx roundtrips but bigger
  *  rollback blast radius on failure. 50 is a sane middle ground for PG. */
@@ -183,7 +183,8 @@ export async function GET(req: NextRequest) {
     // 1. Devices (ITAM: All_Devices)
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('itam', 'All_Devices')
+      const { rows, error: sheetError } = await fetchSheet('itam', 'All_Devices')
+      if (sheetError) { results.devices.error = sheetError; throw new Error('All_Devices: ' + sheetError) }
       results.devices.fetched = rows.length
       const mapped: Record<string, string>[] = []
       for (const row of rows) {
@@ -254,7 +255,8 @@ export async function GET(req: NextRequest) {
     // 2. MeterReadings (ITAM: Meter_Readings) — deviceId lookup by assetCode
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('itam', 'Meter_Readings')
+      const { rows, error: sheetError } = await fetchSheet('itam', 'Meter_Readings')
+      if (sheetError) { results.meterReadings.error = sheetError; throw new Error('Meter_Readings: ' + sheetError) }
       results.meterReadings.fetched = rows.length
       const mapped: Array<{ data: Record<string, string> }> = []
       for (const row of rows) {
@@ -336,7 +338,8 @@ export async function GET(req: NextRequest) {
     // 3. DeviceTransfers (ITAM: Location_History) — deviceId lookup by assetCode
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('itam', 'Location_History')
+      const { rows, error: sheetError } = await fetchSheet('itam', 'Location_History')
+      if (sheetError) { results.deviceTransfers.error = sheetError; throw new Error('Location_History: ' + sheetError) }
       results.deviceTransfers.fetched = rows.length
       const mapped: Array<{ data: Record<string, string> }> = []
       for (const row of rows) {
@@ -410,7 +413,8 @@ export async function GET(req: NextRequest) {
     // 4. Users (ITAM: User_Permissions)
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('itam', 'User_Permissions')
+      const { rows, error: sheetError } = await fetchSheet('itam', 'User_Permissions')
+      if (sheetError) { results.users.error = sheetError; throw new Error('User_Permissions: ' + sheetError) }
       results.users.fetched = rows.length
       const mapped: Record<string, string>[] = []
       for (const row of rows) {
@@ -459,7 +463,8 @@ export async function GET(req: NextRequest) {
     //    has no remark field. We omit it (constraint: skip fields not on model).
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('itam', 'App_Settings')
+      const { rows, error: sheetError } = await fetchSheet('itam', 'App_Settings')
+      if (sheetError) { results.appSettings.error = sheetError; throw new Error('App_Settings: ' + sheetError) }
       results.appSettings.fetched = rows.length
       const mapped: Record<string, string>[] = []
       for (const row of rows) {
@@ -500,7 +505,8 @@ export async function GET(req: NextRequest) {
     //    No @unique constraint → findFirst by (category, code), pre-cached.
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('itam', 'Master_Items')
+      const { rows, error: sheetError } = await fetchSheet('itam', 'Master_Items')
+      if (sheetError) { results.masterItems.error = sheetError; throw new Error('Master_Items: ' + sheetError) }
       results.masterItems.fetched = rows.length
       const mapped: Record<string, string>[] = []
       for (const row of rows) {
@@ -566,7 +572,8 @@ export async function GET(req: NextRequest) {
     //    headers 1:1, so a direct read is simpler + more faithful.
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('itam', 'Site_Attributes')
+      const { rows, error: sheetError } = await fetchSheet('itam', 'Site_Attributes')
+      if (sheetError) { results.siteAttributes.error = sheetError; throw new Error('Site_Attributes: ' + sheetError) }
       results.siteAttributes.fetched = rows.length
       const mapped: Record<string, string>[] = []
       for (const row of rows) {
@@ -646,7 +653,8 @@ export async function GET(req: NextRequest) {
     //    Status mapped via STATUS_MAPPINGS.workOrder (emoji Thai → enum).
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('services', 'Data')
+      const { rows, error: sheetError } = await fetchSheet('services', 'Data')
+      if (sheetError) { results.workOrders.error = sheetError; throw new Error('Data (WO): ' + sheetError) }
       results.workOrders.fetched = rows.length
       const mapped: Record<string, string>[] = []
       for (const row of rows) {
@@ -719,7 +727,8 @@ export async function GET(req: NextRequest) {
     // 9. StockItems (Stock: Products)
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('stock', 'Products')
+      const { rows, error: sheetError } = await fetchSheet('stock', 'Products')
+      if (sheetError) { results.stockItems.error = sheetError; throw new Error('Products: ' + sheetError) }
       results.stockItems.fetched = rows.length
       const mapped: Record<string, string>[] = []
       for (const row of rows) {
@@ -776,7 +785,8 @@ export async function GET(req: NextRequest) {
     //     constraint "If a field doesn't exist in the Prisma model, skip it."
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('stock', 'PurchaseOrders')
+      const { rows, error: sheetError } = await fetchSheet('stock', 'PurchaseOrders')
+      if (sheetError) { results.purchaseOrders.error = sheetError; throw new Error('PurchaseOrders: ' + sheetError) }
       results.purchaseOrders.fetched = rows.length
       const mapped: Record<string, string>[] = []
       for (const row of rows) {
@@ -846,7 +856,8 @@ export async function GET(req: NextRequest) {
     //     model" constraint.
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('stock', 'StockIn')
+      const { rows, error: sheetError } = await fetchSheet('stock', 'StockIn')
+      if (sheetError) { results.stockTransactionsIn.error = sheetError; throw new Error('StockIn: ' + sheetError) }
       results.stockTransactionsIn.fetched = rows.length
       const mapped: Array<{ data: Record<string, string> }> = []
       for (const row of rows) {
@@ -932,7 +943,8 @@ export async function GET(req: NextRequest) {
     // 12. StockTransactions OUT (Stock: StockOut) — stockItemId lookup by productCode
     // ════════════════════════════════════════════════════════════════
     try {
-      const rows = await fetchSheet('stock', 'StockOut')
+      const { rows, error: sheetError } = await fetchSheet('stock', 'StockOut')
+      if (sheetError) { results.stockTransactionsOut.error = sheetError; throw new Error('StockOut: ' + sheetError) }
       results.stockTransactionsOut.fetched = rows.length
       const mapped: Array<{ data: Record<string, string> }> = []
       for (const row of rows) {
