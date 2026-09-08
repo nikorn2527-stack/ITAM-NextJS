@@ -2100,7 +2100,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">
                     📍 สถานที่ติดตั้ง
                   </div>
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3 xl:grid-cols-4">
                     <Field label="สาขา" required>
                       <Select
                         value={form.site}
@@ -2181,7 +2181,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   </div>
 
                   {/* ── Row 2: อาคาร + ชั้น + แผนก ── */}
-                  <div className="mt-4 grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
+                  <div className="mt-4 grid grid-cols-1 items-start gap-4 sm:grid-cols-3 xl:grid-cols-4">
                     <Field label="อาคาร" required>
                       <Combobox
                         value={form.building}
@@ -2265,7 +2265,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                       ระบุจุดจำเพาะ (ไม่บังคับ — ใส่เฉพาะตอนต้องการ)
                     </div>
-                    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       <Field label="ตำแหน่ง (Location)" hint={highlightedLocations.length > 0 ? `🟢 ไฮไลต์ = ตำแหน่งที่มีเครื่องอยู่ในตึกนี้ (${highlightedLocations.length} ตำแหน่ง)` : 'ดึงตำแหน่งทั้งหมดที่เคยมีในระบบ — พิมพ์เพื่อเพิ่มใหม่ได้'}>
                         <Combobox
                           value={form.location}
@@ -2300,7 +2300,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                       💻 ข้อมูลเครื่อง
                     </div>
-                    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       <Field label="ประเภท (Type)" required hint="เลือกแล้วระบบกำหนด จดมิเตอร์ อัตโนมัติ">
                         <Combobox
                           value={form.type}
@@ -2401,7 +2401,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
                     💻 ตั้งค่าอุปกรณ์
                   </div>
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     <Field label="สถานะ" required>
                       <Select
                         value={form.status}
@@ -2607,7 +2607,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                             </div>
 
                             {/* ── Form fields (responsive grid) ── */}
-                            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                               <Field label="ประเภท" required>
                                 <Select
                                   value={acc.accessoryType}
@@ -2765,7 +2765,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                     <Field label="ลำดับในชุด (Set Position)">
                       <Input
                         type="number"
@@ -2859,7 +2859,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
-                          <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                          <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                             <Field label="ซอฟต์แวร์" required>
                               <Input
                                 value={lic.software}
@@ -2961,7 +2961,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400">
                     🧾 การซื้อ / รับประกัน
                   </div>
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     <Field label="ผู้ขาย (Vendor)">
                       <Input
                         id="dev-vendor"
@@ -3034,7 +3034,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
                     💰 การเงิน (ค่าเสื่อมราคา)
                   </div>
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3 xl:grid-cols-4">
                     <Field label="ราคาซื้อ (฿)">
                       <Input
                         type="number"
@@ -3087,7 +3087,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
                     📝 อื่นๆ (ฟิลด์เทคนิค)
                   </div>
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     <Field label="ศูนย์ต้นทุน (Cost Center)">
                       <Input
                         id="dev-costCenter"
@@ -4179,7 +4179,7 @@ function QuickAddForm({
           ⚡ ข้อมูลอุปกรณ์ (เพิ่มด่วน)
         </div>
 
-        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {/* ── สาขา ── */}
           <Field label="สาขา" required>
             <Select

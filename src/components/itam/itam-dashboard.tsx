@@ -863,7 +863,7 @@ ${kpiHtml}
   const kpiWidget = (
     <>
       {/* KPI row — 5 cards on lg */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
         <KpiCard
           title="อุปกรณ์ทั้งหมด"
           value={total}
@@ -968,7 +968,7 @@ ${kpiHtml}
       </button>
 
       {/* Paper-this-month mini card under the warranty bar */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-3 xl:grid-cols-3 2xl:grid-cols-4">
         <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardContent className="flex items-center justify-between p-2.5 sm:p-3">
             <div className="flex items-center gap-2 sm:gap-2.5">
@@ -1087,7 +1087,7 @@ ${kpiHtml}
           </div>
         )}
         {insightsLoading ? (
-          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-24 w-full rounded-md" />
             ))}
@@ -1098,7 +1098,7 @@ ${kpiHtml}
             <div>ไม่พบสิ่งผิดปกติในเดือนนี้</div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3">
             {insights.slice(0, 6).map((ins, idx) => {
               const priority = Number(ins.priority ?? 5)
               const priorityColors: Record<number, string> = {
@@ -1224,7 +1224,7 @@ ${kpiHtml}
   )
 
   const chartsWidget = (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       {/* Donut chart — status distribution */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
