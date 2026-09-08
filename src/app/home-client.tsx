@@ -63,9 +63,7 @@ const ItamSettings = dynamic(() =>
 const ItamAudit = dynamic(() =>
   import('@/components/itam/itam-audit').then((m) => m.ItamAudit),
 )
-const SnapshotViewer = dynamic(() =>
-  import('@/components/itam/snapshot-viewer').then((m) => m.SnapshotViewer),
-)
+// REMOVED: SnapshotViewer dynamic import — feature disabled (Prisma models removed from schema)
 const ItamRepairs = dynamic(() =>
   import('@/components/itam/itam-repairs').then((m) => m.ItamRepairs),
 )
@@ -95,9 +93,6 @@ const PMSchedulesPage = dynamic(() =>
 )
 // MobileShell — static import (was dynamic, but dynamic failed to load on Vercel)
 import { MobileShell } from '@/components/itam/mobile'
-const SettingsPageV2 = dynamic(() =>
-  import('@/components/itam/settings-page-v2').then((m) => m.SettingsPageV2),
-)
 const WorkOrdersPage = dynamic(() =>
   import('@/components/itam/work-orders-page').then((m) => m.WorkOrdersPage),
 )
@@ -346,15 +341,13 @@ export function HomePage() {
             <KeepAlivePage active={isActive('import')}>
               <ImportPage />
             </KeepAlivePage>
-            <KeepAlivePage active={isActive('itam-settings') || isActive('settings') || isActive('settings-v2')}>
+            <KeepAlivePage active={isActive('itam-settings') || isActive('settings')}>
               <ItamSettings />
             </KeepAlivePage>
             <KeepAlivePage active={isActive('itam-audit')}>
               <ItamAudit />
             </KeepAlivePage>
-            <KeepAlivePage active={isActive('itam-snapshot-viewer')}>
-              <SnapshotViewer />
-            </KeepAlivePage>
+            {/* REMOVED: Snapshots page — feature disabled (Prisma models removed from schema) */}
             <KeepAlivePage active={isActive('itam-repairs')}>
               <ItamRepairs />
             </KeepAlivePage>

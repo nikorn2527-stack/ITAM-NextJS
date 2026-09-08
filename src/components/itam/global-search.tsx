@@ -29,6 +29,7 @@ import {
   ArrowRight,
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
 import type { SearchResults } from './types'
 
 const ICON_CLASSES = 'h-4 w-4 shrink-0'
@@ -88,7 +89,9 @@ export function GlobalSearch() {
       if (debounced.length < 2) {
         return { results: { devices: [], master: [], meter: [], audit: [], sites: [] }, total: 0 }
       }
-      const res = await fetch(`/api/search?q=${encodeURIComponent(debounced)}`)
+      const res = await fetch(`/api/search?q=${encodeURIComponent(debounced)}`, {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) throw new Error('Search failed')
       return res.json()
     },

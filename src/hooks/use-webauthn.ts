@@ -1,30 +1,11 @@
 'use client'
 
-/**
- * use-webauthn.ts — React hook สำหรับ WebAuthn / Passkey.
- *
- * Usage:
- *   const { isSupported, register, login, listCredentials, removeCredential } = useWebAuthn()
- *
- * - register(): ลงทะเบียนลายนิ้วมือปัจจุบันให้ผู้ใช้ที่ login แล้ว
- * - login(email): ล็อกอินด้วยลายนิ้วมือ (ต้องการ email เพื่อหา credential)
- * - isSupported: boolean (รองรับ browser/อุปกรณ์ไหม)
- */
-
 import * as React from 'react'
-import {
-  startRegistration,
-  startAuthentication,
-  type RegistrationResponseJSON,
-  type AuthenticationResponseJSON,
-} from '@simplewebauthn/browser'
+import { startRegistration, startAuthentication } from '@simplewebauthn/browser'
 
 export interface WebAuthnCredential {
-  id: string
-  deviceType: string | null
-  name: string | null
-  createdAt: string
-  lastUsedAt: string | null
+  id: string; deviceType: string | null; name: string | null
+  createdAt: string; lastUsedAt: string | null
 }
 
 export function useWebAuthn() {
@@ -33,166 +14,134 @@ export function useWebAuthn() {
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    // Check if browser supports WebAuthn
-    setIsSupported(
-      typeof window !== 'undefined' &&
-        'PublicKeyCredential' in window &&
-        typeof navigator !== 'undefined' &&
-        !!navigator.credentials,
-    )
+    // WebAuthn requires:
+    //   1. window.PublicKeyCredential (the API exists)
+    //   2. navigator.credentials (the Credentials Management API)
+    //   3. Secure context (HTTPS or localhost)
+    const hasApi = typeof window !== 'undefined'
+      && 'PublicKeyCredential' in window
+      && !!navigator.credentials
+    // Secure context check — WebAuthn ONLY works on HTTPS or localhost.
+    // If served over plain HTTP (e.g. a preview IP without TLS), the API
+    // exists but every call silently fails.
+    const isSecure = typeof window !== 'undefined'
+      && (window.isSecureContext || window.location.hostname === 'localhost')
+    setIsSupported(hasApi && isSecure)
   }, [])
 
   const getToken = (): string | null => {
-    if (typeof window === 'undefined') return null
+    // Try zustand-persisted auth store first (itam-auth key, shape: {state:{token:...}})
     try {
-      return localStorage.getItem('itam.token')
+      const raw = localStorage.getItem('itam-auth')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        const token = parsed?.state?.token
+        if (typeof token === 'string' && token.length > 0) return token
+      }
     } catch {
-      return null
+      // ignore parse error
     }
+    // Fallback: legacy direct key (used by older auth flows)
+    try {
+      const t = localStorage.getItem('itam.token')
+      if (t) return t
+    } catch {
+      // ignore
+    }
+    return null
   }
 
-  async function register(name?: string): Promise<{ verified: boolean; name?: string } | null> {
-    if (!isSupported) {
-      setError('เบราว์เซอร์นี้ไม่รองรับลายนิ้วมือ — กรุณาใช้ Chrome/Safari/Edge เวอร์ชันใหม่')
-      return null
-    }
-    setLoading(true)
-    setError(null)
+  async function register(name?: string) {
+    if (!isSupported) { setError('เบราว์เซอร์นี้ไม่รองรับ Passkey — กรุณาใช้ Chrome/Safari/Edge บน HTTPS'); return null }
+    setLoading(true); setError(null)
     try {
+      // Pre-check: warn if no platform authenticator (but still allow
+      // security key / cross-platform registration)
+      if (window.PublicKeyCredential?.isUserVerifyingPlatformAuthenticatorAvailable) {
+        const hasPlatform = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        if (!hasPlatform) {
+          // Don't block — user may have a USB security key. Just warn.
+          console.info('[Passkey] No platform authenticator — will try cross-platform (security key)')
+        }
+      }
       const token = getToken()
-      // Step 1: begin
       const beginRes = await fetch('/api/auth/webauthn/register/begin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ name }),
       })
-      if (!beginRes.ok) {
-        const j = await beginRes.json().catch(() => ({}))
-        throw new Error(j.error ?? 'เริ่มการลงทะเบียนล้มเหลว')
-      }
+      if (!beginRes.ok) { const j = await beginRes.json().catch(() => ({})); throw new Error(j.error ?? 'เริ่มการลงทะเบียนล้มเหลว') }
       const { options } = await beginRes.json()
-
-      // Step 2: browser prompt
       const credential = await startRegistration({ optionsJSON: options })
-
-      // Step 3: finish (verify)
       const finishRes = await fetch('/api/auth/webauthn/register/finish', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          credential,
-          deviceType: detectDeviceType(),
-          name: name ?? null,
-        }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ credential, deviceType: detectDeviceType(), name: name ?? null }),
       })
-      if (!finishRes.ok) {
-        const j = await finishRes.json().catch(() => ({}))
-        throw new Error(j.error ?? 'ยืนยันลายนิ้วมือล้มเหลว')
-      }
+      if (!finishRes.ok) { const j = await finishRes.json().catch(() => ({})); throw new Error(j.error ?? 'ยืนยัน Passkey ล้มเหลว') }
       const result = await finishRes.json()
       return { verified: true, name: result.name }
     } catch (e) {
-      // User cancellation is expected — don't show error toast for that
       const msg = e instanceof Error ? e.message : String(e)
+      // Don't show toast if user cancelled
       if (msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('abort')) {
         setError(null)
-      } else {
-        setError(msg)
+        return null
       }
+      // Friendly error messages for common failures
+      let friendly = msg
+      if (msg.includes('NotAllowed') || msg.includes('allowed')) {
+        friendly = 'การยืนยันตัวตนถูกปฏิเสธ — อาจเป็นเพราะเบราว์เซอร์ไม่มี authenticator หรือคุณปฏิเสธการยืนยัน. ลองใช้ Chrome/Safari บนมือถือ หรือเสียบ security key.'
+      } else if (msg.includes('InvalidState') || msg.includes('already registered')) {
+        friendly = 'อุปกรณ์นี้ลงทะเบียนไว้แล้ว — ลอง login ด้วย Passkey แทน'
+      } else if (msg.includes('Abort')) {
+        friendly = 'การลงทะเบียนถูกยกเลิก'
+      }
+      setError(friendly)
       return null
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
 
-  async function login(email: string): Promise<{ token: string; user: unknown } | null> {
-    if (!isSupported) {
-      setError('เบราว์เซอร์นี้ไม่รองรับลายนิ้วมือ')
-      return null
-    }
-    setLoading(true)
-    setError(null)
+  async function login(email: string) {
+    if (!isSupported) { setError('เบราว์เซอร์นี้ไม่รองรับ Passkey'); return null }
+    setLoading(true); setError(null)
     try {
-      // Step 1: begin
       const beginRes = await fetch('/api/auth/webauthn/login/begin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
       })
-      if (!beginRes.ok) {
-        const j = await beginRes.json().catch(() => ({}))
-        throw new Error(j.error ?? 'เริ่มการยืนยันตัวตนล้มเหลว')
-      }
+      if (!beginRes.ok) { const j = await beginRes.json().catch(() => ({})); throw new Error(j.error ?? 'เริ่มการยืนยันตัวตนล้มเหลว') }
       const { options } = await beginRes.json()
-
-      // Step 2: browser prompt (Touch ID / Face ID / Windows Hello)
-      const credential = (await startAuthentication({ optionsJSON: options })) as AuthenticationResponseJSON
-
-      // Step 3: finish (verify + get JWT)
+      const credential = await startAuthentication({ optionsJSON: options })
       const finishRes = await fetch('/api/auth/webauthn/login/finish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, credential }),
       })
-      if (!finishRes.ok) {
-        const j = await finishRes.json().catch(() => ({}))
-        throw new Error(j.error ?? 'ยืนยันลายนิ้วมือล้มเหลว')
-      }
-      const result = await finishRes.json()
-      return { token: result.token, user: result.user }
+      if (!finishRes.ok) { const j = await finishRes.json().catch(() => ({})); throw new Error(j.error ?? 'ยืนยัน Passkey ล้มเหลว') }
+      return await finishRes.json()
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      if (msg.toLowerCase().includes('cancel') || msg.toLowerCase().includes('abort')) {
-        setError(null)
-      } else {
-        setError(msg)
-      }
+      if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('abort')) setError(msg)
       return null
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }
 
   async function listCredentials(): Promise<WebAuthnCredential[]> {
-    const token = getToken()
-    if (!token) return []
-    const res = await fetch('/api/auth/webauthn/credentials', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
+    const token = getToken(); if (!token) return []
+    const res = await fetch('/api/auth/webauthn/credentials', { headers: { Authorization: `Bearer ${token}` } })
     if (!res.ok) return []
-    const j = await res.json()
-    return j.credentials ?? []
+    return (await res.json()).credentials ?? []
   }
 
-  async function removeCredential(id: string): Promise<boolean> {
-    const token = getToken()
-    if (!token) return false
+  async function removeCredential(id: string) {
+    const token = getToken(); if (!token) return false
     const res = await fetch(`/api/auth/webauthn/credentials?id=${encodeURIComponent(id)}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
     })
     return res.ok
   }
 
-  return {
-    isSupported,
-    loading,
-    error,
-    register,
-    login,
-    listCredentials,
-    removeCredential,
-    clearError: () => setError(null),
-  }
+  return { isSupported, loading, error, register, login, listCredentials, removeCredential, clearError: () => setError(null) }
 }
 
-/** Detect device type from user agent (for nicer labels). */
 function detectDeviceType(): string {
   if (typeof navigator === 'undefined') return 'unknown'
   const ua = navigator.userAgent.toLowerCase()

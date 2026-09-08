@@ -1,4 +1,13 @@
 /**
+ * ⚠️ DEPRECATED (Phase 0): This v1 API is kept for backward compatibility
+ * but the frontend uses /api/work-orders/* instead. The v1 routes have
+ * been hardened with site-level authz (loadAuthorizedWorkOrderV1 in
+ * _shared.ts) but should be considered legacy.
+ *
+ * Decision pending: either migrate frontend to v1 (which has better
+ * audit logging) or remove v1 entirely. See ITAM-NextJS-roadmap-
+ * depreciation-consistency.md Phase 0.
+ *
  * Work Orders API — list + create.
  *
  * GET /api/v1/work-orders

@@ -55,6 +55,7 @@ import {
 } from '@/lib/csv-field-mapping'
 import { downloadCsv } from '@/lib/csv'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/store/auth-store'
 
 // ============================================================
 // นำเข้าจากระบบเก่า (Apps Script) — ดึง CSV จาก 3 แอปเดิม
@@ -198,6 +199,7 @@ export function LegacyImportSection() {
       fd.append('sheetId', vars.sheetId)
       const res = await fetch('/api/import', {
         method: 'POST',
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
         body: fd,
       })
       const json = await res.json()

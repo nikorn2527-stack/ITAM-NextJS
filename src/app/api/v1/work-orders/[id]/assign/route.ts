@@ -1,7 +1,7 @@
 /**
  * POST /api/v1/work-orders/[id]/assign — assign a work order to a technician.
  *
- * Auth: ADMIN — or DEVICE_EDIT (a technician can self-assign too).
+ * Auth: WO_ASSIGN (checked at the WO's Site via loadAuthorizedWorkOrderV1).
  * Body: { assignedTo, assignmentNote? }
  *   - Set assignedTo, assignedBy = current user, assignedAt = now
  *   - If status was PENDING, change to IN_PROGRESS
@@ -12,36 +12,31 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
-import { requireApiAuth } from '@/lib/api/auth'
 import {
   ok,
   badRequest,
-  notFound,
   conflict,
   serverError,
 } from '@/lib/api/response'
-import { findWorkOrder, TERMINAL_STATUSES } from '../../_shared'
+import { TERMINAL_STATUSES, loadAuthorizedWorkOrderV1 } from '../../_shared'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  // Allow ADMIN or DEVICE_EDIT (technician self-assignment).
-  let auth = await requireApiAuth(req, 'ADMIN')
-  if (!auth.ok) {
-    // Try DEVICE_EDIT instead — keep the original error if this also fails.
-    const fallback = await requireApiAuth(req, 'DEVICE_EDIT')
-    if (!fallback.ok) return auth.response
-    auth = fallback
-  }
-  const { user } = auth.ctx
-  const userEmail = user.email
-
   const { id } = await params
 
   try {
-    const existing = await findWorkOrder(id)
-    if (!existing) return notFound('work order')
+    // P0 Security: loadAuthorizedWorkOrderV1 authenticates the caller AND
+    // checks WO_ASSIGN at the WO's Site in one shot, preventing cross-site
+    // privilege escalation (a staff member at Site A can no longer assign
+    // technicians to WOs at Site B — previously any caller with ADMIN or
+    // DEVICE_EDIT could assign at any Site).
+    const result = await loadAuthorizedWorkOrderV1(req, id, 'WO_ASSIGN')
+    if (!result.ok) return result.response
+    const { wo: existing, auth } = result
+    const user = auth.user
+    const userEmail = user.email
 
     if (TERMINAL_STATUSES.has(existing.status)) {
       return conflict(

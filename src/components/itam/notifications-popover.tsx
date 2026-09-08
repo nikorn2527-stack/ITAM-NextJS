@@ -11,6 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useAppStore, type SettingsTab } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
 
 type Severity = 'expired' | 'expiring' | 'warning' | 'info'
 
@@ -134,7 +135,9 @@ export function NotificationsPopover() {
   const { data } = useQuery<NotifsResponse>({
     queryKey: ['notifications'],
     queryFn: async () => {
-      const res = await fetch('/api/notifications')
+      const res = await fetch('/api/notifications', {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) throw new Error('Failed to load notifications')
       return res.json()
     },

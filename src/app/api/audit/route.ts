@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireAuth } from '@/lib/auth-middleware'
 
 export async function GET(req: NextRequest) {
+  // ── P0 Security: require VIEW_AUDIT permission ──
+  // Audit logs contain actor, entity, summary, and detail which can
+  // expose internal activity. Previously this endpoint was unauthenticated.
+  const auth = await requireAuth(req, 'VIEW_AUDIT')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const { searchParams } = new URL(req.url)
     const limit = Math.min(

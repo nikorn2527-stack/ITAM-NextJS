@@ -48,6 +48,7 @@ import {
 } from 'lucide-react'
 import type { Cycle } from './types'
 import { CycleReportDialog } from './cycle-report-dialog'
+import { useAuthStore } from '@/store/auth-store'
 
 const THAI_MONTHS = [
   'มกราคม',
@@ -141,7 +142,9 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
   const { data: settingsMap } = useQuery<Record<string, string>>({
     queryKey: ['settings'],
     queryFn: async () => {
-      const res = await fetch('/api/settings')
+      const res = await fetch('/api/settings', {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return {}
       const json = await res.json()
       return (json.settings as Record<string, string>) ?? {}
@@ -158,7 +161,9 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
   const { data: allCycles, isLoading } = useQuery<CycleWithStats[]>({
     queryKey: ['all-cycles'],
     queryFn: async () => {
-      const res = await fetch('/api/cycles')
+      const res = await fetch('/api/cycles', {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) throw new Error('Failed to load cycles')
       const json = await res.json()
       return (json.cycles as Cycle[]) ?? []
@@ -175,7 +180,9 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
       await Promise.all(
         cycles.map(async (c) => {
           try {
-            const res = await fetch(`/api/cycles/${c.id}`)
+            const res = await fetch(`/api/cycles/${c.id}`, {
+              headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+            })
             if (res.ok) {
               const j = await res.json()
               stats[c.id] = { count: j.readingCount ?? 0, sheets: j.totalSheets ?? 0 }
@@ -204,7 +211,9 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
   const { data: sites } = useQuery<{ code: string; name: string }[]>({
     queryKey: ['sites'],
     queryFn: async () => {
-      const res = await fetch('/api/sites')
+      const res = await fetch('/api/sites', {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) return []
       const json = await res.json()
       return (json.sites ?? []) as { code: string; name: string }[]
@@ -225,7 +234,12 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
       setCreating(true)
       const res = await fetch('/api/cycles', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify({
           name: cycleName,
           startDate: cycleStart,
@@ -259,7 +273,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
     try {
       setActing(true)
       if (action === 'delete') {
-        const res = await fetch(`/api/cycles/${cycle.id}`, { method: 'DELETE' })
+        const res = await fetch(`/api/cycles/${cycle.id}`, { method: 'DELETE', headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })() })
         if (!res.ok) {
           const j = await res.json().catch(() => ({}))
           throw new Error(j.error ?? 'ลบไม่สำเร็จ')
@@ -269,7 +283,12 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
         const statusMap = { end: 'ended', cancel: 'cancelled', reopen: 'active' }
         const res = await fetch(`/api/cycles/${cycle.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t
+              ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+              : { 'Content-Type': 'application/json' }
+          })(),
           body: JSON.stringify({ status: statusMap[action] }),
         })
         if (!res.ok) {
@@ -314,7 +333,12 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
       setCreatingNext(true)
       const res = await fetch('/api/cycles', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify({
           name: suggestNext.nextName,
           startDate: suggestNext.nextStart,
@@ -664,7 +688,10 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
           <AlertDialogFooter>
             <AlertDialogCancel disabled={acting}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={performAction}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void performAction()
+              }}
               disabled={acting}
               className={
                 actionTarget?.action === 'cancel' || actionTarget?.action === 'delete'

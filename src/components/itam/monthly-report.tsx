@@ -297,8 +297,8 @@ function formatMonthLabel(month: string): string {
   }
 }
 
-function formatBaht(value: number): string {
-  return `฿${value.toLocaleString('th-TH', {
+function formatBaht(value: number | null | undefined): string {
+  return `฿${(Number(value) || 0).toLocaleString('th-TH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
@@ -744,6 +744,10 @@ export function MonthlyReport() {
     meters: false,
   })
   const [printBusy, setPrintBusy] = React.useState(false)
+  // ── In-page print container (Task ID: PRINT-MEDIA-QUERY-012) ──
+  // HTML string injected into a hidden `.print-only` div, then
+  // window.print() fires on the SAME page (no new tab/window).
+  const [printHtml, setPrintHtml] = React.useState('')
 
   // ── Print template selection dialog state (Task ID: FIX-1-2-EXPORT-PRINT) ──
   const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
@@ -868,15 +872,12 @@ export function MonthlyReport() {
         monthLabel: formatMonthLabel(month),
         siteLabel: site === 'all' ? 'ทุกสาขา' : `สาขา ${site}`,
       })
-      const win = window.open('', '_blank', 'width=1024,height=768')
-      if (!win) {
-        toast.error('เบราว์เซอร์บล็อกการเปิดหน้าต่าง กรุณาอนุญาตป๊อปอัป')
-        return
-      }
-      win.document.open()
-      win.document.write(html)
-      win.document.close()
-      toast.success('เปิดหน้ารายงานงานพิเศษเรียบร้อย — กดปุ่ม “พิมพ์” เพื่อพิมพ์')
+      // ── Inject into hidden print container + fire window.print()
+      // on the SAME page (Task ID: PRINT-MEDIA-QUERY-012). ──
+      setPrintHtml(html)
+      setTimeout(() => window.print(), 50)
+      setTimeout(() => setPrintHtml(''), 1000)
+      toast.success('กำลังเปิดหน้าต่างพิมพ์…')
     } catch (err) {
       console.error('openSpecialFeeApprovalReport', err)
       toast.error(err instanceof Error ? err.message : 'เปิดรายงานไม่สำเร็จ')
@@ -892,7 +893,7 @@ export function MonthlyReport() {
     rows.push(['รายงานรายเดือน', formatMonthLabel(data.month)])
     rows.push(['สาขา', site === 'all' ? 'ทั้งหมด' : site])
     rows.push(['ประเภท', reportType])
-    rows.push(['สร้างเมื่อ', new Date(data.generatedAt).toLocaleString('th-TH')])
+    rows.push(['สร้างเมื่อ', data.generatedAt ? new Date(data.generatedAt).toLocaleString('th-TH') : '—'])
     rows.push([])
 
     if (data.workOrders) {
@@ -1081,7 +1082,7 @@ export function MonthlyReport() {
   }): string {
     const { sections, report, meterRows, deviceRows, siteLabel } = opts
     const monthLabel = formatMonthLabel(report.month)
-    const generatedLabel = new Date(report.generatedAt).toLocaleString('th-TH')
+    const generatedLabel = report.generatedAt ? new Date(report.generatedAt).toLocaleString('th-TH') : '—'
     const todayLabel = new Date().toLocaleString('th-TH')
 
     // Group helpers
@@ -1345,9 +1346,9 @@ export function MonthlyReport() {
             <td>${escHtml(r.deviceName ?? '—')}</td>
             <td>${escHtml(r.site ?? '—')}</td>
             <td>${escHtml(dateLabel)}</td>
-            <td style="text-align:right">${r.meterBw.toLocaleString('th-TH')}</td>
-            <td style="text-align:right">${r.meterColor.toLocaleString('th-TH')}</td>
-            <td style="text-align:right"><strong>${(r.pagesBw + r.pagesColor).toLocaleString('th-TH')}</strong></td>
+            <td style="text-align:right">${(r.meterBw ?? 0).toLocaleString('th-TH')}</td>
+            <td style="text-align:right">${(r.meterColor ?? 0).toLocaleString('th-TH')}</td>
+            <td style="text-align:right"><strong>${((r.pagesBw ?? 0) + (r.pagesColor ?? 0)).toLocaleString('th-TH')}</strong></td>
             <td style="text-align:center">${escHtml(typeLabel)}</td>
             <td>${escHtml(r.readBy ?? '—')}</td>
           </tr>`
@@ -1563,16 +1564,13 @@ export function MonthlyReport() {
         deviceRows,
         siteLabel,
       })
-      const win = window.open('', '_blank', 'width=1024,height=768')
-      if (!win) {
-        toast.error('เบราว์เซอร์บล็อกการเปิดหน้าต่าง กรุณาอนุญาตป๊อปอัป')
-        return
-      }
-      win.document.open()
-      win.document.write(html)
-      win.document.close()
+      // ── Inject into hidden print container + fire window.print()
+      // on the SAME page (Task ID: PRINT-MEDIA-QUERY-012). ──
+      setPrintHtml(html)
+      setTimeout(() => window.print(), 50)
+      setTimeout(() => setPrintHtml(''), 1000)
       setPrintDialogOpen(false)
-      toast.success('เปิดหน้าพิมพ์เรียบร้อย — กดปุ่ม “พิมพ์” เพื่อพิมพ์')
+      toast.success('กำลังเปิดหน้าต่างพิมพ์…')
     } catch (err) {
       console.error('handlePrintReport', err)
       toast.error('เปิดหน้าพิมพ์ไม่สำเร็จ')
@@ -1829,7 +1827,7 @@ export function MonthlyReport() {
                 {site === 'all' ? 'ทุกสาขา' : `สาขา ${site}`}
               </Badge>
               <span className="text-[11px]">
-                สร้างเมื่อ {new Date(data.generatedAt).toLocaleString('th-TH')}
+                สร้างเมื่อ {data.generatedAt ? new Date(data.generatedAt).toLocaleString('th-TH') : '—'}
               </span>
             </div>
           )}
@@ -2608,6 +2606,17 @@ export function MonthlyReport() {
           if (typeof window !== 'undefined') window.print()
         }}
       />
+
+      {/* ── Hidden print container (Task ID: PRINT-MEDIA-QUERY-012) ──
+           Injects the generated report HTML and is revealed only in
+           @media print via the global `.print-only` rule in globals.css. */}
+      {printHtml && (
+        <div
+          className="print-only"
+          dangerouslySetInnerHTML={{ __html: printHtml }}
+          aria-hidden
+        />
+      )}
     </div>
   )
 }

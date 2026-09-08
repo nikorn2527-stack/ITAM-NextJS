@@ -26,7 +26,6 @@ export type ActivePage =
   | 'reports-hub'
   | 'devices-page'
   | 'monthly-report'
-  | 'settings-v2'
   | 'meter-page'
   | 'paper-analytics-page'
   | 'mobile'

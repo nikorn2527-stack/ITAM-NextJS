@@ -262,31 +262,82 @@ async function importDevices(
 
   if (filtered.length === 0) return { processed: 0, errors }
 
+  // ── Phase A fix (CONSULTING-007): wrap device writes in a Prisma
+  //    transaction so partial failures don't leave the DB in a torn
+  //    state. Batches of BATCH_SIZE rows per transaction avoid long
+  //    row-lock contention on large imports. If a batch fails, that
+  //    batch is rolled back atomically and we abort the rest of the
+  //    import — previously committed batches stay committed (we can't
+  //    un-commit a closed transaction), but no half-batch writes leak.
+  //
+  //    Stock-in / stock-out / work-order / meter-reading sections are
+  //    NOT yet wrapped (Phase B will consolidate those onto the
+  //    /api/itam/devices/import contract endpoint). ──
+  const BATCH_SIZE = 100
+  const batches: Array<typeof filtered> = []
+  for (let i = 0; i < filtered.length; i += BATCH_SIZE) {
+    batches.push(filtered.slice(i, i + BATCH_SIZE))
+  }
+
+  let processed = 0
+  console.log(
+    `[import][device] writing ${filtered.length} rows in ${batches.length} batch(es) of ≤${BATCH_SIZE}`,
+  )
+
   try {
-    const result = await db.device.createMany({
-      data: filtered.map((r) => ({
-        assetCode: r.assetCode as string,
-        name: r.name as string,
-        brand: r.brand as string,
-        model: r.model as string,
-        type: r.type as string,
-        serialNumber: r.serialNumber as string | null,
-        status: r.status as string,
-        site: r.site as string,
-        department: r.department as string | null,
-        location: r.location as string | null,
-        purchaseDate: r.purchaseDate as string | null,
-        warrantyMonths: r.warrantyMonths as number,
-      })),
-    })
-    return { processed: result.count, errors }
+    for (let b = 0; b < batches.length; b++) {
+      const batch = batches[b]
+      const batchNo = b + 1
+      console.log(
+        `[import][device] batch ${batchNo}/${batches.length}: writing ${batch.length} rows`,
+      )
+      // Each batch runs in its own transaction so a single bad row
+      // only rolls back its own batch — earlier batches stay put and
+      // we surface a clear error to the caller with progress info.
+      const batchCount = await db.$transaction(async (tx) => {
+        const result = await tx.device.createMany({
+          data: batch.map((r) => ({
+            assetCode: r.assetCode as string,
+            name: r.name as string,
+            brand: r.brand as string,
+            model: r.model as string,
+            type: r.type as string,
+            serialNumber: r.serialNumber as string | null,
+            status: r.status as string,
+            site: r.site as string,
+            department: r.department as string | null,
+            location: r.location as string | null,
+            purchaseDate: r.purchaseDate as string | null,
+            warrantyMonths: r.warrantyMonths as number,
+          })),
+        })
+        return result.count
+      })
+      processed += batchCount
+      console.log(
+        `[import][device] batch ${batchNo}/${batches.length}: committed ${batchCount} rows (cumulative ${processed}/${filtered.length})`,
+      )
+    }
+    return { processed, errors }
   } catch (e) {
-    console.error('importDevices createMany error', e)
+    // A batch failed → that batch's writes were rolled back by Prisma.
+    // Earlier batches may already be committed; surface that fact so
+    // the caller knows the import is partial.
+    const committedBeforeFailure = processed
+    console.error(
+      `[import][device] batch failed after committing ${committedBeforeFailure}/${filtered.length} rows`,
+      e,
+    )
     errors.push({
       row: 0,
-      message: e instanceof Error ? e.message : 'DB error (device)',
+      message:
+        (e instanceof Error ? e.message : 'DB error (device)') +
+        ` — ${committedBeforeFailure}/${filtered.length} rows committed before failure (rolled back failed batch)`,
     })
-    return { processed: 0, errors }
+    // Report the rows we did manage to commit so the user knows the
+    // import wasn't a total loss. Without this, a 1000-row import
+    // failing on row 750 would silently drop the 700 committed rows.
+    return { processed: committedBeforeFailure, errors }
   }
 }
 
@@ -568,6 +619,29 @@ async function importMeterReadings(
   // Track which devices need their last-meter values persisted.
   const updatesByDeviceId = new Map<string, { bw: number; color: number }>()
 
+  // ── Phase 1: validation (no DB writes). ──
+  // P1 FIX (AUDIT-FINDINGS-FIX-018): previously each `db.meterReading.create`
+  // and `db.device.update` ran in its own implicit transaction, so a failure
+  // midway left torn state (some meterReadings committed, some devices'
+  // lastMeterBw/lastMeterColor stale). Now we validate every row first, then
+  // wrap all the writes in a single `db.$transaction` so partial failure
+  // rolls back atomically.
+  const readingsToInsert: Array<{
+    deviceId: string
+    assetCode: string
+    readingDate: string
+    readingMonth: string
+    meterBw: number
+    meterColor: number
+    pagesBw: number
+    pagesColor: number
+    prevMeterBw: number
+    prevMeterColor: number
+    readBy: string
+    remark: string
+    rowNum: number
+  }> = []
+
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r]
     const rowNum = r + 2
@@ -605,47 +679,77 @@ async function importMeterReadings(
     const pagesColor = Math.max(0, meterColor - prevMeterColor)
     const readingMonth = readingDate.slice(0, 7) // YYYY-MM
 
-    try {
-      await db.meterReading.create({
-        data: {
-          deviceId: device.id,
-          // Always persist the canonical assetCode (NOT the user-input identifier,
-          // which may have been the serial).
-          assetCode: device.assetCode,
-          readingDate,
-          readingMonth,
-          meterBw,
-          meterColor,
-          pagesBw,
-          pagesColor,
-          prevMeterBw,
-          prevMeterColor,
-          readingType: 'MONTHLY',
-          readBy: toStr(row[iReadBy]),
-          remark: toStr(row[iRemark]),
-        },
-      })
-      // Remember the new last-meter so the next row for this device sees it.
-      updatesByDeviceId.set(device.id, { bw: meterBw, color: meterColor })
-      processed++
-    } catch (e) {
-      console.error('importMeterReadings create error', e)
-      errors.push({
-        row: rowNum,
-        message: e instanceof Error ? e.message : 'DB error (meter-reading)',
-      })
-    }
+    readingsToInsert.push({
+      deviceId: device.id,
+      // Always persist the canonical assetCode (NOT the user-input identifier,
+      // which may have been the serial).
+      assetCode: device.assetCode,
+      readingDate,
+      readingMonth,
+      meterBw,
+      meterColor,
+      pagesBw,
+      pagesColor,
+      prevMeterBw,
+      prevMeterColor,
+      readBy: toStr(row[iReadBy]),
+      remark: toStr(row[iRemark]),
+      rowNum,
+    })
+    // Remember the new last-meter so the next row for this device sees it.
+    updatesByDeviceId.set(device.id, { bw: meterBw, color: meterColor })
   }
 
-  // Persist the updated last-meter values back to the device rows.
-  for (const [deviceId, val] of updatesByDeviceId) {
+  // ── Phase 2: writes (single transaction). ──
+  // All `meterReading.create` calls + the trailing `device.update` calls run
+  // inside one Prisma transaction. If any write fails, the entire batch
+  // rolls back — no torn state.
+  if (readingsToInsert.length > 0) {
     try {
-      await db.device.update({
-        where: { id: deviceId },
-        data: { lastMeterBw: val.bw, lastMeterColor: val.color },
+      await db.$transaction(async (tx) => {
+        for (const r of readingsToInsert) {
+          await tx.meterReading.create({
+            data: {
+              deviceId: r.deviceId,
+              assetCode: r.assetCode,
+              readingDate: r.readingDate,
+              readingMonth: r.readingMonth,
+              meterBw: r.meterBw,
+              meterColor: r.meterColor,
+              pagesBw: r.pagesBw,
+              pagesColor: r.pagesColor,
+              prevMeterBw: r.prevMeterBw,
+              prevMeterColor: r.prevMeterColor,
+              readingType: 'MONTHLY',
+              readBy: r.readBy,
+              remark: r.remark,
+            },
+          })
+          processed++
+        }
+
+        // Persist the updated last-meter values back to the device rows
+        // (inside the same transaction so they commit/roll back atomically
+        // with the meterReadings).
+        for (const [deviceId, val] of updatesByDeviceId) {
+          await tx.device.update({
+            where: { id: deviceId },
+            data: { lastMeterBw: val.bw, lastMeterColor: val.color },
+          })
+        }
       })
     } catch (e) {
-      console.error('importMeterReadings device update error', e)
+      console.error('importMeterReadings transaction error', e)
+      // Transaction rolled back — nothing was committed. Surface a clear
+      // error so the caller knows the import failed wholesale (rather than
+      // the previous partial-success behaviour that left torn state).
+      errors.push({
+        row: 0,
+        message:
+          (e instanceof Error ? e.message : 'DB error (meter-reading)') +
+          ` — transaction rolled back; 0/${readingsToInsert.length} rows committed`,
+      })
+      processed = 0
     }
   }
 

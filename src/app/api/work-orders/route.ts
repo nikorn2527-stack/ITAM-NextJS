@@ -7,6 +7,7 @@ import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag, demoFilter } from '@/lib/demo-mode'
 import { withRetryOnUnique } from '@/lib/retry-unique'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { STATUS_MAPPINGS } from '@/lib/csv-field-mapping'
 import { isNumericShortQuery } from '@/lib/suffix-search'
 import {
@@ -18,6 +19,7 @@ import {
 // Allowed status values
 const VALID_STATUSES = new Set([
   'PENDING',
+  'PENDING_REVIEW',
   'IN_PROGRESS',
   'WAITING_PARTS',
   'COMPLETED',
@@ -26,7 +28,7 @@ const VALID_STATUSES = new Set([
 
 const VALID_PRIORITIES = new Set(['ปกติ', 'ปานกลาง', 'สูง', 'ด่วน'])
 
-const VALID_SOURCES = new Set(['session', 'guest'])
+const VALID_SOURCES = new Set(['session', 'guest', 'line_liff', 'public_qr', 'line'])
 
 function pad3(n: number): string {
   return String(n).padStart(3, '0')
@@ -154,6 +156,11 @@ function normalizeExternalMeta(input: unknown): {
 }
 
 export async function GET(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  // Returns 404 MODULE_DISABLED when the 'work-orders' module is disabled.
+  const moduleCheck = moduleUnavailableResponse('work-orders')
+  if (moduleCheck) return moduleCheck
+
   // ── Authentication: require an authenticated session ──
   // Previously this route returned work orders with NO auth check at all
   // — anyone hitting the endpoint could see every WO in the system
@@ -202,7 +209,7 @@ export async function GET(req: NextRequest) {
     //   legacy rows that haven't been backfilled with siteCode yet.
     // non-superadmin with no grants → empty list (fail-closed).
     let siteFilter: Record<string, unknown> | null = null
-    if (ctx.isSuperAdmin || ctx.globalRole === 'admin') {
+    if (ctx.isSuperAdmin || ctx.globalRole === 'admin' || auth.isDemo) {
       // superadmin: apply optional `site` param filter if provided
       if (siteParam) {
         siteFilter = {
@@ -305,6 +312,7 @@ export async function GET(req: NextRequest) {
       _count: true,
     })
     const stats: Record<string, number> = {
+      PENDING_REVIEW: 0,
       PENDING: 0,
       IN_PROGRESS: 0,
       WAITING_PARTS: 0,
@@ -334,6 +342,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  // Guest submissions are accepted even when the module is "disabled"
+  // because the public QR repair flow depends on WO creation. So we only
+  // gate the staff-side here; the guest-side check happens later via the
+  // submissionSource branch.
+  const moduleCheck = moduleUnavailableResponse('work-orders')
+  if (moduleCheck) return moduleCheck
+
   try {
     // ── Auth flow: guest vs. authenticated staff ──
     //

@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     }
 
     const now = Date.now()
-    const token = encodeSession({
+    const token = await encodeSession({
       userId: user.id,
       email: user.email,
       exp: now + SESSION_TTL_MS,
@@ -97,6 +97,9 @@ export async function POST(req: NextRequest) {
       sameSite: 'lax',
       path: '/',
       maxAge: SESSION_TTL_MS / 1000,
+      // Secure cookies only over HTTPS (production). In dev (http://localhost)
+      // browsers reject Secure cookies, so we set it conditionally.
+      secure: process.env.NODE_ENV === 'production',
     })
     return res
   } catch (err) {

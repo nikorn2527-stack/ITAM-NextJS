@@ -47,12 +47,13 @@ function computeRange(key: RangeKey): RangeInfo {
 }
 
 function readingDateWhere(range: RangeInfo): Record<string, unknown> {
+  // MeterReading uses `readingDate` (ISO string), not `date`.
   if (range.start === null && range.end === null) return {}
   if (range.start && range.end) {
-    return { date: { gte: range.start, lte: range.end } }
+    return { readingDate: { gte: range.start, lte: range.end } }
   }
-  if (range.start) return { date: { gte: range.start } }
-  if (range.end) return { date: { lte: range.end } }
+  if (range.start) return { readingDate: { gte: range.start } }
+  if (range.end) return { readingDate: { lte: range.end } }
   return {}
 }
 
@@ -78,8 +79,17 @@ export async function GET(req: NextRequest) {
       ? computeRange(rawRange)
       : computeRange('month')
 
+    // APPENDIX-F: query SiteAttribute (the live sites master) instead of the
+    // legacy `Site` table. Field mapping:
+    //   Site.code   → SiteAttribute.SiteCode
+    //   Site.name   → SiteAttribute.SiteName
+    // We keep the { code, name } shape so downstream code (siteNames map,
+    // allSiteCodes set) doesn't need to change.
     const [sites, rates, devices, activeCycle] = await Promise.all([
-      db.site.findMany({ orderBy: { code: 'asc' } }),
+      db.siteAttribute.findMany({
+        orderBy: { SiteCode: 'asc' },
+        select: { SiteCode: true, SiteName: true },
+      }),
       db.siteRate.findMany({ select: { siteCode: true, bwRate: true, colorRate: true } }),
       db.device.findMany({
         select: {
@@ -102,9 +112,17 @@ export async function GET(req: NextRequest) {
     const rateMap = new Map(rates.map((r) => [r.siteCode, r.bwRate]))
     const defaultRate = 0.5
 
+    // Normalize SiteAttribute rows back to { code, name } shape so the rest
+    // of the function (which was written against the old Site model) keeps
+    // working unchanged. This is the minimal-diff migration path.
+    const siteRows = sites.map((s) => ({
+      code: s.SiteCode,
+      name: s.SiteName ?? s.SiteCode,
+    }))
+
     // Build per-site skeletons including any sites that exist in DB even with 0 devices.
     // Also include devices whose site doesn't appear in the sites table (treat as a row).
-    const siteNames = new Map(sites.map((s) => [s.code, s.name]))
+    const siteNames = new Map(siteRows.map((s) => [s.code, s.name]))
     const deviceBySite = new Map<string, typeof devices>()
     for (const d of devices) {
       const list = deviceBySite.get(d.site) ?? []
@@ -114,41 +132,46 @@ export async function GET(req: NextRequest) {
 
     // Resolve the set of site codes (union of sites table + devices.site).
     const allSiteCodes = new Set<string>([
-      ...sites.map((s) => s.code),
+      ...siteRows.map((s) => s.code),
       ...devices.map((d) => d.site),
     ])
 
     // Pull readings in range, plus readings for the active cycle (to compute
     // "unread in cycle" = meterable devices lacking a reading in the active cycle).
+    // NOTE: MeterReading has no `delta` or `date` field. The actual fields are:
+    //   - readingDate (ISO string) — when the reading was taken
+    //   - pagesBw / pagesColor (Int) — sheets printed in this reading
+    // We compute sheets = pagesBw + pagesColor (same as cost-analytics route).
     const rangeWhere = readingDateWhere(range)
     const [rangeReadings, cycleReadings] = await Promise.all([
       db.meterReading.findMany({
         where: rangeWhere,
-        select: { deviceId: true, delta: true, date: true },
+        select: { deviceId: true, pagesBw: true, pagesColor: true, readingDate: true },
       }),
       activeCycle
         ? db.meterReading.findMany({
             where: { cycleId: activeCycle.id },
-            select: { deviceId: true, date: true },
+            select: { deviceId: true, readingDate: true },
           })
-        : Promise.resolve([] as Array<{ deviceId: string; date: string }>),
+        : Promise.resolve([] as Array<{ deviceId: string; readingDate: string }>),
     ])
 
     const rangeSheetsByDevice = new Map<string, number>()
     const lastReadingDateByDevice = new Map<string, string>()
     for (const r of rangeReadings) {
       const cur = rangeSheetsByDevice.get(r.deviceId) ?? 0
-      rangeSheetsByDevice.set(r.deviceId, cur + (r.delta > 0 ? r.delta : 0))
+      const sheets = (r.pagesBw ?? 0) + (r.pagesColor ?? 0)
+      rangeSheetsByDevice.set(r.deviceId, cur + sheets)
       const prevDate = lastReadingDateByDevice.get(r.deviceId)
-      if (!prevDate || r.date > prevDate) {
-        lastReadingDateByDevice.set(r.deviceId, r.date)
+      if (!prevDate || r.readingDate > prevDate) {
+        lastReadingDateByDevice.set(r.deviceId, r.readingDate)
       }
     }
 
     const cycleReadingsByDevice = new Map<string, string>()
     for (const r of cycleReadings) {
       const prev = cycleReadingsByDevice.get(r.deviceId)
-      if (!prev || r.date > prev) cycleReadingsByDevice.set(r.deviceId, r.date)
+      if (!prev || r.readingDate > prev) cycleReadingsByDevice.set(r.deviceId, r.readingDate)
     }
 
     const METERABLE_TYPES = ['PRINTER', 'COPIER', 'MFP']

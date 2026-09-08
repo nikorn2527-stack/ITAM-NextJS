@@ -75,12 +75,10 @@ import {
   Search,
   Download,
   Upload,
-  Tag,
   PackageOpen,
   X,
   ArrowRight,
   History,
-  QrCode,
   ChevronLeft,
   ChevronRight,
   Sparkles,
@@ -96,6 +94,8 @@ import {
   Clock,
   ChevronsUpDown,
   Check,
+  Printer,
+  Layers,
 } from 'lucide-react'
 import {
   type Device,
@@ -119,6 +119,18 @@ import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
 import { PaginationBar } from './pagination-bar'
+import {
+  buildDefaultTemplate,
+  renderStickerFromTemplate,
+  buildPrintDocument,
+  DEFAULT_STICKER_SETTINGS,
+  type StickerDeviceData,
+  type StickerElement,
+  type StickerSettings,
+  type StickerTemplate,
+} from '@/lib/sticker-template'
+import { generateStickerQrData } from '@/lib/smart-qr'
+import QRCode from 'qrcode'
 
 /** Build fetch headers with the user's JWT (if logged in). */
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -177,6 +189,60 @@ export interface LicenseRow {
   quantity: number // Quantity
   expiryDate: string // Expiry_Date (yyyy-mm-dd)
   remark: string // Remark
+}
+
+/**
+ * PendingAccessory — mirrors the DeviceAccessory Prisma model.
+ *
+ * Stored in the device Add/Edit form's local state until the user clicks
+ * "บันทึก" (Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM). After the device is
+ * created/updated, save() POSTs each row to /api/devices/[id]/accessories.
+ *
+ * `id` is present when loaded from DB (edit mode) — rows with an id are
+ * PUT-updated; rows without an id are POST-created.
+ */
+export interface PendingAccessory {
+  id?: string // present when loaded from DB (edit mode)
+  accessoryType: string // KEYBOARD | MOUSE | MONITOR | ...
+  brand: string
+  model: string
+  serialNumber: string
+  status: string // Active | Inactive | In Repair | Disposed
+  installedDate: string // yyyy-mm-dd (optional)
+  remark: string
+  /** Set when the user marks a row for deletion on edit mode. */
+  _pendingDelete?: boolean
+}
+
+const ACCESSORY_TYPES_INLINE = [
+  { value: 'KEYBOARD', label: 'คีย์บอร์ด' },
+  { value: 'MOUSE', label: 'เมาส์' },
+  { value: 'MONITOR', label: 'จอภาพ' },
+  { value: 'SCANNER', label: 'สแกนเนอร์เสริม' },
+  { value: 'CABLE', label: 'สาย / แลน' },
+  { value: 'ADAPTER', label: 'อะแดปเตอร์' },
+  { value: 'UPS', label: 'UPS / สำรองไฟ' },
+  { value: 'HUB', label: 'USB Hub' },
+  { value: 'PRINTHEAD', label: 'หัวพิมพ์' },
+  { value: 'TRAY', label: 'ถาดกระดาษเสริม' },
+  { value: 'OTHER', label: 'อื่นๆ' },
+] as const
+
+const ACCESSORY_STATUSES_INLINE = [
+  { value: 'Active', label: 'ใช้งานอยู่' },
+  { value: 'Inactive', label: 'ไม่ใช้งาน' },
+  { value: 'In Repair', label: 'ส่งซ่อม' },
+  { value: 'Disposed', label: 'ตัดจ่าย' },
+] as const
+
+const EMPTY_ACCESSORY: PendingAccessory = {
+  accessoryType: 'KEYBOARD',
+  brand: '',
+  model: '',
+  serialNumber: '',
+  status: 'Active',
+  installedDate: '',
+  remark: '',
 }
 
 const EMPTY_LICENSE: LicenseRow = {
@@ -245,6 +311,11 @@ interface FormState {
   setPosition: string      // "" = unset
   // ── License / Software (NEW) ──
   licenses: LicenseRow[]
+  // ── Inline Accessories (Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM) ──
+  // Local state only — POSTed to /api/devices/[id]/accessories after the
+  // device is created/updated. Best-effort: failures don't fail the device
+  // save (logged via toast.warning).
+  accessories: PendingAccessory[]
 }
 
 /**
@@ -302,6 +373,7 @@ const EMPTY_FORM: FormState = {
   setLabel: '',
   setPosition: '',
   licenses: [],
+  accessories: [],
 }
 
 const METER_MODE_OPTIONS = [
@@ -331,6 +403,33 @@ export function DevicesPage() {
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [form, setForm] = React.useState<FormState>(EMPTY_FORM)
   const [saving, setSaving] = React.useState(false)
+  // ── Quick Add mode (Task ID: LICENSE-PAGE-PLUS-QUICK-ADD, Task B) ──
+  // When true, the Add/Edit dialog renders a simplified single-section form
+  // with only the essential fields (site, assetCode, name, type, brand, model,
+  // serial, status). Persisted in localStorage so the user's preference
+  // survives reloads. Switching to "Full" mode brings back the 5-tab layout.
+  const QUICK_ADD_LS_KEY = 'itam:device-form:quick-add'
+  const [quickAdd, setQuickAdd] = React.useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.localStorage.getItem(QUICK_ADD_LS_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const toggleQuickAdd = React.useCallback(() => {
+    setQuickAdd((prev) => {
+      const next = !prev
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(QUICK_ADD_LS_KEY, next ? '1' : '0')
+        }
+      } catch {
+        // localStorage may be unavailable (private mode) — ignore.
+      }
+      return next
+    })
+  }, [])
   const [deleteTarget, setDeleteTarget] = React.useState<Device | null>(null)
   const [deleting, setDeleting] = React.useState(false)
   const [detailDeviceId, setDetailDeviceId] = React.useState<string | null>(
@@ -339,7 +438,14 @@ export function DevicesPage() {
   const [exporting, setExporting] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [stickerOpen, setStickerOpen] = React.useState(false)
+  // When set, StickerPrintDialog shows only this device (from row "สติกเกอร์" button).
+  // When null, shows all devices (from toolbar "พิมพ์หลายเครื่อง" button).
+  const [singlePrintDeviceId, setSinglePrintDeviceId] = React.useState<string | null>(null)
   const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
+  // STICKER-PREVIEW-FIX-FINAL: per-row Printer-icon button calls
+  // `printSingleSticker(device)` directly (no dialog). Track which device
+  // is currently being rendered so we can show a spinner on its button.
+  const [printingSingleId, setPrintingSingleId] = React.useState<string | null>(null)
 
   // Bulk operations state
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
@@ -493,7 +599,7 @@ export function DevicesPage() {
   const { data: settings } = useQuery<Record<string, string>>({
     queryKey: ['settings'],
     queryFn: async () => {
-      const res = await fetch('/api/settings')
+      const res = await fetch('/api/settings', { headers: authHeaders() })
       if (!res.ok) return {}
       const json = await res.json()
       return (json.settings ?? {}) as Record<string, string>
@@ -992,10 +1098,54 @@ export function DevicesPage() {
         ? String((d as unknown as { setPosition?: number | null }).setPosition)
         : '',
       licenses: [],
+      accessories: [],
     })
     setDialogOpen(true)
     // Load existing licenses for this device (edit mode only)
     void loadDeviceLicenses(d.id)
+    // Load existing accessories for this device (edit mode only)
+    void loadDeviceAccessories(d.id)
+  }
+
+  // ── Load accessories for an existing device (edit mode) ──
+  // Mirrors loadDeviceLicenses() — fetches the device's existing accessories
+  // and populates form.accessories so the user can edit/remove them inline.
+  // For new devices, accessories are kept in local state and POSTed after
+  // the device is created (see save()).
+  const [accessoriesLoading, setAccessoriesLoading] = React.useState(false)
+  async function loadDeviceAccessories(deviceId: string) {
+    setAccessoriesLoading(true)
+    try {
+      const res = await fetch(`/api/devices/${deviceId}/accessories`, {
+        headers: authHeaders(),
+      })
+      if (!res.ok) return
+      const j = (await res.json()) as {
+        accessories?: Array<{
+          id: string
+          accessoryType: string
+          brand: string | null
+          model: string | null
+          serialNumber: string | null
+          status: string
+          installedDate: string | null
+          remark: string | null
+        }>
+      }
+      const mapped: PendingAccessory[] = (j.accessories ?? []).map((a) => ({
+        id: a.id,
+        accessoryType: a.accessoryType ?? 'OTHER',
+        brand: a.brand ?? '',
+        model: a.model ?? '',
+        serialNumber: a.serialNumber ?? '',
+        status: a.status ?? 'Active',
+        installedDate: a.installedDate ?? '',
+        remark: a.remark ?? '',
+      }))
+      setForm((prev) => ({ ...prev, accessories: mapped }))
+    } catch (err) { console.error('[devices-page]', err) } finally {
+      setAccessoriesLoading(false)
+    }
   }
 
   // ── Load licenses for an existing device (edit mode) ──
@@ -1059,6 +1209,31 @@ export function DevicesPage() {
     }))
   }
 
+  // ── Accessory helpers (local state CRUD — mirrors the license helpers) ──
+  // On new devices: stored in local state until save() POSTs them.
+  // On edit devices: existing rows (with .id) are PATCH-updated, new rows
+  // (no .id) are POST-created, and removed rows are DELETE-called.
+  function addAccessory() {
+    setForm((prev) => ({
+      ...prev,
+      accessories: [...prev.accessories, { ...EMPTY_ACCESSORY }],
+    }))
+  }
+  function updateAccessory(idx: number, patch: Partial<PendingAccessory>) {
+    setForm((prev) => ({
+      ...prev,
+      accessories: prev.accessories.map((a, i) =>
+        i === idx ? { ...a, ...patch } : a,
+      ),
+    }))
+  }
+  function removeAccessory(idx: number) {
+    setForm((prev) => ({
+      ...prev,
+      accessories: prev.accessories.filter((_, i) => i !== idx),
+    }))
+  }
+
   // ── Auto-generate assetSiteCode when the user picks a site ──
   // Calls /api/devices/next-site-code?site=<code> and fills the field.
   // Only auto-fills on CREATE (when the field is empty) — on edit, the
@@ -1071,6 +1246,7 @@ export function DevicesPage() {
     try {
       const res = await fetch(
         `/api/devices/next-site-code?site=${encodeURIComponent(siteCode)}`,
+        { headers: authHeaders() },
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -1102,10 +1278,12 @@ export function DevicesPage() {
     }
     try {
       setSaving(true)
-      // Omit licenses from the device payload — they're saved separately
-      // via /api/devices/[id]/licenses after the device is created/updated.
-      const { licenses: _licenses, ...deviceFields } = form
+      // Omit licenses + accessories from the device payload — they're saved
+      // separately via /api/devices/[id]/licenses + /api/devices/[id]/accessories
+      // after the device is created/updated.
+      const { licenses: _licenses, accessories: _accessories, ...deviceFields } = form
       void _licenses
+      void _accessories
       const payload = {
         ...deviceFields,
         assetSiteCode: form.assetSiteCode || null,
@@ -1206,6 +1384,52 @@ export function DevicesPage() {
           )
         }
       }
+      // ── Sync accessories (Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM) ──
+      // After the device is created/updated, POST each new accessory row and
+      // PATCH each existing one. Best-effort — failures don't fail the device
+      // save (logged via toast.warning). Mirrors the license sync block above.
+      if (savedDeviceId && form.accessories.length > 0) {
+        const accessoryResults = await Promise.allSettled(
+          form.accessories
+            .filter((a) => a.accessoryType.trim() !== '')
+            .map((a) => {
+              const body = {
+                accessoryType: a.accessoryType,
+                brand: a.brand.trim() || null,
+                model: a.model.trim() || null,
+                serialNumber: a.serialNumber.trim() || null,
+                status: a.status,
+                installedDate: a.installedDate || null,
+                remark: a.remark.trim() || null,
+              }
+              if (a.id) {
+                // Existing accessory — PATCH update
+                return fetch(
+                  `/api/devices/${savedDeviceId}/accessories/${a.id}`,
+                  {
+                    method: 'PATCH',
+                    headers: authHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify(body),
+                  },
+                )
+              }
+              // New accessory — POST create
+              return fetch(`/api/devices/${savedDeviceId}/accessories`, {
+                method: 'POST',
+                headers: authHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify(body),
+              })
+            }),
+        )
+        const accFailed = accessoryResults.filter(
+          (r) => r.status === 'rejected',
+        ).length
+        if (accFailed > 0) {
+          toast.warning(
+            `บันทึกอุปกรณ์แล้ว แต่ ${accFailed} รายการอุปกรณ์ต่อพ่วงไม่สำเร็จ`,
+          )
+        }
+      }
       toast.success(isEdit ? 'แก้ไขอุปกรณ์แล้ว' : 'เพิ่มอุปกรณ์ใหม่แล้ว')
       setDialogOpen(false)
       await qc.invalidateQueries({ queryKey: ['devices'] })
@@ -1223,6 +1447,7 @@ export function DevicesPage() {
       setDeleting(true)
       const res = await fetch(`/api/devices/${deleteTarget.id}`, {
         method: 'DELETE',
+        headers: authHeaders(),
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -1260,6 +1485,170 @@ export function DevicesPage() {
       toast.error(e instanceof Error ? e.message : 'Export failed')
     } finally {
       setExporting(false)
+    }
+  }
+
+  // ── STICKER-PREVIEW-FIX-FINAL: Single-device sticker print ─────────────
+  //
+  // Per-row "Printer" icon calls this directly — no dialog, no device-list
+  // selection step. The sticker is rendered using the SAME template engine
+  // (renderStickerFromTemplate + buildPrintDocument) the dialog uses, so
+  // the printed output always matches what the live preview in the dialog
+  // shows.
+  //
+  // Template resolution priority:
+  //   1. Server-side active saved template (the one marked ⭐ in the editor)
+  //   2. First saved template if no `activeId` is recorded
+  //   3. buildDefaultTemplate() if the user has no saved templates at all
+  //
+  // Settings (companyName / orgName / hotline / footerNote / lineOALink)
+  // are fetched from /api/itam/sticker/settings so the single-print output
+  // matches what the dialog would produce. Falls back to the global org
+  // name + DEFAULT_STICKER_SETTINGS when the API is unavailable.
+  async function printSingleSticker(device: Device) {
+    if (printingSingleId) return
+    setPrintingSingleId(device.id)
+    try {
+      // 1) Fetch active saved template (server-side) + sticker settings.
+      const [tplRes, settingsRes] = await Promise.all([
+        fetch('/api/itam/sticker/templates', { headers: authHeaders() }),
+        fetch('/api/itam/sticker/settings', { headers: authHeaders() }).catch(() => null),
+      ])
+      if (!tplRes.ok) throw new Error('โหลดเทมเพลตสติกเกอร์ไม่สำเร็จ')
+      const tplData = (await tplRes.json()) as {
+        templates: StickerTemplate[]
+        activeId: string | null
+      }
+      const active =
+        (tplData.activeId &&
+          tplData.templates.find((t) => t.id === tplData.activeId)) ||
+        tplData.templates.find((t) => !t.isDefault) ||
+        tplData.templates[0] ||
+        buildDefaultTemplate()
+      const template: StickerTemplate = active
+
+      // 2) Build StickerSettings — prefer sticker-specific server settings;
+      //    fall back to global org name + defaults when API is unavailable.
+      let stickerSettings: StickerSettings = {
+        ...DEFAULT_STICKER_SETTINGS,
+        companyName: settings?.orgName?.trim() || DEFAULT_STICKER_SETTINGS.companyName,
+        orgName: settings?.orgName?.trim() || DEFAULT_STICKER_SETTINGS.orgName,
+      }
+      if (settingsRes && settingsRes.ok) {
+        const j = (await settingsRes.json()) as { settings?: StickerSettings }
+        if (j.settings) {
+          stickerSettings = {
+            ...DEFAULT_STICKER_SETTINGS,
+            ...j.settings,
+            // Don't let an empty server value blank out the org name.
+            companyName:
+              (j.settings.companyName ?? '').trim() ||
+              settings?.orgName?.trim() ||
+              DEFAULT_STICKER_SETTINGS.companyName,
+            orgName:
+              (j.settings.orgName ?? '').trim() ||
+              settings?.orgName?.trim() ||
+              DEFAULT_STICKER_SETTINGS.orgName,
+          }
+        }
+      }
+
+      // 3) Build the per-device QR cache (honors the {{QrUrl}} Smart QR
+      //    substitution so phone cameras open the ITAM repair page).
+      const deviceData: StickerDeviceData = {
+        id: device.id,
+        assetCode: device.assetCode,
+        assetSiteCode: device.assetSiteCode ?? null,
+        serialNumber: device.serialNumber ?? null,
+        type: device.type ?? null,
+        brand: device.brand ?? null,
+        model: device.model ?? null,
+        building: device.building ?? null,
+        floor: device.floor ?? null,
+        department: device.department ?? null,
+        departmentCode: device.departmentCode ?? null,
+        location: device.location ?? null,
+        site: device.site ?? null,
+        contractNo: device.contractNo ?? null,
+        vendor: device.vendor ?? null,
+      }
+      const qrOverride = generateStickerQrData('d', device.id, 'repair')
+      const qrCache = new Map<string, string>()
+      for (const el of template.elements as readonly StickerElement[]) {
+        if (el.type !== 'qr') continue
+        const data =
+          (el.content ?? '').replace(/\{\{QrUrl\}\}/g, qrOverride) ||
+          device.assetCode
+        if (!data || qrCache.has(data)) continue
+        try {
+          const url = await QRCode.toDataURL(qrOverride, {
+            margin: 1,
+            width: 240,
+            errorCorrectionLevel: 'M',
+          })
+          qrCache.set(data, url)
+        } catch {
+          // skip on QR generation error
+        }
+      }
+
+      // 4) Render + open print window (1 sticker, cols=1 → 1 per page).
+      const { html: stickerHtml } = await renderStickerFromTemplate(
+        deviceData,
+        template,
+        stickerSettings,
+        { qrCache },
+      )
+      const html = buildPrintDocument([stickerHtml], template, 1)
+
+      const printWin = window.open('', '_blank')
+      if (!printWin) {
+        toast.error('กรุณาอนุญาตป๊อปอัปเพื่อเปิดหน้าพิมพ์')
+        return
+      }
+      printWin.document.open()
+      printWin.document.write(html)
+      printWin.document.close()
+      setTimeout(() => {
+        try {
+          printWin.focus()
+          printWin.print()
+        } catch (err) {
+          console.error('[printSingleSticker]', err)
+        }
+      }, 350)
+
+      // Fire-and-forget audit log.
+      try {
+        await fetch('/api/audit/log', {
+          method: 'POST',
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            action: 'PRINT',
+            entity: 'Device',
+            entityId: device.id,
+            summary: `พิมพ์สติกเกอร์อุปกรณ์เดี่ยว ${device.assetCode}`,
+            detail: {
+              count: 1,
+              deviceIds: [device.id],
+              canvasWidth: template.canvas.width,
+              canvasHeight: template.canvas.height,
+              savedTemplateId: template.id,
+              savedTemplateName: template.name,
+              single: true,
+            },
+          }),
+        })
+        await qc.invalidateQueries({ queryKey: ['audit'] })
+      } catch (err) {
+        console.error('[printSingleSticker]', err)
+      }
+
+      toast.success(`เตรียมสติกเกอร์ ${device.assetCode} สำหรับพิมพ์แล้ว`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'พิมพ์สติกเกอร์ไม่สำเร็จ')
+    } finally {
+      setPrintingSingleId(null)
     }
   }
 
@@ -1427,7 +1816,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     try {
       await fetch('/api/audit/log', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ action, entity: 'Device', summary, detail }),
       })
     } catch {
@@ -1443,7 +1832,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
       ids.map((id) =>
         fetch(`/api/devices/${id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ status: bulkStatus }),
         }),
       ),
@@ -1479,7 +1868,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
       ids.map((id) =>
         fetch(`/api/devices/${id}/transfer`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ toSite: bulkSite, transferDate: today }),
         }),
       ),
@@ -1512,7 +1901,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     setBulkAction(true)
     const ids = Array.from(selectedIds)
     const results = await Promise.allSettled(
-      ids.map((id) => fetch(`/api/devices/${id}`, { method: 'DELETE' })),
+      ids.map((id) => fetch(`/api/devices/${id}`, { method: 'DELETE', headers: authHeaders() })),
     )
     const ok = results.filter((r) => r.status === 'fulfilled').length
     const fail = results.length - ok
@@ -1570,6 +1959,29 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* ── Quick Add / Full mode toggle ──
+                (Task ID: LICENSE-PAGE-PLUS-QUICK-ADD, Task B)
+                Shows the OTHER mode's label so the user knows what they'll
+                switch TO. Persistence handled by toggleQuickAdd (localStorage). */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={toggleQuickAdd}
+              disabled={saving}
+              title={
+                quickAdd
+                  ? 'สลับเป็นโหมดเต็ม — แสดงทุกฟิลด์ (5 แท็บ)'
+                  : 'สลับเป็นโหมดเพิ่มด่วน — กรอกเฉพาะฟิลด์จำเป็น'
+              }
+              className={
+                quickAdd
+                  ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+              }
+            >
+              {quickAdd ? '📋 แบบเต็ม' : '⚡ เพิ่มด่วน'}
+            </Button>
             <Button
               variant="outline"
               onClick={() => setDialogOpen(false)}
@@ -1583,7 +1995,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               disabled={saving}
               className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              {saving ? 'กำลังบันทึก...' : '💾 บันทึกอุปกรณ์'}
+              {saving
+                ? 'กำลังบันทึก...'
+                : quickAdd
+                  ? '⚡ บันทึก (เพิ่มด่วน)'
+                  : '💾 บันทึกอุปกรณ์'}
             </Button>
           </div>
         </div>
@@ -1591,6 +2007,19 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
         {/* ── Scrollable Body ── */}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+            {quickAdd ? (
+              <QuickAddForm
+                form={form}
+                setForm={setForm}
+                visibleSites={visibleSites}
+                deviceTypes={deviceTypes}
+                brandsData={brandsData}
+                deviceClassifications={deviceClassifications}
+                nameManuallyEditedRef={nameManuallyEditedRef}
+                fetchNextAssetCode={fetchNextAssetCode}
+              />
+            ) : (
+              <>
             {/* ── SN Scanner (always visible at top) ──
                 Scan a barcode → auto-fills the Serial Number field (in อุปกรณ์ tab).
                 Useful for quickly entering SN without manual typing.
@@ -1647,14 +2076,17 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               </span>
             </div>
 
-            {/* ── Tabs: 3 sections ──
+            {/* ── Tabs: 5 sections ──
                 Tab 1: 📍 สถานที่ติดตั้ง (สาขา + รหัส + อาคาร/ชั้น/แผนก + ตำแหน่ง/ห้อง)
                 Tab 2: 💻 อุปกรณ์ (สถานะ, Type/Brand/Model, IP/MAC, กลุ่มอุปกรณ์, โหมดมิเตอร์)
-                Tab 3: ⚙️ ขั้นสูง (Remote ID, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ) */}
+                Tab 3: 🔌 อุปกรณ์ต่อพ่วง (inline accessories — POST'd after device save)
+                Tab 4: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
+                Tab 5: ⚙️ ขั้นสูง (Remote ID, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ) */}
             <Tabs defaultValue="location" className="w-full">
-              <TabsList className="mb-4 grid w-full grid-cols-4">
+              <TabsList className="mb-4 grid w-full grid-cols-3 sm:grid-cols-5">
                 <TabsTrigger value="location" onClick={() => {}}>📍 สถานที่ติดตั้ง</TabsTrigger>
                 <TabsTrigger value="device" onClick={() => {}}>💻 อุปกรณ์</TabsTrigger>
+                <TabsTrigger value="accessories" onClick={() => {}}>🔌 อุปกรณ์ต่อพ่วง</TabsTrigger>
                 <TabsTrigger value="set" onClick={() => {}}>📦 ชุดอุปกรณ์</TabsTrigger>
                 <TabsTrigger value="advanced" onClick={() => {}}>⚙️ ขั้นสูง</TabsTrigger>
               </TabsList>
@@ -1679,8 +2111,9 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                             building: '',
                             floor: '',
                             room: '',
+                            assetSiteCode: '', // clear old site code so new one auto-generates
                           }))
-                          if (!form.id && !form.assetSiteCode) {
+                          if (!form.id) {
                             void fetchNextSiteCode(v)
                           }
                         }}
@@ -2082,16 +2515,211 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 3: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
+                  Tab 3: 🔌 อุปกรณ์ต่อพ่วง (inline accessory editor)
                   ─────────────────────────────────────────────────────
-                  Lets the user mark this device as belonging to a "set":
-                  • If this is a parent device, leave parent empty — children
-                    will be assigned their own parentDeviceId via this same UI.
-                  • If this is a child device, pick the parent device from
-                    the combobox (search by assetCode or name).
+                  Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM
+
+                  Lets the user add accessories AT THE SAME TIME as the device
+                  (no need to save the device first, then open the detail
+                  sheet, then add each accessory — single submit creates the
+                  device + all accessories in one go).
+
+                  • New device: rows are stored in local form.accessories[]
+                    state — save() POSTs them to /api/devices/[id]/accessories
+                    AFTER the device is created.
+                  • Edit device: existing accessories are loaded into the form
+                    on openEdit() — save() PATCHes rows with an .id and POSTs
+                    rows without an .id.
+
+                  Best-effort: if any accessory save fails, the device save
+                  is NOT rolled back (logged via toast.warning).
+                  ═══════════════════════════════════════════════════════ */}
+              <TabsContent value="accessories" className="space-y-4">
+                <div className="rounded-lg border border-orange-200 bg-white p-4 shadow-sm dark:border-orange-900/40 dark:bg-slate-900">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400">
+                      🔌 อุปกรณ์ต่อพ่วง ({form.accessories.length})
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addAccessory}
+                      className="border-[#f97316]/30 text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c]/30 dark:text-[#fb923c]"
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" />
+                      เพิ่มอุปกรณ์ต่อพ่วง
+                    </Button>
+                  </div>
+
+                  <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                    เพิ่มอุปกรณ์ต่อพ่วง (คีย์บอร์ด, เมาส์, จอภาพ, …) ได้พร้อมกับการสร้างอุปกรณ์หลัก —
+                    บันทึกครั้งเดียว ระบบจะสร้างทั้งอุปกรณ์และอุปกรณ์ต่อพ่วงทั้งหมดให้
+                  </p>
+
+                  {accessoriesLoading && (
+                    <div className="mb-3 text-sm text-slate-500 dark:text-slate-400">
+                      กำลังโหลดอุปกรณ์ต่อพ่วงที่มีอยู่...
+                    </div>
+                  )}
+
+                  {form.accessories.length === 0 && !accessoriesLoading ? (
+                    <div className="rounded-md border border-dashed border-orange-300 bg-orange-50/40 px-4 py-8 text-center dark:border-orange-800/50 dark:bg-orange-950/10">
+                      <div className="mb-1 text-sm font-medium text-orange-700 dark:text-orange-300">
+                        ยังไม่มีอุปกรณ์ต่อพ่วง
+                      </div>
+                      <div className="text-xs text-orange-600/80 dark:text-orange-400/80">
+                        กด &quot;เพิ่มอุปกรณ์ต่อพ่วง&quot; เพื่อสร้าง (เพิ่มได้หลายตัว)
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {form.accessories.map((acc, idx) => {
+                        const typeLabel =
+                          ACCESSORY_TYPES_INLINE.find((t) => t.value === acc.accessoryType)?.label ??
+                          acc.accessoryType
+                        return (
+                          <div
+                            key={acc.id ?? `new-acc-${idx}`}
+                            className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900"
+                          >
+                            {/* ── Row header: index + DB badge + delete ── */}
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <span className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-orange-100 text-[10px] font-bold text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
+                                  {idx + 1}
+                                </span>
+                                {typeLabel}
+                                {acc.id && (
+                                  <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                    {acc.id.slice(-8)}
+                                  </span>
+                                )}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeAccessory(idx)}
+                                className="rounded p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                                title="ลบอุปกรณ์ต่อพ่วงนี้"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+
+                            {/* ── Form fields (responsive grid) ── */}
+                            <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              <Field label="ประเภท" required>
+                                <Select
+                                  value={acc.accessoryType}
+                                  onValueChange={(v) =>
+                                    updateAccessory(idx, { accessoryType: v })
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="— เลือกประเภท —" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {ACCESSORY_TYPES_INLINE.map((t) => (
+                                      <SelectItem key={t.value} value={t.value}>
+                                        {t.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                              <Field label="ชื่อ / ยี่ห้อ">
+                                <Input
+                                  value={acc.brand}
+                                  onChange={(e) =>
+                                    updateAccessory(idx, { brand: e.target.value })
+                                  }
+                                  placeholder="เช่น Logitech"
+                                />
+                              </Field>
+                              <Field label="รุ่น">
+                                <Input
+                                  value={acc.model}
+                                  onChange={(e) =>
+                                    updateAccessory(idx, { model: e.target.value })
+                                  }
+                                  placeholder="เช่น K380"
+                                />
+                              </Field>
+                              <Field label="Serial Number">
+                                <Input
+                                  value={acc.serialNumber}
+                                  onChange={(e) =>
+                                    updateAccessory(idx, { serialNumber: e.target.value })
+                                  }
+                                  placeholder="S/N..."
+                                  className="font-mono text-xs"
+                                />
+                              </Field>
+                              <Field label="สถานะ">
+                                <Select
+                                  value={acc.status}
+                                  onValueChange={(v) =>
+                                    updateAccessory(idx, { status: v })
+                                  }
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {ACCESSORY_STATUSES_INLINE.map((s) => (
+                                      <SelectItem key={s.value} value={s.value}>
+                                        {s.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </Field>
+                              <Field label="วันที่ติดตั้ง">
+                                <Input
+                                  type="date"
+                                  value={acc.installedDate}
+                                  onChange={(e) =>
+                                    updateAccessory(idx, { installedDate: e.target.value })
+                                  }
+                                />
+                              </Field>
+                              <Field label="หมายเหตุ">
+                                <Input
+                                  value={acc.remark}
+                                  onChange={(e) =>
+                                    updateAccessory(idx, { remark: e.target.value })
+                                  }
+                                  placeholder="หมายเหตุ (ถ้ามี)"
+                                />
+                              </Field>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* ═══════════════════════════════════════════════════════
+                  Tab 4: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
+                  ─────────────────────────────────────────────────────
+                  MERGE-ACCESSORY-DEVICE-SET: simplified — the primary flow
+                  for adding children (or peripherals) is now done from the
+                  parent device's detail sheet (DeviceAccessoriesSection with
+                  "เพิ่มอุปกรณ์ในชุด" modal that supports both "new accessory"
+                  and "link existing device" modes).
+
+                  This tab now only manages the CURRENT device's role in a
+                  set:
                   • setLabel = a free-text name for the whole set (shared
                     across all members — e.g. "ชุดเครื่องพิมพ์ห้องจ่ายยา").
                   • setPosition = optional ordering inside the set (1, 2, 3…).
+                  • parentDeviceId (read-only here) — if this device is itself
+                    a child of another device, show the parent info + an
+                    "unlink" button. To CHANGE the parent, open that parent's
+                    detail sheet and add this device via the new "เพิ่มอุปกรณ์ในชุด"
+                    flow.
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="set" className="space-y-4">
                 <div className="rounded-lg border border-teal-200 bg-white p-4 shadow-sm dark:border-teal-900/40 dark:bg-slate-900">
@@ -2104,20 +2732,36 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     จะอ้างอิงมาที่เครื่องหลักผ่าน parent
                   </p>
 
-                  {/* ── Parent device search (Combobox) ── */}
-                  <Field label="อุปกรณ์หลักในชุด (Parent)">
-                    <DeviceParentCombobox
-                      value={form.parentDeviceId}
-                      onChange={(id) => setForm({ ...form, parentDeviceId: id })}
-                      excludeId={form.id}
-                      authHeaders={authHeaders}
-                    />
-                  </Field>
+                  {/* ── Hint: how to add children (now done from detail sheet) ── */}
+                  <div className="mb-3 rounded-md border border-teal-300 bg-teal-50/60 px-3 py-2 text-[11px] text-teal-700 dark:border-teal-700 dark:bg-teal-950/30 dark:text-teal-300">
+                    💡 <strong>เพิ่มอุปกรณ์ลูก:</strong> เปิดหน้ารายละเอียดของอุปกรณ์นี้
+                    → กด "เพิ่ม" ในส่วน "อุปกรณ์ในชุด" → เลือก "เลือกจากที่มีในระบบ"
+                    เพื่อค้นหาอุปกรณ์ที่จะผูกเป็นลูกในชุด
+                  </div>
 
-                  {/* ── Parent device info (auto-filled) ── */}
-                  {form.parentDeviceId && (
-                    <div className="mb-3 rounded-md border border-teal-300 bg-teal-50/60 px-3 py-2 text-xs dark:border-teal-700 dark:bg-teal-950/30">
-                      <ParentDeviceInfo deviceId={form.parentDeviceId} authHeaders={authHeaders} />
+                  {/* ── Parent device info (read-only, with unlink button) ── */}
+                  {form.parentDeviceId ? (
+                    <div className="mb-3 space-y-2">
+                      <Field label="อุปกรณ์หลักในชุด (Parent)">
+                        <div className="rounded-md border border-teal-300 bg-teal-50/60 px-3 py-2 text-xs dark:border-teal-700 dark:bg-teal-950/30">
+                          <ParentDeviceInfo deviceId={form.parentDeviceId} authHeaders={authHeaders} />
+                        </div>
+                      </Field>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setForm({ ...form, parentDeviceId: '' })}
+                        className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                      >
+                        <X className="mr-1 h-3.5 w-3.5" />
+                        ถอดการผูกจากอุปกรณ์หลัก (unlink)
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
+                      อุปกรณ์หลักในชุด (Parent): <strong>ไม่มี</strong> —
+                      เครื่องนี้เป็นเครื่องหลักของตัวเอง (หรือยังไม่ได้ผูกเป็นลูกของชุดใด)
                     </div>
                   )}
 
@@ -2151,22 +2795,6 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     </Field>
                   </div>
 
-                  {/* ── Child device serial (for devices not in system yet) ── */}
-                  <div className="mt-3">
-                    <Field label="Serial Number ของอุปกรณ์นี้ (ถ้าไม่มีในระบบ)">
-                      <Input
-                        value={form.serialNumber}
-                        onChange={(e) =>
-                          setForm({ ...form, serialNumber: e.target.value })
-                        }
-                        placeholder="เช่น D6J222613811 — ใช้สำหรับอุปกรณ์ที่ยังไม่มีในระบบ"
-                      />
-                      <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
-                        ถ้าอุปกรณ์นี้มีในระบบแล้ว ใส่ Serial เพื่อเชื่อมข้อมูลอัตโนมัติ
-                      </p>
-                    </Field>
-                  </div>
-
                   {form.parentDeviceId && (
                     <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                       ⚠️ อุปกรณ์นี้ถูกกำหนดเป็น <strong>อุปกรณ์ลูก</strong> ในชุด —
@@ -2177,7 +2805,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 4: ⚙️ ขั้นสูง
+                  Tab 5: ⚙️ ขั้นสูง
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="advanced" className="space-y-4">
                 {/* ── License / Software ── */}
@@ -2514,6 +3142,8 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                 </div>
               </TabsContent>
             </Tabs>
+              </>
+            )}
 
             {/* ── Bottom spacing ── */}
             <div className="h-16" />
@@ -2535,7 +3165,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
             disabled={saving}
             className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
-            {saving ? 'กำลังบันทึก...' : '💾 บันทึกอุปกรณ์'}
+            {saving
+              ? 'กำลังบันทึก...'
+              : quickAdd
+                ? '⚡ บันทึก (เพิ่มด่วน)'
+                : '💾 บันทึกอุปกรณ์'}
           </Button>
         </div>
       </div>
@@ -2790,13 +3424,17 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setStickerOpen(true)}
+                onClick={() => {
+                  setSinglePrintDeviceId(null)
+                  setStickerOpen(true)
+                }}
                 disabled={(devices ?? []).length === 0}
-                aria-label="พิมพ์สติกเกอร์"
+                aria-label="พิมพ์สติกเกอร์หลายเครื่อง"
+                title="เลือกอุปกรณ์หลายเครื่องแล้วพิมพ์เป็นชุด"
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
-                <Tag className="h-4 w-4" />
-                <span className="hidden sm:inline">พิมพ์สติกเกอร์</span>
+                <Layers className="h-4 w-4" />
+                <span className="hidden sm:inline">พิมพ์หลายเครื่อง</span>
               </Button>
               <Button
                 variant="outline"
@@ -3197,12 +3835,15 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           <Button
                             size="sm"
                             variant="outline"
-                onClick={() => setStickerOpen(true)}
-                            aria-label="พิมพ์สติกเกอร์"
-                            title="พิมพ์สติกเกอร์"
+                            onClick={() => {
+                              setSinglePrintDeviceId(d.id)
+                              setStickerOpen(true)
+                            }}
+                            aria-label="พิมพ์สติกเกอร์อุปกรณ์นี้"
+                            title="พิมพ์สติกเกอร์อุปกรณ์นี้"
                             className="h-7 gap-1 px-2 text-[11px] dark:bg-slate-800 dark:border-slate-700"
                           >
-                            <QrCode className="h-3.5 w-3.5" />
+                            <Printer className="h-3.5 w-3.5" />
                             สติกเกอร์
                           </Button>
                         </div>
@@ -3249,7 +3890,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           <AlertDialogFooter>
             <AlertDialogCancel disabled={bulkAction}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={applyBulkDelete}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void applyBulkDelete()
+              }}
               disabled={bulkAction}
               className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
@@ -3279,7 +3923,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmDelete}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void confirmDelete()
+              }}
               disabled={deleting}
               className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
@@ -3313,11 +3960,18 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
         totalRows={totalCount}
       />
 
-      {/* Sticker print */}
+      {/* Sticker print — when singlePrintDeviceId is set, only show that device */}
       <StickerPrintDialog
         open={stickerOpen}
-        onOpenChange={setStickerOpen}
-        devices={devices ?? []}
+        onOpenChange={(open) => {
+          setStickerOpen(open)
+          if (!open) setSinglePrintDeviceId(null)
+        }}
+        devices={
+          singlePrintDeviceId
+            ? (devices ?? []).filter((d) => d.id === singlePrintDeviceId)
+            : (devices ?? [])
+        }
         orgName={settings?.orgName ?? null}
       />
 
@@ -3460,6 +4114,257 @@ function KpiCard({
         {value.toLocaleString('th-TH')}
       </span>
     </button>
+  )
+}
+
+// ── Quick Add form (Task ID: LICENSE-PAGE-PLUS-QUICK-ADD, Task B) ────────
+// Simplified single-section form for bulk device entry. Shows only the
+// essential fields (site, assetCode, name, type, brand, model, serial,
+// status). User can fill in the rest later via Edit.
+//
+// The QuickAddForm shares the SAME form state as the full form (so the
+// parent's `save()` works unchanged — it just sends fewer fields because
+// the rest are empty strings, which the API maps to null). The auto-name
+// generation effect in the parent also still fires (it only needs
+// form.brand + form.model, both of which are in the Quick Add form).
+//
+// On mobile, all fields stack vertically (grid-cols-1). On sm+ screens
+// we use a 2-column layout for the non-assetCode fields.
+interface DeviceClassificationLite {
+  category: string
+  code: string
+  label: string
+  parentRef?: string | null
+  deviceType?: string | null
+  brand?: string | null
+  model?: string | null
+}
+
+interface QuickAddFormProps {
+  form: FormState
+  setForm: React.Dispatch<React.SetStateAction<FormState>>
+  visibleSites: Site[]
+  deviceTypes: { id: string; name: string }[] | undefined
+  brandsData: { id: string; name: string; typeId: string }[] | undefined
+  deviceClassifications: DeviceClassificationLite[]
+  nameManuallyEditedRef: React.MutableRefObject<boolean>
+  fetchNextAssetCode: () => Promise<void>
+}
+
+function QuickAddForm({
+  form,
+  setForm,
+  visibleSites,
+  deviceTypes,
+  brandsData,
+  deviceClassifications,
+  nameManuallyEditedRef,
+  fetchNextAssetCode,
+}: QuickAddFormProps) {
+  return (
+    <div className="space-y-4">
+      {/* ── Banner explaining the mode ── */}
+      <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+        <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <div>
+          <strong>โหมดเพิ่มด่วน</strong> — กรอกเฉพาะฟิลด์จำเป็น บันทึกได้เร็วขึ้น
+          สามารถกลับมาแก้ไขรายละเอียด (อาคาร/ชั้น/ห้อง, IP/MAC, รับประกัน, ฯลฯ)
+          ทีหลังผ่านปุ่ม &quot;✏️ แก้ไข&quot; ในรายการอุปกรณ์ได้
+        </div>
+      </div>
+
+      {/* ── Single-section form card ── */}
+      <div className="rounded-lg border border-amber-200 bg-white p-4 shadow-sm dark:border-amber-900/40 dark:bg-slate-900">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+          ⚡ ข้อมูลอุปกรณ์ (เพิ่มด่วน)
+        </div>
+
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+          {/* ── สาขา ── */}
+          <Field label="สาขา" required>
+            <Select
+              value={form.site}
+              onValueChange={(v) => {
+                setForm((prev) => ({ ...prev, site: v }))
+                // Auto-generate assetCode is handled by the parent's
+                // openAdd() effect (calls fetchNextAssetCode on dialog
+                // open). Here we just commit the site selection.
+              }}
+            >
+              <SelectTrigger className="w-full" id="qa-site">
+                <SelectValue placeholder="— เลือกสาขา —" />
+              </SelectTrigger>
+              <SelectContent>
+                {visibleSites.length === 0 && (
+                  <SelectItem value="__none__" disabled>
+                    — ยังไม่มีสาขาที่เข้าถึงได้ —
+                  </SelectItem>
+                )}
+                {visibleSites.map((s) => (
+                  <SelectItem key={s.code} value={s.code}>
+                    {s.code} — {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          {/* ── รหัสอุปกรณ์ (with auto-generate button) ── */}
+          <Field label="รหัสอุปกรณ์" required>
+            <div className="relative">
+              <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                id="qa-assetCode"
+                value={form.assetCode}
+                onChange={(e) =>
+                  setForm({ ...form, assetCode: e.target.value })
+                }
+                placeholder="สร้างอัตโนมัติ เช่น 2379"
+                className="bg-amber-50/50 pl-8 font-mono dark:bg-amber-950/10"
+              />
+              <button
+                type="button"
+                tabIndex={-1}
+                onClick={() => void fetchNextAssetCode()}
+                disabled={Boolean(form.id)}
+                title="สร้างเลขถัดไปอัตโนมัติ"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-[#f97316] hover:bg-[#f97316]/10 disabled:opacity-40 dark:text-[#fb923c]"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </Field>
+
+          {/* ── ชื่ออุปกรณ์ (auto from brand+model) ── */}
+          <Field
+            label="ชื่ออุปกรณ์"
+            required
+            hint="สร้างอัตโนมัติจาก แบรนด์ + รุ่น — แก้ไขได้ถ้าต้องการ"
+          >
+            <Input
+              id="qa-name"
+              value={form.name}
+              onChange={(e) => {
+                nameManuallyEditedRef.current = true
+                setForm({ ...form, name: e.target.value })
+              }}
+              placeholder="สร้างอัตโนมัติ เช่น BROTHER HL-L5210DN"
+              className="bg-amber-50/50 dark:bg-amber-950/10"
+            />
+          </Field>
+
+          {/* ── สถานะ (default 'active') ── */}
+          <Field label="สถานะ" required>
+            <Select
+              value={form.status}
+              onValueChange={(v) => setForm({ ...form, status: v })}
+            >
+              <SelectTrigger className="w-full" id="qa-status">
+                <SelectValue placeholder="เลือกสถานะ" />
+              </SelectTrigger>
+              <SelectContent>
+                {DEVICE_STATUS_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          {/* ── ประเภท (Type) ── */}
+          <Field label="ประเภท (Type)" required>
+            <Combobox
+              value={form.type}
+              onChange={(v) =>
+                setForm({ ...form, type: v, brand: '', model: '' })
+              }
+              items={(deviceTypes ?? []).map((t) => ({
+                value: t.name,
+                label: t.name,
+              }))}
+              placeholder="เลือกหรือพิมพ์ประเภท เช่น PRINTER LASER"
+              emptyText="ไม่พบประเภท"
+            />
+          </Field>
+
+          {/* ── แบรนด์ (Brand) ── */}
+          <Field label="แบรนด์ (Brand)" required>
+            <Combobox
+              value={form.brand}
+              onChange={(v) => setForm({ ...form, brand: v, model: '' })}
+              items={(brandsData ?? []).map((b) => ({
+                value: b.name,
+                label: b.name,
+              }))}
+              placeholder="เลือกหรือพิมพ์แบรนด์ เช่น BROTHER"
+              emptyText="ไม่พบแบรนด์"
+            />
+          </Field>
+
+          {/* ── รุ่น (Model) — selects + auto-fills brand/type ── */}
+          <Field
+            label="รุ่น (Model)"
+            required
+            hint="เลือกรุ่นแล้ว แบรนด์/ประเภท auto"
+          >
+            <Combobox
+              value={form.model}
+              onChange={(v) => {
+                const match = deviceClassifications.find(
+                  (c) =>
+                    (c.model ?? '').toLowerCase() === v.toLowerCase(),
+                )
+                if (match) {
+                  setForm((prev) => ({
+                    ...prev,
+                    model: v,
+                    brand: match.brand ?? prev.brand,
+                    type: match.deviceType ?? prev.type,
+                  }))
+                } else {
+                  setForm((prev) => ({ ...prev, model: v }))
+                }
+              }}
+              items={Array.from(
+                new Set(
+                  deviceClassifications
+                    .map((c) => c.model)
+                    .filter((m): m is string => Boolean(m)),
+                ),
+              )
+                .sort()
+                .map((m) => ({ value: m, label: m }))}
+              placeholder="เลือกรุ่น เช่น HL-L5210DN"
+              emptyText="ไม่พบรุ่น — พิมพ์เพื่อเพิ่มใหม่"
+            />
+          </Field>
+
+          {/* ── Serial Number (optional) ── */}
+          <Field label="Serial Number">
+            <div className="relative">
+              <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                id="qa-serialNumber"
+                value={form.serialNumber}
+                onChange={(e) =>
+                  setForm({ ...form, serialNumber: e.target.value })
+                }
+                placeholder="สแกนหรือพิมพ์ SN"
+                className="pl-8 font-mono text-xs"
+              />
+            </div>
+          </Field>
+        </div>
+
+        {/* ── Hint: required fields reminder ── */}
+        <div className="mt-4 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+          <span className="font-semibold text-[#f97316]">*</span>
+          <span>ฟิลด์จำเป็น — บันทึกได้หลังกรอกครบทุกฟิลด์ที่มี</span>
+          <span className="font-semibold text-[#f97316]">*</span>
+        </div>
+      </div>
+    </div>
   )
 }
 

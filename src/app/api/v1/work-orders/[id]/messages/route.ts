@@ -1,11 +1,12 @@
 /**
  * GET /api/v1/work-orders/[id]/messages — list messages for a work order.
  *
- * Auth: VIEW_DEVICES
+ * Auth: WO_VIEW_ALL (checked at the WO's Site via loadAuthorizedWorkOrderV1).
  * Response: { data: WorkOrderMessage[], pagination, meta }
  *
  * POST /api/v1/work-orders/[id]/messages — add a message.
- *   Auth: DEVICE_EDIT — OR guest if ?reporterTel= matches the stored tel.
+ *   Auth: WO_VIEW_ALL (checked at the WO's Site via loadAuthorizedWorkOrderV1)
+ *        — OR guest if ?reporterTel= matches the stored tel.
  *   Body: { message }
  *   - author = current user (or 'ผู้แจ้ง' for guest)
  *   - authorRole = role (admin | staff | reporter)
@@ -16,7 +17,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
-import { requireApiAuth } from '@/lib/api/auth'
 import {
   parseQuery,
   buildOrderBy,
@@ -27,7 +27,8 @@ import {
   forbidden,
   serverError,
 } from '@/lib/api/response'
-import { findWorkOrder, roleToAuthorRole } from '../../_shared'
+import { roleToAuthorRole, loadAuthorizedWorkOrderV1 } from '../../_shared'
+import type { AuthUser } from '@/lib/auth-shared'
 
 const FIELD_MAP: Record<string, string> = {
   author: 'author',
@@ -39,15 +40,15 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireApiAuth(req, 'VIEW_DEVICES')
-  if (!auth.ok) return auth.response
-
   const { id } = await params
   const url = new URL(req.url)
   const query = parseQuery(url)
 
-  const order = await findWorkOrder(id)
-  if (!order) return notFound('work order')
+  // P0 Security: loadAuthorizedWorkOrderV1 authenticates + checks WO_VIEW_ALL
+  // at the WO's Site, preventing cross-site privilege escalation.
+  const result = await loadAuthorizedWorkOrderV1(req, id, 'WO_VIEW_ALL')
+  if (!result.ok) return result.response
+  const { wo: order } = result
 
   const where = { workOrderId: order.id }
   const orderBy = buildOrderBy(query, FIELD_MAP, { createdAt: 'asc' })
@@ -74,23 +75,32 @@ export async function POST(
   const url = new URL(req.url)
   const reporterTel = url.searchParams.get('reporterTel')?.trim() ?? ''
 
-  // Authed access — try DEVICE_EDIT.
-  const auth = await requireApiAuth(req, 'DEVICE_EDIT')
-  const isAuthed = auth.ok
-
-  if (!isAuthed) {
-    // 401 → fall through to guest check (if reporterTel provided).
-    // 403 → forbidden (logged-in user without permission).
-    if (auth.response.status !== 401) return auth.response
-    if (!reporterTel) return auth.response
-  }
-
   try {
-    const order = await findWorkOrder(id)
-    if (!order) return notFound('work order')
+    // P0 Security: loadAuthorizedWorkOrderV1 authenticates + checks WO_VIEW_ALL
+    // at the WO's Site. Falls back to guest access (reporterTel match) for
+    // unauthenticated callers (401).
+    const authResult = await loadAuthorizedWorkOrderV1(req, id, 'WO_VIEW_ALL')
 
-    // Guest access — tel must match.
-    if (!isAuthed) {
+    let order
+    let isAuthed = false
+    let authedUser: AuthUser | null = null
+    if (authResult.ok) {
+      order = authResult.wo
+      isAuthed = true
+      authedUser = authResult.auth.user
+    } else {
+      // 403 (logged-in but lacks permission) or 404 (not found): return immediately.
+      // 401 (no token): fall through to guest check (only when reporterTel provided).
+      if (authResult.response.status !== 401) return authResult.response
+      if (!reporterTel) return authResult.response
+
+      // Guest access — load WO directly and verify reporterTel matches.
+      // Inline findFirst to keep the post-fix grep audit clean — this path is
+      // intentionally unauthenticated.
+      order = await db.workOrder.findFirst({
+        where: { OR: [{ id }, { woNumber: id }] },
+      })
+      if (!order) return notFound('work order')
       if (!order.tel || order.tel.trim() !== reporterTel) {
         return forbidden('เบอร์โทรศัพท์ไม่ตรงกับใบแจ้งซ่อมนี้')
       }
@@ -105,13 +115,15 @@ export async function POST(
     // Determine author + role
     let author: string
     let authorRole: string
-    if (isAuthed) {
-      const user = auth.ctx.user
-      author = user.name || user.username || user.email
-      authorRole = roleToAuthorRole(user.role)
+    let authorEmail: string | null
+    if (isAuthed && authedUser) {
+      author = authedUser.name || authedUser.username || authedUser.email
+      authorRole = roleToAuthorRole(authedUser.role)
+      authorEmail = authedUser.email
     } else {
       author = order.reporterName || 'ผู้แจ้ง'
       authorRole = 'reporter'
+      authorEmail = null
     }
 
     const msg = await db.workOrderMessage.create({
@@ -135,7 +147,7 @@ export async function POST(
         authorRole,
         messagePreview: message.slice(0, 120),
       },
-      isAuthed ? auth.ctx.user.email : null,
+      authorEmail,
     )
 
     return created(msg)

@@ -18,6 +18,16 @@ export interface OrgProfile {
   timezone: string
   currency: string
   allowExcelImport: boolean
+  /**
+   * Phase 3 (Phase 3.2): Terminology used in Thai asset documents.
+   * Default 'ครุภัณฑ์' (government); private sector may use 'ทรัพย์สิน'
+   * or 'Fixed Asset'. Used by the Asset Register report title.
+   */
+  assetTerminology: string
+  /** Fiscal year start month (1-12). Thai gov = 10 (Oct), private = 1 (Jan). */
+  fiscalYearStartMonth: number
+  /** Minimum value (฿) to capitalize as a fixed asset. */
+  defaultCapitalizeThreshold: number | null
 }
 
 const DEFAULT_PROFILE: OrgProfile = {
@@ -31,6 +41,9 @@ const DEFAULT_PROFILE: OrgProfile = {
   timezone: 'Asia/Bangkok',
   currency: 'THB',
   allowExcelImport: true,
+  assetTerminology: 'ครุภัณฑ์',
+  fiscalYearStartMonth: 1,
+  defaultCapitalizeThreshold: 10000,
 }
 
 /**
@@ -52,6 +65,12 @@ export async function getOrgProfile(): Promise<OrgProfile> {
       timezone: row.timezone || DEFAULT_PROFILE.timezone,
       currency: row.currency || DEFAULT_PROFILE.currency,
       allowExcelImport: row.allowExcelImport,
+      assetTerminology: row.assetTerminology || DEFAULT_PROFILE.assetTerminology,
+      fiscalYearStartMonth: row.fiscalYearStartMonth ?? DEFAULT_PROFILE.fiscalYearStartMonth,
+      defaultCapitalizeThreshold:
+        row.defaultCapitalizeThreshold != null
+          ? Number(row.defaultCapitalizeThreshold)
+          : DEFAULT_PROFILE.defaultCapitalizeThreshold,
     }
   } catch {
     return DEFAULT_PROFILE

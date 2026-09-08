@@ -5,6 +5,47 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
 import { POST as postMeterReading } from '@/app/api/itam/meter-readings/route'
 
+// ════════════════════════════════════════════════════════════════════════
+// METER ROUTE DECISION (Phase 4.6) — DO NOT MERGE THESE ROUTES
+// ════════════════════════════════════════════════════════════════════════
+// There are three meter-related route trees in this codebase. They look
+// redundant at first glance but serve DISTINCT purposes:
+//
+//   1. /api/meter/*  (this file + /api/meter/reminders)
+//      Role: REMINDER + CYCLE MANAGEMENT + LEGACY-COMPAT READ/WRITE
+//      • GET /api/meter            — legacy shape for old UI/export code
+//      • POST /api/meter            — legacy shape; DELEGATES to the unified
+//                                    /api/itam/meter-readings writer
+//      • GET /api/meter/reminders   — finds meter-required devices that
+//                                    haven't been read in the current cycle
+//      • /api/cycles/*              — cycle open/close lifecycle
+//
+//   2. /api/itam/meter-readings/*  (the main CRUD surface)
+//      Role: MAIN METER READING CRUD (Phase 4.3 — gated by 'meters' module)
+//      • GET /api/itam/meter-readings           — list, paginated
+//      • POST /api/itam/meter-readings          — create reading (with
+//                                                 mode-switch detection,
+//                                                 write-lock, replay dedup)
+//      • /api/itam/meter-readings/unread        — cycle countdown list
+//      • /api/itam/meter-readings/force-close   — admin override
+//
+//   3. /api/v1/meter-readings/*  (external API, v1 stable contract)
+//      Role: EXTERNAL API FOR THIRD-PARTY APPS (stable v1 contract)
+//      • Uses the standardized /api/v1/* response envelope
+//        ({ data, pagination, meta }) and the `requireApiAuth()` helper.
+//      • Built for backward-compat with external integrations; field
+//        names + response shape are versioned and won't change without
+//        a v2 bump.
+//      • Internally reuses the same write path as #2 (via the
+//        findValidPrevReading + assertMeterMonthWritable helpers), so
+//        business rules stay consistent.
+//
+// DO NOT collapse these into one route tree. The legacy `/api/meter`
+// shape is preserved for the existing UI/export code; the `/api/itam`
+// tree is the primary staff surface; and `/api/v1/*` is the public,
+// versioned contract for third parties.
+// ════════════════════════════════════════════════════════════════════════
+
 type MeterRow = {
   id: string
   readingId: string | null

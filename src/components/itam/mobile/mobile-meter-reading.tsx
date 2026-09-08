@@ -105,6 +105,7 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
 import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
 import { matchesSuffixOrContains } from '@/lib/suffix-search'
+import { addToQueue } from '@/lib/offline-queue'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -202,8 +203,18 @@ export function MobileMeterReading() {
     setError(null)
     try {
       const [devRes, remRes] = await Promise.all([
-        fetch(`/api/devices?${new URLSearchParams({ limit: String(PAGE_SIZE), page: '1' }).toString()}`),
-        fetch('/api/meter/reminders'),
+        fetch(`/api/devices?${new URLSearchParams({ limit: String(PAGE_SIZE), page: '1' }).toString()}`, {
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t ? { Authorization: `Bearer ${t}` } : {}
+          })(),
+        }),
+        fetch('/api/meter/reminders', {
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t ? { Authorization: `Bearer ${t}` } : {}
+          })(),
+        }),
       ])
       if (!devRes.ok) {
         const j = await devRes.json().catch(() => ({}))
@@ -653,8 +664,10 @@ function MeterReadingForm({ device, user, onSaved, onSkip }: MeterReadingFormPro
     }
 
     setSaveState({ kind: 'saving' })
+    // Declare outside try so the catch block can read it for offline-queue fallback.
+    let body: Record<string, unknown> | null = null
     try {
-      const body: Record<string, unknown> = {
+      body = {
         assetCode: device.assetCode,
         meterBw: bwNum,
         meterColor: isBwColor ? (colorNum ?? 0) : 0,
@@ -668,7 +681,12 @@ function MeterReadingForm({ device, user, onSaved, onSkip }: MeterReadingFormPro
 
       const res = await fetch('/api/itam/meter-readings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t
+            ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+            : { 'Content-Type': 'application/json' }
+        })(),
         body: JSON.stringify(body),
       })
 
@@ -721,6 +739,23 @@ function MeterReadingForm({ device, user, onSaved, onSkip }: MeterReadingFormPro
       )
       onSaved()
     } catch (e) {
+      // Offline queue fallback — only when the network is actually down,
+      // not on server-side errors (e.g. needConfirmReset 409 is handled above).
+      // Skip queueing during the confirmReset 2-step flow because the user
+      // needs to see the confirmation prompt, not a "queued" toast.
+      if (!navigator.onLine && body && !confirmReset) {
+        addToQueue({
+          url: '/api/itam/meter-readings',
+          method: 'POST',
+          body,
+          label: `จดมิเตอร์: ${device.assetCode} BW ${bwNum ?? 0}${isBwColor ? ` / สี ${colorNum ?? 0}` : ''}`,
+        })
+        toast.success('บันทึกไว้ในคิว จะส่งอัตโนมัติเมื่อออนไลน์')
+        // Collapse the expanded form so the technician can move to the next
+        // device; the queue retry will create the reading when online.
+        onSaved()
+        return
+      }
       setSaveState({
         kind: 'error',
         message: e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ',

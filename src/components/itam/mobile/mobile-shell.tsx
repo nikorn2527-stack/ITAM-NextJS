@@ -27,7 +27,8 @@
  */
 
 import * as React from 'react'
-import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut, ArrowLeft } from 'lucide-react'
+import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut, ArrowLeft, User } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useSwipeBack } from '@/hooks/use-swipe-back'
@@ -36,8 +37,9 @@ import { MobileRepairRequest } from './mobile-repair-request'
 import { MobileMyWork } from './mobile-my-work'
 import { MobileMeterReading } from './mobile-meter-reading'
 import { MobileStockOut } from './mobile-stock-out'
+import { MobileAccount } from './mobile-account'
 
-export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock'
+export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock' | 'account'
 
 interface NavItem {
   id: MobileTab
@@ -50,6 +52,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'repair',   label: 'แจ้งซ่อม',   icon: Wrench },
   { id: 'meter',    label: 'จดมิเตอร์',  icon: Gauge },
   { id: 'stock',    label: 'เบิกของ',    icon: PackageOpen },
+  { id: 'account',  label: 'บัญชี',      icon: User },
 ]
 
 const HEADER_TITLE: Record<MobileTab, string> = {
@@ -57,12 +60,55 @@ const HEADER_TITLE: Record<MobileTab, string> = {
   'my-work': 'งานของฉัน',
   meter: 'จดมิเตอร์',
   stock: 'เบิกของ',
+  account: 'บัญชีของฉัน',
 }
 
 export function MobileShell() {
   const [tab, setTab] = React.useState<MobileTab>('my-work')
   const setActivePage = useAppStore((s) => s.setActivePage)
   const logout = useAuthStore((s) => s.logout)
+  const user = useAuthStore((s) => s.user)
+  const role = user?.role ?? 'viewer'
+
+  // Fetch mobileNavConfig — same query key + fetch logic as sidebar.tsx
+  // so the cache is shared and config changes reflect within 30s.
+  const { data: mobileNavConfig } = useQuery<Record<string, Record<string, boolean>>>({
+    queryKey: ['mobile-nav-config'],
+    queryFn: async () => {
+      const token = useAuthStore.getState()?.token
+      const res = await fetch('/api/settings', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) return {}
+      const json = await res.json()
+      const raw = json.settings?.find((s: { key: string; value: string }) => s.key === 'mobileNavConfig')
+      if (!raw?.value) return {}
+      try {
+        return JSON.parse(raw.value) as Record<string, Record<string, boolean>>
+      } catch {
+        return {}
+      }
+    },
+    staleTime: 30_000,
+  })
+
+  // Filter NAV_ITEMS based on config: 'account' is always visible (logout
+  // must remain accessible). Other tabs hidden if roleConfig says false.
+  const roleConfig = mobileNavConfig?.[role]
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.id === 'account') return true // ห้ามปิดปุ่มบัญชี
+    const key = `mobileapp-${item.id}`
+    if (roleConfig && typeof roleConfig[key] === 'boolean') return roleConfig[key]
+    return true // default: visible
+  })
+
+  // If the current tab is hidden (admin disabled it), fall back to the
+  // first visible tab to avoid showing a blank page.
+  React.useEffect(() => {
+    if (visibleNavItems.length > 0 && !visibleNavItems.some((i) => i.id === tab)) {
+      setTab(visibleNavItems[0].id)
+    }
+  }, [visibleNavItems, tab])
 
   const handleExit = () => {
     setActivePage('dashboard')
@@ -133,6 +179,9 @@ export function MobileShell() {
           <MobileKeepAliveTab active={tab === 'stock'}>
             <MobileStockOut />
           </MobileKeepAliveTab>
+          <MobileKeepAliveTab active={tab === 'account'}>
+            <MobileAccount />
+          </MobileKeepAliveTab>
         </main>
       </div>
 
@@ -142,7 +191,7 @@ export function MobileShell() {
         className="fixed inset-x-0 bottom-0 z-40 mx-auto flex w-full max-w-md items-stretch border-t bg-background shadow-[0_-1px_3px_rgba(0,0,0,0.04)]"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        {NAV_ITEMS.map((item) => {
+        {visibleNavItems.map((item) => {
           const active = tab === item.id
           const Icon = item.icon
           return (

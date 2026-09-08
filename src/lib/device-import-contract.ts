@@ -1,6 +1,7 @@
 import { parseCsv } from '@/lib/csv'
 
 export const DEVICE_IMPORT_FIELDS = [
+  'name', // CONSULTING-007: added so contract is a true superset of /api/import importDevices columns
   'deviceType',
   'brand',
   'model',
@@ -21,6 +22,7 @@ export const DEVICE_IMPORT_FIELDS = [
   'remoteId',
   'installDate',
   'warrantyEnd',
+  'warrantyMonths', // CONSULTING-007: added so contract is a true superset of /api/import importDevices columns
   'meterRequired',
   'meterMode',
   'assetSiteCode',
@@ -31,6 +33,7 @@ export type DeviceImportField = typeof DEVICE_IMPORT_FIELDS[number]
 
 export interface DeviceImportValues {
   assetNo: string
+  name: string | null // CONSULTING-007: explicit name field (was derived from deviceType before)
   deviceType: string | null
   brand: string | null
   model: string | null
@@ -51,6 +54,7 @@ export interface DeviceImportValues {
   remoteId: string | null
   installDate: string | null
   warrantyEnd: string | null
+  warrantyMonths: number | null // CONSULTING-007: added (Int, not string) to match /api/import
   meterRequired: boolean | null
   meterMode: string | null
   assetSiteCode: string | null
@@ -81,6 +85,10 @@ export interface DeviceImportValidationResult {
 
 const HEADER_ALIASES: Record<string, string[]> = {
   assetNo: ['assetno', 'asset_no', 'รหัสสินทรัพย์', 'รหัส', 'assetcode'],
+  // CONSULTING-007: name alias added so contract is a true superset of /api/import.
+  // Legacy /api/import required `name`; contract previously derived it from
+  // deviceType as a fallback. We now accept it explicitly.
+  name: ['name', 'ชื่อ', 'ชื่ออุปกรณ์'],
   deviceType: ['devicetype', 'device_type', 'ประเภท', 'type'],
   brand: ['brand', 'แบรนด์'],
   model: ['model', 'รุ่น'],
@@ -101,6 +109,8 @@ const HEADER_ALIASES: Record<string, string[]> = {
   remoteId: ['remoteid', 'remote_id'],
   installDate: ['installdate', 'install_date', 'วันติดตั้ง'],
   warrantyEnd: ['warrantyend', 'warranty_end', 'วันหมดประกัน'],
+  // CONSULTING-007: warrantyMonths alias added (legacy /api/import field).
+  warrantyMonths: ['warrantymonths', 'warranty_months', 'รับประกัน(เดือน)', 'รับประกันเดือน'],
   meterRequired: ['meterrequired', 'meter_required', 'ต้องจดมิเตอร์'],
   meterMode: ['metermode', 'meter_mode', 'โหมดมิเตอร์'],
   assetSiteCode: ['assetsitecode', 'asset_site_code'],
@@ -162,6 +172,12 @@ function booleanCell(value: string | undefined): boolean | null {
   return null
 }
 
+function intCell(value: string | undefined): number | null {
+  if (!value) return null
+  const n = Number(value.trim())
+  return Number.isFinite(n) ? Math.floor(n) : null
+}
+
 function rowValues(row: string[], fieldIndexes: Record<string, number>, assetNoIndex: number): DeviceImportValues {
   const cell = (field: string): string | null => {
     const index = fieldIndexes[field]
@@ -170,6 +186,7 @@ function rowValues(row: string[], fieldIndexes: Record<string, number>, assetNoI
 
   return {
     assetNo: textCell(row[assetNoIndex]) ?? '',
+    name: cell('name'),
     deviceType: cell('deviceType'),
     brand: cell('brand'),
     model: cell('model'),
@@ -190,6 +207,9 @@ function rowValues(row: string[], fieldIndexes: Record<string, number>, assetNoI
     remoteId: cell('remoteId'),
     installDate: cell('installDate'),
     warrantyEnd: cell('warrantyEnd'),
+    warrantyMonths: intCell(
+      fieldIndexes.warrantyMonths === undefined ? undefined : row[fieldIndexes.warrantyMonths],
+    ),
     meterRequired: booleanCell(
       fieldIndexes.meterRequired === undefined ? undefined : row[fieldIndexes.meterRequired],
     ),

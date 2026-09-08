@@ -148,17 +148,36 @@ export function QrScannerDialog() {
 
   function startScanLoop() {
     let attempts = 0
-    const tick = () => {
+    // Check if BarcodeDetector API is available (supports QR + 2D barcodes)
+    const hasBarcodeDetector = typeof window !== 'undefined' && 'BarcodeDetector' in window
+    const tick = async () => {
       if (!open || mode !== 'camera') return
       const v = videoRef.current
       const canvas = canvasRef.current
       if (!v || !canvas || v.readyState !== v.HAVE_ENOUGH_DATA) {
-        rafRef.current = setTimeout(tick, 120)
+        rafRef.current = setTimeout(tick, 120) as unknown as ReturnType<typeof setTimeout>
         return
       }
       const w = v.videoWidth
       const h = v.videoHeight
       if (w > 0 && h > 0) {
+        // ── Try BarcodeDetector API first (supports QR + 2D barcodes) ──
+        if (hasBarcodeDetector) {
+          try {
+            // @ts-expect-error — BarcodeDetector is not in TS types yet
+            const detector = new window.BarcodeDetector({
+              formats: ['qr_code', 'code_128', 'code_39', 'ean_13', 'ean_8', 'data_matrix', 'pdf417'],
+            })
+            const codes = await detector.detect(v)
+            if (codes && codes.length > 0 && codes[0].rawValue) {
+              handleDecoded(codes[0].rawValue)
+              return
+            }
+          } catch {
+            // Fall through to jsQR below
+          }
+        }
+        // ── Fallback: jsQR (QR codes only) ──
         canvas.width = w
         canvas.height = h
         const ctx = canvas.getContext('2d', { willReadFrequently: true })
@@ -178,13 +197,30 @@ export function QrScannerDialog() {
       }
       attempts++
       // Auto-throttle: scan every ~120ms (8 fps) — light on CPU
-      rafRef.current = setTimeout(tick, 120)
+      rafRef.current = setTimeout(tick, 120) as unknown as ReturnType<typeof setTimeout>
     }
-    rafRef.current = setTimeout(tick, 250)
+    rafRef.current = setTimeout(tick, 250) as unknown as ReturnType<typeof setTimeout>
   }
 
-  // ── Handle decoded QR — smart routing (meter-required → meter entry, else detail) ──
+  // ── Handle decoded QR — Smart QR routing + legacy fallback ──
   async function handleDecoded(raw: string) {
+    // ── Check if this is a Smart QR URL (/qr/{type}/{id}?action=xxx) ──
+    const smartMatch = raw.match(/\/qr\/([dAsw])\/([a-zA-Z0-9_-]+)/i)
+    if (smartMatch) {
+      // Smart QR — redirect to the QR router page
+      const url = raw.startsWith('http') ? raw : `${window.location.origin}${raw.startsWith('/') ? '' : '/'}${raw}`
+      // Haptic feedback
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate(120) } catch { /* ignore */ }
+      }
+      toast.success('สแกน Smart QR สำเร็จ', { description: 'กำลังเปิด...' })
+      stopCamera()
+      setOpen(false)
+      window.location.href = url
+      return
+    }
+
+    // ── Legacy QR: parse assetCode / serial ──
     const assetNo = parseAssetNo(raw)
     setLastScan(raw)
     if (!assetNo) {

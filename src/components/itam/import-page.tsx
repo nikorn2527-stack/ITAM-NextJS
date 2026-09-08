@@ -62,7 +62,7 @@ import { ManualSyncPreviewSection } from './manual-sync-preview-section'
 // ข้อ 3: นำเข้าข้อมูล — อัปโหลด CSV แยกตามประเภท
 // ============================================================
 
-type JobType = 'device' | 'work-order' | 'stock' | 'meter-reading'
+type JobType = 'device' | 'work-order' | 'stock' | 'meter-reading' | 'accessory'
 
 interface ImportTypeDef {
   id: JobType
@@ -182,6 +182,36 @@ const IMPORT_TYPES: ImportTypeDef[] = [
       remark: '',
     },
   },
+  {
+    // ── Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM (Part B) ──
+    // Endpoint: POST /api/devices/accessories/import (NOT /api/import)
+    // Response shape: { data: { total, created, updated, skipped, errors, jobId } }
+    // (different from /api/import which returns { job: ImportJob }).
+    id: 'accessory',
+    icon: '🔌',
+    title: 'อุปกรณ์ต่อพ่วง',
+    desc: 'นำเข้าอุปกรณ์ต่อพ่วงแบบหลายตัว (เชื่อมกับอุปกรณ์ที่มีอยู่แล้ว)',
+    headers: [
+      { key: 'parent_asset_code', label: 'parent_asset_code' },
+      { key: 'accessory_type', label: 'accessory_type' },
+      { key: 'brand', label: 'brand' },
+      { key: 'model', label: 'model' },
+      { key: 'serial_number', label: 'serial_number' },
+      { key: 'status', label: 'status' },
+      { key: 'installed_date', label: 'installed_date' },
+      { key: 'remark', label: 'remark' },
+    ],
+    sample: {
+      parent_asset_code: 'IT-00001',
+      accessory_type: 'KEYBOARD',
+      brand: 'Logitech',
+      model: 'K380',
+      serial_number: 'LOG-001',
+      status: 'Active',
+      installed_date: '2024-01-15',
+      remark: 'คีย์บอร์ดไร้สาย',
+    },
+  },
 ]
 
 interface ImportJob {
@@ -237,6 +267,8 @@ function jobTypeLabel(t: string): string {
       return 'มิเตอร์'
     case 'master-data':
       return 'ข้อมูลมาตรฐาน'
+    case 'accessory':
+      return 'อุปกรณ์ต่อพ่วง'
     default:
       // Legacy import types are stored as "legacy:{sheetId}"
       if (t.startsWith('legacy:')) {
@@ -346,11 +378,77 @@ export function ImportPage() {
   })
 
   // ---- Upload mutation ----
+  // Routes to TWO different endpoints based on jobType:
+  //   • device | work-order | stock | meter-reading → POST /api/import
+  //     (response: { job: ImportJob })
+  //   • accessory → POST /api/devices/accessories/import
+  //     (response: { data: { total, created, updated, skipped, errors, jobId } })
+  //     — synthesised into an ImportJob shape so the rest of the UI
+  //       (history table, error dialog) keeps working without forking.
   const uploadMutation = useMutation({
     mutationFn: async (vars: { file: File; jobType: JobType }) => {
       const fd = new FormData()
       fd.append('file', vars.file)
+      if (vars.jobType === 'accessory') {
+        // Accessory endpoint — different response shape, see route.ts.
+        const res = await fetch('/api/devices/accessories/import', {
+          method: 'POST',
+          body: fd,
+        })
+        const json = await res.json()
+        if (!res.ok) {
+          throw new Error(json?.error ?? 'อัปโหลดไม่สำเร็จ')
+        }
+        const data = json.data as {
+          total: number
+          created: number
+          updated: number
+          skipped: number
+          errors: ImportError[]
+          jobId: string
+        }
+        // Synthesise an ImportJob so the existing UI (history table +
+        // error dialog) keeps working. The accessory endpoint doesn't
+        // return the full ImportJob record, just a jobId + counts.
+        const synth: ImportJob = {
+          id: data.jobId,
+          jobType: 'accessory',
+          fileName: vars.file.name,
+          fileType: 'csv',
+          status: 'completed',
+          totalRows: data.total,
+          processedRows: data.created + data.updated,
+          errorRows: data.skipped + data.errors.length,
+          errors:
+            data.errors.length > 0
+              ? JSON.stringify(data.errors.slice(0, 200))
+              : null,
+          uploadedBy: null,
+          createdAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        }
+        return synth
+      }
+      // Default: device / work-order / stock / meter-reading
       fd.append('jobType', vars.jobType)
+      // ── CONSULTING-007 Phase B (partial) ──────────────────────────
+      // The device path stays on `/api/import` for now (rather than
+      // migrating to `/api/itam/devices/import`) for two reasons:
+      //   1. This page's history table relies on `ImportJob` records
+      //      that `/api/import` creates. The `/api/itam/devices/import`
+      //      endpoint does NOT create an `ImportJob` row — it only
+      //      writes a `logAudit` entry — so switching would silently
+      //      drop device imports from the history panel.
+      //   2. The contract at `src/lib/device-import-contract.ts` is
+      //      now a true superset of `/api/import`'s 12 device columns
+      //      (added `name` + `warrantyMonths` as part of this task),
+      //      BUT it still lacks `purchasePrice`, `parentDeviceId`,
+      //      `setLabel`, `setPosition`, etc. — migrating this path
+      //      would lose those capabilities.
+      // The Phase A fix already wrapped `/api/import` device writes in
+      // `db.$transaction` (batched at 100 rows/batch), so this path is
+      // already transaction-safe. Phase B here is consolidation, not a
+      // safety fix. See worklog CONSULTING-007-IMPORT-TEMPLATES.
       const res = await fetch('/api/import', {
         method: 'POST',
         body: fd,
@@ -380,6 +478,11 @@ export function ImportPage() {
         qc.invalidateQueries({ queryKey: ['stock-items'] })
       } else if (job.jobType === 'meter-reading') {
         qc.invalidateQueries({ queryKey: ['meter'] })
+      } else if (job.jobType === 'accessory') {
+        // Accessories live under a device — invalidate the devices list +
+        // any open device-detail-sheet so the new rows show up.
+        qc.invalidateQueries({ queryKey: ['devices'] })
+        qc.invalidateQueries({ queryKey: ['device-accessories'] })
       }
       qc.invalidateQueries({ queryKey: ['dashboard'] })
     },
@@ -456,21 +559,16 @@ export function ImportPage() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-slate-50 px-4 py-6 dark:bg-slate-950 sm:px-6 lg:px-8">
-      <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-6">
-        {/* Header */}
-        <div className="flex flex-shrink-0 flex-col gap-1">
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-800 dark:text-slate-100">
-            <span aria-hidden>📥</span>
-            นำเข้าข้อมูล
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            อัปโหลดไฟล์ CSV — แยกตามประเภทข้อมูล
-          </p>
-        </div>
+    <div className="flex h-full flex-col bg-slate-50 px-3 py-3 dark:bg-slate-950 sm:px-4 lg:px-5">
+      <div className="flex h-full w-full flex-col gap-3">
+        {/* Compact header — h1 only, no description (saves vertical space) */}
+        <h1 className="flex flex-shrink-0 items-center gap-2 text-lg font-bold text-slate-800 dark:text-slate-100 md:text-xl">
+          <span aria-hidden>📥</span>
+          นำเข้าข้อมูล
+        </h1>
 
         {/* Tab switcher: manual import vs legacy Apps Script import */}
-        <Tabs defaultValue="manual" className="flex min-h-0 w-full flex-1 flex-col gap-6">
+        <Tabs defaultValue="manual" className="flex min-h-0 w-full flex-1 flex-col gap-3">
           <TabsList className="flex-shrink-0 bg-slate-100 dark:bg-slate-800">
             <TabsTrigger value="manual" onClick={() => {}} className="gap-1.5">
               <Upload className="h-3.5 w-3.5" />
@@ -487,15 +585,13 @@ export function ImportPage() {
           </TabsList>
 
           {/* ─── Manual import tab ─── */}
-          <TabsContent value="manual" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <TabsContent value="manual" className="min-h-0 flex-1 space-y-4 overflow-y-auto">
         {/* Import type selector */}
         <div>
-          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            1. เลือกประเภทข้อมูลที่จะนำเข้า
-          </h2>
+          {/* Removed h2 heading "1. เลือกประเภทข้อมูล" — the cards are self-explanatory */}
           {/* On mobile: horizontal scrollable row of compact cards so the
               upload area below stays in the viewport. On sm+: 2-4 col grid. */}
-          <div className="flex gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
             {IMPORT_TYPES.map((t) => {
               const active = selectedType === t.id
               return (
@@ -863,7 +959,7 @@ export function ImportPage() {
                     ขั้นตอนการใช้งาน
                   </h3>
                   <ol className="ml-4 list-decimal space-y-1.5 text-sm text-slate-600 dark:text-slate-300">
-                    <li>เลือกประเภทข้อมูลที่จะนำเข้า (อุปกรณ์ / แจ้งซ่อม / สต๊อก / มิเตอร์)</li>
+                    <li>เลือกประเภทข้อมูลที่จะนำเข้า (อุปกรณ์ / แจ้งซ่อม / สต๊อก / มิเตอร์ / อุปกรณ์ต่อพ่วง)</li>
                     <li>คลิก &quot;ดาวน์โหลดเทมเพลต&quot; เพื่อดาวน์โหลดไฟล์ CSV ตัวอย่างพร้อมหัวคอลัมน์ที่ถูกต้อง</li>
                     <li>เปิดไฟล์เทมเพลตใน Excel หรือโปรแกรมตกแต่ง CSV แล้วกรอกข้อมูลในแต่ละแถว</li>
                     <li>บันทึกไฟล์เป็น CSV (UTF-8) — หากใช้ Excel เลือก &quot;CSV UTF-8 (Comma delimited)&quot;</li>

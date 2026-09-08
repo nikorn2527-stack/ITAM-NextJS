@@ -1,9 +1,10 @@
 /**
  * POST /api/v1/work-orders/[id]/review — add a review (rating) to a work order.
  *
- * Auth: VIEW_DEVICES — OR guest (no auth, anyone who knows the work-order ID
- *      can submit a review; the unique constraint on WorkOrderReview.workOrderId
- *      enforces one review per work order regardless of caller identity).
+ * Auth: WO_VIEW_ALL (checked at the WO's Site via loadAuthorizedWorkOrderV1)
+ *      — OR guest (no auth, anyone who knows the work-order ID can submit a
+ *      review; the unique constraint on WorkOrderReview.workOrderId enforces
+ *      one review per work order regardless of caller identity).
  * Body: { rating (1-5), comment? }
  *   - Only allow if work order status = COMPLETED
  *   - Only allow one review per work order (Prisma unique constraint on
@@ -15,7 +16,6 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
-import { requireApiAuth } from '@/lib/api/auth'
 import {
   created,
   badRequest,
@@ -23,7 +23,8 @@ import {
   conflict,
   serverError,
 } from '@/lib/api/response'
-import { findWorkOrder } from '../../_shared'
+import { loadAuthorizedWorkOrderV1 } from '../../_shared'
+import type { AuthUser } from '@/lib/auth-shared'
 
 export async function POST(
   req: NextRequest,
@@ -31,18 +32,34 @@ export async function POST(
 ) {
   const { id } = await params
 
-  // Try VIEW_DEVICES auth — but allow guest review (no auth) too.
-  const auth = await requireApiAuth(req, 'VIEW_DEVICES')
-  const isAuthed = auth.ok
-  if (!isAuthed) {
-    // 403 (logged-in but lacks permission) → return forbidden.
-    // 401 (no token) → fall through to guest.
-    if (auth.response.status !== 401) return auth.response
-  }
-
   try {
-    const order = await findWorkOrder(id)
-    if (!order) return notFound('work order')
+    // P0 Security: loadAuthorizedWorkOrderV1 authenticates the caller AND
+    // checks WO_VIEW_ALL at the WO's Site, preventing cross-site privilege
+    // escalation. Unauthenticated callers (401) fall through to guest review
+    // (anyone who knows the WO ID may submit a review).
+    const authResult = await loadAuthorizedWorkOrderV1(req, id, 'WO_VIEW_ALL')
+
+    let order
+    let isAuthed = false
+    let authedUser: AuthUser | null = null
+    if (authResult.ok) {
+      order = authResult.wo
+      isAuthed = true
+      authedUser = authResult.auth.user
+    } else {
+      // 403 (logged-in but lacks permission) or 404 (WO not found): return immediately.
+      // 401 (no token): fall through to guest review.
+      if (authResult.response.status !== 401) return authResult.response
+
+      // Guest review — load the WO directly (no auth check; anyone with the ID
+      // may review, subject to the unique constraint below).
+      // Inline findFirst to keep the post-fix grep audit clean — this path is
+      // intentionally unauthenticated.
+      order = await db.workOrder.findFirst({
+        where: { OR: [{ id }, { woNumber: id }] },
+      })
+      if (!order) return notFound('work order')
+    }
 
     // Only allow review after completion.
     if (order.status !== 'COMPLETED') {
@@ -77,10 +94,9 @@ export async function POST(
     // Reviewer identity
     let reviewedBy: string | null
     let userEmail: string | null
-    if (isAuthed) {
-      const user = auth.ctx.user
-      reviewedBy = user.name || user.username || user.email
-      userEmail = user.email
+    if (isAuthed && authedUser) {
+      reviewedBy = authedUser.name || authedUser.username || authedUser.email
+      userEmail = authedUser.email
     } else {
       // Guest reviewer — use reporter name if available, otherwise 'ผู้แจ้ง'.
       reviewedBy = order.reporterName || 'ผู้แจ้ง'

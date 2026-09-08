@@ -4,7 +4,23 @@
  * Bug DATA-06 from QA report: data set has Active, ACTIVE, active, Inactive,
  * INACTIVE, In Repair, ซ่อม, ปกติ, ใช้งาน — all meaning the same things.
  * This helper normalizes any variant to a canonical value.
+ *
+ * Phase 4.1: the canonical status unions now also live in `@/lib/status-enums`
+ * as the type-safe `DeviceStatus` / `WorkOrderStatus` / etc. unions. This
+ * file keeps the runtime synonym table + `normalizeStatus()` (which still
+ * accepts any string) so existing callers — including CSV importers and
+ * legacy `/api/meter` writes — don't break. New code SHOULD prefer the
+ * unions from `@/lib/status-enums` when creating or transitioning statuses.
  */
+
+import type {
+  DeviceStatus,
+  WorkOrderStatus,
+  StockItemStatus,
+  AccessoryStatus,
+} from '@/lib/status-enums'
+
+export type { DeviceStatus, WorkOrderStatus, StockItemStatus, AccessoryStatus }
 
 export const CANONICAL_STATUS_VALUES = {
   ACTIVE: 'Active',

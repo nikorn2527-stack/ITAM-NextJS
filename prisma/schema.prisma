@@ -7,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -34,8 +34,8 @@ model Device {
   floor           String?
   room            String?
   purchaseDate    String? // ISO date
-  purchasePrice   Decimal? @db.Decimal(12, 2)
-  salvageValue    Decimal? @default(0) @db.Decimal(12, 2)
+  purchasePrice   Decimal?
+  salvageValue    Decimal? @default(0)
   usefulLife      Int?
   warrantyMonths  Int      @default(12)
   warrantyEnd     String?
@@ -58,6 +58,14 @@ model Device {
   updatedAt       DateTime @updatedAt
   updatedBy       String?  @default("System")
 
+  // ── Asset Tag (Phase 2.6 — future RFID/NFC/BLE support) ──
+  // Physical tag identifier for asset tracking beyond QR stickers.
+  // Currently unused — field reserved so future hardware integration
+  // (USB RFID reader, BLE beacons, NFC tags) doesn't need schema migration.
+  // tagType defaults to QR (current system uses Smart QR URLs).
+  tagId           String?
+  tagType         String   @default("QR") // QR | BARCODE | NFC | RFID_UHF | BLE
+
   // ── Device Set / Parent-Child (Task ID 9, Phase 2) ──
   // Lets devices be grouped as a "set": e.g. a printer (parent) with
   // its UPS, network card, paper tray (children). Children may or may not
@@ -70,6 +78,23 @@ model Device {
   setLabel       String? // ชื่อชุด เช่น "ชุดเครื่องพิมพ์ห้องจ่ายยา"
   setPosition    Int? // ลำดับในชุด (1, 2, 3, …)
 
+  // ── Device Replacement ──
+  // When this device is replaced by a newer one, `replacedById` points
+  // to the new device. Smart QR scan on the old device will then redirect
+  // to the new one (so the sticker on the old physical box still works).
+  // Self-FK; onDelete: SetNull so deleting the new device doesn't cascade.
+  replacedById    String?
+  replacedBy      Device?  @relation("DeviceReplacement", fields: [replacedById], references: [id], onDelete: SetNull)
+  replacedByFrom  Device[] @relation("DeviceReplacement")
+  replacedAt      DateTime?
+
+  // ── Phase 4.2: Soft-delete ──
+  // Set by future soft-delete handlers instead of `db.device.delete()`.
+  // Existing DELETE endpoints currently hard-delete — a follow-up task will
+  // migrate them to set deletedAt = now() and filter reads by deletedAt IS NULL.
+  // Kept optional so existing rows are unaffected.
+  deletedAt       DateTime?
+
   // Relations (other models reference Device via deviceId)
   meterReadings     MeterReading[]
   transfers         DeviceTransfer[]
@@ -78,11 +103,15 @@ model Device {
   workOrders        WorkOrder[]
   stockTransactions StockTransaction[]
   pmSchedules       PMSchedule[]
+  accessories       DeviceAccessory[]
+  licenses          LicenseRecord[]   // PUBLIC-QR-PHASE-1-SCHEMA — real FK from LicenseRecord.deviceId
 
   @@index([parentDeviceId])
   @@index([status])
   @@index([site])
   @@index([serialNumber])
+  @@index([replacedById])
+  @@index([deletedAt]) // Phase 4.2: soft-delete index
 }
 
 model MeterReading {
@@ -121,9 +150,16 @@ model MeterReading {
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
+  // ── Phase 4.2: Soft-delete ──
+  // Optional timestamp; when set, the reading is considered deleted but kept
+  // for audit. Existing DELETE endpoints still hard-delete — a follow-up
+  // task will migrate them to set deletedAt = now().
+  deletedAt DateTime?
   @@index([deviceId])
   @@index([readingMonth])
   @@index([isDemo])
+  @@index([deletedAt]) // Phase 4.2: soft-delete index
   // Composite indexes for common query patterns
   @@index([deviceId, readingMonth])       // meter readings per device per month
   @@index([readingType, readingDate])     // filter by type + date range
@@ -144,8 +180,9 @@ model Cycle {
   status    String   @default("active")
   site      String? // nullable — null = all sites (global cycle)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime? @updatedAt
 
+  isDemo    Boolean  @default(false)
   @@index([status])
   @@index([site])
   @@index([updatedAt])
@@ -158,6 +195,7 @@ model DeviceTransfer {
   id                 String   @id @default(cuid())
   logId              String?  @unique
   deviceId           String
+  isDemo           Boolean  @default(false)
   assetCode          String? // Asset_No
   moveDate           String?
   action             String? // TRANSFER | TRANSFER_SITE | STATUS_CHANGE | STATUS_AND_TRANSFER | TRANSFER_BY_LIFECYCLE
@@ -186,6 +224,7 @@ model DeviceTransfer {
 
   device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
   @@index([deviceId])
   @@index([toSite])
 }
@@ -197,6 +236,7 @@ model Assignment {
   id                 String   @id @default(cuid())
   assignmentId       String?  @unique
   deviceId           String
+  isDemo          Boolean  @default(false)
   assignee           String
   assigneeRole       String?
   department         String?
@@ -221,11 +261,12 @@ model MaintenanceLog {
   id           String   @id @default(cuid())
   logId        String?  @unique
   deviceId     String
+  isDemo          Boolean  @default(false)
   type         String // repair | maintenance | inspection | upgrade
   status       String   @default("open")
   startDate    String
   endDate      String?
-  cost         Decimal? @db.Decimal(12, 2)
+  cost         Decimal?
   vendor       String?
   description  String
   resolvedNote String?
@@ -302,11 +343,25 @@ model WorkOrder {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // ── Public QR Repair Submission ──
+  // When a work order is submitted via public QR scan (no staff login),
+  // `publicReporterId` links to the PublicReporter record (LINE-verified
+  // or anonymous with phone). `submissionSource` is reused for the source
+  // flag: 'guest' (default), 'line_liff', 'public_qr', 'app'.
+  publicReporterId String?
+  publicReporter   PublicReporter? @relation(fields: [publicReporterId], references: [id], onDelete: SetNull)
+
   device   Device?            @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   messages WorkOrderMessage[]
   reviews  WorkOrderReview[]
   images   WorkOrderImage[]
   parts    WorkOrderPart[]
+
+  // ── Phase 4.2: Soft-delete ──
+  // Optional timestamp; when set, the WO is considered deleted but kept for
+  // audit. Existing DELETE endpoints still hard-delete — a follow-up task
+  // will migrate them to set deletedAt = now().
+  deletedAt DateTime?
 
   @@index([status])
   @@index([legacyJobNo])
@@ -316,6 +371,8 @@ model WorkOrder {
   @@index([isSpecialFee])
   @@index([siteCode, status, createdAt])
   @@index([version])
+  @@index([publicReporterId])
+  @@index([deletedAt]) // Phase 4.2: soft-delete index
 }
 
 // ============================================================
@@ -324,6 +381,7 @@ model WorkOrder {
 model WorkOrderMessage {
   id          String   @id @default(cuid())
   workOrderId String
+  isDemo      Boolean  @default(false)
   message     String
   author      String?
   authorRole  String?
@@ -331,6 +389,7 @@ model WorkOrderMessage {
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
   @@index([workOrderId])
 }
 
@@ -340,6 +399,7 @@ model WorkOrderMessage {
 model WorkOrderReview {
   id          String   @id @default(cuid())
   workOrderId String
+  isDemo      Boolean  @default(false)
   rating      Int
   comment     String?
   reviewedBy  String?
@@ -347,6 +407,7 @@ model WorkOrderReview {
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
   @@index([workOrderId])
 }
 
@@ -356,6 +417,7 @@ model WorkOrderReview {
 model WorkOrderImage {
   id          String   @id @default(cuid())
   workOrderId String
+  isDemo      Boolean  @default(false)
   stage       String // before | onsite | after
   image_data  String
   fileName    String?
@@ -364,6 +426,7 @@ model WorkOrderImage {
 
   workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
 
+  updatedAt DateTime? @updatedAt
   @@index([workOrderId])
   @@index([stage])
   @@map("work_order_images")
@@ -378,14 +441,15 @@ model WorkOrderImage {
 model WorkOrderPart {
   id          String     @id @default(cuid())
   workOrderId String
+  isDemo      Boolean  @default(false)
   workOrder   WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
   stockItemId String?
   stockItem   StockItem? @relation(fields: [stockItemId], references: [id])
   productCode String
   productName String
   quantity    Int
-  unitCost    Decimal?   @db.Decimal(12, 2)
-  totalCost   Decimal?   @db.Decimal(12, 2)
+  unitCost    Decimal?
+  totalCost   Decimal?
   status      String     @default("PENDING") // PENDING | APPROVED | REJECTED
   requestedBy String?
   approvedBy  String?
@@ -404,7 +468,7 @@ model WorkOrderPart {
 model LicenseRecord {
   id          String   @id @default(cuid())
   License_ID  String?
-  Asset_No    String? // links to Device.assetCode
+  Asset_No    String? // links to Device.assetCode (legacy — kept for back-compat)
   Software    String
   LicenseType String? // OEM | Volume | Retail | Subscription | Open License
   License_Key String?
@@ -414,7 +478,24 @@ model LicenseRecord {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // ── PUBLIC-QR-PHASE-1-SCHEMA: real FK to Device (replaces legacy Asset_No
+  //     string lookup). Nullable so the migration script can backfill
+  //     existing rows in place (see scripts/migrate-license-device-id.ts).
+  //     onDelete: SetNull so deleting a Device keeps the license record
+  //     (audit trail) instead of cascading the delete.
+  deviceId    String?
+  device      Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  // ── PUBLIC-QR-PHASE-1-SCHEMA: active flag — when a device is replaced and
+  //     moveLicenses=false, the licenses on the old device get deactivated
+  //     (isActive=false) instead of being deleted, preserving the audit
+  //     trail of "this license was issued for that device".
+  isActive    Boolean  @default(true)
+
+  isDemo    Boolean  @default(false)
   @@index([Asset_No])
+  @@index([deviceId])
+  @@index([isActive])
+  @@index([isDemo])
   @@map("license_records")
 }
 
@@ -428,15 +509,31 @@ model SiteAttribute {
   SiteName       String? // เช่น โรงพยาบาลศูนย์อุดรธานี
   LineOA         String? // LINE OA ID/Token
   Hotline        String? // เบอร์ติดต่อ
-  PaperRateBW    Decimal? @default(0.5) @db.Decimal(12, 2) // ฿/แผ่น ขาวดำ
-  PaperRateColor Decimal? @default(2.0) @db.Decimal(12, 2) // ฿/แผ่น สี
+  PaperRateBW    Decimal? @default(0.5) // ฿/แผ่น ขาวดำ
+  PaperRateColor Decimal? @default(2.0) // ฿/แผ่น สี
   TelegramChatId String?  @map("TelegramChatId") // Telegram chat ID สำหรับสาขา
   EmailAddress   String?  @map("EmailAddress") // อีเมลสาขาสำหรับรับแจ้งเตือน
+
+  // ── LINE Login (public QR scan → repair flow) ──
+  // PPIT (single org) uses ONE shared LINE Login Channel. But each site
+  // has its OWN LINE OA (for friend add + notifications). When a public
+  // reporter logs in via LINE Login, we auto-friend them to the site's
+  // LINE OA so they can receive status updates via that OA.
+  // LiffId is optional — used only if we deploy as a LIFF app (in-LINE).
+  LiffId                 String?  @map("LiffId")
+  LiffAutoFriendLine     String?  @map("LiffAutoFriendLine") // LINE OA handle to auto-friend on login
+  // Public repair rate-limit per site (per phone/day, per IP/day)
+  PublicRepairDailyLimit Int     @default(3) // max WO/phone/day
+  PublicRepairIpDailyLimit Int    @default(10) // max WO/IP/day
+
   isDemo         Boolean  @default(false)
   created_at     DateTime @default(now())
   updated_at     DateTime @updatedAt
 
+  publicReporters PublicReporter[]
+
   @@map("site_attributes")
+  @@index([isDemo])
 }
 
 // ============================================================
@@ -449,6 +546,10 @@ model Site {
   address   String?
   phone     String?
   createdAt DateTime @default(now())
+
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
+  @@index([name])
 }
 
 // ============================================================
@@ -457,11 +558,12 @@ model Site {
 model SiteRate {
   id        String   @id @default(cuid())
   siteCode  String
-  bwRate    Decimal  @default(0.5) @db.Decimal(12, 2)
-  colorRate Decimal  @default(2.0) @db.Decimal(12, 2)
+  bwRate    Decimal @default(0.5)
+  colorRate Decimal @default(2.0)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime? @updatedAt
 
+  isDemo    Boolean  @default(false)
   @@index([siteCode])
 }
 
@@ -483,6 +585,7 @@ model MasterItem {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  isDemo    Boolean  @default(false)
   @@index([category])
   @@index([code])
 }
@@ -501,8 +604,8 @@ model StockItem {
   quantity          Int      @default(0)
   minQuantity       Int      @default(0)
   maxQuantity       Int      @default(0)
-  unitCost          Decimal? @db.Decimal(12, 2)
-  totalValue        Decimal? @db.Decimal(12, 2)
+  unitCost          Decimal?
+  totalValue        Decimal?
   location          String?
   site              String?
   compatibleDevices String?
@@ -543,10 +646,10 @@ model StockItem {
   //   monthly   → ratePerMonth (฿ per month)
   //   per-device → ratePerDevice (฿ per device serviced)
   // For 'fixed' model, the existing unitCost field is used.
-  ratePerPage     Decimal? @db.Decimal(12, 2)
-  ratePerHour     Decimal? @db.Decimal(12, 2)
-  ratePerMonth    Decimal? @db.Decimal(12, 2)
-  ratePerDevice   Decimal? @db.Decimal(12, 2)
+  ratePerPage     Decimal?
+  ratePerHour     Decimal?
+  ratePerMonth    Decimal?
+  ratePerDevice   Decimal?
 
   // Relations
   transactions       StockTransaction[]
@@ -554,11 +657,18 @@ model StockItem {
   workOrderParts     WorkOrderPart[]
   rateHistory        StockItemRateHistory[]
 
+  // ── Phase 4.2: Soft-delete ──
+  // Optional timestamp; when set, the item is considered deleted but kept
+  // for audit (preserves transaction history FK references). Existing DELETE
+  // endpoints still hard-delete — a follow-up task will migrate them.
+  deletedAt DateTime?
+
   @@index([productCode])
   @@index([category])
   @@index([costType])
   @@index([costModel])
   @@index([isDemo])
+  @@index([deletedAt]) // Phase 4.2: soft-delete index
 }
 
 // ============================================================
@@ -573,11 +683,11 @@ model StockItemRateHistory {
   // Cost model that was in effect at the time of this snapshot.
   costModel   String? // 'fixed' | 'per-page' | 'per-hour' | 'monthly' | 'per-device'
   // The rate fields, copied from StockItem at the time of change.
-  unitCost           Decimal? @db.Decimal(12, 2)
-  ratePerPage        Decimal? @db.Decimal(12, 2)
-  ratePerHour        Decimal? @db.Decimal(12, 2)
-  ratePerMonth       Decimal? @db.Decimal(12, 2)
-  ratePerDevice      Decimal? @db.Decimal(12, 2)
+  unitCost           Decimal?
+  ratePerPage        Decimal?
+  ratePerHour        Decimal?
+  ratePerMonth       Decimal?
+  ratePerDevice      Decimal?
   // Effective date range for this rate.
   effectiveFrom String // ISO date
   effectiveTo   String? // ISO date, null = currently in effect
@@ -588,6 +698,8 @@ model StockItemRateHistory {
 
   stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([stockItemId])
   @@index([effectiveFrom])
   @@index([costModel])
@@ -616,8 +728,8 @@ model StockTransaction {
   workOrderId     String?
   workOrderNo     String?
   deviceId        String?
-  cost            Decimal? @db.Decimal(12, 2)
-  unitCost        Decimal? @db.Decimal(12, 2)
+  cost            Decimal?
+  unitCost        Decimal?
   vendor          String?
   receiver        String?
   purchaseOrderNo String?
@@ -638,7 +750,7 @@ model StockTransaction {
   //   cost-per-device + page-yield statistics without tracking ml in real
   //   time. Stored as Decimal(10,3) so 1/3 = 0.333, 1/2 = 0.500, etc.
   //   If null, assume usageQuantity = quantity (1:1 backward compat).
-  usageQuantity    Decimal? @db.Decimal(10, 3)
+  usageQuantity    Decimal?
   // Unit hint for the usageQuantity value, so the UI / reports can label it:
   //   'bottle' | 'cartridge' | 'ml' | 'fraction' | null
   usageUnit        String?
@@ -650,7 +762,7 @@ model StockTransaction {
   usageSource      String?
   // For per-hour cost model: actual hours of usage recorded for this txn.
   // Decimal(10,2) so e.g. 2.5 hours = 2.50.
-  usageHours       Decimal? @db.Decimal(10, 2)
+  usageHours       Decimal?
   // For per-page cost model: actual pages printed/used in this txn.
   // (Typically pulled from the device's MeterReading for the same period.)
   usagePages       Int?
@@ -667,6 +779,7 @@ model StockTransaction {
   stockItem StockItem @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
   device    Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
 
+  updatedAt DateTime? @updatedAt
   @@index([stockItemId])
   @@index([type])
   @@index([approvalStatus])
@@ -690,7 +803,7 @@ model PurchaseOrder {
   orderDate  String
   supplier   String?
   status     String   @default("open")
-  totalValue Decimal? @db.Decimal(12, 2)
+  totalValue Decimal?
   createdBy  String?
   remark     String?
   isDemo     Boolean  @default(false)
@@ -712,11 +825,18 @@ model PurchaseOrderItem {
   stockItemId      String
   quantityOrdered  Int
   quantityReceived Int      @default(0)
-  unitPrice        Decimal? @db.Decimal(12, 2)
-  totalValue       Decimal? @db.Decimal(12, 2)
+  unitPrice        Decimal?
+  totalValue       Decimal?
+  isDemo           Boolean  @default(false)
+  createdAt        DateTime @default(now())
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   stockItem     StockItem     @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime? @updatedAt
+  @@index([purchaseOrderId])
+  @@index([stockItemId])
+  @@index([isDemo])
 }
 
 // ============================================================
@@ -783,6 +903,9 @@ model Role {
 
   grants      UserSiteGrant[]
   permissions RolePermission[]
+
+  isDemo    Boolean  @default(false)
+  @@index([active])
 }
 
 // ============================================================
@@ -801,6 +924,11 @@ model Permission {
   createdAt   DateTime @default(now())
 
   roles RolePermission[]
+
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
+  @@index([resource])
+  @@index([active])
 }
 
 // ============================================================
@@ -818,6 +946,8 @@ model RolePermission {
   permission Permission @relation(fields: [permissionCode], references: [code], onDelete: Cascade)
 
   @@id([roleCode, permissionCode])
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([permissionCode])
 }
 
@@ -850,6 +980,7 @@ model UserSiteGrant {
   role Role @relation(fields: [roleCode], references: [code], onDelete: Restrict)
 
   @@id([userId, siteCode])
+  isDemo    Boolean  @default(false)
   @@index([siteCode, active])
   @@index([userId, active])
   @@index([roleCode, active])
@@ -883,12 +1014,109 @@ model AuditLog {
   isDemo    Boolean  @default(false)
   createdAt DateTime @default(now())
 
+  updatedAt DateTime? @updatedAt
   @@index([entity, entityId])
   @@index([action])
   @@index([createdAt])
   @@index([siteCode, createdAt])
   @@index([userId])
   @@index([isDemo])
+}
+
+// ============================================================
+// 21b) NotificationLog — ประวัติการส่งแจ้งเตือน (Bug B fix)
+// ------------------------------------------------------------
+// Pre-fix: notifications.ts was fire-and-forget — if LINE/Telegram/Email
+// failed (rate limit, token expired, network), it just console.error'd
+// and the message was silently lost. This model gives us:
+//   1. A record of every send attempt (PENDING → SENT / FAILED)
+//   2. Retry count + last error message for debugging
+//   3. A cron hook to retry FAILED entries up to MAX_RETRIES
+// See: src/lib/notification-log.ts + src/app/api/cron/notification-retry/route.ts
+// ============================================================
+model NotificationLog {
+  id           String   @id @default(cuid())
+  // Which channel was attempted: line-oa | telegram | email
+  channel      String
+  // Which template was used (e.g. wo_created, stock_low, meter_reminder)
+  template     String
+  // Rendered title (short summary)
+  title        String
+  // Rendered body (full message)
+  body         String
+  // Target identifier — lineUserId / telegramChatId / email address
+  target       String?
+  // Optional entity this notification is about (e.g. work-order id)
+  entityId     String?
+  entity       String?
+  // PENDING = queued/not yet sent
+  // SENT = delivered successfully
+  // FAILED = attempted but failed (will be retried up to maxRetries)
+  // SKIPPED = intentionally not sent (e.g. no target configured)
+  status       String   @default("PENDING")
+  // Error message from the channel API (LINE/Telegram/SMTP) if failed
+  errorMessage String?
+  // How many times we've retried (capped at maxRetries = 3)
+  retryCount   Int      @default(0)
+  // ISO timestamp of the last send attempt
+  lastAttemptAt DateTime?
+  // ISO timestamp of successful delivery
+  sentAt      DateTime?
+  // Actor who triggered the notification (username or 'system')
+  actor       String   @default("system")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime? @updatedAt
+
+  @@index([status, retryCount])
+  @@index([channel, status])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+// ============================================================
+// 21c) MeterReportAmendment — กลไกแก้ไขมิเตอร์ในรอบที่ปิดแล้ว (Bug L foundation)
+// ------------------------------------------------------------
+// Design (from src/lib/meter-snapshot.ts comments):
+//   - ปัจจุบัน: ถ้ามิเตอร์ในรอบที่ปิดแล้วบันทึกผิด ต้อง reopen ทั้งรอบ (กระทบข้อมูลทั้งเดือนทั้งไซต์)
+//   - Bug L goal: ให้แก้ไขเฉพาะรายการที่ผิด พร้อม audit trail
+//
+// โครงสร้างนี้เป็น foundation เท่านั้น — endpoint และ UI เป็นงานถัดไป
+// (QA report: "งานออกแบบ+สร้างใหม่ วางแผนเป็น sprint แยก ไม่เร่งด่วน")
+// ============================================================
+model MeterReportAmendment {
+  id            String   @id @default(cuid())
+  // Amendment ID ตาม format: MRA-<YYYYMM>-<yyyyMMddHHmmss>
+  amendmentNo   String   @unique
+  // เดือนของรอบที่แก้ไข (เช่น "2026-08")
+  cycleMonth    String
+  // อ้างอิง cycle ที่แก้ (cycleId)
+  cycleId       String?
+  // device ที่แก้ (FK เป็น string เพราะยังไม่มี relation ที่ชัดเจน)
+  deviceId      String
+  // ค่ามิเตอร์เดิม (ที่บันทึกผิด)
+  oldMeterBw    Int?
+  oldMeterColor Int?
+  oldPagesBw    Int?
+  oldPagesColor Int?
+  // ค่ามิเตอร์ใหม่ (ที่ถูกต้อง)
+  newMeterBw    Int?
+  newMeterColor Int?
+  newPagesBw    Int?
+  newPagesColor Int?
+  // เหตุผลที่แก้ (required — ต้องมี audit trail)
+  reason        String
+  // ผู้แก้ (username)
+  amendedBy     String
+  // revision ของ snapshot ที่สร้างใหม่หลังแก้ (ถ้ามี)
+  newRevision   Int?
+  // ISO timestamp
+  amendedAt     DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([cycleMonth])
+  @@index([deviceId, cycleMonth])
+  @@index([cycleId])
+  @@index([amendedBy])
 }
 
 // ============================================================
@@ -899,7 +1127,8 @@ model AppSetting {
   key       String   @unique
   value     String
   isDemo    Boolean  @default(false)
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime? @updatedAt
+  createdAt DateTime @default(now())
 
   @@index([isDemo])
 }
@@ -918,6 +1147,8 @@ model AssetNumberPattern {
   seqStart      Int      @default(1)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  isDemo    Boolean  @default(false)
+  @@index([isActive])
 }
 
 // ============================================================
@@ -934,6 +1165,8 @@ model WoNumberPattern {
   seqStart      Int      @default(1)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  isDemo    Boolean  @default(false)
+  @@index([isActive])
 }
 
 // ============================================================
@@ -951,8 +1184,50 @@ model OrganizationProfile {
   timezone         String   @default("Asia/Bangkok")
   currency         String   @default("THB")
   allowExcelImport Boolean  @default(true)
+
+  // ── Phase 3: Financial policy fields ──
+  // Fiscal year start month (1-12). Thai gov = 10 (Oct), private = 1 (Jan).
+  fiscalYearStartMonth  Int  @default(1)
+  // Minimum value to capitalize as fixed asset (฿). Items below this are
+  // expensed immediately. Default ฿10,000 (typical Thai private sector).
+  defaultCapitalizeThreshold  Decimal? @default(10000)
+  // Terminology: "ครุภัณฑ์" (gov) or "Fixed Asset" (private) or "ทรัพย์สิน"
+  assetTerminology  String  @default("ครุภัณฑ์")
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  isDemo    Boolean  @default(false)
+  @@index([appName])
+}
+
+// ============================================================
+// 24b) AssetCategory — หมวดหมู่สินทรัพย์ (ค่าเสื่อมราคา/อายุใช้งานมาตรฐาน)
+// ============================================================
+// แยกจาก Device.type (string อิสระ) เพื่อให้ตั้งค่านโยบายได้ที่ส่วนกลาง
+// เจ้าหน้าที่ไม่ต้องกรอกอายุการใช้งานทุกเครื่อง — ดึงจากหมวดหมู่อัตโนมัติ
+// ============================================================
+model AssetCategory {
+  id                 String   @id @default(cuid())
+  code               String   @unique // เช่น IT-COMPUTER, IT-PRINTER, IT-NETWORK
+  name               String   // ชื่อหมวดหมู่ เช่น "คอมพิวเตอร์"
+  // อายุการใช้งานมาตรฐาน (ปี) — ใช้เป็น default ถ้า Device.usefulLife ไม่ได้กรอก
+  usefulLifeYears    Int      @default(5)
+  // วิธีคำนวณค่าเสื่อมราคา: STRAIGHT_LINE | DECLINING_BALANCE
+  depreciationMethod String   @default("STRAIGHT_LINE")
+  // อัตราลดต้นทุนทบต้น (เปอร์เซ็นต์ต่อปี) — ใช้เมื่อเลือก DECLINING_BALANCE
+  decliningRate      Decimal? // เช่น 30.00 = 30%/ปี
+  // เกณฑ์มูลค่าขั้นต่ำที่ต้องขึ้นทะเบียนเป็นครุภัณฑ์ (฿) — ต่ำกว่านี้ไม่ต้อง
+  minCapitalizeValue Decimal? @default(10000)
+  // มูลค่าซากเป็นเปอร์เซ็นต์ของราคาซื้อ (0-100)
+  salvageValuePct    Decimal @default(0)
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  isDemo    Boolean  @default(false)
+  @@index([code])
+  @@index([active])
 }
 
 // ============================================================
@@ -968,7 +1243,9 @@ model DocumentTemplate {
   isDefault Boolean  @default(false)
   isFixed   Boolean  @default(false)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  updatedAt DateTime? @updatedAt
+  isDemo    Boolean  @default(false)
+  @@index([type])
 }
 
 // ============================================================
@@ -987,6 +1264,9 @@ model ImportJob {
   uploadedBy    String?
   createdAt     DateTime  @default(now())
   completedAt   DateTime?
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
+  @@index([status])
 }
 
 // ============================================================
@@ -1003,6 +1283,7 @@ model LineBinding {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  isDemo    Boolean  @default(false)
   @@index([lineUserId])
 }
 
@@ -1018,6 +1299,9 @@ model Report {
   data      String
   format    String   @default("json")
   createdAt DateTime @default(now())
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
+  @@index([type])
 }
 
 // ============================================================
@@ -1035,6 +1319,8 @@ model PasswordResetToken {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([email])
   @@index([token])
 }
@@ -1068,6 +1354,8 @@ model SyncRun {
   items        SyncRunItem[]
   createdAt    DateTime      @default(now())
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([source, target, status])
   @@index([triggeredBy])
   @@index([siteScope, createdAt])
@@ -1095,9 +1383,12 @@ model SyncRunItem {
   entityType      String?
   processedAt     DateTime?
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([syncRunId, action])
   @@index([externalKey])
   @@index([syncRunId, status])
+  createdAt DateTime @default(now())
 }
 
 // ============================================================
@@ -1134,11 +1425,18 @@ model PMSchedule {
   device     Device?       @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   executions PMExecution[]
 
+  // ── Phase 4.2: Soft-delete ──
+  // Optional timestamp; when set, the schedule is considered deleted but
+  // kept for audit (preserves PMExecution FK references). Existing DELETE
+  // endpoints still hard-delete — a follow-up task will migrate them.
+  deletedAt DateTime?
+
   @@index([active, nextRunDate])
   @@index([frequency])
   @@index([site])
   @@index([deviceType])
   @@index([isDemo])
+  @@index([deletedAt]) // Phase 4.2: soft-delete index
 }
 
 // ============================================================
@@ -1182,12 +1480,165 @@ model WebAuthnCredential {
   publicKey       Bytes    // COSE public key
   counter         Int      @default(0) // signature counter (replay protection)
   deviceType      String?  // 'touchid' | 'faceid' | 'windows-hello' | 'android-fingerprint' | 'security-key'
-    transports       String? // comma-separated: 'internal,hybrid,usb,nfc,ble'
+  transports      String?  // comma-separated: 'internal,hybrid,usb,nfc,ble'
   name            String?  // ชื่อที่ผู้ใช้ตั้งให้ device (e.g. "iPhone ของผม")
   createdAt       DateTime @default(now())
   lastUsedAt      DateTime?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
   @@index([userId])
+}
+
+// ============================================================
+// 31) DeviceAccessory — อุปกรณ์ต่อพ่วง (Accessories/Peripherals)
+// ============================================================
+// อุปกรณ์ที่ต่อพ่วงกับอุปกรณ์หลัก เช่น:
+//   - คีย์บอร์ด, เมาส์, จอภาพ, สแกนเนอร์เสริม
+//   - สายแลน, อะแดปเตอร์, UPS, USB hub
+//   - หัวพิมพ์เสริม, ถาดกระดาษเสริม
+//
+// 1 อุปกรณ์หลัก → ได้หลายอุปกรณ์ต่อพ่วง
+// สามารถย้ายระหว่างอุปกรณ์ได้ (change parentDeviceId)
+// ============================================================
+model DeviceAccessory {
+  id              String   @id @default(cuid())
+  parentDeviceId  String   // FK → Device.id (อุปกรณ์หลักที่ต่อพ่วงอยู่)
+  accessoryType   String   // ประเภท: KEYBOARD | MOUSE | MONITOR | SCANNER | CABLE | ADAPTER | UPS | HUB | PRINTHEAD | TRAY | OTHER
+  brand           String?  // ยี่ห้อ
+  model           String?  // รุ่น
+  serialNumber    String?  // หมายเลขซีเรียล
+  status          String   @default("Active") // Active | Inactive | In Repair | Disposed
+  installedDate   String?  // วันที่ติดตั้ง (ISO date)
+  removedDate     String?  // วันที่ถอดออก (ถ้ามี)
+  remark          String?  // หมายเหตุ
+  isDemo          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  parentDevice    Device   @relation(fields: [parentDeviceId], references: [id], onDelete: Cascade)
+
+  @@index([parentDeviceId])
+  @@index([accessoryType])
+  @@index([status])
+  @@index([isDemo])
+}
+
+// ============================================================
+// 32) PublicReporter — ผู้แจ้งซ่อมจาก QR สาธารณะ
+// ============================================================
+// บุคคลภายนอกที่สแกน QR บนอุปกรณ์แล้วแจ้งซ่อม โดยไม่มี account พนักงาน
+// ระบุตัวตนได้ 3 ระดับ:
+//   - Tier 1: LINE Login + phone scope → phoneVerified=true (อัตโนมัติ)
+//   - Tier 2: LINE Login ไม่มี phone → มี lineUserId แต่ไม่รู้เบอร์ (staff โทร verify)
+//   - Tier 3: กรอกเบอร์+ชื่อ manual → phoneVerified=false (staff โทร verify)
+//
+// Unique key: (siteCode, phone) และ (siteCode, lineUserId)
+// → คนจากสาขา A ไม่ปนกับสาขา B ถ้าแจ้งหลายสาขา
+//
+// Anti-spam:
+//   - isBlocked: staff แบนเบอร์ได้
+//   - reportCount/lastReportAt: ตรวจ anomaly แจ้งเยอะผิดปกติ
+// ============================================================
+model PublicReporter {
+  id              String   @id @default(cuid())
+  siteCode        String   // สาขาที่แจ้ง (PPIT, UDH, NKP, MECUD...)
+  // Anonymous identification (Tier 3)
+  phone           String?  // เบอร์มือถือ (Thai: 08X-XXX-XXXX)
+  name            String?  // ชื่อ-สกุล (ผู้แจ้ง manual)
+  email           String?
+  // LINE identification (Tier 1+2)
+  lineUserId      String?  // LINE userId (sub claim — unique per LINE Login channel)
+  lineDisplayName String?
+  linePictureUrl  String?
+  lineScopePhone  String?  // เบอร์จาก LINE phone scope (ถ้ามี)
+  // Verification status
+  phoneVerified   Boolean  @default(false)  // true เมื่อ verify ผ่าน LINE phone scope หรือ OTP
+  verifiedAt      DateTime?
+  verifiedMethod  String?  // 'line_phone_scope' | 'manual_call' | 'otp_sms' (future)
+  // Anti-spam / moderation
+  isBlocked       Boolean  @default(false)
+  blockedReason   String?
+  blockedAt       DateTime?
+  blockedBy       String?  // staff user id ที่แบน
+  reportCount     Int      @default(0)
+  lastReportAt    DateTime?
+  // Metadata
+  defaultDeviceId String?  // อุปกรณ์ที่แจ้งล่าสุด (hint สำหรับ UI)
+  isDemo          Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  siteAttribute   SiteAttribute? @relation(fields: [siteCode], references: [SiteCode], onDelete: Restrict)
+  workOrders      WorkOrder[]
+
+  @@unique([siteCode, phone])
+  @@unique([siteCode, lineUserId])
+  @@index([siteCode])
+  @@index([phone])
+  @@index([lineUserId])
+  @@index([isBlocked])
+  @@index([isDemo])
+}
+
+// ============================================================
+// 33) StockCountSession — รอบนับสต็อก/ตรวจนับครุภัณฑ์ (Phase 5)
+// ============================================================
+// ใช้สำหรับนับสต็อกจริง (Stock Take) หรือตรวจนับครุภัณฑ์ (Asset Verification)
+// scope: STOCK_ITEM = นับสินค้าคงคลัง, DEVICE = ตรวจนับอุปกรณ์
+// ============================================================
+model StockCountSession {
+  id          String   @id @default(cuid())
+  name        String   // ชื่อรอบนับ เช่น "นับสต็อกประจำเดือน ก.ย. 2026"
+  scope       String   @default("STOCK_ITEM") // STOCK_ITEM | DEVICE
+  siteCode    String?  // สาขาที่นับ (null = ทุกสาขา)
+  status      String   @default("OPEN") // OPEN | CLOSED | CANCELLED
+  startedAt   DateTime @default(now())
+  closedAt    DateTime?
+  createdBy   String?
+  note        String?
+  isDemo      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       StockCountItem[]
+
+  @@index([scope])
+  @@index([status])
+  @@index([siteCode])
+  @@index([isDemo])
+}
+
+model StockCountItem {
+  id              String   @id @default(cuid())
+  sessionId       String
+  session         StockCountSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Target: either a StockItem (scope=STOCK_ITEM) or a Device (scope=DEVICE)
+  targetId        String   // FK → StockItem.id หรือ Device.id (ไม่ใช้ relation FK เพราะ scope เปลี่ยนได้)
+  targetCode      String?  // productCode หรือ assetCode (เก็บ snapshot)
+
+  // Expected values (snapshot จากระบบตอนเริ่มรอบ)
+  expectedQty     Int?     // สำหรับ STOCK_ITEM
+  expectedLocation String? // สำหรับ DEVICE (building/floor/room)
+
+  // Counted values (กรอกโดยผู้นับ)
+  countedQty      Int?     // จำนวนจริงที่นับได้
+  countedLocation String?  // ตำแหน่งจริงที่พบ (สำหรับ DEVICE)
+  countedBy       String?
+  countedAt       DateTime?
+
+  // Result
+  variance        Int?     // ผลต่าง (counted - expected) สำหรับ STOCK_ITEM
+  status          String   @default("PENDING") // PENDING | COUNTED | NOT_FOUND | WRONG_LOCATION
+  note            String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([targetId])
+  @@index([status])
 }

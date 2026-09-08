@@ -61,6 +61,20 @@ export interface Device {
   purchasePrice: number | null
   salvageValue: number | null
   usefulLife: number | null
+  // ── Device Set (Task ID 9) ──
+  /** Self-FK to parent device if this device is part of a "set" (e.g. UPS attached to a printer). */
+  parentDeviceId?: string | null
+  /** Optional label for the whole set (e.g. "ชุดเครื่องพิมพ์ห้องจ่ายยา"). */
+  setLabel?: string | null
+  /** 1-based position within the set. */
+  setPosition?: number | null
+  // ── Device Replacement ──
+  /** Self-FK to the device that replaced this one (if any). */
+  replacedById?: string | null
+  /** When this device was replaced (set together with replacedById). */
+  replacedAt?: string | null
+  /** Demo-data tag — true for seeded demo records (used by replace API guard). */
+  isDemo?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -411,7 +425,13 @@ export function formatDateTime(iso: string | null | undefined): string {
   }
 }
 
-export function formatBaht(value: number): string {
+export function formatBaht(value: number | null | undefined): string {
+  // Defense-in-depth: never crash on null/undefined/NaN. Returns '฿0.00'
+  // instead of throwing "Cannot read properties of undefined (reading
+  // 'toLocaleString')". This protects 70+ call sites across the app
+  // (stock, repairs, reports, dashboard, depreciation) from API field-name
+  // drift or missing data.
+  if (value == null || !Number.isFinite(value)) return '฿0.00'
   return `฿${value.toLocaleString('th-TH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

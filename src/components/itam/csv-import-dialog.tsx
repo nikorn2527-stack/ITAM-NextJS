@@ -509,6 +509,29 @@ export function CsvImportDialog({ open, onOpenChange }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode, devices: payload }),
       })
+      // ── CONSULTING-007 Phase B (partial) ──────────────────────────
+      // This dialog still calls `/api/devices/import` (NOT the cleaner
+      // `/api/itam/devices/import` endpoint) because the contract at
+      // `src/lib/device-import-contract.ts` is still missing these
+      // fields that this dialog supports:
+      //   • purchasePrice      (Decimal)
+      //   • lastMeterBw        (Int)
+      //   • lastMeterColor     (Int)
+      //   • parentDeviceId     (Device Set — cuid/assetCode resolution)
+      //   • setLabel           (Device Set)
+      //   • setPosition        (Device Set)
+      //   • parentRef          (legacy)
+      //   • displayLabel       (legacy)
+      // `name` + `warrantyMonths` WERE added to the contract as part of
+      // CONSULTING-007 Phase B (they were the only fields missing vs
+      // `/api/import`). Once the remaining 8 fields above are added to
+      // the contract + persistence layer, this dialog should be routed
+      // to `/api/itam/devices/import` (which uses db.$transaction via
+      // `device-import-persistence.ts`). The current `/api/devices/import`
+      // endpoint already wraps writes in db.$transaction (see
+      // `/api/devices/import/route.ts` lines 417-434), so this dialog
+      // is already transaction-safe — Phase B here is consolidation, not
+      // a safety fix. See worklog CONSULTING-007-IMPORT-TEMPLATES.
       const json = await res.json()
       if (!res.ok) {
         throw new Error(json.error ?? 'นำเข้าไม่สำเร็จ')

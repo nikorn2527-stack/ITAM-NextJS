@@ -244,6 +244,12 @@ function isImageUrl(s: string | null | undefined): s is string {
 export function WoPrintForm({ workOrderId }: { workOrderId: string }) {
   const [paper, setPaper] = React.useState<PaperKey>('a4-portrait')
   const spec = PAPER_SPECS[paper]
+  // ── In-page print container (Task ID: PRINT-MEDIA-QUERY-012) ──
+  // Server-rendered print HTML (from openStandalone) is injected into a
+  // hidden `.print-only` div, then window.print() fires on the SAME page
+  // (no new tab/window). The local print CSS below hides the in-page
+  // `.print-area` preview whenever `.print-only` is present.
+  const [printHtml, setPrintHtml] = React.useState('')
 
   const detailQuery = useQuery<WorkOrderDetail>({
     queryKey: ['wo-print', workOrderId],
@@ -273,12 +279,25 @@ export function WoPrintForm({ workOrderId }: { workOrderId: string }) {
     window.print()
   }
 
-  function openStandalone() {
+  async function openStandalone() {
     if (!wo) return
     const url = `/api/work-orders/${wo.id}/print?paper=${paper}`
-    const w = window.open(url, '_blank', 'noopener,noreferrer')
-    if (!w) {
-      toast.error('เบราว์เซอร์บล็อกการเปิดหน้าต่าง — กรุณาอนุญาต pop-up')
+    // ── Fetch the server-rendered print page and inject it into the
+    // hidden `.print-only` container, then fire window.print() on the
+    // SAME page (Task ID: PRINT-MEDIA-QUERY-012). No new tab/window. ──
+    try {
+      const res = await fetch(url)
+      if (!res.ok) {
+        throw new Error('โหลดหน้าพิมพ์ไม่สำเร็จ')
+      }
+      const html = await res.text()
+      setPrintHtml(html)
+      setTimeout(() => window.print(), 50)
+      setTimeout(() => setPrintHtml(''), 1000)
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'เปิดหน้าพิมพ์ไม่สำเร็จ',
+      )
     }
   }
 
@@ -718,6 +737,13 @@ export function WoPrintForm({ workOrderId }: { workOrderId: string }) {
           .print-area * {
             visibility: visible;
           }
+          /* When a standalone `.print-only` container is active
+             (openStandalone path), suppress the in-page preview so
+             only the server-rendered HTML shows. (PRINT-MEDIA-QUERY-012) */
+          body:has(.print-only) .print-area,
+          body:has(.print-only) .print-area * {
+            visibility: hidden !important;
+          }
           /* Hide on-screen controls + scroll wrapper chrome */
           .print-hide,
           .print-scroll {
@@ -755,6 +781,18 @@ export function WoPrintForm({ workOrderId }: { workOrderId: string }) {
           }
         }
       `}</style>
+
+      {/* ── Hidden print container (Task ID: PRINT-MEDIA-QUERY-012) ──
+           Injects the server-rendered print HTML and is revealed only in
+           @media print via the global `.print-only` rule in globals.css.
+           Used by the “เปิดหน้าใหม่” (openStandalone) button. */}
+      {printHtml && (
+        <div
+          className="print-only"
+          dangerouslySetInnerHTML={{ __html: printHtml }}
+          aria-hidden
+        />
+      )}
     </div>
   )
 }

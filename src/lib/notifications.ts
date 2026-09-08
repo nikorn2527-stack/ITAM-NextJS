@@ -34,6 +34,12 @@
  */
 
 import { db } from '@/lib/db'
+import {
+  createPendingLog,
+  markSent,
+  markFailed,
+  markSkipped,
+} from '@/lib/notification-log'
 
 // ============================================================
 // Types
@@ -42,7 +48,7 @@ import { db } from '@/lib/db'
 export type NotificationChannel = 'line-oa' | 'telegram' | 'email'
 
 export type NotificationTemplate =
-  | 'wo_created' // แจ้งซ่อนใหม่
+  | 'wo_created' // แจ้งซ่อมใหม่
   | 'wo_assigned' // มอบหมายงาน
   | 'wo_completed' // ปิดงานแล้ว
   | 'wo_cancelled' // ยกเลิกงาน
@@ -173,8 +179,8 @@ function interpolate(tpl: string, data: Record<string, unknown>): string {
 
 const TEMPLATES: Record<NotificationTemplate, { title: string; body: string }> = {
   wo_created: {
-    title: 'แจ้งซ่อนใหม่',
-    body: '🔧 แจ้งซ่อนใหม่ {woNumber}\nหัวข้อ: {subject}\nสถานที่: {building} {location}\nผู้แจ้ง: {reporterName}\nเบอร์: {tel}\nความเร่งด่วน: {priority}',
+    title: 'แจ้งซ่อมใหม่',
+    body: '🔧 แจ้งซ่อมใหม่ {woNumber}\nหัวข้อ: {subject}\nสถานที่: {building} {location}\nผู้แจ้ง: {reporterName}\nเบอร์: {tel}\nความเร่งด่วน: {priority}',
   },
   wo_assigned: {
     title: 'มอบหมายงาน',
@@ -304,11 +310,13 @@ async function logNotificationAudit(
  *
  * NOTE: For now this just logs (no API keys configured). When keys are
  * configured in AppSetting, real sending will be attempted.
+ *
+ * Returns true if delivered, false if failed/skipped.
  */
 export async function sendLINE(
   message: string,
   lineUserId?: string,
-): Promise<void> {
+): Promise<boolean> {
   const settings = await loadSettings()
   const target = lineUserId ?? settings.lineAdminGroupId
   if (!target) {
@@ -316,14 +324,14 @@ export async function sendLINE(
       '[notifications][line-oa] no target (lineUserId or line_admin_group_id) — log only',
     )
     console.log('[notifications][line-oa] message:\n' + message)
-    return
+    return false
   }
 
   if (!settings.lineChannelAccessToken || !settings.notifyEnabled) {
     console.log(
       `[notifications][line-oa] (log only) → ${target}\n${message}`,
     )
-    return
+    return false
   }
 
   // ── Real LINE Push API call ──
@@ -345,9 +353,12 @@ export async function sendLINE(
       console.error(
         `[notifications][line-oa] LINE API error ${res.status}: ${txt}`,
       )
+      return false
     }
+    return true
   } catch (err) {
     console.error('[notifications][line-oa] send failed:', err)
+    return false
   }
 }
 
@@ -355,11 +366,13 @@ export async function sendLINE(
  * Send a Telegram message via Bot API.
  * - If `chatId` is provided → send to that chat.
  * - Otherwise → send to the default admin chat from AppSetting.
+ *
+ * Returns true if delivered, false if failed/skipped.
  */
 export async function sendTelegram(
   message: string,
   chatId?: string,
-): Promise<void> {
+): Promise<boolean> {
   const settings = await loadSettings()
   const target = chatId ?? settings.telegramChatId
   if (!target) {
@@ -367,14 +380,14 @@ export async function sendTelegram(
       '[notifications][telegram] no chatId (telegram_chat_id) — log only',
     )
     console.log('[notifications][telegram] message:\n' + message)
-    return
+    return false
   }
 
   if (!settings.telegramBotToken || !settings.notifyEnabled) {
     console.log(
       `[notifications][telegram] (log only) → ${target}\n${message}`,
     )
-    return
+    return false
   }
 
   // ── Real Telegram Bot API call ──
@@ -395,27 +408,32 @@ export async function sendTelegram(
       console.error(
         `[notifications][telegram] API error ${res.status}: ${txt}`,
       )
+      return false
     }
+    return true
   } catch (err) {
     console.error('[notifications][telegram] send failed:', err)
+    return false
   }
 }
 
 /**
  * Send an email. For now this just logs; when SMTP settings are
  * configured it would perform a real send (e.g. via nodemailer).
+ *
+ * Returns true if delivered, false if failed/skipped.
  */
 export async function sendEmail(
   to: string,
   subject: string,
   body: string,
-): Promise<void> {
+): Promise<boolean> {
   const settings = await loadSettings()
   if (!settings.smtpHost || !settings.notifyEnabled) {
     console.log(
       `[notifications][email] (log only) → ${to}\nSubject: ${subject}\n${body}`,
     )
-    return
+    return false
   }
 
   // ── Real SMTP send would go here ──
@@ -423,6 +441,7 @@ export async function sendEmail(
   console.log(
     `[notifications][email] SMTP configured but not implemented → ${to}\nSubject: ${subject}\n${body}`,
   )
+  return false
 }
 
 // ============================================================
@@ -432,7 +451,11 @@ export async function sendEmail(
 /**
  * Send a notification to all specified channels.
  * Renders the template, then dispatches to each channel in parallel.
- * Each channel's result is audited independently (non-fatal).
+ *
+ * Bug B fix: every send is now recorded in NotificationLog with status
+ * PENDING → SENT/FAILED/SKIPPED. Failed sends can be retried by the
+ * notification-retry cron. The existing AuditLog entry is preserved
+ * for backwards compatibility (NOTIFY_SENT action).
  */
 export async function sendNotification(data: NotificationData): Promise<void> {
   const { template, channels, data: ctx, lineUserId, telegramChatId, email } =
@@ -451,24 +474,62 @@ export async function sendNotification(data: NotificationData): Promise<void> {
 
   await Promise.all(
     channels.map(async (channel) => {
+      // Determine the target identifier for this channel
+      let target: string | undefined
+      switch (channel) {
+        case 'line-oa':
+          target = lineUserId
+          break
+        case 'telegram':
+          target = telegramChatId
+          break
+        case 'email':
+          target = email
+          break
+      }
+
+      // Bug B: create a PENDING log entry before attempting to send
+      const logId = await createPendingLog({
+        channel,
+        template,
+        title: rendered.title,
+        body: rendered.body,
+        target: target ?? null,
+        entityId: data.entityId,
+        entity: data.entity,
+        actor,
+      })
+
       try {
+        let ok = false
         switch (channel) {
           case 'line-oa':
-            await sendLINE(fullMessage, lineUserId)
+            ok = await sendLINE(fullMessage, lineUserId)
             break
           case 'telegram':
-            await sendTelegram(fullMessage, telegramChatId)
+            ok = await sendTelegram(fullMessage, telegramChatId)
             break
           case 'email':
             if (!email) {
               console.warn(
                 '[notifications][email] no email address — skipping',
               )
+              await markSkipped(logId, 'no email address provided')
             } else {
-              await sendEmail(email, rendered.title, rendered.body)
+              ok = await sendEmail(email, rendered.title, rendered.body)
             }
             break
         }
+
+        // Bug B: update the log entry based on the send result
+        if (ok) {
+          await markSent(logId)
+        } else {
+          // The senders return false both for "skipped" (no target/token)
+          // and for "failed". Distinguish by checking settings.
+          await markFailed(logId, 'send returned false (see console logs)')
+        }
+
         await logNotificationAudit(
           channel,
           template,
@@ -479,7 +540,9 @@ export async function sendNotification(data: NotificationData): Promise<void> {
           data.entity,
         )
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
         console.error(`[notifications][${channel}] dispatch failed:`, err)
+        await markFailed(logId, errMsg)
         await logNotificationAudit(
           channel,
           template,
@@ -488,7 +551,7 @@ export async function sendNotification(data: NotificationData): Promise<void> {
           actor,
           data.entityId,
           data.entity,
-          err instanceof Error ? err.message : String(err),
+          errMsg,
         )
       }
     }),

@@ -8,6 +8,13 @@
  */
 
 import { db } from '@/lib/db'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
+import {
+  buildAuthorizationContext,
+} from '@/lib/authorization-context'
+import { normalizeSiteCode } from '@/lib/site-scope'
+import type { Permission } from '@/lib/auth-shared'
 
 // ── Enums (mirror Prisma schema defaults) ───────────────────────────────
 export const VALID_STATUSES = new Set([
@@ -76,4 +83,62 @@ export async function findWorkOrder(idOrWoNumber: string) {
       OR: [{ id: idOrWoNumber }, { woNumber: idOrWoNumber }],
     },
   })
+}
+
+/**
+ * P0 Security Fix: Load a work-order AND verify the caller has the
+ * required permission at the WO's Site.
+ *
+ * This is the v1 equivalent of loadAuthorizedWorkOrder() from
+ * src/lib/wo-authz.ts. The v1 routes were missing this check entirely,
+ * allowing cross-site privilege escalation (e.g. a staff member at
+ * Site A could assign/complete/cancel WOs at Site B).
+ *
+ * @returns { ok: true, wo, auth } on success, or a NextResponse on failure.
+ */
+export async function loadAuthorizedWorkOrderV1(
+  req: NextRequest,
+  id: string,
+  permission: Permission,
+): Promise<
+  | { ok: true; wo: NonNullable<Awaited<ReturnType<typeof findWorkOrder>>>; auth: Extract<Awaited<ReturnType<typeof requireAuth>>, { ok: true }> }
+  | { ok: false; response: NextResponse }
+> {
+  // 1. Authenticate
+  const auth = await requireAuth(req)
+  if (!auth.ok) {
+    return { ok: false, response: NextResponse.json({ error: auth.error }, { status: auth.status }) }
+  }
+
+  // 2. Build authorization context (load grants, compute site scope)
+  const ctx = await buildAuthorizationContext(
+    auth.user,
+    auth.row.id,
+    auth.row.allowedSites,
+  )
+
+  // 3. Load the Work Order with device relation for Site derivation
+  const wo = await findWorkOrder(id)
+  if (!wo) {
+    // Return 404 for both "not found" and "not authorized" to avoid leaking existence
+    return { ok: false, response: NextResponse.json({ error: 'Work order not found' }, { status: 404 }) }
+  }
+
+  // 4. Derive the WO's Site code
+  let woSite: string | null = wo.siteCode ?? null
+  if (!woSite && wo.deviceId) {
+    const device = await db.device.findUnique({
+      where: { id: wo.deviceId },
+      select: { site: true },
+    })
+    woSite = device?.site ?? null
+  }
+  woSite = woSite ? normalizeSiteCode(woSite) : null
+
+  // 5. Check permission at the WO's Site
+  if (woSite && !ctx.canAtSite(permission, woSite)) {
+    return { ok: false, response: NextResponse.json({ error: `ไม่มีสิทธิ์ (${permission}) ที่สาขานี้` }, { status: 403 }) }
+  }
+
+  return { ok: true, wo, auth }
 }

@@ -28,6 +28,46 @@ function useServiceWorker() {
     // causes stale JS to be served, leading to "Application error" crashes.
     if (process.env.NODE_ENV === 'development') {
       console.info('[PWA] dev mode — skipping /sw.js registration (prevents stale cache)')
+      // ── AGGRESSIVE SW CLEANUP IN DEV MODE ──
+      // If the user previously visited the production site, a service worker
+      // is still registered in their browser. That SW intercepts requests to
+      // the dev server and serves stale chunks, causing "This page couldn't
+      // load" crashes. We must UNREGISTER it + clear all caches on every
+      // page load in dev mode.
+      ;(async () => {
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations()
+          if (regs.length > 0) {
+            console.info(`[PWA] dev mode — unregistering ${regs.length} stale SW(s)`)
+            await Promise.all(regs.map((r) => r.unregister()))
+          }
+          // Clear all caches (itam-shell-*, itam-api-*, etc.)
+          if ('caches' in window) {
+            const keys = await caches.keys()
+            if (keys.length > 0) {
+              console.info(`[PWA] dev mode — clearing ${keys.length} cache(s):`, keys)
+              await Promise.all(keys.map((k) => caches.delete(k)))
+            }
+          }
+          // Force a clean reload if we just unregistered a SW (the SW won't
+          // be fully gone until the next navigation).
+          if (regs.length > 0) {
+            console.info('[PWA] dev mode — forcing clean reload after SW unregister')
+            // Use a flag in sessionStorage to avoid infinite reload loops.
+            const reloadFlag = 'itam.sw-cleared'
+            if (!sessionStorage.getItem(reloadFlag)) {
+              sessionStorage.setItem(reloadFlag, '1')
+              window.location.reload()
+            } else {
+              // Already reloaded once but SW still existed — clear flag and
+              // let the user manually reload if needed.
+              sessionStorage.removeItem(reloadFlag)
+            }
+          }
+        } catch (err) {
+          console.warn('[PWA] dev mode — SW cleanup failed:', err)
+        }
+      })()
       return
     }
     const register = () => {

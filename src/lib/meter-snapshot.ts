@@ -111,8 +111,14 @@ export async function createMeterReportSnapshot(
   revision: number
 } | null> {
   try {
-    // TODO: meterReportSnapshot table removed — feature disabled
-    // Find the highest existing revision for this month (for amendments)
+    // NOTE: meterReportSnapshot table was removed in an earlier migration.
+    // The snapshot feature is currently DISABLED — this function returns null
+    // instead of crashing with "Unknown table" error.
+    // To re-enable: add the MeterReportSnapshot model back to schema.prisma,
+    // run prisma db push, and remove this early return.
+    console.warn('[meter-snapshot] createMeterReportSnapshot is disabled (table removed). Returning null.')
+    return null
+    // eslint-disable-next-line no-unreachable
     const existing = await db.meterReportSnapshot.findFirst({
       where: { cycleMonth },
       orderBy: { revision: 'desc' },

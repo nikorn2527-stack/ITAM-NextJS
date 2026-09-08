@@ -2,6 +2,24 @@
  * /api/v1/meter-readings — list + create meter readings (v1 standardized shape).
  *
  * ════════════════════════════════════════════════════════════════════════
+ * METER ROUTE DECISION (Phase 4.6) — DO NOT MERGE
+ * ════════════════════════════════════════════════════════════════════════
+ * There are three meter-related route trees in this codebase. They look
+ * redundant but serve DISTINCT purposes — see the header comment in
+ * /api/meter/route.ts for the full table.
+ *
+ * This file is the EXTERNAL API (v1) — stable contract for third-party
+ * integrations. Uses the standardized `{ data, pagination, meta }`
+ * envelope via `@/lib/api/response`. Internally reuses the same write
+ * helpers (findValidPrevReading, assertMeterMonthWritable) as the main
+ * /api/itam/meter-readings route so business rules stay consistent.
+ *
+ * DO NOT collapse this with /api/itam/meter-readings/* — different
+ * auth helpers (requireApiAuth vs requireAuth), different response
+ * envelopes, different versioning promises.
+ * ════════════════════════════════════════════════════════════════════════
+ *
+ * ════════════════════════════════════════════════════════════════════════
  * GET /api/v1/meter-readings
  * ════════════════════════════════════════════════════════════════════════
  *   Auth: VIEW_DEVICES
@@ -64,6 +82,7 @@ import { calcPagesBw, calcPagesColor } from '@/lib/lifecycle-reading-type'
 import { assertMeterMonthWritable } from '@/lib/meter-snapshot'
 import { notifyMeter } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { findValidPrevReading } from '@/lib/meter-logic'
 
 // ── GET field map ──────────────────────────────────────────────────────
 const FIELD_MAP: Record<string, string> = {
@@ -147,19 +166,28 @@ export async function POST(req: NextRequest) {
     const meterBw = Math.floor(Number(body.meterBw))
     const meterColor = Math.floor(Number(body.meterColor || 0))
 
-    // ── Resolve prev values — fall back to device's last reading ──────
+    // ── Resolve prev values — use findValidPrevReading (PROTECTED rules) ──
+    // BUGFIX: Previously used a direct query (orderBy readingDate desc)
+    // which bypassed the PROTECTED rules in meter-logic.ts:
+    //   1. Skip FINAL/SEND_REPAIR readings (disposed/repaired devices)
+    //   2. Skip same-month + future readings
+    //   3. Sort by readingMonth desc (not just readingDate)
+    // This caused incorrect prevMeter values when a device was recently
+    // sent for repair or disposed — the v1 API would pick up the
+    // FINAL/SEND_REPAIR reading as "previous", producing wrong page counts.
     let prevMeterBw: number
     let prevMeterColor: number
     if (body.prevMeterBw !== undefined && body.prevMeterBw !== null) {
       prevMeterBw = Math.floor(Number(body.prevMeterBw))
     } else {
-      const last = await db.meterReading.findFirst({
-        where: { assetCode: device.assetCode },
-        orderBy: { readingDate: 'desc' },
-        select: { meterBw: true, meterColor: true },
-      })
-      prevMeterBw = last?.meterBw ?? 0
-      prevMeterColor = last?.meterColor ?? 0
+      // Use the PROTECTED findValidPrevReading function
+      const targetMonth = body.readingMonth || new Date().toISOString().slice(0, 7)
+      const prevReading = await findValidPrevReading(
+        device.assetCode,
+        targetMonth,
+      )
+      prevMeterBw = prevReading?.meterBw ?? 0
+      prevMeterColor = prevReading?.meterColor ?? 0
     }
     if (body.prevMeterColor !== undefined && body.prevMeterColor !== null) {
       prevMeterColor = Math.floor(Number(body.prevMeterColor))

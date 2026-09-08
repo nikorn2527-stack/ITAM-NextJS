@@ -33,6 +33,7 @@ import {
   PAPER_PRESETS,
   STICKER_VARIABLES,
   SAMPLE_DEVICE,
+  substituteVariables,
   genElementId,
   elementExceedsBounds,
   type StickerElement,
@@ -62,7 +63,10 @@ function makeElement(type: StickerElementType): StickerElement {
     return { ...base, type, width: 20, height: 20, content: '', source: '' }
   }
   if (type === 'qr') {
-    return { ...base, type, width: 15, height: 15, content: '{{AssetNo}}' }
+    // APPENDIX-D: default to {{QrUrl}} (Smart QR URL) so phone cameras open
+    // the ITAM repair page when scanned. The previous default {{AssetNo}}
+    // only encoded the asset code as plain text (scanners couldn't open it).
+    return { ...base, type, width: 15, height: 15, content: '{{QrUrl}}' }
   }
   // rect
   return { ...base, type, width: 30, height: 5, background: '#f97316', border: 'none', borderRadius: 0 }
@@ -198,12 +202,14 @@ function WorkspaceElement({
   exceedsBounds,
   onMouseDown,
   onResizeMouseDown,
+  settings,
 }: {
   el: StickerElement
   selected: boolean
   exceedsBounds: boolean
   onMouseDown: (e: React.MouseEvent, id: string) => void
   onResizeMouseDown: (e: React.MouseEvent, id: string) => void
+  settings: StickerSettings | null
 }) {
   const style: React.CSSProperties = {
     position: 'absolute',
@@ -230,8 +236,25 @@ function WorkspaceElement({
       wordBreak: 'break-word',
       overflow: 'hidden',
       fontFamily: '"Sukhumvit Set","Noto Sans Thai","Tahoma","Segoe UI",sans-serif',
+      display: 'flex',
+      flexDirection: 'column' as const,
+      justifyContent: el.valign === 'center' ? 'center' : el.valign === 'bottom' ? 'flex-end' : 'flex-start',
     })
-    content = el.content || '​'
+    content = el.content
+      ? substituteVariables(
+          el.content,
+          SAMPLE_DEVICE,
+          settings ?? {
+            companyName: '',
+            orgName: '',
+            hotline: '',
+            lineOALink: '',
+            footerNote: '',
+          },
+        )
+      : '​'
+    // Wrap in span for proper flex text rendering
+    content = content ? <span style={{ display: 'block', width: '100%' }}>{content}</span> : '​'
   } else if (el.type === 'rect') {
     Object.assign(style, {
       background: el.background || 'transparent',
@@ -1069,6 +1092,7 @@ export function ItamStickerEditor() {
                             exceedsBounds={elementExceedsBounds(el, draft.canvas)}
                             onMouseDown={onElementMouseDown}
                             onResizeMouseDown={onResizeMouseDown}
+                            settings={settings ?? null}
                           />
                         ))}
                       {/* Alignment guides (dashed lines) — Apps Script parity */}
@@ -1336,7 +1360,7 @@ export function ItamStickerEditor() {
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <Label className="text-xs">จัดวาง</Label>
+                          <Label className="text-xs">จัดวางแนวนอน</Label>
                           <Select
                             value={selectedEl.align ?? 'left'}
                             onValueChange={(v) => updateSelectedElement({ align: v as 'left' | 'center' | 'right' })}
@@ -1348,6 +1372,22 @@ export function ItamStickerEditor() {
                               <SelectItem value="left">ซ้าย</SelectItem>
                               <SelectItem value="center">กลาง</SelectItem>
                               <SelectItem value="right">ขวา</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">จัดวางแนวตั้ง</Label>
+                          <Select
+                            value={selectedEl.valign ?? 'top'}
+                            onValueChange={(v) => updateSelectedElement({ valign: v as 'top' | 'center' | 'bottom' })}
+                          >
+                            <SelectTrigger className="text-xs dark:bg-slate-800 dark:border-slate-700">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="top">ชิดบน</SelectItem>
+                              <SelectItem value="center">กลาง</SelectItem>
+                              <SelectItem value="bottom">ชิดล่าง</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1447,11 +1487,11 @@ export function ItamStickerEditor() {
                       <Input
                         value={selectedEl.content ?? ''}
                         onChange={(e) => updateSelectedElement({ content: e.target.value })}
-                        placeholder="{{AssetNo}}"
+                        placeholder="{{QrUrl}}"
                         className="text-xs dark:bg-slate-800 dark:border-slate-700"
                       />
                       <p className="text-[10px] text-slate-400">
-                        ค่าเริ่มต้นใช้ {'{{AssetNo}}'} เพื่อสร้าง QR จากรหัสอุปกรณ์
+                        💡 ใช้ตัวแปร {'{{QrUrl}}'} ในอิลิเมนต์ QR เพื่อสแกนแล้วเปิดหน้าแจ้งซ่อมอัตโนมัติ (ส่ง URL ไปยัง Smart QR Router แทนข้อความธรรมดา) — หากใช้ {'{{AssetNo}}'} QR จะเป็นรหัสอุปกรณ์แบบข้อความ
                       </p>
                     </div>
                   )}
@@ -1524,7 +1564,14 @@ export function ItamStickerEditor() {
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deleteMutation.isPending}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deleteTplId && deleteMutation.mutate(deleteTplId)}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                if (deleteTplId) {
+                  deleteMutation.mutate(deleteTplId, {
+                    onSuccess: () => setDeleteTplId(null),
+                  })
+                }
+              }}
               disabled={deleteMutation.isPending}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
@@ -1553,10 +1600,10 @@ export function ItamStickerEditor() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">ชื่อองค์กร {'({{hospitalName}})'}</Label>
+                <Label className="text-xs">ชื่อองค์กร {'({{orgName}})'}</Label>
                 <Input
-                  value={settingsForm.hospitalName}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, hospitalName: e.target.value })}
+                  value={settingsForm.orgName}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, orgName: e.target.value })}
                   className="text-xs dark:bg-slate-800 dark:border-slate-700"
                 />
               </div>

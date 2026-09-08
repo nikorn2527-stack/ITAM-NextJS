@@ -78,6 +78,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
 import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
+import { addToQueue } from '@/lib/offline-queue'
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -150,19 +151,21 @@ export function MobileRepairRequest() {
   const [buildingOptions, setBuildingOptions] = React.useState<{ id: string; label: string; group?: string }[]>([])
   const [isExternal, setIsExternal] = React.useState(false)
   const [externalClientName, setExternalClientName] = React.useState('')
+  const [externalScannedCode, setExternalScannedCode] = React.useState('')
   const [externalPhone, setExternalPhone] = React.useState('')
   const videoRef = React.useRef<HTMLVideoElement>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
   const streamRef = React.useRef<MediaStream | null>(null)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const cameraInputRef = React.useRef<HTMLInputElement>(null)
 
   // ── Auth-aware reporter info (for submissionSource='session') ──
   const user = useAuthStore((s) => s.user)
   const token = useAuthStore((s) => s.token)
 
   // Helper: get auth headers for fetch
-  function getAuthHeaders(): Record<string, string> {
-    return token ? { Authorization: `Bearer ${token}` } : {}
+  function getAuthHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) }
   }
 
   // ── Fetch problem categories from /api/settings/options (same as desktop WO) ──
@@ -434,8 +437,13 @@ export function MobileRepairRequest() {
     })
     const finalSubject = subjectsWithDetail.length > 0 ? subjectsWithDetail.join(', ') : subject.trim()
     // Description is optional — user might select problem type only
-    if (!selected) {
+    // External work doesn't need a device — just client name
+    if (!selected && !isExternal) {
       setSubmitError('กรุณาเลือกอุปกรณ์ที่จะแจ้งซ่อม')
+      return
+    }
+    if (isExternal && !externalClientName.trim()) {
+      setSubmitError('กรุณาระบุชื่อลูกค้า / สถานที่')
       return
     }
     const prOpt = PRIORITIES.find((p) => p.key === priority)
@@ -445,6 +453,8 @@ export function MobileRepairRequest() {
     }
 
     setSubmitting(true)
+    // Declare outside try so the catch block can read it for offline-queue fallback.
+    let payload: Record<string, unknown> | null = null
     try {
       // Combine description + remark into details field for the API
       // (description = ลักษณะหน้างาน, remark = หมายเหตุเพิ่มเติม)
@@ -453,7 +463,7 @@ export function MobileRepairRequest() {
         remark.trim() ? `หมายเหตุ: ${remark.trim()}` : '',
       ].filter(Boolean).join('\n\n')
 
-      const payload: Record<string, unknown> = {
+      payload = {
         subject: finalSubject,
         details: combinedDetails,
         priority: prOpt.value,
@@ -465,9 +475,21 @@ export function MobileRepairRequest() {
         actor: user?.email ?? user?.name ?? null,
         picBeforeImages: images,
       }
+      // External work — include client name + phone + scanned code in details
+      if (isExternal) {
+        const externalParts = [
+          externalClientName.trim() ? `ลูกค้า/สถานที่: ${externalClientName.trim()}` : '',
+          externalPhone.trim() ? `เบอร์: ${externalPhone.trim()}` : '',
+          externalScannedCode.trim() ? `รหัสสแกน: ${externalScannedCode.trim()}` : '',
+        ].filter(Boolean).join('\n')
+        if (externalParts) {
+          payload.details = externalParts + (combinedDetails ? '\n\n' + combinedDetails : '')
+        }
+        payload.deviceId = null // external work — no device in system
+      }
       const res = await fetch('/api/work-orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
@@ -479,6 +501,22 @@ export function MobileRepairRequest() {
       setSuccessWoNumber(woNumber)
       toast.success(`สร้างใบแจ้งซ่อม ${woNumber ?? ''} แล้ว`)
     } catch (e) {
+      // Offline queue fallback — only when the network is actually down,
+      // not on server-side validation errors (those still surface to the user).
+      if (!navigator.onLine && payload) {
+        addToQueue({
+          url: '/api/work-orders',
+          method: 'POST',
+          body: payload,
+          label: `แจ้งซ่อม: ${finalSubject || 'รายการใหม่'}`,
+        })
+        toast.success('บันทึกไว้ในคิว จะส่งอัตโนมัติเมื่อออนไลน์')
+        // Reset the form so the technician can move on; the success screen
+        // is not shown because the WO number isn't known yet — the queue
+        // retry will create it in the background once connectivity returns.
+        resetForm()
+        return
+      }
       setSubmitError(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
     } finally {
       setSubmitting(false)
@@ -497,6 +535,9 @@ export function MobileRepairRequest() {
     setResults([])
     setSubmitError(null)
     setSuccessWoNumber(null)
+    setExternalClientName('')
+    setExternalScannedCode('')
+    setExternalPhone('')
   }
 
   // ── Success screen ──
@@ -520,7 +561,21 @@ export function MobileRepairRequest() {
       {qrScanOpen && (
         <InlineQRScanner
           onScan={(value) => {
-            setSearchTerm(value)
+            // Check if Smart QR URL — redirect to QR router
+            const smartMatch = value.match(/\/qr\/([dAsw])\/([a-zA-Z0-9_-]+)/i)
+            if (smartMatch) {
+              const url = value.startsWith('http') ? value : `${window.location.origin}${value.startsWith('/') ? '' : '/'}${value}`
+              setQrScanOpen(false)
+              toast.success('สแกน Smart QR สำเร็จ — กำลังเปิด...')
+              window.location.href = url
+              return
+            }
+
+            if (isExternal) {
+              setExternalScannedCode(value)
+            } else {
+              setSearchTerm(value)
+            }
             setQrScanOpen(false)
             toast.success(`สแกนได้: ${value}`)
           }}
@@ -697,6 +752,36 @@ export function MobileRepairRequest() {
               <div className="rounded-lg bg-teal-50 p-3 text-xs text-teal-700 dark:bg-teal-950/40 dark:text-teal-300">
                 งานนอกสถานที่ — สำหรับงานที่ไม่ได้เกี่ยวข้องกับอุปกรณ์ในระบบ
                 (เช่น ลูกค้าภายนอก, สาขาอื่น, งานนอกสถานที่)
+              </div>
+              {/* QR/Barcode scan — สแกนอุปกรณ์ที่หน้างาน */}
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium">สแกน QR / Barcode หน้างาน <span className="text-xs text-slate-400">(ถ้ามี)</span></Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={externalScannedCode}
+                    onChange={(e) => setExternalScannedCode(e.target.value)}
+                    placeholder="สแกนหรือพิมพ์รหัส"
+                    className="h-12 flex-1 text-base"
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setQrScanOpen(true)
+                    }}
+                    aria-label="สแกน QR/Barcode"
+                    title="สแกน QR/Barcode"
+                    className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border border-teal-300 bg-teal-50 text-teal-600 transition-colors hover:bg-teal-100 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-400 z-10"
+                  >
+                    <QrCode className="h-5 w-5" />
+                  </button>
+                </div>
+                {externalScannedCode && (
+                  <p className="text-[11px] text-teal-600 dark:text-teal-400">
+                    ✓ สแกนได้: {externalScannedCode}
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label className="text-sm font-medium">ชื่อลูกค้า / สถานที่ <span className="text-rose-500">*</span></Label>
@@ -888,16 +973,18 @@ export function MobileRepairRequest() {
 
                 {/* Capture / pick buttons */}
                 <div className="grid grid-cols-2 gap-2">
+                  {/* Camera button — opens the device's native camera app directly */}
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={openCamera}
+                    onClick={() => cameraInputRef.current?.click()}
                     disabled={images.length >= MAX_IMAGES}
                     className="h-12"
                   >
                     <Camera className="mr-2 h-4 w-4" />
                     ถ่ายภาพ
                   </Button>
+                  {/* Gallery button — opens the photo picker (gallery only) */}
                   <Button
                     type="button"
                     variant="outline"
@@ -909,11 +996,22 @@ export function MobileRepairRequest() {
                     เลือกจากคลัง
                   </Button>
                 </div>
+                {/* Gallery input — NO capture attribute → opens photo picker (gallery) */}
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
                   multiple
+                  onChange={onFileChange}
+                  className="hidden"
+                  aria-hidden="true"
+                />
+                {/* Camera input — capture=environment → opens native camera app (rear camera) */}
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
                   onChange={onFileChange}
                   className="hidden"
                   aria-hidden="true"
@@ -1223,9 +1321,11 @@ function SuccessScreen({
   onNew: () => void
 }) {
   // Generate print URL using woNumber (print route accepts woNumber as ID)
-  const printUrl80 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-80`
-  const printUrl58 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-58`
-  const printUrlA4 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=a4-portrait`
+  // Token is passed via query param so window.open doesn't need auth headers
+  const token = typeof window !== 'undefined' ? localStorage.getItem('itam.token') ?? '' : ''
+  const printUrl80 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-80&t=${encodeURIComponent(token)}`
+  const printUrl58 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=ticket-58&t=${encodeURIComponent(token)}`
+  const printUrlA4 = `/api/work-orders/${encodeURIComponent(woNumber)}/print?paper=a4-portrait&t=${encodeURIComponent(token)}`
 
   return (
     <motion.div
@@ -1287,8 +1387,9 @@ function SuccessScreen({
               className="h-12"
               onClick={() => {
                 if (typeof window !== 'undefined') {
+                  // Open the public WO view page (UI, not raw JSON)
                   window.open(
-                    `/api/public/work-orders/${encodeURIComponent(woNumber)}`,
+                    `/wo/${encodeURIComponent(woNumber)}`,
                     '_blank',
                     'noopener,noreferrer',
                   )

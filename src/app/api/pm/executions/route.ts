@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { normalizeSiteCode } from '@/lib/site-scope'
+
+/**
+ * Derive the effective Site code for a PM schedule.
+ * Returns null when the schedule is not tied to a specific Site.
+ */
+function derivePMScheduleSite(
+  schedule: { site: string | null; device?: { site: string | null } | null },
+): string | null {
+  return normalizeSiteCode(schedule.site ?? schedule.device?.site ?? null)
+}
 
 /**
  * GET /api/pm/executions?scheduleId=&status=&from=&to=
@@ -11,6 +23,10 @@ import { logAudit } from '@/lib/audit'
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  // P1 FIX (AUDIT-FINDINGS-FIX-018): build authorization context so we can
+  // scope the executions list to the caller's Sites. Without this, a staff
+  // member at Site A could list PM executions for Site B.
+  const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
   try {
     const { searchParams } = new URL(req.url)
     const scheduleId = searchParams.get('scheduleId')?.trim() ?? ''
@@ -26,6 +42,21 @@ export async function GET(req: NextRequest) {
       where.scheduledDate = {}
       if (from) (where.scheduledDate as Record<string, unknown>).gte = from
       if (to) (where.scheduledDate as Record<string, unknown>).lte = to
+    }
+    // Site-scope filter: restrict to executions whose schedule is at one of
+    // the caller's Sites. Schedules with no Site ("all sites") are always
+    // visible. Super-admins/admins bypass via siteScope.kind === 'all'.
+    if (ctx.siteScope.kind === 'sites') {
+      const siteCodes = ctx.siteScope.siteCodes
+      where.schedule = {
+        OR: [
+          { site: { in: siteCodes } },
+          { site: null },
+        ],
+      }
+    } else if (ctx.siteScope.kind === 'none') {
+      // No Site access at all — return nothing.
+      where.schedule = { site: { in: [] } }
     }
 
     const executions = await db.pMExecution.findMany({
@@ -64,6 +95,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req, 'WO_CREATE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  // P1 FIX (AUDIT-FINDINGS-FIX-018): Site-scoped authorization for writes.
+  const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
   try {
     const body = await req.json()
     if (!body.scheduleId || !body.scheduledDate) {
@@ -73,11 +106,19 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Verify schedule exists
+    // Verify schedule exists (include device.site to derive Site)
     const schedule = await db.pMSchedule.findUnique({
       where: { id: body.scheduleId },
+      include: { device: { select: { site: true } } },
     })
     if (!schedule) {
+      return NextResponse.json({ error: 'Schedule not found' }, { status: 404 })
+    }
+    // P1 FIX (AUDIT-FINDINGS-FIX-018): Site-level access control — caller
+    // must have WO_CREATE at the schedule's Site. Schedules with no Site
+    // ("all sites") bypass this check.
+    const scheduleSite = derivePMScheduleSite(schedule)
+    if (scheduleSite && !ctx.canAtSite(scheduleSite, 'WO_CREATE')) {
       return NextResponse.json({ error: 'Schedule not found' }, { status: 404 })
     }
 

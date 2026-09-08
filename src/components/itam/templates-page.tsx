@@ -349,7 +349,7 @@ function StickerTab() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-36 w-full" />
             ))}
@@ -363,7 +363,7 @@ function StickerTab() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {templates.map((tpl) => {
               const isSystem = STICKER_SYSTEM_IDS.has(tpl.id)
               const isDefault = activeId === tpl.id
@@ -578,7 +578,8 @@ function StickerTab() {
               type="button"
               className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
               disabled={deleteMutation.isPending}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
               }}
             >
@@ -761,7 +762,7 @@ function DocumentTab() {
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-40 w-full" />
             ))}
@@ -775,7 +776,7 @@ function DocumentTab() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {templates.map((tpl) => {
               const isSystem = DOC_SYSTEM_IDS.has(tpl.id)
               const isDefault = activeId === tpl.id
@@ -966,7 +967,8 @@ function DocumentTab() {
               type="button"
               className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
               disabled={deleteMutation.isPending}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
                 if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
               }}
             >
@@ -1646,7 +1648,8 @@ function WorkOrderTab() {
                 type="button"
                 className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
                 disabled={deleteMutation.isPending}
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault() // prevent Radix auto-close before async completes
                   if (deleteTarget) deleteMutation.mutate(deleteTarget.id)
                 }}
               >
@@ -1718,23 +1721,12 @@ export function TemplatesPage() {
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-7xl flex-col gap-6 p-4 md:p-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: 'easeOut' }}
-        className="flex flex-shrink-0 items-start justify-between gap-4"
-      >
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
-            📄 เทมเพลต
-          </h1>
-          <p className="text-sm text-muted-foreground md:text-base">
-            จัดการเทมเพลตทั้งหมดในระบบ — สติกเกอร์ · เอกสาร PDF · ใบงาน ·
-            ใบเบิก/ใบสั่งซื้อ
-          </p>
-        </div>
+    <div className="flex h-full w-full flex-col gap-3 p-3 md:p-4 lg:p-5">
+      {/* Compact header — h1 + seed button on one row, tabs right below */}
+      <div className="flex flex-shrink-0 items-center justify-between gap-3">
+        <h1 className="text-lg font-bold tracking-tight md:text-xl">
+          📄 เทมเพลต
+        </h1>
         <Button
           onClick={handleSeed}
           disabled={seeding}
@@ -1745,7 +1737,7 @@ export function TemplatesPage() {
           <Sparkles className={`mr-1.5 h-4 w-4 ${seeding ? 'animate-pulse' : ''}`} />
           {seeding ? 'กำลังติดตั้ง...' : 'ติดตั้งเทมเพลตเริ่มต้น'}
         </Button>
-      </motion.div>
+      </div>
 
       {seedResult && (
         <div className={`rounded-lg border p-3 text-sm ${

@@ -39,6 +39,7 @@ import {
   warrantyLabel,
 } from './types'
 import { useAppStore } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
 
 /** Animated count-up hook — tweens from the previous value to the next
  * over 500ms using requestAnimationFrame (mirrors the dashboard-page one). */
@@ -160,7 +161,9 @@ export function LifecycleDashboard() {
   const { data, isLoading, refetch, isFetching } = useQuery<LifecycleData>({
     queryKey: ['devices-lifecycle'],
     queryFn: async () => {
-      const res = await fetch('/api/devices/lifecycle')
+      const res = await fetch('/api/devices/lifecycle', {
+        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+      })
       if (!res.ok) throw new Error('Failed to load lifecycle data')
       return res.json()
     },

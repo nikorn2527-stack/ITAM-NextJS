@@ -17,6 +17,7 @@ import {
   Cell,
   Legend,
 } from 'recharts'
+import { useAuthStore } from '@/store/auth-store'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -153,7 +154,10 @@ export function PaperAnalyticsPage() {
   >({
     queryKey: ['meter-monthly'],
     queryFn: async () => {
-      const res = await fetch('/api/meter?aggregate=monthly')
+      const token = useAuthStore.getState()?.token
+      const res = await fetch('/api/meter?aggregate=monthly', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       if (!res.ok) throw new Error('Failed to load monthly')
       const json = await res.json()
       return (json.monthly ?? []) as Array<{ month: string; value: number }>
@@ -165,7 +169,10 @@ export function PaperAnalyticsPage() {
   >({
     queryKey: ['meter-byDevice'],
     queryFn: async () => {
-      const res = await fetch('/api/meter?aggregate=byDevice')
+      const token = useAuthStore.getState()?.token
+      const res = await fetch('/api/meter?aggregate=byDevice', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       if (!res.ok) throw new Error('Failed to load byDevice')
       const json = await res.json()
       return (json.byDevice ?? []) as Array<{
@@ -180,7 +187,10 @@ export function PaperAnalyticsPage() {
   const { data: costData, isLoading: costLoading } = useQuery<CostAnalyticsData>({
     queryKey: ['cost-analytics', range],
     queryFn: async () => {
-      const res = await fetch(`/api/cost-analytics?range=${range}`)
+      const token = useAuthStore.getState()?.token
+      const res = await fetch(`/api/cost-analytics?range=${range}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       if (!res.ok) throw new Error('Failed to load cost analytics')
       return res.json()
     },
@@ -190,7 +200,10 @@ export function PaperAnalyticsPage() {
     useQuery<SiteComparisonData>({
       queryKey: ['sites-comparison', range],
       queryFn: async () => {
-        const res = await fetch(`/api/sites/comparison?range=${range}`)
+        const token = useAuthStore.getState()?.token
+        const res = await fetch(`/api/sites/comparison?range=${range}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
         if (!res.ok) throw new Error('Failed to load site comparison')
         return res.json()
       },
@@ -522,13 +535,13 @@ export function PaperAnalyticsPage() {
                             {s.activeCount}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-teal-600 dark:text-teal-400">
-                            {s.totalSheets.toLocaleString('th-TH')}
+                            {(s.totalSheets ?? 0).toLocaleString('th-TH')}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-[#f97316] dark:text-[#fb923c]">
                             {formatBaht(s.totalCost)}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-slate-700 dark:text-slate-200">
-                            {s.avgSheetsPerDevice.toLocaleString('th-TH')}
+                            {(s.avgSheetsPerDevice ?? 0).toLocaleString('th-TH')}
                           </td>
                           <td className="px-3 py-2 text-right">
                             {s.unreadInCycle > 0 ? (
@@ -584,8 +597,8 @@ export function PaperAnalyticsPage() {
                     <Tooltip
                       formatter={(v: number, name: string) =>
                         name === 'ต้นทุน'
-                          ? [formatBaht(v), 'ต้นทุน']
-                          : [`${v.toLocaleString('th-TH')} แผ่น`, 'กระดาษ']
+                          ? [formatBaht(v as number), 'ต้นทุน']
+                          : [`${(Number(v) || 0).toLocaleString('th-TH')} แผ่น`, 'กระดาษ']
                       }
                       labelFormatter={(_, payload) => {
                         const p = payload?.[0]?.payload as { full?: string } | undefined
@@ -666,7 +679,7 @@ export function PaperAnalyticsPage() {
                         </div>
                         <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                           <span className="font-semibold tabular-nums text-teal-600 dark:text-teal-400">
-                            {s.totalSheets.toLocaleString('th-TH')}
+                            {(s.totalSheets ?? 0).toLocaleString('th-TH')}
                           </span>{' '}
                           แผ่น ·{' '}
                           <span className="tabular-nums text-[#f97316]">
@@ -831,7 +844,7 @@ export function PaperAnalyticsPage() {
                       {formatBaht(s.cost)}
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {s.sheets.toLocaleString('th-TH')} แผ่น
+                      {(s.sheets ?? 0).toLocaleString('th-TH')} แผ่น
                     </div>
                   </div>
                 ))

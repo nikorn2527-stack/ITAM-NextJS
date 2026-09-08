@@ -313,7 +313,10 @@ export function DemoManagementSection() {
             <AlertDialogCancel disabled={resetting}>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
-              onClick={() => void doReset()}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void doReset()
+              }}
               disabled={resetting}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >

@@ -89,7 +89,7 @@ export function PaginationBar({
         <span>
           แสดง <span className="font-semibold text-slate-700 dark:text-slate-200">{startIdx}-{endIdx}</span>
           {' '}จาก{' '}
-          <span className="font-semibold text-slate-700 dark:text-slate-200">{total.toLocaleString('th-TH')}</span>
+          <span className="font-semibold text-slate-700 dark:text-slate-200">{(total ?? 0).toLocaleString('th-TH')}</span>
           {' '}รายการ
         </span>
       </div>

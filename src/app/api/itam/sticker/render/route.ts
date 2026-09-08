@@ -9,6 +9,7 @@ import {
 } from '@/lib/sticker-settings-store'
 import {
   renderStickerFromTemplate,
+  deviceToStickerData,
   normalizeTemplate,
   type StickerDeviceData,
   type StickerTemplate,
@@ -61,22 +62,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ไม่มีเทมเพลตสติกเกอร์ในระบบ' }, { status: 500 })
     }
 
-    const deviceData: StickerDeviceData = {
-      assetNo: device.assetCode,
-      assetSiteCode: device.assetSiteCode,
-      serial: device.serialNumber,
-      deviceType: device.type,
-      brand: device.brand,
-      model: device.model,
-      building: device.building,
-      floor: device.floor,
-      department: device.department,
-      departmentCode: device.departmentCode,
-      location: device.location,
-      site: device.site,
-      contractNo: device.contractNo,
-      vendor: device.vendor,
-    }
+    // STICKER-EDITOR-DEEP-REVIEW: field names must match the StickerDeviceData
+    // interface in sticker-template.ts (assetCode / serialNumber / type) — the
+    // previous code used `assetNo` / `serial` / `deviceType`, which left
+    // {{AssetNo}} / {{Serial}} / {{Type}} substitutions blank in printed
+    // stickers. (substituteVariables looks up `device.assetCode` etc., not
+    // `device.assetNo`.)
+    // Use the shared deviceToStickerData function (single source of truth).
+    // Previously this route built its own partial object missing 9 fields
+    // (room, status, currentAssignee, warrantyEnd, purchaseDate, purchasePrice,
+    // ip, mac, licenses) — causing printed stickers to show blank for
+    // {{Status}}, {{WarrantyEnd}}, {{PurchasePrice}}, etc.
+    const deviceData = deviceToStickerData(device as Record<string, unknown>)
 
     const { html, qrDataUrls } = await renderStickerFromTemplate(deviceData, template, settings)
 

@@ -3,6 +3,19 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { computeNextRunDate } from '@/lib/pm-schedule'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { normalizeSiteCode } from '@/lib/site-scope'
+
+/**
+ * Derive the effective Site code for a PM schedule.
+ * Returns null when the schedule is not tied to a specific Site (treated as
+ * "all sites" — no Site-scoped authorization check applies).
+ */
+function derivePMScheduleSite(
+  schedule: { site: string | null; device?: { site: string | null } | null },
+): string | null {
+  return normalizeSiteCode(schedule.site ?? schedule.device?.site ?? null)
+}
 
 /** GET /api/pm/schedules/[id] — single schedule with recent executions */
 export async function GET(
@@ -11,6 +24,10 @@ export async function GET(
 ) {
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  // P1 FIX (AUDIT-FINDINGS-FIX-018): build authorization context so we can
+  // enforce Site-level access on the requested schedule. Without this, a
+  // staff member at Site A could fetch PM schedules at Site B.
+  const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
   try {
     const { id } = await params
     const schedule = await db.pMSchedule.findUnique({
@@ -34,6 +51,13 @@ export async function GET(
     if (!schedule) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
+    // Site-level access control — deny (404 to avoid leaking existence) if
+    // the user has no grant at the schedule's Site. Schedules with no Site
+    // ("all sites") bypass this check.
+    const scheduleSite = derivePMScheduleSite(schedule)
+    if (scheduleSite && !ctx.canAccessSite(scheduleSite)) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
     return NextResponse.json({ data: schedule })
   } catch (err) {
     console.error('GET /api/pm/schedules/[id]', err)
@@ -48,10 +72,22 @@ export async function PUT(
 ) {
   const auth = await requireAuth(req, 'WO_CREATE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  // P1 FIX (AUDIT-FINDINGS-FIX-018): Site-scoped authorization for writes.
+  const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
   try {
     const { id } = await params
-    const before = await db.pMSchedule.findUnique({ where: { id } })
+    const before = await db.pMSchedule.findUnique({
+      where: { id },
+      include: { device: { select: { site: true } } },
+    })
     if (!before) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    // Site-level access control — caller must have WO_CREATE at the
+    // schedule's current Site. If the body changes `site` to a different
+    // Site, the caller must also have WO_CREATE at the NEW Site.
+    const currentSite = derivePMScheduleSite(before)
+    if (currentSite && !ctx.canAtSite(currentSite, 'WO_CREATE')) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
@@ -68,6 +104,17 @@ export async function PUT(
     if (body.startMonth !== undefined) updateData.startMonth = body.startMonth === null ? null : Number(body.startMonth)
     if (body.deviceType !== undefined) updateData.deviceType = body.deviceType ? String(body.deviceType).trim() : null
     if (body.site !== undefined) updateData.site = body.site ? String(body.site).trim() : null
+    // P1 FIX (AUDIT-FINDINGS-FIX-018): if the schedule is being moved to a
+    // different Site, the caller must have WO_CREATE at the NEW Site too.
+    if (updateData.site !== undefined) {
+      const newSite = normalizeSiteCode(updateData.site as string | null)
+      if (newSite && newSite !== currentSite && !ctx.canAtSite(newSite, 'WO_CREATE')) {
+        return NextResponse.json(
+          { error: 'ไม่มีสิทธิ์ย้ายตาราง PM ไปยังสาขาที่ระบุ' },
+          { status: 403 },
+        )
+      }
+    }
     if (body.deviceId !== undefined) updateData.deviceId = body.deviceId ? String(body.deviceId).trim() : null
     if (body.checklist !== undefined) {
       updateData.checklist = body.checklist
@@ -126,10 +173,21 @@ export async function DELETE(
 ) {
   const auth = await requireAuth(req, 'WO_CREATE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
+  // P1 FIX (AUDIT-FINDINGS-FIX-018): Site-scoped authorization for writes.
+  const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
   try {
     const { id } = await params
-    const before = await db.pMSchedule.findUnique({ where: { id } })
+    const before = await db.pMSchedule.findUnique({
+      where: { id },
+      include: { device: { select: { site: true } } },
+    })
     if (!before) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    // Site-level access control — caller must have WO_CREATE at the
+    // schedule's Site.
+    const scheduleSite = derivePMScheduleSite(before)
+    if (scheduleSite && !ctx.canAtSite(scheduleSite, 'WO_CREATE')) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 

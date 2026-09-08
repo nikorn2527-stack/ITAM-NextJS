@@ -108,7 +108,9 @@ export function ItamMeter() {
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) })
       if (siteFilter !== 'all') params.set('site', siteFilter)
-      const res = await fetch(`/api/itam/meter-readings?${params.toString()}`)
+      const res = await fetch(`/api/itam/meter-readings?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      })
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
@@ -120,7 +122,7 @@ export function ItamMeter() {
       setSaving(true)
       const res = await fetch('/api/itam/meter-readings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ assetCode, meterBw: Number(meterBw), remark: remark || null }),
       })
       if (!res.ok) {
@@ -212,7 +214,7 @@ export function ItamMeter() {
                   <TableRow><TableCell colSpan={9} className="py-12 text-center text-slate-400 text-sm">ยังไม่มีข้อมูล</TableCell></TableRow>
                 ) : (
                   readings.map((r) => {
-                    const delta = r.meterBw - r.prevMeterBw
+                    const delta = (r.meterBw ?? 0) - (r.prevMeterBw ?? 0)
                     const rt = readingTypeBadge(r.readingType)
                     return (
                     <TableRow key={r.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
@@ -220,9 +222,9 @@ export function ItamMeter() {
                       <TableCell className="font-mono text-xs font-medium">{r.assetCode}</TableCell>
                       <TableCell className="text-xs">{r.device ? `${r.device.brand || ''} ${r.device.model || ''}` : '—'}</TableCell>
                       <TableCell className="text-right font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                        {r.prevMeterBw.toLocaleString('th-TH')}
+                        {(r.prevMeterBw ?? 0).toLocaleString('th-TH')}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs tabular-nums">{r.meterBw.toLocaleString('th-TH')}</TableCell>
+                      <TableCell className="text-right font-mono text-xs tabular-nums">{(r.meterBw ?? 0).toLocaleString('th-TH')}</TableCell>
                       <TableCell className="text-right">
                         <Badge
                           variant="outline"
@@ -234,14 +236,14 @@ export function ItamMeter() {
                                 ? 'border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300'
                                 : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400')
                           }
-                          title={`${r.prevMeterBw.toLocaleString('th-TH')} → ${r.meterBw.toLocaleString('th-TH')} = ${delta >= 0 ? '+' : ''}${delta.toLocaleString('th-TH')}`}
+                          title={`${(r.prevMeterBw ?? 0).toLocaleString('th-TH')} → ${(r.meterBw ?? 0).toLocaleString('th-TH')} = ${delta >= 0 ? '+' : ''}${(delta ?? 0).toLocaleString('th-TH')}`}
                         >
-                          {delta >= 0 ? '+' : ''}{delta.toLocaleString('th-TH')}
+                          {delta >= 0 ? '+' : ''}{(delta ?? 0).toLocaleString('th-TH')}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                          {(r.pagesBw + r.pagesColor).toLocaleString('th-TH')} แผ่น
+                          {((r.pagesBw ?? 0) + (r.pagesColor ?? 0)).toLocaleString('th-TH')} แผ่น
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -329,7 +331,10 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const { data: devicesData, isLoading: devicesLoading } = useQuery<DevicesResponse>({
     queryKey: ['itam-devices-bulk', 'meter-required'],
     queryFn: async () => {
-      const res = await fetch('/api/itam/devices?limit=100')
+      const token = useAuthStore.getState()?.token
+      const res = await fetch('/api/itam/devices?limit=100', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
@@ -355,7 +360,12 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
     setLastReadingsLoaded(false)
     Promise.all(
       eligibleDevices.map(d =>
-        fetch(`/api/itam/meter-readings?assetCode=${encodeURIComponent(d.assetCode)}&limit=1`)
+        fetch(`/api/itam/meter-readings?assetCode=${encodeURIComponent(d.assetCode)}&limit=1`, {
+          headers: (() => {
+            const t = useAuthStore.getState()?.token
+            return t ? { Authorization: `Bearer ${t}` } : {}
+          })(),
+        })
           .then(r => r.ok ? r.json() : null)
           .then(j => {
             const r = j?.readings?.[0]
@@ -415,7 +425,12 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
         toSave.map(m =>
           fetch('/api/itam/meter-readings', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: (() => {
+              const t = useAuthStore.getState()?.token
+              return t
+                ? { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }
+                : { 'Content-Type': 'application/json' }
+            })(),
             body: JSON.stringify({
               assetCode: m.assetCode,
               meterBw: m.next,
@@ -515,7 +530,7 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                       <TableRow key={m.assetCode} className={rowBg}>
                         <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">{m.assetCode}</TableCell>
                         <TableCell className="max-w-[180px] truncate text-xs text-slate-700 dark:text-slate-200">{m.name}</TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-xs text-slate-600 dark:text-slate-300">{m.prev.toLocaleString('th-TH')}</TableCell>
+                        <TableCell className="text-right font-mono tabular-nums text-xs text-slate-600 dark:text-slate-300">{(m.prev ?? 0).toLocaleString('th-TH')}</TableCell>
                         <TableCell className="text-right">
                           <Input
                             type="number"
@@ -544,7 +559,7 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                                   : 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300')
                               }
                             >
-                              {m.delta > 0 ? '+' : ''}{m.delta.toLocaleString('th-TH')}
+                              {m.delta > 0 ? '+' : ''}{(m.delta ?? 0).toLocaleString('th-TH')}
                             </Badge>
                           )}
                         </TableCell>

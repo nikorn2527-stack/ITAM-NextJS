@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { requireAuth } from '@/lib/auth-middleware'
 
 /**
  * GET /api/site-attributes
@@ -8,8 +9,18 @@ import { logAudit } from '@/lib/audit'
  * Returns all SiteAttribute rows (site code + name + LINE OA + hotline +
  * paper rates). Used by the "ตั้งค่าสาขา" admin page and by the
  * /api/devices/next-site-code endpoint to resolve site prefixes.
+ *
+ * Auth: any authenticated user (staff need to see site info for selects).
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // ── P0 Security: require authentication ──
+  // Site attributes include LINE OA tokens, hotlines, and other contact info
+  // that must not be publicly readable. Staff can view; ADMIN-only for writes.
+  const auth = await requireAuth(req)
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const sites = await db.siteAttribute.findMany({
       orderBy: { SiteCode: 'asc' },
@@ -40,6 +51,14 @@ export async function GET() {
  *   paperRateColor — ฿/แผ่น สี (optional, default 2.0)
  */
 export async function POST(req: NextRequest) {
+  // ── P0 Security: require ADMIN permission for writes ──
+  // Creating a new site attribute row controls site routing + LINE OA + rates.
+  // Only ADMIN users may create or modify these.
+  const auth = await requireAuth(req, 'ADMIN')
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  }
+
   try {
     const body = await req.json()
     const siteCode = String(body.siteCode ?? '').trim().toUpperCase()

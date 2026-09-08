@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
 import { demoFilter } from '@/lib/demo-mode'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { notifyMeter } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { demoTag } from '@/lib/demo-mode'
@@ -25,8 +26,12 @@ import {
 } from '@/lib/meter-reading-contract'
 import { classifyMeterWriteReplay, normalizeMeterReadingId } from '@/lib/meter-write-identity'
 
-// GET /api/itam/meter-readings?assetCode=&month=&page=1&limit=20
 export async function GET(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  // Returns 404 MODULE_DISABLED when the 'meters' module is disabled.
+  const moduleCheck = moduleUnavailableResponse('meters')
+  if (moduleCheck) return moduleCheck
+
   try {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -93,6 +98,10 @@ export async function GET(req: NextRequest) {
  *   readingType?, remark?, confirmReset?, location fields?
  */
 export async function POST(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  const moduleCheck = moduleUnavailableResponse('meters')
+  if (moduleCheck) return moduleCheck
+
   try {
     const auth = await requireAuth(req, 'METER_WRITE')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

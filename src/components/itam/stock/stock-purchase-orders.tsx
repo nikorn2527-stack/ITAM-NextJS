@@ -359,12 +359,6 @@ export function StockPurchaseOrders() {
     setCancelTarget(id)
   }
 
-  function confirmCancelPo() {
-    if (!cancelTarget) return
-    cancelPoMutation.mutate(cancelTarget)
-    setCancelTarget(null)
-  }
-
   const grandTotal = lines.reduce((sum, l) => {
     const qty = Number(l.quantity) || 0
     const price = Number(l.unitPrice) || 0
@@ -910,7 +904,14 @@ export function StockPurchaseOrders() {
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
-              onClick={confirmCancelPo}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                if (cancelTarget) {
+                  cancelPoMutation.mutate(cancelTarget, {
+                    onSuccess: () => setCancelTarget(null),
+                  })
+                }
+              }}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
               ยืนยัน

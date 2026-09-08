@@ -1,7 +1,20 @@
 import { google } from 'googleapis'
 import { PrismaClient } from '@prisma/client'
 
-const auth = new google.auth.GoogleAuth({ keyFile: '/home/z/my-project/google-service-account.json', scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] })
+// Read service account credentials from env var (production) or file (local dev only).
+const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
+  || '/home/z/my-project/google-service-account.json'
+const keyContent = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
+
+const auth = keyContent
+  ? new google.auth.GoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+      credentials: JSON.parse(keyContent),
+    })
+  : new google.auth.GoogleAuth({
+      keyFile: keyPath,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    })
 const sheets = google.sheets({ version: 'v4', auth })
 const db = new PrismaClient()
 

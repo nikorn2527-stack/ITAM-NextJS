@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { checkRateLimit, getClientIP } from '@/lib/rate-limit-kv'
 
 // ============================================================
 // Public QR Scan-to-View (Feature 5)
@@ -13,6 +14,12 @@ import { db } from '@/lib/db'
 //
 // Deliberately EXCLUDED for privacy:
 //   - reporterName / reporterEmail / tel / employeeCode
+//
+// Rate limit: 60 requests/hour per IP (prevents enumeration of
+// all work orders across all sites).
+// ============================================================
+
+const WO_VIEW_RATE_LIMIT = 60 // per hour per IP
 //   - detailsAdmin / dateAdmin / resolution / resolutionGroup
 //   - assignmentNote / assignedTo / assignedBy
 //   - externalMeta (client contact info, phone, serials)
@@ -49,10 +56,21 @@ function formatThaiDateTime(iso: string | null | undefined): string | null {
 }
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    // Rate limit — prevents enumeration of work orders
+    const clientIP = getClientIP(req)
+    const rlKey = `public-wo-view:${clientIP}`
+    const rl = await checkRateLimit(rlKey, WO_VIEW_RATE_LIMIT)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'คำขอเกินขีดจำกัด — กรุณาลองใหม่ภายหลัง' },
+        { status: 429, headers: { 'Retry-After': '3600' } },
+      )
+    }
+
     const { id } = await params
     if (!id) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })

@@ -334,7 +334,7 @@ export function ItamMeterKeyboard() {
       setRecent((prev) => [savedReading, ...prev].slice(0, 5))
 
       toast.success(
-        `บันทึกมิเตอร์ ${selected.assetCode} · +${(pagesBw + pagesColor).toLocaleString('th-TH')} แผ่น`,
+        `บันทึกมิเตอร์ ${selected.assetCode} · +${((pagesBw ?? 0) + (pagesColor ?? 0)).toLocaleString('th-TH')} แผ่น`,
         { description: isReset ? '⚠️ RESET' : undefined },
       )
 
@@ -374,7 +374,7 @@ export function ItamMeterKeyboard() {
     if (!selected) return
     const confirmed = window.confirm(
       `ปิดเดือนด้วยค่ามิเตอร์เดิมสำหรับ ${selected.assetCode}?\n\n` +
-      `จะใช้ค่าล่าสุด BW=${selected.lastMeterBw.toLocaleString('th-TH')} ` +
+      `จะใช้ค่าล่าสุด BW=${(selected.lastMeterBw ?? 0).toLocaleString('th-TH')} ` +
       `เป็นค่าปิดเดือนนี้ (pages=0)\n` +
       `เหมาะสำหรับเครื่องที่จดไม่ได้จริง เช่น เครื่องพัง/ส่งซ่อม/ถอนแล้ว\n\n` +
       `ยืนยัน?`,
@@ -454,12 +454,12 @@ export function ItamMeterKeyboard() {
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <span className="font-semibold text-slate-800 dark:text-slate-100">
-                จดแล้ว <span className="text-[#f97316]">{read.toLocaleString('th-TH')}</span>
+                จดแล้ว <span className="text-[#f97316]">{(read ?? 0).toLocaleString('th-TH')}</span>
                 <span className="mx-1 text-slate-400">/</span>
-                ทั้งหมด {total.toLocaleString('th-TH')}
+                ทั้งหมด {(total ?? 0).toLocaleString('th-TH')}
               </span>
               <span className="text-xs text-slate-400">
-                เหลือ <span className="font-medium text-slate-600 dark:text-slate-300">{unread.toLocaleString('th-TH')}</span>
+                เหลือ <span className="font-medium text-slate-600 dark:text-slate-300">{(unread ?? 0).toLocaleString('th-TH')}</span>
               </span>
               <span className="text-xs text-slate-500 dark:text-slate-300">
                 คีย์ล่าสุด <span className="font-semibold text-emerald-600 dark:text-emerald-400">{recent.length}</span>
@@ -472,10 +472,10 @@ export function ItamMeterKeyboard() {
                 role="status"
                 aria-live="polite"
                 className="mt-1 truncate text-[11px] text-emerald-700 dark:text-emerald-300"
-                title={`${latest.assetCode} · BW ${latest.meterBw.toLocaleString('th-TH')} · Color ${latest.meterMode === 'BW_COLOR' ? latest.meterColor.toLocaleString('th-TH') : '—'} · Δ ${latest.delta.toLocaleString('th-TH')} · ${fmtDateTime(latest.at)}`}
+                title={`${latest.assetCode} · BW ${(latest.meterBw ?? 0).toLocaleString('th-TH')} · Color ${latest.meterMode === 'BW_COLOR' ? (latest.meterColor ?? 0).toLocaleString('th-TH') : '—'} · Δ ${(latest.delta ?? 0).toLocaleString('th-TH')} · ${fmtDateTime(latest.at)}`}
               >
                 <CheckCircle2 className="mr-1 inline h-3.5 w-3.5" />
-                ล่าสุด {latest.assetCode} · BW {latest.meterBw.toLocaleString('th-TH')} · Color {latest.meterMode === 'BW_COLOR' ? latest.meterColor.toLocaleString('th-TH') : '—'} · Δ {latest.delta > 0 ? '+' : ''}{latest.delta.toLocaleString('th-TH')} · {fmtTime(latest.at)} · {latest.reset ? 'RESET' : 'บันทึกสำเร็จ'}
+                ล่าสุด {latest.assetCode} · BW {(latest.meterBw ?? 0).toLocaleString('th-TH')} · Color {latest.meterMode === 'BW_COLOR' ? (latest.meterColor ?? 0).toLocaleString('th-TH') : '—'} · Δ {latest.delta > 0 ? '+' : ''}{(latest.delta ?? 0).toLocaleString('th-TH')} · {fmtTime(latest.at)} · {latest.reset ? 'RESET' : 'บันทึกสำเร็จ'}
               </div>
             )}
           </div>
@@ -532,11 +532,11 @@ export function ItamMeterKeyboard() {
                     >
                       <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">{r.assetCode}</span>
                       <span className="text-slate-500 dark:text-slate-400">
-                        BW {r.meterBw.toLocaleString('th-TH')}
-                        {r.meterMode === 'BW_COLOR' && ` · สี ${r.meterColor.toLocaleString('th-TH')}`}
+                        BW {(r.meterBw ?? 0).toLocaleString('th-TH')}
+                        {r.meterMode === 'BW_COLOR' && ` · สี ${(r.meterColor ?? 0).toLocaleString('th-TH')}`}
                       </span>
                       <span className={`ml-auto font-mono ${r.delta > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
-                        Δ {r.delta > 0 ? '+' : ''}{r.delta.toLocaleString('th-TH')}
+                        Δ {r.delta > 0 ? '+' : ''}{(r.delta ?? 0).toLocaleString('th-TH')}
                       </span>
                       {r.reset && <span className="text-[9px] text-amber-600">RESET</span>}
                       <span className="text-[9px] text-slate-400">{fmtTime(r.at)}</span>
@@ -647,8 +647,8 @@ export function ItamMeterKeyboard() {
                             </div>
                           </div>
                           <div className="text-right text-[10px] text-slate-400">
-                            <div>มิเตอร์ {d.lastMeterBw.toLocaleString('th-TH')}</div>
-                            {d.lastMeterColor > 0 && <div>สี {d.lastMeterColor.toLocaleString('th-TH')}</div>}
+                            <div>มิเตอร์ {(d.lastMeterBw ?? 0).toLocaleString('th-TH')}</div>
+                            {d.lastMeterColor > 0 && <div>สี {(d.lastMeterColor ?? 0).toLocaleString('th-TH')}</div>}
                           </div>
                         </div>
                       </li>
@@ -723,9 +723,9 @@ export function ItamMeterKeyboard() {
                     <div className="rounded-md border border-slate-200 p-2 dark:border-slate-800">
                       <div className="text-[10px] uppercase text-slate-400">ค่ามิเตอร์ล่าสุด</div>
                       <div className="font-mono text-base font-semibold text-slate-700 dark:text-slate-200">
-                        {selected.lastMeterBw.toLocaleString('th-TH')}
+                        {(selected.lastMeterBw ?? 0).toLocaleString('th-TH')}
                         {isColorMode && (
-                          <span className="ml-1 text-xs text-teal-600 dark:text-teal-300">/ {selected.lastMeterColor.toLocaleString('th-TH')}</span>
+                          <span className="ml-1 text-xs text-teal-600 dark:text-teal-300">/ {(selected.lastMeterColor ?? 0).toLocaleString('th-TH')}</span>
                         )}
                       </div>
                       <div className="text-[10px] text-slate-400">
@@ -741,7 +741,7 @@ export function ItamMeterKeyboard() {
                             ? 'text-emerald-600 dark:text-emerald-400'
                             : 'text-slate-500 dark:text-slate-300'
                       }`}>
-                        {(bwDelta + colorDelta) > 0 ? '+' : ''}{(bwDelta + colorDelta).toLocaleString('th-TH')}
+                        {(bwDelta + colorDelta) > 0 ? '+' : ''}{((bwDelta ?? 0) + (colorDelta ?? 0)).toLocaleString('th-TH')}
                       </div>
                       <div className="text-[10px] text-slate-400">แผ่นที่จะใช้</div>
                     </div>

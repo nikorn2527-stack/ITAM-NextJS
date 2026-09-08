@@ -10,6 +10,7 @@ import {
 } from '@/lib/sticker-settings-store'
 import {
   renderStickerFromTemplate,
+  deviceToStickerData,
   calculateGridColumns,
   preGenerateQrCodes,
   substituteVariables,
@@ -78,13 +79,13 @@ export async function POST(req: NextRequest) {
     for (const el of template.elements) {
       if (el.type !== 'qr') continue
       for (const d of devices) {
-        const deviceData: StickerDeviceData = {
-          assetNo: d.assetCode, assetSiteCode: d.assetSiteCode, serial: d.serialNumber,
-          deviceType: d.type, brand: d.brand, model: d.model,
-          building: d.building, floor: d.floor, department: d.department,
-          departmentCode: d.departmentCode, location: d.location, site: d.site,
-          contractNo: d.contractNo, vendor: d.vendor,
-        }
+        // STICKER-EDITOR-DEEP-REVIEW: StickerDeviceData fields must be
+        //   assetCode / serialNumber / type  (NOT assetNo / serial / deviceType).
+        // APPENDIX-D: also pass `id` so {{QrUrl}} generates the Smart QR URL.
+        // See render/route.ts for the full comment — the wrong names caused
+        // blank substitutions in printed stickers.
+        // Use shared deviceToStickerData (single source of truth — all 19 fields)
+        const deviceData = deviceToStickerData(d as Record<string, unknown>)
         const data = substituteVariables(el.content ?? '', deviceData, settings) || d.assetCode
         if (data) uniqueDataKeys.add(data)
       }
@@ -113,13 +114,8 @@ export async function POST(req: NextRequest) {
         // Skip missing devices (or ones outside user's site access)
         continue
       }
-      const deviceData: StickerDeviceData = {
-        assetNo: d.assetCode, assetSiteCode: d.assetSiteCode, serial: d.serialNumber,
-        deviceType: d.type, brand: d.brand, model: d.model,
-        building: d.building, floor: d.floor, department: d.department,
-        departmentCode: d.departmentCode, location: d.location, site: d.site,
-        contractNo: d.contractNo, vendor: d.vendor,
-      }
+      // Use shared deviceToStickerData (single source of truth — all 19 fields)
+      const deviceData = deviceToStickerData(d as Record<string, unknown>)
       const { html } = await renderStickerFromTemplate(deviceData, template, settings, {
         qrCache: sharedQrCache,
       })

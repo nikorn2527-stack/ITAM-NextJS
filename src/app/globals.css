@@ -302,3 +302,45 @@ textarea::placeholder {
   opacity: 1;
   font-weight: 300;
 }
+
+/* ── Print mode: hide app chrome, show only .print-only ─────────── */
+/* (Task ID: PRINT-MEDIA-QUERY-012)
+   Components inject server/generated report HTML into a hidden
+   `.print-only` container, then call window.print(). In print mode
+   the global CSS hides everything else (sidebar, header, dialogs,
+   page chrome) and reveals only the `.print-only` subtree. */
+.print-only {
+  display: none;
+}
+@media print {
+  /* Hide everything by default… */
+  body * {
+    visibility: hidden;
+  }
+  /* …then reveal the print container + its children. */
+  .print-only,
+  .print-only * {
+    visibility: visible;
+  }
+  /* Pin the print container to the top-left of the page. */
+  .print-only {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    display: block !important;
+  }
+  /* Hide app chrome (sidebar, header, dialogs, sheets). */
+  [data-sidebar],
+  [data-header],
+  [data-slot='sidebar'],
+  [data-slot='dialog-content'],
+  [data-slot='sheet-content'],
+  [role='dialog'] {
+    display: none !important;
+  }
+  /* Hide any print-button bars embedded in injected print HTML. */
+  .print-btn-bar {
+    display: none !important;
+  }
+}

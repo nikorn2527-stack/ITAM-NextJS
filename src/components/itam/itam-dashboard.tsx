@@ -49,6 +49,7 @@ import {
   Printer,
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
+import { useAuthStore } from '@/store/auth-store'
 import type { Cycle, DashboardRangeKey } from './types'
 import { DASHBOARD_RANGE_OPTIONS } from './types'
 import { QuickActionsBar } from './quick-actions-bar'
@@ -398,7 +399,12 @@ export function ItamDashboard() {
   const { data, isLoading, isFetching, dataUpdatedAt, refetch } = useQuery<DashboardData>({
     queryKey: ['itam-dashboard', range],
     queryFn: async () => {
-      const res = await fetch(`/api/itam/dashboard?range=${range}`)
+      const res = await fetch(`/api/itam/dashboard?range=${range}`, {
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t ? { Authorization: `Bearer ${t}` } : {}
+        })(),
+      })
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
@@ -455,7 +461,12 @@ export function ItamDashboard() {
   const { data: heatData, isLoading: heatLoading } = useQuery<DashboardData>({
     queryKey: ['itam-dashboard-extra', range],
     queryFn: async () => {
-      const res = await fetch(`/api/itam/dashboard?extra=1&range=${range}`)
+      const res = await fetch(`/api/itam/dashboard?extra=1&range=${range}`, {
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t ? { Authorization: `Bearer ${t}` } : {}
+        })(),
+      })
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
@@ -496,7 +507,12 @@ export function ItamDashboard() {
   const { data: insightsData, isLoading: insightsLoading } = useQuery<InsightsResponse>({
     queryKey: ['itam-dashboard-insights'],
     queryFn: async () => {
-      const res = await fetch('/api/itam/dashboard/insights')
+      const res = await fetch('/api/itam/dashboard/insights', {
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t ? { Authorization: `Bearer ${t}` } : {}
+        })(),
+      })
       if (!res.ok) throw new Error('Failed')
       return res.json()
     },
@@ -512,7 +528,12 @@ export function ItamDashboard() {
   const { data: activeCycle, isLoading: cycleLoading } = useQuery<Cycle | null>({
     queryKey: ['active-cycle'],
     queryFn: async () => {
-      const res = await fetch('/api/cycles?status=active')
+      const res = await fetch('/api/cycles?status=active', {
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t ? { Authorization: `Bearer ${t}` } : {}
+        })(),
+      })
       if (!res.ok) return null
       const json = await res.json()
       return (json.cycles?.[0] as Cycle | undefined) ?? null
@@ -526,7 +547,12 @@ export function ItamDashboard() {
   const { data: remindersSummary } = useQuery<RemindersSummary>({
     queryKey: ['meter-reminders-summary'],
     queryFn: async () => {
-      const res = await fetch('/api/meter/reminders')
+      const res = await fetch('/api/meter/reminders', {
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t ? { Authorization: `Bearer ${t}` } : {}
+        })(),
+      })
       if (!res.ok) return { hasActiveCycle: false, totalRead: 0, totalUnread: 0 }
       const json = await res.json()
       return {
@@ -544,7 +570,12 @@ export function ItamDashboard() {
   const { data: warrantyData } = useQuery<{ summary: WarrantySummary }>({
     queryKey: ['warranty-summary'],
     queryFn: async () => {
-      const res = await fetch('/api/devices/warranty')
+      const res = await fetch('/api/devices/warranty', {
+        headers: (() => {
+          const t = useAuthStore.getState()?.token
+          return t ? { Authorization: `Bearer ${t}` } : {}
+        })(),
+      })
       if (!res.ok) throw new Error('Failed to load warranty')
       const json = await res.json()
       return { summary: json.summary as WarrantySummary }
@@ -793,15 +824,17 @@ ${kpiHtml}
     toast.info(`กรองอุปกรณ์ประเภท "${typeName}"`)
   }
 
-  // Recharts tooltip styles
+  // Recharts tooltip styles — polished for mobile legibility + hover depth.
   const tooltipStyle: React.CSSProperties = {
     background: isDark ? 'rgba(15, 23, 42, 0.96)' : 'rgba(255, 255, 255, 0.98)',
     border: `1px solid ${isDark ? '#334155' : '#e2e8f0'}`,
-    borderRadius: '8px',
+    borderRadius: '10px',
     fontSize: '12px',
     color: isDark ? '#f1f5f9' : '#1e293b',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+    boxShadow: '0 8px 24px -4px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.06)',
     padding: '8px 12px',
+    transition: 'transform 120ms ease-out, box-shadow 120ms ease-out',
+    backdropFilter: 'blur(6px)',
   }
 
   const gridColor = isDark ? '#1e293b' : '#e2e8f0'
@@ -1222,7 +1255,8 @@ ${kpiHtml}
                       outerRadius={84}
                       paddingAngle={2}
                       isAnimationActive
-                      animationDuration={700}
+                      animationDuration={800}
+                      animationEasing="ease-out"
                       stroke={isDark ? '#0f172a' : '#ffffff'}
                       strokeWidth={2}
                       onClick={(payload: { statusKey?: string }) => {
@@ -1240,7 +1274,7 @@ ${kpiHtml}
                       contentStyle={tooltipStyle}
                       formatter={(v: number, n: string) => {
                         const pct = donutTotal > 0 ? ((v / donutTotal) * 100).toFixed(1) : '0'
-                        return [`${v.toLocaleString('th-TH')} เครื่อง (${pct}%)`, n]
+                        return [`${(Number(v) || 0).toLocaleString('th-TH')} เครื่อง (${pct}%)`, n]
                       }}
                     />
                   </PieChart>
@@ -1263,7 +1297,7 @@ ${kpiHtml}
                     className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:underline dark:text-slate-300"
                   >
                     <span className="h-2.5 w-2.5 rounded-sm" style={{ background: d.color }} />
-                    {d.name} <span className="font-semibold tabular-nums">{d.value.toLocaleString('th-TH')}</span>
+                    {d.name} <span className="font-semibold tabular-nums">{(d.value ?? 0).toLocaleString('th-TH')}</span>
                   </button>
                 ))}
               </div>
@@ -1294,8 +1328,14 @@ ${kpiHtml}
                   <BarChart data={barData} margin={{ top: 12, right: 8, left: -10, bottom: 4 }}>
                     <defs>
                       <linearGradient id="barTealGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.95} />
+                        <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.98} />
+                        <stop offset="55%" stopColor="#14b8a6" stopOpacity={0.92} />
                         <stop offset="100%" stopColor="#0d9488" stopOpacity={0.85} />
+                      </linearGradient>
+                      <linearGradient id="barOrangeActiveGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#fb923c" stopOpacity={0.98} />
+                        <stop offset="55%" stopColor="#f97316" stopOpacity={0.95} />
+                        <stop offset="100%" stopColor="#ea580c" stopOpacity={0.9} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
@@ -1311,14 +1351,16 @@ ${kpiHtml}
                     <ReTooltip
                       contentStyle={tooltipStyle}
                       cursor={{ fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
-                      formatter={(v: number) => [`${v.toLocaleString('th-TH')} เครื่อง`, 'จำนวน']}
+                      formatter={(v: number) => [`${(Number(v) || 0).toLocaleString('th-TH')} เครื่อง`, 'จำนวน']}
                     />
                     <Bar
                       dataKey="value"
                       radius={[6, 6, 0, 0]}
                       fill="url(#barTealGrad)"
                       isAnimationActive
-                      animationDuration={700}
+                      animationDuration={800}
+                      animationEasing="ease-out"
+                      activeBar={{ fill: 'url(#barOrangeActiveGrad)', stroke: '#f97316', strokeWidth: 1 }}
                       onClick={(payload: { name?: string }) => {
                         if (payload?.name) drillDownType(payload.name)
                       }}
@@ -1377,7 +1419,7 @@ ${kpiHtml}
                     <ReTooltip
                       contentStyle={tooltipStyle}
                       formatter={(v: number, _n: string, p: { payload?: { month?: string; isForecast?: boolean } }) => [
-                        `${v.toLocaleString('th-TH')} แผ่น`,
+                        `${(Number(v) || 0).toLocaleString('th-TH')} แผ่น`,
                         `${p?.payload?.isForecast ? 'คาดการณ์' : (p?.payload?.month ?? '')}`,
                       ]}
                       labelFormatter={() => ''}
@@ -1405,6 +1447,7 @@ ${kpiHtml}
                       fill="url(#areaTealGrad)"
                       isAnimationActive
                       animationDuration={800}
+                      animationEasing="ease-out"
                       connectNulls={false}
                       dot={(props: {
                         cx?: number
@@ -1422,13 +1465,14 @@ ${kpiHtml}
                             key={`dot-${cx}-${cy}`}
                             cx={cx}
                             cy={cy}
-                            r={3}
-                            fill="#0d9488"
-                            strokeWidth={0}
+                            r={4}
+                            fill={isDark ? '#0f172a' : '#ffffff'}
+                            stroke="#0d9488"
+                            strokeWidth={2}
                           />
                         )
                       }}
-                      activeDot={{ r: 5, fill: '#0d9488', stroke: isDark ? '#0f172a' : '#fff', strokeWidth: 2 }}
+                      activeDot={{ r: 6, fill: '#0d9488', stroke: isDark ? '#0f172a' : '#fff', strokeWidth: 2 }}
                     />
                     {/* Forecast — dashed amber line, only visible between the
                         last actual point and the projection (bridge value
@@ -1443,6 +1487,7 @@ ${kpiHtml}
                         fill="url(#areaForecastGrad)"
                         isAnimationActive
                         animationDuration={800}
+                        animationEasing="ease-out"
                         connectNulls={false}
                         dot={(props: {
                           cx?: number
@@ -1460,7 +1505,7 @@ ${kpiHtml}
                               <circle
                                 cx={cx}
                                 cy={cy}
-                                r={5}
+                                r={6}
                                 fill="#f59e0b"
                                 stroke={isDark ? '#0f172a' : '#fff'}
                                 strokeWidth={2}
@@ -1477,7 +1522,7 @@ ${kpiHtml}
                             </g>
                           )
                         }}
-                        activeDot={{ r: 5, fill: '#f59e0b', stroke: isDark ? '#0f172a' : '#fff', strokeWidth: 2 }}
+                        activeDot={{ r: 6, fill: '#f59e0b', stroke: isDark ? '#0f172a' : '#fff', strokeWidth: 2 }}
                       />
                     )}
                   </AreaChart>
@@ -1489,7 +1534,7 @@ ${kpiHtml}
                   <span>
                     พยากรณ์เดือนถัดไป:{' '}
                     <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
-                      ~{forecastSheets.toLocaleString('th-TH')} แผ่น
+                      ~{(forecastSheets ?? 0).toLocaleString('th-TH')} แผ่น
                     </span>{' '}
                     <span className="text-slate-400">
                       ({forecastReliability === 'high'
@@ -1582,7 +1627,7 @@ ${kpiHtml}
                     <div className="text-xs text-slate-400">{a.assetCode} · {a.readingDate}</div>
                   </div>
                   <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                    {(a.pagesBw + a.pagesColor).toLocaleString('th-TH')} แผ่น
+                    {((a.pagesBw ?? 0) + (a.pagesColor ?? 0)).toLocaleString('th-TH')} แผ่น
                   </Badge>
                 </motion.div>
               ))}
@@ -1872,16 +1917,16 @@ ${kpiHtml}
                         <div className="truncate">{row.deviceName}</div>
                       </td>
                       {row.months.map(c => {
-                        const intensity = c.pages / maxPages
+                        const intensity = (c.pages ?? 0) / maxPages
                         const txtColor = intensity > 0.55 ? 'text-white' : 'text-slate-700 dark:text-slate-200'
                         return (
                           <td
                             key={c.month}
                             className={`px-2 py-1.5 text-center font-mono tabular-nums ${txtColor}`}
                             style={{ background: heatColor(intensity) }}
-                            title={`${row.assetCode} · ${c.month}: ${c.pages.toLocaleString('th-TH')} แผ่น`}
+                            title={`${row.assetCode} · ${c.month}: ${(c.pages ?? 0).toLocaleString('th-TH')} แผ่น`}
                           >
-                            {c.pages > 0 ? c.pages.toLocaleString('th-TH') : '·'}
+                            {(c.pages ?? 0) > 0 ? (c.pages ?? 0).toLocaleString('th-TH') : '·'}
                           </td>
                         )
                       })}

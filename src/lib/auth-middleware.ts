@@ -36,10 +36,23 @@ export type RequireAuthErr = { ok: false; status: number; error: string }
 export type RequireAuthResult = RequireAuthOk | RequireAuthErr
 
 function extractBearer(req: Request): string | null {
+  // 1. Try Authorization header first
   const h = req.headers.get('authorization') || req.headers.get('Authorization')
-  if (!h) return null
-  const m = h.match(/^Bearer\s+(.+)$/i)
-  return m ? m[1].trim() : null
+  if (h) {
+    const m = h.match(/^Bearer\s+(.+)$/i)
+    if (m) return m[1].trim()
+  }
+  // 2. Fallback: try token from URL query param `t`
+  //    This allows window.open() links (e.g. print buttons) to pass auth
+  //    without needing to set custom headers on a GET request.
+  try {
+    const url = new URL(req.url)
+    const t = url.searchParams.get('t')
+    if (t && t.length > 10) return t
+  } catch {
+    // req.url might not be a full URL in some edge runtimes
+  }
+  return null
 }
 
 export async function requireAuth(

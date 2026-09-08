@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag, demoFilter } from '@/lib/demo-mode'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
   clampPageAndLimit,
   buildPaginationMeta,
@@ -49,6 +50,13 @@ function optBool(v: unknown): boolean {
 }
 
 export async function GET(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  // Returns 404 MODULE_DISABLED when the 'devices' module is disabled
+  // in src/config/modules.ts. Done BEFORE auth so a disabled module has no
+  // observable API surface at all (matches the pattern in /api/reports/*).
+  const moduleCheck = moduleUnavailableResponse('devices')
+  if (moduleCheck) return moduleCheck
+
   // ── Authentication: require VIEW_DEVICES permission ──
   // Previously this route returned full device records (including
   // serialNumber, IP/MAC, vendor/contract info) with no auth check.
@@ -70,6 +78,11 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get('search')?.trim() ?? ''
     const status = searchParams.get('status')?.trim() ?? ''
     const siteParam = searchParams.get('site')?.trim() ?? ''
+    // ── Device Set filter: parentDeviceId=ID returns only children in the set.
+    // ── Device Set filter: parentDeviceId=none returns only top-level devices.
+    // Used by the device detail sheet's "อุปกรณ์ในชุด" section.
+    const parentDeviceIdParam = searchParams.get('parentDeviceId')?.trim() ?? ''
+    const excludeReplaced = searchParams.get('excludeReplaced') === '1'
     // ── Bounded pagination: clamp page + limit to safe bounds ──
     // Previously: inline Math.min/Math.max with hardcoded 500/100.
     // Now: uses pure helper that also handles NaN, Infinity, fractional.
@@ -127,6 +140,22 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // ── Device Set filter ──
+    // parentDeviceId=ID  → only direct children of that device
+    // parentDeviceId=none → only top-level devices (no parent)
+    // omit                → no filter (children + top-level both returned)
+    if (parentDeviceIdParam) {
+      if (parentDeviceIdParam.toLowerCase() === 'none') {
+        where.parentDeviceId = null
+      } else {
+        where.parentDeviceId = parentDeviceIdParam
+      }
+    }
+    // excludeReplaced=1 → hide devices that have been replaced (replacedById != null)
+    if (excludeReplaced) {
+      where.replacedById = null
+    }
+
     // ── Site scope enforcement via authorization context ──
     // superadmin → all sites (no filter, or explicit site filter if provided)
     // non-superadmin with specific Sites → filter to those Sites
@@ -136,7 +165,7 @@ export async function GET(req: NextRequest) {
     // NOTE: Device.site stores the Thai site NAME (e.g. "ชื่อสาขา (e.g. สำนักงานใหญ่)"),
     // not the site CODE (e.g. "UDH"). So when the user picks a site code from
     // the dropdown, we must resolve it to the Thai name before filtering.
-    if (ctx.isSuperAdmin || ctx.globalRole === 'admin') {
+    if (ctx.isSuperAdmin || ctx.globalRole === "admin" || auth.isDemo) {
       if (siteParam) {
         // Resolve site code → Thai name via SiteAttribute
         const sa = await db.siteAttribute.findUnique({
@@ -249,6 +278,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // ── Phase 4.3: Module availability gate ──
+  const moduleCheck = moduleUnavailableResponse('devices')
+  if (moduleCheck) return moduleCheck
+
   // ── Authentication: require DEVICE_EDIT permission ──
   // Previously this route treated auth as optional (fail-open), allowing
   // unauthenticated device creation. This is a Blocker security fix.

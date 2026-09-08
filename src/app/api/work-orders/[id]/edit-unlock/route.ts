@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { hasResolvedPermission } from '@/lib/auth'
 
 /**
  * POST /api/work-orders/[id]/edit-unlock
@@ -11,12 +12,16 @@ import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
  * Body:
  *   { active: boolean, note?: string }
  *
- * Rules (Task ID: RESIDUAL-BLOCKERS-ROUND-4):
- *   - Requires WO_ASSIGN at the WO's Site (NOT global ADMIN). The previous
- *     `requireAuth(req, 'ADMIN')` check did not validate Site scope, so a
- *     UDH=admin could unlock (and then edit) NKP WOs they have no Site
- *     grant for. `loadAuthorizedWorkOrder` checks `canAtSite(woSite,
- *     'WO_ASSIGN')` — preventing that escalation.
+ * Rules (Task ID: UX-GAPS-3-ITEMS — Authorization consistency):
+ *   - Requires `isAdmin` (same as the v1 PUT route when setting
+ *     `editUnlockActive=true`). The previous `WO_ASSIGN` check allowed any
+ *     site-scoped assigner to unlock a terminal WO — a privilege-escalation
+ *     risk that did not match the v1 PUT route's stricter `isAdmin` gate.
+ *   - `loadAuthorizedWorkOrder(req, id, 'WO_VIEW_ALL')` is still used to
+ *     load the WO and verify the caller can at least view it at the WO's
+ *     Site; admins bypass Site checks per `wo-authz.ts`. After the load
+ *     we additionally require `isAdmin` (role-based OR explicit ADMIN
+ *     permission), matching the v1 PUT route's check.
  *   - Can only toggle on records with status COMPLETED or CANCELLED.
  *   - active=true  → set editUnlockActive=true, editUnlockBy=user,
  *                    editUnlockAt=now, editUnlockNote=note
@@ -59,10 +64,11 @@ export async function POST(
   try {
     const { id } = await params
 
-    // Authenticate + authorize the WO at its Site.
-    // allowOwn is NOT set — unlocking a terminal WO is an admin/assigner
-    // action, not something the original reporter should be able to do.
-    const result = await loadAuthorizedWorkOrder(req, id, 'WO_ASSIGN')
+    // Authenticate + load the WO. We use `WO_VIEW_ALL` (the weakest
+    // WO-view permission) so that the Site-scope check still applies to
+    // non-admin callers — admins bypass the Site check in `wo-authz.ts`.
+    // allowOwn is NOT set — unlocking is an admin action.
+    const result = await loadAuthorizedWorkOrder(req, id, 'WO_VIEW_ALL')
     if (!result.ok) {
       return NextResponse.json(
         { error: result.error },
@@ -75,6 +81,20 @@ export async function POST(
     const user = auth.user
     const actor: string =
       user.email ?? user.username ?? user.name ?? 'system'
+
+    // ── Authorization: require isAdmin (Task ID: UX-GAPS-3-ITEMS) ──
+    // Matches the v1 PUT route's check at src/app/api/v1/work-orders/[id]/route.ts
+    // (lines 107-110). Role-based admin OR explicit ADMIN permission grant.
+    const isAdmin =
+      user.role === 'admin' ||
+      user.role === 'superadmin' ||
+      hasResolvedPermission(user.permissions, 'ADMIN')
+    if (!isAdmin) {
+      return NextResponse.json(
+        { error: 'ต้องเป็น admin เท่านั้นที่ปลดล็อกการแก้ไขได้' },
+        { status: 403 },
+      )
+    }
 
     let body: { active?: unknown; note?: unknown } = {}
     try {

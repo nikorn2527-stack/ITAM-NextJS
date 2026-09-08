@@ -24,17 +24,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2 } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList, Activity, User, Camera, Save } from 'lucide-react'
 import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
 import { WoOptionsSection } from './wo-options-section'
 import { AssetPatternTab, WoPatternTab } from './settings-page-v2'
 import { NotificationTemplatesSection } from './notification-templates-section'
+import { NotificationLogSection } from './notification-log-section'
 import { PendingUsersSection } from './pending-users-section'
 import { UserManagementSection } from './user-management-section'
 import { OauthSection } from './oauth-section'
 import { DemoManagementSection } from './demo-management-section'
+import { LicenseManagementSection } from './license-management-section'
+import { AssetCategorySection } from './asset-category-section'
+import { StockCountSection } from './stock-count-section'
 import { useAuthStore } from '@/store/auth-store'
 
 /** Build fetch headers with the user's JWT (if logged in). */
@@ -54,6 +58,7 @@ type SettingsTab =
   | 'sites'
   | 'notifications'
   | 'notification-templates'
+  | 'notification-logs'
   | 'customize'
   | 'contacts'
   | 'wo-options'
@@ -64,7 +69,11 @@ type SettingsTab =
   | 'number-patterns'
   | 'wo-patterns'
   | 'demo'
+  | 'mobile-nav'
   | 'my-biometrics'
+  | 'my-profile'
+  | 'licenses'
+  | 'stock-count'
 
 interface SettingsTabGroup {
   title: string
@@ -82,6 +91,9 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'number-patterns', label: 'รูปแบบเลขทะเบียน', icon: Hash },
       { value: 'wo-patterns', label: 'เลขใบงาน', icon: FileText },
       { value: 'sites', label: 'สาขา (ภาพรวม)', icon: Building2 },
+      { value: 'licenses', label: 'ลิขสิทธิ์ซอฟต์แวร์', icon: KeyRound },
+      { value: 'asset-categories', label: 'หมวดหมู่สินทรัพย์', icon: Package },
+      { value: 'stock-count', label: 'นับสต็อก/ตรวจนับ', icon: ClipboardList },
     ],
   },
   {
@@ -103,6 +115,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
     items: [
       { value: 'notifications', label: 'การแจ้งเตือน', icon: Bell },
       { value: 'notification-templates', label: 'เทมเพลตข้อความ', icon: MessageSquare },
+      { value: 'notification-logs', label: 'สถิติการส่ง', icon: Activity },
     ],
   },
   {
@@ -110,7 +123,8 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
     items: [
       { value: 'customize', label: 'ปรับแต่งแอป', icon: Palette },
       { value: 'oauth', label: 'OAuth/External Login', icon: KeyRound },
-      { value: 'my-biometrics', label: 'ลายนิ้วมือของฉัน', icon: Fingerprint },
+      { value: 'my-profile', label: 'โปรไฟล์ของฉัน', icon: User },
+      { value: 'my-biometrics', label: 'Passkey ของฉัน', icon: Fingerprint },
     ],
   },
 ]
@@ -153,7 +167,7 @@ export function ItamSettings() {
     queryKey: ['itam-master', category],
     queryFn: async () => {
       const params = category !== 'all' ? `?category=${category}` : ''
-      const res = await fetch(`/api/itam/master-items${params}`)
+      const res = await fetch(`/api/itam/master-items${params}`, { headers: authHeaders() })
       if (!res.ok) throw new Error('Failed')
       return res.json() as Promise<{ items: MasterItem[] }>
     },
@@ -288,14 +302,14 @@ export function ItamSettings() {
     try {
       if (editItem) {
         const res = await fetch(`/api/itam/master-items/${editItem.id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(form),
         })
         if (!res.ok) throw new Error('Failed')
         toast.success('แก้ไขแล้ว')
       } else {
         const res = await fetch('/api/itam/master-items', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(form),
         })
         if (!res.ok) throw new Error('Failed')
@@ -314,7 +328,7 @@ export function ItamSettings() {
     if (!deleteTarget) return
     const item = deleteTarget
     try {
-      await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE' })
+      await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE', headers: authHeaders() })
       toast.success('ลบแล้ว')
       await qc.invalidateQueries({ queryKey: ['itam-master'] })
     } catch { toast.error('ลบไม่สำเร็จ') }
@@ -719,6 +733,8 @@ export function ItamSettings() {
       {/* ── ปรับแต่งแอป tab — appName, logo, tagline, search fields ── */}
       {tab === 'notification-templates' && <NotificationTemplatesSection />}
 
+      {tab === 'notification-logs' && <NotificationLogSection />}
+
       {tab === 'oauth' && <OauthSection />}
 
       {tab === 'customize' && <AppCustomizeTab />}
@@ -732,6 +748,16 @@ export function ItamSettings() {
       {tab === 'mobile-nav' && <MobileNavConfigSection />}
 
       {tab === 'my-biometrics' && <MyBiometricsSection />}
+      {tab === 'my-profile' && <MyProfileSection />}
+
+      {tab === 'licenses' && <LicenseManagementSection />}
+      {tab === 'asset-categories' && <AssetCategorySection />}
+      {tab === 'stock-count' && (
+        <div className="space-y-4">
+          <StockCountSection scope="STOCK_ITEM" />
+          <StockCountSection scope="DEVICE" />
+        </div>
+      )}
         </div>
       </div>
 
@@ -748,7 +774,10 @@ export function ItamSettings() {
             <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
             <AlertDialogAction
               type="button"
-              onClick={confirmDelete}
+              onClick={(e) => {
+                e.preventDefault() // prevent Radix auto-close before async completes
+                void confirmDelete()
+              }}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
               ลบ
@@ -784,7 +813,7 @@ function AppCustomizeTab() {
     queryKey: ['org-profile'],
     queryFn: async () => {
       try {
-        const res = await fetch('/api/settings/org-profile')
+        const res = await fetch('/api/settings/org-profile', { headers: authHeaders() })
         if (!res.ok) return null
         const j = await res.json()
         return j.profile ?? null
@@ -800,7 +829,7 @@ function AppCustomizeTab() {
     queryKey: ['app-customization'],
     queryFn: async () => {
       try {
-        const res = await fetch('/api/settings')
+        const res = await fetch('/api/settings', { headers: authHeaders() })
         if (!res.ok) return 'assetNo,serial,brand,model'
         const j = await res.json()
         // /api/settings returns { settings: { key: value, ... } }
@@ -822,6 +851,7 @@ function AppCustomizeTab() {
     searchFields: 'assetNo,serial,brand,model',
   })
   const [saving, setSaving] = React.useState(false)
+  const logoFileRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
     if (profile) {
@@ -966,15 +996,78 @@ function AppCustomizeTab() {
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">โลโก้ (emoji หรือ URL รูปภาพ)</Label>
+            <Label className="text-xs">โลโก้ (emoji, URL รูปภาพ หรืออัปโหลดไฟล์)</Label>
             <Input
               value={form.logoUrl}
               onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
               placeholder="📦 หรือ https://example.com/logo.png"
               className="dark:bg-slate-800 dark:border-slate-700"
             />
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => logoFileRef.current?.click()}
+                disabled={saving}
+              >
+                <Camera className="mr-1.5 h-3.5 w-3.5" />
+                อัปโหลดรูป
+              </Button>
+              {form.logoUrl.startsWith('data:image/') && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setForm({ ...form, logoUrl: '' })}
+                  disabled={saving}
+                  className="text-red-500 hover:text-red-600"
+                >
+                  ลบรูป
+                </Button>
+              )}
+              <input
+                ref={logoFileRef}
+                type="file"
+                accept="image/*"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  if (file.size > 2 * 1024 * 1024) {
+                    toast.error('รูปใหญ่เกินไป (สูงสุด 2MB)')
+                    return
+                  }
+                  const reader = new FileReader()
+                  reader.onload = () => {
+                    const img = new Image()
+                    img.onload = () => {
+                      const canvas = document.createElement('canvas')
+                      const maxDim = 128
+                      let { width, height } = img
+                      if (width > height && width > maxDim) {
+                        height = Math.round((height * maxDim) / width)
+                        width = maxDim
+                      } else if (height > maxDim) {
+                        width = Math.round((width * maxDim) / height)
+                        height = maxDim
+                      }
+                      canvas.width = width
+                      canvas.height = height
+                      const ctx = canvas.getContext('2d')
+                      if (!ctx) return
+                      ctx.drawImage(img, 0, 0, width, height)
+                      const dataUrl = canvas.toDataURL('image/png')
+                      setForm({ ...form, logoUrl: dataUrl })
+                    }
+                    img.src = reader.result as string
+                  }
+                  reader.readAsDataURL(file)
+                }}
+                className="hidden"
+              />
+            </div>
             <p className="text-[11px] text-slate-500">
-              💡 ใช้ emoji (เช่น 📦 🖨️ 💻) หรือวาง URL รูปภาพ (PNG/SVG, แนะนำขนาด 32×32px)
+              💡 ใช้ emoji (เช่น 📦 🖨️ 💻), วาง URL รูปภาพ, หรือกดอัปโหลดไฟล์ (PNG/SVG, แนะนำ 32×32px, สูงสุด 2MB)
             </p>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1085,7 +1178,7 @@ function MobileNavConfigSection() {
     { value: 'viewer', label: 'ผู้ดู' },
   ]
 
-  // All nav pages that can be toggled
+  // All nav pages that can be toggled — SIDEBAR pages (desktop responsive)
   const NAV_PAGES = [
     { page: 'dashboard', label: '📊 Dashboard' },
     { page: 'itam-devices', label: '💻 จัดการอุปกรณ์' },
@@ -1104,25 +1197,37 @@ function MobileNavConfigSection() {
     { page: 'mobile', label: '📱 โหมดมือถือ' },
   ]
 
+  // MobileShell (แอปมือถือ) tabs — the 4 bottom-nav buttons that users
+  // see when they open the app on a phone. 'account' (บัญชี) is NOT
+  // listed here because it can't be disabled (logout must remain accessible).
+  const MOBILE_APP_TABS = [
+    { page: 'mobileapp-my-work', label: '📋 งานของฉัน' },
+    { page: 'mobileapp-repair',  label: '🔧 แจ้งซ่อม' },
+    { page: 'mobileapp-meter',   label: '📈 จดมิเตอร์' },
+    { page: 'mobileapp-stock',   label: '📦 เบิกของ' },
+  ]
+
   // Load config from AppSetting
   const { data: settingsData } = useQuery({
     queryKey: ['mobile-nav-config-settings'],
     queryFn: async () => {
-      const res = await fetch('/api/settings')
+      const res = await fetch('/api/settings', { headers: authHeaders() })
       if (!res.ok) return { settings: [] }
       return res.json()
     },
   })
 
   React.useEffect(() => {
-    if (settingsData?.settings) {
-      const raw = settingsData.settings.find((s: { key: string }) => s.key === 'mobileNavConfig')
-      if (raw?.value) {
-        try {
-          setConfig(JSON.parse(raw.value))
-        } catch {
-          setConfig({})
-        }
+    // Guard: settingsData.settings may be undefined or not an array
+    // (e.g. API returned an error object, or the auth token was missing)
+    const settings = settingsData?.settings
+    if (!Array.isArray(settings)) return
+    const raw = settings.find((s: { key: string }) => s.key === 'mobileNavConfig')
+    if (raw?.value) {
+      try {
+        setConfig(JSON.parse(raw.value))
+      } catch {
+        setConfig({})
       }
     }
   }, [settingsData])
@@ -1149,7 +1254,7 @@ function MobileNavConfigSection() {
     try {
       const res = await fetch('/api/settings', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           mobileNavConfig: JSON.stringify(config),
         }),
@@ -1245,6 +1350,42 @@ function MobileNavConfigSection() {
           💡 <strong>เดสก์ท็อป</strong> = ผู้ใช้เห็นทุกเมนู (ยกเว้นที่ปิดไว้)
         </div>
 
+        {/* ── แอปมือถือ (MobileShell) tabs ── */}
+        <div className="mt-4 rounded-md border border-orange-200 bg-orange-50/50 p-3 dark:border-orange-800/50 dark:bg-orange-950/20">
+          <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-orange-700 dark:text-orange-300">
+            <Smartphone className="h-4 w-4" />
+            แอปมือถือ (MobileShell) — ปุ่มแถบล่างบนมือถือจริง
+          </h4>
+          <p className="mb-3 text-[11px] text-orange-600/80 dark:text-orange-400/80">
+            ปุ่ม "บัญชี" ไม่สามารถปิดได้ (ต้องมี logout เสมอ)
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {MOBILE_APP_TABS.map((t) => {
+              const visible = roleConfig[t.page] ?? true
+              return (
+                <label
+                  key={t.page}
+                  className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs transition ${
+                    visible
+                      ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
+                      : 'border-slate-300 bg-slate-50 text-slate-400 dark:border-slate-700 dark:bg-slate-800/50'
+                  }`}
+                >
+                  <Switch
+                    checked={visible}
+                    onCheckedChange={(v) => togglePage(selectedRole, t.page, v)}
+                    className="scale-75"
+                  />
+                  <span>{t.label}</span>
+                </label>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-[11px] text-orange-600/70 dark:text-orange-400/70">
+            การเปลี่ยนแปลงมีผลใน 30 วินาที หลังบันทึก (cache refresh)
+          </p>
+        </div>
+
         <Button
           onClick={save}
           disabled={saving}
@@ -1258,10 +1399,205 @@ function MobileNavConfigSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// MyBiometricsSection — จัดการลายนิ้วมือของผู้ใช้ปัจจุบัน
+// MyProfileSection — แก้โปรไฟล์ + อัปโหลดรูปโปรไฟล์ของตัวเอง
+// ─────────────────────────────────────────────────────────────────────────
+function MyProfileSection() {
+  const { user: authUser, fetchMe } = useAuthStore()
+  const token = useAuthStore((s) => s.token)
+  const [loading, setLoading] = React.useState(true)
+  const [saving, setSaving] = React.useState(false)
+  const [name, setName] = React.useState('')
+  const [phone, setPhone] = React.useState('')
+  const [department, setDepartment] = React.useState('')
+  const [avatarUrl, setAvatarUrl] = React.useState<string | null>(null)
+  const [email, setEmail] = React.useState('')
+  const [username, setUsername] = React.useState('')
+  const [role, setRole] = React.useState('')
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const loadProfile = React.useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/itam/auth/me/profile', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) return
+      const { user } = await res.json()
+      setName(user.name ?? '')
+      setPhone(user.phone ?? '')
+      setDepartment(user.department ?? '')
+      setAvatarUrl(user.avatarUrl ?? null)
+      setEmail(user.email ?? '')
+      setUsername(user.username ?? '')
+      setRole(user.role ?? '')
+    } finally {
+      setLoading(false)
+    }
+  }, [token])
+
+  React.useEffect(() => {
+    loadProfile()
+  }, [loadProfile])
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('รูปใหญ่เกินไป (สูงสุด 5MB)')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const maxDim = 256
+        let { width, height } = img
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width)
+          width = maxDim
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height)
+          height = maxDim
+        }
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        ctx.drawImage(img, 0, 0, width, height)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8)
+        setAvatarUrl(dataUrl)
+      }
+      img.src = reader.result as string
+    }
+    reader.readAsDataURL(file)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/itam/auth/me/profile', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ name, avatarUrl, phone, department }),
+      })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
+      }
+      toast.success('บันทึกโปรไฟล์แล้ว')
+      await fetchMe()
+      await loadProfile()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-sm text-muted-foreground">
+          กำลังโหลด...
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+          <User className="h-5 w-5 text-[#f97316]" />
+          โปรไฟล์ของฉัน
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          แก้ไขข้อมูลส่วนตัว + รูปโปรไฟล์ — ผู้ใช้ทุกคนแก้ได้เอง
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt="avatar"
+                className="h-20 w-20 rounded-full object-cover border-2 border-slate-200 dark:border-slate-700"
+              />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700">
+                <User className="h-8 w-8 text-slate-400" />
+              </div>
+            )}
+          </div>
+          <div className="space-y-1">
+            <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={saving}>
+              <Camera className="mr-2 h-4 w-4" />
+              {avatarUrl ? 'เปลี่ยนรูป' : 'อัปโหลดรูป'}
+            </Button>
+            {avatarUrl && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => setAvatarUrl(null)} disabled={saving} className="text-red-500 hover:text-red-600">
+                ลบรูป
+              </Button>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              รองรับ JPG/PNG · ย่ออัตโนมัติ 256×256 · สูงสุด 5MB
+            </p>
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm">ชื่อ-นามสกุล</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} placeholder="เช่น นิกร ศรีสุข" className="text-sm" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm">เบอร์โทร</Label>
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} placeholder="เช่น 081-234-5678" className="text-sm" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-sm">แผนก</Label>
+          <Input value={department} onChange={(e) => setDepartment(e.target.value)} maxLength={100} placeholder="เช่น IT" className="text-sm" />
+        </div>
+        <div className="rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800/50">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <span className="text-muted-foreground">อีเมล:</span>
+              <br />
+              <span className="font-medium">{email}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Username:</span>
+              <br />
+              <span className="font-medium">{username || '—'}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">บทบาท:</span>
+              <br />
+              <span className="font-medium">{role}</span>
+            </div>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            หากต้องการเปลี่ยนอีเมล/username/บทบาท ติดต่อแอดมิน
+          </p>
+        </div>
+        <Button onClick={handleSave} disabled={saving} className="w-full bg-[#f97316] text-white hover:bg-[#ea580c]">
+          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          บันทึกโปรไฟล์
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MyBiometricsSection — จัดการPasskeyของผู้ใช้ปัจจุบัน
 // ─────────────────────────────────────────────────────────────────────────
 // ลงทะเบียน Touch ID / Face ID / Windows Hello / Android fingerprint
-// หลังจากลงทะเบียนแล้ว ผู้ใช้สามารถ login ด้วยลายนิ้วมือแทน password ได้
+// หลังจากลงทะเบียนแล้ว ผู้ใช้สามารถ login ด้วยPasskeyแทน password ได้
 // ─────────────────────────────────────────────────────────────────────────
 function MyBiometricsSection() {
   const { isSupported, register, listCredentials, removeCredential, loading } = useWebAuthn()
@@ -1293,17 +1629,17 @@ function MyBiometricsSection() {
   async function handleRegister() {
     const result = await register(newName.trim() || undefined)
     if (result?.verified) {
-      toast.success(`ลงทะเบียน "${result.name ?? 'ลายนิ้วมือ'}" สำเร็จ`)
+      toast.success(`ลงทะเบียน "${result.name ?? 'Passkey'}" สำเร็จ`)
       setNewName('')
       refresh()
     }
   }
 
   async function handleRemove(id: string, name: string | null) {
-    if (!confirm(`ยืนยันลบ "${name ?? 'ลายนิ้วมือ'}" ?`)) return
+    if (!confirm(`ยืนยันลบ Passkey "${name ?? 'Passkey'}" ?`)) return
     const ok = await removeCredential(id)
     if (ok) {
-      toast.success('ลบลายนิ้วมือเรียบร้อย')
+      toast.success('ลบ Passkey เรียบร้อย')
       refresh()
     } else {
       toast.error('ลบไม่สำเร็จ')
@@ -1315,18 +1651,18 @@ function MyBiometricsSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base md:text-lg">
           <Fingerprint className="h-5 w-5 text-[#f97316]" />
-          ลายนิ้วมือของฉัน (Touch ID / Face ID / Windows Hello)
+          Passkey ของฉัน (Touch ID / Face ID / Windows Hello / Security Key)
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          ลงทะเบียนลายนิ้วมือของอุปกรณ์นี้เพื่อใช้ login โดยไม่ต้องกรอก password.
-          รองรับ Touch ID, Face ID, Windows Hello, ลายนิ้วมือ Android และ security key.
+          ลงทะเบียน Passkey ของอุปกรณ์นี้เพื่อใช้ login โดยไม่ต้องกรอก password.
+          รองรับ Touch ID, Face ID, Windows Hello, Passkey Android และ security key (YubiKey).
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {!isSupported ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-            <p className="font-medium">⚠️ เบราว์เซอร์นี้ไม่รองรับลายนิ้วมือ</p>
-            <p className="mt-1 text-xs">กรุณาใช้ Chrome / Safari / Edge เวอร์ชันใหม่, หรืออนุญาตให้เบราว์เซอร์เข้าถึง Platform Authenticator.</p>
+            <p className="font-medium">⚠️ เบราว์เซอร์นี้ไม่รองรับ Passkey</p>
+            <p className="mt-1 text-xs">กรุณาใช้ Chrome / Safari / Edge เวอร์ชันใหม่, หรือเปิดผ่าน HTTPS (ไม่ใช่ HTTP).</p>
           </div>
         ) : (
           <>
@@ -1351,7 +1687,7 @@ function MyBiometricsSection() {
                 </Button>
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                หลังกดปุ่ม เบราว์เซอร์จะถามยืนยันลายนิ้วมือ/ใบหน้า. ทำตามขั้นตอนบนหน้าจอ.
+                หลังกดปุ่ม เบราว์เซอร์จะถามยืนยันตัวตน (fingerprint/ใบหน้า/security key). ทำตามขั้นตอนบนหน้าจอ.
               </p>
             </div>
 
@@ -1359,7 +1695,7 @@ function MyBiometricsSection() {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  ลายนิ้วมือที่ลงทะเบียน ({credentials.length})
+                  Passkey ที่ลงทะเบียน ({credentials.length})
                 </h4>
                 <Button variant="ghost" size="sm" onClick={refresh} disabled={refreshing}>
                   {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -1369,7 +1705,7 @@ function MyBiometricsSection() {
               {credentials.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-muted-foreground dark:border-slate-700">
                   <Fingerprint className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                  ยังไม่ได้ลงทะเบียนลายนิ้วมือ
+                  ยังไม่ได้ลงทะเบียน Passkey
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1382,7 +1718,7 @@ function MyBiometricsSection() {
                         <Fingerprint className="h-5 w-5 text-[#f97316]" />
                         <div>
                           <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                            {c.name ?? 'ลายนิ้วมือ'}
+                            {c.name ?? 'Passkey'}
                           </div>
                           <div className="text-[11px] text-muted-foreground">
                             {c.deviceType ?? 'webauthn'} · ลงทะเบียน {new Date(c.createdAt).toLocaleDateString('th-TH')}
@@ -1408,9 +1744,9 @@ function MyBiometricsSection() {
             <div className="rounded-lg bg-slate-50 p-3 text-[11px] text-muted-foreground dark:bg-slate-800/30">
               <p className="font-medium">💡 วิธีใช้งาน:</p>
               <ol className="mt-1 ml-4 list-decimal space-y-0.5">
-                <li>ลงทะเบียนลายนิ้วมือของอุปกรณ์นี้ (ด้านบน)</li>
-                <li>ครั้งต่อไปที่ login — กรอก email แล้วกดปุ่ม &quot;เข้าสู่ระบบด้วยลายนิ้วมือ&quot;</li>
-                <li>เบราว์เซอร์จะถามยืนยันลายนิ้วมือ ไม่ต้องกรอก password</li>
+                <li>ลงทะเบียน Passkey ของอุปกรณ์นี้ (ด้านบน)</li>
+                <li>ครั้งต่อไปที่ login — กรอก email แล้วกดปุ่ม &quot;เข้าสู่ระบบด้วย Passkey&quot;</li>
+                <li>เบราว์เซอร์จะถามยืนยันตัวตน ไม่ต้องกรอก password</li>
               </ol>
             </div>
           </>
