@@ -1721,23 +1721,12 @@ export function TemplatesPage() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 p-3 md:p-4 lg:p-5">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25, ease: 'easeOut' }}
-        className="flex flex-shrink-0 items-start justify-between gap-4"
-      >
-        <div className="space-y-1">
-          <h1 className="text-xl font-bold tracking-tight md:text-2xl">
-            📄 เทมเพลต
-          </h1>
-          <p className="text-sm text-muted-foreground md:text-base">
-            จัดการเทมเพลตทั้งหมดในระบบ — สติกเกอร์ · เอกสาร PDF · ใบงาน ·
-            ใบเบิก/ใบสั่งซื้อ
-          </p>
-        </div>
+    <div className="flex h-full w-full flex-col gap-3 p-3 md:p-4 lg:p-5">
+      {/* Compact header — h1 + seed button on one row, tabs right below */}
+      <div className="flex flex-shrink-0 items-center justify-between gap-3">
+        <h1 className="text-lg font-bold tracking-tight md:text-xl">
+          📄 เทมเพลต
+        </h1>
         <Button
           onClick={handleSeed}
           disabled={seeding}
@@ -1748,7 +1737,7 @@ export function TemplatesPage() {
           <Sparkles className={`mr-1.5 h-4 w-4 ${seeding ? 'animate-pulse' : ''}`} />
           {seeding ? 'กำลังติดตั้ง...' : 'ติดตั้งเทมเพลตเริ่มต้น'}
         </Button>
-      </motion.div>
+      </div>
 
       {seedResult && (
         <div className={`rounded-lg border p-3 text-sm ${

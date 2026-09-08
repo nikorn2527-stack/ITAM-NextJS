@@ -559,21 +559,16 @@ export function ImportPage() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-slate-50 px-3 py-4 dark:bg-slate-950 sm:px-4 lg:px-5">
-      <div className="flex h-full w-full flex-col gap-4">
-        {/* Header */}
-        <div className="flex flex-shrink-0 flex-col gap-1">
-          <h1 className="flex items-center gap-2 text-xl font-bold text-slate-800 dark:text-slate-100 sm:text-2xl">
-            <span aria-hidden>📥</span>
-            นำเข้าข้อมูล
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            อัปโหลดไฟล์ CSV — แยกตามประเภทข้อมูล
-          </p>
-        </div>
+    <div className="flex h-full flex-col bg-slate-50 px-3 py-3 dark:bg-slate-950 sm:px-4 lg:px-5">
+      <div className="flex h-full w-full flex-col gap-3">
+        {/* Compact header — h1 only, no description (saves vertical space) */}
+        <h1 className="flex flex-shrink-0 items-center gap-2 text-lg font-bold text-slate-800 dark:text-slate-100 md:text-xl">
+          <span aria-hidden>📥</span>
+          นำเข้าข้อมูล
+        </h1>
 
         {/* Tab switcher: manual import vs legacy Apps Script import */}
-        <Tabs defaultValue="manual" className="flex min-h-0 w-full flex-1 flex-col gap-4">
+        <Tabs defaultValue="manual" className="flex min-h-0 w-full flex-1 flex-col gap-3">
           <TabsList className="flex-shrink-0 bg-slate-100 dark:bg-slate-800">
             <TabsTrigger value="manual" onClick={() => {}} className="gap-1.5">
               <Upload className="h-3.5 w-3.5" />
@@ -590,12 +585,10 @@ export function ImportPage() {
           </TabsList>
 
           {/* ─── Manual import tab ─── */}
-          <TabsContent value="manual" className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+          <TabsContent value="manual" className="min-h-0 flex-1 space-y-4 overflow-y-auto">
         {/* Import type selector */}
         <div>
-          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-            1. เลือกประเภทข้อมูลที่จะนำเข้า
-          </h2>
+          {/* Removed h2 heading "1. เลือกประเภทข้อมูล" — the cards are self-explanatory */}
           {/* On mobile: horizontal scrollable row of compact cards so the
               upload area below stays in the viewport. On sm+: 2-4 col grid. */}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
