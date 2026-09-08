@@ -257,10 +257,10 @@ export const STICKER_TEMPLATE_LARGE = {
   }),
 }
 
-// ── Work Order Template: "ใบแจ้งซ่อนมาตรฐาน" ──
+// ── Work Order Template: "ใบแจ้งซ่อมมาตรฐาน" ──
 // HTML-based document template with {{variables}}
 export const WO_TEMPLATE_STANDARD = {
-  name: 'ใบแจ้งซ่อนมาตรฐาน',
+  name: 'ใบแจ้งซ่อมมาตรฐาน',
   type: 'work-order',
   category: 'form',
   content: JSON.stringify({
