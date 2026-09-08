@@ -39,6 +39,7 @@ import { DemoManagementSection } from './demo-management-section'
 import { LicenseManagementSection } from './license-management-section'
 import { AssetCategorySection } from './asset-category-section'
 import { StockCountSection } from './stock-count-section'
+import { SyncTestSection } from './sync-test-section'
 import { useAuthStore } from '@/store/auth-store'
 
 /** Build fetch headers with the user's JWT (if logged in). */
@@ -70,6 +71,7 @@ type SettingsTab =
   | 'wo-patterns'
   | 'demo'
   | 'mobile-nav'
+  | 'sync-test'
   | 'my-biometrics'
   | 'my-profile'
   | 'licenses'
@@ -106,6 +108,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       // RolePermission manager is implemented.
       // { value: 'permissions', label: 'สิทธิ์ผู้ใช้', icon: Shield },
       { value: 'mobile-nav', label: 'เมนูมือถือ', icon: Smartphone },
+      { value: 'sync-test', label: 'ทดสอบ Sync', icon: RefreshCw },
       { value: 'pending', label: 'รออนุมัติ', icon: Users },
       { value: 'demo', label: '🧪 สาธิตระบบ', icon: FlaskConical },
     ],
@@ -746,6 +749,7 @@ export function ItamSettings() {
       {tab === 'demo' && <DemoManagementSection />}
 
       {tab === 'mobile-nav' && <MobileNavConfigSection />}
+      {tab === 'sync-test' && <SyncTestSection />}
 
       {tab === 'my-biometrics' && <MyBiometricsSection />}
       {tab === 'my-profile' && <MyProfileSection />}

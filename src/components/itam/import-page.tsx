@@ -585,7 +585,7 @@ export function ImportPage() {
           </TabsList>
 
           {/* ─── Manual import tab ─── */}
-          <TabsContent value="manual" className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+          <TabsContent value="manual" className="min-h-0 flex-1 space-y-3 overflow-y-auto">
         {/* Import type selector */}
         <div>
           {/* Removed h2 heading "1. เลือกประเภทข้อมูล" — the cards are self-explanatory */}
@@ -604,7 +604,7 @@ export function ImportPage() {
                     if (inputRef.current) inputRef.current.value = ''
                   }}
                   className={cn(
-                    'group relative flex min-w-[180px] flex-col items-start gap-1 rounded-xl border-2 p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 sm:min-w-0',
+                    'group relative flex min-w-0 flex-col items-start gap-0.5 rounded-lg border-2 p-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950',
                     active
                       ? 'border-[#f97316] bg-[#f97316]/5 shadow-sm'
                       : 'border-slate-200 bg-white hover:border-[#f97316]/40 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-[#fb923c]/40 dark:hover:bg-slate-800',
@@ -651,7 +651,7 @@ export function ImportPage() {
                   เลือกไฟล์ CSV (UTF-8) ที่มีคอลัมน์ตรงกับเทมเพลต ระบบจะบันทึกและประมวลผลทันที
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-3">
                 {/* Drop zone */}
                 <div
                   onDrop={onDrop}
@@ -667,7 +667,7 @@ export function ImportPage() {
                     }
                   }}
                   className={cn(
-                    'flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 sm:gap-3 sm:py-10',
+                    'flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-4 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 sm:py-6',
                     dragOver
                       ? 'border-[#f97316] bg-[#f97316]/5'
                       : 'border-slate-300 bg-slate-50 hover:border-[#f97316] hover:bg-[#f97316]/5 dark:border-slate-700 dark:bg-slate-800/50 dark:hover:border-[#fb923c]',
