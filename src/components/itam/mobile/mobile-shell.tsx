@@ -247,59 +247,34 @@ export function MobileShell() {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto py-2">
-                {/* Mobile-native pages */}
+                {/* Mobile-native pages — filtered by mobileNavConfig */}
                 <p className="px-4 pb-1 pt-2 text-[10px] font-semibold uppercase text-slate-400">เมนูมือถือ</p>
-                <button
-                  type="button"
-                  onClick={() => { setTab('dashboard'); setMenuOpen(false) }}
-                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
-                >
-                  📊 แดชบอร์ด
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTab('devices'); setMenuOpen(false) }}
-                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
-                >
-                  💻 จัดการอุปกรณ์
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTab('my-work'); setMenuOpen(false) }}
-                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
-                >
-                  📋 งานของฉัน
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTab('repair'); setMenuOpen(false) }}
-                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
-                >
-                  🔧 แจ้งซ่อม
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTab('meter'); setMenuOpen(false) }}
-                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
-                >
-                  📈 จดมิเตอร์
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTab('stock'); setMenuOpen(false) }}
-                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
-                >
-                  📦 เบิกของ
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setTab('account'); setMenuOpen(false) }}
-                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
-                >
-                  👤 บัญชี
-                </button>
+                {([
+                  { id: 'dashboard', label: '📊 แดชบอร์ด', key: 'mobileapp-dashboard' },
+                  { id: 'devices',   label: '💻 จัดการอุปกรณ์', key: 'mobileapp-devices' },
+                  { id: 'my-work',   label: '📋 งานของฉัน', key: 'mobileapp-my-work' },
+                  { id: 'repair',    label: '🔧 แจ้งซ่อม', key: 'mobileapp-repair' },
+                  { id: 'meter',     label: '📈 จดมิเตอร์', key: 'mobileapp-meter' },
+                  { id: 'stock',     label: '📦 เบิกของ', key: 'mobileapp-stock' },
+                  { id: 'account',   label: '👤 บัญชี', key: 'mobileapp-account' },
+                ] as const).filter((item) => {
+                  // 'account' is always visible (logout must remain)
+                  if (item.id === 'account') return true
+                  // Check config: if roleConfig has this key, use it; else default true
+                  if (roleConfig && typeof roleConfig[item.key] === 'boolean') return roleConfig[item.key]
+                  return true
+                }).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => { setTab(item.id); setMenuOpen(false) }}
+                    className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                  >
+                    {item.label}
+                  </button>
+                ))}
 
-                {/* Desktop pages — exit MobileShell */}
+                {/* Desktop pages — exit MobileShell, also filtered by config */}
                 <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase text-slate-400">เมนูเพิ่มเติม (desktop)</p>
                 {enabledSidebarPages
                   .filter((p) => !['mobile', 'itam-settings'].includes(p.page))
