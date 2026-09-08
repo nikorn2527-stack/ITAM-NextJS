@@ -41,6 +41,7 @@ model Device {
   warrantyEnd     String?
   vendor          String?
   contractNo      String?
+  installDate     String?
   uninstallDate   String?
   meterRequired   Boolean  @default(false)
   meterMode       String? // TOTAL | BW_COLOR

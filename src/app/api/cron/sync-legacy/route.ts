@@ -229,7 +229,7 @@ export async function GET(req: NextRequest) {
             meterRequired: parseBool(data.meterRequired),
             meterMode: data.meterMode || null,
             remark: data.remark || null,
-            updatedBy: 'sync-legacy',
+            updatedBy: data.updatedBy || 'sync-legacy',
             isDemo: false,
           }
           const rec = await tx.device.upsert({

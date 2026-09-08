@@ -19849,3 +19849,71 @@ Stage Summary:
   - MeterReading: `reading_id` mapped to `readingId` (the @unique nullable field), NOT to `id` (cuid PK).
   - DeviceTransfer: `Log_ID` mapped to `logId` (the @unique nullable field), NOT to `id` (cuid PK).
 - Pre-existing 3-entity behavior (Device/WorkOrder/StockItem) is preserved — the rewrite is a strict superset; existing audit log summaries + dry-run mode + CRON_SECRET auth all still work.
+
+---
+Task ID: SYNC-VERIFY-013
+Agent: sync-verify subagent
+Task: Verify all 12 sheet tab names + field mappings match LEGACY-FIELD-MAPPING-REFERENCE-008.md
+
+Work Log:
+- Read /home/z/my-project/qa-reports/LEGACY-FIELD-MAPPING-REFERENCE-008.md (source-of-truth doc, 12 entities)
+- Read /home/z/my-project/src/lib/csv-field-mapping.ts (914 lines: FIELD_MAPPINGS, STATUS_MAPPINGS, TEMPLATE_HEADERS, SOURCE_SHEET_REGISTRY, helpers)
+- Read /home/z/my-project/src/app/api/cron/sync-legacy/route.ts (1049 lines, full sync flow for all 12 entities)
+- Cross-referenced /home/z/my-project/prisma/schema.prisma to confirm actual Prisma model/field existence for: Device, MeterReading, DeviceTransfer, User, AppSetting, MasterItem, SiteAttribute, Site, SiteRate, StockItem, StockTransaction, PurchaseOrder, PurchaseOrderItem, WorkOrder
+- Verified each entity's: (a) sheet tab name in fetchSheet() call, (b) every column listed in the doc's detail table has a corresponding entry in FIELD_MAPPINGS OR is handled inline in the route, (c) no missing columns, (d) no undocumented extra columns in FIELD_MAPPINGS (extra columns only in TEMPLATE_HEADERS are OK per doc's "unmapped → warn" policy)
+- Verified the 5 specific special cases the prompt asked for:
+  1. WO sheet name is "Data" (not "All_WO") — PASS (route.ts line 649 `fetchSheet('services', 'Data')`, comment line 645 explicitly notes the fix)
+  2. WorkOrder status mapping (5 emoji-Thai → enum) — PASS (csv-field-mapping.ts lines 284-288, all 5 emoji mappings match doc exactly)
+  3. Master_Items GroupName AND ParentRef both map to parentRef — PASS (csv-field-mapping.ts lines 134-135)
+  4. Site_Attributes LineOA AND Hotline both map to phone — PASS in csv-field-mapping.ts (lines 147-148) BUT FAIL in sync-legacy route (route BYPASSES FIELD_MAPPINGS.site and writes to SiteAttribute model with LineOA/Hotline kept as separate fields, NOT merged into phone)
+  5. StockOut WorkOrderNo supports multiple Thai column names — PASS (csv-field-mapping.ts lines 207-209 map เลขที่งาน/เลขงาน/หมายเลขงาน all to workOrderNo; route uses data.workOrderNo at line 986)
+
+Stage Summary:
+- Entities verified: 12 / 12
+- Entities with PASS (sheet name + all doc-listed columns correctly mapped AND used in route): 9 / 12
+  → All_Devices (with P0 installDate caveat below), Meter_Readings, Location_History, User_Permissions, App_Settings, Master_Items, Products, StockIn, StockOut, Data/WorkOrders
+  Actually: 10 PASS with caveats + 2 explicit FAIL (Site_Attributes + PurchaseOrders)
+- Mismatches found: 9 (1 P0, 3 P1, 4 P2, 1 P3 doc-only)
+- Read-only verification — no source files modified.
+
+MISMATCHES FOUND (severity-ranked):
+
+[P0 — data corruption / sync will crash]
+1. Device entity (All_Devices): route.ts line 224 writes `installDate: data.installDate || null` to the Device payload, but the current schema.prisma Device model (line 17-115) does NOT have an `installDate` field — only `uninstallDate` (line 44). The previous schema-backup-before-fix.prisma (line 39) had `installDate @map("install_date")` but it was removed in the current schema. This means `tx.device.upsert({ create: payload, update: clean(payload) })` will throw a PrismaClientValidationError at runtime ("Unknown field `installDate`"), failing the entire device batch. The csv mapping `install_date: 'installDate'` (csv-field-mapping.ts line 40) is consistent with the doc but the route cannot honor it because the field no longer exists on the model. Either: (a) re-add `installDate String?` to the Device model, or (b) drop the installDate line from the route payload. Affects: every device sync run.
+
+[P1 — data loss / wrong data]
+2. Device entity (All_Devices): route.ts line 232 hardcodes `updatedBy: 'sync-legacy'` instead of using the legacy `updated_by` value captured in `data.updatedBy` (csv mapping line 39: `updated_by: 'updatedBy'`). The Prisma Device model DOES have an `updatedBy` field (schema line 59). The doc says `updated_by → updatedBy`. So the legacy "who last updated this device" info is silently overwritten with the literal string "sync-legacy" on every sync. Either intentional (track sync provenance) or bug — needs clarification. Either way, the doc/code are out of sync.
+3. Site_Attributes entity: route.ts lines 561-641 explicitly BYPASSES `FIELD_MAPPINGS.site` (see comment line 564-567 "We bypass FIELD_MAPPINGS.site here because the SiteAttribute PascalCase fields match the sheet headers 1:1"). The route writes to the `SiteAttribute` model (schema.prisma line 506) with separate LineOA + Hotline fields preserved, NOT merged into `phone` on the `Site` model as the doc claims. The doc says target is "Site + SiteRate" with LineOA/Hotline merged → phone, but actual code writes to "SiteAttribute + SiteRate" with LineOA/Hotline kept separate. Both models exist in schema.prisma (Site at line 542, SiteAttribute at line 506) but only SiteAttribute is written. The Site model is described in the schema as "legacy, ใช้คู่กับ SiteAttribute" — so the code's choice is reasonable, but the doc is misleading. Either: (a) update the doc to say "Site_Attributes → SiteAttribute + SiteRate" with separate LineOA/Hotline fields, or (b) change the route to also write to Site with merged phone.
+4. PurchaseOrders entity: route.ts lines 799-815 only writes the PurchaseOrder header fields (poNumber, orderDate, supplier, status, totalValue, createdBy). The line-item fields ProductCode/QuantityOrdered/UnitPrice/QuantityReceived (csv-field-mapping.ts lines 216, 218, 220, 224) are correctly mapped but NOT used in the route payload — they belong to the separate `PurchaseOrderItem` model (schema.prisma line 822) which is NEVER synced. This means all PO line items are silently dropped during sync. The route comment (lines 774-776) acknowledges this ("Fields quantityOrdered/unitPrice/quantityReceived/stockItemId live on PurchaseOrderItem, not PurchaseOrder — skipped per task constraint"). The doc lists these 4 fields as PurchaseOrder columns that should be mapped, so there's a doc/code divergence: either the doc should note that these go to PurchaseOrderItem (and the route should be extended to sync PurchaseOrderItem rows), or this is intentional scope-cutting that the doc doesn't reflect.
+
+[P2 — minor data loss / doc inconsistency]
+5. StockOut entity: route.ts payload (lines 975-990) drops 3 columns that ARE mapped in FIELD_MAPPINGS AND exist on the StockTransaction Prisma model (schema.prisma lines 739-744):
+   - `processed_flag → processedFlag` (csv line 196) — model has `processedFlag` (line 740), but NOT in route payload
+   - `reason_reject → rejectReason` (csv line 198) — model has `rejectReason` (line 744), but NOT in route payload
+   - `source_key → sourceKey` (csv line 199) — model has `sourceKey` (line 739), but NOT in route payload
+   These are also NOT in the doc's StockOut detail table — they're extra mappings in code. Currently the data is parsed (so no "unmapped" warning fires) but silently discarded at write time. Either add them to the payload or remove them from FIELD_MAPPINGS.
+6. Master_Items entity: csv-field-mapping.ts maps BOTH `DisplayLabel → displayLabel` (line 136) AND `DepartmentCode → displayLabel` (line 140). The mapCsvRow helper (line 601) silently keeps only the first-encountered column's value. Doc says DepartmentCode is "เก็บเป็นข้อมูลเสริมใน displayLabel" (stored as supplementary info in displayLabel), suggesting it should be combined/appended — but the actual behavior is winner-takes-all with the other column silently dropped. Not a crash, but the doc's "supplementary info" claim is misleading.
+7. StockIn entity: doc says `PurchaseOrderNo → purchaseOrderId` with note "**ต้อง lookup** ผ่าน poNumber" (must lookup via poNumber). The csv mapping (line 179) correctly maps to intermediate key `purchaseOrderId`. The route (line 901) renames to `purchaseOrderNo: data.purchaseOrderId || null` and stores the raw string — NO lookup is performed. The Prisma StockTransaction model has `purchaseOrderNo String?` (schema line 735) but no FK to PurchaseOrder. So the route is correct given the schema, but the doc's "must lookup" claim is misleading. Either doc should drop the lookup claim, or schema/route should add a FK.
+8. StockItem (Products) entity: doc says `LastUpdated → updatedAt` (line 150 of doc). csv mapping (line 162) maps to intermediate key `updatedAt`. route.ts line 747 writes `lastUpdated: data.updatedAt || null`. The Prisma StockItem model has `lastUpdated String?` (schema line 615), NOT `updatedAt` (which also exists at line 617 as the auto-managed `@updatedAt` field). So the data IS preserved but the doc's field name is wrong — should be `LastUpdated → lastUpdated`. Minor doc fix needed.
+
+[P3 — doc-only inconsistencies, not code bugs]
+9. Several doc summary tables list column counts that don't match their own detail tables:
+   - Meter_Readings: summary says 21 cols, detail lists 17 (missing: location_at_reading, event_type, event_id, department_code_at_reading — these exist in TEMPLATE_HEADERS['itam-meter'] but not in FIELD_MAPPINGS.meterReading nor the doc detail)
+   - Location_History: summary says 21 cols, detail lists 17 (missing: Action, From_Status, To_Status, From_AssetSiteCode, To_AssetSiteCode, Meter_Reading_ID — exist in TEMPLATE_HEADERS but not in FIELD_MAPPINGS nor doc detail)
+   - User_Permissions: summary says 11 cols, detail lists 10 (missing: PasswordSalt — exists in TEMPLATE_HEADERS but not in FIELD_MAPPINGS nor doc detail)
+   - StockIn: summary says 12 cols, detail lists 10 (missing: Unit, TotalValue — both mapped to `_skip` in FIELD_MAPPINGS)
+   - StockOut: summary says 15 cols, detail lists 10 (missing: ProductName, Unit, processed_flag, line_no, reason_reject, source_key — partly mapped, partly `_skip`)
+   - PurchaseOrders: summary says 13 cols, detail lists 10 (missing: ProductName, Unit, QuantityRemaining — all mapped to `_skip`)
+   These are all doc-internal inconsistencies between the summary count and the detail table. The code's TEMPLATE_HEADERS matches the doc summary counts; FIELD_MAPPINGS matches the doc detail tables. Not a code bug, but the doc should be reconciled.
+
+ALSO NOTED (not bugs, just observations):
+- csv-field-mapping.ts has extra alias mappings not in the doc but harmless:
+  - StockOut: extra English alt names for WorkOrderNo (legacy_job_no, legacy_job_number, job_no, job_number, workOrderNo) → all to workOrderNo
+  - WorkOrder: extra alt name `request_id → requestId` (line 250) in addition to `id → requestId` (line 234)
+  - WorkOrder STATUS_MAPPINGS has extra loose matches (DONE, CLOSED, CANCEL, English fallbacks) — doc explicitly allows this: "(ระบบรองรับด้วยว่าถ้าส่งมาเป็นข้อความไทยไม่มี emoji หรือเป็นภาษาอังกฤษอยู่แล้ว ก็แปลงถูกต้องเช่นกัน)"
+- App_Settings: `Description → remark` mapping exists but route drops it (AppSetting model has no remark field — schema line 1125-1134 confirms: only id, key, value, isDemo, updatedAt, createdAt). Route comment (line 458-459) explicitly explains this. Doc is technically accurate to the mapping but doesn't note the model constraint.
+- App_Settings: `UpdatedAt → updatedAt` mapping exists but route doesn't write it (Prisma @updatedAt auto-managed). Not a bug.
+- WorkOrder: `created_at → createdAt` and `updated_at → updatedAt` mappings exist but route doesn't write them (Prisma @createdAt/@updatedAt auto-managed). Not a bug.
+- Site_Attributes: route defaults PaperRateBW to 0.5 and PaperRateColor to 2.0 if parsing fails (lines 594-596). Schema confirms these are the model defaults (lines 512-513). Not in doc but reasonable.
+
+VERDICT: NEEDS FIXES. Sheet tab names: 12/12 ✓. Field mappings: 10/12 essentially correct, 2/12 have significant issues (Site_Attributes model divergence, PurchaseOrders line-item data loss). 1 P0 (Device installDate) will crash the sync on first run. 3 P1s lose or misroute data. Recommend: fix P0 first (drop installDate from Device payload OR re-add to schema), then resolve P1s, then doc reconciliation for P2/P3.
