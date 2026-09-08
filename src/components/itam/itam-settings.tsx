@@ -1218,14 +1218,16 @@ function MobileNavConfigSection() {
   })
 
   React.useEffect(() => {
-    if (settingsData?.settings) {
-      const raw = settingsData.settings.find((s: { key: string }) => s.key === 'mobileNavConfig')
-      if (raw?.value) {
-        try {
-          setConfig(JSON.parse(raw.value))
-        } catch {
-          setConfig({})
-        }
+    // Guard: settingsData.settings may be undefined or not an array
+    // (e.g. API returned an error object, or the auth token was missing)
+    const settings = settingsData?.settings
+    if (!Array.isArray(settings)) return
+    const raw = settings.find((s: { key: string }) => s.key === 'mobileNavConfig')
+    if (raw?.value) {
+      try {
+        setConfig(JSON.parse(raw.value))
+      } catch {
+        setConfig({})
       }
     }
   }, [settingsData])
