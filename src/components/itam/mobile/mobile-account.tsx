@@ -95,20 +95,20 @@ export function MobileAccount() {
             <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-200">
               ชื่อเล่น (เช่น &quot;iPhone ของผม&quot;)
             </label>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row">
               <input
                 type="text"
                 placeholder="ตั้งชื่อเครื่องนี้"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 maxLength={50}
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-base focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white"
               />
               <button
                 type="button"
                 onClick={handleRegister}
                 disabled={loading}
-                className="flex h-12 items-center gap-2 rounded-lg bg-orange-500 px-4 text-white transition hover:bg-orange-600 disabled:opacity-50"
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-orange-500 px-4 text-white transition hover:bg-orange-600 disabled:opacity-50 sm:w-auto"
               >
                 {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
                 <span className="font-medium">ลงทะเบียน</span>
