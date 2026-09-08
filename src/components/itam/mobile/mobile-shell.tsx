@@ -38,8 +38,10 @@ import { MobileMyWork } from './mobile-my-work'
 import { MobileMeterReading } from './mobile-meter-reading'
 import { MobileStockOut } from './mobile-stock-out'
 import { MobileAccount } from './mobile-account'
+import { MobileDashboard } from './mobile-dashboard'
+import { MobileDevices } from './mobile-devices'
 
-export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock' | 'account'
+export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock' | 'account' | 'dashboard' | 'devices'
 
 interface NavItem {
   id: MobileTab
@@ -61,6 +63,8 @@ const HEADER_TITLE: Record<MobileTab, string> = {
   meter: 'จดมิเตอร์',
   stock: 'เบิกของ',
   account: 'บัญชีของฉัน',
+  dashboard: 'แดชบอร์ด',
+  devices: 'อุปกรณ์',
 }
 
 export function MobileShell() {
@@ -243,28 +247,74 @@ export function MobileShell() {
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto py-2">
-                {enabledSidebarPages.map((p) => (
+                {/* Mobile-native pages */}
+                <p className="px-4 pb-1 pt-2 text-[10px] font-semibold uppercase text-slate-400">เมนูมือถือ</p>
+                <button
+                  type="button"
+                  onClick={() => { setTab('dashboard'); setMenuOpen(false) }}
+                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                >
+                  📊 แดชบอร์ด
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTab('devices'); setMenuOpen(false) }}
+                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                >
+                  💻 จัดการอุปกรณ์
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTab('my-work'); setMenuOpen(false) }}
+                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                >
+                  📋 งานของฉัน
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTab('repair'); setMenuOpen(false) }}
+                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                >
+                  🔧 แจ้งซ่อม
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTab('meter'); setMenuOpen(false) }}
+                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                >
+                  📈 จดมิเตอร์
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTab('stock'); setMenuOpen(false) }}
+                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                >
+                  📦 เบิกของ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setTab('account'); setMenuOpen(false) }}
+                  className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                >
+                  👤 บัญชี
+                </button>
+
+                {/* Desktop pages — exit MobileShell */}
+                <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase text-slate-400">เมนูเพิ่มเติม (desktop)</p>
+                {enabledSidebarPages
+                  .filter((p) => !['mobile', 'itam-settings'].includes(p.page))
+                  .map((p) => (
                   <button
                     key={p.page}
                     type="button"
                     onClick={() => {
-                      // Exit MobileShell and navigate to the desktop page.
-                      // setActivePage alone doesn't work because MobileShell
-                      // is kept mounted via KeepAlivePage — we need to
-                      // switch the app-store's activePage so the desktop
-                      // layout takes over the viewport.
                       setActivePage(p.page)
                       setMenuOpen(false)
-                      // Force a navigation so home-client renders the
-                      // desktop page instead of staying in MobileShell.
-                      // The KeepAlivePage for 'mobile' will be hidden
-                      // (isActive('mobile') === false) and the target
-                      // desktop page will be shown.
                       setTimeout(() => {
                         window.dispatchEvent(new PopStateEvent('popstate'))
                       }, 0)
                     }}
-                    className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
+                    className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
                   >
                     {p.label}
                   </button>
@@ -302,6 +352,12 @@ export function MobileShell() {
           </MobileKeepAliveTab>
           <MobileKeepAliveTab active={tab === 'account'}>
             <MobileAccount />
+          </MobileKeepAliveTab>
+          <MobileKeepAliveTab active={tab === 'dashboard'}>
+            <MobileDashboard />
+          </MobileKeepAliveTab>
+          <MobileKeepAliveTab active={tab === 'devices'}>
+            <MobileDevices />
           </MobileKeepAliveTab>
         </main>
       </div>
