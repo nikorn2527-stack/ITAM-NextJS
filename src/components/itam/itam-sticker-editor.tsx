@@ -246,7 +246,7 @@ function WorkspaceElement({
           SAMPLE_DEVICE,
           settings ?? {
             companyName: '',
-            hospitalName: '',
+            orgName: '',
             hotline: '',
             lineOALink: '',
             footerNote: '',
@@ -1600,10 +1600,10 @@ export function ItamStickerEditor() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">ชื่อองค์กร {'({{hospitalName}})'}</Label>
+                <Label className="text-xs">ชื่อองค์กร {'({{orgName}})'}</Label>
                 <Input
-                  value={settingsForm.hospitalName}
-                  onChange={(e) => setSettingsForm({ ...settingsForm, hospitalName: e.target.value })}
+                  value={settingsForm.orgName}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, orgName: e.target.value })}
                   className="text-xs dark:bg-slate-800 dark:border-slate-700"
                 />
               </div>

@@ -66,7 +66,22 @@ export interface StickerTemplate {
 
 export interface StickerSettings {
   companyName: string
-  hospitalName: string
+  /**
+   * Generic org-name field shown on the sticker header (right side).
+   * Renamed from `hospitalName` → `orgName` in HOSPITALNAME-TERMINOLOGY-FIX-019
+   * so the field name no longer implies a hospital (it stores any org name).
+   * DB storage key is now `stickerOrgName` (with backward-compat read of
+   * the old `stickerHospitalName` key — see sticker-settings-store.ts).
+   */
+  orgName: string
+  /**
+   * Terminology used for assets on sticker labels (e.g. "ครุภัณฑ์" / "ทรัพย์สิน").
+   * Used by the `{{AssetTerminology}}` template variable so default sticker
+   * templates can read it instead of hardcoding "ครุภัณฑ์". Populated at
+   * runtime from OrganizationProfile.assetTerminology by the
+   * `/api/itam/sticker/settings` GET route.
+   */
+  assetTerminology?: string
   footerNote: string
   hotline: string
   lineOALink: string
@@ -74,7 +89,8 @@ export interface StickerSettings {
 
 export const DEFAULT_STICKER_SETTINGS: StickerSettings = {
   companyName: 'Your Organization',
-  hospitalName: 'ชื่อองค์กร',  // generic — user sets their own name in Settings
+  orgName: 'ชื่อองค์กร',  // generic — user sets their own name in Settings
+  assetTerminology: 'ครุภัณฑ์',
   footerNote: 'ห้ามนำอุปกรณ์ออกจากพื้นที่ — กรุณาติดต่อ IT หากพบปัญหา',
   hotline: '000-000-0000',
   lineOALink: '@your-org',
@@ -83,7 +99,8 @@ export const DEFAULT_STICKER_SETTINGS: StickerSettings = {
 // ─── 19 supported variables (mirror of Apps Script Section 6 + {{QrUrl}}) ─
 export const STICKER_VARIABLES: string[] = [
   '{{companyName}}',
-  '{{hospitalName}}',
+  '{{orgName}}',
+  '{{AssetTerminology}}',
   '{{AssetNo}}',
   '{{AssetSiteCode}}',
   '{{Serial}}',
@@ -198,6 +215,59 @@ export interface StickerDeviceData {
   licenses?: StickerLicenseData[]
 }
 
+/**
+ * Convert a raw device record (from DB or API) into a StickerDeviceData
+ * object suitable for sticker template rendering.
+ *
+ * This is the SINGLE SOURCE OF TRUTH for field mapping. Previously,
+ * there were 3 separate implementations:
+ *   1. sticker-print-dialog.tsx deviceToStickerData() — 19 fields ✅
+ *   2. api/itam/sticker/render/route.ts — 14 fields ❌ (missing 9)
+ *   3. api/itam/sticker/bulk-render/route.ts — 14 fields ❌ (missing 9)
+ *
+ * The API routes were missing: room, status, currentAssignee, warrantyEnd,
+ * purchaseDate, purchasePrice, ip, mac, licenses — causing printed stickers
+ * to show blank where the preview showed data (because the dialog used #1
+ * but print used #2/#3).
+ *
+ * Now all 3 callers use this shared function, so preview and print always
+ * match.
+ *
+ * @param d — any object with device fields (Prisma Device row or API response)
+ * @param licenses — optional array of license data for {{LicenseList}} etc.
+ */
+export function deviceToStickerData<T extends Record<string, unknown>>(
+  d: T,
+  licenses: StickerLicenseData[] = [],
+): StickerDeviceData {
+  return {
+    id: (d.id as string) ?? undefined,
+    assetCode: (d.assetCode as string) ?? '',
+    assetSiteCode: (d.assetSiteCode as string) ?? null,
+    serialNumber: (d.serialNumber as string) ?? null,
+    type: (d.type as string) ?? null,
+    brand: (d.brand as string) ?? null,
+    model: (d.model as string) ?? null,
+    building: (d.building as string) ?? null,
+    floor: (d.floor as string) ?? null,
+    room: (d.room as string) ?? null,
+    department: (d.department as string) ?? null,
+    departmentCode: (d.departmentCode as string) ?? null,
+    location: (d.location as string) ?? null,
+    site: (d.site as string) ?? null,
+    contractNo: (d.contractNo as string) ?? null,
+    vendor: (d.vendor as string) ?? null,
+    status: (d.status as string) ?? null,
+    currentAssignee: (d.currentAssignee as string) ?? null,
+    warrantyEnd: (d.warrantyEnd as string) ?? null,
+    purchaseDate: (d.purchaseDate as string) ?? null,
+    purchasePrice: (d.purchasePrice as string | number | null) ?? null,
+    ip: (d.ip as string) ?? null,
+    mac: (d.mac as string) ?? null,
+    licenses,
+  }
+}
+
 // ─── ID generator ────────────────────────────────────────────────────────
 let _seq = 0
 export function genElementId(prefix = 'el'): string {
@@ -239,12 +309,12 @@ export function buildDefaultTemplate(canvas?: StickerCanvas): StickerTemplate {
       fontSize: 9, fontWeight: 800, color: '#ffffff', align: 'left',
       zIndex: 1,
     },
-    // 3 — hospitalName (right of header)
+    // 3 — orgName (right of header) — generic org name (renamed from hospitalName)
     {
       id: genElementId(),
       type: 'text',
       x: W - 33.2 * u, y: 0.6 * u, width: 32 * u, height: 3.8 * u,
-      content: '{{hospitalName}}',
+      content: '{{orgName}}',
       fontSize: 6.5, fontWeight: 600, color: '#ffffff', align: 'right',
       zIndex: 1,
     },
@@ -415,7 +485,7 @@ export function buildMinimalTemplate(canvas: StickerCanvas): StickerTemplate {
     {
       id: genElementId(), type: 'text',
       x: startX, y: headerH + H * 0.04 + rowH * 1.5, width: leftW, height: rowH,
-      content: '{{hospitalName}}', fontSize: Math.max(6, H * 0.08),
+      content: '{{orgName}}', fontSize: Math.max(6, H * 0.08),
       fontWeight: 600, color: '#1e293b', align: 'left', zIndex: 1,
     },
     {
@@ -521,7 +591,7 @@ export function buildCompactTemplate(canvas: StickerCanvas): StickerTemplate {
   ]
   y += rowH * 1.5 + 0.5
   elements.push(
-    nextRow('{{hospitalName}}', Math.max(6, H * 0.08), 600, '#1e293b'),
+    nextRow('{{orgName}}', Math.max(6, H * 0.08), 600, '#1e293b'),
     nextRow('{{Brand}} {{Model}}', Math.max(6, H * 0.08), 500, '#475569'),
     nextRow('{{Type}} · SN: {{Serial}}', Math.max(5.5, H * 0.07), 500, '#64748b'),
     nextRow('{{Site}} / อาคาร {{Building}} / ชั้น {{Floor}}', Math.max(5.5, H * 0.07), 500, '#475569'),
@@ -579,7 +649,7 @@ export function buildDetailedTemplate(canvas: StickerCanvas): StickerTemplate {
     {
       id: genElementId(), type: 'text',
       x: W - qrX, y: headerH * 0.2, width: qrX - W * 0.025, height: headerH * 0.6,
-      content: '{{hospitalName}}', fontSize: Math.max(6, headerH * 0.5),
+      content: '{{orgName}}', fontSize: Math.max(6, headerH * 0.5),
       fontWeight: 600, color: '#ffffff', align: 'right', zIndex: 1,
     },
     {
@@ -742,7 +812,8 @@ export function substituteVariables(
 ): string {
   const v: Record<string, string> = {
     '{{companyName}}': settings.companyName || '',
-    '{{hospitalName}}': settings.hospitalName || '',
+    '{{orgName}}': settings.orgName || '',
+    '{{AssetTerminology}}': settings.assetTerminology || 'ครุภัณฑ์',
     '{{AssetNo}}': device?.assetCode || '',
     '{{AssetSiteCode}}': device?.assetSiteCode || '',
     '{{Serial}}': device?.serialNumber || '',

@@ -10,6 +10,7 @@ import {
 } from '@/lib/sticker-settings-store'
 import {
   renderStickerFromTemplate,
+  deviceToStickerData,
   calculateGridColumns,
   preGenerateQrCodes,
   substituteVariables,
@@ -83,14 +84,8 @@ export async function POST(req: NextRequest) {
         // APPENDIX-D: also pass `id` so {{QrUrl}} generates the Smart QR URL.
         // See render/route.ts for the full comment — the wrong names caused
         // blank substitutions in printed stickers.
-        const deviceData: StickerDeviceData = {
-          id: d.id,
-          assetCode: d.assetCode, assetSiteCode: d.assetSiteCode, serialNumber: d.serialNumber,
-          type: d.type, brand: d.brand, model: d.model,
-          building: d.building, floor: d.floor, department: d.department,
-          departmentCode: d.departmentCode, location: d.location, site: d.site,
-          contractNo: d.contractNo, vendor: d.vendor,
-        }
+        // Use shared deviceToStickerData (single source of truth — all 19 fields)
+        const deviceData = deviceToStickerData(d as Record<string, unknown>)
         const data = substituteVariables(el.content ?? '', deviceData, settings) || d.assetCode
         if (data) uniqueDataKeys.add(data)
       }
@@ -119,14 +114,8 @@ export async function POST(req: NextRequest) {
         // Skip missing devices (or ones outside user's site access)
         continue
       }
-      const deviceData: StickerDeviceData = {
-        id: d.id,
-        assetCode: d.assetCode, assetSiteCode: d.assetSiteCode, serialNumber: d.serialNumber,
-        type: d.type, brand: d.brand, model: d.model,
-        building: d.building, floor: d.floor, department: d.department,
-        departmentCode: d.departmentCode, location: d.location, site: d.site,
-        contractNo: d.contractNo, vendor: d.vendor,
-      }
+      // Use shared deviceToStickerData (single source of truth — all 19 fields)
+      const deviceData = deviceToStickerData(d as Record<string, unknown>)
       const { html } = await renderStickerFromTemplate(deviceData, template, settings, {
         qrCache: sharedQrCache,
       })

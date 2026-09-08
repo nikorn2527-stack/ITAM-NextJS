@@ -103,11 +103,15 @@ export const STICKER_TEMPLATE_STANDARD = {
         zIndex: 5,
       },
       // Type/Category
+      // Uses {{AssetTerminology}} so the term adapts to the org profile
+      // (e.g. "ครุภัณฑ์" for gov, "ทรัพย์สิน" for private) instead of being
+      // hardcoded to "ครุภัณฑ์". The variable is resolved by
+      // substituteVariables() using settings.assetTerminology.
       {
         id: 'el-type',
         type: 'text',
         x: 16, y: 18, width: 30, height: 3,
-        content: 'ครุภัณฑ์: {{type}}',
+        content: '{{AssetTerminology}}: {{type}}',
         fontSize: 5, fontWeight: 400, color: '#475569', align: 'left',
         zIndex: 6,
       },

@@ -1501,7 +1501,7 @@ export function DevicesPage() {
   //   2. First saved template if no `activeId` is recorded
   //   3. buildDefaultTemplate() if the user has no saved templates at all
   //
-  // Settings (companyName / hospitalName / hotline / footerNote / lineOALink)
+  // Settings (companyName / orgName / hotline / footerNote / lineOALink)
   // are fetched from /api/itam/sticker/settings so the single-print output
   // matches what the dialog would produce. Falls back to the global org
   // name + DEFAULT_STICKER_SETTINGS when the API is unavailable.
@@ -1532,7 +1532,7 @@ export function DevicesPage() {
       let stickerSettings: StickerSettings = {
         ...DEFAULT_STICKER_SETTINGS,
         companyName: settings?.orgName?.trim() || DEFAULT_STICKER_SETTINGS.companyName,
-        hospitalName: settings?.orgName?.trim() || DEFAULT_STICKER_SETTINGS.hospitalName,
+        orgName: settings?.orgName?.trim() || DEFAULT_STICKER_SETTINGS.orgName,
       }
       if (settingsRes && settingsRes.ok) {
         const j = (await settingsRes.json()) as { settings?: StickerSettings }
@@ -1545,10 +1545,10 @@ export function DevicesPage() {
               (j.settings.companyName ?? '').trim() ||
               settings?.orgName?.trim() ||
               DEFAULT_STICKER_SETTINGS.companyName,
-            hospitalName:
-              (j.settings.hospitalName ?? '').trim() ||
+            orgName:
+              (j.settings.orgName ?? '').trim() ||
               settings?.orgName?.trim() ||
-              DEFAULT_STICKER_SETTINGS.hospitalName,
+              DEFAULT_STICKER_SETTINGS.orgName,
           }
         }
       }

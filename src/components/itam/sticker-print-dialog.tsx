@@ -75,6 +75,7 @@ import {
   renderStickerFromTemplate,
   buildPrintDocument,
   calculateGridColumns,
+  deviceToStickerData,
   type StickerCanvas,
   type StickerDeviceData,
   type StickerElement,
@@ -156,34 +157,8 @@ function printViaIframe(html: string) {
 }
 
 // ─── Device → StickerDeviceData ──────────────────────────────────────────
-function deviceToStickerData(d: Device): StickerDeviceData {
-  return {
-    id: d.id,
-    assetCode: d.assetCode,
-    assetSiteCode: d.assetSiteCode ?? null,
-    serialNumber: d.serialNumber ?? null,
-    type: d.type ?? null,
-    brand: d.brand ?? null,
-    model: d.model ?? null,
-    building: d.building ?? null,
-    floor: d.floor ?? null,
-    room: d.room ?? null,
-    department: d.department ?? null,
-    departmentCode: d.departmentCode ?? null,
-    location: d.location ?? null,
-    site: d.site ?? null,
-    contractNo: d.contractNo ?? null,
-    vendor: d.vendor ?? null,
-    status: d.status ?? null,
-    currentAssignee: d.currentAssignee ?? null,
-    warrantyEnd: d.warrantyEnd ?? null,
-    purchaseDate: d.purchaseDate ?? null,
-    purchasePrice: d.purchasePrice ?? null,
-    ip: d.ip ?? null,
-    mac: d.mac ?? null,
-    licenses: [],
-  }
-}
+// NOTE: deviceToStickerData is now imported from @/lib/sticker-template
+// (single source of truth — preview and print use the same function).
 
 // ─── Build a per-device QR cache honoring `qrContentFor` overrides ────────
 // The cache key matches what `renderElement` would look up (i.e. the
@@ -252,13 +227,13 @@ export function StickerPrintDialog({
   const activeSavedId = tplData?.activeId ?? null
 
   // ── Sticker-specific settings (STICKER-SYSTEM-REWRITE) ───────────────────
-  // Fetch sticker-specific companyName / hospitalName / hotline /
+  // Fetch sticker-specific companyName / orgName / hotline /
   // footerNote / lineOALink from /api/itam/sticker/settings (which reads the
-  // AppSetting rows: stickerCompanyName, stickerHospitalName, stickerFooterNote,
+  // AppSetting rows: stickerCompanyName, stickerOrgName, stickerFooterNote,
   // stickerHotline, stickerLineOALink).
   //
   // Why: previously the dialog used the GLOBAL org name for BOTH
-  // companyName AND hospitalName, so a user who customized their sticker
+  // companyName AND orgName, so a user who customized their sticker
   // header / hotline / footer in the editor saw those edits silently dropped
   // in the dialog's preview + print output. This matches what
   // `printSingleSticker` in devices-page.tsx already does.
@@ -444,7 +419,7 @@ export function StickerPrintDialog({
   )
 
   // STICKER-SYSTEM-REWRITE: prefer sticker-specific server settings
-  // (companyName / hospitalName / hotline / footerNote / lineOALink) over
+  // (companyName / orgName / hotline / footerNote / lineOALink) over
   // the global org name. Empty server values fall back to the global org
   // name (so we never print a blank header), then to the bundled defaults.
   const stickerSettings = stickerSettingsData?.settings
@@ -460,10 +435,10 @@ export function StickerPrintDialog({
         stickerSettings?.companyName?.trim() ||
         orgName?.trim() ||
         DEFAULT_STICKER_SETTINGS.companyName,
-      hospitalName:
-        stickerSettings?.hospitalName?.trim() ||
+      orgName:
+        stickerSettings?.orgName?.trim() ||
         orgName?.trim() ||
-        DEFAULT_STICKER_SETTINGS.hospitalName,
+        DEFAULT_STICKER_SETTINGS.orgName,
       footerNote:
         stickerSettings?.footerNote?.trim() ||
         DEFAULT_STICKER_SETTINGS.footerNote,

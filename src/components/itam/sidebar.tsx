@@ -51,7 +51,7 @@ const NAV_GROUPS: NavGroupDef[] = [
   {
     title: 'การทำงาน',
     items: [
-      { page: 'itam-devices', icon: Monitor, label: 'จัดการอุปกรณ์', desc: 'ครุภัณฑ์ทั้งหมด', module: 'devices' },
+      { page: 'itam-devices', icon: Monitor, label: 'จัดการอุปกรณ์', desc: '{{assetTerminology}}ทั้งหมด', module: 'devices' },
       { page: 'itam-meter-keyboard', icon: TrendingUp, label: 'จดมิเตอร์', desc: 'จดมิเตอร์ + ประวัติ', module: 'meters' },
       { page: 'itam-work-orders', icon: Wrench, label: 'แจ้งซ่อม', desc: 'แจ้งซ่อม รับงาน ปิดงาน', module: 'work-orders' },
       { page: 'pm-schedules', icon: CalendarClock, label: 'ตาราง PM', desc: 'บำรุงรักษาตามรอบเวลา', module: 'work-orders' },
@@ -329,6 +329,20 @@ export function Sidebar() {
   const appName = orgProfile?.appName || 'ระบบจัดการสินทรัพย์'
   const appTagline = orgProfile?.appTagline || 'Asset Management System'
   const logoUrl = orgProfile?.logoUrl || ''
+  // Asset terminology (e.g. "ครุภัณฑ์" / "ทรัพย์สิน") from the org profile —
+  // used to substitute the `{{assetTerminology}}` placeholder in nav item
+  // `desc` strings (e.g. "{{assetTerminology}}ทั้งหมด"). Falls back to
+  // "ครุภัณฑ์" when the profile is unavailable.
+  const assetTerminologyLabel = orgProfile?.assetTerminology || 'ครุภัณฑ์'
+
+  // Resolve `{{assetTerminology}}` placeholder in a nav item desc, so the
+  // sidebar's "Manage Devices" tooltip adapts to the org's terminology
+  // (e.g. shows "ทรัพย์สินทั้งหมด" when the org uses "ทรัพย์สิน").
+  function resolveNavDesc(desc: string | undefined): string | undefined {
+    if (!desc) return desc
+    if (!desc.includes('{{assetTerminology}}')) return desc
+    return desc.split('{{assetTerminology}}').join(assetTerminologyLabel)
+  }
 
   // Live clock moved to a fixed TopBarClock at the top-right of the screen
   // (see src/app/page.tsx + src/components/itam/top-bar-clock.tsx). The
@@ -474,7 +488,7 @@ export function Sidebar() {
                   onClick={() => handleNav(item.page)}
                   aria-current={active ? 'page' : undefined}
                   aria-label={item.label}
-                  title={expanded ? undefined : `${item.label}${item.desc ? ' — ' + item.desc : ''}`}
+                  title={expanded ? undefined : `${item.label}${resolveNavDesc(item.desc) ? ' — ' + resolveNavDesc(item.desc) : ''}`}
                   className={cn(
                     'group relative flex w-full cursor-pointer items-center text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]',
                     expanded

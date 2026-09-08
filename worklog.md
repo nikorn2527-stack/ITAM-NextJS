@@ -19746,3 +19746,38 @@ Notes / Recommendations:
 1. The audit-log POST tightening (issue 3) means non-admin users will silently fail to log client-side actions via `/api/audit/log` (the fire-and-forget fetch in `sticker-print-dialog.tsx` and `devices-page.tsx` will get 403). This is intentional per the audit finding. If client-side audit logging for non-admins is still desired, consider: (a) creating a dedicated endpoint that only accepts a fixed allow-list of action/entity pairs (e.g. PRINT/Device only), or (b) moving the audit logging into the server-side mutation routes themselves.
 2. The import-meter-readings refactor changes per-row DB error behaviour: previously a single bad row was skipped and the rest imported; now any DB error aborts the entire transaction. This is the intended transactional integrity fix — partial imports that left torn state are no longer possible. If per-row resilience is needed, the next step would be a pre-flight duplicate check (query existing (deviceId, readingDate) pairs and skip them before the transaction).
 3. The PM site-authz fix uses `canAccessSite` for reads and `canAtSite(site, 'WO_CREATE')` for writes. Schedules with `site: null` (and no device) bypass the check — treated as "all sites" / global. If a stricter policy is desired (deny global schedules for non-superadmins), that's a follow-up.
+
+---
+Task ID: HOSPITALNAME-TERMINOLOGY-FIX-019
+Agent: hospitalname-terminology-fix subagent
+Task: Rename hospitalName → orgName + use assetTerminology instead of hardcoded ครุภัณฑ์
+
+Work Log:
+- Read worklog baseline + 7 files with hospitalName refs (grep-confirmed scope).
+- Confirmed `src/lib/org-profile.ts` has NO `hospitalName` field on OrgProfile — the task description's instruction to "rename field `hospitalName` → `orgName` in interface" in that file is invalid (OrgProfile uses `appName` as the generic org name; `assetTerminology` already exists and is read by sidebar / sticker settings). No changes were needed there. Documented this in the final report.
+- Renamed `hospitalName` → `orgName` in:
+  • `src/lib/sticker-template.ts` — `StickerSettings` interface (with backward-compat doc), `DEFAULT_STICKER_SETTINGS`, `STICKER_VARIABLES` (also added `{{AssetTerminology}}`), all 4 template builders (`buildDefaultTemplate`, `buildMinimalTemplate`, `buildCompactTemplate`, `buildDetailedTemplate`), and `substituteVariables` map.
+  • `src/lib/sticker-settings-store.ts` — `SETTING_KEYS.hospitalName` → `SETTING_KEYS.orgName = 'stickerOrgName'`; added `SETTING_KEYS.orgNameLegacy = 'stickerHospitalName'`. `getStickerSettings()` now reads `stickerOrgName` first, falling back to the legacy `stickerHospitalName` key — preserving existing user data without a DB migration. `saveStickerSettings()` always writes the new key (legacy key left as a stale fallback for older readers).
+  • `src/app/api/itam/sticker/settings/route.ts` — body mapping renamed to `orgName`; GET route now also fetches `getOrgProfile()` and injects `assetTerminology` into the returned `StickerSettings`; PUT route does the same after save so the response mirrors the GET shape.
+  • `src/components/itam/itam-sticker-editor.tsx` — fallback `StickerSettings` literal and `settingsForm.<field>` renamed; UI label updated from `ชื่อองค์กร ({{hospitalName}})` → `ชื่อองค์กร ({{orgName}})`.
+  • `src/components/itam/sticker-print-dialog.tsx` — `stickerSettings?.hospitalName` → `stickerSettings?.orgName` (both the read and the merged `StickerSettings` object).
+  • `src/components/itam/devices-page.tsx` — `printSingleSticker()` settings mapping renamed (both the initial fallback and the post-fetch merge).
+- Replaced hardcoded "ครุภัณฑ์":
+  • `src/lib/default-templates.ts` line 110 — changed `'ครุภัณฑ์: {{type}}'` → `'{{AssetTerminology}}: {{type}}'` with explanatory comment. The new `{{AssetTerminology}}` variable is resolved by `substituteVariables()` using `settings.assetTerminology` (with `'ครุภัณฑ์'` as the bundled default fallback).
+  • `src/components/itam/sidebar.tsx` line 54 — changed `desc: 'ครุภัณฑ์ทั้งหมด'` → `desc: '{{assetTerminology}}ทั้งหมด'`. Added `assetTerminologyLabel = orgProfile?.assetTerminology || 'ครุภัณฑ์'` and a `resolveNavDesc()` helper inside the component that substitutes `{{assetTerminology}}` at render time. The substitution is applied to the button's `title` attribute tooltip (the only render-time consumer of `item.desc`). The sidebar already fetches `orgProfile` via `useQuery(['org-profile'])`, so no new fetch was needed.
+- Added the new template variable to `STICKER_VARIABLES` and `substituteVariables` so sticker templates (custom + default) can use `{{AssetTerminology}}` going forward.
+- Verified with `bunx tsc --noEmit` → 0 TS errors. Verified with `bun run lint` → 1 error + 108 warnings; the 1 error is the pre-existing `@typescript-eslint/no-require-imports` rule in `src/app/api/auth/oauth/apple/callback/route.ts:99` (NOT touched by this task). The 108 warnings are all pre-existing `react-hooks/set-state-in-effect` + unused `eslint-disable` patterns; none are introduced by my changes (confirmed by inspecting lint output per modified file).
+
+Stage Summary:
+- Modified files:
+  1. src/lib/sticker-template.ts
+  2. src/lib/sticker-settings-store.ts
+  3. src/app/api/itam/sticker/settings/route.ts
+  4. src/components/itam/itam-sticker-editor.tsx
+  5. src/components/itam/sticker-print-dialog.tsx
+  6. src/components/itam/devices-page.tsx
+  7. src/lib/default-templates.ts
+  8. src/components/itam/sidebar.tsx
+- Backward compat: `stickerHospitalName` DB key still read at runtime (fallback when `stickerOrgName` is missing). No data migration required; existing user settings survive the rename.
+- TS status: 0 errors. Lint status: 1 pre-existing error (apple OAuth callback require-import) + 108 warnings (all pre-existing setState-in-effect patterns). No new lint issues introduced.
+- Note: Task description listed `src/lib/org-profile.ts` as a file to rename `hospitalName` → `orgName`, but that file has no `hospitalName` field (it uses `appName` for the org name + already has `assetTerminology`). No edit was needed there.

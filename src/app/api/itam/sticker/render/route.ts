@@ -9,6 +9,7 @@ import {
 } from '@/lib/sticker-settings-store'
 import {
   renderStickerFromTemplate,
+  deviceToStickerData,
   normalizeTemplate,
   type StickerDeviceData,
   type StickerTemplate,
@@ -67,23 +68,12 @@ export async function POST(req: NextRequest) {
     // {{AssetNo}} / {{Serial}} / {{Type}} substitutions blank in printed
     // stickers. (substituteVariables looks up `device.assetCode` etc., not
     // `device.assetNo`.)
-    const deviceData: StickerDeviceData = {
-      id: device.id,
-      assetCode: device.assetCode,
-      assetSiteCode: device.assetSiteCode,
-      serialNumber: device.serialNumber,
-      type: device.type,
-      brand: device.brand,
-      model: device.model,
-      building: device.building,
-      floor: device.floor,
-      department: device.department,
-      departmentCode: device.departmentCode,
-      location: device.location,
-      site: device.site,
-      contractNo: device.contractNo,
-      vendor: device.vendor,
-    }
+    // Use the shared deviceToStickerData function (single source of truth).
+    // Previously this route built its own partial object missing 9 fields
+    // (room, status, currentAssignee, warrantyEnd, purchaseDate, purchasePrice,
+    // ip, mac, licenses) — causing printed stickers to show blank for
+    // {{Status}}, {{WarrantyEnd}}, {{PurchasePrice}}, etc.
+    const deviceData = deviceToStickerData(device as Record<string, unknown>)
 
     const { html, qrDataUrls } = await renderStickerFromTemplate(deviceData, template, settings)
 
