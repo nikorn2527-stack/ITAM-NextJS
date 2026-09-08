@@ -253,7 +253,91 @@ export const STICKER_TEMPLATE_LARGE = {
   }),
 }
 
-// ── Work Order Template: "ใบแจ้งซ่อนมาตรฐาน" ──
+// ── Sticker Template 3: "สติกเกอร์ขนาดเล็ก" (Small Label — 50×30mm) ──
+// กระทัดรัด เหมาะสำหรับ: อุปกรณ์เล็ก เช่น คีย์บอร์ด, เมาส์, สแกนเนอร์
+export const STICKER_TEMPLATE_SMALL = {
+  name: 'สติกเกอร์ขนาดเล็ก (50×30mm)',
+  type: 'sticker',
+  category: 'label',
+  content: JSON.stringify({
+    canvas: { width: 50, height: 30, unit: 'mm' },
+    overflow: 'clip',
+    elements: [
+      { id: 'el-header', type: 'rect', x: 0, y: 0, width: 50, height: 4, background: '#f97316', zIndex: 0 },
+      { id: 'el-org', type: 'text', x: 1.5, y: 0.5, width: 47, height: 3, content: '{{orgName}}', fontSize: 7, fontWeight: 700, color: '#ffffff', align: 'center', zIndex: 1 },
+      { id: 'el-qr', type: 'qr', x: 2, y: 6, width: 10, height: 10, content: '{{QrUrl}}', zIndex: 1 },
+      { id: 'el-assetno-label', type: 'text', x: 14, y: 6, width: 34, height: 3, content: 'รหัส:', fontSize: 5, fontWeight: 600, color: '#64748b', align: 'left', zIndex: 1 },
+      { id: 'el-assetno', type: 'text', x: 14, y: 8.5, width: 34, height: 4, content: '{{assetCode}}', fontSize: 8, fontWeight: 800, color: '#1e293b', align: 'left', zIndex: 1 },
+      { id: 'el-brand-model', type: 'text', x: 14, y: 13, width: 34, height: 3, content: '{{brand}} {{model}}', fontSize: 6, color: '#475569', align: 'left', zIndex: 1 },
+      { id: 'el-serial', type: 'text', x: 14, y: 16, width: 34, height: 3, content: 'S/N: {{serialNumber}}', fontSize: 5.5, color: '#64748b', align: 'left', zIndex: 1 },
+      { id: 'el-site', type: 'text', x: 14, y: 19, width: 34, height: 3, content: '{{site}} · {{building}} {{floor}}', fontSize: 5, color: '#94a3b8', align: 'left', zIndex: 1 },
+      { id: 'el-footer', type: 'rect', x: 0, y: 27, width: 50, height: 3, background: '#f1f5f9', zIndex: 0 },
+      { id: 'el-date', type: 'text', x: 1, y: 27.3, width: 48, height: 2.5, content: '{{AssetTerminology}} · {{purchaseDate}}', fontSize: 4.5, color: '#94a3b8', align: 'center', zIndex: 1 },
+    ],
+  }),
+  isDefault: false,
+}
+
+// ── Sticker Template 4: "สติกเกอร์กลาง" (Medium Label — 70×40mm) ──
+// ขนาดกลาง พอดีสำหรับ: มอนิเตอร์, คอมพิวเตอร์, อุปกรณ์เครือข่าย
+export const STICKER_TEMPLATE_MEDIUM = {
+  name: 'สติกเกอร์กลาง (70×40mm)',
+  type: 'sticker',
+  category: 'label',
+  content: JSON.stringify({
+    canvas: { width: 70, height: 40, unit: 'mm' },
+    overflow: 'clip',
+    elements: [
+      { id: 'el-header', type: 'rect', x: 0, y: 0, width: 70, height: 5, background: '#f97316', zIndex: 0 },
+      { id: 'el-org', type: 'text', x: 1.5, y: 0.8, width: 40, height: 3.5, content: '{{orgName}}', fontSize: 8, fontWeight: 800, color: '#ffffff', align: 'left', zIndex: 1 },
+      { id: 'el-asset-term', type: 'text', x: 42, y: 0.8, width: 27, height: 3.5, content: '{{AssetTerminology}}', fontSize: 6, fontWeight: 600, color: '#ffffff', align: 'right', zIndex: 1 },
+      { id: 'el-qr', type: 'qr', x: 2, y: 7, width: 14, height: 14, content: '{{QrUrl}}', zIndex: 1 },
+      { id: 'el-assetno-label', type: 'text', x: 18, y: 7, width: 50, height: 3, content: 'รหัสทรัพย์สิน', fontSize: 5, fontWeight: 600, color: '#64748b', align: 'left', zIndex: 1 },
+      { id: 'el-assetno', type: 'text', x: 18, y: 9.5, width: 50, height: 5, content: '{{assetCode}}', fontSize: 10, fontWeight: 800, color: '#f97316', align: 'left', zIndex: 1 },
+      { id: 'el-brand-model', type: 'text', x: 18, y: 15, width: 50, height: 4, content: '{{brand}} {{model}}', fontSize: 7, fontWeight: 600, color: '#1e293b', align: 'left', zIndex: 1 },
+      { id: 'el-serial', type: 'text', x: 18, y: 19, width: 50, height: 3, content: 'S/N: {{serialNumber}}', fontSize: 6, color: '#475569', align: 'left', zIndex: 1 },
+      { id: 'el-site', type: 'text', x: 18, y: 22.5, width: 50, height: 3, content: '{{site}} · {{building}} ช.{{floor}}', fontSize: 6, color: '#64748b', align: 'left', zIndex: 1 },
+      { id: 'el-dept', type: 'text', x: 18, y: 25.5, width: 50, height: 3, content: '{{department}}', fontSize: 5.5, color: '#94a3b8', align: 'left', zIndex: 1 },
+      { id: 'el-warranty', type: 'text', x: 18, y: 28.5, width: 50, height: 3, content: 'รับประกัน: {{warrantyEnd}}', fontSize: 5.5, color: '#94a3b8', align: 'left', zIndex: 1 },
+      { id: 'el-footer', type: 'rect', x: 0, y: 36, width: 70, height: 4, background: '#f1f5f9', zIndex: 0 },
+      { id: 'el-date', type: 'text', x: 1, y: 36.5, width: 68, height: 3, content: '{{AssetTerminology}} · ซื้อ {{purchaseDate}}', fontSize: 5, color: '#94a3b8', align: 'center', zIndex: 1 },
+    ],
+  }),
+  isDefault: false,
+}
+
+// ── Sticker Template 5: "สติกเกอร์รายละเอียดครบ" (Detailed Label — 100×50mm) ──
+// แสดงข้อมูลครบทุกฟิลด์ เหมาะสำหรับ: เครื่องพิมพ์, เซิร์ฟเวอร์, อุปกรณ์มีค่า
+export const STICKER_TEMPLATE_DETAILED = {
+  name: 'สติกเกอร์รายละเอียดครบ (100×50mm)',
+  type: 'sticker',
+  category: 'label',
+  content: JSON.stringify({
+    canvas: { width: 100, height: 50, unit: 'mm' },
+    overflow: 'clip',
+    elements: [
+      { id: 'el-header', type: 'rect', x: 0, y: 0, width: 100, height: 6, background: '#f97316', zIndex: 0 },
+      { id: 'el-org', type: 'text', x: 2, y: 1, width: 60, height: 4, content: '{{orgName}}', fontSize: 9, fontWeight: 800, color: '#ffffff', align: 'left', zIndex: 1 },
+      { id: 'el-term', type: 'text', x: 62, y: 1, width: 37, height: 4, content: '{{AssetTerminology}}', fontSize: 7, fontWeight: 600, color: '#ffffff', align: 'right', zIndex: 1 },
+      { id: 'el-qr', type: 'qr', x: 3, y: 9, width: 18, height: 18, content: '{{QrUrl}}', zIndex: 1 },
+      { id: 'el-assetno-label', type: 'text', x: 24, y: 9, width: 73, height: 3, content: 'รหัสทรัพย์สิน', fontSize: 5, fontWeight: 600, color: '#64748b', align: 'left', zIndex: 1 },
+      { id: 'el-assetno', type: 'text', x: 24, y: 12, width: 73, height: 6, content: '{{assetCode}}', fontSize: 12, fontWeight: 800, color: '#f97316', align: 'left', zIndex: 1 },
+      { id: 'el-brand-model', type: 'text', x: 24, y: 19, width: 73, height: 4, content: '{{brand}} {{model}}', fontSize: 8, fontWeight: 600, color: '#1e293b', align: 'left', zIndex: 1 },
+      { id: 'el-serial', type: 'text', x: 24, y: 24, width: 73, height: 3, content: 'S/N: {{serialNumber}}', fontSize: 6.5, color: '#475569', align: 'left', zIndex: 1 },
+      { id: 'el-site', type: 'text', x: 3, y: 30, width: 45, height: 3, content: 'สาขา: {{site}}', fontSize: 6, color: '#475569', align: 'left', zIndex: 1 },
+      { id: 'el-loc', type: 'text', x: 3, y: 33, width: 45, height: 3, content: '{{building}} ช.{{floor}} {{location}}', fontSize: 6, color: '#475569', align: 'left', zIndex: 1 },
+      { id: 'el-dept', type: 'text', x: 3, y: 36, width: 45, height: 3, content: '{{department}} ({{departmentCode}})', fontSize: 5.5, color: '#94a3b8', align: 'left', zIndex: 1 },
+      { id: 'el-warranty', type: 'text', x: 52, y: 30, width: 45, height: 3, content: 'รับประกัน: {{warrantyEnd}}', fontSize: 6, color: '#475569', align: 'left', zIndex: 1 },
+      { id: 'el-purchase', type: 'text', x: 52, y: 33, width: 45, height: 3, content: 'ซื้อ: {{purchaseDate}} · ฿{{purchasePrice}}', fontSize: 6, color: '#475569', align: 'left', zIndex: 1 },
+      { id: 'el-ip', type: 'text', x: 52, y: 36, width: 45, height: 3, content: 'IP: {{ip}} · MAC: {{mac}}', fontSize: 5.5, color: '#94a3b8', align: 'left', zIndex: 1 },
+      { id: 'el-footer', type: 'rect', x: 0, y: 46, width: 100, height: 4, background: '#f1f5f9', zIndex: 0 },
+      { id: 'el-footer-text', type: 'text', x: 1, y: 46.5, width: 98, height: 3, content: '{{vendor}} · {{contractNo}}', fontSize: 5, color: '#94a3b8', align: 'center', zIndex: 1 },
+    ],
+  }),
+  isDefault: false,
+}
+
+// ── Work Order Template: "ใบแจ้งซ่อมมาตรฐาน" ──
 // HTML-based document template with {{variables}}
 export const WO_TEMPLATE_STANDARD = {
   name: 'ใบแจ้งซ่อนมาตรฐาน',
@@ -507,6 +591,9 @@ export const PDF_REPORT_TEMPLATE_STANDARD = {
 export const ALL_DEFAULT_TEMPLATES = [
   STICKER_TEMPLATE_STANDARD,
   STICKER_TEMPLATE_LARGE,
+  STICKER_TEMPLATE_SMALL,
+  STICKER_TEMPLATE_MEDIUM,
+  STICKER_TEMPLATE_DETAILED,
   WO_TEMPLATE_STANDARD,
   STOCK_OUT_TEMPLATE_STANDARD,
   STOCK_IN_TEMPLATE_STANDARD,
