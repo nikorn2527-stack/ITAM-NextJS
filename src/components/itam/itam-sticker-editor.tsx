@@ -27,7 +27,7 @@ import {
 import {
   Plus, Pencil, Copy, Star, Trash2, Save, Eye, Type, Image as ImageIcon,
   QrCode, Square, Loader2, Settings as SettingsIcon,
-  ZoomIn, ZoomOut, Maximize2,
+  ZoomIn, ZoomOut, Maximize2, Upload,
 } from 'lucide-react'
 import {
   PAPER_PRESETS,
@@ -357,6 +357,7 @@ export function ItamStickerEditor() {
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [draft, setDraft] = React.useState<StickerTemplate | null>(null)
   const [selectedElId, setSelectedElId] = React.useState<string | null>(null)
+  const imageFileRef = React.useRef<HTMLInputElement>(null)
   const [previewHtml, setPreviewHtml] = React.useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = React.useState(false)
   const [deleteTplId, setDeleteTplId] = React.useState<string | null>(null)
@@ -1472,13 +1473,70 @@ export function ItamStickerEditor() {
                   )}
                   {selectedEl.type === 'image' && (
                     <div className="space-y-1.5">
-                      <Label className="text-xs">URL รูปภาพ</Label>
+                      <Label className="text-xs">URL รูปภาพ หรืออัปโหลดไฟล์</Label>
                       <Input
                         value={selectedEl.source ?? ''}
                         onChange={(e) => updateSelectedElement({ source: e.target.value })}
-                        placeholder="https://..."
+                        placeholder="https://... หรือกดอัปโหลดด้านล่าง"
                         className="text-xs dark:bg-slate-800 dark:border-slate-700"
                       />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => imageFileRef.current?.click()}
+                          className="h-7 text-xs dark:border-slate-700 dark:bg-slate-800"
+                        >
+                          <Upload className="mr-1 h-3 w-3" />
+                          อัปโหลดรูป
+                        </Button>
+                        {selectedEl.source?.startsWith('data:image/') && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => updateSelectedElement({ source: '' })}
+                            className="h-7 text-xs text-red-500"
+                          >
+                            ลบรูป
+                          </Button>
+                        )}
+                        <input
+                          ref={imageFileRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (!file) return
+                            if (file.size > 2 * 1024 * 1024) { toast.error('รูปใหญ่เกินไป (สูงสุด 2MB)'); return }
+                            const reader = new FileReader()
+                            reader.onload = () => {
+                              const img = new Image()
+                              img.onload = () => {
+                                const canvas = document.createElement('canvas')
+                                const maxDim = 200
+                                let { width, height } = img
+                                if (width > height && width > maxDim) { height = Math.round((height * maxDim) / width); width = maxDim }
+                                else if (height > maxDim) { width = Math.round((width * maxDim) / height); height = maxDim }
+                                canvas.width = width; canvas.height = height
+                                const ctx = canvas.getContext('2d')
+                                if (!ctx) return
+                                ctx.drawImage(img, 0, 0, width, height)
+                                const dataUrl = canvas.toDataURL('image/png')
+                                updateSelectedElement({ source: dataUrl })
+                                toast.success('อัปโหลดรูปแล้ว')
+                              }
+                              img.src = reader.result as string
+                            }
+                            reader.readAsDataURL(file)
+                          }}
+                        />
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        💡 วาง URL รูปภาพ หรือกดอัปโหลดไฟล์จากเครื่อง (PNG/SVG, สูงสุด 2MB, ย่ออัตโนมัติ 200×200)
+                      </p>
                     </div>
                   )}
                   {selectedEl.type === 'qr' && (
