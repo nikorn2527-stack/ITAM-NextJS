@@ -248,8 +248,21 @@ export function MobileShell() {
                     key={p.page}
                     type="button"
                     onClick={() => {
+                      // Exit MobileShell and navigate to the desktop page.
+                      // setActivePage alone doesn't work because MobileShell
+                      // is kept mounted via KeepAlivePage — we need to
+                      // switch the app-store's activePage so the desktop
+                      // layout takes over the viewport.
                       setActivePage(p.page)
                       setMenuOpen(false)
+                      // Force a navigation so home-client renders the
+                      // desktop page instead of staying in MobileShell.
+                      // The KeepAlivePage for 'mobile' will be hidden
+                      // (isActive('mobile') === false) and the target
+                      // desktop page will be shown.
+                      setTimeout(() => {
+                        window.dispatchEvent(new PopStateEvent('popstate'))
+                      }, 0)
                     }}
                     className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
                   >
