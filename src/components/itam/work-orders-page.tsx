@@ -340,26 +340,26 @@ interface PartsListApiResponse {
 const STATUS_OPTIONS = [
   { value: 'all', label: 'StatusAll' },
   { value: 'PENDING_REVIEW', label: 'PendingCheck' },
-  { value: 'PENDING', label: 'Pending' },
+  { value: 'PENDING', label: t('status.pending') },
   { value: 'IN_PROGRESS', label: 'In Progress' },
   { value: 'WAITING_PARTS', label: 'PendingParts' },
   { value: 'COMPLETED', label: 'Done' },
-  { value: 'CANCELLED', label: 'Cancel' },
+  { value: 'CANCELLED', label: t('common.cancel') },
 ] as const
 
 const PRIORITY_OPTIONS = [
   { value: 'all', label: 'priorityUrgentAll' },
-  { value: 'Normal', label: 'Normal' },
+  { value: t('priority.normal'), label: t('priority.normal') },
   { value: 'Medium', label: 'Medium' },
   { value: 'High', label: 'High' },
-  { value: 'Urgent', label: 'Urgent' },
+  { value: t('priority.urgent'), label: t('priority.urgent') },
 ] as const
 
 const PRIORITY_FORM_OPTIONS = [
-  { value: 'Normal', label: 'Normal' },
+  { value: t('priority.normal'), label: t('priority.normal') },
   { value: 'Medium', label: 'Medium' },
   { value: 'High', label: 'High' },
-  { value: 'Urgent', label: 'Urgent' },
+  { value: t('priority.urgent'), label: t('priority.urgent') },
 ] as const
 
 const PAGE_SIZE = 12
@@ -390,13 +390,13 @@ function statusBadgeClass(status: string): string {
 
 function priorityBadgeClass(priority: string): string {
   switch (priority) {
-    case 'Urgent':
+    case t('priority.urgent'):
       return 'border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
     case 'High':
       return 'border-orange-200 bg-orange-100 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300'
     case 'Medium':
       return 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
-    case 'Normal':
+    case t('priority.normal'):
     default:
       return 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
   }
@@ -467,7 +467,7 @@ const EMPTY_FORM: NewFormState = {
   building: '',
   location: '',
   details: '',
-  priority: 'Normal',
+  priority: t('priority.normal'),
   reporterName: '',
   tel: '',
   employeeCode: '',
@@ -2926,7 +2926,7 @@ function WorkOrderDetailContent({
           )
         }
       } else {
-        toast.success('Close')
+        toast.success(t('common.close'))
       }
       setCompleteOpen(false)
       setCompleteNote('')
@@ -3286,8 +3286,8 @@ function WorkOrderDetailContent({
   const timeline: Array<{ key: string; label: string; at: string | null; tone: 'info' | 'success' | 'warning' | 'danger' | 'muted' }> = [
     { key: 'created', label: 'Repair RequestNew', at: wo.createdAt, tone: 'info' },
     { key: 'assigned', label: wo.assignedTo ? `Assignto ${wo.assignedTo}` : 'Assign', at: wo.assignedAt, tone: wo.assignedAt ? 'info' : 'muted' },
-    { key: 'completed', label: 'Close', at: wo.workCompletedAt ?? wo.closedAt, tone: wo.workCompletedAt ? 'success' : 'muted' },
-    { key: 'cancelled', label: wo.cancelReason ? `Cancel — ${wo.cancelReason}` : 'Cancel', at: wo.canceledAt, tone: wo.canceledAt ? 'danger' : 'muted' },
+    { key: 'completed', label: 'common.close', at: wo.workCompletedAt ?? wo.closedAt, tone: wo.workCompletedAt ? 'success' : 'muted' },
+    { key: 'cancelled', label: wo.cancelReason ? `Cancel — ${wo.cancelReason}` : 'common.cancel', at: wo.canceledAt, tone: wo.canceledAt ? 'danger' : 'muted' },
   ].filter((t) => t.at !== null || t.key === 'created')
 
   return (

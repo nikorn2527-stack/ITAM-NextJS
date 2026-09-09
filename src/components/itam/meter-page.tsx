@@ -45,15 +45,15 @@ import { useAppStore } from '@/store/app-store'
 import { useT, useFormatDateTime } from '@/store/i18n-store'
 
 const METER_CSV_HEADERS = [
-  { key: 'date', label: 'Date' },
+  { key: 'date', label: t('common.date') },
   { key: 'assetCode', label: 'CodeDevice' },
   { key: 'deviceName', label: 'NameDevice' },
-  { key: 'brand', label: 'Brand' },
-  { key: 'model', label: 'Model' },
+  { key: 'brand', label: t('common.brand') },
+  { key: 'model', label: t('common.model') },
   { key: 'prevReading', label: 'FeeBeforefront' },
   { key: 'reading', label: 'FeeMeter' },
   { key: 'delta', label: 'Variance' },
-  { key: 'remark', label: 'Remark' },
+  { key: 'remark', label: t('common.remark') },
 ]
 
 interface ReminderDevice {
@@ -693,7 +693,7 @@ export function MeterPage() {
               disabled={saving || needsRemark}
               className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              {saving ? 'Save...' : 'Save'}
+              {saving ? 'Save...' : t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

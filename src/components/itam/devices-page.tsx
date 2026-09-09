@@ -159,22 +159,22 @@ function formatMacInput(raw: string): string {
 }
 
 const DEVICE_CSV_HEADERS = [
-  { key: 'assetCode', label: 'Asset Code' },
-  { key: 'name', label: 'Name' },
-  { key: 'brand', label: 'Brand' },
-  { key: 'model', label: 'Model' },
-  { key: 'type', label: 'Type' },
-  { key: 'serialNumber', label: 'S/N' },
-  { key: 'status', label: 'Status' },
-  { key: 'site', label: 'Site' },
-  { key: 'currentAssignee', label: 'Assignee' },
-  { key: 'department', label: 'Department' },
-  { key: 'departmentCode', label: 'Dept Code' },
+  { key: 'assetCode', label: 'devices.col.asset_code' },
+  { key: 'name', label: 'common.name' },
+  { key: 'brand', label: 'common.brand' },
+  { key: 'model', label: 'common.model' },
+  { key: 'reports.unit.type', label: 'common.type' },
+  { key: 'serialNumber', label: 'common.serial' },
+  { key: 'status', label: 'common.status' },
+  { key: 'site', label: 'common.site' },
+  { key: 'currentAssignee', label: 'devices.filter.assignee' },
+  { key: 'department', label: 'common.department' },
+  { key: 'departmentCode', label: 'devices.field.department_code' },
   { key: 'parentRef', label: 'ParentRef' },
   { key: 'displayLabel', label: 'DisplayLabel' },
-  { key: 'location', label: 'Location' },
-  { key: 'purchaseDate', label: 'Purchase Date' },
-  { key: 'lastMeterReading', label: 'Last Meter' },
+  { key: 'location', label: 'common.location' },
+  { key: 'purchaseDate', label: 'devices.col.purchase_date' },
+  { key: 'lastMeterReading', label: 'devices.col.last_meter' },
 ]
 
 /** License / Software row — mirrors the LicenseRecord Prisma model.
@@ -220,7 +220,7 @@ const ACCESSORY_TYPES_INLINE = [
   { value: 'SCANNER', labelKey: 'devices.acc_type.SCANNER' },
   { value: 'CABLE', labelKey: 'devices.acc_type.CABLE' },
   { value: 'ADAPTER', labelKey: 'devices.acc_type.ADAPTER' },
-  { value: 'UPS', labelKey: 'devices.acc_type.UPS' },
+  { value: t('type.ups'), labelKey: 'devices.acc_type.UPS' },
   { value: 'HUB', labelKey: 'devices.acc_type.HUB' },
   { value: 'PRINTHEAD', labelKey: 'devices.acc_type.PRINTHEAD' },
   { value: 'TRAY', labelKey: 'devices.acc_type.TRAY' },
@@ -228,10 +228,10 @@ const ACCESSORY_TYPES_INLINE = [
 ] as const
 
 const ACCESSORY_STATUSES_INLINE = [
-  { value: 'Active', labelKey: 'devices.acc_status.Active' },
-  { value: 'Inactive', labelKey: 'devices.acc_status.Inactive' },
-  { value: 'In Repair', labelKey: 'devices.acc_status.In Repair' },
-  { value: 'Disposed', labelKey: 'devices.acc_status.Disposed' },
+  { value: t('status.active'), labelKey: 'devices.acc_status.Active' },
+  { value: t('status.inactive'), labelKey: 'devices.acc_status.Inactive' },
+  { value: t('devices.kpi.repair'), labelKey: 'devices.acc_status.In Repair' },
+  { value: t('devices.acc_status.Disposed'), labelKey: 'devices.acc_status.Disposed' },
 ] as const
 
 const EMPTY_ACCESSORY: PendingAccessory = {
@@ -239,7 +239,7 @@ const EMPTY_ACCESSORY: PendingAccessory = {
   brand: '',
   model: '',
   serialNumber: '',
-  status: 'Active',
+  status: t('status.active'),
   installedDate: '',
   remark: '',
 }
@@ -260,7 +260,7 @@ const LICENSE_TYPE_OPTIONS = [
   { value: 'Volume', labelKey: 'devices.lic_type.Volume' },
   { value: 'Retail', labelKey: 'devices.lic_type.Retail' },
   { value: 'Subscription', labelKey: 'devices.lic_type.Subscription' },
-  { value: 'Open License', labelKey: 'devices.lic_type.Open License' },
+  { value: t('devices.lic_type.Open License'), labelKey: 'devices.lic_type.Open License' },
 ] as const
 
 interface FormState {
@@ -502,7 +502,7 @@ export function DevicesPage() {
   type ColumnKey =
     | 'assetCode'
     | 'assetSiteCode'
-    | 'type'
+    | 'reports.unit.type'
     | 'brandModel'
     | 'serialNumber'
     | 'location'
@@ -514,7 +514,7 @@ export function DevicesPage() {
   const ALL_COLUMNS: { key: ColumnKey; labelKey: string }[] = [
     { key: 'assetCode', labelKey: 'devices.col.asset_code' },
     { key: 'assetSiteCode', labelKey: 'devices.col.asset_site_code' },
-    { key: 'type', labelKey: 'devices.col.type' },
+    { key: 'reports.unit.type', labelKey: 'devices.col.type' },
     { key: 'brandModel', labelKey: 'devices.col.brand_model' },
     { key: 'serialNumber', labelKey: 'devices.col.serial' },
     { key: 'location', labelKey: 'devices.col.location' },
@@ -573,7 +573,7 @@ export function DevicesPage() {
         openAddRef.current?.()
       } else if (mod && e.key.toLowerCase() === 'r') {
         e.preventDefault()
-        qc.invalidateQueries({ queryKey: ['devices'] })
+        qc.invalidateQueries({ queryKey: [t('devices.unit.device')] })
       } else if (e.key === '?' && !mod) {
         e.preventDefault()
         setShortcutsOpen(true)
@@ -622,7 +622,7 @@ export function DevicesPage() {
   })
 
   const { data: devicesRaw, isLoading } = useQuery<Device[]>({
-    queryKey: ['devices', search, statusFilter, siteFilter, pageSize],
+    queryKey: [t('devices.unit.device'), search, statusFilter, siteFilter, pageSize],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
@@ -737,7 +737,7 @@ export function DevicesPage() {
   }, [currentPage])
 
   const { data: sites } = useQuery<Site[]>({
-    queryKey: ['sites'],
+    queryKey: [t('dash.unit.site')],
     queryFn: async () => {
       const res = await fetch('/api/sites', { headers: authHeaders() })
       if (!res.ok) return []
@@ -840,7 +840,7 @@ export function DevicesPage() {
   })
 
   const departments = (masterItems ?? []).filter(
-    (m) => m.category === 'Department',
+    (m) => m.category === t('common.department'),
   )
   const deviceGroups = (masterItems ?? []).filter(
     (m) => m.category === 'DeviceGroup',
@@ -1153,7 +1153,7 @@ export function DevicesPage() {
         brand: a.brand ?? '',
         model: a.model ?? '',
         serialNumber: a.serialNumber ?? '',
-        status: a.status ?? 'Active',
+        status: a.status ?? t('status.active'),
         installedDate: a.installedDate ?? '',
         remark: a.remark ?? '',
       }))
@@ -1447,7 +1447,7 @@ export function DevicesPage() {
       }
       toast.success(isEdit ? t('devices.toast.saved_edit') : t('devices.toast.saved_new'))
       setDialogOpen(false)
-      await qc.invalidateQueries({ queryKey: ['devices'] })
+      await qc.invalidateQueries({ queryKey: [t('devices.unit.device')] })
       await qc.invalidateQueries({ queryKey: ['dashboard'] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Save failed')
@@ -1470,7 +1470,7 @@ export function DevicesPage() {
       }
       toast.success(t('devices.toast.deleted'))
       setDeleteTarget(null)
-      await qc.invalidateQueries({ queryKey: ['devices'] })
+      await qc.invalidateQueries({ queryKey: [t('devices.unit.device')] })
       await qc.invalidateQueries({ queryKey: ['dashboard'] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Delete failed')
@@ -1640,7 +1640,7 @@ export function DevicesPage() {
           headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             action: 'PRINT',
-            entity: 'Device',
+            entity: t('jobtype.device'),
             entityId: device.id,
             summary: `t('devices.action.print_single') ${device.assetCode}`,
             detail: {
@@ -1671,49 +1671,49 @@ export function DevicesPage() {
   // Full list of columns that can be exported — richer than the default
   // DEVICE_CSV_HEADERS list. Grouped for visual clarity in the picker.
   const EXPORT_AVAILABLE_COLUMNS: ExportColumn[] = [
-    { key: 'assetCode', label: 'Asset Code', group: t('devices.section.general') },
-    { key: 'assetSiteCode', label: 'Site Code', group: t('devices.section.general') },
-    { key: 'name', label: 'Device Name', group: t('devices.section.general') },
-    { key: 'type', label: 'Type', group: t('devices.section.general') },
-    { key: 'brand', label: 'Brand', group: t('devices.section.general') },
-    { key: 'model', label: 'Model', group: t('devices.section.general') },
-    { key: 'serialNumber', label: 'Serial No.', group: t('devices.section.general') },
-    { key: 'status', label: 'Status', group: t('devices.section.general') },
-    { key: 'site', label: 'Site', group: t('devices.field.position') },
-    { key: 'building', label: t('devices.field.building'), group: t('devices.field.position') },
-    { key: 'floor', label: t('devices.field.floor'), group: t('devices.field.position') },
-    { key: 'room', label: t('devices.field.room'), group: t('devices.field.position') },
-    { key: 'department', label: 'Department', group: t('devices.field.position') },
-    { key: 'departmentCode', label: 'Dept Code', group: t('devices.field.position') },
-    { key: 'location', label: t('devices.field.position_location'), group: t('devices.field.position') },
-    { key: 'currentAssignee', label: 'Current Assignee', group: t('devices.section.user_finance') },
-    { key: 'costCenter', label: 'Cost Center', group: t('devices.section.user_finance') },
-    { key: 'deviceGroup', label: 'Device Group', group: t('devices.section.user_finance') },
-    { key: 'purchaseDate', label: 'Receive Date', group: t('devices.section.user_finance') },
-    { key: 'purchasePrice', label: 'Purchase Price', group: t('devices.section.user_finance') },
-    { key: 'salvageValue', label: 'Salvage Value', group: t('devices.section.user_finance') },
-    { key: 'usefulLife', label: `${t('devices.field.useful_life')} (${t('devices.unit.month')})`, group: t('devices.section.user_finance') },
-    { key: 'warrantyMonths', label: `${t('devices.col.warranty')} (${t('devices.unit.month')})`, group: t('devices.section.user_finance') },
-    { key: 'warrantyEnd', label: 'Warranty End', group: t('devices.section.user_finance') },
-    { key: 'vendor', label: 'Vendor', group: t('devices.section.user_finance') },
-    { key: 'contractNo', label: 'Contract No', group: t('devices.section.user_finance') },
-    { key: 'meterRequired', label: 'Meter Required', group: t('devices.section.meter') },
-    { key: 'meterMode', label: 'Meter Mode', group: t('devices.section.meter') },
-    { key: 'lastMeterBw', label: `${t('devices.section.meter')} ${t('devices.field.bw')}`, group: t('devices.section.meter') },
-    { key: 'lastMeterColor', label: `${t('devices.section.meter')} ${t('devices.field.color')}`, group: t('devices.section.meter') },
-    { key: 'lastReadingMonth', label: 'Last Read Month', group: t('devices.section.meter') },
-    { key: 'ip', label: 'IP Address', group: t('devices.field.network_other') },
-    { key: 'mac', label: 'MAC Address', group: t('devices.field.network_other') },
-    { key: 'remoteId', label: 'Remote ID', group: t('devices.field.network_other') },
-    { key: 'parentRef', label: 'Parent Ref', group: t('devices.section.set_relationship') },
-    { key: 'parentDeviceId', label: `${t('devices.field.parent_device')} (Set)`, group: t('devices.section.set_relationship') },
-    { key: 'setLabel', label: 'Set Label', group: t('devices.section.set_relationship') },
-    { key: 'setPosition', label: 'Position in Set', group: t('devices.section.set_relationship') },
-    { key: 'displayLabel', label: 'Display Label', group: t('devices.field.other') },
-    { key: 'uninstallDate', label: 'Uninstall Date', group: t('devices.field.other') },
-    { key: 'remark', label: 'Remark', group: t('devices.field.other') },
-    { key: 'updatedBy', label: 'Updated By', group: t('devices.field.other') },
-    { key: 'updatedAt', label: 'Updated', group: t('devices.field.other') },
+    { key: 'assetCode', label: 'devices.col.asset_code', group: 'devices.section.general' },
+    { key: 'assetSiteCode', label: 'Site Code', group: 'devices.section.general' },
+    { key: 'name', label: 'devices.col.name', group: 'devices.section.general' },
+    { key: 'reports.unit.type', label: 'common.type', group: 'devices.section.general' },
+    { key: 'brand', label: 'common.brand', group: 'devices.section.general' },
+    { key: 'model', label: 'common.model', group: 'devices.section.general' },
+    { key: 'serialNumber', label: 'devices.col.serial', group: 'devices.section.general' },
+    { key: 'status', label: 'common.status', group: 'devices.section.general' },
+    { key: 'site', label: 'common.site', group: 'devices.field.position' },
+    { key: 'building', label: 'devices.field.building', group: 'devices.field.position' },
+    { key: 'floor', label: 'devices.field.floor', group: 'devices.field.position' },
+    { key: 'room', label: 'devices.field.room', group: 'devices.field.position' },
+    { key: 'department', label: 'common.department', group: 'devices.field.position' },
+    { key: 'departmentCode', label: 'devices.field.department_code', group: 'devices.field.position' },
+    { key: 'location', label: 'devices.field.position_location', group: 'devices.field.position' },
+    { key: 'currentAssignee', label: 'devices.col.assignee', group: 'devices.section.user_finance' },
+    { key: 'costCenter', label: 'devices.field.cost_center', group: 'devices.section.user_finance' },
+    { key: 'deviceGroup', label: 'devices.field.device_group', group: 'devices.section.user_finance' },
+    { key: 'purchaseDate', label: 'devices.field.receive_date', group: 'devices.section.user_finance' },
+    { key: 'purchasePrice', label: 'depreciation.col.purchase_price', group: 'devices.section.user_finance' },
+    { key: 'salvageValue', label: 'devices.field.salvage_value', group: 'devices.section.user_finance' },
+    { key: 'usefulLife', label: `${'devices.field.useful_life'} (${'devices.unit.month'})`, group: 'devices.section.user_finance' },
+    { key: 'warrantyMonths', label: `${'devices.col.warranty'} (${'devices.unit.month'})`, group: 'devices.section.user_finance' },
+    { key: 'warrantyEnd', label: 'devices.field.warranty_end', group: 'devices.section.user_finance' },
+    { key: 'vendor', label: 'devices.field.vendor', group: 'devices.section.user_finance' },
+    { key: 'contractNo', label: 'devices.field.contract_no', group: 'devices.section.user_finance' },
+    { key: 'meterRequired', label: 'devices.field.meter_required', group: 'devices.section.meter' },
+    { key: 'meterMode', label: 'devices.field.meter_mode', group: 'devices.section.meter' },
+    { key: 'lastMeterBw', label: `${'devices.section.meter'} ${'devices.field.bw'}`, group: 'devices.section.meter' },
+    { key: 'lastMeterColor', label: `${'devices.section.meter'} ${'devices.field.color'}`, group: 'devices.section.meter' },
+    { key: 'lastReadingMonth', label: 'devices.field.last_read_month', group: 'devices.section.meter' },
+    { key: 'ip', label: 'IP Address', group: 'devices.field.network_other' },
+    { key: 'mac', label: 'MAC Address', group: 'devices.field.network_other' },
+    { key: 'remoteId', label: 'Remote ID', group: 'devices.field.network_other' },
+    { key: 'parentRef', label: 'devices.field.parent_ref', group: 'devices.section.set_relationship' },
+    { key: 'parentDeviceId', label: `${'devices.field.parent_device'} (Set)`, group: 'devices.section.set_relationship' },
+    { key: 'setLabel', label: 'devices.field.set_label', group: 'devices.section.set_relationship' },
+    { key: 'setPosition', label: 'devices.field.set_position', group: 'devices.section.set_relationship' },
+    { key: 'displayLabel', label: 'devices.field.display_label', group: 'devices.field.other' },
+    { key: 'uninstallDate', label: 'devices.field.uninstall_date', group: 'devices.field.other' },
+    { key: 'remark', label: 'common.remark', group: 'devices.field.other' },
+    { key: 'updatedBy', label: 'devices.col.updated_by', group: 'devices.field.other' },
+    { key: 'updatedAt', label: 'devices.col.updated_at', group: 'devices.field.other' },
   ]
   const [customExportOpen, setCustomExportOpen] = React.useState(false)
 
@@ -1753,7 +1753,7 @@ export function DevicesPage() {
         })
         const ws = XLSX.utils.json_to_sheet(data)
         const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, 'Devices')
+        XLSX.utils.book_append_sheet(wb, ws, t('menu.devices'))
         XLSX.writeFile(wb, `${filename}.xlsx`)
       } else if (format === 'pdf') {
         // PDF: open a print-friendly window with a table the browser can
@@ -1837,7 +1837,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
       await fetch('/api/audit/log', {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ action, entity: 'Device', summary, detail }),
+        body: JSON.stringify({ action, entity: t('jobtype.device'), summary, detail }),
       })
     } catch {
       // non-fatal
@@ -1873,7 +1873,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     })
     setBulkStatus('')
     clearSelection()
-    await qc.invalidateQueries({ queryKey: ['devices'] })
+    await qc.invalidateQueries({ queryKey: [t('devices.unit.device')] })
     await qc.invalidateQueries({ queryKey: ['dashboard'] })
     await qc.invalidateQueries({ queryKey: ['audit'] })
     setBulkAction(false)
@@ -1910,7 +1910,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     })
     setBulkSite('')
     clearSelection()
-    await qc.invalidateQueries({ queryKey: ['devices'] })
+    await qc.invalidateQueries({ queryKey: [t('devices.unit.device')] })
     await qc.invalidateQueries({ queryKey: ['dashboard'] })
     await qc.invalidateQueries({ queryKey: ['audit'] })
     setBulkAction(false)
@@ -1937,7 +1937,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     })
     setBulkDeleteOpen(false)
     clearSelection()
-    await qc.invalidateQueries({ queryKey: ['devices'] })
+    await qc.invalidateQueries({ queryKey: [t('devices.unit.device')] })
     await qc.invalidateQueries({ queryKey: ['dashboard'] })
     await qc.invalidateQueries({ queryKey: ['audit'] })
     setBulkAction(false)
@@ -2535,7 +2535,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     {form.meterRequired ? (
                       <>✅ <span className="font-semibold">{t('devices.meter.required_on')}</span> — {t('devices.meter.required_hint_on').replace('{type}', form.type)}</>
                     ) : (
-                      <>⚪ <span className="font-semibold">{t('devices.meter.required_off')}</span> — {t('devices.meter.required_hint_off').replace('{type}', form.type || t('devices.meter.required_type_empty'))}</>
+                      <>⚪ <span className="font-semibold">{t('devices.meter.required_off')}</span> — {t('devices.meter.required_hint_off').replace('{type}', form.type || 'devices.meter.required_type_empty')}</>
                     )}
                   </div>
                 </div>
@@ -3628,7 +3628,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   )}
                   {isColVisible('assetCode') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.asset_code')}</TableHead>}
                   {isColVisible('assetSiteCode') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.asset_site_code')}</TableHead>}
-                  {isColVisible('type') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.type')}</TableHead>}
+                  {isColVisible(t('reports.unit.type')) && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.type')}</TableHead>}
                   {isColVisible('brandModel') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.brand_model')}</TableHead>}
                   {isColVisible('serialNumber') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.serial')}</TableHead>}
                   {isColVisible('location') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.location')}</TableHead>}
@@ -3738,7 +3738,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       </TableCell>
                       )}
                       {/* t('devices.field.type') */}
-                      {isColVisible('type') && (
+                      {isColVisible(t('reports.unit.type')) && (
                       <TableCell className="text-slate-700 dark:text-slate-200">{d.type}</TableCell>
                       )}
                       {/* t('devices.field.brand_model') */}

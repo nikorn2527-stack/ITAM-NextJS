@@ -89,18 +89,18 @@ import { useT } from '@/store/i18n-store'
 // Column definitions for monthly report tables
 const MONTHLY_REPORT_COLUMNS: ColumnDef[] = [
   { key: 'assetCode', label: 'CodeDevice', default: true },
-  { key: 'name', label: 'Name', default: true },
-  { key: 'brand', label: 'Brand', default: true },
-  { key: 'model', label: 'Model', default: true },
-  { key: 'serialNumber', label: 'S/N', default: true },
-  { key: 'site', label: 'Site', default: true },
+  { key: 'name', label: 'common.name', default: true },
+  { key: 'brand', label: 'common.brand', default: true },
+  { key: 'model', label: 'common.model', default: true },
+  { key: 'serialNumber', label: 'common.serial', default: true },
+  { key: 'site', label: 'common.site', default: true },
   { key: 'department', label: 'Dept', default: false },
   { key: 'meterBw', label: 'Meter B&W', default: false },
-  { key: 'meterColor', label: 'Meter Color', default: false },
+  { key: 'meterColor', label: 'devices.field.last_meter_color', default: false },
   { key: 'pagesBw', label: 'sheets B&W', default: false },
   { key: 'pagesColor', label: 'sheets Color', default: false },
   { key: 'cost', label: 'FeeUsepay', default: false },
-  { key: 'status', label: 'Status', default: false },
+  { key: 'status', label: 'common.status', default: false },
 ]
 import {  Wrench,
   CheckCircle2,
@@ -124,7 +124,7 @@ import {  Wrench,
 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────
-type ReportType = 'work-order' | 'stock' | 'devices' | 'all'
+type ReportType = 'work-order' | 'stock' | 'devices.unit.device' | 'all'
 
 interface WorkOrderSummary {
   total: number
@@ -181,7 +181,7 @@ interface Site {
 // ── Print-section flags (Task ID: MONTHLY-REPORT-PRINT) ──
 type PrintSectionKey =
   | 'paper'
-  | 'devices'
+  | 'devices.unit.device'
   | 'workOrders'
   | 'stock'
   | 'meters'
@@ -223,11 +223,11 @@ interface DeviceRow {
 
 // ── Constants ──────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
-  PENDING: 'Pending',
-  IN_PROGRESS: 'Repair',
+  PENDING: t('status.pending'),
+  IN_PROGRESS: t('mobile.repair'),
   WAITING_PARTS: 'PendingParts',
   COMPLETED: 'Done',
-  CANCELLED: 'Cancel',
+  CANCELLED: t('common.cancel'),
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -246,16 +246,16 @@ const PRIORITY_COLORS: Record<string, string> = {
 }
 
 const STATUS_LABELS_DEV: Record<string, string> = {
-  Active: 'Active',
-  'In Repair': 'Repair',
+  Active: t('status.active'),
+  Repair: t('mobile.repair'),
   Retired: 'Reduceschedule',
-  Spare: 'Spare',
-  Inactive: 'Inactive',
+  Spare: t('reports.summary.spare'),
+  Inactive: t('status.inactive'),
 }
 
 const DEVICE_STATUS_COLORS: Record<string, string> = {
   Active: '#10b981',
-  'In Repair': '#f97316',
+  Repair: '#f97316',
   Retired: '#6b7280',
   Spare: '#f59e0b',
   Inactive: '#ef4444',
@@ -275,7 +275,7 @@ const READING_TYPE_LABELS: Record<string, string> = {
   FINAL: 'End',
   RESET: 'Reset',
   CHECKOUT: 'SendAssign',
-  SEND_REPAIR: 'Repair',
+  SEND_REPAIR: t('mobile.repair'),
   RETURN: 'Receivereturn',
 }
 
@@ -892,31 +892,31 @@ export function MonthlyReport() {
     if (!data) return
     const rows: string[][] = []
     rows.push(['Reportitemmonths', formatMonthLabel(data.month)])
-    rows.push(['Site', site === 'all' ? 'All' : site])
-    rows.push(['Type', reportType])
+    rows.push([t('common.site'), site === 'all' ? t('common.all') : site])
+    rows.push([t('common.type'), reportType])
     rows.push(['CreateWhen', data.generatedAt ? new Date(data.generatedAt).toLocaleString('th-TH') : '—'])
     rows.push([])
 
     if (data.workOrders) {
       rows.push(['==== Work Order ===='])
-      rows.push(['All', String(data.workOrders.total)])
-      rows.push(['Status', 'Quantity'])
+      rows.push([t('common.all'), String(data.workOrders.total)])
+      rows.push([t('common.status'), t('common.quantity')])
       for (const [k, v] of Object.entries(data.workOrders.byStatus)) {
         rows.push([STATUS_LABELS[k] ?? k, String(v)])
       }
-      rows.push(['priorityUrgent', 'Quantity'])
+      rows.push(['priorityUrgent', t('common.quantity')])
       for (const [k, v] of Object.entries(data.workOrders.byPriority)) {
         rows.push([k, String(v)])
       }
       rows.push(['Average', String(data.workOrders.avgRating ?? '-')])
       rows.push(['TimeanswerAverage', data.meta.avgResponseTimeLabel])
       rows.push([])
-      rows.push(['SubjectPopular', 'Quantity'])
+      rows.push(['SubjectPopular', t('common.quantity')])
       for (const s of data.workOrders.bySubject) {
         rows.push([s.subject, String(s.count)])
       }
       rows.push([])
-      rows.push(['Technician', 'Receive', 'Done'])
+      rows.push([t('role.staff'), 'Receive', 'Done'])
       for (const s of data.workOrders.byStaff) {
         rows.push([s.name, String(s.count), String(s.completed)])
       }
@@ -929,7 +929,7 @@ export function MonthlyReport() {
       rows.push(['Stock Out', String(data.stock.totalOut)])
       rows.push(['ValueTotal', formatBaht(data.stock.totalValue)])
       rows.push([])
-      rows.push(['itemPopular', 'Code', 'Quantity', 'Type'])
+      rows.push(['itemPopular', t('common.code'), t('common.quantity'), t('common.type')])
       for (const t of data.stock.topItems) {
         rows.push([
           t.productName,
@@ -939,7 +939,7 @@ export function MonthlyReport() {
         ])
       }
       rows.push([])
-      rows.push(['itemofRemainingless', 'Code', 'Remaining', 'stepLow', 'Unit'])
+      rows.push(['itemofRemainingless', t('common.code'), 'Remaining', 'stepLow', t('common.unit')])
       for (const l of data.stock.lowStockItems) {
         rows.push([
           l.productName,
@@ -954,9 +954,9 @@ export function MonthlyReport() {
 
     if (data.devices) {
       rows.push(['==== Device ===='])
-      rows.push(['All', String(data.devices.total)])
+      rows.push([t('common.all'), String(data.devices.total)])
       rows.push(['AddNewinmonths', String(data.devices.newDevices)])
-      rows.push(['Status', 'Quantity'])
+      rows.push([t('common.status'), t('common.quantity')])
       for (const [k, v] of Object.entries(data.devices.byStatus)) {
         rows.push([STATUS_LABELS_DEV[k] ?? k, String(v)])
       }
@@ -996,7 +996,7 @@ export function MonthlyReport() {
   // ============================================================
 
   /** Open the print dialog with sections pre-selected per report type. */
-  function openPrintDialog(kind: 'paper' | 'devices' | 'workOrders' | 'stock' | 'meters') {
+  function openPrintDialog(kind: 'paper' | 'devices.unit.device' | 'workOrders' | 'stock' | 'meters') {
     const presets: Record<typeof kind, PrintSections> = {
       paper:       { paper: true,  devices: false, workOrders: false, stock: false, meters: true  },
       devices:     { paper: false, devices: true,  workOrders: false, stock: false, meters: false },
@@ -1061,7 +1061,7 @@ export function MonthlyReport() {
         brand: String(d.brand ?? ''),
         model: String(d.model ?? ''),
         type: String(d.type ?? 'OTHER'),
-        status: String(d.status ?? 'Active'),
+        status: String(d.status ?? t('status.active')),
         site: String(d.site ?? ''),
         department: (d.department as string) ?? null,
         location: (d.location as string) ?? null,
@@ -1163,7 +1163,7 @@ export function MonthlyReport() {
     let deviceSection = ''
     if (sections.devices) {
       const byStatus = groupCount(deviceRows, 'status')
-      const byType = groupCount(deviceRows, 'type')
+      const byType = groupCount(deviceRows, t('reports.unit.type'))
       const bySite = groupCount(deviceRows, 'site')
       const total = deviceRows.length
 
@@ -1649,7 +1649,7 @@ export function MonthlyReport() {
                     </div>
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onSelect={() => openPrintDialog('devices')}
+                    onSelect={() => openPrintDialog(t('devices.unit.device'))}
                     className="cursor-pointer gap-2"
                   >
                     <Layers className="h-4 w-4 text-indigo-500" />
@@ -2530,7 +2530,7 @@ export function MonthlyReport() {
               />
               <PrintSectionCheckbox
                 checked={printSections.devices}
-                onToggle={() => togglePrintSection('devices')}
+                onToggle={() => togglePrintSection(t('devices.unit.device'))}
                 icon={<Layers className="h-4 w-4 text-indigo-500" />}
                 title="ReportStatusDevice"
                 desc="ByStatus/Type/Site"

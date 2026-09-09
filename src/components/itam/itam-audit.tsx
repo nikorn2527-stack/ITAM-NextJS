@@ -27,7 +27,7 @@ const AUDIT_EXPORT_COLUMNS: ExportColumn[] = [
   { key: 'entity', label: 'entity', group: 'Main' },
   { key: 'summary', label: 'item', group: 'Main' },
   { key: 'actor', label: 'PersonDo', group: 'Main' },
-  { key: 'site', label: 'Site', group: 'Main' },
+  { key: 'site', label: t('common.site'), group: 'Main' },
 ]
 
 /**
@@ -64,10 +64,10 @@ interface AuditResponse {
 // Curated action set — the dropdown also fetches the DB's distinct actions
 // so new ones appear automatically. These are the common labels.
 const ACTION_LABELS: Record<string, string> = {
-  CREATE: 'Add',
-  UPDATE: 'Edit',
+  CREATE: t('common.add'),
+  UPDATE: t('common.edit'),
   UPDATE_DEVICE: 'EditDevice',
-  DELETE: 'Delete',
+  DELETE: t('common.delete'),
   LOGIN: 'intoSystem',
   LOGOUT: 'outfromSystem',
   METER_READING: 'ReadMeter',
@@ -80,14 +80,14 @@ const ACTION_LABELS: Record<string, string> = {
   BULK_UPDATE_DEVICES: 'EditGroup',
   BULK_TRANSFER: 'moveGroup',
   BULK_DELETE: 'DeleteGroup',
-  IMPORT_DEVICES: 'Import',
+  IMPORT_DEVICES: t('common.import'),
   NOTIFY_SENT: 'SendNotify',
   CYCLE_START: 'StartCycleReadMeter',
   CYCLE_END: 'endCycleReadMeter',
   // ── Additional labels (from QA batch-4 — bug #8: duplicate text fix) ──
   GENERATE: 'CreateReport',
   IMPORT_LEGACY: 'ImportDataOriginal',
-  IMPORT: 'Import',
+  IMPORT: t('common.import'),
   INVITE_REQUEST: 'requestinActive',
   AUTH_FALLBACK: 'LockinSpare',
   DEMO_RESET: 'ResetDataDemo',
@@ -113,7 +113,7 @@ const ACTION_LABELS: Record<string, string> = {
   WO_MESSAGE: 'SendMessageinWork',
   WO_PHOTO_UPLOAD: 'upLoadimageWork',
   STICKER_RENDER: 'PrintSticker',
-  PRINT: 'Print',
+  PRINT: t('dash.print'),
   EXPORT: 'ExportData',
   SEED: 'AddDataDefault',
   BACKUP: 'SpareData',
@@ -218,7 +218,7 @@ export function ItamAudit() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error || 'Failed')
+        throw new Error(j.error || t('status.failed'))
       }
       return res.json()
     },
@@ -274,13 +274,13 @@ export function ItamAudit() {
       detail: tryPrettyDetail(l.detail),
     }))
     downloadCsv(`audit-${dateStamp()}.csv`, rows, [
-      { key: 'createdAt', label: 'Date' },
+      { key: 'createdAt', label: t('common.date') },
       { key: 'action', label: 'Action' },
       { key: 'actionLabel', label: 'Do' },
       { key: 'entity', label: 'Entity' },
       { key: 'entityId', label: 'Entity ID' },
       { key: 'actor', label: 'PersonDo' },
-      { key: 'summary', label: 'Summary' },
+      { key: 'summary', label: t('reports.type.summary') },
       { key: 'detail', label: 'Details' },
     ])
     toast.success(`Export ${rows.length} item`)

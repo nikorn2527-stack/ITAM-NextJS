@@ -58,7 +58,7 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 type SettingsTab =
   | 'master'
   | 'site-attributes'
-  | 'sites'
+  | 'dash.unit.site'
   | 'notifications'
   | 'notification-templates'
   | 'notification-logs'
@@ -95,7 +95,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'wo-options', labelKey: 'settings.tab.wo_options', icon: ListChecks },
       { value: 'number-patterns', labelKey: 'settings.tab.number_patterns', icon: Hash },
       { value: 'wo-patterns', labelKey: 'settings.tab.wo_patterns', icon: FileText },
-      { value: 'sites', labelKey: 'settings.tab.sites', icon: Building2 },
+      { value: t('dash.unit.site'), labelKey: 'settings.tab.sites', icon: Building2 },
       { value: 'licenses', labelKey: 'settings.tab.licenses', icon: KeyRound },
       { value: 'asset-categories', labelKey: 'settings.tab.asset_categories', icon: Package },
       { value: 'stock-count', labelKey: 'settings.tab.stock_count', icon: ClipboardList },
@@ -176,7 +176,7 @@ export function ItamSettings() {
     queryFn: async () => {
       const params = category !== 'all' ? `?category=${category}` : ''
       const res = await fetch(`/api/itam/master-items${params}`, { headers: authHeaders() })
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) throw new Error(t('status.failed'))
       return res.json() as Promise<{ items: MasterItem[] }>
     },
   })
@@ -251,7 +251,7 @@ export function ItamSettings() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error || 'Failed')
+        throw new Error(j.error || 'status.failed')
       }
       toast.success('SaveSettingsNotify')
       await qc.invalidateQueries({ queryKey: ['itam-notify-settings'] })
@@ -268,7 +268,7 @@ export function ItamSettings() {
         body: JSON.stringify({ message: '🔔 TestNotifyfrom ITAM' }),
       })
       const j = await res.json()
-      if (!res.ok) throw new Error(j.error || 'Failed')
+      if (!res.ok) throw new Error(j.error || 'status.failed')
       const ch = (j.channels ?? []).join(', ') || '—'
       toast.success(`SendNotifyTest (${ch}) — CheckchannelatCloseUse`)
     } catch (e) {
@@ -288,14 +288,14 @@ export function ItamSettings() {
     queryKey: ['itam-sites-overview'],
     queryFn: async () => {
       const res = await fetch('/api/itam/sites', { headers: authHeaders() })
-      if (!res.ok) throw new Error('Failed')
+      if (!res.ok) throw new Error(t('status.failed'))
       return res.json() as Promise<{ sites: Site[] }>
     },
   })
 
   function openAdd() {
     setEditItem(null)
-    setForm({ category: 'Brand', code: '', label: '', displayLabel: '' })
+    setForm({ category: t('common.brand'), code: '', label: '', displayLabel: '' })
     setDialogOpen(true)
   }
 
@@ -313,15 +313,15 @@ export function ItamSettings() {
           method: 'PUT', headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(form),
         })
-        if (!res.ok) throw new Error('Failed')
-        toast.success('Edit')
+        if (!res.ok) throw new Error(t('status.failed'))
+        toast.success(t('common.edit'))
       } else {
         const res = await fetch('/api/itam/master-items', {
           method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(form),
         })
-        if (!res.ok) throw new Error('Failed')
-        toast.success('Add')
+        if (!res.ok) throw new Error(t('status.failed'))
+        toast.success(t('common.add'))
       }
       setDialogOpen(false)
       await qc.invalidateQueries({ queryKey: ['itam-master'] })
@@ -337,7 +337,7 @@ export function ItamSettings() {
     const item = deleteTarget
     try {
       await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE', headers: authHeaders() })
-      toast.success('Delete')
+      toast.success(t('common.delete'))
       await qc.invalidateQueries({ queryKey: ['itam-master'] })
     } catch { toast.error('DeleteNoSuccess') }
     finally { setDeleteTarget(null) }
@@ -488,7 +488,7 @@ export function ItamSettings() {
 
       {tab === 'contacts' && <ContactDirectorySection />}
 
-      {tab === 'sites' && (
+      {tab === t('dash.unit.site') && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {sitesLoading ? (
             Array.from({ length: 6 }).map((_, i) => (
@@ -534,7 +534,7 @@ export function ItamSettings() {
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
-          <DialogHeader><DialogTitle>{editItem ? 'Edit' : 'Add'} DataStandard</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editItem ? t('common.edit') : t('common.add')} DataStandard</DialogTitle></DialogHeader>
           <div className="space-y-3">
             {/* BUG-SETTINGS-007 fix: added id/name/aria-label + disabled when incomplete */}
             <div className="space-y-1.5">
@@ -856,7 +856,7 @@ function AppCustomizeTab() {
   const [form, setForm] = React.useState({
     appName: 'SystemManageAsset',
     logoUrl: '',
-    appTagline: 'Asset Management System',
+    appTagline: t('footer.app_name'),
     primaryColor: '#f97316',
     accentColor: '#0d9488',
     industryType: 'general',
@@ -871,7 +871,7 @@ function AppCustomizeTab() {
         ...prev,
         appName: profile.appName || 'SystemManageAsset',
         logoUrl: profile.logoUrl || '',
-        appTagline: profile.appTagline || 'Asset Management System',
+        appTagline: profile.appTagline || 'footer.app_name',
         primaryColor: profile.primaryColor || '#f97316',
         accentColor: profile.accentColor || '#0d9488',
         industryType: profile.industryType || 'general',
@@ -961,7 +961,7 @@ function AppCustomizeTab() {
                 {form.appName || 'SystemManageAsset'}
               </div>
               <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-                {form.appTagline || 'Asset Management System'}
+                {form.appTagline || 'footer.app_name'}
               </div>
             </div>
             <div className="ml-auto flex items-center gap-1.5">

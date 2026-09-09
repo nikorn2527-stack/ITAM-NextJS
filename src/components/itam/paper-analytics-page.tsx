@@ -270,7 +270,7 @@ export function PaperAnalyticsPage() {
     : 0
 
   const rangeLabel =
-    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'months'
+    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? t('lifecycle.month_unit')
 
   const costTooltipFormatter = (v: number) => [formatBaht(v), 'CostPaper']
 
@@ -598,8 +598,8 @@ export function PaperAnalyticsPage() {
                     />
                     <Tooltip
                       formatter={(v: number, name: string) =>
-                        name === 'Cost'
-                          ? [formatBaht(v as number), 'Cost']
+                        name === t('common.cost')
+                          ? [formatBaht(v as number), t('common.cost')]
                           : [`${(Number(v) || 0).toLocaleString('th-TH')} sheets`, 'Paper']
                       }
                       labelFormatter={(_, payload) => {

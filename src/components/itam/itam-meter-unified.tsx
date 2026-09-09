@@ -42,15 +42,15 @@ import { useT } from '@/store/i18n-store'
 // Custom Export — Meter page (Task ID: FIX-1-2-EXPORT-PRINT)
 // ============================================================
 const METER_EXPORT_COLUMNS: ExportColumn[] = [
-  { key: 'assetCode', label: 'CodeDevice', group: 'Device' },
-  { key: 'deviceName', label: 'NameDevice', group: 'Device' },
-  { key: 'site', label: 'Site', group: 'Device' },
-  { key: 'prevMeter', label: 'MeterBeforefront', group: 'Meter' },
-  { key: 'lastMeter', label: 'MeterLatest', group: 'Meter' },
-  { key: 'pagesBw', label: 'sheets BW', group: 'Meter' },
-  { key: 'pagesColor', label: 'sheetsColor', group: 'Meter' },
-  { key: 'readingDate', label: 'DateRead', group: 'Meter' },
-  { key: 'remark', label: 'Remark', group: 'Meter' },
+  { key: 'assetCode', label: 'CodeDevice', group: t('jobtype.device') },
+  { key: 'deviceName', label: 'NameDevice', group: t('jobtype.device') },
+  { key: 'site', label: t('common.site'), group: t('jobtype.device') },
+  { key: 'prevMeter', label: 'MeterBeforefront', group: t('devices.section.meter') },
+  { key: 'lastMeter', label: 'MeterLatest', group: t('devices.section.meter') },
+  { key: 'pagesBw', label: 'sheets BW', group: t('devices.section.meter') },
+  { key: 'pagesColor', label: 'sheetsColor', group: t('devices.section.meter') },
+  { key: 'readingDate', label: 'DateRead', group: t('devices.section.meter') },
+  { key: 'remark', label: t('common.remark'), group: t('devices.section.meter') },
 ]
 
 // ============================================================

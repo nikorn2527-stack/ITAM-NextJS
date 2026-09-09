@@ -133,7 +133,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   {
     key: 'sticker',
-    label: 'Sticker',
+    label: t('devices.field.sticker'),
     icon: '🎨',
     description: 'labelsmall e.g. 75×36mm, 50×30mm — ForattachDevice',
   },
@@ -145,7 +145,7 @@ const TABS: TabDef[] = [
   },
   {
     key: 'work-order',
-    label: 'Work Order',
+    label: t('jobtype.work-order'),
     icon: '🔧',
     description: 'Repair Ticket / ticketWithdraw / ticketReceive / Purchase Order',
   },
@@ -415,7 +415,7 @@ function StickerTab() {
                           : 'border-teal-200 bg-teal-50 px-1.5 py-0 text-[10px] text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300'
                       }
                     >
-                      {isSystem ? 'System' : 'Custom'}
+                      {isSystem ? t('group.system') : 'Custom'}
                     </Badge>
                     {isDefault && (
                       <Badge
@@ -828,7 +828,7 @@ function DocumentTab() {
                           : 'border-teal-200 bg-teal-50 px-1.5 py-0 text-[10px] text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300'
                       }
                     >
-                      {isSystem ? 'System' : 'Custom'}
+                      {isSystem ? t('group.system') : 'Custom'}
                     </Badge>
                     {isDefault && (
                       <Badge
@@ -1500,7 +1500,7 @@ function WorkOrderTab() {
                             : 'UserCreateup'
                         }
                       >
-                        {tpl.isFixed ? 'System' : 'Custom'}
+                        {tpl.isFixed ? t('group.system') : 'Custom'}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
@@ -1512,7 +1512,7 @@ function WorkOrderTab() {
                             : ''
                         }
                       >
-                        {tpl.isActive ? 'Active' : 'Close'}
+                        {tpl.isActive ? t('status.active') : t('common.close')}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
@@ -1606,7 +1606,7 @@ function WorkOrderTab() {
                               ? 'NoCanDeleteTemplateofSystem'
                               : tpl.isDefault
                                 ? 'NoCanDeleteTemplateFeeDefault'
-                                : 'Delete'
+                                : t('common.delete')
                           }
                           aria-label="Delete"
                         >

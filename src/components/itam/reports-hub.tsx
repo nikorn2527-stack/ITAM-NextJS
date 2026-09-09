@@ -44,13 +44,13 @@ import {
 // Column definitions for each report group
 const REPORT_COLUMNS: Record<ReportGroup, ColumnDef[]> = {
   devices: [
-    { key: 'assetCode', label: 'Code', default: true },
-    { key: 'name', label: 'Name', default: true },
-    { key: 'brand', label: 'Brand', default: true },
-    { key: 'model', label: 'Model', default: true },
-    { key: 'serialNumber', label: 'S/N', default: true },
-    { key: 'status', label: 'Status', default: true },
-    { key: 'site', label: 'Site', default: true },
+    { key: 'assetCode', label: 'common.code', default: true },
+    { key: 'name', label: 'common.name', default: true },
+    { key: 'brand', label: 'common.brand', default: true },
+    { key: 'model', label: 'common.model', default: true },
+    { key: 'serialNumber', label: 'common.serial', default: true },
+    { key: 'status', label: 'common.status', default: true },
+    { key: 'site', label: 'common.site', default: true },
     { key: 'department', label: 'Dept', default: false },
     { key: 'warrantyEnd', label: 'warranty', default: false },
     { key: 'purchasePrice', label: 'Price', default: false },
@@ -58,45 +58,45 @@ const REPORT_COLUMNS: Record<ReportGroup, ColumnDef[]> = {
   workorders: [
     { key: 'woNumber', label: 'No.at', default: true },
     { key: 'subject', label: 'Subject', default: true },
-    { key: 'status', label: 'Status', default: true },
+    { key: 'status', label: 'common.status', default: true },
     { key: 'priority', label: 'urgentUrgent', default: true },
     { key: 'reporterName', label: 'Reporter', default: true },
     { key: 'assignedTo', label: 'PersonReceivewronglike', default: false },
     { key: 'createdAt', label: 'DateReport', default: false },
     { key: 'closedAt', label: 'DateClose', default: false },
-    { key: 'siteCode', label: 'Site', default: false },
+    { key: 'siteCode', label: 'common.site', default: false },
   ],
   meters: [
-    { key: 'assetCode', label: 'Code', default: true },
-    { key: 'readingMonth', label: 'months', default: true },
+    { key: 'assetCode', label: 'common.code', default: true },
+    { key: 'readingMonth', label: 'lifecycle.month_unit', default: true },
     { key: 'meterBw', label: 'Meter B&W', default: true },
-    { key: 'meterColor', label: 'Meter Color', default: true },
+    { key: 'meterColor', label: 'devices.field.last_meter_color', default: true },
     { key: 'pagesBw', label: 'sheets B&W', default: true },
     { key: 'pagesColor', label: 'sheets Color', default: true },
-    { key: 'readingType', label: 'Type', default: false },
+    { key: 'readingType', label: 'common.type', default: false },
     { key: 'readBy', label: 'PersonRead', default: false },
   ],
   stock: [
-    { key: 'productCode', label: 'Code', default: true },
-    { key: 'productName', label: 'Name', default: true },
+    { key: 'productCode', label: 'common.code', default: true },
+    { key: 'productName', label: 'common.name', default: true },
     { key: 'quantity', label: 'Remaining', default: true },
     { key: 'minQuantity', label: 'LowEnd', default: true },
-    { key: 'unit', label: 'Unit', default: false },
+    { key: 'unit', label: 'common.unit', default: false },
     { key: 'unitCost', label: 'Price/Unit', default: false },
     { key: 'totalValue', label: 'ValueTotal', default: false },
-    { key: 'site', label: 'Site', default: false },
+    { key: 'site', label: 'common.site', default: false },
   ],
   maintenance: [
     { key: 'assetCode', label: 'CodeDevice', default: true },
     { key: 'subject', label: 'Problem', default: true },
-    { key: 'status', label: 'Status', default: true },
-    { key: 'assignedTo', label: 'Technician', default: true },
+    { key: 'status', label: 'common.status', default: true },
+    { key: 'assignedTo', label: 'role.staff', default: true },
     { key: 'createdAt', label: 'DateReceive', default: false },
     { key: 'closedAt', label: 'DateClose', default: false },
   ],
   approvals: [
-    { key: 'type', label: 'Type', default: true },
-    { key: 'status', label: 'Status', default: true },
+    { key: 'reports.unit.type', label: 'common.type', default: true },
+    { key: 'status', label: 'common.status', default: true },
     { key: 'requestedBy', label: 'Personrequest', default: true },
     { key: 'approvedBy', label: 'PersonApprove', default: false },
     { key: 'createdAt', label: 'Daterequest', default: false },
@@ -117,7 +117,7 @@ import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
 import { useT } from '@/store/i18n-store'
 
 type ReportGroup =
-  | 'devices'
+  | 'devices.unit.device'
   | 'meters'
   | 'workorders'
   | 'stock'
@@ -144,7 +144,7 @@ export function ReportsHub() {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 
-  const [activeGroup, setActiveGroup] = React.useState<ReportGroup>('devices')
+  const [activeGroup, setActiveGroup] = React.useState<ReportGroup>(t('devices.unit.device'))
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
   const [selectedColumns, setSelectedColumns] = React.useState<string[]>([])
@@ -374,7 +374,7 @@ export function ReportsHub() {
                 <CalendarDays className="h-3.5 w-3.5" />
                 {data?.generatedAt
                   ? formatDateTime(data.generatedAt)
-                  : 'Loading...'}
+                  : t('common.loading')}
               </div>
             </div>
           </div>
@@ -440,7 +440,7 @@ export function ReportsHub() {
             transition={{ duration: 0.2 }}
             className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 md:space-y-4"
           >
-            {activeGroup === 'devices' && <DevicesReport data={data} isDark={isDark} />}
+            {activeGroup === t('devices.unit.device') && <DevicesReport data={data} isDark={isDark} />}
             {activeGroup === 'meters' && <MetersReport data={data} isDark={isDark} />}
             {activeGroup === 'workorders' && <WorkOrdersReport data={data} isDark={isDark} />}
             {activeGroup === 'stock' && <StockReport data={data} />}

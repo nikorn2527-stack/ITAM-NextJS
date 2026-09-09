@@ -821,7 +821,7 @@ export function StockPage() {
       open: 'CloseAt',
       partial: 'ReceivesomeSection',
       received: 'Receivecomplete',
-      cancelled: 'Cancel',
+      cancelled: t('common.cancel'),
     }
     return (
       <Badge className={map[status] ?? map.open}>{labelMap[status] ?? status}</Badge>
@@ -1240,10 +1240,10 @@ export function StockPage() {
                       'Dateorder',
                       'Supplier',
                       'Quantityitem',
-                      'Status',
+                      t('common.status'),
                       'ValueTotal',
                       'Personorder',
-                      'Remark',
+                      t('common.remark'),
                       'itemProduct',
                     ],
                   ]
@@ -1921,7 +1921,7 @@ export function StockPage() {
               disabled={savingItem}
               className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              {savingItem ? 'Save...' : 'Save'}
+              {savingItem ? 'Save...' : t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2096,7 +2096,7 @@ export function StockPage() {
                   : 'bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-2 focus-visible:ring-amber-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950'
               }
             >
-              {savingTxn ? 'Save...' : 'Confirm'}
+              {savingTxn ? 'Save...' : t('common.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -2165,7 +2165,7 @@ export function StockPage() {
                 />
                 <DetailField
                   label="Status"
-                  value={detailData.active ? 'Active' : 'CloseActive'}
+                  value={detailData.active ? t('status.active') : 'CloseActive'}
                 />
               </div>
 
@@ -2206,11 +2206,11 @@ export function StockPage() {
                           const rows: (string | number | null | undefined)[][] = [
                             [
                               'No.at',
-                              'Type',
+                              t('common.type'),
                               'CodeProduct',
                               'NameProduct',
-                              'Quantity',
-                              'Unit',
+                              t('common.quantity'),
+                              t('common.unit'),
                               'Remaining',
                               'Price/Unit',
                               'ValueTotal',
@@ -2219,10 +2219,10 @@ export function StockPage() {
                               'Objective/causeResult',
                               'PersonApprove',
                               'Purchase Order',
-                              'Work Order',
-                              'Date',
+                              t('jobtype.work-order'),
+                              t('common.date'),
                               'blackhillby',
-                              'Remark',
+                              t('common.remark'),
                             ],
                           ]
                           for (const t of detailData.transactions) {

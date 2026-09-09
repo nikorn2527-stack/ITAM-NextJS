@@ -178,7 +178,7 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
   SCANNER: 'Scan',
   COMPUTER: 'computer',
   NETWORK: 'DeviceNetwork',
-  OTHER: 'Other',
+  OTHER: t('type.other'),
 }
 
 // ── Form state ───────────────────────────────────────────────────────
@@ -297,7 +297,7 @@ export function PMSchedulesPage() {
   }>({
     queryKey: ['pm-active-devices', siteFilter],
     queryFn: async () => {
-      const params = new URLSearchParams({ limit: '500', status: 'Active' })
+      const params = new URLSearchParams({ limit: '500', status: t('status.active') })
       if (siteFilter !== 'all') params.set('site', siteFilter)
       const res = await fetch(`/api/devices?${params}`, { headers: getAuthHeaders() })
       if (!res.ok) return { devices: [] }
@@ -503,7 +503,7 @@ export function PMSchedulesPage() {
       ],
     }))
   }
-  function updateChecklistItem(idx: number, key: 'label' | 'required', value: string | boolean) {
+  function updateChecklistItem(idx: number, key: 'label' | 'modules.required', value: string | boolean) {
     setForm((f) => ({
       ...f,
       checklist: f.checklist.map((c, i) => (i === idx ? { ...c, [key]: value } : c)),
@@ -1710,7 +1710,7 @@ export function PMSchedulesPage() {
                         <input
                           type="checkbox"
                           checked={c.required}
-                          onChange={(e) => updateChecklistItem(idx, 'required', e.target.checked)}
+                          onChange={(e) => updateChecklistItem(idx, t('modules.required'), e.target.checked)}
                           className="h-3.5 w-3.5 accent-emerald-600"
                         />
                         required
@@ -1742,7 +1742,7 @@ export function PMSchedulesPage() {
               {upsertMutation.isPending ? (
                 <><RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" /> Save...</>
               ) : (
-                <><CheckCircle2 className="mr-1 h-3.5 w-3.5" /> {editTarget ? 'Save' : 'Create'}</>
+                <><CheckCircle2 className="mr-1 h-3.5 w-3.5" /> {editTarget ? t('common.save') : 'Create'}</>
               )}
             </Button>
           </DialogFooter>
