@@ -1189,8 +1189,11 @@ function AppCustomizeTab() {
 }
 
 // ============================================================
-// MobileNavConfigSection — admin SettingsMobile Menu/desktopby role
+// MobileNavConfigSection — admin config for mobile bottom nav tabs.
 // ============================================================
+// Only shows toggles for pages that have REAL mobile components.
+// Desktop-only pages (PM, paper-analytics, templates, import, reports,
+// settings, audit) are NOT listed because they don't work on mobile.
 function MobileNavConfigSection() {
   const t = useT()
   const qc = useQueryClient()
@@ -1199,40 +1202,22 @@ function MobileNavConfigSection() {
   const [saving, setSaving] = React.useState(false)
 
   const ROLES = [
-    { value: 'admin', label: 'PersonViewSystem' },
-    { value: 'manager', label: 'PersonManage' },
-    { value: 'staff', label: 'Technicianทperson' },
-    { value: 'coordinator', label: 'PersoncoordinateWork' },
-    { value: 'viewer', label: 'PersonView' },
+    { value: 'admin', label: t('role.admin') },
+    { value: 'manager', label: t('role.manager') },
+    { value: 'staff', label: t('role.staff') },
+    { value: 'coordinator', label: t('role.coordinator') },
+    { value: 'viewer', label: t('role.viewer') },
   ]
 
-  // All nav pages that can be toggled — SIDEBAR pages (desktop responsive)
-  const NAV_PAGES = [
-    { page: 'dashboard', label: '📊 Dashboard' },
-    { page: 'itam-devices', label: '💻 ManageDevice' },
-    { page: 'itam-meter-keyboard', label: '📈 ReadMeter' },
-    { page: 'itam-work-orders', label: '🔧 Repair Request' },
-    { page: 'pm-schedules', label: '🗓️ Table PM' },
-    { page: 'itam-stock', label: '📦 Stock' },
-    { page: 'itam-paper-analytics', label: '📄 analyzePaper' },
-    { page: 'templates', label: '📄 Template' },
-    { page: 'import', label: '📥 ImportData' },
-    { page: 'reports-hub', label: '📊 centerReport' },
-    { page: 'material-cost', label: '💰 CostMaterial' },
-    { page: 'monthly-report', label: '📅 Reportitemmonths' },
-    { page: 'itam-settings', label: '⚙️ SettingsSystem' },
-    { page: 'itam-audit', label: '📜 HistoryActive' },
-    { page: 'mobile', label: '📱 modeMobile' },
-  ]
-
-  // MobileShell (AppMobile) tabs — the 4 bottom-nav buttons that users
-  // see when they open the app on a phone. 'account' (account) is NOT
-  // listed here because it can't be disabled (logout must remain accessible).
+  // Only mobile-native tabs that have real mobile components.
+  // 'account' is NOT listed (always on — logout must remain accessible).
   const MOBILE_APP_TABS = [
-    { page: 'mobileapp-my-work', label: '📋 WorkofI' },
-    { page: 'mobileapp-repair',  label: '🔧 Repair Request' },
-    { page: 'mobileapp-meter',   label: '📈 ReadMeter' },
-    { page: 'mobileapp-stock',   label: '📦 Withdrawof' },
+    { page: 'mobileapp-dashboard', label: `📊 ${t('mobile.dashboard')}` },
+    { page: 'mobileapp-devices',   label: `💻 ${t('mobile.devices')}` },
+    { page: 'mobileapp-my-work',   label: `📋 ${t('mobile.my_work')}` },
+    { page: 'mobileapp-repair',    label: `🔧 ${t('mobile.repair')}` },
+    { page: 'mobileapp-meter',     label: `📈 ${t('mobile.meter')}` },
+    { page: 'mobileapp-stock',     label: `📦 ${t('mobile.stock')}` },
   ]
 
   // Load config from AppSetting
@@ -1273,7 +1258,7 @@ function MobileNavConfigSection() {
   function setAllForRole(role: string, value: boolean) {
     setConfig((prev) => ({
       ...prev,
-      [role]: Object.fromEntries(NAV_PAGES.map((p) => [p.page, value])),
+      [role]: Object.fromEntries(MOBILE_APP_TABS.map((p) => [p.page, value])),
     }))
   }
 
@@ -1305,16 +1290,16 @@ function MobileNavConfigSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Smartphone className="h-5 w-5 text-[#f97316]" />
-          SettingsMobile Menu / desktop
+          {t('settings.tab.mobile_nav')}
         </CardTitle>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          SetthatEach role willsee any menuonMobile (frontscreen &lt; 768px) — ondesktopwillseeAllmenuatNoClose
+          {t('mobile.config_subtitle')}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Role selector */}
         <div className="flex flex-wrap items-center gap-2">
-          <Label className="text-xs">Select Role:</Label>
+          <Label className="text-xs">{t('mobile.select_role')}</Label>
           {ROLES.map((r) => (
             <button
               key={r.value}
@@ -1334,65 +1319,28 @@ function MobileNavConfigSection() {
         {/* Quick actions */}
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => setAllForRole(selectedRole, true)}>
-            CloseAll
+            {t('mobile.enable_all')}
           </Button>
           <Button size="sm" variant="outline" onClick={() => setAllForRole(selectedRole, false)}>
-            CloseAll
+            {t('mobile.disable_all')}
           </Button>
         </div>
 
-        {/* Page toggles */}
-        <div className="rounded-md border border-slate-200 dark:border-slate-800">
-          <Table>
-            <TableHeader>
-              <TableRow className="text-xs">
-                <TableHead>menu</TableHead>
-                <TableHead className="w-24 text-center">Mobile</TableHead>
-                <TableHead className="w-24 text-center">desktop</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {NAV_PAGES.map((p) => {
-                const mobileVisible = roleConfig[p.page] ?? true
-                return (
-                  <TableRow key={p.page} className="text-xs">
-                    <TableCell>{p.label}</TableCell>
-                    <TableCell className="text-center">
-                      <Switch
-                        checked={mobileVisible}
-                        onCheckedChange={(v) => togglePage(selectedRole, p.page, v)}
-                      />
-                    </TableCell>
-                    <TableCell className="text-center text-slate-400">
-                      ✓ (always visible)
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </div>
-
-        <div className="rounded-md bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800/40 dark:text-slate-400">
-          💡 <strong>Mobile</strong> = UserseeOnlymenuatCloseKeep (WheninThroughfrontscreen &lt; 768px)<br />
-          💡 <strong>desktop</strong> = UserseeAllmenu (exceptatCloseKeep)
-        </div>
-
-        {/* ── AppMobile (MobileShell) tabs ── */}
-        <div className="mt-4 rounded-md border border-orange-200 bg-orange-50/50 p-3 dark:border-orange-800/50 dark:bg-orange-950/20">
+        {/* Mobile app tabs — only pages that have real mobile components */}
+        <div className="rounded-md border border-orange-200 bg-orange-50/50 p-3 dark:border-orange-800/50 dark:bg-orange-950/20">
           <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-orange-700 dark:text-orange-300">
             <Smartphone className="h-4 w-4" />
-            AppMobile (MobileShell) — bottom bar buttononMobilereal
+            {t('mobile.app_tabs_title')}
           </h4>
           <p className="mb-3 text-[11px] text-orange-600/80 dark:text-orange-400/80">
-            button "account" NoCanClose (MustHas logout always)
+            {t('mobile.account_always_on')}
           </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {MOBILE_APP_TABS.map((t) => {
-              const visible = roleConfig[t.page] ?? true
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {MOBILE_APP_TABS.map((tab) => {
+              const visible = roleConfig[tab.page] ?? true
               return (
                 <label
-                  key={t.page}
+                  key={tab.page}
                   className={`flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs transition ${
                     visible
                       ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
@@ -1401,17 +1349,22 @@ function MobileNavConfigSection() {
                 >
                   <Switch
                     checked={visible}
-                    onCheckedChange={(v) => togglePage(selectedRole, t.page, v)}
+                    onCheckedChange={(v) => togglePage(selectedRole, tab.page, v)}
                     className="scale-75"
                   />
-                  <span>{t.label}</span>
+                  <span>{tab.label}</span>
                 </label>
               )
             })}
           </div>
           <p className="mt-2 text-[11px] text-orange-600/70 dark:text-orange-400/70">
-            ChangedownHasResultin 30 sec AfterSave (cache refresh)
+            {t('mobile.config_hint')}
           </p>
+        </div>
+
+        {/* Info: desktop-only pages are NOT shown here */}
+        <div className="rounded-md bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800/40 dark:text-slate-400">
+          {t('mobile.desktop_pages_note')}
         </div>
 
         <Button

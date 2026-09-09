@@ -1188,6 +1188,14 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   'mobile.exit_mobile': { th: 'ออกจากโหมดมือถือ', en: 'Exit Mobile Mode' },
   'mobile.all_menu': { th: 'เมนูทั้งหมด', en: 'All Menu' },
   'mobile.exit': { th: 'ออก', en: 'Exit' },
+  'mobile.config_subtitle': { th: 'เลือกเมนูที่แสดงบนมือถือสำหรับแต่ละบทบาท — เฉพาะเมนูที่ใช้งานได้บนมือถือจริง', en: 'Select which mobile tabs to show for each role — only tabs with real mobile components' },
+  'mobile.select_role': { th: 'เลือกบทบาท:', en: 'Select Role:' },
+  'mobile.enable_all': { th: 'เปิดทั้งหมด', en: 'Enable All' },
+  'mobile.disable_all': { th: 'ปิดทั้งหมด', en: 'Disable All' },
+  'mobile.app_tabs_title': { th: 'เมนูมือถือ (แถบล่าง)', en: 'Mobile Tabs (Bottom Nav)' },
+  'mobile.account_always_on': { th: 'ปุ่ม "บัญชี" เปิดเสมอ (ต้องมีปุ่มออกจากระบบ)', en: '"Account" button is always on (logout must remain accessible)' },
+  'mobile.config_hint': { th: 'เปลี่ยนแล้วบันทึก — มีผลภายใน 30 วินาที (cache refresh)', en: 'Save to apply — takes effect within 30 seconds (cache refresh)' },
+  'mobile.desktop_pages_note': { th: '💡 เมนู desktop อื่นๆ (PM, เทมเพลต, รายงาน ฯลฯ) ยังไม่รองรับมือถือ — ใช้ผ่านโหมด desktop', en: '💡 Other desktop pages (PM, templates, reports, etc.) are not mobile-compatible — use desktop mode' },
 
 }
 

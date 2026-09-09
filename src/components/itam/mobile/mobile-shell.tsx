@@ -46,26 +46,26 @@ export type MobileTab = 'repair' | 'my-work' | 'meter' | 'stock' | 'account' | '
 
 interface NavItem {
   id: MobileTab
-  label: string
+  labelKey: string
   icon: React.ComponentType<{ className?: string }>
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'my-work',  label: t('mobile.my_work'), icon: ClipboardList },
-  { id: 'repair',   label: t('mobile.repair'),   icon: Wrench },
-  { id: 'meter',    label: t('mobile.meter'),  icon: Gauge },
-  { id: 'stock',    label: t('mobile.stock'),    icon: PackageOpen },
-  { id: 'account',  label: t('mobile.account'),      icon: User },
+  { id: 'my-work',  labelKey: 'mobile.my_work', icon: ClipboardList },
+  { id: 'repair',   labelKey: 'mobile.repair',   icon: Wrench },
+  { id: 'meter',    labelKey: 'mobile.meter',  icon: Gauge },
+  { id: 'stock',    labelKey: 'mobile.stock',    icon: PackageOpen },
+  { id: 'account',  labelKey: 'mobile.account',      icon: User },
 ]
 
-const HEADER_TITLE: Record<MobileTab, string> = {
-  repair: t('mobile.repair'),
-  'my-work': t('mobile.my_work'),
-  meter: t('mobile.meter'),
-  stock: t('mobile.stock'),
-  account: t('mobile.account'),
-  dashboard: t('mobile.dashboard'),
-  devices: t('mobile.devices'),
+const HEADER_TITLE_KEYS: Record<MobileTab, string> = {
+  repair: 'mobile.repair',
+  'my-work': 'mobile.my_work',
+  meter: 'mobile.meter',
+  stock: 'mobile.stock',
+  account: 'mobile.account',
+  dashboard: 'mobile.dashboard',
+  devices: 'mobile.devices',
 }
 
 export function MobileShell() {
@@ -189,7 +189,7 @@ export function MobileShell() {
               <Wrench className="h-4 w-4" />
             </div>
             <h1 className="text-base font-semibold leading-none">
-              {HEADER_TITLE[tab]}
+              {t(HEADER_TITLE_KEYS[tab])}
             </h1>
           </div>
           <div className="flex items-center gap-1">
@@ -345,7 +345,7 @@ export function MobileShell() {
               )}
             >
               <Icon className="h-5 w-5" />
-              <span className="leading-none">{item.label}</span>
+              <span className="leading-none">{t(item.labelKey)}</span>
               {active && (
                 <span className="absolute top-0 h-0.5 w-10 rounded-full bg-orange-500" />
               )}
