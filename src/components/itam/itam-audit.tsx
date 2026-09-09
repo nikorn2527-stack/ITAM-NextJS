@@ -467,11 +467,11 @@ export function ItamAudit() {
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
-                  <TableHead className="w-44">Date</TableHead>
+                  <TableHead className="w-44">{t('import.col_date')}</TableHead>
                   <TableHead className="w-40">Do</TableHead>
                   <TableHead className="w-28">Entity</TableHead>
                   <TableHead className="w-48">PersonDo</TableHead>
-                  <TableHead>Summary</TableHead>
+                  <TableHead>{t('reports.type.summary')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

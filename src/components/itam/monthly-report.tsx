@@ -401,8 +401,8 @@ function buildSpecialFeeApprovalHTML(opts: {
             `<thead><tr>` +
             `<th style="width:90px">No.Work Order</th>` +
             `<th>Subject</th>` +
-            `<th style="width:120px">Date</th>` +
-            `<th style="width:100px">Status</th>` +
+            `<th style="width:120px">{t('import.col_date')}</th>` +
+            `<th style="width:100px">{t('settings.col.status')}</th>` +
             `</tr></thead><tbody>`,
         )
         for (const r of sl.list) {
@@ -693,7 +693,7 @@ function buildSpecialFeeApprovalHTML(opts: {
     <table class="data-table">
       <thead>
         <tr>
-          <th>Technician</th>
+          <th>{t('role.staff')}</th>
           <th style="text-align:right">Quantitycase</th>
           <th style="text-align:right">% ofAll</th>
         </tr>
@@ -1153,7 +1153,7 @@ export function MonthlyReport() {
           </div>
           ${deviceRowsHtml ? `
             <table class="data-table">
-              <thead><tr><th>Asset Code</th><th>Device</th><th style="text-align:right">white (sheets)</th><th style="text-align:right">Color (sheets)</th><th style="text-align:right">Total</th></tr></thead>
+              <thead><tr><th>{t('devices.col.asset_code')}</th><th>Device</th><th style="text-align:right">white (sheets)</th><th style="text-align:right">Color (sheets)</th><th style="text-align:right">Total</th></tr></thead>
               <tbody>${deviceRowsHtml}</tbody>
             </table>` : '<p class="muted">No dataReadMeterinmonths</p>'}
         </section>`
@@ -1202,7 +1202,7 @@ export function MonthlyReport() {
             <div>
               <h3 class="sub-h">ByStatus</h3>
               <table class="data-table">
-                <thead><tr><th>Status</th><th style="text-align:right">Quantity</th><th style="text-align:right">%</th></tr></thead>
+                <thead><tr><th>{t('settings.col.status')}</th><th style="text-align:right">Quantity</th><th style="text-align:right">%</th></tr></thead>
                 <tbody>${statusRows || '<tr><td colspan="3" class="muted">No data</td></tr>'}</tbody>
               </table>
             </div>
@@ -1260,7 +1260,7 @@ export function MonthlyReport() {
             <div>
               <h3 class="sub-h">ByStatus</h3>
               <table class="data-table">
-                <thead><tr><th>Status</th><th style="text-align:right">Quantity</th></tr></thead>
+                <thead><tr><th>{t('settings.col.status')}</th><th style="text-align:right">Quantity</th></tr></thead>
                 <tbody>${statusRows || '<tr><td colspan="2" class="muted">No data</td></tr>'}</tbody>
               </table>
             </div>
@@ -1274,7 +1274,7 @@ export function MonthlyReport() {
           </div>
           <h3 class="sub-h">ResultWorkTechnician</h3>
           <table class="data-table">
-            <thead><tr><th>Technician</th><th style="text-align:right">Receive</th><th style="text-align:right">Done</th><th style="text-align:right">%Done</th></tr></thead>
+            <thead><tr><th>{t('role.staff')}</th><th style="text-align:right">Receive</th><th style="text-align:right">Done</th><th style="text-align:right">%Done</th></tr></thead>
             <tbody>${staffRows || '<tr><td colspan="4" class="muted">No data</td></tr>'}</tbody>
           </table>
           <h3 class="sub-h">SubjectPopular (Top 15)</h3>
@@ -1368,9 +1368,9 @@ export function MonthlyReport() {
           </div>
           <table class="data-table">
             <thead><tr>
-              <th>Asset Code</th><th>Device</th><th>Site</th><th>DateRead</th>
+              <th>{t('devices.col.asset_code')}</th><th>Device</th><th>Site</th><th>DateRead</th>
               <th style="text-align:right">Meter /</th>
-              <th style="text-align:right">Meter Color</th>
+              <th style="text-align:right">{t('devices.field.last_meter_color')}</th>
               <th style="text-align:right">sheetsatUse</th>
               <th style="text-align:center">Type</th>
               <th>PersonRead</th>
@@ -2191,7 +2191,7 @@ export function MonthlyReport() {
                   <Table>
                     <TableHeader className="sticky top-0 bg-muted">
                       <TableRow>
-                        <TableHead>Technician</TableHead>
+                        <TableHead>{t('role.staff')}</TableHead>
                         <TableHead className="text-right">Receive</TableHead>
                         <TableHead className="text-right">Done</TableHead>
                         <TableHead className="text-right">
@@ -2395,7 +2395,7 @@ export function MonthlyReport() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Status</TableHead>
+                          <TableHead>{t('settings.col.status')}</TableHead>
                           <TableHead className="text-right">Quantity</TableHead>
                           <TableHead className="text-right">
                             % ofAll

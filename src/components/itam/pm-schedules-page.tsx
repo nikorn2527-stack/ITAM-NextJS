@@ -676,7 +676,7 @@ export function PMSchedulesPage() {
           {/* Filter bar */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="pm-search" className="text-xs font-medium">Search</Label>
+              <Label htmlFor="pm-search" className="text-xs font-medium">{t('control.search')}</Label>
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -689,7 +689,7 @@ export function PMSchedulesPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pm-active" className="text-xs font-medium">Status</Label>
+              <Label htmlFor="pm-active" className="text-xs font-medium">{t('settings.col.status')}</Label>
               <Select value={activeFilter} onValueChange={(v) => setActiveFilter(v as 'all' | 'active' | 'inactive')}>
                 <SelectTrigger id="pm-active" className="h-9 text-xs">
                   <SelectValue />
@@ -740,7 +740,7 @@ export function PMSchedulesPage() {
           </TabsTrigger>
           <TabsTrigger value="history" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <CheckCircle2 className="h-4 w-4" />
-            <span>History</span>
+            <span>{t('devices.row.history')}</span>
           </TabsTrigger>
         </TabsList>
 
@@ -785,8 +785,8 @@ export function PMSchedulesPage() {
                       <TableHead>Goal</TableHead>
                       <TableHead className="text-right">timesperto</TableHead>
                       <TableHead className="text-right">timesLatest</TableHead>
-                      <TableHead className="text-right">History</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="text-right">{t('devices.row.history')}</TableHead>
+                      <TableHead className="text-right">{t('settings.col.actions')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -882,8 +882,8 @@ export function PMSchedulesPage() {
                                 variant="ghost"
                                 onClick={() => openEdit(s)}
                                 className="h-7 w-7 p-0"
-                                aria-label="Edit"
-                                title="Edit"
+                                aria-label={t('settings.edit')}
+                                title={t('settings.edit')}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
@@ -1123,9 +1123,9 @@ export function PMSchedulesPage() {
                         <TableHead>Table PM</TableHead>
                         <TableHead>DateSet</TableHead>
                         <TableHead>DateDoreal</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead>{t('settings.col.status')}</TableHead>
                         <TableHead>PersonDo</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
+                        <TableHead className="text-right">{t('settings.col.actions')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>

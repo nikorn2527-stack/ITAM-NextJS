@@ -478,9 +478,9 @@ export function MeterPage() {
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
-                  <TableHead className="text-slate-600 dark:text-slate-300">Code</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">Name</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">Brand/Model</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">{t('settings.col.code')}</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">{t('settings.col.name')}</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.brand_model')}</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">Type</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">Status</TableHead>
                   <TableHead className="text-slate-600 dark:text-slate-300">Site</TableHead>

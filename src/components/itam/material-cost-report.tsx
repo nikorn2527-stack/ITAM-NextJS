@@ -575,7 +575,7 @@ export function MaterialCostReport() {
                   <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                     <TableRow className="text-xs">
                       <TableHead className="w-[30%]">item</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">{t('common.quantity')}</TableHead>
                       <TableHead className="text-right">Price/bottles</TableHead>
                       <TableHead className="text-right">CostTotal</TableHead>
                       <TableHead className="text-right">yield/bottles</TableHead>
@@ -649,7 +649,7 @@ export function MaterialCostReport() {
                   <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                     <TableRow className="text-xs">
                       <TableHead className="w-[28%]">item</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">{t('common.quantity')}</TableHead>
                       <TableHead className="text-right">Price/pcs</TableHead>
                       <TableHead className="text-right">CostTotal</TableHead>
                       <TableHead>Howcalculate</TableHead>
@@ -737,7 +737,7 @@ export function MaterialCostReport() {
                   <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                     <TableRow className="text-xs">
                       <TableHead className="w-[40%]">item</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">{t('common.quantity')}</TableHead>
                       <TableHead className="text-right">Price</TableHead>
                       <TableHead className="text-right">CostTotal</TableHead>
                     </TableRow>

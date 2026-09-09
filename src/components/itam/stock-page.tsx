@@ -1052,7 +1052,7 @@ export function StockPage() {
                     <TableRow className="bg-slate-50 dark:bg-slate-800/60">
                       <TableHead className="w-28">CodeProduct</TableHead>
                       <TableHead>NameProduct</TableHead>
-                      <TableHead className="w-32">Category</TableHead>
+                      <TableHead className="w-32">{t('settings.col.category')}</TableHead>
                       <TableHead className="w-20 text-right">Remaining</TableHead>
                       <TableHead className="w-20">Unit</TableHead>
                       <TableHead className="w-24 text-right">Price/Unit</TableHead>
@@ -1196,7 +1196,7 @@ export function StockPage() {
                                   variant="ghost"
                                   className="h-8 px-2 text-slate-600 hover:bg-slate-100 hover:text-slate-800 dark:text-slate-300 dark:hover:bg-slate-800"
                                   onClick={() => openEditItem(item)}
-                                  title="Edit"
+                                  title={t('settings.edit')}
                                 >
                                   <Pencil className="h-3.5 w-3.5" />
                                 </Button>
@@ -1205,7 +1205,7 @@ export function StockPage() {
                                   variant="ghost"
                                   className="h-8 px-2 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40"
                                   onClick={() => setDeleteTarget(item)}
-                                  title="Delete"
+                                  title={t('settings.delete')}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
@@ -1433,7 +1433,7 @@ export function StockPage() {
                       <TableHead className="w-32">No.atRequest</TableHead>
                       <TableHead className="w-32">Date</TableHead>
                       <TableHead>Product</TableHead>
-                      <TableHead className="w-24 text-right">Quantity</TableHead>
+                      <TableHead className="w-24 text-right">{t('common.quantity')}</TableHead>
                       <TableHead className="w-28 text-right">Remaining</TableHead>
                       <TableHead className="w-32">No.Work Order</TableHead>
                       <TableHead>causeResult / Remark</TableHead>
@@ -2274,7 +2274,7 @@ export function StockPage() {
                         <TableRow>
                           <TableHead className="w-28">No.at</TableHead>
                           <TableHead className="w-20">Type</TableHead>
-                          <TableHead className="w-24 text-right">Quantity</TableHead>
+                          <TableHead className="w-24 text-right">{t('common.quantity')}</TableHead>
                           <TableHead className="w-24 text-right">Remaining</TableHead>
                           <TableHead>causeResult</TableHead>
                           <TableHead className="w-28">Date</TableHead>
@@ -2565,7 +2565,7 @@ export function StockPage() {
                             updatePoLine(idx, 'quantityOrdered', e.target.value)
                           }
                           className="h-8 text-xs"
-                          placeholder="Quantity"
+                          placeholder={t('common.quantity')}
                         />
                       </div>
                       <div className="col-span-4 sm:col-span-2">

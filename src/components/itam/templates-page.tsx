@@ -467,8 +467,8 @@ function StickerTab() {
                         className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40"
                         onClick={() => setDeleteTarget(tpl)}
                         disabled={deleteMutation.isPending}
-                        title="Delete"
-                        aria-label="Delete"
+                        title={t('settings.delete')}
+                        aria-label={t('settings.delete')}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -574,7 +574,7 @@ function StickerTab() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('settings.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               type="button"
               className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
@@ -880,8 +880,8 @@ function DocumentTab() {
                         className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40"
                         onClick={() => setDeleteTarget(tpl)}
                         disabled={deleteMutation.isPending}
-                        title="Delete"
-                        aria-label="Delete"
+                        title={t('settings.delete')}
+                        aria-label={t('settings.delete')}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -963,7 +963,7 @@ function DocumentTab() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('settings.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               type="button"
               className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"
@@ -1103,7 +1103,7 @@ function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) 
               onChange={(e) =>
                 setForm((s) => ({ ...s, category: e.target.value }))
               }
-              placeholder="(optional)"
+              placeholder={t('common.optional')}
               className="h-8"
             />
           </div>
@@ -1590,8 +1590,8 @@ function WorkOrderTab() {
                           size="sm"
                           className="h-8 w-8 p-0"
                           onClick={() => openEdit(tpl)}
-                          title="Edit"
-                          aria-label="Edit"
+                          title={t('settings.edit')}
+                          aria-label={t('settings.edit')}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -1608,7 +1608,7 @@ function WorkOrderTab() {
                                 ? 'NoCanDeleteTemplateFeeDefault'
                                 : t('common.delete')
                           }
-                          aria-label="Delete"
+                          aria-label={t('settings.delete')}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -1644,7 +1644,7 @@ function WorkOrderTab() {
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{t('settings.cancel')}</AlertDialogCancel>
               <AlertDialogAction
                 type="button"
                 className="bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-600"

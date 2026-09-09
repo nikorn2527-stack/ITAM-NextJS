@@ -540,7 +540,7 @@ export function ItamSettings() {
             <div className="space-y-1.5">
               <Label htmlFor="master-category" className="text-xs">Category *</Label>
               <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                <SelectTrigger id="master-category" className="dark:bg-slate-800 dark:border-slate-700" aria-label="Category"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="master-category" className="dark:bg-slate-800 dark:border-slate-700" aria-label={t('settings.col.category')}><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {MASTER_CATEGORIES.map((cat: string) => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
@@ -554,11 +554,11 @@ export function ItamSettings() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="master-displayLabel" className="text-xs">Display Label</Label>
-              <Input id="master-displayLabel" name="displayLabel" aria-label="Display Label" value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} placeholder="(optional)" className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input id="master-displayLabel" name="displayLabel" aria-label={t('settings.col.display_label')} value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} placeholder={t('common.optional')} className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="master-code" className="text-xs">Code</Label>
-              <Input id="master-code" name="code" aria-label="Code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="(optional)" className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input id="master-code" name="code" aria-label={t('settings.col.code')} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder={t('common.optional')} className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
           </div>
           <DialogFooter>
@@ -1002,7 +1002,7 @@ function AppCustomizeTab() {
               <Input
                 value={form.appTagline}
                 onChange={(e) => setForm({ ...form, appTagline: e.target.value })}
-                placeholder="Asset Management System"
+                placeholder={t('footer.app_name')}
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
             </div>

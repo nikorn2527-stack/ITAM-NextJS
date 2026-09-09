@@ -390,7 +390,7 @@ export function ReportsHub() {
         <TabsList className="grid h-auto w-full flex-shrink-0 grid-cols-3 gap-1 md:grid-cols-6">
           <TabsTrigger value="devices" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Cpu className="h-4 w-4" />
-            <span>Device</span>
+            <span>{t('dash.heatmap.device')}</span>
           </TabsTrigger>
           <TabsTrigger value="meters" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Gauge className="h-4 w-4" />
@@ -398,7 +398,7 @@ export function ReportsHub() {
           </TabsTrigger>
           <TabsTrigger value="workorders" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Wrench className="h-4 w-4" />
-            <span>Work Order</span>
+            <span>{t('jobtype.work-order')}</span>
           </TabsTrigger>
           <TabsTrigger value="stock" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Package className="h-4 w-4" />

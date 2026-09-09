@@ -765,12 +765,12 @@ export function WorkOrdersPage() {
             size="sm"
             onClick={() => listQuery.refetch()}
             disabled={listQuery.isFetching}
-            aria-label="Refresh"
+            aria-label={t('settings.refresh')}
           >
             <RefreshCw
               className={listQuery.isFetching ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
             />
-            <span className="hidden sm:inline">Refresh</span>
+            <span className="hidden sm:inline">{t('settings.refresh')}</span>
           </Button>
           <Button type="button" size="sm" onClick={openCreate} className="bg-orange-500 hover:bg-orange-600">
             <Plus className="h-4 w-4" />
@@ -844,7 +844,7 @@ export function WorkOrdersPage() {
           <div className="grid grid-cols-2 gap-2 md:flex md:w-auto">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full md:w-[160px]" aria-label="FilterStatus">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder={t('settings.col.status')} />
               </SelectTrigger>
               <SelectContent>
                 {STATUS_OPTIONS.map((o) => (
@@ -869,7 +869,7 @@ export function WorkOrdersPage() {
             {showSiteFilter && (
               <Select value={siteFilter} onValueChange={setSiteFilter}>
                 <SelectTrigger className="w-full md:w-[160px]" aria-label="FilterSite">
-                  <SelectValue placeholder="Site" />
+                  <SelectValue placeholder={t('devices.filter.site_placeholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">AllSite</SelectItem>
@@ -1503,7 +1503,7 @@ function CreateWorkOrderDialog({
           </div>
           <DialogClose
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500"
-            aria-label="Close"
+            aria-label={t('settings.close')}
           >
             <X className="h-5 w-5" />
           </DialogClose>
@@ -3337,7 +3337,7 @@ function WorkOrderDetailContent({
             </Button>
             <DialogClose
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500 sm:hidden"
-              aria-label="Close"
+              aria-label={t('settings.close')}
             >
               <X className="h-5 w-5" />
             </DialogClose>
@@ -4341,7 +4341,7 @@ function WorkOrderDetailContent({
                             updateCompletePart(idx, 'quantity', e.target.value)
                           }
                           className="h-8 text-xs"
-                          placeholder="Quantity"
+                          placeholder={t('common.quantity')}
                         />
                       </div>
                       <div className="col-span-7 sm:col-span-3">
@@ -4351,7 +4351,7 @@ function WorkOrderDetailContent({
                             updateCompletePart(idx, 'remark', e.target.value)
                           }
                           className="h-8 text-xs"
-                          placeholder="Remark"
+                          placeholder={t('devices.placeholder.remark')}
                         />
                       </div>
                       <div className="col-span-1 flex items-center justify-end">
@@ -4612,7 +4612,7 @@ function WorkOrderDetailContent({
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="re-location">Location</Label>
+                <Label htmlFor="re-location">{t('devices.field.location')}</Label>
                 <Input
                   id="re-location"
                   value={reporterEdit.location}
@@ -5040,7 +5040,7 @@ function WorkOrderDetailContent({
                 type="button"
                 onClick={() => setLightboxSrc(null)}
                 className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
-                aria-label="Close"
+                aria-label={t('settings.close')}
               >
                 <X className="h-5 w-5" />
               </button>
