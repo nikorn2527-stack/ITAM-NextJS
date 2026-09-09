@@ -41,6 +41,7 @@ import {
 import type { CostAnalyticsData, DashboardRangeKey } from './types'
 import { DASHBOARD_RANGE_OPTIONS, formatBaht } from './types'
 import { UtilizationSection } from './utilization-section'
+import { useT } from '@/store/i18n-store'
 
 interface KpiProps {
   title: string
@@ -135,6 +136,7 @@ const MEDAL_BG = [
 ]
 
 export function PaperAnalyticsPage() {
+  const t = useT()
   const { theme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])

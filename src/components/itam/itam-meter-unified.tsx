@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/dialog'
 import type { Cycle } from './types'
 import { formatMonthThai } from './types'
+import { useT } from '@/store/i18n-store'
 
 // ============================================================
 // Custom Export — Meter page (Task ID: FIX-1-2-EXPORT-PRINT)
@@ -416,6 +417,7 @@ function QuickCreateCycleDialog({
 // Main unified component
 // ============================================================
 export function ItamMeterUnified() {
+  const t = useT()
   const qc = useQueryClient()
   const [mode, setMode] = React.useState<'entry' | 'history'>('entry')
   const [cycleDialogOpen, setCycleDialogOpen] = React.useState(false)

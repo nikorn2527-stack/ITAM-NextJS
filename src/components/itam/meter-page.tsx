@@ -92,6 +92,7 @@ function daysBetween(a: string, b: string): number {
 }
 
 export function MeterPage() {
+  const t = useT()
   const qc = useQueryClient()
   const tableRef = React.useRef<HTMLDivElement>(null)
   const [highlightUnread, setHighlightUnread] = React.useState(false)

@@ -51,6 +51,7 @@ import { useAuthStore } from '@/store/auth-store'
 import { canSelectSite } from './types'
 import { CustomColumnSelector, type ColumnDef } from './custom-column-selector'
 import { ReportBarChart, ReportPieChart } from './report-charts'
+import { useT } from '@/store/i18n-store'
 
 // Column definitions for material cost report
 const COST_REPORT_COLUMNS: ColumnDef[] = [
@@ -64,8 +65,7 @@ const COST_REPORT_COLUMNS: ColumnDef[] = [
   { key: 'site', label: 'Site', default: false },
   { key: 'costType', label: 'TypeCost', default: false },
 ]
-import {
-  Droplet,
+import {  Droplet,
   Wrench,
   Briefcase,
   TrendingDown,
@@ -191,6 +191,7 @@ function depreciationLabel(method: string | null | undefined): string {
 // ── Component ─────────────────────────────────────────────────────────
 
 export function MaterialCostReport() {
+  const t = useT()
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
   const [selectedColumns, setSelectedColumns] = React.useState<string[]>([])

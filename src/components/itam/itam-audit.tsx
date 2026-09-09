@@ -16,6 +16,7 @@ import { downloadCsv, dateStamp } from '@/lib/csv'
 import { useAuthStore } from '@/store/auth-store'
 import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
 import { runCustomExport } from '@/lib/custom-export'
+import { useT } from '@/store/i18n-store'
 
 // ============================================================
 // Custom Export — Audit page (Task ID: FIX-1-2-EXPORT-PRINT)
@@ -185,6 +186,7 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 }
 
 export function ItamAudit() {
+  const t = useT()
   const qc = useQueryClient()
   const [action, setAction] = React.useState('all')
   const [actor, setActor] = React.useState('')

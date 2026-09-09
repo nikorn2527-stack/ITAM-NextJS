@@ -27,7 +27,7 @@
  */
 
 import * as React from 'react'
-import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut, ArrowLeft, User, Menu, X } from 'lucide-react'
+import { Wrench, ClipboardList, Gauge, PackageOpen, LogOut, ArrowLeft, User, LayoutDashboard, Monitor } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
@@ -51,11 +51,13 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { id: 'dashboard', labelKey: 'mobile.dashboard', icon: LayoutDashboard },
   { id: 'my-work',  labelKey: 'mobile.my_work', icon: ClipboardList },
   { id: 'repair',   labelKey: 'mobile.repair',   icon: Wrench },
   { id: 'meter',    labelKey: 'mobile.meter',  icon: Gauge },
   { id: 'stock',    labelKey: 'mobile.stock',    icon: PackageOpen },
-  { id: 'account',  labelKey: 'mobile.account',      icon: User },
+  { id: 'devices',  labelKey: 'mobile.devices',  icon: Monitor },
+  { id: 'account',  labelKey: 'mobile.account',  icon: User },
 ]
 
 const HEADER_TITLE_KEYS: Record<MobileTab, string> = {
@@ -182,7 +184,7 @@ export function MobileShell() {
     <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-slate-950">
       {/* Centered phone-frame for desktop preview, full-width on phones */}
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col bg-background shadow-sm">
-        {/* Top header */}
+        {/* Top header — no hamburger menu (removed: desktop pages don't work on mobile) */}
         <header className="sticky top-0 z-30 flex h-14 flex-shrink-0 items-center justify-between border-b bg-background px-4">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500 text-white">
@@ -193,16 +195,6 @@ export function MobileShell() {
             </h1>
           </div>
           <div className="flex items-center gap-1">
-            {/* Hamburger menu — opens drawer with all sidebar pages */}
-            <button
-              type="button"
-              onClick={() => setMenuOpen(true)}
-              aria-label="t('mobile.all_menu')"
-              title="t('mobile.all_menu')"
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
             <span className="mr-1 text-xs text-muted-foreground">ITAM</span>
             {/* Exit mobile mode → back to desktop */}
             <button
@@ -219,80 +211,14 @@ export function MobileShell() {
             <button
               type="button"
               onClick={handleLogout}
-              aria-label="ออกจากระบบ"
-              title="ออกจากระบบ"
+              aria-label={t('auth.logout')}
+              title={t('auth.logout')}
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-rose-200 text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-700 dark:border-rose-800 dark:hover:bg-rose-950/40 dark:hover:text-rose-300"
             >
               <LogOut className="h-4 w-4" />
             </button>
           </div>
         </header>
-
-        {/* ── Hamburger drawer — all sidebar pages ── */}
-        {menuOpen && (
-          <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
-            {/* Backdrop */}
-            <div
-              className="absolute inset-0 bg-black/40"
-              onClick={() => setMenuOpen(false)}
-            />
-            {/* Drawer panel */}
-            <div className="relative z-10 flex h-full w-72 max-w-[80vw] flex-col bg-background shadow-xl">
-              <div className="flex items-center justify-between border-b px-4 py-3">
-                <h2 className="text-sm font-semibold">t('mobile.all_menu')</h2>
-                <button
-                  type="button"
-                  onClick={() => setMenuOpen(false)}
-                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto py-2">
-                {/* Mobile-native pages — filtered by mobileNavConfig */}
-                <p className="px-4 pb-1 pt-2 text-[10px] font-semibold uppercase text-slate-400">{t('mobile.menu_mobile')}</p>
-                {([
-                  { id: 'dashboard', label: `📊 ${t('mobile.dashboard')}`, key: 'mobileapp-dashboard' },
-                  { id: 'devices',   label: `💻 ${t('mobile.devices')}`, key: 'mobileapp-devices' },
-                  { id: 'my-work',   label: `📋 ${t('mobile.my_work')}`, key: 'mobileapp-my-work' },
-                  { id: 'repair',    label: `🔧 ${t('mobile.repair')}`, key: 'mobileapp-repair' },
-                  { id: 'meter',     label: `📈 ${t('mobile.meter')}`, key: 'mobileapp-meter' },
-                  { id: 'stock',     label: `📦 ${t('mobile.stock')}`, key: 'mobileapp-stock' },
-                  { id: 'account',   label: `👤 ${t('mobile.account')}`, key: 'mobileapp-account' },
-                ] as const).filter((item) => {
-                  // 'account' is always visible (logout must remain)
-                  if (item.id === 'account') return true
-                  // Check config: if roleConfig has this key, use it; else default true
-                  if (roleConfig && typeof roleConfig[item.key] === 'boolean') return roleConfig[item.key]
-                  return true
-                }).map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => { setTab(item.id); setMenuOpen(false) }}
-                    className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-700 transition-colors hover:bg-orange-50 hover:text-orange-700 dark:text-slate-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-300"
-                  >
-                    {item.label}
-                  </button>
-                ))}
-                {/* NOTE: Desktop pages section was removed per user feedback —
-                    those pages don't work properly inside MobileShell, so
-                    showing them as menu items was misleading (felt like a bug).
-                    Users who need desktop features should exit mobile mode. */}
-              </div>
-              <div className="border-t px-4 py-3">
-                <button
-                  type="button"
-                  onClick={() => { handleExit(); setMenuOpen(false) }}
-                  className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  t('mobile.exit_mobile')
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Main content — scrolls; bottom padding clears the fixed nav */}
         <main className="flex-1 overflow-y-auto px-3 pb-24 pt-3">

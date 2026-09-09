@@ -84,6 +84,7 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth-store'
 import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
 import { CustomColumnSelector, type ColumnDef } from './custom-column-selector'
+import { useT } from '@/store/i18n-store'
 
 // Column definitions for monthly report tables
 const MONTHLY_REPORT_COLUMNS: ColumnDef[] = [
@@ -101,8 +102,7 @@ const MONTHLY_REPORT_COLUMNS: ColumnDef[] = [
   { key: 'cost', label: 'FeeUsepay', default: false },
   { key: 'status', label: 'Status', default: false },
 ]
-import {
-  Wrench,
+import {  Wrench,
   CheckCircle2,
   Star,
   Package,
@@ -724,6 +724,7 @@ function buildSpecialFeeApprovalHTML(opts: {
 
 // ── Component ──────────────────────────────────────────
 export function MonthlyReport() {
+  const t = useT()
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const chartTextColor = isDark ? '#cbd5e1' : '#475569'

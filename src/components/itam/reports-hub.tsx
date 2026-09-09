@@ -114,6 +114,7 @@ import { StockReport } from './reports/stock-report'
 import { MaintenanceReport } from './reports/maintenance-report'
 import { ApprovalsReport } from './reports/approvals-report'
 import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
+import { useT } from '@/store/i18n-store'
 
 type ReportGroup =
   | 'devices'
@@ -139,6 +140,7 @@ interface Site {
 }
 
 export function ReportsHub() {
+  const t = useT()
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 

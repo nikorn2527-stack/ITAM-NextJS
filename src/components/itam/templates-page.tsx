@@ -1676,6 +1676,7 @@ function WorkOrderTab() {
 // =====================================================================
 
 export function TemplatesPage() {
+  const t = useT()
   const [tab, setTab] = React.useState<TabKey>('sticker')
   const setActivePage = useAppStore((s) => s.setActivePage)
   const queryClient = useQueryClient()

@@ -115,7 +115,7 @@ export function MobileAccount() {
               </button>
             </div>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              หลังกดปุ่น เบราว์เซอร์จะถามยืนยันลายนิ้วมือ/ใบหน้า ทำตามขั้นตอนบนหน้าจอ
+              หลังกดปุ่ม เบราว์เซอร์จะถามยืนยันลายนิ้วมือ/ใบหน้า ทำตามขั้นตอนบนหน้าจอ
             </p>
             {error && (
               <div className="mt-2 rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">

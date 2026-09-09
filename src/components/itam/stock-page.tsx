@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
+import { useT } from '@/store/i18n-store'
 import {
   Select,
   SelectContent,
@@ -42,8 +43,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs'
-import {
-  Package,
+import {  Package,
   AlertTriangle,
   Wallet,
   CalendarPlus,
@@ -351,6 +351,7 @@ const EMPTY_TXN_FORM: TxnFormState = {
 // ---------- Component ----------
 
 export function StockPage() {
+  const t = useT()
   const qc = useQueryClient()
   const [activeTab, setActiveTab] = React.useState<'items' | 'po' | 'pending'>('items')
 
