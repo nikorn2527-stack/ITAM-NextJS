@@ -22,7 +22,7 @@ import { logAudit } from '@/lib/audit'
 import { demoFilter, demoTag } from '@/lib/demo-mode'
 
 export async function GET(req: NextRequest) {
-  const moduleCheck = moduleUnavailableResponse('devices')
+  const moduleCheck = await moduleUnavailableResponse('devices')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'VIEW_DEVICES')
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const moduleCheck = moduleUnavailableResponse('devices')
+  const moduleCheck = await moduleUnavailableResponse('devices')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'DEVICE_EDIT')

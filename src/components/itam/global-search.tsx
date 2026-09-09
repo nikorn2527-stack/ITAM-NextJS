@@ -30,6 +30,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
+import { useT } from '@/store/i18n-store'
 import type { SearchResults } from './types'
 
 const ICON_CLASSES = 'h-4 w-4 shrink-0'
@@ -61,6 +62,7 @@ export function GlobalSearch() {
 
   const [q, setQ] = React.useState('')
   const [debounced, setDebounced] = React.useState('')
+  const t = useT()
 
   // Reset query when palette closes
   React.useEffect(() => {
@@ -139,10 +141,8 @@ export function GlobalSearch() {
         className="overflow-hidden p-0 sm:max-w-xl dark:border-slate-800 dark:bg-slate-900"
       >
         <DialogHeader className="sr-only">
-          <DialogTitle>ค้นหาทั่วระบบ</DialogTitle>
-          <DialogDescription>
-            ค้นหาอุปกรณ์ ข้อมูลมาตรฐาน การจดมิเตอร์ ประวัติการใช้งาน และสาขา
-          </DialogDescription>
+          <DialogTitle>{t('search.title')}</DialogTitle>
+          <DialogDescription>{t('search.placeholder')}</DialogDescription>
         </DialogHeader>
         <AnimatePresence>
           <motion.div
@@ -157,7 +157,7 @@ export function GlobalSearch() {
               filter={() => 1} // disable built-in filter; we filter on the server
             >
               <CommandInput
-                placeholder="ค้นหาอุปกรณ์, มาสเตอร์, มิเตอร์, ประวัติ..."
+                placeholder={t('search.placeholder')}
                 value={q}
                 onValueChange={setQ}
                 autoFocus
@@ -174,12 +174,12 @@ export function GlobalSearch() {
                 ) : showLoading ? (
                   <SearchResultSkeleton />
                 ) : total === 0 ? (
-                  <CommandEmpty>ไม่พบผลลัพธ์สำหรับ &quot;{debounced}&quot;</CommandEmpty>
+                  <CommandEmpty>{t('search.empty')}: &quot;{debounced}&quot;</CommandEmpty>
                 ) : (
                   <>
                     {results.devices.length > 0 && (
                       <CommandGroup
-                        heading="อุปกรณ์"
+                        heading={t('search.group.devices')}
                         className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
                       >
                         {results.devices.map((d) => (
@@ -206,7 +206,7 @@ export function GlobalSearch() {
 
                     {results.master.length > 0 && (
                       <CommandGroup
-                        heading="ข้อมูลมาตรฐาน"
+                        heading={t('search.group.master')}
                         className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
                       >
                         {results.master.map((m) => (
@@ -233,7 +233,7 @@ export function GlobalSearch() {
 
                     {results.meter.length > 0 && (
                       <CommandGroup
-                        heading="การจดมิเตอร์"
+                        heading={t('search.group.meter')}
                         className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
                       >
                         {results.meter.map((m) => (
@@ -260,7 +260,7 @@ export function GlobalSearch() {
 
                     {results.audit.length > 0 && (
                       <CommandGroup
-                        heading="ประวัติการใช้งาน"
+                        heading={t('search.group.audit')}
                         className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
                       >
                         {results.audit.map((a) => (
@@ -287,7 +287,7 @@ export function GlobalSearch() {
 
                     {results.sites.length > 0 && (
                       <CommandGroup
-                        heading="สาขา"
+                        heading={t('search.group.sites')}
                         className="[&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-slate-400 dark:[&_[cmdk-group-heading]]:text-slate-500"
                       >
                         {results.sites.map((s) => (

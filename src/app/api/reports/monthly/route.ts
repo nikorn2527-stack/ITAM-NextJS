@@ -23,7 +23,7 @@ const VALID_TYPES = new Set<ReportType>([
 export const maxDuration = 60
 
 export async function GET(req: NextRequest) {
-  const unavailable = moduleUnavailableResponse('reports')
+  const unavailable = await moduleUnavailableResponse('reports')
   if (unavailable) return unavailable
 
   // Milestone 1 — Security baseline: require VIEW_REPORTS

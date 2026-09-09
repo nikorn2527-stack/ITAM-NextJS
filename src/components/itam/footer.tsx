@@ -2,47 +2,52 @@
 
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
+import { useT } from '@/store/i18n-store'
 import { useQuery } from '@tanstack/react-query'
 
-const PAGE_LABELS: Record<string, string> = {
-  dashboard: 'Dashboard',
-  devices: 'จัดการอุปกรณ์',
-  meter: 'จดมิเตอร์',
-  'paper-analytics': 'การใช้กระดาษ',
-  settings: 'ตั้งค่าแอป',
-  itam: 'ITAM Dashboard',
-  'itam-devices': 'ITAM อุปกรณ์',
-  'itam-meter': 'ITAM มิเตอร์',
-  'itam-settings': 'ITAM ตั้งค่า',
-  'itam-audit': 'บันทึกการตรวจสอบ',
-  // ── Additional page labels (Task ID: UX-HIGH-POLISH-FIXES) ──
-  'work-orders': 'ใบงาน',
-  stock: 'สต๊อกสินค้า',
-  import: 'นำเข้าข้อมูล',
-  'reports-hub': 'รายงาน',
-  'material-cost': 'ต้นทุนวัสดุ',
-  'pm-schedules': 'ตาราง PM',
-  templates: 'เทมเพลต',
-  'monthly-report': 'รายงานรายเดือน',
-  'paper-analytics-page': 'วิเคราะห์กระดาษ',
-  'meter-page': 'มิเตอร์',
-  'itam-repairs': 'ซ่อมบำรุง',
-  'itam-sticker-editor': 'แก้ไขสติกเกอร์',
-  'itam-document-editor': 'แก้ไขเอกสาร',
-  'itam-snapshot-viewer': 'สแนปช็อต',
+// Footer page label i18n keys — one per ActivePage id.
+const PAGE_LABEL_KEYS: Record<string, string> = {
+  dashboard: 'menu.dashboard',
+  devices: 'menu.devices',
+  meter: 'menu.meter',
+  'paper-analytics': 'menu.paper_analytics',
+  settings: 'menu.settings',
+  itam: 'menu.dashboard',
+  'itam-devices': 'menu.devices',
+  'itam-meter': 'menu.meter',
+  'itam-meter-keyboard': 'menu.meter',
+  'itam-settings': 'menu.settings',
+  'itam-audit': 'menu.audit',
+  'work-orders': 'menu.work_orders',
+  'itam-work-orders': 'menu.work_orders',
+  stock: 'menu.stock',
+  'itam-stock': 'menu.stock',
+  import: 'menu.import',
+  'reports-hub': 'menu.reports_hub',
+  'material-cost': 'menu.material_cost',
+  'pm-schedules': 'menu.pm_schedules',
+  templates: 'menu.templates',
+  'monthly-report': 'menu.monthly_report',
+  'paper-analytics-page': 'menu.paper_analytics',
+  'meter-page': 'menu.meter',
+  'itam-repairs': 'menu.work_orders',
+  'itam-sticker-editor': 'menu.templates',
+  'itam-document-editor': 'menu.templates',
+  mobile: 'menu.mobile',
 }
 
 export function Footer() {
   const activePage = useAppStore((s) => s.activePage)
   const year = new Date().getFullYear()
+  const t = useT()
 
-  // Dynamic org name from OrgProfile (fallback to generic "องค์กร")
+  // Dynamic org name from OrgProfile (fallback to generic app name)
   const { data: orgProfile } = useQuery({
     queryKey: ['org-profile'],
     queryFn: async () => {
       try {
         const res = await fetch('/api/settings/org-profile', {
-          headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+          headers: (() => { const tok = useAuthStore.getState()?.token; return tok ? { Authorization: `Bearer ${tok}` } : {} })(),
         })
         if (!res.ok) return null
         const j = await res.json()
@@ -53,7 +58,7 @@ export function Footer() {
     },
     staleTime: 60_000,
   })
-  const orgName = orgProfile?.appName || 'ระบบจัดการสินทรัพย์'
+  const orgName = orgProfile?.appName || t('footer.app_name')
   // Note: the live clock now lives in the top-right floating TopBarClock
   // (desktop) and inside the expanded sidebar header. The footer keeps a
   // minimal copyright + page label so it stays short.
@@ -63,11 +68,11 @@ export function Footer() {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span>
           © {year} {orgName} — IT Asset Management
-          {PAGE_LABELS[activePage] && (
+          {PAGE_LABEL_KEYS[activePage] && (
             <>
               {' · '}
               <span className="font-medium text-slate-700 dark:text-slate-200">
-                {PAGE_LABELS[activePage]}
+                {t(PAGE_LABEL_KEYS[activePage])}
               </span>
             </>
           )}
@@ -75,7 +80,7 @@ export function Footer() {
       </div>
       <div className="flex items-center gap-1.5">
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#f97316]" />
-        <span>Powered by PNG TEAM</span>
+        <span>{t('footer.powered_by')}</span>
       </div>
     </footer>
   )

@@ -83,6 +83,7 @@ import { assertMeterMonthWritable } from '@/lib/meter-snapshot'
 import { notifyMeter } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { findValidPrevReading } from '@/lib/meter-logic'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // ── GET field map ──────────────────────────────────────────────────────
 const FIELD_MAP: Record<string, string> = {
@@ -96,6 +97,10 @@ const SEARCH_FIELDS = ['assetCode', 'remark', 'readBy']
 
 // ── GET ────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   const auth = await requireApiAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) return auth.response
 
@@ -144,6 +149,10 @@ export async function GET(req: NextRequest) {
 
 // ── POST ───────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   const auth = await requireApiAuth(req, 'METER_WRITE')
   if (!auth.ok) return auth.response
   const { user } = auth.ctx

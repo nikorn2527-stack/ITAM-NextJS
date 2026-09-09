@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
   PendingBatchError,
   processPendingBatch,
@@ -31,6 +32,10 @@ function parseInput(value: unknown): PendingBatchInput[] {
  * stock, every change is rolled back and the response includes row failures.
  */
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'ADMIN')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

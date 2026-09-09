@@ -15,7 +15,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const unavailable = moduleUnavailableResponse('templates')
+  const unavailable = await moduleUnavailableResponse('templates')
   if (unavailable) return unavailable
 
   const auth = await requireAuth(req, 'TEMPLATES_MANAGE')
@@ -43,7 +43,7 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const unavailable = moduleUnavailableResponse('templates')
+  const unavailable = await moduleUnavailableResponse('templates')
   if (unavailable) return unavailable
 
   const auth = await requireAuth(req, 'TEMPLATES_MANAGE')
@@ -99,7 +99,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const unavailable = moduleUnavailableResponse('templates')
+  const unavailable = await moduleUnavailableResponse('templates')
   if (unavailable) return unavailable
 
   const auth = await requireAuth(req, 'TEMPLATES_MANAGE')

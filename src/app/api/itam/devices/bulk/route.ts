@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/itam/devices/bulk
@@ -23,6 +24,10 @@ import { buildAuthorizationContext } from '@/lib/authorization-context'
  * Permission: DEVICE_EDIT
  */
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

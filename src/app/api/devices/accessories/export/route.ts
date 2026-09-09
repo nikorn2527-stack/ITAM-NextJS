@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { demoFilter } from '@/lib/demo-mode'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/devices/accessories/export
@@ -56,6 +57,10 @@ const COLUMNS: Array<{ key: string; label: string }> = [
 ]
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

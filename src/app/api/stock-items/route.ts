@@ -47,7 +47,7 @@ async function nextProductCode(): Promise<string> {
 
 export async function GET(req: NextRequest) {
   // ── Phase 4.3: Module availability gate ──
-  const moduleCheck = moduleUnavailableResponse('stock')
+  const moduleCheck = await moduleUnavailableResponse('stock')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'STOCK_VIEW')
@@ -154,7 +154,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   // ── Phase 4.3: Module availability gate ──
-  const moduleCheck = moduleUnavailableResponse('stock')
+  const moduleCheck = await moduleUnavailableResponse('stock')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'STOCK_IN')

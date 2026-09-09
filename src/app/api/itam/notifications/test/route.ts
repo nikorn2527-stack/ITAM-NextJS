@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { getNotifyChannels, sendNotification } from '@/lib/notifications'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/itam/notifications/test
@@ -13,6 +14,10 @@ import { getNotifyChannels, sendNotification } from '@/lib/notifications'
  * Permission: SYSTEM_CONFIG
  */
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('notifications')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'SYSTEM_CONFIG')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

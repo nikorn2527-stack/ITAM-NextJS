@@ -9,6 +9,7 @@ import { assertMeterMonthWritable } from '@/lib/meter-snapshot'
 import { demoTag } from '@/lib/demo-mode'
 import { logAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/itam/meter-readings/force-close
@@ -37,6 +38,10 @@ import { publishRealtimeEvent } from '@/lib/realtime'
  * Permission: METER_WRITE
  */
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'METER_WRITE')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

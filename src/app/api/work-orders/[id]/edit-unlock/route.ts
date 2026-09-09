@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { hasResolvedPermission } from '@/lib/auth'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/work-orders/[id]/edit-unlock
@@ -61,6 +62,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   try {
     const { id } = await params
 

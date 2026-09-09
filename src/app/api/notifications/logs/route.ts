@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { getNotificationLogStats, MAX_RETRIES } from '@/lib/notification-log'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/notifications/logs
@@ -16,6 +17,10 @@ import { getNotificationLogStats, MAX_RETRIES } from '@/lib/notification-log'
  * Requires VIEW_DASHBOARD permission (admin-level visibility).
  */
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('notifications')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

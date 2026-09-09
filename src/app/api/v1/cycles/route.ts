@@ -46,6 +46,7 @@ import {
   serverError,
 } from '@/lib/api/response'
 import { requireApiAuth } from '@/lib/api/auth'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // ── GET field map ──────────────────────────────────────────────────────
 const FIELD_MAP: Record<string, string> = {
@@ -55,6 +56,10 @@ const FIELD_MAP: Record<string, string> = {
 
 // ── GET ────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   const auth = await requireApiAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) return auth.response
 
@@ -90,6 +95,10 @@ export async function GET(req: NextRequest) {
 
 // ── POST ───────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   const auth = await requireApiAuth(req, 'METER_WRITE')
   if (!auth.ok) return auth.response
   const { user } = auth.ctx

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { demoFilter } from '@/lib/demo-mode'
 import { canAccessSite } from '@/lib/auth'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/licenses
@@ -74,6 +75,10 @@ function isoPlusDays(days: number): string {
 }
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

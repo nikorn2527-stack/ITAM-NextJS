@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { siteFilterForUser } from '@/lib/auth'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
 export const maxDuration = 60
@@ -21,6 +22,10 @@ export const maxDuration = 60
  * Auth: requires VIEW_REPORTS (admin/manager role).
  */
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('reports')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'VIEW_REPORTS')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

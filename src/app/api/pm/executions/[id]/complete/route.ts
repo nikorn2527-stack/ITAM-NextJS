@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * Derive the effective Site code for a PM execution (via its schedule).
@@ -31,6 +32,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('pm')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'WO_CREATE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   // P1 FIX (AUDIT-FINDINGS-FIX-018): Site-scoped authorization for writes.

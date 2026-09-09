@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * PATCH /api/devices/[id]/accessories/[accessoryId] — update an accessory.
@@ -16,6 +17,10 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; accessoryId: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'DEVICE_EDIT')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -64,6 +69,10 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; accessoryId: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'DEVICE_EDIT')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

@@ -10,7 +10,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const unavailable = moduleUnavailableResponse('reports')
+  const unavailable = await moduleUnavailableResponse('reports')
   if (unavailable) return unavailable
 
   // Milestone 1 — Security baseline: require VIEW_REPORTS
@@ -39,7 +39,7 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const unavailable = moduleUnavailableResponse('reports')
+  const unavailable = await moduleUnavailableResponse('reports')
   if (unavailable) return unavailable
 
   // Milestone 1 — Security baseline: require MANAGE_REPORTS for delete

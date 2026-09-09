@@ -40,7 +40,9 @@ import { LicenseManagementSection } from './license-management-section'
 import { AssetCategorySection } from './asset-category-section'
 import { StockCountSection } from './stock-count-section'
 import { SyncTestSection } from './sync-test-section'
+import { ModuleFlagsSection } from './module-flags-section'
 import { useAuthStore } from '@/store/auth-store'
+import { useT } from '@/store/i18n-store'
 
 /** Build fetch headers with the user's JWT (if logged in). */
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -52,7 +54,7 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 
 // ── Settings tab groups (Issue 5: organize 12 tabs into 4 groups) ──
 // Each tab is now nested under a category header in the sidebar-style nav.
-// Order: ข้อมูล → ระบบ → การแจ้งเตือน → ปรับแต่ง
+// Order: Data → System → Notify → Receivedecorate
 type SettingsTab =
   | 'master'
   | 'site-attributes'
@@ -76,58 +78,60 @@ type SettingsTab =
   | 'my-profile'
   | 'licenses'
   | 'stock-count'
+  | 'modules'
 
 interface SettingsTabGroup {
   title: string
-  items: { value: SettingsTab; label: string; icon: React.ComponentType<{ className?: string }> }[]
+  items: { value: SettingsTab; labelKey: string; icon: React.ComponentType<{ className?: string }> }[]
 }
 
 const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
   {
-    title: 'ข้อมูล',
+    titleKey: 'settings.group.data',
     items: [
-      { value: 'master', label: 'ข้อมูลมาตรฐาน', icon: Database },
-      { value: 'site-attributes', label: 'จัดการสาขา', icon: Building2 },
-      { value: 'contacts', label: 'สมุดผู้ติดต่อ', icon: BookUser },
-      { value: 'wo-options', label: 'ตัวเลือกใบงาน', icon: ListChecks },
-      { value: 'number-patterns', label: 'รูปแบบเลขทะเบียน', icon: Hash },
-      { value: 'wo-patterns', label: 'เลขใบงาน', icon: FileText },
-      { value: 'sites', label: 'สาขา (ภาพรวม)', icon: Building2 },
-      { value: 'licenses', label: 'ลิขสิทธิ์ซอฟต์แวร์', icon: KeyRound },
-      { value: 'asset-categories', label: 'หมวดหมู่สินทรัพย์', icon: Package },
-      { value: 'stock-count', label: 'นับสต็อก/ตรวจนับ', icon: ClipboardList },
+      { value: 'master', labelKey: 'settings.tab.master', icon: Database },
+      { value: 'site-attributes', labelKey: 'settings.tab.site_attributes', icon: Building2 },
+      { value: 'contacts', labelKey: 'settings.tab.contacts', icon: BookUser },
+      { value: 'wo-options', labelKey: 'settings.tab.wo_options', icon: ListChecks },
+      { value: 'number-patterns', labelKey: 'settings.tab.number_patterns', icon: Hash },
+      { value: 'wo-patterns', labelKey: 'settings.tab.wo_patterns', icon: FileText },
+      { value: 'sites', labelKey: 'settings.tab.sites', icon: Building2 },
+      { value: 'licenses', labelKey: 'settings.tab.licenses', icon: KeyRound },
+      { value: 'asset-categories', labelKey: 'settings.tab.asset_categories', icon: Package },
+      { value: 'stock-count', labelKey: 'settings.tab.stock_count', icon: ClipboardList },
     ],
   },
   {
-    title: 'ระบบ',
+    titleKey: 'settings.group.system',
     items: [
-      { value: 'users', label: 'จัดการผู้ใช้', icon: Users },
-      // Bug Group G fix: hide "สิทธิ์ผู้ใช้" tab — was a duplicate of
-      // "จัดการผู้ใช้" (rendered <UserManagementSection />) and never
+      { value: 'users', labelKey: 'settings.tab.users', icon: Users },
+      // Bug Group G fix: hide "PermissionUser" tab — was a duplicate of
+      // "ManageUser" (rendered <UserManagementSection />) and never
       // had its own permissions/role view. Commented out until a proper
       // RolePermission manager is implemented.
-      // { value: 'permissions', label: 'สิทธิ์ผู้ใช้', icon: Shield },
-      { value: 'mobile-nav', label: 'เมนูมือถือ', icon: Smartphone },
-      { value: 'sync-test', label: 'ทดสอบ Sync', icon: RefreshCw },
-      { value: 'pending', label: 'รออนุมัติ', icon: Users },
-      { value: 'demo', label: '🧪 สาธิตระบบ', icon: FlaskConical },
+      // { value: 'permissions', label: 'PermissionUser', icon: Shield },
+      { value: 'mobile-nav', labelKey: 'settings.tab.mobile_nav', icon: Smartphone },
+      { value: 'sync-test', labelKey: 'settings.tab.sync_test', icon: RefreshCw },
+      { value: 'pending', labelKey: 'settings.tab.pending', icon: Users },
+      { value: 'demo', labelKey: 'settings.tab.demo', icon: FlaskConical },
+      { value: 'modules', labelKey: 'modules.tab_label', icon: Package },
     ],
   },
   {
-    title: 'การแจ้งเตือน',
+    titleKey: 'settings.group.notify',
     items: [
-      { value: 'notifications', label: 'การแจ้งเตือน', icon: Bell },
-      { value: 'notification-templates', label: 'เทมเพลตข้อความ', icon: MessageSquare },
-      { value: 'notification-logs', label: 'สถิติการส่ง', icon: Activity },
+      { value: 'notifications', labelKey: 'settings.tab.notifications', icon: Bell },
+      { value: 'notification-templates', labelKey: 'settings.tab.notification_templates', icon: MessageSquare },
+      { value: 'notification-logs', labelKey: 'settings.tab.notification_logs', icon: Activity },
     ],
   },
   {
-    title: 'ปรับแต่ง',
+    titleKey: 'settings.group.personal',
     items: [
-      { value: 'customize', label: 'ปรับแต่งแอป', icon: Palette },
-      { value: 'oauth', label: 'OAuth/External Login', icon: KeyRound },
-      { value: 'my-profile', label: 'โปรไฟล์ของฉัน', icon: User },
-      { value: 'my-biometrics', label: 'Passkey ของฉัน', icon: Fingerprint },
+      { value: 'customize', labelKey: 'settings.tab.customize', icon: Palette },
+      { value: 'oauth', labelKey: 'settings.tab.oauth', icon: KeyRound },
+      { value: 'my-profile', labelKey: 'settings.tab.my_profile', icon: User },
+      { value: 'my-biometrics', labelKey: 'settings.tab.my_biometrics', icon: Fingerprint },
     ],
   },
 ]
@@ -157,6 +161,7 @@ interface NotifySettings {
 }
 
 export function ItamSettings() {
+  const t = useT()
   const qc = useQueryClient()
   const [tab, setTab] = React.useState<SettingsTab>('master')
   const [category, setCategory] = React.useState('all')
@@ -191,7 +196,7 @@ export function ItamSettings() {
       })
       if (!res.ok) {
         // Throw a structured error so we can show a useful message in the UI.
-        throw new Error(`โหลดการตั้งค่าไม่สำเร็จ (HTTP ${res.status})`)
+        throw new Error(`LoadSettingsNoSuccess (HTTP ${res.status})`)
       }
       return res.json()
     },
@@ -248,10 +253,10 @@ export function ItamSettings() {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error || 'Failed')
       }
-      toast.success('บันทึกการตั้งค่าการแจ้งเตือนแล้ว')
+      toast.success('SaveSettingsNotify')
       await qc.invalidateQueries({ queryKey: ['itam-notify-settings'] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+      toast.error(e instanceof Error ? e.message : 'SaveNoSuccess')
     }
   }
 
@@ -260,14 +265,14 @@ export function ItamSettings() {
       const res = await fetch('/api/itam/notifications/test', {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ message: '🔔 ทดสอบการแจ้งเตือนจาก ITAM' }),
+        body: JSON.stringify({ message: '🔔 TestNotifyfrom ITAM' }),
       })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Failed')
       const ch = (j.channels ?? []).join(', ') || '—'
-      toast.success(`ส่งการแจ้งเตือนทดสอบแล้ว (${ch}) — ตรวจสอบช่องทางที่เปิดใช้`)
+      toast.success(`SendNotifyTest (${ch}) — CheckchannelatCloseUse`)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ส่งไม่สำเร็จ')
+      toast.error(e instanceof Error ? e.message : 'SendNoSuccess')
     }
   }
 
@@ -275,7 +280,7 @@ export function ItamSettings() {
   // Bug Group E fix: switch to /api/itam/sites (returns SiteAttribute
   // + deviceCount + activeCount). The old /api/sites endpoint returns
   // a flat shape without deviceCount/activeCount, which made the
-  // "สาขา (ภาพรวม)" tab show 0 เครื่อง for every site.
+  // "Site (ImageTotal)" tab show 0 units for every site.
   // /api/itam/sites also returns the original SiteAttribute fields
   // (SiteCode, SiteName, PaperRateBW, PaperRateColor) plus lowercase
   // aliases (siteCode, siteName, paperRateBw, paperRateColor).
@@ -301,7 +306,7 @@ export function ItamSettings() {
   }
 
   async function saveItem() {
-    if (!form.category || !form.label) { toast.error('กรุณากรอกหมวดหมู่และค่า'); return }
+    if (!form.category || !form.label) { toast.error('PleasePendingCategoryandFee'); return }
     try {
       if (editItem) {
         const res = await fetch(`/api/itam/master-items/${editItem.id}`, {
@@ -309,18 +314,18 @@ export function ItamSettings() {
           body: JSON.stringify(form),
         })
         if (!res.ok) throw new Error('Failed')
-        toast.success('แก้ไขแล้ว')
+        toast.success('Edit')
       } else {
         const res = await fetch('/api/itam/master-items', {
           method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(form),
         })
         if (!res.ok) throw new Error('Failed')
-        toast.success('เพิ่มแล้ว')
+        toast.success('Add')
       }
       setDialogOpen(false)
       await qc.invalidateQueries({ queryKey: ['itam-master'] })
-    } catch (e) { toast.error('บันทึกไม่สำเร็จ') }
+    } catch (e) { toast.error('SaveNoSuccess') }
   }
 
   async function deleteItem(item: MasterItem) {
@@ -332,9 +337,9 @@ export function ItamSettings() {
     const item = deleteTarget
     try {
       await fetch(`/api/itam/master-items/${item.id}`, { method: 'DELETE', headers: authHeaders() })
-      toast.success('ลบแล้ว')
+      toast.success('Delete')
       await qc.invalidateQueries({ queryKey: ['itam-master'] })
-    } catch { toast.error('ลบไม่สำเร็จ') }
+    } catch { toast.error('DeleteNoSuccess') }
     finally { setDeleteTarget(null) }
   }
 
@@ -345,9 +350,9 @@ export function ItamSettings() {
     <div className="flex h-full w-full flex-col p-3 md:p-4">
       <div className="mb-3 flex flex-shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">ตั้งค่าระบบ</h1>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{t('settings.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            ข้อมูลมาตรฐาน · สาขา · ผู้ใช้ · การแจ้งเตือน · ปรับแต่งแอป — แบ่งตามกลุ่มเพื่อให้หาง่าย
+            {t('settings.subtitle')}
           </p>
         </div>
         {tab !== 'master' && (
@@ -357,7 +362,7 @@ export function ItamSettings() {
             onClick={() => setTab('master')}
             className="self-start dark:bg-slate-800 dark:border-slate-700"
           >
-            ← กลับหน้าหลัก
+            {t('settings.back')}
           </Button>
         )}
       </div>
@@ -369,9 +374,9 @@ export function ItamSettings() {
           className="flex flex-shrink-0 flex-col gap-3 rounded-md border border-slate-300 bg-white p-2 shadow-sm lg:w-56 dark:border-slate-800 dark:bg-slate-900"
         >
           {SETTINGS_TAB_GROUPS.map((group) => (
-            <div key={group.title}>
+            <div key={t(group.titleKey)}>
               <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                {group.title}
+                {t(group.titleKey)}
               </div>
               <div className="flex flex-col gap-0.5">
                 {group.items.map((item) => {
@@ -391,7 +396,7 @@ export function ItamSettings() {
                       ].join(' ')}
                     >
                       <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span className="truncate">{item.label}</span>
+                      <span className="truncate">{t(item.labelKey)}</span>
                     </button>
                   )
                 })}
@@ -412,14 +417,14 @@ export function ItamSettings() {
             <Select value={category} onValueChange={setCategory}>
               <SelectTrigger className="w-full sm:w-48 dark:bg-slate-800 dark:border-slate-700"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">หมวดทั้งหมด</SelectItem>
+                <SelectItem value="all">{t('settings.category_all')}</SelectItem>
                 {MASTER_CATEGORIES.map((cat: string) => (
                   <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <div className="flex gap-2 sm:ml-auto">
-              <Button variant="outline" size="sm" onClick={openAdd} className="flex-1 sm:flex-none"><Plus className="h-4 w-4" /> เพิ่ม</Button>
+              <Button variant="outline" size="sm" onClick={openAdd} className="flex-1 sm:flex-none"><Plus className="h-4 w-4" /> {t('settings.add')}</Button>
               <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries({ queryKey: ['itam-master'] })}><RefreshCw className="h-4 w-4" /></Button>
             </div>
           </div>
@@ -430,12 +435,12 @@ export function ItamSettings() {
                 <Table>
                   <TableHeader className="sticky top-0 bg-slate-100/95 dark:bg-slate-900/95">
                     <TableRow>
-                      <TableHead>หมวดหมู่</TableHead>
-                      <TableHead>ค่า</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Fee</TableHead>
                       <TableHead>Display Label</TableHead>
-                      <TableHead>รหัสแผนก</TableHead>
-                      <TableHead className="text-center">สถานะ</TableHead>
-                      <TableHead className="text-right">จัดการ</TableHead>
+                      <TableHead>CodeDept</TableHead>
+                      <TableHead className="text-center">Status</TableHead>
+                      <TableHead className="text-right">Manage</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -452,7 +457,7 @@ export function ItamSettings() {
                         </TableRow>
                       ))
                     ) : items.length === 0 ? (
-                      <TableRow><TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">ไม่มีข้อมูล</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={6} className="py-8 text-center text-slate-400 text-sm">No data</TableCell></TableRow>
                     ) : (
                       items.map((item) => (
                         <TableRow key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
@@ -463,8 +468,8 @@ export function ItamSettings() {
                           <TableCell className="text-center">{(item as { active?: boolean }).active ? <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300">✓</Badge> : <Badge className="bg-slate-50 text-slate-400">—</Badge>}</TableCell>
                           <TableCell className="text-right">
                             {/* BUG-SETTINGS-008 fix: added title + aria-label */}
-                            <Button size="sm" variant="ghost" onClick={() => openEdit(item)} title={`แก้ไข ${item.label}`} aria-label={`แก้ไข ${item.label}`}><Pencil className="h-3 w-3" /></Button>
-                            <Button size="sm" variant="ghost" onClick={() => deleteItem(item)} className="text-rose-500 hover:bg-rose-50" title={`ลบ ${item.label}`} aria-label={`ลบ ${item.label}`}><Trash2 className="h-3 w-3" /></Button>
+                            <Button size="sm" variant="ghost" onClick={() => openEdit(item)} title={`Edit ${item.label}`} aria-label={`Edit ${item.label}`}><Pencil className="h-3 w-3" /></Button>
+                            <Button size="sm" variant="ghost" onClick={() => deleteItem(item)} className="text-rose-500 hover:bg-rose-50" title={`Delete ${item.label}`} aria-label={`Delete ${item.label}`}><Trash2 className="h-3 w-3" /></Button>
                           </TableCell>
                         </TableRow>
                       ))
@@ -497,7 +502,7 @@ export function ItamSettings() {
               </Card>
             ))
           ) : sites.length === 0 ? (
-            <div className="col-span-full py-12 text-center text-sm text-slate-400">ยังไม่มีข้อมูลสาขา</div>
+            <div className="col-span-full py-12 text-center text-sm text-slate-400">No dataSite</div>
           ) : (
             sites.map((s) => {
               // BUG-SETTINGS-009: support both `siteCode`/`siteName` (legacy
@@ -510,12 +515,12 @@ export function ItamSettings() {
                 <CardContent className="space-y-2">
                   <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{name ?? code}</div>
                   <div className="flex gap-4 text-xs text-slate-500">
-                    <span>📦 {s.deviceCount ?? 0} เครื่อง</span>
-                    <span>✅ {s.activeCount ?? 0} ใช้งาน</span>
+                    <span>📦 {s.deviceCount ?? 0} units</span>
+                    <span>✅ {s.activeCount ?? 0} Active</span>
                   </div>
                   <div className="flex gap-4 text-xs text-slate-400">
-                    <span>📄 ขาวดำ: ฿{s.paperRateBw ?? 0.5}/แผ่น</span>
-                    <span>🎨 สี: ฿{s.paperRateColor ?? 2}/แผ่น</span>
+                    <span>📄 B&W: THB{s.paperRateBw ?? 0.5}/sheets</span>
+                    <span>🎨 Color: THB{s.paperRateColor ?? 2}/sheets</span>
                   </div>
                   {s.hotline && <div className="text-xs text-slate-400">📞 {s.hotline}</div>}
                 </CardContent>
@@ -529,13 +534,13 @@ export function ItamSettings() {
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
-          <DialogHeader><DialogTitle>{editItem ? 'แก้ไข' : 'เพิ่ม'} ข้อมูลมาตรฐาน</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editItem ? 'Edit' : 'Add'} DataStandard</DialogTitle></DialogHeader>
           <div className="space-y-3">
             {/* BUG-SETTINGS-007 fix: added id/name/aria-label + disabled when incomplete */}
             <div className="space-y-1.5">
-              <Label htmlFor="master-category" className="text-xs">หมวดหมู่ *</Label>
+              <Label htmlFor="master-category" className="text-xs">Category *</Label>
               <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
-                <SelectTrigger id="master-category" className="dark:bg-slate-800 dark:border-slate-700" aria-label="หมวดหมู่"><SelectValue /></SelectTrigger>
+                <SelectTrigger id="master-category" className="dark:bg-slate-800 dark:border-slate-700" aria-label="Category"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {MASTER_CATEGORIES.map((cat: string) => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
@@ -544,22 +549,22 @@ export function ItamSettings() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="master-label" className="text-xs">ค่า *</Label>
-              <Input id="master-label" name="label" aria-label="ค่า" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="เช่น BROTHER" className="dark:bg-slate-800 dark:border-slate-700" />
+              <Label htmlFor="master-label" className="text-xs">Fee *</Label>
+              <Input id="master-label" name="label" aria-label="Fee" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="e.g. BROTHER" className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="master-displayLabel" className="text-xs">Display Label</Label>
-              <Input id="master-displayLabel" name="displayLabel" aria-label="Display Label" value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} placeholder="ไม่บังคับ" className="dark:bg-slate-800 dark:border-slate-700" />
+              <Input id="master-displayLabel" name="displayLabel" aria-label="Display Label" value={form.displayLabel} onChange={(e) => setForm({ ...form, displayLabel: e.target.value })} placeholder="(optional)" className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="master-code" className="text-xs">รหัส</Label>
-              <Input id="master-code" name="code" aria-label="รหัส" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="ไม่บังคับ" className="dark:bg-slate-800 dark:border-slate-700" />
+              <Label htmlFor="master-code" className="text-xs">Code</Label>
+              <Input id="master-code" name="code" aria-label="Code" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="(optional)" className="dark:bg-slate-800 dark:border-slate-700" />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>ยกเลิก</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
             {/* BUG-SETTINGS-007 fix: disable save button when required fields are empty */}
-            <Button onClick={saveItem} disabled={!form.category || !form.label} className="bg-[#f97316] text-white hover:bg-[#ea580c] disabled:opacity-50 disabled:cursor-not-allowed">บันทึก</Button>
+            <Button onClick={saveItem} disabled={!form.category || !form.label} className="bg-[#f97316] text-white hover:bg-[#ea580c] disabled:opacity-50 disabled:cursor-not-allowed">Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -572,11 +577,11 @@ export function ItamSettings() {
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
               <div>
                 <div className="font-medium text-amber-800 dark:text-amber-200">
-                  ไม่สามารถโหลดการตั้งค่าการแจ้งเตือนจาก server ได้
+                  NoCanLoadSettingsNotifyfrom server 
                 </div>
                 <div className="mt-0.5 text-xs text-amber-700/80 dark:text-amber-300/80">
                   {notifyError instanceof Error ? notifyError.message : 'Unknown error'} —
-                  แสดงค่าเริ่มต้นเพื่อให้กรอกได้ทันที กดปุ่ม &quot;บันทึก&quot; เพื่อบันทึกค่าใหม่
+                  ShowFeeDefaultfortoPendingImmediate Clickbutton &quot;Save&quot; forSaveFeeNew
                 </div>
               </div>
             </div>
@@ -592,38 +597,38 @@ export function ItamSettings() {
               <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <Bell className="h-4 w-4 text-[#f97316]" /> ช่องทางการแจ้งเตือน (Channels)
+                    <Bell className="h-4 w-4 text-[#f97316]" /> channelNotify (Channels)
                   </CardTitle>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    เลือกช่องทางที่ต้องการส่ง — Email (log), Telegram (Bot API), LINE Notify, LINE OA
+                    SelectchannelatMustSend — Email (log), Telegram (Bot API), LINE Notify, LINE OA
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
                     <div>
                       <div className="text-sm font-medium text-slate-700 dark:text-slate-200">📧 Email</div>
-                      <div className="text-xs text-slate-400">บันทึกใน server log (sandbox ไม่ส่งจริง)</div>
+                      <div className="text-xs text-slate-400">Savein server log (sandbox NoSendreal)</div>
                     </div>
                     <Switch checked={notifyDraft.channels.email} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, email: v } })} />
                   </div>
                   <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
                     <div>
                       <div className="text-sm font-medium text-slate-700 dark:text-slate-200">✈️ Telegram</div>
-                      <div className="text-xs text-slate-400">ส่งผ่าน Telegram Bot API</div>
+                      <div className="text-xs text-slate-400">SendThrough Telegram Bot API</div>
                     </div>
                     <Switch checked={notifyDraft.channels.telegram} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, telegram: v } })} />
                   </div>
                   <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
                     <div>
                       <div className="text-sm font-medium text-slate-700 dark:text-slate-200">💬 LINE Notify</div>
-                      <div className="text-xs text-slate-400">ส่งผ่าน LINE Notify API</div>
+                      <div className="text-xs text-slate-400">SendThrough LINE Notify API</div>
                     </div>
                     <Switch checked={notifyDraft.channels.lineNotify} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, lineNotify: v } })} />
                   </div>
                   <div className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
                     <div>
                       <div className="text-sm font-medium text-slate-700 dark:text-slate-200">🎯 LINE OA</div>
-                      <div className="text-xs text-slate-400">ส่งผ่าน LINE Messaging API</div>
+                      <div className="text-xs text-slate-400">SendThrough LINE Messaging API</div>
                     </div>
                     <Switch checked={notifyDraft.channels.lineOA} onCheckedChange={(v) => setNotifyDraft({ ...notifyDraft, channels: { ...notifyDraft.channels, lineOA: v } })} />
                   </div>
@@ -632,15 +637,15 @@ export function ItamSettings() {
 
               <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader>
-                  <CardTitle className="text-base">เหตุการณ์ที่แจ้งเตือน (Events)</CardTitle>
+                  <CardTitle className="text-base">causeatNotify (Events)</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {[
-                    { key: 'deviceAdded' as const, label: '➕ เพิ่มอุปกรณ์ใหม่' },
-                    { key: 'deviceUpdated' as const, label: '✏️ แก้ไขอุปกรณ์' },
-                    { key: 'transfer' as const, label: '🔄 ย้ายตำแหน่งอุปกรณ์' },
-                    { key: 'lifecycle' as const, label: '🔁 เปลี่ยนสถานะ' },
-                    { key: 'meter' as const, label: '📈 จดมิเตอร์' },
+                    { key: 'deviceAdded' as const, label: '➕ AddDeviceNew' },
+                    { key: 'deviceUpdated' as const, label: '✏️ EditDevice' },
+                    { key: 'transfer' as const, label: '🔄 moveLocationDevice' },
+                    { key: 'lifecycle' as const, label: '🔁 ChangeStatus' },
+                    { key: 'meter' as const, label: '📈 ReadMeter' },
                   ].map((ev) => (
                     <div key={ev.key} className="flex items-center justify-between rounded-md border border-slate-200 p-3 dark:border-slate-700">
                       <div className="text-sm font-medium text-slate-700 dark:text-slate-200">{ev.label}</div>
@@ -652,14 +657,14 @@ export function ItamSettings() {
 
               <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
                 <CardHeader>
-                  <CardTitle className="text-base">ข้อมูลประจำตัว (Credentials)</CardTitle>
+                  <CardTitle className="text-base">DataID (Credentials)</CardTitle>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Token จะถูก mask หลังบันทึก — พิมพ์ค่าใหม่เพื่อเขียนทับ
+                    Token willcorrect mask AfterSave — PrintFeeNewforoverwrite
                   </p>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="space-y-1.5">
-                    <Label className="text-xs">อีเมลผู้รับ (คั่นด้วยจุลภาค)</Label>
+                    <Label className="text-xs">EmailPersonReceive (คั่withmicroPart)</Label>
                     <Input
                       value={notifyDraft.credentials.notifyEmails || ''}
                       onChange={(e) => setNotifyDraft({ ...notifyDraft, credentials: { ...notifyDraft.credentials, notifyEmails: e.target.value } })}
@@ -719,13 +724,13 @@ export function ItamSettings() {
 
               <div className="flex flex-wrap gap-2">
                 <Button onClick={saveNotify} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
-                  บันทึกการตั้งค่า
+                  SaveSettings
                 </Button>
                 <Button variant="outline" onClick={sendTestNotify} className="dark:bg-slate-800 dark:border-slate-700">
-                  <Send className="h-4 w-4" /> ส่งทดสอบ
+                  <Send className="h-4 w-4" /> SendTest
                 </Button>
                 <Button variant="outline" onClick={() => qc.invalidateQueries({ queryKey: ['itam-notify-settings'] })} className="dark:bg-slate-800 dark:border-slate-700">
-                  <RefreshCw className="h-4 w-4" /> รีเฟรช
+                  <RefreshCw className="h-4 w-4" /> Refresh
                 </Button>
               </div>
             </>
@@ -733,7 +738,7 @@ export function ItamSettings() {
         </div>
       )}
 
-      {/* ── ปรับแต่งแอป tab — appName, logo, tagline, search fields ── */}
+      {/* ── ReceivedecorateApp tab — appName, logo, tagline, search fields ── */}
       {tab === 'notification-templates' && <NotificationTemplatesSection />}
 
       {tab === 'notification-logs' && <NotificationLogSection />}
@@ -747,6 +752,8 @@ export function ItamSettings() {
       {tab === 'wo-patterns' && <WoPatternTab />}
 
       {tab === 'demo' && <DemoManagementSection />}
+
+      {tab === 'modules' && <ModuleFlagsSection />}
 
       {tab === 'mobile-nav' && <MobileNavConfigSection />}
       {tab === 'sync-test' && <SyncTestSection />}
@@ -769,13 +776,13 @@ export function ItamSettings() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการลบ</AlertDialogTitle>
+            <AlertDialogTitle>ConfirmDelete</AlertDialogTitle>
             <AlertDialogDescription>
-              ต้องการลบ "{deleteTarget?.label ?? ''}" ใช่หรือไม่? การกระทำนี้ไม่สามารถยกเลิกได้
+              MustDelete "{deleteTarget?.label ?? ''}" YesorNo? DoNoCanCancel
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               type="button"
               onClick={(e) => {
@@ -784,7 +791,7 @@ export function ItamSettings() {
               }}
               className="bg-rose-600 text-white hover:bg-rose-700"
             >
-              ลบ
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -793,11 +800,12 @@ export function ItamSettings() {
   )
 }
 
-// ── AppCustomizeTab — ปรับแต่งชื่อแอป, โลโก้, tagline, สี, ฟิลด์ค้นหา ────────
+// ── AppCustomizeTab — ReceivedecorateNameApp, logo, tagline, Color, ReduceSearch ────────
 // Uses /api/settings/org-profile (PUT) — the same source the sidebar reads via
 // the ['org-profile'] query. Invalidating that query makes the sidebar update
 // immediately after save.
 function AppCustomizeTab() {
+  const t = useT()
   const qc = useQueryClient()
 
   // Fetch the org profile (singleton) — supplies appName, appTagline, logoUrl,
@@ -846,7 +854,7 @@ function AppCustomizeTab() {
   })
 
   const [form, setForm] = React.useState({
-    appName: 'ระบบจัดการสินทรัพย์',
+    appName: 'SystemManageAsset',
     logoUrl: '',
     appTagline: 'Asset Management System',
     primaryColor: '#f97316',
@@ -861,7 +869,7 @@ function AppCustomizeTab() {
     if (profile) {
       setForm((prev) => ({
         ...prev,
-        appName: profile.appName || 'ระบบจัดการสินทรัพย์',
+        appName: profile.appName || 'SystemManageAsset',
         logoUrl: profile.logoUrl || '',
         appTagline: profile.appTagline || 'Asset Management System',
         primaryColor: profile.primaryColor || '#f97316',
@@ -909,12 +917,12 @@ function AppCustomizeTab() {
         // Non-fatal — searchFields is a secondary setting
       }
 
-      toast.success('บันทึกการตั้งค่าแอปแล้ว — sidebar จะอัปเดตทันที')
+      toast.success('SaveSettingsApp — sidebar willUpdateImmediate')
       // Invalidate both so the sidebar (reads org-profile) + this tab re-fetch
       await qc.invalidateQueries({ queryKey: ['org-profile'] })
       await qc.invalidateQueries({ queryKey: ['app-customization'] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+      toast.error(e instanceof Error ? e.message : 'SaveNoSuccess')
     } finally {
       setSaving(false)
     }
@@ -924,7 +932,7 @@ function AppCustomizeTab() {
 
   // Live preview: show what the sidebar header will look like
   const previewLogo = form.logoUrl
-  const previewIsImg = previewLogo && previewLogo.startsWith('http')
+  const previewIsImg = previewLogo && (previewLogo.startsWith('http') || previewLogo.startsWith('data:image/'))
 
   return (
     <div className="space-y-4">
@@ -932,7 +940,7 @@ function AppCustomizeTab() {
       <Card className="border-[#f97316]/30 bg-gradient-to-br from-orange-50/50 to-white dark:border-[#fb923c]/20 dark:from-orange-950/20 dark:to-slate-900">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-            <Palette className="h-4 w-4 text-[#f97316]" /> ตัวอย่างหน้าตา (Live Preview)
+            <Palette className="h-4 w-4 text-[#f97316]" /> unitLikefronteye (Live Preview)
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -950,7 +958,7 @@ function AppCustomizeTab() {
             )}
             <div className="min-w-0">
               <div className="truncate text-sm font-bold text-slate-900 dark:text-white">
-                {form.appName || 'ระบบจัดการสินทรัพย์'}
+                {form.appName || 'SystemManageAsset'}
               </div>
               <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                 {form.appTagline || 'Asset Management System'}
@@ -975,22 +983,22 @@ function AppCustomizeTab() {
       <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Palette className="h-4 w-4 text-[#f97316]" /> ปรับแต่งหน้าตาแอป
+            <Palette className="h-4 w-4 text-[#f97316]" /> ReceivedecoratefronteyeApp
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-xs">ชื่อแอป (แสดงใน sidebar)</Label>
+              <Label className="text-xs">NameApp (Showin sidebar)</Label>
               <Input
                 value={form.appName}
                 onChange={(e) => setForm({ ...form, appName: e.target.value })}
-                placeholder="ระบบจัดการสินทรัพย์"
+                placeholder="SystemManageAsset"
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">แท็กไลน์ (ใต้ชื่อแอป)</Label>
+              <Label className="text-xs">TagLINE (underNameApp)</Label>
               <Input
                 value={form.appTagline}
                 onChange={(e) => setForm({ ...form, appTagline: e.target.value })}
@@ -1000,13 +1008,28 @@ function AppCustomizeTab() {
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">โลโก้ (emoji, URL รูปภาพ หรืออัปโหลดไฟล์)</Label>
-            <Input
-              value={form.logoUrl}
-              onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
-              placeholder="📦 หรือ https://example.com/logo.png"
-              className="dark:bg-slate-800 dark:border-slate-700"
-            />
+            <Label className="text-xs">{t('settings.logo_label')}</Label>
+            {/* When logo is a base64 data URL (uploaded file), show thumbnail
+                instead of the raw data URL text (which is very long and ugly). */}
+            {form.logoUrl.startsWith('data:image/') ? (
+              <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800">
+                <img
+                  src={form.logoUrl}
+                  alt="Logo preview"
+                  className="h-10 w-10 rounded object-contain"
+                />
+                <span className="flex-1 truncate text-xs text-slate-500 dark:text-slate-400">
+                  {t('settings.logo_uploaded')}
+                </span>
+              </div>
+            ) : (
+              <Input
+                value={form.logoUrl}
+                onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
+                placeholder={t('settings.logo_placeholder')}
+                className="dark:bg-slate-800 dark:border-slate-700"
+              />
+            )}
             <div className="flex items-center gap-2">
               <Button
                 type="button"
@@ -1016,7 +1039,7 @@ function AppCustomizeTab() {
                 disabled={saving}
               >
                 <Camera className="mr-1.5 h-3.5 w-3.5" />
-                อัปโหลดรูป
+                {t('settings.logo_upload')}
               </Button>
               {form.logoUrl.startsWith('data:image/') && (
                 <Button
@@ -1027,7 +1050,7 @@ function AppCustomizeTab() {
                   disabled={saving}
                   className="text-red-500 hover:text-red-600"
                 >
-                  ลบรูป
+                  {t('settings.logo_delete')}
                 </Button>
               )}
               <input
@@ -1038,7 +1061,7 @@ function AppCustomizeTab() {
                   const file = e.target.files?.[0]
                   if (!file) return
                   if (file.size > 2 * 1024 * 1024) {
-                    toast.error('รูปใหญ่เกินไป (สูงสุด 2MB)')
+                    toast.error(t('settings.logo_too_large'))
                     return
                   }
                   const reader = new FileReader()
@@ -1071,19 +1094,19 @@ function AppCustomizeTab() {
               />
             </div>
             <p className="text-[11px] text-slate-500">
-              💡 ใช้ emoji (เช่น 📦 🖨️ 💻), วาง URL รูปภาพ, หรือกดอัปโหลดไฟล์ (PNG/SVG, แนะนำ 32×32px, สูงสุด 2MB)
+              {t('settings.logo_hint')}
             </p>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-xs">สีหลัก (Primary)</Label>
+              <Label className="text-xs">ColorMain (Primary)</Label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
                   value={form.primaryColor}
                   onChange={(e) => setForm({ ...form, primaryColor: e.target.value })}
                   className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-800"
-                  aria-label="เลือกสีหลัก"
+                  aria-label="SelectColorMain"
                 />
                 <Input
                   value={form.primaryColor}
@@ -1093,14 +1116,14 @@ function AppCustomizeTab() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">สีเสริม (Accent)</Label>
+              <Label className="text-xs">Colorsupplement (Accent)</Label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
                   value={form.accentColor}
                   onChange={(e) => setForm({ ...form, accentColor: e.target.value })}
                   className="h-9 w-12 cursor-pointer rounded border border-slate-200 bg-white p-1 dark:border-slate-700 dark:bg-slate-800"
-                  aria-label="เลือกสีเสริม"
+                  aria-label="SelectColorsupplement"
                 />
                 <Input
                   value={form.accentColor}
@@ -1111,7 +1134,7 @@ function AppCustomizeTab() {
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">ประเภทอุตสาหกรรม</Label>
+            <Label className="text-xs">Typeindustry</Label>
             <Select
               value={form.industryType}
               onValueChange={(v) => setForm({ ...form, industryType: v })}
@@ -1120,18 +1143,18 @@ function AppCustomizeTab() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="general">ทั่วไป</SelectItem>
-                <SelectItem value="office">สำนักงาน</SelectItem>
-                <SelectItem value="corporate">องค์กร</SelectItem>
-                <SelectItem value="education">สถาบันการศึกษา</SelectItem>
-                <SelectItem value="government">หน่วยงานรัฐ</SelectItem>
-                <SelectItem value="healthcare">สถานพยาบาล</SelectItem>
-                <SelectItem value="industrial">อุตสาหกรรม</SelectItem>
+                <SelectItem value="general">generalto</SelectItem>
+                <SelectItem value="office">bureauWork</SelectItem>
+                <SelectItem value="corporate">organization</SelectItem>
+                <SelectItem value="education">educational</SelectItem>
+                <SelectItem value="government">UnitWorkgovernment</SelectItem>
+                <SelectItem value="healthcare">hospital</SelectItem>
+                <SelectItem value="industrial">industry</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label className="text-xs">ฟิลด์ที่ใช้ค้นหา (คั่นด้วยจุลภาค)</Label>
+            <Label className="text-xs">ReduceatUseSearch (คั่withmicroPart)</Label>
             <Input
               value={form.searchFields}
               onChange={(e) => setForm({ ...form, searchFields: e.target.value })}
@@ -1139,14 +1162,14 @@ function AppCustomizeTab() {
               className="font-mono text-xs dark:bg-slate-800 dark:border-slate-700"
             />
             <p className="text-[11px] text-slate-500">
-              💡 ฟิลด์ที่รองรับ: assetNo, serial, brand, model, deviceType, department, location, site —
-              ลำดับแรกจะถูกค้นหาก่อน (ตัวอย่าง: &quot;serial,assetNo,brand&quot; จะค้น Serial ก่อน)
+              💡 ReduceatPendingReceive: assetNo, serial, brand, model, deviceType, department, location, site —
+              unitfirstwillcorrectSearchBefore (unitLike: &quot;serial,assetNo,brand&quot; willsearch Serial Before)
             </p>
           </div>
           <div className="flex gap-2 pt-2">
             <Button onClick={save} disabled={saving} className="bg-[#f97316] text-white hover:bg-[#ea580c]">
               {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Palette className="h-4 w-4" />}
-              บันทึก
+              Save
             </Button>
             <Button
               variant="outline"
@@ -1156,7 +1179,7 @@ function AppCustomizeTab() {
               }}
               className="dark:bg-slate-800 dark:border-slate-700"
             >
-              <RefreshCw className="h-4 w-4" /> รีเฟรช
+              <RefreshCw className="h-4 w-4" /> Refresh
             </Button>
           </div>
         </CardContent>
@@ -1166,49 +1189,50 @@ function AppCustomizeTab() {
 }
 
 // ============================================================
-// MobileNavConfigSection — admin ตั้งค่าเมนูมือถือ/เดสก์ท็อปตาม role
+// MobileNavConfigSection — admin SettingsMobile Menu/desktopby role
 // ============================================================
 function MobileNavConfigSection() {
+  const t = useT()
   const qc = useQueryClient()
   const [config, setConfig] = React.useState<Record<string, Record<string, boolean>>>({})
   const [selectedRole, setSelectedRole] = React.useState('staff')
   const [saving, setSaving] = React.useState(false)
 
   const ROLES = [
-    { value: 'admin', label: 'ผู้ดูแลระบบ' },
-    { value: 'manager', label: 'ผู้จัดการ' },
-    { value: 'staff', label: 'ช่างเทคนิค' },
-    { value: 'coordinator', label: 'ผู้ประสานงาน' },
-    { value: 'viewer', label: 'ผู้ดู' },
+    { value: 'admin', label: 'PersonViewSystem' },
+    { value: 'manager', label: 'PersonManage' },
+    { value: 'staff', label: 'Technicianทperson' },
+    { value: 'coordinator', label: 'PersoncoordinateWork' },
+    { value: 'viewer', label: 'PersonView' },
   ]
 
   // All nav pages that can be toggled — SIDEBAR pages (desktop responsive)
   const NAV_PAGES = [
     { page: 'dashboard', label: '📊 Dashboard' },
-    { page: 'itam-devices', label: '💻 จัดการอุปกรณ์' },
-    { page: 'itam-meter-keyboard', label: '📈 จดมิเตอร์' },
-    { page: 'itam-work-orders', label: '🔧 แจ้งซ่อม' },
-    { page: 'pm-schedules', label: '🗓️ ตาราง PM' },
-    { page: 'itam-stock', label: '📦 สต๊อก' },
-    { page: 'itam-paper-analytics', label: '📄 วิเคราะห์กระดาษ' },
-    { page: 'templates', label: '📄 เทมเพลต' },
-    { page: 'import', label: '📥 นำเข้าข้อมูล' },
-    { page: 'reports-hub', label: '📊 ศูนย์รายงาน' },
-    { page: 'material-cost', label: '💰 ต้นทุนวัสดุ' },
-    { page: 'monthly-report', label: '📅 รายงานรายเดือน' },
-    { page: 'itam-settings', label: '⚙️ ตั้งค่าระบบ' },
-    { page: 'itam-audit', label: '📜 ประวัติการใช้งาน' },
-    { page: 'mobile', label: '📱 โหมดมือถือ' },
+    { page: 'itam-devices', label: '💻 ManageDevice' },
+    { page: 'itam-meter-keyboard', label: '📈 ReadMeter' },
+    { page: 'itam-work-orders', label: '🔧 Repair Request' },
+    { page: 'pm-schedules', label: '🗓️ Table PM' },
+    { page: 'itam-stock', label: '📦 Stock' },
+    { page: 'itam-paper-analytics', label: '📄 analyzePaper' },
+    { page: 'templates', label: '📄 Template' },
+    { page: 'import', label: '📥 ImportData' },
+    { page: 'reports-hub', label: '📊 centerReport' },
+    { page: 'material-cost', label: '💰 CostMaterial' },
+    { page: 'monthly-report', label: '📅 Reportitemmonths' },
+    { page: 'itam-settings', label: '⚙️ SettingsSystem' },
+    { page: 'itam-audit', label: '📜 HistoryActive' },
+    { page: 'mobile', label: '📱 modeMobile' },
   ]
 
-  // MobileShell (แอปมือถือ) tabs — the 4 bottom-nav buttons that users
-  // see when they open the app on a phone. 'account' (บัญชี) is NOT
+  // MobileShell (AppMobile) tabs — the 4 bottom-nav buttons that users
+  // see when they open the app on a phone. 'account' (account) is NOT
   // listed here because it can't be disabled (logout must remain accessible).
   const MOBILE_APP_TABS = [
-    { page: 'mobileapp-my-work', label: '📋 งานของฉัน' },
-    { page: 'mobileapp-repair',  label: '🔧 แจ้งซ่อม' },
-    { page: 'mobileapp-meter',   label: '📈 จดมิเตอร์' },
-    { page: 'mobileapp-stock',   label: '📦 เบิกของ' },
+    { page: 'mobileapp-my-work', label: '📋 WorkofI' },
+    { page: 'mobileapp-repair',  label: '🔧 Repair Request' },
+    { page: 'mobileapp-meter',   label: '📈 ReadMeter' },
+    { page: 'mobileapp-stock',   label: '📦 Withdrawof' },
   ]
 
   // Load config from AppSetting
@@ -1263,12 +1287,12 @@ function MobileNavConfigSection() {
           mobileNavConfig: JSON.stringify(config),
         }),
       })
-      if (!res.ok) throw new Error('บันทึกไม่สำเร็จ')
-      toast.success('บันทึกการตั้งค่าเมนูมือถือแล้ว')
+      if (!res.ok) throw new Error('SaveNoSuccess')
+      toast.success('SaveSettingsMobile Menu')
       qc.invalidateQueries({ queryKey: ['mobile-nav-config'] })
       qc.invalidateQueries({ queryKey: ['mobile-nav-config-settings'] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+      toast.error(e instanceof Error ? e.message : 'SaveNoSuccess')
     } finally {
       setSaving(false)
     }
@@ -1281,16 +1305,16 @@ function MobileNavConfigSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <Smartphone className="h-5 w-5 text-[#f97316]" />
-          ตั้งค่าเมนูมือถือ / เดสก์ท็อป
+          SettingsMobile Menu / desktop
         </CardTitle>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          กำหนดว่าแต่ละ role จะเห็นเมนูใดบนมือถือ (หน้าจอ &lt; 768px) — บนเดสก์ท็อปจะเห็นทุกเมนูที่ไม่ได้ปิด
+          SetthatEach role willsee any menuonMobile (frontscreen &lt; 768px) — ondesktopwillseeAllmenuatNoClose
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Role selector */}
         <div className="flex flex-wrap items-center gap-2">
-          <Label className="text-xs">เลือก Role:</Label>
+          <Label className="text-xs">Select Role:</Label>
           {ROLES.map((r) => (
             <button
               key={r.value}
@@ -1310,10 +1334,10 @@ function MobileNavConfigSection() {
         {/* Quick actions */}
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => setAllForRole(selectedRole, true)}>
-            เปิดทั้งหมด
+            CloseAll
           </Button>
           <Button size="sm" variant="outline" onClick={() => setAllForRole(selectedRole, false)}>
-            ปิดทั้งหมด
+            CloseAll
           </Button>
         </div>
 
@@ -1322,9 +1346,9 @@ function MobileNavConfigSection() {
           <Table>
             <TableHeader>
               <TableRow className="text-xs">
-                <TableHead>เมนู</TableHead>
-                <TableHead className="w-24 text-center">มือถือ</TableHead>
-                <TableHead className="w-24 text-center">เดสก์ท็อป</TableHead>
+                <TableHead>menu</TableHead>
+                <TableHead className="w-24 text-center">Mobile</TableHead>
+                <TableHead className="w-24 text-center">desktop</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1340,7 +1364,7 @@ function MobileNavConfigSection() {
                       />
                     </TableCell>
                     <TableCell className="text-center text-slate-400">
-                      ✓ (เห็นเสมอ)
+                      ✓ (always visible)
                     </TableCell>
                   </TableRow>
                 )
@@ -1350,18 +1374,18 @@ function MobileNavConfigSection() {
         </div>
 
         <div className="rounded-md bg-slate-50 px-3 py-2 text-[11px] text-slate-500 dark:bg-slate-800/40 dark:text-slate-400">
-          💡 <strong>มือถือ</strong> = ผู้ใช้เห็นเฉพาะเมนูที่เปิดไว้ (เมื่อเข้าผ่านหน้าจอ &lt; 768px)<br />
-          💡 <strong>เดสก์ท็อป</strong> = ผู้ใช้เห็นทุกเมนู (ยกเว้นที่ปิดไว้)
+          💡 <strong>Mobile</strong> = UserseeOnlymenuatCloseKeep (WheninThroughfrontscreen &lt; 768px)<br />
+          💡 <strong>desktop</strong> = UserseeAllmenu (exceptatCloseKeep)
         </div>
 
-        {/* ── แอปมือถือ (MobileShell) tabs ── */}
+        {/* ── AppMobile (MobileShell) tabs ── */}
         <div className="mt-4 rounded-md border border-orange-200 bg-orange-50/50 p-3 dark:border-orange-800/50 dark:bg-orange-950/20">
           <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-orange-700 dark:text-orange-300">
             <Smartphone className="h-4 w-4" />
-            แอปมือถือ (MobileShell) — ปุ่มแถบล่างบนมือถือจริง
+            AppMobile (MobileShell) — bottom bar buttononMobilereal
           </h4>
           <p className="mb-3 text-[11px] text-orange-600/80 dark:text-orange-400/80">
-            ปุ่ม "บัญชี" ไม่สามารถปิดได้ (ต้องมี logout เสมอ)
+            button "account" NoCanClose (MustHas logout always)
           </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {MOBILE_APP_TABS.map((t) => {
@@ -1386,7 +1410,7 @@ function MobileNavConfigSection() {
             })}
           </div>
           <p className="mt-2 text-[11px] text-orange-600/70 dark:text-orange-400/70">
-            การเปลี่ยนแปลงมีผลใน 30 วินาที หลังบันทึก (cache refresh)
+            ChangedownHasResultin 30 sec AfterSave (cache refresh)
           </p>
         </div>
 
@@ -1395,7 +1419,7 @@ function MobileNavConfigSection() {
           disabled={saving}
           className="bg-[#f97316] text-white hover:bg-[#ea580c]"
         >
-          {saving ? 'กำลังบันทึก...' : '💾 บันทึกการตั้งค่า'}
+          {saving ? 'Save...' : '💾 SaveSettings'}
         </Button>
       </CardContent>
     </Card>
@@ -1403,9 +1427,10 @@ function MobileNavConfigSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// MyProfileSection — แก้โปรไฟล์ + อัปโหลดรูปโปรไฟล์ของตัวเอง
+// MyProfileSection — FixProfile + UploadimageProfileofitself
 // ─────────────────────────────────────────────────────────────────────────
 function MyProfileSection() {
+  const t = useT()
   const { user: authUser, fetchMe } = useAuthStore()
   const token = useAuthStore((s) => s.token)
   const [loading, setLoading] = React.useState(true)
@@ -1447,7 +1472,7 @@ function MyProfileSection() {
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('รูปใหญ่เกินไป (สูงสุด 5MB)')
+      toast.error('imagelargeexceedto (HighEnd 5MB)')
       return
     }
     const reader = new FileReader()
@@ -1490,13 +1515,13 @@ function MyProfileSection() {
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'บันทึกไม่สำเร็จ')
+        throw new Error(j.error ?? 'SaveNoSuccess')
       }
-      toast.success('บันทึกโปรไฟล์แล้ว')
+      toast.success('SaveProfile')
       await fetchMe()
       await loadProfile()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+      toast.error(e instanceof Error ? e.message : 'SaveNoSuccess')
     } finally {
       setSaving(false)
     }
@@ -1506,7 +1531,7 @@ function MyProfileSection() {
     return (
       <Card>
         <CardContent className="py-8 text-center text-sm text-muted-foreground">
-          กำลังโหลด...
+          Loading...
         </CardContent>
       </Card>
     )
@@ -1517,10 +1542,10 @@ function MyProfileSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base md:text-lg">
           <User className="h-5 w-5 text-[#f97316]" />
-          โปรไฟล์ของฉัน
+          ProfileofI
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          แก้ไขข้อมูลส่วนตัว + รูปโปรไฟล์ — ผู้ใช้ทุกคนแก้ได้เอง
+          EditDataSectionunit + imageProfile — UserAllpersonFixself
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -1541,35 +1566,35 @@ function MyProfileSection() {
           <div className="space-y-1">
             <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={saving}>
               <Camera className="mr-2 h-4 w-4" />
-              {avatarUrl ? 'เปลี่ยนรูป' : 'อัปโหลดรูป'}
+              {avatarUrl ? 'Changeimage' : 'Uploadimage'}
             </Button>
             {avatarUrl && (
               <Button type="button" variant="ghost" size="sm" onClick={() => setAvatarUrl(null)} disabled={saving} className="text-red-500 hover:text-red-600">
-                ลบรูป
+                Deleteimage
               </Button>
             )}
             <p className="text-[11px] text-muted-foreground">
-              รองรับ JPG/PNG · ย่ออัตโนมัติ 256×256 · สูงสุด 5MB
+              PendingReceive JPG/PNG · abbreviateAuto 256×256 · HighEnd 5MB
             </p>
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-sm">ชื่อ-นามสกุล</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} placeholder="เช่น นิกร ศรีสุข" className="text-sm" />
+          <Label className="text-sm">Name-last name</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={100} placeholder="e.g. ิร Srisuk" className="text-sm" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-sm">เบอร์โทร</Label>
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} placeholder="เช่น 081-234-5678" className="text-sm" />
+          <Label className="text-sm">Phone</Label>
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} maxLength={20} placeholder="e.g. 081-234-5678" className="text-sm" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-sm">แผนก</Label>
-          <Input value={department} onChange={(e) => setDepartment(e.target.value)} maxLength={100} placeholder="เช่น IT" className="text-sm" />
+          <Label className="text-sm">Dept</Label>
+          <Input value={department} onChange={(e) => setDepartment(e.target.value)} maxLength={100} placeholder="e.g. IT" className="text-sm" />
         </div>
         <div className="rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800/50">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <span className="text-muted-foreground">อีเมล:</span>
+              <span className="text-muted-foreground">Email:</span>
               <br />
               <span className="font-medium">{email}</span>
             </div>
@@ -1579,18 +1604,18 @@ function MyProfileSection() {
               <span className="font-medium">{username || '—'}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">บทบาท:</span>
+              <span className="text-muted-foreground">ChapterTHB:</span>
               <br />
               <span className="font-medium">{role}</span>
             </div>
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            หากต้องการเปลี่ยนอีเมล/username/บทบาท ติดต่อแอดมิน
+            IfMustChangeEmail/username/ChapterTHB contact admin
           </p>
         </div>
         <Button onClick={handleSave} disabled={saving} className="w-full bg-[#f97316] text-white hover:bg-[#ea580c]">
           {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-          บันทึกโปรไฟล์
+          SaveProfile
         </Button>
       </CardContent>
     </Card>
@@ -1598,12 +1623,13 @@ function MyProfileSection() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// MyBiometricsSection — จัดการPasskeyของผู้ใช้ปัจจุบัน
+// MyBiometricsSection — ManagePasskeyofUserCurrent
 // ─────────────────────────────────────────────────────────────────────────
-// ลงทะเบียน Touch ID / Face ID / Windows Hello / Android fingerprint
-// หลังจากลงทะเบียนแล้ว ผู้ใช้สามารถ login ด้วยPasskeyแทน password ได้
+// Register Touch ID / Face ID / Windows Hello / Android fingerprint
+// AfterfromRegister UserCan login withPasskeyinstead password 
 // ─────────────────────────────────────────────────────────────────────────
 function MyBiometricsSection() {
+  const t = useT()
   const { isSupported, register, listCredentials, removeCredential, loading } = useWebAuthn()
   const [credentials, setCredentials] = React.useState<Array<{
     id: string
@@ -1633,20 +1659,20 @@ function MyBiometricsSection() {
   async function handleRegister() {
     const result = await register(newName.trim() || undefined)
     if (result?.verified) {
-      toast.success(`ลงทะเบียน "${result.name ?? 'Passkey'}" สำเร็จ`)
+      toast.success(`Register "${result.name ?? 'Passkey'}" Success`)
       setNewName('')
       refresh()
     }
   }
 
   async function handleRemove(id: string, name: string | null) {
-    if (!confirm(`ยืนยันลบ Passkey "${name ?? 'Passkey'}" ?`)) return
+    if (!confirm(`ConfirmDelete Passkey "${name ?? 'Passkey'}" ?`)) return
     const ok = await removeCredential(id)
     if (ok) {
-      toast.success('ลบ Passkey เรียบร้อย')
+      toast.success('Delete Passkey ')
       refresh()
     } else {
-      toast.error('ลบไม่สำเร็จ')
+      toast.error('DeleteNoSuccess')
     }
   }
 
@@ -1655,27 +1681,27 @@ function MyBiometricsSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base md:text-lg">
           <Fingerprint className="h-5 w-5 text-[#f97316]" />
-          Passkey ของฉัน (Touch ID / Face ID / Windows Hello / Security Key)
+          Passkey ofI (Touch ID / Face ID / Windows Hello / Security Key)
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          ลงทะเบียน Passkey ของอุปกรณ์นี้เพื่อใช้ login โดยไม่ต้องกรอก password.
-          รองรับ Touch ID, Face ID, Windows Hello, Passkey Android และ security key (YubiKey).
+          Register Passkey ofDeviceforUse login byNoMustPending password.
+          PendingReceive Touch ID, Face ID, Windows Hello, Passkey Android and security key (YubiKey).
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {!isSupported ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-            <p className="font-medium">⚠️ เบราว์เซอร์นี้ไม่รองรับ Passkey</p>
-            <p className="mt-1 text-xs">กรุณาใช้ Chrome / Safari / Edge เวอร์ชันใหม่, หรือเปิดผ่าน HTTPS (ไม่ใช่ HTTP).</p>
+            <p className="font-medium">⚠️ browserNoPendingReceive Passkey</p>
+            <p className="mt-1 text-xs">PleaseUse Chrome / Safari / Edge versionNew, orCloseThrough HTTPS (NoYes HTTP).</p>
           </div>
         ) : (
           <>
             {/* Register new credential */}
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
-              <h4 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">ลงทะเบียนอุปกรณ์ใหม่</h4>
+              <h4 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">RegisterDeviceNew</h4>
               <div className="flex gap-2">
                 <Input
-                  placeholder="ชื่อเล่น เช่น iPhone ของผม, Mac ส่วนตัว"
+                  placeholder="Nameplay e.g. iPhone ofI, Mac Sectionunit"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   className="flex-1 text-sm"
@@ -1687,11 +1713,11 @@ function MyBiometricsSection() {
                   className="bg-[#f97316] text-white hover:bg-[#ea580c]"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                  ลงทะเบียน
+                  Register
                 </Button>
               </div>
               <p className="mt-2 text-[11px] text-muted-foreground">
-                หลังกดปุ่ม เบราว์เซอร์จะถามยืนยันตัวตน (fingerprint/ใบหน้า/security key). ทำตามขั้นตอนบนหน้าจอ.
+                AfterClickbutton browserwillaskConfirmidentity (fingerprint/ticketfront/security key). DobystepAtonfrontscreen.
               </p>
             </div>
 
@@ -1699,17 +1725,17 @@ function MyBiometricsSection() {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  Passkey ที่ลงทะเบียน ({credentials.length})
+                  Passkey atRegister ({credentials.length})
                 </h4>
                 <Button variant="ghost" size="sm" onClick={refresh} disabled={refreshing}>
                   {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                  รีเฟรช
+                  Refresh
                 </Button>
               </div>
               {credentials.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-muted-foreground dark:border-slate-700">
                   <Fingerprint className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                  ยังไม่ได้ลงทะเบียน Passkey
+                  StillNoRegister Passkey
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -1725,8 +1751,8 @@ function MyBiometricsSection() {
                             {c.name ?? 'Passkey'}
                           </div>
                           <div className="text-[11px] text-muted-foreground">
-                            {c.deviceType ?? 'webauthn'} · ลงทะเบียน {new Date(c.createdAt).toLocaleDateString('th-TH')}
-                            {c.lastUsedAt && ` · ใช้ล่าสุด ${new Date(c.lastUsedAt).toLocaleDateString('th-TH')}`}
+                            {c.deviceType ?? 'webauthn'} · Register {new Date(c.createdAt).toLocaleDateString('th-TH')}
+                            {c.lastUsedAt && ` · UseLatest ${new Date(c.lastUsedAt).toLocaleDateString('th-TH')}`}
                           </div>
                         </div>
                       </div>
@@ -1746,11 +1772,11 @@ function MyBiometricsSection() {
 
             {/* Help section */}
             <div className="rounded-lg bg-slate-50 p-3 text-[11px] text-muted-foreground dark:bg-slate-800/30">
-              <p className="font-medium">💡 วิธีใช้งาน:</p>
+              <p className="font-medium">💡 HowActive:</p>
               <ol className="mt-1 ml-4 list-decimal space-y-0.5">
-                <li>ลงทะเบียน Passkey ของอุปกรณ์นี้ (ด้านบน)</li>
-                <li>ครั้งต่อไปที่ login — กรอก email แล้วกดปุ่ม &quot;เข้าสู่ระบบด้วย Passkey&quot;</li>
-                <li>เบราว์เซอร์จะถามยืนยันตัวตน ไม่ต้องกรอก password</li>
+                <li>Register Passkey ofDevice (sideon)</li>
+                <li>timespertoat login — Pending email Clickbutton &quot;intoSystemwith Passkey&quot;</li>
+                <li>browserwillaskConfirmidentity NoMustPending password</li>
               </ol>
             </div>
           </>

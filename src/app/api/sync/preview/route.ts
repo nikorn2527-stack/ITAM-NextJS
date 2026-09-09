@@ -15,6 +15,7 @@ import { computeServicesWorkOrderPreview } from '@/lib/services-work-order-previ
 import { adaptLegacyRecords, isLegacyBridgeModule, type LegacyBridgeModule } from '@/lib/legacy-bridge'
 import { computeLegacyBridgePreviewItems } from '@/lib/legacy-bridge-preview'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // Helper: convert JsonValue | null to Prisma Json? input type
 function toJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
@@ -28,6 +29,10 @@ function toJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJso
 export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('sync')
+  if (unavailable) return unavailable
+
+
   // 1. Auth — use ADMIN (not SYNC_RUN, B4 frozen rule)
   const auth = await requireAuth(req, 'ADMIN')
   if (!auth.ok) {

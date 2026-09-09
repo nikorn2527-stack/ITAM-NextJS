@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { notifyWorkOrderAssigned } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 async function logAudit(
   action: string,
@@ -33,6 +34,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   // Auth: loadAuthorizedWorkOrder does the site-scoped WO_ASSIGN check.
   // We only need a basic auth here (any logged-in user) — the wo-authz
   // layer enforces the correct permission at the WO's Site.

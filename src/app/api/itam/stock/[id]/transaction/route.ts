@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { canAccessSite } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -18,6 +19,10 @@ interface Params {
 //   ADJUST → balance = quantity (sets to absolute value)
 //   Everything is wrapped in db.$transaction for atomicity.
 export async function POST(req: NextRequest, { params }: Params) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

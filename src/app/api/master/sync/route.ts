@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // POST /api/master/sync?type=model|dept|labels
 // Backfills parentRef / departmentCode / displayLabel on existing devices & master items.
@@ -8,6 +9,10 @@ import { logAudit } from '@/lib/audit'
 export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('sync')
+  if (unavailable) return unavailable
+
+
   try {
     const { searchParams } = new URL(req.url)
     const type = (searchParams.get('type') ?? '').trim()

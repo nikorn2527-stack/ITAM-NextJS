@@ -1,17 +1,17 @@
 'use client'
 
 // ============================================================
-// ReportsHub — ศูนย์รวมรายงาน 5 กลุ่ม + รายงานอนุมัติ
+// ReportsHub — centerTotalReport 5 Group + ReportApprove
 // ============================================================
 // Task ID: REPORTS-HUB-5GROUPS
 //
 // Tabs:
-//   1. อุปกรณ์       — สถานะ/ประเภท/สาขา/ประกัน/ค่าเสื่อม
-//   2. มิเตอร์        — กระดาษ/ค่าใช้จ่าย/เครื่องที่ยังไม่จด/เทียบเดือน
-//   3. ใบงาน        — สถานะ/ช่าง/หัวข้อ/งาน 50 บาท/คะแนน
-//   4. สต็อก         — สรุป/ต่ำ/หมด/ประวัติ/รออนุมัติ
-//   5. ซ่อมบำรุง     — ซ่อมต่อเครื่อง/ค่าซ่อม/อะไหล่ยอดนิยม
-//   6. อนุมัติ       — รออนุมัติ/อนุมัติแล้ว/งานพิเศษ/ประวัติ
+//   1. Device       — Status/Type/Site/warranty/Feedepreciate
+//   2. Meter        — Paper/FeeUsepay/unitsatStillNoRead/comparemonths
+//   3. Work Order        — Status/Technician/Subject/Work 50 THB/visit
+//   4. Stock         — Summary/Low/end/History/PendingApprove
+//   5. Repairmaintain     — Repairperunits/FeeRepair/PartsPopular
+//   6. Approve       — PendingApprove/Approve/Special/History
 //
 // Data source: GET /api/reports/unified?group=<group>&month=YYYY-MM&site=CODE
 // ============================================================
@@ -44,63 +44,63 @@ import {
 // Column definitions for each report group
 const REPORT_COLUMNS: Record<ReportGroup, ColumnDef[]> = {
   devices: [
-    { key: 'assetCode', label: 'รหัส', default: true },
-    { key: 'name', label: 'ชื่อ', default: true },
-    { key: 'brand', label: 'ยี่ห้อ', default: true },
-    { key: 'model', label: 'รุ่น', default: true },
+    { key: 'assetCode', label: 'Code', default: true },
+    { key: 'name', label: 'Name', default: true },
+    { key: 'brand', label: 'Brand', default: true },
+    { key: 'model', label: 'Model', default: true },
     { key: 'serialNumber', label: 'S/N', default: true },
-    { key: 'status', label: 'สถานะ', default: true },
-    { key: 'site', label: 'สาขา', default: true },
-    { key: 'department', label: 'แผนก', default: false },
-    { key: 'warrantyEnd', label: 'ประกัน', default: false },
-    { key: 'purchasePrice', label: 'ราคา', default: false },
+    { key: 'status', label: 'Status', default: true },
+    { key: 'site', label: 'Site', default: true },
+    { key: 'department', label: 'Dept', default: false },
+    { key: 'warrantyEnd', label: 'warranty', default: false },
+    { key: 'purchasePrice', label: 'Price', default: false },
   ],
   workorders: [
-    { key: 'woNumber', label: 'เลขที่', default: true },
-    { key: 'subject', label: 'หัวข้อ', default: true },
-    { key: 'status', label: 'สถานะ', default: true },
-    { key: 'priority', label: 'เร่งด่วน', default: true },
-    { key: 'reporterName', label: 'ผู้แจ้ง', default: true },
-    { key: 'assignedTo', label: 'ผู้รับผิดชอบ', default: false },
-    { key: 'createdAt', label: 'วันที่แจ้ง', default: false },
-    { key: 'closedAt', label: 'วันที่ปิด', default: false },
-    { key: 'siteCode', label: 'สาขา', default: false },
+    { key: 'woNumber', label: 'No.at', default: true },
+    { key: 'subject', label: 'Subject', default: true },
+    { key: 'status', label: 'Status', default: true },
+    { key: 'priority', label: 'urgentUrgent', default: true },
+    { key: 'reporterName', label: 'Reporter', default: true },
+    { key: 'assignedTo', label: 'PersonReceivewronglike', default: false },
+    { key: 'createdAt', label: 'DateReport', default: false },
+    { key: 'closedAt', label: 'DateClose', default: false },
+    { key: 'siteCode', label: 'Site', default: false },
   ],
   meters: [
-    { key: 'assetCode', label: 'รหัส', default: true },
-    { key: 'readingMonth', label: 'เดือน', default: true },
-    { key: 'meterBw', label: 'มิเตอร์ ขาวดำ', default: true },
-    { key: 'meterColor', label: 'มิเตอร์ สี', default: true },
-    { key: 'pagesBw', label: 'แผ่น ขาวดำ', default: true },
-    { key: 'pagesColor', label: 'แผ่น สี', default: true },
-    { key: 'readingType', label: 'ประเภท', default: false },
-    { key: 'readBy', label: 'ผู้จด', default: false },
+    { key: 'assetCode', label: 'Code', default: true },
+    { key: 'readingMonth', label: 'months', default: true },
+    { key: 'meterBw', label: 'Meter B&W', default: true },
+    { key: 'meterColor', label: 'Meter Color', default: true },
+    { key: 'pagesBw', label: 'sheets B&W', default: true },
+    { key: 'pagesColor', label: 'sheets Color', default: true },
+    { key: 'readingType', label: 'Type', default: false },
+    { key: 'readBy', label: 'PersonRead', default: false },
   ],
   stock: [
-    { key: 'productCode', label: 'รหัส', default: true },
-    { key: 'productName', label: 'ชื่อ', default: true },
-    { key: 'quantity', label: 'คงเหลือ', default: true },
-    { key: 'minQuantity', label: 'ต่ำสุด', default: true },
-    { key: 'unit', label: 'หน่วย', default: false },
-    { key: 'unitCost', label: 'ราคา/หน่วย', default: false },
-    { key: 'totalValue', label: 'มูลค่ารวม', default: false },
-    { key: 'site', label: 'สาขา', default: false },
+    { key: 'productCode', label: 'Code', default: true },
+    { key: 'productName', label: 'Name', default: true },
+    { key: 'quantity', label: 'Remaining', default: true },
+    { key: 'minQuantity', label: 'LowEnd', default: true },
+    { key: 'unit', label: 'Unit', default: false },
+    { key: 'unitCost', label: 'Price/Unit', default: false },
+    { key: 'totalValue', label: 'ValueTotal', default: false },
+    { key: 'site', label: 'Site', default: false },
   ],
   maintenance: [
-    { key: 'assetCode', label: 'รหัสอุปกรณ์', default: true },
-    { key: 'subject', label: 'ปัญหา', default: true },
-    { key: 'status', label: 'สถานะ', default: true },
-    { key: 'assignedTo', label: 'ช่าง', default: true },
-    { key: 'createdAt', label: 'วันที่รับ', default: false },
-    { key: 'closedAt', label: 'วันที่ปิด', default: false },
+    { key: 'assetCode', label: 'CodeDevice', default: true },
+    { key: 'subject', label: 'Problem', default: true },
+    { key: 'status', label: 'Status', default: true },
+    { key: 'assignedTo', label: 'Technician', default: true },
+    { key: 'createdAt', label: 'DateReceive', default: false },
+    { key: 'closedAt', label: 'DateClose', default: false },
   ],
   approvals: [
-    { key: 'type', label: 'ประเภท', default: true },
-    { key: 'status', label: 'สถานะ', default: true },
-    { key: 'requestedBy', label: 'ผู้ขอ', default: true },
-    { key: 'approvedBy', label: 'ผู้อนุมัติ', default: false },
-    { key: 'createdAt', label: 'วันที่ขอ', default: false },
-    { key: 'approvedAt', label: 'วันที่อนุมัติ', default: false },
+    { key: 'type', label: 'Type', default: true },
+    { key: 'status', label: 'Status', default: true },
+    { key: 'requestedBy', label: 'Personrequest', default: true },
+    { key: 'approvedBy', label: 'PersonApprove', default: false },
+    { key: 'createdAt', label: 'Daterequest', default: false },
+    { key: 'approvedAt', label: 'DateApprove', default: false },
   ],
 }
 import {
@@ -124,12 +124,12 @@ type ReportGroup =
   | 'approvals'
 
 const GROUP_LABELS: Record<ReportGroup, string> = {
-  devices: 'รายงานอุปกรณ์',
-  meters: 'รายงานมิเตอร์',
-  workorders: 'รายงานใบงาน',
-  stock: 'รายงานสต็อก',
-  maintenance: 'รายงานซ่อมบำรุง',
-  approvals: 'รายงานอนุมัติ',
+  devices: 'ReportDevice',
+  meters: 'ReportMeter',
+  workorders: 'ReportWork Order',
+  stock: 'ReportStock',
+  maintenance: 'ReportRepairmaintain',
+  approvals: 'ReportApprove',
 }
 
 interface Site {
@@ -196,7 +196,7 @@ export function ReportsHub() {
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'โหลดรายงานไม่สำเร็จ')
+        throw new Error(j.error ?? 'LoadReportNoSuccess')
       }
       return res.json()
     },
@@ -206,7 +206,7 @@ export function ReportsHub() {
   React.useEffect(() => {
     if (error) {
       toast.error(
-        error instanceof Error ? error.message : 'โหลดรายงานไม่สำเร็จ',
+        error instanceof Error ? error.message : 'LoadReportNoSuccess',
       )
     }
   }, [error])
@@ -215,10 +215,10 @@ export function ReportsHub() {
   function handleExportCSV() {
     if (!data) return
     const rows: string[] = []
-    rows.push(`รายงาน,${GROUP_LABELS[activeGroup]}`)
-    rows.push(`เดือน,${formatMonthLabel(month)}`)
-    rows.push(`สาขา,${site === 'all' ? 'ทุกสาขา' : site}`)
-    rows.push(`สร้างเมื่อ,${new Date().toLocaleString('th-TH')}`)
+    rows.push(`Report,${GROUP_LABELS[activeGroup]}`)
+    rows.push(`months,${formatMonthLabel(month)}`)
+    rows.push(`Site,${site === 'all' ? 'AllSite' : site}`)
+    rows.push(`CreateWhen,${new Date().toLocaleString('th-TH')}`)
     rows.push('')
     const flatten = (obj: unknown, prefix = '') => {
       if (obj === null || obj === undefined) return
@@ -228,7 +228,7 @@ export function ReportsHub() {
       }
       if (Array.isArray(obj)) {
         if (obj.length === 0) {
-          rows.push(`${prefix},(ว่าง)`)
+          rows.push(`${prefix},(empty)`)
           return
         }
         if (typeof obj[0] === 'object' && obj[0] !== null) {
@@ -260,7 +260,7 @@ export function ReportsHub() {
     a.download = `report-${activeGroup}-${month}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    toast.success('ส่งออก CSV เรียบร้อย')
+    toast.success('Export CSV ')
   }
 
   return (
@@ -274,16 +274,16 @@ export function ReportsHub() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow">
                   <FileText className="h-5 w-5" />
                 </div>
-                <span>ศูนย์รายงาน</span>
+                <span>centerReport</span>
                 <Badge
                   variant="outline"
                   className="border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300"
                 >
-                  5 กลุ่ม + อนุมัติ
+                  5 Group + Approve
                 </Badge>
               </CardTitle>
               <CardDescription className="mt-1 text-xs md:text-sm">
-                รายงานสรุปแยกตามอุปกรณ์ / มิเตอร์ / ใบงาน / สต็อก / ซ่อมบำรุง และรายงานอนุมัติ
+                ReportSummaryByDevice / Meter / Work Order / Stock / Repairmaintain andReportApprove
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -297,7 +297,7 @@ export function ReportsHub() {
                 <RefreshCw
                   className={`mr-1 h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`}
                 />
-                รีเฟรช
+                Refresh
               </Button>
               <Button
                 size="sm"
@@ -315,17 +315,17 @@ export function ReportsHub() {
                 selected={selectedColumns}
                 onChange={setSelectedColumns}
               />
-              {/* พิมพ์ PDF — Task ID: FIX-1-2-EXPORT-PRINT */}
+              {/* Print PDF — Task ID: FIX-1-2-EXPORT-PRINT */}
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setPrintTemplateOpen(true)}
                 disabled={!data}
                 className="h-10 border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c]"
-                title="เลือกเทมเพลตก่อนพิมพ์ PDF"
+                title="SelectTemplateBeforePrint PDF"
               >
                 <Printer className="mr-1 h-3.5 w-3.5" />
-                พิมพ์ PDF
+                Print PDF
               </Button>
             </div>
           </div>
@@ -334,7 +334,7 @@ export function ReportsHub() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="rh-month" className="text-xs font-medium">
-                เดือน
+                months
               </Label>
               <Input
                 id="rh-month"
@@ -349,14 +349,14 @@ export function ReportsHub() {
             {showSiteFilter && (
               <div className="space-y-1.5">
                 <Label htmlFor="rh-site" className="text-xs font-medium">
-                  สาขา
+                  Site
                 </Label>
                 <Select value={site} onValueChange={setSite}>
                   <SelectTrigger id="rh-site" className="h-10">
-                    <SelectValue placeholder="ทุกสาขา" />
+                    <SelectValue placeholder="AllSite" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">ทุกสาขา</SelectItem>
+                    <SelectItem value="all">AllSite</SelectItem>
                     {sites.map((s) => (
                       <SelectItem key={s.id} value={s.code}>
                         {s.name} ({s.code})
@@ -367,12 +367,12 @@ export function ReportsHub() {
               </div>
             )}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">ข้อมูล ณ</Label>
+              <Label className="text-xs font-medium">Data </Label>
               <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-xs text-muted-foreground">
                 <CalendarDays className="h-3.5 w-3.5" />
                 {data?.generatedAt
                   ? formatDateTime(data.generatedAt)
-                  : 'กำลังโหลด...'}
+                  : 'Loading...'}
               </div>
             </div>
           </div>
@@ -388,27 +388,27 @@ export function ReportsHub() {
         <TabsList className="grid h-auto w-full flex-shrink-0 grid-cols-3 gap-1 md:grid-cols-6">
           <TabsTrigger value="devices" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Cpu className="h-4 w-4" />
-            <span>อุปกรณ์</span>
+            <span>Device</span>
           </TabsTrigger>
           <TabsTrigger value="meters" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Gauge className="h-4 w-4" />
-            <span>มิเตอร์</span>
+            <span>Meter</span>
           </TabsTrigger>
           <TabsTrigger value="workorders" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Wrench className="h-4 w-4" />
-            <span>ใบงาน</span>
+            <span>Work Order</span>
           </TabsTrigger>
           <TabsTrigger value="stock" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Package className="h-4 w-4" />
-            <span>สต็อก</span>
+            <span>Stock</span>
           </TabsTrigger>
           <TabsTrigger value="maintenance" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Activity className="h-4 w-4" />
-            <span>ซ่อมบำรุง</span>
+            <span>Repairmaintain</span>
           </TabsTrigger>
           <TabsTrigger value="approvals" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <ShieldCheck className="h-4 w-4" />
-            <span>อนุมัติ</span>
+            <span>Approve</span>
           </TabsTrigger>
         </TabsList>
 
@@ -418,7 +418,7 @@ export function ReportsHub() {
         ) : !data ? (
           <Card className="min-h-0 flex-1">
             <CardContent className="flex flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground">
-              <span>ไม่สามารถโหลดรายงานได้</span>
+              <span>NoCanLoadReport</span>
               <Button
                 variant="outline"
                 size="sm"
@@ -426,7 +426,7 @@ export function ReportsHub() {
                 className="mt-2"
               >
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                ลองใหม่
+                tryNew
               </Button>
             </CardContent>
           </Card>
@@ -453,9 +453,9 @@ export function ReportsHub() {
         open={printTemplateOpen}
         onOpenChange={setPrintTemplateOpen}
         templateType="work-order"
-        actionLabel="พิมพ์"
+        actionLabel="Print"
         onSelect={(template) => {
-          toast.success(`เลือกเทมเพลต: ${template.name}`)
+          toast.success(`SelectTemplate: ${template.name}`)
           if (typeof window !== 'undefined') window.print()
         }}
       />

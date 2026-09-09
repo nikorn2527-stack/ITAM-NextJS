@@ -5,6 +5,7 @@ import { fetchSheet } from '@/lib/google-sheets-service'
 import { mapCsvRow, FIELD_MAPPINGS, STATUS_MAPPINGS, normalizeKey } from '@/lib/csv-field-mapping'
 import { normalizeStatus } from '@/lib/status-utils'
 import { Prisma } from '@prisma/client'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 export const maxDuration = 60
 
@@ -76,6 +77,10 @@ async function phase3(dryRun: boolean) {
 }
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('sync')
+  if (unavailable) return unavailable
+
+
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret) { const authHeader = req.headers.get('authorization'); if (authHeader !== `Bearer ${cronSecret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   const dryRun = req.nextUrl.searchParams.get('dryRun') === '1'

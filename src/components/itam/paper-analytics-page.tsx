@@ -82,8 +82,8 @@ function KpiCard({ title, value, icon, accent, loading, hint }: KpiProps) {
 }
 
 const THAI_MONTHS_SHORT = [
-  'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
-  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
+  '', '..', 'Has', '..', '', '..',
+  '', '', '..', '', '..', '',
 ]
 
 function formatMonthLabel(yyyymm: string): string {
@@ -268,9 +268,9 @@ export function PaperAnalyticsPage() {
     : 0
 
   const rangeLabel =
-    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'เดือนนี้'
+    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'months'
 
-  const costTooltipFormatter = (v: number) => [formatBaht(v), 'ต้นทุนกระดาษ']
+  const costTooltipFormatter = (v: number) => [formatBaht(v), 'CostPaper']
 
   // Site comparison chart data: one entry per site with sheets + cost
   const comparisonChart = React.useMemo(
@@ -296,41 +296,41 @@ export function PaperAnalyticsPage() {
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">การใช้กระดาษ</h1>
+        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">UsePaper</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          วิเคราะห์การใช้งานกระดาษจากการจดมิเตอร์รายเดือน · คำนวณต้นทุนตามอัตราค่ากระดาษของแต่ละสาขา
+          analyzeActivePaperfromReadMeteritemmonths · calculateCostbyrateFeePaperofEachSite
         </p>
       </div>
 
       {/* Usage KPIs */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <KpiCard
-          title="ใช้เดือนนี้"
-          value={`${thisMonthSheets.toLocaleString('th-TH')} แผ่น`}
+          title="Usemonths"
+          value={`${thisMonthSheets.toLocaleString('th-TH')} sheets`}
           icon={<FileText className="h-6 w-6" />}
           accent="#f97316"
           loading={monthlyLoading}
           hint={formatMonthLabel(currentMonth)}
         />
         <KpiCard
-          title="เฉลี่ยต่อเครื่อง"
-          value={`${avgPerDevice.toLocaleString('th-TH')} แผ่น`}
+          title="Averageperunits"
+          value={`${avgPerDevice.toLocaleString('th-TH')} sheets`}
           icon={<Gauge className="h-6 w-6" />}
           accent="#14b8a6"
           loading={deviceLoading}
-          hint={`จาก ${activeDeviceCount} เครื่อง`}
+          hint={`from ${activeDeviceCount} units`}
         />
         <KpiCard
-          title="คาดการณ์สิ้นเดือน"
-          value={`${projected.toLocaleString('th-TH')} แผ่น`}
+          title="expected endmonths"
+          value={`${projected.toLocaleString('th-TH')} sheets`}
           icon={<TrendingUp className="h-6 w-6" />}
           accent="#0d9488"
           loading={monthlyLoading}
-          hint={`วันที่ ${dayOfMonth}/${daysInMonth}`}
+          hint={`Date ${dayOfMonth}/${daysInMonth}`}
         />
         <KpiCard
-          title="รวมทั้งหมด"
-          value={`${totalSheets.toLocaleString('th-TH')} แผ่น`}
+          title="TotalAll"
+          value={`${totalSheets.toLocaleString('th-TH')} sheets`}
           icon={<CalendarDays className="h-6 w-6" />}
           accent="#0f172a"
           loading={monthlyLoading}
@@ -340,13 +340,13 @@ export function PaperAnalyticsPage() {
       {/* Line chart */}
       <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
-          <CardTitle className="text-base text-slate-800 dark:text-slate-100">แนวโน้มการใช้กระดาษรายเดือน</CardTitle>
+          <CardTitle className="text-base text-slate-800 dark:text-slate-100">trendUsePaperitemmonths</CardTitle>
         </CardHeader>
         <CardContent>
           {monthlyLoading ? (
             <Skeleton className="h-72 w-full dark:bg-slate-800" />
           ) : lineData.length === 0 ? (
-            <EmptyState message="ยังไม่มีข้อมูลการจดมิเตอร์" />
+            <EmptyState message="No dataReadMeter" />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={lineData}>
@@ -354,7 +354,7 @@ export function PaperAnalyticsPage() {
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: axisTickColor }} />
                 <YAxis tick={{ fontSize: 12, fill: axisTickColor }} />
                 <Tooltip
-                  formatter={(v: number) => [`${v.toLocaleString('th-TH')} แผ่น`, 'ใช้กระดาษ']}
+                  formatter={(v: number) => [`${v.toLocaleString('th-TH')} sheets`, 'UsePaper']}
                   contentStyle={{
                     fontSize: 12,
                     borderRadius: 8,
@@ -380,13 +380,13 @@ export function PaperAnalyticsPage() {
       {/* Bar chart - top devices by sheets */}
       <Card className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
-          <CardTitle className="text-base text-slate-800 dark:text-slate-100">อุปกรณ์ที่ใช้กระดาษมากที่สุด</CardTitle>
+          <CardTitle className="text-base text-slate-800 dark:text-slate-100">DeviceatUsePaperComeatEnd</CardTitle>
         </CardHeader>
         <CardContent>
           {deviceLoading ? (
             <Skeleton className="h-72 w-full dark:bg-slate-800" />
           ) : barData.length === 0 ? (
-            <EmptyState message="ยังไม่มีข้อมูลการใช้งาน" />
+            <EmptyState message="No dataActive" />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={barData} layout="vertical">
@@ -399,7 +399,7 @@ export function PaperAnalyticsPage() {
                   tick={{ fontSize: 11, fill: axisTickColor }}
                 />
                 <Tooltip
-                  formatter={(v: number) => [`${v.toLocaleString('th-TH')} แผ่น`, 'ใช้กระดาษ']}
+                  formatter={(v: number) => [`${v.toLocaleString('th-TH')} sheets`, 'UsePaper']}
                   labelFormatter={(_, payload) => {
                     const p = payload?.[0]?.payload as { full?: string } | undefined
                     return p?.full ?? ''
@@ -424,14 +424,14 @@ export function PaperAnalyticsPage() {
         <CardHeader className="flex flex-row items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
             <Building2 className="h-4 w-4 text-[#0d9488]" />
-            🏗️ เปรียบเทียบสาขา
+            🏗️ compareSite
             <span className="ml-1 text-xs font-normal text-slate-400 dark:text-slate-500">
-              เปรียบเทียบปริมาณกระดาษ · ต้นทุน · สถานะอุปกรณ์ · ยังไม่จดในรอบ
+              compareAmountPaper · Cost · StatusDevice · StillNoReadinCycle
             </span>
           </CardTitle>
           <Select value={range} onValueChange={(v) => setRange(v as DashboardRangeKey)}>
             <SelectTrigger className="w-[160px]">
-              <SelectValue placeholder="ช่วงเวลา" />
+              <SelectValue placeholder="PeriodTime" />
             </SelectTrigger>
             <SelectContent>
               {DASHBOARD_RANGE_OPTIONS.map((o) => (
@@ -446,32 +446,32 @@ export function PaperAnalyticsPage() {
           {/* Comparison KPIs */}
           <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <KpiCard
-              title="อุปกรณ์ทั้งหมด"
-              value={`${comparisonData?.totalDevices ?? 0} เครื่อง`}
+              title="DeviceAll"
+              value={`${comparisonData?.totalDevices ?? 0} units`}
               icon={<Building2 className="h-6 w-6" />}
               accent="#0d9488"
               loading={comparisonLoading}
-              hint={`ช่วง: ${rangeLabel}`}
+              hint={`Period: ${rangeLabel}`}
             />
             <KpiCard
-              title="กระดาษรวม (ช่วง)"
-              value={`${(comparisonData?.totalSheets ?? 0).toLocaleString('th-TH')} แผ่น`}
+              title="PaperTotal (Period)"
+              value={`${(comparisonData?.totalSheets ?? 0).toLocaleString('th-TH')} sheets`}
               icon={<FileText className="h-6 w-6" />}
               accent="#14b8a6"
               loading={comparisonLoading}
-              hint={`ช่วง: ${rangeLabel}`}
+              hint={`Period: ${rangeLabel}`}
             />
             <KpiCard
-              title="ต้นทุนรวม (ช่วง)"
+              title="CostTotal (Period)"
               value={formatBaht(comparisonData?.totalCost ?? 0)}
               icon={<Coins className="h-6 w-6" />}
               accent="#f97316"
               loading={comparisonLoading}
-              hint={`ช่วง: ${rangeLabel}`}
+              hint={`Period: ${rangeLabel}`}
             />
             <KpiCard
-              title="จำนวนสาขา"
-              value={`${comparisonData?.sites.length ?? 0} สาขา`}
+              title="QuantitySite"
+              value={`${comparisonData?.sites.length ?? 0} Site`}
               icon={<Trophy className="h-6 w-6" />}
               accent="#f59e0b"
               loading={comparisonLoading}
@@ -482,20 +482,20 @@ export function PaperAnalyticsPage() {
           {comparisonLoading ? (
             <Skeleton className="h-64 w-full dark:bg-slate-800" />
           ) : (comparisonData?.sites ?? []).length === 0 ? (
-            <EmptyState message="ยังไม่มีข้อมูลสาขา" />
+            <EmptyState message="No dataSite" />
           ) : (
             <div className="overflow-hidden rounded-md border border-slate-200 dark:border-slate-800">
               <div className="itam-scroll overflow-x-auto">
                 <table className="w-full min-w-[760px] text-sm">
                   <thead className="bg-slate-50 dark:bg-slate-900">
                     <tr>
-                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">สาขา</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">อุปกรณ์</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">ใช้งาน</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">กระดาษ ({rangeLabel})</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">ต้นทุน (฿)</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">เฉลี่ย/เครื่อง</th>
-                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">ยังไม่จด</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-slate-600 dark:text-slate-300">Site</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">Device</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">Active</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">Paper ({rangeLabel})</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">Cost (THB)</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">Average/units</th>
+                      <th className="px-3 py-2 text-right text-xs font-semibold text-slate-600 dark:text-slate-300">StillNoRead</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -513,7 +513,7 @@ export function PaperAnalyticsPage() {
                           <td className="px-3 py-2">
                             <div className="flex items-center gap-1.5">
                               {isTop ? (
-                                <span className="text-base" aria-label="อันดับ 1">
+                                <span className="text-base" aria-label="rank 1">
                                   🥇
                                 </span>
                               ) : null}
@@ -523,7 +523,7 @@ export function PaperAnalyticsPage() {
                                 </div>
                                 <div className="text-[10px] text-slate-400 dark:text-slate-500">
                                   {s.siteCode}
-                                  {s.lastReadingDate ? ` · ล่าสุด ${s.lastReadingDate}` : ''}
+                                  {s.lastReadingDate ? ` · Latest ${s.lastReadingDate}` : ''}
                                 </div>
                               </div>
                             </div>
@@ -546,10 +546,10 @@ export function PaperAnalyticsPage() {
                           <td className="px-3 py-2 text-right">
                             {s.unreadInCycle > 0 ? (
                               <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                                {s.unreadInCycle} เครื่อง
+                                {s.unreadInCycle} units
                               </span>
                             ) : (
-                              <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ ครบ</span>
+                              <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ complete</span>
                             )}
                           </td>
                         </tr>
@@ -565,12 +565,12 @@ export function PaperAnalyticsPage() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">
               <div className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
-                กระดาษ vs ต้นทุน รายสาขา
+                Paper vs Cost itemSite
               </div>
               {comparisonLoading ? (
                 <Skeleton className="h-64 w-full dark:bg-slate-800" />
               ) : comparisonChart.length === 0 ? (
-                <EmptyState message="ยังไม่มีข้อมูลในช่วงนี้" />
+                <EmptyState message="No datainPeriod" />
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={comparisonChart}>
@@ -596,9 +596,9 @@ export function PaperAnalyticsPage() {
                     />
                     <Tooltip
                       formatter={(v: number, name: string) =>
-                        name === 'ต้นทุน'
-                          ? [formatBaht(v as number), 'ต้นทุน']
-                          : [`${(Number(v) || 0).toLocaleString('th-TH')} แผ่น`, 'กระดาษ']
+                        name === 'Cost'
+                          ? [formatBaht(v as number), 'Cost']
+                          : [`${(Number(v) || 0).toLocaleString('th-TH')} sheets`, 'Paper']
                       }
                       labelFormatter={(_, payload) => {
                         const p = payload?.[0]?.payload as { full?: string } | undefined
@@ -616,7 +616,7 @@ export function PaperAnalyticsPage() {
                     <Bar
                       yAxisId="left"
                       dataKey="sheets"
-                      name="กระดาษ"
+                      name="Paper"
                       fill="#14b8a6"
                       radius={[6, 6, 0, 0]}
                       isAnimationActive
@@ -624,7 +624,7 @@ export function PaperAnalyticsPage() {
                     <Bar
                       yAxisId="right"
                       dataKey="cost"
-                      name="ต้นทุน"
+                      name="Cost"
                       fill="#f97316"
                       radius={[6, 6, 0, 0]}
                       isAnimationActive
@@ -638,7 +638,7 @@ export function PaperAnalyticsPage() {
             <div className="space-y-2">
               <div className="flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">
                 <Medal className="h-4 w-4 text-[#f59e0b]" />
-                TOP สาขา
+                TOP Site
               </div>
               {comparisonLoading ? (
                 <div className="space-y-2">
@@ -647,7 +647,7 @@ export function PaperAnalyticsPage() {
                   ))}
                 </div>
               ) : rankedTop3.length === 0 ? (
-                <EmptyState message="ยังไม่มีข้อมูล" />
+                <EmptyState message="No data" />
               ) : (
                 <motion.ol
                   initial="hidden"
@@ -681,7 +681,7 @@ export function PaperAnalyticsPage() {
                           <span className="font-semibold tabular-nums text-teal-600 dark:text-teal-400">
                             {(s.totalSheets ?? 0).toLocaleString('th-TH')}
                           </span>{' '}
-                          แผ่น ·{' '}
+                          sheets ·{' '}
                           <span className="tabular-nums text-[#f97316]">
                             {formatBaht(s.totalCost)}
                           </span>
@@ -704,9 +704,9 @@ export function PaperAnalyticsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
             <Coins className="h-4 w-4 text-[#f97316]" />
-            💰 ต้นทุนกระดาษ
+            💰 CostPaper
             <span className="ml-2 text-xs font-normal text-slate-400 dark:text-slate-500">
-              คำนวณจากอัตราค่ากระดาษรายสาขา × จำนวนแผ่นที่ใช้
+              calculatefromrateFeePaperitemSite × QuantitysheetsatUse
             </span>
           </CardTitle>
         </CardHeader>
@@ -715,7 +715,7 @@ export function PaperAnalyticsPage() {
           <div className="flex items-center justify-end">
             <Select value={range} onValueChange={(v) => setRange(v as DashboardRangeKey)}>
               <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="ช่วงเวลา" />
+                <SelectValue placeholder="PeriodTime" />
               </SelectTrigger>
               <SelectContent>
                 {DASHBOARD_RANGE_OPTIONS.map((o) => (
@@ -730,40 +730,40 @@ export function PaperAnalyticsPage() {
           {/* Cost KPIs */}
           <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <KpiCard
-              title="ต้นทุนกระดาษ (ช่วง)"
+              title="CostPaper (Period)"
               value={formatBaht(totalCost)}
               icon={<Coins className="h-6 w-6" />}
               accent="#f97316"
               loading={costLoading}
-              hint={`ช่วง: ${rangeLabel}`}
+              hint={`Period: ${rangeLabel}`}
             />
             <KpiCard
-              title="ต้นทุนเฉลี่ย/เครื่อง"
+              title="CostAverage/units"
               value={formatBaht(avgCostPerDevice)}
               icon={<Gauge className="h-6 w-6" />}
               accent="#f59e0b"
               loading={costLoading}
-              hint={`จาก ${costActiveCount} เครื่องที่ใช้งาน`}
+              hint={`from ${costActiveCount} unitsatActive`}
             />
             <KpiCard
-              title="จำนวนแผ่นรวม (ช่วง)"
-              value={`${(costData?.totalSheets ?? 0).toLocaleString('th-TH')} แผ่น`}
+              title="QuantitysheetsTotal (Period)"
+              value={`${(costData?.totalSheets ?? 0).toLocaleString('th-TH')} sheets`}
               icon={<FileText className="h-6 w-6" />}
               accent="#0d9488"
               loading={costLoading}
-              hint={`ช่วง: ${rangeLabel}`}
+              hint={`Period: ${rangeLabel}`}
             />
           </div>
 
           {/* Cost bar chart — orange→amber gradient */}
           <div>
             <div className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
-              ต้นทุนตามอุปกรณ์ (8 อันดับแรก)
+              CostbyDevice (8 first)
             </div>
             {costLoading ? (
               <Skeleton className="h-72 w-full dark:bg-slate-800" />
             ) : costBarData.length === 0 ? (
-              <EmptyState message="ยังไม่มีข้อมูลต้นทุนในช่วงนี้" />
+              <EmptyState message="No dataCostinPeriod" />
             ) : (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={costBarData} layout="vertical">
@@ -817,7 +817,7 @@ export function PaperAnalyticsPage() {
           <div>
             <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-slate-600 dark:text-slate-300">
               <Building2 className="h-4 w-4 text-[#0d9488]" />
-              ต้นทุนตามสาขา
+              CostbySite
             </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {costLoading ? (
@@ -826,7 +826,7 @@ export function PaperAnalyticsPage() {
                 ))
               ) : (costData?.bySite ?? []).length === 0 ? (
                 <div className="col-span-full">
-                  <EmptyState message="ยังไม่มีข้อมูลต้นทุนตามสาขา" />
+                  <EmptyState message="No dataCostbySite" />
                 </div>
               ) : (
                 (costData?.bySite ?? []).map((s) => (
@@ -844,7 +844,7 @@ export function PaperAnalyticsPage() {
                       {formatBaht(s.cost)}
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {(s.sheets ?? 0).toLocaleString('th-TH')} แผ่น
+                      {(s.sheets ?? 0).toLocaleString('th-TH')} sheets
                     </div>
                   </div>
                 ))

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { isNumericShortQuery } from '@/lib/suffix-search'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/stock-items/pending
@@ -14,6 +15,10 @@ import { isNumericShortQuery } from '@/lib/suffix-search'
  *   pageSize=...                            (default 100, max 100)
  */
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'STOCK_VIEW')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

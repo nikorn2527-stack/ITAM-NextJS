@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 type PaperKey = 'a4-portrait' | 'a4-landscape' | 'a5-portrait' | 'ticket-80' | 'ticket-58'
 
@@ -114,6 +115,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'WO_VIEW_ALL')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {

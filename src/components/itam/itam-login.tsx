@@ -43,6 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { useT } from '@/store/i18n-store'
 
 interface OrgProfile {
   appName?: string
@@ -102,6 +103,7 @@ export function ItamLogin() {
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [lockedUntil, setLockedUntil] = React.useState<number | null>(null)
+  const t = useT()
 
   // ── Organization profile (dynamic branding) ───────────────────────
   // NOTE: This endpoint requires VIEW_DEVICES auth. On the login page the user
@@ -125,7 +127,7 @@ export function ItamLogin() {
     retry: false,
   })
 
-  const appName = profile?.appName || 'ระบบจัดการสินทรัพย์'
+  const appName = profile?.appName || t('footer.app_name')
   const appTagline = profile?.appTagline || 'Asset Management System'
   const primaryColor = profile?.primaryColor || '#f97316'
   const accentColor = profile?.accentColor || '#0d9488'
@@ -186,12 +188,12 @@ export function ItamLogin() {
       try {
         const user = JSON.parse(decodeURIComponent(userJson))
         useAuthStore.getState().setSession(token, user)
-        toast.success('เข้าสู่ระบบด้วย OAuth สำเร็จ')
+        toast.success(t('auth.oauth.success'))
       } catch (err) { console.error('[itam-login]', err) }
     } else if (oauthParam === 'pending') {
-      toast.info('บัญชีของคุณถูกสร้างแล้ว — รอผู้ดูแลอนุมัติ', { duration: 8000 })
+      toast.info(t('auth.oauth.pending'), { duration: 8000 })
     } else if (oauthParam && oauthParam.startsWith('error')) {
-      toast.error('เข้าสู่ระบบด้วย OAuth ไม่สำเร็จ — กรุณาลองอีกครั้ง')
+      toast.error(t('auth.oauth.failed'))
     }
     // Clean the URL.
     try {
@@ -236,7 +238,7 @@ export function ItamLogin() {
     e.preventDefault()
     if (loading || lockedUntil != null) return
     if (!username.trim() || !password) {
-      setError('กรุณากรอกชื่อผู้ใช้และรหัสผ่าน')
+      setError(t('auth.error.empty'))
       return
     }
     setLoading(true)
@@ -245,7 +247,7 @@ export function ItamLogin() {
     setLoading(false)
     if (!res.ok) {
       // detect lockout — login route returns 429 with retryAfterMs in body
-      setError(res.error || 'เข้าสู่ระบบไม่สำเร็จ')
+      setError(res.error || t('auth.error.failed'))
       // Heuristic: if the error message mentions waiting, set a 5-min lockout
       if (res.error && /รอ|locked|attempt/i.test(res.error)) {
         setLockedUntil(Date.now() + 5 * 60 * 1000)
@@ -326,16 +328,16 @@ export function ItamLogin() {
             </div>
           </div>
 
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">เข้าสู่ระบบ</h1>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{t('auth.login')}</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            กรุณาใส่ชื่อผู้ใช้และรหัสผ่านของคุณ
+            {t('auth.login_intro')}
           </p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             {/* Username */}
             <div className="space-y-1.5">
               <label htmlFor="username" className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                ชื่อผู้ใช้ / อีเมล
+                {t('auth.email')}
               </label>
               <div className="relative">
                 <UserIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -346,7 +348,7 @@ export function ItamLogin() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={loading || lockedUntil != null}
-                  placeholder="username หรือ email@example.com"
+                  placeholder={t('auth.username_placeholder')}
                   style={{ ['--brand' as string]: primaryColor }}
                   className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm text-slate-800 transition-colors placeholder:text-slate-400 focus:border-[var(--brand)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-800"
                 />
@@ -356,7 +358,7 @@ export function ItamLogin() {
             {/* Password */}
             <div className="space-y-1.5">
               <label htmlFor="password" className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                รหัสผ่าน
+                {t('auth.password')}
               </label>
               <div className="relative">
                 <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -367,14 +369,14 @@ export function ItamLogin() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={loading || lockedUntil != null}
-                  placeholder="••••••••"
+                  placeholder={t('auth.password_placeholder')}
                   style={{ ['--brand' as string]: primaryColor }}
                   className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm text-slate-800 transition-colors placeholder:text-slate-400 focus:border-[var(--brand)] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[var(--brand)]/30 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:bg-slate-800"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPwd((s) => !s)}
-                  aria-label={showPwd ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'}
+                  aria-label={t('auth.show_password')}
                   className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none"
                 >
                   {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -400,7 +402,7 @@ export function ItamLogin() {
                     <div>{error}</div>
                     {lockedUntil != null && remaining > 0 && (
                       <div className="mt-0.5 text-xs font-medium text-rose-800 dark:text-rose-200">
-                        กรุณารอ {minutes}:{seconds.toString().padStart(2, '0')} นาที
+                        {t('auth.error.locked_wait').replace('{min}', String(minutes)).replace('{sec}', String(seconds).padStart(2, '0'))}
                       </div>
                     )}
                   </div>
@@ -422,15 +424,15 @@ export function ItamLogin() {
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  กำลังเข้าสู่ระบบ...
+                  {t('common.loading')}
                 </>
               ) : lockedUntil != null ? (
                 <>
                   <Lock className="h-4 w-4" />
-                  ถูกล็อกชั่วคราว
+                  {t('auth.error.locked')}
                 </>
               ) : (
-                <>เข้าสู่ระบบ</>
+                <>{t('auth.login')}</>
               )}
             </button>
           </form>
@@ -442,7 +444,7 @@ export function ItamLogin() {
               <div className="relative my-3 text-center">
                 <div className="absolute inset-x-0 top-1/2 border-t border-slate-200 dark:border-slate-700" />
                 <span className="relative bg-white px-3 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:bg-slate-900 dark:text-slate-500">
-                  หรือเข้าสู่ระบบด้วย
+                  {t('auth.oauth.divider')}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -491,7 +493,7 @@ export function ItamLogin() {
               className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors hover:brightness-95"
             >
               <UserPlus className="h-4 w-4" />
-              ขอเข้าใช้งาน
+              {t('auth.request_access')}
             </button>
             <div className="flex items-center justify-between text-xs">
               <button
@@ -501,7 +503,7 @@ export function ItamLogin() {
                 className="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-[var(--brand)] dark:text-slate-400"
               >
                 <KeyRound className="h-3.5 w-3.5" />
-                ลืมรหัสผ่าน
+                {t('auth.forgot_password')}
               </button>
               <button
                 type="button"
@@ -510,7 +512,7 @@ export function ItamLogin() {
                 className="flex items-center gap-1.5 text-slate-500 transition-colors hover:text-[var(--brand)] dark:text-slate-400"
               >
                 <Mail className="h-3.5 w-3.5" />
-                รับลิงก์ลงทะเบียนทางอีเมล
+                {t('auth.register_link')}
               </button>
             </div>
           </div>
@@ -518,8 +520,8 @@ export function ItamLogin() {
           {/* Footer hint */}
           <div className="mt-6 space-y-1.5 border-t border-slate-100 pt-4 text-xs text-slate-400 dark:border-slate-800">
             <div className="flex items-center justify-between">
-              <span>🔒 ระบบบันทึกทุกการเข้าใช้งาน</span>
-              <span>ล็อก 5 ครั้ง / รอ 5 นาที</span>
+              <span>{t('auth.footer_logging')}</span>
+              <span>{t('auth.footer_lockout')}</span>
             </div>
           </div>
         </div>
@@ -552,6 +554,7 @@ function RegisterDialog({
   })
   const [loading, setLoading] = React.useState(false)
   const [done, setDone] = React.useState(false)
+  const t = useT()
 
   function reset() {
     setForm({
@@ -570,15 +573,15 @@ function RegisterDialog({
     e.preventDefault()
     if (loading) return
     if (!form.name.trim() || !form.email.trim() || !form.password) {
-      toast.error('กรุณากรอกชื่อ, อีเมล และรหัสผ่าน')
+      toast.error(t('auth.register.error.empty'))
       return
     }
     if (form.password.length < 6) {
-      toast.error('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร')
+      toast.error(t('auth.register.error.short_pwd'))
       return
     }
     if (form.password !== form.confirmPassword) {
-      toast.error('รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน')
+      toast.error(t('auth.register.error.mismatch'))
       return
     }
     setLoading(true)
@@ -604,12 +607,12 @@ function RegisterDialog({
         throw new Error(j.error || 'ส่งคำขอไม่สำเร็จ')
       }
       setDone(true)
-      toast.success('ส่งคำขอแล้ว รอผู้ดูแลอนุมัติ')
+      toast.success(t('auth.register.success'))
       if (j.testLink) {
-        toast.info(`SMTP ไม่ได้ตั้งค่า — ทดสอบได้ที่ลิงก์ (เช็ค console)`)
+        toast.info(t('auth.register.smtp_not_configured'))
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ส่งคำขอไม่สำเร็จ')
+      toast.error(e instanceof Error ? e.message : t('auth.register.failed'))
     } finally {
       setLoading(false)
     }
@@ -625,7 +628,7 @@ function RegisterDialog({
     >
       <DialogContent className="max-h-[90dvh] max-w-md overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>ขอเข้าใช้งานระบบ ITAM</DialogTitle>
+          <DialogTitle>{t('auth.register.title')}</DialogTitle>
           <DialogDescription>
             กรอกข้อมูลด้านล่างเพื่อส่งคำขอใช้งาน — รอผู้ดูแลอนุมัติ
           </DialogDescription>
@@ -780,6 +783,7 @@ function InviteDialog({
   const [email, setEmail] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [done, setDone] = React.useState(false)
+  const t = useT()
   const [testLink, setTestLink] = React.useState<string | null>(null)
 
   function reset() {
@@ -792,7 +796,7 @@ function InviteDialog({
     e.preventDefault()
     if (loading) return
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      toast.error('กรุณาระบุอีเมลที่ถูกต้อง')
+      toast.error(t('auth.register_link.error.invalid_email'))
       return
     }
     setLoading(true)
@@ -809,18 +813,18 @@ function InviteDialog({
         testLink?: string
       }
       if (!res.ok || !j.ok) {
-        throw new Error(j.error || 'ส่งลิงก์ไม่สำเร็จ')
+        throw new Error(j.error || t('auth.register_link.failed'))
       }
       setDone(true)
-      toast.success('ส่งลิงก์ไปยังอีเมลแล้ว กรุณาตรวจสอบกล่องอีเมล')
+      toast.success(t('auth.register_link.success'))
       if (j.testLink) {
         setTestLink(j.testLink)
-        toast.warning(`SMTP ไม่ได้ตั้งค่า — ลิงก์สำหรับทดสอบ: ${j.testLink}`, {
+        toast.warning(`${t('auth.register_link.smtp_not_configured')}: ${j.testLink}`, {
           duration: 8000,
         })
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ส่งลิงก์ไม่สำเร็จ')
+      toast.error(e instanceof Error ? e.message : t('auth.register_link.failed'))
     } finally {
       setLoading(false)
     }
@@ -836,7 +840,7 @@ function InviteDialog({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>รับลิงก์ลงทะเบียนทางอีเมล</DialogTitle>
+          <DialogTitle>{t('auth.register_link.title')}</DialogTitle>
           <DialogDescription>
             สำหรับผู้ใช้ใหม่ที่ยังไม่มีบัญชี — เราจะส่งลิงก์ลงทะเบียนไปยังอีเมลของคุณ (หมดอายุใน 24 ชั่วโมง)
           </DialogDescription>
@@ -924,6 +928,7 @@ function ForgotPasswordDialog({
   const [email, setEmail] = React.useState('')
   const [loading, setLoading] = React.useState(false)
   const [done, setDone] = React.useState(false)
+  const t = useT()
   const [testLink, setTestLink] = React.useState<string | null>(null)
 
   function reset() {
@@ -936,7 +941,7 @@ function ForgotPasswordDialog({
     e.preventDefault()
     if (loading) return
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      toast.error('กรุณาระบุอีเมลที่ถูกต้อง')
+      toast.error(t('auth.register_link.error.invalid_email'))
       return
     }
     setLoading(true)
@@ -953,18 +958,18 @@ function ForgotPasswordDialog({
         testLink?: string
       }
       if (!res.ok || !j.ok) {
-        throw new Error(j.error || 'ส่งลิงก์รีเซ็ตไม่สำเร็จ')
+        throw new Error(j.error || t('auth.forgot.failed'))
       }
       setDone(true)
-      toast.success('หากอีเมลมีอยู่ในระบบ เราจะส่งลิงก์รีเซ็ตรหัสผ่านให้')
+      toast.success(t('auth.forgot.success'))
       if (j.testLink) {
         setTestLink(j.testLink)
-        toast.warning(`SMTP ไม่ได้ตั้งค่า — ลิงก์สำหรับทดสอบ: ${j.testLink}`, {
+        toast.warning(`${t('auth.register_link.smtp_not_configured')}: ${j.testLink}`, {
           duration: 8000,
         })
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'ส่งลิงก์รีเซ็ตไม่สำเร็จ')
+      toast.error(e instanceof Error ? e.message : t('auth.forgot.failed'))
     } finally {
       setLoading(false)
     }
@@ -980,7 +985,7 @@ function ForgotPasswordDialog({
     >
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>ลืมรหัสผ่าน</DialogTitle>
+          <DialogTitle>{t('auth.forgot.title')}</DialogTitle>
           <DialogDescription>
             กรอกอีเมลที่ใช้สมัคร — เราจะส่งลิงก์รีเซ็ตรหัสผ่านให้ (หมดอายุใน 1 ชั่วโมง)
           </DialogDescription>
@@ -1175,17 +1180,18 @@ function FingerprintLogin({
   primaryColor: string
 }) {
   const { isSupported, login, loading } = useWebAuthn()
+  const t = useT()
 
   if (!isSupported) return null
 
   const handleFingerprint = async () => {
     if (!email || email.trim() === '') {
-      toast.info('กรุณากรอกชื่อผู้ใช้ / อีเมลก่อน แล้วกด Passkey')
+      toast.info(t('auth.passkey.need_email'))
       return
     }
     const result = await login(email.trim())
     if (result) {
-      toast.success('ยืนยันตัวตนด้วย Passkey สำเร็จ')
+      toast.success(t('auth.passkey.success'))
       onSuccess(result.token, result.user)
     }
   }
@@ -1203,17 +1209,17 @@ function FingerprintLogin({
           backgroundColor: `${primaryColor}08`,
         }}
         className="group flex h-11 w-full items-center justify-center gap-2.5 rounded-lg border-2 text-sm font-medium transition-all hover:bg-[var(--brand)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]/50 disabled:cursor-not-allowed disabled:opacity-60"
-        title="เข้าสู่ระบบด้วย Passkey / Touch ID / Face ID"
+        title={t('auth.passkey.title')}
       >
         {loading ? (
           <>
             <Loader2 className="h-5 w-5 animate-spin" />
-            กรุณายืนยันตัวตนด้วย Passkey...
+            {t('auth.passkey.verifying')}
           </>
         ) : (
           <>
             <Fingerprint className="h-5 w-5 transition-transform group-hover:scale-110" />
-            เข้าสู่ระบบด้วย Passkey
+            {t('auth.passkey')}
           </>
         )}
       </button>

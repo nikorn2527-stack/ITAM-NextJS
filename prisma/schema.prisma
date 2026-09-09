@@ -1643,3 +1643,20 @@ model StockCountItem {
   @@index([targetId])
   @@index([status])
 }
+
+// ============================================================
+// ModuleFlag — per-tenant module enable/disable (Phase 4.7)
+// ============================================================
+// Each row mirrors a module from src/config/modules.ts MODULES const.
+// The `required` field is read-only in UI — required modules cannot be
+// disabled. The `enabled` field is toggled by admin via /api/settings/modules.
+// Seeded from MODULES const on first run; subsequent runs only add new
+// modules that don't exist yet (never overwrites admin-set values).
+// ============================================================
+model ModuleFlag {
+  name        String   @id // matches ModuleName union from config/modules.ts
+  enabled     Boolean  @default(true)
+  required    Boolean  @default(false)
+  updatedBy   String?  // admin email who last toggled
+  updatedAt   DateTime @updatedAt
+}

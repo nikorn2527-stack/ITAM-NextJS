@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { suggestUsageForWoParts } from '@/lib/wo-usage'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/work-orders/[id]/parts/suggest-usage?stockItemIds=id1,id2,id3
@@ -19,6 +20,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req)
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

@@ -12,10 +12,15 @@ import {
   type StickerTemplate,
 } from '@/lib/sticker-template'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // GET /api/itam/sticker/templates
 //   Returns: { templates: StickerTemplate[], activeId: string|null }
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stickers')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -30,6 +35,10 @@ export async function GET(req: NextRequest) {
 //   Body: { name?: string, canvas?: {width,height}, overflow?: 'clip'|'visible', elements?: [] }
 //   Returns: { template: StickerTemplate }
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stickers')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
 import { demoFilter } from '@/lib/demo-mode'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/itam/paper-analytics
@@ -26,6 +27,10 @@ import { demoFilter } from '@/lib/demo-mode'
 export const maxDuration = 30 // Vercel Hobby: 30s (default 10s)
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('paper-analytics')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'VIEW_ANALYTICS')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

@@ -21,12 +21,12 @@ import { runCustomExport } from '@/lib/custom-export'
 // Custom Export — Audit page (Task ID: FIX-1-2-EXPORT-PRINT)
 // ============================================================
 const AUDIT_EXPORT_COLUMNS: ExportColumn[] = [
-  { key: 'createdAt', label: 'วันที่เวลา', group: 'หลัก' },
-  { key: 'action', label: 'การกระทำ', group: 'หลัก' },
-  { key: 'entity', label: 'entity', group: 'หลัก' },
-  { key: 'summary', label: 'รายการ', group: 'หลัก' },
-  { key: 'actor', label: 'ผู้กระทำ', group: 'หลัก' },
-  { key: 'site', label: 'สาขา', group: 'หลัก' },
+  { key: 'createdAt', label: 'DateTime', group: 'Main' },
+  { key: 'action', label: 'Do', group: 'Main' },
+  { key: 'entity', label: 'entity', group: 'Main' },
+  { key: 'summary', label: 'item', group: 'Main' },
+  { key: 'actor', label: 'PersonDo', group: 'Main' },
+  { key: 'site', label: 'Site', group: 'Main' },
 ]
 
 /**
@@ -63,69 +63,69 @@ interface AuditResponse {
 // Curated action set — the dropdown also fetches the DB's distinct actions
 // so new ones appear automatically. These are the common labels.
 const ACTION_LABELS: Record<string, string> = {
-  CREATE: 'เพิ่ม',
-  UPDATE: 'แก้ไข',
-  UPDATE_DEVICE: 'แก้ไขอุปกรณ์',
-  DELETE: 'ลบ',
-  LOGIN: 'เข้าสู่ระบบ',
-  LOGOUT: 'ออกจากระบบ',
-  METER_READING: 'จดมิเตอร์',
-  METER_WRITE: 'จดมิเตอร์',
-  ASSIGN: 'มอบหมาย',
-  RETURN: 'คืน',
-  MAINTENANCE: 'ซ่อมบำรุง',
-  SYNC: 'ซิงค์',
-  TRANSFER: 'ย้าย',
-  BULK_UPDATE_DEVICES: 'แก้ไขกลุ่ม',
-  BULK_TRANSFER: 'ย้ายกลุ่ม',
-  BULK_DELETE: 'ลบกลุ่ม',
-  IMPORT_DEVICES: 'นำเข้า',
-  NOTIFY_SENT: 'ส่งการแจ้งเตือน',
-  CYCLE_START: 'เริ่มรอบจดมิเตอร์',
-  CYCLE_END: 'จบรอบจดมิเตอร์',
+  CREATE: 'Add',
+  UPDATE: 'Edit',
+  UPDATE_DEVICE: 'EditDevice',
+  DELETE: 'Delete',
+  LOGIN: 'intoSystem',
+  LOGOUT: 'outfromSystem',
+  METER_READING: 'ReadMeter',
+  METER_WRITE: 'ReadMeter',
+  ASSIGN: 'Assign',
+  RETURN: 'return',
+  MAINTENANCE: 'Repairmaintain',
+  SYNC: 'Sync',
+  TRANSFER: 'move',
+  BULK_UPDATE_DEVICES: 'EditGroup',
+  BULK_TRANSFER: 'moveGroup',
+  BULK_DELETE: 'DeleteGroup',
+  IMPORT_DEVICES: 'Import',
+  NOTIFY_SENT: 'SendNotify',
+  CYCLE_START: 'StartCycleReadMeter',
+  CYCLE_END: 'endCycleReadMeter',
   // ── Additional labels (from QA batch-4 — bug #8: duplicate text fix) ──
-  GENERATE: 'สร้างรายงาน',
-  IMPORT_LEGACY: 'นำเข้าข้อมูลเดิม',
-  IMPORT: 'นำเข้า',
-  INVITE_REQUEST: 'ขอเข้าใช้งาน',
-  AUTH_FALLBACK: 'ล็อกอินสำรอง',
-  DEMO_RESET: 'รีเซ็ตข้อมูลสาธิต',
-  DOC_TEMPLATE_RENDER: 'เรนเดอร์เอกสาร',
-  DOC_TEMPLATE_CREATE: 'สร้างเทมเพลตเอกสาร',
-  DOC_TEMPLATE_UPDATE: 'แก้ไขเทมเพลตเอกสาร',
-  DOC_TEMPLATE_DELETE: 'ลบเทมเพลตเอกสาร',
-  DOC_TEMPLATE_ACTIVATE: 'เปิดใช้งานเทมเพลต',
-  CONTACT_DIRECTORY_ADD: 'เพิ่มรายชื่อติดต่อ',
-  STOCK_IN: 'รับเข้าสต็อก',
-  STOCK_OUT: 'เบิกออกสต็อก',
-  STOCK_ADJUST: 'ปรับสต็อก',
-  PM_COMPLETE: 'ทำ PM เสร็จ',
-  PM_SKIP: 'ข้าม PM',
-  WO_ASSIGN: 'มอบหมายงาน',
-  WO_REOPEN: 'เปิดงานใหม่',
-  WO_CLOSE: 'ปิดงาน',
-  WO_CREATE: 'แจ้งซ่อมใหม่',
-  WO_COMPLETE: 'ปิดงานซ่อม',
-  WO_CANCEL: 'ยกเลิกงาน',
-  WO_PARTS_REQUEST: 'เบิกอะไหล่',
-  WO_UPDATE: 'แก้ไขใบงาน',
-  WO_MESSAGE: 'ส่งข้อความในงาน',
-  WO_PHOTO_UPLOAD: 'อัพโหลดรูปงาน',
-  STICKER_RENDER: 'พิมพ์สติกเกอร์',
-  PRINT: 'พิมพ์',
-  EXPORT: 'ส่งออกข้อมูล',
-  SEED: 'เพิ่มข้อมูลเริ่มต้น',
-  BACKUP: 'สำรองข้อมูล',
-  SETTINGS_UPDATE: 'แก้ไขการตั้งค่า',
-  USER_CREATE: 'เพิ่มผู้ใช้',
-  USER_UPDATE: 'แก้ไขผู้ใช้',
-  USER_DELETE: 'ลบผู้ใช้',
-  USER_APPROVE: 'อนุมัติผู้ใช้',
-  USER_REJECT: 'ปฏิเสธผู้ใช้',
-  ROLE_UPDATE: 'แก้ไขบทบาท',
-  SITE_UPDATE: 'แก้ไขสาขา',
-  METER_CYCLE_START: 'เริ่มรอบจดมิเตอร์',
-  METER_CYCLE_END: 'จบรอบจดมิเตอร์',
+  GENERATE: 'CreateReport',
+  IMPORT_LEGACY: 'ImportDataOriginal',
+  IMPORT: 'Import',
+  INVITE_REQUEST: 'requestinActive',
+  AUTH_FALLBACK: 'LockinSpare',
+  DEMO_RESET: 'ResetDataDemo',
+  DOC_TEMPLATE_RENDER: 'renderDocument',
+  DOC_TEMPLATE_CREATE: 'CreateTemplateDocument',
+  DOC_TEMPLATE_UPDATE: 'EditTemplateDocument',
+  DOC_TEMPLATE_DELETE: 'DeleteTemplateDocument',
+  DOC_TEMPLATE_ACTIVATE: 'CloseActiveTemplate',
+  CONTACT_DIRECTORY_ADD: 'AdditemNamecontact',
+  STOCK_IN: 'Stock InStock',
+  STOCK_OUT: 'Stock OutStock',
+  STOCK_ADJUST: 'ReceiveStock',
+  PM_COMPLETE: 'Do PM Done',
+  PM_SKIP: 'skip PM',
+  WO_ASSIGN: 'AssignWork',
+  WO_REOPEN: 'CloseWorkNew',
+  WO_CLOSE: 'CloseWork',
+  WO_CREATE: 'Repair RequestNew',
+  WO_COMPLETE: 'CloseWorkRepair',
+  WO_CANCEL: 'CancelWork',
+  WO_PARTS_REQUEST: 'WithdrawParts',
+  WO_UPDATE: 'EditWork Order',
+  WO_MESSAGE: 'SendMessageinWork',
+  WO_PHOTO_UPLOAD: 'upLoadimageWork',
+  STICKER_RENDER: 'PrintSticker',
+  PRINT: 'Print',
+  EXPORT: 'ExportData',
+  SEED: 'AddDataDefault',
+  BACKUP: 'SpareData',
+  SETTINGS_UPDATE: 'EditSettings',
+  USER_CREATE: 'AddUser',
+  USER_UPDATE: 'EditUser',
+  USER_DELETE: 'DeleteUser',
+  USER_APPROVE: 'ApproveUser',
+  USER_REJECT: 'RejectUser',
+  ROLE_UPDATE: 'EditChapterTHB',
+  SITE_UPDATE: 'EditSite',
+  METER_CYCLE_START: 'StartCycleReadMeter',
+  METER_CYCLE_END: 'endCycleReadMeter',
 }
 
 const ACTION_BADGE: Record<string, string> = {
@@ -239,7 +239,7 @@ export function ItamAudit() {
     // Bug Group D — audit export must include ALL matching rows, not just
     // the current page. Re-fetch with a high limit using the same filters
     // so the exported CSV matches what the user sees on screen.
-    toast.info('กำลังเตรียมข้อมูลส่งออก…')
+    toast.info('prepareDataExport…')
     const params = new URLSearchParams({ page: '1', limit: '10000' })
     if (action !== 'all') params.set('action', action)
     if (actor.trim()) params.set('actor', actor.trim())
@@ -258,7 +258,7 @@ export function ItamAudit() {
       allLogs = logs
     }
     if (allLogs.length === 0) {
-      toast.warning('ไม่มีข้อมูลให้ส่งออก')
+      toast.warning('No datatoExport')
       return
     }
     const rows = allLogs.map((l) => ({
@@ -272,16 +272,16 @@ export function ItamAudit() {
       detail: tryPrettyDetail(l.detail),
     }))
     downloadCsv(`audit-${dateStamp()}.csv`, rows, [
-      { key: 'createdAt', label: 'วันที่' },
+      { key: 'createdAt', label: 'Date' },
       { key: 'action', label: 'Action' },
-      { key: 'actionLabel', label: 'การกระทำ' },
+      { key: 'actionLabel', label: 'Do' },
       { key: 'entity', label: 'Entity' },
       { key: 'entityId', label: 'Entity ID' },
-      { key: 'actor', label: 'ผู้กระทำ' },
-      { key: 'summary', label: 'สรุป' },
-      { key: 'detail', label: 'รายละเอียด' },
+      { key: 'actor', label: 'PersonDo' },
+      { key: 'summary', label: 'Summary' },
+      { key: 'detail', label: 'Details' },
     ])
-    toast.success(`ส่งออก ${rows.length} รายการ`)
+    toast.success(`Export ${rows.length} item`)
   }
 
   function resetFilters() {
@@ -311,12 +311,12 @@ export function ItamAudit() {
       const res = await fetch(`/api/itam/audit?${params}`, { headers: authHeaders() })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error || 'โหลดข้อมูล audit ไม่สำเร็จ')
+        throw new Error(j.error || 'LoadData audit NoSuccess')
       }
       const json: { logs: AuditLog[] } = await res.json()
       const allLogs = json.logs ?? []
       if (allLogs.length === 0) {
-        toast.warning('ไม่มีข้อมูล audit ในตัวกรองปัจจุบันให้ส่งออก')
+        toast.warning('No data audit inunitFilterCurrenttoExport')
         return
       }
       const rows: Record<string, unknown>[] = allLogs.map((l) => {
@@ -340,8 +340,8 @@ export function ItamAudit() {
           site: siteVal,
         }
       })
-      runCustomExport(columns, format, rows, 'audit-log', 'รายงานประวัติการใช้งาน (Audit Log)')
-      toast.success(`ส่งออก ${rows.length} รายการ`)
+      runCustomExport(columns, format, rows, 'audit-log', 'ReportHistoryActive (Audit Log)')
+      toast.success(`Export ${rows.length} item`)
     },
     [action, actor, search, startDate, endDate],
   )
@@ -358,10 +358,10 @@ export function ItamAudit() {
       <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-            📜 ประวัติการใช้งาน (Audit Log)
+            📜 HistoryActive (Audit Log)
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            ข้อมูลจริง {total.toLocaleString('th-TH')} รายการ
+            Datareal {total.toLocaleString('th-TH')} item
           </p>
         </div>
         <div className="flex gap-2">
@@ -370,22 +370,22 @@ export function ItamAudit() {
             onClick={() => qc.invalidateQueries({ queryKey })}
             className="dark:bg-slate-800 dark:border-slate-700"
           >
-            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> รีเฟรช
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
           </Button>
           <Button
             variant="outline"
             onClick={exportCsv}
             className="dark:bg-slate-800 dark:border-slate-700"
           >
-            <Download className="h-4 w-4" /> ส่งออก CSV
+            <Download className="h-4 w-4" /> Export CSV
           </Button>
-          {/* ส่งออก (custom) — Task ID: FIX-1-2-EXPORT-PRINT */}
+          {/* Export (custom) — Task ID: FIX-1-2-EXPORT-PRINT */}
           <Button
             variant="outline"
             onClick={() => setCustomExportOpen(true)}
             className="border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c]"
           >
-            <Download className="h-4 w-4" /> ส่งออก
+            <Download className="h-4 w-4" /> Export
           </Button>
         </div>
       </div>
@@ -395,13 +395,13 @@ export function ItamAudit() {
         <CardContent className="p-3">
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
             <div className="w-full sm:w-48">
-              <Label className="mb-1 block text-xs text-slate-500">การกระทำ</Label>
+              <Label className="mb-1 block text-xs text-slate-500">Do</Label>
               <Select value={action} onValueChange={(v) => { setAction(v); setPage(1) }}>
                 <SelectTrigger className="w-full dark:bg-slate-800 dark:border-slate-700">
-                  <SelectValue placeholder="การกระทำ" />
+                  <SelectValue placeholder="Do" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">ทุกการกระทำ</SelectItem>
+                  <SelectItem value="all">AllDo</SelectItem>
                   {actionOptions.map((a) => (
                     <SelectItem key={a} value={a}>
                       {actionLabel(a)} ({a})
@@ -411,20 +411,20 @@ export function ItamAudit() {
               </Select>
             </div>
             <div className="w-full sm:w-48">
-              <Label className="mb-1 block text-xs text-slate-500">ผู้กระทำ</Label>
+              <Label className="mb-1 block text-xs text-slate-500">PersonDo</Label>
               <Input
-                placeholder="เช่น admin@example.com"
+                placeholder="e.g. admin@example.com"
                 value={actor}
                 onChange={(e) => { setActor(e.target.value); setPage(1) }}
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
             </div>
             <div className="flex-1">
-              <Label className="mb-1 block text-xs text-slate-500">ค้นหา (สรุป/รายละเอียด)</Label>
+              <Label className="mb-1 block text-xs text-slate-500">Search (Summary/Details)</Label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
-                  placeholder="ค้นหาคำใน summary / detail / actor..."
+                  placeholder="Searchwordin summary / detail / actor..."
                   value={search}
                   onChange={(e) => { setSearch(e.target.value); setPage(1) }}
                   className="pl-9 dark:bg-slate-800 dark:border-slate-700"
@@ -432,7 +432,7 @@ export function ItamAudit() {
               </div>
             </div>
             <div className="w-full sm:w-40">
-              <Label className="mb-1 block text-xs text-slate-500">จากวันที่</Label>
+              <Label className="mb-1 block text-xs text-slate-500">fromDate</Label>
               <Input
                 type="date"
                 value={startDate}
@@ -441,7 +441,7 @@ export function ItamAudit() {
               />
             </div>
             <div className="w-full sm:w-40">
-              <Label className="mb-1 block text-xs text-slate-500">ถึงวันที่</Label>
+              <Label className="mb-1 block text-xs text-slate-500">toDate</Label>
               <Input
                 type="date"
                 value={endDate}
@@ -451,7 +451,7 @@ export function ItamAudit() {
             </div>
             {hasActiveFilter && (
               <Button variant="ghost" size="sm" onClick={resetFilters} className="text-slate-500 hover:text-slate-700 dark:text-slate-400">
-                <Filter className="h-3.5 w-3.5" /> ล้าง
+                <Filter className="h-3.5 w-3.5" /> Clear
               </Button>
             )}
           </div>
@@ -465,11 +465,11 @@ export function ItamAudit() {
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
-                  <TableHead className="w-44">วันที่</TableHead>
-                  <TableHead className="w-40">การกระทำ</TableHead>
+                  <TableHead className="w-44">Date</TableHead>
+                  <TableHead className="w-40">Do</TableHead>
                   <TableHead className="w-28">Entity</TableHead>
-                  <TableHead className="w-48">ผู้กระทำ</TableHead>
-                  <TableHead>สรุป</TableHead>
+                  <TableHead className="w-48">PersonDo</TableHead>
+                  <TableHead>Summary</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -484,10 +484,10 @@ export function ItamAudit() {
                     <TableCell colSpan={5} className="py-12">
                       <div className="flex flex-col items-center gap-2 text-slate-400">
                         <ScrollText className="h-10 w-10" />
-                        <span className="text-sm">ไม่พบประวัติ</span>
+                        <span className="text-sm">Not foundHistory</span>
                         {hasActiveFilter && (
                           <Button variant="ghost" size="sm" onClick={resetFilters} className="mt-1">
-                            ล้างตัวกรอง
+                            ClearunitFilter
                           </Button>
                         )}
                       </div>
@@ -534,13 +534,13 @@ export function ItamAudit() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex flex-shrink-0 items-center justify-between">
-          <span className="text-xs text-slate-500">หน้า {page} / {totalPages} ({total.toLocaleString('th-TH')} รายการ)</span>
+          <span className="text-xs text-slate-500">front {page} / {totalPages} ({total.toLocaleString('th-TH')} item)</span>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
-              <ChevronLeft className="h-4 w-4" /> ก่อนหน้า
+              <ChevronLeft className="h-4 w-4" /> Beforefront
             </Button>
             <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>
-              ถัดไป <ChevronRight className="h-4 w-4" />
+              nextto <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>

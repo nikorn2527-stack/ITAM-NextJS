@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { retryFailedEntries } from '@/lib/notification-log'
 import { sendLINE, sendTelegram, sendEmail } from '@/lib/notifications'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/cron/notification-retry
@@ -24,6 +25,9 @@ import { sendLINE, sendTelegram, sendEmail } from '@/lib/notifications'
 export const maxDuration = 30
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('notifications')
+  if (unavailable) return unavailable
+
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret) {
     const authHeader = req.headers.get('authorization')

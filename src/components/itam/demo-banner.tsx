@@ -12,9 +12,11 @@
 
 import * as React from 'react'
 import { useAuthStore } from '@/store/auth-store'
+import { useT } from '@/store/i18n-store'
 
 export function DemoBanner() {
   const isDemo = useAuthStore((s) => s.user?.isDemo === true)
+  const t = useT()
   // Avoid rendering anything for real users — keeps the layout untouched.
   if (!isDemo) return null
 
@@ -25,7 +27,7 @@ export function DemoBanner() {
       className="flex flex-shrink-0 items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-center text-xs font-semibold text-white shadow-sm"
     >
       <span aria-hidden>⚠️</span>
-      <span>โหมดสาธิต — ข้อมูลที่สร้างจะไม่บันทึกในระบบจริง</span>
+      <span>{t('demo.banner')}</span>
     </div>
   )
 }

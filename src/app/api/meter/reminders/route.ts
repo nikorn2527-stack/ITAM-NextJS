@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // ════════════════════════════════════════════════════════════════════════
 // METER ROUTE DECISION (Phase 4.6) — see /api/meter/route.ts header.
@@ -77,6 +78,10 @@ function daysBetween(a: string, b: string): number {
 }
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

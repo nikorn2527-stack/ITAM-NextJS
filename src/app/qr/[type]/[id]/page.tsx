@@ -42,6 +42,7 @@ import {
 } from '@/components/public/public-device-card'
 import { PublicRepairForm, type PublicRepairFormProps } from '@/components/public/public-repair-form'
 import { useLineSession } from '@/hooks/use-line-session'
+import { isModuleEnabled } from '@/config/modules'
 
 type PublicView =
   | { kind: 'card' }
@@ -73,14 +74,20 @@ function StaffActionSelector({
   defaultAction: QrAction
   onSelect: (action: StaffAction) => void
 }) {
-  const actions: { value: StaffAction; label: string; icon: typeof Wrench; color: string }[] = [
-    { value: 'repair', label: 'แจ้งซ่อม', icon: Wrench, color: 'text-orange-600 bg-orange-50 dark:bg-orange-950/30' },
+  // ── Module-aware action filtering ──
+  // Per blueprint ข้อ 2.4: filter buttons by isModuleEnabled() so disabled
+  // modules don't show actions that would 404 when clicked.
+  // 'view' is always available (devices module is required/always on).
+  const allActions: { value: StaffAction; label: string; icon: typeof Wrench; color: string; module?: string }[] = [
+    { value: 'repair', label: 'แจ้งซ่อม', icon: Wrench, color: 'text-orange-600 bg-orange-50 dark:bg-orange-950/30', module: 'work-orders' },
     { value: 'view', label: 'ดูข้อมูล', icon: Eye, color: 'text-blue-600 bg-blue-50 dark:bg-blue-950/30' },
-    { value: 'meter', label: 'จดมิเตอร์', icon: Gauge, color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/30' },
-    { value: 'transfer', label: 'ย้ายอุปกรณ์', icon: ArrowLeftRight, color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/30' },
-    { value: 'sticker', label: 'พิมพ์สติกเกอร์', icon: PrinterIcon, color: 'text-slate-600 bg-slate-50 dark:bg-slate-800/50' },
-    { value: 'checkin', label: 'เช็คอินปฏิบัติงาน', icon: ShieldCheck, color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30' },
+    { value: 'meter', label: 'จดมิเตอร์', icon: Gauge, color: 'text-teal-600 bg-teal-50 dark:bg-teal-950/30', module: 'meters' },
+    { value: 'transfer', label: 'ย้ายอุปกรณ์', icon: ArrowLeftRight, color: 'text-purple-600 bg-purple-50 dark:bg-purple-950/30', module: 'devices' },
+    { value: 'sticker', label: 'พิมพ์สติกเกอร์', icon: PrinterIcon, color: 'text-slate-600 bg-slate-50 dark:bg-slate-800/50', module: 'stickers' },
+    { value: 'checkin', label: 'เช็คอินปฏิบัติงาน', icon: ShieldCheck, color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30', module: 'work-orders' },
   ]
+  // Filter out actions whose module is disabled
+  const actions = allActions.filter(a => !a.module || isModuleEnabled(a.module as any))
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 py-4 px-3 sm:py-8 sm:px-4">

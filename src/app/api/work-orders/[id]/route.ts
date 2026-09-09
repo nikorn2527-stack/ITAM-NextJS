@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { withSerializableRetry } from '@/lib/retry-transaction'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 const VALID_STATUSES = new Set([
   'PENDING',
@@ -42,6 +43,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'WO_VIEW_ALL')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
@@ -114,6 +119,10 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'WO_COMPLETE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
@@ -471,5 +480,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   return PUT(req, { params })
 }

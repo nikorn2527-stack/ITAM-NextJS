@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { withSerializableRetry } from '@/lib/retry-transaction'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/work-orders/[id]/parts/[txnId]/approve
@@ -20,6 +21,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; txnId: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   // Auth: loadAuthorizedWorkOrder does the site-scoped STOCK_APPROVE check.
   // Basic auth here — wo-authz layer enforces the correct permission.
   const auth = await requireAuth(req)

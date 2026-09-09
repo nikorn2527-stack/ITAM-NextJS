@@ -8,6 +8,7 @@ import {
 } from '@/lib/default-templates'
 import { DEFAULT_STICKER_SETTINGS } from '@/lib/sticker-template'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/templates/seed
@@ -23,6 +24,10 @@ import { logAudit } from '@/lib/audit'
  * Auth: requires TEMPLATES_MANAGE permission (admin only).
  */
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'TEMPLATES_MANAGE')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

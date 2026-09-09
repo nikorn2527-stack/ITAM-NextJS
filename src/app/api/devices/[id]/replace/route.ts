@@ -5,6 +5,7 @@ import { canAccessSite } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { demoTag } from '@/lib/demo-mode'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/devices/[id]/replace
@@ -70,6 +71,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'DEVICE_TRANSFER')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

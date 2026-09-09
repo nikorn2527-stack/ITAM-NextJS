@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { requireAuth } from '@/lib/auth-middleware'
 import { resolveStockTransactionIdentity } from '@/lib/stock-transaction-identity'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -50,6 +51,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   try {
     const { id } = await params
 

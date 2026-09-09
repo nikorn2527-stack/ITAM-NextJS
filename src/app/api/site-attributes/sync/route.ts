@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
 export const maxDuration = 60
@@ -16,6 +17,10 @@ export const maxDuration = 60
  * Idempotent — safe to call multiple times.
  */
 export async function POST(_req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('sync')
+  if (unavailable) return unavailable
+
+
   try {
     const sites = await db.siteAttribute.findMany({
       select: { id: true, SiteCode: true, SiteName: true, PaperRateBW: true, PaperRateColor: true },

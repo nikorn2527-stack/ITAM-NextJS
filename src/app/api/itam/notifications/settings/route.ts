@@ -10,6 +10,7 @@ import {
   type NotifyEventConfig,
 } from '@/lib/notifications'
 import { db } from '@/lib/db'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/itam/notifications/settings
@@ -40,6 +41,10 @@ const CRED_KEYS = [
 ] as const
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('notifications')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'SYSTEM_CONFIG')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -63,6 +68,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('notifications')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'SYSTEM_CONFIG')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

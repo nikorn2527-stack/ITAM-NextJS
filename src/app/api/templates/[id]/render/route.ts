@@ -503,7 +503,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const unavailable = moduleUnavailableResponse('templates')
+  const unavailable = await moduleUnavailableResponse('templates')
   if (unavailable) return unavailable
 
   // Milestone 2: Security baseline — require TEMPLATES_MANAGE

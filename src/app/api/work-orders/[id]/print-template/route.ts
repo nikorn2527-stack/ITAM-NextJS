@@ -20,11 +20,16 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   try {
     const { id } = await params
 

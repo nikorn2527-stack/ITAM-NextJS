@@ -158,7 +158,7 @@ function normalizeExternalMeta(input: unknown): {
 export async function GET(req: NextRequest) {
   // ── Phase 4.3: Module availability gate ──
   // Returns 404 MODULE_DISABLED when the 'work-orders' module is disabled.
-  const moduleCheck = moduleUnavailableResponse('work-orders')
+  const moduleCheck = await moduleUnavailableResponse('work-orders')
   if (moduleCheck) return moduleCheck
 
   // ── Authentication: require an authenticated session ──
@@ -347,7 +347,7 @@ export async function POST(req: NextRequest) {
   // because the public QR repair flow depends on WO creation. So we only
   // gate the staff-side here; the guest-side check happens later via the
   // submissionSource branch.
-  const moduleCheck = moduleUnavailableResponse('work-orders')
+  const moduleCheck = await moduleUnavailableResponse('work-orders')
   if (moduleCheck) return moduleCheck
 
   try {

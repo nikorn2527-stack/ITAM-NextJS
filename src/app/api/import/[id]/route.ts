@@ -6,11 +6,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { importJobRepository } from '@/modules/import'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('import')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'IMPORT_DATA')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

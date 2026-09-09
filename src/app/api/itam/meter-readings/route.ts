@@ -29,7 +29,7 @@ import { classifyMeterWriteReplay, normalizeMeterReadingId } from '@/lib/meter-w
 export async function GET(req: NextRequest) {
   // ── Phase 4.3: Module availability gate ──
   // Returns 404 MODULE_DISABLED when the 'meters' module is disabled.
-  const moduleCheck = moduleUnavailableResponse('meters')
+  const moduleCheck = await moduleUnavailableResponse('meters')
   if (moduleCheck) return moduleCheck
 
   try {
@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   // ── Phase 4.3: Module availability gate ──
-  const moduleCheck = moduleUnavailableResponse('meters')
+  const moduleCheck = await moduleUnavailableResponse('meters')
   if (moduleCheck) return moduleCheck
 
   try {

@@ -10,6 +10,7 @@ import {
   type DocumentTemplate,
 } from '@/lib/document-template'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -18,6 +19,10 @@ interface Params {
 // PUT /api/itam/document-templates/[id] — update template
 //   Default template can be edited but cannot be deleted (handled in DELETE).
 export async function PUT(req: NextRequest, { params }: Params) {
+  const unavailable = await moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -64,6 +69,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
 // DELETE /api/itam/document-templates/[id]
 //   Cannot delete default template or currently-active template.
 export async function DELETE(req: NextRequest, { params }: Params) {
+  const unavailable = await moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

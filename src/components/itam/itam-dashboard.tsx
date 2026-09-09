@@ -50,6 +50,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
+import { useT, useFormatDateTime, useFormatDate, useLang } from '@/store/i18n-store'
 import type { Cycle, DashboardRangeKey } from './types'
 import { DASHBOARD_RANGE_OPTIONS } from './types'
 import { QuickActionsBar } from './quick-actions-bar'
@@ -217,10 +218,11 @@ interface CycleProgressWidgetProps {
 function CycleProgressWidget({
   activeCycle, cycleLoading, remindersSummary, onManageCycle, onCreateCycle,
 }: CycleProgressWidgetProps) {
+  const t = useT()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => {
-    const t = window.setTimeout(() => setMounted(true), 60)
-    return () => window.clearTimeout(t)
+    const tid = window.setTimeout(() => setMounted(true), 60)
+    return () => window.clearTimeout(tid)
   }, [])
 
   if (cycleLoading) {
@@ -244,10 +246,10 @@ function CycleProgressWidget({
             </div>
             <div>
               <div className="text-sm font-semibold text-amber-800 dark:text-amber-200">
-                ⚠️ ยังไม่มีรอบจดมิเตอร์ที่กำลังดำเนินการ
+                {t('dash.cycle.no_active')}
               </div>
               <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-300/80">
-                สร้างรอบใหม่เพื่อเริ่มจดมิเตอร์ได้ทันที
+                {t('dash.cycle.no_active_hint')}
               </div>
             </div>
           </div>
@@ -257,7 +259,7 @@ function CycleProgressWidget({
             className="shrink-0 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
             <CalendarClock className="h-4 w-4" />
-            สร้างรอบใหม่
+            {t('dash.cycle.create_new')}
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
         </CardContent>
@@ -294,7 +296,7 @@ function CycleProgressWidget({
           <div className="min-w-0 flex-1">
             <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[#f97316] dark:text-[#fb923c]">
               <CalendarClock className="h-3.5 w-3.5" />
-              รอบจดมิเตอร์ปัจจุบัน
+              {t('dash.cycle.current')}
             </div>
             <div className="truncate text-base font-bold text-slate-800 dark:text-slate-100 sm:text-lg">
               {activeCycle.name}
@@ -304,7 +306,7 @@ function CycleProgressWidget({
                 📅 {activeCycle.startDate} → {activeCycle.endDate}
               </span>
               <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 transition-colors hover:scale-105 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                กำลังดำเนินการ
+                {t('dash.cycle.in_progress')}
               </Badge>
             </div>
           </div>
@@ -315,14 +317,14 @@ function CycleProgressWidget({
                 {daysRemaining}
               </div>
               <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                วันที่เหลือ
+                {t('dash.cycle.days_left')}
               </div>
             </div>
 
             <div className="flex w-auto flex-1 flex-col gap-2">
               <div>
                 <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                  <span>ความคืบหน้ารอบ</span>
+                  <span>{t('dash.cycle.progress')}</span>
                   <span className="font-mono tabular-nums">{elapsedPct}%</span>
                 </div>
                 <Progress
@@ -332,7 +334,7 @@ function CycleProgressWidget({
               </div>
               <div>
                 <div className="mb-1 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                  <span>การจดมิเตอร์</span>
+                  <span>{t('dash.cycle.meter_progress')}</span>
                   <span className="font-mono tabular-nums">
                     {totalRead}/{totalMeterable} ({readPct}%)
                   </span>
@@ -347,7 +349,7 @@ function CycleProgressWidget({
                 onClick={onManageCycle}
                 className="mt-1 self-end bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
-                จัดการรอบ
+                {t('dash.cycle.manage')}
                 <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -366,6 +368,13 @@ export function ItamDashboard() {
   const setPendingDeviceStatus = useAppStore((s) => s.setPendingDeviceStatus)
   const setPendingWarrantyFilter = useAppStore((s) => s.setPendingWarrantyFilter)
   const setPendingMeterAction = useAppStore((s) => s.setPendingMeterAction)
+
+  // i18n — t() for labels; lang to re-trigger date formatting + chart label
+  // memos when the user toggles TH/EN. (See donut/area chart useMemos.)
+  const t = useT()
+  const { lang } = useLang()
+  const formatDateTime = useFormatDateTime()
+  const formatDate = useFormatDate()
 
   const [sitesOpen, setSitesOpen] = React.useState(false)
   const [heatOpen, setHeatOpen] = React.useState(false)
@@ -401,8 +410,8 @@ export function ItamDashboard() {
     queryFn: async () => {
       const res = await fetch(`/api/itam/dashboard?range=${range}`, {
         headers: (() => {
-          const t = useAuthStore.getState()?.token
-          return t ? { Authorization: `Bearer ${t}` } : {}
+          const token = useAuthStore.getState()?.token
+          return token ? { Authorization: `Bearer ${token}` } : {}
         })(),
       })
       if (!res.ok) throw new Error('Failed')
@@ -463,8 +472,8 @@ export function ItamDashboard() {
     queryFn: async () => {
       const res = await fetch(`/api/itam/dashboard?extra=1&range=${range}`, {
         headers: (() => {
-          const t = useAuthStore.getState()?.token
-          return t ? { Authorization: `Bearer ${t}` } : {}
+          const token = useAuthStore.getState()?.token
+          return token ? { Authorization: `Bearer ${token}` } : {}
         })(),
       })
       if (!res.ok) throw new Error('Failed')
@@ -509,8 +518,8 @@ export function ItamDashboard() {
     queryFn: async () => {
       const res = await fetch('/api/itam/dashboard/insights', {
         headers: (() => {
-          const t = useAuthStore.getState()?.token
-          return t ? { Authorization: `Bearer ${t}` } : {}
+          const token = useAuthStore.getState()?.token
+          return token ? { Authorization: `Bearer ${token}` } : {}
         })(),
       })
       if (!res.ok) throw new Error('Failed')
@@ -530,8 +539,8 @@ export function ItamDashboard() {
     queryFn: async () => {
       const res = await fetch('/api/cycles?status=active', {
         headers: (() => {
-          const t = useAuthStore.getState()?.token
-          return t ? { Authorization: `Bearer ${t}` } : {}
+          const token = useAuthStore.getState()?.token
+          return token ? { Authorization: `Bearer ${token}` } : {}
         })(),
       })
       if (!res.ok) return null
@@ -549,8 +558,8 @@ export function ItamDashboard() {
     queryFn: async () => {
       const res = await fetch('/api/meter/reminders', {
         headers: (() => {
-          const t = useAuthStore.getState()?.token
-          return t ? { Authorization: `Bearer ${t}` } : {}
+          const token = useAuthStore.getState()?.token
+          return token ? { Authorization: `Bearer ${token}` } : {}
         })(),
       })
       if (!res.ok) return { hasActiveCycle: false, totalRead: 0, totalUnread: 0 }
@@ -572,8 +581,8 @@ export function ItamDashboard() {
     queryFn: async () => {
       const res = await fetch('/api/devices/warranty', {
         headers: (() => {
-          const t = useAuthStore.getState()?.token
-          return t ? { Authorization: `Bearer ${t}` } : {}
+          const token = useAuthStore.getState()?.token
+          return token ? { Authorization: `Bearer ${token}` } : {}
         })(),
       })
       if (!res.ok) throw new Error('Failed to load warranty')
@@ -586,7 +595,7 @@ export function ItamDashboard() {
   function exportPdf() {
     const win = window.open('', '_blank', 'width=900,height=1200')
     if (!win) {
-      toast.warning('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัปแล้วลองอีกครั้ง')
+      toast.warning(t('dash.export.popup_blocked'))
       return
     }
     const totals = data?.totals
@@ -617,7 +626,7 @@ export function ItamDashboard() {
         <div class="kpi"><div class="label">รับประกันใกล้หมด/หมดแล้ว</div><div class="value">${(warrantyExpiring + warrantyExpired).toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div></div>
       </div>`
 
-    const typeRows = byType.map(t => `<tr><td>${esc(t.name)}</td><td class="num">${t.value.toLocaleString('th-TH')}</td><td class="num">${total > 0 ? Math.round((t.value / total) * 100) : 0}%</td></tr>`).join('')
+    const typeRows = byType.map(ty => `<tr><td>${esc(ty.name)}</td><td class="num">${ty.value.toLocaleString('th-TH')}</td><td class="num">${total > 0 ? Math.round((ty.value / total) * 100) : 0}%</td></tr>`).join('')
     const siteRows = bySite.map(s => `<tr><td>${esc(s.siteCode)}</td><td>${esc(s.siteName || '')}</td><td class="num">${(s.deviceCount ?? 0).toLocaleString('th-TH')}</td><td class="num">${(s.activeCount ?? 0).toLocaleString('th-TH')}</td><td class="num">${(s.paperSheets ?? 0).toLocaleString('th-TH')}</td></tr>`).join('')
 
     const html = `<!doctype html><html lang="th"><head><meta charset="utf-8" />
@@ -669,7 +678,7 @@ ${kpiHtml}
     win.document.open()
     win.document.write(html)
     win.document.close()
-    toast.success('กำลังเปิดหน้าพิมพ์รายงาน PDF...')
+    toast.success(t('dash.export.opening_pdf'))
   }
 
   // Site comparison sorted by devices
@@ -687,17 +696,24 @@ ${kpiHtml}
     return m || 1
   }, [heat])
 
-  // Donut chart data: status distribution
-  const donutData = React.useMemo(() => {
+  // Donut chart data: status distribution.
+  // NOTE: We store `nameKey` instead of the translated string so that the
+  // useMemo doesn't have to recompute when the user toggles TH/EN. The
+  // translated `name` is appended at render time below.
+  const donutBaseData = React.useMemo(() => {
     if (!data) return []
-    const t = data.totals
+    const totals = data.totals
     return [
-      { name: 'ใช้งานอยู่', value: t.active, color: STATUS_COLORS[0], statusKey: 'Active' },
-      { name: 'สำรอง', value: t.spare, color: STATUS_COLORS[1], statusKey: 'In Stock' },
-      { name: 'ส่งซ่อม', value: t.repair, color: STATUS_COLORS[2], statusKey: 'Pending Repair' },
-      { name: 'ไม่ใช้งาน', value: t.inactive, color: STATUS_COLORS[3], statusKey: 'Inactive' },
+      { value: totals.active, color: STATUS_COLORS[0], statusKey: 'Active', nameKey: 'status.active' },
+      { value: totals.spare, color: STATUS_COLORS[1], statusKey: 'In Stock', nameKey: 'status.in_stock' },
+      { value: totals.repair, color: STATUS_COLORS[2], statusKey: 'Pending Repair', nameKey: 'status.pending_repair' },
+      { value: totals.inactive, color: STATUS_COLORS[3], statusKey: 'Inactive', nameKey: 'status.inactive' },
     ].filter(d => d.value > 0)
   }, [data])
+
+  // Resolve translated names at render time — recomputed every render, so
+  // toggling language updates the chart labels immediately.
+  const donutData = donutBaseData.map(d => ({ ...d, name: t(d.nameKey) }))
 
   const donutTotal = donutData.reduce((sum, d) => sum + d.value, 0)
 
@@ -727,7 +743,7 @@ ${kpiHtml}
     // incomplete/partial month (e.g., current month where only a few devices
     // have been read so far). Heuristic: if the last value is < 20% of the
     // second-to-last value, treat it as partial and exclude from regression.
-    const ys0 = base.map((t) => t.sheets ?? 0)
+    const ys0 = base.map((pt) => pt.sheets ?? 0)
     let regStart = 0
     let regEnd = base.length // exclusive
     if (base.length >= 4) {
@@ -798,7 +814,7 @@ ${kpiHtml}
       }
     }
     const forecastPoint: AreaPoint = {
-      month: 'คาดการณ์',
+      month: t('dash.forecast'),
       sheets: null,
       forecastSheets: forecast,
       isForecast: true,
@@ -808,20 +824,20 @@ ${kpiHtml}
       forecastSheets: forecast,
       forecastReliability: reliability,
     }
-  }, [data])
+  }, [data, t, lang])
 
   // Drill-down handlers
   function drillDownStatus(statusKey: string) {
     setPendingDeviceStatus(statusKey)
     setPendingDeviceType(null)
     setActivePage('itam-devices')
-    toast.info(`กรองอุปกรณ์สถานะ "${statusKey}"`)
+    toast.info(t('dash.drill.status').replace('{status}', statusKey))
   }
   function drillDownType(typeName: string) {
     setPendingDeviceType(typeName)
     setPendingDeviceStatus(null)
     setActivePage('itam-devices')
-    toast.info(`กรองอุปกรณ์ประเภท "${typeName}"`)
+    toast.info(t('dash.drill.type').replace('{type}', typeName))
   }
 
   // Recharts tooltip styles — polished for mobile legibility + hover depth.
@@ -842,7 +858,12 @@ ${kpiHtml}
 
   function formatLastUpdated(): string {
     if (!lastUpdated) return '—'
-    return lastUpdated.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    // Time-only formatting using the current language's locale.
+    return lastUpdated.toLocaleTimeString(lang === 'th' ? 'th-TH' : 'en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
   }
 
   // Derived values for KPI widget
@@ -854,10 +875,10 @@ ${kpiHtml}
   const warrantyAlerts =
     (warrantyData?.summary.expiring ?? 0) +
     (warrantyData?.summary.expired ?? 0)
-  const rangeInfoLabel =
-    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.label ?? 'เดือนนี้'
-  const paperKpiLabel =
-    DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)?.kpiLabel ?? 'กระดาษเดือนนี้'
+  // Resolve the active range's labels via i18n so they flip with TH/EN.
+  const rangeOpt = DASHBOARD_RANGE_OPTIONS.find((o) => o.value === range)
+  const rangeInfoLabel = rangeOpt ? t(rangeOpt.labelKey) : t('dash.range.month')
+  const paperKpiLabel = rangeOpt ? t(rangeOpt.kpiLabelKey) : t('dash.range.kpi_month')
 
   // ============== Widget content blocks ==============
   const kpiWidget = (
@@ -865,49 +886,49 @@ ${kpiHtml}
       {/* KPI row — 5 cards on lg */}
       <div className="grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
         <KpiCard
-          title="อุปกรณ์ทั้งหมด"
+          title={t('dash.kpi.total')}
           value={total}
           icon={<Package className="h-4 w-4" />}
           accent="#0f172a"
           loading={isLoading}
           glow={glowKey === 'total'}
-          trend={total > 0 ? `${(data?.byType ?? []).length} ประเภท` : undefined}
+          trend={total > 0 ? t('dash.kpi.types_count').replace('{count}', String((data?.byType ?? []).length)) : undefined}
         />
         <KpiCard
-          title="ใช้งานอยู่"
+          title={t('dash.kpi.active')}
           value={active}
           icon={<CheckCircle2 className="h-4 w-4" />}
           accent="#10b981"
           loading={isLoading}
           glow={glowKey === 'active'}
-          trend={total > 0 ? `${Math.round((active / total) * 100)}% ของทั้งหมด` : undefined}
+          trend={total > 0 ? t('dash.kpi.pct_of_total').replace('{pct}', String(Math.round((active / total) * 100))) : undefined}
         />
         <KpiCard
-          title="สำรอง"
+          title={t('dash.kpi.spare')}
           value={spare}
           icon={<Package className="h-4 w-4" />}
           accent="#f59e0b"
           loading={isLoading}
           glow={glowKey === 'spare'}
-          trend={total > 0 ? `${Math.round((spare / total) * 100)}% ของทั้งหมด` : undefined}
+          trend={total > 0 ? t('dash.kpi.pct_of_total').replace('{pct}', String(Math.round((spare / total) * 100))) : undefined}
         />
         <KpiCard
-          title="ส่งซ่อม"
+          title={t('dash.kpi.repair')}
           value={repair}
           icon={<Wrench className="h-4 w-4" />}
           accent="#f97316"
           loading={isLoading}
           glow={glowKey === 'repair'}
-          trend={repair > 0 ? 'รอดำเนินการ' : 'ปกติ'}
+          trend={repair > 0 ? t('dash.kpi.trend_repair_pending') : t('dash.kpi.trend_repair_ok')}
         />
         <KpiCard
-          title="ต้องจดมิเตอร์"
+          title={t('dash.kpi.meter_required')}
           value={data?.meterRequiredCount ?? 0}
           icon={<FileText className="h-4 w-4" />}
           accent="#0d9488"
           loading={isLoading}
           glow={glowKey === 'meter'}
-          unit="เครื่อง"
+          unit={t('dash.unit.device')}
         />
       </div>
 
@@ -943,25 +964,25 @@ ${kpiHtml}
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              รับประกันใกล้หมด
+              {t('dash.warranty.expiring')}
             </div>
             <div className="flex items-baseline gap-1">
               <span className="text-lg font-bold tabular-nums leading-tight text-slate-800 dark:text-slate-100 sm:text-xl">
                 {warrantyAlerts}
               </span>
               <span className="shrink-0 text-[11px] font-medium text-slate-400 dark:text-slate-500">
-                เครื่อง
+                {t('dash.unit.device')}
               </span>
             </div>
             <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
               {warrantyAlerts > 0
-                ? `ใกล้หมด ${warrantyData?.summary.expiring ?? 0} · หมดแล้ว ${warrantyData?.summary.expired ?? 0}`
-                : 'ทุกเครื่องยังอยู่ในรับประกัน'}
+                ? `${t('dash.warranty.expiring_count').replace('{count}', String(warrantyData?.summary.expiring ?? 0))} · ${t('dash.warranty.expired_count').replace('{count}', String(warrantyData?.summary.expired ?? 0))}`
+                : t('dash.warranty.all_covered')}
             </div>
           </div>
           {warrantyAlerts > 0 && (
             <span className="shrink-0 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-medium text-amber-600 opacity-0 transition-opacity group-hover:opacity-100 dark:border-amber-800/60 dark:bg-amber-950/50 dark:text-amber-400">
-              ดูรายการ →
+              {t('dash.warranty.view_list')}
             </span>
           )}
         </div>
@@ -984,11 +1005,11 @@ ${kpiHtml}
                     <span className="text-lg font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-xl">
                       {(paperThisMonth ?? 0).toLocaleString('th-TH')}
                     </span>
-                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">แผ่น</span>
+                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">{t('dash.unit.sheet')}</span>
                   </div>
                 )}
                 <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
-                  ช่วง: {rangeInfoLabel}
+                  {t('dash.range.short')} {rangeInfoLabel}
                 </div>
               </div>
             </div>
@@ -1002,7 +1023,7 @@ ${kpiHtml}
                 <Building2 className="h-4 w-4" />
               </div>
               <div>
-                <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">จำนวนสาขา</div>
+                <div className="truncate text-[11px] font-medium text-slate-500 dark:text-slate-400">{t('dash.kpi.sites')}</div>
                 {isLoading ? (
                   <Skeleton className="mt-1 h-6 w-16" />
                 ) : (
@@ -1010,7 +1031,7 @@ ${kpiHtml}
                     <span className="text-lg font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-xl">
                       {(data?.bySite ?? []).length}
                     </span>
-                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">สาขา</span>
+                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500">{t('dash.unit.site')}</span>
                   </div>
                 )}
                 <div className="mt-0.5 truncate text-[11px] text-slate-400 dark:text-slate-500">
@@ -1050,11 +1071,11 @@ ${kpiHtml}
     <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <CircleAlert className="h-4 w-4 text-[#f97316]" /> Smart Insights
+          <CircleAlert className="h-4 w-4 text-[#f97316]" /> {t('dash.widget.insights')}
           {insightsLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />}
         </CardTitle>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          ตรวจพบสิ่งผิดปกติอัตโนมัติ
+          {t('dash.widget.insights_desc')}
         </p>
       </CardHeader>
       <CardContent>
@@ -1062,27 +1083,27 @@ ${kpiHtml}
         {insightsTotals && (
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-slate-100 bg-slate-50/60 px-3 py-1.5 text-[11px] text-slate-600 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-300">
             <span>
-              กระดาษเดือนนี้:{' '}
+              {t('dash.insights.paper_this_month')}{' '}
               <span className="font-semibold tabular-nums">
                 {(insightsTotals.currentMonthSheets ?? 0).toLocaleString('th-TH')}
               </span>{' '}
-              แผ่น
+              {t('dash.unit.sheet')}
             </span>
             <span className="text-slate-300 dark:text-slate-600">·</span>
             <span>
-              เดือนก่อน:{' '}
+              {t('dash.insights.prev_month')}{' '}
               <span className="font-semibold tabular-nums">
                 {(insightsTotals.prevMonthSheets ?? 0).toLocaleString('th-TH')}
               </span>{' '}
-              แผ่น
+              {t('dash.unit.sheet')}
             </span>
             <span className="text-slate-300 dark:text-slate-600">·</span>
             <span>
-              จดมิเตอร์แล้ว:{' '}
+              {t('dash.insights.meter_done')}{' '}
               <span className="font-semibold tabular-nums">
                 {insightsTotals.readThisMonth ?? 0}/{insightsTotals.meterRequiredActive ?? 0}
               </span>{' '}
-              เครื่อง
+              {t('dash.unit.device')}
             </span>
           </div>
         )}
@@ -1095,7 +1116,7 @@ ${kpiHtml}
         ) : insights.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-8 text-sm text-slate-400">
             <CheckCircle2 className="h-10 w-10 text-emerald-400" />
-            <div>ไม่พบสิ่งผิดปกติในเดือนนี้</div>
+            <div>{t('dash.widget.no_anomaly')}</div>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 xl:grid-cols-3">
@@ -1107,8 +1128,15 @@ ${kpiHtml}
                 3: 'border-orange-300 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30',
                 4: 'border-teal-300 bg-teal-50 dark:border-teal-800 dark:bg-teal-950/30',
               }
-              const priorityLabelList = ['วิกฤต', 'สำคัญ', 'ตรวจสอบ', 'โอกาส']
-              const priorityLabel = priorityLabelList[priority - 1] || 'ข้อมูล'
+              const priorityLabelKeys = [
+                'dash.insights.prio.critical',
+                'dash.insights.prio.major',
+                'dash.insights.prio.check',
+                'dash.insights.prio.opportunity',
+              ]
+              const priorityLabel = (priority >= 1 && priority <= 4)
+                ? t(priorityLabelKeys[priority - 1])
+                : t('dash.insights.prio.info')
               const cardClass =
                 priorityColors[priority] ||
                 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/40'
@@ -1116,14 +1144,14 @@ ${kpiHtml}
               // Heading label per insight type (concise)
               const headingLabel =
                 ins.type === 'high_usage'
-                  ? 'ใช้กระดาษสูง'
+                  ? t('dash.insights.heading.high_usage')
                   : ins.type === 'color_heavy'
-                    ? 'ใช้สีเยอะ'
+                    ? t('dash.insights.heading.color_heavy')
                     : ins.type === 'not_read'
-                      ? 'ยังไม่ได้จดมิเตอร์'
+                      ? t('dash.insights.heading.not_read')
                       : ins.type === 'mom_change'
-                        ? 'เปรียบเทียบรายเดือน'
-                        : 'ข้อมูล'
+                        ? t('dash.insights.heading.mom_change')
+                        : t('dash.insights.prio.info')
 
               const headingIcon =
                 ins.type === 'high_usage' ? (
@@ -1175,7 +1203,7 @@ ${kpiHtml}
                   {/* Row 1: priority badge + heading */}
                   <div className="mb-1 flex items-center gap-1.5">
                     <span className="inline-flex items-center gap-1 rounded-sm bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-900/70 dark:text-slate-300">
-                      ลำดับ {priority} · {priorityLabel}
+                      {t('dash.insights.priority_label').replace('{n}', String(priority)).replace('{label}', priorityLabel)}
                     </span>
                     <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
                       {headingIcon}
@@ -1196,10 +1224,10 @@ ${kpiHtml}
                     {showCost ? (
                       <span className={`text-xs font-semibold tabular-nums ${costColorClass}`}>
                         ≈ {costSign}
-                        {costValue.toLocaleString('th-TH')} บาท/เดือน
+                        {costValue.toLocaleString('th-TH')} {t('dash.insights.baht_per_month')}
                       </span>
                     ) : (
-                      <span className="text-[11px] text-slate-400">ไม่มีผลกระทบต้นทุนโดยตรง</span>
+                      <span className="text-[11px] text-slate-400">{t('dash.insights.no_cost_impact')}</span>
                     )}
                     {ins.actionLabel && (
                       <Button
@@ -1233,14 +1261,14 @@ ${kpiHtml}
       >
         <Card className="h-full shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardHeader>
-            <CardTitle className="text-base">สัดส่วนสถานะอุปกรณ์</CardTitle>
-            <p className="sr-only">คลิกเซกเตอร์เพื่อดูรายการ</p>
+            <CardTitle className="text-base">{t('dash.widget.status_distribution')}</CardTitle>
+            <p className="sr-only">{t('dash.chart.click_sector')}</p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-56 w-full rounded-md" />
             ) : donutData.length === 0 ? (
-              <EmptyState message="ยังไม่มีข้อมูล" />
+              <EmptyState message={t('dash.no_data')} />
             ) : (
               <div className="relative h-56 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1274,7 +1302,7 @@ ${kpiHtml}
                       contentStyle={tooltipStyle}
                       formatter={(v: number, n: string) => {
                         const pct = donutTotal > 0 ? ((v / donutTotal) * 100).toFixed(1) : '0'
-                        return [`${(Number(v) || 0).toLocaleString('th-TH')} เครื่อง (${pct}%)`, n]
+                        return [`${(Number(v) || 0).toLocaleString('th-TH')} ${t('dash.unit.device')} (${pct}%)`, n]
                       }}
                     />
                   </PieChart>
@@ -1284,7 +1312,7 @@ ${kpiHtml}
                   <div className="text-2xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
                     {(donutTotal ?? 0).toLocaleString('th-TH')}
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">เครื่องทั้งหมด</div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400">{t('dash.chart.total_devices')}</div>
                 </div>
               </div>
             )}
@@ -1314,14 +1342,14 @@ ${kpiHtml}
       >
         <Card className="h-full shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
           <CardHeader>
-            <CardTitle className="text-base">จำนวนอุปกรณ์ตามประเภท (Top 8)</CardTitle>
-            <p className="sr-only">คลิกแท่งเพื่อกรองหน้าอุปกรณ์</p>
+            <CardTitle className="text-base">{t('dash.widget.by_type_top8')}</CardTitle>
+            <p className="sr-only">{t('dash.chart.click_bar')}</p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <Skeleton className="h-56 w-full rounded-md" />
             ) : barData.length === 0 ? (
-              <EmptyState message="ยังไม่มีข้อมูล" />
+              <EmptyState message={t('dash.no_data')} />
             ) : (
               <div className="h-56 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1351,7 +1379,7 @@ ${kpiHtml}
                     <ReTooltip
                       contentStyle={tooltipStyle}
                       cursor={{ fill: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)' }}
-                      formatter={(v: number) => [`${(Number(v) || 0).toLocaleString('th-TH')} เครื่อง`, 'จำนวน']}
+                      formatter={(v: number) => [`${(Number(v) || 0).toLocaleString('th-TH')} ${t('dash.unit.device')}`, t('dash.chart.count_label')]}
                     />
                     <Bar
                       dataKey="value"
@@ -1390,14 +1418,14 @@ ${kpiHtml}
     >
       <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
         <CardHeader>
-          <CardTitle className="text-base">แนวโน้มการใช้กระดาษ (6 เดือนล่าสุด)</CardTitle>
-          <p className="text-xs text-slate-500 dark:text-slate-400">สิ่งที่บันทึกในแต่ละเดือน (รวมทุกสถานะ) · หน่วย: แผ่น</p>
+          <CardTitle className="text-base">{t('dash.widget.paper_trend_6m')}</CardTitle>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{t('dash.widget.paper_trend_desc')}</p>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <Skeleton className="h-56 w-full rounded-md" />
           ) : areaData.length === 0 ? (
-            <EmptyState message="ยังไม่มีข้อมูล" />
+            <EmptyState message={t('dash.no_data')} />
           ) : (
             <>
               <div className="h-56 w-full">
@@ -1419,18 +1447,18 @@ ${kpiHtml}
                     <ReTooltip
                       contentStyle={tooltipStyle}
                       formatter={(v: number, _n: string, p: { payload?: { month?: string; isForecast?: boolean } }) => [
-                        `${(Number(v) || 0).toLocaleString('th-TH')} แผ่น`,
-                        `${p?.payload?.isForecast ? 'คาดการณ์' : (p?.payload?.month ?? '')}`,
+                        `${(Number(v) || 0).toLocaleString('th-TH')} ${t('dash.unit.sheet')}`,
+                        `${p?.payload?.isForecast ? t('dash.forecast') : (p?.payload?.month ?? '')}`,
                       ]}
                       labelFormatter={() => ''}
                     />
                     {forecastSheets !== null && (
                       <ReferenceLine
-                        x="คาดการณ์"
+                        x={t('dash.forecast')}
                         stroke="#f59e0b"
                         strokeDasharray="4 4"
                         label={{
-                          value: 'พยากรณ์',
+                          value: t('dash.forecast_label'),
                           position: 'top',
                           fill: '#f59e0b',
                           fontSize: 10,
@@ -1532,18 +1560,18 @@ ${kpiHtml}
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
                   <span aria-hidden>🔮</span>
                   <span>
-                    พยากรณ์เดือนถัดไป:{' '}
+                    {t('dash.forecast_next_month')}{' '}
                     <span className="font-semibold tabular-nums text-amber-600 dark:text-amber-400">
-                      ~{(forecastSheets ?? 0).toLocaleString('th-TH')} แผ่น
+                      ~{(forecastSheets ?? 0).toLocaleString('th-TH')} {t('dash.unit.sheet')}
                     </span>{' '}
                     <span className="text-slate-400">
                       ({forecastReliability === 'high'
-                        ? 'แนวโน้มน่าเชื่อถือ'
+                        ? t('dash.forecast.high')
                         : forecastReliability === 'medium'
-                          ? 'แนวโน้มปานกลาง'
+                          ? t('dash.forecast.medium')
                           : forecastReliability === 'low'
-                            ? 'ข้อมูลผันผวนสูง — ใช้อ้างอิงเท่านั้น'
-                            : 'ข้อมูลไม่เพียงพอ'})
+                            ? t('dash.forecast.low')
+                            : t('dash.forecast.insufficient')})
                     </span>
                   </span>
                 </div>
@@ -1559,7 +1587,7 @@ ${kpiHtml}
     <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Building2 className="h-4 w-4 text-[#f97316]" /> อุปกรณ์ตามสาขา
+          <Building2 className="h-4 w-4 text-[#f97316]" /> {t('dash.widget.by_site')}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -1570,7 +1598,7 @@ ${kpiHtml}
             ))}
           </div>
         ) : (data?.bySite ?? []).length === 0 ? (
-          <EmptyState message="ยังไม่มีข้อมูลสาขา" />
+          <EmptyState message={t('dash.no_site_data')} />
         ) : (
           <div className="itam-scroll max-h-72 space-y-2 overflow-y-auto pr-1">
             {(data?.bySite ?? []).map((s, idx) => (
@@ -1583,7 +1611,7 @@ ${kpiHtml}
                   <span className="ml-2 text-xs text-slate-400">{s.siteName}</span>
                 </div>
                 <Badge className="border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
-                  {s.deviceCount} เครื่อง
+                  {s.deviceCount} {t('dash.unit.device')}
                 </Badge>
               </div>
             ))}
@@ -1597,7 +1625,7 @@ ${kpiHtml}
     <Card className="shadow-sm border-slate-200 dark:border-slate-800 dark:bg-slate-900">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <History className="h-4 w-4 text-[#f97316]" /> มิเตอร์ล่าสุด
+          <History className="h-4 w-4 text-[#f97316]" /> {t('dash.widget.recent_activity')}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -1608,7 +1636,7 @@ ${kpiHtml}
             ))}
           </div>
         ) : (data?.recentActivity ?? []).length === 0 ? (
-          <EmptyState message="ยังไม่มีกิจกรรม" />
+          <EmptyState message={t('dash.no_activity')} />
         ) : (
           <div className="space-y-2">
             <AnimatePresence initial={false}>
@@ -1624,10 +1652,10 @@ ${kpiHtml}
                 >
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{a.deviceName}</div>
-                    <div className="text-xs text-slate-400">{a.assetCode} · {a.readingDate}</div>
+                    <div className="text-xs text-slate-400">{a.assetCode} · {formatDate(a.readingDate)}</div>
                   </div>
                   <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                    {((a.pagesBw ?? 0) + (a.pagesColor ?? 0)).toLocaleString('th-TH')} แผ่น
+                    {((a.pagesBw ?? 0) + (a.pagesColor ?? 0)).toLocaleString('th-TH')} {t('dash.unit.sheet')}
                   </Badge>
                 </motion.div>
               ))}
@@ -1666,22 +1694,22 @@ ${kpiHtml}
       <div className="flex-shrink-0">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{t('dash.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            ภาพรวมระบบจัดการอุปกรณ์ IT
+            {t('dash.subtitle')}
             {data && <span className="ml-2 text-xs text-emerald-600">⚡ {data.queryTimeMs}ms</span>}
-            <span className="ml-2 text-xs text-slate-400">· ช่วง: <span className="font-medium">{rangeInfoLabel}</span></span>
+            <span className="ml-2 text-xs text-slate-400">· {t('dash.range.short')} <span className="font-medium">{rangeInfoLabel}</span></span>
           </p>
           <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
-            <span>อัปเดตอัตโนมัติ • ครั้งล่าสุด: <span className="font-mono tabular-nums">{formatLastUpdated()}</span></span>
+            <span>{t('dash.last_updated')} <span className="font-mono tabular-nums">{formatLastUpdated()}</span></span>
             <span className="text-slate-300">· auto 30s</span>
             {isFetching && (
               <span className="ml-1 inline-flex items-center gap-1 text-orange-500">
-                <Loader2 className="h-3 w-3 animate-spin" /> กำลังซิงค์…
+                <Loader2 className="h-3 w-3 animate-spin" /> {t('dash.syncing')}
               </span>
             )}
           </div>
@@ -1689,12 +1717,12 @@ ${kpiHtml}
         <div className="flex flex-wrap items-center gap-2">
           <Select value={range} onValueChange={(v) => setRange(v as DashboardRangeKey)}>
             <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="ช่วงเวลา" />
+              <SelectValue placeholder={t('dash.range')} />
             </SelectTrigger>
             <SelectContent>
               {DASHBOARD_RANGE_OPTIONS.map((o) => (
                 <SelectItem key={o.value} value={o.value}>
-                  {o.label}
+                  {t(o.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -1702,11 +1730,11 @@ ${kpiHtml}
           <Button type="button"
             variant="outline"
             size="sm"
-            onClick={async () => { await refetch(); toast.success('รีเฟรชข้อมูลเรียบร้อย') }}
+            onClick={async () => { await refetch(); toast.success(t('dash.refreshed')) }}
             disabled={isFetching}
             className="dark:bg-slate-800 dark:border-slate-700"
           >
-            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> รีเฟรช
+            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} /> {t('dash.refresh')}
           </Button>
           {/* Secondary actions — visible inline on sm+, collapsed into a
               "⋯ เพิ่มเติม" dropdown on mobile to keep the first row to
@@ -1716,7 +1744,7 @@ ${kpiHtml}
             size="sm"
             onClick={exportPdf}
             disabled={isLoading || total === 0}
-            title={isLoading || total === 0 ? 'ต้องมีข้อมูลใน Dashboard ก่อนถึงจะ export PDF ได้' : 'ส่งออก PDF'}
+            title={isLoading || total === 0 ? t('dash.export_pdf.disabled_hint') : t('dash.export_pdf')}
             className="hidden border-[#0d9488] text-[#0d9488] hover:bg-[#0d9488]/10 dark:border-[#14b8a6] dark:text-[#14b8a6] sm:inline-flex"
           >
             <FileDown className="h-4 w-4" /> PDF
@@ -1727,9 +1755,9 @@ ${kpiHtml}
             size="sm"
             onClick={() => setPrintTemplateOpen(true)}
             className="hidden border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c] sm:inline-flex"
-            title="เลือกเทมเพลตก่อนพิมพ์"
+            title={t('dash.print.template_hint')}
           >
-            <Printer className="h-4 w-4" /> พิมพ์
+            <Printer className="h-4 w-4" /> {t('dash.print')}
           </Button>
           <Button type="button"
             variant="outline"
@@ -1737,7 +1765,7 @@ ${kpiHtml}
             onClick={() => setSitesOpen(true)}
             className="hidden dark:bg-slate-800 dark:border-slate-700 sm:inline-flex"
           >
-            <Building2 className="h-4 w-4" /> สาขา
+            <Building2 className="h-4 w-4" /> {t('dash.sites')}
           </Button>
           <Button type="button"
             variant="outline"
@@ -1745,7 +1773,7 @@ ${kpiHtml}
             onClick={() => setHeatOpen(true)}
             className="hidden dark:bg-slate-800 dark:border-slate-700 sm:inline-flex"
           >
-            <Flame className="h-4 w-4" /> Heatmap
+            <Flame className="h-4 w-4" /> {t('dash.heatmap')}
           </Button>
           <Button type="button"
             variant="outline"
@@ -1756,9 +1784,9 @@ ${kpiHtml}
               }
             }}
             className="hidden border-[#f97316] text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c] dark:text-[#fb923c] sm:inline-flex"
-            title="ปรับแต่งวิดเจ็ต"
+            title={t('dash.customize_widgets')}
           >
-            <Settings2 className="h-4 w-4" /> ปรับแต่ง
+            <Settings2 className="h-4 w-4" /> {t('dash.widget.customize')}
           </Button>
           {/* Mobile-only overflow dropdown for secondary actions */}
           <DropdownMenu>
@@ -1767,10 +1795,10 @@ ${kpiHtml}
                 variant="outline"
                 size="sm"
                 className="sm:hidden"
-                aria-label="การกระทำเพิ่มเติม"
+                aria-label={t('dash.more_actions')}
               >
                 <MoreHorizontal className="h-4 w-4" />
-                <span className="ml-1">เพิ่มเติม</span>
+                <span className="ml-1">{t('dash.more')}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -1786,15 +1814,15 @@ ${kpiHtml}
                 onClick={() => setPrintTemplateOpen(true)}
               >
                 <Printer className="mr-2 h-4 w-4" />
-                พิมพ์
+                {t('dash.print')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSitesOpen(true)}>
                 <Building2 className="mr-2 h-4 w-4" />
-                สาขา
+                {t('dash.sites')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setHeatOpen(true)}>
                 <Flame className="mr-2 h-4 w-4" />
-                Heatmap
+                {t('dash.heatmap')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
@@ -1804,7 +1832,7 @@ ${kpiHtml}
                 }}
               >
                 <Settings2 className="mr-2 h-4 w-4" />
-                ปรับแต่งวิดเจ็ต
+                {t('dash.customize_widgets')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1835,7 +1863,7 @@ ${kpiHtml}
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
-              <Trophy className="h-5 w-5 text-[#f97316]" /> เปรียบเทียบสาขา
+              <Trophy className="h-5 w-5 text-[#f97316]" /> {t('dash.widget.compare_sites')}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
@@ -1846,7 +1874,7 @@ ${kpiHtml}
                 ))}
               </div>
             ) : sortedSites.length === 0 ? (
-              <div className="py-8 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
+              <div className="py-8 text-center text-sm text-slate-400">{t('dash.no_data')}</div>
             ) : (
               sortedSites.map((s, i) => {
                 const pct = Math.max(2, (s.deviceCount / maxDevices) * 100)
@@ -1859,7 +1887,7 @@ ${kpiHtml}
                         <span className="text-xs text-slate-400">{s.siteName}</span>
                       </div>
                       <Badge className="border-teal-300 bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
-                        {s.deviceCount} เครื่อง
+                        {s.deviceCount} {t('dash.unit.device')}
                       </Badge>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded bg-slate-100 dark:bg-slate-800">
@@ -1871,8 +1899,8 @@ ${kpiHtml}
                       />
                     </div>
                     <div className="mt-1.5 flex justify-between text-xs text-slate-500 dark:text-slate-400">
-                      <span>✅ ใช้งาน {s.activeCount ?? 0}</span>
-                      <span>📄 กระดาษเดือนนี้ {(s.paperSheets ?? 0).toLocaleString('th-TH')} แผ่น</span>
+                      <span>{t('dash.compare.active').replace('{count}', String(s.activeCount ?? 0))}</span>
+                      <span>{t('dash.compare.paper').replace('{count}', (s.paperSheets ?? 0).toLocaleString('th-TH'))}</span>
                     </div>
                   </div>
                 )
@@ -1887,7 +1915,7 @@ ${kpiHtml}
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
-              <Flame className="h-5 w-5 text-[#0d9488]" /> Heatmap การใช้งานกระดาษ
+              <Flame className="h-5 w-5 text-[#0d9488]" /> {t('dash.widget.heatmap')}
             </DialogTitle>
           </DialogHeader>
           {heatLoading ? (
@@ -1897,13 +1925,13 @@ ${kpiHtml}
               ))}
             </div>
           ) : heat.length === 0 ? (
-            <div className="py-8 text-center text-sm text-slate-400">ยังไม่มีข้อมูล</div>
+            <div className="py-8 text-center text-sm text-slate-400">{t('dash.no_data')}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>
-                    <th className="sticky left-0 z-10 bg-slate-100/95 px-2 py-1.5 text-left text-slate-600 dark:bg-slate-900/80 dark:text-slate-300">อุปกรณ์</th>
+                    <th className="sticky left-0 z-10 bg-slate-100/95 px-2 py-1.5 text-left text-slate-600 dark:bg-slate-900/80 dark:text-slate-300">{t('dash.heatmap.device')}</th>
                     {heatMonths.map(m => (
                       <th key={m} className="px-2 py-1.5 text-center font-mono text-slate-500">{m}</th>
                     ))}
@@ -1924,7 +1952,7 @@ ${kpiHtml}
                             key={c.month}
                             className={`px-2 py-1.5 text-center font-mono tabular-nums ${txtColor}`}
                             style={{ background: heatColor(intensity) }}
-                            title={`${row.assetCode} · ${c.month}: ${(c.pages ?? 0).toLocaleString('th-TH')} แผ่น`}
+                            title={`${row.assetCode} · ${c.month}: ${(c.pages ?? 0).toLocaleString('th-TH')} ${t('dash.unit.sheet')}`}
                           >
                             {(c.pages ?? 0) > 0 ? (c.pages ?? 0).toLocaleString('th-TH') : '·'}
                           </td>
@@ -1935,11 +1963,11 @@ ${kpiHtml}
                 </tbody>
               </table>
               <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
-                <span>น้อย</span>
+                <span>{t('dash.heatmap.less')}</span>
                 {[0.1, 0.3, 0.5, 0.7, 0.9].map(i => (
                   <span key={i} className="h-3 w-8 rounded-sm" style={{ background: heatColor(i) }} />
                 ))}
-                <span>มาก</span>
+                <span>{t('dash.heatmap.more')}</span>
               </div>
             </div>
           )}
@@ -1951,9 +1979,9 @@ ${kpiHtml}
         open={printTemplateOpen}
         onOpenChange={setPrintTemplateOpen}
         templateType="work-order"
-        actionLabel="พิมพ์"
+        actionLabel={t('dash.print')}
         onSelect={(template) => {
-          toast.success(`เลือกเทมเพลต: ${template.name}`)
+          toast.success(t('dash.print.template_selected').replace('{name}', template.name))
           if (typeof window !== 'undefined') window.print()
         }}
       />

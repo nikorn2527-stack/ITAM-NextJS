@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { generateScheduledDatesForMonth } from '@/lib/pm-schedule'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/pm/calendar?month=YYYY-MM&site=
@@ -14,6 +15,10 @@ import { generateScheduledDatesForMonth } from '@/lib/pm-schedule'
  * Auth: VIEW_DASHBOARD
  */
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('pm')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {

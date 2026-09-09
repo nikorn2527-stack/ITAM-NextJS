@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useT, useFormatDateTime } from '@/store/i18n-store'
 import {
   Select,
   SelectContent,
@@ -97,10 +98,10 @@ const REPORT_TYPE_SELECT_OPTIONS: {
   value: ReportType
   label: string
 }[] = [
-  { value: 'dashboard_summary', label: 'สรุป Dashboard' },
-  { value: 'cycle', label: 'รอบจดมิเตอร์' },
-  { value: 'audit', label: 'ประวัติการใช้งาน' },
-  { value: 'utilization', label: 'การใช้งานอุปกรณ์' },
+  { value: 'dashboard_summary', label: 'Summary' },
+  { value: 'cycle', label: 'Meter Cycle' },
+  { value: 'audit', label: 'Audit Log' },
+  { value: 'utilization', label: 'Device Usage' },
 ]
 
 function defaultTitle(type: ReportType, rangeLabel: string): string {
@@ -108,6 +109,8 @@ function defaultTitle(type: ReportType, rangeLabel: string): string {
 }
 
 export function ReportsSection() {
+  const t = useT()
+  const formatDateTime = useFormatDateTime()
   const qc = useQueryClient()
   const [createOpen, setCreateOpen] = React.useState(false)
   const [viewId, setViewId] = React.useState<string | null>(null)
@@ -151,7 +154,7 @@ export function ReportsSection() {
     if (!createOpen) return
     const rangeLabel =
       DASHBOARD_RANGE_OPTIONS.find((o) => o.value === rangeKey)?.label ??
-      'เดือนนี้'
+      t('reports.range.this_month')
     const newDefault = defaultTitle(type, rangeLabel)
     // Update if user hasn't customized
     setTitle((prev) => {
@@ -169,7 +172,7 @@ export function ReportsSection() {
     setRangeKey('month')
     const rangeLabel =
       DASHBOARD_RANGE_OPTIONS.find((o) => o.value === 'month')?.label ??
-      'เดือนนี้'
+      t('reports.range.this_month')
     setTitle(defaultTitle('dashboard_summary', rangeLabel))
     setCreateOpen(true)
   }
@@ -186,7 +189,7 @@ export function ReportsSection() {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error ?? 'Failed to create report')
       }
-      toast.success('สร้างรายงานแล้ว')
+      toast.success(t('reports.created'))
       setCreateOpen(false)
       await qc.invalidateQueries({ queryKey: ['reports'] })
     } catch (e) {
@@ -207,7 +210,7 @@ export function ReportsSection() {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error ?? 'Failed to delete report')
       }
-      toast.success('ลบรายงานแล้ว')
+      toast.success(t('reports.deleted'))
       setDeleteTarget(null)
       await qc.invalidateQueries({ queryKey: ['reports'] })
     } catch (e) {
@@ -225,7 +228,7 @@ export function ReportsSection() {
         const detail = json.report as ReportDetail
         const data = detail.data as Record<string, unknown> | null
         if (!data) {
-          toast.error('ไม่มีข้อมูลในรายงาน')
+          toast.error(t('reports.no_data_in_report'))
           return
         }
         // Flatten the report data: try common shapes
@@ -246,9 +249,9 @@ export function ReportsSection() {
         }
         const safeName = r.title.replace(/[^\u0E00-\u0E7Fa-zA-Z0-9-]+/g, '_').slice(0, 60)
         downloadCsv(`report-${safeName}.csv`, rows)
-        toast.success('ดาวน์โหลด CSV แล้ว')
+        toast.success(`${t('reports.download')} CSV`)
       })
-      .catch(() => toast.error('ดาวน์โหลด CSV ไม่สำเร็จ'))
+      .catch(() => toast.error(`${t('reports.download')} CSV ${t('reports.create_failed')}`))
   }
 
   return (
@@ -256,9 +259,9 @@ export function ReportsSection() {
       <CardHeader className="flex flex-row items-center justify-between gap-2">
         <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <FileText className="h-4 w-4 text-[#f97316]" />
-          📋 รายงาน
+          📋 {t('reports.section.title')}
           <span className="ml-2 text-xs font-normal text-slate-400 dark:text-slate-500">
-            สร้างและจัดเก็บรายงานเพื่อดูประวัติย้อนหลัง
+            {t('reports.section.subtitle')}
           </span>
         </CardTitle>
         <Button
@@ -267,7 +270,7 @@ export function ReportsSection() {
           className="shrink-0 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
         >
           <Plus className="h-4 w-4" />
-          สร้างรายงาน
+          {t('reports.create_new')}
         </Button>
       </CardHeader>
       <CardContent>
@@ -283,10 +286,10 @@ export function ReportsSection() {
               <Inbox className="h-6 w-6 text-slate-300 dark:text-slate-600" />
             </div>
             <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-              ยังไม่มีรายงาน
+              {t('reports.empty')}
             </div>
             <div className="text-xs text-slate-400 dark:text-slate-500">
-              สร้างรายงานแรกของคุณเพื่อบันทึกสถานะของระบบ ณ เวลานั้น
+              {t('reports.create_first_hint')}
             </div>
             <Button
               size="sm"
@@ -294,7 +297,7 @@ export function ReportsSection() {
               className="mt-2 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
               <Plus className="h-4 w-4" />
-              สร้างรายงานแรก
+              {t('reports.create_first')}
             </Button>
           </div>
         ) : (
@@ -351,8 +354,8 @@ export function ReportsSection() {
                       size="icon"
                       variant="ghost"
                       onClick={() => setViewId(r.id)}
-                      aria-label="ดูรายงาน"
-                      title="ดูรายงาน"
+                      aria-label="{t('reports.view')}"
+                      title="{t('reports.view')}"
                       className="h-8 w-8 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                     >
                       <Eye className="h-4 w-4" />
@@ -361,8 +364,8 @@ export function ReportsSection() {
                       size="icon"
                       variant="ghost"
                       onClick={() => downloadCsv_(r)}
-                      aria-label="ดาวน์โหลด CSV"
-                      title="ดาวน์โหลด CSV"
+                      aria-label="{t('reports.download')} CSV"
+                      title="{t('reports.download')} CSV"
                       className="h-8 w-8 text-[#0d9488] hover:bg-teal-50 dark:text-[#14b8a6] dark:hover:bg-teal-950/40"
                     >
                       <Download className="h-4 w-4" />
@@ -371,8 +374,8 @@ export function ReportsSection() {
                       size="icon"
                       variant="ghost"
                       onClick={() => setDeleteTarget(r)}
-                      aria-label="ลบรายงาน"
-                      title="ลบรายงาน"
+                      aria-label="{t('reports.delete')}"
+                      title="{t('reports.delete')}"
                       className="h-8 w-8 text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -389,16 +392,16 @@ export function ReportsSection() {
           <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
             <DialogHeader>
               <DialogTitle className="text-slate-800 dark:text-slate-100">
-                สร้างรายงาน
+                {t('reports.create_new')}
               </DialogTitle>
               <DialogDescription>
-                เลือกประเภทและช่วงเวลาของรายงานที่ต้องการสร้าง
+                {t('reports.dialog.subtitle')}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-2">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  ประเภทรายงาน
+                  {t('reports.col.type')}
                 </Label>
                 <Select
                   value={type}
@@ -418,7 +421,7 @@ export function ReportsSection() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  ช่วงเวลา
+                  {t('reports.col.range')}
                 </Label>
                 <Select value={rangeKey} onValueChange={setRangeKey}>
                   <SelectTrigger className="w-full">
@@ -435,12 +438,12 @@ export function ReportsSection() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  ชื่อรายงาน
+                  {t('reports.col.name')}
                 </Label>
                 <Input
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="ตั้งชื่อรายงาน..."
+                  placeholder="{t('reports.dialog.name_placeholder')}..."
                 />
               </div>
             </div>
@@ -450,7 +453,7 @@ export function ReportsSection() {
                 onClick={() => setCreateOpen(false)}
                 disabled={creating}
               >
-                ยกเลิก
+                {t('reports.cancel')}
               </Button>
               <Button
                 onClick={createReport}
@@ -462,7 +465,7 @@ export function ReportsSection() {
                 ) : (
                   <Plus className="mr-1.5 h-4 w-4" />
                 )}
-                {creating ? 'กำลังสร้าง...' : 'สร้าง'}
+                {creating ? `${t('reports.creating')}...` : t('common.save')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -476,14 +479,14 @@ export function ReportsSection() {
           <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl dark:border-slate-800 dark:bg-slate-900">
             <DialogHeader>
               <DialogTitle className="text-slate-800 dark:text-slate-100">
-                {viewReport?.title ?? 'รายงาน'}
+                {viewReport?.title ?? t('reports.section.title')}
               </DialogTitle>
               <DialogDescription>
                 {viewReport
-                  ? `ประเภท: ${reportTypeLabel(viewReport.type)} · สร้างเมื่อ ${formatThaiDate(
+                  ? `${t('reports.col.type')}: ${reportTypeLabel(viewReport.type)} · ${t('reports.col.created_at')} ${formatDateTime(
                       viewReport.createdAt.slice(0, 10),
                     )}`
-                  : 'กำลังโหลด...'}
+                  : `${t('reports.loading')}...`}
               </DialogDescription>
             </DialogHeader>
             <div className="py-2">
@@ -493,7 +496,7 @@ export function ReportsSection() {
                 <ReportDataView report={viewReport} />
               ) : (
                 <div className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
-                  ไม่พบรายงาน
+                  {t('reports.not_found')}
                 </div>
               )}
             </div>
@@ -508,18 +511,18 @@ export function ReportsSection() {
           <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-slate-800 dark:text-slate-100">
-                ยืนยันการลบรายงาน
+                {t('reports.confirm_delete_title')}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                ต้องการลบรายงาน{' '}
+                {t('reports.confirm_delete_msg')}{' '}
                 <span className="font-semibold text-slate-700 dark:text-slate-200">
                   {deleteTarget?.title}
                 </span>{' '}
-                ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้
+                
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
+              <AlertDialogCancel disabled={deleting}>{t('reports.cancel')}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={(e) => {
                   e.preventDefault() // prevent Radix auto-close before async completes
@@ -528,7 +531,7 @@ export function ReportsSection() {
                 disabled={deleting}
                 className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
-                {deleting ? 'กำลังลบ...' : 'ลบรายงาน'}
+                {deleting ? `${t('reports.deleting')}...` : t('reports.delete')}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -569,7 +572,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
   if (!data) {
     return (
       <div className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
-        ไม่มีข้อมูลในรายงานนี้
+        {t('reports.no_data_in_this')}
       </div>
     )
   }
@@ -583,7 +586,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
         </Badge>
         {report.rangeKey && (
           <span className="text-slate-500 dark:text-slate-400">
-            ช่วง:{' '}
+            {t('reports.col.range')}:{' '}
             {DASHBOARD_RANGE_OPTIONS.find((o) => o.value === report.rangeKey)
               ?.label ?? report.rangeKey}
           </span>
@@ -596,7 +599,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
         )}
         {data.generatedAt && (
           <span className="text-slate-400 dark:text-slate-500">
-            · สร้างเมื่อ {new Date(data.generatedAt).toLocaleString('th-TH')}
+            · {t('reports.col.created_at')} {new Date(data.generatedAt).toLocaleString('th-TH')}
           </span>
         )}
       </div>
@@ -638,10 +641,10 @@ function ReportDataView({ report }: { report: ReportDetail }) {
           {typeof data.paperThisMonth === 'number' && (
             <div className="rounded-md border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
               <div className="text-xs text-slate-500 dark:text-slate-400">
-                กระดาษในช่วง
+                {t('reports.type.paper')}
               </div>
               <div className="mt-0.5 text-sm font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                {data.paperThisMonth.toLocaleString('th-TH')} แผ่น
+                {data.paperThisMonth.toLocaleString('th-TH')} ${t('reports.unit.sheet')}
               </div>
             </div>
           )}
@@ -651,30 +654,30 @@ function ReportDataView({ report }: { report: ReportDetail }) {
       {typeof data.totalSheets === 'number' && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {typeof data.readingCount === 'number' && (
-            <StatBox label="จำนวนการจดมิเตอร์" value={String(data.readingCount)} />
+            <StatBox label={t('reports.summary.meter_count')} value={String(data.readingCount)} />
           )}
           <StatBox
-            label="จำนวนแผ่นรวม"
-            value={`${data.totalSheets.toLocaleString('th-TH')} แผ่น`}
+            label={t('reports.summary.paper_total')}
+            value={`${data.totalSheets.toLocaleString('th-TH')} ${t('reports.unit.sheet')}`}
           />
           {typeof data.deviceCount === 'number' && (
-            <StatBox label="จำนวนอุปกรณ์" value={String(data.deviceCount)} />
+            <StatBox label={t('reports.summary.total_devices')} value={String(data.deviceCount)} />
           )}
           {typeof data.usedDeviceCount === 'number' && (
             <StatBox
-              label="อุปกรณ์ที่ใช้งาน"
+              label={t('reports.summary.active_devices')}
               value={String(data.usedDeviceCount)}
             />
           )}
           {typeof data.totalCount === 'number' && (
-            <StatBox label="จำนวน log ทั้งหมด" value={String(data.totalCount)} />
+            <StatBox label={`${t('reports.unit.count')} log ${t('reports.range.all')}`} value={String(data.totalCount)} />
           )}
         </div>
       )}
 
       {/* byStatus / byType */}
       {data.byStatus && data.byStatus.length > 0 && (
-        <SubSection title="สัดส่วนสถานะ">
+        <SubSection title={t('reports.summary.by_status')}>
           <div className="flex flex-wrap gap-2">
             {data.byStatus.map((s) => (
               <Badge
@@ -688,7 +691,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
         </SubSection>
       )}
       {data.byType && data.byType.length > 0 && (
-        <SubSection title="จำนวนตามประเภท">
+        <SubSection title={t('reports.summary.by_type')}>
           <div className="flex flex-wrap gap-2">
             {data.byType.map((s) => (
               <Badge
@@ -702,7 +705,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
         </SubSection>
       )}
       {data.byAction && data.byAction.length > 0 && (
-        <SubSection title="สัดส่วนตามการกระทำ">
+        <SubSection title={t('reports.summary.by_activity')}>
           <div className="flex flex-wrap gap-2">
             {data.byAction.map((s) => (
               <Badge
@@ -716,7 +719,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
         </SubSection>
       )}
       {data.byEntity && data.byEntity.length > 0 && (
-        <SubSection title="สัดส่วนตาม entity">
+        <SubSection title={`${t('reports.summary.by_status_label')} entity`}>
           <div className="flex flex-wrap gap-2">
             {data.byEntity.map((s) => (
               <Badge
@@ -732,7 +735,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
 
       {/* Top usage list */}
       {data.topUsage && data.topUsage.length > 0 && (
-        <SubSection title="อุปกรณ์ใช้งานสูงสุด">
+        <SubSection title={t('reports.summary.top_devices')}>
           <ol className="space-y-1">
             {data.topUsage.slice(0, 10).map((d, i) => (
               <li
@@ -751,7 +754,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
                   </span>
                 </span>
                 <span className="tabular-nums font-medium text-[#f97316]">
-                  {Number(d.value ?? 0).toLocaleString('th-TH')} แผ่น
+                  {Number(d.value ?? 0).toLocaleString('th-TH')} ${t('reports.unit.sheet')}
                 </span>
               </li>
             ))}
@@ -761,7 +764,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
 
       {/* recentActivity / logs / byDevice / devices / recentReadings */}
       {data.recentActivity && data.recentActivity.length > 0 && (
-        <SubSection title="กิจกรรมล่าสุด">
+        <SubSection title={t('reports.summary.recent_activity')}>
           <SimpleRows
             rows={data.recentActivity.slice(0, 12)}
             columns={['deviceName', 'assetCode', 'reading', 'delta', 'date']}
@@ -769,7 +772,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
         </SubSection>
       )}
       {data.byDevice && data.byDevice.length > 0 && (
-        <SubSection title="สรุปการใช้งานตามอุปกรณ์">
+        <SubSection title={t('reports.summary.device_usage')}>
           <SimpleRows
             rows={data.byDevice.slice(0, 12)}
             columns={['assetCode', 'name', 'site', 'delta', 'count']}
@@ -777,7 +780,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
         </SubSection>
       )}
       {data.recentReadings && data.recentReadings.length > 0 && (
-        <SubSection title="การจดมิเตอร์ล่าสุด">
+        <SubSection title={t('reports.type.meter')}>
           <SimpleRows
             rows={data.recentReadings.slice(0, 12)}
             columns={['date', 'assetCode', 'deviceName', 'reading', 'delta']}
@@ -785,7 +788,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
         </SubSection>
       )}
       {data.devices && data.devices.length > 0 && (
-        <SubSection title="รายการอุปกรณ์">
+        <SubSection title={t('reports.type.devices')}>
           <SimpleRows
             rows={data.devices.slice(0, 12)}
             columns={[
@@ -808,7 +811,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
         </SubSection>
       )}
       {data.cycles && data.cycles.length > 0 && (
-        <SubSection title="รอบจดมิเตอร์">
+        <SubSection title={t('reports.summary.cycle')}>
           <SimpleRows
             rows={data.cycles.slice(0, 10)}
             columns={['name', 'startDate', 'endDate', 'status']}
@@ -822,27 +825,27 @@ function ReportDataView({ report }: { report: ReportDetail }) {
 function summaryLabel(k: string): string {
   switch (k) {
     case 'total':
-      return 'ทั้งหมด'
+      return t('reports.range.all')
     case 'active':
-      return 'ใช้งานอยู่'
+      return t('reports.summary.active')
     case 'spare':
-      return 'สำรอง'
+      return t('reports.summary.spare')
     case 'repair':
-      return 'ส่งซ่อม'
+      return t('reports.summary.repair')
     case 'paperThisMonth':
-      return 'กระดาษในช่วง'
+      return t('reports.type.paper')
     case 'totalValue':
-      return 'มูลค่ารวม'
+      return t('reports.summary.total_value')
     case 'totalOriginal':
-      return 'มูลค่าเดิม'
+      return t('reports.summary.original_value')
     case 'totalDepreciated':
-      return 'ค่าเสื่อมสะสม'
+      return t('reports.summary.acc_dep')
     case 'fullyDepreciatedCount':
-      return 'หมดอายุการใช้งาน'
+      return t('reports.summary.expired')
     case 'avgDepreciationPercent':
-      return 'เฉลี่ยค่าเสื่อม'
+      return t('reports.summary.avg_dep')
     case 'deviceCount':
-      return 'จำนวนอุปกรณ์'
+      return t('reports.summary.total_devices')
     default:
       return k
   }

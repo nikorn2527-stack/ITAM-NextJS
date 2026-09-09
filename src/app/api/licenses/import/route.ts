@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
 import { demoTag } from '@/lib/demo-mode'
 import { parseCsv } from '@/lib/csv'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/licenses/import
@@ -111,6 +112,10 @@ function rowToCsvRow(headers: string[], cells: string[]): CsvRow {
 }
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   // ── Auth: require DEVICE_EDIT (same as device import) ──
   const auth = await requireAuth(req, 'DEVICE_EDIT')
   if (!auth.ok) {

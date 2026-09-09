@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
 export const maxDuration = 60
@@ -153,6 +154,10 @@ function normaliseStatus(raw: string | null): string {
 }
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   try {
     // ── Auth (added in Task 10 — previously this route had NO auth check,
     //     which meant any unauthenticated user could mass-import devices) ──

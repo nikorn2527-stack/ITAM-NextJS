@@ -7,6 +7,7 @@ import { resolveStockTransactionIdentity } from '@/lib/stock-transaction-identit
 import { validateStockTransactionInput } from '@/lib/stock-transaction-contract'
 import { withSerializableRetry } from '@/lib/retry-transaction'
 import { normalizeStockSourceKey, resolveWorkOrderReference } from '@/lib/stock-work-order-resolution'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /** Parse a Float; returns null when missing/invalid. */
 function optFloat(v: unknown): number | null {
@@ -43,6 +44,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   try {
     const { id } = await params
     const body = await req.json()

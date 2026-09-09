@@ -37,7 +37,7 @@ import {
 } from '@/modules/reports'
 
 export async function GET(req: NextRequest) {
-  const unavailable = moduleUnavailableResponse('reports')
+  const unavailable = await moduleUnavailableResponse('reports')
   if (unavailable) return unavailable
 
   // Milestone 1 — Security baseline

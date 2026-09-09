@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 type RangeKey = 'month' | '30d' | 'quarter' | 'all'
 
@@ -99,6 +100,10 @@ function monthColumns(range: RangeKey): string[] {
 }
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

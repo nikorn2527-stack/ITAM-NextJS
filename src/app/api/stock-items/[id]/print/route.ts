@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 function esc(input: unknown): string {
   if (input === null || input === undefined) return ''
@@ -69,6 +70,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'STOCK_VIEW')
   if (!auth.ok) {
     return new NextResponse(

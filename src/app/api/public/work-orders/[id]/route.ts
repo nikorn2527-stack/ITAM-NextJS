@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { checkRateLimit, getClientIP } from '@/lib/rate-limit-kv'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // ============================================================
 // Public QR Scan-to-View (Feature 5)
@@ -59,6 +60,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   try {
     // Rate limit — prevents enumeration of work orders
     const clientIP = getClientIP(req)

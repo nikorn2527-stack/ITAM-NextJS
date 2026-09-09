@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { resolveHeaderIndexes } from '@/lib/device-import-contract'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
   FIELD_MAPPINGS,
   STATUS_MAPPINGS,
@@ -2041,6 +2042,10 @@ async function dispatchAppsScriptImport(
 export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('import')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'IMPORT_DATA')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
@@ -2417,6 +2422,10 @@ export async function POST(req: NextRequest) {
 // GET /api/import  — recent ImportJob history (default 50)
 // ============================================================
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('import')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'IMPORT_DATA')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {

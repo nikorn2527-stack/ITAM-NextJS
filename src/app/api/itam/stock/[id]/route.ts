@@ -4,6 +4,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { canAccessSite } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
 import { toCompatStockItem, toCompatStockTransaction } from '@/lib/stock-compat'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -17,6 +18,10 @@ function finiteNumber(value: unknown): number | undefined {
 
 // GET /api/itam/stock/[id] — single item + last 10 transactions
 export async function GET(req: NextRequest, { params }: Params) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -48,6 +53,10 @@ export async function GET(req: NextRequest, { params }: Params) {
 // PUT /api/itam/stock/[id] — update item fields.
 // Accepts legacy name alias; productCode remains immutable after creation.
 export async function PUT(req: NextRequest, { params }: Params) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -134,6 +143,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
 // DELETE /api/itam/stock/[id]
 // Soft delete when transactions exist; hard delete otherwise.
 export async function DELETE(req: NextRequest, { params }: Params) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

@@ -5,6 +5,7 @@ import {
   type NotificationTemplate,
 } from '@/lib/notifications'
 import { requireAuth } from '@/lib/auth-middleware'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/notifications/send
@@ -51,6 +52,10 @@ const VALID_TEMPLATES = new Set<NotificationTemplate>([
 ])
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('notifications')
+  if (unavailable) return unavailable
+
+
   // ── P0 Security: require ADMIN permission ──
   const auth = await requireAuth(req, 'ADMIN')
   if (!auth.ok) {

@@ -17,11 +17,16 @@ import {
   serverError,
 } from '@/lib/api/response'
 import { loadAuthorizedWorkOrderV1 } from '../../_shared'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const { id } = await params
 
   try {

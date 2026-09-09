@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
 export const maxDuration = 60
@@ -88,6 +89,10 @@ function computeStatus(warrantyEnd: string | null): {
 }
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

@@ -5,6 +5,7 @@ import {
   setActiveDocumentTemplateId,
 } from '@/lib/document-template-store'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -12,6 +13,10 @@ interface Params {
 
 // POST /api/itam/document-templates/[id]/activate — set template as active
 export async function POST(req: NextRequest, { params }: Params) {
+  const unavailable = await moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

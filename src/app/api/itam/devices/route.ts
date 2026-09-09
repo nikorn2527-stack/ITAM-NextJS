@@ -9,9 +9,14 @@ import { publishRealtimeEvent } from '@/lib/realtime'
 import { parseDeviceListPagination } from '@/lib/device-list-query'
 import { DEVICE_LIST_FIELDS, DEVICE_MOBILE_LIST_FIELDS } from '@/lib/devices-bounded-list'
 import { demoTag } from '@/lib/demo-mode'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // GET /api/itam/devices?search=&status=&site=&type=&page=1&limit=20
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -116,6 +121,10 @@ export async function GET(req: NextRequest) {
 
 // POST /api/itam/devices — create new device (requires DEVICE_EDIT)
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

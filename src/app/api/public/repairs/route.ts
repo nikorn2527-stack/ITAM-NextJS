@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { notifyWorkOrderCreated } from '@/lib/notifications'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
   getActiveWoPattern,
   generateWoNumberFromPattern,
@@ -311,6 +312,10 @@ function validateBody(raw: unknown): ValidationResult {
 // ── POST handler ────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   try {
     // ── Parse + validate body ──
     const raw = await req.json().catch(() => null)

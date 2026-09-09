@@ -61,7 +61,7 @@ function computeBookValue(device: {
 }
 
 export async function GET(req: NextRequest) {
-  const moduleCheck = moduleUnavailableResponse('devices')
+  const moduleCheck = await moduleUnavailableResponse('devices')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'VIEW_DEVICES')
@@ -125,7 +125,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const moduleCheck = moduleUnavailableResponse('devices')
+  const moduleCheck = await moduleUnavailableResponse('devices')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'DEVICE_EDIT')
@@ -229,7 +229,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const moduleCheck = moduleUnavailableResponse('devices')
+  const moduleCheck = await moduleUnavailableResponse('devices')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'DEVICE_EDIT')

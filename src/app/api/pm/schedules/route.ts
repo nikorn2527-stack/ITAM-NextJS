@@ -14,7 +14,7 @@ import { isNumericShortQuery } from '@/lib/suffix-search'
  */
 export async function GET(req: NextRequest) {
   // ── Phase 4.3: Module availability gate ──
-  const moduleCheck = moduleUnavailableResponse('pm')
+  const moduleCheck = await moduleUnavailableResponse('pm')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   // ── Phase 4.3: Module availability gate ──
-  const moduleCheck = moduleUnavailableResponse('pm')
+  const moduleCheck = await moduleUnavailableResponse('pm')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'WO_CREATE')

@@ -5,9 +5,14 @@ import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { notifyDeviceUpdated } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { demoTag } from '@/lib/demo-mode'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // GET /api/itam/devices/[id] — single device with full details
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -41,6 +46,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // PUT /api/itam/devices/[id] — update device
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -133,6 +142,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
 // DELETE /api/itam/devices/[id]
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'DEVICE_DELETE')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

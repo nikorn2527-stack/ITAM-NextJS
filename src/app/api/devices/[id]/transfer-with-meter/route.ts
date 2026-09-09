@@ -25,11 +25,16 @@ import { getLifecycleReadingType } from '@/lib/lifecycle-reading-type'
 import { notifyTransfer } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'DEVICE_TRANSFER')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
   parseDeviceImportCsv,
   validateDeviceImportRows,
@@ -63,6 +64,10 @@ export const maxDuration = 60
 const MAX_IMPORT_ROWS = 5000
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   try {
     // ── 1. Auth ────────────────────────────────────────────────────
     const auth = await requireAuth(req, 'DEVICE_EDIT')

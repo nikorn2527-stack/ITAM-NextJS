@@ -6,6 +6,7 @@ import { getNextAssetSiteCode, normalizeAssetSiteCodeForCompare } from '@/lib/as
 import { notifyTransfer } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { getLifecycleReadingType } from '@/lib/lifecycle-reading-type'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/itam/devices/[id]/transfer
@@ -35,6 +36,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   let meterReadingIdForRecovery: string | null = null
   try {
     const auth = await requireAuth(req, 'DEVICE_TRANSFER')

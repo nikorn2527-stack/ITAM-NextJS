@@ -24,6 +24,7 @@ import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { hasResolvedPermission } from '@/lib/auth'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
   ok,
   badRequest,
@@ -44,6 +45,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const { id } = await params
   const url = new URL(req.url)
   const reporterTel = url.searchParams.get('reporterTel')?.trim() ?? ''
@@ -94,6 +99,10 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const { id } = await params
 
   try {

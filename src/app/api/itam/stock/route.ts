@@ -8,6 +8,7 @@ import { isNumericShortQuery } from '@/lib/suffix-search'
 import { toCompatStockItem } from '@/lib/stock-compat'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { demoTag } from '@/lib/demo-mode'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 function finiteNumber(value: unknown): number | undefined {
   if (value === '' || value === null || value === undefined) return undefined
@@ -22,6 +23,10 @@ function optionalText(value: unknown): string | null {
 // GET /api/itam/stock?category=&site=&lowStock=1&q=search
 // Returns the current ITAM-DB names plus itemId/name compatibility aliases.
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -81,6 +86,10 @@ export async function GET(req: NextRequest) {
 // POST /api/itam/stock — create a new stock item.
 // Accepts both current productCode/productName and legacy itemId/name aliases.
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   try {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })

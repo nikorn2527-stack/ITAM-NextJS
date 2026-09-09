@@ -9,6 +9,7 @@ import { GlobalSearch } from '@/components/itam/global-search'
 import { TopBarClock } from '@/components/itam/top-bar-clock'
 import { RealtimeProvider } from '@/hooks/use-realtime-updates'
 import { PwaInstallButton } from '@/components/itam/pwa-registration'
+import { PwaUpdatePrompt } from '@/components/itam/pwa-update-prompt'
 // QrScannerDialog — dynamic import (jsqr is CommonJS, breaks SSR prerender)
 const QrScannerDialog = dynamic(() =>
   import('@/components/itam/qr-scanner').then((m) => m.QrScannerDialog),
@@ -368,6 +369,8 @@ export function HomePage() {
         <QrScannerDialog />
         {/* PWA install prompt — floating, only shows when installable */}
         <PwaInstallButton />
+        {/* PWA update prompt — shows when a new SW version is waiting */}
+        <PwaUpdatePrompt />
       </div>
     </RealtimeProvider>
   )

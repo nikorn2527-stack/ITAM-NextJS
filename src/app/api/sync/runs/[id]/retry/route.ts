@@ -15,6 +15,7 @@ import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { withSerializableRetryTracked } from '@/lib/retry-transaction'
 import { redacted } from '@/lib/sync-adapter'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // Helper: convert JsonValue | null to Prisma Json? input type
 function toJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
@@ -28,6 +29,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('sync')
+  if (unavailable) return unavailable
+
+
   // 1. Auth + AuthorizationContext (I-02)
   const auth = await requireAuth(req, 'ADMIN')
   if (!auth.ok) {

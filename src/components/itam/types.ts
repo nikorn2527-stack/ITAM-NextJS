@@ -467,11 +467,15 @@ export const DASHBOARD_RANGE_OPTIONS: {
   value: DashboardRangeKey
   label: string
   kpiLabel: string
+  /** i18n key for the human label (resolved via t() at render time). */
+  labelKey: string
+  /** i18n key for the KPI card label (resolved via t() at render time). */
+  kpiLabelKey: string
 }[] = [
-  { value: 'month', label: 'เดือนนี้', kpiLabel: 'กระดาษเดือนนี้' },
-  { value: '30d', label: '30 วันล่าสุด', kpiLabel: 'กระดาษ 30 วัน' },
-  { value: 'quarter', label: 'ไตรมาสนี้', kpiLabel: 'กระดาษไตรมาสนี้' },
-  { value: 'all', label: 'ทั้งหมด', kpiLabel: 'กระดาษทั้งหมด' },
+  { value: 'month', label: 'เดือนนี้', kpiLabel: 'กระดาษเดือนนี้', labelKey: 'dash.range.month', kpiLabelKey: 'dash.range.kpi_month' },
+  { value: '30d', label: '30 วันล่าสุด', kpiLabel: 'กระดาษ 30 วัน', labelKey: 'dash.range.30d', kpiLabelKey: 'dash.range.kpi_30d' },
+  { value: 'quarter', label: 'ไตรมาสนี้', kpiLabel: 'กระดาษไตรมาสนี้', labelKey: 'dash.range.quarter', kpiLabelKey: 'dash.range.kpi_quarter' },
+  { value: 'all', label: 'ทั้งหมด', kpiLabel: 'กระดาษทั้งหมด', labelKey: 'dash.range.all', kpiLabelKey: 'dash.range.kpi_all' },
 ]
 
 export interface AuditLog {

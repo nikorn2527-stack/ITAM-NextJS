@@ -8,11 +8,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('sync')
+  if (unavailable) return unavailable
+
+
   // 1. Auth + AuthorizationContext
   const auth = await requireAuth(req, 'ADMIN')
   if (!auth.ok) {

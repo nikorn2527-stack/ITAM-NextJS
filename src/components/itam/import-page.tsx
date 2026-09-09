@@ -15,16 +15,11 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
 import {
   Dialog,
   DialogContent,
@@ -48,18 +43,18 @@ import {
   AlertCircle,
   FileSpreadsheet,
   Loader2,
-  ChevronDown,
-  ChevronRight,
   RefreshCw,
   Database,
+  History,
+  HelpCircle,
 } from 'lucide-react'
 import { downloadCsv } from '@/lib/csv'
 import { cn } from '@/lib/utils'
-import { LegacyImportSection } from './legacy-import-section'
+import { useT, useFormatDateTime } from '@/store/i18n-store'
 import { ManualSyncPreviewSection } from './manual-sync-preview-section'
 
 // ============================================================
-// ข้อ 3: นำเข้าข้อมูล — อัปโหลด CSV แยกตามประเภท
+// item 3: Import data — Upload CSV by Type
 // ============================================================
 
 type JobType = 'device' | 'work-order' | 'stock' | 'meter-reading' | 'accessory'
@@ -67,8 +62,9 @@ type JobType = 'device' | 'work-order' | 'stock' | 'meter-reading' | 'accessory'
 interface ImportTypeDef {
   id: JobType
   icon: string
-  title: string
-  desc: string
+  // i18n keys for the card title + description.
+  titleKey: string
+  descKey: string
   headers: { key: string; label: string }[]
   sample: Record<string, string>
 }
@@ -77,10 +73,10 @@ const IMPORT_TYPES: ImportTypeDef[] = [
   {
     id: 'device',
     icon: '💻',
-    title: 'อุปกรณ์',
-    desc: 'นำเข้ารายการอุปกรณ์ IT',
+    titleKey: 'jobtype.device',
+    descKey: 'import.type_desc.device',
     headers: [
-      { key: 'assetCode', label: 'assetCode' },
+      { key: 'assetcode', label: 'assetcode' },
       { key: 'name', label: 'name' },
       { key: 'brand', label: 'brand' },
       { key: 'model', label: 'model' },
@@ -94,16 +90,16 @@ const IMPORT_TYPES: ImportTypeDef[] = [
       { key: 'warrantyMonths', label: 'warrantyMonths' },
     ],
     sample: {
-      assetCode: 'IT-PRT-001',
-      name: 'เครื่องพิมพ์ HP LaserJet',
+      assetcode: 'IT-PRT-001',
+      name: 'HP LaserJet Printer',
       brand: 'HP',
       model: 'LaserJet Pro M404',
       type: 'PRINTER',
       serialNumber: 'SN12345',
       status: 'active',
       site: 'HQ',
-      department: 'ไอที',
-      location: 'ห้องเซิร์ฟเวอร์',
+      department: 'IT',
+      location: 'Server room',
       purchaseDate: '2025-01-01',
       warrantyMonths: '12',
     },
@@ -111,8 +107,8 @@ const IMPORT_TYPES: ImportTypeDef[] = [
   {
     id: 'work-order',
     icon: '🔧',
-    title: 'แจ้งซ่อม',
-    desc: 'นำเข้าใบงานแจ้งซ่อม',
+    titleKey: 'jobtype.work-order',
+    descKey: 'import.type_desc.work_order',
     headers: [
       { key: 'subject', label: 'subject' },
       { key: 'building', label: 'building' },
@@ -123,22 +119,22 @@ const IMPORT_TYPES: ImportTypeDef[] = [
       { key: 'tel', label: 'tel' },
     ],
     sample: {
-      subject: 'เครื่องพิมพ์ไม่ทำงาน',
-      building: 'อาคาร A',
-      location: 'ชั้น 3 ห้อง 301',
-      details: 'เครื่องพิมพ์ไม่ติดเครื่อง',
-      priority: 'ปกติ',
-      reporterName: 'คุณสมชาย',
+      subject: 'Printer not working',
+      building: 'Building A',
+      location: 'Floor 3 Room 301',
+      details: "Printer won't turn on",
+      priority: 'Normal',
+      reporterName: 'John',
       tel: '0812345678',
     },
   },
   {
     id: 'stock',
     icon: '📦',
-    title: 'สต๊อก',
-    desc: 'นำเข้าสินค้าคงคลัง',
+    titleKey: 'jobtype.stock',
+    descKey: 'import.type_desc.stock',
     headers: [
-      { key: 'productCode', label: 'productCode' },
+      { key: 'productcode', label: 'productcode' },
       { key: 'productName', label: 'productName' },
       { key: 'category', label: 'category' },
       { key: 'brand', label: 'brand' },
@@ -149,24 +145,24 @@ const IMPORT_TYPES: ImportTypeDef[] = [
       { key: 'location', label: 'location' },
     ],
     sample: {
-      productCode: 'STK-0001',
-      productName: 'หมึกพิมพ์ HP สีดำ',
-      category: 'หมึกพิมพ์',
+      productcode: 'STK-0001',
+      productName: 'HP Black Ink',
+      category: 'Ink',
       brand: 'HP',
-      unit: 'ชิ้น',
+      unit: 'pcs',
       quantity: '10',
       minQuantity: '5',
       unitCost: '1200',
-      location: 'ชั้น 2 ตู้ A',
+      location: 'Floor 2 Cabinet A',
     },
   },
   {
     id: 'meter-reading',
     icon: '📊',
-    title: 'มิเตอร์',
-    desc: 'นำเข้าการจดมิเตอร์',
+    titleKey: 'jobtype.meter-reading',
+    descKey: 'import.type_desc.meter_reading',
     headers: [
-      { key: 'assetCode', label: 'assetCode' },
+      { key: 'assetcode', label: 'assetcode' },
       { key: 'readingDate', label: 'readingDate' },
       { key: 'meterBw', label: 'meterBw' },
       { key: 'meterColor', label: 'meterColor' },
@@ -174,11 +170,11 @@ const IMPORT_TYPES: ImportTypeDef[] = [
       { key: 'remark', label: 'remark' },
     ],
     sample: {
-      assetCode: 'IT-PRT-001',
+      assetcode: 'IT-PRT-001',
       readingDate: '2025-01-31',
       meterBw: '15000',
       meterColor: '3200',
-      readBy: 'คุณสมศักดิ์',
+      readBy: 'Somsak',
       remark: '',
     },
   },
@@ -189,8 +185,8 @@ const IMPORT_TYPES: ImportTypeDef[] = [
     // (different from /api/import which returns { job: ImportJob }).
     id: 'accessory',
     icon: '🔌',
-    title: 'อุปกรณ์ต่อพ่วง',
-    desc: 'นำเข้าอุปกรณ์ต่อพ่วงแบบหลายตัว (เชื่อมกับอุปกรณ์ที่มีอยู่แล้ว)',
+    titleKey: 'jobtype.accessory',
+    descKey: 'import.type_desc.accessory',
     headers: [
       { key: 'parent_asset_code', label: 'parent_asset_code' },
       { key: 'accessory_type', label: 'accessory_type' },
@@ -209,7 +205,7 @@ const IMPORT_TYPES: ImportTypeDef[] = [
       serial_number: 'LOG-001',
       status: 'Active',
       installed_date: '2024-01-15',
-      remark: 'คีย์บอร์ดไร้สาย',
+      remark: 'Wireless keyboard',
     },
   },
 ]
@@ -240,52 +236,41 @@ function formatBytes(n: number): string {
   return `${(n / 1024 / 1024).toFixed(2)} MB`
 }
 
-function formatDateTime(iso: string): string {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleString('th-TH', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return iso
-  }
-}
+// formatDateTime now comes from the i18n store (useFormatDateTime hook)
+// so dates flip between Buddhist Era / Thai months and Gregorian / English months when the
+// user toggles the global TH/EN language.
 
-function jobTypeLabel(t: string): string {
-  switch (t) {
+function jobTypeLabel(jobType: string): string {
+  switch (jobType) {
     case 'device':
-      return 'อุปกรณ์'
+      return 'Device'
     case 'work-order':
-      return 'แจ้งซ่อม'
+      return 'Work Order'
     case 'stock':
-      return 'สต๊อก'
+      return 'Stock'
     case 'meter-reading':
-      return 'มิเตอร์'
+      return 'Meter'
     case 'master-data':
-      return 'ข้อมูลมาตรฐาน'
+      return 'Master data'
     case 'accessory':
-      return 'อุปกรณ์ต่อพ่วง'
+      return 'Accessory'
     default:
       // Legacy import types are stored as "legacy:{sheetId}"
       if (t.startsWith('legacy:')) {
         const sheetId = t.slice(7)
         const labels: Record<string, string> = {
-          'itam-device': 'Legacy: อุปกรณ์',
-          'itam-meter': 'Legacy: มิเตอร์',
-          'itam-transfer': 'Legacy: ย้ายอุปกรณ์',
-          'itam-users': 'Legacy: ผู้ใช้',
-          'itam-settings': 'Legacy: ตั้งค่า',
+          'itam-device': 'Legacy: Devices',
+          'itam-meter': 'Legacy: Meter',
+          'itam-transfer': 'Legacy: Transfer',
+          'itam-users': 'Legacy: Users',
+          'itam-settings': 'Legacy: Settings',
           'itam-master': 'Legacy: Master',
-          'itam-sites': 'Legacy: สาขา',
-          'stock-products': 'Legacy: สินค้า',
-          'stock-in': 'Legacy: รับเข้า',
-          'stock-out': 'Legacy: เบิกออก',
-          'stock-po': 'Legacy: ใบสั่งซื้อ',
-          'services-workorders': 'Legacy: ใบงาน',
+          'itam-sites': 'Legacy: Site',
+          'stock-products': 'Legacy: Products',
+          'stock-in': 'Legacy: Stock In',
+          'stock-out': 'Legacy: Stock Out',
+          'stock-po': 'Legacy: Purchase Orders',
+          'services-workorders': 'Legacy: Work Orders',
         }
         return labels[sheetId] ?? t
       }
@@ -299,22 +284,22 @@ function StatusBadge({ status }: { status: string }) {
     { label: string; cls: string; icon: React.ReactNode }
   > = {
     completed: {
-      label: 'สำเร็จ',
+      label: 'Success',
       cls: 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
       icon: <CheckCircle className="mr-1 h-3 w-3" />,
     },
     failed: {
-      label: 'ล้มเหลว',
+      label: 'Failed',
       cls: 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300',
       icon: <AlertCircle className="mr-1 h-3 w-3" />,
     },
     processing: {
-      label: 'กำลังประมวลผล',
+      label: 'Processing',
       cls: 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300',
       icon: <Loader2 className="mr-1 h-3 w-3 animate-spin" />,
     },
     pending: {
-      label: 'รอดำเนินการ',
+      label: 'Pending',
       cls: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
       icon: <Loader2 className="mr-1 h-3 w-3" />,
     },
@@ -341,10 +326,18 @@ export function ImportPage() {
   const [file, setFile] = React.useState<File | null>(null)
   const [dragOver, setDragOver] = React.useState(false)
   const [errorDialog, setErrorDialog] = React.useState<ImportJob | null>(null)
-  const [instructionsOpen, setInstructionsOpen] = React.useState(false)
-  // History is collapsed by default so the upload area gets the viewport.
-  // Auto-expands when a new upload completes (see uploadMutation.onSuccess).
+  // History + Instructions are SECONDARY actions (used rarely). They no
+  // longer eat vertical space in the main flow — they're tucked into a
+  // small icon button in the header that opens a slide-in Sheet. The
+  // PRIMARY action (upload) gets the full viewport.
+  // History auto-opens on successful upload so the user sees the result.
   const [historyOpen, setHistoryOpen] = React.useState(false)
+  const [instructionsOpen, setInstructionsOpen] = React.useState(false)
+  // Language comes from the global i18n store (shared with sidebar) — the
+  // old per-page TH/EN toggle was removed because the app now has a single
+  // global toggle in the sidebar.
+  const t = useT()
+  const formatDateTime = useFormatDateTime()
   const inputRef = React.useRef<HTMLInputElement>(null)
   const uploadCardRef = React.useRef<HTMLDivElement>(null)
 
@@ -370,7 +363,7 @@ export function ImportPage() {
     queryKey: ['import-jobs'],
     queryFn: async () => {
       const res = await fetch('/api/import?limit=50')
-      if (!res.ok) throw new Error('โหลดประวัติไม่สำเร็จ')
+      if (!res.ok) throw new Error('Failed to load history')
       const j = await res.json()
       return (j.jobs ?? []) as ImportJob[]
     },
@@ -397,7 +390,7 @@ export function ImportPage() {
         })
         const json = await res.json()
         if (!res.ok) {
-          throw new Error(json?.error ?? 'อัปโหลดไม่สำเร็จ')
+          throw new Error(json?.error ?? 'UploadnotSuccess')
         }
         const data = json.data as {
           total: number
@@ -455,17 +448,17 @@ export function ImportPage() {
       })
       const json = await res.json()
       if (!res.ok) {
-        throw new Error(json?.error ?? 'อัปโหลดไม่สำเร็จ')
+        throw new Error(json?.error ?? 'UploadnotSuccess')
       }
       return json.job as ImportJob
     },
     onSuccess: (job) => {
       toast.success(
-        `นำเข้า${jobTypeLabel(job.jobType)} ${job.processedRows}/${job.totalRows} แถว`,
+        `Imported ${jobTypeLabel(job.jobType)} ${job.processedRows}/${job.totalRows} rows`,
       )
       setFile(null)
       if (inputRef.current) inputRef.current.value = ''
-      // Auto-open the history panel so the user immediately sees the
+      // Auto-open the history Sheet so the user immediately sees the
       // result of their upload (processed/error counts) without hunting.
       setHistoryOpen(true)
       qc.invalidateQueries({ queryKey: ['import-jobs'] })
@@ -500,11 +493,11 @@ export function ImportPage() {
   function handleFile(f: File) {
     const lower = f.name.toLowerCase()
     if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
-      toast.error('กรุณาใช้ไฟล์ CSV (ยังไม่รองรับ .xlsx ในขณะนี้)')
+      toast.error('Please use CSV format (.xlsx not supported)')
       return
     }
     if (!lower.endsWith('.csv') && !lower.endsWith('.txt')) {
-      toast.error('รองรับเฉพาะไฟล์ .csv')
+      toast.error('Only .csv files supported')
       return
     }
     setFile(f)
@@ -545,7 +538,7 @@ export function ImportPage() {
     if (!selectedTypeDef) return
     const fname = `${selectedTypeDef.id}-template.csv`
     downloadCsv(fname, [selectedTypeDef.sample], selectedTypeDef.headers)
-    toast.success(`ดาวน์โหลดเทมเพลต ${fname}`)
+    toast.success(`Download template ${fname}`)
   }
 
   function parseErrors(job: ImportJob): ImportError[] {
@@ -561,37 +554,65 @@ export function ImportPage() {
   return (
     <div className="flex h-full flex-col bg-slate-50 px-3 py-3 dark:bg-slate-950 sm:px-4 lg:px-5">
       <div className="flex h-full w-full flex-col gap-3">
-        {/* Compact header — h1 only, no description (saves vertical space) */}
-        <h1 className="flex flex-shrink-0 items-center gap-2 text-lg font-bold text-slate-800 dark:text-slate-100 md:text-xl">
-          <span aria-hidden>📥</span>
-          นำเข้าข้อมูล
-        </h1>
+        {/* Header: title (primary) + 2 small icon buttons for SECONDARY
+            actions (history, instructions). The TH/EN language toggle
+            is now global — it lives in the sidebar (next to the theme
+            toggle), so we don't repeat it here. */}
+        <div className="flex flex-shrink-0 items-center justify-between gap-2">
+          <h1 className="flex items-center gap-2 text-lg font-bold text-slate-800 dark:text-slate-100 md:text-xl">
+            <span aria-hidden>📥</span>
+            {t('import.title')}
+          </h1>
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setHistoryOpen(true)}
+              className="relative border-slate-300 dark:border-slate-700"
+              aria-label={t('import.history')}
+            >
+              <History className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('import.history')}</span>
+              {jobs && jobs.length > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1 h-4 min-w-4 px-1 text-[10px] tabular-nums"
+                >
+                  {jobs.length}
+                </Badge>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setInstructionsOpen(true)}
+              className="border-slate-300 dark:border-slate-700"
+              aria-label={t('import.instructions')}
+            >
+              <HelpCircle className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('import.instructions')}</span>
+            </Button>
+          </div>
+        </div>
 
-        {/* Tab switcher: manual import vs legacy Apps Script import */}
-        <Tabs defaultValue="manual" className="flex min-h-0 w-full flex-1 flex-col gap-3">
-          <TabsList className="flex-shrink-0 bg-slate-100 dark:bg-slate-800">
-            <TabsTrigger value="manual" onClick={() => {}} className="gap-1.5">
-              <Upload className="h-3.5 w-3.5" />
-              นำเข้าข้อมูล (CSV)
-            </TabsTrigger>
-          </TabsList>
-
-          {/* ─── Manual import tab ─── */}
-          <TabsContent value="manual" className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+        {/* ─── Primary content: upload area (gets the FULL viewport) ─── */}
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
         {/* Import type selector */}
         <div>
-          {/* Removed h2 heading "1. เลือกประเภทข้อมูล" — the cards are self-explanatory */}
+          {/* Removed h2 heading "1. selectTypedata" — the cards are self-explanatory */}
           {/* On mobile: horizontal scrollable row of compact cards so the
               upload area below stays in the viewport. On sm+: 2-4 col grid. */}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6">
-            {IMPORT_TYPES.map((t) => {
-              const active = selectedType === t.id
+            {IMPORT_TYPES.map((def) => {
+              const active = selectedType === def.id
               return (
                 <button
-                  key={t.id}
+                  key={def.id}
                   type="button"
                   onClick={() => {
-                    setSelectedType(t.id)
+                    setSelectedType(def.id)
                     setFile(null)
                     if (inputRef.current) inputRef.current.value = ''
                   }}
@@ -603,13 +624,13 @@ export function ImportPage() {
                   )}
                 >
                   <span className="text-xl sm:text-2xl" aria-hidden>
-                    {t.icon}
+                    {def.icon}
                   </span>
                   <span className="text-xs font-semibold text-slate-800 dark:text-slate-100 sm:text-sm">
-                    {t.title}
+                    {t(def.titleKey)}
                   </span>
                   <span className="hidden text-[10px] text-slate-500 dark:text-slate-400 sm:block">
-                    {t.desc}
+                    {t(def.descKey)}
                   </span>
                   {active && (
                     <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#f97316] text-white">
@@ -634,7 +655,7 @@ export function ImportPage() {
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm text-slate-800 dark:text-slate-100">
                   <span aria-hidden>{selectedTypeDef.icon}</span>
-                  2. อัปโหลดไฟล์ — {selectedTypeDef.title}
+                  {t('import.upload_file')} — {t(selectedTypeDef.titleKey)}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -671,11 +692,11 @@ export function ImportPage() {
                           </Badge>
                         </span>
                       ) : (
-                        'ลากไฟล์มาวาง หรือคลิกเพื่อเลือกไฟล์'
+                        'Drop file or click to select'
                       )}
                     </div>
                     <div className="text-xs text-slate-400 dark:text-slate-500">
-                      รองรับ .csv (UTF-8) — ยังไม่รองรับ .xlsx
+                      Supports .csv (UTF-8) — not yet supported
                     </div>
                   </div>
                   <input
@@ -698,7 +719,7 @@ export function ImportPage() {
                     className="border-slate-300 dark:border-slate-700"
                   >
                     <File className="mr-1.5 h-4 w-4" />
-                    เลือกไฟล์
+                    Select File
                   </Button>
                   <Button
                     type="button"
@@ -707,7 +728,7 @@ export function ImportPage() {
                     className="border-slate-300 dark:border-slate-700"
                   >
                     <Download className="mr-1.5 h-4 w-4" />
-                    ดาวน์โหลดเทมเพลต
+                    Download template
                   </Button>
                   <Button
                     type="button"
@@ -718,12 +739,12 @@ export function ImportPage() {
                     {uploadMutation.isPending ? (
                       <>
                         <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                        กำลังอัปโหลด...
+                        Uploading...
                       </>
                     ) : (
                       <>
                         <Upload className="mr-1.5 h-4 w-4" />
-                        อัปโหลด
+                        Upload
                       </>
                     )}
                   </Button>
@@ -732,7 +753,7 @@ export function ImportPage() {
                 {/* Template columns preview */}
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-800/50">
                   <div className="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
-                    หัวคอลัมน์ที่ต้องมี:
+                    {t('import.required_columns')}
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedTypeDef.headers.map((h) => (
@@ -746,44 +767,62 @@ export function ImportPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Sample row preview — shows how to fill in each field.
+                    Uses slightly darker text than the headers above so the
+                    values are readable (the old single-row preview was too
+                    light to read at a glance), but still lighter than the
+                    primary upload UI so it doesn't compete with the main
+                    action. */}
+                <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    {t('import.sample_preview')}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-xs">
+                      <tbody>
+                        {selectedTypeDef.headers.map((h, idx) => {
+                          const value = selectedTypeDef.sample[h.key] ?? ''
+                          return (
+                            <tr
+                              key={h.key}
+                              className={cn(
+                                idx > 0 && 'border-t border-slate-100 dark:border-slate-800',
+                              )}
+                            >
+                              <td className="py-1 pr-3 align-top font-mono text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                                {h.label}
+                              </td>
+                              <td className="py-1 align-top text-slate-800 dark:text-slate-100">
+                                {value || <span className="text-slate-400">{t('import.empty_value')}</span>}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </motion.div>
         )}
-          </TabsContent>
-        </Tabs>
+        </div>
 
-        {/* Import history — collapsed by default so the upload area gets
-            the viewport; auto-expands on successful upload (see onSuccess).
-            Shared between both tabs. */}
-        <Collapsible open={historyOpen} onOpenChange={setHistoryOpen} className="flex flex-shrink-0 flex-col">
-          <Card className="border-slate-200 dark:border-slate-800">
-            {/* Header row: trigger button (left) + refresh button (right) as
-                SIBLINGS, not nested. P2 fix: nested <button> is invalid HTML
-                and breaks keyboard/AT access to the refresh action. */}
-            <div className="flex w-full items-center justify-between gap-2 px-6 py-4 dark:bg-slate-900">
-              <CollapsibleTrigger asChild>
-                <button
-                  type="button"
-                  className="flex flex-1 items-center gap-2 rounded-md text-left transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:hover:bg-slate-800/50 dark:focus-visible:ring-offset-slate-950"
-                  aria-expanded={historyOpen}
-                >
-                  <span aria-hidden>📋</span>
-                  <span className="text-base font-semibold text-slate-800 dark:text-slate-100">
-                    ประวัติการนำเข้า
-                  </span>
-                  {jobs && jobs.length > 0 && (
-                    <Badge variant="secondary" className="text-xs">
-                      {jobs.length}
-                    </Badge>
-                  )}
-                  {historyOpen ? (
-                    <ChevronDown className="ml-1 h-4 w-4 text-slate-400" />
-                  ) : (
-                    <ChevronRight className="ml-1 h-4 w-4 text-slate-400" />
-                  )}
-                </button>
-              </CollapsibleTrigger>
+        {/* ─── History Sheet (slide-in from right) ───
+            Replaces the old Collapsible panel that ate vertical space. */}
+        <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+          <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl md:max-w-3xl">
+            <SheetHeader className="flex flex-row items-center justify-between gap-2 border-b border-slate-100 p-4 dark:border-slate-800">
+              <SheetTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+                <History className="h-4 w-4 text-[#f97316]" />
+                {t('import.history')}
+                {jobs && jobs.length > 0 && (
+                  <Badge variant="secondary" className="text-xs">
+                    {jobs.length}
+                  </Badge>
+                )}
+              </SheetTitle>
               <Button
                 type="button"
                 variant="outline"
@@ -798,11 +837,10 @@ export function ImportPage() {
                     jobsFetching && 'animate-spin',
                   )}
                 />
-                <span className="hidden sm:inline">รีเฟรช</span>
+                <span className="hidden sm:inline">{t('common.refresh')}</span>
               </Button>
-            </div>
-            <CollapsibleContent>
-          <CardContent className="border-t border-slate-100 pt-4 dark:border-slate-800">
+            </SheetHeader>
+          <CardContent className="flex-1 overflow-y-auto p-4">
             {jobsLoading ? (
               <div className="space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
@@ -813,7 +851,7 @@ export function ImportPage() {
               <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
                 <FileSpreadsheet className="h-10 w-10 text-slate-300 dark:text-slate-600" />
                 <p className="text-sm text-slate-400 dark:text-slate-500">
-                  ยังไม่มีประวัติการนำเข้า
+                  {t('import.no_history')}
                 </p>
               </div>
             ) : (
@@ -821,14 +859,14 @@ export function ImportPage() {
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
                     <TableRow>
-                      <TableHead className="w-32">ประเภท</TableHead>
-                      <TableHead>ชื่อไฟล์</TableHead>
-                      <TableHead className="w-28">สถานะ</TableHead>
-                      <TableHead className="w-20 text-right">ทั้งหมด</TableHead>
-                      <TableHead className="w-20 text-right">สำเร็จ</TableHead>
-                      <TableHead className="w-20 text-right">ผิดพลาด</TableHead>
-                      <TableHead className="w-40">วันที่</TableHead>
-                      <TableHead className="w-16 text-center">รายละเอียด</TableHead>
+                      <TableHead className="w-32">{t('import.col_type')}</TableHead>
+                      <TableHead>{t('import.col_filename')}</TableHead>
+                      <TableHead className="w-28">{t('import.col_status')}</TableHead>
+                      <TableHead className="w-20 text-right">{t('import.col_total')}</TableHead>
+                      <TableHead className="w-20 text-right">{t('import.col_success')}</TableHead>
+                      <TableHead className="w-20 text-right">{t('import.col_errors')}</TableHead>
+                      <TableHead className="w-40">{t('import.col_date')}</TableHead>
+                      <TableHead className="w-16 text-center">{t('import.col_detail')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -876,7 +914,7 @@ export function ImportPage() {
                             {hasErrs ? (
                               <button
                                 type="button"
-                                aria-label="ดูรายละเอียดข้อผิดพลาด"
+                                aria-label="View error details"
                                 className="inline-flex h-7 w-7 items-center justify-center rounded-md text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-950/50"
                                 onClick={(e) => {
                                   e.stopPropagation()
@@ -901,81 +939,67 @@ export function ImportPage() {
               </div>
             )}
           </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
+        </SheetContent>
+        </Sheet>
 
-        {/* Instructions (collapsible) */}
-        <Collapsible
-          open={instructionsOpen}
-          onOpenChange={setInstructionsOpen}
-          className="flex flex-shrink-0 flex-col"
-        >
-          <Card className="border-slate-200 dark:border-slate-800">
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                className="flex w-full items-center justify-between gap-2 px-6 py-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950"
-              >
-                <CardTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
-                  <span aria-hidden>❓</span>
-                  วิธีใช้งาน
-                </CardTitle>
-                {instructionsOpen ? (
-                  <ChevronDown className="h-4 w-4 text-slate-400" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 text-slate-400" />
-                )}
-              </button>
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <CardContent className="space-y-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+        {/* ─── Instructions Sheet (slide-in from right) ───
+            Replaces the old Collapsible panel. Rarely used, so tucked
+            away behind a header icon button. */}
+        <Sheet open={instructionsOpen} onOpenChange={setInstructionsOpen}>
+          <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl md:max-w-2xl">
+            <SheetHeader className="border-b border-slate-100 p-4 dark:border-slate-800">
+              <SheetTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
+                <HelpCircle className="h-4 w-4 text-[#f97316]" />
+                {t('import.instructions')}
+              </SheetTitle>
+            </SheetHeader>
+              <CardContent className="flex-1 space-y-4 overflow-y-auto p-4">
                 <div>
                   <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    ขั้นตอนการใช้งาน
+                    Steps to use
                   </h3>
                   <ol className="ml-4 list-decimal space-y-1.5 text-sm text-slate-600 dark:text-slate-300">
-                    <li>เลือกประเภทข้อมูลที่จะนำเข้า (อุปกรณ์ / แจ้งซ่อม / สต๊อก / มิเตอร์ / อุปกรณ์ต่อพ่วง)</li>
-                    <li>คลิก &quot;ดาวน์โหลดเทมเพลต&quot; เพื่อดาวน์โหลดไฟล์ CSV ตัวอย่างพร้อมหัวคอลัมน์ที่ถูกต้อง</li>
-                    <li>เปิดไฟล์เทมเพลตใน Excel หรือโปรแกรมตกแต่ง CSV แล้วกรอกข้อมูลในแต่ละแถว</li>
-                    <li>บันทึกไฟล์เป็น CSV (UTF-8) — หากใช้ Excel เลือก &quot;CSV UTF-8 (Comma delimited)&quot;</li>
-                    <li>ลากไฟล์มาวางในพื้นที่อัปโหลด หรือคลิก &quot;เลือกไฟล์&quot;</li>
-                    <li>คลิก &quot;อัปโหลด&quot; — ระบบจะตรวจสอบและนำเข้าข้อมูลทันที</li>
-                    <li>ดูผลลัพธ์ในตาราง &quot;ประวัติการนำเข้า&quot; — คลิกแถวที่มีข้อผิดพลาดเพื่อดูรายละเอียด</li>
+                    <li>Select the data type to import (Device / Work Order / Stock / Meter / Accessory)</li>
+                    <li>Click &quot;Download template&quot; to download file CSV sample with headersColumnsthatcorrect</li>
+                    <li>Open template in Excel or CSV editor and fill in each row</li>
+                    <li>Save file as CSV (UTF-8) — If using Excel, select &quot;CSV UTF-8 (Comma delimited)&quot;</li>
+                    <li>Drop file in upload area orClick &quot;Select File&quot;</li>
+                    <li>Click &quot;Upload&quot; — System will validate and import immediately</li>
+                    <li>View results in table &quot;Import History&quot; — Click error rows to see details</li>
                   </ol>
                 </div>
 
                 <div>
                   <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    รูปแบบไฟล์
+                    File format
                   </h3>
                   <ul className="ml-4 list-disc space-y-1 text-sm text-slate-600 dark:text-slate-300">
                     <li>
-                      <strong>CSV (UTF-8)</strong> — แนะนำ รองรับภาษาไทย
+                      <strong>CSV (UTF-8)</strong> — Recommended, supports Thai
                     </li>
                     <li>
-                      <strong>Excel (.xlsx)</strong> — ยังไม่รองรับในขณะนี้ กรุณาบันทึกเป็น CSV ก่อนอัปโหลด
+                      <strong>Excel (.xlsx)</strong> — stillnotSupportscurrently Please save as CSV before upload
                     </li>
-                    <li>ตัวคั่นคอลัมน์: จุลภาค (,) หรือเซมิโคลอน (;)</li>
-                    <li>แถวแรกต้องเป็นหัวคอลัมน์ ตรงกับเทมเพลต</li>
+                    <li>Column delimiter: comma (,) or semicolon (;)</li>
+                    <li>First row must be header matching template</li>
                   </ul>
                 </div>
 
                 <div>
                   <h3 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                    หัวคอลัมน์ (ต้องตรงกับเทมเพลต)
+                    column headers (mustmatch template)
                   </h3>
                   <div className="space-y-2">
-                    {IMPORT_TYPES.map((t) => (
+                    {IMPORT_TYPES.map((def) => (
                       <div
-                        key={t.id}
+                        key={def.id}
                         className="rounded-md border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-800/50"
                       >
                         <div className="mb-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
-                          {t.icon} {t.title} ({t.id})
+                          {def.icon} {t(def.titleKey)} ({def.id})
                         </div>
                         <div className="flex flex-wrap gap-1">
-                          {t.headers.map((h) => (
+                          {def.headers.map((h) => (
                             <Badge
                               key={h.key}
                               variant="outline"
@@ -991,13 +1015,12 @@ export function ImportPage() {
                 </div>
 
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-                  <strong>ข้อควรระวัง:</strong> ระบบจะข้ามแถวที่มีรหัสซ้ำในไฟล์หรือมีอยู่แล้วในระบบ
-                  — แนะนำให้ดาวน์โหลดเทมเพลตและตรวจสอบหัวคอลัมน์ก่อนทุกครั้ง
+                  <strong>Caution:</strong> System will skip rows with duplicate codes
+                  — RecommendDownload template and check column headers before each import
                 </div>
               </CardContent>
-            </CollapsibleContent>
-          </Card>
-        </Collapsible>
+        </SheetContent>
+        </Sheet>
       </div>
 
       {/* Error detail dialog */}
@@ -1009,16 +1032,16 @@ export function ImportPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <AlertCircle className="h-5 w-5 text-amber-500" />
-              รายละเอียดข้อผิดพลาด
+              Error Details
             </DialogTitle>
             <DialogDescription>
               {errorDialog && (
                 <>
-                  ไฟล์: <span className="font-mono">{errorDialog.fileName}</span>
+                  file: <span className="font-mono">{errorDialog.fileName}</span>
                   {' — '}
                   {jobTypeLabel(errorDialog.jobType)}
                   {' — '}
-                  {errorDialog.errorRows} จาก {errorDialog.totalRows} แถว
+                  ${errorDialog.errorRows} / ${errorDialog.totalRows} rows
                 </>
               )}
             </DialogDescription>
@@ -1028,7 +1051,7 @@ export function ImportPage() {
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-center dark:border-slate-800 dark:bg-slate-800/50">
                   <div className="text-xs text-slate-500 dark:text-slate-400">
-                    ทั้งหมด
+                    Total
                   </div>
                   <div className="text-lg font-bold text-slate-800 dark:text-slate-100">
                     {errorDialog.totalRows}
@@ -1036,7 +1059,7 @@ export function ImportPage() {
                 </div>
                 <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2 text-center dark:border-emerald-800 dark:bg-emerald-950/30">
                   <div className="text-xs text-emerald-700 dark:text-emerald-400">
-                    สำเร็จ
+                    Success
                   </div>
                   <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
                     {errorDialog.processedRows}
@@ -1044,7 +1067,7 @@ export function ImportPage() {
                 </div>
                 <div className="rounded-md border border-red-200 bg-red-50 p-2 text-center dark:border-red-800 dark:bg-red-950/30">
                   <div className="text-xs text-red-700 dark:text-red-400">
-                    ผิดพลาด
+                    Errors
                   </div>
                   <div className="text-lg font-bold text-red-700 dark:text-red-400">
                     {errorDialog.errorRows}
@@ -1056,8 +1079,8 @@ export function ImportPage() {
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-900">
                     <TableRow>
-                      <TableHead className="w-20">บรรทัด</TableHead>
-                      <TableHead>ข้อความ</TableHead>
+                      <TableHead className="w-20">Row</TableHead>
+                      <TableHead>message</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1067,7 +1090,7 @@ export function ImportPage() {
                           colSpan={2}
                           className="py-6 text-center text-sm text-slate-400 dark:text-slate-500"
                         >
-                          ไม่มีรายละเอียดข้อผิดพลาด
+                          nothasError Details
                         </TableCell>
                       </TableRow>
                     ) : (

@@ -15,10 +15,15 @@ import {
   type DocumentTemplate,
 } from '@/lib/document-template'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // GET /api/itam/document-templates
 //   Returns: { templates: DocumentTemplate[], activeId: string|null, enabled: boolean }
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -36,6 +41,10 @@ export async function GET(req: NextRequest) {
 //                     (no template is created). Used by the editor's Switch.
 //   Returns: { template: DocumentTemplate } (variant A) or { ok: true, enabled } (variant B)
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

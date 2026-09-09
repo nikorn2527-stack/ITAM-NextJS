@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // Heavy operation — needs longer timeout (Vercel Hobby: max 60s)
 export const maxDuration = 60
@@ -36,6 +37,10 @@ const VALID_STATUSES = new Set([
 const MAX_BATCH = 50
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'WO_ASSIGN')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

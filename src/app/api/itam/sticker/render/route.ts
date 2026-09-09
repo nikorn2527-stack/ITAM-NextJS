@@ -15,11 +15,16 @@ import {
   type StickerTemplate,
 } from '@/lib/sticker-template'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // POST /api/itam/sticker/render
 //   Body: { assetNo: string, templateId?: string }
 //   Returns: { html, qrDataUrls, template }
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stickers')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'PRINT')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

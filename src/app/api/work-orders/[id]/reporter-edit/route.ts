@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { validateGuestContact } from '@/lib/guest-validation'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // ============================================================
 // PUT /api/work-orders/[id]/reporter-edit
@@ -52,6 +53,10 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'WO_COMPLETE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {

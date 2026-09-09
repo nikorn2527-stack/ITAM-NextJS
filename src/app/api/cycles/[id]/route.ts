@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // GET a single cycle with stats (reading count, total sheets)
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -45,6 +50,10 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'METER_WRITE')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -180,6 +189,10 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'METER_WRITE')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

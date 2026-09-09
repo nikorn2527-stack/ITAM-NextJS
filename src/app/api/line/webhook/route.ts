@@ -3,6 +3,7 @@ import crypto from 'node:crypto'
 import { db } from '@/lib/db'
 import { findDeviceByCode } from '@/lib/device-lookup'
 import { generateDeviceQrUrl } from '@/lib/smart-qr'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/line/webhook
@@ -372,6 +373,10 @@ async function logAuditLine(
 // ============================================================
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('notifications')
+  if (unavailable) return unavailable
+
+
   // 1. Read raw body for signature verification.
   const rawBody = Buffer.from(await req.arrayBuffer())
 

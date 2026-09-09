@@ -31,7 +31,7 @@ function parseId(req: NextRequest): string {
 }
 
 export async function GET(req: NextRequest) {
-  const moduleCheck = moduleUnavailableResponse('stock')
+  const moduleCheck = await moduleUnavailableResponse('stock')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'STOCK_VIEW')
@@ -93,7 +93,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const moduleCheck = moduleUnavailableResponse('stock')
+  const moduleCheck = await moduleUnavailableResponse('stock')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'STOCK_IN')
@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const moduleCheck = moduleUnavailableResponse('stock')
+  const moduleCheck = await moduleUnavailableResponse('stock')
   if (moduleCheck) return moduleCheck
 
   const auth = await requireAuth(req, 'STOCK_IN')

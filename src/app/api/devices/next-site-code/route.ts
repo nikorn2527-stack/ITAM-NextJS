@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { getNextAssetSiteCode, getSiteCodeForName } from '@/lib/asset-site-code'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/devices/next-site-code?site=<siteName|siteCode>&assetNo=<assetCode>
@@ -14,6 +15,10 @@ import { getNextAssetSiteCode, getSiteCodeForName } from '@/lib/asset-site-code'
  *   • Return PREFIX-(MAX+1), zero-padded to 5 digits (e.g. "UDH-00042").
  */
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

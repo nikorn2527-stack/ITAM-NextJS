@@ -7,9 +7,14 @@ import {
 import { DEFAULT_STICKER_SETTINGS, type StickerSettings } from '@/lib/sticker-template'
 import { logAudit } from '@/lib/audit'
 import { getOrgProfile } from '@/lib/org-profile'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // GET /api/itam/sticker/settings
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stickers')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DEVICES')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   const [settings, profile] = await Promise.all([
@@ -29,6 +34,10 @@ export async function GET(req: NextRequest) {
 // PUT /api/itam/sticker/settings
 //   Body: Partial<StickerSettings>
 export async function PUT(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stickers')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

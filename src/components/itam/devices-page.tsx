@@ -102,10 +102,8 @@ import {
   type Site,
   DEVICE_STATUS_OPTIONS,
   statusBadgeClass,
-  statusLabel,
   computeWarranty,
   formatMonthThai,
-  formatDateTime,
   canSelectSite,
 } from './types'
 import { DeviceDetailSheet } from './device-detail-sheet'
@@ -118,6 +116,7 @@ import { downloadCsv, dateStamp } from '@/lib/csv'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
+import { useT, useFormatDateTime } from '@/store/i18n-store'
 import { PaginationBar } from './pagination-bar'
 import {
   buildDefaultTemplate,
@@ -160,22 +159,22 @@ function formatMacInput(raw: string): string {
 }
 
 const DEVICE_CSV_HEADERS = [
-  { key: 'assetCode', label: 'รหัสอุปกรณ์' },
-  { key: 'name', label: 'ชื่อ' },
-  { key: 'brand', label: 'แบรนด์' },
-  { key: 'model', label: 'รุ่น' },
-  { key: 'type', label: 'ประเภท' },
-  { key: 'serialNumber', label: 'หมายเลข SN' },
-  { key: 'status', label: 'สถานะ' },
-  { key: 'site', label: 'สาขา' },
-  { key: 'currentAssignee', label: 'ผู้ใช้งาน' },
-  { key: 'department', label: 'แผนก' },
-  { key: 'departmentCode', label: 'รหัสแผนก' },
+  { key: 'assetCode', label: 'Asset Code' },
+  { key: 'name', label: 'Name' },
+  { key: 'brand', label: 'Brand' },
+  { key: 'model', label: 'Model' },
+  { key: 'type', label: 'Type' },
+  { key: 'serialNumber', label: 'S/N' },
+  { key: 'status', label: 'Status' },
+  { key: 'site', label: 'Site' },
+  { key: 'currentAssignee', label: 'Assignee' },
+  { key: 'department', label: 'Department' },
+  { key: 'departmentCode', label: 'Dept Code' },
   { key: 'parentRef', label: 'ParentRef' },
   { key: 'displayLabel', label: 'DisplayLabel' },
-  { key: 'location', label: 'ที่ตั้ง' },
-  { key: 'purchaseDate', label: 'วันที่ซื้อ' },
-  { key: 'lastMeterReading', label: 'มิเตอร์ล่าสุด' },
+  { key: 'location', label: 'Location' },
+  { key: 'purchaseDate', label: 'Purchase Date' },
+  { key: 'lastMeterReading', label: 'Last Meter' },
 ]
 
 /** License / Software row — mirrors the LicenseRecord Prisma model.
@@ -195,7 +194,7 @@ export interface LicenseRow {
  * PendingAccessory — mirrors the DeviceAccessory Prisma model.
  *
  * Stored in the device Add/Edit form's local state until the user clicks
- * "บันทึก" (Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM). After the device is
+ * "t('devices.save')" (Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM). After the device is
  * created/updated, save() POSTs each row to /api/devices/[id]/accessories.
  *
  * `id` is present when loaded from DB (edit mode) — rows with an id are
@@ -215,24 +214,24 @@ export interface PendingAccessory {
 }
 
 const ACCESSORY_TYPES_INLINE = [
-  { value: 'KEYBOARD', label: 'คีย์บอร์ด' },
-  { value: 'MOUSE', label: 'เมาส์' },
-  { value: 'MONITOR', label: 'จอภาพ' },
-  { value: 'SCANNER', label: 'สแกนเนอร์เสริม' },
-  { value: 'CABLE', label: 'สาย / แลน' },
-  { value: 'ADAPTER', label: 'อะแดปเตอร์' },
-  { value: 'UPS', label: 'UPS / สำรองไฟ' },
-  { value: 'HUB', label: 'USB Hub' },
-  { value: 'PRINTHEAD', label: 'หัวพิมพ์' },
-  { value: 'TRAY', label: 'ถาดกระดาษเสริม' },
-  { value: 'OTHER', label: 'อื่นๆ' },
+  { value: 'KEYBOARD', labelKey: 'devices.acc_type.KEYBOARD' },
+  { value: 'MOUSE', labelKey: 'devices.acc_type.MOUSE' },
+  { value: 'MONITOR', labelKey: 'devices.acc_type.MONITOR' },
+  { value: 'SCANNER', labelKey: 'devices.acc_type.SCANNER' },
+  { value: 'CABLE', labelKey: 'devices.acc_type.CABLE' },
+  { value: 'ADAPTER', labelKey: 'devices.acc_type.ADAPTER' },
+  { value: 'UPS', labelKey: 'devices.acc_type.UPS' },
+  { value: 'HUB', labelKey: 'devices.acc_type.HUB' },
+  { value: 'PRINTHEAD', labelKey: 'devices.acc_type.PRINTHEAD' },
+  { value: 'TRAY', labelKey: 'devices.acc_type.TRAY' },
+  { value: 'OTHER', labelKey: 'devices.acc_type.OTHER' },
 ] as const
 
 const ACCESSORY_STATUSES_INLINE = [
-  { value: 'Active', label: 'ใช้งานอยู่' },
-  { value: 'Inactive', label: 'ไม่ใช้งาน' },
-  { value: 'In Repair', label: 'ส่งซ่อม' },
-  { value: 'Disposed', label: 'ตัดจ่าย' },
+  { value: 'Active', labelKey: 'devices.acc_status.Active' },
+  { value: 'Inactive', labelKey: 'devices.acc_status.Inactive' },
+  { value: 'In Repair', labelKey: 'devices.acc_status.In Repair' },
+  { value: 'Disposed', labelKey: 'devices.acc_status.Disposed' },
 ] as const
 
 const EMPTY_ACCESSORY: PendingAccessory = {
@@ -256,12 +255,12 @@ const EMPTY_LICENSE: LicenseRow = {
 }
 
 const LICENSE_TYPE_OPTIONS = [
-  { value: '__none__', label: '— เลือกประเภท —' },
-  { value: 'OEM', label: 'OEM (มาพร้อมเครื่อง)' },
-  { value: 'Volume', label: 'Volume License (ลายเซ็นต์ปริมาณ)' },
-  { value: 'Retail', label: 'Retail (แบบกล่อง)' },
-  { value: 'Subscription', label: 'Subscription (สมัครรายเดือน/ปี)' },
-  { value: 'Open License', label: 'Open License' },
+  { value: '__none__', labelKey: 'devices.lic_type.__none__' },
+  { value: 'OEM', labelKey: 'devices.lic_type.OEM' },
+  { value: 'Volume', labelKey: 'devices.lic_type.Volume' },
+  { value: 'Retail', labelKey: 'devices.lic_type.Retail' },
+  { value: 'Subscription', labelKey: 'devices.lic_type.Subscription' },
+  { value: 'Open License', labelKey: 'devices.lic_type.Open License' },
 ] as const
 
 interface FormState {
@@ -280,15 +279,15 @@ interface FormState {
   parentRef: string
   displayLabel: string
   location: string
-  // ── ข้อมูลที่ตั้ง ──
+  // ── t('devices.section.location') ──
   building: string
   floor: string
   room: string
-  // ── เครือข่าย ──
+  // ── t('devices.field.network_other') ──
   ip: string
   mac: string
   remoteId: string
-  // ── การซื้อ/รับประกัน ──
+  // ── t('devices.section.purchase_warranty') ──
   purchaseDate: string
   warrantyMonths: string
   purchasePrice: string
@@ -298,16 +297,16 @@ interface FormState {
   vendor: string
   contractNo: string
   uninstallDate: string
-  // ── มิเตอร์ ──
+  // ── t('devices.section.meter') ──
   meterRequired: boolean
   meterMode: string
-  // ── อื่นๆ ──
+  // ── t('devices.field.other') ──
   costCenter: string
   deviceGroup: string
   remark: string
   // ── Device Set / Parent-Child (Task ID 9, Phase 2) ──
   parentDeviceId: string    // "" = no parent (this device is a parent or standalone)
-  setLabel: string          // e.g. "ชุดเครื่องพิมพ์ห้องจ่ายยา"
+  setLabel: string          // e.g. "ชุดt('devices.unit.device')พิมพ์t('devices.field.room')จ่ายยา"
   setPosition: string      // "" = unset
   // ── License / Software (NEW) ──
   licenses: LicenseRow[]
@@ -324,14 +323,14 @@ interface FormState {
  * understand the meaning. The stored value stays the English code so the
  * backend / CSV / Apps Script bridge keeps working.
  */
-const DEVICE_GROUP_THAI: Record<string, string> = {
-  COMPANY: 'ของบริษัท',
-  LEASED: 'เช่า/เช่าซื้อ',
-  DEPT: 'ของแผนก',
-  PERSONAL: 'ส่วนบุคคล',
+const DEVICE_GROUP_LABEL_KEYS: Record<string, string> = {
+  COMPANY: 'devices.group.company',
+  LEASED: 'devices.group.leased',
+  DEPT: 'devices.group.dept',
+  PERSONAL: 'devices.group.personal',
 }
 
-/** Default DeviceGroup code on Add New (the user requested "ของบริษัท"). */
+/** Default DeviceGroup code on Add New (the user requested "t('devices.field.organization')"). */
 const DEFAULT_DEVICE_GROUP = 'COMPANY'
 
 const EMPTY_FORM: FormState = {
@@ -377,24 +376,40 @@ const EMPTY_FORM: FormState = {
 }
 
 const METER_MODE_OPTIONS = [
-  { value: 'TOTAL', label: 'TOTAL (รวม)' },
-  { value: 'BW_COLOR', label: 'BW_COLOR (ขาวดำ / สี)' },
+  { value: 'TOTAL', labelKey: 'devices.meter_mode.total' },
+  { value: 'BW_COLOR', labelKey: 'devices.meter_mode.bw_color' },
 ] as const
 
 const WARRANTY_FILTER_OPTIONS = [
-  { value: 'all', label: 'รับประกันทั้งหมด' },
-  { value: 'expiring', label: 'ใกล้หมด' },
-  { value: 'expired', label: 'หมดแล้ว' },
+  { value: 'all', labelKey: 'devices.warranty.all' },
+  { value: 'expiring', labelKey: 'devices.warranty.expiring' },
+  { value: 'expired', labelKey: 'devices.warranty.expired' },
 ] as const
 
 const ASSIGNEE_FILTER_OPTIONS = [
-  { value: 'all', label: 'ผู้ใช้งานทั้งหมด' },
-  { value: 'assigned', label: 'มอบหมายแล้ว' },
-  { value: 'unassigned', label: 'ยังไม่มอบหมาย' },
+  { value: 'all', labelKey: 'devices.assignee.all' },
+  { value: 'assigned', labelKey: 'devices.assignee.assigned' },
+  { value: 'unassigned', labelKey: 'devices.assignee.unassigned' },
 ] as const
+
+/**
+ * Status value → i18n key map (mirrors DEVICE_STATUS_OPTIONS in ./types so we
+ * can render translated labels without modifying the shared const).
+ */
+const DEVICE_STATUS_LABEL_KEY: Record<string, string> = {
+  active: 'devices.status.active',
+  spare: 'devices.status.spare',
+  repair: 'devices.status.repair',
+  disposed: 'devices.status.disposed',
+}
+function deviceStatusLabelKey(value: string): string {
+  return DEVICE_STATUS_LABEL_KEY[value] ?? 'devices.status.active'
+}
 
 export function DevicesPage() {
   const qc = useQueryClient()
+  const t = useT()
+  const fmtDateTime = useFormatDateTime()
   const [search, setSearch] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState('all')
   const [siteFilter, setSiteFilter] = React.useState('all')
@@ -438,8 +453,8 @@ export function DevicesPage() {
   const [exporting, setExporting] = React.useState(false)
   const [importOpen, setImportOpen] = React.useState(false)
   const [stickerOpen, setStickerOpen] = React.useState(false)
-  // When set, StickerPrintDialog shows only this device (from row "สติกเกอร์" button).
-  // When null, shows all devices (from toolbar "พิมพ์หลายเครื่อง" button).
+  // When set, StickerPrintDialog shows only this device (from row "t('devices.field.sticker')" button).
+  // When null, shows all devices (from toolbar "t('devices.action.print_many')" button).
   const [singlePrintDeviceId, setSinglePrintDeviceId] = React.useState<string | null>(null)
   const [printTemplateOpen, setPrintTemplateOpen] = React.useState(false)
   // STICKER-PREVIEW-FIX-FINAL: per-row Printer-icon button calls
@@ -496,18 +511,18 @@ export function DevicesPage() {
     | 'meter'
     | 'updatedAt'
     | 'actions'
-  const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
-    { key: 'assetCode', label: 'รหัสทรัพย์สิน' },
-    { key: 'assetSiteCode', label: 'ทะเบียน Site' },
-    { key: 'type', label: 'ประเภท' },
-    { key: 'brandModel', label: 'ยี่ห้อ/รุ่น' },
-    { key: 'serialNumber', label: 'Serial No.' },
-    { key: 'location', label: 'อาคาร/ชั้น' },
-    { key: 'department', label: 'แผนก/ตำแหน่ง' },
-    { key: 'status', label: 'สถานะ' },
-    { key: 'meter', label: 'มิเตอร์ล่าสุด' },
-    { key: 'updatedAt', label: 'อัปเดตล่าสุด' },
-    { key: 'actions', label: 'การกระทำ' },
+  const ALL_COLUMNS: { key: ColumnKey; labelKey: string }[] = [
+    { key: 'assetCode', labelKey: 'devices.col.asset_code' },
+    { key: 'assetSiteCode', labelKey: 'devices.col.asset_site_code' },
+    { key: 'type', labelKey: 'devices.col.type' },
+    { key: 'brandModel', labelKey: 'devices.col.brand_model' },
+    { key: 'serialNumber', labelKey: 'devices.col.serial' },
+    { key: 'location', labelKey: 'devices.col.location' },
+    { key: 'department', labelKey: 'devices.col.department' },
+    { key: 'status', labelKey: 'devices.col.status' },
+    { key: 'meter', labelKey: 'devices.col.meter' },
+    { key: 'updatedAt', labelKey: 'devices.col.updated_at' },
+    { key: 'actions', labelKey: 'devices.col.actions' },
   ]
   const [hiddenColumns, setHiddenColumns] = React.useState<Set<ColumnKey>>(
     () => {
@@ -768,7 +783,7 @@ export function DevicesPage() {
     queryFn: async () => {
       if (!form.type) return []
       // Find the DeviceType id from the deviceTypes list
-      const typeId = deviceTypes?.find((t) => t.name === form.type)?.id
+      const typeId = deviceTypes?.find((dt) => dt.name === form.type)?.id
       if (!typeId) return []
       const res = await fetch(`/api/master?type=brands&typeId=${typeId}`, { headers: authHeaders() })
       if (!res.ok) return []
@@ -944,24 +959,24 @@ export function DevicesPage() {
   const floorBadges = React.useMemo(() => {
     const m: Record<string, string> = {}
     for (const [floor, count] of Object.entries(locationSummary?.floorCounts ?? {})) {
-      m[floor] = `${count} เครื่อง`
+      m[floor] = t('devices.unit.count_suffix') ? `${count} ${t('devices.unit.count_suffix')}` : `${count}`
     }
     return m
-  }, [locationSummary])
+  }, [locationSummary, t])
   const departmentBadges = React.useMemo(() => {
     const m: Record<string, string> = {}
     for (const [dept, count] of Object.entries(locationSummary?.departmentCounts ?? {})) {
-      m[dept] = `${count} เครื่อง`
+      m[dept] = t('devices.unit.count_suffix') ? `${count} ${t('devices.unit.count_suffix')}` : `${count}`
     }
     return m
-  }, [locationSummary])
+  }, [locationSummary, t])
   const locationBadges = React.useMemo(() => {
     const m: Record<string, string> = {}
     for (const [loc, count] of Object.entries(locationSummary?.locationCounts ?? {})) {
-      m[loc] = `${count} เครื่อง`
+      m[loc] = t('devices.unit.count_suffix') ? `${count} ${t('devices.unit.count_suffix')}` : `${count}`
     }
     return m
-  }, [locationSummary])
+  }, [locationSummary, t])
 
   // ── Auto-derive meterRequired from Type ──
   // Printers, copiers, and multi-function devices need meter tracking.
@@ -971,8 +986,8 @@ export function DevicesPage() {
   const METER_REQUIRED_TYPES = ['PRINTER', 'COPIER', 'MFD', 'MULTIFUNCTION']
   React.useEffect(() => {
     if (!form.type) return
-    const isMeterRequired = METER_REQUIRED_TYPES.some((t) =>
-      form.type.toUpperCase().includes(t),
+    const isMeterRequired = METER_REQUIRED_TYPES.some((mt) =>
+      form.type.toUpperCase().includes(mt),
     )
     setForm((prev) =>
       prev.meterRequired === isMeterRequired
@@ -984,7 +999,7 @@ export function DevicesPage() {
   // ── Auto-generate device name from brand + model + location ──
   // Watches brand, model, building, floor, location — auto-fills `name`
   // unless the user has manually typed something.
-  // Example: "BROTHER HL-L5210DN ตึกผู้ป่วยนอก (OPD) ชั้น 2"
+  // Example: "BROTHER HL-L5210DN ตึกผู้ป่วยนอก (OPD) t('devices.field.floor') 2"
   const nameManuallyEditedRef = React.useRef(false)
   React.useEffect(() => {
     // Don't auto-fill if user has manually edited the name
@@ -993,7 +1008,7 @@ export function DevicesPage() {
       form.brand,
       form.model,
       form.building,
-      form.floor ? `ชั้น ${form.floor}` : '',
+      form.floor ? `t('devices.field.floor') ${form.floor}` : '',
       form.location,
     ].filter(Boolean)
     const autoName = parts.join(' ')
@@ -1237,7 +1252,7 @@ export function DevicesPage() {
   // ── Auto-generate assetSiteCode when the user picks a site ──
   // Calls /api/devices/next-site-code?site=<code> and fills the field.
   // Only auto-fills on CREATE (when the field is empty) — on edit, the
-  // user has to click the "✨ สร้างรหัส" button explicitly to avoid
+  // user has to click the "✨ t('devices.field.generate_code')" button explicitly to avoid
   // overwriting an existing code.
   const generatingCodeRef = React.useRef(false)
   const fetchNextSiteCode = React.useCallback(async (siteCode: string) => {
@@ -1264,16 +1279,16 @@ export function DevicesPage() {
 
   async function generateSiteCodeNow() {
     if (!form.site) {
-      toast.warning('กรุณาเลือกสาขาก่อน')
+      toast.warning(t('devices.toast.select_site_first'))
       return
     }
     await fetchNextSiteCode(form.site)
-    toast.success('สร้างรหัสประจำ Site เรียบร้อย')
+    toast.success(t('devices.toast.site_code_created'))
   }
 
   async function save() {
     if (!form.assetCode || !form.name || !form.brand || !form.model || !form.type || !form.site) {
-      toast.error('กรุณากรอกข้อมูลที่จำเป็น (สาขา, รหัส, ชื่อ, แบรนด์, รุ่น, ประเภท)')
+      toast.error(t('devices.toast.required_missing'))
       return
     }
     try {
@@ -1380,7 +1395,7 @@ export function DevicesPage() {
         ).length
         if (failed > 0) {
           toast.warning(
-            `บันทึกอุปกรณ์แล้ว แต่ ${failed} รายการ License ไม่สำเร็จ`,
+            t('devices.toast.license_partial_fail').replace('{count}', String(failed)),
           )
         }
       }
@@ -1426,11 +1441,11 @@ export function DevicesPage() {
         ).length
         if (accFailed > 0) {
           toast.warning(
-            `บันทึกอุปกรณ์แล้ว แต่ ${accFailed} รายการอุปกรณ์ต่อพ่วงไม่สำเร็จ`,
+            t('devices.toast.acc_partial_fail').replace('{count}', String(accFailed)),
           )
         }
       }
-      toast.success(isEdit ? 'แก้ไขอุปกรณ์แล้ว' : 'เพิ่มอุปกรณ์ใหม่แล้ว')
+      toast.success(isEdit ? t('devices.toast.saved_edit') : t('devices.toast.saved_new'))
       setDialogOpen(false)
       await qc.invalidateQueries({ queryKey: ['devices'] })
       await qc.invalidateQueries({ queryKey: ['dashboard'] })
@@ -1453,7 +1468,7 @@ export function DevicesPage() {
         const j = await res.json().catch(() => ({}))
         throw new Error(j.error ?? 'Delete failed')
       }
-      toast.success('ลบอุปกรณ์แล้ว')
+      toast.success(t('devices.toast.deleted'))
       setDeleteTarget(null)
       await qc.invalidateQueries({ queryKey: ['devices'] })
       await qc.invalidateQueries({ queryKey: ['dashboard'] })
@@ -1480,7 +1495,7 @@ export function DevicesPage() {
       const json = await res.json()
       const rows = (json.devices ?? []) as Device[]
       downloadCsv(`devices-${dateStamp()}.csv`, rows, DEVICE_CSV_HEADERS)
-      toast.success(`ส่งออก ${rows.length} รายการแล้ว`)
+      toast.success(t('devices.toast.exported_csv').replace('{count}', String(rows.length)))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Export failed')
     } finally {
@@ -1514,15 +1529,15 @@ export function DevicesPage() {
         fetch('/api/itam/sticker/templates', { headers: authHeaders() }),
         fetch('/api/itam/sticker/settings', { headers: authHeaders() }).catch(() => null),
       ])
-      if (!tplRes.ok) throw new Error('โหลดเทมเพลตสติกเกอร์ไม่สำเร็จ')
+      if (!tplRes.ok) throw new Error(t('devices.toast.load_tpl_failed'))
       const tplData = (await tplRes.json()) as {
         templates: StickerTemplate[]
         activeId: string | null
       }
       const active =
         (tplData.activeId &&
-          tplData.templates.find((t) => t.id === tplData.activeId)) ||
-        tplData.templates.find((t) => !t.isDefault) ||
+          tplData.templates.find((tpl) => tpl.id === tplData.activeId)) ||
+        tplData.templates.find((tpl) => !tpl.isDefault) ||
         tplData.templates[0] ||
         buildDefaultTemplate()
       const template: StickerTemplate = active
@@ -1603,7 +1618,7 @@ export function DevicesPage() {
 
       const printWin = window.open('', '_blank')
       if (!printWin) {
-        toast.error('กรุณาอนุญาตป๊อปอัปเพื่อเปิดหน้าพิมพ์')
+        toast.error(t('devices.toast.allow_popup_print'))
         return
       }
       printWin.document.open()
@@ -1627,7 +1642,7 @@ export function DevicesPage() {
             action: 'PRINT',
             entity: 'Device',
             entityId: device.id,
-            summary: `พิมพ์สติกเกอร์อุปกรณ์เดี่ยว ${device.assetCode}`,
+            summary: `t('devices.action.print_single') ${device.assetCode}`,
             detail: {
               count: 1,
               deviceIds: [device.id],
@@ -1644,9 +1659,9 @@ export function DevicesPage() {
         console.error('[printSingleSticker]', err)
       }
 
-      toast.success(`เตรียมสติกเกอร์ ${device.assetCode} สำหรับพิมพ์แล้ว`)
+      toast.success(t('devices.toast.sticker_ready').replace('{code}', device.assetCode))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'พิมพ์สติกเกอร์ไม่สำเร็จ')
+      toast.error(e instanceof Error ? e.message : t('devices.toast.print_failed'))
     } finally {
       setPrintingSingleId(null)
     }
@@ -1656,49 +1671,49 @@ export function DevicesPage() {
   // Full list of columns that can be exported — richer than the default
   // DEVICE_CSV_HEADERS list. Grouped for visual clarity in the picker.
   const EXPORT_AVAILABLE_COLUMNS: ExportColumn[] = [
-    { key: 'assetCode', label: 'รหัสทรัพย์สิน', group: 'ข้อมูลทั่วไป' },
-    { key: 'assetSiteCode', label: 'ทะเบียน Site', group: 'ข้อมูลทั่วไป' },
-    { key: 'name', label: 'ชื่ออุปกรณ์', group: 'ข้อมูลทั่วไป' },
-    { key: 'type', label: 'ประเภท', group: 'ข้อมูลทั่วไป' },
-    { key: 'brand', label: 'ยี่ห้อ', group: 'ข้อมูลทั่วไป' },
-    { key: 'model', label: 'รุ่น', group: 'ข้อมูลทั่วไป' },
-    { key: 'serialNumber', label: 'Serial No.', group: 'ข้อมูลทั่วไป' },
-    { key: 'status', label: 'สถานะ', group: 'ข้อมูลทั่วไป' },
-    { key: 'site', label: 'สาขา', group: 'ตำแหน่ง' },
-    { key: 'building', label: 'อาคาร', group: 'ตำแหน่ง' },
-    { key: 'floor', label: 'ชั้น', group: 'ตำแหน่ง' },
-    { key: 'room', label: 'ห้อง', group: 'ตำแหน่ง' },
-    { key: 'department', label: 'แผนก', group: 'ตำแหน่ง' },
-    { key: 'departmentCode', label: 'รหัสแผนก', group: 'ตำแหน่ง' },
-    { key: 'location', label: 'ตำแหน่ง/ที่ตั้ง', group: 'ตำแหน่ง' },
-    { key: 'currentAssignee', label: 'ผู้ใช้งานปัจจุบัน', group: 'ผู้ใช้/การเงิน' },
-    { key: 'costCenter', label: 'Cost Center', group: 'ผู้ใช้/การเงิน' },
-    { key: 'deviceGroup', label: 'กลุ่มอุปกรณ์', group: 'ผู้ใช้/การเงิน' },
-    { key: 'purchaseDate', label: 'วันที่รับ', group: 'ผู้ใช้/การเงิน' },
-    { key: 'purchasePrice', label: 'ราคาทุน', group: 'ผู้ใช้/การเงิน' },
-    { key: 'salvageValue', label: 'มูลค่าซาก', group: 'ผู้ใช้/การเงิน' },
-    { key: 'usefulLife', label: 'อายุการใช้งาน (เดือน)', group: 'ผู้ใช้/การเงิน' },
-    { key: 'warrantyMonths', label: 'การรับประกัน (เดือน)', group: 'ผู้ใช้/การเงิน' },
-    { key: 'warrantyEnd', label: 'วันหมดรับประกัน', group: 'ผู้ใช้/การเงิน' },
-    { key: 'vendor', label: 'ผู้จำหน่าย', group: 'ผู้ใช้/การเงิน' },
-    { key: 'contractNo', label: 'เลขที่สัญญา', group: 'ผู้ใช้/การเงิน' },
-    { key: 'meterRequired', label: 'ต้องจดมิเตอร์', group: 'มิเตอร์' },
-    { key: 'meterMode', label: 'โหมดมิเตอร์', group: 'มิเตอร์' },
-    { key: 'lastMeterBw', label: 'มิเตอร์ ขาวดำ', group: 'มิเตอร์' },
-    { key: 'lastMeterColor', label: 'มิเตอร์ สี', group: 'มิเตอร์' },
-    { key: 'lastReadingMonth', label: 'เดือนที่จดล่าสุด', group: 'มิเตอร์' },
-    { key: 'ip', label: 'IP Address', group: 'เครือข่าย' },
-    { key: 'mac', label: 'MAC Address', group: 'เครือข่าย' },
-    { key: 'remoteId', label: 'Remote ID', group: 'เครือข่าย' },
-    { key: 'parentRef', label: 'Parent Ref', group: 'ความสัมพันธ์' },
-    { key: 'parentDeviceId', label: 'อุปกรณ์หลัก (Set)', group: 'ความสัมพันธ์' },
-    { key: 'setLabel', label: 'ชื่อชุด', group: 'ความสัมพันธ์' },
-    { key: 'setPosition', label: 'ลำดับในชุด', group: 'ความสัมพันธ์' },
-    { key: 'displayLabel', label: 'Display Label', group: 'อื่นๆ' },
-    { key: 'uninstallDate', label: 'วันที่ถอน', group: 'อื่นๆ' },
-    { key: 'remark', label: 'หมายเหตุ', group: 'อื่นๆ' },
-    { key: 'updatedBy', label: 'ผู้แก้ไขล่าสุด', group: 'อื่นๆ' },
-    { key: 'updatedAt', label: 'วันที่อัปเดต', group: 'อื่นๆ' },
+    { key: 'assetCode', label: 'Asset Code', group: t('devices.section.general') },
+    { key: 'assetSiteCode', label: 'Site Code', group: t('devices.section.general') },
+    { key: 'name', label: 'Device Name', group: t('devices.section.general') },
+    { key: 'type', label: 'Type', group: t('devices.section.general') },
+    { key: 'brand', label: 'Brand', group: t('devices.section.general') },
+    { key: 'model', label: 'Model', group: t('devices.section.general') },
+    { key: 'serialNumber', label: 'Serial No.', group: t('devices.section.general') },
+    { key: 'status', label: 'Status', group: t('devices.section.general') },
+    { key: 'site', label: 'Site', group: t('devices.field.position') },
+    { key: 'building', label: t('devices.field.building'), group: t('devices.field.position') },
+    { key: 'floor', label: t('devices.field.floor'), group: t('devices.field.position') },
+    { key: 'room', label: t('devices.field.room'), group: t('devices.field.position') },
+    { key: 'department', label: 'Department', group: t('devices.field.position') },
+    { key: 'departmentCode', label: 'Dept Code', group: t('devices.field.position') },
+    { key: 'location', label: t('devices.field.position_location'), group: t('devices.field.position') },
+    { key: 'currentAssignee', label: 'Current Assignee', group: t('devices.section.user_finance') },
+    { key: 'costCenter', label: 'Cost Center', group: t('devices.section.user_finance') },
+    { key: 'deviceGroup', label: 'Device Group', group: t('devices.section.user_finance') },
+    { key: 'purchaseDate', label: 'Receive Date', group: t('devices.section.user_finance') },
+    { key: 'purchasePrice', label: 'Purchase Price', group: t('devices.section.user_finance') },
+    { key: 'salvageValue', label: 'Salvage Value', group: t('devices.section.user_finance') },
+    { key: 'usefulLife', label: `${t('devices.field.useful_life')} (${t('devices.unit.month')})`, group: t('devices.section.user_finance') },
+    { key: 'warrantyMonths', label: `${t('devices.col.warranty')} (${t('devices.unit.month')})`, group: t('devices.section.user_finance') },
+    { key: 'warrantyEnd', label: 'Warranty End', group: t('devices.section.user_finance') },
+    { key: 'vendor', label: 'Vendor', group: t('devices.section.user_finance') },
+    { key: 'contractNo', label: 'Contract No', group: t('devices.section.user_finance') },
+    { key: 'meterRequired', label: 'Meter Required', group: t('devices.section.meter') },
+    { key: 'meterMode', label: 'Meter Mode', group: t('devices.section.meter') },
+    { key: 'lastMeterBw', label: `${t('devices.section.meter')} ${t('devices.field.bw')}`, group: t('devices.section.meter') },
+    { key: 'lastMeterColor', label: `${t('devices.section.meter')} ${t('devices.field.color')}`, group: t('devices.section.meter') },
+    { key: 'lastReadingMonth', label: 'Last Read Month', group: t('devices.section.meter') },
+    { key: 'ip', label: 'IP Address', group: t('devices.field.network_other') },
+    { key: 'mac', label: 'MAC Address', group: t('devices.field.network_other') },
+    { key: 'remoteId', label: 'Remote ID', group: t('devices.field.network_other') },
+    { key: 'parentRef', label: 'Parent Ref', group: t('devices.section.set_relationship') },
+    { key: 'parentDeviceId', label: `${t('devices.field.parent_device')} (Set)`, group: t('devices.section.set_relationship') },
+    { key: 'setLabel', label: 'Set Label', group: t('devices.section.set_relationship') },
+    { key: 'setPosition', label: 'Position in Set', group: t('devices.section.set_relationship') },
+    { key: 'displayLabel', label: 'Display Label', group: t('devices.field.other') },
+    { key: 'uninstallDate', label: 'Uninstall Date', group: t('devices.field.other') },
+    { key: 'remark', label: 'Remark', group: t('devices.field.other') },
+    { key: 'updatedBy', label: 'Updated By', group: t('devices.field.other') },
+    { key: 'updatedAt', label: 'Updated', group: t('devices.field.other') },
   ]
   const [customExportOpen, setCustomExportOpen] = React.useState(false)
 
@@ -1746,7 +1761,7 @@ export function DevicesPage() {
         // native print → Save as PDF.
         const printWin = window.open('', '_blank', 'width=1024,height=768')
         if (!printWin) {
-          throw new Error('โปรดอนุญาต popup เพื่อสร้าง PDF')
+          throw new Error(t('devices.toast.allow_popup_pdf'))
         }
         const html = `<!doctype html><html><head><meta charset="utf-8"><title>${filename}</title>
 <style>
@@ -1758,8 +1773,8 @@ th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
 th { background: #f97316; color: white; font-weight: 600; font-size: 10px; }
 tr:nth-child(even) { background: #fafafa; }
 </style></head><body>
-<h1>รายการอุปกรณ์ IT</h1>
-<div class="meta">ส่งออกเมื่อ ${new Date().toLocaleString('th-TH')} — ${rows.length} รายการ, ${columns.length} คอลัมน์</div>
+<h1>t('devices.field.device_list') IT</h1>
+<div class="meta">t('devices.exported_at') ${new Date().toLocaleString('th-TH')} — ${rows.length} t('devices.field.list'), ${columns.length} t('devices.filter.columns')</div>
 <table>
 <thead><tr>${headers.map((h) => `<th>${h.label}</th>`).join('')}</tr></thead>
 <tbody>
@@ -1771,7 +1786,12 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
         printWin.document.write(html)
         printWin.document.close()
       }
-      toast.success(`ส่งออก ${rows.length} รายการ (${columns.length} คอลัมน์) เป็น ${format.toUpperCase()} แล้ว`)
+      toast.success(
+        t('devices.toast.export_custom')
+          .replace('{rows}', String(rows.length))
+          .replace('{cols}', String(columns.length))
+          .replace('{format}', format.toUpperCase()),
+      )
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Custom export failed')
       throw e
@@ -1839,13 +1859,13 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     )
     const ok = results.filter((r) => r.status === 'fulfilled').length
     const fail = results.length - ok
-    const label = statusLabel(bulkStatus)
+    const label = t(deviceStatusLabelKey(bulkStatus))
     if (fail === 0) {
-      toast.success(`อัปเดต ${ok} เครื่องเป็น "${label}" แล้ว`)
+      toast.success(t('devices.toast.bulk_status_ok').replace('{count}', String(ok)).replace('{label}', label))
     } else {
-      toast.warning(`อัปเดตสำเร็จ ${ok} เครื่อง, ล้มเหลว ${fail} เครื่อง`)
+      toast.warning(t('devices.toast.bulk_partial').replace('{ok}', String(ok)).replace('{fail}', String(fail)))
     }
-    await logBulkAction('BULK_UPDATE', `เปลี่ยนสถานะอุปกรณ์ ${ok} เครื่องเป็น ${label}`, {
+    await logBulkAction('BULK_UPDATE', `t('devices.action.change_status') ${ok} ${label}`, {
       status: bulkStatus,
       count: ok,
       failed: fail,
@@ -1878,11 +1898,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     const siteName =
       (sites ?? []).find((s) => s.code === bulkSite)?.name ?? bulkSite
     if (fail === 0) {
-      toast.success(`ย้าย ${ok} เครื่องไปสาขา ${siteName} แล้ว`)
+      toast.success(t('devices.toast.bulk_transfer_ok').replace('{count}', String(ok)).replace('{site}', siteName))
     } else {
-      toast.warning(`ย้ายสำเร็จ ${ok} เครื่อง, ล้มเหลว ${fail} เครื่อง`)
+      toast.warning(t('devices.toast.bulk_partial').replace('{ok}', String(ok)).replace('{fail}', String(fail)))
     }
-    await logBulkAction('BULK_TRANSFER', `ย้ายอุปกรณ์ ${ok} เครื่องไปสาขา ${siteName}`, {
+    await logBulkAction('BULK_TRANSFER', `t('devices.action.transfer') ${ok} to ${siteName}`, {
       toSite: bulkSite,
       count: ok,
       failed: fail,
@@ -1906,11 +1926,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     const ok = results.filter((r) => r.status === 'fulfilled').length
     const fail = results.length - ok
     if (fail === 0) {
-      toast.success(`ลบ ${ok} เครื่องแล้ว`)
+      toast.success(t('devices.toast.bulk_delete_ok').replace('{count}', String(ok)))
     } else {
-      toast.warning(`ลบสำเร็จ ${ok} เครื่อง, ล้มเหลว ${fail} เครื่อง`)
+      toast.warning(t('devices.toast.bulk_partial').replace('{ok}', String(ok)).replace('{fail}', String(fail)))
     }
-    await logBulkAction('BULK_DELETE', `ลบอุปกรณ์ ${ok} เครื่อง`, {
+    await logBulkAction('BULK_DELETE', `t('devices.delete') ${ok} ${t('devices.unit.device')}`, {
       count: ok,
       failed: fail,
       deviceIds: ids,
@@ -1933,9 +1953,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
   // ── When the Add/Edit full-page form is open, render ONLY the form ──
   // (no list view, no sidebar clutter behind it). This makes the form feel
   // like a real page rather than a modal floating over content.
+  // CRITICAL: z-index must be higher than the sidebar (z-[100]) so the form
+  // doesn't fall behind the sidebar. Using z-[300] to be above everything.
   if (dialogOpen) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-slate-50 dark:bg-slate-950">
+      <div className="fixed inset-0 z-[300] flex flex-col bg-slate-50 dark:bg-slate-950">
         {/* ── Sticky Header ── */}
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:px-6">
           <div className="flex items-center gap-3">
@@ -1944,17 +1966,22 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               onClick={() => setDialogOpen(false)}
               disabled={saving}
               className="flex h-9 w-9 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-              title="ยกเลิก กลับสู่รายการ"
-              aria-label="ปิด"
+              title={t('devices.close_back')}
+              aria-label={t('common.close')}
             >
               <X className="h-5 w-5" />
             </button>
             <div>
               <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 sm:text-lg">
-                {form.id ? '✏️ แก้ไขอุปกรณ์' : '➕ เพิ่มอุปกรณ์ใหม่'}
+                {form.id ? t('devices.edit_title') : t('devices.add_new')}
               </h2>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                กรอกข้อมูลให้ครบ — ฟิลด์ที่มี <span className="font-semibold text-[#f97316]">*</span> เป็นข้อมูลที่จำเป็น
+                {t('devices.form_required_hint').split('*').map((part, i, arr) => (
+                  <React.Fragment key={i}>
+                    {part}
+                    {i < arr.length - 1 && <span className="font-semibold text-[#f97316]">*</span>}
+                  </React.Fragment>
+                ))}
               </p>
             </div>
           </div>
@@ -1971,8 +1998,8 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               disabled={saving}
               title={
                 quickAdd
-                  ? 'สลับเป็นโหมดเต็ม — แสดงทุกฟิลด์ (5 แท็บ)'
-                  : 'สลับเป็นโหมดเพิ่มด่วน — กรอกเฉพาะฟิลด์จำเป็น'
+                  ? t('devices.switch_to_full')
+                  : t('devices.switch_to_quick')
               }
               className={
                 quickAdd
@@ -1980,7 +2007,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   : 'border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
               }
             >
-              {quickAdd ? '📋 แบบเต็ม' : '⚡ เพิ่มด่วน'}
+              {quickAdd ? t('devices.full_mode') : t('devices.quick_mode')}
             </Button>
             <Button
               variant="outline"
@@ -1988,7 +2015,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               disabled={saving}
               className="hidden sm:inline-flex"
             >
-              ยกเลิก
+              {t('common.cancel')}
             </Button>
             <Button
               onClick={save}
@@ -1996,10 +2023,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
               {saving
-                ? 'กำลังบันทึก...'
+                ? t('devices.saving')
                 : quickAdd
-                  ? '⚡ บันทึก (เพิ่มด่วน)'
-                  : '💾 บันทึกอุปกรณ์'}
+                  ? t('devices.save_quick')
+                  : t('devices.save_device')}
             </Button>
           </div>
         </div>
@@ -2021,14 +2048,14 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
             ) : (
               <>
             {/* ── SN Scanner (always visible at top) ──
-                Scan a barcode → auto-fills the Serial Number field (in อุปกรณ์ tab).
+                Scan a barcode → auto-fills the Serial Number field (in t('devices.title') tab).
                 Useful for quickly entering SN without manual typing.
                 Uses Enter key (sent by most barcode scanners) to commit the value. */}
             <div className="mb-4 flex items-center gap-2 rounded-md border border-[#f97316]/30 bg-[#f97316]/5 px-3 py-2 dark:border-[#fb923c]/30 dark:bg-[#fb923c]/5">
               <ScanLine className="h-4 w-4 shrink-0 text-[#f97316] dark:text-[#fb923c]" />
               <input
                 type="text"
-                placeholder="สแกนหรือพิมพ์ Serial Number แล้วกด Enter เพื่อกรอกอัตโนมัติ…"
+                placeholder={t('devices.scan_sn_placeholder')}
                 className="flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200 dark:placeholder:text-slate-500"
                 onKeyDown={(e) => {
                   // Most barcode scanners send Enter after the code.
@@ -2039,10 +2066,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     if (v) {
                       setForm((prev) => ({ ...prev, serialNumber: v }))
                       ;(e.target as HTMLInputElement).value = ''
-                      // Auto-switch to อุปกรณ์ tab so the user sees the filled SN
+                      // Auto-switch to t('devices.title') tab so the user sees the filled SN
                       const deviceTab = document.querySelector('[data-state="inactive"][role="tab"]')
                       // The Tabs component is controlled by Radix, so we just
-                      // clear the input — the user can click the อุปกรณ์ tab to verify.
+                      // clear the input — the user can click the t('devices.title') tab to verify.
                     }
                   }
                 }}
@@ -2056,7 +2083,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                 }}
               />
               <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                สแกนบาร์โค้ด → กด Enter → กรอก SN อัตโนมัติ
+                {t('devices.scan_sn_hint')}
               </span>
             </div>
 
@@ -2064,44 +2091,44 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
             <div className="mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
               <span className="flex items-center gap-1">
                 <span className="font-semibold text-[#f97316]">*</span>
-                จำเป็น (Required)
+                {t('devices.legend_required')}
               </span>
               <span className="flex items-center gap-1">
                 <span className="h-2 w-2 rounded-full bg-slate-300 dark:bg-slate-600" />
-                ไม่บังคับ (Optional)
+                {t('devices.legend_optional')}
               </span>
               <span className="flex items-center gap-1">
                 <Sparkles className="h-3 w-3 text-[#f97316]" />
-                ระบบสร้างให้อัตโนมัติ
+                {t('devices.legend_auto')}
               </span>
             </div>
 
             {/* ── Tabs: 5 sections ──
-                Tab 1: 📍 สถานที่ติดตั้ง (สาขา + รหัส + อาคาร/ชั้น/แผนก + ตำแหน่ง/ห้อง)
-                Tab 2: 💻 อุปกรณ์ (สถานะ, Type/Brand/Model, IP/MAC, กลุ่มอุปกรณ์, โหมดมิเตอร์)
-                Tab 3: 🔌 อุปกรณ์ต่อพ่วง (inline accessories — POST'd after device save)
-                Tab 4: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
-                Tab 5: ⚙️ ขั้นสูง (Remote ID, ซื้อ/รับประกัน, การเงิน, License, อื่นๆ) */}
+                Tab 1: 📍 t('devices.field.install_location') (t('devices.field.site') + t('devices.field.asset_code_short') + t('devices.field.building_floor_dept') + t('devices.field.position_room'))
+                Tab 2: 💻 t('devices.title') (t('devices.field.status'), Type/Brand/Model, IP/MAC, t('devices.field.device_group'), Meter Mode)
+                Tab 3: 🔌 t('devices.field.accessory') (inline accessories — POST'd after device save)
+                Tab 4: 📦 t('devices.field.set_devices') (Device Set / Parent-Child)
+                Tab 5: ⚙️ t('devices.section.advanced') (Remote ID, t('devices.section.purchase_warranty'), t('devices.section.user_finance'), License, t('devices.field.other')) */}
             <Tabs defaultValue="location" className="w-full">
               <TabsList className="mb-4 grid w-full grid-cols-3 sm:grid-cols-5">
-                <TabsTrigger value="location" onClick={() => {}}>📍 สถานที่ติดตั้ง</TabsTrigger>
-                <TabsTrigger value="device" onClick={() => {}}>💻 อุปกรณ์</TabsTrigger>
-                <TabsTrigger value="accessories" onClick={() => {}}>🔌 อุปกรณ์ต่อพ่วง</TabsTrigger>
-                <TabsTrigger value="set" onClick={() => {}}>📦 ชุดอุปกรณ์</TabsTrigger>
-                <TabsTrigger value="advanced" onClick={() => {}}>⚙️ ขั้นสูง</TabsTrigger>
+                <TabsTrigger value="location" onClick={() => {}}>{t('devices.tab.location')}</TabsTrigger>
+                <TabsTrigger value="device" onClick={() => {}}>{t('devices.tab.device')}</TabsTrigger>
+                <TabsTrigger value="accessories" onClick={() => {}}>{t('devices.tab.accessories')}</TabsTrigger>
+                <TabsTrigger value="set" onClick={() => {}}>{t('devices.tab.set')}</TabsTrigger>
+                <TabsTrigger value="advanced" onClick={() => {}}>{t('devices.tab.advanced')}</TabsTrigger>
               </TabsList>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 1: 📍 สถานที่ติดตั้ง
+                  Tab 1: 📍 t('devices.field.install_location')
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="location" className="space-y-4">
-                {/* ── Row 1: สาขา + รหัสอุปกรณ์ + รหัสประจำ Site (แถวเดียว — 2 อันหลัง auto จากสาขา) ── */}
+                {/* ── Row 1: t('devices.field.site') + t('devices.field.asset_code') + t('devices.field.asset_code') (t('devices.field.single_row') — 2 t('devices.field.later_unit') auto from t('devices.field.site')) ── */}
                 <div className="rounded-lg border border-sky-200 bg-white p-4 shadow-sm dark:border-sky-900/40 dark:bg-slate-900">
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">
-                    📍 สถานที่ติดตั้ง
+                    {t('devices.section.installation')}
                   </div>
                   <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3 xl:grid-cols-4">
-                    <Field label="สาขา" required>
+                    <Field label={t('devices.field.site')} required>
                       <Select
                         value={form.site}
                         onValueChange={(v) => {
@@ -2119,7 +2146,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         }}
                       >
                         <SelectTrigger className="w-full" id="dev-site">
-                          <SelectValue placeholder="— เลือกสาขา —" />
+                          <SelectValue placeholder={t('devices.placeholder.site')} />
                         </SelectTrigger>
                         <SelectContent>
                           {(visibleSites ?? []).map((s) => (
@@ -2130,7 +2157,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         </SelectContent>
                       </Select>
                     </Field>
-                    <Field label="รหัสอุปกรณ์" required>
+                    <Field label={t('devices.field.asset_code')} required>
                       <div className="relative">
                         <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                         <Input
@@ -2139,7 +2166,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           onChange={(e) =>
                             setForm({ ...form, assetCode: e.target.value })
                           }
-                          placeholder="สร้างอัตโนมัติ เช่น 2379"
+                          placeholder={t('devices.placeholder.asset_code')}
                           className="bg-amber-50/50 pl-8 font-mono dark:bg-amber-950/10"
                         />
                         <button
@@ -2147,14 +2174,14 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           tabIndex={-1}
                           onClick={() => void fetchNextAssetCode()}
                           disabled={Boolean(form.id)}
-                          title="สร้างเลขถัดไปอัตโนมัติ"
+                          title={t('devices.hint.gen_next_asset_code')}
                           className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-[#f97316] hover:bg-[#f97316]/10 disabled:opacity-40 dark:text-[#fb923c]"
                         >
                           <Sparkles className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </Field>
-                    <Field label="รหัสประจำ Site">
+                    <Field label={t('devices.field.asset_site_code')}>
                       <div className="flex gap-2">
                         <Input
                           id="dev-assetSiteCode"
@@ -2162,7 +2189,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           onChange={(e) =>
                             setForm({ ...form, assetSiteCode: e.target.value })
                           }
-                          placeholder="สร้างอัตโนมัติ เช่น UDH-02234"
+                          placeholder={t('devices.placeholder.asset_site_code')}
                           className="bg-amber-50/50 font-mono text-xs dark:bg-amber-950/10 dark:border-slate-700"
                         />
                         <Button
@@ -2171,8 +2198,8 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           onClick={generateSiteCodeNow}
                           disabled={!form.site}
                           className="h-9 shrink-0 border-[#f97316]/30 text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c]/30 dark:text-[#fb923c]"
-                          title="สร้าง/อัปเดตรหัสประจำ Site อัตโนมัติ"
-                          aria-label="สร้างรหัสประจำ Site อัตโนมัติ"
+                          title={t('devices.hint.gen_site_code')}
+                          aria-label={t('devices.aria.gen_site_code')}
                         >
                           <Sparkles className="h-3.5 w-3.5" />
                         </Button>
@@ -2180,9 +2207,9 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     </Field>
                   </div>
 
-                  {/* ── Row 2: อาคาร + ชั้น + แผนก ── */}
+                  {/* ── Row 2: t('devices.field.building') + t('devices.field.floor') + t('devices.field.department') ── */}
                   <div className="mt-4 grid grid-cols-1 items-start gap-4 sm:grid-cols-3 xl:grid-cols-4">
-                    <Field label="อาคาร" required>
+                    <Field label={t('devices.field.building')} required>
                       <Combobox
                         value={form.building}
                         onChange={(v) =>
@@ -2198,11 +2225,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           value: b,
                           label: b,
                         }))}
-                        placeholder="เลือกหรือพิมพ์อาคาร"
-                        emptyText="ยังไม่มีอาคารในสาขานี้ — พิมพ์เพื่อเพิ่มใหม่"
+                        placeholder={t('devices.placeholder.building')}
+                        emptyText={t('devices.empty_no_building')}
                       />
                     </Field>
-                    <Field label="ชั้น" required hint={highlightedFloors.length > 0 ? `🟢 ไฮไลต์ = ชั้นที่มีเครื่องอยู่จริงในอาคารนี้ (${highlightedFloors.length} ชั้น)` : undefined}>
+                    <Field label={t('devices.field.floor')} required hint={highlightedFloors.length > 0 ? t('devices.hint.floor_highlight').replace('{n}', String(highlightedFloors.length)) : undefined}>
                       <Combobox
                         value={form.floor}
                         onChange={(v) =>
@@ -2219,11 +2246,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         }))}
                         highlightedValues={highlightedFloors}
                         highlightBadges={floorBadges}
-                        placeholder="เลือกหรือพิมพ์ชั้น"
-                        emptyText="ไม่พบชั้น — พิมพ์เพื่อเพิ่มใหม่"
+                        placeholder={t('devices.placeholder.floor')}
+                        emptyText={t('devices.empty_no_floor')}
                       />
                     </Field>
-                    <Field label="แผนก (Department)" hint={highlightedDepartments.length > 0 ? `🟢 ไฮไลต์ = แผนกที่มีเครื่องอยู่จริงในชั้นนี้ (${highlightedDepartments.length} แผนก)` : undefined}>
+                    <Field label={t('devices.field.department')} hint={highlightedDepartments.length > 0 ? t('devices.hint.dept_highlight').replace('{n}', String(highlightedDepartments.length)) : undefined}>
                       <Combobox
                         value={form.department}
                         onChange={(v) => {
@@ -2245,28 +2272,28 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         }))}
                         highlightedValues={highlightedDepartments}
                         highlightBadges={departmentBadges}
-                        placeholder="เลือกแผนก — สังกัด auto"
-                        emptyText="ไม่พบแผนก — พิมพ์เพื่อเพิ่มใหม่"
+                        placeholder={t('devices.placeholder.dept')}
+                        emptyText={t('devices.empty_no_dept')}
                       />
                     </Field>
                   </div>
 
-                  {/* ── สังกัด auto hint ── */}
+                  {/* ── t('devices.field.belonging') auto hint ── */}
                   {form.parentRef && (
                     <div className="mt-3 flex items-center gap-2 rounded-md bg-sky-50 px-3 py-2 text-[11px] text-sky-700 dark:bg-sky-950/30 dark:text-sky-400">
-                      <span className="font-semibold">สังกัด (auto):</span>
+                      <span className="font-semibold">{t('devices.affiliation_auto_label')}</span>
                       <span>{form.parentRef}</span>
-                      <span className="text-sky-400">← เติมอัตโนมัติจากแผนกที่เลือก</span>
+                      <span className="text-sky-400">{t('devices.affiliation_auto_hint')}</span>
                     </div>
                   )}
 
-                  {/* ── Row 3: ตำแหน่ง + ห้อง (optional, ระบุจุดจำเพาะ) ── */}
+                  {/* ── Row 3: t('devices.field.position') + t('devices.field.room') (optional, t('devices.field.specific_location')) ── */}
                   <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
                     <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                      ระบุจุดจำเพาะ (ไม่บังคับ — ใส่เฉพาะตอนต้องการ)
+                      {t('devices.section.specific_point')}
                     </div>
                     <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      <Field label="ตำแหน่ง (Location)" hint={highlightedLocations.length > 0 ? `🟢 ไฮไลต์ = ตำแหน่งที่มีเครื่องอยู่ในตึกนี้ (${highlightedLocations.length} ตำแหน่ง)` : 'ดึงตำแหน่งทั้งหมดที่เคยมีในระบบ — พิมพ์เพื่อเพิ่มใหม่ได้'}>
+                      <Field label={t('devices.field.location')} hint={highlightedLocations.length > 0 ? t('devices.hint.location_highlight').replace('{n}', String(highlightedLocations.length)) : t('devices.hint.location_default')}>
                         <Combobox
                           value={form.location}
                           onChange={(v) => setForm({ ...form, location: v })}
@@ -2276,46 +2303,46 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           }))}
                           highlightedValues={highlightedLocations}
                           highlightBadges={locationBadges}
-                          placeholder="เลือกหรือพิมพ์ตำแหน่ง เช่น ห้องตรวจ 77"
-                          emptyText="พิมพ์เพื่อเพิ่มใหม่"
+                          placeholder={t('devices.placeholder.location')}
+                          emptyText={t('devices.placeholder.location_empty')}
                         />
                       </Field>
-                      <Field label="ห้อง (Room)">
+                      <Field label={t('devices.field.room')}>
                         <Input
                         id="dev-room"
                           value={form.room}
                           onChange={(e) =>
                             setForm({ ...form, room: e.target.value })
                           }
-                          placeholder="หมายเลขห้อง เช่น 301"
+                          placeholder={t('devices.placeholder.room')}
                         />
                       </Field>
                     </div>
                   </div>
 
-                  {/* ── ข้อมูลเครื่อง (moved from Tab 2) ──
-                      Type / Brand / Model / Name / Serial — ย้ายมาไว้ใน
-                      Tab 1 เพราะพื้นที่พอและเป็นข้อมูลจำเป็นต้องกรอก */}
+                  {/* ── t('devices.section.device_info') (moved from Tab 2) ──
+                      Type / Brand / Model / Name / Serial — t('devices.field.to_site')
+                      Tab 1 — space available and required fields */}
                   <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
                     <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                      💻 ข้อมูลเครื่อง
+                      {t('devices.section.device_info')}
                     </div>
                     <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      <Field label="ประเภท (Type)" required hint="เลือกแล้วระบบกำหนด จดมิเตอร์ อัตโนมัติ">
+                      <Field label={t('devices.field.type')} required hint={t('devices.hint.type_meter')}>
                         <Combobox
                           value={form.type}
                           onChange={(v) =>
                             setForm({ ...form, type: v, brand: '', model: '' })
                           }
-                          items={(deviceTypes ?? []).map((t) => ({
-                            value: t.name,
-                            label: t.name,
+                          items={(deviceTypes ?? []).map((dt) => ({
+                            value: dt.name,
+                            label: dt.name,
                           }))}
-                          placeholder="เลือกหรือพิมพ์ประเภท เช่น PRINTER LASER"
-                          emptyText="ไม่พบประเภท"
+                          placeholder={t('devices.placeholder.type')}
+                          emptyText={t('devices.empty_no_type')}
                         />
                       </Field>
-                      <Field label="แบรนด์ (Brand)" required>
+                      <Field label={t('devices.field.brand')} required>
                         <Combobox
                           value={form.brand}
                           onChange={(v) =>
@@ -2325,11 +2352,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                             value: b.name,
                             label: b.name,
                           }))}
-                          placeholder="เลือกหรือพิมพ์แบรนด์ เช่น BROTHER"
-                          emptyText="ไม่พบแบรนด์"
+                          placeholder={t('devices.placeholder.brand')}
+                          emptyText={t('devices.empty_no_brand')}
                         />
                       </Field>
-                      <Field label="รุ่น (Model)" required hint="เลือกรุ่นแล้ว แบรนด์/ประเภท auto">
+                      <Field label={t('devices.field.model')} required hint={t('devices.hint.model_brand_auto')}>
                         <Combobox
                           value={form.model}
                           onChange={(v) => {
@@ -2358,11 +2385,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           )
                             .sort()
                             .map((m) => ({ value: m, label: m }))}
-                          placeholder="เลือกรุ่น เช่น HL-L5210DN"
-                          emptyText="ไม่พบรุ่น — พิมพ์เพื่อเพิ่มใหม่"
+                          placeholder={t('devices.placeholder.model')}
+                          emptyText={t('devices.empty_no_model')}
                         />
                       </Field>
-                      <Field label="ชื่ออุปกรณ์ (auto)" hint="สร้างอัตโนมัติจาก แบรนด์ + รุ่น + สถานที่ — แก้ไขได้ถ้าต้องการ">
+                      <Field label={t('devices.field.name_auto')} hint={t('devices.hint.name_auto_full')}>
                         <Input
                           id="dev-name"
                           value={form.name}
@@ -2370,11 +2397,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                             nameManuallyEditedRef.current = true
                             setForm({ ...form, name: e.target.value })
                           }}
-                          placeholder="สร้างอัตโนมัติ เช่น BROTHER HL-L5210DN ตึกผู้ป่วยนอก (OPD) ชั้น 2"
+                          placeholder={t('devices.placeholder.name_full')}
                           className="bg-amber-50/50 dark:bg-amber-950/10"
                         />
                       </Field>
-                      <Field label="Serial Number">
+                      <Field label={t('devices.field.serial')}>
                         <div className="relative">
                           <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                           <Input
@@ -2383,7 +2410,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                             onChange={(e) =>
                               setForm({ ...form, serialNumber: e.target.value })
                             }
-                            placeholder="สแกนจากด้านบน หรือพิมพ์ SN"
+                            placeholder={t('devices.placeholder.serial_form')}
                             className="pl-8 font-mono text-xs"
                           />
                         </div>
@@ -2394,15 +2421,15 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 2: 💻 อุปกรณ์ (ตั้งค่า — Remote ID, สถานะ, IP/MAC, กลุ่ม, มิเตอร์)
+                  Tab 2: 💻 t('devices.title') (t('devices.field.setting') — Remote ID, t('devices.field.status'), IP/MAC, t('devices.field.device_group'), t('devices.section.meter'))
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="device" className="space-y-4">
                 <div className="rounded-lg border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900/40 dark:bg-slate-900">
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-                    💻 ตั้งค่าอุปกรณ์
+                    {t('devices.section.device_setup')}
                   </div>
                   <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    <Field label="สถานะ" required>
+                    <Field label={t('devices.field.status')} required>
                       <Select
                         value={form.status}
                         onValueChange={(v) =>
@@ -2410,12 +2437,12 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         }
                       >
                         <SelectTrigger className="w-full">
-                          <SelectValue placeholder="เลือกสถานะ" />
+                          <SelectValue placeholder={t('devices.placeholder.status')} />
                         </SelectTrigger>
                         <SelectContent>
                           {DEVICE_STATUS_OPTIONS.map((o) => (
                             <SelectItem key={o.value} value={o.value}>
-                              {o.label}
+                              {t(deviceStatusLabelKey(o.value))}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -2428,7 +2455,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         onChange={(e) =>
                           setForm({ ...form, remoteId: e.target.value })
                         }
-                        placeholder="เช่น 123 456 789"
+                        placeholder="t('devices.field.such_as') 123 456 789"
                         className="font-mono text-xs"
                       />
                     </Field>
@@ -2466,7 +2493,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       </div>
                     </Field>
                     <Field
-                      label="กลุ่มอุปกรณ์ (Device Group)"
+                      label={t('devices.field.device_group')}
                     >
                       <Combobox
                         value={form.deviceGroup}
@@ -2475,14 +2502,14 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         }
                         items={deviceGroups.map((g) => ({
                           value: g.code,
-                          label: DEVICE_GROUP_THAI[g.code] ?? g.label,
+                          label: DEVICE_GROUP_LABEL_KEYS[g.code] ? t(DEVICE_GROUP_LABEL_KEYS[g.code]) : g.label,
                         }))}
-                        displayValue={(v) => DEVICE_GROUP_THAI[v] ?? v}
-                        placeholder="เลือกกลุ่มอุปกรณ์ (default: ของบริษัท)"
-                        emptyText="ไม่พบกลุ่มอุปกรณ์"
+                        displayValue={(v) => DEVICE_GROUP_LABEL_KEYS[v] ? t(DEVICE_GROUP_LABEL_KEYS[v]) : v}
+                        placeholder={t('devices.placeholder.device_group')}
+                        emptyText={t('devices.empty_no_device_group')}
                       />
                     </Field>
-                    <Field label="โหมดมิเตอร์">
+                    <Field label={t('devices.field.meter_mode')}>
                       <Select
                         value={form.meterMode}
                         onValueChange={(v) =>
@@ -2490,12 +2517,12 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         }
                       >
                         <SelectTrigger className="w-full">
-                          <SelectValue placeholder="เลือกโหมดมิเตอร์" />
+                          <SelectValue placeholder={t('devices.placeholder.meter_mode')} />
                         </SelectTrigger>
                         <SelectContent>
                           {METER_MODE_OPTIONS.map((o) => (
                             <SelectItem key={o.value} value={o.value}>
-                              {o.label}
+                              {t(o.labelKey)}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -2506,16 +2533,16 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   {/* ── meter status hint (auto-derived from Type) ── */}
                   <div className={`mt-3 rounded-md px-3 py-2 text-[11px] ${form.meterRequired ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' : 'bg-slate-50 text-slate-500 dark:bg-slate-800/50 dark:text-slate-400'}`}>
                     {form.meterRequired ? (
-                      <>✅ <span className="font-semibold">ต้องจดมิเตอร์</span> — อัตโนมัติจากประเภท "{form.type}" (เครื่องพิมพ์/ก๊อปปี้)</>
+                      <>✅ <span className="font-semibold">{t('devices.meter.required_on')}</span> — {t('devices.meter.required_hint_on').replace('{type}', form.type)}</>
                     ) : (
-                      <>⚪ <span className="font-semibold">ไม่ต้องจดมิเตอร์</span> — อัตโนมัติจากประเภท "{form.type || '(ยังไม่เลือก)'}"</>
+                      <>⚪ <span className="font-semibold">{t('devices.meter.required_off')}</span> — {t('devices.meter.required_hint_off').replace('{type}', form.type || t('devices.meter.required_type_empty'))}</>
                     )}
                   </div>
                 </div>
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 3: 🔌 อุปกรณ์ต่อพ่วง (inline accessory editor)
+                  Tab 3: 🔌 t('devices.field.accessory') (inline accessory editor)
                   ─────────────────────────────────────────────────────
                   Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM
 
@@ -2538,7 +2565,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                 <div className="rounded-lg border border-orange-200 bg-white p-4 shadow-sm dark:border-orange-900/40 dark:bg-slate-900">
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <div className="text-xs font-semibold uppercase tracking-wide text-orange-700 dark:text-orange-400">
-                      🔌 อุปกรณ์ต่อพ่วง ({form.accessories.length})
+                      {t('devices.acc.title_count').replace('{count}', String(form.accessories.length))}
                     </div>
                     <Button
                       type="button"
@@ -2548,35 +2575,35 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       className="border-[#f97316]/30 text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c]/30 dark:text-[#fb923c]"
                     >
                       <Plus className="mr-1 h-3.5 w-3.5" />
-                      เพิ่มอุปกรณ์ต่อพ่วง
+                      {t('devices.acc.add')}
                     </Button>
                   </div>
 
                   <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                    เพิ่มอุปกรณ์ต่อพ่วง (คีย์บอร์ด, เมาส์, จอภาพ, …) ได้พร้อมกับการสร้างอุปกรณ์หลัก —
-                    บันทึกครั้งเดียว ระบบจะสร้างทั้งอุปกรณ์และอุปกรณ์ต่อพ่วงทั้งหมดให้
+                    {t('devices.acc.intro')}
                   </p>
 
                   {accessoriesLoading && (
                     <div className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-                      กำลังโหลดอุปกรณ์ต่อพ่วงที่มีอยู่...
+                      {t('devices.acc.loading')}
                     </div>
                   )}
 
                   {form.accessories.length === 0 && !accessoriesLoading ? (
                     <div className="rounded-md border border-dashed border-orange-300 bg-orange-50/40 px-4 py-8 text-center dark:border-orange-800/50 dark:bg-orange-950/10">
                       <div className="mb-1 text-sm font-medium text-orange-700 dark:text-orange-300">
-                        ยังไม่มีอุปกรณ์ต่อพ่วง
+                        {t('devices.empty_no_acc')}
                       </div>
                       <div className="text-xs text-orange-600/80 dark:text-orange-400/80">
-                        กด &quot;เพิ่มอุปกรณ์ต่อพ่วง&quot; เพื่อสร้าง (เพิ่มได้หลายตัว)
+                        {t('devices.empty_no_acc_hint')}
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       {form.accessories.map((acc, idx) => {
+                        const matchedAccType = ACCESSORY_TYPES_INLINE.find((opt) => opt.value === acc.accessoryType)
                         const typeLabel =
-                          ACCESSORY_TYPES_INLINE.find((t) => t.value === acc.accessoryType)?.label ??
+                          matchedAccType ? t(matchedAccType.labelKey) :
                           acc.accessoryType
                         return (
                           <div
@@ -2600,7 +2627,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                 type="button"
                                 onClick={() => removeAccessory(idx)}
                                 className="rounded p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                                title="ลบอุปกรณ์ต่อพ่วงนี้"
+                                title={t('devices.acc.delete_row')}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -2608,7 +2635,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
 
                             {/* ── Form fields (responsive grid) ── */}
                             <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                              <Field label="ประเภท" required>
+                              <Field label={t('devices.field.acc_type')} required>
                                 <Select
                                   value={acc.accessoryType}
                                   onValueChange={(v) =>
@@ -2616,33 +2643,33 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                   }
                                 >
                                   <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="— เลือกประเภท —" />
+                                    <SelectValue placeholder={t('devices.placeholder.acc_type')} />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {ACCESSORY_TYPES_INLINE.map((t) => (
-                                      <SelectItem key={t.value} value={t.value}>
-                                        {t.label}
+                                    {ACCESSORY_TYPES_INLINE.map((opt) => (
+                                      <SelectItem key={opt.value} value={opt.value}>
+                                        {t(opt.labelKey)}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
                               </Field>
-                              <Field label="ชื่อ / ยี่ห้อ">
+                              <Field label={t('devices.field.acc_brand')}>
                                 <Input
                                   value={acc.brand}
                                   onChange={(e) =>
                                     updateAccessory(idx, { brand: e.target.value })
                                   }
-                                  placeholder="เช่น Logitech"
+                                  placeholder={t('devices.placeholder.acc_brand')}
                                 />
                               </Field>
-                              <Field label="รุ่น">
+                              <Field label={t('devices.field.acc_model')}>
                                 <Input
                                   value={acc.model}
                                   onChange={(e) =>
                                     updateAccessory(idx, { model: e.target.value })
                                   }
-                                  placeholder="เช่น K380"
+                                  placeholder={t('devices.placeholder.acc_model')}
                                 />
                               </Field>
                               <Field label="Serial Number">
@@ -2655,7 +2682,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                   className="font-mono text-xs"
                                 />
                               </Field>
-                              <Field label="สถานะ">
+                              <Field label={t('devices.field.acc_status')}>
                                 <Select
                                   value={acc.status}
                                   onValueChange={(v) =>
@@ -2668,13 +2695,13 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                   <SelectContent>
                                     {ACCESSORY_STATUSES_INLINE.map((s) => (
                                       <SelectItem key={s.value} value={s.value}>
-                                        {s.label}
+                                        {t(s.labelKey)}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
                               </Field>
-                              <Field label="วันที่ติดตั้ง">
+                              <Field label={t('devices.field.acc_installed_date')}>
                                 <Input
                                   type="date"
                                   value={acc.installedDate}
@@ -2683,13 +2710,13 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                   }
                                 />
                               </Field>
-                              <Field label="หมายเหตุ">
+                              <Field label={t('devices.field.acc_remark')}>
                                 <Input
                                   value={acc.remark}
                                   onChange={(e) =>
                                     updateAccessory(idx, { remark: e.target.value })
                                   }
-                                  placeholder="หมายเหตุ (ถ้ามี)"
+                                  placeholder={t('devices.placeholder.acc_remark')}
                                 />
                               </Field>
                             </div>
@@ -2702,47 +2729,43 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 4: 📦 ชุดอุปกรณ์ (Device Set / Parent-Child)
+                  Tab 4: 📦 t('devices.field.set_devices') (Device Set / Parent-Child)
                   ─────────────────────────────────────────────────────
                   MERGE-ACCESSORY-DEVICE-SET: simplified — the primary flow
                   for adding children (or peripherals) is now done from the
                   parent device's detail sheet (DeviceAccessoriesSection with
-                  "เพิ่มอุปกรณ์ในชุด" modal that supports both "new accessory"
+                  "t('devices.action.add_to_set')" modal that supports both "new accessory"
                   and "link existing device" modes).
 
                   This tab now only manages the CURRENT device's role in a
                   set:
                   • setLabel = a free-text name for the whole set (shared
-                    across all members — e.g. "ชุดเครื่องพิมพ์ห้องจ่ายยา").
+                    across all members — e.g. "ชุดt('devices.unit.device')พิมพ์t('devices.field.room')จ่ายยา").
                   • setPosition = optional ordering inside the set (1, 2, 3…).
                   • parentDeviceId (read-only here) — if this device is itself
                     a child of another device, show the parent info + an
                     "unlink" button. To CHANGE the parent, open that parent's
-                    detail sheet and add this device via the new "เพิ่มอุปกรณ์ในชุด"
+                    detail sheet and add this device via the new "t('devices.action.add_to_set')"
                     flow.
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="set" className="space-y-4">
                 <div className="rounded-lg border border-teal-200 bg-white p-4 shadow-sm dark:border-teal-900/40 dark:bg-slate-900">
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400">
-                    📦 ชุดอุปกรณ์ (Device Set)
+                    {t('devices.section.set')}
                   </div>
                   <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-                    จัดกลุ่มอุปกรณ์หลายชิ้นเป็นชุดเดียวกัน — เช่น เครื่องพิมพ์ + UPS + สายเครือข่าย
-                    เครื่องหลัก (parent) คือเครื่องที่เป็นศูนย์กลางของชุด ส่วนอุปกรณ์อื่นๆ ที่อยู่ในชุด
-                    จะอ้างอิงมาที่เครื่องหลักผ่าน parent
+                    {t('devices.set.intro')}
                   </p>
 
                   {/* ── Hint: how to add children (now done from detail sheet) ── */}
                   <div className="mb-3 rounded-md border border-teal-300 bg-teal-50/60 px-3 py-2 text-[11px] text-teal-700 dark:border-teal-700 dark:bg-teal-950/30 dark:text-teal-300">
-                    💡 <strong>เพิ่มอุปกรณ์ลูก:</strong> เปิดหน้ารายละเอียดของอุปกรณ์นี้
-                    → กด "เพิ่ม" ในส่วน "อุปกรณ์ในชุด" → เลือก "เลือกจากที่มีในระบบ"
-                    เพื่อค้นหาอุปกรณ์ที่จะผูกเป็นลูกในชุด
+                    {t('devices.set.add_child_hint')}
                   </div>
 
                   {/* ── Parent device info (read-only, with unlink button) ── */}
                   {form.parentDeviceId ? (
                     <div className="mb-3 space-y-2">
-                      <Field label="อุปกรณ์หลักในชุด (Parent)">
+                      <Field label={t('devices.field.parent_device')}>
                         <div className="rounded-md border border-teal-300 bg-teal-50/60 px-3 py-2 text-xs dark:border-teal-700 dark:bg-teal-950/30">
                           <ParentDeviceInfo deviceId={form.parentDeviceId} authHeaders={authHeaders} />
                         </div>
@@ -2755,18 +2778,17 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
                       >
                         <X className="mr-1 h-3.5 w-3.5" />
-                        ถอดการผูกจากอุปกรณ์หลัก (unlink)
+                        {t('devices.set.unlink')}
                       </Button>
                     </div>
                   ) : (
                     <div className="mb-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
-                      อุปกรณ์หลักในชุด (Parent): <strong>ไม่มี</strong> —
-                      เครื่องนี้เป็นเครื่องหลักของตัวเอง (หรือยังไม่ได้ผูกเป็นลูกของชุดใด)
+                      {t('devices.set.no_parent')}
                     </div>
                   )}
 
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-                    <Field label="ลำดับในชุด (Set Position)">
+                    <Field label={t('devices.field.set_position')}>
                       <Input
                         type="number"
                         min="1"
@@ -2777,42 +2799,41 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         placeholder="1, 2, 3, …"
                       />
                       <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
-                        ใช้สำหรับจัดเรียงลำดับเครื่องในชุด (ไม่บังคับ)
+                        {t('devices.hint.set_position')}
                       </p>
                     </Field>
 
-                    <Field label="ชื่อชุด (Set Label)">
+                    <Field label={t('devices.field.set_label')}>
                       <Input
                         value={form.setLabel}
                         onChange={(e) =>
                           setForm({ ...form, setLabel: e.target.value })
                         }
-                        placeholder="เช่น ชุดเครื่องพิมพ์ห้องจ่ายยา"
+                        placeholder={t('devices.placeholder.set_label')}
                       />
                       <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
-                        ชื่อที่ใช้เรียกชุด — ใส่เหมือนกันทุกเครื่องในชุด
+                        {t('devices.hint.set_label')}
                       </p>
                     </Field>
                   </div>
 
                   {form.parentDeviceId && (
                     <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                      ⚠️ อุปกรณ์นี้ถูกกำหนดเป็น <strong>อุปกรณ์ลูก</strong> ในชุด —
-                      เมื่อย้ายเครื่องหลัก คุณสามารถเลือกให้อุปกรณ์ลูกตามไปด้วยได้จากหน้ารายละเอียด
+                      {t('devices.set.child_warning')}
                     </div>
                   )}
                 </div>
               </TabsContent>
 
               {/* ═══════════════════════════════════════════════════════
-                  Tab 5: ⚙️ ขั้นสูง
+                  Tab 5: ⚙️ t('devices.section.advanced')
                   ═══════════════════════════════════════════════════════ */}
               <TabsContent value="advanced" className="space-y-4">
                 {/* ── License / Software ── */}
                 <div className="rounded-lg border border-violet-200 bg-white p-4 shadow-sm dark:border-violet-900/40 dark:bg-slate-900">
                   <div className="mb-3 flex items-center justify-between">
                     <div className="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400">
-                      🔐 License / Software
+                      {t('devices.section.license')}
                     </div>
                     <Button
                       type="button"
@@ -2822,17 +2843,17 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       className="border-[#f97316]/30 text-[#f97316] hover:bg-[#f97316]/10 dark:border-[#fb923c]/30 dark:text-[#fb923c]"
                     >
                       <Plus className="mr-1 h-3.5 w-3.5" />
-                      เพิ่ม License
+                      {t('devices.lic.add')}
                     </Button>
                   </div>
                   {licensesLoading && (
                     <div className="mb-3 text-sm text-slate-500 dark:text-slate-400">
-                      กำลังโหลด License ที่มีอยู่...
+                      {t('devices.lic.loading')}
                     </div>
                   )}
                   {form.licenses.length === 0 && !licensesLoading ? (
                     <div className="rounded-md border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                      ยังไม่มี License สำหรับอุปกรณ์นี้ — กด "เพิ่ม License" เพื่อเพิ่มซอฟต์แวร์
+                      {t('devices.empty_no_lic')}
                     </div>
                   ) : (
                     <div className="space-y-3">
@@ -2854,13 +2875,13 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                               type="button"
                               onClick={() => removeLicense(idx)}
                               className="rounded p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                              title="ลบ License นี้"
+                              title={t('devices.lic.delete_row')}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
                           <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                            <Field label="ซอฟต์แวร์" required>
+                            <Field label={t('devices.field.lic_software')} required>
                               <Input
                                 value={lic.software}
                                 onChange={(e) =>
@@ -2868,10 +2889,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                     software: e.target.value,
                                   })
                                 }
-                                placeholder="เช่น Microsoft Office 2021"
+                                placeholder={t('devices.placeholder.lic_software')}
                               />
                             </Field>
-                            <Field label="ประเภท License">
+                            <Field label={t('devices.field.lic_type')}>
                               <Select
                                 value={lic.licenseType || '__none__'}
                                 onValueChange={(v) =>
@@ -2879,18 +2900,18 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                 }
                               >
                                 <SelectTrigger className="w-full">
-                                  <SelectValue placeholder="— เลือกประเภท —" />
+                                  <SelectValue placeholder={t('devices.placeholder.lic_type')} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {LICENSE_TYPE_OPTIONS.map((o) => (
                                     <SelectItem key={o.value} value={o.value}>
-                                      {o.label}
+                                      {t(o.labelKey)}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
                             </Field>
-                            <Field label="จำนวน Seat">
+                            <Field label={t('devices.field.lic_seats')}>
                               <Input
                                 type="number"
                                 min={1}
@@ -2911,7 +2932,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                     licenseId: e.target.value,
                                   })
                                 }
-                                placeholder="รหัส License ของผู้ขาย"
+                                placeholder={t('devices.placeholder.lic_id')}
                                 className="font-mono text-xs"
                               />
                             </Field>
@@ -2927,7 +2948,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                 className="font-mono text-xs"
                               />
                             </Field>
-                            <Field label="วันหมดอายุ">
+                            <Field label={t('devices.field.lic_expiry')}>
                               <Input
                                 type="date"
                                 value={lic.expiryDate}
@@ -2938,7 +2959,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                 }
                               />
                             </Field>
-                            <Field label="หมายเหตุ">
+                            <Field label={t('devices.field.remark')}>
                               <Input
                                 value={lic.remark}
                                 onChange={(e) =>
@@ -2946,7 +2967,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                                     remark: e.target.value,
                                   })
                                 }
-                                placeholder="ข้อความเพิ่มเติม"
+                                placeholder={t('devices.placeholder.lic_remark')}
                               />
                             </Field>
                           </div>
@@ -2956,33 +2977,33 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   )}
                 </div>
 
-                {/* ── การซื้อ / รับประกัน ── */}
+                {/* ── t('devices.section.purchase_warranty') ── */}
                 <div className="rounded-lg border border-violet-200 bg-white p-4 shadow-sm dark:border-violet-900/40 dark:bg-slate-900">
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-400">
-                    🧾 การซื้อ / รับประกัน
+                    {t('devices.section.purchase')}
                   </div>
                   <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    <Field label="ผู้ขาย (Vendor)">
+                    <Field label={t('devices.field.vendor')}>
                       <Input
                         id="dev-vendor"
                         value={form.vendor}
                         onChange={(e) =>
                           setForm({ ...form, vendor: e.target.value })
                         }
-                        placeholder="ชื่อบริษัท / ร้านค้า"
+                        placeholder={t('devices.placeholder.vendor')}
                       />
                     </Field>
-                    <Field label="เลขที่สัญญา (Contract No)">
+                    <Field label={t('devices.field.contract_no')}>
                       <Input
                         id="dev-contractNo"
                         value={form.contractNo}
                         onChange={(e) =>
                           setForm({ ...form, contractNo: e.target.value })
                         }
-                        placeholder="เลขที่สัญญา"
+                        placeholder={t('devices.placeholder.contract_no')}
                       />
                     </Field>
-                    <Field label="วันที่ซื้อ">
+                    <Field label={t('devices.field.purchase_date')}>
                       <Input
                         type="date"
                         id="dev-purchaseDate"
@@ -2992,7 +3013,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         }
                       />
                     </Field>
-                    <Field label="รับประกัน (เดือน)">
+                    <Field label={t('devices.field.warranty_months')}>
                       <Input
                         type="number"
                         min={1}
@@ -3006,7 +3027,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         placeholder="12"
                       />
                     </Field>
-                    <Field label="วันหมดประกัน">
+                    <Field label={t('devices.field.warranty_end')}>
                       <Input
                         type="date"
                         id="dev-warrantyEnd"
@@ -3016,7 +3037,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         }
                       />
                     </Field>
-                    <Field label="วันที่ถอดถอน">
+                    <Field label={t('devices.field.uninstall_date')}>
                       <Input
                         type="date"
                         id="dev-uninstallDate"
@@ -3029,13 +3050,13 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   </div>
                 </div>
 
-                {/* ── การเงิน ── */}
+                {/* ── t('devices.section.user_finance') ── */}
                 <div className="rounded-lg border border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900/40 dark:bg-slate-900">
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-                    💰 การเงิน (ค่าเสื่อมราคา)
+                    {t('devices.section.finance')}
                   </div>
                   <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3 xl:grid-cols-4">
-                    <Field label="ราคาซื้อ (฿)">
+                    <Field label={t('devices.field.purchase_price')}>
                       <Input
                         type="number"
                         min={0}
@@ -3048,7 +3069,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         placeholder="0.00"
                       />
                     </Field>
-                    <Field label="มูลค่าซาลเวจ (฿)">
+                    <Field label={t('devices.field.salvage_value')}>
                       <Input
                         type="number"
                         min={0}
@@ -3061,7 +3082,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         placeholder="0.00"
                       />
                     </Field>
-                    <Field label="อายุการใช้งาน (เดือน)">
+                    <Field label={t('devices.field.useful_life')}>
                       <Input
                         type="number"
                         min={1}
@@ -3077,65 +3098,65 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     </Field>
                   </div>
                   <div className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
-                    📐 สูตร: (ราคาซื้อ − มูลค่าซาลเวจ) ÷ อายุการใช้งาน = ค่าเสื่อมราคาต่อเดือน
+                    {t('devices.depreciation_formula')}
                   </div>
                 </div>
 
 
-                {/* ── อื่นๆ (Tech fields) ── */}
+                {/* ── t('devices.field.other') (Tech fields) ── */}
                 <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                   <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                    📝 อื่นๆ (ฟิลด์เทคนิค)
+                    {t('devices.section.other_tech')}
                   </div>
                   <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    <Field label="ศูนย์ต้นทุน (Cost Center)">
+                    <Field label={t('devices.field.cost_center')}>
                       <Input
                         id="dev-costCenter"
                         value={form.costCenter}
                         onChange={(e) =>
                           setForm({ ...form, costCenter: e.target.value })
                         }
-                        placeholder="ศูนย์ต้นทุน"
+                        placeholder={t('devices.placeholder.cost_center')}
                       />
                     </Field>
-                    <Field label="รหัสแผนก (DepartmentCode)">
+                    <Field label={t('devices.field.dept_code')}>
                       <Input
                         id="dev-departmentCode"
                         value={form.departmentCode}
                         onChange={(e) =>
                           setForm({ ...form, departmentCode: e.target.value })
                         }
-                        placeholder="รหัสแผนก (auto จากสังกัด)"
+                        placeholder={t('devices.placeholder.dept_code')}
                       />
                     </Field>
-                    <Field label="ParentRef" hint="ใช้สำหรับ grouping แบบเดิม เช่น HP|PRINTER">
+                    <Field label={t('devices.field.parent_ref')} hint={t('devices.hint.parent_ref')}>
                       <Input
                         id="dev-parentRef"
                         value={form.parentRef}
                         onChange={(e) =>
                           setForm({ ...form, parentRef: e.target.value })
                         }
-                        placeholder="เช่น HP|PRINTER"
+                        placeholder={t('devices.placeholder.parent_ref')}
                       />
                     </Field>
-                    <Field label="DisplayLabel" hint="ป้ายแสดงผลที่กำหนดเอง">
+                    <Field label={t('devices.field.display_label')} hint={t('devices.hint.display_label')}>
                       <Input
                         id="dev-displayLabel"
                         value={form.displayLabel}
                         onChange={(e) =>
                           setForm({ ...form, displayLabel: e.target.value })
                         }
-                        placeholder="ป้ายแสดงผล"
+                        placeholder={t('devices.placeholder.display_label')}
                       />
                     </Field>
-                    <Field label="หมายเหตุ (Remark)">
+                    <Field label={t('devices.field.remark')}>
                       <Input
                         id="dev-remark"
                         value={form.remark}
                         onChange={(e) =>
                           setForm({ ...form, remark: e.target.value })
                         }
-                        placeholder="หมายเหตุ"
+                        placeholder={t('devices.placeholder.remark')}
                       />
                     </Field>
                   </div>
@@ -3158,7 +3179,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               onClick={() => setDialogOpen(false)}
             disabled={saving}
           >
-            ยกเลิก
+            {t('common.cancel')}
           </Button>
           <Button
               onClick={save}
@@ -3166,10 +3187,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
             className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
           >
             {saving
-              ? 'กำลังบันทึก...'
+              ? t('devices.saving')
               : quickAdd
-                ? '⚡ บันทึก (เพิ่มด่วน)'
-                : '💾 บันทึกอุปกรณ์'}
+                ? t('devices.save_quick')
+                : t('devices.save_device')}
           </Button>
         </div>
       </div>
@@ -3180,9 +3201,9 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     <div className="flex h-full flex-col p-3 md:p-4">
       <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จัดการอุปกรณ์</h1>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{t('devices.title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            เพิ่ม / แก้ไข / ลบ อุปกรณ์ IT ในระบบ
+            {t('devices.subtitle')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -3193,8 +3214,8 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
             size="sm"
             onClick={() => setShortcutsOpen(true)}
             className="hidden text-slate-500 hover:bg-slate-100 hover:text-[#f97316] dark:text-slate-400 dark:hover:bg-slate-800 sm:inline-flex"
-            title="คีย์ลัด (กด ? เพื่อเปิด)"
-            aria-label="คีย์ลัด"
+            title={t('devices.aria.shortcuts_title')}
+            aria-label={t('devices.aria.shortcuts')}
           >
             <Keyboard className="h-4 w-4" />
           </Button>
@@ -3206,7 +3227,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
             className="w-full bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950 sm:w-auto"
           >
             <Plus className="h-4 w-4" />
-            เพิ่มอุปกรณ์
+            {t('devices.add_device')}
           </Button>
         </div>
       </div>
@@ -3216,14 +3237,14 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           card applies the corresponding filter instantly. */}
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7">
         <KpiCard
-          label="ทั้งหมด"
+          label={t('devices.kpi.total')}
           value={kpi.total}
           tone="neutral"
           active={statusFilter === 'all'}
           onClick={() => setStatusFilter('all')}
         />
         <KpiCard
-          label="ใช้งานอยู่"
+          label={t('devices.kpi.active')}
           value={kpi.active}
           tone="success"
           icon={<CheckCircle2 className="h-3.5 w-3.5" />}
@@ -3231,7 +3252,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           onClick={() => setStatusFilter('active')}
         />
         <KpiCard
-          label="ส่งซ่อม"
+          label={t('devices.kpi.repair')}
           value={kpi.repair}
           tone="warning"
           icon={<Wrench className="h-3.5 w-3.5" />}
@@ -3239,7 +3260,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           onClick={() => setStatusFilter('repair')}
         />
         <KpiCard
-          label="สำรอง"
+          label={t('devices.kpi.spare')}
           value={kpi.spare}
           tone="info"
           icon={<PackageOpen className="h-3.5 w-3.5" />}
@@ -3247,7 +3268,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           onClick={() => setStatusFilter('spare')}
         />
         <KpiCard
-          label="ไม่ใช้งาน/เกษียณ"
+          label={t('devices.kpi.inactive')}
           value={kpi.inactive}
           tone="danger"
           icon={<XCircle className="h-3.5 w-3.5" />}
@@ -3255,7 +3276,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           onClick={() => setStatusFilter('disposed')}
         />
         <KpiCard
-          label="รับประกันใกล้หมด"
+          label={t('devices.kpi.warranty_expiring')}
           value={kpi.warrantyExpiringSoon}
           tone="warning"
           icon={<AlertTriangle className="h-3.5 w-3.5" />}
@@ -3263,7 +3284,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           onClick={() => setWarrantyFilter('expiring')}
         />
         <KpiCard
-          label="รับประกันหมดแล้ว"
+          label={t('devices.kpi.warranty_expired')}
           value={kpi.warrantyExpired}
           tone="danger"
           icon={<ShieldCheck className="h-3.5 w-3.5" />}
@@ -3279,7 +3300,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
       {recentDeviceIds.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-white/70 px-2.5 py-1.5 text-xs dark:border-slate-800 dark:bg-slate-900/70">
           <Clock className="h-3.5 w-3.5 text-slate-400" />
-          <span className="text-slate-500 dark:text-slate-400">ล่าสุด:</span>
+          <span className="text-slate-500 dark:text-slate-400">{t('devices.recent.label')}</span>
           {recentDeviceIds.map((id) => {
             const dev = (devices ?? []).find((d) => d.id === id)
             return (
@@ -3306,8 +3327,8 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               } catch (e) { console.error(String(e)) }
             }}
             className="ml-auto rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-            aria-label="ล้างรายการล่าสุด"
-            title="ล้างรายการล่าสุด"
+            aria-label={t('devices.recent.clear')}
+            title={t('devices.recent.clear')}
           >
             <X className="h-3 w-3" />
           </button>
@@ -3323,7 +3344,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <Input
                   id={searchInputId}
-                  placeholder="ค้นหา Serial / รหัส / ตึก / ชั้น / หน่วยงาน / แบรนด์... (Ctrl+K)"
+                  placeholder={t('devices.filter.search_placeholder')}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
@@ -3337,21 +3358,21 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   type="button"
                   onClick={() => useAppStore.getState().setQrScannerOpen(true)}
                   className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#f97316] dark:hover:bg-slate-800"
-                  title="สแกน QR / บาร์โค้ด"
-                  aria-label="สแกน QR / บาร์โค้ด"
+                  title={t('devices.aria.scan_qr')}
+                  aria-label={t('devices.aria.scan_qr')}
                 >
                   <ScanLine className="h-4 w-4" />
                 </button>
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue placeholder="สถานะ" />
+                  <SelectValue placeholder={t('devices.filter.status_placeholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">สถานะทั้งหมด</SelectItem>
+                  <SelectItem value="all">{t('devices.filter.status_all')}</SelectItem>
                   {DEVICE_STATUS_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
-                      {o.label}
+                      {t(deviceStatusLabelKey(o.value))}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -3359,13 +3380,13 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               {showSiteFilter && (
                 <Select value={siteFilter} onValueChange={setSiteFilter}>
                   <SelectTrigger className="w-full sm:w-40">
-                    <SelectValue placeholder="สาขา" />
+                    <SelectValue placeholder={t('devices.filter.site_placeholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">สาขาทั้งหมด</SelectItem>
+                    <SelectItem value="all">{t('devices.filter.site_all')}</SelectItem>
                     {(visibleSites ?? []).length === 0 && (
                       <SelectItem value="__none__" disabled>
-                        — ยังไม่มีสาขาที่เข้าถึงได้ —
+                        {t('devices.empty_no_site_access')}
                       </SelectItem>
                     )}
                     {(visibleSites ?? []).map((s) => (
@@ -3378,24 +3399,24 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               )}
               <Select value={warrantyFilter} onValueChange={setWarrantyFilter}>
                 <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue placeholder="รับประกัน" />
+                  <SelectValue placeholder={t('devices.filter.warranty_placeholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {WARRANTY_FILTER_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
-                      {o.label}
+                      {t(o.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
                 <SelectTrigger className="w-full sm:w-40">
-                  <SelectValue placeholder="ผู้ใช้งาน" />
+                  <SelectValue placeholder={t('devices.filter.assignee_placeholder')} />
                 </SelectTrigger>
                 <SelectContent>
                   {ASSIGNEE_FILTER_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>
-                      {o.label}
+                      {t(o.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -3406,21 +3427,21 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                 variant="outline"
                 type="button"
                 onClick={() => setImportOpen(true)}
-                aria-label="นำเข้า CSV"
+                aria-label={t('devices.aria.import_csv')}
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Upload className="h-4 w-4" />
-                <span className="hidden sm:inline">นำเข้า CSV</span>
+                <span className="hidden sm:inline">{t('devices.btn.import_csv')}</span>
               </Button>
               <Button
                 variant="outline"
                 onClick={() => setCustomExportOpen(true)}
                 disabled={exporting}
-                aria-label={exporting ? 'กำลังส่งออก' : 'ส่งออกข้อมูล'}
+                aria-label={exporting ? t('devices.aria.exporting') : t('devices.aria.export')}
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">{exporting ? 'กำลังส่งออก...' : 'ส่งออก'}</span>
+                <span className="hidden sm:inline">{exporting ? t('devices.btn.exporting') : t('devices.btn.export')}</span>
               </Button>
               <Button
                 variant="outline"
@@ -3429,21 +3450,21 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                   setStickerOpen(true)
                 }}
                 disabled={(devices ?? []).length === 0}
-                aria-label="พิมพ์สติกเกอร์หลายเครื่อง"
-                title="เลือกอุปกรณ์หลายเครื่องแล้วพิมพ์เป็นชุด"
+                aria-label={t('devices.aria.print_multi')}
+                title={t('devices.aria.print_multi_title')}
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <Layers className="h-4 w-4" />
-                <span className="hidden sm:inline">พิมพ์หลายเครื่อง</span>
+                <span className="hidden sm:inline">{t('devices.btn.print_multi')}</span>
               </Button>
               <Button
                 variant="outline"
                 onClick={() => qc.invalidateQueries({ queryKey: ["devices"] })}
-                aria-label="รีเฟรช"
+                aria-label={t('devices.aria.refresh')}
                 className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               >
                 <RefreshCw className="h-4 w-4" />
-                <span className="hidden sm:inline">รีเฟรช</span>
+                <span className="hidden sm:inline">{t('devices.btn.refresh')}</span>
               </Button>
               {/* Column visibility dropdown — lets the user hide columns
                   they don't need. Choice persists in localStorage. */}
@@ -3451,16 +3472,16 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
-                    aria-label="เลือกคอลัมน์"
+                    aria-label={t('devices.aria.columns')}
                     className="focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
                   >
                     <Columns3 className="h-4 w-4" />
-                    <span className="hidden sm:inline">คอลัมน์</span>
+                    <span className="hidden sm:inline">{t('devices.btn.columns')}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel className="text-xs text-slate-500 dark:text-slate-400">
-                    เลือกคอลัมน์ที่จะแสดง
+                    {t('devices.columns.title')}
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {ALL_COLUMNS.map((col) => (
@@ -3470,7 +3491,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       onCheckedChange={() => toggleColumn(col.key)}
                       className="text-sm"
                     >
-                      {col.label}
+                      {t(col.labelKey)}
                     </DropdownMenuCheckboxItem>
                   ))}
                   <DropdownMenuSeparator />
@@ -3483,7 +3504,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     }}
                     className="text-xs text-[#f97316] focus:text-[#f97316]"
                   >
-                    รีเซ็ตเป็นค่าเริ่มต้น
+                    {t('devices.columns.reset')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -3502,7 +3523,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               >
                 <div className="flex items-center gap-2">
                   <span className="inline-flex h-7 items-center rounded-md bg-[#f97316]/10 px-2.5 text-sm font-semibold text-[#f97316] dark:bg-[#fb923c]/10 dark:text-[#fb923c]">
-                    เลือกแล้ว {selectedIds.size} เครื่อง
+                    {t('devices.bulk.selected_count').replace('{count}', String(selectedIds.size))}
                   </span>
                   <Button
                     size="sm"
@@ -3511,7 +3532,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     className="h-7 px-2 text-xs text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
                   >
                     <X className="h-3.5 w-3.5" />
-                    ยกเลิกการเลือก
+                    {t('devices.bulk.clear')}
                   </Button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -3523,12 +3544,12 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     }}
                   >
                     <SelectTrigger className="h-8 w-[140px]">
-                      <SelectValue placeholder="เปลี่ยนสถานะ" />
+                      <SelectValue placeholder={t('devices.bulk.change_status')} />
                     </SelectTrigger>
                     <SelectContent>
                       {DEVICE_STATUS_OPTIONS.map((o) => (
                         <SelectItem key={o.value} value={o.value}>
-                          {o.label}
+                          {t(deviceStatusLabelKey(o.value))}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -3540,7 +3561,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     onClick={applyBulkStatus}
                     className="h-8 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
                   >
-                    ใช้
+                    {t('devices.bulk.apply')}
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Button>
 
@@ -3552,7 +3573,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     }}
                   >
                     <SelectTrigger className="h-8 w-[140px]">
-                      <SelectValue placeholder="ย้ายสาขา" />
+                      <SelectValue placeholder={t('devices.bulk.move_site')} />
                     </SelectTrigger>
                     <SelectContent>
                       {(visibleSites ?? []).map((s) => (
@@ -3569,7 +3590,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     onClick={applyBulkTransfer}
                     className="h-8 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
                   >
-                    ย้าย
+                    {t('devices.bulk.move')}
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Button>
 
@@ -3582,7 +3603,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     className="h-8 border-rose-300 text-rose-600 hover:bg-rose-50 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 dark:border-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40 dark:focus-visible:ring-offset-slate-950"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    ลบ
+                    {t('devices.bulk.delete')}
                   </Button>
                 </div>
               </motion.div>
@@ -3600,22 +3621,22 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       <Checkbox
                         checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                         onCheckedChange={(v) => toggleSelectAll(v === true)}
-                        aria-label="เลือกหน้านี้ทั้งหมด"
+                        aria-label={t('devices.aria.select_page_all')}
                         className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
                       />
                     </TableHead>
                   )}
-                  {isColVisible('assetCode') && <TableHead className="text-slate-600 dark:text-slate-300">รหัสทรัพย์สิน</TableHead>}
-                  {isColVisible('assetSiteCode') && <TableHead className="text-slate-600 dark:text-slate-300">ทะเบียน Site</TableHead>}
-                  {isColVisible('type') && <TableHead className="text-slate-600 dark:text-slate-300">ประเภท</TableHead>}
-                  {isColVisible('brandModel') && <TableHead className="text-slate-600 dark:text-slate-300">ยี่ห้อ/รุ่น</TableHead>}
-                  {isColVisible('serialNumber') && <TableHead className="text-slate-600 dark:text-slate-300">Serial No.</TableHead>}
-                  {isColVisible('location') && <TableHead className="text-slate-600 dark:text-slate-300">อาคาร/ชั้น</TableHead>}
-                  {isColVisible('department') && <TableHead className="text-slate-600 dark:text-slate-300">แผนก/ตำแหน่ง</TableHead>}
-                  {isColVisible('status') && <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>}
-                  {isColVisible('meter') && <TableHead className="text-slate-600 dark:text-slate-300">มิเตอร์ล่าสุด</TableHead>}
-                  {isColVisible('updatedAt') && <TableHead className="text-slate-600 dark:text-slate-300">อัปเดตล่าสุด</TableHead>}
-                  {isColVisible('actions') && <TableHead className="text-right text-slate-600 dark:text-slate-300">การกระทำ</TableHead>}
+                  {isColVisible('assetCode') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.asset_code')}</TableHead>}
+                  {isColVisible('assetSiteCode') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.asset_site_code')}</TableHead>}
+                  {isColVisible('type') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.type')}</TableHead>}
+                  {isColVisible('brandModel') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.brand_model')}</TableHead>}
+                  {isColVisible('serialNumber') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.serial')}</TableHead>}
+                  {isColVisible('location') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.location')}</TableHead>}
+                  {isColVisible('department') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.department')}</TableHead>}
+                  {isColVisible('status') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.status')}</TableHead>}
+                  {isColVisible('meter') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.meter')}</TableHead>}
+                  {isColVisible('updatedAt') && <TableHead className="text-slate-600 dark:text-slate-300">{t('devices.col.updated_at')}</TableHead>}
+                  {isColVisible('actions') && <TableHead className="text-right text-slate-600 dark:text-slate-300">{t('devices.col.actions')}</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -3636,13 +3657,13 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         </div>
                         <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
                           {search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all' || assigneeFilter !== 'all'
-                            ? 'ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข'
-                            : 'ยังไม่มีอุปกรณ์ในระบบ'}
+                            ? t('devices.empty_no_devices_match')
+                            : t('devices.empty_no_devices_yet')}
                         </div>
                         <div className="text-xs text-slate-400 dark:text-slate-500">
                           {search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all' || assigneeFilter !== 'all'
-                            ? 'ลองปรับตัวกรองหรือคำค้นหา หรือล้างตัวกรองเพื่อดูทั้งหมด'
-                            : 'เริ่มต้นโดยการเพิ่มอุปกรณ์เครื่องแรกของคุณ'}
+                            ? t('devices.empty_no_devices_hint_filter')
+                            : t('devices.empty_no_devices_hint_add')}
                         </div>
                         {(search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all' || assigneeFilter !== 'all') ? (
                           <Button
@@ -3657,7 +3678,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                             }}
                             className="mt-2 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
                           >
-                            ล้างตัวกรอง
+                            {t('devices.btn.clear_filters')}
                           </Button>
                         ) : (
                           <Button
@@ -3667,7 +3688,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                             className="mt-2 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
                           >
                             <Plus className="h-4 w-4" />
-                            เพิ่มอุปกรณ์
+                            {t('devices.add_device')}
                           </Button>
                         )}
                       </div>
@@ -3699,28 +3720,28 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={(v) => toggleSelect(d.id, v === true)}
-                            aria-label={`เลือก ${d.assetCode}`}
+                            aria-label={t('devices.aria.select').replace('{code}', d.assetCode)}
                             className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
                           />
                         )}
                       </TableCell>
-                      {/* รหัสทรัพย์สิน */}
+                      {/* t('devices.field.asset_code') */}
                       {isColVisible('assetCode') && (
                       <TableCell className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
                         {d.assetCode}
                       </TableCell>
                       )}
-                      {/* ทะเบียน Site */}
+                      {/* Site Code */}
                       {isColVisible('assetSiteCode') && (
                       <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
                         {d.assetSiteCode || <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </TableCell>
                       )}
-                      {/* ประเภท */}
+                      {/* t('devices.field.type') */}
                       {isColVisible('type') && (
                       <TableCell className="text-slate-700 dark:text-slate-200">{d.type}</TableCell>
                       )}
-                      {/* ยี่ห้อ/รุ่น */}
+                      {/* t('devices.field.brand_model') */}
                       {isColVisible('brandModel') && (
                       <TableCell className="max-w-[180px]">
                         <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={`${d.brand} ${d.model}`}>
@@ -3739,7 +3760,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         {d.serialNumber || <span className="text-slate-300 dark:text-slate-600">—</span>}
                       </TableCell>
                       )}
-                      {/* อาคาร/ชั้น */}
+                      {/* t('devices.field.building_floor') */}
                       {isColVisible('location') && (
                       <TableCell className="max-w-[140px]">
                         <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={d.building ?? ''}>
@@ -3747,12 +3768,12 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         </div>
                         {d.floor && (
                           <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                            ชั้น {d.floor}
+                            {t('devices.row.floor_label').replace('{floor}', d.floor)}
                           </div>
                         )}
                       </TableCell>
                       )}
-                      {/* แผนก/ตำแหน่ง */}
+                      {/* t('devices.field.department')/t('devices.field.position') */}
                       {isColVisible('department') && (
                       <TableCell className="max-w-[160px]">
                         <div className="text-sm text-slate-700 dark:text-slate-200 truncate" title={d.department ?? ''}>
@@ -3765,15 +3786,15 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         )}
                       </TableCell>
                       )}
-                      {/* สถานะ */}
+                      {/* t('devices.field.status') */}
                       {isColVisible('status') && (
                       <TableCell>
                         <Badge className={statusBadgeClass(d.status)}>
-                          {statusLabel(d.status)}
+                          {t(deviceStatusLabelKey(d.status))}
                         </Badge>
                       </TableCell>
                       )}
-                      {/* มิเตอร์ล่าสุด */}
+                      {/* Last meter */}
                       {isColVisible('meter') && (
                       <TableCell className="w-auto">
                         {hasMeter ? (
@@ -3783,7 +3804,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                             </div>
                             {lastMeterColor > 0 && (
                               <div className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                                สี: {lastMeterColor.toLocaleString('th-TH')}
+                                {t('devices.meter.color_label')} {lastMeterColor.toLocaleString('th-TH')}
                               </div>
                             )}
                             <div className="text-[10px] text-slate-400 dark:text-slate-500">
@@ -3792,18 +3813,18 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           </div>
                         ) : (
                           <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                            ไม่มีข้อมูล
+                            {t('devices.empty_no_meter_data')}
                           </span>
                         )}
                       </TableCell>
                       )}
-                      {/* อัปเดตล่าสุด */}
+                      {/* Last updated */}
                       {isColVisible('updatedAt') && (
                       <TableCell className="text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                        {formatDateTime(d.updatedAt)}
+                        {fmtDateTime(d.updatedAt)}
                       </TableCell>
                       )}
-                      {/* การกระทำ */}
+                      {/* t('devices.col.actions') */}
                       {isColVisible('actions') && (
                       <TableCell
                         className="text-right"
@@ -3814,23 +3835,23 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                             size="sm"
                             variant="outline"
                             onClick={() => setDetailDeviceId(d.id)}
-                            aria-label="ดูประวัติตำแหน่งและมิเตอร์"
-                            title="ดูประวัติตำแหน่งและมิเตอร์"
+                            aria-label={t('devices.aria.history')}
+                            title={t('devices.aria.history')}
                             className="h-7 gap-1 px-2 text-[11px] dark:bg-slate-800 dark:border-slate-700"
                           >
                             <History className="h-3.5 w-3.5" />
-                            ประวัติ
+                            {t('devices.row.history')}
                           </Button>
                           <Button
                             size="sm"
                             variant="default"
                             onClick={() => openEdit(d)}
-                            aria-label="แก้ไขข้อมูลอุปกรณ์"
-                            title="แก้ไขข้อมูลอุปกรณ์"
+                            aria-label={t('devices.aria.edit')}
+                            title={t('devices.aria.edit')}
                             className="h-7 gap-1 bg-[#f97316] px-2 text-[11px] text-white hover:bg-[#ea580c]"
                           >
                             <Pencil className="h-3.5 w-3.5" />
-                            แก้ไข
+                            {t('devices.row.edit')}
                           </Button>
                           <Button
                             size="sm"
@@ -3839,12 +3860,12 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                               setSinglePrintDeviceId(d.id)
                               setStickerOpen(true)
                             }}
-                            aria-label="พิมพ์สติกเกอร์อุปกรณ์นี้"
-                            title="พิมพ์สติกเกอร์อุปกรณ์นี้"
+                            aria-label={t('devices.aria.print_single')}
+                            title={t('devices.aria.print_single')}
                             className="h-7 gap-1 px-2 text-[11px] dark:bg-slate-800 dark:border-slate-700"
                           >
                             <Printer className="h-3.5 w-3.5" />
-                            สติกเกอร์
+                            {t('devices.row.sticker')}
                           </Button>
                         </div>
                       </TableCell>
@@ -3877,18 +3898,18 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
         <AlertDialogContent className="border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-slate-800 dark:text-slate-100">
-              ยืนยันการลบอุปกรณ์หลายเครื่อง
+              {t('devices.delete.bulk_title')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              ต้องการลบอุปกรณ์{' '}
+              {t('devices.delete.bulk_desc').split('{count}')[0]}{' '}
               <span className="font-semibold text-rose-700 dark:text-rose-400">
-                {selectedIds.size} เครื่อง
+                {selectedIds.size} {t('devices.unit.count_suffix')}
               </span>{' '}
-              ใช่หรือไม่? การกระทำนี้ไม่สามารถย้อนกลับได้ และจะลบประวัติการจดมิเตอร์ของอุปกรณ์เหล่านี้ด้วย
+              {t('devices.delete.bulk_desc').split('{count}')[1]}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkAction}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogCancel disabled={bulkAction}>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault() // prevent Radix auto-close before async completes
@@ -3897,7 +3918,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               disabled={bulkAction}
               className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              {bulkAction ? 'กำลังลบ...' : `ลบ ${selectedIds.size} เครื่อง`}
+              {bulkAction ? t('devices.delete.deleting') : t('devices.delete.bulk_button').replace('{count}', String(selectedIds.size))}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -3911,17 +3932,17 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการลบอุปกรณ์</AlertDialogTitle>
+            <AlertDialogTitle>{t('devices.delete.single_title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              คุณกำลังจะลบ{' '}
+              {/* Uses the same pattern as the bulk dialog: shows device name + code in bold */}
               <span className="font-semibold text-slate-700">
                 {deleteTarget?.name} ({deleteTarget?.assetCode})
               </span>
-              {' '}การกระทำนี้ไม่สามารถย้อนกลับได้ และจะลบประวัติการจดมิเตอร์ของอุปกรณ์นี้ด้วย
+              {' '}{t('devices.delete.single_desc')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>ยกเลิก</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault() // prevent Radix auto-close before async completes
@@ -3930,7 +3951,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
               disabled={deleting}
               className="bg-rose-600 text-white hover:bg-rose-700 focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              {deleting ? 'กำลังลบ...' : 'ลบอุปกรณ์'}
+              {deleting ? t('devices.delete.deleting') : t('devices.delete.single_button')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -3980,9 +4001,9 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
         open={printTemplateOpen}
         onOpenChange={setPrintTemplateOpen}
         templateType="sticker"
-        actionLabel="พิมพ์สติกเกอร์"
+        actionLabel={t('devices.print_template.action')}
         onSelect={(template) => {
-          toast.success(`เลือกเทมเพลต: ${template.name}`)
+          toast.success(t('devices.toast.template_selected').replace('{name}', template.name))
           setStickerOpen(true)
         }}
         onCreateNew={() => {
@@ -3997,20 +4018,20 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Keyboard className="h-5 w-5 text-[#f97316]" />
-              คีย์ลัด (Keyboard Shortcuts)
+              {t('devices.shortcuts.title')}
             </DialogTitle>
             <DialogDescription>
-              เร่งการทำงานด้วยคีย์ลัดเหล่านี้ — ใช้ได้ทุกที่ในหน้าจัดการอุปกรณ์
+              {t('devices.shortcuts.desc')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 text-sm">
             {[
-              { keys: ['Ctrl', 'K'], desc: 'โฟกัสช่องค้นหา' },
-              { keys: ['Ctrl', 'N'], desc: 'เพิ่มอุปกรณ์ใหม่' },
-              { keys: ['Ctrl', 'R'], desc: 'รีเฟรชรายการ' },
-              { keys: ['?'], desc: 'เปิดเมนูคีย์ลัดนี้' },
-              { keys: ['Esc'], desc: 'ปิด dialog / ยกเลิกการเลือก' },
-              { keys: ['Enter'], desc: 'ในช่องค้นหา → ค้นหาทันที' },
+              { keys: ['Ctrl', 'K'], desc: t('devices.shortcuts.search_focus') },
+              { keys: ['Ctrl', 'N'], desc: t('devices.shortcuts.add_new') },
+              { keys: ['Ctrl', 'R'], desc: t('devices.shortcuts.refresh') },
+              { keys: ['?'], desc: t('devices.shortcuts.open_help') },
+              { keys: ['Esc'], desc: t('devices.shortcuts.close_dialog') },
+              { keys: ['Enter'], desc: t('devices.shortcuts.search_enter') },
             ].map((s) => (
               <div
                 key={s.desc}
@@ -4085,7 +4106,7 @@ function KpiCard({
       bg: 'bg-sky-50 dark:bg-sky-950/30',
     },
   }
-  const t = toneClasses[tone]
+  const toneClass = toneClasses[tone]
   return (
     <button
       type="button"
@@ -4094,8 +4115,8 @@ function KpiCard({
       className={cn(
         'group relative flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-all',
         'hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1',
-        t.bg,
-        t.ring,
+        toneClass.bg,
+        toneClass.ring,
         active && 'ring-2 ring-[#f97316] ring-offset-1',
       )}
     >
@@ -4103,7 +4124,7 @@ function KpiCard({
         <span
           className={cn(
             'flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide',
-            t.text,
+            toneClass.text,
           )}
         >
           {icon}
@@ -4161,27 +4182,26 @@ function QuickAddForm({
   nameManuallyEditedRef,
   fetchNextAssetCode,
 }: QuickAddFormProps) {
+  const t = useT()
   return (
     <div className="space-y-4">
       {/* ── Banner explaining the mode ── */}
       <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50/60 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
         <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <div>
-          <strong>โหมดเพิ่มด่วน</strong> — กรอกเฉพาะฟิลด์จำเป็น บันทึกได้เร็วขึ้น
-          สามารถกลับมาแก้ไขรายละเอียด (อาคาร/ชั้น/ห้อง, IP/MAC, รับประกัน, ฯลฯ)
-          ทีหลังผ่านปุ่ม &quot;✏️ แก้ไข&quot; ในรายการอุปกรณ์ได้
+          {t('devices.quick.banner')}
         </div>
       </div>
 
       {/* ── Single-section form card ── */}
       <div className="rounded-lg border border-amber-200 bg-white p-4 shadow-sm dark:border-amber-900/40 dark:bg-slate-900">
         <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-          ⚡ ข้อมูลอุปกรณ์ (เพิ่มด่วน)
+          {t('devices.quick.title')}
         </div>
 
         <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {/* ── สาขา ── */}
-          <Field label="สาขา" required>
+          {/* ── t('devices.field.site') ── */}
+          <Field label={t('devices.field.site')} required>
             <Select
               value={form.site}
               onValueChange={(v) => {
@@ -4192,12 +4212,12 @@ function QuickAddForm({
               }}
             >
               <SelectTrigger className="w-full" id="qa-site">
-                <SelectValue placeholder="— เลือกสาขา —" />
+                <SelectValue placeholder={t('devices.placeholder.site')} />
               </SelectTrigger>
               <SelectContent>
                 {visibleSites.length === 0 && (
                   <SelectItem value="__none__" disabled>
-                    — ยังไม่มีสาขาที่เข้าถึงได้ —
+                    {t('devices.empty_no_site_access')}
                   </SelectItem>
                 )}
                 {visibleSites.map((s) => (
@@ -4209,8 +4229,8 @@ function QuickAddForm({
             </Select>
           </Field>
 
-          {/* ── รหัสอุปกรณ์ (with auto-generate button) ── */}
-          <Field label="รหัสอุปกรณ์" required>
+          {/* ── t('devices.field.asset_code') (with auto-generate button) ── */}
+          <Field label={t('devices.field.asset_code')} required>
             <div className="relative">
               <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <Input
@@ -4219,7 +4239,7 @@ function QuickAddForm({
                 onChange={(e) =>
                   setForm({ ...form, assetCode: e.target.value })
                 }
-                placeholder="สร้างอัตโนมัติ เช่น 2379"
+                placeholder={t('devices.placeholder.asset_code')}
                 className="bg-amber-50/50 pl-8 font-mono dark:bg-amber-950/10"
               />
               <button
@@ -4227,7 +4247,7 @@ function QuickAddForm({
                 tabIndex={-1}
                 onClick={() => void fetchNextAssetCode()}
                 disabled={Boolean(form.id)}
-                title="สร้างเลขถัดไปอัตโนมัติ"
+                title={t('devices.hint.gen_next_asset_code')}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-[#f97316] hover:bg-[#f97316]/10 disabled:opacity-40 dark:text-[#fb923c]"
               >
                 <Sparkles className="h-3.5 w-3.5" />
@@ -4235,11 +4255,11 @@ function QuickAddForm({
             </div>
           </Field>
 
-          {/* ── ชื่ออุปกรณ์ (auto from brand+model) ── */}
+          {/* ── t('devices.field.name_device') (auto from brand+model) ── */}
           <Field
-            label="ชื่ออุปกรณ์"
+            label={t('devices.field.name')}
             required
-            hint="สร้างอัตโนมัติจาก แบรนด์ + รุ่น — แก้ไขได้ถ้าต้องการ"
+            hint={t('devices.hint.name_auto_short')}
           >
             <Input
               id="qa-name"
@@ -4248,48 +4268,48 @@ function QuickAddForm({
                 nameManuallyEditedRef.current = true
                 setForm({ ...form, name: e.target.value })
               }}
-              placeholder="สร้างอัตโนมัติ เช่น BROTHER HL-L5210DN"
+              placeholder={t('devices.placeholder.name_quick')}
               className="bg-amber-50/50 dark:bg-amber-950/10"
             />
           </Field>
 
-          {/* ── สถานะ (default 'active') ── */}
-          <Field label="สถานะ" required>
+          {/* ── t('devices.field.status') (default 'active') ── */}
+          <Field label={t('devices.field.status')} required>
             <Select
               value={form.status}
               onValueChange={(v) => setForm({ ...form, status: v })}
             >
               <SelectTrigger className="w-full" id="qa-status">
-                <SelectValue placeholder="เลือกสถานะ" />
+                <SelectValue placeholder={t('devices.placeholder.status')} />
               </SelectTrigger>
               <SelectContent>
                 {DEVICE_STATUS_OPTIONS.map((o) => (
                   <SelectItem key={o.value} value={o.value}>
-                    {o.label}
+                    {t(deviceStatusLabelKey(o.value))}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </Field>
 
-          {/* ── ประเภท (Type) ── */}
-          <Field label="ประเภท (Type)" required>
+          {/* ── t('devices.field.type') (Type) ── */}
+          <Field label={t('devices.field.type')} required>
             <Combobox
               value={form.type}
               onChange={(v) =>
                 setForm({ ...form, type: v, brand: '', model: '' })
               }
-              items={(deviceTypes ?? []).map((t) => ({
-                value: t.name,
-                label: t.name,
+              items={(deviceTypes ?? []).map((dt) => ({
+                value: dt.name,
+                label: dt.name,
               }))}
-              placeholder="เลือกหรือพิมพ์ประเภท เช่น PRINTER LASER"
-              emptyText="ไม่พบประเภท"
+              placeholder={t('devices.placeholder.type')}
+              emptyText={t('devices.empty_no_type')}
             />
           </Field>
 
-          {/* ── แบรนด์ (Brand) ── */}
-          <Field label="แบรนด์ (Brand)" required>
+          {/* ── Brand ── */}
+          <Field label={t('devices.field.brand')} required>
             <Combobox
               value={form.brand}
               onChange={(v) => setForm({ ...form, brand: v, model: '' })}
@@ -4297,16 +4317,16 @@ function QuickAddForm({
                 value: b.name,
                 label: b.name,
               }))}
-              placeholder="เลือกหรือพิมพ์แบรนด์ เช่น BROTHER"
-              emptyText="ไม่พบแบรนด์"
+              placeholder={t('devices.placeholder.brand')}
+              emptyText={t('devices.empty_no_brand')}
             />
           </Field>
 
-          {/* ── รุ่น (Model) — selects + auto-fills brand/type ── */}
+          {/* ── t('devices.field.model') (Model) — selects + auto-fills brand/type ── */}
           <Field
-            label="รุ่น (Model)"
+            label={t('devices.field.model')}
             required
-            hint="เลือกรุ่นแล้ว แบรนด์/ประเภท auto"
+            hint={t('devices.hint.model_brand_auto')}
           >
             <Combobox
               value={form.model}
@@ -4335,13 +4355,13 @@ function QuickAddForm({
               )
                 .sort()
                 .map((m) => ({ value: m, label: m }))}
-              placeholder="เลือกรุ่น เช่น HL-L5210DN"
-              emptyText="ไม่พบรุ่น — พิมพ์เพื่อเพิ่มใหม่"
+              placeholder={t('devices.placeholder.model')}
+              emptyText={t('devices.empty_no_model')}
             />
           </Field>
 
           {/* ── Serial Number (optional) ── */}
-          <Field label="Serial Number">
+          <Field label={t('devices.field.serial')}>
             <div className="relative">
               <ScanLine className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <Input
@@ -4350,7 +4370,7 @@ function QuickAddForm({
                 onChange={(e) =>
                   setForm({ ...form, serialNumber: e.target.value })
                 }
-                placeholder="สแกนหรือพิมพ์ SN"
+                placeholder={t('devices.placeholder.serial_quick')}
                 className="pl-8 font-mono text-xs"
               />
             </div>
@@ -4360,7 +4380,7 @@ function QuickAddForm({
         {/* ── Hint: required fields reminder ── */}
         <div className="mt-4 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
           <span className="font-semibold text-[#f97316]">*</span>
-          <span>ฟิลด์จำเป็น — บันทึกได้หลังกรอกครบทุกฟิลด์ที่มี</span>
+          <span>{t('devices.quick.required_hint')}</span>
           <span className="font-semibold text-[#f97316]">*</span>
         </div>
       </div>
@@ -4381,6 +4401,7 @@ function Field({
    *  wrapper a subtle orange left-border to make required fields scannable. */
   required?: boolean
 }) {
+  const t = useT()
   return (
     <div
       className={`flex flex-col gap-1.5 ${
@@ -4404,14 +4425,14 @@ function Field({
 /**
  * FormSection — a consistent card wrapper for each section of the full-page
  * form. Renders a numbered step badge + icon + title + subtitle, an optional
- * action button (e.g. "เพิ่ม License"), and the children inside a padded body.
+ * action button (e.g. "t('common.add') License"), and the children inside a padded body.
  *
  * Accent color options:
- *   amber  → รหัสอุปกรณ์ / มิเตอร์ (amber-500)
- *   blue   → สถานที่ติดตั้ง (sky-500)
- *   emerald → ข้อมูลเครื่อง / การเงิน (emerald-500)
- *   violet → การซื้อ / License (violet-500)
- *   slate  → เครือข่าย / อื่นๆ (slate-500)
+ *   amber  → t('devices.field.asset_code') / t('devices.section.meter') (amber-500)
+ *   blue   → t('devices.field.install_location') (sky-500)
+ *   emerald → t('devices.section.device_info') (emerald-500)
+ *   violet → t('devices.field.purchase_date') / License (violet-500)
+ *   slate  → t('devices.section.network_other') (slate-500)
  */
 function FormSection({
   step,
@@ -4430,6 +4451,7 @@ function FormSection({
   action?: React.ReactNode
   children: React.ReactNode
 }) {
+  const t = useT()
   const accentMap: Record<string, { ring: string; text: string; badge: string }> = {
     amber: {
       ring: 'border-amber-200 dark:border-amber-900/40',
@@ -4548,6 +4570,7 @@ function DeviceParentCombobox({
   excludeId?: string
   authHeaders: () => Record<string, string>
 }) {
+  const t = useT()
   const [search, setSearch] = React.useState('')
   const [open, setOpen] = React.useState(false)
 
@@ -4586,9 +4609,9 @@ function DeviceParentCombobox({
               <span className="text-slate-600 dark:text-slate-300">{selectedDevice.name}</span>
             </span>
           ) : value ? (
-            <span className="text-xs text-slate-400">รหัส: {value} (ค้นหาเพื่อเลือก)</span>
+            <span className="text-xs text-slate-400">{t('devices.parent.code_label').replace('{value}', value)}</span>
           ) : (
-            <span className="text-slate-400">ค้นหาอุปกรณ์หลัก — เว้นว่างถ้าเป็นเครื่องหลัก</span>
+            <span className="text-slate-400">{t('devices.parent.search_placeholder')}</span>
           )}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
@@ -4596,12 +4619,12 @@ function DeviceParentCombobox({
       <PopoverContent className="w-[400px] p-0" align="start">
         <Command>
           <CommandInput
-            placeholder="พิมพ์รหัสทรัพย์สิน / ชื่อ / Serial..."
+            placeholder={t('devices.parent.command_placeholder')}
             value={search}
             onValueChange={setSearch}
           />
           <CommandList>
-            <CommandEmpty>ไม่พบอุปกรณ์ — ลองพิมพ์ใหม่</CommandEmpty>
+            <CommandEmpty>{t('devices.parent.command_empty')}</CommandEmpty>
             <CommandGroup>
               {(results ?? []).filter((d) => d.id !== excludeId).map((d) => (
                 <CommandItem
@@ -4644,6 +4667,7 @@ function ParentDeviceInfo({
   deviceId: string
   authHeaders: () => Record<string, string>
 }) {
+  const t = useT()
   const { data: device, isLoading } = useQuery<Device>({
     queryKey: ['device-detail', deviceId],
     queryFn: async () => {
@@ -4655,8 +4679,8 @@ function ParentDeviceInfo({
     staleTime: 30_000,
   })
 
-  if (isLoading) return <span className="text-slate-400">กำลังโหลดข้อมูล...</span>
-  if (!device) return <span className="text-rose-500">ไม่พบอุปกรณ์หลัก</span>
+  if (isLoading) return <span className="text-slate-400">{t('devices.parent.loading')}</span>
+  if (!device) return <span className="text-rose-500">{t('devices.parent.not_found')}</span>
 
   return (
     <div className="space-y-1">
@@ -4665,12 +4689,12 @@ function ParentDeviceInfo({
         <span className="font-medium text-slate-700 dark:text-slate-200">{device.name}</span>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-        <div>ประเภท: <span className="font-medium text-slate-600 dark:text-slate-300">{device.type}</span></div>
+        <div>{t('devices.parent.field.type')} <span className="font-medium text-slate-600 dark:text-slate-300">{device.type}</span></div>
         <div>Serial: <span className="font-mono text-slate-600 dark:text-slate-300">{device.serialNumber ?? '—'}</span></div>
-        <div>แบรนด์: <span className="text-slate-600 dark:text-slate-300">{device.brand ?? '—'}</span></div>
-        <div>รุ่น: <span className="text-slate-600 dark:text-slate-300">{device.model ?? '—'}</span></div>
-        <div>สาขา: <span className="text-slate-600 dark:text-slate-300">{device.site ?? '—'}</span></div>
-        <div>สถานะ: <span className="text-slate-600 dark:text-slate-300">{device.status}</span></div>
+        <div>{t('devices.parent.field.brand')} <span className="text-slate-600 dark:text-slate-300">{device.brand ?? '—'}</span></div>
+        <div>{t('devices.parent.field.model')} <span className="text-slate-600 dark:text-slate-300">{device.model ?? '—'}</span></div>
+        <div>{t('devices.parent.field.site')} <span className="text-slate-600 dark:text-slate-300">{device.site ?? '—'}</span></div>
+        <div>{t('devices.parent.field.status')} <span className="text-slate-600 dark:text-slate-300">{device.status}</span></div>
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * PMSchedulesPage — ตารางงานบำรุงรักษาป้องกัน (Preventive Maintenance)
+ * PMSchedulesPage — TableWorkpreventive maintenance (Preventive Maintenance)
  *
  * Phase 3: List + Create/Edit form
  *
@@ -53,6 +53,7 @@ import {
 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useAuthStore } from '@/store/auth-store'
+import { useT, useLang, useI18nStore } from '@/store/i18n-store'
 import { canSelectSite } from './types'
 import {
   FREQUENCY_OPTIONS, FREQUENCY_LABELS, WEEKDAY_OPTIONS, WEEKDAY_LABELS,
@@ -133,12 +134,19 @@ interface PMExecutionRow {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+/** Format a date string with locale-aware formatting.
+ *  Uses the global i18n store to determine TH (พ.ศ.) or EN (ค.ศ.). */
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
     const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso)
     if (isNaN(d.getTime())) return iso
-    return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })
+    // Read lang from the global store (works at module level without hooks)
+    const lang = useI18nStore.getState().lang
+    const locale = lang === 'th' ? 'th-TH' : 'en-GB'
+    const opts: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' }
+    if (lang === 'th') opts.calendar = 'buddhist'
+    return d.toLocaleDateString(locale, opts)
   } catch {
     return iso
   }
@@ -164,13 +172,13 @@ function todayISO(): string {
 const DEVICE_TYPES = ['PRINTER', 'COPIER', 'MFP', 'SCANNER', 'COMPUTER', 'NETWORK', 'OTHER']
 
 const DEVICE_TYPE_LABELS: Record<string, string> = {
-  PRINTER: 'เครื่องพิมพ์',
-  COPIER: 'เครื่องถ่ายเอกสาร',
-  MFP: 'เครื่องพิมพ์หลายฟังก์ชัน',
-  SCANNER: 'สแกนเนอร์',
-  COMPUTER: 'คอมพิวเตอร์',
-  NETWORK: 'อุปกรณ์เครือข่าย',
-  OTHER: 'อื่นๆ',
+  PRINTER: 'unitsPrint',
+  COPIER: 'unitscaptureDocument',
+  MFP: 'unitsPrintmultifunction',
+  SCANNER: 'Scan',
+  COMPUTER: 'computer',
+  NETWORK: 'DeviceNetwork',
+  OTHER: 'Other',
 }
 
 // ── Form state ───────────────────────────────────────────────────────
@@ -219,6 +227,8 @@ const EMPTY_FORM: FormState = {
 
 export function PMSchedulesPage() {
   const qc = useQueryClient()
+  const t = useT()
+  const { lang } = useLang()
   const [search, setSearch] = React.useState('')
   const [activeFilter, setActiveFilter] = React.useState<'all' | 'active' | 'inactive'>('all')
   const [siteFilter, setSiteFilter] = React.useState<string>('all')
@@ -272,11 +282,11 @@ export function PMSchedulesPage() {
   //   2) the response field is `devices`, not `data` — so the old `.data ?? []`
   //      fallback made every dropdown render EMPTY (only the placeholder showed).
   //   3) no `status` param — pulled ALL statuses instead of Active-only as the
-  //      user explicitly asked ("เฉพาะสถานะที่ใช้งานได้").
+  //      user explicitly asked ("OnlyStatusatActive").
   // Now we fetch up to 500 active devices ONCE and derive building / floor /
   // department lists + per-option counts entirely client-side, so cascading
   // (select Building → Floor list narrows → Department list narrows) is instant
-  // and we can show "(N เครื่อง)" next to each option.
+  // and we can show "(N units)" next to each option.
   const { data: activeDevicesData } = useQuery<{
     devices: Array<{
       building: string | null
@@ -352,7 +362,7 @@ export function PMSchedulesPage() {
   }, [allActive])
 
   // Estimated active device count matching the WHOLE current form selection.
-  // Shown in the "เป้าหมายปัจจุบัน" summary so the user knows roughly how many
+  // Shown in the "GoalCurrent" summary so the user knows roughly how many
   // machines the schedule will cover.
   const targetDeviceCount = React.useMemo(() => {
     return allActive.filter((d) => {
@@ -414,14 +424,14 @@ export function PMSchedulesPage() {
       })
     },
     onSuccess: (_json, vars) => {
-      toast.success(vars.id ? 'แก้ไขตาราง PM แล้ว' : 'สร้างตาราง PM แล้ว')
+      toast.success(vars.id ? 'EditTable PM ' : 'CreateTable PM ')
       qc.invalidateQueries({ queryKey: ['pm-schedules'] })
       setFormOpen(false)
       setEditTarget(null)
       setForm(EMPTY_FORM)
     },
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
+      toast.error(err instanceof Error ? err.message : 'errorError')
     },
   })
 
@@ -429,11 +439,11 @@ export function PMSchedulesPage() {
     mutationFn: async (id: string) =>
       authFetch(`/api/pm/schedules/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
-      toast.success('ปิดใช้งานตาราง PM แล้ว')
+      toast.success('CloseActiveTable PM ')
       qc.invalidateQueries({ queryKey: ['pm-schedules'] })
     },
     onError: (err: unknown) => {
-      toast.error(err instanceof Error ? err.message : 'เกิดข้อผิดพลาด')
+      toast.error(err instanceof Error ? err.message : 'errorError')
     },
   })
 
@@ -478,7 +488,7 @@ export function PMSchedulesPage() {
 
   function submitForm() {
     if (!form.title.trim()) {
-      toast.error('กรุณาระบุชื่อตารางงาน')
+      toast.error('PleaseSpecifyNameTableWork')
       return
     }
     upsertMutation.mutate({ id: editTarget?.id, data: form })
@@ -604,7 +614,10 @@ export function PMSchedulesPage() {
   }
   function formatMonthLabel(m: string): string {
     const [y, mo] = m.split('-').map(Number)
-    return new Date(y, mo - 1, 1).toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
+    const locale = lang === 'th' ? 'th-TH' : 'en-GB'
+    const opts: Intl.DateTimeFormatOptions = { month: 'long', year: 'numeric' }
+    if (lang === 'th') opts.calendar = 'buddhist'
+    return new Date(y, mo - 1, 1).toLocaleDateString(locale, opts)
   }
 
   // ── Render ──
@@ -620,13 +633,13 @@ export function PMSchedulesPage() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 text-white shadow">
                   <CalendarClock className="h-5 w-5" />
                 </div>
-                <span>ตารางงานบำรุงรักษา</span>
+                <span>TableWorkmaintenance</span>
                 <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300">
                   PM (Preventive)
                 </Badge>
               </CardTitle>
               <CardDescription className="mt-1 text-xs md:text-sm">
-                กำหนดตารางบำรุงรักษาตามรอบเวลา — ไม่รอให้อุปกรณ์พังก่อน
+                SetTablemaintenancebyCycleTime — NoPendingtoDevicebrokenBefore
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -638,7 +651,7 @@ export function PMSchedulesPage() {
                 className="h-10"
               >
                 <RefreshCw className={`mr-1 h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-                รีเฟรช
+                Refresh
               </Button>
               <Button
                 size="sm"
@@ -646,7 +659,7 @@ export function PMSchedulesPage() {
                 className="h-10 bg-violet-600 hover:bg-violet-700"
               >
                 <Plus className="mr-1 h-3.5 w-3.5" />
-                สร้างตาราง PM
+                CreateTable PM
               </Button>
             </div>
           </div>
@@ -654,49 +667,49 @@ export function PMSchedulesPage() {
         <CardContent className="space-y-3 pt-0">
           {/* Stats */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard label="ตารางทั้งหมด" value={stats.total} icon={<CalendarClock className="h-4 w-4" />} accent="#6366f1" />
-            <StatCard label="ใช้งานอยู่" value={stats.active} icon={<Power className="h-4 w-4" />} accent="#10b981" />
-            <StatCard label="ใกล้ถึงเวลา" value={stats.dueSoon} icon={<Clock className="h-4 w-4" />} accent="#f59e0b" />
-            <StatCard label="เลยกำหนด" value={stats.overdue} icon={<AlertCircle className="h-4 w-4" />} accent="#f43f5e" />
+            <StatCard label="TableAll" value={stats.total} icon={<CalendarClock className="h-4 w-4" />} accent="#6366f1" />
+            <StatCard label="Active" value={stats.active} icon={<Power className="h-4 w-4" />} accent="#10b981" />
+            <StatCard label="neartoTime" value={stats.dueSoon} icon={<Clock className="h-4 w-4" />} accent="#f59e0b" />
+            <StatCard label="justSet" value={stats.overdue} icon={<AlertCircle className="h-4 w-4" />} accent="#f43f5e" />
           </div>
 
           {/* Filter bar */}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="pm-search" className="text-xs font-medium">ค้นหา</Label>
+              <Label htmlFor="pm-search" className="text-xs font-medium">Search</Label>
               <div className="relative">
                 <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="pm-search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="ชื่อตาราง / เลขที่ / คำอธิบาย"
+                  placeholder="NameTable / No.at / Description"
                   className="h-9 pl-8 text-xs"
                 />
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pm-active" className="text-xs font-medium">สถานะ</Label>
+              <Label htmlFor="pm-active" className="text-xs font-medium">Status</Label>
               <Select value={activeFilter} onValueChange={(v) => setActiveFilter(v as 'all' | 'active' | 'inactive')}>
                 <SelectTrigger id="pm-active" className="h-9 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">ทั้งหมด</SelectItem>
-                  <SelectItem value="active">ใช้งานอยู่</SelectItem>
-                  <SelectItem value="inactive">ปิดใช้งาน</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">CloseActive</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             {showSiteFilter && (
               <div className="space-y-1.5">
-                <Label htmlFor="pm-site" className="text-xs font-medium">สาขา</Label>
+                <Label htmlFor="pm-site" className="text-xs font-medium">Site</Label>
                 <Select value={siteFilter} onValueChange={setSiteFilter}>
                   <SelectTrigger id="pm-site" className="h-9 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">ทุกสาขา</SelectItem>
+                    <SelectItem value="all">AllSite</SelectItem>
                     {sites.map((s) => (
                       <SelectItem key={s.id} value={s.code}>
                         {s.name} ({s.code})
@@ -719,15 +732,15 @@ export function PMSchedulesPage() {
         <TabsList className="grid h-auto w-full grid-cols-3 gap-1">
           <TabsTrigger value="schedules" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <CalendarClock className="h-4 w-4" />
-            <span>ตารางงาน</span>
+            <span>TableWork</span>
           </TabsTrigger>
           <TabsTrigger value="calendar" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <Calendar className="h-4 w-4" />
-            <span>ปฏิทิน</span>
+            <span>calendar</span>
           </TabsTrigger>
           <TabsTrigger value="history" className="flex flex-col items-center gap-0.5 py-2 text-xs md:text-sm">
             <CheckCircle2 className="h-4 w-4" />
-            <span>ประวัติ</span>
+            <span>History</span>
           </TabsTrigger>
         </TabsList>
 
@@ -744,14 +757,14 @@ export function PMSchedulesPage() {
         <Card className="min-h-0 flex-1">
           <CardContent className="flex flex-col items-center justify-center gap-2 p-8 text-center">
             <CalendarClock className="h-12 w-12 text-muted-foreground/40" />
-            <div className="text-sm font-medium text-muted-foreground">ยังไม่มีตาราง PM</div>
+            <div className="text-sm font-medium text-muted-foreground">StillNoneTable PM</div>
             <p className="max-w-md text-xs text-muted-foreground/70">
-              กดปุ่ม &quot;สร้างตาราง PM&quot; เพื่อเพิ่มตารางบำรุงรักษาแบบรอบเวลา
-              เช่น ทำความสะอาดเครื่องพิมพ์ทุกเดือน เช็คอะไหล่ทุกไตรมาส
+              Clickbutton &quot;CreateTable PM&quot; forAddTablemaintenanceTypeCycleTime
+              e.g. DocleanlinessunitsPrintAllmonths checkPartsAllQuarter
             </p>
             <Button size="sm" onClick={openCreate} className="mt-3 bg-violet-600 hover:bg-violet-700">
               <Plus className="mr-1 h-3.5 w-3.5" />
-              สร้างตารางแรก
+              CreateTablefirst
             </Button>
           </CardContent>
         </Card>
@@ -767,13 +780,13 @@ export function PMSchedulesPage() {
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                     <TableRow className="text-xs">
-                      <TableHead className="w-[25%]">ตารางงาน</TableHead>
-                      <TableHead>ความถี่</TableHead>
-                      <TableHead>เป้าหมาย</TableHead>
-                      <TableHead className="text-right">ครั้งต่อไป</TableHead>
-                      <TableHead className="text-right">ครั้งล่าสุด</TableHead>
-                      <TableHead className="text-right">ประวัติ</TableHead>
-                      <TableHead className="text-right">การจัดการ</TableHead>
+                      <TableHead className="w-[25%]">TableWork</TableHead>
+                      <TableHead>frequency</TableHead>
+                      <TableHead>Goal</TableHead>
+                      <TableHead className="text-right">timesperto</TableHead>
+                      <TableHead className="text-right">timesLatest</TableHead>
+                      <TableHead className="text-right">History</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -787,7 +800,7 @@ export function PMSchedulesPage() {
                             <div className="flex items-center gap-1.5">
                               {!s.active && (
                                 <Badge variant="outline" className="border-slate-300 bg-slate-100 text-[9px] text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
-                                  ปิด
+                                  Close
                                 </Badge>
                               )}
                               <div className="min-w-0">
@@ -802,12 +815,12 @@ export function PMSchedulesPage() {
                             </Badge>
                             {s.frequency === 'custom' && s.intervalDays && (
                               <span className="ml-1 text-[10px] text-muted-foreground">
-                                ({s.intervalDays} วัน)
+                                ({s.intervalDays} days)
                               </span>
                             )}
                             {s.frequency === 'monthly' && s.dayOfMonth && (
                               <span className="ml-1 text-[10px] text-muted-foreground">
-                                (วันที่ {s.dayOfMonth})
+                                (Date {s.dayOfMonth})
                               </span>
                             )}
                             {s.frequency === 'weekly' && s.weekday && (
@@ -827,10 +840,10 @@ export function PMSchedulesPage() {
                                   {DEVICE_TYPE_LABELS[s.deviceType] ?? s.deviceType}
                                 </span>
                               ) : (
-                                <span className="text-[11px] text-muted-foreground">ทุกอุปกรณ์</span>
+                                <span className="text-[11px] text-muted-foreground">AllDevice</span>
                               )}
                               {s.site && (
-                                <span className="text-[10px] text-muted-foreground">สาขา: {s.site}</span>
+                                <span className="text-[10px] text-muted-foreground">Site: {s.site}</span>
                               )}
                             </div>
                           </TableCell>
@@ -846,7 +859,7 @@ export function PMSchedulesPage() {
                                 </span>
                                 {nextDays != null && (
                                   <span className="text-[10px] text-muted-foreground">
-                                    {isOverdue ? `เลย ${Math.abs(nextDays)} วัน` : `อีก ${nextDays} วัน`}
+                                    {isOverdue ? `just ${Math.abs(nextDays)} days` : `more ${nextDays} days`}
                                   </span>
                                 )}
                               </div>
@@ -859,7 +872,7 @@ export function PMSchedulesPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <Badge variant="outline" className="text-[10px]">
-                              {s._count?.executions ?? 0} ครั้ง
+                              {s._count?.executions ?? 0} times
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right">
@@ -869,8 +882,8 @@ export function PMSchedulesPage() {
                                 variant="ghost"
                                 onClick={() => openEdit(s)}
                                 className="h-7 w-7 p-0"
-                                aria-label="แก้ไข"
-                                title="แก้ไข"
+                                aria-label="Edit"
+                                title="Edit"
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
@@ -880,8 +893,8 @@ export function PMSchedulesPage() {
                                   variant="ghost"
                                   onClick={() => setDeleteTarget(s)}
                                   className="h-7 w-7 p-0 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                                  aria-label="ปิดใช้งาน"
-                                  title="ปิดใช้งาน"
+                                  aria-label="CloseActive"
+                                  title="CloseActive"
                                 >
                                   <Power className="h-3.5 w-3.5" />
                                 </Button>
@@ -906,11 +919,11 @@ export function PMSchedulesPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={prevMonth} className="h-8 w-8 p-0" aria-label="เดือนก่อนหน้า">
+                  <Button size="sm" variant="outline" onClick={prevMonth} className="h-8 w-8 p-0" aria-label="monthsBeforefront">
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <span className="text-sm font-semibold">{formatMonthLabel(calMonth)}</span>
-                  <Button size="sm" variant="outline" onClick={nextMonth} className="h-8 w-8 p-0" aria-label="เดือนถัดไป">
+                  <Button size="sm" variant="outline" onClick={nextMonth} className="h-8 w-8 p-0" aria-label="monthsnextto">
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                   <Button
@@ -922,7 +935,7 @@ export function PMSchedulesPage() {
                     }}
                     className="h-8 px-2 text-xs"
                   >
-                    วันนี้
+                    days
                   </Button>
                 </div>
                 <Button
@@ -933,7 +946,7 @@ export function PMSchedulesPage() {
                   className="h-8"
                 >
                   <RefreshCw className={`mr-1 h-3.5 w-3.5 ${calFetching ? 'animate-spin' : ''}`} />
-                  รีเฟรช
+                  Refresh
                 </Button>
               </div>
             </CardHeader>
@@ -944,10 +957,10 @@ export function PMSchedulesPage() {
                 <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
                   <Calendar className="h-12 w-12 text-muted-foreground/40" />
                   <div className="text-sm font-medium text-muted-foreground">
-                    ไม่มี PM ในเดือน {formatMonthLabel(calMonth)}
+                    None PM inmonths {formatMonthLabel(calMonth)}
                   </div>
                   <p className="max-w-md text-xs text-muted-foreground/70">
-                    สร้างตาราง PM ในแท็บ &quot;ตารางงาน&quot; เพื่อให้แสดงในปฏิทิน
+                    CreateTable PM intab &quot;TableWork&quot; fortoShowincalendar
                   </p>
                 </div>
               ) : (
@@ -955,19 +968,22 @@ export function PMSchedulesPage() {
                   {/* Summary bar */}
                   <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
                     <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300">
-                      รวม {calData.total} รายการ
+                      Total {calData.total} item
                     </Badge>
                     <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                      เสร็จแล้ว {calData.completed}
+                      Done {calData.completed}
                     </Badge>
                     <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                      รอทำ {calData.pending}
+                      PendingDo {calData.pending}
                     </Badge>
                   </div>
                   {/* Calendar grid */}
                   <div className="grid grid-cols-7 gap-1">
-                    {/* Weekday headers */}
-                    {['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((d, i) => (
+                    {/* Weekday headers — locale-aware (TH: อา จ อ พ พฤ ศ ส / EN: Sun Mon Tue Wed Thu Fri Sat) */}
+                    {(lang === 'th'
+                      ? ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
+                      : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+                    ).map((d, i) => (
                       <div key={i} className="rounded-md bg-slate-100 py-1.5 text-center text-[10px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                         {d}
                       </div>
@@ -1051,15 +1067,15 @@ export function PMSchedulesPage() {
                   <div className="mt-3 flex flex-wrap gap-3 text-[10px] text-muted-foreground">
                     <div className="flex items-center gap-1">
                       <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/40" />
-                      เสร็จแล้ว
+                      Done
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-100 dark:bg-amber-950/40" />
-                      รอทำ
+                      PendingDo
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="inline-block h-2.5 w-2.5 rounded-sm bg-rose-100 dark:bg-rose-950/40" />
-                      เลยกำหนด
+                      justSet
                     </div>
                   </div>
                 </>
@@ -1073,7 +1089,7 @@ export function PMSchedulesPage() {
           <Card className="shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-3">
-                <CardTitle className="text-sm">ประวัติการทำ PM</CardTitle>
+                <CardTitle className="text-sm">HistoryDo PM</CardTitle>
                 <Button
                   size="sm"
                   variant="outline"
@@ -1094,9 +1110,9 @@ export function PMSchedulesPage() {
               ) : !histData?.data || histData.data.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
                   <CheckCircle2 className="h-12 w-12 text-muted-foreground/40" />
-                  <div className="text-sm font-medium text-muted-foreground">ยังไม่มีประวัติการทำ PM</div>
+                  <div className="text-sm font-medium text-muted-foreground">StillNoneHistoryDo PM</div>
                   <p className="text-xs text-muted-foreground/70">
-                    ไปที่แท็บ &quot;ปฏิทิน&quot; แล้วคลิก PM ในวันที่ต้องการทำ
+                    toattab &quot;calendar&quot; click PM inDateMustDo
                   </p>
                 </div>
               ) : (
@@ -1104,12 +1120,12 @@ export function PMSchedulesPage() {
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                       <TableRow className="text-xs">
-                        <TableHead>ตาราง PM</TableHead>
-                        <TableHead>วันที่กำหนด</TableHead>
-                        <TableHead>วันที่ทำจริง</TableHead>
-                        <TableHead>สถานะ</TableHead>
-                        <TableHead>ผู้ทำ</TableHead>
-                        <TableHead className="text-right">การจัดการ</TableHead>
+                        <TableHead>Table PM</TableHead>
+                        <TableHead>DateSet</TableHead>
+                        <TableHead>DateDoreal</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>PersonDo</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1144,7 +1160,7 @@ export function PMSchedulesPage() {
                                     : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                                 }`}
                               >
-                                {exec.status === 'COMPLETED' ? 'เสร็จแล้ว' : exec.status === 'PENDING' ? 'รอทำ' : exec.status}
+                                {exec.status === 'COMPLETED' ? 'Done' : exec.status === 'PENDING' ? 'PendingDo' : exec.status}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-[11px] text-muted-foreground">{exec.performedBy ?? '—'}</TableCell>
@@ -1166,7 +1182,7 @@ export function PMSchedulesPage() {
                                   className="h-7 border-emerald-300 px-2 text-[11px] text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
                                 >
                                   <CheckCircle2 className="mr-1 h-3 w-3" />
-                                  ทำ PM
+                                  Do PM
                                 </Button>
                               )}
                             </TableCell>
@@ -1218,13 +1234,13 @@ export function PMSchedulesPage() {
               const j = await res.json().catch(() => ({}))
               throw new Error(j.error ?? 'Failed to complete PM')
             }
-            toast.success('บันทึกผลการทำ PM เรียบร้อย')
+            toast.success('SaveResultDo PM ')
             setExecTarget(null)
             qc.invalidateQueries({ queryKey: ['pm-calendar'] })
             qc.invalidateQueries({ queryKey: ['pm-executions-history'] })
             qc.invalidateQueries({ queryKey: ['pm-schedules'] })
           } catch (e) {
-            toast.error(e instanceof Error ? e.message : 'บันทึกไม่สำเร็จ')
+            toast.error(e instanceof Error ? e.message : 'SaveNoSuccess')
           }
         }}
       />
@@ -1235,20 +1251,20 @@ export function PMSchedulesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarClock className="h-5 w-5 text-violet-600" />
-              {editTarget ? 'แก้ไขตาราง PM' : 'สร้างตาราง PM'}
+              {editTarget ? 'EditTable PM' : 'CreateTable PM'}
             </DialogTitle>
             <DialogDescription>
-              {editTarget ? `รหัส: ${editTarget.scheduleNo}` : 'กำหนดตารางบำรุงรักษาตามรอบเวลา'}
+              {editTarget ? `Code: ${editTarget.scheduleNo}` : 'SetTablemaintenancebyCycleTime'}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
             {/* Title */}
             <div className="space-y-1.5">
-              <Label htmlFor="pm-title">ชื่อตารางงาน <span className="text-rose-500">*</span></Label>
+              <Label htmlFor="pm-title">NameTableWork <span className="text-rose-500">*</span></Label>
               <Input
                 id="pm-title"
-                placeholder="เช่น บำรุงรักษาเครื่องพิมพ์รายเดือน"
+                placeholder="e.g. maintenanceunitsPrintitemmonths"
                 value={form.title}
                 onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               />
@@ -1256,11 +1272,11 @@ export function PMSchedulesPage() {
 
             {/* Description */}
             <div className="space-y-1.5">
-              <Label htmlFor="pm-desc">รายละเอียด</Label>
+              <Label htmlFor="pm-desc">Details</Label>
               <Textarea
                 id="pm-desc"
                 rows={2}
-                placeholder="(ไม่บังคับ) อธิบายขอบเขตงาน"
+                placeholder="((optional)) explain boundaryDistrictWork"
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
               />
@@ -1269,11 +1285,11 @@ export function PMSchedulesPage() {
             {/* Frequency */}
             <div className="rounded-md border border-violet-200 bg-violet-50/40 p-3 dark:border-violet-800 dark:bg-violet-950/20">
               <Label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-violet-300">
-                ความถี่
+                frequency
               </Label>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="pm-freq" className="text-xs">ประเภทความถี่</Label>
+                  <Label htmlFor="pm-freq" className="text-xs">Typefrequency</Label>
                   <Select
                     value={form.frequency}
                     onValueChange={(v) => setForm((f) => ({ ...f, frequency: v }))}
@@ -1292,21 +1308,21 @@ export function PMSchedulesPage() {
                 </div>
                 {form.frequency === 'custom' && (
                   <div className="space-y-1.5">
-                    <Label htmlFor="pm-interval" className="text-xs">ทุกกี่วัน</Label>
+                    <Label htmlFor="pm-interval" className="text-xs">All?days</Label>
                     <Input
                       id="pm-interval"
                       type="number"
                       min="1"
                       value={form.intervalDays}
                       onChange={(e) => setForm((f) => ({ ...f, intervalDays: e.target.value }))}
-                      placeholder="เช่น 45"
+                      placeholder="e.g. 45"
                       className="h-9 text-xs"
                     />
                   </div>
                 )}
                 {(form.frequency === 'monthly' || form.frequency === 'quarterly' || form.frequency === 'half_yearly' || form.frequency === 'yearly') && (
                   <div className="space-y-1.5">
-                    <Label htmlFor="pm-day" className="text-xs">วันที่ของเดือน (1-31)</Label>
+                    <Label htmlFor="pm-day" className="text-xs">Dateofmonths (1-31)</Label>
                     <Input
                       id="pm-day"
                       type="number"
@@ -1320,7 +1336,7 @@ export function PMSchedulesPage() {
                 )}
                 {form.frequency === 'weekly' && (
                   <div className="space-y-1.5">
-                    <Label htmlFor="pm-weekday" className="text-xs">วันในสัปดาห์</Label>
+                    <Label htmlFor="pm-weekday" className="text-xs">daysinWeek</Label>
                     <Select
                       value={form.weekday}
                       onValueChange={(v) => setForm((f) => ({ ...f, weekday: v }))}
@@ -1340,7 +1356,7 @@ export function PMSchedulesPage() {
                 )}
                 {(form.frequency === 'quarterly' || form.frequency === 'half_yearly' || form.frequency === 'yearly') && (
                   <div className="space-y-1.5">
-                    <Label htmlFor="pm-startmonth" className="text-xs">เดือนเริ่มต้น</Label>
+                    <Label htmlFor="pm-startmonth" className="text-xs">monthsDefault</Label>
                     <Select
                       value={form.startMonth}
                       onValueChange={(v) => setForm((f) => ({ ...f, startMonth: v }))}
@@ -1360,7 +1376,7 @@ export function PMSchedulesPage() {
                 )}
               </div>
               <div className="mt-2 space-y-1.5">
-                <Label htmlFor="pm-start" className="text-xs">วันเริ่มต้นตาราง</Label>
+                <Label htmlFor="pm-start" className="text-xs">daysDefaultTable</Label>
                 <Input
                   id="pm-start"
                   type="date"
@@ -1374,26 +1390,26 @@ export function PMSchedulesPage() {
             {/* Target */}
             <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
               <Label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-                กลุ่มเป้าหมาย — เลือกได้หลายแบบ
+                GroupGoal — SelectmanyType
               </Label>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="pm-dtype" className="text-xs">ประเภทอุปกรณ์</Label>
+                  <Label htmlFor="pm-dtype" className="text-xs">TypeDevice</Label>
                   <Select
                     value={form.deviceType || '__none__'}
                     onValueChange={(v) => setForm((f) => ({ ...f, deviceType: v === '__none__' ? '' : v }))}
                   >
                     <SelectTrigger id="pm-dtype" className="h-9 text-xs">
-                      <SelectValue placeholder="ทุกประเภท" />
+                      <SelectValue placeholder="AllType" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">ทุกประเภท</SelectItem>
+                      <SelectItem value="__none__">AllType</SelectItem>
                       {DEVICE_TYPES.map((t) => {
                         const cnt = deviceTypeCounts.get(t) ?? 0
                         return (
                           <SelectItem key={t} value={t}>
                             {DEVICE_TYPE_LABELS[t] ?? t}{' '}
-                            <span className="ml-1 text-[10px] text-slate-400">({cnt} เครื่อง)</span>
+                            <span className="ml-1 text-[10px] text-slate-400">({cnt} units)</span>
                           </SelectItem>
                         )
                       })}
@@ -1401,7 +1417,7 @@ export function PMSchedulesPage() {
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="pm-sitesel" className="text-xs">สาขา</Label>
+                  <Label htmlFor="pm-sitesel" className="text-xs">Site</Label>
                   <Select
                     value={form.site || '__none__'}
                     onValueChange={(v) => setForm((f) => ({
@@ -1411,10 +1427,10 @@ export function PMSchedulesPage() {
                     }))}
                   >
                     <SelectTrigger id="pm-sitesel" className="h-9 text-xs">
-                      <SelectValue placeholder="ทุกสาขา" />
+                      <SelectValue placeholder="AllSite" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__">ทุกสาขา</SelectItem>
+                      <SelectItem value="__none__">AllSite</SelectItem>
                       {sites.map((s) => (
                         <SelectItem key={s.id} value={s.code}>
                           {s.name} ({s.code})
@@ -1425,9 +1441,9 @@ export function PMSchedulesPage() {
                 </div>
               </div>
 
-              {/* ── เลือกแบบกลุ่มเพิ่มเติม ── */}
+              {/* ── SelectTypeGroupAddFill ── */}
               <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-                <Label className="text-xs text-slate-500">เลือกแบบกลุ่มเพิ่มเติม (ไม่บังคับ)</Label>
+                <Label className="text-xs text-slate-500">SelectTypeGroupAddFill ((optional))</Label>
                 <div className="flex flex-wrap gap-2">
                   {/* All devices */}
                   <button
@@ -1439,7 +1455,7 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-violet-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    📋 ทุกอุปกรณ์
+                    📋 AllDevice
                   </button>
                   {/* By type — PRINTER */}
                   <button
@@ -1451,7 +1467,7 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-orange-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    🖨️ เครื่องพิมพ์
+                    🖨️ unitsPrint
                   </button>
                   {/* By type — COPIER */}
                   <button
@@ -1463,7 +1479,7 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-teal-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    📄 เครื่องถ่ายเอกสาร
+                    📄 unitscaptureDocument
                   </button>
                   {/* By type — MFP */}
                   <button
@@ -1475,7 +1491,7 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-amber-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    🖨️📋 มัลติฟังก์ชัน
+                    🖨️📋 multifunction
                   </button>
                   {/* By type — COMPUTER */}
                   <button
@@ -1487,7 +1503,7 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    💻 คอมพิวเตอร์
+                    💻 computer
                   </button>
                   {/* By type — NETWORK */}
                   <button
@@ -1499,14 +1515,14 @@ export function PMSchedulesPage() {
                         : 'border-slate-200 bg-white text-slate-600 hover:border-cyan-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                     }`}
                   >
-                    🌐 อุปกรณ์เครือข่าย
+                    🌐 DeviceNetwork
                   </button>
                 </div>
 
                 {/* Quick site selection */}
                 {sites.length > 0 && (
                   <div className="mt-2">
-                    <Label className="text-xs text-slate-500">เลือกสาขาด่วน:</Label>
+                    <Label className="text-xs text-slate-500">SelectSiteUrgent:</Label>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       <button
                         type="button"
@@ -1517,7 +1533,7 @@ export function PMSchedulesPage() {
                             : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-violet-300 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400'
                         }`}
                       >
-                        ทุกสาขา
+                        AllSite
                       </button>
                       {sites.slice(0, 8).map((s) => (
                         <button
@@ -1537,13 +1553,13 @@ export function PMSchedulesPage() {
                   </div>
                 )}
 
-                {/* ── ตึก / ชั้น / แผนก (Chip Selector) ── */}
+                {/* ── building / Floor / Dept (Chip Selector) ── */}
                 <div className="mt-2 space-y-2 border-t border-slate-100 pt-2 dark:border-slate-800">
-                  <Label className="text-xs text-slate-500">กรองตามตำแหน่ง (ไม่บังคับ)</Label>
+                  <Label className="text-xs text-slate-500">FilterbyLocation ((optional))</Label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {/* Building */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-slate-400">ตึก/อาคาร</Label>
+                      <Label className="text-[10px] text-slate-400">building/Building</Label>
                       <Select
                         value={form.building || '__none__'}
                         onValueChange={(v) => setForm((f) => ({
@@ -1553,14 +1569,14 @@ export function PMSchedulesPage() {
                         }))}
                       >
                         <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="ทุกตึก" />
+                          <SelectValue placeholder="Allbuilding" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">ทุกตึก</SelectItem>
+                          <SelectItem value="__none__">Allbuilding</SelectItem>
                           {masterBuilding.map((b) => (
                             <SelectItem key={b.code} value={b.label}>
                               {b.label}{' '}
-                              <span className="ml-1 text-[10px] text-slate-400">({b.count} เครื่อง)</span>
+                              <span className="ml-1 text-[10px] text-slate-400">({b.count} units)</span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1568,7 +1584,7 @@ export function PMSchedulesPage() {
                     </div>
                     {/* Floor */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-slate-400">ชั้น</Label>
+                      <Label className="text-[10px] text-slate-400">Floor</Label>
                       <Select
                         value={form.floor || '__none__'}
                         onValueChange={(v) => setForm((f) => ({
@@ -1578,14 +1594,14 @@ export function PMSchedulesPage() {
                         }))}
                       >
                         <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="ทุกชั้น" />
+                          <SelectValue placeholder="AllFloor" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="__none__">ทุกชั้น</SelectItem>
+                          <SelectItem value="__none__">AllFloor</SelectItem>
                           {masterFloor.map((fl) => (
                             <SelectItem key={fl.code} value={fl.label}>
                               {fl.label}{' '}
-                              <span className="ml-1 text-[10px] text-slate-400">({fl.count} เครื่อง)</span>
+                              <span className="ml-1 text-[10px] text-slate-400">({fl.count} units)</span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1593,20 +1609,20 @@ export function PMSchedulesPage() {
                     </div>
                     {/* Department */}
                     <div className="space-y-1">
-                      <Label className="text-[10px] text-slate-400">แผนก</Label>
+                      <Label className="text-[10px] text-slate-400">Dept</Label>
                       <Select
                         value={form.department || '__none__'}
                         onValueChange={(v) => setForm((f) => ({ ...f, department: v === '__none__' ? '' : v }))}
                       >
                         <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="ทุกแผนก" />
+                          <SelectValue placeholder="AllDept" />
                         </SelectTrigger>
                         <SelectContent className="max-h-60">
-                          <SelectItem value="__none__">ทุกแผนก</SelectItem>
+                          <SelectItem value="__none__">AllDept</SelectItem>
                           {masterDepartment.map((d) => (
                             <SelectItem key={d.code} value={d.label}>
                               {d.label}{' '}
-                              <span className="ml-1 text-[10px] text-slate-400">({d.count} เครื่อง)</span>
+                              <span className="ml-1 text-[10px] text-slate-400">({d.count} units)</span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1617,14 +1633,14 @@ export function PMSchedulesPage() {
 
                 {/* Current selection summary */}
                 <div className="rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-600 dark:bg-slate-800/40 dark:text-slate-300">
-                  <strong>เป้าหมายปัจจุบัน:</strong>{' '}
-                  {form.deviceType ? DEVICE_TYPE_LABELS[form.deviceType] ?? form.deviceType : 'ทุกประเภท'}
-                  {form.site ? ` · สาขา ${form.site}` : ' · ทุกสาขา'}
-                  {form.building ? ` · ตึก ${form.building}` : ''}
-                  {form.floor ? ` · ชั้น ${form.floor}` : ''}
-                  {form.department ? ` · แผนก ${form.department}` : ''}
+                  <strong>GoalCurrent:</strong>{' '}
+                  {form.deviceType ? DEVICE_TYPE_LABELS[form.deviceType] ?? form.deviceType : 'AllType'}
+                  {form.site ? ` · Site ${form.site}` : ' · AllSite'}
+                  {form.building ? ` · building ${form.building}` : ''}
+                  {form.floor ? ` · Floor ${form.floor}` : ''}
+                  {form.department ? ` · Dept ${form.department}` : ''}
                   <span className="ml-1 text-emerald-600 dark:text-emerald-400">
-                    {' '}· เป้าหมาย ~{targetDeviceCount} เครื่อง (ใช้งานอยู่)
+                    {' '}· Goal ~{targetDeviceCount} units (Active)
                   </span>
                 </div>
               </div>
@@ -1633,10 +1649,10 @@ export function PMSchedulesPage() {
             {/* Assignment + auto-WO */}
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="pm-assign" className="text-xs">ผู้รับผิดชอบ</Label>
+                <Label htmlFor="pm-assign" className="text-xs">PersonReceivewronglike</Label>
                 <Input
                   id="pm-assign"
-                  placeholder="(ไม่บังคับ) ชื่อ/อีเมล"
+                  placeholder="((optional)) Name/Email"
                   value={form.assignedTo}
                   onChange={(e) => setForm((f) => ({ ...f, assignedTo: e.target.value }))}
                   className="h-9 text-xs"
@@ -1649,8 +1665,8 @@ export function PMSchedulesPage() {
                     disabled
                   />
                   <span className="text-muted-foreground">
-                    สร้างใบงานอัตโนมัติเมื่อถึงเวลา
-                    <span className="ml-1 text-[10px] text-amber-600">(เร็ว ๆ นี้)</span>
+                    CreateWork OrderAutoWhentoTime
+                    <span className="ml-1 text-[10px] text-amber-600">(fast  )</span>
                   </span>
                 </label>
               </div>
@@ -1660,7 +1676,7 @@ export function PMSchedulesPage() {
             <div className="rounded-md border border-emerald-200 bg-emerald-50/40 p-3 dark:border-emerald-800 dark:bg-emerald-950/20">
               <div className="mb-2 flex items-center justify-between">
                 <Label className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-                  รายการตรวจสอบ (Checklist)
+                  itemCheck (Checklist)
                 </Label>
                 <Button
                   type="button"
@@ -1670,12 +1686,12 @@ export function PMSchedulesPage() {
                   className="h-7 border-emerald-300 px-2 text-[11px] text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
                 >
                   <Plus className="mr-1 h-3 w-3" />
-                  เพิ่มข้อ
+                  Additem
                 </Button>
               </div>
               {form.checklist.length === 0 ? (
                 <p className="rounded-md border border-dashed p-2 text-center text-[11px] text-muted-foreground">
-                  ยังไม่มีรายการตรวจสอบ — เพิ่มเพื่อกำหนดขั้นตอนการทำ PM
+                  StillNoneitemCheck — AddforSetstepAtDo PM
                 </p>
               ) : (
                 <div className="space-y-1.5">
@@ -1687,7 +1703,7 @@ export function PMSchedulesPage() {
                       <Input
                         value={c.label}
                         onChange={(e) => updateChecklistItem(idx, 'label', e.target.value)}
-                        placeholder="เช่น เช็คระดับหมึก"
+                        placeholder="e.g. check levelInk"
                         className="h-7 flex-1 text-xs"
                       />
                       <label className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground">
@@ -1697,13 +1713,13 @@ export function PMSchedulesPage() {
                           onChange={(e) => updateChecklistItem(idx, 'required', e.target.checked)}
                           className="h-3.5 w-3.5 accent-emerald-600"
                         />
-                        บังคับ
+                        required
                       </label>
                       <button
                         type="button"
                         onClick={() => removeChecklistItem(idx)}
                         className="shrink-0 rounded p-0.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                        aria-label="ลบข้อ"
+                        aria-label="Deleteitem"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -1716,7 +1732,7 @@ export function PMSchedulesPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setFormOpen(false)} disabled={upsertMutation.isPending}>
-              ยกเลิก
+              Cancel
             </Button>
             <Button
               onClick={submitForm}
@@ -1724,9 +1740,9 @@ export function PMSchedulesPage() {
               className="bg-violet-600 hover:bg-violet-700"
             >
               {upsertMutation.isPending ? (
-                <><RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" /> กำลังบันทึก...</>
+                <><RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" /> Save...</>
               ) : (
-                <><CheckCircle2 className="mr-1 h-3.5 w-3.5" /> {editTarget ? 'บันทึก' : 'สร้าง'}</>
+                <><CheckCircle2 className="mr-1 h-3.5 w-3.5" /> {editTarget ? 'Save' : 'Create'}</>
               )}
             </Button>
           </DialogFooter>
@@ -1737,14 +1753,14 @@ export function PMSchedulesPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>ปิดใช้งานตาราง PM</AlertDialogTitle>
+            <AlertDialogTitle>CloseActiveTable PM</AlertDialogTitle>
             <AlertDialogDescription>
-              ยืนยันการปิดใช้งาน &quot;{deleteTarget?.title}&quot; ({deleteTarget?.scheduleNo})?
-              ตารางจะไม่สร้าง PM ใหม่อีก แต่ประวัติการทำ PM ยังคงอยู่
+              ConfirmCloseActive &quot;{deleteTarget?.title}&quot; ({deleteTarget?.scheduleNo})?
+              TablewillNoCreate PM Newmore แ่HistoryDo PM StillremainAt
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault() // prevent Radix auto-close before async completes
@@ -1756,7 +1772,7 @@ export function PMSchedulesPage() {
               }}
               className="bg-rose-600 hover:bg-rose-700"
             >
-              ปิดใช้งาน
+              CloseActive
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1800,8 +1816,8 @@ function StatCard({
 }
 
 // ============================================================
-// PMExecutionDialog — ฟอร์มทำ PM (Phase 5)
-// checklist + ลงชื่อ + ถ่ายรูปหลักฐาน
+// PMExecutionDialog — formDo PM (Phase 5)
+// checklist + downName + captureimageMainbase
 // ============================================================
 
 interface PMExecTarget {
@@ -1923,7 +1939,7 @@ function PMExecutionDialog({
       (item) => item.required && !checklistResult.find((r) => r.id === item.id && r.done),
     )
     if (requiredMissing.length > 0) {
-      toast.error(`ยังทำรายการบังคับไม่ครบ: ${requiredMissing.map((i) => i.label).join(', ')}`)
+      toast.error(`StillDoitemrequiredNocomplete: ${requiredMissing.map((i) => i.label).join(', ')}`)
       return
     }
     setSaving(true)
@@ -1948,10 +1964,10 @@ function PMExecutionDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-            ทำ PM
+            Do PM
           </DialogTitle>
           <DialogDescription>
-            {target.scheduleNo} — {target.title} · กำหนด: {formatDate(target.scheduledDate)}
+            {target.scheduleNo} — {target.title} · Set: {formatDate(target.scheduledDate)}
           </DialogDescription>
         </DialogHeader>
 
@@ -1960,7 +1976,7 @@ function PMExecutionDialog({
           {checklistResult.length > 0 && (
             <div className="rounded-md border border-emerald-200 bg-emerald-50/40 p-3 dark:border-emerald-800 dark:bg-emerald-950/20">
               <Label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-                รายการตรวจสอบ
+                itemCheck
               </Label>
               <div className="space-y-2">
                 {checklistResult.map((item, idx) => {
@@ -1984,7 +2000,7 @@ function PMExecutionDialog({
                               ? 'border-emerald-500 bg-emerald-500 text-white'
                               : 'border-slate-300 dark:border-slate-600'
                           }`}
-                          aria-label={item.done ? 'ยกเลิกการทำ' : 'ทำรายการนี้'}
+                          aria-label={item.done ? 'CancelDo' : 'Doitem'}
                         >
                           {item.done && <CheckCircle2 className="h-3 w-3" />}
                         </button>
@@ -1993,7 +2009,7 @@ function PMExecutionDialog({
                             <span className="text-sm font-medium">{item.label}</span>
                             {isRequired && (
                               <Badge variant="outline" className="border-rose-200 bg-rose-50 text-[9px] text-rose-600 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300">
-                                บังคับ
+                                required
                               </Badge>
                             )}
                           </div>
@@ -2001,7 +2017,7 @@ function PMExecutionDialog({
                             <Input
                               value={item.note}
                               onChange={(e) => updateNote(idx, e.target.value)}
-                              placeholder="หมายเหตุ (ไม่บังคับ)"
+                              placeholder="Remark ((optional))"
                               className="mt-1.5 h-7 text-xs"
                             />
                           )}
@@ -2016,19 +2032,19 @@ function PMExecutionDialog({
 
           {/* Performed by */}
           <div className="space-y-1.5">
-            <Label htmlFor="pm-perf" className="text-xs">ผู้ทำ (ลงชื่อ)</Label>
+            <Label htmlFor="pm-perf" className="text-xs">PersonDo (downName)</Label>
             <Input
               id="pm-perf"
               value={performedBy}
               onChange={(e) => setPerformedBy(e.target.value)}
-              placeholder="ชื่อผู้ทำ PM"
+              placeholder="NamePersonDo PM"
               className="h-9 text-xs"
             />
           </div>
 
           {/* Images */}
           <div className="space-y-1.5">
-            <Label className="text-xs">รูปหลักฐาน (ไม่บังคับ)</Label>
+            <Label className="text-xs">imageMainbase ((optional))</Label>
             <input
               ref={fileInputRef}
               type="file"
@@ -2049,7 +2065,7 @@ function PMExecutionDialog({
                     type="button"
                     onClick={() => setImages((prev) => prev.filter((_, i) => i !== idx))}
                     className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-white hover:bg-rose-600"
-                    aria-label="ลบรูป"
+                    aria-label="Deleteimage"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -2059,7 +2075,7 @@ function PMExecutionDialog({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="flex h-20 w-20 items-center justify-center rounded-md border-2 border-dashed border-slate-300 text-slate-400 transition hover:border-emerald-400 hover:text-emerald-500 dark:border-slate-700"
-                aria-label="ถ่ายภาพหรือเลือกรูป"
+                aria-label="captureImageorSelectimage"
               >
                 <Camera className="h-5 w-5" />
               </button>
@@ -2068,13 +2084,13 @@ function PMExecutionDialog({
 
           {/* Remark */}
           <div className="space-y-1.5">
-            <Label htmlFor="pm-remark" className="text-xs">หมายเหตุ</Label>
+            <Label htmlFor="pm-remark" className="text-xs">Remark</Label>
             <Textarea
               id="pm-remark"
               rows={2}
               value={remark}
               onChange={(e) => setRemark(e.target.value)}
-              placeholder="(ไม่บังคับ) บันทึกเพิ่มเติม"
+              placeholder="((optional)) SaveAddFill"
               className="text-xs"
             />
           </div>
@@ -2082,7 +2098,7 @@ function PMExecutionDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>
-            ยกเลิก
+            Cancel
           </Button>
           <Button
             onClick={handleSubmit}
@@ -2090,9 +2106,9 @@ function PMExecutionDialog({
             className="bg-emerald-600 hover:bg-emerald-700"
           >
             {saving ? (
-              <><RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" /> กำลังบันทึก...</>
+              <><RefreshCw className="mr-1 h-3.5 w-3.5 animate-spin" /> Save...</>
             ) : (
-              <><Save className="mr-1 h-3.5 w-3.5" /> บันทึกผล PM</>
+              <><Save className="mr-1 h-3.5 w-3.5" /> SaveResult PM</>
             )}
           </Button>
         </DialogFooter>

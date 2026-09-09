@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { sendLINE } from '@/lib/notifications'
 import { requireAuth } from '@/lib/auth-middleware'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * POST /api/line/reply
@@ -51,6 +52,10 @@ async function logAuditLineReply(
 }
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('notifications')
+  if (unavailable) return unavailable
+
+
   try {
     // ── Auth: reject unauthenticated callers ──
     const auth = await requireAuth(req, 'WO_VIEW_OWN')

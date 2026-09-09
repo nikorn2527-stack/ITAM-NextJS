@@ -5,6 +5,7 @@ import { withRetryOnUnique } from '@/lib/retry-unique'
 import { requireAuth } from '@/lib/auth-middleware'
 import { demoTag } from '@/lib/demo-mode'
 import { isNumericShortQuery } from '@/lib/suffix-search'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -45,6 +46,10 @@ async function nextPoNumber(orderDate: string): Promise<string> {
 }
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   try {
     const { searchParams } = new URL(req.url)
     const search = searchParams.get('search')?.trim() ?? ''
@@ -117,6 +122,10 @@ interface PoItemInput {
 }
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   // FIX-025 + FIX-026: require auth so we can tag demo data and record
   // the actor in the audit log. The frontend already attaches a Bearer
   // token to all /api/purchase-orders requests (see stock/shared.ts

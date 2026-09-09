@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
-    "postinstall": "prisma generate || echo 'prisma generate failed (may be in CI without DATABASE_URL)'",
+    "postinstall": "node scripts/set-prisma-provider.mjs && prisma generate || echo 'prisma generate failed (may be in CI without DATABASE_URL)'",
+    "prebuild": "node scripts/set-prisma-provider.mjs",
     "db:push": "prisma db push --accept-data-loss",
     "db:push:seed": "prisma db push --accept-data-loss && bun run db:seed",
     "db:seed": "bun scripts/seed-all.ts",
@@ -29,7 +30,8 @@
     "db:safe-migrate": "bash scripts/safe-migrate.sh",
     "db:safe-push": "bash scripts/safe-migrate.sh --push",
     "db:safe-migrate:prod": "bash scripts/safe-migrate.sh --production",
-    "check:drift": "bun scripts/check-schema-drift.ts"
+    "check:drift": "bun scripts/check-schema-drift.ts",
+    "check:module-gating": "node scripts/check-module-gating.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",

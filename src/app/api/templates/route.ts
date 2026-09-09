@@ -15,7 +15,7 @@ import { templatesService } from '@/modules/templates'
 export { TEMPLATE_TYPES }
 
 export async function GET(req: NextRequest) {
-  const unavailable = moduleUnavailableResponse('templates')
+  const unavailable = await moduleUnavailableResponse('templates')
   if (unavailable) return unavailable
 
   const auth = await requireAuth(req, 'TEMPLATES_MANAGE')
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const unavailable = moduleUnavailableResponse('templates')
+  const unavailable = await moduleUnavailableResponse('templates')
   if (unavailable) return unavailable
 
   const auth = await requireAuth(req, 'TEMPLATES_MANAGE')

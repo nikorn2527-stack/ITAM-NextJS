@@ -1,15 +1,15 @@
 'use client'
 
 /**
- * MaterialCostReport — รายงานต้นทุนวัสดุและของสิ้นเปลือง
+ * MaterialCostReport — ReportCostMaterialandofConsumable
  *
  * Spec: upload/COST-ANALYTICS-SPEC.md (Phase 3)
  *
- * แสดงต้นทุนรายเดือนแยกตาม:
- *   1. หมึกพิมพ์ (consumable) — ขวด, ต้นทุน, ต้นทุน/แผ่น (จาก yieldPerPage)
- *   2. อะไหล่ (spare_part) — ชิ้น, ต้นทุน, ค่าเสื่อมต่อเดือน/แผ่น
- *   3. บริการ (service) — ต้นทุนตรงตัว
- *   4. Reconciliation — เปรียบเทียบต้นทุนหมึก(สต็อก) vs ค่ากระดาษ(มิเตอร์)
+ * ShowCostitemmonthsBy:
+ *   1. InkPrint (consumable) — bottles, Cost, Cost/sheets (from yieldPerPage)
+ *   2. Parts (spare_part) — pcs, Cost, Feedepreciation permonths/sheets
+ *   3. service (service) — Costexact
+ *   4. Reconciliation — compareCostInk(Stock) vs FeePaper(Meter)
  *
  * Data source: GET /api/cost-analytics/material?month=YYYY-MM&site=all
  *
@@ -54,15 +54,15 @@ import { ReportBarChart, ReportPieChart } from './report-charts'
 
 // Column definitions for material cost report
 const COST_REPORT_COLUMNS: ColumnDef[] = [
-  { key: 'productCode', label: 'รหัส', default: true },
-  { key: 'productName', label: 'ชื่อสินค้า', default: true },
-  { key: 'category', label: 'หมวดหมู่', default: true },
-  { key: 'quantity', label: 'จำนวน', default: true },
-  { key: 'unit', label: 'หน่วย', default: false },
-  { key: 'unitCost', label: 'ราคา/หน่วย', default: true },
-  { key: 'totalCost', label: 'มูลค่ารวม', default: true },
-  { key: 'site', label: 'สาขา', default: false },
-  { key: 'costType', label: 'ประเภทต้นทุน', default: false },
+  { key: 'productCode', label: 'Code', default: true },
+  { key: 'productName', label: 'NameProduct', default: true },
+  { key: 'category', label: 'Category', default: true },
+  { key: 'quantity', label: 'Quantity', default: true },
+  { key: 'unit', label: 'Unit', default: false },
+  { key: 'unitCost', label: 'Price/Unit', default: true },
+  { key: 'totalCost', label: 'ValueTotal', default: true },
+  { key: 'site', label: 'Site', default: false },
+  { key: 'costType', label: 'TypeCost', default: false },
 ]
 import {
   Droplet,
@@ -158,7 +158,7 @@ interface Site {
 
 function formatBaht(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return '—'
-  return '฿' + n.toLocaleString('th-TH', {
+  return 'THB' + n.toLocaleString('th-TH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
@@ -183,8 +183,8 @@ function currentMonthValue(): string {
 
 function depreciationLabel(method: string | null | undefined): string {
   if (!method) return '—'
-  if (method === 'straight_line') return 'เสื่อมตามเวลา'
-  if (method === 'usage_based') return 'เสื่อมตามการใช้งาน'
+  if (method === 'straight_line') return 'depreciatebyTime'
+  if (method === 'usage_based') return 'depreciatebyActive'
   return method
 }
 
@@ -236,7 +236,7 @@ export function MaterialCostReport() {
       )
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        throw new Error(j.error ?? 'โหลดรายงานต้นทุนไม่สำเร็จ')
+        throw new Error(j.error ?? 'LoadReportCostNoSuccess')
       }
       return res.json()
     },
@@ -246,7 +246,7 @@ export function MaterialCostReport() {
   React.useEffect(() => {
     if (error) {
       toast.error(
-        error instanceof Error ? error.message : 'โหลดรายงานต้นทุนไม่สำเร็จ',
+        error instanceof Error ? error.message : 'LoadReportCostNoSuccess',
       )
     }
   }, [error])
@@ -255,13 +255,13 @@ export function MaterialCostReport() {
   function handleExportCSV() {
     if (!data) return
     const rows: string[] = []
-    rows.push(`รายงาน,ต้นทุนวัสดุและของสิ้นเปลือง`)
-    rows.push(`เดือน,${formatMonthLabel(month)}`)
-    rows.push(`สาขา,${site === 'all' ? 'ทุกสาขา' : site}`)
-    rows.push(`สร้างเมื่อ,${new Date().toLocaleString('th-TH')}`)
+    rows.push(`Report,CostMaterialandofConsumable`)
+    rows.push(`months,${formatMonthLabel(month)}`)
+    rows.push(`Site,${site === 'all' ? 'AllSite' : site}`)
+    rows.push(`CreateWhen,${new Date().toLocaleString('th-TH')}`)
     rows.push('')
-    rows.push(`[หมึกพิมพ์]`)
-    rows.push(`รหัสสินค้า,ชื่อสินค้า,จำนวนขวด,ราคา/ขวด,ต้นทุนรวม,yield/ขวด,ต้นทุน/แผ่น,แผ่นครอบคลุม`)
+    rows.push(`[InkPrint]`)
+    rows.push(`CodeProduct,NameProduct,Quantitybottles,Price/bottles,CostTotal,yield/bottles,Cost/sheets,sheets per cycle`)
     for (const it of data.ink.items) {
       rows.push([
         it.productCode,
@@ -274,10 +274,10 @@ export function MaterialCostReport() {
         it.coveragePages ?? '',
       ].join(','))
     }
-    rows.push(`รวมหมึก,,${data.ink.totalBottles},,${data.ink.totalCost},,${data.ink.avgCostPerPage ?? ''},`)
+    rows.push(`TotalInk,,${data.ink.totalBottles},,${data.ink.totalCost},,${data.ink.avgCostPerPage ?? ''},`)
     rows.push('')
-    rows.push(`[อะไหล่]`)
-    rows.push(`รหัสสินค้า,ชื่อสินค้า,จำนวนชิ้น,ราคา/ชิ้น,ต้นทุนรวม,วิธีคำนวณ,อายุ(เดือน),อายุ(แผ่น),ต้นทุน/เดือน,ต้นทุน/แผ่น`)
+    rows.push(`[Parts]`)
+    rows.push(`CodeProduct,NameProduct,Quantitypcs,Price/pcs,CostTotal,Howcalculate,age(months),age(sheets),Cost/months,Cost/sheets`)
     for (const it of data.spareParts.items) {
       rows.push([
         it.productCode,
@@ -292,10 +292,10 @@ export function MaterialCostReport() {
         it.costPerPage ?? '',
       ].join(','))
     }
-    rows.push(`รวมอะไหล่,,${data.spareParts.totalItems},,${data.spareParts.totalCost},,,,${data.spareParts.monthlyDepreciation},`)
+    rows.push(`TotalParts,,${data.spareParts.totalItems},,${data.spareParts.totalCost},,,,${data.spareParts.monthlyDepreciation},`)
     rows.push('')
-    rows.push(`[บริการ]`)
-    rows.push(`รหัสสินค้า,ชื่อสินค้า,จำนวน,ราคา,ต้นทุนรวม`)
+    rows.push(`[service]`)
+    rows.push(`CodeProduct,NameProduct,Quantity,Price,CostTotal`)
     for (const it of data.service.items) {
       rows.push([
         it.productCode,
@@ -305,21 +305,21 @@ export function MaterialCostReport() {
         it.totalCost,
       ].join(','))
     }
-    rows.push(`รวมบริการ,,,,${data.service.totalCost}`)
+    rows.push(`Totalservice,,,,${data.service.totalCost}`)
     rows.push('')
-    rows.push(`[สรุป]`)
-    rows.push(`ต้นทุนรวมทั้งหมด,${data.totalCost}`)
-    rows.push(`หมึก,${data.ink.totalCost} (${data.totalCost > 0 ? Math.round(data.ink.totalCost / data.totalCost * 100) : 0}%)`)
-    rows.push(`อะไหล่,${data.spareParts.totalCost} (${data.totalCost > 0 ? Math.round(data.spareParts.totalCost / data.totalCost * 100) : 0}%)`)
-    rows.push(`บริการ,${data.service.totalCost} (${data.totalCost > 0 ? Math.round(data.service.totalCost / data.totalCost * 100) : 0}%)`)
+    rows.push(`[Summary]`)
+    rows.push(`CostTotalAll,${data.totalCost}`)
+    rows.push(`Ink,${data.ink.totalCost} (${data.totalCost > 0 ? Math.round(data.ink.totalCost / data.totalCost * 100) : 0}%)`)
+    rows.push(`Parts,${data.spareParts.totalCost} (${data.totalCost > 0 ? Math.round(data.spareParts.totalCost / data.totalCost * 100) : 0}%)`)
+    rows.push(`service,${data.service.totalCost} (${data.totalCost > 0 ? Math.round(data.service.totalCost / data.totalCost * 100) : 0}%)`)
     rows.push('')
-    rows.push(`[ประมวลผลสอบทาน]`)
-    rows.push(`แผ่นที่หมึกครอบคลุม,${data.reconciliation.inkCoveragePages}`)
-    rows.push(`แผ่นที่พิมพ์จริง,${data.reconciliation.actualPrintedPages}`)
-    rows.push(`ส่วนต่าง,${data.reconciliation.difference} (${data.reconciliation.differencePercent}%)`)
-    rows.push(`ต้นทุน/แผ่น (สต็อก),${data.reconciliation.stockCostPerPage ?? ''}`)
-    rows.push(`ต้นทุน/แผ่น (มิเตอร์),${data.reconciliation.meterCostPerPage ?? ''}`)
-    rows.push(`ส่วนต่าง/แผ่น,${data.reconciliation.costPerPageDiff ?? ''}`)
+    rows.push(`[processResultChapter]`)
+    rows.push(`sheetsatInkCyclecover,${data.reconciliation.inkCoveragePages}`)
+    rows.push(`sheetsatPrintreal,${data.reconciliation.actualPrintedPages}`)
+    rows.push(`Variance,${data.reconciliation.difference} (${data.reconciliation.differencePercent}%)`)
+    rows.push(`Cost/sheets (Stock),${data.reconciliation.stockCostPerPage ?? ''}`)
+    rows.push(`Cost/sheets (Meter),${data.reconciliation.meterCostPerPage ?? ''}`)
+    rows.push(`Variance/sheets,${data.reconciliation.costPerPageDiff ?? ''}`)
 
     const csv = '\uFEFF' + rows.join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -329,7 +329,7 @@ export function MaterialCostReport() {
     a.download = `material-cost-${month}.csv`
     a.click()
     URL.revokeObjectURL(url)
-    toast.success('ส่งออก CSV เรียบร้อย')
+    toast.success('Export CSV ')
   }
 
   const inkPercent = data && data.totalCost > 0 ? Math.round((data.ink.totalCost / data.totalCost) * 100) : 0
@@ -359,7 +359,7 @@ export function MaterialCostReport() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow">
                   <Calculator className="h-5 w-5" />
                 </div>
-                <span>ต้นทุนวัสดุและของสิ้นเปลือง</span>
+                <span>CostMaterialandofConsumable</span>
                 <Badge
                   variant="outline"
                   className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
@@ -368,7 +368,7 @@ export function MaterialCostReport() {
                 </Badge>
               </CardTitle>
               <CardDescription className="mt-1 text-xs md:text-sm">
-                ต้นทุนหมึก + อะไหล่ + บริการ รายเดือน พร้อมประมวลผลสอบทาน (Reconciliation)
+                CostInk + Parts + service itemmonths ready to processResultChapter (Reconciliation)
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
@@ -382,7 +382,7 @@ export function MaterialCostReport() {
                 <RefreshCw
                   className={`mr-1 h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`}
                 />
-                รีเฟรช
+                Refresh
               </Button>
               <Button
                 size="sm"
@@ -406,7 +406,7 @@ export function MaterialCostReport() {
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="space-y-1.5">
               <Label htmlFor="mcr-month" className="text-xs font-medium">
-                เดือน
+                months
               </Label>
               <Input
                 id="mcr-month"
@@ -419,14 +419,14 @@ export function MaterialCostReport() {
             {showSiteFilter && (
               <div className="space-y-1.5">
                 <Label htmlFor="mcr-site" className="text-xs font-medium">
-                  สาขา
+                  Site
                 </Label>
                 <Select value={site} onValueChange={setSite}>
                   <SelectTrigger id="mcr-site" className="h-10">
-                    <SelectValue placeholder="ทุกสาขา" />
+                    <SelectValue placeholder="AllSite" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">ทุกสาขา</SelectItem>
+                    <SelectItem value="all">AllSite</SelectItem>
                     {sites.map((s) => (
                       <SelectItem key={s.id} value={s.code}>
                         {s.name} ({s.code})
@@ -437,7 +437,7 @@ export function MaterialCostReport() {
               </div>
             )}
             <div className="space-y-1.5">
-              <Label className="text-xs font-medium">เดือนที่เลือก</Label>
+              <Label className="text-xs font-medium">monthsatSelect</Label>
               <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/40 px-3 text-xs text-muted-foreground">
                 <CalendarDays className="h-3.5 w-3.5" />
                 {formatMonthLabel(month)}
@@ -452,7 +452,7 @@ export function MaterialCostReport() {
       ) : !data ? (
         <Card className="min-h-0 flex-1">
           <CardContent className="flex flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted-foreground">
-            <span>ไม่สามารถโหลดรายงานได้</span>
+            <span>NoCanLoadReport</span>
             <Button
               variant="outline"
               size="sm"
@@ -460,7 +460,7 @@ export function MaterialCostReport() {
               className="mt-2"
             >
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              ลองใหม่
+              tryNew
             </Button>
           </CardContent>
         </Card>
@@ -474,28 +474,28 @@ export function MaterialCostReport() {
           {/* ── Summary KPI cards ── */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <KpiCard
-              label="ต้นทุนรวมเดือน"
+              label="CostTotalmonths"
               value={formatBaht(data.totalCost)}
               icon={<Coins className="h-5 w-5" />}
               accent="#0d9488"
               subtitle={formatMonthLabel(month)}
             />
             <KpiCard
-              label="หมึกพิมพ์"
+              label="InkPrint"
               value={formatBaht(data.ink.totalCost)}
               icon={<Droplet className="h-5 w-5" />}
               accent="#f97316"
-              subtitle={`${formatInt(data.ink.totalBottles)} ขวด · ${inkPct}%`}
+              subtitle={`${formatInt(data.ink.totalBottles)} bottles · ${inkPct}%`}
             />
             <KpiCard
-              label="อะไหล่"
+              label="Parts"
               value={formatBaht(data.spareParts.totalCost)}
               icon={<Wrench className="h-5 w-5" />}
               accent="#8b5cf6"
-              subtitle={`${formatInt(data.spareParts.totalItems)} ชิ้น · ${sparePct}%`}
+              subtitle={`${formatInt(data.spareParts.totalItems)} pcs · ${sparePct}%`}
             />
             <KpiCard
-              label="บริการ"
+              label="service"
               value={formatBaht(data.service.totalCost)}
               icon={<Briefcase className="h-5 w-5" />}
               accent="#14b8a6"
@@ -508,9 +508,9 @@ export function MaterialCostReport() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <TrendingUp className="h-4 w-4 text-[#f97316]" />
-                สัดส่วนต้นทุน
+                proportionSectionCost
                 <span className="ml-1 text-xs font-normal text-slate-400">
-                  (รวม {formatBaht(data.totalCost)})
+                  (Total {formatBaht(data.totalCost)})
                 </span>
               </CardTitle>
             </CardHeader>
@@ -520,7 +520,7 @@ export function MaterialCostReport() {
                   <div
                     className="flex items-center justify-center text-[10px] font-semibold text-white"
                     style={{ width: `${inkPct}%`, background: '#f97316' }}
-                    title={`หมึก ${inkPct}%`}
+                    title={`Ink ${inkPct}%`}
                   >
                     {inkPct >= 8 ? `${inkPct}%` : ''}
                   </div>
@@ -529,7 +529,7 @@ export function MaterialCostReport() {
                   <div
                     className="flex items-center justify-center text-[10px] font-semibold text-white"
                     style={{ width: `${sparePct}%`, background: '#8b5cf6' }}
-                    title={`อะไหล่ ${sparePct}%`}
+                    title={`Parts ${sparePct}%`}
                   >
                     {sparePct >= 8 ? `${sparePct}%` : ''}
                   </div>
@@ -538,21 +538,21 @@ export function MaterialCostReport() {
                   <div
                     className="flex items-center justify-center text-[10px] font-semibold text-white"
                     style={{ width: `${servicePct}%`, background: '#14b8a6' }}
-                    title={`บริการ ${servicePct}%`}
+                    title={`service ${servicePct}%`}
                   >
                     {servicePct >= 8 ? `${servicePct}%` : ''}
                   </div>
                 )}
                 {data.totalCost === 0 && (
                   <div className="flex h-full w-full items-center justify-center text-[11px] text-slate-400">
-                    ยังไม่มีข้อมูลต้นทุนในเดือนนี้
+                    No dataCostinmonths
                   </div>
                 )}
               </div>
               <div className="mt-2 flex flex-wrap gap-3 text-[11px]">
-                <Legend color="#f97316" label="หมึก" value={formatBaht(data.ink.totalCost)} />
-                <Legend color="#8b5cf6" label="อะไหล่" value={formatBaht(data.spareParts.totalCost)} />
-                <Legend color="#14b8a6" label="บริการ" value={formatBaht(data.service.totalCost)} />
+                <Legend color="#f97316" label="Ink" value={formatBaht(data.ink.totalCost)} />
+                <Legend color="#8b5cf6" label="Parts" value={formatBaht(data.spareParts.totalCost)} />
+                <Legend color="#14b8a6" label="service" value={formatBaht(data.service.totalCost)} />
               </div>
             </CardContent>
           </Card>
@@ -562,9 +562,9 @@ export function MaterialCostReport() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Droplet className="h-4 w-4 text-[#f97316]" />
-                หมึกพิมพ์ (Consumable)
+                InkPrint (Consumable)
                 <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300">
-                  {data.ink.items.length} รายการ · {formatInt(data.ink.totalBottles)} ขวด
+                  {data.ink.items.length} item · {formatInt(data.ink.totalBottles)} bottles
                 </Badge>
               </CardTitle>
             </CardHeader>
@@ -573,20 +573,20 @@ export function MaterialCostReport() {
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                     <TableRow className="text-xs">
-                      <TableHead className="w-[30%]">รายการ</TableHead>
-                      <TableHead className="text-right">จำนวน</TableHead>
-                      <TableHead className="text-right">ราคา/ขวด</TableHead>
-                      <TableHead className="text-right">ต้นทุนรวม</TableHead>
-                      <TableHead className="text-right">yield/ขวด</TableHead>
-                      <TableHead className="text-right">ต้นทุน/แผ่น</TableHead>
-                      <TableHead className="text-right">แผ่นครอบคลุม</TableHead>
+                      <TableHead className="w-[30%]">item</TableHead>
+                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">Price/bottles</TableHead>
+                      <TableHead className="text-right">CostTotal</TableHead>
+                      <TableHead className="text-right">yield/bottles</TableHead>
+                      <TableHead className="text-right">Cost/sheets</TableHead>
+                      <TableHead className="text-right">sheets per cycle</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {data.ink.items.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="py-8 text-center text-xs text-slate-400">
-                          ยังไม่มีการเบิกหมึกในเดือนนี้
+                          StillNoneWithdrawInkinmonths
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -613,12 +613,12 @@ export function MaterialCostReport() {
                   {data.ink.items.length > 0 && (
                     <tfoot className="sticky bottom-0 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                       <tr className="border-t-2 border-slate-200 text-xs font-semibold dark:border-slate-700">
-                        <td className="px-3 py-2">รวมหมึก</td>
+                        <td className="px-3 py-2">TotalInk</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatInt(data.ink.totalBottles)}</td>
                         <td></td>
                         <td className="px-3 py-2 text-right tabular-nums text-[#f97316]">{formatBaht(data.ink.totalCost)}</td>
                         <td colSpan={2} className="px-3 py-2 text-right text-slate-500">
-                          เฉลี่ย {data.ink.avgCostPerPage != null ? formatBaht(data.ink.avgCostPerPage) : '—'}/แผ่น
+                          Average {data.ink.avgCostPerPage != null ? formatBaht(data.ink.avgCostPerPage) : '—'}/sheets
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-slate-500">
                           {formatInt(data.reconciliation.inkCoveragePages)}
@@ -636,9 +636,9 @@ export function MaterialCostReport() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Wrench className="h-4 w-4 text-violet-500" />
-                อะไหล่ (Spare Parts)
+                Parts (Spare Parts)
                 <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-300">
-                  {data.spareParts.items.length} รายการ · {formatInt(data.spareParts.totalItems)} ชิ้น
+                  {data.spareParts.items.length} item · {formatInt(data.spareParts.totalItems)} pcs
                 </Badge>
               </CardTitle>
             </CardHeader>
@@ -647,21 +647,21 @@ export function MaterialCostReport() {
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                     <TableRow className="text-xs">
-                      <TableHead className="w-[28%]">รายการ</TableHead>
-                      <TableHead className="text-right">จำนวน</TableHead>
-                      <TableHead className="text-right">ราคา/ชิ้น</TableHead>
-                      <TableHead className="text-right">ต้นทุนรวม</TableHead>
-                      <TableHead>วิธีคำนวณ</TableHead>
-                      <TableHead className="text-right">อายุการใช้งาน</TableHead>
-                      <TableHead className="text-right">ต้นทุน/เดือน</TableHead>
-                      <TableHead className="text-right">ต้นทุน/แผ่น</TableHead>
+                      <TableHead className="w-[28%]">item</TableHead>
+                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">Price/pcs</TableHead>
+                      <TableHead className="text-right">CostTotal</TableHead>
+                      <TableHead>Howcalculate</TableHead>
+                      <TableHead className="text-right">ageActive</TableHead>
+                      <TableHead className="text-right">Cost/months</TableHead>
+                      <TableHead className="text-right">Cost/sheets</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {data.spareParts.items.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={8} className="py-8 text-center text-xs text-slate-400">
-                          ยังไม่มีการเบิกอะไหล่ในเดือนนี้
+                          StillNoneWithdrawPartsinmonths
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -680,8 +680,8 @@ export function MaterialCostReport() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right tabular-nums text-slate-500">
-                            {it.usefulLifeMonths ? `${it.usefulLifeMonths} ด.` : ''}
-                            {it.usefulLifePages ? `${formatInt(it.usefulLifePages)} แผ่น` : ''}
+                            {it.usefulLifeMonths ? `${it.usefulLifeMonths} .` : ''}
+                            {it.usefulLifePages ? `${formatInt(it.usefulLifePages)} sheets` : ''}
                             {!it.usefulLifeMonths && !it.usefulLifePages ? '—' : ''}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
@@ -701,12 +701,12 @@ export function MaterialCostReport() {
                   {data.spareParts.items.length > 0 && (
                     <tfoot className="sticky bottom-0 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                       <tr className="border-t-2 border-slate-200 text-xs font-semibold dark:border-slate-700">
-                        <td className="px-3 py-2">รวมอะไหล่</td>
+                        <td className="px-3 py-2">TotalParts</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatInt(data.spareParts.totalItems)}</td>
                         <td></td>
                         <td className="px-3 py-2 text-right tabular-nums text-violet-600 dark:text-violet-400">{formatBaht(data.spareParts.totalCost)}</td>
                         <td colSpan={3} className="px-3 py-2 text-right text-slate-500">
-                          ค่าเสื่อมรวม/เดือน
+                          FeedepreciateTotal/months
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums font-medium text-amber-700 dark:text-amber-400">
                           {formatBaht(data.spareParts.monthlyDepreciation)}
@@ -724,9 +724,9 @@ export function MaterialCostReport() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Briefcase className="h-4 w-4 text-teal-500" />
-                บริการ (Service)
+                service (Service)
                 <Badge variant="outline" className="border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-800 dark:bg-teal-950 dark:text-teal-300">
-                  {data.service.items.length} รายการ
+                  {data.service.items.length} item
                 </Badge>
               </CardTitle>
             </CardHeader>
@@ -735,17 +735,17 @@ export function MaterialCostReport() {
                 <Table>
                   <TableHeader className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                     <TableRow className="text-xs">
-                      <TableHead className="w-[40%]">รายการ</TableHead>
-                      <TableHead className="text-right">จำนวน</TableHead>
-                      <TableHead className="text-right">ราคา</TableHead>
-                      <TableHead className="text-right">ต้นทุนรวม</TableHead>
+                      <TableHead className="w-[40%]">item</TableHead>
+                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">Price</TableHead>
+                      <TableHead className="text-right">CostTotal</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {data.service.items.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={4} className="py-8 text-center text-xs text-slate-400">
-                          ยังไม่มีการเบิกบริการในเดือนนี้
+                          StillNoneWithdrawserviceinmonths
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -765,7 +765,7 @@ export function MaterialCostReport() {
                   {data.service.items.length > 0 && (
                     <tfoot className="sticky bottom-0 bg-slate-50/95 backdrop-blur-sm dark:bg-slate-900/95">
                       <tr className="border-t-2 border-slate-200 text-xs font-semibold dark:border-slate-700">
-                        <td className="px-3 py-2">รวมบริการ</td>
+                        <td className="px-3 py-2">Totalservice</td>
                         <td colSpan={2}></td>
                         <td className="px-3 py-2 text-right tabular-nums text-teal-600 dark:text-teal-400">{formatBaht(data.service.totalCost)}</td>
                       </tr>
@@ -787,7 +787,7 @@ export function MaterialCostReport() {
                   diffSeverity === 'ok' ? 'text-emerald-500' :
                   diffSeverity === 'warn' ? 'text-amber-500' : 'text-rose-500'
                 }`} />
-                ประมวลผลสอบทาน (Reconciliation)
+                processResultChapter (Reconciliation)
                 <Badge
                   variant="outline"
                   className={
@@ -796,37 +796,37 @@ export function MaterialCostReport() {
                     'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
                   }
                 >
-                  {diffSeverity === 'ok' ? '✓ ปกติ' : diffSeverity === 'warn' ? '⚠ ตรวจสอบ' : '⚠ สูง'}
+                  {diffSeverity === 'ok' ? '✓ Normal' : diffSeverity === 'warn' ? '⚠ Check' : '⚠ High'}
                 </Badge>
               </CardTitle>
               <CardDescription className="text-xs">
-                เปรียบเทียบต้นทุนหมึก (จากสต็อก) กับค่ากระดาษ (จากมิเตอร์) — ส่วนต่าง 10-20% ถือเป็นปกติ
+                compareCostInk (fromStock) WithFeePaper (fromMeter) — Variance 10-20% holdasNormal
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <ReconcilBox
-                  label="แผ่นที่หมึกครอบคลุม"
+                  label="sheetsatInkCyclecover"
                   value={formatInt(data.reconciliation.inkCoveragePages)}
-                  unit="แผ่น"
+                  unit="sheets"
                   hint="Σ(quantity × yieldPerPage)"
                   accent="#f97316"
                 />
                 <ReconcilBox
-                  label="แผ่นที่พิมพ์จริง"
+                  label="sheetsatPrintreal"
                   value={formatInt(data.reconciliation.actualPrintedPages)}
-                  unit="แผ่น"
-                  hint="จากมิเตอร์ในเดือนนี้"
+                  unit="sheets"
+                  hint="fromMeterinmonths"
                   accent="#0d9488"
                 />
                 <ReconcilBox
-                  label="ส่วนต่าง"
+                  label="Variance"
                   value={formatInt(data.reconciliation.difference)}
                   unit={`(${data.reconciliation.differencePercent}%)`}
                   hint={
-                    diffSeverity === 'ok' ? 'ปกติ — หมึกเหลือในขวด + waste' :
-                    diffSeverity === 'warn' ? 'ตรวจสอบ — หมึกเสีย/หก/เสื่อม?' :
-                    'สูง — มิเตอร์ไม่ตรง หรือ paper rate ผิด?'
+                    diffSeverity === 'ok' ? 'Normal — InkRemaininginbottles + waste' :
+                    diffSeverity === 'warn' ? 'Check — InkColor/six/depreciate?' :
+                    'High — MeterNomatch or paper rate wrong?'
                   }
                   accent={
                     diffSeverity === 'ok' ? '#10b981' :
@@ -834,10 +834,10 @@ export function MaterialCostReport() {
                   }
                 />
                 <ReconcilBox
-                  label="ส่วนต่าง/แผ่น"
+                  label="Variance/sheets"
                   value={data.reconciliation.costPerPageDiff != null ? formatBaht(data.reconciliation.costPerPageDiff) : '—'}
-                  unit="฿/แผ่น"
-                  hint={`สต็อก ${data.reconciliation.stockCostPerPage != null ? formatBaht(data.reconciliation.stockCostPerPage) : '—'} vs มิเตอร์ ${data.reconciliation.meterCostPerPage != null ? formatBaht(data.reconciliation.meterCostPerPage) : '—'}`}
+                  unit="THB/sheets"
+                  hint={`Stock ${data.reconciliation.stockCostPerPage != null ? formatBaht(data.reconciliation.stockCostPerPage) : '—'} vs Meter ${data.reconciliation.meterCostPerPage != null ? formatBaht(data.reconciliation.meterCostPerPage) : '—'}`}
                   accent="#6366f1"
                 />
               </div>
@@ -847,12 +847,12 @@ export function MaterialCostReport() {
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="h-4 w-4 shrink-0 text-rose-500 mt-0.5" />
                     <div className="text-xs text-rose-700 dark:text-rose-300">
-                      <strong>ส่วนต่างสูงกว่า 20%</strong> — สาเหตุที่เป็นไปได้:
+                      <strong>VarianceHighthan 20%</strong> — Causeatasto:
                       <ul className="mt-1 ml-4 list-disc space-y-0.5">
-                        <li>หมึกเสีย/หก/เสื่อม — ตรวจสอบการเบิกที่ไม่ได้ใช้พิมพ์</li>
-                        <li>Paper rate ไม่รวมต้นทุนหมึก (เป็นค่ากระดาษอย่างเดียว)</li>
-                        <li>มิเตอร์ไม่ตรง (rollback/waste ไม่ถูกบันทึก)</li>
-                        <li>yieldPerPage ตั้งผิด (เช็ค spec ขวดหมึกอีกครั้ง)</li>
+                        <li>InkColor/six/depreciate — CheckWithdrawatNoUsePrint</li>
+                        <li>Paper rate NoTotalCostInk (asFeePaperLikegood)</li>
+                        <li>MeterNomatch (rollback/waste NocorrectSave)</li>
+                        <li>yieldPerPage Setwrong (check spec bottlesInkmoretimes)</li>
                       </ul>
                     </div>
                   </div>
@@ -863,7 +863,7 @@ export function MaterialCostReport() {
                 <div className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-300">
                   <TrendingDown className="h-4 w-4 shrink-0 text-slate-400 mt-0.5" />
                   <div>
-                    <strong>คำแนะนำ:</strong> ใช้ต้นทุนจากสต็อกเป็นหลัก (แม่นยำกว่า) — paper rate ใช้สำหรับเรียกเก็บจากสาขา (billing)
+                    <strong>wordRecommended:</strong> UseCostfromStockasMain (more accurate) — paper rate UseForchargefromSite (billing)
                   </div>
                 </div>
               </div>

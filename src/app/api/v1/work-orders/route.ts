@@ -38,6 +38,7 @@ import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { requireApiAuth } from '@/lib/api/auth'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
   parseQuery,
   buildWhere,
@@ -78,6 +79,10 @@ const SEARCH_FIELDS = [
 
 // ── GET ─────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const url = new URL(req.url)
   const sp = url.searchParams
 
@@ -201,6 +206,10 @@ export async function GET(req: NextRequest) {
 
 // ── POST ────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   // Try auth first — but allow guest submission if reporterName + tel provided.
   const auth = await requireApiAuth(req, 'DEVICE_EDIT')
   const isAuthed = auth.ok

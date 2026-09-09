@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { requireAuth } from '@/lib/auth-middleware'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   // P0 Security: require auth — PO contains unitCost (financial data)
   const auth = await requireAuth(_req, 'VIEW_DASHBOARD')
   if (!auth.ok) {
@@ -51,6 +56,10 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   // P0 Security: require auth — PUT modifies PO status/financial data
   const auth = await requireAuth(req, 'STOCK_APPROVE')
   if (!auth.ok) {

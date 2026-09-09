@@ -11,11 +11,16 @@ import {
   type DocumentTemplate,
 } from '@/lib/document-template'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // POST /api/itam/document-templates/render
 //   Body: { templateId?: string, data: DocumentRenderData }
 //   Returns: { html, totalPages, summary, template }
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('templates')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'EXPORT_PRINT')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

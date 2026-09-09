@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
   readStockApprovalSettings,
   type StockApprovalSettings,
@@ -8,6 +9,10 @@ import {
 
 /** GET /api/stock-items/pending/settings */
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'ADMIN')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -21,6 +26,10 @@ export async function GET(req: NextRequest) {
 
 /** PUT /api/stock-items/pending/settings */
 export async function PUT(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'ADMIN')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

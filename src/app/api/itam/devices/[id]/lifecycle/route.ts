@@ -7,6 +7,7 @@ import { logAudit } from '@/lib/audit'
 import { notifyTransfer } from '@/lib/notifications'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { getLifecycleReadingType } from '@/lib/lifecycle-reading-type'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 const METERED_LIFECYCLE_ACTIONS = new Set([
   'send_repair',
@@ -72,6 +73,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('devices')
+  if (unavailable) return unavailable
+
+
   let meterReadingIdForRecovery: string | null = null
   try {
     const auth = await requireAuth(req, 'DEVICE_TRANSFER')

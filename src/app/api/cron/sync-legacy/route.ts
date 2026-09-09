@@ -14,6 +14,7 @@ import {
   toFloat,
 } from '@/lib/csv-field-mapping'
 import { normalizeStatus } from '@/lib/status-utils'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/cron/sync-legacy
@@ -131,6 +132,10 @@ async function batchWrite<T>(
 }
 
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('sync')
+  if (unavailable) return unavailable
+
+
   const cronSecret = process.env.CRON_SECRET
   if (cronSecret) {
     const authHeader = req.headers.get('authorization')

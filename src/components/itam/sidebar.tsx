@@ -13,6 +13,7 @@ import { isModuleEnabled, type ModuleName } from '@/config/modules'
 import { useClock, formatThaiTime, formatThaiDate } from '@/hooks/use-clock'
 import { useAuthStore, useNavVisibility, useRole } from '@/store/auth-store'
 import { ROLE_LABELS, type Role } from '@/lib/rbac'
+import { useT, useLang } from '@/store/i18n-store'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { NotificationsPopover } from './notifications-popover'
@@ -27,13 +28,15 @@ function roleLabel(role: string | undefined | null): string {
 interface NavItemDef {
   page: ActivePage
   icon: LucideIcon
-  label: string
-  desc?: string
+  // i18n keys for label + description. Resolved at render time via `t()`.
+  labelKey: string
+  descKey?: string
   module?: ModuleName
 }
 
 interface NavGroupDef {
-  title: string
+  // i18n key for the group title.
+  titleKey: string
   items: NavItemDef[]
 }
 
@@ -43,31 +46,31 @@ interface NavGroupDef {
 // deep links from the dashboard / notifications / global search.
 const NAV_GROUPS: NavGroupDef[] = [
   {
-    title: 'ภาพรวม',
+    titleKey: 'group.overview',
     items: [
-      { page: 'dashboard', icon: LayoutDashboard, label: 'แดชบอร์ด', desc: 'สรุปภาพรวมระบบ', module: 'dashboard' },
+      { page: 'dashboard', icon: LayoutDashboard, labelKey: 'menu.dashboard', descKey: 'desc.dashboard', module: 'dashboard' },
     ],
   },
   {
-    title: 'การทำงาน',
+    titleKey: 'group.operations',
     items: [
-      { page: 'itam-devices', icon: Monitor, label: 'จัดการอุปกรณ์', desc: '{{assetTerminology}}ทั้งหมด', module: 'devices' },
-      { page: 'itam-meter-keyboard', icon: TrendingUp, label: 'จดมิเตอร์', desc: 'จดมิเตอร์ + ประวัติ', module: 'meters' },
-      { page: 'itam-work-orders', icon: Wrench, label: 'แจ้งซ่อม', desc: 'แจ้งซ่อม รับงาน ปิดงาน', module: 'work-orders' },
-      { page: 'pm-schedules', icon: CalendarClock, label: 'ตาราง PM', desc: 'บำรุงรักษาตามรอบเวลา', module: 'work-orders' },
-      { page: 'itam-stock', icon: Package, label: 'สต๊อก', desc: 'คลังสิ้นเปลือง/อะไหล่', module: 'stock' },
-      { page: 'itam-paper-analytics', icon: FileText, label: 'วิเคราะห์กระดาษ', desc: 'สถิติการใช้งาน', module: 'paper-analytics' },
-      { page: 'mobile', icon: Smartphone, label: 'โหมดมือถือ', desc: 'แจ้งซ่อม จดมิเตอร์ เบิกของ', module: 'work-orders' },
+      { page: 'itam-devices', icon: Monitor, labelKey: 'menu.devices', descKey: 'desc.devices', module: 'devices' },
+      { page: 'itam-meter-keyboard', icon: TrendingUp, labelKey: 'menu.meter', descKey: 'desc.meter', module: 'meters' },
+      { page: 'itam-work-orders', icon: Wrench, labelKey: 'menu.work_orders', descKey: 'desc.work_orders', module: 'work-orders' },
+      { page: 'pm-schedules', icon: CalendarClock, labelKey: 'menu.pm_schedules', descKey: 'desc.pm_schedules', module: 'work-orders' },
+      { page: 'itam-stock', icon: Package, labelKey: 'menu.stock', descKey: 'desc.stock', module: 'stock' },
+      { page: 'itam-paper-analytics', icon: FileText, labelKey: 'menu.paper_analytics', descKey: 'desc.paper_analytics', module: 'paper-analytics' },
+      { page: 'mobile', icon: Smartphone, labelKey: 'menu.mobile', descKey: 'desc.mobile', module: 'work-orders' },
     ],
   },
   {
-    title: 'เครื่องมือ',
+    titleKey: 'group.tools',
     items: [
-      { page: 'templates', icon: FileText, label: 'เทมเพลต', desc: 'จัดการเทมเพลต (สติกเกอร์/เอกสาร/ใบงาน)', module: 'templates' },
-      { page: 'import', icon: Download, label: 'นำเข้าข้อมูล', desc: 'Import CSV/Excel', module: 'import' },
-      { page: 'reports-hub', icon: BarChart3, label: 'ศูนย์รายงาน', desc: 'รายงาน 5 กลุ่ม + อนุมัติ', module: 'reports' },
-      { page: 'material-cost', icon: Coins, label: 'ต้นทุนวัสดุ', desc: 'หมึก/อะไหล่/บริการ + สอบทาน', module: 'reports' },
-      { page: 'monthly-report', icon: CalendarClock, label: 'รายงานรายเดือน', desc: 'สรุปการใช้งานรายเดือน', module: 'reports' },
+      { page: 'templates', icon: FileText, labelKey: 'menu.templates', descKey: 'desc.templates', module: 'templates' },
+      { page: 'import', icon: Download, labelKey: 'menu.import', descKey: 'desc.import', module: 'import' },
+      { page: 'reports-hub', icon: BarChart3, labelKey: 'menu.reports_hub', descKey: 'desc.reports_hub', module: 'reports' },
+      { page: 'material-cost', icon: Coins, labelKey: 'menu.material_cost', descKey: 'desc.material_cost', module: 'reports' },
+      { page: 'monthly-report', icon: CalendarClock, labelKey: 'menu.monthly_report', descKey: 'desc.monthly_report', module: 'reports' },
       // ── REMOVED: Snapshots menu ──
       // The meterReportSnapshot / meterReportSnapshotRow Prisma models were
       // removed from schema.prisma in an earlier migration, but the 4 v1 API
@@ -75,14 +78,13 @@ const NAV_GROUPS: NavGroupDef[] = [
       // referenced them → every call crashed with "Cannot read properties of
       // undefined (reading 'findFirst')" → users saw a blank/error page.
       // Feature is intentionally disabled (per existing TODO comments).
-      // Removed: { page: 'itam-snapshot-viewer', icon: Lock, label: 'Snapshots', desc: 'ตรวจสอบ snapshot มิเตอร์', module: 'meters' },
     ],
   },
   {
-    title: 'ระบบ',
+    titleKey: 'group.system',
     items: [
-      { page: 'itam-settings', icon: Settings, label: 'ตั้งค่าระบบ', desc: 'การตั้งค่าทั้งหมด', module: 'settings' },
-      { page: 'itam-audit', icon: ScrollText, label: 'ประวัติการใช้งาน', desc: 'Audit log', module: 'audit' },
+      { page: 'itam-settings', icon: Settings, labelKey: 'menu.settings', descKey: 'desc.settings', module: 'settings' },
+      { page: 'itam-audit', icon: ScrollText, labelKey: 'menu.audit', descKey: 'desc.audit', module: 'audit' },
     ],
   },
 ]
@@ -177,6 +179,11 @@ export function Sidebar() {
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
   const realtimeStatus = useRealtimeStatus()
+  // i18n — t() for labels, lang + setLang for the TH/EN toggle button.
+  // Re-renders this whole component when lang changes, flipping every
+  // nav item label + aria-label + tooltip at once.
+  const t = useT()
+  const { lang, setLang } = useLang()
 
   // ── Hover-expand state (desktop only) ──
   // Collapsed (56px) by default → expands to 240px on mouseenter.
@@ -469,7 +476,7 @@ export function Sidebar() {
         aria-label="Main navigation"
       >
         {filteredNavGroups.map((group, gi) => (
-          <div key={group.title}>
+          <div key={group.titleKey}>
             {/* Thin divider between groups instead of section title */}
             {gi > 0 && (
               <div
@@ -481,14 +488,16 @@ export function Sidebar() {
             )}
             {group.items.map((item) => {
               const active = activePage === item.page
+              const label = t(item.labelKey)
+              const desc = item.descKey ? t(item.descKey) : ''
               return (
                 <button
                   key={item.page}
                   type="button"
                   onClick={() => handleNav(item.page)}
                   aria-current={active ? 'page' : undefined}
-                  aria-label={item.label}
-                  title={expanded ? undefined : `${item.label}${resolveNavDesc(item.desc) ? ' — ' + resolveNavDesc(item.desc) : ''}`}
+                  aria-label={label}
+                  title={expanded ? undefined : `${label}${desc ? ' — ' + desc : ''}`}
                   className={cn(
                     'group relative flex w-full cursor-pointer items-center text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]',
                     expanded
@@ -525,7 +534,7 @@ export function Sidebar() {
                       expanded ? 'opacity-100' : 'pointer-events-none absolute opacity-0',
                     )}
                   >
-                    {item.label}
+                    {label}
                   </span>
                 </button>
               )
@@ -628,12 +637,12 @@ export function Sidebar() {
                 closeSidebar()
                 setSearchOpen(true)
               }}
-              aria-label="ค้นหาทั่วระบบ"
-              title="ค้นหาทั่วระบบ (Ctrl+K)"
+              aria-label="Search"
+              title="Search (Ctrl+K)"
               className="group flex w-full items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-white/20 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]"
             >
               <Search className="h-3.5 w-3.5 flex-shrink-0 text-slate-400 transition-colors group-hover:text-slate-900 dark:group-hover:text-white" />
-              <span className="flex-1 whitespace-nowrap text-left text-xs">ค้นหา...</span>
+              <span className="flex-1 whitespace-nowrap text-left text-xs">Search...</span>
               <kbd
                 className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-mono text-slate-400 dark:border-white/10 dark:bg-white/5"
                 aria-hidden
@@ -649,12 +658,12 @@ export function Sidebar() {
                 closeSidebar()
                 setQrScannerOpen(true)
               }}
-              aria-label="สแกน QR Code"
-              title="สแกน QR Code"
+              aria-label="Scan QR Code"
+              title="Scan QR Code"
               className="group flex w-full items-center gap-2 rounded-md border border-[#f97316]/40 bg-[#f97316]/10 px-2.5 py-1.5 text-xs font-medium text-[#fb923c] transition-colors hover:border-[#f97316]/70 hover:bg-[#f97316]/20 hover:text-orange-600 dark:hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]"
             >
               <QrCode className="h-3.5 w-3.5 flex-shrink-0" />
-              <span className="whitespace-nowrap text-left">📱 สแกน QR</span>
+              <span className="whitespace-nowrap text-left">📱 Scan QR</span>
             </button>
           </div>
         ) : (
@@ -666,8 +675,8 @@ export function Sidebar() {
                 closeSidebar()
                 setSearchOpen(true)
               }}
-              aria-label="ค้นหาทั่วระบบ"
-              title="ค้นหาทั่วระบบ (Ctrl+K)"
+              aria-label="Search"
+              title="Search (Ctrl+K)"
               className="group flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-white/20 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]"
             >
               <Search className="h-4 w-4" />
@@ -679,8 +688,8 @@ export function Sidebar() {
                 closeSidebar()
                 setQrScannerOpen(true)
               }}
-              aria-label="สแกน QR Code"
-              title="สแกน QR Code"
+              aria-label="Scan QR Code"
+              title="Scan QR Code"
               className="group flex h-9 w-9 items-center justify-center rounded-md border border-[#f97316]/40 bg-[#f97316]/10 text-[#fb923c] transition-colors hover:border-[#f97316]/70 hover:bg-[#f97316]/20 hover:text-orange-600 dark:hover:text-orange-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-[#0f172a]"
             >
               <QrCode className="h-4 w-4" />
@@ -711,8 +720,8 @@ export function Sidebar() {
           <button
             type="button"
             onClick={toggleTheme}
-            aria-label={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
-            title={isDark ? 'สลับเป็นโหมดสว่าง' : 'สลับเป็นโหมดมืด'}
+            aria-label={isDark ? t('control.light_mode') : t('control.dark_mode')}
+            title={isDark ? t('control.light_mode') : t('control.dark_mode')}
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]"
           >
             {mounted ? (
@@ -725,16 +734,31 @@ export function Sidebar() {
               <span className="block h-4 w-4" />
             )}
           </button>
+          {/* Language toggle — TH / EN. Sits next to the theme toggle so all
+              global app preferences are clustered. When collapsed, shows
+              just the active language code as an icon-sized button. */}
+          <button
+            type="button"
+            onClick={() => setLang(lang === 'th' ? 'en' : 'th')}
+            aria-label={t('control.language')}
+            title={t('control.language')}
+            className={cn(
+              'flex flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-white dark:focus-visible:ring-offset-[#0f172a]',
+              expanded ? 'h-8 px-2 text-xs font-semibold' : 'h-8 w-8 text-[11px] font-bold',
+            )}
+          >
+            {lang === 'th' ? 'TH' : 'EN'}
+          </button>
           {/* Realtime status dot — small indicator (always visible) */}
           <div
             role="status"
-            aria-label={`สถานะการเชื่อมต่อสด: ${realtimeStatus === 'open' ? 'เชื่อมต่อแล้ว' : realtimeStatus === 'connecting' ? 'กำลังเชื่อมต่อ' : 'ตัดการเชื่อมต่อ'}`}
+            aria-label={`${t('rt.label')}: ${realtimeStatus === 'open' ? t('rt.connected') : realtimeStatus === 'connecting' ? t('rt.connecting') : t('rt.disconnected')}`}
             title={
               realtimeStatus === 'open'
-                ? '🟢 เชื่อมต่อสด — ข้อมูลอัปเดตทันที'
+                ? `🟢 ${t('rt.connected')}`
                 : realtimeStatus === 'connecting'
-                  ? '🟡 กำลังเชื่อมต่อ...'
-                  : '🔴 ออฟไลน์ — ข้อมูลจะอัปเดตเมื่อรีเฟรช'
+                  ? `🟡 ${t('rt.connecting')}`
+                  : `🔴 ${t('rt.disconnected')}`
             }
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5"
           >

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // --- Types ---
 type Severity = 'expired' | 'expiring' | 'warning' | 'info'
@@ -70,6 +71,10 @@ function addMonthsISO(iso: string, months: number): Date {
 }
 
 export async function GET(req: Request) {
+  const unavailable = await moduleUnavailableResponse('notifications')
+  if (unavailable) return unavailable
+
+
   // ── P0 Security: require ADMIN permission ──
   // Notifications surface warranty/meter/cycle/audit info that should not be
   // publicly accessible. Previously this endpoint had NO auth check at all.

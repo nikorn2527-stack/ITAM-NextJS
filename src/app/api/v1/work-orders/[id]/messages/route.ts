@@ -29,6 +29,7 @@ import {
 } from '@/lib/api/response'
 import { roleToAuthorRole, loadAuthorizedWorkOrderV1 } from '../../_shared'
 import type { AuthUser } from '@/lib/auth-shared'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 const FIELD_MAP: Record<string, string> = {
   author: 'author',
@@ -40,6 +41,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const { id } = await params
   const url = new URL(req.url)
   const query = parseQuery(url)
@@ -71,6 +76,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const { id } = await params
   const url = new URL(req.url)
   const reporterTel = url.searchParams.get('reporterTel')?.trim() ?? ''

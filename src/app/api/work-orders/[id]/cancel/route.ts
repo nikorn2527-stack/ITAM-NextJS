@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { notifyWorkOrderCancelled } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { releaseStockReservation } from '@/lib/stock-calculation'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 async function logAudit(
   action: string,
@@ -34,6 +35,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   // Auth: loadAuthorizedWorkOrder does the site-scoped WO_CANCEL check.
   // Basic auth here — wo-authz layer enforces the correct permission.
   const auth = await requireAuth(req)

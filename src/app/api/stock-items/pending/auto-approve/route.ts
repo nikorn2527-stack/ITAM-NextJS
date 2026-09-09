@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { PendingBatchError, processPendingBatch } from '@/lib/stock-approval'
 import { readStockApprovalSettings } from '@/lib/stock-approval-settings'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 function hasCronSecret(req: NextRequest): boolean {
   const expected = process.env.CRON_SECRET
@@ -106,10 +107,18 @@ async function runAutoApproval(req: NextRequest) {
 
 /** Vercel Cron invokes GET with Authorization: Bearer $CRON_SECRET. */
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   return runAutoApproval(req)
 }
 
 /** Admin/manual invocation supports POST with { dryRun?, limit? }. */
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('stock')
+  if (unavailable) return unavailable
+
+
   return runAutoApproval(req)
 }

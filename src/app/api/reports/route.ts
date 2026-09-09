@@ -14,7 +14,7 @@ import {
 export const maxDuration = 60
 
 export async function GET(req: NextRequest) {
-  const unavailable = moduleUnavailableResponse('reports')
+  const unavailable = await moduleUnavailableResponse('reports')
   if (unavailable) return unavailable
 
   // Milestone 1 — Security baseline: require VIEW_REPORTS permission
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const unavailable = moduleUnavailableResponse('reports')
+  const unavailable = await moduleUnavailableResponse('reports')
   if (unavailable) return unavailable
 
   // Milestone 1 — Security baseline: require MANAGE_REPORTS for create

@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   // Returns 404 MODULE_DISABLED when the 'devices' module is disabled
   // in src/config/modules.ts. Done BEFORE auth so a disabled module has no
   // observable API surface at all (matches the pattern in /api/reports/*).
-  const moduleCheck = moduleUnavailableResponse('devices')
+  const moduleCheck = await moduleUnavailableResponse('devices')
   if (moduleCheck) return moduleCheck
 
   // ── Authentication: require VIEW_DEVICES permission ──
@@ -279,7 +279,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   // ── Phase 4.3: Module availability gate ──
-  const moduleCheck = moduleUnavailableResponse('devices')
+  const moduleCheck = await moduleUnavailableResponse('devices')
   if (moduleCheck) return moduleCheck
 
   // ── Authentication: require DEVICE_EDIT permission ──

@@ -16,6 +16,7 @@ import { logAudit } from '@/lib/audit'
 import { isLegacyBridgeModule, type LegacyBridgeModule } from '@/lib/legacy-bridge'
 import type { LegacyBridgePreviewItem } from '@/lib/legacy-bridge-preview'
 import { applyLegacyBridgeItem, createBridgeAudit } from '@/lib/legacy-bridge-apply'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 // Helper: convert JsonValue | null to Prisma Json? input type
 function toJsonInput(value: unknown): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
@@ -36,6 +37,10 @@ function bridgeModuleFromTarget(target: string): LegacyBridgeModule | null {
 export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('sync')
+  if (unavailable) return unavailable
+
+
   // 1. Auth + AuthorizationContext
   const auth = await requireAuth(req, 'ADMIN')
   if (!auth.ok) {

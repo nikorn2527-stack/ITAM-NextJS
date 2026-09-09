@@ -10,6 +10,7 @@ import {
   type StickerTemplate,
 } from '@/lib/sticker-template'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 interface Params {
   params: Promise<{ id: string }>
@@ -18,6 +19,10 @@ interface Params {
 // PUT /api/itam/sticker/templates/[id] — update template (name, canvas, overflow, elements)
 //   Default template can be edited but cannot be deleted (handled in DELETE).
 export async function PUT(req: NextRequest, { params }: Params) {
+  const unavailable = await moduleUnavailableResponse('stickers')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
@@ -62,6 +67,10 @@ export async function PUT(req: NextRequest, { params }: Params) {
 // DELETE /api/itam/sticker/templates/[id]
 //   Cannot delete default template or currently-active template.
 export async function DELETE(req: NextRequest, { params }: Params) {
+  const unavailable = await moduleUnavailableResponse('stickers')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 

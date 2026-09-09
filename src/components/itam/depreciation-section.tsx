@@ -30,6 +30,7 @@ import {
 } from './types'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
+import { useT } from '@/store/i18n-store'
 
 interface MiniCardProps {
   label: string
@@ -116,6 +117,7 @@ export function DepreciationSection() {
   const tooltipBg = isDark ? '#0f172a' : '#ffffff'
   const tooltipFg = isDark ? '#e2e8f0' : '#1e293b'
   const axisTickColor = '#64748b'
+  const t = useT()
 
   const setActivePage = useAppStore((s) => s.setActivePage)
 
@@ -123,7 +125,7 @@ export function DepreciationSection() {
     queryKey: ['depreciation'],
     queryFn: async () => {
       const res = await fetch('/api/devices/depreciation', {
-        headers: (() => { const t = useAuthStore.getState()?.token; return t ? { Authorization: `Bearer ${t}` } : {} })(),
+        headers: (() => { const tok = useAuthStore.getState()?.token; return tok ? { Authorization: `Bearer ${tok}` } : {} })(),
       })
       if (!res.ok) throw new Error('Failed to fetch depreciation')
       return res.json()
@@ -147,9 +149,9 @@ export function DepreciationSection() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base text-slate-800 dark:text-slate-100">
           <Coins className="h-4 w-4 text-[#f97316]" />
-          💰 ค่าเสื่อมราคาอุปกรณ์
+          {t('depreciation.title')}
           <span className="ml-2 text-xs font-normal text-slate-400 dark:text-slate-500">
-            ติดตามมูลค่าอุปกรณ์ตามอายุการใช้งาน (วิธีเส้นตรง)
+            {t('depreciation.track_devices')} ({t('depreciation.method')})
           </span>
         </CardTitle>
       </CardHeader>
@@ -169,17 +171,17 @@ export function DepreciationSection() {
               <Coins className="h-6 w-6 text-slate-300 dark:text-slate-600" />
             </div>
             <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
-              ยังไม่มีข้อมูลราคา
+              {t('depreciation.empty')}
             </div>
             <div className="text-xs text-slate-400 dark:text-slate-500">
-              เพิ่มราคาซื้อในหน้าอุปกรณ์เพื่อเริ่มติดตามค่าเสื่อมราคา
+              {t('depreciation.empty_hint')}
             </div>
             <Button
               size="sm"
               className="mt-2 bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
               onClick={() => setActivePage('devices')}
             >
-              ไปยังหน้าอุปกรณ์
+              {t('depreciation.view_devices')}
             </Button>
           </div>
         ) : (
@@ -187,26 +189,26 @@ export function DepreciationSection() {
             {/* Summary cards */}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <MiniCard
-                label="มูลค่ารวม"
+                label={t('depreciation.total_value')}
                 value={formatBaht(summary?.totalValue ?? 0)}
                 icon={<Wallet className="h-5 w-5" />}
                 accent="#0d9488"
               />
               <MiniCard
-                label="มูลค่าเดิม"
+                label={t('depreciation.current_value')}
                 value={formatBaht(summary?.totalOriginal ?? 0)}
                 icon={<Coins className="h-5 w-5" />}
                 accent="#f97316"
               />
               <MiniCard
-                label="ค่าเสื่อมสะสม"
+                label={t('depreciation.col.acc_dep')}
                 value={formatBaht(summary?.totalDepreciated ?? 0)}
                 icon={<TrendingDown className="h-5 w-5" />}
                 accent="#f59e0b"
               />
               <MiniCard
-                label="หมดอายุการใช้งาน"
-                value={`${summary?.fullyDepreciatedCount ?? 0} เครื่อง`}
+                label={t('depreciation.expired_count')}
+                value={`${summary?.fullyDepreciatedCount ?? 0} ${t('depreciation.unit.device')}`}
                 icon={<AlertOctagon className="h-5 w-5" />}
                 accent="#f43f5e"
               />
@@ -215,7 +217,7 @@ export function DepreciationSection() {
             {/* Stacked bar: current value + depreciation per device */}
             <div>
               <div className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
-                มูลค่าปัจจุบัน vs ค่าเสื่อมสะสม ({chartData.length} อันดับแรก)
+                {t('depreciation.current_value')} vs {t('depreciation.col.acc_dep')} ({chartData.length} {t('depreciation.first_add')})
               </div>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={chartData}>
@@ -279,7 +281,7 @@ export function DepreciationSection() {
                     cursor={{ fill: isDark ? '#ffffff10' : '#0f172a08' }}
                     formatter={(v: number, name: string) => [
                       formatBaht(Number(v)),
-                      name === 'currentValue' ? 'มูลค่าปัจจุบัน' : 'ค่าเสื่อมสะสม',
+                      name === 'currentValue' ? t('depreciation.current_value') : t('depreciation.col.acc_dep'),
                     ]}
                     labelFormatter={(_, payload) => {
                       const p = payload?.[0]?.payload as {
@@ -299,8 +301,8 @@ export function DepreciationSection() {
                     wrapperStyle={{ fontSize: 12 }}
                     formatter={(v) =>
                       v === 'currentValue'
-                        ? 'มูลค่าปัจจุบัน'
-                        : 'ค่าเสื่อมสะสม'
+                        ? t('depreciation.current_value')
+                        : t('depreciation.col.acc_dep')
                     }
                   />
                   <Bar
@@ -322,21 +324,21 @@ export function DepreciationSection() {
             {/* Device table */}
             <div>
               <div className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">
-                รายการอุปกรณ์ ({devices.length} จาก {data?.devices.length ?? 0})
+                {t('depreciation.device_list')} ({devices.length} {t('depreciation.from')} {data?.devices.length ?? 0})
               </div>
               <div className="itam-scroll max-h-[50vh] overflow-y-auto rounded-md border border-slate-200 dark:border-slate-800">
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                     <tr className="text-left text-xs text-slate-500 dark:text-slate-400">
-                      <th className="px-3 py-2 font-medium">อุปกรณ์</th>
+                      <th className="px-3 py-2 font-medium">{t('depreciation.col.device')}</th>
                       <th className="px-3 py-2 text-right font-medium">
-                        ราคาซื้อ
+                        {t('depreciation.col.purchase_price')}
                       </th>
                       <th className="px-3 py-2 text-right font-medium">
-                        มูลค่าปัจจุบัน
+                        {t('depreciation.col.current_value')}
                       </th>
-                      <th className="px-3 py-2 font-medium">ค่าเสื่อม %</th>
-                      <th className="px-3 py-2 font-medium">สถานะ</th>
+                      <th className="px-3 py-2 font-medium">{t('depreciation.col.annual_dep')} %</th>
+                      <th className="px-3 py-2 font-medium">{t('depreciation.col.status')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -400,7 +402,7 @@ export function DepreciationSection() {
 
             <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
               <Coins className="h-3 w-3" />
-              ค่าเสื่อมรายปีเฉลี่ย:{' '}
+              {t('depreciation.avg_annual_dep')}:{' '}
               <span className="font-medium text-slate-500 dark:text-slate-400">
                 {formatBaht(
                   summary
@@ -408,7 +410,7 @@ export function DepreciationSection() {
                     : 0,
                 )}
               </span>
-              · เฉลี่ยค่าเสื่อม:{' '}
+              · {t('depreciation.avg_dep')}:{' '}
               <span className="font-medium text-slate-500 dark:text-slate-400">
                 {summary?.avgDepreciationPercent ?? 0}%
               </span>

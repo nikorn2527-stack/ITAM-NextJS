@@ -138,7 +138,7 @@ function computeBookValue(row: {
 
 export async function GET(req: NextRequest) {
   // ── Module gate ──
-  const moduleCheck = moduleUnavailableResponse('reports')
+  const moduleCheck = await moduleUnavailableResponse('reports')
   if (moduleCheck) return moduleCheck
 
   // ── Auth: VIEW_DASHBOARD ──

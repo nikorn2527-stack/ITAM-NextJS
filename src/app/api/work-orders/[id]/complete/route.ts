@@ -6,6 +6,7 @@ import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { getRepairJobReferences } from '@/lib/repair-job-references'
 import { validateRepairCompletionInput } from '@/lib/repair-completion-contract'
 import { resolveRepairRequester } from '@/lib/repair-identity'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -44,6 +45,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   // Auth: loadAuthorizedWorkOrder does the site-scoped WO_COMPLETE check.
   // Basic auth here — wo-authz layer enforces the correct permission.
   const auth = await requireAuth(req)

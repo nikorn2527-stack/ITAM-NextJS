@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { demoFilter } from '@/lib/demo-mode'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
   buildStockItemMap,
   calcMonthlyMaterialCost,
@@ -22,6 +23,10 @@ import {
  * Auth: VIEW_DASHBOARD (read-only analytics).
  */
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('reports')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {

@@ -40,6 +40,7 @@ import {
 } from './types'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
+import { useT } from '@/store/i18n-store'
 
 /** Animated count-up hook — tweens from the previous value to the next
  * over 500ms using requestAnimationFrame (mirrors the dashboard-page one). */
@@ -93,15 +94,15 @@ function recBadgeClass(rec: string): string {
   }
 }
 
-function recLabel(rec: string): string {
+function recLabel(rec: string, t: (k: string) => string): string {
   switch (rec) {
     case 'replace':
-      return 'ควรเปลี่ยนทดแทน'
+      return t('lifecycle.filter.replace')
     case 'monitor':
-      return 'ติดตาม'
+      return t('lifecycle.filter.monitor')
     case 'ok':
     default:
-      return 'ปกติ'
+      return t('lifecycle.filter.ok')
   }
 }
 
@@ -118,6 +119,7 @@ function SummaryMiniCard({
   accentClass: string
   iconWrapClass: string
 }) {
+  const t = useT()
   const animated = useCountUp(value, 500)
   return (
     <div
@@ -144,7 +146,7 @@ function SummaryMiniCard({
               {animated}
             </span>
             <span className="shrink-0 text-xs font-medium text-slate-400 dark:text-slate-500">
-              เครื่อง
+              {t('lifecycle.unit.device')}
             </span>
           </div>
         </div>
@@ -157,6 +159,7 @@ export function LifecycleDashboard() {
   const setActivePage = useAppStore((s) => s.setActivePage)
   const setPendingDeviceId = useAppStore((s) => s.setPendingDeviceId)
   const [dialogOpen, setDialogOpen] = React.useState(false)
+  const t = useT()
 
   const { data, isLoading, refetch, isFetching } = useQuery<LifecycleData>({
     queryKey: ['devices-lifecycle'],
@@ -193,21 +196,21 @@ export function LifecycleDashboard() {
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 sm:text-base">
-                  🔄 แผนเปลี่ยนทดแทนอุปกรณ์
+                  {t('lifecycle.title')}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  วางแผนการเปลี่ยนทดแทนอุปกรณ์ตามอายุและสถานะรับประกัน
+                  {t('lifecycle.subtitle')}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {summary && (
                 <span className="hidden text-xs text-slate-500 dark:text-slate-400 sm:inline">
-                  อายุเฉลี่ย{' '}
+                  {t('lifecycle.avg_age')}{' '}
                   <span className="font-semibold text-slate-700 dark:text-slate-200">
                     {summary.avgAge}
                   </span>{' '}
-                  เดือน
+                  {t('lifecycle.month_unit')}
                 </span>
               )}
               <Button
@@ -220,7 +223,7 @@ export function LifecycleDashboard() {
                 <RefreshCw
                   className={'h-3.5 w-3.5' + (isFetching ? ' animate-spin' : '')}
                 />
-                รีเฟรช
+                {t('lifecycle.refresh')}
               </Button>
             </div>
           </div>
@@ -236,21 +239,21 @@ export function LifecycleDashboard() {
             summary && (
               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <SummaryMiniCard
-                  label="ควรเปลี่ยนทดแทน"
+                  label={t('lifecycle.filter.replace')}
                   value={summary.replace}
                   icon={<AlertTriangle className="h-5 w-5" />}
                   accentClass="border-rose-200 bg-rose-50/50 dark:border-rose-800/60 dark:bg-rose-950/20"
                   iconWrapClass="bg-rose-100 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300"
                 />
                 <SummaryMiniCard
-                  label="ติดตาม"
+                  label={t('lifecycle.filter.monitor')}
                   value={summary.monitor}
                   icon={<Eye className="h-5 w-5" />}
                   accentClass="border-amber-200 bg-amber-50/50 dark:border-amber-800/60 dark:bg-amber-950/20"
                   iconWrapClass="bg-amber-100 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300"
                 />
                 <SummaryMiniCard
-                  label="ปกติ"
+                  label={t('lifecycle.filter.ok')}
                   value={summary.ok}
                   icon={<CheckCircle2 className="h-5 w-5" />}
                   accentClass="border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/60 dark:bg-emerald-950/20"
@@ -268,10 +271,10 @@ export function LifecycleDashboard() {
                   <CheckCircle2 className="h-5 w-5" />
                 </div>
                 <div className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                  ทุกเครื่องอยู่ในสถานะปกติ
+                  {t('lifecycle.empty_title')}
                 </div>
                 <div className="text-xs text-slate-400 dark:text-slate-500">
-                  ยังไม่มีอุปกรณ์ที่ต้องเปลี่ยนทดแทนด่วน
+                  {t('lifecycle.empty_desc')}
                 </div>
               </div>
             ) : (
@@ -279,7 +282,7 @@ export function LifecycleDashboard() {
                 <div className="mb-2 flex items-center justify-between">
                   <h4 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400">
                     <AlertTriangle className="h-3.5 w-3.5" />
-                    เร่งเปลี่ยนทดแทน ({replaceDevices.length})
+                    {t('lifecycle.replace_now')} ({replaceDevices.length})
                   </h4>
                   {summary && summary.replace > replaceDevices.length && (
                     <Button
@@ -288,7 +291,7 @@ export function LifecycleDashboard() {
                       onClick={() => setDialogOpen(true)}
                       className="h-7 border-rose-300 text-rose-600 hover:bg-rose-50 focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 dark:border-rose-700 dark:text-rose-400 dark:hover:bg-rose-950/40 dark:focus-visible:ring-offset-slate-950"
                     >
-                      ดูทั้งหมด
+                      {t('lifecycle.view_all')}
                       <ArrowRight className="h-3.5 w-3.5" />
                     </Button>
                   )}
@@ -325,7 +328,7 @@ export function LifecycleDashboard() {
                                     : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                                 }
                               >
-                                {d.ageInMonths} เดือน
+                                {d.ageInMonths} {t('lifecycle.month_unit')}
                               </Badge>
                             </span>
                             <WarrantyStatusBadge status={d.warrantyStatus} />
@@ -360,7 +363,7 @@ export function LifecycleDashboard() {
                       onClick={() => setDialogOpen(true)}
                       className="h-7 px-2 text-rose-600 hover:text-rose-700 dark:text-rose-400"
                     >
-                      ดูตารางวงจรชีวิตทั้งหมด
+                      {t('lifecycle.view_full_table')}
                       <ArrowRight className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -373,7 +376,7 @@ export function LifecycleDashboard() {
             <div className="mt-4 flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 py-8 text-slate-400 dark:border-slate-700 dark:text-slate-500">
               <Inbox className="h-8 w-8 text-slate-300 dark:text-slate-600" />
               <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                ยังไม่มีอุปกรณ์ในระบบ
+                {t('lifecycle.no_devices')}
               </span>
             </div>
           )}
@@ -386,30 +389,30 @@ export function LifecycleDashboard() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <RefreshCw className="h-4 w-4 text-[#f97316]" />
-              🔄 ตารางแผนเปลี่ยนทดแทนอุปกรณ์ทั้งหมด
+              {t('lifecycle.dialog.title')}
             </DialogTitle>
             <DialogDescription>
-              รายการอุปกรณ์ทั้งหมด {devices.length} เครื่อง — เรียงตามคะแนนความจำเป็นในการเปลี่ยนทดแทน
+              {t('lifecycle.dialog.subtitle').replace('{count}', String(devices.length))}
             </DialogDescription>
           </DialogHeader>
           <div className="itam-scroll max-h-[70vh] overflow-auto rounded-md border border-slate-200 dark:border-slate-800">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-slate-100/95 backdrop-blur-sm dark:bg-slate-900/95">
                 <TableRow>
-                  <TableHead className="text-slate-600 dark:text-slate-300">รหัส</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">ชื่อ</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">สาขา</TableHead>
-                  <TableHead className="text-right text-slate-600 dark:text-slate-300">อายุ</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">รับประกัน</TableHead>
-                  <TableHead className="text-right text-slate-600 dark:text-slate-300">คะแนน</TableHead>
-                  <TableHead className="text-slate-600 dark:text-slate-300">สถานะ</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">{t('lifecycle.col.code')}</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">{t('lifecycle.col.name')}</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">{t('lifecycle.col.site')}</TableHead>
+                  <TableHead className="text-right text-slate-600 dark:text-slate-300">{t('lifecycle.col.age')}</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">{t('lifecycle.col.warranty')}</TableHead>
+                  <TableHead className="text-right text-slate-600 dark:text-slate-300">{t('lifecycle.col.score')}</TableHead>
+                  <TableHead className="text-slate-600 dark:text-slate-300">{t('lifecycle.col.status')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {devices.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="py-10 text-center text-slate-400 dark:text-slate-500">
-                      ยังไม่มีข้อมูล
+                      {t('lifecycle.no_data')}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -438,7 +441,7 @@ export function LifecycleDashboard() {
                               : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
                           }
                         >
-                          {d.ageInMonths} ด.
+                          {d.ageInMonths} {t('lifecycle.unit.month_short')}
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -469,7 +472,7 @@ export function LifecycleDashboard() {
                       </TableCell>
                       <TableCell>
                         <Badge className={recBadgeClass(d.recommendation)}>
-                          {recLabel(d.recommendation)}
+                          {recLabel(d.recommendation, t)}
                         </Badge>
                       </TableCell>
                     </TableRow>
@@ -481,7 +484,7 @@ export function LifecycleDashboard() {
           <div className="mt-2 flex items-center justify-between text-xs text-slate-400 dark:text-slate-500">
             <span>
               {summary
-                ? `ควรเปลี่ยน ${summary.replace} · ติดตาม ${summary.monitor} · ปกติ ${summary.ok}`
+                ? t('lifecycle.summary').replace('{replace}', String(summary.replace)).replace('{monitor}', String(summary.monitor)).replace('{ok}', String(summary.ok))
                 : ''}
             </span>
             <Button
@@ -490,7 +493,7 @@ export function LifecycleDashboard() {
               onClick={() => setDialogOpen(false)}
               className="h-7 focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
             >
-              ปิด
+              {t('common.close')}
             </Button>
           </div>
         </DialogContent>

@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { notifyWorkOrderMessage } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 async function logAudit(
   action: string,
@@ -33,6 +34,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'WO_VIEW_ALL')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
@@ -65,6 +70,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   // Auth: loadAuthorizedWorkOrder does the site-scoped WO_VIEW_ALL check.
   // Basic auth here — wo-authz layer enforces the correct permission.
   const auth = await requireAuth(req)

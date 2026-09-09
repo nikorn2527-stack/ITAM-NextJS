@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * GET /api/cycles?status=active&site=UDH
@@ -11,6 +12,10 @@ import { logAudit } from '@/lib/audit'
  * reality (the countdown reset fix from Issue 4).
  */
 export async function GET(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -58,6 +63,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const unavailable = await moduleUnavailableResponse('meters')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'METER_WRITE')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })

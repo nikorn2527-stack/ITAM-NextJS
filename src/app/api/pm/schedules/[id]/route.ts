@@ -5,6 +5,7 @@ import { logAudit } from '@/lib/audit'
 import { computeNextRunDate } from '@/lib/pm-schedule'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /**
  * Derive the effective Site code for a PM schedule.
@@ -22,6 +23,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('pm')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'VIEW_DASHBOARD')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   // P1 FIX (AUDIT-FINDINGS-FIX-018): build authorization context so we can
@@ -70,6 +75,10 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('pm')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'WO_CREATE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   // P1 FIX (AUDIT-FINDINGS-FIX-018): Site-scoped authorization for writes.
@@ -171,6 +180,10 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('pm')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'WO_CREATE')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   // P1 FIX (AUDIT-FINDINGS-FIX-018): Site-scoped authorization for writes.

@@ -6,6 +6,7 @@ import { notifyPartsRequested } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { resolveRepairRequester } from '@/lib/repair-identity'
 import { calculateCost, normalizeCostModel } from '@/lib/cost-model'
+import { moduleUnavailableResponse } from '@/lib/module-gate'
 
 /** Parse an Int; returns 0 when missing/invalid. */
 function optInt(v: unknown, fallback = 0): number {
@@ -43,6 +44,10 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   const auth = await requireAuth(req, 'WO_VIEW_ALL')
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
   try {
@@ -120,6 +125,10 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const unavailable = await moduleUnavailableResponse('work-orders')
+  if (unavailable) return unavailable
+
+
   // Auth: loadAuthorizedWorkOrder does the site-scoped WO_ASSIGN check.
   // Basic auth here — wo-authz layer enforces the correct permission.
   const auth = await requireAuth(req)
