@@ -194,7 +194,7 @@ export interface LicenseRow {
  * PendingAccessory — mirrors the DeviceAccessory Prisma model.
  *
  * Stored in the device Add/Edit form's local state until the user clicks
- * "t('devices.save')" (Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM). After the device is
+ * "'Save'" (Task ID: INLINE-ACCESSORY-IN-DEVICE-FORM). After the device is
  * created/updated, save() POSTs each row to /api/devices/[id]/accessories.
  *
  * `id` is present when loaded from DB (edit mode) — rows with an id are
@@ -220,7 +220,7 @@ const ACCESSORY_TYPES_INLINE = [
   { value: 'SCANNER', labelKey: 'devices.acc_type.SCANNER' },
   { value: 'CABLE', labelKey: 'devices.acc_type.CABLE' },
   { value: 'ADAPTER', labelKey: 'devices.acc_type.ADAPTER' },
-  { value: t('type.ups'), labelKey: 'devices.acc_type.UPS' },
+  { value: 'type.ups', labelKey: 'devices.acc_type.UPS' },
   { value: 'HUB', labelKey: 'devices.acc_type.HUB' },
   { value: 'PRINTHEAD', labelKey: 'devices.acc_type.PRINTHEAD' },
   { value: 'TRAY', labelKey: 'devices.acc_type.TRAY' },
@@ -228,10 +228,10 @@ const ACCESSORY_TYPES_INLINE = [
 ] as const
 
 const ACCESSORY_STATUSES_INLINE = [
-  { value: t('status.active'), labelKey: 'devices.acc_status.Active' },
-  { value: t('status.inactive'), labelKey: 'devices.acc_status.Inactive' },
-  { value: t('devices.kpi.repair'), labelKey: 'devices.acc_status.In Repair' },
-  { value: t('devices.acc_status.Disposed'), labelKey: 'devices.acc_status.Disposed' },
+  { value: 'status.active', labelKey: 'devices.acc_status.Active' },
+  { value: 'status.inactive', labelKey: 'devices.acc_status.Inactive' },
+  { value: 'devices.kpi.repair', labelKey: 'devices.acc_status.In Repair' },
+  { value: 'devices.acc_status.Disposed', labelKey: 'devices.acc_status.Disposed' },
 ] as const
 
 const EMPTY_ACCESSORY: PendingAccessory = {
@@ -239,7 +239,7 @@ const EMPTY_ACCESSORY: PendingAccessory = {
   brand: '',
   model: '',
   serialNumber: '',
-  status: t('status.active'),
+  status: 'Active',
   installedDate: '',
   remark: '',
 }
@@ -260,7 +260,7 @@ const LICENSE_TYPE_OPTIONS = [
   { value: 'Volume', labelKey: 'devices.lic_type.Volume' },
   { value: 'Retail', labelKey: 'devices.lic_type.Retail' },
   { value: 'Subscription', labelKey: 'devices.lic_type.Subscription' },
-  { value: t('devices.lic_type.Open License'), labelKey: 'devices.lic_type.Open License' },
+  { value: 'devices.lic_type.Open License', labelKey: 'devices.lic_type.Open License' },
 ] as const
 
 interface FormState {
@@ -279,15 +279,15 @@ interface FormState {
   parentRef: string
   displayLabel: string
   location: string
-  // ── t('devices.section.location') ──
+  // ── 'Location' ──
   building: string
   floor: string
   room: string
-  // ── t('devices.field.network_other') ──
+  // ── 'Network / Other' ──
   ip: string
   mac: string
   remoteId: string
-  // ── t('devices.section.purchase_warranty') ──
+  // ── 'Purchase / Warranty' ──
   purchaseDate: string
   warrantyMonths: string
   purchasePrice: string
@@ -297,16 +297,16 @@ interface FormState {
   vendor: string
   contractNo: string
   uninstallDate: string
-  // ── t('devices.section.meter') ──
+  // ── 'Meter' ──
   meterRequired: boolean
   meterMode: string
-  // ── t('devices.field.other') ──
+  // ── 'Other' ──
   costCenter: string
   deviceGroup: string
   remark: string
   // ── Device Set / Parent-Child (Task ID 9, Phase 2) ──
   parentDeviceId: string    // "" = no parent (this device is a parent or standalone)
-  setLabel: string          // e.g. "ชุดt('devices.unit.device')พิมพ์t('devices.field.room')จ่ายยา"
+  setLabel: string          // e.g. "ชุด'devices'พิมพ์'Room'จ่ายยา"
   setPosition: string      // "" = unset
   // ── License / Software (NEW) ──
   licenses: LicenseRow[]
@@ -330,7 +330,7 @@ const DEVICE_GROUP_LABEL_KEYS: Record<string, string> = {
   PERSONAL: 'devices.group.personal',
 }
 
-/** Default DeviceGroup code on Add New (the user requested "t('devices.field.organization')"). */
+/** Default DeviceGroup code on Add New (the user requested "'Organization'"). */
 const DEFAULT_DEVICE_GROUP = 'COMPANY'
 
 const EMPTY_FORM: FormState = {
@@ -4200,7 +4200,7 @@ function QuickAddForm({
         </div>
 
         <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {/* ── t('devices.field.site') ── */}
+          {/* ── 'Site' ── */}
           <Field label={t('devices.field.site')} required>
             <Select
               value={form.site}
@@ -4425,14 +4425,14 @@ function Field({
 /**
  * FormSection — a consistent card wrapper for each section of the full-page
  * form. Renders a numbered step badge + icon + title + subtitle, an optional
- * action button (e.g. "t('common.add') License"), and the children inside a padded body.
+ * action button (e.g. "'Add' License"), and the children inside a padded body.
  *
  * Accent color options:
- *   amber  → t('devices.field.asset_code') / t('devices.section.meter') (amber-500)
- *   blue   → t('devices.field.install_location') (sky-500)
- *   emerald → t('devices.section.device_info') (emerald-500)
- *   violet → t('devices.field.purchase_date') / License (violet-500)
- *   slate  → t('devices.section.network_other') (slate-500)
+ *   amber  → 'Asset Code' / 'Meter' (amber-500)
+ *   blue   → 'Install Location' (sky-500)
+ *   emerald → '💻 Device Info' (emerald-500)
+ *   violet → 'Purchase Date' / License (violet-500)
+ *   slate  → 'Network / Other' (slate-500)
  */
 function FormSection({
   step,

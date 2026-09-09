@@ -27,7 +27,7 @@ const AUDIT_EXPORT_COLUMNS: ExportColumn[] = [
   { key: 'entity', label: 'entity', group: 'Main' },
   { key: 'summary', label: 'item', group: 'Main' },
   { key: 'actor', label: 'PersonDo', group: 'Main' },
-  { key: 'site', label: t('common.site'), group: 'Main' },
+  { key: 'site', label: 'Site', group: 'Main' },
 ]
 
 /**
@@ -64,10 +64,10 @@ interface AuditResponse {
 // Curated action set — the dropdown also fetches the DB's distinct actions
 // so new ones appear automatically. These are the common labels.
 const ACTION_LABELS: Record<string, string> = {
-  CREATE: t('common.add'),
-  UPDATE: t('common.edit'),
+  CREATE: 'Add',
+  UPDATE: 'Edit',
   UPDATE_DEVICE: 'EditDevice',
-  DELETE: t('common.delete'),
+  DELETE: 'Delete',
   LOGIN: 'intoSystem',
   LOGOUT: 'outfromSystem',
   METER_READING: 'ReadMeter',
@@ -80,14 +80,14 @@ const ACTION_LABELS: Record<string, string> = {
   BULK_UPDATE_DEVICES: 'EditGroup',
   BULK_TRANSFER: 'moveGroup',
   BULK_DELETE: 'DeleteGroup',
-  IMPORT_DEVICES: t('common.import'),
+  IMPORT_DEVICES: 'Import',
   NOTIFY_SENT: 'SendNotify',
   CYCLE_START: 'StartCycleReadMeter',
   CYCLE_END: 'endCycleReadMeter',
   // ── Additional labels (from QA batch-4 — bug #8: duplicate text fix) ──
   GENERATE: 'CreateReport',
   IMPORT_LEGACY: 'ImportDataOriginal',
-  IMPORT: t('common.import'),
+  IMPORT: 'Import',
   INVITE_REQUEST: 'requestinActive',
   AUTH_FALLBACK: 'LockinSpare',
   DEMO_RESET: 'ResetDataDemo',
@@ -113,7 +113,7 @@ const ACTION_LABELS: Record<string, string> = {
   WO_MESSAGE: 'SendMessageinWork',
   WO_PHOTO_UPLOAD: 'upLoadimageWork',
   STICKER_RENDER: 'PrintSticker',
-  PRINT: t('dash.print'),
+  PRINT: 'Print',
   EXPORT: 'ExportData',
   SEED: 'AddDataDefault',
   BACKUP: 'SpareData',
@@ -274,13 +274,13 @@ export function ItamAudit() {
       detail: tryPrettyDetail(l.detail),
     }))
     downloadCsv(`audit-${dateStamp()}.csv`, rows, [
-      { key: 'createdAt', label: t('common.date') },
+      { key: 'createdAt', label: 'Date' },
       { key: 'action', label: 'Action' },
       { key: 'actionLabel', label: 'Do' },
       { key: 'entity', label: 'Entity' },
       { key: 'entityId', label: 'Entity ID' },
       { key: 'actor', label: 'PersonDo' },
-      { key: 'summary', label: t('reports.type.summary') },
+      { key: 'summary', label: 'Summary' },
       { key: 'detail', label: 'Details' },
     ])
     toast.success(`Export ${rows.length} item`)

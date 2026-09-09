@@ -340,26 +340,26 @@ interface PartsListApiResponse {
 const STATUS_OPTIONS = [
   { value: 'all', label: 'StatusAll' },
   { value: 'PENDING_REVIEW', label: 'PendingCheck' },
-  { value: 'PENDING', label: t('status.pending') },
+  { value: 'PENDING', label: 'Pending' },
   { value: 'IN_PROGRESS', label: 'In Progress' },
   { value: 'WAITING_PARTS', label: 'PendingParts' },
   { value: 'COMPLETED', label: 'Done' },
-  { value: 'CANCELLED', label: t('common.cancel') },
+  { value: 'CANCELLED', label: 'Cancel' },
 ] as const
 
 const PRIORITY_OPTIONS = [
   { value: 'all', label: 'priorityUrgentAll' },
-  { value: t('priority.normal'), label: t('priority.normal') },
+  { value: 'priority.normal', label: 'Normal' },
   { value: 'Medium', label: 'Medium' },
   { value: 'High', label: 'High' },
-  { value: t('priority.urgent'), label: t('priority.urgent') },
+  { value: 'priority.urgent', label: 'Urgent' },
 ] as const
 
 const PRIORITY_FORM_OPTIONS = [
-  { value: t('priority.normal'), label: t('priority.normal') },
+  { value: 'priority.normal', label: 'Normal' },
   { value: 'Medium', label: 'Medium' },
   { value: 'High', label: 'High' },
-  { value: t('priority.urgent'), label: t('priority.urgent') },
+  { value: 'priority.urgent', label: 'Urgent' },
 ] as const
 
 const PAGE_SIZE = 12
@@ -390,13 +390,13 @@ function statusBadgeClass(status: string): string {
 
 function priorityBadgeClass(priority: string): string {
   switch (priority) {
-    case t('priority.urgent'):
+    case 'Urgent':
       return 'border-rose-200 bg-rose-100 text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300'
     case 'High':
       return 'border-orange-200 bg-orange-100 text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300'
     case 'Medium':
       return 'border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300'
-    case t('priority.normal'):
+    case 'Normal':
     default:
       return 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
   }
@@ -467,7 +467,7 @@ const EMPTY_FORM: NewFormState = {
   building: '',
   location: '',
   details: '',
-  priority: t('priority.normal'),
+  priority: 'Normal',
   reporterName: '',
   tel: '',
   employeeCode: '',

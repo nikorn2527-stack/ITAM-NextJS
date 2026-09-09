@@ -95,7 +95,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'wo-options', labelKey: 'settings.tab.wo_options', icon: ListChecks },
       { value: 'number-patterns', labelKey: 'settings.tab.number_patterns', icon: Hash },
       { value: 'wo-patterns', labelKey: 'settings.tab.wo_patterns', icon: FileText },
-      { value: t('dash.unit.site'), labelKey: 'settings.tab.sites', icon: Building2 },
+      { value: 'dash.unit.site', labelKey: 'settings.tab.sites', icon: Building2 },
       { value: 'licenses', labelKey: 'settings.tab.licenses', icon: KeyRound },
       { value: 'asset-categories', labelKey: 'settings.tab.asset_categories', icon: Package },
       { value: 'stock-count', labelKey: 'settings.tab.stock_count', icon: ClipboardList },
@@ -1202,11 +1202,11 @@ function MobileNavConfigSection() {
   const [saving, setSaving] = React.useState(false)
 
   const ROLES = [
-    { value: 'admin', label: t('role.admin') },
-    { value: 'manager', label: t('role.manager') },
-    { value: 'staff', label: t('role.staff') },
-    { value: 'coordinator', label: t('role.coordinator') },
-    { value: 'viewer', label: t('role.viewer') },
+    { value: 'admin', label: 'Administrator' },
+    { value: 'manager', label: 'Manager' },
+    { value: 'staff', label: 'Technician' },
+    { value: 'coordinator', label: 'Coordinator' },
+    { value: 'viewer', label: 'Viewer' },
   ]
 
   // Only mobile-native tabs that have real mobile components.

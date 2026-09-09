@@ -144,7 +144,7 @@ export function ReportsHub() {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 
-  const [activeGroup, setActiveGroup] = React.useState<ReportGroup>(t('devices.unit.device'))
+  const [activeGroup, setActiveGroup] = React.useState<ReportGroup>('devices')
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
   const [selectedColumns, setSelectedColumns] = React.useState<string[]>([])

@@ -133,7 +133,7 @@ interface TabDef {
 const TABS: TabDef[] = [
   {
     key: 'sticker',
-    label: t('devices.field.sticker'),
+    label: 'Sticker',
     icon: '🎨',
     description: 'labelsmall e.g. 75×36mm, 50×30mm — ForattachDevice',
   },
@@ -145,7 +145,7 @@ const TABS: TabDef[] = [
   },
   {
     key: 'work-order',
-    label: t('jobtype.work-order'),
+    label: 'Work Order',
     icon: '🔧',
     description: 'Repair Ticket / ticketWithdraw / ticketReceive / Purchase Order',
   },

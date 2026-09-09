@@ -55,14 +55,14 @@ import { useT } from '@/store/i18n-store'
 
 // Column definitions for material cost report
 const COST_REPORT_COLUMNS: ColumnDef[] = [
-  { key: 'productCode', label: t('common.code'), default: true },
+  { key: 'productCode', label: 'Code', default: true },
   { key: 'productName', label: 'NameProduct', default: true },
-  { key: 'category', label: t('settings.col.category'), default: true },
-  { key: 'quantity', label: t('common.quantity'), default: true },
-  { key: 'unit', label: t('common.unit'), default: false },
+  { key: 'category', label: 'Category', default: true },
+  { key: 'quantity', label: 'Quantity', default: true },
+  { key: 'unit', label: 'Unit', default: false },
   { key: 'unitCost', label: 'Price/Unit', default: true },
   { key: 'totalCost', label: 'ValueTotal', default: true },
-  { key: 'site', label: t('common.site'), default: false },
+  { key: 'site', label: 'Site', default: false },
   { key: 'costType', label: 'TypeCost', default: false },
 ]
 import {  Droplet,
@@ -825,9 +825,9 @@ export function MaterialCostReport() {
                   value={formatInt(data.reconciliation.difference)}
                   unit={`(${data.reconciliation.differencePercent}%)`}
                   hint={
-                    diffSeverity === 'ok' ? 'Normal — InkRemaininginbottles + waste' :
-                    diffSeverity === 'warn' ? 'Check — InkColor/six/depreciate?' :
-                    'High — MeterNomatch or paper rate wrong?'
+                    diffSeverity === 'ok' ? 'Normal' :
+                    diffSeverity === 'warn' ? 'Check' :
+                    'High'
                   }
                   accent={
                     diffSeverity === 'ok' ? '#10b981' :

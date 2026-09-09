@@ -223,11 +223,11 @@ interface DeviceRow {
 
 // ── Constants ──────────────────────────────────────────
 const STATUS_LABELS: Record<string, string> = {
-  PENDING: t('status.pending'),
-  IN_PROGRESS: t('mobile.repair'),
+  PENDING: 'Pending',
+  IN_PROGRESS: 'Repair',
   WAITING_PARTS: 'PendingParts',
   COMPLETED: 'Done',
-  CANCELLED: t('common.cancel'),
+  CANCELLED: 'Cancel',
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -246,11 +246,11 @@ const PRIORITY_COLORS: Record<string, string> = {
 }
 
 const STATUS_LABELS_DEV: Record<string, string> = {
-  Active: t('status.active'),
-  Repair: t('mobile.repair'),
+  Active: 'Active',
+  Repair: 'Repair',
   Retired: 'Reduceschedule',
-  Spare: t('reports.summary.spare'),
-  Inactive: t('status.inactive'),
+  Spare: 'Spare',
+  Inactive: 'Inactive',
 }
 
 const DEVICE_STATUS_COLORS: Record<string, string> = {
@@ -275,7 +275,7 @@ const READING_TYPE_LABELS: Record<string, string> = {
   FINAL: 'End',
   RESET: 'Reset',
   CHECKOUT: 'SendAssign',
-  SEND_REPAIR: t('mobile.repair'),
+  SEND_REPAIR: 'Repair',
   RETURN: 'Receivereturn',
 }
 

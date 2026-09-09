@@ -178,7 +178,7 @@ const DEVICE_TYPE_LABELS: Record<string, string> = {
   SCANNER: 'Scan',
   COMPUTER: 'computer',
   NETWORK: 'DeviceNetwork',
-  OTHER: t('type.other'),
+  OTHER: 'Other',
 }
 
 // ── Form state ───────────────────────────────────────────────────────
