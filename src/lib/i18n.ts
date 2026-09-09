@@ -1176,6 +1176,19 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   'pwa.update_available': { th: 'มีเวอร์ชันใหม่พร้อมใช้งาน', en: 'A new version is available' },
   'pwa.refresh_now': { th: 'รีเฟรชเดี๋ยวนี้', en: 'Refresh now' },
 
+  // ───────────── Mobile shell ─────────────
+  'mobile.menu_mobile': { th: 'เมนูมือถือ', en: 'Mobile Menu' },
+  'mobile.dashboard': { th: 'แดชบอร์ด', en: 'Dashboard' },
+  'mobile.devices': { th: 'จัดการอุปกรณ์', en: 'Devices' },
+  'mobile.my_work': { th: 'งานของฉัน', en: 'My Work' },
+  'mobile.repair': { th: 'แจ้งซ่อม', en: 'Repair' },
+  'mobile.meter': { th: 'จดมิเตอร์', en: 'Meter' },
+  'mobile.stock': { th: 'เบิกของ', en: 'Stock' },
+  'mobile.account': { th: 'บัญชี', en: 'Account' },
+  'mobile.exit_mobile': { th: 'ออกจากโหมดมือถือ', en: 'Exit Mobile Mode' },
+  'mobile.all_menu': { th: 'เมนูทั้งหมด', en: 'All Menu' },
+  'mobile.exit': { th: 'ออก', en: 'Exit' },
+
 }
 
 /**

@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useSwipeBack } from '@/hooks/use-swipe-back'
 import { useAuthStore } from '@/store/auth-store'
+import { useT } from '@/store/i18n-store'
 import { MobileRepairRequest } from './mobile-repair-request'
 import { MobileMyWork } from './mobile-my-work'
 import { MobileMeterReading } from './mobile-meter-reading'
@@ -50,24 +51,25 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'my-work',  label: 'งานของฉัน', icon: ClipboardList },
-  { id: 'repair',   label: 'แจ้งซ่อม',   icon: Wrench },
-  { id: 'meter',    label: 'จดมิเตอร์',  icon: Gauge },
-  { id: 'stock',    label: 'เบิกของ',    icon: PackageOpen },
-  { id: 'account',  label: 'บัญชี',      icon: User },
+  { id: 'my-work',  label: t('mobile.my_work'), icon: ClipboardList },
+  { id: 'repair',   label: t('mobile.repair'),   icon: Wrench },
+  { id: 'meter',    label: t('mobile.meter'),  icon: Gauge },
+  { id: 'stock',    label: t('mobile.stock'),    icon: PackageOpen },
+  { id: 'account',  label: t('mobile.account'),      icon: User },
 ]
 
 const HEADER_TITLE: Record<MobileTab, string> = {
-  repair: 'แจ้งซ่อม',
-  'my-work': 'งานของฉัน',
-  meter: 'จดมิเตอร์',
-  stock: 'เบิกของ',
-  account: 'บัญชีของฉัน',
-  dashboard: 'แดชบอร์ด',
-  devices: 'อุปกรณ์',
+  repair: t('mobile.repair'),
+  'my-work': t('mobile.my_work'),
+  meter: t('mobile.meter'),
+  stock: t('mobile.stock'),
+  account: t('mobile.account'),
+  dashboard: t('mobile.dashboard'),
+  devices: t('mobile.devices'),
 }
 
 export function MobileShell() {
+  const t = useT()
   const [tab, setTab] = React.useState<MobileTab>('my-work')
   const [menuOpen, setMenuOpen] = React.useState(false)
   const setActivePage = useAppStore((s) => s.setActivePage)
@@ -195,8 +197,8 @@ export function MobileShell() {
             <button
               type="button"
               onClick={() => setMenuOpen(true)}
-              aria-label="เมนูทั้งหมด"
-              title="เมนูทั้งหมด"
+              aria-label="t('mobile.all_menu')"
+              title="t('mobile.all_menu')"
               className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <Menu className="h-5 w-5" />
@@ -206,12 +208,12 @@ export function MobileShell() {
             <button
               type="button"
               onClick={handleExit}
-              aria-label="ออกจากโหมดมือถือ"
-              title="ออกจากโหมดมือถือ"
+              aria-label={t('mobile.exit_mobile')}
+              title={t('mobile.exit_mobile')}
               className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              <span className="leading-none">ออก</span>
+              <span className="leading-none">{t('mobile.exit')}</span>
             </button>
             {/* Real logout — clear token */}
             <button
@@ -237,7 +239,7 @@ export function MobileShell() {
             {/* Drawer panel */}
             <div className="relative z-10 flex h-full w-72 max-w-[80vw] flex-col bg-background shadow-xl">
               <div className="flex items-center justify-between border-b px-4 py-3">
-                <h2 className="text-sm font-semibold">เมนูทั้งหมด</h2>
+                <h2 className="text-sm font-semibold">t('mobile.all_menu')</h2>
                 <button
                   type="button"
                   onClick={() => setMenuOpen(false)}
@@ -248,15 +250,15 @@ export function MobileShell() {
               </div>
               <div className="flex-1 overflow-y-auto py-2">
                 {/* Mobile-native pages — filtered by mobileNavConfig */}
-                <p className="px-4 pb-1 pt-2 text-[10px] font-semibold uppercase text-slate-400">เมนูมือถือ</p>
+                <p className="px-4 pb-1 pt-2 text-[10px] font-semibold uppercase text-slate-400">{t('mobile.menu_mobile')}</p>
                 {([
-                  { id: 'dashboard', label: '📊 แดชบอร์ด', key: 'mobileapp-dashboard' },
-                  { id: 'devices',   label: '💻 จัดการอุปกรณ์', key: 'mobileapp-devices' },
-                  { id: 'my-work',   label: '📋 งานของฉัน', key: 'mobileapp-my-work' },
-                  { id: 'repair',    label: '🔧 แจ้งซ่อม', key: 'mobileapp-repair' },
-                  { id: 'meter',     label: '📈 จดมิเตอร์', key: 'mobileapp-meter' },
-                  { id: 'stock',     label: '📦 เบิกของ', key: 'mobileapp-stock' },
-                  { id: 'account',   label: '👤 บัญชี', key: 'mobileapp-account' },
+                  { id: 'dashboard', label: `📊 ${t('mobile.dashboard')}`, key: 'mobileapp-dashboard' },
+                  { id: 'devices',   label: `💻 ${t('mobile.devices')}`, key: 'mobileapp-devices' },
+                  { id: 'my-work',   label: `📋 ${t('mobile.my_work')}`, key: 'mobileapp-my-work' },
+                  { id: 'repair',    label: `🔧 ${t('mobile.repair')}`, key: 'mobileapp-repair' },
+                  { id: 'meter',     label: `📈 ${t('mobile.meter')}`, key: 'mobileapp-meter' },
+                  { id: 'stock',     label: `📦 ${t('mobile.stock')}`, key: 'mobileapp-stock' },
+                  { id: 'account',   label: `👤 ${t('mobile.account')}`, key: 'mobileapp-account' },
                 ] as const).filter((item) => {
                   // 'account' is always visible (logout must remain)
                   if (item.id === 'account') return true
@@ -273,27 +275,10 @@ export function MobileShell() {
                     {item.label}
                   </button>
                 ))}
-
-                {/* Desktop pages — exit MobileShell, also filtered by config */}
-                <p className="px-4 pb-1 pt-3 text-[10px] font-semibold uppercase text-slate-400">เมนูเพิ่มเติม (desktop)</p>
-                {enabledSidebarPages
-                  .filter((p) => !['mobile', 'itam-settings'].includes(p.page))
-                  .map((p) => (
-                  <button
-                    key={p.page}
-                    type="button"
-                    onClick={() => {
-                      setActivePage(p.page)
-                      setMenuOpen(false)
-                      setTimeout(() => {
-                        window.dispatchEvent(new PopStateEvent('popstate'))
-                      }, 0)
-                    }}
-                    className="flex w-full items-center px-4 py-3 text-left text-sm text-slate-500 transition-colors hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
-                  >
-                    {p.label}
-                  </button>
-                ))}
+                {/* NOTE: Desktop pages section was removed per user feedback —
+                    those pages don't work properly inside MobileShell, so
+                    showing them as menu items was misleading (felt like a bug).
+                    Users who need desktop features should exit mobile mode. */}
               </div>
               <div className="border-t px-4 py-3">
                 <button
@@ -302,7 +287,7 @@ export function MobileShell() {
                   className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
                   <ArrowLeft className="h-4 w-4" />
-                  ออกจากโหมดมือถือ
+                  t('mobile.exit_mobile')
                 </button>
               </div>
             </div>
@@ -339,7 +324,7 @@ export function MobileShell() {
 
       {/* Bottom navigation — fixed, full-width on phones, centered on desktop */}
       <nav
-        aria-label="เมนูหลัก"
+        aria-label={t('mobile.all_menu')}
         className="fixed inset-x-0 bottom-0 z-40 mx-auto flex w-full max-w-md items-stretch border-t bg-background shadow-[0_-1px_3px_rgba(0,0,0,0.04)]"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
