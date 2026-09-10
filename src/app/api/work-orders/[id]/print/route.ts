@@ -161,6 +161,29 @@ export async function GET(
       'a4-portrait') as PaperKey
     const paper = PAPER_SIZES[paperParam] ?? PAPER_SIZES['a4-portrait']
 
+    // ── Load Organization Profile (logo + appName) ──
+    // Used in the print header to show the org's logo image (if uploaded)
+    // instead of the default orange circle placeholder.
+    let orgProfile: { appName?: string; logoUrl?: string | null } | null = null
+    try {
+      const orgSetting = await db.appSetting.findFirst({
+        where: { key: 'orgProfile' },
+      })
+      if (orgSetting?.value) {
+        orgProfile = JSON.parse(orgSetting.value)
+      }
+    } catch {
+      // Ignore — use defaults
+    }
+    const orgName = orgProfile?.appName || 'ระบบจัดการสินทรัพย์'
+    const orgLogo = orgProfile?.logoUrl || ''
+    const logoIsImage = orgLogo && (orgLogo.startsWith('http') || orgLogo.startsWith('data:image/'))
+    const logoHtml = logoIsImage
+      ? `<img src="${esc(orgLogo)}" alt="${esc(orgName)}" style="width:56px;height:56px;object-fit:contain;border-radius:8px;" />`
+      : orgLogo
+        ? `<div class="logo">${esc(orgLogo)}</div>` // emoji logo
+        : `<div class="logo">${esc(orgName.charAt(0))}</div>` // first letter fallback
+
     // Re-fetch the WO with the full include set required for HTML
     // rendering. `loadAuthorizedWorkOrder` returned the WO with only
     // the device.id/site/assetCode/name fields selected; the print
@@ -628,10 +651,10 @@ export async function GET(
   <div class="page">
     <!-- Header -->
     <div class="header">
-      <div class="logo">ซ</div>
+      ${logoHtml}
       <div class="title-block">
-        <h1>ใบแจ้งซ่อม</h1>
-        <div class="subtitle">Work Order Form • ระบบจัดการสินทรัพย์</div>
+        <h1>${esc(orgName)}</h1>
+        <div class="subtitle">ใบแจ้งซ่อม • Work Order Form</div>
       </div>
       <div class="meta">
         <div class="wo-num">${esc(woNumber)}</div>

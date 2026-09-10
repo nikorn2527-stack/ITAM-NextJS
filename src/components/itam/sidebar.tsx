@@ -429,7 +429,7 @@ export function Sidebar() {
           expanded ? 'px-3 py-3' : 'justify-center px-0 py-2',
         )}
       >
-        {logoUrl && logoUrl.startsWith('http') ? (
+        {logoUrl && (logoUrl.startsWith('http') || logoUrl.startsWith('data:image/')) ? (
           <img
             src={logoUrl}
             alt={appName}

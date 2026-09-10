@@ -53,10 +53,10 @@ interface OrgProfile {
   accentColor?: string
 }
 
-/** Decide whether logoUrl is an emoji (single short string) or a URL/path. */
+/** Decide whether logoUrl is an emoji (single short string) or a URL/path/data URL. */
 function isEmoji(s: string): boolean {
-  // Heuristic: short length, no '/' or 'http' — treat as emoji/text
-  return s.length <= 4 && !/https?:|\//i.test(s)
+  // Heuristic: short length, no 'http', no 'data:', no '/' — treat as emoji/text
+  return s.length <= 4 && !/https?:|data:|\//i.test(s)
 }
 
 /** Darken a hex color by a percentage (for gradient end). */
