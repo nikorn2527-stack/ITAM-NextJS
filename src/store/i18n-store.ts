@@ -34,7 +34,16 @@ export const useI18nStore = create<I18nState>()(
     }),
     {
       name: 'itam-lang',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => {
+        if (typeof window === 'undefined') {
+          return {
+            getItem: () => null,
+            setItem: () => {},
+            removeItem: () => {},
+          }
+        }
+        return localStorage
+      }),
       // Only persist the language, not the bound `t` function.
       partialize: (state) => ({ lang: state.lang }),
     },

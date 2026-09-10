@@ -228,7 +228,22 @@ export const useAuthStore = create<AuthState>()(
         }
         return localStorage
       }),
-      partialize: (s) => ({ user: s.user, token: s.token, isAuthenticated: s.isAuthenticated, isBooting: false }),
+      partialize: (s) => ({ user: s.user, token: s.token, isAuthenticated: s.isAuthenticated }),
+      onRehydrateStorage: () => (state) => {
+        // CRITICAL: After rehydration from localStorage, always set isBooting=false
+        // if there's no token (so the app doesn't get stuck on the boot screen).
+        // If there IS a token, checkAuth() in the mount effect will handle it.
+        if (state) {
+          if (!state.token) {
+            // No token: skip boot, go straight to login
+            state.isBooting = false
+            state.initialized = true
+          }
+          // If token exists: keep isBooting=true, let checkAuth() verify it
+        }
+      },
+      // Don't skip hydration — we need it to persist the token across refreshes
+      skipHydration: false,
     },
   ),
 )
@@ -297,15 +312,19 @@ export function useNavVisibility(): NavVisibility {
 // ============================================================
 
 /** Read token + user from localStorage (persist middleware already does this,
- *  but we expose this for explicit hydration on mount). */
+ *  but we expose this for explicit hydration on mount).
+ *
+ *  CRITICAL FIX: Must always set isBooting = false when no token is found,
+ *  otherwise the app stays stuck on "กำลังตรวจสอบเซสชัน..." forever.
+ */
 export function hydrateAuthFromStorage(): void {
   if (typeof window === 'undefined') return
-  // persist middleware auto-hydrates; just ensure isBooting is set correctly
   const state = useAuthStore.getState()
   if (state.token) {
     // Token exists — will be verified by checkAuth() in the mount effect
     useAuthStore.setState({ initialized: false })
   } else {
-    useAuthStore.setState({ initialized: true })
+    // No token — skip network call, set isBooting false immediately
+    useAuthStore.setState({ initialized: true, isBooting: false })
   }
 }

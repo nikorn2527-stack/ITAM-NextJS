@@ -130,7 +130,15 @@ export function HomePage() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const isBooting = useAuthStore((s) => s.isBooting)
   const checkAuth = useAuthStore((s) => s.checkAuth)
-  const [bootDone, setBootDone] = React.useState(false)
+  const [bootDone, setBootDone] = React.useState(() => {
+    // If there's no token in the store at mount time, skip the boot screen
+    // entirely — no need to wait for a network call that will just 401.
+    if (typeof window !== 'undefined') {
+      const stored = useAuthStore.getState()
+      return !stored.token // bootDone = true if no token
+    }
+    return false
+  })
   // Mobile detection hook — MUST be called before any early returns
   // (Rules of Hooks: hooks can't be conditional)
   const isMobileDevice = useIsMobile()
@@ -154,19 +162,30 @@ export function HomePage() {
   React.useEffect(() => {
     let cancelled = false
     async function boot() {
-      hydrateAuthFromStorage()
-      // Only verify if we found a token in storage; otherwise skip the network call
-      const hasToken = !!useAuthStore.getState().token
-      if (hasToken) {
-        await checkAuth()
-      } else {
-        useAuthStore.setState({ isBooting: false })
+      // Skip boot entirely if window not available
+      if (typeof window === 'undefined') {
+        if (!cancelled) setBootDone(true)
+        return
       }
+
+      // hydrateAuthFromStorage reads token from localStorage
+      // persist middleware auto-hydrates on mount, so token is available
+      const hasToken = !!useAuthStore.getState().token
+
+      if (hasToken) {
+        // Token exists — verify with server
+        await checkAuth()
+      }
+      // No token = no network call needed, just set boot done
+
       if (!cancelled) setBootDone(true)
     }
-    void boot()
+    // Use setTimeout(0) to ensure this runs AFTER React commit
+    // (so persist middleware has finished rehydrating from localStorage)
+    const timeoutId = window.setTimeout(() => { void boot() }, 0)
     return () => {
       cancelled = true
+      window.clearTimeout(timeoutId)
     }
   }, [checkAuth])
 
@@ -242,8 +261,15 @@ export function HomePage() {
     }
   }, [])
 
-  // Boot screen
-  if (!bootDone || isBooting) {
+  // Boot screen — only show if we're actually waiting for a token check
+  // (not when there's no token, which means login page should show)
+  if (!bootDone) {
+    // Check if there's actually a token — if not, skip boot screen
+    const hasToken = typeof window !== 'undefined' && useAuthStore.getState().token
+    if (!hasToken) {
+      // No token — go straight to login
+      return <ItamLogin />
+    }
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
         <div className="flex flex-col items-center gap-3">
