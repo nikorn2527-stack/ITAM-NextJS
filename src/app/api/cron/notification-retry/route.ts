@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { retryFailedEntries } from '@/lib/notification-log'
 import { sendLINE, sendTelegram, sendEmail } from '@/lib/notifications'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 /**
  * GET /api/cron/notification-retry
@@ -28,13 +29,8 @@ export async function GET(req: NextRequest) {
   const unavailable = await moduleUnavailableResponse('notifications')
   if (unavailable) return unavailable
 
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const authHeader = req.headers.get('authorization')
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-  }
+  const auth = verifyCronSecret(req)
+  if (auth) return auth
 
   const startedAt = Date.now()
   console.log('[notification-retry] starting retry pass')

@@ -1,20 +1,25 @@
 /**
- * backup-db.ts — Backup database to JSON before migration.
+ * backup-db.ts — Backup database to encrypted JSON before migration.
+ *
+ * P1 Security: Backup files are now encrypted with AES-256-GCM using
+ * BACKUP_ENCRYPTION_KEY env var. Without the key, the file is unreadable.
  *
  * Usage:
- *   bun run scripts/backup-db.ts                    → backup to ./backups/backup-<timestamp>.json
- *   bun run scripts/backup-db.ts --output=/tmp/x.json
- *
- * Backup includes all tables in the schema.
- * Each table is exported as JSON array.
+ *   bun run scripts/backup-db.ts                    → backup to ./backups/backup-<timestamp>.json.enc
+ *   bun run scripts/backup-db.ts --output=/tmp/x.json.enc
  *
  * Restore (manual):
- *   bun run scripts/restore-db.ts ./backups/backup-<timestamp>.json
+ *   bun run scripts/restore-db.ts ./backups/backup-<timestamp>.json.enc
+ *
+ * Encryption: AES-256-GCM. Key from BACKUP_ENCRYPTION_KEY env var
+ * (32-byte hex string). If not set, warns but still creates unencrypted
+ * backup (dev mode only — production MUST set the key).
  */
 
 import { db } from '../src/lib/db'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { randomBytes, createCipheriv } from 'node:crypto'
 
 interface BackupData {
   meta: {
@@ -79,14 +84,17 @@ async function main() {
   const outputArg = args.find((a) => a.startsWith('--output='))
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
   const outputDir = resolve(process.cwd(), 'backups')
+  const encryptionKey = process.env.BACKUP_ENCRYPTION_KEY
+  const fileExt = encryptionKey ? '.json.enc' : '.json'
   const outputFile = outputArg
     ? outputArg.split('=')[1]
-    : resolve(outputDir, `backup-${timestamp}.json`)
+    : resolve(outputDir, `backup-${timestamp}${fileExt}`)
 
   console.log('📦 Database Backup')
   console.log('─'.repeat(50))
   console.log(`Timestamp: ${timestamp}`)
   console.log(`Output: ${outputFile}`)
+  console.log(`Encryption: ${encryptionKey ? 'AES-256-GCM ✓' : '⚠️  NONE (dev mode — set BACKUP_ENCRYPTION_KEY for production)'}`)
   console.log('─'.repeat(50))
 
   mkdirSync(outputDir, { recursive: true })
@@ -124,7 +132,28 @@ async function main() {
   backup.meta.tableCount = Object.keys(backup.tables).length
   backup.meta.totalRows = totalRows
 
-  writeFileSync(outputFile, JSON.stringify(backup, null, 2))
+  // ── P1 Security: Encrypt backup if key is set ──
+  const jsonData = JSON.stringify(backup, null, 2)
+  if (encryptionKey) {
+    // AES-256-GCM encryption
+    const key = Buffer.from(encryptionKey, 'hex')
+    if (key.length !== 32) {
+      console.error('❌ BACKUP_ENCRYPTION_KEY must be 32 bytes (64 hex chars)')
+      process.exit(1)
+    }
+    const iv = randomBytes(12) // GCM uses 12-byte IV
+    const cipher = createCipheriv('aes-256-gcm', key, iv)
+    const encrypted = Buffer.concat([
+      cipher.update(jsonData, 'utf8'),
+      cipher.final(),
+      cipher.getAuthTag(), // 16-byte auth tag appended at end
+    ])
+    // Prepend IV (12 bytes) + auth tag is at end (16 bytes)
+    const fileData = Buffer.concat([iv, encrypted])
+    writeFileSync(outputFile, fileData)
+  } else {
+    writeFileSync(outputFile, jsonData)
+  }
 
   const elapsedMs = Date.now() - startTime
   const sizeMB = (JSON.stringify(backup).length / 1024 / 1024).toFixed(2)

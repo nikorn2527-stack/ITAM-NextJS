@@ -15,6 +15,7 @@ import {
 } from '@/lib/csv-field-mapping'
 import { normalizeStatus } from '@/lib/status-utils'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 /**
  * GET /api/cron/sync-legacy
@@ -136,13 +137,8 @@ export async function GET(req: NextRequest) {
   if (unavailable) return unavailable
 
 
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const authHeader = req.headers.get('authorization')
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-  }
+  const auth = verifyCronSecret(req)
+  if (auth) return auth
 
   // ── Dry-run mode: fetch + map but skip DB writes ──
   const dryRun = req.nextUrl.searchParams.get('dryRun') === '1'

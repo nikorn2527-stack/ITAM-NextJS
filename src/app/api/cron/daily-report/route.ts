@@ -22,6 +22,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const dynamic = 'force-dynamic'
 // Use max duration (Hobby: 300s) — daily report may take time for big datasets
@@ -64,13 +65,8 @@ interface DailyReportData {
 export async function GET(req: NextRequest) {
   // Auth check — if CRON_SECRET is set, require it.
   // In development (no CRON_SECRET), allow without auth for manual testing.
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const authHeader = req.headers.get('authorization')
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-  }
+  const auth = verifyCronSecret(req)
+  if (auth) return auth
 
   try {
     // Calculate "yesterday" in Bangkok timezone (UTC+7)

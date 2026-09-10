@@ -43,6 +43,10 @@ const VALID_JOB_TYPES: Set<JobType> = new Set([
 ])
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024 // 10 MB
+// P1 Security: Limit max rows and cells to prevent DoS / memory exhaustion
+const MAX_ROWS = 10000
+const MAX_CELLS = 200000 // e.g. 10000 rows × 20 cols
+const MAX_COLUMNS = 100
 
 interface ImportError {
   row: number
@@ -52,6 +56,7 @@ interface ImportError {
 // ------------------------------------------------------------
 // Server-side RFC-4180-ish CSV parser (handles quoted fields,
 // escaped "" → ", commas/newlines inside quotes). No deps.
+// P1 Security: Enforces row/cell/column limits to prevent DoS.
 // ------------------------------------------------------------
 function parseCsv(text: string): string[][] {
   const src = text.replace(/^\uFEFF/, '')
@@ -59,6 +64,17 @@ function parseCsv(text: string): string[][] {
   let cur: string[] = []
   let field = ''
   let inQuotes = false
+  let cellCount = 0
+
+  // P1 Security: CSV injection prevention — prefix dangerous formula
+  // characters with a single quote (=, +, -, @) so spreadsheet apps
+  // don't interpret them as formulas when the exported CSV is opened
+  function sanitizeCell(val: string): string {
+    if (val && /^[=+\-@]/.test(val)) {
+      return `'${val}`
+    }
+    return val
+  }
 
   for (let i = 0; i < src.length; i++) {
     const c = src[i]
@@ -80,21 +96,28 @@ function parseCsv(text: string): string[][] {
       continue
     }
     if (c === ',') {
-      cur.push(field)
+      cur.push(sanitizeCell(field))
       field = ''
+      cellCount++
+      if (cellCount > MAX_CELLS) throw new Error('CSV exceeds max cell limit (' + MAX_CELLS + ')')
+      if (cur.length > MAX_COLUMNS) throw new Error('CSV exceeds max column limit (' + MAX_COLUMNS + ')')
       continue
     }
     if (c === '\r') {
       if (src[i + 1] === '\n') i++
-      cur.push(field)
+      cur.push(sanitizeCell(field))
       rows.push(cur)
+      cellCount++
+      if (rows.length > MAX_ROWS) throw new Error('CSV exceeds max row limit (' + MAX_ROWS + ')')
       cur = []
       field = ''
       continue
     }
     if (c === '\n') {
-      cur.push(field)
+      cur.push(sanitizeCell(field))
       rows.push(cur)
+      cellCount++
+      if (rows.length > MAX_ROWS) throw new Error('CSV exceeds max row limit (' + MAX_ROWS + ')')
       cur = []
       field = ''
       continue
@@ -102,7 +125,7 @@ function parseCsv(text: string): string[][] {
     field += c
   }
   if (field.length > 0 || cur.length > 0) {
-    cur.push(field)
+    cur.push(sanitizeCell(field))
     rows.push(cur)
   }
   // Drop a trailing empty row that often comes from a final newline.

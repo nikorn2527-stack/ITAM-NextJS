@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { verifyCronSecret } from '@/lib/cron-auth'
 
 /**
  * GET /api/cron/keepalive
@@ -18,13 +19,8 @@ import { db } from '@/lib/db'
 export const maxDuration = 30
 
 export async function GET(req: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const authHeader = req.headers.get('authorization')
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-  }
+  const auth = verifyCronSecret(req)
+  if (auth) return auth
 
   const results: { service: string; status: string; latencyMs?: number }[] = []
 

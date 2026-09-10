@@ -53,10 +53,19 @@ export function addToQueue(req: Omit<QueuedRequest, 'id' | 'timestamp' | 'retrie
     const queue = getQueue()
     // Generate idempotency key — server can use this to deduplicate
     // (e.g. stock-items/[id]/transaction checks if key already processed)
-    const idempotencyKey = `idem_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
+    // P1 Security: Use crypto.randomUUID() instead of Math.random()
+    // (Math.random() is not cryptographically secure — predictable keys
+    // could allow duplicate request injection)
+    const idemUuid = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`
+    const idempotencyKey = `idem_${idemUuid}`
+    const qUuid = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     queue.push({
       ...req,
-      id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `q_${qUuid}`,
       idempotencyKey,
       timestamp: Date.now(),
       retries: 0,

@@ -10,23 +10,19 @@ function isoDaysFromNow(days: number): string {
 }
 
 export async function POST() {
-  // ── P0 Security: Block /api/seed in production ──
-  // This endpoint can create sites, master data, devices, meter readings,
-  // settings, and users. In production it MUST NOT be callable without
-  // auth. We block it entirely in production — seeding should be done
-  // via `bun run db:seed` CLI script (which has direct DB access).
+  // ── P1 Security: Seed endpoint is PERMANENTLY disabled via HTTP ──
+  // Per consultant P1 recommendation: the override ALLOW_SEED_IN_PRODUCTION
+  // has been removed. Seeding should ONLY be done via `bun run db:seed`
+  // CLI script (which has direct DB access, no HTTP exposure).
   //
-  // To re-enable for testing in a production environment, set
-  // ALLOW_SEED_IN_PRODUCTION=1 (NOT recommended).
-  if (
-    process.env.NODE_ENV === 'production' &&
-    process.env.ALLOW_SEED_IN_PRODUCTION !== '1'
-  ) {
+  // Even in development, prefer the CLI script. This endpoint remains
+  // accessible in dev mode for convenience, but is blocked entirely
+  // in production with NO override.
+  if (process.env.NODE_ENV === 'production') {
     return NextResponse.json(
       {
         error:
           'Seed endpoint is disabled in production. Use `bun run db:seed` CLI script instead.',
-        hint: 'Set ALLOW_SEED_IN_PRODUCTION=1 to override (NOT recommended in real production).',
       },
       { status: 403 },
     )
