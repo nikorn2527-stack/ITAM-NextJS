@@ -20914,3 +20914,28 @@ Stage Summary:
   - purchase-orders/site-rates → stock
   - user-management → authorization
   - Smart QR → entry point (ไม่โมดูลใหม่)
+
+---
+Task ID: SECURITY-P0-P1
+Agent: orchestrator (main)
+Task: แก้ P0 + P1 ตามเอกสารที่ปรึกษา (สรุปรวมลำดับความสำคัญ)
+
+Work Log:
+- P0-1: Caddyfile SSRF — ลบ @transform_port_query handler ทั้งหมด, สร้าง Caddyfile.dev แยกสำหรับ sandbox
+- P0-2: vercel.json buildCommand — ลบ npx prisma db push --accept-data-loss ออกจาก build (เหลือ prisma generate + next build เท่านั้น)
+- P0-3: cron 3 ตัว — เปลี่ยนจาก daily → weekly (0 9 * * 1, 0 8 * * 1, 0 2 * * 1) เพื่อประหยัดโควต้าระหว่าง dev
+- P1-1: Health endpoint — ลบ err.message, R2_BUCKET_NAME, dbUrl ออกจาก response ทั้งหมด, log server-side เท่านั้น
+- P1-2: Seed API — ลบ ALLOW_SEED_IN_PRODUCTION override ทิ้งทั้งหมด, blocked ถาวรใน production
+- P1-3: Backup — เพิ่ม AES-256-GCM encryption ผ่าน BACKUP_ENCRYPTION_KEY env var
+- P1-4: Offline queue — เปลี่ยน Math.random() → crypto.randomUUID() สำหรับ idempotency key
+- P1-5: CSV import — เพิ่ม MAX_ROWS (10000), MAX_CELLS (200000), MAX_COLUMNS (100) + CSV injection prevention (=, +, -, @ → prefix ')
+- P1-6: Cron auth — สร้าง src/lib/cron-auth.ts shared helper, fail-closed ใน production (CRON_SECRET ต้อง set), แก้ cron routes ทั้ง 4 ตัวใช้ helper นี้
+
+Verification:
+- bun run lint: ผ่าน (ไม่มี parsing errors)
+- 13 files changed, 219 insertions, 135 deletions
+
+Stage Summary:
+- P0 ทั้ง 3 ข้อเสร็จ ✅
+- P1 ทั้ง 6 ข้อเสร็จ ✅
+- พร้อมสำหรับสรุปรวมชุดใหม่จากที่ปรึกษา
