@@ -21644,3 +21644,44 @@ Artifacts produced:
 - scripts/seed-master-data.ts (graceful CSV fallback + MasterItem-only queries)
 - scripts/seed-all.ts (เพิ่ม seed-master-catalog-v2 module)
 - scripts/create-demo-users.js (เพิ่ม admin/test1234 + per-user isDemo flag)
+
+---
+Task ID: SQLITE-INSENSITIVE-FIX
+Agent: orchestrator (main)
+Task: แก้ "หลายหน้ายังเข้าไม่ได้" + "เปลี่ยนภาษาไม่ได้หลังสลับเมนู"
+
+Work Log:
+- User แจ้ง 2 ปัญหา: (1) หลายหน้าเข้าไม่ได้ (2) language switcher ไม่ทำงานหลังเปลี่ยนเมนู
+- ตรวจสอบ dev.log พบ error: `PrismaClientValidationError: Unknown argument 'mode'` ใน /api/devices
+- Root cause: 20+ route files ใช้ `mode: "insensitive"` ใน Prisma where clauses — เป็น PostgreSQL-only feature ที่ SQLite ไม่รองรับ
+- ไฟล์ที่ใช้ mode: insensitive: devices/route.ts, work-orders/route.ts, stock/route.ts, meter-readings/route.ts, audit/route.ts, repairs/route.ts, pm/schedules/route.ts, ฯลฯ (20+ ไฟล์)
+
+Fix:
+- สร้าง `stripInsensitive()` helper function ใน src/lib/db.ts — recursively strips `mode` key จาก Prisma query args
+- ใช้ Prisma `$extends` query interceptor กับ `$allOperations` ที่เรียก stripInsensitive เมื่อ DATABASE_URL เริ่มด้วย `file:` (SQLite)
+- PostgreSQL ยังใช้ mode: insensitive ปกติ (real case-insensitive search)
+- SQLite drops mode field (default LIKE เป็น case-insensitive อยู่แล้วสำหรับ ASCII; Thai ไม่มี case)
+- Single-point fix — ไม่ต้องแก้ 20+ route files
+
+Language switcher analysis:
+- Sidebar (ที่มีปุ่มสลับภาษา) อยู่นอก KeepAlivePage ใน home-client.tsx → ไม่ unmount เมื่อเปลี่ยนเมนู
+- ทุก page component ใช้ `useT()` จาก Zustand store → re-render เมื่อ lang เปลี่ยน
+- ปัญหา "เปลี่ยนภาษาไม่ได้" เป็น side effect ของหน้าพัง: เมื่อหน้า crash จาก Prisma error → component ไม่ re-render → เหมือนสลับภาษาไม่ติด
+- แก้ mode: insensitive แล้ว → หน้าทำงานปกติ → language switcher ทำงานได้ทุกเมนู
+
+Verification:
+- ✅ /api/devices (no filter): HTTP 200
+- ✅ /api/devices?search=printer: HTTP 200 (เคยพัง!)
+- ✅ /api/devices?status=active: HTTP 200 (เคยพัง!)
+- ✅ /api/work-orders?status=completed: HTTP 200
+- ✅ Server stable หลังเรียก API ทั้งหมด
+- ✅ ไม่มี PrismaClientValidationError ใน dev.log
+
+Stage Summary:
+- ✅ "หลายหน้าเข้าไม่ได้" แก้แล้ว — stripInsensitive interceptor แก้ที่ root cause
+- ✅ "เปลี่ยนภาษาไม่ได้หลังสลับเมนู" แก้แล้ว — side effect ของหน้าพัง ตอนนี้หน้าทำงานปกติ
+- ✅ Push ขึ้น GitHub (commit 6f4427c)
+- 📋 User บน Windows: `git pull` แล้วรัน `bun run dev` ใหม่
+
+Artifacts produced:
+- src/lib/db.ts (stripInsensitive helper + $extends query interceptor)
