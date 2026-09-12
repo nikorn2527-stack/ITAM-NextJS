@@ -22050,3 +22050,70 @@ Stage Summary:
 - 0 bugs fixed (none were real bugs — all 16 candidates are nested functions that already close over `t` from a parent component which declares `const t = useT()`)
 - 16 false positives skipped (per task's strict "do NOT touch" instruction)
 - 0 real bugs remaining in these 6 files
+
+---
+Task ID: DEV-FIX-ALL-P0-P1-H
+Agent: orchestrator (acting as dev team)
+Task: แก้ทุกข้อที่ค้าง — P0 Windows Installer (5) + H-01 ถึง H-04 + t-not-defined bugs + path cleanup
+
+Work Log:
+- User บอก 'ทำเราเลยครับ อย่าลืมว่าเราน่ะคือทีม dev' → ผมทำเป็น dev จริง
+- ใช้ subagents คู่ขนานสำหรับ t-not-defined scan (batch 1 + batch 2)
+- ทำเองสำหรับ P0 Installer + H-01 ถึง H-04 (ต้องเข้าใจ context)
+
+P0 Windows Installer Critical (5 fixes in scripts/install.ps1):
+- C-01: ตัด SQLite QuickStart — ทุก mode ต้องใช้ PostgreSQL (ตรง schema)
+- C-02: Copy files จริง + ตรวจ required files + รองรับ -PackagePath (ZIP/dir)
+- C-03: เพิ่ม build step เมื่อไม่มี standalone build + ตรวจ server.js
+- C-04: ใช้ Marshal.SecureStringToBSTR แทน ConvertFrom-SecureString + URL-encode password + ACL .env
+- C-05: prisma migrate deploy แทน db:push + pre-migration backup + prisma validate
+
+Restore/Backup (4 fixes):
+- H-01: restore-db.ts เขียนใหม่เป็น atomic Restore Engine
+  + db.$transaction (rollback ถ้า fail)
+  + validate backup schema (required tables)
+  + รองรับ encrypted backups (.json.enc)
+  + ย้าย legacy scripts 25 ไฟล์ → tools/legacy/
+- H-02: safe-migrate.sh portable path (PROJECT_DIR via dirname)
+- H-03: backup-db.ts เพิ่ม 9 models (7 multi-org + AssetCategory + ContactDirectory)
+- H-04: Backup encryption บังคับใน production (exit 1 ถ้าไม่มี key)
+
+Stability — t-not-defined bugs (5 real fixes):
+- reports-section.tsx: ReportDataView (23 t() calls — จะ crash reports page)
+- templates-page.tsx: StickerTab, DocumentTab, EditorDialog, WorkOrderTab
+- 38 candidates อื่นเป็น false positives (nested in parent with const t = useT())
+
+Path cleanup:
+- 10 runtime scripts: /home/z/my-project → ./
+- custom-report-pdf.py: portable via os.path.dirname(__file__)
+- 25 legacy scripts → tools/legacy/
+
+Verification (agent-browser end-to-end):
+- ✅ Login admin/test1234 → dashboard renders
+- ✅ แจ้งซ่อม → Work Orders (heading: Repair Request)
+- ✅ ศูนย์รายงาน → Reports page renders
+- ✅ ตั้งค่าระบบ → Settings (heading: ตั้งค่าระบบ)
+- ✅ /api/itam/dashboard: HTTP 200 (2406 devices, 2179 active)
+- ✅ /api/devices?search=printer: HTTP 200
+- ✅ /api/work-orders: HTTP 200
+- ✅ ไม่มี console errors
+- ✅ Server stable
+
+Stage Summary:
+- ✅ P0 Windows Installer 5 ข้อ แก้ครบ
+- ✅ H-01 ถึง H-04 แก้ครบ
+- ✅ t-not-defined 5 real bugs แก้ครบ (38 false positives skipped)
+- ✅ Path cleanup 10 files + 25 legacy moved
+- ✅ Push ขึ้น GitHub (commit a55f968)
+- 📋 Production readiness: ผ่าน P0 + P1 security + P1 stability หลัก
+
+Artifacts produced:
+- scripts/install.ps1 (rewrite — 5 P0 fixes)
+- scripts/restore-db.ts (rewrite — atomic Restore Engine)
+- scripts/backup-db.ts (H-03 + H-04)
+- scripts/safe-migrate.sh (H-02 portable path)
+- scripts/custom-report-pdf.py (portable path)
+- src/components/itam/reports-section.tsx (ReportDataView: const t = useT())
+- src/components/itam/templates-page.tsx (4 components: const t = useT())
+- tools/legacy/ (25 legacy scripts moved)
+- 10 runtime scripts (path cleanup)
