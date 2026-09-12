@@ -39,7 +39,7 @@ Supabase ไม่ใช้ SSH แต่ใช้ Connection String:
 2. คลิก **Connection string** → copy URL
 3. เก็บใน `.env.local`:
    ```
-   SUPABASE_DATABASE_URL=postgresql://postgres.[project]:[NEW_PASSWORD]@[REDACTED_HOST]:5432/postgres
+   SUPABASE_DATABASE_URL=postgresql://postgres.[project]:[NEW_PASSWORD]@[REDACTED_SUPABASE_HOST]:5432/postgres
    ```
 
 ---
@@ -136,13 +136,13 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO itam_dev_readonly;
 
 ```
 # Application (Next.js runtime)
-postgresql://itam_app:[PASS_1]@[REDACTED_HOST]:5432/postgres
+postgresql://itam_app:[PASS_1]@[REDACTED_SUPABASE_HOST]:5432/postgres
 
 # Migration (deploy only)
-postgresql://itam_migration:[PASS_2]@[REDACTED_HOST]:5432/postgres
+postgresql://itam_migration:[PASS_2]@[REDACTED_SUPABASE_HOST]:5432/postgres
 
 # Dev Readonly
-postgresql://itam_dev_readonly:[PASS_3]@[REDACTED_HOST]:5432/postgres
+postgresql://itam_dev_readonly:[PASS_3]@[REDACTED_SUPABASE_HOST]:5432/postgres
 ```
 
 ---
@@ -238,7 +238,7 @@ GOOGLE_SHEETS_ID_STOCK=...
 
 ```bash
 # ตั้งค่า env var สำหรับ session นี้เท่านั้น
-export SUPABASE_DATABASE_URL="postgresql://postgres.xxx:[PASSWORD]@[REDACTED_HOST]:5432/postgres"
+export SUPABASE_DATABASE_URL="postgresql://postgres.xxx:[PASSWORD]@[REDACTED_SUPABASE_HOST]:5432/postgres"
 
 # ตรวจว่าตั้งแล้ว
 echo $SUPABASE_DATABASE_URL
