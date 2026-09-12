@@ -77,6 +77,37 @@ function buildPoolUrl(rawUrl: string): string {
 
 const datasourceUrl = buildPoolUrl(process.env.DATABASE_URL ?? '')
 
+/** True when the active datasource is SQLite (dev sandbox / local clones). */
+const isSqlite = (process.env.DATABASE_URL ?? '').startsWith('file:')
+
+/**
+ * Recursively strip `mode: "insensitive"` from a Prisma where/query args
+ * object. SQLite does NOT support `mode: "insensitive"` (it's a PostgreSQL-
+ * only feature) and throws `PrismaClientValidationError` when it's present.
+ *
+ * SQLite's default `LIKE` is already case-insensitive for ASCII, and Thai
+ * text has no case distinction, so stripping `mode` is behavior-preserving
+ * for our use case (search filters on asset codes, names, statuses).
+ *
+ * This walks the object depth-first and removes the `mode` key from any
+ * object that also has `contains` / `startsWith` / `endsWith` / `equals`.
+ */
+function stripInsensitive<T>(node: T): T {
+  if (node === null || typeof node !== 'object') return node
+  if (Array.isArray(node)) {
+    return node.map((n) => stripInsensitive(n)) as unknown as T
+  }
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    if (k === 'mode' && typeof v === 'string') {
+      // Drop the `mode` key entirely (works for both "insensitive" and "default").
+      continue
+    }
+    out[k] = stripInsensitive(v)
+  }
+  return out as T
+}
+
 let _prisma: PrismaClient | undefined
 
 /**
@@ -89,6 +120,12 @@ let _prisma: PrismaClient | undefined
  * the process is silently OOM-killed. By deferring PrismaClient creation to
  * the first actual DB query, the memory cost is paid incrementally per route,
  * keeping the peak well under the sandbox ceiling.
+ *
+ * SQLite compatibility: when DATABASE_URL is `file:`, we wrap the client in a
+ * `$extends` query interceptor that strips `mode: "insensitive"` from all
+ * where/query args. SQLite doesn't support that mode (PostgreSQL-only), and
+ * ~20 route files use it inline. The interceptor is a single-point fix that
+ * makes those routes work on SQLite without editing each one.
  */
 function getPrisma(): PrismaClient {
   if (_prisma) return _prisma
@@ -96,7 +133,7 @@ function getPrisma(): PrismaClient {
     _prisma = globalForPrisma.prisma
     return _prisma
   }
-  _prisma = new PrismaClient({
+  const base = new PrismaClient({
     // Pass the pool-tuned URL so Prisma's internal pool respects the limits.
     ...(datasourceUrl !== process.env.DATABASE_URL
       ? { datasources: { db: { url: datasourceUrl } } }
@@ -111,6 +148,23 @@ function getPrisma(): PrismaClient {
           ? ['query', 'error', 'warn']
           : ['error', 'warn'],
   })
+  // SQLite compatibility shim — strip `mode: "insensitive"` from all queries.
+  // PostgreSQL keeps the mode (real case-insensitive search). SQLite drops it
+  // (default LIKE is already case-insensitive for ASCII; Thai has no case).
+  const extended = isSqlite
+    ? base.$extends({
+        query: {
+          $allOperations: async (params: {
+            args: unknown
+            query: (args: unknown) => Promise<unknown>
+          }) => {
+            const cleaned = stripInsensitive(params.args)
+            return params.query(cleaned)
+          },
+        },
+      })
+    : base
+  _prisma = extended as unknown as PrismaClient
   globalForPrisma.prisma = _prisma
   return _prisma
 }
