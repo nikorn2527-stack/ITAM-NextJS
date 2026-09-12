@@ -2,10 +2,10 @@
  * Null-safe locale formatting helpers.
  *
  * Production data may contain `null`/`undefined` numeric or date fields that
- * TypeScript types declare as non-null. Calling `.toLocaleString('th-TH')`
- * directly on these values crashes the page with:
+ * TypeScript types declare as non-null. Calling `.toLocaleString` directly with a
+ * hard-coded 'th-TH' locale also ignores the user's language choice and
+ * crashes the page with:
  *   `TypeError: Cannot read properties of undefined (reading 'toLocaleString')`
- *
  * These helpers never throw — they return `'0'` for falsy numeric input and
  * `'—'` for falsy date input.
  *
@@ -20,7 +20,7 @@
  */
 export function safeLocaleNumber(
   value: number | string | null | undefined,
-  locale = 'th-TH',
+  locale: string = 'th-TH',
   options?: Intl.NumberFormatOptions,
 ): string {
   const n = Number(value)
@@ -34,7 +34,7 @@ export function safeLocaleNumber(
  */
 export function safeLocaleDate(
   iso: string | number | Date | null | undefined,
-  locale = 'th-TH',
+  locale: string = 'th-TH',
   options?: Intl.DateTimeFormatOptions,
 ): string {
   if (iso === null || iso === undefined || iso === '') return '—'

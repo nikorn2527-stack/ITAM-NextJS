@@ -19,10 +19,10 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;')
 }
 
-function formatThaiDate(iso: string | null): string {
+function formatThaiDate(iso: string | null, lang: 'th' | 'en' = 'th'): string {
   if (!iso) return '—'
   try {
-    return new Date(iso + 'T00:00:00').toLocaleDateString('th-TH', {
+    return new Date(iso + 'T00:00:00').toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -37,7 +37,7 @@ function formatThaiDate(iso: string | null): string {
  * full HTML document containing print CSS and calling window.print().
  * Falls back to a toast warning if the popup is blocked.
  */
-export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
+export function exportDashboardPdf({ data, range, orgName }: ExportArgs, lang: 'th' | 'en' = 'th') {
   const win = window.open('', '_blank', 'width=900,height=1200')
   if (!win) {
     toast.warning('เบราว์เซอร์บล็อกป๊อปอัป — กรุณาอนุญาตป๊อปอัปแล้วลองอีกครั้ง')
@@ -45,7 +45,7 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
   }
 
   const now = new Date()
-  const generatedAt = now.toLocaleString('th-TH', {
+  const generatedAt = now.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     dateStyle: 'long',
     timeStyle: 'short',
   })
@@ -66,7 +66,7 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
     .map(
       (s) => `<tr>
         <td>${escapeHtml(s.name)}</td>
-        <td class="num">${(s.value ?? 0).toLocaleString('th-TH')}</td>
+        <td class="num">${(s.value ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</td>
         <td class="num">${total > 0 ? Math.round(((s.value ?? 0) / total) * 100) : 0}%</td>
       </tr>`,
     )
@@ -76,7 +76,7 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
     .map(
       (t) => `<tr>
         <td>${escapeHtml(t.name)}</td>
-        <td class="num">${(t.value ?? 0).toLocaleString('th-TH')}</td>
+        <td class="num">${(t.value ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</td>
         <td class="num">${total > 0 ? Math.round(((t.value ?? 0) / total) * 100) : 0}%</td>
       </tr>`,
     )
@@ -90,7 +90,7 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
         <td class="num">${i + 1}</td>
         <td>${escapeHtml(d.name)}</td>
         <td>${escapeHtml(d.assetCode)}</td>
-        <td class="num">${(d.value ?? 0).toLocaleString('th-TH')}</td>
+        <td class="num">${(d.value ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</td>
       </tr>`,
     )
     .join('')
@@ -101,8 +101,8 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
       (a) => `<tr>
         <td>${escapeHtml(a.deviceName)}</td>
         <td>${escapeHtml(a.assetCode)}</td>
-        <td class="num">${(a.reading ?? 0).toLocaleString('th-TH')}</td>
-        <td class="num">${a.delta > 0 ? '+' + (a.delta ?? 0).toLocaleString('th-TH') : '-'}</td>
+        <td class="num">${(a.reading ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</td>
+        <td class="num">${a.delta > 0 ? '+' + (a.delta ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB') : '-'}</td>
         <td>${escapeHtml(a.date)}</td>
       </tr>`,
     )
@@ -242,7 +242,7 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
       <div>
         <div class="org">${escapeHtml(org)}</div>
         <div class="subtitle">รายงานภาพรวมระบบจัดการอุปกรณ์ IT <span class="badge">${escapeHtml(rangeLabel)}</span></div>
-        ${rangeStart || rangeEnd ? `<div class="subtitle" style="font-size:11px;color:#94a3b8;">ช่วงข้อมูล: ${rangeStart ? formatThaiDate(rangeStart) : '—'} → ${rangeEnd ? formatThaiDate(rangeEnd) : 'ปัจจุบัน'}</div>` : ''}
+        ${rangeStart || rangeEnd ? `<div class="subtitle" style="font-size:11px;color:#94a3b8;">ช่วงข้อมูล: ${rangeStart ? formatThaiDate(rangeStart, lang) : '—'} → ${rangeEnd ? formatThaiDate(rangeEnd, lang) : 'ปัจจุบัน'}</div>` : ''}
       </div>
       <div class="meta">
         <div><span class="label">วันที่ออกรายงาน:</span> ${escapeHtml(generatedAt)}</div>
@@ -254,23 +254,23 @@ export function exportDashboardPdf({ data, range, orgName }: ExportArgs) {
     <div class="kpi-grid">
       <div class="kpi">
         <div class="label">อุปกรณ์ทั้งหมด</div>
-        <div class="value">${total.toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div>
+        <div class="value">${total.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}<span class="unit">เครื่อง</span></div>
       </div>
       <div class="kpi t-active">
         <div class="label">ใช้งานอยู่</div>
-        <div class="value">${active.toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div>
+        <div class="value">${active.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}<span class="unit">เครื่อง</span></div>
       </div>
       <div class="kpi t-spare">
         <div class="label">สำรอง</div>
-        <div class="value">${spare.toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div>
+        <div class="value">${spare.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}<span class="unit">เครื่อง</span></div>
       </div>
       <div class="kpi t-repair">
         <div class="label">ส่งซ่อม</div>
-        <div class="value">${repair.toLocaleString('th-TH')}<span class="unit">เครื่อง</span></div>
+        <div class="value">${repair.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}<span class="unit">เครื่อง</span></div>
       </div>
       <div class="kpi t-paper">
         <div class="label">กระดาษ (${escapeHtml(rangeLabel)})</div>
-        <div class="value">${paper.toLocaleString('th-TH')}<span class="unit">แผ่น</span></div>
+        <div class="value">${paper.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}<span class="unit">แผ่น</span></div>
       </div>
     </div>
 

@@ -14,6 +14,7 @@ import * as React from 'react'
 import { useWebAuthn } from '@/hooks/use-webauthn'
 import { Fingerprint, Plus, Trash2, Loader2, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useLang } from '@/store/i18n-store'
 
 interface WebAuthnCredential {
   id: string
@@ -28,6 +29,7 @@ export function MobileAccount() {
   const [credentials, setCredentials] = React.useState<WebAuthnCredential[]>([])
   const [refreshing, setRefreshing] = React.useState(false)
   const [newName, setNewName] = React.useState('')
+  const { lang } = useLang()
 
   const refresh = React.useCallback(async () => {
     setRefreshing(true)
@@ -158,7 +160,7 @@ export function MobileAccount() {
                           {c.name ?? 'Passkey'}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {c.deviceType ?? 'webauthn'} · {new Date(c.createdAt).toLocaleDateString('th-TH')}
+                          {c.deviceType ?? 'webauthn'} · {new Date(c.createdAt).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         </p>
                       </div>
                     </div>

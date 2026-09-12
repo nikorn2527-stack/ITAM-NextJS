@@ -48,6 +48,7 @@ import {
 } from 'lucide-react'
 import type { Cycle } from './types'
 import { CycleReportDialog } from './cycle-report-dialog'
+import { useLang } from '@/store/i18n-store'
 import { useAuthStore } from '@/store/auth-store'
 
 const THAI_MONTHS = [
@@ -124,6 +125,7 @@ interface CycleManageDialogProps {
 }
 
 export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleManageDialogProps) {
+  const { lang } = useLang()
   const qc = useQueryClient()
   const [showCreate, setShowCreate] = React.useState(false)
   const [cycleName, setCycleName] = React.useState('')
@@ -596,7 +598,7 @@ export function CycleManageDialog({ open, onOpenChange, activeCycle }: CycleMana
                             </div>
                             {stats && stats.count > 0 && (
                               <div className="mt-0.5 text-xs text-slate-400">
-                                จดมิเตอร์ {stats.count} ครั้ง · {stats.sheets.toLocaleString('th-TH')} แผ่น
+                                จดมิเตอร์ {stats.count} ครั้ง · {stats.sheets.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} แผ่น
                               </div>
                             )}
                           </div>

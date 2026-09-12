@@ -63,6 +63,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { useLang } from '@/store/i18n-store'
 import {
   Package,
   Plus,
@@ -183,6 +184,7 @@ const EMPTY_FORM: ProductForm = {
 // ── Component ──────────────────────────────────────────────────────────
 
 export function StockInventory() {
+  const { lang } = useLang()
   const qc = useQueryClient()
 
   // ── Fetch ProductCategory from MasterItem + sites from DB ──
@@ -549,7 +551,7 @@ export function StockInventory() {
           </Button>
         </div>
         <div className="text-xs text-slate-500 dark:text-slate-400">
-          ทั้งหมด {items.length.toLocaleString('th-TH')} รายการ
+          ทั้งหมด {items.length.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} รายการ
         </div>
       </div>
 
@@ -980,7 +982,7 @@ export function StockInventory() {
                   />
                   {form.unitCost && form.yieldPerPage && Number(form.yieldPerPage) > 0 && (
                     <div className="rounded bg-orange-50 px-2 py-1 text-[11px] text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
-                      💡 ต้นทุนต่อแผ่น = ฿{Number(form.unitCost).toLocaleString('th-TH')} ÷ {Number(form.yieldPerPage).toLocaleString('th-TH')} = <strong>฿{(Number(form.unitCost) / Number(form.yieldPerPage)).toFixed(2)}/แผ่น</strong>
+                      💡 ต้นทุนต่อแผ่น = ฿{Number(form.unitCost).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} ÷ {Number(form.yieldPerPage).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} = <strong>฿{(Number(form.unitCost) / Number(form.yieldPerPage)).toFixed(2)}/แผ่น</strong>
                     </div>
                   )}
                 </div>
@@ -1024,7 +1026,7 @@ export function StockInventory() {
                       />
                       {form.unitCost && form.usefulLifeMonths && Number(form.usefulLifeMonths) > 0 && (
                         <div className="rounded bg-violet-50 px-2 py-1 text-[11px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
-                          💡 ต้นทุนต่อเดือน = ฿{Number(form.unitCost).toLocaleString('th-TH')} ÷ {form.usefulLifeMonths} = <strong>฿{(Number(form.unitCost) / Number(form.usefulLifeMonths)).toFixed(2)}/เดือน</strong>
+                          💡 ต้นทุนต่อเดือน = ฿{Number(form.unitCost).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} ÷ {form.usefulLifeMonths} = <strong>฿{(Number(form.unitCost) / Number(form.usefulLifeMonths)).toFixed(2)}/เดือน</strong>
                         </div>
                       )}
                     </div>
@@ -1043,7 +1045,7 @@ export function StockInventory() {
                       />
                       {form.unitCost && form.usefulLifePages && Number(form.usefulLifePages) > 0 && (
                         <div className="rounded bg-violet-50 px-2 py-1 text-[11px] text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
-                          💡 ต้นทุนต่อแผ่น = ฿{Number(form.unitCost).toLocaleString('th-TH')} ÷ {Number(form.usefulLifePages).toLocaleString('th-TH')} = <strong>฿{(Number(form.unitCost) / Number(form.usefulLifePages)).toFixed(4)}/แผ่น</strong>
+                          💡 ต้นทุนต่อแผ่น = ฿{Number(form.unitCost).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} ÷ {Number(form.usefulLifePages).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} = <strong>฿{(Number(form.unitCost) / Number(form.usefulLifePages)).toFixed(4)}/แผ่น</strong>
                         </div>
                       )}
                     </div>

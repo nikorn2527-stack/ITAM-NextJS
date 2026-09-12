@@ -16,7 +16,7 @@ import { downloadCsv, dateStamp } from '@/lib/csv'
 import { useAuthStore } from '@/store/auth-store'
 import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
 import { runCustomExport } from '@/lib/custom-export'
-import { useT } from '@/store/i18n-store'
+import { useT, useLang } from '@/store/i18n-store'
 
 // ============================================================
 // Custom Export — Audit page (Task ID: FIX-1-2-EXPORT-PRINT)
@@ -152,10 +152,10 @@ const ACTION_BADGE: Record<string, string> = {
   CYCLE_END: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300',
 }
 
-function fmtTimestamp(iso: string | null): string {
+function fmtTimestamp(iso: string | null, lang: 'th' | 'en' = 'th'): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       dateStyle: 'short',
       timeStyle: 'medium',
     })
@@ -187,6 +187,7 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 
 export function ItamAudit() {
   const t = useT()
+  const { lang } = useLang()
   const qc = useQueryClient()
   const [action, setAction] = React.useState('all')
   const [actor, setActor] = React.useState('')
@@ -334,7 +335,7 @@ export function ItamAudit() {
           }
         }
         return {
-          createdAt: fmtTimestamp(l.createdAt),
+          createdAt: fmtTimestamp(l.createdAt, lang),
           action: actionLabel(l.action),
           entity: l.entity ?? '',
           summary: l.summary ?? '',
@@ -363,7 +364,7 @@ export function ItamAudit() {
             📜 HistoryActive (Audit Log)
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Datareal {total.toLocaleString('th-TH')} item
+            Datareal {total.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} item
           </p>
         </div>
         <div className="flex gap-2">
@@ -499,7 +500,7 @@ export function ItamAudit() {
                   logs.map((l) => (
                     <TableRow key={l.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
                       <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
-                        {fmtTimestamp(l.createdAt)}
+                        {fmtTimestamp(l.createdAt, lang)}
                       </TableCell>
                       <TableCell>
                         <Badge className={ACTION_BADGE[l.action] || 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}>
@@ -536,7 +537,7 @@ export function ItamAudit() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex flex-shrink-0 items-center justify-between">
-          <span className="text-xs text-slate-500">front {page} / {totalPages} ({total.toLocaleString('th-TH')} item)</span>
+          <span className="text-xs text-slate-500">front {page} / {totalPages} ({total.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} item)</span>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
               <ChevronLeft className="h-4 w-4" /> Beforefront

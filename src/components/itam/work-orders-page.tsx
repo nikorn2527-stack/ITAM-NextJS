@@ -88,7 +88,7 @@ import { formatThaiDate, relativeTime, type Site, canSelectSite } from './types'
 import { TemplatePrintDialog } from './template-print-dialog'
 import { Combobox } from './combobox'
 import { useAppStore } from '@/store/app-store'
-import { useT, useFormatDateTime } from '@/store/i18n-store'
+import { useT, useFormatDateTime, useLang } from '@/store/i18n-store'
 import { useAuthStore } from '@/store/auth-store'
 import { normalizeImageUrlThumb, normalizeImageUrl } from '@/lib/image-url'
 import { PaginationBar } from './pagination-bar'
@@ -405,7 +405,7 @@ function priorityBadgeClass(priority: string): string {
 function formatDateTime(iso: string | null): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -548,6 +548,7 @@ async function compressImage(file: File, maxBytes = MAX_PIC_BYTES): Promise<stri
 
 export function WorkOrdersPage() {
   const t = useT()
+  const { lang } = useLang()
   const fmtDateTime = useFormatDateTime()
   const qc = useQueryClient()
   const [search, setSearch] = React.useState('')
@@ -4327,7 +4328,7 @@ function WorkOrderDetailContent({
                         {line.unitCost !== null && line.unitCost > 0 && (
                           <div className="text-[10px] text-muted-foreground">
                             Price/Unit: THB
-                            {line.unitCost.toLocaleString('th-TH', {
+                            {line.unitCost.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
                             })}
@@ -4923,7 +4924,7 @@ function WorkOrderDetailContent({
                                 {showUsagePages && (
                                   <div className="col-span-6 sm:col-span-4">
                                     <Label className="mb-1 block text-[10px] text-muted-foreground">
-                                      QuantityfrontatPrint {expectedPages ? <span className="text-slate-400">· Yield {expectedPages.toLocaleString('th-TH')} sheets</span> : null}
+                                      QuantityfrontatPrint {expectedPages ? <span className="text-slate-400">· Yield {expectedPages.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets</span> : null}
                                     </Label>
                                     <Input
                                       type="number"
@@ -4934,7 +4935,7 @@ function WorkOrderDetailContent({
                                       placeholder="0"
                                     />
                                     <p className="mt-0.5 text-[9px] text-slate-400">
-                                      {line.usagePages ? `${Number(line.usagePages).toLocaleString('th-TH')} sheets` : 'SystemwillpullfromMeterAuto'}
+                                      {line.usagePages ? `${Number(line.usagePages).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets` : 'SystemwillpullfromMeterAuto'}
                                     </p>
                                   </div>
                                 )}

@@ -250,7 +250,7 @@ export async function POST(req: NextRequest) {
 
     const saved = payload.reading as MeterRow
     const warning = saved.pagesBw + saved.pagesColor > 20000
-      ? `ค่าเพิ่มขึ้น ${(saved.pagesBw + saved.pagesColor).toLocaleString('th-TH')} แผ่น (เกิน 20,000 แผ่น) กรุณาตรวจสอบ`
+      ? `ค่าเพิ่มขึ้น ${(saved.pagesBw + saved.pagesColor).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} แผ่น (เกิน 20,000 แผ่น) กรุณาตรวจสอบ`
       : null
 
     return NextResponse.json(

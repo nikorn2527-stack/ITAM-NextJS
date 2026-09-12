@@ -51,7 +51,7 @@ import { useAuthStore } from '@/store/auth-store'
 import { canSelectSite } from './types'
 import { CustomColumnSelector, type ColumnDef } from './custom-column-selector'
 import { ReportBarChart, ReportPieChart } from './report-charts'
-import { useT } from '@/store/i18n-store'
+import { useT, useLang } from '@/store/i18n-store'
 
 // Column definitions for material cost report
 const COST_REPORT_COLUMNS: ColumnDef[] = [
@@ -158,7 +158,7 @@ interface Site {
 
 function formatBaht(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return '—'
-  return 'THB' + n.toLocaleString('th-TH', {
+  return 'THB' + n.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
@@ -166,14 +166,14 @@ function formatBaht(n: number | null | undefined): string {
 
 function formatInt(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return '—'
-  return n.toLocaleString('th-TH')
+  return n.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')
 }
 
 function formatMonthLabel(month: string): string {
   if (!/^\d{4}-\d{2}$/.test(month)) return month
   const [y, m] = month.split('-').map(Number)
   const d = new Date(y, m - 1, 1)
-  return d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
+  return d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', { month: 'long', year: 'numeric' })
 }
 
 function currentMonthValue(): string {
@@ -192,6 +192,7 @@ function depreciationLabel(method: string | null | undefined): string {
 
 export function MaterialCostReport() {
   const t = useT()
+  const { lang } = useLang()
   const [month, setMonth] = React.useState(currentMonthValue())
   const [site, setSite] = React.useState<string>('all')
   const [selectedColumns, setSelectedColumns] = React.useState<string[]>([])
@@ -259,7 +260,7 @@ export function MaterialCostReport() {
     rows.push(`Report,CostMaterialandofConsumable`)
     rows.push(`months,${formatMonthLabel(month)}`)
     rows.push(`Site,${site === 'all' ? 'AllSite' : site}`)
-    rows.push(`CreateWhen,${new Date().toLocaleString('th-TH')}`)
+    rows.push(`CreateWhen,${new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}`)
     rows.push('')
     rows.push(`[InkPrint]`)
     rows.push(`CodeProduct,NameProduct,Quantitybottles,Price/bottles,CostTotal,yield/bottles,Cost/sheets,sheets per cycle`)

@@ -193,6 +193,7 @@ export function MobileMeterReading() {
   // the progress bar locally without re-fetching the reminders endpoint
   // after every save).
   const [readLocally, setReadLocally] = React.useState<Set<string>>(new Set())
+  const { lang } = useLang()
 
   const user = useAuthStore((s) => s.user)
   const listRef = React.useRef<HTMLDivElement>(null)
@@ -789,13 +790,13 @@ function MeterReadingForm({ device, user, onSaved, onSkip }: MeterReadingFormPro
         <div className="mt-1.5 flex items-center gap-4">
           <div>
             <span className="text-xs text-muted-foreground">BW</span>{' '}
-            <span className="font-mono text-base font-semibold">{prevBw.toLocaleString('th-TH')}</span>
+            <span className="font-mono text-base font-semibold">{prevBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</span>
           </div>
           {isBwColor && (
             <div>
               <span className="text-xs text-muted-foreground">สี</span>{' '}
               <span className="font-mono text-base font-semibold text-orange-600">
-                {prevColor.toLocaleString('th-TH')}
+                {prevColor.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
               </span>
             </div>
           )}
@@ -835,7 +836,7 @@ function MeterReadingForm({ device, user, onSaved, onSkip }: MeterReadingFormPro
                   : 'text-emerald-600',
             )}
           >
-            ผลต่าง: {deltaBw >= 0 ? '+' : ''}{deltaBw.toLocaleString('th-TH')} หน้า
+            ผลต่าง: {deltaBw >= 0 ? '+' : ''}{deltaBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} หน้า
           </p>
         )}
       </div>
@@ -868,7 +869,7 @@ function MeterReadingForm({ device, user, onSaved, onSkip }: MeterReadingFormPro
                     : 'text-emerald-600',
               )}
             >
-              ผลต่างสี: {deltaColor >= 0 ? '+' : ''}{deltaColor.toLocaleString('th-TH')} หน้า
+              ผลต่างสี: {deltaColor >= 0 ? '+' : ''}{deltaColor.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} หน้า
             </p>
           )}
         </div>
@@ -926,11 +927,11 @@ function MeterReadingForm({ device, user, onSaved, onSkip }: MeterReadingFormPro
           <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
             <div className="rounded bg-background/60 p-2">
               <p className="text-muted-foreground">BW ก่อนหน้า</p>
-              <p className="font-mono font-semibold">{saveState.prevMeterBw.toLocaleString('th-TH')}</p>
+              <p className="font-mono font-semibold">{saveState.prevMeterBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</p>
             </div>
             <div className="rounded bg-background/60 p-2">
               <p className="text-muted-foreground">BW ที่จะบันทึก</p>
-              <p className="font-mono font-semibold text-rose-600">{saveState.newMeterBw.toLocaleString('th-TH')}</p>
+              <p className="font-mono font-semibold text-rose-600">{saveState.newMeterBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</p>
             </div>
           </div>
         </div>
@@ -954,7 +955,7 @@ function MeterReadingForm({ device, user, onSaved, onSkip }: MeterReadingFormPro
           <div>
             <p className="font-medium">บันทึกแล้ว</p>
             <p className="mt-0.5 text-xs">
-              ประเภท {saveState.readingType} · ใช้ไป BW {saveState.pagesBw.toLocaleString('th-TH')} / สี {saveState.pagesColor.toLocaleString('th-TH')} หน้า
+              ประเภท {saveState.readingType} · ใช้ไป BW {saveState.pagesBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} / สี {saveState.pagesColor.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} หน้า
             </p>
           </div>
         </div>

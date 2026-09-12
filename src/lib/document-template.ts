@@ -507,7 +507,7 @@ export function renderPDFFromTemplate(
   const totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage))
 
   // ── Build variable values for header elements + footer ──────────────────
-  const printedAt = new Date().toLocaleString('th-TH', {
+  const printedAt = new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     dateStyle: 'long',
     timeStyle: 'short',
   })

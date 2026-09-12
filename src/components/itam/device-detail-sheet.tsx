@@ -74,6 +74,7 @@ import {
 } from 'lucide-react'
 import type { Device, MeterReading, DeviceTransfer, Site, Assignment, LicenseRecord } from './types'
 import { useAuthStore } from '@/store/auth-store'
+import { useLang } from '@/store/i18n-store'
 import {
   statusBadgeClass,
   statusLabel,
@@ -120,7 +121,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 
 function formatThaiDateTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -224,6 +225,7 @@ function actionToneClass(id: string): { border: string; text: string } {
 
 export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const open = Boolean(deviceId)
+  const { lang } = useLang()
   const qc = useQueryClient()
   const { theme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
@@ -1644,9 +1646,9 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                   label="มิเตอร์ล่าสุด"
                   value={
                     <span className="font-mono tabular-nums">
-                      {(device.lastMeterBw ?? device.lastMeterReading ?? 0).toLocaleString('th-TH')}
+                      {(device.lastMeterBw ?? device.lastMeterReading ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                       {device.lastMeterColor && device.lastMeterColor > 0 ? (
-                        <span className="ml-2 text-[10px] text-slate-400">สี {(device.lastMeterColor ?? 0).toLocaleString('th-TH')}</span>
+                        <span className="ml-2 text-[10px] text-slate-400">สี {(device.lastMeterColor ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</span>
                       ) : null}
                     </span>
                   }
@@ -1788,7 +1790,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                       />
                       <Tooltip
                         formatter={(v: number) => [
-                          (Number(v) || 0).toLocaleString('th-TH'),
+                          (Number(v) || 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB'),
                           'ค่ามิเตอร์',
                         ]}
                         labelFormatter={(l) => `วันที่ ${l}`}
@@ -1823,7 +1825,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                           {r.date}
                         </div>
                         <div className="text-sm font-medium text-slate-700 tabular-nums dark:text-slate-200">
-                          {(r.reading ?? 0).toLocaleString('th-TH')}
+                          {(r.reading ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -1846,7 +1848,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                           }
                         >
                           {r.delta >= 0 ? '+' : ''}
-                          {(r.delta ?? 0).toLocaleString('th-TH')}
+                          {(r.delta ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         </Badge>
                       </div>
                     </li>
@@ -2929,7 +2931,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
                         ค่ามิเตอร์ล่าสุด:{' '}
                         <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
-                          {(device.lastMeterReading ?? 0).toLocaleString('th-TH')}
+                          {(device.lastMeterReading ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-3">

@@ -47,7 +47,7 @@ import { CustomFieldManager } from './custom-field-manager'
 import { OrganizationsList } from './organizations-list'
 import { CustomReportBuilder } from './custom-report-builder'
 import { useAuthStore } from '@/store/auth-store'
-import { useT } from '@/store/i18n-store'
+import { useT, useLang } from '@/store/i18n-store'
 
 /** Build fetch headers with the user's JWT (if logged in). */
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -1621,6 +1621,7 @@ function MyProfileSection() {
 // ─────────────────────────────────────────────────────────────────────────
 function MyBiometricsSection() {
   const t = useT()
+  const { lang } = useLang()
   const { isSupported, register, listCredentials, removeCredential, loading } = useWebAuthn()
   const [credentials, setCredentials] = React.useState<Array<{
     id: string
@@ -1742,8 +1743,8 @@ function MyBiometricsSection() {
                             {c.name ?? 'Passkey'}
                           </div>
                           <div className="text-[11px] text-muted-foreground">
-                            {c.deviceType ?? 'webauthn'} · Register {new Date(c.createdAt).toLocaleDateString('th-TH')}
-                            {c.lastUsedAt && ` · UseLatest ${new Date(c.lastUsedAt).toLocaleDateString('th-TH')}`}
+                            {c.deviceType ?? 'webauthn'} · Register {new Date(c.createdAt).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB')}
+                            {c.lastUsedAt && ` · UseLatest ${new Date(c.lastUsedAt).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB')}`}
                           </div>
                         </div>
                       </div>

@@ -84,7 +84,7 @@ import { toast } from 'sonner'
 import { useAuthStore } from '@/store/auth-store'
 import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
 import { CustomColumnSelector, type ColumnDef } from './custom-column-selector'
-import { useT } from '@/store/i18n-store'
+import { useT, useLang } from '@/store/i18n-store'
 
 // Column definitions for monthly report tables
 const MONTHLY_REPORT_COLUMNS: ColumnDef[] = [
@@ -284,11 +284,11 @@ function currentMonthValue(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
-function formatMonthLabel(month: string): string {
+function formatMonthLabel(month: string, lang: 'th' | 'en' = 'th'): string {
   try {
     const [y, m] = month.split('-')
     const d = new Date(Number(y), Number(m) - 1, 1)
-    return d.toLocaleDateString('th-TH', {
+    return d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       month: 'long',
       year: 'numeric',
     })
@@ -297,8 +297,8 @@ function formatMonthLabel(month: string): string {
   }
 }
 
-function formatBaht(value: number | null | undefined): string {
-  return `THB${(Number(value) || 0).toLocaleString('th-TH', {
+function formatBaht(value: number | null | undefined, lang: 'th' | 'en' = 'th'): string {
+  return `THB${(Number(value) || 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
@@ -344,9 +344,9 @@ function buildSpecialFeeApprovalHTML(opts: {
   }>
   monthLabel: string
   siteLabel: string
-}): string {
+}, lang: 'th' | 'en' = 'th'): string {
   const { rows, monthLabel, siteLabel } = opts
-  const todayLabel = new Date().toLocaleString('th-TH')
+  const todayLabel = new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')
 
   const statusLabel = (s: string): string =>
     STATUS_LABELS[s] ?? s
@@ -407,7 +407,7 @@ function buildSpecialFeeApprovalHTML(opts: {
         )
         for (const r of sl.list) {
           const dateLabel = r.createdAt
-            ? new Date(r.createdAt).toLocaleDateString('th-TH', {
+            ? new Date(r.createdAt).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
                 day: '2-digit',
                 month: '2-digit',
                 year: 'numeric',
@@ -725,6 +725,7 @@ function buildSpecialFeeApprovalHTML(opts: {
 // ── Component ──────────────────────────────────────────
 export function MonthlyReport() {
   const t = useT()
+  const { lang } = useLang()
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
   const chartTextColor = isDark ? '#cbd5e1' : '#475569'
@@ -870,9 +871,9 @@ export function MonthlyReport() {
 
       const html = buildSpecialFeeApprovalHTML({
         rows: filtered,
-        monthLabel: formatMonthLabel(month),
+        monthLabel: formatMonthLabel(month, lang),
         siteLabel: site === 'all' ? 'AllSite' : `Site ${site}`,
-      })
+      }, lang)
       // ── Inject into hidden print container + fire window.print()
       // on the SAME page (Task ID: PRINT-MEDIA-QUERY-012). ──
       setPrintHtml(html)
@@ -891,10 +892,10 @@ export function MonthlyReport() {
   function handleExportCSV() {
     if (!data) return
     const rows: string[][] = []
-    rows.push(['Reportitemmonths', formatMonthLabel(data.month)])
+    rows.push(['Reportitemmonths', formatMonthLabel(data.month, lang)])
     rows.push([t('common.site'), site === 'all' ? t('common.all') : site])
     rows.push([t('common.type'), reportType])
-    rows.push(['CreateWhen', data.generatedAt ? new Date(data.generatedAt).toLocaleString('th-TH') : '—'])
+    rows.push(['CreateWhen', data.generatedAt ? new Date(data.generatedAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB') : '—'])
     rows.push([])
 
     if (data.workOrders) {
@@ -927,7 +928,7 @@ export function MonthlyReport() {
       rows.push(['==== Stock ===='])
       rows.push(['Stock In', String(data.stock.totalIn)])
       rows.push(['Stock Out', String(data.stock.totalOut)])
-      rows.push(['ValueTotal', formatBaht(data.stock.totalValue)])
+      rows.push(['ValueTotal', formatBaht(data.stock.totalValue, lang)])
       rows.push([])
       rows.push(['itemPopular', t('common.code'), t('common.quantity'), t('common.type')])
       for (const t of data.stock.topItems) {
@@ -1082,9 +1083,9 @@ export function MonthlyReport() {
     siteLabel: string
   }): string {
     const { sections, report, meterRows, deviceRows, siteLabel } = opts
-    const monthLabel = formatMonthLabel(report.month)
-    const generatedLabel = report.generatedAt ? new Date(report.generatedAt).toLocaleString('th-TH') : '—'
-    const todayLabel = new Date().toLocaleString('th-TH')
+    const monthLabel = formatMonthLabel(report.month, lang)
+    const generatedLabel = report.generatedAt ? new Date(report.generatedAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB') : '—'
+    const todayLabel = new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')
 
     // Group helpers
     function groupCount<T extends Record<string, unknown>>(
@@ -1138,7 +1139,7 @@ export function MonthlyReport() {
         .sort((a, b) => (b[1].bw + b[1].color) - (a[1].bw + a[1].color))
         .slice(0, 20)
         .map(([k, v]) =>
-          `<tr><td>${escHtml(k)}</td><td>${escHtml(v.name)}</td><td style="text-align:right">${v.bw.toLocaleString('th-TH')}</td><td style="text-align:right">${v.color.toLocaleString('th-TH')}</td><td style="text-align:right"><strong>${(v.bw + v.color).toLocaleString('th-TH')}</strong></td></tr>`,
+          `<tr><td>${escHtml(k)}</td><td>${escHtml(v.name)}</td><td style="text-align:right">${v.bw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</td><td style="text-align:right">${v.color.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</td><td style="text-align:right"><strong>${(v.bw + v.color).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</strong></td></tr>`,
         )
         .join('')
 
@@ -1146,9 +1147,9 @@ export function MonthlyReport() {
         <section class="block">
           <h2>① ReportSummaryUsePaper</h2>
           <div class="kpi-grid">
-            <div class="kpi"><div class="kpi-label">UsePaperwhite</div><div class="kpi-value">${totalBw.toLocaleString('th-TH')}</div><div class="kpi-unit">sheets</div></div>
-            <div class="kpi"><div class="kpi-label">UsePaperColor</div><div class="kpi-value">${totalColor.toLocaleString('th-TH')}</div><div class="kpi-unit">sheets</div></div>
-            <div class="kpi"><div class="kpi-label">TotalAll</div><div class="kpi-value accent">${totalPages.toLocaleString('th-TH')}</div><div class="kpi-unit">sheets</div></div>
+            <div class="kpi"><div class="kpi-label">UsePaperwhite</div><div class="kpi-value">${totalBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
+            <div class="kpi"><div class="kpi-label">UsePaperColor</div><div class="kpi-value">${totalColor.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
+            <div class="kpi"><div class="kpi-label">TotalAll</div><div class="kpi-value accent">${totalPages.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
             <div class="kpi"><div class="kpi-label">QuantityunitsatReadMeter</div><div class="kpi-value">${meterRows.length}</div><div class="kpi-unit">units</div></div>
           </div>
           ${deviceRowsHtml ? `
@@ -1314,7 +1315,7 @@ export function MonthlyReport() {
           <div class="kpi-grid">
             <div class="kpi"><div class="kpi-label">Stock In</div><div class="kpi-value accent">${st.totalIn}</div><div class="kpi-unit">Unit</div></div>
             <div class="kpi"><div class="kpi-label">Stock Out</div><div class="kpi-value">${st.totalOut}</div><div class="kpi-unit">Unit</div></div>
-            <div class="kpi"><div class="kpi-label">ValueTotal</div><div class="kpi-value" style="font-size:18px">${escHtml(formatBaht(st.totalValue))}</div><div class="kpi-unit">THB</div></div>
+            <div class="kpi"><div class="kpi-label">ValueTotal</div><div class="kpi-value" style="font-size:18px">${escHtml(formatBaht(st.totalValue, lang))}</div><div class="kpi-unit">THB</div></div>
             <div class="kpi"><div class="kpi-label">ofRemainingless</div><div class="kpi-value" style="color:#ef4444">${st.lowStockItems.length}</div><div class="kpi-unit">item</div></div>
           </div>
           <h3 class="sub-h">itemStockPopular (Top 20)</h3>
@@ -1337,7 +1338,7 @@ export function MonthlyReport() {
         .slice(0, 200)
         .map((r) => {
           const dateLabel = r.readingDate
-            ? new Date(r.readingDate).toLocaleDateString('th-TH')
+            ? new Date(r.readingDate).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB')
             : '—'
           const typeLabel = r.readingType
             ? (READING_TYPE_LABELS[r.readingType] ?? r.readingType)
@@ -1347,9 +1348,9 @@ export function MonthlyReport() {
             <td>${escHtml(r.deviceName ?? '—')}</td>
             <td>${escHtml(r.site ?? '—')}</td>
             <td>${escHtml(dateLabel)}</td>
-            <td style="text-align:right">${(r.meterBw ?? 0).toLocaleString('th-TH')}</td>
-            <td style="text-align:right">${(r.meterColor ?? 0).toLocaleString('th-TH')}</td>
-            <td style="text-align:right"><strong>${((r.pagesBw ?? 0) + (r.pagesColor ?? 0)).toLocaleString('th-TH')}</strong></td>
+            <td style="text-align:right">${(r.meterBw ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</td>
+            <td style="text-align:right">${(r.meterColor ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</td>
+            <td style="text-align:right"><strong>${((r.pagesBw ?? 0) + (r.pagesColor ?? 0)).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</strong></td>
             <td style="text-align:center">${escHtml(typeLabel)}</td>
             <td>${escHtml(r.readBy ?? '—')}</td>
           </tr>`
@@ -1362,9 +1363,9 @@ export function MonthlyReport() {
           <h2>⑤ ReportMeter</h2>
           <div class="kpi-grid">
             <div class="kpi"><div class="kpi-label">QuantityitemReadMeter</div><div class="kpi-value">${meterRows.length}</div><div class="kpi-unit">item</div></div>
-            <div class="kpi"><div class="kpi-label">PaperwhiteTotal</div><div class="kpi-value">${totalBw.toLocaleString('th-TH')}</div><div class="kpi-unit">sheets</div></div>
-            <div class="kpi"><div class="kpi-label">PaperColorTotal</div><div class="kpi-value">${totalColor.toLocaleString('th-TH')}</div><div class="kpi-unit">sheets</div></div>
-            <div class="kpi"><div class="kpi-label">TotalAll</div><div class="kpi-value accent">${(totalBw + totalColor).toLocaleString('th-TH')}</div><div class="kpi-unit">sheets</div></div>
+            <div class="kpi"><div class="kpi-label">PaperwhiteTotal</div><div class="kpi-value">${totalBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
+            <div class="kpi"><div class="kpi-label">PaperColorTotal</div><div class="kpi-value">${totalColor.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
+            <div class="kpi"><div class="kpi-label">TotalAll</div><div class="kpi-value accent">${(totalBw + totalColor).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</div><div class="kpi-unit">sheets</div></div>
           </div>
           <table class="data-table">
             <thead><tr>
@@ -1821,14 +1822,14 @@ export function MonthlyReport() {
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <Badge variant="outline" className="gap-1">
                 <CalendarDays className="h-3 w-3" />
-                {formatMonthLabel(data.month)}
+                {formatMonthLabel(data.month, lang)}
               </Badge>
               <Badge variant="outline" className="gap-1">
                 <Building2 className="h-3 w-3" />
                 {site === 'all' ? 'AllSite' : `Site ${site}`}
               </Badge>
               <span className="text-[11px]">
-                CreateWhen {data.generatedAt ? new Date(data.generatedAt).toLocaleString('th-TH') : '—'}
+                CreateWhen {data.generatedAt ? new Date(data.generatedAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB') : '—'}
               </span>
             </div>
           )}
@@ -1861,7 +1862,7 @@ export function MonthlyReport() {
                   value={String(wo.total)}
                   icon={<Wrench className="h-5 w-5" />}
                   accent="#f97316"
-                  hint={`months ${formatMonthLabel(data.month)}`}
+                  hint={`months ${formatMonthLabel(data.month, lang)}`}
                 />
                 <SummaryCard
                   title="Done"
@@ -1910,7 +1911,7 @@ export function MonthlyReport() {
                 />
                 <SummaryCard
                   title="ValueStock"
-                  value={formatBaht(stock.totalValue)}
+                  value={formatBaht(stock.totalValue, lang)}
                   icon={<Package className="h-5 w-5" />}
                   accent="#0d9488"
                   hint="TotalAllSiteatSelect"
@@ -1938,7 +1939,7 @@ export function MonthlyReport() {
                   value={String(devices.newDevices)}
                   icon={<TrendingUp className="h-5 w-5" />}
                   accent="#10b981"
-                  hint={`months ${formatMonthLabel(data.month)}`}
+                  hint={`months ${formatMonthLabel(data.month, lang)}`}
                 />
               </>
             )}
@@ -2439,7 +2440,7 @@ export function MonthlyReport() {
           {/* Footer note (print) */}
           <div className="print-only px-1 py-2 text-center text-[11px] text-muted-foreground">
             ReportCreatebySystemManageAsset •{' '}
-            {new Date().toLocaleString('th-TH')}
+            {new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
           </div>
         </motion.div>
       )}
@@ -2508,7 +2509,7 @@ export function MonthlyReport() {
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">months:</span>
                   <span className="font-medium">
-                    {formatMonthLabel(data.month)}
+                    {formatMonthLabel(data.month, lang)}
                   </span>
                 </div>
                 <div className="mt-1 flex items-center justify-between">

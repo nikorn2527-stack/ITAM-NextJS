@@ -102,10 +102,10 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
   return h
 }
 
-function fmtDateTime(iso: string | null): string {
+function fmtDateTime(iso: string | null, lang: 'th' | 'en' = 'th'): string {
   if (!iso) return '-'
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       dateStyle: 'short',
       timeStyle: 'short',
     })
@@ -142,6 +142,7 @@ function itemStatusBadge(status: string) {
 
 export function StockCountSection({ scope }: StockCountSectionProps) {
   const qc = useQueryClient()
+  const { lang } = useLang()
   const [createOpen, setCreateOpen] = React.useState(false)
   const [createForm, setCreateForm] = React.useState({ name: '', siteCode: '', note: '' })
   const [openSessionId, setOpenSessionId] = React.useState<string | null>(null)
@@ -300,8 +301,8 @@ export function StockCountSection({ scope }: StockCountSectionProps) {
                     </div>
                     <div className="mt-0.5 text-[10px] text-muted-foreground">
                       {s.siteCode ? `สาขา: ${s.siteCode} · ` : ''}
-                      {s._count?.items ?? 0} รายการ · เริ่ม {fmtDateTime(s.startedAt)}
-                      {s.closedAt ? ` · ปิด ${fmtDateTime(s.closedAt)}` : ''}
+                      {s._count?.items ?? 0} รายการ · เริ่ม {fmtDateTime(s.startedAt, lang)}
+                      {s.closedAt ? ` · ปิด ${fmtDateTime(s.closedAt, lang)}` : ''}
                       {s.createdBy ? ` · โดย ${s.createdBy}` : ''}
                     </div>
                   </div>
@@ -563,14 +564,14 @@ export function StockCountSection({ scope }: StockCountSectionProps) {
                   <div className="col-span-2 rounded-md border bg-rose-50 p-3 dark:bg-rose-950/30">
                     <div className="text-[10px] text-muted-foreground">มูลค่าอุปกรณ์ที่ไม่พบ (Book Value)</div>
                     <div className="text-lg font-bold text-rose-700 dark:text-rose-300">
-                      ฿{(summaryOpen.missingValue ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ฿{(summaryOpen.missingValue ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                   </div>
                 ) : (
                   <div className="col-span-2 rounded-md border bg-amber-50 p-3 dark:bg-amber-950/30">
                     <div className="text-[10px] text-muted-foreground">มูลค่าผิดปกติรวม (|ต่าง| × ทุน)</div>
                     <div className="text-lg font-bold text-amber-700 dark:text-amber-300">
-                      ฿{(summaryOpen.varianceValue ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ฿{(summaryOpen.varianceValue ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                   </div>
                 )}

@@ -27,6 +27,7 @@ import {
 import { AlertTriangle, Loader2, ClipboardList } from 'lucide-react'
 import type { Device, Cycle } from './types'
 import { useAuthStore } from '@/store/auth-store'
+import { useLang } from '@/store/i18n-store'
 
 interface Props {
   open: boolean
@@ -50,6 +51,7 @@ export function BulkMeterDialog({
   devices,
   activeCycle,
 }: Props) {
+  const { lang } = useLang()
   const qc = useQueryClient()
   const [readingDate, setReadingDate] = React.useState<string>(todayISO())
   const [rows, setRows] = React.useState<Record<string, RowState>>({})
@@ -305,7 +307,7 @@ export function BulkMeterDialog({
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-mono tabular-nums text-slate-600 dark:text-slate-300">
-                          {m.prev.toLocaleString('th-TH')}
+                          {m.prev.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         </TableCell>
                         <TableCell className="text-right">
                           <Input
@@ -342,7 +344,7 @@ export function BulkMeterDialog({
                               }
                             >
                               {m.delta > 0 ? '+' : ''}
-                              {m.delta.toLocaleString('th-TH')}
+                              {m.delta.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                             </Badge>
                           )}
                           {m.isExceed && (

@@ -41,7 +41,7 @@ import {
 import type { CostAnalyticsData, DashboardRangeKey } from './types'
 import { DASHBOARD_RANGE_OPTIONS, formatBaht } from './types'
 import { UtilizationSection } from './utilization-section'
-import { useT } from '@/store/i18n-store'
+import { useT, useLang } from '@/store/i18n-store'
 
 interface KpiProps {
   title: string
@@ -137,6 +137,7 @@ const MEDAL_BG = [
 
 export function PaperAnalyticsPage() {
   const t = useT()
+  const { lang } = useLang()
   const { theme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
@@ -308,7 +309,7 @@ export function PaperAnalyticsPage() {
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <KpiCard
           title="Usemonths"
-          value={`${thisMonthSheets.toLocaleString('th-TH')} sheets`}
+          value={`${thisMonthSheets.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets`}
           icon={<FileText className="h-6 w-6" />}
           accent="#f97316"
           loading={monthlyLoading}
@@ -316,7 +317,7 @@ export function PaperAnalyticsPage() {
         />
         <KpiCard
           title="Averageperunits"
-          value={`${avgPerDevice.toLocaleString('th-TH')} sheets`}
+          value={`${avgPerDevice.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets`}
           icon={<Gauge className="h-6 w-6" />}
           accent="#14b8a6"
           loading={deviceLoading}
@@ -324,7 +325,7 @@ export function PaperAnalyticsPage() {
         />
         <KpiCard
           title="expected endmonths"
-          value={`${projected.toLocaleString('th-TH')} sheets`}
+          value={`${projected.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets`}
           icon={<TrendingUp className="h-6 w-6" />}
           accent="#0d9488"
           loading={monthlyLoading}
@@ -332,7 +333,7 @@ export function PaperAnalyticsPage() {
         />
         <KpiCard
           title="TotalAll"
-          value={`${totalSheets.toLocaleString('th-TH')} sheets`}
+          value={`${totalSheets.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets`}
           icon={<CalendarDays className="h-6 w-6" />}
           accent="#0f172a"
           loading={monthlyLoading}
@@ -356,7 +357,7 @@ export function PaperAnalyticsPage() {
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: axisTickColor }} />
                 <YAxis tick={{ fontSize: 12, fill: axisTickColor }} />
                 <Tooltip
-                  formatter={(v: number) => [`${v.toLocaleString('th-TH')} sheets`, 'UsePaper']}
+                  formatter={(v: number) => [`${v.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets`, 'UsePaper']}
                   contentStyle={{
                     fontSize: 12,
                     borderRadius: 8,
@@ -401,7 +402,7 @@ export function PaperAnalyticsPage() {
                   tick={{ fontSize: 11, fill: axisTickColor }}
                 />
                 <Tooltip
-                  formatter={(v: number) => [`${v.toLocaleString('th-TH')} sheets`, 'UsePaper']}
+                  formatter={(v: number) => [`${v.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets`, 'UsePaper']}
                   labelFormatter={(_, payload) => {
                     const p = payload?.[0]?.payload as { full?: string } | undefined
                     return p?.full ?? ''
@@ -457,7 +458,7 @@ export function PaperAnalyticsPage() {
             />
             <KpiCard
               title="PaperTotal (Period)"
-              value={`${(comparisonData?.totalSheets ?? 0).toLocaleString('th-TH')} sheets`}
+              value={`${(comparisonData?.totalSheets ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets`}
               icon={<FileText className="h-6 w-6" />}
               accent="#14b8a6"
               loading={comparisonLoading}
@@ -537,13 +538,13 @@ export function PaperAnalyticsPage() {
                             {s.activeCount}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-teal-600 dark:text-teal-400">
-                            {(s.totalSheets ?? 0).toLocaleString('th-TH')}
+                            {(s.totalSheets ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-[#f97316] dark:text-[#fb923c]">
                             {formatBaht(s.totalCost)}
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-slate-700 dark:text-slate-200">
-                            {(s.avgSheetsPerDevice ?? 0).toLocaleString('th-TH')}
+                            {(s.avgSheetsPerDevice ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                           </td>
                           <td className="px-3 py-2 text-right">
                             {s.unreadInCycle > 0 ? (
@@ -585,7 +586,7 @@ export function PaperAnalyticsPage() {
                       yAxisId="left"
                       tick={{ fontSize: 11, fill: axisTickColor }}
                       tickFormatter={(v) =>
-                        Number(v).toLocaleString('th-TH', { notation: 'compact' })
+                        Number(v).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { notation: 'compact' })
                       }
                     />
                     <YAxis
@@ -593,14 +594,14 @@ export function PaperAnalyticsPage() {
                       orientation="right"
                       tick={{ fontSize: 11, fill: axisTickColor }}
                       tickFormatter={(v) =>
-                        Number(v).toLocaleString('th-TH', { notation: 'compact' })
+                        Number(v).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { notation: 'compact' })
                       }
                     />
                     <Tooltip
                       formatter={(v: number, name: string) =>
                         name === t('common.cost')
                           ? [formatBaht(v as number), t('common.cost')]
-                          : [`${(Number(v) || 0).toLocaleString('th-TH')} sheets`, 'Paper']
+                          : [`${(Number(v) || 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets`, 'Paper']
                       }
                       labelFormatter={(_, payload) => {
                         const p = payload?.[0]?.payload as { full?: string } | undefined
@@ -681,7 +682,7 @@ export function PaperAnalyticsPage() {
                         </div>
                         <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                           <span className="font-semibold tabular-nums text-teal-600 dark:text-teal-400">
-                            {(s.totalSheets ?? 0).toLocaleString('th-TH')}
+                            {(s.totalSheets ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                           </span>{' '}
                           sheets ·{' '}
                           <span className="tabular-nums text-[#f97316]">
@@ -749,7 +750,7 @@ export function PaperAnalyticsPage() {
             />
             <KpiCard
               title="QuantitysheetsTotal (Period)"
-              value={`${(costData?.totalSheets ?? 0).toLocaleString('th-TH')} sheets`}
+              value={`${(costData?.totalSheets ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets`}
               icon={<FileText className="h-6 w-6" />}
               accent="#0d9488"
               loading={costLoading}
@@ -780,7 +781,7 @@ export function PaperAnalyticsPage() {
                     type="number"
                     tick={{ fontSize: 11, fill: axisTickColor }}
                     tickFormatter={(v) =>
-                      Number(v).toLocaleString('th-TH', {
+                      Number(v).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
                         notation: 'compact',
                       })
                     }
@@ -846,7 +847,7 @@ export function PaperAnalyticsPage() {
                       {formatBaht(s.cost)}
                     </div>
                     <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {(s.sheets ?? 0).toLocaleString('th-TH')} sheets
+                      {(s.sheets ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets
                     </div>
                   </div>
                 ))

@@ -116,7 +116,7 @@ import { downloadCsv, dateStamp } from '@/lib/csv'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
-import { useT, useFormatDateTime } from '@/store/i18n-store'
+import { useT, useFormatDateTime, useLang } from '@/store/i18n-store'
 import { PaginationBar } from './pagination-bar'
 import {
   buildDefaultTemplate,
@@ -409,6 +409,7 @@ function deviceStatusLabelKey(value: string): string {
 export function DevicesPage() {
   const qc = useQueryClient()
   const t = useT()
+  const { lang } = useLang()
   const fmtDateTime = useFormatDateTime()
   const [search, setSearch] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState('all')
@@ -1774,7 +1775,7 @@ th { background: #f97316; color: white; font-weight: 600; font-size: 10px; }
 tr:nth-child(even) { background: #fafafa; }
 </style></head><body>
 <h1>t('devices.field.device_list') IT</h1>
-<div class="meta">t('devices.exported_at') ${new Date().toLocaleString('th-TH')} — ${rows.length} t('devices.field.list'), ${columns.length} t('devices.filter.columns')</div>
+<div class="meta">t('devices.exported_at') ${new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} — ${rows.length} t('devices.field.list'), ${columns.length} t('devices.filter.columns')</div>
 <table>
 <thead><tr>${headers.map((h) => `<th>${h.label}</th>`).join('')}</tr></thead>
 <tbody>
@@ -3800,11 +3801,11 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                         {hasMeter ? (
                           <div>
                             <div className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
-                              {lastMeterBw.toLocaleString('th-TH')}
+                              {lastMeterBw.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                             </div>
                             {lastMeterColor > 0 && (
                               <div className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
-                                {t('devices.meter.color_label')} {lastMeterColor.toLocaleString('th-TH')}
+                                {t('devices.meter.color_label')} {lastMeterColor.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                               </div>
                             )}
                             <div className="text-[10px] text-slate-400 dark:text-slate-500">
@@ -4132,7 +4133,7 @@ function KpiCard({
         </span>
       </div>
       <span className="text-xl font-bold tabular-nums text-slate-800 dark:text-slate-100">
-        {value.toLocaleString('th-TH')}
+        {value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
       </span>
     </button>
   )

@@ -73,6 +73,7 @@ import {
   truncate,
   authFetch,
 } from './shared'
+import { useLang } from '@/store/i18n-store'
 
 // ── Response types ─────────────────────────────────────────────────────
 
@@ -92,6 +93,7 @@ interface PendingSettingsResponse {
 // ── Component ──────────────────────────────────────────────────────────
 
 export function StockPending() {
+  const { lang } = useLang()
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = React.useState<'PENDING' | 'APPROVED' | 'REJECTED' | 'all'>('PENDING')
   const [search, setSearch] = React.useState('')
@@ -538,7 +540,7 @@ export function StockPending() {
 
       {txns.length > 0 && (
         <div className="text-xs text-slate-500 dark:text-slate-400">
-          แสดง {txns.length.toLocaleString('th-TH')} รายการ
+          แสดง {txns.length.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} รายการ
         </div>
       )}
 

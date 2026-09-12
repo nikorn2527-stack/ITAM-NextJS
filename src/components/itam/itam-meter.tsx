@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Gauge, RefreshCw, ChevronLeft, ChevronRight, ClipboardList, Loader2, AlertTriangle } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
 import { type Site, canSelectSite } from './types'
+import { useLang } from '@/store/i18n-store'
 
 interface Reading {
   id: string; assetCode: string; readingDate: string | null; readingMonth: string | null
@@ -69,6 +70,7 @@ function readingTypeBadge(type: string | null | undefined): { label: string; cls
 }
 
 export function ItamMeter() {
+  const { lang } = useLang()
   const qc = useQueryClient()
   const [page, setPage] = React.useState(1)
   const [limit] = React.useState(20)
@@ -147,7 +149,7 @@ export function ItamMeter() {
       <div className="flex flex-shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">จดมิเตอร์ (Real DB)</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{total.toLocaleString('th-TH')} รายการ</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{total.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} รายการ</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {showSiteFilter && (
@@ -222,9 +224,9 @@ export function ItamMeter() {
                       <TableCell className="font-mono text-xs font-medium">{r.assetCode}</TableCell>
                       <TableCell className="text-xs">{r.device ? `${r.device.brand || ''} ${r.device.model || ''}` : '—'}</TableCell>
                       <TableCell className="text-right font-mono text-xs tabular-nums text-slate-500 dark:text-slate-400">
-                        {(r.prevMeterBw ?? 0).toLocaleString('th-TH')}
+                        {(r.prevMeterBw ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs tabular-nums">{(r.meterBw ?? 0).toLocaleString('th-TH')}</TableCell>
+                      <TableCell className="text-right font-mono text-xs tabular-nums">{(r.meterBw ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</TableCell>
                       <TableCell className="text-right">
                         <Badge
                           variant="outline"
@@ -236,14 +238,14 @@ export function ItamMeter() {
                                 ? 'border-sky-300 bg-sky-100 text-sky-800 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-300'
                                 : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400')
                           }
-                          title={`${(r.prevMeterBw ?? 0).toLocaleString('th-TH')} → ${(r.meterBw ?? 0).toLocaleString('th-TH')} = ${delta >= 0 ? '+' : ''}${(delta ?? 0).toLocaleString('th-TH')}`}
+                          title={`${(r.prevMeterBw ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} → ${(r.meterBw ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} = ${delta >= 0 ? '+' : ''}${(delta ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}`}
                         >
-                          {delta >= 0 ? '+' : ''}{(delta ?? 0).toLocaleString('th-TH')}
+                          {delta >= 0 ? '+' : ''}{(delta ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge className="border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                          {((r.pagesBw ?? 0) + (r.pagesColor ?? 0)).toLocaleString('th-TH')} แผ่น
+                          {((r.pagesBw ?? 0) + (r.pagesColor ?? 0)).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} แผ่น
                         </Badge>
                       </TableCell>
                       <TableCell>
@@ -530,7 +532,7 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                       <TableRow key={m.assetCode} className={rowBg}>
                         <TableCell className="font-mono text-xs font-medium text-slate-700 dark:text-slate-200">{m.assetCode}</TableCell>
                         <TableCell className="max-w-[180px] truncate text-xs text-slate-700 dark:text-slate-200">{m.name}</TableCell>
-                        <TableCell className="text-right font-mono tabular-nums text-xs text-slate-600 dark:text-slate-300">{(m.prev ?? 0).toLocaleString('th-TH')}</TableCell>
+                        <TableCell className="text-right font-mono tabular-nums text-xs text-slate-600 dark:text-slate-300">{(m.prev ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</TableCell>
                         <TableCell className="text-right">
                           <Input
                             type="number"
@@ -559,7 +561,7 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                                   : 'border-emerald-300 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300')
                               }
                             >
-                              {m.delta > 0 ? '+' : ''}{(m.delta ?? 0).toLocaleString('th-TH')}
+                              {m.delta > 0 ? '+' : ''}{(m.delta ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                             </Badge>
                           )}
                         </TableCell>

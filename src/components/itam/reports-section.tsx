@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useT, useFormatDateTime } from '@/store/i18n-store'
+import { useT, useFormatDateTime, useLang } from '@/store/i18n-store'
 import {
   Select,
   SelectContent,
@@ -105,11 +105,12 @@ const REPORT_TYPE_SELECT_OPTIONS: {
 ]
 
 function defaultTitle(type: ReportType, rangeLabel: string): string {
-  return `${reportTypeLabel(type)} — ${rangeLabel} (${new Date().toLocaleDateString('th-TH')})`
+  return `${reportTypeLabel(type)} — ${rangeLabel} (${new Date().toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB')})`
 }
 
 export function ReportsSection() {
   const t = useT()
+  const { lang } = useLang()
   const formatDateTime = useFormatDateTime()
   const qc = useQueryClient()
   const [createOpen, setCreateOpen] = React.useState(false)
@@ -600,7 +601,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
         )}
         {data.generatedAt && (
           <span className="text-slate-400 dark:text-slate-500">
-            · {t('reports.col.created_at')} {new Date(data.generatedAt).toLocaleString('th-TH')}
+            · {t('reports.col.created_at')} {new Date(data.generatedAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
           </span>
         )}
       </div>
@@ -645,7 +646,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
                 {t('reports.type.paper')}
               </div>
               <div className="mt-0.5 text-sm font-bold tabular-nums text-slate-800 dark:text-slate-100">
-                {data.paperThisMonth.toLocaleString('th-TH')} ${t('reports.unit.sheet')}
+                {data.paperThisMonth.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} ${t('reports.unit.sheet')}
               </div>
             </div>
           )}
@@ -659,7 +660,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
           )}
           <StatBox
             label={t('reports.summary.paper_total')}
-            value={`${data.totalSheets.toLocaleString('th-TH')} ${t('reports.unit.sheet')}`}
+            value={`${data.totalSheets.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} ${t('reports.unit.sheet')}`}
           />
           {typeof data.deviceCount === 'number' && (
             <StatBox label={t('reports.summary.total_devices')} value={String(data.deviceCount)} />
@@ -755,7 +756,7 @@ function ReportDataView({ report }: { report: ReportDetail }) {
                   </span>
                 </span>
                 <span className="tabular-nums font-medium text-[#f97316]">
-                  {Number(d.value ?? 0).toLocaleString('th-TH')} ${t('reports.unit.sheet')}
+                  {Number(d.value ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} ${t('reports.unit.sheet')}
                 </span>
               </li>
             ))}
@@ -862,7 +863,7 @@ function formatSummaryValue(k: string, v: unknown): string {
     return formatBaht(v)
   }
   if (k === 'avgDepreciationPercent') return `${v}%`
-  return v.toLocaleString('th-TH')
+  return v.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')
 }
 
 function StatBox({ label, value }: { label: string; value: string }) {

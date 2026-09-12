@@ -123,6 +123,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth-store'
+import { useLang } from '@/store/i18n-store'
 import { useKeyboardAware } from '@/hooks/use-keyboard-aware'
 import { addToQueue } from '@/lib/offline-queue'
 
@@ -410,12 +411,12 @@ function getPriorityMeta(p: string | null | undefined): PriorityMeta {
   return PRIORITY_META['ปกติ']
 }
 
-function formatDate(iso: string | null | undefined): string {
+function formatDate(iso: string | null | undefined, lang: 'th' | 'en' = 'th'): string {
   if (!iso) return '—'
   try {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleString('th-TH', {
+    return d.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
@@ -427,12 +428,12 @@ function formatDate(iso: string | null | undefined): string {
   }
 }
 
-function formatShortDate(iso: string | null | undefined): string {
+function formatShortDate(iso: string | null | undefined, lang: 'th' | 'en' = 'th'): string {
   if (!iso) return '—'
   try {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleDateString('th-TH', {
+    return d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: 'short',
     })
@@ -441,7 +442,7 @@ function formatShortDate(iso: string | null | undefined): string {
   }
 }
 
-function relativeTime(iso: string | null | undefined): string {
+function relativeTime(iso: string | null | undefined, lang: 'th' | 'en' = 'th'): string {
   if (!iso) return '—'
   try {
     const d = new Date(iso)
@@ -455,7 +456,7 @@ function relativeTime(iso: string | null | undefined): string {
     if (hr < 24) return `${hr} ชม.ที่แล้ว`
     const day = Math.floor(hr / 24)
     if (day < 30) return `${day} วันที่แล้ว`
-    return formatShortDate(iso)
+    return formatShortDate(iso, lang)
   } catch {
     return iso
   }
@@ -817,6 +818,7 @@ function WorkOrderCard({
   wo: WorkOrderLite
   onClick: () => void
 }) {
+  const { lang } = useLang()
   const statusMeta = getStatusMeta(wo.status)
   const prMeta = getPriorityMeta(wo.priority)
   return (
@@ -882,7 +884,7 @@ function WorkOrderCard({
                 {wo.siteCode ?? wo.building ?? wo.location ?? '—'}
               </span>
             </div>
-            <span className="flex-shrink-0">{relativeTime(wo.createdAt)}</span>
+            <span className="flex-shrink-0">{relativeTime(wo.createdAt, lang)}</span>
           </div>
 
           {/* Reporter row */}
@@ -1014,6 +1016,7 @@ function DetailView({
   workOrderId: string
   onBack: () => void
 }) {
+  const { lang } = useLang()
   const [detail, setDetail] = React.useState<WorkOrderDetail | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
@@ -1148,13 +1151,13 @@ function DetailView({
           </h2>
           <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Clock className="h-3.5 w-3.5" />
-            <span>แจ้งเมื่อ {formatDate(detail.createdAt)}</span>
+            <span>แจ้งเมื่อ {formatDate(detail.createdAt, lang)}</span>
           </div>
           {(detail.workCompletedAt || detail.closedAt) && (
             <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="h-3.5 w-3.5" />
               <span>
-                ซ่อมเสร็จ {formatDate(detail.workCompletedAt)}
+                ซ่อมเสร็จ {formatDate(detail.workCompletedAt, lang)}
               </span>
             </div>
           )}
@@ -1329,7 +1332,7 @@ function DetailView({
                       {m.message}
                     </p>
                     <p className="mt-0.5 text-[10px] text-muted-foreground">
-                      {formatDate(m.createdAt)}
+                      {formatDate(m.createdAt, lang)}
                     </p>
                   </li>
                 ))}

@@ -17,6 +17,7 @@ import {
 import type { DashboardRangeKey } from './types'
 import { DASHBOARD_RANGE_OPTIONS } from './types'
 import { useAuthStore } from '@/store/auth-store'
+import { useLang } from '@/store/i18n-store'
 
 interface MonthlyReading {
   month: string // YYYY-MM
@@ -141,6 +142,7 @@ export function UtilizationSection({
   const summary = data?.summary
 
   // Compute the max sheet value across all monthly cells for color normalization
+  const { lang } = useLang()
   const maxCell = React.useMemo(() => {
     let m = 0
     for (const d of devices) {
@@ -210,7 +212,7 @@ export function UtilizationSection({
               <div className="mt-0.5 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
                 {summary.topDevice.assetCode}
                 <span className="ml-1 text-xs font-normal text-slate-500 dark:text-slate-400">
-                  · {summary.topDevice.totalSheets.toLocaleString('th-TH')} แผ่น
+                  · {summary.topDevice.totalSheets.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} แผ่น
                 </span>
               </div>
             ) : (
@@ -227,7 +229,7 @@ export function UtilizationSection({
               <div className="mt-0.5 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
                 {summary.lowDevice.assetCode}
                 <span className="ml-1 text-xs font-normal text-slate-500 dark:text-slate-400">
-                  · {summary.lowDevice.totalSheets.toLocaleString('th-TH')} แผ่น
+                  · {summary.lowDevice.totalSheets.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} แผ่น
                 </span>
               </div>
             ) : (
@@ -312,7 +314,7 @@ export function UtilizationSection({
                         return (
                           <div
                             key={r.month}
-                            title={`${d.assetCode} · ${formatMonthLabel(r.month)}\n${r.sheets.toLocaleString('th-TH')} แผ่น`}
+                            title={`${d.assetCode} · ${formatMonthLabel(r.month)}\n${r.sheets.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} แผ่น`}
                             className="mx-auto h-9 w-full max-w-[88px] rounded-md transition-colors"
                             style={{
                               background: c.background,
@@ -330,7 +332,7 @@ export function UtilizationSection({
                         )
                       })}
                       <div className="px-2 text-right text-xs font-semibold tabular-nums text-slate-700 dark:text-slate-200">
-                        {d.totalSheets.toLocaleString('th-TH')}
+                        {d.totalSheets.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                       </div>
                     </div>
                   ))}
@@ -382,7 +384,7 @@ export function UtilizationSection({
                     </div>
                     <div className="text-right">
                       <div className="text-xs font-semibold tabular-nums text-slate-700 dark:text-slate-200">
-                        {d.totalSheets.toLocaleString('th-TH')}
+                        {d.totalSheets.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                       </div>
                       <div className="text-[10px] text-slate-400 dark:text-slate-500">
                         {d.utilizationScore}/100
@@ -434,7 +436,7 @@ export function UtilizationSection({
                     </div>
                     <div className="text-right">
                       <div className="text-xs font-semibold tabular-nums text-slate-700 dark:text-slate-200">
-                        {d.totalSheets.toLocaleString('th-TH')}
+                        {d.totalSheets.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                       </div>
                       <div className="text-[10px] text-slate-400 dark:text-slate-500">
                         {d.utilizationScore}/100

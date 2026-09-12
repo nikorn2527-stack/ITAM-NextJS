@@ -42,7 +42,7 @@ import { downloadCsv, dateStamp } from '@/lib/csv'
 import { BulkMeterDialog } from './bulk-meter-dialog'
 import { CycleManageDialog } from './cycle-manage-dialog'
 import { useAppStore } from '@/store/app-store'
-import { useT, useFormatDateTime } from '@/store/i18n-store'
+import { useT, useFormatDateTime, useLang } from '@/store/i18n-store'
 
 const METER_CSV_HEADERS = [
   { key: 'date', label: 'Date' },
@@ -93,6 +93,7 @@ function daysBetween(a: string, b: string): number {
 
 export function MeterPage() {
   const t = useT()
+  const { lang } = useLang()
   const qc = useQueryClient()
   const tableRef = React.useRef<HTMLDivElement>(null)
   const [highlightUnread, setHighlightUnread] = React.useState(false)
@@ -189,7 +190,7 @@ export function MeterPage() {
     // missing; now we surface a clear message explaining the constraint.
     if (isReset && needsRemark) {
       toast.error(
-        `FeeNew (${newReadingNum.toLocaleString('th-TH')}) less thanFeeBeforefront (${prevReading.toLocaleString('th-TH')}) — PleaseSpecifyRemark RESET (e.g. Change Drum/unitsPrintNew)`,
+        `FeeNew (${newReadingNum.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}) less thanFeeBeforefront (${prevReading.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}) — PleaseSpecifyRemark RESET (e.g. Change Drum/unitsPrintNew)`,
       )
       return
     }
@@ -544,7 +545,7 @@ export function MeterPage() {
                         </TableCell>
                         <TableCell className="text-slate-700 dark:text-slate-200">{d.site}</TableCell>
                         <TableCell className="text-right font-mono tabular-nums text-slate-700 dark:text-slate-200">
-                          {(d.lastMeterBw ?? d.lastMeterReading ?? 0).toLocaleString('th-TH')}
+                          {(d.lastMeterBw ?? d.lastMeterReading ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         </TableCell>
                         <TableCell>
                           {remindersData?.hasActiveCycle === false ? (
@@ -598,7 +599,7 @@ export function MeterPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500 dark:text-slate-400">FeeBeforefront</span>
                   <span className="font-mono font-semibold text-slate-700 dark:text-slate-200">
-                    {prevReading.toLocaleString('th-TH')}
+                    {prevReading.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                   </span>
                 </div>
               </div>
@@ -628,7 +629,7 @@ export function MeterPage() {
                       }
                     >
                       {delta > 0 ? '+' : ''}
-                      {delta.toLocaleString('th-TH')} sheets
+                      {delta.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} sheets
                     </span>
                   </span>
                 </div>
@@ -665,7 +666,7 @@ export function MeterPage() {
                 <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    FeeNewless thanFeeBeforefront ({delta.toLocaleString('th-TH')}) MustSpecifyRemarkforConfirm RESET
+                    FeeNewless thanFeeBeforefront ({delta.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}) MustSpecifyRemarkforConfirm RESET
                   </span>
                 </div>
               )}
@@ -673,7 +674,7 @@ export function MeterPage() {
                 <div className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-200">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    FeeAddupexceed 20,000 sheets ({delta.toLocaleString('th-TH')}) SystemwillSaveแ่NotifytoCheck
+                    FeeAddupexceed 20,000 sheets ({delta.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}) SystemwillSaveแ่NotifytoCheck
                   </span>
                 </div>
               )}

@@ -49,6 +49,7 @@ import {
   ClipboardList,
   Image as ImageIcon,
 } from 'lucide-react'
+import { useLang } from '@/store/i18n-store'
 
 // ── Types (kept self-contained; mirrors WorkOrder shape from API) ──
 interface WoMessage {
@@ -199,7 +200,7 @@ function statusLabel(s: string): string {
 function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -214,7 +215,7 @@ function formatDateTime(iso: string | null | undefined): string {
 function formatDateOnly(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleDateString('th-TH', {
+    return new Date(iso).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -250,6 +251,7 @@ export function WoPrintForm({ workOrderId }: { workOrderId: string }) {
   // (no new tab/window). The local print CSS below hides the in-page
   // `.print-area` preview whenever `.print-only` is present.
   const [printHtml, setPrintHtml] = React.useState('')
+  const { lang } = useLang()
 
   const detailQuery = useQuery<WorkOrderDetail>({
     queryKey: ['wo-print', workOrderId],
@@ -321,7 +323,7 @@ export function WoPrintForm({ workOrderId }: { workOrderId: string }) {
   }
 
   const external = parseExternalMeta(wo.externalMeta)
-  const todayLabel = new Date().toLocaleString('th-TH', {
+  const todayLabel = new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',

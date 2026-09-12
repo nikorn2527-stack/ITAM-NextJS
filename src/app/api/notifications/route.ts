@@ -247,7 +247,7 @@ export async function GET(req: Request) {
         type: 'audit',
         severity: 'info',
         title: a.summary,
-        subtitle: `${a.action} · ${a.entity} · ${a.createdAt.toLocaleString('th-TH', {
+        subtitle: `${a.action} · ${a.entity} · ${a.createdAt.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
           dateStyle: 'short',
           timeStyle: 'short',
         })}`,

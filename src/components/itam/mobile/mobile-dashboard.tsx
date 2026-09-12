@@ -10,6 +10,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@/store/auth-store'
+import { useLang } from '@/store/i18n-store'
 import { Package, CheckCircle, Wrench, AlertTriangle, Clock, TrendingUp } from 'lucide-react'
 
 interface DashboardData {
@@ -22,6 +23,7 @@ interface DashboardData {
 
 export function MobileDashboard() {
   const token = useAuthStore((s) => s.token)
+  const { lang } = useLang()
 
   const { data, isLoading } = useQuery<DashboardData>({
     queryKey: ['mobile-dashboard'],
@@ -58,22 +60,22 @@ export function MobileDashboard() {
 
       {/* KPI cards — 2×2 grid */}
       <div className="grid grid-cols-2 gap-2">
-        <KpiCard icon={<Package className="h-5 w-5" />} label="อุปกรณ์ทั้งหมด" value={d.totals.total} color="orange" />
-        <KpiCard icon={<CheckCircle className="h-5 w-5" />} label="ใช้งานอยู่" value={d.totals.active} color="emerald" />
-        <KpiCard icon={<Wrench className="h-5 w-5" />} label="ส่งซ่อม" value={d.totals.repair} color="rose" />
-        <KpiCard icon={<Clock className="h-5 w-5" />} label="รอบมิเตอร์" value={d.meterRequired} color="teal" />
+        <KpiCard icon={<Package className="h-5 w-5" />} label="อุปกรณ์ทั้งหมด" value={d.totals.total} color="orange" lang={lang} />
+        <KpiCard icon={<CheckCircle className="h-5 w-5" />} label="ใช้งานอยู่" value={d.totals.active} color="emerald" lang={lang} />
+        <KpiCard icon={<Wrench className="h-5 w-5" />} label="ส่งซ่อม" value={d.totals.repair} color="rose" lang={lang} />
+        <KpiCard icon={<Clock className="h-5 w-5" />} label="รอบมิเตอร์" value={d.meterRequired} color="teal" lang={lang} />
       </div>
 
       {/* Alerts */}
       <div className="space-y-2">
         {d.pendingWO > 0 && (
-          <AlertCard icon={<AlertTriangle className="h-4 w-4" />} label="รอดำเนินการซ่อม" value={d.pendingWO} color="amber" />
+          <AlertCard icon={<AlertTriangle className="h-4 w-4" />} label="รอดำเนินการซ่อม" value={d.pendingWO} color="amber" lang={lang} />
         )}
         {d.expiringWarranty > 0 && (
-          <AlertCard icon={<AlertTriangle className="h-4 w-4" />} label="รับประกันใกล้หมด" value={d.expiringWarranty} color="rose" />
+          <AlertCard icon={<AlertTriangle className="h-4 w-4" />} label="รับประกันใกล้หมด" value={d.expiringWarranty} color="rose" lang={lang} />
         )}
         {d.paperThisMonth > 0 && (
-          <AlertCard icon={<TrendingUp className="h-4 w-4" />} label="กระดาษเดือนนี้" value={d.paperThisMonth} suffix="แผ่น" color="teal" />
+          <AlertCard icon={<TrendingUp className="h-4 w-4" />} label="กระดาษเดือนนี้" value={d.paperThisMonth} suffix="แผ่น" color="teal" lang={lang} />
         )}
       </div>
 
@@ -85,7 +87,7 @@ export function MobileDashboard() {
   )
 }
 
-function KpiCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
+function KpiCard({ icon, label, value, color, lang }: { icon: React.ReactNode; label: string; value: number; color: string; lang: 'th' | 'en' }) {
   const colors: Record<string, string> = {
     orange: 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-800/50 dark:bg-orange-950/20 dark:text-orange-300',
     emerald: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/20 dark:text-emerald-300',
@@ -98,12 +100,12 @@ function KpiCard({ icon, label, value, color }: { icon: React.ReactNode; label: 
         {icon}
         <span className="text-xs font-medium opacity-80">{label}</span>
       </div>
-      <p className="mt-1 text-2xl font-bold">{value.toLocaleString('th-TH')}</p>
+      <p className="mt-1 text-2xl font-bold">{value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</p>
     </div>
   )
 }
 
-function AlertCard({ icon, label, value, suffix, color }: { icon: React.ReactNode; label: string; value: number; suffix?: string; color: string }) {
+function AlertCard({ icon, label, value, suffix, color, lang }: { icon: React.ReactNode; label: string; value: number; suffix?: string; color: string; lang: 'th' | 'en' }) {
   const colors: Record<string, string> = {
     amber: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/20 dark:text-amber-300',
     rose: 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800/50 dark:bg-rose-950/20 dark:text-rose-300',
@@ -116,7 +118,7 @@ function AlertCard({ icon, label, value, suffix, color }: { icon: React.ReactNod
         <span className="text-sm font-medium">{label}</span>
       </div>
       <span className="text-lg font-bold">
-        {value.toLocaleString('th-TH')} {suffix ?? ''}
+        {value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} {suffix ?? ''}
       </span>
     </div>
   )

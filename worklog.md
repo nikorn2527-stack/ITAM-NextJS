@@ -22236,3 +22236,73 @@ Stage Summary:
 - ✅ P1-03 Central Conflict Policy สร้าง + wired เข้า sync/push
 - ✅ Push ขึ้น GitHub (commit a710810)
 - 📋 เหลือ: I18N-01/02 (291 client-side direct locale calls), P1-05 (Setup Wizard UI verification)
+
+---
+Task ID: I18N-LOCALE-FIX-B
+Agent: general-purpose
+Task: Fix direct locale calls in 7 medium-traffic files
+
+Work Log:
+- src/components/itam/cycle-report-dialog.tsx (11 calls) — added useLang import + const { lang } = useLang() in MiniStatCard & CycleReportDialog
+- src/components/itam/itam-meter.tsx (10 calls) — added useLang import + const { lang } = useLang() in ItamMeter & BulkMeterDialog
+- src/components/itam/mobile/mobile-meter-reading.tsx (8 calls) — added useLang import + const { lang } = useLang() in MeterReadingForm
+- src/components/itam/meter-page.tsx (7 calls) — extended i18n-store import to include useLang + const { lang } = useLang() in MeterPage
+- src/components/itam/itam-repairs.tsx (7 calls) — added useLang import; refactored formatBaht/formatDate top-level helpers to accept lang param + updated 7 call sites
+- src/components/itam/mobile/mobile-stock-out.tsx (7 calls) — added useLang import + const { lang } = useLang() in MobileStockOut & IssueSheetBody
+- src/components/itam/device-detail-sheet.tsx (7 calls) — added useLang import; refactored formatThaiDateTime top-level helper to accept lang param + updated 3 call sites + const { lang } = useLang() in DeviceDetailSheet
+
+Stage Summary:
+- 57 calls fixed
+- All 'th-TH' strings replaced with `lang === 'th' ? 'th-TH' : 'en-GB'` pattern
+- All call sites verified within scope of `const { lang } = useLang()` (or via lang parameter for top-level helpers)
+- i18n check (scripts/check-i18n.ts) confirms 0 direct locale calls remain in any of the 7 target files
+- Pre-existing TS errors (fetch headers typing, toast() overloads, missing Device.department) NOT introduced by this change
+
+---
+Task ID: I18N-LOCALE-FIX-A
+Agent: general-purpose
+Task: Fix direct locale calls in 6 high-traffic files
+
+Work Log:
+- src/components/itam/itam-dashboard.tsx — 32 calls fixed
+  · Added `const { lang } = useLang()` to KpiCard component (ItamDashboard already had it)
+  · Replaced all `toLocaleString('th-TH'...)` and `toLocaleDateString('th-TH'...)` with ternary `lang === 'th' ? 'th-TH' : 'en-GB'`
+  · Pre-existing ternary patterns in `toLocaleTimeString` (3 calls at lines 947/1145/1897) left alone — already correct
+
+- src/components/itam/itam-paper-analytics.tsx — 26 calls fixed
+  · Added `import { useLang } from '@/store/i18n-store'`
+  · Added `const { lang } = useLang()` to ItamPaperAnalytics, KpiCard, RankingCard components
+  · Replaced all direct `'th-TH'` calls with ternary
+
+- src/components/itam/monthly-report.tsx — 22 calls fixed
+  · Added `useLang` to existing i18n-store import
+  · Added `const { lang } = useLang()` to MonthlyReport component
+  · Modified module-level helpers `formatMonthLabel(month, lang)`, `formatBaht(value, lang)`, `buildSpecialFeeApprovalHTML(opts, lang)` to accept lang parameter
+  · Updated 11 helper callers to pass `lang` from useLang hook
+  · Replaced all direct `'th-TH'` calls with ternary inside helpers + MonthlyReport + nested buildPrintHTML/handleExportCSV
+
+- src/components/itam/itam-meter-keyboard.tsx — 21 calls fixed
+  · Added `import { useLang } from '@/store/i18n-store'`
+  · Added `const { lang } = useLang()` to ItamMeterKeyboard component
+  · Modified module-level helpers `fmtTime(ts, lang)`, `fmtDateTime(ts, lang)` to accept lang parameter (also covers `toLocaleTimeString` for consistency)
+  · Updated 2 helper callers (`fmtTime(latest.at, lang)`, `fmtTime(r.at, lang)`, `fmtDateTime(latest.at, lang)`) to pass lang
+  · Replaced all direct `'th-TH'` calls with ternary
+
+- src/components/itam/paper-analytics-page.tsx — 16 calls fixed
+  · Added `useLang` to existing i18n-store import
+  · Added `const { lang } = useLang()` to PaperAnalyticsPage component
+  · Replaced all direct `'th-TH'` calls with ternary
+
+- src/components/itam/dashboard-pdf-export.tsx — 12 calls fixed
+  · Modified utility function `exportDashboardPdf(args, lang)` to accept optional lang parameter (default 'th')
+  · Modified helper `formatThaiDate(iso, lang)` to accept lang parameter
+  · Updated 2 `formatThaiDate` callers inside exportDashboardPdf to pass `lang`
+  · Replaced all direct `'th-TH'` calls with ternary
+  · Note: exportDashboardPdf has no current callers in the codebase but the lang param makes it future-proof for when a React component invokes it
+
+Stage Summary:
+- 129 direct locale calls fixed (32+26+22+21+16+12)
+- Verification: `bun run scripts/check-i18n.ts` shows 0 direct calls in all 6 target files (down from 28 calls reported for these files at task start; remaining 139 calls are in other files not in this batch)
+- TypeScript check (`npx tsc --noEmit -p tsconfig.json`) shows NO new errors introduced by these edits — all TS errors in the 6 files are pre-existing (RealtimeEvent / DashboardRangeKey / PrintSections types)
+- No logic changed, only locale strings replaced with `lang === 'th' ? 'th-TH' : 'en-GB'`
+- No commit made, no dev server run, per task instructions

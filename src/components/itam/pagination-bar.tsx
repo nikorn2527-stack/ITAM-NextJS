@@ -26,6 +26,7 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-r
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useLang } from '@/store/i18n-store'
 
 interface Props {
   page: number
@@ -46,6 +47,7 @@ export function PaginationBar({
   onPageSizeChange,
   pageSizeOptions = [20, 50, 100],
 }: Props) {
+  const { lang } = useLang()
   const [pageInput, setPageInput] = React.useState(String(page))
 
   // Sync pageInput when page changes externally
@@ -89,7 +91,7 @@ export function PaginationBar({
         <span>
           แสดง <span className="font-semibold text-slate-700 dark:text-slate-200">{startIdx}-{endIdx}</span>
           {' '}จาก{' '}
-          <span className="font-semibold text-slate-700 dark:text-slate-200">{(total ?? 0).toLocaleString('th-TH')}</span>
+          <span className="font-semibold text-slate-700 dark:text-slate-200">{(total ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</span>
           {' '}รายการ
         </span>
       </div>

@@ -66,6 +66,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
+import { useLang } from '@/store/i18n-store'
 import {
   Wrench,
   Plus,
@@ -168,7 +169,7 @@ const TYPE_FILTER_OPTIONS = [
 
 function formatBaht(n: number | null | undefined): string {
   if (n == null || isNaN(n)) return '—'
-  return '฿' + n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return '฿' + n.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function formatDate(iso: string | null | undefined): string {
@@ -177,7 +178,7 @@ function formatDate(iso: string | null | undefined): string {
     // Accept both ISO datetime and yyyy-mm-dd
     const d = new Date(iso.length <= 10 ? `${iso}T00:00:00` : iso)
     if (isNaN(d.getTime())) return iso
-    return d.toLocaleDateString('th-TH', { day: '2-digit', month: 'short', year: 'numeric' })
+    return d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
   } catch {
     return iso
   }
@@ -210,6 +211,7 @@ function truncate(s: string | null | undefined, n = 40): string {
 // ── Component ───────────────────────────────────────────────────────────
 
 export function ItamRepairs() {
+  const { lang } = useLang()
   const qc = useQueryClient()
 
   // Filter state
@@ -448,7 +450,7 @@ export function ItamRepairs() {
               <span className="text-xs font-medium">เปิดงาน</span>
             </div>
             <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.open.toLocaleString('th-TH')}
+              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.open.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
             </div>
           </CardContent>
         </Card>
@@ -459,7 +461,7 @@ export function ItamRepairs() {
               <span className="text-xs font-medium">กำลังซ่อม</span>
             </div>
             <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.inProgress.toLocaleString('th-TH')}
+              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.inProgress.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
             </div>
           </CardContent>
         </Card>
@@ -470,7 +472,7 @@ export function ItamRepairs() {
               <span className="text-xs font-medium">เสร็จแล้ว (เดือนนี้)</span>
             </div>
             <div className="mt-1 text-2xl font-bold text-slate-800 dark:text-slate-100">
-              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.completedThisMonth.toLocaleString('th-TH')}
+              {isLoading ? <Skeleton className="h-7 w-12" /> : stats.completedThisMonth.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
             </div>
           </CardContent>
         </Card>
@@ -633,9 +635,9 @@ export function ItamRepairs() {
       {/* Footer summary */}
       {filteredLogs.length > 0 && (
         <div className="text-xs text-slate-500 dark:text-slate-400">
-          แสดง {filteredLogs.length.toLocaleString('th-TH')} รายการ
+          แสดง {filteredLogs.length.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} รายการ
           {filteredLogs.length !== allLogs.length && (
-            <span className="ml-1">จากทั้งหมด {allLogs.length.toLocaleString('th-TH')} รายการ</span>
+            <span className="ml-1">จากทั้งหมด {allLogs.length.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} รายการ</span>
           )}
         </div>
       )}

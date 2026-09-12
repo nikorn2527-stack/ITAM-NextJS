@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
-import { useT } from '@/store/i18n-store'
+import { useT, useLang } from '@/store/i18n-store'
 import {
   Select,
   SelectContent,
@@ -201,19 +201,19 @@ const CATEGORIES = [
 
 const UNITS = ['pcs', 'box', 'pack', 'roll', 'box', 'bottles']
 
-function formatBaht(value: number | null | undefined): string {
+function formatBaht(value: number | null | undefined, lang: 'th' | 'en' = 'th'): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
-  return `THB${value.toLocaleString('th-TH', {
+  return `THB${value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
 }
 
-function formatThaiDate(iso: string | null | undefined): string {
+function formatThaiDate(iso: string | null | undefined, lang: 'th' | 'en' = 'th'): string {
   if (!iso) return '—'
   try {
     return new Date(iso.length > 10 ? iso : iso + 'T00:00:00').toLocaleDateString(
-      'th-TH',
+      lang === 'th' ? 'th-TH' : 'en-GB',
       { day: '2-digit', month: '2-digit', year: 'numeric' },
     )
   } catch {
@@ -352,6 +352,7 @@ const EMPTY_TXN_FORM: TxnFormState = {
 
 export function StockPage() {
   const t = useT()
+  const { lang } = useLang()
   const qc = useQueryClient()
   const [activeTab, setActiveTab] = React.useState<'items' | 'po' | 'pending'>('items')
 
@@ -881,7 +882,7 @@ export function StockPage() {
       icon: <Wallet className="h-5 w-5" />,
       accent: 'bg-teal-600 text-white',
       soft: 'bg-teal-50 dark:bg-teal-950/40',
-      format: (v: number) => formatBaht(v),
+      format: (v: number) => formatBaht(v, lang),
     },
     {
       title: 'itemmonths',
@@ -1144,10 +1145,10 @@ export function StockPage() {
                               {item.unit}
                             </TableCell>
                             <TableCell className="text-right text-slate-700 dark:text-slate-200">
-                              {formatBaht(item.unitCost)}
+                              {formatBaht(item.unitCost, lang)}
                             </TableCell>
                             <TableCell className="text-right font-medium text-slate-700 dark:text-slate-200">
-                              {formatBaht(totalValue)}
+                              {formatBaht(totalValue, lang)}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center justify-end gap-1">
@@ -1256,7 +1257,7 @@ export function StockPage() {
                       .join(' | ')
                     rows.push([
                       po.poNumber,
-                      formatThaiDate(po.orderDate),
+                      formatThaiDate(po.orderDate, lang),
                       po.supplier,
                       po.items?.length ?? 0,
                       po.status,
@@ -1332,7 +1333,7 @@ export function StockPage() {
                             {po.poNumber ?? '—'}
                           </TableCell>
                           <TableCell className="text-slate-600 dark:text-slate-300">
-                            {formatThaiDate(po.orderDate)}
+                            {formatThaiDate(po.orderDate, lang)}
                           </TableCell>
                           <TableCell className="text-slate-800 dark:text-slate-100">
                             {po.supplier ?? '—'}
@@ -1341,7 +1342,7 @@ export function StockPage() {
                             {po.items?.length ?? 0} item
                           </TableCell>
                           <TableCell className="text-right font-medium text-slate-700 dark:text-slate-200">
-                            {formatBaht(po.totalValue)}
+                            {formatBaht(po.totalValue, lang)}
                           </TableCell>
                           <TableCell>{poStatusBadge(po.status)}</TableCell>
                           <TableCell className="text-right">
@@ -1487,7 +1488,7 @@ export function StockPage() {
                               {t.txnNumber ?? '—'}
                             </TableCell>
                             <TableCell className="text-xs text-slate-600 dark:text-slate-300">
-                              {formatThaiDate(t.txnDate)}
+                              {formatThaiDate(t.txnDate, lang)}
                             </TableCell>
                             <TableCell>
                               <div className="font-medium text-slate-800 dark:text-slate-100">
@@ -2143,12 +2144,13 @@ export function StockPage() {
                 />
                 <DetailField
                   label="Price/Unit"
-                  value={formatBaht(detailData.unitCost)}
+                  value={formatBaht(detailData.unitCost, lang)}
                 />
                 <DetailField
                   label="ValueTotal"
                   value={formatBaht(
                     (detailData.unitCost ?? 0) * detailData.quantity,
+                    lang,
                   )}
                 />
                 <DetailField label="LocationStore" value={detailData.location} />
@@ -2242,7 +2244,7 @@ export function StockPage() {
                               t.approver,
                               t.purchaseOrderNo,
                               t.workOrderNo,
-                              formatThaiDate(t.txnDate),
+                              formatThaiDate(t.txnDate, lang),
                               t.performedBy,
                               t.remark,
                             ])
@@ -2307,7 +2309,7 @@ export function StockPage() {
                               )}
                             </TableCell>
                             <TableCell className="text-xs text-slate-500 dark:text-slate-400">
-                              {formatThaiDate(t.txnDate)}
+                              {formatThaiDate(t.txnDate, lang)}
                             </TableCell>
                             <TableCell className="text-right">
                               {t.type === 'IN' ? (
@@ -2582,7 +2584,7 @@ export function StockPage() {
                         />
                       </div>
                       <div className="col-span-3 sm:col-span-2 flex items-center text-right text-xs font-medium text-slate-700 dark:text-slate-200">
-                        {formatBaht(lineTotal)}
+                        {formatBaht(lineTotal, lang)}
                       </div>
                       <div className="col-span-1 flex items-center justify-end">
                         <Button
@@ -2612,7 +2614,7 @@ export function StockPage() {
                       ValueTotalall:
                     </span>
                     <span className="font-bold text-slate-800 dark:text-slate-100">
-                      {formatBaht(grand)}
+                      {formatBaht(grand, lang)}
                     </span>
                   </div>
                 )

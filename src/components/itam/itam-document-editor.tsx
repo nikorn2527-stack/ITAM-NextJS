@@ -40,6 +40,7 @@ import {
   type DocumentTableColumn,
   type DocumentRenderRow,
 } from '@/lib/document-template'
+import { useLang } from '@/store/i18n-store'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -291,6 +292,7 @@ function WorkspaceElement({
 
 export function ItamDocumentEditor() {
   const qc = useQueryClient()
+  const { lang } = useLang()
   const workspaceRef = React.useRef<HTMLDivElement>(null)
 
   // ── Zoom + fit-scale (Bug 1: canvas too large) ───────────────────────
@@ -1218,7 +1220,7 @@ export function ItamDocumentEditor() {
                           {draft.table.columns.map((c) => {
                             const v = (r as Record<string, unknown>)[c.key]
                             const text = c.numeric
-                              ? (typeof v === 'number' ? v.toLocaleString('th-TH') : '')
+                              ? (typeof v === 'number' ? v.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB') : '')
                               : String(v ?? '')
                             return (
                               <div
@@ -1253,7 +1255,7 @@ export function ItamDocumentEditor() {
                         '{{pageNumber}}': '1',
                         '{{totalPages}}': '3',
                         '{{pdfPageCount}}': '1/3',
-                        '{{printedAt}}': new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' }),
+                        '{{printedAt}}': new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { dateStyle: 'long', timeStyle: 'short' }),
                         '{{reportTitle}}': draft.name || 'รายงานเอกสาร',
                         '{{month}}': 'ม.ค. 2569',
                         '{{siteName}}': 'ชื่อสาขา',

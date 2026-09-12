@@ -217,6 +217,7 @@ export function MobileStockOut() {
   const [pending, setPending] = React.useState<PendingTxn[]>([])
   const [showPending, setShowPending] = React.useState(false)
   const [pendingLoading, setPendingLoading] = React.useState(false)
+  const { lang } = useLang()
 
   const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -507,7 +508,7 @@ export function MobileStockOut() {
                               : 'text-emerald-600',
                         )}
                       >
-                        {(it.quantity ?? 0).toLocaleString('th-TH')}{' '}
+                        {(it.quantity ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}{' '}
                         <span className="text-xs text-muted-foreground">{it.unit}</span>
                       </span>
                       {out ? (
@@ -608,7 +609,7 @@ export function MobileStockOut() {
                           </span>
                         </p>
                         <p className="mt-0.5 text-muted-foreground">
-                          จำนวน {(p.quantity ?? 0).toLocaleString('th-TH')} หน่วย
+                          จำนวน {(p.quantity ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} หน่วย
                           {p.requester ? ` · ผู้เบิก ${p.requester}` : ''}
                           {p.workOrderNo ? ` · WO ${p.workOrderNo}` : ''}
                         </p>
@@ -870,13 +871,13 @@ function IssueSheetBody({ item, onClose, onIssued }: IssueSheetBodyProps) {
           <div className="flex justify-between gap-3">
             <span className="text-muted-foreground">จำนวนที่เบิก</span>
             <span className="font-mono font-medium">
-              {success.quantity.toLocaleString('th-TH')} {item.unit}
+              {success.quantity.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} {item.unit}
             </span>
           </div>
           <div className="flex justify-between gap-3">
             <span className="text-muted-foreground">คงเหลือ</span>
             <span className="font-mono font-medium text-emerald-600">
-              {(success.balanceAfter ?? 0).toLocaleString('th-TH')} {item.unit}
+              {(success.balanceAfter ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} {item.unit}
             </span>
           </div>
         </div>
@@ -926,7 +927,7 @@ function IssueSheetBody({ item, onClose, onIssued }: IssueSheetBodyProps) {
                     : 'text-emerald-600',
               )}
             >
-              {(item.quantity ?? 0).toLocaleString('th-TH')} {item.unit}
+              {(item.quantity ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} {item.unit}
             </span>
             {item.quantity <= item.minQuantity && item.quantity > 0 && (
               <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 text-[10px]">
@@ -979,9 +980,9 @@ function IssueSheetBody({ item, onClose, onIssued }: IssueSheetBodyProps) {
           </div>
           {qtyNum !== null && qtyNum > 0 && !tooMuch && (
             <p className="text-xs text-muted-foreground">
-              ใช้ไป {qtyNum.toLocaleString('th-TH')} {item.unit} · คงเหลือหลังเบิก{' '}
+              ใช้ไป {qtyNum.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} {item.unit} · คงเหลือหลังเบิก{' '}
               <span className="font-mono font-medium">
-                {Math.max(0, maxQty - qtyNum).toLocaleString('th-TH')} {item.unit}
+                {Math.max(0, maxQty - qtyNum).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} {item.unit}
               </span>
             </p>
           )}

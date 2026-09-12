@@ -114,7 +114,7 @@ import { StockReport } from './reports/stock-report'
 import { MaintenanceReport } from './reports/maintenance-report'
 import { ApprovalsReport } from './reports/approvals-report'
 import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
-import { useT } from '@/store/i18n-store'
+import { useT, useLang } from '@/store/i18n-store'
 
 type ReportGroup =
   | 'devices.unit.device'
@@ -141,6 +141,7 @@ interface Site {
 
 export function ReportsHub() {
   const t = useT()
+  const { lang } = useLang()
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
 
@@ -220,7 +221,7 @@ export function ReportsHub() {
     rows.push(`Report,${GROUP_LABELS[activeGroup]}`)
     rows.push(`months,${formatMonthLabel(month)}`)
     rows.push(`Site,${site === 'all' ? 'AllSite' : site}`)
-    rows.push(`CreateWhen,${new Date().toLocaleString('th-TH')}`)
+    rows.push(`CreateWhen,${new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}`)
     rows.push('')
     const flatten = (obj: unknown, prefix = '') => {
       if (obj === null || obj === undefined) return

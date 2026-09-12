@@ -38,7 +38,7 @@ export function parseMonth(monthStr: string | null): { start: string; end: strin
   const start = `${monthStr}-01`
   const lastDay = new Date(y, m, 0).getDate()
   const end = `${monthStr}-${String(lastDay).padStart(2, '0')}`
-  const label = new Date(y, m - 1, 1).toLocaleDateString('th-TH', {
+  const label = new Date(y, m - 1, 1).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
     month: 'long',
     year: 'numeric',
   })
@@ -493,7 +493,7 @@ export async function buildMetersReport(month: string, siteCodes: string[] | nul
   const monthlyComparison = [
     {
       month: previousMonth,
-      label: new Date(previousMonth + '-01').toLocaleDateString('th-TH', {
+      label: new Date(previousMonth + '-01').toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
         month: 'short',
         year: 'numeric',
       }),
@@ -960,7 +960,7 @@ export async function buildMaintenanceReport(month: string, siteCodes: string[] 
   }
   const costByMonth = monthBuckets.map((b) => ({
     month: b.month,
-    label: new Date(b.month + '-01').toLocaleDateString('th-TH', {
+    label: new Date(b.month + '-01').toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       month: 'short',
       year: 'numeric',
     }),

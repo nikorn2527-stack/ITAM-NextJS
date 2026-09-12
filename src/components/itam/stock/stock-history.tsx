@@ -34,6 +34,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { matchesSuffixOrContains } from '@/lib/suffix-search'
+import { useLang } from '@/store/i18n-store'
 import {
   Select,
   SelectContent,
@@ -132,6 +133,7 @@ function exportCsv(rows: StockTransaction[]): void {
 // ── Component ──────────────────────────────────────────────────────────
 
 export function StockHistory() {
+  const { lang } = useLang()
   // Filters
   const [typeFilter, setTypeFilter] = React.useState<'all' | 'IN' | 'OUT' | 'ADJUST'>('all')
   const [productCodeFilter, setProductCodeFilter] = React.useState('')
@@ -362,7 +364,7 @@ export function StockHistory() {
 
       {filtered.length > 0 && (
         <div className="text-xs text-slate-500 dark:text-slate-400">
-          แสดง {filtered.length.toLocaleString('th-TH')} จาก {allTxns.length.toLocaleString('th-TH')} รายการ
+          แสดง {filtered.length.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} จาก {allTxns.length.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} รายการ
         </div>
       )}
     </div>

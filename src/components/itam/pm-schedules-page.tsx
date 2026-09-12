@@ -1367,7 +1367,7 @@ export function PMSchedulesPage() {
                       <SelectContent>
                         {Array.from({ length: 12 }).map((_, i) => (
                           <SelectItem key={i + 1} value={String(i + 1)}>
-                            {new Date(2024, i, 1).toLocaleDateString('th-TH', { month: 'long' })}
+                            {new Date(2024, i, 1).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', { month: 'long' })}
                           </SelectItem>
                         ))}
                       </SelectContent>

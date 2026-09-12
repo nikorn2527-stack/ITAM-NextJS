@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/dialog'
 import type { Cycle } from './types'
 import { formatMonthThai } from './types'
-import { useT } from '@/store/i18n-store'
+import { useT, useLang } from '@/store/i18n-store'
 
 // ============================================================
 // Custom Export — Meter page (Task ID: FIX-1-2-EXPORT-PRINT)
@@ -272,12 +272,12 @@ function CycleCountdownBar({
       <div className="mt-3">
         <div className="mb-1 flex items-center justify-between text-xs">
           <span className="font-medium text-slate-700 dark:text-slate-200">
-            Read <span className="text-[#f97316]">{totalRead.toLocaleString('th-TH')}</span>
+            Read <span className="text-[#f97316]">{totalRead.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</span>
             <span className="mx-1 text-slate-400">/</span>
-            All {total.toLocaleString('th-TH')} units
+            All {total.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} units
           </span>
           <span className="text-slate-500 dark:text-slate-400">
-            (Remaining <span className="font-medium text-slate-700 dark:text-slate-200">{totalUnread.toLocaleString('th-TH')}</span>)
+            (Remaining <span className="font-medium text-slate-700 dark:text-slate-200">{totalUnread.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</span>)
             · {pct}%
           </span>
         </div>
@@ -418,6 +418,7 @@ function QuickCreateCycleDialog({
 // ============================================================
 export function ItamMeterUnified() {
   const t = useT()
+  const { lang } = useLang()
   const qc = useQueryClient()
   const [mode, setMode] = React.useState<'entry' | 'history'>('entry')
   const [cycleDialogOpen, setCycleDialogOpen] = React.useState(false)

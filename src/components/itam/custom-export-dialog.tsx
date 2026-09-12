@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'sonner'
+import { useLang } from '@/store/i18n-store'
 import {
   Download,
   FileSpreadsheet,
@@ -83,6 +84,7 @@ export function CustomExportDialog({
   defaultSelectedKeys,
   totalRows,
 }: Props) {
+  const { lang } = useLang()
   // Persisted selection: ordered list of column keys
   const [selectedKeys, setSelectedKeys] = React.useState<string[]>(() => {
     try {
@@ -210,7 +212,7 @@ export function CustomExportDialog({
             เลือกคอลัมน์และจัดลำดับตามต้องการ — การตั้งค่าจะบันทึกอัตโนมัติสำหรับครั้งต่อไป
             {typeof totalRows === 'number' && (
               <span className="ml-2 inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                {totalRows.toLocaleString('th-TH')} รายการ
+                {totalRows.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} รายการ
               </span>
             )}
           </DialogDescription>

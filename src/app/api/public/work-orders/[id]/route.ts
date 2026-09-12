@@ -44,7 +44,7 @@ const STATUS_LABELS: Record<string, string> = {
 function formatThaiDateTime(iso: string | null | undefined): string | null {
   if (!iso) return null
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

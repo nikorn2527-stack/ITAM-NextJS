@@ -84,7 +84,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
-import { useT, useFormatDateTime } from '@/store/i18n-store'
+import { useT, useFormatDateTime, useLang } from '@/store/i18n-store'
 import { useAuthStore } from '@/store/auth-store'
 import {
   DEFAULT_TEMPLATES,
@@ -153,10 +153,10 @@ const TABS: TabDef[] = [
 
 // ---------- Helpers ----------
 
-function formatThaiDate(iso: string | null): string {
+function formatThaiDate(iso: string | null, lang: 'th' | 'en' = 'th'): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleDateString('th-TH', {
+    return new Date(iso).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -1238,6 +1238,7 @@ function useSeedDefaults() {
 
 function WorkOrderTab() {
   const t = useT()
+  const { lang } = useLang()
   const queryClient = useQueryClient()
   const [selectedType, setSelectedType] =
     React.useState<TemplateType>('work-order')
@@ -1534,7 +1535,7 @@ function WorkOrderTab() {
                       )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {formatThaiDate(tpl.createdAt)}
+                      {formatThaiDate(tpl.createdAt, lang)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-1">

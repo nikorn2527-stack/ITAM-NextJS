@@ -7,6 +7,7 @@ import * as React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Inbox, TrendingUp, TrendingDown } from 'lucide-react'
+import { useLang } from '@/store/i18n-store'
 
 // ── Status label maps ─────────────────────────────────
 export const STATUS_LABELS_WO: Record<string, string> = {
@@ -59,7 +60,7 @@ export function formatMonthLabel(month: string): string {
   try {
     const [y, m] = month.split('-')
     const d = new Date(Number(y), Number(m) - 1, 1)
-    return d.toLocaleDateString('th-TH', {
+    return d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       month: 'long',
       year: 'numeric',
     })
@@ -69,20 +70,20 @@ export function formatMonthLabel(month: string): string {
 }
 
 export function formatBaht(value: number): string {
-  return `฿${value.toLocaleString('th-TH', {
+  return `฿${value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
 }
 
 export function formatNumber(value: number): string {
-  return value.toLocaleString('th-TH')
+  return value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')
 }
 
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return '-'
   try {
-    return new Date(iso).toLocaleDateString('th-TH', {
+    return new Date(iso).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -95,7 +96,7 @@ export function formatDate(iso: string | null | undefined): string {
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '-'
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

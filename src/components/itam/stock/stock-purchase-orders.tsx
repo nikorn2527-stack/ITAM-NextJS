@@ -74,6 +74,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
+import { useLang } from '@/store/i18n-store'
 import {
   FileText,
   Plus,
@@ -153,6 +154,7 @@ function newLineItem(): LineItem {
 // ── Component ──────────────────────────────────────────────────────────
 
 export function StockPurchaseOrders() {
+  const { lang } = useLang()
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = React.useState('all')
   const [search, setSearch] = React.useState('')
@@ -514,7 +516,7 @@ export function StockPurchaseOrders() {
 
       {pos.length > 0 && (
         <div className="text-xs text-slate-500 dark:text-slate-400">
-          แสดง {pos.length.toLocaleString('th-TH')} ใบสั่งซื้อ
+          แสดง {pos.length.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} ใบสั่งซื้อ
         </div>
       )}
 

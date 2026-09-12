@@ -48,12 +48,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { RefreshCw, Trash2, FlaskConical, AlertTriangle } from 'lucide-react'
+import { useLang } from '@/store/i18n-store'
 import { useAuthStore } from '@/store/auth-store'
 import { ROLE_LABELS, type Role } from '@/lib/auth-shared'
 
 /** Build fetch headers with the user's JWT. */
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const h: Record<string, string> = { ...extra }
+  const { lang } = useLang()
   const t = useAuthStore.getState()?.token
   if (t) h['Authorization'] = `Bearer ${t}`
   return h
@@ -188,7 +190,7 @@ export function DemoManagementSection() {
             </Button>
           </CardTitle>
           <CardDescription>
-            รวมทั้งหมด {totalRecords.toLocaleString('th-TH')} ระเบียน +{' '}
+            รวมทั้งหมด {totalRecords.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} ระเบียน +{' '}
             {counts?.users ?? 0} บัญชีผู้ใช้สาธิต
           </CardDescription>
         </CardHeader>
@@ -303,7 +305,7 @@ export function DemoManagementSection() {
           <AlertDialogHeader>
             <AlertDialogTitle>ยืนยันการล้างข้อมูลสาธิต</AlertDialogTitle>
             <AlertDialogDescription>
-              การกระทำนี้จะลบ {totalRecords.toLocaleString('th-TH')} ระเบียน (อุปกรณ์{' '}
+              การกระทำนี้จะลบ {totalRecords.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} ระเบียน (อุปกรณ์{' '}
               {counts?.devices ?? 0}, ใบงาน {counts?.workOrders ?? 0}, สต็อก{' '}
               {counts?.stockTransactions ?? 0}, มิเตอร์ {counts?.meterReadings ?? 0})
               — ไม่สามารถยกเลิกได้ ข้อมูลจริงจะไม่ได้รับผลกระทบ
@@ -345,7 +347,7 @@ function CountTile({
         {label}
       </div>
       <div className={`mt-1 text-2xl font-bold ${color}`}>
-        {value.toLocaleString('th-TH')}
+        {value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
       </div>
     </div>
   )

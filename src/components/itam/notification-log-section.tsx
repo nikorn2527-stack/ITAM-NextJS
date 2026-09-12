@@ -41,6 +41,7 @@ import {
   Inbox,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
+import { useLang } from '@/store/i18n-store'
 
 // ── Types matching the API response (GET /api/notifications/logs) ──
 // Note: the backend returns Date objects which JSON-serializes to ISO
@@ -116,6 +117,7 @@ function channelDotClass(ch: string): string {
 // ── Utilities ─────────────────────────────────────────────────
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const h: Record<string, string> = { ...extra }
+  const { lang } = useLang()
   const t = useAuthStore.getState()?.token
   if (t) h['Authorization'] = `Bearer ${t}`
   return h
@@ -126,7 +128,7 @@ function formatDateTime(iso: string | null | undefined): string {
   try {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return '—'
-    return d.toLocaleString('th-TH', {
+    return d.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       year: 'numeric',
       month: 'short',
       day: '2-digit',
@@ -317,7 +319,7 @@ export function NotificationLogSection() {
                   {isLoading ? (
                     <Skeleton className="h-8 w-12" />
                   ) : (
-                    (card.value ?? 0).toLocaleString('th-TH')
+                    (card.value ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')
                   )}
                 </div>
                 {card.hint && (
@@ -399,13 +401,13 @@ export function NotificationLogSection() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right text-sm font-semibold tabular-nums">
-                          {c.total.toLocaleString('th-TH')}
+                          {c.total.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums text-emerald-700 dark:text-emerald-400">
-                          {c.sent.toLocaleString('th-TH')}
+                          {c.sent.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         </TableCell>
                         <TableCell className="text-right text-sm tabular-nums text-rose-700 dark:text-rose-400">
-                          {c.failed.toLocaleString('th-TH')}
+                          {c.failed.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         </TableCell>
                         <TableCell className="text-right">
                           <Badge variant="outline" className={rateBadgeClass}>
