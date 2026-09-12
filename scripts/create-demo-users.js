@@ -43,12 +43,22 @@ function createPasswordSalt() {
 
 const DEMO_USERS = [
   {
+    email: 'admin@itam.local',
+    username: 'admin',
+    name: 'Test Admin',
+    role: 'admin',
+    password: 'test1234',
+    allowedSites: 'ALL',
+    isDemo: false, // system admin — NOT filtered out by demoFilter
+  },
+  {
     email: 'demo_admin@itam.demo',
     username: 'demo_admin',
     name: 'ผู้ดูแล (สาธิต)',
     role: 'admin',
     password: 'demo123',
     allowedSites: 'ALL',
+    isDemo: true,
   },
   {
     email: 'demo_staff@itam.demo',
@@ -57,6 +67,7 @@ const DEMO_USERS = [
     role: 'editor',
     password: 'demo123',
     allowedSites: 'ALL',
+    isDemo: true,
   },
   {
     email: 'demo_viewer@itam.demo',
@@ -65,6 +76,7 @@ const DEMO_USERS = [
     role: 'viewer',
     password: 'demo123',
     allowedSites: 'ALL',
+    isDemo: true,
   },
 ]
 
@@ -81,7 +93,7 @@ async function upsertDemoUser(def) {
     passwordSalt: salt,
     allowedSites: def.allowedSites,
     active: true,
-    isDemo: true,
+    isDemo: def.isDemo ?? true,
   }
 
   // Try to find an existing demo user by username OR email first

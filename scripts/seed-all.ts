@@ -44,6 +44,7 @@ const ALL_MODULES: SeedModule[] = [
   { name: 'Authorization catalog', file: 'scripts/seed-authorization-catalog.ts', required: true, profile: 'both' },
   { name: 'Default templates', file: 'scripts/seed-default-templates.ts', required: true, profile: 'both' },
   { name: 'Master data', file: 'scripts/seed-master-data.ts', required: true, profile: 'both' },
+  { name: 'Master catalog v2', file: 'scripts/seed-master-catalog-v2.ts', required: false, profile: 'both' },
   { name: 'Contact directory', file: 'scripts/seed-contact-directory.ts', required: false, profile: 'both' },
   { name: 'Notification templates', file: 'scripts/seed-notification-templates.ts', required: false, profile: 'both' },
   // Demo-only modules (NEVER in production profile)

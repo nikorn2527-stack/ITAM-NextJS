@@ -118,15 +118,32 @@ interface CsvRow {
 }
 
 function readCsv(): CsvRow[] {
-  const csvPath =
-    '/home/z/my-project/upload/IT_Asset_Management_Database - All_Devices.csv'
-  if (!fs.existsSync(csvPath)) {
-    throw new Error(`CSV not found at ${csvPath}`)
+  // Try multiple candidate paths so the script works in different environments:
+  //   - sandbox:    /home/z/my-project/upload/...
+  //   - cloned dev: ./upload/... (next to project root)
+  //   - cloned dev: <projectRoot>/upload/...
+  const candidates = [
+    '/home/z/my-project/upload/IT_Asset_Management_Database - All_Devices.csv',
+    './upload/IT_Asset_Management_Database - All_Devices.csv',
+    `${process.cwd()}/upload/IT_Asset_Management_Database - All_Devices.csv`,
+  ]
+  const csvPath = candidates.find((p) => fs.existsSync(p))
+  if (!csvPath) {
+    // CSV is optional demo data. When absent (e.g. fresh clone from GitHub),
+    // return an empty array so the caller can seed a minimal fallback catalog
+    // instead of aborting the entire db:seed run.
+    console.warn(
+      `  [seed-master-data] CSV not found in any candidate path — falling back to minimal catalog.`,
+    )
+    console.warn(`  Checked: ${candidates.join(', ')}`)
+    return []
   }
+  console.log(`  [seed-master-data] Using CSV: ${csvPath}`)
   const text = fs.readFileSync(csvPath, 'utf-8')
   const rows = parseCsv(text)
   if (rows.length < 2) {
-    throw new Error('CSV has no data rows')
+    console.warn('  [seed-master-data] CSV has no data rows — falling back to minimal catalog.')
+    return []
   }
   const headers = rows[0].map((h) => h.trim().toLowerCase())
   const idx = (name: string) => headers.indexOf(name.toLowerCase())
@@ -415,17 +432,64 @@ async function main() {
   const rows = readCsv()
   console.log(`Loaded ${rows.length} CSV rows`)
 
-  await seedTypeBrandModel(rows)
-  await seedBuildings(rows)
-  await seedFloors(rows)
-  await seedDepartments(rows)
-  await seedDeviceGroups(rows)
-  await seedStatuses(rows)
+  if (rows.length === 0) {
+    // No CSV available (fresh clone without private demo data).
+    // Seed a MINIMAL catalog so the app's dropdowns aren't empty.
+    // The full catalog (28 categories, 64+ items) is seeded separately by
+    // scripts/seed-master-catalog-v2.ts which is also called by seed-all.ts.
+    console.log('  [seed-master-data] Seeding minimal MasterItem fallback...')
+    const fallback: { category: string; code: string; label: string; displayLabel: string }[] = [
+      // DeviceType
+      { category: 'DeviceType', code: 'DT-PRINTER', label: 'ปริ้นเตอร์ (Printer)', displayLabel: 'Printer' },
+      { category: 'DeviceType', code: 'DT-COMPUTER', label: 'คอมพิวเตอร์ (Computer)', displayLabel: 'Computer' },
+      { category: 'DeviceType', code: 'DT-SCANNER', label: 'สแกนเนอร์ (Scanner)', displayLabel: 'Scanner' },
+      // Brand
+      { category: 'Brand', code: 'BRD-OTHER', label: 'อื่นๆ / Unknown', displayLabel: 'Unknown' },
+      // Status
+      { category: 'Status', code: 'STATUS-ACTIVE', label: 'Active', displayLabel: 'Active' },
+      { category: 'Status', code: 'STATUS-IN-REPAIR', label: 'In Repair', displayLabel: 'In Repair' },
+      { category: 'Status', code: 'STATUS-RETIRED', label: 'Retired', displayLabel: 'Retired' },
+      { category: 'Status', code: 'STATUS-SPARE', label: 'Spare', displayLabel: 'Spare' },
+    ]
+    let inserted = 0
+    for (const m of fallback) {
+      // MasterItem has no @@unique([category, code]) constraint, so we use
+      // findFirst + create (skip if exists) instead of upsert.
+      // Also no sortOrder field — ordering is done in-app by code/label.
+      const existing = await prisma.masterItem.findFirst({
+        where: { category: m.category, code: m.code },
+      })
+      if (existing) {
+        await prisma.masterItem.update({
+          where: { id: existing.id },
+          data: { label: m.label, displayLabel: m.displayLabel, active: true },
+        })
+        continue
+      }
+      await prisma.masterItem.create({
+        data: {
+          category: m.category,
+          code: m.code,
+          label: m.label,
+          displayLabel: m.displayLabel,
+          active: true,
+        },
+      })
+      inserted++
+    }
+    console.log(`  [seed-master-data] Minimal fallback seeded (${inserted} MasterItems: DeviceType/Brand/Status).`)
+    console.log('  [seed-master-data] Run seed-master-catalog-v2 for the full 28-category catalog.')
+  } else {
+    await seedTypeBrandModel(rows)
+    await seedBuildings(rows)
+    await seedFloors(rows)
+    await seedDepartments(rows)
+    await seedDeviceGroups(rows)
+    await seedStatuses(rows)
+  }
 
-  // Final counts
-  const typeCount = await prisma.deviceType.count()
-  const brandCount = await prisma.brand.count()
-  const modelCount = await prisma.model.count()
+  // Final counts (all use MasterItem now — DeviceType/Brand/Model normalized
+  // tables were removed from the schema; they live in MasterItem instead).
   const buildingCount = await prisma.masterItem.count({
     where: { category: 'Building' },
   })
@@ -441,11 +505,16 @@ async function main() {
   const statusCount = await prisma.masterItem.count({
     where: { category: 'Status' },
   })
+  const deviceTypeCount = await prisma.masterItem.count({
+    where: { category: 'DeviceType' },
+  })
+  const brandCount = await prisma.masterItem.count({
+    where: { category: 'Brand' },
+  })
 
   console.log('\n═══ Final DB counts ═══')
-  console.log(`  DeviceType:  ${typeCount}`)
+  console.log(`  DeviceType:  ${deviceTypeCount}`)
   console.log(`  Brand:       ${brandCount}`)
-  console.log(`  Model:       ${modelCount}`)
   console.log(`  Building:    ${buildingCount}`)
   console.log(`  Floor:       ${floorCount}`)
   console.log(`  Department:  ${deptCount}`)

@@ -239,6 +239,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: 'USER_MANAGE', label: 'จัดการผู้ใช้', desc: 'สร้าง/แก้ไข/ลบ ผู้ใช้' },
       { key: 'SYSTEM_CONFIG', label: 'ตั้งค่าระบบ', desc: 'ตั้งค่าการแจ้งเตือน/แอป' },
       { key: 'ADMIN', label: 'ผู้ดูแล', desc: 'สิทธิ์ผู้ดูแลระบบทั่วไป' },
+      { key: 'VIEW_REPORTS', label: 'ดูรายงาน', desc: 'เปิดหน้ารายงาน/วิเคราะห์ข้อมูล' },
+      { key: 'MANAGE_REPORTS', label: 'จัดการรายงาน', desc: 'สร้าง/แก้ไข/ลบรายงานที่บันทึกไว้' },
     ],
   },
 ]
