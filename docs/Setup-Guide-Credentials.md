@@ -229,3 +229,156 @@ GOOGLE_SHEETS_ID_STOCK=...
 | .env.example สร้างแล้ว | ✅ |
 | 0 credentials ใน source code | ✅ |
 | Vercel env vars | 📋 ตอน deploy |
+
+---
+
+## 8. วิธีรัน Scripts ใน Terminal
+
+### 8.1 ตั้งค่า env var แบบชั่วคราว (ไม่บันทึกในไฟล์)
+
+```bash
+# ตั้งค่า env var สำหรับ session นี้เท่านั้น
+export SUPABASE_DATABASE_URL="postgresql://postgres.xxx:[PASSWORD]@[REDACTED_HOST]:5432/postgres"
+
+# ตรวจว่าตั้งแล้ว
+echo $SUPABASE_DATABASE_URL
+```
+
+### 8.2 รัน Migration (สำหรับ PostgreSQL production)
+
+```bash
+# ตั้ง env var ก่อน
+export DATABASE_URL="postgresql://user:password@host:5432/itam"
+export JWT_SECRET="your-secret-key"
+
+# รัน migration (ใช้ migration.sql ที่สร้างไว้)
+prisma migrate deploy
+
+# หรือถ้าเป็น SQLite (dev)
+export DATABASE_URL="file:./db/custom.db"
+prisma db push
+```
+
+### 8.3 รัน Backup
+
+```bash
+# ก่อน migration เสมอ
+bun scripts/pre-migration-backup.ts
+
+# ตรวจ backup
+bun scripts/restore-test.ts db/backups/pre-migration-<timestamp>.db
+```
+
+### 8.4 รัน Restore (เฉพาะ dev/staging)
+
+```bash
+# ต้องตั้ง SUPABASE_DATABASE_URL ก่อน
+export SUPABASE_DATABASE_URL="postgresql://..."
+
+# ต้องยืนยัน
+RESTORE_CONFIRM=YES bun scripts/restore-from-supabase-v2.ts
+```
+
+### 8.5 รัน Upgrade Flow
+
+```bash
+# รันครั้งเดียว (Health → Backup → Migration → Smoke Test)
+bash scripts/upgrade.sh
+```
+
+### 8.6 รัน Tests
+
+```bash
+# Cross-Org Authorization Tests
+npx tsx tests/auth/cross-org-auth.test.ts
+
+# Custom Field Acceptance Tests
+npx tsx tests/custom-fields-acceptance.test.ts
+```
+
+### 8.7 รัน Dev Server
+
+```bash
+# แบบปกติ
+bun run dev
+
+# ถ้าต้องการให้ db:push รันได้ (local SQLite เท่านั้น)
+DEV_DB_PUSH=1 bun run dev
+
+# ถ้าหน้าแอป OOM (memory ไม่พอ)
+NODE_OPTIONS="--max-old-space-size=512" bun run dev
+```
+
+### 8.8 รัน Production Server
+
+```bash
+# Build ก่อน
+SANDBOX_PREVIEW=1 NODE_ENV=production JWT_SECRET="your-secret" bun run next build --webpack
+
+# Start
+SANDBOX_PREVIEW=1 NODE_ENV=production JWT_SECRET="your-secret" NODE_OPTIONS="--max-old-space-size=512" bun run next start -p 3000
+```
+
+### 8.9 รัน Scope Matrix Check
+
+```bash
+# ตรวจว่าทุก table มี organizationId
+npx tsx scripts/check-scope-matrix.ts
+```
+
+### 8.10 ตั้งค่า env var แบบถาวร (เก็บใน .env.local)
+
+```bash
+# สร้าง .env.local (ไม่ถูก commit)
+cp .env.example .env.local
+
+# แก้ไข
+nano .env.local
+# กรอกค่าจริง:
+# DATABASE_URL=file:./db/custom.db
+# JWT_SECRET=your-secret-key
+# SUPABASE_DATABASE_URL=postgresql://...
+# GOOGLE_SERVICE_ACCOUNT_KEY={...}
+# GOOGLE_SHEETS_ID_ITAM=...
+# GOOGLE_SHEETS_ID_SERVICES=...
+# GOOGLE_SHEETS_ID_STOCK=...
+```
+
+### 8.11 รัน Google Sheets Sync
+
+```bash
+# ต้องตั้ง Google creds ใน .env.local ก่อน
+# แล้วรันผ่าน UI: Settings → Google Sheets → Sync tab
+# หรือผ่าน API:
+curl -X POST http://localhost:3000/api/cron/sync-legacy/phase?phase=1&dryRun=1 \
+  -H "Authorization: Bearer <token>"
+```
+
+### 8.12 รัน Export (Backup เป็น TSV/CSV)
+
+```bash
+# Login ก่อน
+TOKEN=$(curl -s -X POST http://localhost:3000/api/itam/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"test1234"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+# Export
+curl -s "http://localhost:3000/api/integrations/google-sheets/export-spreadsheet?format=tsv" \
+  -H "Authorization: Bearer $TOKEN" \
+  -o itam-backup-$(date +%Y%m%d).tsv
+```
+
+### 8.13 ตรวจสถานะระบบ
+
+```bash
+# Health check
+curl http://localhost:3000/api/health
+
+# Google Sheets status
+TOKEN=$(curl -s -X POST http://localhost:3000/api/itam/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"test1234"}' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+curl -s "http://localhost:3000/api/integrations/google-sheets/status" \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
