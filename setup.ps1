@@ -1,0 +1,150 @@
+# ============================================================
+# ITAM-NextJS — Windows PowerShell Setup Script
+# ============================================================
+# Run this ONCE after cloning the repo on Windows.
+#
+# Usage (in PowerShell, from the project root):
+#   .\setup.ps1
+#
+# What it does:
+#   1. Checks that bun + prisma are installed
+#   2. Copies .env.example → .env if missing
+#   3. Generates a random JWT_SECRET (if still the placeholder)
+#   4. Auto-syncs prisma/schema.prisma provider with DATABASE_URL
+#   5. Runs prisma db push (creates the SQLite DB / syncs schema)
+#   6. Runs prisma generate (builds the typed client)
+#
+# After this script finishes, run:
+#   bun run dev          # to start the dev server (http://localhost:3000)
+# ============================================================
+
+$ErrorActionPreference = "Stop"
+$ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+Set-Location $ProjectRoot
+
+function Write-Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
+function Write-Ok($msg)   { Write-Host "  ✓ $msg" -ForegroundColor Green }
+function Write-Warn($msg)  { Write-Host "  ⚠ $msg" -ForegroundColor Yellow }
+function Write-Err($msg)   { Write-Host "  ✗ $msg" -ForegroundColor Red }
+
+# ── 1. Pre-flight: bun ───────────────────────────────────────────────────
+Write-Step "Checking prerequisites"
+try {
+    $bunVersion = bun --version 2>$null
+    Write-Ok "bun $bunVersion"
+} catch {
+    Write-Err "bun not found. Install from https://bun.sh (PowerShell):"
+    Write-Host '  powershell -c "irm bun.sh/install.ps1 | iex"'
+    exit 1
+}
+
+# ── 2. Install npm dependencies (idempotent) ──────────────────────────────
+if (-not (Test-Path "node_modules")) {
+    Write-Step "Installing dependencies (first run — this takes a few minutes)"
+    bun install
+    Write-Ok "Dependencies installed"
+} else {
+    Write-Ok "node_modules exists — skipping bun install"
+}
+
+# ── 3. Copy .env.example → .env if missing ───────────────────────────────
+Write-Step "Setting up .env"
+if (-not (Test-Path ".env")) {
+    if (Test-Path ".env.example") {
+        Copy-Item ".env.example" ".env"
+        Write-Ok "Copied .env.example → .env"
+    } else {
+        Write-Err ".env.example not found. Create .env manually with DATABASE_URL and JWT_SECRET."
+        exit 1
+    }
+} else {
+    Write-Ok ".env already exists"
+}
+
+# ── 4. Generate JWT_SECRET if still placeholder ───────────────────────────
+$envContent = Get-Content ".env" -Raw
+if ($envContent -match "JWT_SECRET=CHANGE_ME_TO_RANDOM_32_CHAR_STRING") {
+    # Generate 32 random hex chars (PowerShell built-in — no openssl needed)
+    $bytes = New-Object byte[] 32
+    ([System.Security.Cryptography.RandomNumberGenerator]::Create()).GetBytes($bytes)
+    $secret = -join ($bytes | ForEach-Object { $_.ToString("x2") })
+    $envContent = $envContent -replace "JWT_SECRET=CHANGE_ME_TO_RANDOM_32_CHAR_STRING", "JWT_SECRET=$secret"
+    Set-Content -Path ".env" -Value $envContent -NoNewline
+    Write-Ok "Generated a random JWT_SECRET (64 hex chars)"
+} else {
+    Write-Ok "JWT_SECRET already set"
+}
+
+# ── 5. Load .env into this session (so prisma can see DATABASE_URL) ───────
+Write-Step "Loading .env"
+Get-Content ".env" | ForEach-Object {
+    $line = $_.Trim()
+    if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+        $idx = $line.IndexOf("=")
+        $key = $line.Substring(0, $idx).Trim()
+        $val = $line.Substring($idx + 1).Trim().Trim('"')
+        Set-Item -Path "Env:$key" -Value $val
+    }
+}
+$dbUrl = $env:DATABASE_URL
+if (-not $dbUrl) {
+    Write-Err "DATABASE_URL is not set in .env"
+    exit 1
+}
+if ($dbUrl.StartsWith("file:")) {
+    Write-Ok "DATABASE_URL = $dbUrl (SQLite mode)"
+} elseif ($dbUrl.StartsWith("postgres")) {
+    Write-Ok "DATABASE_URL = postgresql:... (PostgreSQL mode)"
+} else {
+    Write-Warn "DATABASE_URL doesn't look like SQLite (file:) or PostgreSQL (postgresql:)"
+    Write-Host "   Got: $dbUrl"
+}
+
+# ── 6. Auto-sync prisma provider with DATABASE_URL ─────────────────────────
+Write-Step "Syncing prisma/schema.prisma provider"
+node scripts/set-prisma-provider.mjs
+if ($LASTEXITCODE -ne 0) {
+    Write-Err "set-prisma-provider.mjs failed"
+    exit 1
+}
+
+# ── 7. Create db folder if using SQLite ───────────────────────────────────
+if ($dbUrl.StartsWith("file:")) {
+    $dbDir = Join-Path $ProjectRoot "db"
+    if (-not (Test-Path $dbDir)) {
+        New-Item -ItemType Directory -Path $dbDir | Out-Null
+        Write-Ok "Created db/ folder"
+    }
+}
+
+# ── 8. prisma db push (create/sync schema) ────────────────────────────────
+Write-Step "Running prisma db push"
+bunx prisma db push
+if ($LASTEXITCODE -ne 0) {
+    Write-Err "prisma db push failed"
+    Write-Host "`nCommon causes:" -ForegroundColor Yellow
+    Write-Host "  - DATABASE_URL is wrong (check .env)"
+    Write-Host "  - For PostgreSQL: ensure the server is running and reachable"
+    Write-Host "  - For SQLite: ensure the db/ folder is writable"
+    exit 1
+}
+Write-Ok "Database schema synced"
+
+# ── 9. prisma generate ─────────────────────────────────────────────────────
+Write-Step "Generating Prisma Client"
+bunx prisma generate
+if ($LASTEXITCODE -ne 0) {
+    Write-Err "prisma generate failed"
+    exit 1
+}
+Write-Ok "Prisma Client generated"
+
+# ── Done ───────────────────────────────────────────────────────────────────
+Write-Host "`n========================================" -ForegroundColor Green
+Write-Host "  ✓ Setup complete!" -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
+Write-Host "`nNext steps:" -ForegroundColor Cyan
+Write-Host "  bun run dev      # start dev server on http://localhost:3000"
+Write-Host "  bun run db:seed  # (optional) seed demo data"
+Write-Host ""
+Write-Host "Default login (after seeding): admin / test1234" -ForegroundColor Yellow

@@ -54,6 +54,25 @@
 
 ## การติดตั้ง
 
+### วิธีที่ 1: รัน setup script แบบ one-step (แนะนำ)
+
+script นี้จะติดตั้ง dependencies, สร้าง `.env`, generate `JWT_SECRET`, sync Prisma provider กับ `DATABASE_URL`, แล้วรัน `db push` + `generate` ให้อัตโนมัติ
+
+**Windows (PowerShell):**
+```powershell
+.\setup.ps1
+```
+
+**Linux / macOS:**
+```bash
+bash setup.sh
+```
+
+> หากเจอ error "running scripts is disabled on this system" บน PowerShell ให้รัน:
+> `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
+
+### วิธีที่ 2: ทำเองทีละขั้นตอน
+
 ```bash
 bun install
 cp .env.example .env
@@ -61,6 +80,18 @@ cp .env.example .env
 bun run db:push
 bun run dev
 ```
+
+### หมายเหตุสำหรับ Windows
+
+- **อย่าใช้ syntax `DEV_DB_PUSH=1 bun run db:push`** — เป็น syntax ของ Bash/Linux เท่านั้น PowerShell ไม่รองรับ
+  - ใช้ `.\setup.ps1` แทน (จัดการให้อัตโนมัติ)
+  - หรือถ้าต้องการ set env var ใน PowerShell: `$env:DEV_DB_PUSH=1; bun run db:push`
+- **Prisma provider auto-sync**: script `scripts/set-prisma-provider.mjs` จะแก้ `provider` ใน `prisma/schema.prisma` ให้ตรงกับ `DATABASE_URL` อัตโนมัติใน dev mode (`file:` → `sqlite`, `postgresql://` → `postgresql`) ไม่ต้องแก้ไฟล์เอง
+- **ถ้าเจอ error `the URL must start with the protocol 'postgresql://'`**: แสดงว่า `DATABASE_URL` ใน `.env` ไม่ตรงกับ provider ใน schema รัน `node scripts/set-prisma-provider.mjs` เพื่อ sync ใหม่ หรือใช้ `.\setup.ps1`
+- สร้าง `JWT_SECRET` แบบสุ่มใน PowerShell:
+  ```powershell
+  -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 32 | % {[char]$_})
+  ```
 
 ## การ Deploy บน Vercel + Supabase
 

@@ -1,23 +1,28 @@
 #!/usr/bin/env node
 /**
- * P0#4 Security: Verify Prisma provider is PostgreSQL (fail-closed).
+ * Prisma provider manager — auto-syncs schema.prisma with DATABASE_URL.
  *
- * Per consultant P0#4 recommendation:
- *   - schema.prisma should be committed as `provider = "postgresql"` permanently
- *   - This script no longer PATCHES the file — it VERIFIES and fails if wrong
- *   - In dev sandbox, if DATABASE_URL starts with "file:" (SQLite), we allow
- *     SQLite but warn — this is the ONLY exception
+ * Behavior:
+ *   - Production (NODE_ENV=production): VERIFY ONLY. Fail closed if provider
+ *     is not "postgresql" (per consultant P0#4 security recommendation).
+ *   - Development: AUTO-PATCH schema.prisma so `provider` matches the
+ *     DATABASE_URL scheme:
+ *       • DATABASE_URL starts with "file:"   → provider = "sqlite"
+ *       • DATABASE_URL starts with "postgres" → provider = "postgresql"
+ *       • DATABASE_URL missing/empty         → default to "postgresql"
+ *     This lets Windows users run `bun run db:push` directly without
+ *     manually editing schema.prisma.
  *
  * Exit codes:
- *   0 = provider is correct (postgresql in production, any in dev)
- *   1 = provider is wrong (postgresql expected in production but not found)
+ *   0 = provider is correct (or was auto-patched in dev)
+ *   1 = provider is wrong in production (refuses to patch)
  */
 
-import { readFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
 
 const schemaPath = 'prisma/schema.prisma'
 if (!existsSync(schemaPath)) {
-  console.error('[check-prisma-provider] schema.prisma not found')
+  console.error('[prisma-provider] schema.prisma not found')
   process.exit(0) // non-fatal — let prisma generate handle this
 }
 
@@ -26,31 +31,46 @@ const providerMatch = schema.match(/datasource db \{\s*provider = "([^"]+)"/)
 const currentProvider = providerMatch?.[1] || 'unknown'
 const dbUrl = process.env.DATABASE_URL || ''
 const isProduction = process.env.NODE_ENV === 'production'
-const isDev = dbUrl.startsWith('file:')
+
+/** Determine the desired provider from DATABASE_URL scheme. */
+function desiredProvider(url) {
+  if (!url) return 'postgresql' // default — matches committed schema
+  if (url.startsWith('file:')) return 'sqlite'
+  if (url.startsWith('postgres')) return 'postgresql'
+  return 'postgresql'
+}
+
+const want = desiredProvider(dbUrl)
 
 if (isProduction) {
-  // Production: MUST be postgresql — fail if not
+  // Production: MUST be postgresql — fail if not, NEVER patch.
   if (currentProvider !== 'postgresql') {
-    console.error(`[check-prisma-provider] FATAL: Expected "postgresql" in production, found "${currentProvider}"`)
+    console.error(
+      `[prisma-provider] FATAL: Expected "postgresql" in production, found "${currentProvider}"`,
+    )
     console.error('Fix: change prisma/schema.prisma datasource provider to "postgresql"')
     process.exit(1)
   }
-  console.log('[check-prisma-provider] ✓ postgresql (production)')
-} else if (isDev) {
-  // Dev sandbox with SQLite: allow but warn
-  if (currentProvider === 'sqlite') {
-    console.log('[check-prisma-provider] ⚠️ sqlite (dev sandbox — OK for testing)')
-  } else if (currentProvider === 'postgresql') {
-    console.log('[check-prisma-provider] ✓ postgresql (dev)')
+  console.log('[prisma-provider] ✓ postgresql (production)')
+  process.exit(0)
+}
+
+// ── Development: auto-patch if mismatched ────────────────────────────────
+if (currentProvider !== want) {
+  const patched = schema.replace(
+    /(datasource db \{\s*provider = ")([^"]+)(")/,
+    `$1${want}$3`,
+  )
+  if (patched === schema) {
+    console.warn(`[prisma-provider] ⚠️ could not patch provider (regex mismatch)`)
+    console.warn(`   current="${currentProvider}" desired="${want}"`)
   } else {
-    console.warn(`[check-prisma-provider] ⚠️ unexpected provider: ${currentProvider}`)
+    writeFileSync(schemaPath, patched, 'utf8')
+    console.log(
+      `[prisma-provider] 🔧 auto-patched provider: "${currentProvider}" → "${want}" (dev mode)`,
+    )
+    console.log(`   DATABASE_URL starts with: "${dbUrl.slice(0, 20)}..."`)
   }
 } else {
-  // No DATABASE_URL or unknown: just check it's postgresql
-  if (currentProvider === 'postgresql') {
-    console.log('[check-prisma-provider] ✓ postgresql')
-  } else {
-    console.warn(`[check-prisma-provider] ⚠️ provider is "${currentProvider}" — expected "postgresql"`)
-    console.warn('Set DATABASE_URL to a PostgreSQL connection string for production-like testing.')
-  }
+  console.log(`[prisma-provider] ✓ ${currentProvider} (dev)`)
 }
