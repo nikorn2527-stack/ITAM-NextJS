@@ -15,8 +15,25 @@
  */
 
 import crypto from 'node:crypto'
-import { SignJWT, jwtVerify, type JWTPayload } from 'jose'
-import * as bcrypt from 'bcryptjs'
+
+// Lazy-load jose + bcryptjs — heavy modules that cause OOM during cold-compile
+// in the 4GB sandbox when imported at module level.
+let _bcrypt: typeof import('bcryptjs') | null = null
+function getBcrypt() {
+  if (!_bcrypt) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _bcrypt = require('bcryptjs')
+  }
+  return _bcrypt
+}
+
+let _jose: typeof import('jose') | null = null
+async function getJose() {
+  if (!_jose) {
+    _jose = await import('jose')
+  }
+  return _jose
+}
 
 // Re-export everything that's safe for both server + client
 export {
@@ -93,7 +110,7 @@ export function verifyPassword(
   // bcrypt (starts with $2b$ or $2a$)
   if (target.startsWith('$2b$') || target.startsWith('$2a$')) {
     try {
-      return bcrypt.compareSync(password, target)
+      return getBcrypt().compareSync(password, target)
     } catch {
       return false
     }
@@ -124,12 +141,13 @@ const JWT_SECRET_RAW = (() => {
 const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_RAW)
 export const TOKEN_TTL_SECONDS = 6 * 60 * 60 // 6 hours — matches Apps Script CONFIG.AUTH_TOKEN_TTL
 
-export interface ItamJWTPayload extends JWTPayload {
+export interface ItamJWTPayload {
   email: string
   role: import('./auth-shared').Role
   name: string | null
   username: string | null
   allowedSites: string | 'ALL'
+  [key: string]: unknown
 }
 
 /** Issue a signed JWT carrying the user identity. */
@@ -149,12 +167,15 @@ export async function createToken(user: {
     username: user.username,
     allowedSites: isSuperAdminRole(role) ? 'ALL' : (user.allowedSites ?? 'ALL'),
   }
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setSubject(user.email.toLowerCase())
-    .setIssuedAt()
-    .setExpirationTime(`${TOKEN_TTL_SECONDS}s`)
-    .sign(JWT_SECRET)
+  return (async () => {
+    const { SignJWT } = await getJose()
+    return new SignJWT(payload as any)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject(user.email.toLowerCase())
+      .setIssuedAt()
+      .setExpirationTime(`${TOKEN_TTL_SECONDS}s`)
+      .sign(JWT_SECRET)
+  })()
 }
 
 /** Verify a JWT and return its payload, or `null` if invalid/expired/blacklisted. */
@@ -164,7 +185,8 @@ export async function verifyToken(token: string | null | undefined): Promise<Ita
     const trimmed = token.trim()
     // Reject blacklist tokens (logout)
     if (isTokenBlacklisted(trimmed)) return null
-    const { payload } = await jwtVerify(trimmed, JWT_SECRET, {
+    const { jwtVerify } = await getJose()
+    const { payload } = await jwtVerify(trimmed, JWT_SECRET as any, {
       algorithms: ['HS256'],
     })
     return payload as ItamJWTPayload

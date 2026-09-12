@@ -24,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList, Activity, User, Camera, Save } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList, Activity, User, Camera, Save, Sheet, Rocket, Tag } from 'lucide-react'
 import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
@@ -40,7 +40,12 @@ import { LicenseManagementSection } from './license-management-section'
 import { AssetCategorySection } from './asset-category-section'
 import { StockCountSection } from './stock-count-section'
 import { SyncTestSection } from './sync-test-section'
+import { GoogleSheetsSection } from './google-sheets-section'
 import { ModuleFlagsSection } from './module-flags-section'
+import { SetupWizard } from './setup-wizard'
+import { CustomFieldManager } from './custom-field-manager'
+import { OrganizationsList } from './organizations-list'
+import { CustomReportBuilder } from './custom-report-builder'
 import { useAuthStore } from '@/store/auth-store'
 import { useT } from '@/store/i18n-store'
 
@@ -74,11 +79,17 @@ type SettingsTab =
   | 'demo'
   | 'mobile-nav'
   | 'sync-test'
+  | 'google-sheets'
   | 'my-biometrics'
   | 'my-profile'
   | 'licenses'
   | 'stock-count'
   | 'modules'
+  | 'organizations'
+  | 'setup-wizard'
+  | 'custom-fields'
+  | 'custom-reports'
+  | 'asset-categories'
 
 interface SettingsTabGroup {
   title: string
@@ -99,6 +110,7 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'licenses', labelKey: 'settings.tab.licenses', icon: KeyRound },
       { value: 'asset-categories', labelKey: 'settings.tab.asset_categories', icon: Package },
       { value: 'stock-count', labelKey: 'settings.tab.stock_count', icon: ClipboardList },
+      { value: 'custom-reports', labelKey: 'settings.tab.custom_reports', icon: BarChart3 },
     ],
   },
   {
@@ -112,6 +124,10 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       // { value: 'permissions', label: 'PermissionUser', icon: Shield },
       { value: 'mobile-nav', labelKey: 'settings.tab.mobile_nav', icon: Smartphone },
       { value: 'sync-test', labelKey: 'settings.tab.sync_test', icon: RefreshCw },
+      { value: 'google-sheets', labelKey: 'settings.tab.google_sheets', icon: Sheet },
+      { value: 'organizations', labelKey: 'settings.tab.organizations', icon: Building2 },
+      { value: 'setup-wizard', labelKey: 'settings.tab.setup_wizard', icon: Rocket },
+      { value: 'custom-fields', labelKey: 'settings.tab.custom_fields', icon: Tag },
       { value: 'pending', labelKey: 'settings.tab.pending', icon: Users },
       { value: 'demo', labelKey: 'settings.tab.demo', icon: FlaskConical },
       { value: 'modules', labelKey: 'modules.tab_label', icon: Package },
@@ -758,6 +774,27 @@ export function ItamSettings() {
       {tab === 'mobile-nav' && <MobileNavConfigSection />}
       {tab === 'sync-test' && <SyncTestSection />}
 
+      {tab === 'google-sheets' && <GoogleSheetsSection />}
+
+      {tab === 'organizations' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Building2 className="h-5 w-5 text-[#f97316]" />
+              {t('organizations.title')}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">{t('organizations.subtitle')}</p>
+          </CardHeader>
+          <CardContent>
+            <OrganizationsList />
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 'setup-wizard' && <SetupWizard organizationId="new" />}
+
+      {tab === 'custom-fields' && <CustomFieldManager />}
+
       {tab === 'my-biometrics' && <MyBiometricsSection />}
       {tab === 'my-profile' && <MyProfileSection />}
 
@@ -769,6 +806,7 @@ export function ItamSettings() {
           <StockCountSection scope="DEVICE" />
         </div>
       )}
+      {tab === 'custom-reports' && <CustomReportBuilder />}
         </div>
       </div>
 

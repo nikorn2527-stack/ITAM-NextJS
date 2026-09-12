@@ -95,6 +95,7 @@ import {
   DeviceSetParentBanner,
 } from './device-set-children-section'
 import { ReplaceDeviceDialog } from './replace-device-dialog'
+import { CustomFieldRenderer } from './custom-field-renderer'
 
 interface Props {
   deviceId: string | null
@@ -2193,9 +2194,12 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
               </ul>
             )}
           </section>
-        </div>
 
-        {/* ── อุปกรณ์ในชุด (unified: อุปกรณ์ต่อพ่วง + Device Set children) ── */}
+          {/* Custom Fields — ฟิลด์เพิ่มเติมที่องค์กรกำหนดเอง (Phase 1 multi-org) */}
+          {device && (
+            <CustomFieldRenderer targetEntity="Device" targetId={device.id} />
+          )}
+        </div>
         {/* MERGE-ACCESSORY-DEVICE-SET: previously this was 2 separate sections
             (DeviceAccessoriesSection + DeviceSetChildrenSection). Now merged
             into a single section with a toggle in the Add dialog: "new" creates

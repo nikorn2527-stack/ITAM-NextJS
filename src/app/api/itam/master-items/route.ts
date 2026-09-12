@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
+import { getOrgScope } from '@/lib/org-scope'
 
 // GET /api/itam/master-items?category=
 export async function GET(req: NextRequest) {
@@ -8,9 +9,20 @@ export async function GET(req: NextRequest) {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
+    // ── Organization scope (Phase 1 multi-org) ──
+    // MasterItem returns BOTH org-specific + global template rows.
+    // Global rows have organizationId = null OR match the user's org.
+    const orgScope = getOrgScope(auth.user)
+    if (!orgScope.ok) return NextResponse.json({ error: orgScope.error.message }, { status: orgScope.error.status })
+
     const { searchParams } = new URL(req.url)
     const category = searchParams.get('category')?.trim() ?? ''
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = {
+      OR: [
+        { organizationId: orgScope.organizationId }, // org-specific
+        { organizationId: null }, // global template
+      ],
+    }
     if (category) where.category = category
     const items = await db.masterItem.findMany({ where, orderBy: { label: 'asc' } })
     return NextResponse.json({ items })

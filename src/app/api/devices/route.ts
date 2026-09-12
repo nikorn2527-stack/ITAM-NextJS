@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
-import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag, demoFilter } from '@/lib/demo-mode'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { getOrgScope } from '@/lib/org-scope'
 import {
   clampPageAndLimit,
   buildPaginationMeta,
@@ -65,6 +64,13 @@ export async function GET(req: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
+
+  // ── Organization scope (Phase 1 multi-org) ──
+  // Every business query must filter by organizationId to enforce tenant isolation.
+  const orgScope = getOrgScope(auth.user)
+  if (!orgScope.ok) {
+    return NextResponse.json({ error: orgScope.error.message }, { status: orgScope.error.status })
+  }
   // ── Build authorization context for Site scope ──
   // Uses buildAuthorizationContext() instead of reading auth.user.allowedSites
   // directly, so that UserSiteGrant is consulted first (dual-read).
@@ -93,7 +99,7 @@ export async function GET(req: NextRequest) {
       limit: Number(searchParams.get('limit') ?? '100') || 100,
     })
 
-    const where: Record<string, unknown> = { ...demoFilter(auth.user) }
+    const where: Record<string, unknown> = { ...demoFilter(auth.user), ...orgScope.where }
     if (search) {
       // ── Search only NON-SENSITIVE fields ──────────────────────────
       // Audit (ITAM-02) REQUEST CHANGES: search clause included sensitive

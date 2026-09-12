@@ -17,11 +17,24 @@ import type { NextConfig } from "next";
 
 const isVercel = !!process.env.VERCEL
 const isDev = process.env.NODE_ENV === 'development'
-// Only use standalone for self-hosted (not Vercel, not dev)
-const useStandalone = !isVercel && !isDev
+// Only use standalone for self-hosted (not Vercel, not dev, not sandbox-preview)
+// In sandbox preview, use `next start` (non-standalone) to avoid OOM during
+// standalone bundling step.
+const isSandboxPreview = process.env.SANDBOX_PREVIEW === '1'
+const useStandalone = !isVercel && !isDev && !isSandboxPreview
 
 const nextConfig: NextConfig = {
   ...(useStandalone && { output: 'standalone' as const }),
+  // Externalize Prisma so it loads from node_modules at runtime, not bundled.
+  // This prevents "Argument isDemo is missing" errors caused by stale bundled
+  // Prisma Client after schema changes.
+  serverExternalPackages: ['@prisma/client', '.prisma/client'],
+  // Externalize heavy crypto modules so they don't get bundled in every route chunk
+  // — fixes OOM during cold-compile of /api/itam/auth/login in 4GB sandbox.
+  experimental: {
+    // Reduce memory by avoiding eager compilation of all routes
+    optimizePackageImports: ['recharts', 'framer-motion', 'lucide-react', '@radix-ui/react-dialog', '@radix-ui/react-select'],
+  },
   typescript: {
     // Keep true for now — there are pre-existing TS errors that would block
     // production deploy. TODO: fix TS errors and set to false.

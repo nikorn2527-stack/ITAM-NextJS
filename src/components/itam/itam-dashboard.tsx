@@ -19,7 +19,7 @@
  */
 
 import * as React from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTheme } from 'next-themes'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -46,11 +46,12 @@ import {
   FileDown, Flame, BarChart3, Trophy, RefreshCw, Loader2,
   AlertTriangle, Palette, ArrowUpRight, ArrowDownRight, CircleAlert,
   CalendarClock, ArrowRight, History, Settings2, Inbox, MoreHorizontal,
-  Printer,
+  Printer, Wifi, WifiOff, Activity,
 } from 'lucide-react'
 import { useAppStore } from '@/store/app-store'
 import { useAuthStore } from '@/store/auth-store'
 import { useT, useFormatDateTime, useFormatDate, useLang } from '@/store/i18n-store'
+import { useRealtime } from '@/hooks/use-realtime'
 import type { Cycle, DashboardRangeKey } from './types'
 import { DASHBOARD_RANGE_OPTIONS } from './types'
 import { QuickActionsBar } from './quick-actions-bar'
@@ -375,6 +376,90 @@ export function ItamDashboard() {
   const { lang } = useLang()
   const formatDateTime = useFormatDateTime()
   const formatDate = useFormatDate()
+
+  // Realtime (Socket.io on port 3003 via Caddy XTransformPort gateway).
+  // Purely additive: the dashboard's React Query polling still runs every
+  // 5 min as a fallback. When the realtime server emits a fresh KPI, we
+  // proactively invalidate the relevant query caches so the user sees
+  // updated counts within seconds instead of minutes.
+  const qc = useQueryClient()
+  const realtime = useRealtime()
+  // Track the previous KPI counts so we can detect "delta" pushes and
+  // only invalidate when a value actually changed (saves a refetch when
+  // the server re-broadcasts identical counts every 30s).
+  const prevRealtimeRef = React.useRef<{ devices?: number; workOrders?: number } | null>(null)
+  // Avoid spamming toasts on the initial KPI snapshot — we only surface
+  // a toast for row events that arrive AFTER the dashboard mounts.
+  const realtimeReadyRef = React.useRef(false)
+  React.useEffect(() => {
+    realtimeReadyRef.current = true
+  }, [])
+
+  // KPI → cache invalidation. When the realtime server reports a new
+  // device/workOrder/meter count, mark those query keys as stale so
+  // React Query refetches them. The dashboard's existing `refetchInterval`
+  // still runs in the background; this just makes the UI refresh sooner.
+  React.useEffect(() => {
+    if (!realtime.kpi) return
+    const prev = prevRealtimeRef.current
+    const cur: { devices?: number; workOrders?: number } = {
+      devices: realtime.kpi.devices,
+      workOrders: realtime.kpi.workOrders,
+    }
+    if (prev) {
+      const deviceChanged = prev.devices !== cur.devices
+      const woChanged = prev.workOrders !== cur.workOrders
+      if (deviceChanged || woChanged) {
+        // Invalidate the heavy dashboard query + the listing queries.
+        // This makes the KPI cards, by-type donut, and by-site table all
+        // pull fresh data on the next render cycle.
+        qc.invalidateQueries({ queryKey: ['itam-dashboard'] })
+        if (deviceChanged) qc.invalidateQueries({ queryKey: ['devices'] })
+        if (woChanged) qc.invalidateQueries({ queryKey: ['work-orders'] })
+        qc.invalidateQueries({ queryKey: ['warranty-summary'] })
+      }
+    }
+    prevRealtimeRef.current = cur
+  }, [realtime.kpi, qc])
+
+  // Surface a toast when a brand-new row lands (only after the initial
+  // ready signal, so we don't fire on the first KPI snapshot).
+  React.useEffect(() => {
+    if (!realtimeReadyRef.current) return
+    const e = realtime.lastDeviceCreated
+    if (!e || !e.id) return
+    // Only toast when delta is meaningful (server may re-broadcast).
+    if (e.delta && e.delta > 0) {
+      toast.success(t('dash.realtime.live'), {
+        description: `+${e.delta} device${e.delta > 1 ? 's' : ''} · ${e.assetCode ?? e.id}`,
+        duration: 4000,
+      })
+    }
+  }, [realtime.lastDeviceCreated, t])
+
+  React.useEffect(() => {
+    if (!realtimeReadyRef.current) return
+    const e = realtime.lastWorkOrderCreated
+    if (!e || !e.id) return
+    if (e.delta && e.delta > 0) {
+      toast.success(t('dash.realtime.live'), {
+        description: `+${e.delta} work order · ${e.woNumber ?? e.id}`,
+        duration: 4000,
+      })
+    }
+  }, [realtime.lastWorkOrderCreated, t])
+
+  React.useEffect(() => {
+    if (!realtimeReadyRef.current) return
+    const e = realtime.lastMeterRecorded
+    if (!e || !e.id) return
+    if (e.delta && e.delta > 0) {
+      toast.success(t('dash.realtime.live'), {
+        description: `+${e.delta} meter reading · ${e.assetCode ?? e.readingMonth ?? e.id}`,
+        duration: 4000,
+      })
+    }
+  }, [realtime.lastMeterRecorded, t])
 
   const [sitesOpen, setSitesOpen] = React.useState(false)
   const [heatOpen, setHeatOpen] = React.useState(false)
@@ -1041,6 +1126,77 @@ ${kpiHtml}
             </div>
           </CardContent>
         </Card>
+
+        {/* Realtime extras — pulled from the socket.io push, not the REST API.
+            Visible only while the realtime service is connected. When it's
+            offline, the existing KPIs above still cover the dashboard's core
+            counts via polling. */}
+        {realtime.isConnected && realtime.kpi && (
+          <Card className="shadow-sm border-emerald-200/70 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+            <CardContent className="p-2.5 sm:p-3">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                <span>● {t('dash.realtime.live')}</span>
+                <span className="ml-auto text-slate-400 dark:text-slate-500">
+                  {new Date(realtime.lastUpdate ?? Date.now()).toLocaleTimeString(
+                    lang === 'th' ? 'th-TH' : 'en-GB',
+                    { hour: '2-digit', minute: '2-digit', second: '2-digit' },
+                  )}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <div className="truncate text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t('dash.realtime.kpi_pending_wo')}
+                  </div>
+                  <div className="text-base font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-lg">
+                    {(realtime.kpi.pendingWO ?? 0).toLocaleString('th-TH')}
+                  </div>
+                </div>
+                <div>
+                  <div className="truncate text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t('dash.realtime.kpi_low_stock')}
+                  </div>
+                  <div className="text-base font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-lg">
+                    {(realtime.kpi.lowStock ?? 0).toLocaleString('th-TH')}
+                  </div>
+                </div>
+                <div>
+                  <div className="truncate text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {t('dash.realtime.kpi_warranty_60d')}
+                  </div>
+                  <div className="text-base font-bold tabular-nums text-slate-800 dark:text-slate-100 sm:text-lg">
+                    {(realtime.kpi.warrantyExpiring ?? 0).toLocaleString('th-TH')}
+                  </div>
+                </div>
+              </div>
+              {realtime.kpi.recentActivities && realtime.kpi.recentActivities.length > 0 && (
+                <div className="mt-2 border-t border-emerald-200/60 pt-1.5 dark:border-emerald-900/40">
+                  <div className="flex items-center gap-1 mb-1 text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    <Activity className="h-3 w-3" /> {t('dash.realtime.recent_events')}
+                  </div>
+                  <ul className="max-h-24 overflow-y-auto pr-1 space-y-0.5 text-[11px] text-slate-600 dark:text-slate-300">
+                    {realtime.kpi.recentActivities.slice(0, 5).map((a) => (
+                      <li key={`${a.kind}-${a.id}`} className="flex items-center gap-1.5 truncate">
+                        <span className={cn(
+                          'inline-block h-1.5 w-1.5 shrink-0 rounded-full',
+                          a.kind === 'device' ? 'bg-teal-500'
+                            : a.kind === 'workorder' ? 'bg-orange-500'
+                              : 'bg-violet-500',
+                        )} />
+                        <span className="truncate font-medium">{a.label}</span>
+                        {a.sub && <span className="ml-auto shrink-0 text-slate-400 dark:text-slate-500">· {a.sub}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </>
   )
@@ -1694,11 +1850,54 @@ ${kpiHtml}
       <div className="flex-shrink-0">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{t('dash.title')}</h1>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100">{t('dash.title')}</h1>
+            {/* Realtime (Socket.io) status badge.
+                ● Live  = server reachable, KPIs push every 30s
+                ○ Offline = server down; dashboard falls back to 5-min polling */}
+            <span
+              role="status"
+              aria-live="polite"
+              title={realtime.isConnected ? t('dash.realtime.live_hint') : t('dash.realtime.offline_hint')}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors',
+                realtime.isConnected
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-400'
+                  : 'border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400',
+              )}
+            >
+              {realtime.isConnected ? (
+                <>
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                  </span>
+                  <span>● {t('dash.realtime.live')}</span>
+                  {realtime.kpi && (
+                    <span className="ml-1 hidden text-emerald-600/70 dark:text-emerald-400/70 sm:inline">
+                      · {realtime.kpi.devices.toLocaleString('th-TH')} dev · {realtime.kpi.workOrders.toLocaleString('th-TH')} wo
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-3 w-3" />
+                  <span>○ {t('dash.realtime.offline')}</span>
+                </>
+              )}
+            </span>
+          </div>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {t('dash.subtitle')}
             {data && <span className="ml-2 text-xs text-emerald-600">⚡ {data.queryTimeMs}ms</span>}
             <span className="ml-2 text-xs text-slate-400">· {t('dash.range.short')} <span className="font-medium">{rangeInfoLabel}</span></span>
+            {realtime.lastUpdate && (
+              <span className="ml-2 text-xs text-slate-400">
+                · {t('dash.realtime.last_push')} <span className="font-mono tabular-nums">
+                  {new Date(realtime.lastUpdate).toLocaleTimeString(lang === 'th' ? 'th-TH' : 'en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              </span>
+            )}
           </p>
           <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
             <span className="relative flex h-2 w-2">

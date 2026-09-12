@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { validateGuestContact } from '@/lib/guest-validation'
 import { notifyWorkOrderCreated } from '@/lib/notifications'
 import { requireAuth } from '@/lib/auth-middleware'
+import { getOrgScope } from '@/lib/org-scope'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag, demoFilter } from '@/lib/demo-mode'
@@ -172,6 +173,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
+  // ── Organization scope (Phase 1 multi-org) ──
+  const orgScope = getOrgScope(auth.user)
+  if (!orgScope.ok) {
+    return NextResponse.json({ error: orgScope.error.message }, { status: orgScope.error.status })
+  }
+
   try {
     // ── Build authorization context for Site scope ──
     const ctx = await buildAuthorizationContext(
@@ -251,7 +258,7 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    const where: Record<string, unknown> = { ...demoFilter(auth.user) }
+    const where: Record<string, unknown> = { ...demoFilter(auth.user), ...orgScope.where }
 
     // ── Build the `search` OR clause ──
     // Used to combine with site filter via AND when both are present.

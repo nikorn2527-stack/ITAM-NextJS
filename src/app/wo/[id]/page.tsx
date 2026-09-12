@@ -9,6 +9,8 @@
  * UI: card layout สวยงาม สำหรับมือถือ
  */
 
+export const dynamic = 'force-dynamic'
+
 import * as React from 'react'
 import { useParams } from 'next/navigation'
 import { Loader2, AlertCircle, CheckCircle2, Clock, Wrench, Package, XCircle, MapPin, Calendar, Printer } from 'lucide-react'

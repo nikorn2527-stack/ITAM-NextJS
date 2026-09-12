@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
+import { getOrgScope } from '@/lib/org-scope'
 import { siteFilterForUser } from '@/lib/auth'
 import { demoFilter } from '@/lib/demo-mode'
 import { logAudit } from '@/lib/audit'
@@ -32,13 +33,17 @@ export async function GET(req: NextRequest) {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
 
+    // ── Organization scope (Phase 1 multi-org) ──
+    const orgScope = getOrgScope(auth.user)
+    if (!orgScope.ok) return NextResponse.json({ error: orgScope.error.message }, { status: orgScope.error.status })
+
     const { searchParams } = new URL(req.url)
     const category = searchParams.get('category')?.trim() ?? ''
     const site = searchParams.get('site')?.trim() ?? ''
     const lowStock = searchParams.get('lowStock') === '1'
     const q = searchParams.get('q')?.trim() ?? ''
 
-    const where: Record<string, unknown> = { AND: [] as unknown[] }
+    const where: Record<string, unknown> = { AND: [{ ...orgScope.where }] }
     const sf = siteFilterForUser(user)
     if (Object.keys(sf).length) (where.AND as unknown[]).push(sf)
     if (site) (where.AND as unknown[]).push({ site })

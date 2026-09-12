@@ -42,13 +42,12 @@ export function isDemoUser(user: DemoAwareUser | null | undefined): boolean {
 export function demoFilter(user: DemoAwareUser | null | undefined): Record<string, unknown> {
   // Demo users see ONLY demo data (isolated from real production data)
   if (isDemoUser(user)) return { isDemo: true }
-  // Real users see ONLY non-demo data (isDemo = false OR null) — demo data is HIDDEN
-  return {
-    OR: [
-      { isDemo: false },
-      { isDemo: null },
-    ],
-  }
+  // Real users see ONLY non-demo data.
+  // Note: isDemo is `Boolean @default(false)` (NOT nullable), so we use
+  // `isDemo: false` directly. Previously this used `OR: [{ isDemo: false }, { isDemo: null }]`
+  // but `{ isDemo: null }` is invalid for a required field and Prisma throws
+  // "Argument isDemo is missing" at runtime.
+  return { isDemo: false }
 }
 
 /**

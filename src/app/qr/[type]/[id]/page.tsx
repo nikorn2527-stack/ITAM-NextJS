@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 /**
  * Smart QR Router Page — /qr/[type]/[id]?action=xxx
  *

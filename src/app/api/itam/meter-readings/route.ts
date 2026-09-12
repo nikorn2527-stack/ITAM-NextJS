@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
+import { getOrgScope } from '@/lib/org-scope'
 import { siteFilterForUser } from '@/lib/auth'
 import { demoFilter } from '@/lib/demo-mode'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
@@ -37,6 +38,10 @@ export async function GET(req: NextRequest) {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
 
+    // ── Organization scope (Phase 1 multi-org) ──
+    const orgScope = getOrgScope(auth.user)
+    if (!orgScope.ok) return NextResponse.json({ error: orgScope.error.message }, { status: orgScope.error.status })
+
     const { searchParams } = new URL(req.url)
     const assetCode = (searchParams.get('assetCode')?.trim() || searchParams.get('assetNo')?.trim() || '')
     const month = searchParams.get('month')?.trim() ?? ''
@@ -44,7 +49,7 @@ export async function GET(req: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10)))
 
-    const where: Record<string, unknown> = { AND: [] as unknown[] }
+    const where: Record<string, unknown> = { AND: [{ ...orgScope.where }] }
     if (assetCode) (where.AND as unknown[]).push({ assetCode })
     if (month) (where.AND as unknown[]).push({ readingMonth: month })
 

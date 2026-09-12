@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 // ============================================================
 // /login/line/page.tsx — LINE Login landing page for PUBLIC users
 // (Task ID: PUBLIC-QR-2B-LINE-LOGIN)

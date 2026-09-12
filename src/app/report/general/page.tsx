@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 /**
  * /report/general — Public "no QR needed" repair form.
  *

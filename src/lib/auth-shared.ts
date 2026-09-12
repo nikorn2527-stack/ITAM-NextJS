@@ -65,6 +65,10 @@ export interface AuthUser {
   permissions: Permission[]
   /** Demo user flag — surfaced so the UI can show the demo banner. */
   isDemo: boolean
+  /** Organization ID (tenant scope) — Phase 1 multi-org foundation.
+   *  Null for legacy users without an assigned org. Resolved from
+   *  User.organizationId at login time. */
+  organizationId: string | null
 }
 
 /** Internal — the user record as stored in `user_permissions`. */
@@ -84,6 +88,8 @@ export interface UserPermissionRow {
   permissions?: string | null
   /** Demo user flag — present when the User row carries `isDemo`. */
   isDemo?: boolean | null
+  /** Organization ID (tenant scope) — Phase 1 multi-org foundation. */
+  organizationId?: string | null
 }
 
 // ─── Role ↔ permission map (mirror of Code.gs ROLE_PERMISSIONS) ───────
@@ -391,5 +397,6 @@ export function toAuthUser(row: UserPermissionRow): AuthUser {
     allowedSites: (isSuperAdminRole(role) || role === 'admin') ? 'ALL' : (row.allowedSites ?? ''),
     permissions,
     isDemo: row.isDemo === true,
+    organizationId: row.organizationId ?? null,
   }
 }
