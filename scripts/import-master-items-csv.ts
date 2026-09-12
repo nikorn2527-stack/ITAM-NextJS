@@ -1,7 +1,7 @@
 import pg from 'pg'
 import fs from 'fs'
 
-const SUPA = process.env.SUPABASE_DATABASE_URL || ''
+const SUPA = process.env.SUPABASE_DATABASE_URL
 const CSV = '/home/z/my-project/upload/IT_Asset_Management_Database - Master_Items.csv'
 
 // Parse CSV (RFC 4180)

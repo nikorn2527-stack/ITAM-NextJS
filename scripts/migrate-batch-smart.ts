@@ -2,7 +2,7 @@ import pg from 'pg'
 import { DatabaseSync } from 'node:sqlite'
 
 const SQLITE = '/home/z/my-project/db/custom.db'
-const SUPA = process.env.SUPABASE_DATABASE_URL || ''
+const SUPA = process.env.SUPABASE_DATABASE_URL
 
 const TS = new Set(['createdAt', 'updatedAt', 'lastLoginAt', 'assignedAt', 'workCompletedAt', 'closedAt', 'canceledAt', 'editUnlockAt', 'dateAdmin', 'deletedAt', 'txnDate', 'readingDate', 'approvedAt', 'completedAt', 'installDate', 'uninstallDate', 'warrantyEnd', 'purchaseDate', 'orderDate', 'effectiveFrom', 'effectiveTo', 'replacedAt'])
 const BOOL = new Set(['isDemo', 'isSpecialFee', 'trackable', 'editUnlockActive', 'active', 'meterRequired'])

@@ -2,7 +2,7 @@ import pg from 'pg'
 import { DatabaseSync } from 'node:sqlite'
 
 const SQLITE = '/home/z/my-project/db/custom.db'
-const SUPA = process.env.SUPABASE_DATABASE_URL || ''
+const SUPA = process.env.SUPABASE_DATABASE_URL
 
 const TABLES = [
   'AppSetting', 'User', 'Device', 'StockItem', 'PurchaseOrder',

@@ -8,7 +8,7 @@ import pg from 'pg'
 import { DatabaseSync } from 'node:sqlite'
 
 const SQLITE_PATH = '/home/z/my-project/db/custom.db'
-const SUPABASE_URL = process.env.SUPABASE_DATABASE_URL || ''
+const SUPABASE_URL = process.env.SUPABASE_DATABASE_URL
 
 // Tables to migrate (in dependency order — parents first)
 const TABLES = [

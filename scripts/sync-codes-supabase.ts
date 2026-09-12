@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite'
 
 const sqlite = new DatabaseSync('/home/z/my-project/db/custom.db')
 const supa = new pg.Client({ 
-  connectionString: process.env.SUPABASE_DATABASE_URL || '',
+  connectionString: process.env.SUPABASE_DATABASE_URL,
   connectionTimeoutMillis: 30000,
 })
 

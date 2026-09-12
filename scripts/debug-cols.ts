@@ -6,7 +6,7 @@ async function main() {
   const sqliteCols = Object.keys(sqlite.prepare('SELECT * FROM Device LIMIT 1').get() as object)
   console.log('SQLite Device cols (' + sqliteCols.length + '):', sqliteCols.slice(0, 8).join(', '), '...')
 
-  const c = new pg.Client({ connectionString: process.env.SUPABASE_DATABASE_URL || '' })
+  const c = new pg.Client({ connectionString: process.env.SUPABASE_DATABASE_URL })
   await c.connect()
   const colRes = await c.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='Device'")
   const supaCols = colRes.rows.map((r: any) => r.column_name)
