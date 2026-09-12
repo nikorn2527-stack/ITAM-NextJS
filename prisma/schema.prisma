@@ -7,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -86,7 +86,7 @@ model SetupStep {
   stepKey      String   // preflight | organization | modules | code_pattern | sites | org_structure | master_data | admin | integration | review | activate
   status       String   @default("PENDING") // PENDING | IN_PROGRESS | COMPLETED | FAILED | SKIPPED
   inputHash    String?  // hash of input payload — skip re-apply if unchanged
-  resultJson   String?  // SQLite stores JSON as String (PostgreSQL uses Json?)
+  resultJson   Json?
   errorMessage String?
   completedBy  String?
   startedAt    DateTime?
@@ -113,8 +113,8 @@ model CustomFieldDefinition {
   sortOrder       Int      @default(0)
   section         String?
   placeholder     String?
-  validationJson  String?  // SQLite: String (PostgreSQL: Json?)
-  visibilityJson  String?  // SQLite: String (PostgreSQL: Json?)
+  validationJson  Json?
+  visibilityJson  Json?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   options         CustomFieldOption[]
@@ -147,7 +147,7 @@ model CustomFieldValue {
   fieldId         String
   targetEntity    String
   targetId        String
-  valueJson       String   // SQLite: String (PostgreSQL: Json) — canonical value
+  valueJson       Json
   valueText       String?  // projection for text search
   valueNumber     Decimal? // projection for numeric queries
   valueDate       DateTime? // projection for date queries

@@ -23,9 +23,26 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  const orgId = auth.user.organizationId
-  if (!orgId) {
-    return NextResponse.json({ error: 'ผู้ใช้ไม่มี organization scope' }, { status: 400 })
+  // ── H-01 fix: GET ต้องตรวจ Target Record Authorization ด้วย ──
+  const { getOrgScope } = await import('@/lib/org-scope')
+  const orgScope = getOrgScope(auth.user)
+  if (!orgScope.ok) {
+    return NextResponse.json({ error: orgScope.error.message }, { status: orgScope.error.status })
+  }
+  const orgId = orgScope.organizationId
+
+  // ตรวจ target record exists + org scope (เดียวกับ PUT)
+  const ENTITY_MODEL_MAP_GET: Record<string, string> = {
+    Device: 'device', WorkOrder: 'workOrder', StockItem: 'stockItem', MasterItem: 'masterItem',
+  }
+  const modelNameGet = ENTITY_MODEL_MAP_GET[params.targetEntity]
+  if (modelNameGet) {
+    const targetRecord = await (db as any)[modelNameGet].findFirst({
+      where: { id: params.targetId, ...orgScope.where },
+    })
+    if (!targetRecord) {
+      return NextResponse.json({ error: 'ไม่พบ target record' }, { status: 404 })
+    }
   }
 
   const values = await db.customFieldValue.findMany({
@@ -42,15 +59,18 @@ export async function GET(req: NextRequest, { params }: Params) {
 
 export async function PUT(req: NextRequest, { params }: Params) {
   const { requireAuth } = await import('@/lib/auth-middleware')
+  const { getOrgScope } = await import('@/lib/org-scope')
   const auth = await requireAuth(req, 'DEVICE_EDIT')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
-  const orgId = auth.user.organizationId
-  if (!orgId) {
-    return NextResponse.json({ error: 'ผู้ใช้ไม่มี organization scope' }, { status: 400 })
+  // ── B-03 fix: ประกาศ orgScope ให้ถูกต้อง ──
+  const orgScope = getOrgScope(auth.user)
+  if (!orgScope.ok) {
+    return NextResponse.json({ error: orgScope.error.message }, { status: orgScope.error.status })
   }
+  const orgId = orgScope.organizationId
 
   const body = await req.json().catch(() => ({} as any))
   const { values } = body || {}

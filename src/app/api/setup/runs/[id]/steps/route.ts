@@ -37,8 +37,23 @@ export async function POST(req: NextRequest, { params }: Params) {
     )
   }
 
+  // ── H-02 fix: ตรวจ Organization Scope ของ Run ──
+  // ป้องกัน user จาก org A ส่ง step update ไปยัง run ของ org B
+  const { getOrgScope } = await import('@/lib/org-scope')
+  const orgScope = getOrgScope(auth.user)
+  if (!orgScope.ok) {
+    return NextResponse.json({ error: orgScope.error.message }, { status: orgScope.error.status })
+  }
+  // Superadmin สามารถเข้าถึงได้ทุก org — skip check
+  if (auth.user.role !== 'superadmin' && run.organizationId !== orgScope.organizationId) {
+    return NextResponse.json({ error: 'ไม่มีสิทธิ์เข้าถึง SetupRun ขององค์กรอื่น' }, { status: 403 })
+  }
+
   const body = await req.json().catch(() => ({} as any))
-  const { stepKey, status, inputHash, resultJson, errorMessage, completedBy } = body || {}
+  const { stepKey, status, inputHash, resultJson, errorMessage } = body || {}
+
+  // ── H-02 fix: ไม่รับ completedBy จาก Client — ใช้จาก Auth Context เท่านั้น ──
+  const resolvedCompletedBy = auth.row.username ?? auth.user.email
 
   if (!stepKey || !status) {
     return NextResponse.json(
@@ -66,8 +81,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (inputHash !== undefined) data.inputHash = inputHash
   if (resultJson !== undefined) data.resultJson = resultJson
   if (errorMessage !== undefined) data.errorMessage = errorMessage
-  if (completedBy) data.completedBy = completedBy
-  else if (status === 'COMPLETED') data.completedBy = auth.row.username ?? auth.user.email
+  if (status === 'COMPLETED') data.completedBy = resolvedCompletedBy
 
   const step = await db.setupStep.upsert({
     where: { setupRunId_stepKey: { setupRunId: params.id, stepKey } },
