@@ -5,7 +5,7 @@
  *   • DeviceType → Brand → Model   (3 new normalized tables)
  *   • MasterItem entries for: Building, Floor, Department, DeviceGroup, Status
  *
- * Source: /home/z/my-project/upload/IT_Asset_Management_Database - All_Devices.csv
+ * Source: ./upload/IT_Asset_Management_Database - All_Devices.csv
  *
  * Idempotent: each run upserts based on natural keys (name / code+category),
  * so re-running after a CSV update won't create duplicates.
@@ -119,11 +119,11 @@ interface CsvRow {
 
 function readCsv(): CsvRow[] {
   // Try multiple candidate paths so the script works in different environments:
-  //   - sandbox:    /home/z/my-project/upload/...
+  //   - sandbox:    ./upload/...
   //   - cloned dev: ./upload/... (next to project root)
   //   - cloned dev: <projectRoot>/upload/...
   const candidates = [
-    '/home/z/my-project/upload/IT_Asset_Management_Database - All_Devices.csv',
+    './upload/IT_Asset_Management_Database - All_Devices.csv',
     './upload/IT_Asset_Management_Database - All_Devices.csv',
     `${process.cwd()}/upload/IT_Asset_Management_Database - All_Devices.csv`,
   ]

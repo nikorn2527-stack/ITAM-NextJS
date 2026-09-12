@@ -14,7 +14,10 @@
 
 set -e
 
-cd /home/z/my-project
+# H-02 fix: use portable path resolution instead of hardcoded /home/z/my-project
+# Resolve project root from script location (works on Linux, macOS, WSL, Git Bash)
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$PROJECT_DIR"
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H-%M-%S")
 BACKUP_FILE="backups/backup-${TIMESTAMP}.json"

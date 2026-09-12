@@ -1,8 +1,8 @@
 import { DatabaseSync } from 'node:sqlite'
 import fs from 'fs'
 
-const SQLITE = '/home/z/my-project/db/custom.db'
-const CSV = '/home/z/my-project/upload/IT_Asset_Management_Database - Master_Items.csv'
+const SQLITE = './db/custom.db'
+const CSV = './upload/IT_Asset_Management_Database - Master_Items.csv'
 
 function parseCsv(text: string): string[][] {
   const src = text.replace(/^\uFEFF/, '')

@@ -37,7 +37,7 @@ from datetime import datetime
 # Make the pdf skill's helper modules importable (optional — we don't need them
 # for this self-contained generator, but keeping the path set lets us use the
 # skill's palette generator if we ever want to switch).
-PDF_SKILL_DIR = os.environ.get('PDF_SKILL_DIR', '/home/z/my-project/skills/pdf')
+PDF_SKILL_DIR = os.environ.get('PDF_SKILL_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'skills', 'pdf'))
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape

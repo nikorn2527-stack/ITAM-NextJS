@@ -14,8 +14,8 @@ import { DatabaseSync } from 'node:sqlite'
 import fs from 'fs'
 import path from 'path'
 
-const SQLITE = '/home/z/my-project/db/custom.db'
-const BACKUP_DIR = '/home/z/my-project/db/backups'
+const SQLITE = './db/custom.db'
+const BACKUP_DIR = './db/backups'
 
 async function main() {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)

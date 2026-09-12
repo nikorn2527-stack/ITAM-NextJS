@@ -2,7 +2,7 @@
  * Seed material cost data — populate StockItems with costType fields
  * and a few sample OUT transactions for the current month.
  *
- * Run: bun /home/z/my-project/scripts/seed-material-cost.ts
+ * Run: bun ./scripts/seed-material-cost.ts
  *
  * Idempotent: skips items that already have productCode matching.
  */

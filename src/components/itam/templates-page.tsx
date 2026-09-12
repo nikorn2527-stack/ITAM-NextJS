@@ -181,6 +181,7 @@ interface StickerListResponse {
 }
 
 function StickerTab() {
+  const t = useT()
   const qc = useQueryClient()
   const setActivePage = useAppStore((s) => s.setActivePage)
 
@@ -611,6 +612,7 @@ interface DocListResponse {
 }
 
 function DocumentTab() {
+  const t = useT()
   const qc = useQueryClient()
   const setActivePage = useAppStore((s) => s.setActivePage)
 
@@ -1011,6 +1013,7 @@ interface EditorDialogProps {
 }
 
 function EditorDialog({ open, onOpenChange, type, initial }: EditorDialogProps) {
+  const t = useT()
   const queryClient = useQueryClient()
   const [form, setForm] = React.useState<EditorState>(initial)
   const [saving, setSaving] = React.useState(false)
@@ -1234,6 +1237,7 @@ function useSeedDefaults() {
 }
 
 function WorkOrderTab() {
+  const t = useT()
   const queryClient = useQueryClient()
   const [selectedType, setSelectedType] =
     React.useState<TemplateType>('work-order')

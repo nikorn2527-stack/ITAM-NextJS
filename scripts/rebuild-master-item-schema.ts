@@ -41,7 +41,7 @@ const db = new PrismaClient({
   log: ['error', 'warn'],
 })
 
-const XLSX_PATH = '/home/z/my-project/upload/master_item_user_based_departmentcode_moved_v2_preview.xlsx'
+const XLSX_PATH = './upload/master_item_user_based_departmentcode_moved_v2_preview.xlsx'
 
 async function main() {
   console.log('═══════════════════════════════════════════════════════════════')

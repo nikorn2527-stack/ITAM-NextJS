@@ -6,7 +6,7 @@ import { PrismaClient } from '@prisma/client'
 // In production (Vercel), set GOOGLE_APPLICATION_CREDENTIALS_JSON env var
 // with the full JSON content of the service account key.
 const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
-  || '/home/z/my-project/google-service-account.json'
+  || './google-service-account.json'
 const keyContent = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON
 
 const auth = keyContent

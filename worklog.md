@@ -21973,3 +21973,80 @@ Stage Summary:
 - ✅ ทีมมี checklist ครบสำหรับแก้ก่อนส่งลูกค้า
 - ✅ Push ขึ้น GitHub (commit 6cdc175)
 - 📋 ข้อเสนอเร่งด่วนที่สุด: แก้ Windows Installer (PostgreSQL + migrate deploy + copy/build จริง + password handling + db:restore atomic)
+
+---
+Task ID: FIX-T-NOT-DEFINED-BATCH-1
+Agent: general-purpose
+Task: Fix 't is not defined' bugs in 4 files (devices-page, reports-section, custom-report-builder, templates-page)
+
+Work Log:
+- Wrote a rigorous scanner (strips strings/template-literals/comments, tracks real brace depth) to classify each candidate as MODULE-LEVEL (real bug) vs NESTED (false positive). Confirmed each nested function's parent component already declares `const t = useT()`.
+
+FIXED (5 real bugs — module-level functions that used t() without declaring const t = useT()):
+- src/components/itam/reports-section.tsx → ReportDataView (line 545, 23 t() calls) — added `const t = useT()` as first statement
+- src/components/itam/templates-page.tsx → StickerTab (line 183, 4 t() calls) — added `const t = useT()`
+- src/components/itam/templates-page.tsx → DocumentTab (line 613, 4 t() calls) — added `const t = useT()`
+- src/components/itam/templates-page.tsx → EditorDialog (line 1013, 1 t() call) — added `const t = useT()`
+- src/components/itam/templates-page.tsx → WorkOrderTab (line 1236, 8 t() calls) — added `const t = useT()`
+- useT import already present in both files (reports-section.tsx line 26, templates-page.tsx line 87) — no import changes needed.
+
+SKIPPED (22 false positives — nested inside parent component that already has const t = useT(), so they close over t via lexical scope and work correctly):
+- devices-page.tsx (12): applyBulkDelete, applyBulkStatus, applyBulkTransfer, confirmDelete, exportCsv, generateSiteCodeNow, handleCustomExport, loadDeviceAccessories, logBulkAction, printSingleSticker, save — all nested inside DevicesPage (const t = useT() at line 411). onKey (depth=2) is nested inside a React.useEffect callback inside DevicesPage — also closes over t correctly.
+- reports-section.tsx (4): confirmDelete, createReport, downloadCsv_, openCreate — all nested inside ReportsSection (const t = useT() at line 112).
+- custom-report-builder.tsx (6): duplicateTemplate, exportFormat, openEditWizard, runFull, runPreview, saveTemplate — all nested inside CustomReportBuilder (const t = useT() at line 310). duplicateTemplate explicitly noted in source comment (line 953): "Local helpers (inside the component so they close over `t`)".
+
+Verification:
+- Ran the task's simple scanner: 22 functions still flagged (all are nested false positives by design — the simple scanner does not distinguish nesting).
+- Ran a rigorous scanner (tracks real brace depth, ignores strings/comments): 0 REAL BUGS remaining across all 4 files. ✓
+
+Stage Summary:
+- 5 bugs fixed (1 in reports-section.tsx, 4 in templates-page.tsx)
+- 22 false positives skipped (12 in devices-page.tsx, 4 in reports-section.tsx, 6 in custom-report-builder.tsx)
+- 0 real bugs remaining in these 4 files
+
+---
+Task ID: FIX-T-NOT-DEFINED-BATCH-2
+Agent: general-purpose
+Task: Fix 't is not defined' bugs in 6 files (itam-login, itam-dashboard, google-sheets-section, monthly-report, itam-settings, work-orders-page)
+
+Work Log:
+- Analyzed all 16 candidate functions listed in the task across the 6 files.
+- For each function, used a balanced-paren/brace scanner to find its DIRECT parent function declaration and check whether that parent declares `const t = useT()`.
+- Result: ALL 16 are NESTED functions inside parent components that already declare `const t = useT()`. They close over `t` from the parent scope and work correctly at runtime — they are FALSE POSITIVES per the task's strict criteria ("do NOT touch").
+
+Per-file breakdown (all skipped as false positives):
+- itam-login.tsx — 4 functions, all nested:
+    * handleSubmit (line 237)      → nested in ItamLogin             (const t = useT() at line 106)
+    * submit     (line 572)        → nested in RegisterDialog        (const t = useT() at line 557)
+    * submit     (line 795)        → nested in InviteDialog          (const t = useT() at line 786)
+    * submit     (line 940)        → nested in ForgotPasswordDialog   (const t = useT() at line 931)
+- itam-dashboard.tsx — 3 functions, all nested:
+    * exportPdf        (line 680)  → nested in ItamDashboard          (const t = useT() at line 375)
+    * drillDownStatus  (line 915) → nested in ItamDashboard          (const t = useT() at line 375)
+    * drillDownType    (line 921) → nested in ItamDashboard          (const t = useT() at line 375)
+- google-sheets-section.tsx — 4 functions, all nested:
+    * runPhase       (line 431)   → nested in SyncTab                (const t = useT() at line 408)
+    * runPreview     (line 469)   → nested in SyncTab                (const t = useT() at line 408)
+    * runAllSync     (line 491)   → nested in SyncTab                (const t = useT() at line 408)
+    * downloadBackup (line 809)   → nested in BackupTab              (const t = useT() at line 794)
+- monthly-report.tsx — 1 function, nested:
+    * handleExportCSV (line 891)  → nested in MonthlyReport          (const t = useT() at line 727)
+- itam-settings.tsx — 3 functions, all nested:
+    * openAdd       (line 312)    → nested in ItamSettings           (const t = useT() at line 180)
+    * saveItem      (line 324)    → nested in ItamSettings           (const t = useT() at line 180)
+    * confirmDelete (line 351)    → nested in ItamSettings           (const t = useT() at line 180)
+- work-orders-page.tsx — 1 function, nested:
+    * handleComplete (line 2879)  → nested in WorkOrderDetailContent  (const t = useT() at line 2262)
+
+Files modified: 0 (no real bugs to fix)
+- Confirmed `useT` is already imported at the top of all 6 files (no import additions needed).
+
+Verification note on the task's naive regex scanner:
+- The task's verification script uses the regex `(?:export\s+)?function\s+(\w+)\s*\([^)]*\)\s*\{` which matches ANY function declaration (including nested ones) whose parameter list contains no `)`. It does NOT track function nesting, so it flags all 16 nested functions even though their parent components supply `t` via closure.
+- Running that script reports "Remaining bugs: 16" — but those 16 are the false positives documented above, not real bugs.
+- A more rigorous scanner (balanced paren/brace matcher that finds the direct enclosing parent and checks for `const t = useT()` in the parent's body) confirms: 0 REAL bugs in these 6 files.
+
+Stage Summary:
+- 0 bugs fixed (none were real bugs — all 16 candidates are nested functions that already close over `t` from a parent component which declares `const t = useT()`)
+- 16 false positives skipped (per task's strict "do NOT touch" instruction)
+- 0 real bugs remaining in these 6 files

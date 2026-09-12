@@ -32,6 +32,7 @@ interface BackupData {
 }
 
 // All Prisma models to backup (must match schema.prisma order)
+// H-03 fix: added 7 new multi-org models that were missing
 const TABLES_TO_BACKUP = [
   'device',
   'meterReading',
@@ -76,6 +77,17 @@ const TABLES_TO_BACKUP = [
   'syncRunItem',
   'pMSchedule',
   'pMExecution',
+  // ── H-03: Multi-Org Foundation models (7 new) ──
+  'organization',
+  'legacyReference',
+  'setupRun',
+  'setupStep',
+  'customFieldDefinition',
+  'customFieldOption',
+  'customFieldValue',
+  // ── Asset depreciation (added later) ──
+  'assetCategory',
+  'contactDirectory',
 ] as const
 
 async function main() {
@@ -85,16 +97,28 @@ async function main() {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
   const outputDir = resolve(process.cwd(), 'backups')
   const encryptionKey = process.env.BACKUP_ENCRYPTION_KEY
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'lan'
   const fileExt = encryptionKey ? '.json.enc' : '.json'
   const outputFile = outputArg
     ? outputArg.split('=')[1]
     : resolve(outputDir, `backup-${timestamp}${fileExt}`)
 
+  // ── H-04: Force encryption in production/LAN ──
+  // Without BACKUP_ENCRYPTION_KEY in production, REFUSE to create unencrypted backup.
+  if (isProduction && !encryptionKey) {
+    console.error('❌ FATAL: BACKUP_ENCRYPTION_KEY is required in production/LAN mode.')
+    console.error('   Set BACKUP_ENCRYPTION_KEY env var to a 32-byte hex string (64 chars).')
+    console.error('   Generate one with: openssl rand -hex 32')
+    console.error('   Refusing to create unencrypted backup with sensitive data.')
+    process.exit(1)
+  }
+
   console.log('📦 Database Backup')
   console.log('─'.repeat(50))
   console.log(`Timestamp: ${timestamp}`)
   console.log(`Output: ${outputFile}`)
-  console.log(`Encryption: ${encryptionKey ? 'AES-256-GCM ✓' : '⚠️  NONE (dev mode — set BACKUP_ENCRYPTION_KEY for production)'}`)
+  console.log(`Encryption: ${encryptionKey ? 'AES-256-GCM ✓' : '⚠️  NONE (dev mode only)'}`)
+  console.log(`Mode: ${isProduction ? 'production (encrypted)' : 'development'}`)
   console.log('─'.repeat(50))
 
   mkdirSync(outputDir, { recursive: true })

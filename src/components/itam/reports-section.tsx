@@ -543,6 +543,7 @@ export function ReportsSection() {
 
 /** Pretty-print the various report types in the view dialog. */
 function ReportDataView({ report }: { report: ReportDetail }) {
+  const t = useT()
   const data = report.data as
     | {
         type?: string
