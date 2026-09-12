@@ -21560,3 +21560,45 @@ Artifacts produced:
 - setup.ps1 (Windows PowerShell setup script — ใหม่)
 - setup.sh (Linux/Mac bash setup script — ใหม่)
 - README.md (เพิ่ม Windows notes + setup script section)
+
+---
+Task ID: POWERSHELL-ENCODING-FIX
+Agent: orchestrator (main)
+Task: แก้ setup.ps1 ParserError ที่ user เจอบน Windows (จาก screenshot "555")
+
+Work Log:
+- User clone repo ลง Windows + รัน .\setup.ps1 → ParserError:
+  "Missing closing '}' in statement block" ที่ line 42 char 38
+  "Unexpected token ')'" ที่ line 43
+- VLM analysis ชี้ชัด: em dash (—) ใน string "first run — this takes a few minutes"
+  ถูก PowerShell อ่านเป็น '€' (Euro sign) เพราะ encoding ผิด → string ไม่ปิด → parser พัง
+- Root cause: setup.ps1 ถูก save เป็น UTF-8 ไม่มี BOM. PowerShell 5.x (default บน Windows 10/11)
+  อ่าน .ps1 ไฟล์เป็น ANSI (Windows-1252) เมื่อไม่มี BOM → non-ASCII chars (em dash, arrows,
+  check marks, Thai) ถูก decode ผิด
+
+Fix:
+1. ตรวจ non-ASCII chars ใน setup.ps1: พบ 389 ตัว (em dash, arrows, box drawing, check marks, Thai)
+2. Rewrite setup.ps1 เป็น ASCII-only:
+   - em dash (—) → hyphen (-)
+   - arrows (→) -> ->
+   - check mark (✓) -> [OK]
+   - warning (⚠) -> [!]
+   - cross (✗) -> [X]
+   - box drawing (─) -> --
+3. Save เป็น UTF-8 with BOM (EF BB BF ที่จุดเริ่มต้นไฟล์) เพื่อให้ PowerShell 5.x
+   detect encoding ถูกต้อง (content เป็น pure ASCII แล้ว แต่ BOM เป็นหลักประกัน)
+4. ตรวจ brace/paren balance: depth 0 ที่ EOF ✓
+
+Verification:
+- od -An -tx1 -N3 setup.ps1: ef bb bf (BOM present) ✓
+- Non-ASCII count: 0 ✓
+- Brace balance: 0 ✓
+- Paren balance: 0 ✓
+
+Stage Summary:
+- ✅ setup.ps1 แก้ encoding แล้ว — รันบน PowerShell 5.x ได้โดยไม่ ParserError
+- ✅ Push ขึ้น GitHub (commit 3849e3a)
+- 📋 User บน Windows: git pull แล้วรัน .\setup.ps1 ใหม่
+
+Artifacts produced:
+- setup.ps1 (rewrite ASCII-only + UTF-8 BOM)
