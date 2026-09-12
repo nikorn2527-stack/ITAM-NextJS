@@ -16,18 +16,19 @@
 
 ## 2. Team topology ปัจจุบัน
 
-ขณะนี้มีทีม Dev ที่ทำงานได้สามทีม จึงกำหนดชื่อเชิงบทบาทก่อน โดยไม่ผูกกับชื่อบุคคลหรือ GitHub username จนกว่าจะมีรายชื่อสมาชิกยืนยันใน repository.
+ขณะนี้มีทีม Dev ที่ทำงานได้สี่ทีม จึงกำหนดชื่อเชิงบทบาทก่อน โดยไม่ผูกกับชื่อบุคคลหรือ GitHub username จนกว่าจะมีรายชื่อสมาชิกยืนยันใน repository.
 
 | Team role | Ownership หลัก | งานรองในระยะเริ่มต้น | สิ่งที่ทีมต้องส่งมอบ |
 |---|---|---|---|
 | **Dev-1 / Repair Team** | แจ้งซ่อมและ repair workflow | เป็น steward ของ repair-data contract ร่วมกับทีม Stock | code, tests, migration proposal, preview evidence และ handoff note |
 | **Dev-2 / Stock Team** | สต๊อก สินค้า การเบิกจ่าย และ approval | material-issue contract ที่เชื่อมกับ Repair | code, quantity/approval tests, duplicate/quarantine evidence และ report correctness |
-| **Dev-3 / Asset & Meter Team** | จัดการอุปกรณ์ และจดมิเตอร์ โดยแยก backlog เป็นสองโมดูล | ดูแล compatibility ของ device identity ที่ Meter ใช้อ้างอิง | device/meter code, import/readings tests, mobile evidence และ data integrity note |
+| **Dev-3 / Devices Team** | จัดการอุปกรณ์, asset master, transfer และ device identity | ตรวจ consumer impact ให้ Meter | device code, import/transfer tests, mobile evidence และ data integrity note |
+| **Dev-4 / Meter Team** | จดมิเตอร์, reading history, reminder และ device-to-meter boundary | ตรวจ compatibility ของ device identity ที่ Meter ใช้อ้างอิง | meter code, reading/bulk tests, bounded-query evidence และ data integrity note |
 | **Shared Platform Steward** | auth, RBAC, site scope, audit, sync, mapping, migration tooling | ประสานงานโดย Dev-1 ในช่วงที่ยังไม่มีทีม platform แยก | contract review, migration ordering และ regression gate |
 | **Audit** | technical review และ fail-closed/security gate | ตรวจ exact SHA, tests, B4 frozen และ evidence | verdict ใน PR/Issue; ไม่ใช่ผู้เขียน feature แทน Dev |
 | **Release Owner** | environment, risk, staging, canary และ release decision | จัดลำดับการเปิดใช้งานและรับรอง operational evidence | environment decision, go/no-go และการส่งต่อ gate |
 
-หากมีทีม Dev เพิ่มเป็นทีมที่สี่ ให้ย้าย ownership ของ **Meter** ไปเป็น **Dev-4 / Meter Team** ได้โดยไม่เปลี่ยน module contract หรือ schema semantics. การย้าย ownership ต้องทำผ่าน PR ที่แก้เอกสารนี้และอัปเดต module README ที่เกี่ยวข้อง.
+Dev 4 ทีมใช้ ownership ตามตารางนี้ทันที โดย **Dev-4 / Meter Team** เป็นเจ้าของ Meter อย่างเป็นทางการ. การสลับทีมตรวจใช้ cross-review rotation แยกจาก ownership: ห้ามทีมตรวจ PR ของตัวเอง และการเปลี่ยน shared contract หรือ schema semantics ต้องระบุ consumer impact และผ่าน cross-module review ก่อน implementation.
 
 ## 3. Module map และขอบเขต
 
@@ -75,7 +76,7 @@ PR ทุกใบต้องระบุ owner team, feature IDs, changed tabl
 
 ## 8. ลำดับการเริ่มงานที่แนะนำ
 
-เริ่มพร้อมกันได้สาม workstreams แต่ต้องเรียง dependency ภายในแต่ละโมดูล. Repair และ Stock ควรใช้ repair-data contract ฉบับเดียวกันก่อนพัฒนา workflow ต่อ; Devices ควรตรึง stable device identity ก่อนให้ Meter ขยาย bulk reading; Shared Platform ต้องรับเฉพาะ cross-module changes ที่จำเป็นจริง.
+เริ่มพร้อมกันได้สี่ workstreams เฉพาะงานที่ไม่ติด dependency แต่ต้องเรียง dependency ภายในแต่ละโมดูล. Repair และ Stock ควรใช้ repair-data contract ฉบับเดียวกันก่อนพัฒนา workflow ต่อ; Devices ต้องตรึง stable device identity ก่อนให้ Meter ขยาย bulk reading; Shared Platform ต้องรับเฉพาะ cross-module changes ที่จำเป็นจริง.
 
 | ระยะ | Repair | Stock | Devices | Meter |
 |---|---|---|---|---|
