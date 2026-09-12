@@ -127,19 +127,35 @@ log_step_end "bun install"
 
 log_step_start "bun run db:push"
 echo "[BUN] Setting up database..."
-# SAFETY: Only run db:push for local SQLite databases.
-# If DATABASE_URL points to a remote/production DB (Supabase, Neon, etc.),
-# db:push could cause data loss on schema drift. Skip it and let the
-# developer run migrations explicitly.
+# ── H-05 fix: Fail-Closed db:push guard ──
+# Rules (per consultant H-05):
+#   NODE_ENV=production → ห้าม db:push (ใช้ prisma migrate deploy แทน)
+#   Remote PostgreSQL → ห้าม db:push
+#   DATABASE_URL ว่าง → exit 1
+#   Provider ไม่ชัดเจน → exit 1
+#   Local SQLite → อนุญาตเฉพาะเมื่อ DEV_DB_PUSH=1
 DB_URL="${DATABASE_URL:-}"
-if echo "$DB_URL" | grep -qE "^file:"; then
-        bun run db:push
+
+if [ "$NODE_ENV" = "production" ]; then
+    echo "[BUN] ❌ NODE_ENV=production — db:push is FORBIDDEN. Use 'prisma migrate deploy' instead."
+elif [ -z "$DB_URL" ]; then
+    echo "[BUN] ❌ DATABASE_URL is empty — refusing to run db:push."
+    echo "[BUN]    Set DATABASE_URL in .env first."
 elif echo "$DB_URL" | grep -qE "(supabase|neon|railway|render|planet|postgresql://)"; then
-        echo "[BUN] ⚠️  Remote database detected — SKIPPING db:push to prevent data loss."
-        echo "[BUN]     If you need to apply schema changes, run 'bun run db:migrate' manually."
+    echo "[BUN] ⚠️  Remote database detected — SKIPPING db:push to prevent data loss."
+    echo "[BUN]    Use 'prisma migrate deploy' for production migrations."
+elif echo "$DB_URL" | grep -qE "^file:"; then
+    # Local SQLite — only allow with explicit DEV_DB_PUSH=1
+    if [ "$DEV_DB_PUSH" = "1" ]; then
+        echo "[BUN] ✓ Local SQLite + DEV_DB_PUSH=1 — running db:push..."
+        bun run db:push
+    else
+        echo "[BUN] ⏭️  Local SQLite detected but DEV_DB_PUSH not set — skipping db:push."
+        echo "[BUN]    Set DEV_DB_PUSH=1 to allow: DEV_DB_PUSH=1 bash .zscripts/dev.sh"
+    fi
 else
-        # No DATABASE_URL or unrecognized — try a safe push (no --accept-data-loss)
-        bun run db:push 2>&1 || echo "[BUN] db:push skipped (may be using local SQLite)"
+    echo "[BUN] ❌ Unrecognized DATABASE_URL format — refusing to run db:push."
+    echo "[BUN]    DATABASE_URL must start with 'file:' (SQLite) or 'postgresql://' (PostgreSQL)."
 fi
 log_step_end "bun run db:push"
 

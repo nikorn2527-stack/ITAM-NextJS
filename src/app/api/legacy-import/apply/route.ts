@@ -102,8 +102,22 @@ export async function POST(req: NextRequest) {
           break
       }
 
-      // Add organizationId + legacy fields to the row
-      const enrichedRow: any = { ...row }
+      // ── H-01 fix: Field Allowlist — ตัด fields ที่ไม่ควรให้ Client ควบคุม ──
+      const FORBIDDEN_FIELDS = new Set([
+        'id', 'organizationId', 'createdAt', 'updatedAt', 'isDemo',
+        'passwordHash', 'passwordSalt', 'totpSecret', 'googleSub', 'appleSub',
+        'legacyAssetCode', 'legacySourceApp', 'legacySourceKey',
+        'legacyProductCode',
+      ])
+      const safeRow: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(row)) {
+        if (!FORBIDDEN_FIELDS.has(key)) {
+          safeRow[key] = value
+        }
+      }
+
+      // Add organizationId from auth context (NOT from client)
+      const enrichedRow: any = { ...safeRow }
       enrichedRow.organizationId = orgScope.organizationId
 
       // Set legacy source fields
@@ -123,7 +137,20 @@ export async function POST(req: NextRequest) {
 
       // Create or update
       if (item.action === 'update' && item.existingId) {
-        // Update existing
+        // ── H-01 fix: ตรวจ existingId + organizationId ก่อน Update ──
+        // ป้องกัน cross-org update (ผู้ใช้ส่ง ID ขององค์กรอื่น)
+        const existingRecord = await (db as any)[entityType.charAt(0).toLowerCase() + entityType.slice(1)].findFirst({
+          where: {
+            id: item.existingId,
+            ...orgScope.where, // กรองด้วย organizationId ด้วย
+          },
+        })
+        if (!existingRecord) {
+          errors++
+          if (errors <= 3) console.error(`  ✗ Record ${item.existingId} not found in org ${orgScope.organizationId}`)
+          continue // Skip — don't update cross-org
+        }
+        // Update existing (scoped)
         await (db as any)[entityType.charAt(0).toLowerCase() + entityType.slice(1)].update({
           where: { id: item.existingId },
           data: enrichedRow,

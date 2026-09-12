@@ -59,13 +59,40 @@ export async function PUT(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'values ต้องเป็น array' }, { status: 400 })
   }
 
+  // ── H-03 fix: Target Record Authorization ──
+  // ตรวจว่า targetId เป็น Record จริงและอยู่ใน Organization Scope
+  const targetEntity = params.targetEntity
+  const targetId = params.targetId
+
+  const ENTITY_MODEL_MAP: Record<string, string> = {
+    Device: 'device',
+    WorkOrder: 'workOrder',
+    StockItem: 'stockItem',
+    MasterItem: 'masterItem',
+  }
+  const modelName = ENTITY_MODEL_MAP[targetEntity]
+  if (!modelName) {
+    return NextResponse.json({ error: 'targetEntity ไม่ถูกต้อง' }, { status: 400 })
+  }
+
+  // ตรวจ target record exists + org scope
+  const targetRecord = await (db as any)[modelName].findFirst({
+    where: { id: targetId, ...orgScope.where },
+  })
+  if (!targetRecord) {
+    // ไม่เปิดเผยว่ามี record หรือไม่ — ตอบ 404 เฉยๆ
+    return NextResponse.json({ error: 'ไม่พบ target record' }, { status: 404 })
+  }
+
   const definitions = await db.customFieldDefinition.findMany({
-    where: { organizationId: orgId, targetEntity: params.targetEntity, active: true },
+    where: { organizationId: orgId, targetEntity: targetEntity, active: true },
     include: { options: true },
   })
   const defMap = new Map(definitions.map(d => [d.id, d]))
 
-  let upserted = 0
+  // ── H-02 fix: Validate ทุกค่าก่อน แล้วค่อย Transaction ──
+  // Phase 1: Validate all
+  const validatedValues: Array<{ fieldId: string; valueJson: string; valueText: string | null; valueNumber: number | null; valueDate: Date | null }> = []
   const errors: string[] = []
 
   for (const v of values) {
@@ -139,46 +166,56 @@ export async function PUT(req: NextRequest, { params }: Params) {
       }
     }
 
-    await db.customFieldValue.upsert({
-      where: {
-        organizationId_fieldId_targetEntity_targetId: {
-          organizationId: orgId,
-          fieldId,
-          targetEntity: params.targetEntity,
-          targetId: params.targetId,
-        },
-      },
-      create: {
-        organizationId: orgId,
-        fieldId,
-        targetEntity: params.targetEntity,
-        targetId: params.targetId,
-        valueJson,
-        valueText,
-        valueNumber,
-        valueDate,
-        updatedBy: auth.row.username ?? auth.user.email,
-      },
-      update: {
-        valueJson,
-        valueText,
-        valueNumber,
-        valueDate,
-        updatedBy: auth.row.username ?? auth.user.email,
-      },
-    })
-    upserted++
+    // ── H-02 fix: เก็บค่าที่ validate ผ่านแล้ว ยังไม่ upsert ──
+    validatedValues.push({ fieldId, valueJson, valueText, valueNumber, valueDate })
   }
 
+  // ── H-02 fix: ถ้ามี error → ไม่เขียนอะไรเลย (Atomic) ──
   if (errors.length > 0) {
     return NextResponse.json({ error: 'Validation failed', errors }, { status: 400 })
   }
 
+  // ── H-02 fix: ทุกค่าผ่าน validation แล้ว → ใช้ Transaction upsert ทีเดียว ──
+  let upserted = 0
+  await db.$transaction(
+    validatedValues.map(vv =>
+      db.customFieldValue.upsert({
+        where: {
+          organizationId_fieldId_targetEntity_targetId: {
+            organizationId: orgId,
+            fieldId: vv.fieldId,
+            targetEntity,
+            targetId,
+          },
+        },
+        create: {
+          organizationId: orgId,
+          fieldId: vv.fieldId,
+          targetEntity,
+          targetId,
+          valueJson: vv.valueJson,
+          valueText: vv.valueText,
+          valueNumber: vv.valueNumber,
+          valueDate: vv.valueDate,
+          updatedBy: auth.row.username ?? auth.user.email,
+        },
+        update: {
+          valueJson: vv.valueJson,
+          valueText: vv.valueText,
+          valueNumber: vv.valueNumber,
+          valueDate: vv.valueDate,
+          updatedBy: auth.row.username ?? auth.user.email,
+        },
+      })
+    )
+  )
+  upserted = validatedValues.length
+
   await logAudit(
     'CUSTOM_FIELD_VALUE_UPDATE',
-    params.targetEntity,
-    params.targetId,
-    `อัปเดต ${upserted} custom field values บน ${params.targetEntity} ${params.targetId}`,
+    targetEntity,
+    targetId,
+    `อัปเดต ${upserted} custom field values บน ${targetEntity} ${targetId}`,
     { count: upserted, organizationId: orgId },
     auth.row.username ?? auth.user.email,
   )

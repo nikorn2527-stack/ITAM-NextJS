@@ -22,11 +22,20 @@ import { logAudit } from '@/lib/audit'
 
 export async function GET(req: NextRequest) {
   const { requireAuth } = await import('@/lib/auth-middleware')
+  const { getOrgScope } = await import('@/lib/org-scope')
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
+
+  // ── H-04 fix: GET กรอง SetupRun ตาม Organization Scope ──
+  const orgScope = getOrgScope(auth.user)
+  if (!orgScope.ok) {
+    return NextResponse.json({ error: orgScope.error.message }, { status: orgScope.error.status })
+  }
+
   const runs = await db.setupRun.findMany({
+    where: orgScope.where, // กรองด้วย organizationId
     include: { steps: { orderBy: { stepKey: 'asc' } } },
     orderBy: { startedAt: 'desc' },
     take: 50,
@@ -36,20 +45,36 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const { requireAuth } = await import('@/lib/auth-middleware')
+  const { getOrgScope } = await import('@/lib/org-scope')
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
-  const body = await req.json().catch(() => ({} as any))
-  const { organizationId } = body || {}
 
-  if (!organizationId) {
-    return NextResponse.json({ error: 'ต้องระบุ organizationId' }, { status: 400 })
+  // ── H-04 fix: ใช้ organizationId จาก auth context เท่านั้น ──
+  // ไม่รับจาก Client body (ยกเว้น Superadmin ที่ระบุเป้าหมายได้)
+  const orgScope = getOrgScope(auth.user)
+  if (!orgScope.ok) {
+    return NextResponse.json({ error: orgScope.error.message }, { status: orgScope.error.status })
+  }
+
+  // Superadmin สามารถระบุ organizationId จาก body ได้ (สำหรับ cross-org admin)
+  let targetOrgId = orgScope.organizationId
+  if (auth.user.role === 'superadmin') {
+    const body = await req.json().catch(() => ({} as any))
+    if (body.organizationId) {
+      // ตรวจว่า organization มีจริง
+      const targetOrg = await db.organization.findUnique({ where: { id: body.organizationId } })
+      if (!targetOrg) {
+        return NextResponse.json({ error: 'ไม่พบองค์กรที่ระบุ' }, { status: 404 })
+      }
+      targetOrgId = body.organizationId
+    }
   }
 
   // Idempotency: return active run if exists
   const activeRun = await db.setupRun.findFirst({
-    where: { organizationId, status: 'IN_PROGRESS' },
+    where: { organizationId: targetOrgId, status: 'IN_PROGRESS' },
     include: { steps: true },
   })
   if (activeRun) {
@@ -58,7 +83,7 @@ export async function POST(req: NextRequest) {
 
   const run = await db.setupRun.create({
     data: {
-      organizationId,
+      organizationId: targetOrgId,
       status: 'IN_PROGRESS',
       currentStep: 'preflight',
       startedBy: auth.row.username ?? auth.user.email,
@@ -70,8 +95,8 @@ export async function POST(req: NextRequest) {
     'SETUP_RUN_START',
     'SetupRun',
     run.id,
-    `เริ่ม Setup Wizard สำหรับองค์กร ${organizationId}`,
-    { organizationId },
+    `เริ่ม Setup Wizard สำหรับองค์กร ${targetOrgId}`,
+    { organizationId: targetOrgId, initiatedBy: auth.user.role === 'superadmin' ? 'superadmin' : 'self' },
     auth.row.username ?? auth.user.email,
   )
 
