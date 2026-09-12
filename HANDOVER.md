@@ -45,6 +45,25 @@ Login: **admin / test1234**
 
 ---
 
+## ✅ P1 Security Fixes — ทีมแก้เสร็จแล้ว (verified)
+
+ทีมตรวจ P1 ต่อจนครบ + แก้ทุกจุดที่เหลือ สรุปสถานะ:
+
+| จุด | สถานะ | รายละเอียด |
+|-----|-------|-----------|
+| Health endpoint leak | ✅ แก้แล้ว | เหลือแค่ up/down + latency ไม่มี error detail หลุด (`src/app/api/health/route.ts` ลบ `detail` field, log server-side เท่านั้น) |
+| Seed API ALLOW_SEED_IN_PRODUCTION | ✅ ลบ override ทิ้งถาวร | บล็อกเด็ดขาดใน production ไม่มีทางเลี่ยง (`src/app/api/seed/route.ts` return 403 ใน production โดยไม่มี env var override) |
+| Backup encryption | ✅ ใช้ AES-256-GCM จริง | มี warning ถ้าลืมตั้ง `BACKUP_ENCRYPTION_KEY` (`scripts/backup-db.ts` ใช้ `createCipheriv('aes-256-gcm', ...)`, key ต้อง 32 bytes/64 hex) |
+| Offline-queue RNG | ✅ ใช้ crypto.randomUUID() เป็นหลัก | `src/lib/offline-queue.ts` ใช้ `crypto.randomUUID()` primary, Math.random() เป็น fallback เท่านั้น |
+| Demo users (demo123) | ✅ แก้ถูกทาง | ย้ายเข้า `profile: 'demo'` เท่านั้น ไม่รันเลยถ้า production profile (`scripts/seed-all.ts` reject demo profile ใน production แม้บังคับผ่าน env var) |
+| Seed fail-closed | ✅ ออกแบบดีมาก | reject demo profile ใน production แม้บังคับผ่าน `ITAM_SEED_PROFILE=demo` ก็ไม่ได้ เพราะเช็ค `NODE_ENV === 'production'` ด้วย |
+
+**ข่าวดีเพิ่มเติม (ไม่ใช่บั๊ก)**:
+- ระบบ i18n (`src/lib/i18n.ts`) เริ่มใช้งานจริงแล้ว 30 ไฟล์ ตรงตามที่แนะนำ (dictionary กลางไฟล์เดียว)
+- เจอ `module-flags-section.tsx` แปลว่าระบบโมดูลก็เริ่มลงมือทำคู่ขนานไปด้วยแล้ว — ทีมเดินหน้าตามพิมพ์เขียวทั้ง 2 เรื่องพร้อมกัน
+
+---
+
 ## ⚠️ ความเสถียร — ปัญหาที่ทีมต้องเช็คต่อ
 
 ### 🔴 Priority 1 — ความเสี่ยงสูง (อาจทำให้หน้าพังได้)
@@ -160,6 +179,89 @@ rg "\bdb\.(deviceType|brand|model|snapshot)\b|\bprisma\.(deviceType|brand|model|
 - SQLite ไม่รองรับ `mode: insensitive` (เราแก้ด้วย interceptor แล้ว)
 - SQLite ไม่รองรับ `Prisma.join` บางรูปแบบ
 - Raw SQL ใน dashboard route ใช้ syntax ที่รองรับทั้งสอง DB แล้ว
+
+---
+
+## 💡 P3 — ฟีเจอร์เสริม (ข้อเสนอจากการตรวจสอบจริง)
+
+ข้อเสนอฟีเจอร์ที่มีประโยชน์จริง (ไม่ใช่ไอเดียทั่วไป อิงจากทุกอย่างที่ตรวจมา) — ทีมพิจารณาตามลำดับความสำคัญทางธุรกิจ:
+
+### ฟีเจอร์ 1: Bulk Import สำหรับ Asset Categories + Contact Directory
+
+**เหตุผล**: ค้างมาจากที่คุยกันไว้ก่อนหน้า — ตอนนี้ยิ่งจำเป็นเพราะมี `AssetCategory` model ใหม่แล้ว (ใช้กับค่าเสื่อมสภาพ) ถ้าองค์กรมีหมวดครุภัณฑ์ 15-20 ประเภทตามระเบียบราชการ ยังต้องคีย์ทีละอันอยู่
+
+**ขอบเขต**:
+- รับไฟล์ CSV/XLSX ที่มี columns: `code, name, usefulLife, salvageValuePercent, depreciationMethod`
+- ใช้ `import-page.tsx` pattern เดิม (มีอยู่แล้วสำหรับ Devices)
+- Preview + validate ก่อน apply (เหมือน legacy-import/preview)
+- รองรับทั้ง AssetCategory + ContactDirectory (2 หน้า)
+
+**ไฟล์ที่ต้องสร้าง/แก้**:
+```
+src/components/itam/asset-category-section.tsx   ← เพิ่มปุ่ม "Import CSV"
+src/components/itam/contact-directory-section.tsx ← เพิ่มปุ่ม "Import CSV"
+src/app/api/itam/asset-categories/import/route.ts  ← NEW: preview + apply
+src/app/api/itam/contact-directory/import/route.ts ← NEW: preview + apply
+```
+
+**ขนาดงาน**: ~1-2 วัน (มี pattern เดิมใน legacy-import ให้ copy)
+
+---
+
+### ฟีเจอร์ 2: ผูกค่าเสื่อมสภาพเริ่มต้นเข้ากับ Asset Category
+
+**เหตุผล**: ตอนสร้าง/แก้ไข device แล้วเลือกหมวดหมู่ครุภัณฑ์ ให้ระบบ auto-fill `usefulLife`/`salvageValue` ตามค่า default ของหมวดนั้น (ตั้งไว้ล่วงหน้าที่หน้า Asset Categories) — ตรงกับที่คุยกันเรื่องระเบียบกรมบัญชีกลางที่แต่ละประเภทอายุใช้งานไม่เท่ากัน ลดงานกรอกซ้ำและลดโอกาสกรอกผิดของผู้ใช้หน้างาน
+
+**ขอบเขต**:
+- ใน Device form (create/edit) เมื่อ user เลือก `assetCategory` จาก dropdown → fetch defaults จาก `AssetCategory` record
+- Auto-fill `usefulLife` (เช่น คอมพิวเตอร์ = 4 ปี, เครื่องพิมพ์ = 5 ปี, รถยนต์ = 10 ปี)
+- Auto-fill `salvageValue` (เช่น 10% ของมูลค่า)
+- User ยังแก้ไขค่าได้หลัง auto-fill (ไม่บังคับ)
+- แสดง badge "จากหมวดหมู่" ข้างช่องที่ auto-fill
+
+**ไฟล์ที่ต้องสร้าง/แก้**:
+```
+src/components/itam/device-detail-sheet.tsx  ← เพิ่ม useEffect ตอน assetCategory เปลี่ยน
+src/app/api/itam/asset-categories/[id]/route.ts ← เพิ่ม GET ที่ return usefulLife + salvageValue defaults
+src/lib/depreciation-defaults.ts             ← NEW: map category → defaults (กรณีไม่มี AssetCategory record)
+```
+
+**ขนาดงาน**: ~0.5 วัน (logic ไม่ซับซ้อน ใช้ useEffect + fetch)
+
+---
+
+### ฟีเจอร์ 3: Restore Drill — สคริปต์ทดสอบกู้คืนจาก backup อัตโนมัติ
+
+**เหตุผล**: ตอนนี้มี backup encryption แล้ว (P1 แก้เสร็จ) แต่ยังไม่มีอะไรพิสูจน์ว่า backup ที่เข้ารหัสไว้ restore กลับมาได้จริง — เหตุการณ์เมื่อคืนเป็นตัวอย่างชัดว่าทำไมเรื่องนี้สำคัญ
+
+**ขอบเขต**:
+- สคริปต์ `scripts/verify-backup-restore.ts` ที่:
+  1. Decrypt + restore backup ล่าสุดเข้า database ทดสอบแยกต่างหาก (ไม่ใช่ production — ใช้ temp SQLite file หรือ test schema)
+  2. เช็ค row count ของทุกตารางให้ตรงกับต้นฉบับ
+  3. เช็ค checksum ของข้อมูลสำคัญ (Device.assetCode, WorkOrder.woNumber)
+  4. ส่ง alert (email/telegram) ถ้า restore fail หรือ row count ไม่ตรง
+- รันเป็น cron รายสัปดาห์ควบคู่กับ keepalive ที่มีอยู่แล้ว
+
+**ไฟล์ที่ต้องสร้าง/แก้**:
+```
+scripts/verify-backup-restore.ts  ← NEW: decrypt + restore + verify
+scripts/backup-db.ts              ← เพิ่ม checksum metadata ลงใน backup file
+package.json                      ← เพิ่ม script "verify:backup"
+```
+
+**ขนาดงาน**: ~1 วัน (decrypt logic มีใน backup-db.ts แล้ว แค่ reverse + verify)
+
+**ความสำคัญ**: 🔴 **สูง** — "จะได้รู้ทันทีถ้า backup เสียโดยไม่ต้องรอเจอเหตุการณ์แบบเมื่อคืนอีกรอบถึงจะรู้ว่า backup ใช้ไม่ได้"
+
+---
+
+### ลำดับแนะนำ (ถ้าทีมเลือกทำ)
+
+| ลำดับ | ฟีเจอร์ | เหตุผล |
+|------|--------|-------|
+| 1 | **Restore Drill** (ฟีเจอร์ 3) | ความเสี่ยงสูงสุด — backup เสียจะไม่มีทางรู้จนกว่าจะต้องใช้จริง |
+| 2 | **Auto-fill depreciation** (ฟีเจอร์ 2) | งานเล็ก (0.5 วัน) ลดงานกรอกซ้ำของผู้ใช้หน้างานทันที |
+| 3 | **Bulk import** (ฟีเจอร์ 1) | งานกลาง (1-2 วัน) จำเป็นเมื่อ onboarding องค์กรใหม่ที่มีหมวดครุภัณฑ์หลายประเภท |
 
 ---
 
