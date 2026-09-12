@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
+import { db } from '@/lib/db'
 
 // Lazy import db + audit to avoid OOM during cold-compile (sandbox 4GB memory pressure).
 // The Prisma client bundle is large enough that loading it eagerly at module level

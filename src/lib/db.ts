@@ -77,9 +77,26 @@ function buildPoolUrl(rawUrl: string): string {
 
 const datasourceUrl = buildPoolUrl(process.env.DATABASE_URL ?? '')
 
-export const db =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+let _prisma: PrismaClient | undefined
+
+/**
+ * Lazily create the PrismaClient on first use (not at module load time).
+ *
+ * Why: Loading the Prisma engine + generated client for 20+ models (including
+ * the multi-org foundation) consumes ~150MB RSS at instantiation. When a route
+ * imports `db` AND heavy auth modules (jose, bcrypt, rbac) at the same time,
+ * the combined cold-load memory spike exceeds the 4GB sandbox cgroup limit and
+ * the process is silently OOM-killed. By deferring PrismaClient creation to
+ * the first actual DB query, the memory cost is paid incrementally per route,
+ * keeping the peak well under the sandbox ceiling.
+ */
+function getPrisma(): PrismaClient {
+  if (_prisma) return _prisma
+  if (globalForPrisma.prisma) {
+    _prisma = globalForPrisma.prisma
+    return _prisma
+  }
+  _prisma = new PrismaClient({
     // Pass the pool-tuned URL so Prisma's internal pool respects the limits.
     ...(datasourceUrl !== process.env.DATABASE_URL
       ? { datasources: { db: { url: datasourceUrl } } }
@@ -94,7 +111,26 @@ export const db =
           ? ['query', 'error', 'warn']
           : ['error', 'warn'],
   })
+  globalForPrisma.prisma = _prisma
+  return _prisma
+}
 
-// Persist in every runtime. The global is process-local, so each serverless
-// instance still owns only one Prisma client/pool and can be reclaimed normally.
-globalForPrisma.prisma = db
+/**
+ * Lazy proxy: PrismaClient is created only on first property access, not at
+ * module import time. This keeps `import { db } from '@/lib/db'` cheap and
+ * defers the ~150MB Prisma engine load until the first DB query runs.
+ *
+ * All property accesses (db.user, db.$queryRaw, db.$transaction, etc.) are
+ * transparently forwarded to the underlying PrismaClient instance. Functions
+ * are bound to the real client so `this` context is preserved.
+ */
+export const db: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    const prisma = getPrisma()
+    const value = Reflect.get(prisma, prop, receiver)
+    if (typeof value === 'function') {
+      return value.bind(prisma)
+    }
+    return value
+  },
+}) as PrismaClient

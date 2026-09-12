@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { db } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
+import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { normalizeSiteCode } from '@/lib/site-scope'
 import { demoTag, demoFilter } from '@/lib/demo-mode'

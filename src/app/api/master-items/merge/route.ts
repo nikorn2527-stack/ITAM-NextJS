@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth-middleware'
+import { db } from '@/lib/db'
 
 /**
  * POST /api/master-items/merge
