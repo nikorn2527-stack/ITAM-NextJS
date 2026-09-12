@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
@@ -79,7 +80,17 @@ export default function RootLayout({
             requests, it will serve stale chunks that crash with
             "module factory is not available". We unregister + clear caches
             here, then force a clean reload if anything was found. */}
-        <script
+      </head>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+      >
+        {/* Early SW cleanup + chunk-load auto-recovery.
+            Uses next/script (beforeInteractive) instead of a raw <script> tag,
+            which React 19 / Next.js 16 rejects with a console error:
+            "Encountered a script tag while rendering React component." */}
+        <Script
+          id="itam-early-sw-cleanup"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               (function() {
@@ -135,10 +146,6 @@ export default function RootLayout({
             `,
           }}
         />
-      </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
-      >
         <Providers>
           {children}
           <PwaRegistration />
