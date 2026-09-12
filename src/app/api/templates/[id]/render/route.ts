@@ -32,6 +32,7 @@ import {
   type TemplateElement,
   type TemplateRenderData,
 } from '@/lib/template-editor'
+import { getServerLang, serverFormatDateTime, serverFormatDate, serverFormatCurrency, type Lang } from '@/lib/server-i18n'
 
 // ─────────────────────────────────────────────────────
 // HTML escape
@@ -64,32 +65,14 @@ function statusLabel(s: string | undefined): string {
   return STATUS_LABELS[s] ?? s
 }
 
-function formatDate(iso: string | null | undefined): string {
+function formatDate(iso: string | null | undefined, lang: Lang = 'th'): string {
   if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleString('th-TH', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  } catch {
-    return String(iso)
-  }
+  return serverFormatDateTime(iso, lang)
 }
 
-function formatDateOnly(iso: string | null | undefined): string {
+function formatDateOnly(iso: string | null | undefined, lang: Lang = 'th'): string {
   if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleDateString('th-TH', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    })
-  } catch {
-    return String(iso)
-  }
+  return serverFormatDate(iso, lang)
 }
 
 // ─────────────────────────────────────────────────────
@@ -105,13 +88,9 @@ function formatDateOnly(iso: string | null | undefined): string {
  * Locale: 'th-TH' — uses Buddhist Era (B.E.) year by default. If the
  * team later wants Gregorian, change the locale to 'en-GB' here.
  */
-function formatDeviceDate(iso: string | null | undefined): string {
+function formatDeviceDate(iso: string | null | undefined, lang: Lang = 'th'): string {
   if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleDateString('th-TH')
-  } catch {
-    return String(iso)
-  }
+  return serverFormatDate(iso, lang)
 }
 
 /**
@@ -121,16 +100,11 @@ function formatDeviceDate(iso: string | null | undefined): string {
  * depending on the call site. We normalise to 2 decimal places + the
  * Thai Baht symbol + thousands separators.
  */
-function formatBaht(v: unknown): string {
+function formatBaht(v: unknown, lang: Lang = 'th'): string {
   if (v === null || v === undefined || v === '') return '—'
   const n = typeof v === 'number' ? v : Number(String(v))
   if (!Number.isFinite(n)) return String(v)
-  return new Intl.NumberFormat('th-TH', {
-    style: 'currency',
-    currency: 'THB',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(n)
+  return serverFormatCurrency(n, lang, 'THB')
 }
 
 // ─────────────────────────────────────────────────────
@@ -139,6 +113,7 @@ function formatBaht(v: unknown): string {
 
 async function buildDataFromWo(
   workOrderId: string,
+  lang: Lang = 'th',
 ): Promise<TemplateRenderData> {
   const wo = await db.workOrder.findUnique({
     where: { id: workOrderId },
@@ -215,7 +190,7 @@ async function buildDataFromWo(
     quantity: String(p.quantity),
     unit: p.unit ?? p.stockItem?.unit ?? '',
     type: p.type,
-    txnDate: formatDateOnly(p.txnDate),
+    txnDate: formatDateOnly(p.txnDate, lang),
   }))
 
   const devices = wo.device
@@ -242,7 +217,7 @@ async function buildDataFromWo(
     resolution: wo.resolution ?? '—',
     details: wo.details ?? '',
     tel: wo.tel ?? '—',
-    date: formatDateOnly(wo.createdAt),
+    date: formatDateOnly(wo.createdAt, lang),
     assetCode: wo.device?.assetCode ?? '—',
     brand: wo.device?.brand ?? '—',
     model: wo.device?.model ?? '—',
@@ -255,9 +230,9 @@ async function buildDataFromWo(
     deviceStatus: wo.device?.status ?? '—',
     deviceType: wo.device?.type ?? '—',
     currentAssignee: wo.device?.currentAssignee ?? '—',
-    warrantyEnd: formatDeviceDate(wo.device?.warrantyEnd),
-    purchaseDate: formatDeviceDate(wo.device?.purchaseDate),
-    purchasePrice: formatBaht(wo.device?.purchasePrice),
+    warrantyEnd: formatDeviceDate(wo.device?.warrantyEnd, lang),
+    purchaseDate: formatDeviceDate(wo.device?.purchaseDate, lang),
+    purchasePrice: formatBaht(wo.device?.purchasePrice, lang),
     vendor: wo.device?.vendor ?? '—',
     contractNo: wo.device?.contractNo ?? '—',
     ip: wo.device?.ip ?? '—',
@@ -266,7 +241,7 @@ async function buildDataFromWo(
     room: wo.device?.room ?? '—',
     // ── End CONSULTING-007 device fields ──────────────────────────────
     orgName: 'ระบบจัดการสินทรัพย์',
-    printDate: formatDate(new Date().toISOString()),
+    printDate: formatDate(new Date().toISOString(), lang),
     workOrderItems,
     stockTransactions,
     devices,
@@ -395,6 +370,7 @@ function renderTable(
 function buildFullHtml(
   content: TemplateContent,
   data: TemplateRenderData,
+  lang: Lang = 'th',
 ): string {
   const paper = content.paper
   const paperKey = (paper.size as PaperSizeKey) || 'A4'
@@ -419,10 +395,10 @@ function buildFullHtml(
             ? `Letter ${pageOrientation}`
             : `${widthMm}mm ${heightMm}mm ${pageOrientation}`
 
-  const today = new Date().toLocaleString('th-TH')
+  const today = serverFormatDateTime(new Date().toISOString(), lang)
 
   return `<!DOCTYPE html>
-<html lang="th">
+<html lang="{lang}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -528,9 +504,10 @@ export async function POST(
       body = {}
     }
 
+    const lang = getServerLang(req)
     let data: TemplateRenderData
     if (body.workOrderId) {
-      data = await buildDataFromWo(body.workOrderId)
+      data = await buildDataFromWo(body.workOrderId, lang)
       // Merge in any explicit overrides
       if (body.data) {
         data = { ...data, ...body.data }
@@ -540,7 +517,7 @@ export async function POST(
     }
 
     const content = parseContent(template.content)
-    const html = buildFullHtml(content, data)
+    const html = buildFullHtml(content, data, lang)
 
     return NextResponse.json({
       html,

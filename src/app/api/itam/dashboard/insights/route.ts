@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, getAllowedSites } from '@/lib/auth'
+import { getServerLang, serverFormatNumber, type Lang } from '@/lib/server-i18n'
 
 /**
  * GET /api/itam/dashboard/insights
@@ -25,6 +26,9 @@ export async function GET(req: NextRequest) {
     const auth = await requireAuth(req, 'VIEW_DASHBOARD')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+
+    const lang: Lang = getServerLang(req)
+    const fmt = (n: number) => serverFormatNumber(n, lang)
 
     const siteFilter = siteFilterForUser(user)
     const userSites = getAllowedSites(user)
@@ -100,7 +104,7 @@ export async function GET(req: NextRequest) {
           current: curTotal,
           prev: prevTotal,
           percent: pct,
-          message: `การใช้กระดาษ${dir} ${Math.abs(pct)}% เทียบเดือนก่อน (${prevTotal.toLocaleString('th-TH')} → ${curTotal.toLocaleString('th-TH')} แผ่น)`,
+          message: `การใช้กระดาษ${dir} ${Math.abs(pct)}% เทียบเดือนก่อน (${fmt(prevTotal)} → ${fmt(curTotal)} แผ่น)`,
         })
       }
     }
@@ -188,7 +192,7 @@ export async function GET(req: NextRequest) {
           value: curTotal,
           avg: Math.round(avg),
           month: currentMonth,
-          message: `${d.assetCode} ใช้กระดาษ ${curTotal.toLocaleString('th-TH')} แผ่น (เฉลี่ย ${Math.round(avg).toLocaleString('th-TH')} แผ่น) — สูงผิดปกติ`,
+          message: `${d.assetCode} ใช้กระดาษ ${fmt(curTotal)} แผ่น (เฉลี่ย ${fmt(Math.round(avg))} แผ่น) — สูงผิดปกติ`,
         })
       }
 
@@ -210,7 +214,7 @@ export async function GET(req: NextRequest) {
             colorSheets: cur.color,
             totalSheets: curTotal,
             month: currentMonth,
-            message: `${d.assetCode} ใช้สี ${Math.round(colorPct)}% (${cur.color.toLocaleString('th-TH')}/${curTotal.toLocaleString('th-TH')} แผ่น)`,
+            message: `${d.assetCode} ใช้สี ${Math.round(colorPct)}% (${fmt(cur.color)}/${fmt(curTotal)} แผ่น)`,
           })
         }
       }
@@ -251,7 +255,7 @@ export async function GET(req: NextRequest) {
         month: currentMonth,
         priority: 1,
         costImpactBath: Math.round(estUncaptured * BW_COST),
-        message: `${notReadCount} เครื่องยังไม่ได้จดมิเตอร์เดือนนี้ (คาดการณ์ข้อมูลที่ขาด ~${estUncaptured.toLocaleString('th-TH')} แผ่น จากค่าเฉลี่ยเดือนก่อน)`,
+        message: `${notReadCount} เครื่องยังไม่ได้จดมิเตอร์เดือนนี้ (คาดการณ์ข้อมูลที่ขาด ~${fmt(estUncaptured)} แผ่น จากค่าเฉลี่ยเดือนก่อน)`,
         recommendation: `เร่งจดมิเตอร์ ${notReadCount} เครื่องที่เหลือ — ข้อมูลที่หายไปจะกระทบความถูกต้องของรายงานต้นทุน`,
         actionLabel: `ไปจดมิเตอร์ (${notReadCount} เครื่อง)`,
       })
@@ -273,10 +277,10 @@ export async function GET(req: NextRequest) {
           percent: pct,
           priority: 2,
           costImpactBath: deltaCost,
-          message: `การใช้กระดาษ${dir} ${Math.abs(pct)}% เทียบเดือนก่อน (${prevTotal.toLocaleString('th-TH')} → ${curTotal.toLocaleString('th-TH')} แผ่น)`,
+          message: `การใช้กระดาษ${dir} ${Math.abs(pct)}% เทียบเดือนก่อน (${fmt(prevTotal)} → ${fmt(curTotal)} แผ่น)`,
           recommendation: pct > 0
-            ? `ตรวจสอบสาเหตุการใช้เพิ่ม ${deltaSheets.toLocaleString('th-TH')} แผ่น — อาจเป็นการพิมพ์เอกสารจำนวนมากหรืออุปกรณ์ที่ตั้งค่าผิด`
-            : `ใช้กระดาษลดลง ${deltaSheets.toLocaleString('th-TH')} แผ่น — ประหยัดได้ประมาณ ${deltaCost.toLocaleString('th-TH')} บาท`,
+            ? `ตรวจสอบสาเหตุการใช้เพิ่ม ${fmt(deltaSheets)} แผ่น — อาจเป็นการพิมพ์เอกสารจำนวนมากหรืออุปกรณ์ที่ตั้งค่าผิด`
+            : `ใช้กระดาษลดลง ${fmt(deltaSheets)} แผ่น — ประหยัดได้ประมาณ ${fmt(deltaCost)} บาท`,
           actionLabel: 'ดูรายละเอียด',
         })
       }
@@ -290,7 +294,7 @@ export async function GET(req: NextRequest) {
         ...item,
         priority: 3,
         costImpactBath: extraCost,
-        recommendation: `ตรวจสอบ ${item.assetNo} — ใช้กระดาษ ${extraSheets.toLocaleString('th-TH')} แผ่นเกินค่าเฉลี่ย (ประมาณ ${extraCost.toLocaleString('th-TH')} บาท/เดือน) · พิจารณาตั้งค่าโควต้าหรือตรวจสอบการพิมพ์ผิดปกติ`,
+        recommendation: `ตรวจสอบ ${item.assetNo} — ใช้กระดาษ ${fmt(extraSheets)} แผ่นเกินค่าเฉลี่ย (ประมาณ ${fmt(extraCost)} บาท/เดือน) · พิจารณาตั้งค่าโควต้าหรือตรวจสอบการพิมพ์ผิดปกติ`,
         actionLabel: `ดู ${item.assetNo}`,
       })
     }
@@ -303,7 +307,7 @@ export async function GET(req: NextRequest) {
         ...item,
         priority: 4,
         costImpactBath: potentialSave,
-        recommendation: `${item.assetNo} ใช้สี ${colorSheets.toLocaleString('th-TH')} แผ่น — หากปรับเป็นขาวดำจะประหยัด ~${potentialSave.toLocaleString('th-TH')} บาท/เดือน · ตั้งค่า default เป็น BW หรือตรวจสอบเอกสารที่พิมพ์`,
+        recommendation: `${item.assetNo} ใช้สี ${fmt(colorSheets)} แผ่น — หากปรับเป็นขาวดำจะประหยัด ~${fmt(potentialSave)} บาท/เดือน · ตั้งค่า default เป็น BW หรือตรวจสอบเอกสารที่พิมพ์`,
         actionLabel: `ดู ${item.assetNo}`,
       })
     }

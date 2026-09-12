@@ -24,6 +24,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { getServerLang, type Lang } from '@/lib/server-i18n'
 
 type PaperKey = 'a4-portrait' | 'a4-landscape' | 'a5-portrait' | 'ticket-80' | 'ticket-58'
 
@@ -56,7 +57,7 @@ function esc(input: unknown): string {
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -71,7 +72,7 @@ function formatDate(iso: string | null | undefined): string {
 function formatThaiDateOnly(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleDateString('th-TH', {
+    return new Date(iso).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -241,7 +242,7 @@ export async function GET(
     const external = parseExternalMeta(wo.externalMeta)
     const woNumber = wo.woNumber ?? '—'
     const today = new Date()
-    const todayLabel = today.toLocaleString('th-TH', {
+    const todayLabel = today.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

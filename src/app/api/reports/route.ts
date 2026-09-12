@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { requireAuth } from '@/lib/auth-middleware'
+import { getServerLang, serverFormatDateTime, type Lang } from '@/lib/server-i18n'
 import {
   buildReport,
   computeRange,
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     const range = computeRange(rangeKey)
     const title =
       String(body.title ?? '').trim() ||
-      `${REPORT_TYPE_LABELS[type]} — ${range.label} (${new Date().toLocaleString('th-TH')})`
+      `${REPORT_TYPE_LABELS[type]} — ${range.label} (${serverFormatDateTime(new Date().toISOString(), lang)})`
 
     const created = await reportsService.createRecord({
       type,

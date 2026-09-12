@@ -30,6 +30,7 @@ import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { db } from '@/lib/db'
 import { getOrgProfile } from '@/lib/org-profile'
 import { demoFilter } from '@/lib/demo-mode'
+import { getServerLang, serverFormatDateTime, serverFormatDate, serverFormatNumber, type Lang } from '@/lib/server-i18n'
 
 export const maxDuration = 60
 
@@ -74,7 +75,7 @@ function formatThaiDate(iso: string | null): string {
     const d = new Date(iso.length > 10 ? iso : `${iso}T00:00:00`)
     if (Number.isNaN(d.getTime())) return iso
     // Thai Buddhist year + dd/mm/YYYY format
-    return d.toLocaleDateString('th-TH', {
+    return d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -86,7 +87,7 @@ function formatThaiDate(iso: string | null): string {
 
 function formatCurrency(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return '-'
-  return n.toLocaleString('th-TH', {
+  return n.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     style: 'currency',
     currency: 'THB',
     minimumFractionDigits: 2,
@@ -244,7 +245,7 @@ export async function GET(req: NextRequest) {
     const totalBookValue = rows.reduce((s, r) => s + r.bookValue, 0)
 
     // ── Build HTML ──
-    const printDate = new Date().toLocaleString('th-TH', {
+    const printDate = new Date().toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       dateStyle: 'long',
       timeStyle: 'short',
     })
@@ -410,7 +411,7 @@ export async function GET(req: NextRequest) {
     <div class="grid">
       <div class="stat">
         <div class="label">จำนวนทรัพย์สินทั้งหมด</div>
-        <div class="value">${totalDevices.toLocaleString('th-TH')} รายการ</div>
+        <div class="value">${totalDevices.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} รายการ</div>
       </div>
       <div class="stat">
         <div class="label">มูลค่าทุนรวม (Original Value)</div>

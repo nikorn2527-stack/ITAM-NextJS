@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import QRCode from 'qrcode'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { getServerLang, type Lang } from '@/lib/server-i18n'
 
 // ============================================================
 // Print Job Sheet (Feature 6)
@@ -38,7 +39,7 @@ function esc(input: unknown): string {
 function formatThaiDateTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -53,7 +54,7 @@ function formatThaiDateTime(iso: string | null | undefined): string {
 function formatThaiDateOnly(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleDateString('th-TH', {
+    return new Date(iso).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',

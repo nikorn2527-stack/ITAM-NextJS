@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { getOrgScope } from '@/lib/org-scope'
 import { logAudit } from '@/lib/audit'
+import { detectConflict, type SyncableEntity, type ApplyResult } from '@/lib/sync-conflict-policy'
 
 /**
  * POST /api/sync/push
@@ -109,21 +110,103 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      // Phase 2: actual entity apply + conflict detection.
-      // For now: mark as ACKED (no-op apply) so the contract is stable
-      // for client development. Phase 2 will replace this with:
-      //   - loadScopedEntity(entityType, entityId, orgId)
-      //   - if baseVersion == current.version → apply + increment version
-      //   - else → create SyncConflict record
+      // P1-03: use Central Conflict Policy service to detect conflicts.
+      // For now we still don't apply entity changes (Phase 2 will wire the
+      // actual entity update), but we DO call detectConflict() so the
+      // conflict policy is exercised and SyncConflict records are created
+      // when appropriate. This lets us test the conflict flow end-to-end
+      // before the full entity-apply logic lands.
 
+      // Load current cloud state of the entity (if it exists).
+      // Phase 2: replace with a generic loadScopedEntity() helper.
+      let cloudPayload: Record<string, unknown> = {}
+      let cloudVersion = 0
+      let entityExists = false
+      try {
+        // Try to load from the entity table (best-effort — Phase 2 will
+        // make this a proper generic lookup).
+        if (change.entityType === 'Device') {
+          const d = await db.device.findFirst({
+            where: { id: change.entityId, organizationId: orgScope.organizationId },
+          })
+          if (d) {
+            cloudPayload = d as unknown as Record<string, unknown>
+            cloudVersion = (d as { version?: number }).version ?? 1
+            entityExists = true
+          }
+        }
+        // Phase 2: add WorkOrder, StockTransaction, MasterItem, etc.
+      } catch {
+        // Entity lookup failed — treat as not-found (CREATE scenario)
+      }
+
+      const applyResult: ApplyResult = detectConflict(
+        change.entityType as SyncableEntity,
+        change.operation,
+        change.baseVersion,
+        cloudVersion,
+        cloudPayload,
+        change.payload,
+      )
+
+      if (applyResult.status === 'REJECTED') {
+        // Entity policy rejected the push (e.g. append-only UPDATE)
+        await db.syncOutbox.update({
+          where: { idempotencyKey: change.idempotencyKey },
+          data: { status: 'FAILED', lastError: applyResult.reason },
+        })
+        result.failed.push({
+          idempotencyKey: change.idempotencyKey,
+          error: applyResult.reason,
+        })
+        continue
+      }
+
+      if (applyResult.status === 'CONFLICT') {
+        // Create SyncConflict record for manual resolution
+        const conflict = await db.syncConflict.create({
+          data: {
+            organizationId: orgScope.organizationId!,
+            nodeId: node.id,
+            entityType: change.entityType,
+            entityId: change.entityId,
+            baseVersion: change.baseVersion ?? null,
+            cloudVersion,
+            offlineVersion: change.entityVersion ?? cloudVersion + 1,
+            cloudPayload: JSON.stringify(applyResult.cloudPayload),
+            offlinePayload: JSON.stringify(applyResult.offlinePayload),
+            conflictFields: JSON.stringify(applyResult.conflictFields),
+            status: 'OPEN',
+          },
+        })
+        await db.syncOutbox.update({
+          where: { idempotencyKey: change.idempotencyKey },
+          data: { status: 'CONFLICT', lastError: `Conflict ${conflict.id}` },
+        })
+        result.conflicts.push({
+          idempotencyKey: change.idempotencyKey,
+          conflictId: conflict.id,
+          cloudVersion,
+          status: 'CONFLICT',
+        })
+        continue
+      }
+
+      // ACKED — either no-op (cloud already has the change) or applied.
+      // Phase 2 will actually apply the entity update here for non-noOp cases.
       await db.syncOutbox.update({
         where: { idempotencyKey: change.idempotencyKey },
-        data: { status: 'ACKED', ackedAt: new Date() },
+        data: {
+          status: 'ACKED',
+          ackedAt: new Date(),
+        },
       })
 
       result.accepted.push({
         idempotencyKey: change.idempotencyKey,
+        newVersion: applyResult.newVersion,
         status: 'ACKED',
+        noOp: applyResult.noOp,
       })
     } catch (err) {
       result.failed.push({

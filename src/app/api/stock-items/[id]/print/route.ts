@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { getServerLang, type Lang } from '@/lib/server-i18n'
 
 function esc(input: unknown): string {
   if (input === null || input === undefined) return ''
@@ -35,7 +36,7 @@ function formatThaiDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
     return new Date(iso.length > 10 ? iso : iso + 'T00:00:00').toLocaleDateString(
-      'th-TH',
+      lang === 'th' ? 'th-TH' : 'en-GB',
       { day: '2-digit', month: '2-digit', year: 'numeric' },
     )
   } catch {
@@ -46,7 +47,7 @@ function formatThaiDate(iso: string | null | undefined): string {
 function formatThaiDateTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
-    return new Date(iso).toLocaleString('th-TH', {
+    return new Date(iso).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -60,7 +61,7 @@ function formatThaiDateTime(iso: string | null | undefined): string {
 
 function formatBaht(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
-  return `฿${value.toLocaleString('th-TH', {
+  return `฿${value.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
@@ -192,7 +193,7 @@ export async function GET(
 
     const txnNumber = txn.txnNumber ?? '—'
     const today = new Date()
-    const todayLabel = today.toLocaleString('th-TH', {
+    const todayLabel = today.toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
