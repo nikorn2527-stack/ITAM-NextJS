@@ -22117,3 +22117,73 @@ Artifacts produced:
 - src/components/itam/templates-page.tsx (4 components: const t = useT())
 - tools/legacy/ (25 legacy scripts moved)
 - 10 runtime scripts (path cleanup)
+
+---
+Task ID: PHASE1-P1-I18N
+Agent: orchestrator (acting as dev team)
+Task: แก้ P1-01 ถึง P1-06 + I18N ตามรายงานตรวจ Phase 1 ล่าสุด
+
+Work Log:
+- User ส่ง 2 รายงาน: 'รายงานตรวจ Phase 1 จาก Repository ล่าสุด' + 'รายงานตรวจระบบเปลี่ยนภาษา'
+- ทำเป็น dev จริงตามคำสั่ง "ทำเราเลยครับ"
+
+P1-04: Setup Run Organization Scope + Version Guard
+- GET/PATCH ใช้ getOrgScope() — non-superadmin ไม่เข้าถึง run ของ org อื่น
+- ลบ completedBy จาก client input — derive จาก auth.row
+- เพิ่ม expectedVersion (optimistic concurrency)
+- เพิ่ม status transition validation
+
+P1-06: PostgreSQL baseline
+- .env.example: PostgreSQL เป็นค่าเดียวที่แนะนำ
+- set-prisma-provider.mjs: เปลี่ยนจาก auto-patch เป็น verify-only (fail-closed)
+- setup.sh/setup.ps1: prisma migrate deploy แทน db:push
+
+P1-01: Sync Schema (Phase 2 contract)
+- เพิ่ม SyncNode, SyncOutbox, SyncConflict ใน schema.prisma
+- สร้าง migration SQL (20260912160000_add_sync_node_outbox_conflict)
+- ทุก model มี version + baseVersion + idempotencyKey
+
+P1-02: Offline Sync API (6 routes)
+- /api/sync/nodes/register (POST)
+- /api/sync/pull (GET)
+- /api/sync/push (POST) — idempotent + ACK
+- /api/sync/conflicts (GET) + [id]/resolve (POST)
+- /api/sync/ack (POST)
+- /api/sync/status (GET)
+- ทุก route enforce Organization Scope
+
+I18N-05: Central formatters
+- formatNumber, formatCurrency, useFormatNumber, useFormatCurrency
+- locale-aware (th-TH / en-GB)
+
+I18N-06: translate() warn missing in dev
+- แสดง warning เมื่อ key หายหรือไม่มี en translation
+
+I18N-CI: check-i18n.ts script
+- 3 checks: (1) ทุก key มี th+en, (2) ทุก t() ใช้ key ที่มีจริง, (3) ไม่มี toLocaleString('th-TH') นอก formatters
+- 1163 keys verified, 0 missing
+- package.json: bun run check:i18n
+
+Verification:
+- Build ผ่าน (~120s)
+- /api/health: HTTP 200
+- /api/itam/dashboard: HTTP 200 (2406 devices)
+- /api/sync/status: HTTP 200 {nodes:[], pendingOutbox:0, openConflicts:0}
+- /api/sync/conflicts: HTTP 200 {conflicts:[], count:0}
+- /api/sync/nodes/register: HTTP 201 {nodeId:'node-...', status:'ACTIVE'}
+- i18n check: 1163 keys, 0 missing, 0 half-translated
+
+Stage Summary:
+- ✅ P1-01 ถึง P1-06 แก้ครบ
+- ✅ I18N-05, I18N-06, I18N-CI แก้ครบ
+- ✅ Push ขึ้น GitHub (commit 0495efa)
+- 📋 เหลือต่อ: I18N-01/02 (328 direct locale calls migration), I18N-04 (lang param server render), I18N-03 (toast/error keys)
+
+Artifacts produced:
+- src/app/api/setup/runs/[id]/route.ts (P1-04)
+- .env.example, scripts/set-prisma-provider.mjs, setup.sh, setup.ps1 (P1-06)
+- prisma/schema.prisma + migration (P1-01)
+- src/app/api/sync/* (6 routes — P1-02)
+- src/store/i18n-store.ts (formatters — I18N-05)
+- src/lib/i18n.ts (warn missing — I18N-06)
+- scripts/check-i18n.ts (CI script — I18N-CI)
