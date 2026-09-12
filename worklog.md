@@ -21941,3 +21941,35 @@ Stage Summary:
 - ✅ P3 ฟีเจอร์เสริม 3 ข้อ เพิ่มใน HANDOVER.md พร้อมขอบเขต + ไฟล์ + ขนาดงาน
 - ✅ Push ขึ้น GitHub (commit c78e7e9)
 - 📋 ทีมเลือกทำฟีเจอร์ไหนก่อนได้ตามลำดับความสำคัญทางธุรกิจ
+
+---
+Task ID: P0-INSTALLER-CRITICAL-REPORT
+Agent: orchestrator (main)
+Task: เพิ่ม P0 Windows Installer Critical findings จากรายงานตรวจ Local Test ล่าสุด
+
+Work Log:
+- User ส่งไฟล์ 'รายงานตรวจ Local Test ล่าสุด_ ITAM-NextJS.md' (13.9 KB, commit 3fd967d)
+- รายงานครอบคลุมปัญหา critical 5 ข้อ + restore/backup 4 ข้อ + scripts/docs/14 ข้อเพิ่มเติม
+- เพิ่มส่วน 'P0 — Windows Installer Critical' ใน HANDOVER.md (วางก่อน P1 Security เพราะเป็น blocker หลัก)
+
+Findings ที่เพิ่ม:
+- C-01: QuickStart SQLite vs Schema PostgreSQL mismatch
+- C-02: Installer Copy-Item commented out
+- C-03: Installer ไม่มี bun run build
+- C-04: ConvertFrom-SecureString ได้ encrypted string ไม่ใช่ password จริง
+- C-05: db:push แทน prisma migrate deploy
+- H-01: db:restore ไม่ atomic
+- H-02: safe-migrate.sh hardcoded /home/z/my-project
+- H-03: Backup ไม่ครบ 7 new models
+- H-04: Backup encryption ไม่บังคับ
+- Section 3: scripts มี absolute path
+- Section 4: documentation drift
+- Section 5: 12-step clean install test plan
+- Section 6: 14 รายการควรเพิ่มก่อนส่งลูกค้า
+- Section 7: status summary
+
+Stage Summary:
+- ✅ P0 Windows Installer Critical 13 ปัญหา เพิ่มใน HANDOVER.md
+- ✅ ทีมมี checklist ครบสำหรับแก้ก่อนส่งลูกค้า
+- ✅ Push ขึ้น GitHub (commit 6cdc175)
+- 📋 ข้อเสนอเร่งด่วนที่สุด: แก้ Windows Installer (PostgreSQL + migrate deploy + copy/build จริง + password handling + db:restore atomic)
