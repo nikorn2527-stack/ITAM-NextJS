@@ -45,6 +45,185 @@ Login: **admin / test1234**
 
 ---
 
+## 🔴 P0 — Windows Installer Critical (จากรายงานตรวจ Local Test)
+
+รายงานตรวจจาก commit `3fd967d` พบปัญหา critical 5 ข้อ + restore/backup 4 ข้อ ที่บล็อกการส่ง Installer ให้ลูกค้า:
+
+### C-01: QuickStart ใช้ SQLite แต่ Schema เป็น PostgreSQL (Critical)
+`prisma/schema.prisma` ปัจจุบัน `provider = "postgresql"` แต่ `scripts/install.ps1` QuickStart สร้าง `DATABASE_URL=file:./db/custom.db`
+**ผล**: QuickStart รันไม่ได้เพราะ Prisma Client (PostgreSQL) ไม่รองรับ SQLite URL
+
+**ต้องเลือก**:
+- **แนะนำ**: ตัด SQLite QuickStart ออก ใช้ PostgreSQL ทุก Mode
+- หรือถ้าต้องการ SQLite จริง ต้องมี Build/Schema แยกอีกชุด
+
+> หมายเหตุ: ใน dev sandbox เราใช้ `scripts/set-prisma-provider.mjs` auto-patch provider ตาม DATABASE_URL แล้ว แต่ Installer อาจจะยังไม่ได้เรียก script นี้
+
+### C-02: Installer ไม่ Copy ไฟล์ Application จริง
+`scripts/install.ps1` ส่วน Copy Application Files ยังเป็น comment:
+```powershell
+# Copy-Item -Path .\* -Destination $InstallDir -Recurse -Force
+```
+
+**ต้องแก้**:
+- รับ `-PackagePath` เป็น ZIP/Release Directory
+- ตรวจว่ามี `.next/standalone/server.js`, `public`, `.next/static`, `prisma` ครบ
+- Copy ด้วย `Copy-Item` จริง + ตรวจ Hash/Version
+- หยุดทันทีถ้าไฟล์สำคัญหาย
+
+### C-03: Installer ไม่ได้ Build Application
+Installer ทำ `bun install` แล้วไป start `.next/standalone/server.js` แต่ไม่มี `bun run build`
+**ผล**: ถ้า Package ไม่มี standalone build อยู่ก่อน → start ไม่ได้
+
+**ต้องเลือก**:
+- **Release Installer**: บังคับให้ Package สร้างจาก CI และมี Standalone Build ครบ
+- **Source Installer**: เพิ่ม `npm run build` หลังติดตั้ง Dependencies
+
+### C-04: Password PostgreSQL ใน PowerShell ไม่ถูกต้อง
+Installer ใช้ `ConvertFrom-SecureString` ซึ่งได้ Encrypted String ของ Windows (ไม่ใช่ password จริง) แล้วไปต่อเป็น connection string → เชื่อม DB ไม่ได้
+
+**ต้องแก้**:
+- รับ password เป็น `SecureString` แล้วแปลงชั่วคราวเฉพาะตอนประกอบ connection string
+- หรือให้ผู้ติดตั้งกรอก connection string ผ่าน prompt ที่ไม่ echo
+- เก็บใน `.env` ด้วย ACL เฉพาะ Service Account
+- **ห้ามเขียน password ลง log**
+
+### C-05: Installer รัน `db:push` แทน `prisma migrate deploy`
+ตอนนี้ใช้ `bun run db:push` แต่ Production Schema มี Migration แล้ว ควรใช้ `prisma migrate deploy`
+**ผล**: `db:push` ไม่ใช่ deployment migration → อาจทำให้ schema drift/ข้อมูลเสียหาย
+
+**ต้องแก้**:
+- Production/LANServer/ExistingDatabase → `prisma migrate deploy`
+- Local Development เท่านั้น → อนุญาต `db push` ตาม Guard
+- ตรวจ Migration ก่อน Start + ทำ Backup ก่อน Deploy
+
+---
+
+### Restore/Backup Issues (H-01 ถึง H-04)
+
+#### H-01: `db:restore` ไม่ Atomic
+`package.json` เรียก `scripts/restore-db.ts` ที่ทำ `deleteMany()` + `createMany()` ทีละตาราง (จับ error แล้วทำต่อ)
+ขณะที่ `scripts/restore-from-supabase-v2.ts` ปลอดภัยกว่า แต่ไม่ได้ผูกกับ `db:restore`
+
+**ต้องแก้**:
+- ทำ Restore Engine เดียวให้ชัดเจน
+- `db:restore` เรียกตัวที่มี Backup + Validation + Transaction/Atomic Replace
+- ห้ามมี Restore Script เก่าที่ทีมอาจเลือกผิด
+- ตรวจ Backup Encryption Key + Backup Schema ก่อน Restore
+- หาก Restore ล้ม → Exit Code ≠ 0
+
+#### H-02: `safe-migrate.sh` มี Path ตายตัว
+```bash
+cd /home/z/my-project  # ← ใช้ไม่ได้บน Windows/เครื่องอื่น
+```
+**ต้องแก้**: `PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"` หรือ `process.cwd()`
+
+#### H-03: Backup Script ไม่ครบทุก Model
+ต้องเพิ่ม Model ใหม่เข้า Backup/Restore:
+```
+Organization, LegacyReference, SetupRun, SetupStep,
+CustomFieldDefinition, CustomFieldOption, CustomFieldValue
+```
+**แนะนำ**: ใช้ Prisma/SQL Dump ที่รับประกันครบกว่า Manual List
+
+#### H-04: Backup ไม่มี Encryption เป็น Default
+`backup-db.ts` ถ้าไม่มี `BACKUP_ENCRYPTION_KEY` จะสร้าง Plain JSON + Warning เฉยๆ
+**ต้องแก้**: Production/LAN Server → ไม่มี key → **หยุดทันที** + กำหนดสิทธิ์ไฟล์ Backup เฉพาะ Service Account/Admin
+
+---
+
+### Scripts ที่มี Path/Environment เก่า (Section 3)
+พบ Absolute Path `/home/z/my-project/...` ในหลาย script + `process.env.SUPABASE_DATABASE_URL || ''`
+
+**ต้องแก้**:
+- เปลี่ยนทั้งหมดเป็น `requireDatabaseUrl()` + `process.cwd()`/CLI Argument
+- แยก scripts เป็น 2 กลุ่ม:
+  - `runtime/installer scripts` → ต้อง Portable + Fail-Closed
+  - `legacy/recovery scripts` → ย้ายไป `tools/legacy/` + ห้ามแสดงในคู่มือหลัก
+
+---
+
+### เอกสารที่ต้องปรับ (Section 4)
+- คู่มือยังพูดถึง SQLite ทั้งที่ Schema เป็น PostgreSQL
+- คู่มือยังแนะนำ `bun run db:push` ในบางขั้นตอน
+- Support Runbook อ้าง Restore Script ตัวเก่า
+- Customer Onboarding อ้าง `upload/IT_Asset_Management_Database.xlsx`
+- มีตัวอย่าง JWT Secret ที่ดูเหมือน Secret จริง
+- มีเอกสารอ้าง `/home/z/my-project`
+
+**ต้องมีเอกสารหลัก 4 ฉบับ**:
+```
+Windows Installer Runbook
+PostgreSQL Deployment Runbook
+Backup/Restore Runbook
+Local Developer Setup
+```
+ลบ/ติดป้าย `legacy` ให้เอกสารเก่า
+
+---
+
+### ขั้นตอนทดสอบ Local ที่แนะนำ (Section 5)
+
+**Clean Install** (12 ขั้นตอน):
+1. เครื่อง Windows ใหม่/VM ใหม่
+2. ติดตั้ง Runtime ตาม Installer ต้องการ
+3. ติดตั้ง PostgreSQL
+4. สร้าง Database + User แบบ Least Privilege
+5. รัน Installer ด้วย Package ใหม่
+6. ตรวจว่า Installer Copy ไฟล์จริง
+7. ตรวจว่า Build/Standalone Server มีอยู่
+8. รัน `prisma migrate deploy`
+9. Start Service
+10. เปิด `/api/health`
+11. เข้า Setup Wizard
+12. สร้าง Organization + Admin
+
+**Failure Tests** (Installer ต้องหยุดทันทีเมื่อ):
+- DATABASE_URL ว่าง / PostgreSQL เชื่อมไม่ได้ / Migration ล้มเหลว
+- Package ไม่มี server.js / JWT_SECRET สั้น/หาย / Port ถูกใช้
+- Backup Key หาย / User Database สิทธิ์ไม่พอ
+
+**Data Tests**:
+- สร้าง Org A + Org B + User A/B → ตรวจว่า A อ่าน/แก้ข้อมูล B ไม่ได้
+- ตรวจ Site Scope, Custom Field GET/PUT, Legacy Import, SetupRun/SetupStep, AuditLog
+
+---
+
+### สิ่งที่ควรเพิ่มก่อนส่งลูกค้า (Section 6 — 14 รายการ)
+1. First-run Setup Wizard แบบบังคับ (ถ้ายังไม่มี Org/Admin)
+2. Database Connection Test ก่อน Migration
+3. Migration Preview แสดง Version ก่อน Apply
+4. Automatic Backup ก่อน Migration/Restore
+5. Rollback/Recovery Guide ที่ทดสอบจริง
+6. Health Check แยก Readiness/Liveness
+7. Windows Service Installer ที่ใช้งานได้จริง (ไม่ใช่แค่แนะนำ NSSM)
+8. Version Manifest (App Version + Schema Version + Migration Status)
+9. Log Rotation สำหรับ `server.log`
+10. Secrets ACL (`.env` + Backup อ่านได้เฉพาะ Service Account)
+11. Installer Uninstall/Upgrade Flow (ไม่ลบ Database โดยไม่ตั้งใจ)
+12. Synthetic Demo Data แยกจากข้อมูลจริง
+13. CI Release Artifact ที่ตรวจ `server.js`, static assets, migration, checksum
+14. Automated Cross-Org Authorization Tests ใน CI
+
+---
+
+### สรุปสถานะ (Section 7)
+```
+Multi-Org Code: ดีขึ้นมาก
+Custom Field Authorization: ดีขึ้นมาก
+PostgreSQL Schema/Migration: ถูกทิศทาง
+Local Developer Setup: ยังมีคำสั่ง/Path เก่า
+Windows Installer: ยังไม่พร้อมใช้งานจริง
+Backup: มี แต่ยังไม่บังคับ Encryption และรายการ Model ต้องตรวจ
+Restore: ยังมีสองระบบและ db:restore เรียกตัวที่ไม่ Atomic
+Deployment Migration: Installer ยังใช้ db:push ต้องเปลี่ยนเป็น migrate deploy
+Production Readiness: ยังไม่ผ่าน
+```
+
+**ข้อเสนอแนะเร่งด่วนที่สุด**: แก้ Windows Installer ให้ใช้ PostgreSQL + `prisma migrate deploy`, ทำให้ Copy/Build ใช้งานจริง, แก้ Password Handling และผูก `db:restore` เข้ากับ Restore Engine ที่ปลอดภัยก่อน
+
+---
+
 ## ✅ P1 Security Fixes — ทีมแก้เสร็จแล้ว (verified)
 
 ทีมตรวจ P1 ต่อจนครบ + แก้ทุกจุดที่เหลือ สรุปสถานะ:
