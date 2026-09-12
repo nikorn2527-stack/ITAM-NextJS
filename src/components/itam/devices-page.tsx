@@ -3720,7 +3720,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           <Checkbox
                             checked={isSelected}
                             onCheckedChange={(v) => toggleSelect(d.id, v === true)}
-                            aria-label={t('devices.aria.select').replace('{code}', d.assetCode)}
+                            aria-label={t('devices.aria.select_row').replace('{code}', d.assetCode)}
                             className="border-slate-300 data-[state=checked]:bg-[#f97316] data-[state=checked]:border-[#f97316] data-[state=checked]:text-white dark:border-slate-600 dark:data-[state=checked]:bg-[#f97316] dark:data-[state=checked]:border-[#f97316]"
                           />
                         )}

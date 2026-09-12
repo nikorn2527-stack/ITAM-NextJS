@@ -1867,3 +1867,95 @@ model CustomReport {
   @@index([createdBy])
   @@index([dataSource])
 }
+
+// ============================================================
+// Phase 1 → Phase 2: Offline Sync Foundation
+//     These models are the Sync-Ready schema per consultant blueprint
+//     (Phase 1 Local Online + structure for Offline/Sync).
+//     They are NOT used by any route yet — Phase 2 will wire the
+//     /api/sync/push, /pull, /conflicts endpoints to these tables.
+//
+// Design (per ITAM Phase 1 blueprint §2.6 + §3):
+//   - SyncNode: a registered LAN/Offline node that can push/pull
+//   - SyncOutbox: pending changes a node wants to push (idempotent)
+//   - SyncConflict: when baseVersion != currentVersion on same field
+//
+// All use Optimistic Concurrency Control (version + baseVersion).
+// ============================================================
+
+/// SyncNode — a registered LAN/Offline node that can sync with the cloud.
+model SyncNode {
+  id             String   @id // stable node id (e.g. "node-site-a-01")
+  organizationId String
+  siteCode       String? // nullable — some nodes span multiple sites
+  nodeType       String   // CLOUD | LAN | OFFLINE
+  status         String   // ACTIVE | PAUSED | REVOKED
+  lastSyncAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  outbox         SyncOutbox[]
+  conflicts      SyncConflict[]
+
+  isDemo    Boolean  @default(false)
+  @@index([organizationId, status])
+  @@index([nodeType])
+}
+
+/// SyncOutbox — pending changes a node wants to push to cloud.
+/// Idempotency: if idempotencyKey already exists with ACKED status,
+/// the push returns the cached result without re-applying.
+model SyncOutbox {
+  id             String   @id @default(cuid())
+  nodeId         String
+  organizationId String
+  entityType     String   // Device | WorkOrder | StockTransaction | MasterItem | ...
+  entityId       String
+  operation      String   // CREATE | UPDATE | DELETE
+  baseVersion    Int?     // version the node read before editing
+  entityVersion  Int?     // version the node wants to write
+  idempotencyKey String   @unique // e.g. "node-site-a-01:Device:dvc_123:7:UPDATE"
+  payloadJson    String   // JSON-encoded change payload
+  status         String   // PENDING | SENT | ACKED | CONFLICT | FAILED
+  attempts       Int      @default(0)
+  lastError      String?
+  createdAt      DateTime @default(now())
+  sentAt         DateTime?
+  ackedAt        DateTime?
+
+  node           SyncNode @relation(fields: [nodeId], references: [id])
+
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
+  @@index([nodeId, status, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@index([idempotencyKey])
+}
+
+/// SyncConflict — when cloud and offline edited the same field.
+/// Admin must resolve via /api/sync/conflicts/:id/resolve.
+model SyncConflict {
+  id              String   @id @default(cuid())
+  organizationId   String
+  nodeId          String
+  entityType      String
+  entityId        String
+  baseVersion     Int?
+  cloudVersion    Int
+  offlineVersion  Int
+  cloudPayload    String   // JSON of cloud state at conflict time
+  offlinePayload  String   // JSON of offline state at conflict time
+  conflictFields  String   // JSON array of field names that conflict
+  status          String   // OPEN | RESOLVED | REJECTED
+  resolution      String?  // CLOUD | OFFLINE | MERGED | MANUAL
+  resolvedBy      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime @default(now())
+
+  node            SyncNode @relation(fields: [nodeId], references: [id])
+
+  isDemo    Boolean  @default(false)
+  updatedAt DateTime? @updatedAt
+  @@index([organizationId, status, createdAt])
+  @@index([nodeId, entityType, entityId])
+}

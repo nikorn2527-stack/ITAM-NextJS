@@ -24,7 +24,7 @@
  *
  * Adding a new string:
  *   1. Add an entry to GLOSSARY with a unique key.
- *   2. Replace the hardcoded string with `t('your.key')` in the component.
+ *   2. Replace the hardcoded string with `t('your.key.here')` in the component.
  *
  * If a key is missing, `t()` returns the key itself (so missing keys are
  * immediately visible in the UI rather than silently showing Thai).
@@ -1415,11 +1415,36 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
 
 /**
  * Resolve a key for a given language.
- * Returns the key itself when missing (so missing keys are visible).
+ *
+ * I18N-06 fix: in development, warn loudly when a key is missing or when
+ * the requested language variant is missing (previously silently fell back
+ * to Thai, hiding incomplete translations from the team).
+ *
+ * Returns the key itself when fully missing (so missing keys are visible
+ * in the UI as the raw key, e.g. "settings.tab.foo" — immediately obvious).
  */
+const warnedMissingKeys = new Set<string>()
+function warnMissingKey(key: string, reason: 'MISSING' | 'NO_EN' | 'NO_TH') {
+  if (process.env.NODE_ENV === 'production') return // silent in prod
+  const cacheKey = `${reason}:${key}`
+  if (warnedMissingKeys.has(cacheKey)) return // warn once per key
+  warnedMissingKeys.add(cacheKey)
+  if (reason === 'MISSING') {
+    console.warn(`[i18n] ⚠️ missing key: "${key}" — add it to GLOSSARY in src/lib/i18n.ts`)
+  } else if (reason === 'NO_EN') {
+    console.warn(`[i18n] ⚠️ key "${key}" has no English (en) translation — falls back to Thai`)
+  }
+}
+
 export function translate(key: string, lang: Lang): string {
   const entry = GLOSSARY[key]
-  if (!entry) return key
+  if (!entry) {
+    warnMissingKey(key, 'MISSING')
+    return key
+  }
+  if (lang === 'en' && !entry.en) {
+    warnMissingKey(key, 'NO_EN')
+  }
   return entry[lang] ?? entry.th ?? key
 }
 

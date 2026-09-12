@@ -137,3 +137,53 @@ export function useFormatDateTime() {
     [lang],
   )
 }
+
+// ── Locale-aware Number / Currency formatters (I18N-05 fix) ────────────────
+//
+// Components should use these hooks INSTEAD of calling `.toLocaleString('th-TH')`
+// directly. Direct locale calls ignore the user's language choice and produce
+// Thai-formatted numbers even when English is selected.
+//
+// Usage:
+//   const fmtNum = useFormatNumber()
+//   const fmtMoney = useFormatCurrency()
+//   <span>{fmtNum(1234567)}</span>           // th: 1,234,567  | en: 1,234,567
+//   <span>{fmtMoney(199.5)}</span>           // th: ฿199.50    | en: ฿199.50
+
+export function formatNumber(value: number, lang: Lang = 'th', options?: Intl.NumberFormatOptions): string {
+  try {
+    const locale = lang === 'th' ? 'th-TH' : 'en-GB'
+    return new Intl.NumberFormat(locale, options).format(value)
+  } catch {
+    return String(value)
+  }
+}
+
+export function formatCurrency(value: number, lang: Lang = 'th', currency = 'THB'): string {
+  try {
+    const locale = lang === 'th' ? 'th-TH' : 'en-GB'
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+    }).format(value)
+  } catch {
+    return String(value)
+  }
+}
+
+export function useFormatNumber() {
+  const lang = useI18nStore((s) => s.lang)
+  return React.useCallback(
+    (value: number, options?: Intl.NumberFormatOptions) => formatNumber(value, lang, options),
+    [lang],
+  )
+}
+
+export function useFormatCurrency() {
+  const lang = useI18nStore((s) => s.lang)
+  return React.useCallback(
+    (value: number, currency?: string) => formatCurrency(value, lang, currency),
+    [lang],
+  )
+}

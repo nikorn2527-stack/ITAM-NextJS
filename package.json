@@ -31,7 +31,8 @@
     "db:safe-push": "bash scripts/safe-migrate.sh --push",
     "db:safe-migrate:prod": "bash scripts/safe-migrate.sh --production",
     "check:drift": "bun scripts/check-schema-drift.ts",
-    "check:module-gating": "node scripts/check-module-gating.mjs"
+    "check:module-gating": "node scripts/check-module-gating.mjs",
+    "check:i18n": "bun run scripts/check-i18n.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",

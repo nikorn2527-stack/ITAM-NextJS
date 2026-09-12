@@ -84,26 +84,26 @@ if [ -z "${DATABASE_URL:-}" ]; then
   exit 1
 fi
 case "$DATABASE_URL" in
-  file:*)      ok "DATABASE_URL = $DATABASE_URL (SQLite mode)" ;;
-  postgres*)   ok "DATABASE_URL = postgresql:... (PostgreSQL mode)" ;;
-  *)           warn "DATABASE_URL doesn't look like SQLite (file:) or PostgreSQL (postgresql:)"
-               echo "   Got: $DATABASE_URL" ;;
+  postgres*)   ok "DATABASE_URL = postgresql:... (PostgreSQL baseline ✓)" ;;
+  file:*)      err "DATABASE_URL is SQLite (file:) — Phase 1 baseline requires PostgreSQL."
+               echo "   Set DATABASE_URL to a PostgreSQL connection string in .env"
+               echo "   See .env.example for the format."
+               exit 1 ;;
+  *)           warn "DATABASE_URL doesn't look like PostgreSQL (postgresql://...)"
+               echo "   Got: $DATABASE_URL"
+               echo "   Phase 1 baseline requires PostgreSQL." ;;
 esac
 
-# ── 6. Auto-sync prisma provider with DATABASE_URL ───────────────────────
-step "Syncing prisma/schema.prisma provider"
+# ── 6. Verify prisma provider is PostgreSQL ──────────────────────────────
+step "Verifying prisma provider (PostgreSQL baseline)"
 node scripts/set-prisma-provider.mjs
 
-# ── 7. Create db folder if using SQLite ──────────────────────────────────
-if [[ "$DATABASE_URL" == file:* ]]; then
-  mkdir -p db
-  ok "Ensured db/ folder exists"
-fi
+# ── 7. (Removed) SQLite db folder — Phase 1 is PostgreSQL-only ───────────
 
-# ── 8. prisma db push (create/sync schema) ────────────────────────────────
-step "Running prisma db push"
-bunx prisma db push
-ok "Database schema synced"
+# ── 8. prisma migrate deploy (Phase 1: PostgreSQL migrations) ─────────────
+step "Running prisma migrate deploy"
+bunx prisma migrate deploy
+ok "Database schema synced (migrate deploy)"
 
 # ── 9. prisma generate ───────────────────────────────────────────────────
 step "Generating Prisma Client"
