@@ -21910,3 +21910,34 @@ Stage Summary:
 Artifacts produced:
 - src/lib/db.ts (skip stripInsensitive สำหรับ raw operations)
 - src/components/itam/work-orders-page.tsx (เพิ่ม const t = useT() ใน CreateWorkOrderDialog + WorkOrderDetailContent)
+
+---
+Task ID: P1-VERIFIED + P3-FEATURES
+Agent: orchestrator (main)
+Task: ตรวจ P1 ต่อจนครบ + เพิ่ม P3 ฟีเจอร์เสริมใน HANDOVER.md
+
+Work Log:
+- User รายงานว่าทีมแก้ P1 security fixes ทั้งหมดแล้ว + เสนอฟีเจอร์ 3 ข้อ
+- Verified P1 fixes ในโค้ด:
+  - ✅ Health endpoint: ไม่มี detail field ใน response (logged server-side only)
+  - ✅ Seed API: return 403 ใน production, ไม่มี ALLOW_SEED_IN_PRODUCTION override
+  - ✅ Backup: createCipheriv('aes-256-gcm', ...) + warning ถ้าไม่มี key
+  - ✅ RNG: crypto.randomUUID() primary, Math.random() เป็น fallback
+  - ✅ Demo users: profile='demo' only, reject ใน production
+  - ✅ Seed fail-closed: เช็ค NODE_ENV + ITAM_SEED_PROFILE คู่กัน
+
+P3 Feature Proposals เพิ่มใน HANDOVER.md:
+1. Bulk Import สำหรับ Asset Categories + Contact Directory (~1-2 วัน)
+   - ใช้ import-page.tsx pattern เดิม + legacy-import/preview
+2. Auto-fill depreciation defaults จาก Asset Category (~0.5 วัน)
+   - useEffect ตอน assetCategory เปลี่ยน + fetch defaults
+3. Restore Drill — สคริปต์ทดสอบ backup restore (~1 วัน, HIGH priority)
+   - scripts/verify-backup-restore.ts + cron รายสัปดาห์
+
+ลำดับแนะนำ: Restore Drill > Auto-fill > Bulk import
+
+Stage Summary:
+- ✅ P1 security fixes verified ในโค้ดทั้ง 6 ข้อ
+- ✅ P3 ฟีเจอร์เสริม 3 ข้อ เพิ่มใน HANDOVER.md พร้อมขอบเขต + ไฟล์ + ขนาดงาน
+- ✅ Push ขึ้น GitHub (commit c78e7e9)
+- 📋 ทีมเลือกทำฟีเจอร์ไหนก่อนได้ตามลำดับความสำคัญทางธุรกิจ
