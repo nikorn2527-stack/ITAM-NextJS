@@ -151,14 +151,27 @@ function getPrisma(): PrismaClient {
   // SQLite compatibility shim — strip `mode: "insensitive"` from all queries.
   // PostgreSQL keeps the mode (real case-insensitive search). SQLite drops it
   // (default LIKE is already case-insensitive for ASCII; Thai has no case).
+  //
+  // IMPORTANT: we SKIP raw SQL operations ($queryRaw, $executeRaw) because
+  // their args shape is `{ query, parameters }` and stripping `query` from
+  // them would break the SQL execution ("Argument `query` is missing").
+  // Only strip from ORM-style operations (findMany, etc.) that use `where`.
   const extended = isSqlite
     ? base.$extends({
         query: {
           $allOperations: async (params: {
+            operation: string
             args: unknown
             query: (args: unknown) => Promise<unknown>
           }) => {
-            const cleaned = stripInsensitive(params.args)
+            const isRaw =
+              params.operation === '$queryRaw' ||
+              params.operation === '$executeRaw' ||
+              params.operation === '$queryRawUnsafe' ||
+              params.operation === '$executeRawUnsafe' ||
+              params.operation === '$queryRawTyped' ||
+              params.operation === '$executeRawTyped'
+            const cleaned = isRaw ? params.args : stripInsensitive(params.args)
             return params.query(cleaned)
           },
         },

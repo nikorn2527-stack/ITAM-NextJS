@@ -1317,6 +1317,7 @@ function CreateWorkOrderDialog({
   buildings: BuildingOption[]
   authUser: ReturnType<typeof useAuthStore.getState>['user']
 }) {
+  const t = useT()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [picBusy, setPicBusy] = React.useState(false)
 
@@ -2258,6 +2259,7 @@ function WorkOrderDetailContent({
   // this component scope, causing runtime ReferenceError when image upload
   // or parts/approve flows try to invalidate the WO cache.
   const qc = useQueryClient()
+  const t = useT()
 
   // Assign technician
   const [assignOpen, setAssignOpen] = React.useState(false)
