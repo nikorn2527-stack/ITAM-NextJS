@@ -21685,3 +21685,41 @@ Stage Summary:
 
 Artifacts produced:
 - src/lib/db.ts (stripInsensitive helper + $extends query interceptor)
+
+---
+Task ID: LAYOUT-SCRIPT-TAG-FIX
+Agent: orchestrator (main)
+Task: แก้ error "Encountered a script tag while rendering React component" ที่บล็อกทุกหน้า
+
+Work Log:
+- User ส่ง screenshot แสดง console error overlay บนทุกหน้า:
+  "Console Error: Encountered a script tag while rendering React component.
+   Scripts inside React components are never executed when rendering on the
+   client. Consider using template tag instead."
+  ที่ src/app/layout.tsx:82 @ RootLayout
+- Root cause: src/app/layout.tsx ใช้ raw `<script dangerouslySetInnerHTML>` ใน <head>
+  สำหรับ early service-worker cleanup + chunk-load auto-recovery
+- React 19 / Next.js 16 ไม่อนุญาต raw <script> tags ใน JSX → emit console error ทุก render
+- Error overlay บล็อกทั้งหน้า UI ทำให้ user เห็น "หลายหน้าขึ้นข้อความแบบนี้"
+
+Fix:
+- เปลี่ยน raw `<script>` → `<Script>` from `next/script` ด้วย `strategy="beforeInteractive"`
+- ย้าย `<Script>` จาก `<head>` ออกมาไว้ใน `<body>` (next/script with beforeInteractive
+  จะถูก auto-inject เข้า <head> โดย Next.js เอง; การวางใน <head> ตรงๆ ทำให้เกิด hydration warning)
+- Logic ของ script (dev-mode SW unregister + cache clear + chunk-load error auto-reload)
+  เหมือนเดิมทุกบรรทัด — เปลี่ยนแค่ JSX wrapper
+
+Verification:
+- Page load: HTTP 200, 28KB ✓
+- ไม่มี "Encountered a script tag" error ใน HTML ✓
+- Login admin/test1234: token 281 chars ✓
+- Devices API with search: HTTP 200 ✓
+- Server stable ✓
+
+Stage Summary:
+- ✅ Console error overlay หายแล้ว — ทุกหน้าแสดงผลได้ปกติ
+- ✅ Push ขึ้น GitHub (commit 19ef5cb)
+- 📋 User บน Windows: `git pull` แล้วรัน `bun run dev` ใหม่ — หน้าตั้งค่าและหน้าอื่นๆ ควรเข้าได้หมด
+
+Artifacts produced:
+- src/app/layout.tsx (raw <script> → next/script with beforeInteractive)
