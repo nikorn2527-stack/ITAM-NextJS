@@ -82,6 +82,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ run: activeRun, message: 'มี SetupRun ที่กำลังดำเนินการอยู่ ส่งกลับเพื่อ resume' })
   }
 
+  // P1-05: Lock check — if a COMPLETED run exists, reject new runs.
+  // This prevents re-running the wizard after initial setup is locked.
+  // Superadmin can bypass with ITAM_ALLOW_SETUP_RESET=1 env var (explicit recovery mode).
+  const completedRun = await db.setupRun.findFirst({
+    where: { organizationId: targetOrgId, status: 'COMPLETED' },
+    select: { id: true, completedAt: true },
+  })
+  if (completedRun && process.env.ITAM_ALLOW_SETUP_RESET !== '1') {
+    return NextResponse.json(
+      {
+        error: 'Setup Wizard ถูกล็อกแล้ว — การตั้งค่าเริ่มต้นเสร็จสิ้นแล้ว',
+        code: 'SETUP_LOCKED',
+        completedRunId: completedRun.id,
+        completedAt: completedRun.completedAt,
+        hint: 'หากต้องการรันใหม่ ให้ตั้ง ITAM_ALLOW_SETUP_RESET=1 (recovery mode เท่านั้น)',
+      },
+      { status: 423 }, // 423 Locked
+    )
+  }
+
   const run = await db.setupRun.create({
     data: {
       organizationId: targetOrgId,

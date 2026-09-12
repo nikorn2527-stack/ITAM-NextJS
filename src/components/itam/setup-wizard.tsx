@@ -37,7 +37,7 @@ import { Progress } from '@/components/ui/progress'
 import {
   Rocket, Building2, Package, Hash, MapPin, Network, Database,
   Shield, Plug, CheckCircle2, Loader2, ChevronRight, ChevronLeft,
-  AlertCircle, Settings, Users, Globe,
+  AlertCircle, Settings, Users, Globe, Lock,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
 import { MASTER_GROUPS, MASTER_CATEGORIES } from '@/lib/master-categories'
@@ -72,6 +72,40 @@ export function SetupWizard({ organizationId }: { organizationId: string }) {
     Object.fromEntries(STEPS.map(s => [s.key, 'PENDING' as const]))
   )
   const [formData, setFormData] = React.useState<Record<string, any>>({})
+  // P1-05: locked state — if a COMPLETED run exists, wizard is locked
+  const [isLocked, setIsLocked] = React.useState(false)
+  const [lockedAt, setLockedAt] = React.useState<string | null>(null)
+
+  // P1-05: Check for existing completed run on mount
+  React.useEffect(() => {
+    if (!token) return
+    fetch('/api/setup/runs', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.runs) {
+          const completed = data.runs.find((r: any) => r.status === 'COMPLETED')
+          if (completed) {
+            setIsLocked(true)
+            setLockedAt(completed.completedAt)
+          }
+          const inProgress = data.runs.find((r: any) => r.status === 'IN_PROGRESS')
+          if (inProgress) {
+            setRunId(inProgress.id)
+            // Resume: load step statuses
+            if (inProgress.steps) {
+              const statuses: Record<string, SetupStep['status']> = {}
+              for (const s of inProgress.steps) {
+                statuses[s.stepKey] = s.status
+              }
+              setStepStatuses(prev => ({ ...prev, ...statuses }))
+            }
+          }
+        }
+      })
+      .catch(() => {})
+  }, [token])
 
   // Create a new SetupRun
   const createRun = useMutation({
@@ -84,6 +118,13 @@ export function SetupWizard({ organizationId }: { organizationId: string }) {
         },
         body: JSON.stringify({ organizationId }),
       })
+      if (res.status === 423) {
+        // P1-05: Locked — setup already completed
+        const data = await res.json()
+        setIsLocked(true)
+        setLockedAt(data.completedAt)
+        throw new Error(data.error || 'SETUP_LOCKED')
+      }
       if (!res.ok) throw new Error('Failed to create setup run')
       return res.json()
     },
@@ -91,7 +132,36 @@ export function SetupWizard({ organizationId }: { organizationId: string }) {
       setRunId(data.run.id)
       toast.success('เริ่ม Setup Wizard แล้ว')
     },
-    onError: () => toast.error('ไม่สามารถเริ่ม Setup Wizard ได้'),
+    onError: (err: Error) => {
+      if (err.message === 'SETUP_LOCKED' || err.message.includes('ล็อก')) {
+        toast.error('Setup Wizard ถูกล็อกแล้ว — การตั้งค่าเริ่มต้นเสร็จสิ้นแล้ว')
+      } else {
+        toast.error('ไม่สามารถเริ่ม Setup Wizard ได้')
+      }
+    },
+  })
+
+  // P1-05: Complete the run (lock wizard)
+  const completeRun = useMutation({
+    mutationFn: async () => {
+      if (!runId) throw new Error('No runId')
+      const res = await fetch(`/api/setup/runs/${runId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ status: 'COMPLETED' }),
+      })
+      if (!res.ok) throw new Error('Failed to complete run')
+      return res.json()
+    },
+    onSuccess: () => {
+      setIsLocked(true)
+      setLockedAt(new Date().toISOString())
+      toast.success('ตั้งค่าเริ่มต้นเสร็จสิ้น — Wizard ถูกล็อกแล้ว')
+    },
+    onError: () => toast.error('ไม่สามารถปิด Setup Wizard ได้'),
   })
 
   // Update a step
@@ -196,7 +266,24 @@ export function SetupWizard({ organizationId }: { organizationId: string }) {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-4">
+      {/* P1-05: Locked state — show this instead of the wizard if setup is complete */}
+      {isLocked && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-6 text-center dark:border-amber-800 dark:bg-amber-950/40">
+          <Lock className="mx-auto h-10 w-10 text-amber-600 dark:text-amber-400" />
+          <h2 className="mt-3 text-lg font-semibold text-amber-900 dark:text-amber-200">
+            Setup Wizard ถูกล็อกแล้ว
+          </h2>
+          <p className="mt-1 text-sm text-amber-700 dark:text-amber-300">
+            การตั้งค่าเริ่มต้นเสร็จสิ้นแล้ว{lockedAt ? ` เมื่อ ${new Date(lockedAt).toLocaleString('th-TH')}` : ''}
+          </p>
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            หากต้องการรันใหม่ ผู้ดูแลระบบต้องตั้งค่า <code className="rounded bg-amber-100 px-1 dark:bg-amber-900">ITAM_ALLOW_SETUP_RESET=1</code> (recovery mode)
+          </p>
+        </div>
+      )}
+
       {/* Header */}
+      {!isLocked && (
       <div className="text-center">
         <h1 className="flex items-center justify-center gap-2 text-2xl font-bold text-slate-900 dark:text-slate-100">
           <Rocket className="h-6 w-6 text-[#f97316]" />
@@ -206,6 +293,7 @@ export function SetupWizard({ organizationId }: { organizationId: string }) {
           ทำตามขั้นตอนเพื่อตั้งค่าองค์กรของคุณ — ระบบจะไม่สร้างข้อมูลซ้ำเมื่อกดย้อนกลับ
         </p>
       </div>
+      )}
 
       {/* Progress */}
       <div className="space-y-2">
