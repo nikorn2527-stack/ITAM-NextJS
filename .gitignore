@@ -87,3 +87,4 @@ docs/g2-evidence/
 
 # Package manager lockfile (using bun, not npm)
 package-lock.json
+upload/
