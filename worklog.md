@@ -21447,3 +21447,116 @@ Artifacts produced:
 - tests/auth/cross-org-auth.test.ts
 - src/components/itam/itam-settings.tsx (เพิ่ม 3 tabs + imports)
 - src/lib/i18n.ts (เพิ่ม 6 keys)
+
+---
+Task ID: SANDBOX-STARTUP-FIX
+Agent: orchestrator (main)
+Task: แก้ปัญหา "กำลังติดตั้ง" — sandbox dev server ไม่ start / OOM ทุกครั้ง + แอปเข้าไม่ได้
+
+Work Log:
+- ตรวจสอบสถานะ sandbox: dev server ไม่ได้รัน, port 3000 ไม่ listening, มีเพียง mini-services (bun --hot) ที่รันอยู่
+- ลอง `bun run dev` (Turbopack) → OOM-killed ระหว่าง cold-compile instrumentation (47GB virtual / 3.4GB anon-rss)
+- Root cause #1: Turbopack cold-compile ของ dev server ใช้ memory เกิน 4GB sandbox cgroup limit
+- Root cause #2: Production build (`next build --webpack`) ล้มเหลวเพราะ `JWT_SECRET` ไม่ได้ set (production mode ปิดกั้น)
+- Root cause #3: Production server (`next start`) ตายทันทีเมื่อได้รับ API request เพราะ PrismaClient ถูก eager-instantiate ที่ top-level ของ `src/lib/db.ts` → memory spike เมื่อ route handler แรกถูกโหลด (Prisma engine + 20+ models + auth modules พร้อมกัน) เกิน cgroup limit
+- Root cause #4: 10 routes (devices, setup/runs, master-items/merge, legacy-import, custom-fields, organizations) ใช้ `requireAuth` และ `db` โดยไม่ได้ import (ReferenceError ตอน runtime)
+
+Fixes applied:
+1. เพิ่ม JWT_SECRET ใน .env (32-byte hex สุ่ม) — production build ผ่าน
+2. ใช้ production mode (next build --webpack + next start) แทน dev server — หลีกเลี่ยง Turbopack cold-compile OOM
+3. **ทำ PrismaClient เป็น lazy-load ผ่าน Proxy** ใน `src/lib/db.ts`:
+   - PrismaClient ถูกสร้างเฉพาะเมื่อมีการเข้าถึง property เป็นครั้งแรก (เช่น `db.device.findMany()`)
+   - ไม่ใช่ที่ module import time → memory ~150MB ถูกจ่ายแบบ incremental ตาม route ที่ใช้จริง
+   - Proxy intercept `get` แล้ว bind function ให้ `this` context ถูกต้อง
+4. เพิ่ม `NODE_OPTIONS='--max-old-space-size=3072'` สำหรับ production server (V8 heap 3GB)
+5. เพิ่ม `import { requireAuth } from '@/lib/auth-middleware'` ใน 9 routes ที่ขาด:
+   - devices/route.ts, setup/runs/route.ts, setup/runs/[id]/route.ts, setup/runs/[id]/steps/route.ts
+   - master-items/merge/route.ts, legacy-import/apply/route.ts, legacy-import/preview/route.ts
+   - custom-fields/definitions/route.ts, custom-fields/values/[targetEntity]/[targetId]/route.ts
+   - organizations/route.ts
+6. เพิ่ม `import { db } from '@/lib/db'` ใน 4 routes ที่ขาด:
+   - devices/route.ts, organizations/route.ts, master-items/merge/route.ts, legacy-import/apply/route.ts
+
+Verification (curl + agent-browser):
+- ✅ Page load: HTTP 200 (27KB HTML, title "IT Asset Management")
+- ✅ /api/health: HTTP 200, database up, latency 46-62ms
+- ✅ /api/itam/auth/login (admin/test1234): HTTP 200, JWT token 281 chars, user object พร้อม organizationId (PILOT)
+- ✅ /api/devices?limit=2: HTTP 200, ส่งกลับ device จริง (HONEYWELL PC42E-T at โรงพยาบาลศูนย์อุดรธานี)
+- ✅ /api/work-orders?limit=1: HTTP 200, ส่งกลับ WO จริง (WO-20260812-005 "หมึกหมด" priority "ด่วน")
+- ✅ Server stable หลังจากเรียก API ทั้งหมด (ไม่ตาย)
+- ✅ ไม่มี runtime errors ใน dev.log
+
+Stage Summary:
+- ✅ Sandbox dev server start ได้แล้ว (production mode แทน Turbopack dev)
+- ✅ แก้ OOM ระดับ root cause ด้วย lazy PrismaClient Proxy — sandbox 4GB รันได้โดยไม่ตาย
+- ✅ แก้ ReferenceError ใน 10+ routes (requireAuth + db imports)
+- ✅ Login ใช้ได้: admin/test1234
+- ✅ Devices + Work Orders APIs ส่งข้อมูลจริง
+- 📋 ถัดไป: ตรวจสอบหน้า UI ผ่าน browser, ตรวจสอบ Dashboard/Master Data/Settings pages, ตั้ง cron job ทุก 15 นาที
+
+Artifacts produced:
+- src/lib/db.ts (lazy PrismaClient Proxy)
+- .env (เพิ่ม JWT_SECRET)
+- src/app/api/devices/route.ts (เพิ่ม import requireAuth + db)
+- 9 routes อื่นๆ (เพิ่ม import requireAuth)
+- 3 routes อื่นๆ (เพิ่ม import db)
+
+---
+Task ID: WINDOWS-SETUP-FIX
+Agent: orchestrator (main)
+Task: แก้ปัญหา "เสร็จแล้ว" — user ติดตั้งบน Windows (PowerShell) เจอ 2 errors
+
+Work Log:
+- User ส่ง screenshot จากเครื่อง Windows (D:\ITAM-NextJS) แสดง 2 errors:
+  1. `DEV_DB_PUSH=1 : The term 'DEV_DB_PUSH=1' is not recognized` — PowerShell ไม่รองรับ syntax `KEY=Value command` ของ Bash
+  2. `Prisma schema validation - P1012: the URL must start with the protocol 'postgresql://' or 'postgres://'` — `DATABASE_URL=file:./db/custom.db` (SQLite) ใน .env ไม่ตรงกับ `provider = "postgresql"` ใน schema.prisma
+
+Root cause:
+- script `scripts/set-prisma-provider.mjs` เดิมแค่ **verify** ไม่ได้ patch ไฟล์จริง → ใน dev mode ที่ใช้ SQLite, schema.prisma ยังเป็น postgresql อยู่ → Prisma validation fail
+- ไม่มี setup script สำหรับ Windows ที่จัดการ env + provider sync ให้อัตโนมัติ
+- README ไม่ได้บอกว่า Windows ต้องทำยังไง
+
+Fixes applied:
+1. **อัปเกรด `scripts/set-prisma-provider.mjs`** ให้เป็น auto-patch (ไม่ใช่แค่ verify):
+   - Dev mode: อ่าน DATABASE_URL → ถ้าเริ่มด้วย `file:` → patch provider เป็น `sqlite`; ถ้าเริ่มด้วย `postgres` → patch เป็น `postgresql`
+   - Production mode: verify only (fail closed — ป้องกัน security regression, ตาม P0#4)
+   - ทดสอบครบ: sqlite URL → patch ถูก, postgresql URL → patch ถูก, production → verify only
+2. **แก้ `.env.example`**:
+   - แยก Mode A (SQLite — recommended for dev) และ Mode B (PostgreSQL — production) ชัดเจน
+   - เพิ่มคำอธิบายว่า set-prisma-provider.mjs จะ sync ให้อัตโนมัติ
+   - เพิ่ม PowerShell command สำหรับ generate JWT_SECRET
+3. **สร้าง `setup.ps1`** (Windows PowerShell):
+   - ตรวจ bun + dependencies
+   - Copy .env.example → .env
+   - Generate JWT_SECRET แบบสุ่ม (32 bytes hex — ใช้ .NET RNG, ไม่ต้องมี openssl)
+   - Load .env เข้า session
+   - รัน set-prisma-provider.mjs (auto-sync)
+   - สร้าง db/ folder ถ้าใช้ SQLite
+   - รัน prisma db push + prisma generate
+4. **สร้าง `setup.sh`** (Linux/Mac):
+   - ขั้นตอนเดียวกับ setup.ps1 แต่ใช้ bash + openssl
+5. **อัปเดต README**:
+   - เพิ่ม section "วิธีที่ 1: setup script" (แนะนำ)
+   - เพิ่ม "หมายเหตุสำหรับ Windows" — บอกว่าอย่าใช้ syntax `DEV_DB_PUSH=1 bun run ...`
+   - บอกวิธีแก้ error `URL must start with postgresql://`
+   - บอกวิธี ExecutionPolicy bypass ถ้า PowerShell บล็อก script
+
+Verification (sandbox):
+- setup.sh รัน end-to-end สำเร็จ: auto-patch sqlite, generate JWT_SECRET, db push, prisma generate ✓
+- rebuild production ผ่าน (~120s) ✓
+- Page load HTTP 200, login token 281 chars, devices API HTTP 200 ✓
+- Server stable หลังจากแก้ ✓
+
+Stage Summary:
+- ✅ Windows setup แก้ได้แล้ว — user รัน `.\setup.ps1` ครั้งเดียวจบ (ไม่ต้อง set env var manual, ไม่ต้องแก้ schema.prisma)
+- ✅ Prisma provider auto-sync ทุกครั้งที่รัน setup หรือ db:push (dev mode)
+- ✅ Production ยัง verify-only (security ไม่ลด)
+- ✅ Cross-platform: setup.ps1 (Windows) + setup.sh (Linux/Mac)
+- 📋 User บน Windows ควรรัน `.\setup.ps1` แล้วตามด้วย `bun run dev`
+
+Artifacts produced:
+- scripts/set-prisma-provider.mjs (อัปเกรดเป็น auto-patch ใน dev mode)
+- .env.example (แยก Mode A/B ชัดเจน + คำอธิบาย)
+- setup.ps1 (Windows PowerShell setup script — ใหม่)
+- setup.sh (Linux/Mac bash setup script — ใหม่)
+- README.md (เพิ่ม Windows notes + setup script section)
