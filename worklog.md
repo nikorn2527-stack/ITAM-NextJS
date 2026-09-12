@@ -21723,3 +21723,45 @@ Stage Summary:
 
 Artifacts produced:
 - src/app/layout.tsx (raw <script> → next/script with beforeInteractive)
+
+---
+Task ID: SETTINGS-PAGE-CRASH-FIX
+Agent: orchestrator (main)
+Task: แก้ "หน้าตั้งค่าก็ยังเข้าไม่ได้" — Settings page crash on mount
+
+Work Log:
+- User แจ้งว่าหน้าตั้งค่ายังเข้าไม่ได้ หลังจากแก้ script tag error แล้ว
+- ใช้ agent-browser login + คลิก "ตั้งค่าระบบ" → พบว่าหน้าเปลี่ยนเป็น "Reportitemmonths" (หน้า Report)
+  และมี error: "ReferenceError: BarChart3 is not defined at ItamSettings"
+- ตรวจสอบ itam-settings.tsx พบว่าบรรทัด 113 ใช้ `icon: BarChart3` ใน tab config
+  แต่ import list จาก 'lucide-react' ไม่มี BarChart3 (มีแค่ Activity)
+- เมื่อ Settings component crash ตอน mount → KeepAlivePage ไม่แสดง → default ไปหน้าอื่น (Report)
+
+Fix 1 — เพิ่ม BarChart3 ใน lucide-react imports ของ itam-settings.tsx
+
+Fix 2 — เพิ่ม page keys ที่ขาดหายไปใน ActivePage type (src/store/app-store.ts):
+  - NAV_GROUPS ใน sidebar.tsx อ้างถึง 'pm-schedules' และ 'material-cost'
+  - KeepAlivePage ใน home-client.tsx ตรวจ isActive('pm-schedules') / isActive('material-cost')
+  - แต่ ActivePage union type ไม่มี keys สองตัวนี้ → TypeScript (ignoreBuildErrors) ผ่าน
+    แต่ runtime อาจจะ fall through ไป KeepAlivePage ผิด
+  - เพิ่ม 'pm-schedules' และ 'material-cost' เข้าไปใน union
+
+Verification (agent-browser end-to-end):
+1. Login admin/test1234 → dashboard renders ✓
+2. คลิก "ตั้งค่าระบบ" → settings page renders ✓
+3. Heading แสดง "ตั้งค่าระบบ" ✓
+4. แท็บทั้งหมดแสดง: ข้อมูลมาตรฐาน, จัดการสาขา, สมุดผู้ติดต่อ, ตัวเลือกใบงาน,
+   รูปแบบเลขทะเบียน, ระบบจัดการผู้ใช้, เมนูมือถือ, ทดสอบ Sync, Google Sheets,
+   องค์กร, ตัวช่วยตั้งค่า, ฟิลด์เพิ่มเติม, การแจ้งเตือน, ปรับแต่งแอป, OAuth,
+   โปรไฟล์ของฉัน, Passkey ✓
+5. MasterItem data โหลด (Floor FLR-0001 ฯลฯ) ✓
+6. ไม่มี console errors ✓
+
+Stage Summary:
+- ✅ Settings page crash แก้แล้ว — ทุกแท็บแสดงผลได้ปกติ
+- ✅ Push ขึ้น GitHub (commit 3df5bd5)
+- 📋 User บน Windows: `git pull` แล้วรัน `bun run dev` ใหม่
+
+Artifacts produced:
+- src/components/itam/itam-settings.tsx (เพิ่ม BarChart3 import)
+- src/store/app-store.ts (เพิ่ม 'pm-schedules' + 'material-cost' ใน ActivePage type)
