@@ -22187,3 +22187,52 @@ Artifacts produced:
 - src/store/i18n-store.ts (formatters — I18N-05)
 - src/lib/i18n.ts (warn missing — I18N-06)
 - scripts/check-i18n.ts (CI script — I18N-CI)
+
+---
+Task ID: I18N-04 + P1-03
+Agent: orchestrator (acting as dev team)
+Task: ทำต่อ I18N-04 (server lang) + P1-03 (Central Conflict Policy)
+
+Work Log:
+I18N-04: Server-side render respects user's language
+- สร้าง src/lib/server-i18n.ts — getServerLang() อ่านจาก ?lang= > cookie > Accept-Language > 'th'
+- + serverFormatDate/DateTime/Number/Currency + getServerGlossary
+- แก้ 8 server routes ให้ใช้ lang จาก request:
+  - dashboard/insights (16 calls → fmt())
+  - templates/[id]/render (formatDate, formatBaht, formatDeviceDate รับ lang param)
+  - reports/route, reports/asset-register
+  - work-orders print, print-sheet
+  - stock-items print, purchase-orders print
+- Direct locale calls ลดจาก 328 → 291 (แก้ 37 calls)
+
+P1-03: Central Conflict Policy Service
+- สร้าง src/lib/sync-conflict-policy.ts
+  + detectConflict(): ตรวจ conflict ตาม per-entity policy
+  + chooseResolutionPayload(): เลือก payload ตอน resolve
+  + getConflictPolicyLabel(): สำหรับ UI display
+- Per-entity policies (ตาม blueprint §3.6):
+  - Device: field-level merge (name, serialNumber, location, ฯลฯ)
+  - WorkOrder: cloud-authoritative บน status/assignedTo; remarks merge
+  - StockTransaction: APPEND-ONLY (reject UPDATE/DELETE)
+  - MasterItem: manual review
+  - AuditLog: APPEND-ONLY
+  - CustomFieldValue: field-level merge
+  - User: cloud-authoritative (role, permissions)
+- แก้ /api/sync/push ให้ใช้ detectConflict():
+  + โหลด cloud entity state (Device only for now)
+  + ถ้า REJECTED (append-only UPDATE) → mark outbox FAILED
+  + ถ้า CONFLICT → create SyncConflict record + mark outbox CONFLICT
+  + ถ้า ACKED → mark outbox ACKED
+
+Verification:
+- Build ผ่าน (~120s)
+- /api/sync/status: HTTP 200 (returns registered node)
+- /api/sync/push: HTTP 200 (contract works)
+- i18n check: 1163 keys, 0 missing
+- Direct locale calls: 291 (down from 328)
+
+Stage Summary:
+- ✅ I18N-04 server lang แก้ครบ 8 routes
+- ✅ P1-03 Central Conflict Policy สร้าง + wired เข้า sync/push
+- ✅ Push ขึ้น GitHub (commit a710810)
+- 📋 เหลือ: I18N-01/02 (291 client-side direct locale calls), P1-05 (Setup Wizard UI verification)
