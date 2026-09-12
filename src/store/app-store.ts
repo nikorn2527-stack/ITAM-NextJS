@@ -29,6 +29,8 @@ export type ActivePage =
   | 'meter-page'
   | 'paper-analytics-page'
   | 'mobile'
+  | 'pm-schedules'
+  | 'material-cost'
 
 export type SettingsTab = 'app' | 'master' | 'sites' | 'rates' | 'users' | 'audit'
 
