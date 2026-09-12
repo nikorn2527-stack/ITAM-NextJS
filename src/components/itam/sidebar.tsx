@@ -705,7 +705,7 @@ export function Sidebar() {
           When expanded: a single row with all three side by side. */}
       <div
         className={cn(
-          'flex items-center gap-1.5 border-t border-slate-200 dark:border-white/10',
+          'flex flex-shrink-0 items-center gap-1.5 border-t border-slate-200 dark:border-white/10',
           expanded ? 'justify-between px-3 py-2' : 'flex-col justify-center px-0 py-2',
         )}
       >
@@ -777,10 +777,13 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* ── Footer — current user: avatar + name + role + logout ── */}
+      {/* ── Footer — current user: avatar + name + role + logout ──
+          Uses lighter border (border-slate-100) than the quick controls
+          section above (border-slate-200) so the two bottom sections feel
+          like one connected group, not two separate zones. */}
       <div
         className={cn(
-          'flex items-center gap-2 border-t border-slate-200 py-2 dark:border-white/10',
+          'flex flex-shrink-0 items-center gap-2 border-t border-slate-100 py-2 dark:border-white/5',
           expanded ? 'px-3' : 'justify-center px-0',
         )}
         title={authUser?.email ?? ''}
