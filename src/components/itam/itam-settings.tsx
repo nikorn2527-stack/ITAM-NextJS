@@ -171,7 +171,7 @@ interface NotifySettings {
 export function ItamSettings() {
   const t = useT()
   const qc = useQueryClient()
-  const [tab, setTab] = React.useState<SettingsTab>('overview')
+  const [tab, setTab] = React.useState<SettingsTab>('master')
   const [category, setCategory] = React.useState('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
@@ -381,30 +381,6 @@ export function ItamSettings() {
           aria-label="Settings sections"
           className="flex flex-shrink-0 flex-col gap-3 rounded-md border border-slate-300 bg-white p-2 shadow-sm lg:w-56 dark:border-slate-800 dark:bg-slate-900"
         >
-          {/* Overview tab — always first */}
-          <div>
-            <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              {t('settings.title')}
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <button
-                type="button"
-                data-tab="overview"
-                onClick={() => setTab('overview')}
-                aria-current={tab === 'overview' ? 'page' : undefined}
-                className={[
-                  'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors',
-                  tab === 'overview'
-                    ? 'bg-[#f97316]/10 text-[#f97316] dark:bg-[#f97316]/20 dark:text-[#fb923c]'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white',
-                ].join(' ')}
-              >
-                <LayoutDashboard className="h-3.5 w-3.5 flex-shrink-0" />
-                <span className="truncate">ภาพรวม</span>
-              </button>
-            </div>
-          </div>
-
           {SETTINGS_TAB_GROUPS.map((group) => (
             <div key={t(group.titleKey)}>
               <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -453,48 +429,6 @@ export function ItamSettings() {
               })()}
             </span>
           </div>
-
-          {/* UX-02: Landing page with Completion Checklist + quick cards */}
-          {tab === 'overview' && (
-            <div className="space-y-4">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{t('settings.title')}</h2>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  {t('settings.description') || 'จัดการการตั้งค่าระบบทั้งหมดในที่เดียว'}
-                </p>
-              </div>
-
-              {/* Completion Checklist (§4) */}
-              <CompletionChecklistSection />
-
-              {/* Quick cards per group */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {SETTINGS_TAB_GROUPS.map((group) => (
-                  <div key={group.titleKey} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
-                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {t(group.titleKey)}
-                    </h3>
-                    <div className="flex flex-col gap-1">
-                      {group.items.slice(0, 5).map((item) => {
-                        const Icon = item.icon
-                        return (
-                          <button
-                            key={item.value}
-                            type="button"
-                            onClick={() => setTab(item.value)}
-                            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
-                          >
-                            <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                            <span>{t(item.labelKey)}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {tab === 'pending' && <PendingUsersSection />}
 
