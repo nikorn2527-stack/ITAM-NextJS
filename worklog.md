@@ -22586,3 +22586,34 @@ Stage Summary:
 - ✅ Completion checklist API สร้าง
 - ✅ Push ขึ้น GitHub (commit ac9004f)
 - 📋 เหลือ: wire CompletionChecklist เข้า Settings landing page, Stepper component, cross-page guidance, responsive tests
+
+---
+Task ID: UX-4-7-COMPLETE
+Agent: orchestrator (acting as dev team)
+Task: ทำข้อ 4-7 ตาม UX/UI Standards — Stepper + Cross-page + Responsive + Visual audit
+
+Work Log:
+§5 Stepper + cross-page:
+- Stepper component (sequential workflow)
+- useUnsavedChanges hook (beforeunload warning)
+- PermissionGate (RBAC hide/disable)
+- FieldError + RequiredLabel (form patterns)
+- InlineGuidance (cross-page dependency warnings)
+
+§6 Responsive:
+- settings-responsive.css: mobile drawer, tablet sidebar, desktop two-column
+- Focus visible, reduced motion, form field consistency
+
+§7 Visual audit:
+- scripts/visual-consistency-audit.ts: 0 errors, 44 warnings (non-blocking)
+- Checks: headings, dark mode, loading state, empty state
+
+§4 CompletionChecklist wired:
+- Default tab: 'overview'
+- CompletionChecklistSection fetches /api/settings/completion
+- Progress bar + status badges + navigate buttons
+
+Stage Summary:
+- ✅ ข้อ 4-7 ทำครบ
+- ✅ Push ขึ้น GitHub (commit 5111be3)
+- 📋 44 warnings เป็น enhancement ไม่ blocking (empty state components ในหน้าต่างๆ)
