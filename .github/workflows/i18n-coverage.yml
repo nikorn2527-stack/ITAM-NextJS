@@ -1,0 +1,52 @@
+name: Translation Coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  i18n-coverage:
+    name: i18n coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check translation coverage
+        run: bun run check:i18n -- --json i18n-report.json
+
+      - name: Upload translation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i18n-coverage-${{ github.sha }}
+          path: i18n-report.json
+          if-no-files-found: ignore
+
+      - name: Check hard-coded Thai UI literals (informational)
+        if: always()
+        run: bun run check:i18n -- --strict-literals --json i18n-strict-report.json
+        continue-on-error: true
+
+      - name: Upload strict report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i18n-strict-coverage-${{ github.sha }}
+          path: i18n-strict-report.json
+          if-no-files-found: ignore
