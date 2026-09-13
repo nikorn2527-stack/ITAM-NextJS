@@ -22559,3 +22559,30 @@ Stage Summary:
 - ✅ UX-01 to UX-03 แก้ครบ
 - ✅ Push ขึ้น GitHub (commit af4cc38)
 - 📋 เหลือ Sprint 4: UX-04 (search), UX-05 (responsive), UX-06 (form states)
+
+---
+Task ID: UX-UI-STANDARDS
+Agent: orchestrator (acting as dev team)
+Task: ทำตาม ITAM UX/UI Standards — design tokens + shared components + checklist API
+
+Work Log:
+§2.2 Design Tokens:
+- src/lib/design-tokens.ts: colors, typography, spacing, radius, shadow, controls
+- statusConfig: 6 statuses with colors + icons + labels
+
+§6.1 Shared Components:
+- PageHeader, Breadcrumb, StatusBadge, EmptyState, ErrorState
+- LoadingSkeleton, SaveBar, SectionCard, CompletionChecklist
+
+§4 Completion Checklist API:
+- GET /api/settings/completion: 8 items computed from real DB data
+- organization, sites, users, master-data, notifications, oauth, sync, patterns
+
+§3 Settings IA:
+- Already done (3 groups + breadcrumb)
+
+Stage Summary:
+- ✅ Design tokens + shared components สร้างครบ
+- ✅ Completion checklist API สร้าง
+- ✅ Push ขึ้น GitHub (commit ac9004f)
+- 📋 เหลือ: wire CompletionChecklist เข้า Settings landing page, Stepper component, cross-page guidance, responsive tests
