@@ -41,7 +41,8 @@
     "reset:passwords": "bun run scripts/reset-all-passwords.ts",
     "test:local-first": "bash scripts/test-local-first.sh",
     "cron:sync": "bun run scripts/cron-sync.ts",
-    "cron:backup": "bun run scripts/verify-backup-restore.ts"
+    "cron:backup": "bun run scripts/verify-backup-restore.ts",
+    "audit:visual": "bun run scripts/visual-consistency-audit.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",

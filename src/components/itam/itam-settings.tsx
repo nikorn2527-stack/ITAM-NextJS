@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { CompletionChecklist, type CompletionItem } from './shared-components'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -61,6 +62,7 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 // Each tab is now nested under a category header in the sidebar-style nav.
 // Order: Data → System → Notify → Receivedecorate
 type SettingsTab =
+  | 'overview'
   | 'master'
   | 'site-attributes'
   | 'dash.unit.site'
@@ -169,7 +171,7 @@ interface NotifySettings {
 export function ItamSettings() {
   const t = useT()
   const qc = useQueryClient()
-  const [tab, setTab] = React.useState<SettingsTab>('master')
+  const [tab, setTab] = React.useState<SettingsTab>('overview')
   const [category, setCategory] = React.useState('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
@@ -427,7 +429,7 @@ export function ItamSettings() {
             </span>
           </div>
 
-          {/* UX-02: Landing page when no tab selected or 'overview' */}
+          {/* UX-02: Landing page with Completion Checklist + quick cards */}
           {tab === 'overview' && (
             <div className="space-y-4">
               <div>
@@ -436,6 +438,11 @@ export function ItamSettings() {
                   {t('settings.description') || 'จัดการการตั้งค่าระบบทั้งหมดในที่เดียว'}
                 </p>
               </div>
+
+              {/* Completion Checklist (§4) */}
+              <CompletionChecklistSection />
+
+              {/* Quick cards per group */}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {SETTINGS_TAB_GROUPS.map((group) => (
                   <div key={group.titleKey} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
@@ -1816,5 +1823,53 @@ function MyBiometricsSection() {
         )}
       </CardContent>
     </Card>
+  )
+}
+
+// ── CompletionChecklistSection ──────────────────────────────
+// Fetches completion items from /api/settings/completion and renders
+// the CompletionChecklist component from shared-components.tsx
+function CompletionChecklistSection() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['settings-completion'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings/completion')
+      if (!res.ok) throw new Error('Failed to load completion status')
+      return res.json() as Promise<{ items: CompletionItem[] }>
+    },
+    staleTime: 60_000,
+  })
+
+  if (isLoading) {
+    return (
+      <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+        <div className="space-y-2">
+          <div className="h-4 w-48 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+          <div className="h-2 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+          <div className="h-3 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800/50" />
+          <div className="h-3 w-3/4 animate-pulse rounded bg-slate-100 dark:bg-slate-800/50" />
+        </div>
+      </div>
+    )
+  }
+
+  if (error || !data?.items) return null
+
+  return (
+    <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+      <CompletionChecklist
+        items={data.items}
+        onNavigate={(href) => {
+          // Parse tab from query param: /settings?tab=master
+          const url = new URL(href, window.location.origin)
+          const tab = url.searchParams.get('tab')
+          if (tab) {
+            // Navigate to the tab — find the settings tab button and click it
+            const btn = document.querySelector(`[data-tab="${tab}"]`) as HTMLButtonElement
+            if (btn) btn.click()
+          }
+        }}
+      />
+    </div>
   )
 }
