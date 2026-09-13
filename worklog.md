@@ -22490,3 +22490,26 @@ Verification:
 - register: returns nodeToken ✓
 - failure tests: 8/10 passed
 - cross-org tests: 8/8 passed
+
+---
+Task ID: P0-P1-REVIEW-FIXES-R2
+Agent: orchestrator (acting as dev team)
+Task: แก้ P0-01 to P0-03 + P1-01/03/04 จากรายงานตรวจรอบล่าสุด
+
+Work Log:
+P0-01: Push shadowed variable — removed 'const orgId = orgId!'
+P0-02: Migration for Device.version — created migration SQL
+P0-03: ACK route uses verifyNodeOrUser — node token + nodeId match check
+P1-01: Push rejects unsupported entities — throws UNSUPPORTED_ENTITY
+P1-03: Push UPDATE increments version — { increment: 1 }
+P1-04: Resolve rejects unsupported entities — throws UNSUPPORTED_ENTITY
+Fix: test-local-first.sh path check ignores comments
+Fix: ACK ackedAt toISOString
+
+Verification:
+- ACK with node token: HTTP 200
+- ACK wrong nodeId: HTTP 403 (rejected)
+- failure tests: 8/10
+- cross-org tests: 8/8
+- i18n: all keys present
+- bash -n: SYNTAX OK
