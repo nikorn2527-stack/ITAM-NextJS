@@ -22534,3 +22534,28 @@ Stage Summary:
 - ✅ TDZ error fixed — getBaseClient() wired into all 26 files
 - ✅ Production build passes
 - ✅ Push ขึ้น GitHub (commit f7832cb)
+
+---
+Task ID: SYNC-UX-PLAN
+Agent: orchestrator (acting as dev team)
+Task: แผนงานพัฒนาต่อ — SYNC-01 to SYNC-06 + UX-01 to UX-03
+
+Work Log:
+Sprint 1+2 (Sync P0):
+- SYNC-01: orgId → scopedOrgId (no shadowing)
+- SYNC-02: Device.version migration (verified exists)
+- SYNC-03: ACK verifyNodeOrUser + nodeId match (verified)
+- SYNC-04: Push UNSUPPORTED_ENTITY for non-Device (verified)
+- SYNC-05: Push UPDATE expectedVersion check + version increment
+- SYNC-06: Pre-flight script ignores comments (verified)
+
+Sprint 3 (Settings UX):
+- UX-01: 3 groups (Data/System/Notify) — already fixed
+- UX-02: Landing page with quick cards + description
+- UX-03: Breadcrumb "ตั้งค่าระบบ / [tab name]"
+
+Stage Summary:
+- ✅ SYNC-01 to SYNC-06 แก้ครบ
+- ✅ UX-01 to UX-03 แก้ครบ
+- ✅ Push ขึ้น GitHub (commit af4cc38)
+- 📋 เหลือ Sprint 4: UX-04 (search), UX-05 (responsive), UX-06 (form states)
