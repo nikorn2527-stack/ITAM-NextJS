@@ -17,6 +17,7 @@ import * as React from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { translate, type Lang } from '@/lib/i18n'
+import { getStatusLabel } from '@/lib/status-labels'
 
 interface I18nState {
   lang: Lang
@@ -184,6 +185,27 @@ export function useFormatCurrency() {
   const lang = useI18nStore((s) => s.lang)
   return React.useCallback(
     (value: number, currency?: string) => formatCurrency(value, lang, currency),
+    [lang],
+  )
+}
+
+// ── Status / enum label resolver (I18N-08) ───────────────────────────────────
+//
+// Components should call this instead of rendering raw DB status codes
+// (`PENDING`, `Active`, `COMPLETED`, …) so the displayed label follows the
+// user's selected language.
+//
+// Usage:
+//   const status = useStatusLabel()
+//   <Badge>{status(device.status)}</Badge>        // th: "ใช้งานอยู่" | en: "Active"
+//   <span>{status(wo.status)}</span>              // th: "รอดำเนินการ" | en: "Pending"
+//
+// Unknown codes fall through to the raw string (so we don't hide data).
+
+export function useStatusLabel() {
+  const lang = useI18nStore((s) => s.lang)
+  return React.useCallback(
+    (code: string | null | undefined) => getStatusLabel(code, lang),
     [lang],
   )
 }

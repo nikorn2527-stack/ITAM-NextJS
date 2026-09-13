@@ -131,14 +131,26 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   'status.inactive': { th: 'ไม่ใช้งาน', en: 'Inactive' },
   'status.pending': { th: 'รอดำเนินการ', en: 'Pending' },
   'status.processing': { th: 'กำลังประมวลผล', en: 'Processing' },
-  'status.completed': { th: 'สำเร็จ', en: 'Completed' },
+  'status.completed': { th: 'เสร็จแล้ว', en: 'Completed' },
   'status.failed': { th: 'ล้มเหลว', en: 'Failed' },
-  'status.cancelled': { th: 'ยกเลิกแล้ว', en: 'Cancelled' },
+  'status.cancelled': { th: 'ยกเลิก', en: 'Cancelled' },
   'status.approved': { th: 'อนุมัติแล้ว', en: 'Approved' },
   'status.rejected': { th: 'ปฏิเสธ', en: 'Rejected' },
   'status.open': { th: 'เปิด', en: 'Open' },
   'status.partial': { th: 'รับบางส่วน', en: 'Partial' },
   'status.received': { th: 'รับครบแล้ว', en: 'Received' },
+
+  // I18N-08 — status/enum label mapping (used by @/lib/status-labels.ts)
+  'status.in_repair': { th: 'ซ่อมอยู่', en: 'In Repair' },
+  'status.retired': { th: 'เกษียณ', en: 'Retired' },
+  'status.spare': { th: 'สำรอง', en: 'Spare' },
+  'status.in_progress': { th: 'กำลังซ่อม', en: 'In Progress' },
+  'status.waiting_parts': { th: 'รออะไหล่', en: 'Waiting Parts' },
+  'status.on_hold': { th: 'พักไว้', en: 'On Hold' },
+  'status.assigned': { th: 'มอบหมายแล้ว', en: 'Assigned' },
+
+  // ───────────── Priority (I18N-08 — additional labels) ─────────────
+  'priority.medium': { th: 'ปานกลาง', en: 'Medium' },
 
   // ───────────── Device type enum ─────────────
   'type.printer': { th: 'เครื่องพิมพ์', en: 'Printer' },
@@ -158,6 +170,8 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   'priority.urgent': { th: 'ด่วน', en: 'Urgent' },
   'priority.critical': { th: 'วิกฤต', en: 'Critical' },
   'priority.low': { th: 'ต่ำ', en: 'Low' },
+  // I18N-08 — priority label mapping (used by @/lib/status-labels.ts)
+  'priority.high': { th: 'สูง', en: 'High' },
 
   // ───────────── Import page ─────────────
   'import.title': { th: 'นำเข้าข้อมูล', en: 'Import Data' },

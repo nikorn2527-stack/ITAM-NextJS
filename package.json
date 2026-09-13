@@ -32,7 +32,12 @@
     "db:safe-migrate:prod": "bash scripts/safe-migrate.sh --production",
     "check:drift": "bun scripts/check-schema-drift.ts",
     "check:module-gating": "node scripts/check-module-gating.mjs",
-    "check:i18n": "bun run scripts/check-i18n.ts"
+    "check:i18n": "bun run scripts/check-i18n.ts",
+    "test:cross-org": "bun run tests/runtime/cross-org-isolation.test.ts",
+    "test:backup-restore": "bun run tests/runtime/backup-restore.test.ts",
+    "test:failure": "bun run tests/runtime/failure-scenarios.test.ts",
+    "verify:backup": "bun run scripts/verify-backup-restore.ts",
+    "test:runtime": "bun run test:cross-org && bun run test:backup-restore && bun run test:failure"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",
