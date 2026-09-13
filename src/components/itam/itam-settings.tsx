@@ -413,6 +413,57 @@ export function ItamSettings() {
 
         {/* Tab content — scrolls internally (Issue 3: heights fill space) */}
         <div className="itam-scroll min-h-0 flex-1 overflow-y-auto rounded-md border border-slate-200 bg-white p-3 shadow-sm md:p-4 dark:border-slate-800 dark:bg-slate-900">
+          {/* UX-03: Breadcrumb showing current location */}
+          <div className="mb-3 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <span>{t('settings.title')}</span>
+            <span className="text-slate-300 dark:text-slate-600">/</span>
+            <span className="font-medium text-slate-700 dark:text-slate-200">
+              {(() => {
+                const item = SETTINGS_TAB_GROUPS
+                  .flatMap(g => g.items)
+                  .find(i => i.value === tab)
+                return item ? t(item.labelKey) : t('settings.title')
+              })()}
+            </span>
+          </div>
+
+          {/* UX-02: Landing page when no tab selected or 'overview' */}
+          {tab === 'overview' && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{t('settings.title')}</h2>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {t('settings.description') || 'จัดการการตั้งค่าระบบทั้งหมดในที่เดียว'}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {SETTINGS_TAB_GROUPS.map((group) => (
+                  <div key={group.titleKey} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {t(group.titleKey)}
+                    </h3>
+                    <div className="flex flex-col gap-1">
+                      {group.items.slice(0, 5).map((item) => {
+                        const Icon = item.icon
+                        return (
+                          <button
+                            key={item.value}
+                            type="button"
+                            onClick={() => setTab(item.value)}
+                            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                          >
+                            <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span>{t(item.labelKey)}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {tab === 'pending' && <PendingUsersSection />}
 
           {tab === 'users' && <UserManagementSection />}

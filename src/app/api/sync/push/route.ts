@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
   if (!authResult.ok) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status })
   }
-  const orgId = authResult.orgId
+  const scopedOrgId = authResult.orgId
   const node = authResult.node
   const actor = node.id // use nodeId as actor for sync push
 
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
         },
         create: {
           nodeId: node.id,
-          organizationId: orgId!,
+          organizationId: scopedOrgId,
           entityType: change.entityType,
           entityId: change.entityId,
           operation: change.operation,
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
         // make this a proper generic lookup).
         if (change.entityType === 'Device') {
           const d = await db.device.findFirst({
-            where: { id: change.entityId, organizationId: orgId },
+            where: { id: change.entityId, organizationId: scopedOrgId },
           })
           if (d) {
             cloudPayload = d as unknown as Record<string, unknown>
@@ -162,7 +162,7 @@ export async function POST(req: NextRequest) {
         // Create SyncConflict record for manual resolution
         const conflict = await db.syncConflict.create({
           data: {
-            organizationId: orgId!,
+            organizationId: scopedOrgId,
             nodeId: node.id,
             entityType: change.entityType,
             entityId: change.entityId,
@@ -207,7 +207,7 @@ export async function POST(req: NextRequest) {
                 await (tx).device.create({
                   data: {
                     id: entityId,
-                    organizationId: orgId,
+                    organizationId: scopedOrgId,
                     assetCode: (payload.assetCode as string) || `AST-${Date.now()}`,
                     name: (payload.name as string) || 'Untitled',
                     brand: (payload.brand as string) || null,
@@ -219,6 +219,16 @@ export async function POST(req: NextRequest) {
                   },
                 })
               } else if (operation === 'UPDATE') {
+                // SYNC-05: Check expectedVersion for optimistic concurrency
+                if (change.baseVersion !== undefined) {
+                  const existing = await (tx).device.findFirst({
+                    where: { id: entityId },
+                    select: { version: true },
+                  })
+                  if (existing && existing.version !== change.baseVersion) {
+                    throw new Error(`VERSION_CONFLICT: expected ${change.baseVersion}, got ${existing.version}`)
+                  }
+                }
                 // Update existing device (only non-metadata fields)
                 const updateData: Record<string, unknown> = {}
                 const skipFields = new Set(['id', 'createdAt', 'updatedAt', 'organizationId', 'deletedAt', 'version'])
@@ -227,7 +237,7 @@ export async function POST(req: NextRequest) {
                     updateData[key] = value
                   }
                 }
-                // P1-03: increment version for optimistic concurrency
+                // SYNC-05: increment version atomically in transaction
                 updateData.version = { increment: 1 }
                 await (tx).device.update({
                   where: { id: entityId },
