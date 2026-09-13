@@ -37,7 +37,8 @@
     "test:backup-restore": "bun run tests/runtime/backup-restore.test.ts",
     "test:failure": "bun run tests/runtime/failure-scenarios.test.ts",
     "verify:backup": "bun run scripts/verify-backup-restore.ts",
-    "test:runtime": "bun run test:cross-org && bun run test:backup-restore && bun run test:failure"
+    "test:runtime": "bun run test:cross-org && bun run test:backup-restore && bun run test:failure",
+    "reset:passwords": "bun run scripts/reset-all-passwords.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",
