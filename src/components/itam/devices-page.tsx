@@ -4080,6 +4080,7 @@ function KpiCard({
   active?: boolean
   onClick?: () => void
 }) {
+  const { lang } = useLang()
   const toneClasses: Record<KpiTone, { ring: string; text: string; bg: string }> = {
     neutral: {
       ring: 'border-slate-200 dark:border-slate-800',
