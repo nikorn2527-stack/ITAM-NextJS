@@ -2,7 +2,6 @@
 
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CompletionChecklist, type CompletionItem } from './shared-components'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList, Activity, BarChart3, User, Camera, Save, Sheet, Rocket, Tag, LayoutDashboard } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList, Activity, BarChart3, User, Camera, Save, Sheet, Rocket, Tag } from 'lucide-react'
 import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
@@ -62,7 +61,6 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 // Each tab is now nested under a category header in the sidebar-style nav.
 // Order: Data → System → Notify → Receivedecorate
 type SettingsTab =
-  | 'overview'
   | 'master'
   | 'site-attributes'
   | 'dash.unit.site'
@@ -429,6 +427,9 @@ export function ItamSettings() {
               })()}
             </span>
           </div>
+
+          {/* Completion Guidance — shows only when there are actionable items */}
+          <CompletionGuidance />
 
           {tab === 'pending' && <PendingUsersSection />}
 
@@ -1785,50 +1786,83 @@ function MyBiometricsSection() {
   )
 }
 
-// ── CompletionChecklistSection ──────────────────────────────
 // Fetches completion items from /api/settings/completion and renders
-// the CompletionChecklist component from shared-components.tsx
-function CompletionChecklistSection() {
-  const { data, isLoading, error } = useQuery({
+
+// ── CompletionGuidance ──────────────────────────────────────
+// Shows a small banner with actionable items only when there are
+// incomplete/missing settings. Does NOT duplicate the nav menu —
+// it shows status, reason, impact, and a button to navigate.
+// When everything is complete, shows a simple ✓ message.
+// When dismissed, stays hidden until next page load.
+function CompletionGuidance() {
+  const [dismissed, setDismissed] = React.useState(false)
+  const { data, isLoading } = useQuery({
     queryKey: ['settings-completion'],
     queryFn: async () => {
       const res = await fetch('/api/settings/completion')
-      if (!res.ok) throw new Error('Failed to load completion status')
-      return res.json() as Promise<{ items: CompletionItem[] }>
+      if (!res.ok) return null
+      return res.json() as Promise<{ items: Array<{ key: string; label: string; status: string; reason?: string; href?: string; canEdit: boolean; requiredFor?: string[] }> }>
     },
     staleTime: 60_000,
   })
 
-  if (isLoading) {
+  if (dismissed || isLoading || !data?.items) return null
+
+  // Filter: only show items that need action (not complete, not not_required)
+  const actionable = data.items.filter(i =>
+    i.status === 'incomplete' || i.status === 'not_started' || i.status === 'error'
+  )
+
+  if (actionable.length === 0) {
     return (
-      <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-        <div className="space-y-2">
-          <div className="h-4 w-48 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-          <div className="h-2 w-full animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
-          <div className="h-3 w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800/50" />
-          <div className="h-3 w-3/4 animate-pulse rounded bg-slate-100 dark:bg-slate-800/50" />
-        </div>
+      <div className="mb-3 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-400">
+        <span>✓</span>
+        <span>การตั้งค่าที่จำเป็นครบแล้ว</span>
       </div>
     )
   }
 
-  if (error || !data?.items) return null
-
   return (
-    <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
-      <CompletionChecklist
-        items={data.items}
-        onNavigate={(href) => {
-          // Parse tab from query param: /settings?tab=master
-          const url = new URL(href, window.location.origin)
-          const tab = url.searchParams.get('tab')
-          if (tab) {
-            // Navigate to the tab — find the settings tab button and click it
-            const btn = document.querySelector(`[data-tab="${tab}"]`) as HTMLButtonElement
-            if (btn) btn.click()
-          }
-        }}
-      />
+    <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-950/30">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+          ⚠ ยังมี {actionable.length} รายการที่ควรตั้งค่า
+        </span>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          className="text-[11px] text-amber-500 transition-colors hover:text-amber-700 dark:text-amber-600 dark:hover:text-amber-400"
+        >
+          ซ่อนคำแนะนำ
+        </button>
+      </div>
+      <div className="space-y-1">
+        {actionable.map((item) => (
+          <div key={item.key} className="flex items-center gap-2 text-xs">
+            <span className="text-amber-600 dark:text-amber-500">•</span>
+            <span className="flex-1 text-amber-700 dark:text-amber-400">
+              {item.label}
+              {item.reason && <span className="text-amber-500 dark:text-amber-600"> — {item.reason}</span>}
+            </span>
+            {item.href && item.canEdit && (
+              <button
+                type="button"
+                onClick={() => {
+                  const url = new URL(item.href!, window.location.origin)
+                  const tabName = url.searchParams.get('tab')
+                  if (tabName) {
+                    const btn = document.querySelector(`[data-tab="${tabName}"]`) as HTMLButtonElement
+                    if (btn) btn.click()
+                  }
+                }}
+                className="flex-shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:hover:bg-amber-800/50"
+              >
+                ไปตั้งค่า →
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
