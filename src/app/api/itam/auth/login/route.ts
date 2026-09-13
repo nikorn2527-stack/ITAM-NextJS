@@ -92,10 +92,15 @@ export async function POST(req: NextRequest) {
 
     // ── Success: clear rate-limit, update LastLoginAt, issue JWT ──
     clearLoginRateLimit(key)
-    await db.user.update({
-      where: { id: row.id },
-      data: { lastLoginAt: new Date().toISOString() },
-    })
+    try {
+      await db.user.update({
+        where: { id: row.id },
+        data: { lastLoginAt: new Date() },
+      })
+    } catch (e) {
+      // Non-fatal — don't block login if lastLoginAt update fails
+      console.error('login: failed to update lastLoginAt', e)
+    }
 
     const token = await createToken({
       email: row.email,
@@ -106,23 +111,34 @@ export async function POST(req: NextRequest) {
     })
     const user = toAuthUser(row)
 
-    // Audit log (best-effort) — uses logAudit() helper so the field names
-    // match the Prisma schema (action/entity/summary/detail/actor/siteCode).
-    // Previously called db.auditLog.create with wrong field names
-    // (timestamp/details/user) which don't exist on the AuditLog model,
-    // causing a Prisma error on every login.
-    await logAudit(
-      'LOGIN',
-      'User',
-      row.id,
-      `เข้าสู่ระบบ — ${row.email}`,
-      { method: 'password', username: row.username },
-      row.email,
-    )
+    // Audit log (best-effort) — wrapped in try/catch so login doesn't
+    // fail if AuditLog table has schema issues.
+    try {
+      await logAudit(
+        'LOGIN',
+        'User',
+        row.id,
+        `เข้าสู่ระบบ — ${row.email}`,
+        { method: 'password', username: row.username },
+        row.email,
+      )
+    } catch (e) {
+      console.error('login: audit log failed (non-fatal)', e)
+    }
 
     return NextResponse.json({ token, user })
   } catch (err) {
     console.error('POST /api/itam/auth/login', err)
-    return NextResponse.json({ error: 'Internal server error', detail: process.env.NODE_ENV === 'development' ? (err instanceof Error ? err.message : String(err)) : 'Internal server error' }, { status: 500 })
+    const isDev = process.env.NODE_ENV !== 'production'
+    const errMsg = err instanceof Error ? err.message : String(err)
+    return NextResponse.json(
+      {
+        error: 'Internal server error',
+        detail: isDev ? errMsg : 'Internal server error',
+        // Include stack in dev for easier debugging
+        ...(isDev && err instanceof Error ? { stack: err.stack?.split('\n').slice(0, 5).join('\n') } : {}),
+      },
+      { status: 500 },
+    )
   }
 }
