@@ -91,37 +91,52 @@ if (-not $dbUrl) {
     Write-Err "DATABASE_URL is not set in .env"
     exit 1
 }
-if ($dbUrl.StartsWith("postgres")) {
+if ($dbUrl.StartsWith("file:")) {
+    Write-Ok "DATABASE_URL = SQLite (dev mode - no PostgreSQL needed)"
+    $env:ITAM_ALLOW_SQLITE = "1"
+} elseif ($dbUrl.StartsWith("postgres")) {
     Write-Ok "DATABASE_URL = postgresql:... (PostgreSQL baseline)"
-} elseif ($dbUrl.StartsWith("file:")) {
-    Write-Err "DATABASE_URL is SQLite (file:) - Phase 1 baseline requires PostgreSQL."
-    Write-Host "   Set DATABASE_URL to a PostgreSQL connection string in .env" -ForegroundColor Yellow
-    Write-Host "   See .env.example for the format." -ForegroundColor Yellow
-    exit 1
 } else {
-    Write-Warn "DATABASE_URL does not look like PostgreSQL (postgresql://...)"
+    Write-Warn "DATABASE_URL does not look like SQLite (file:) or PostgreSQL (postgresql://...)"
     Write-Host "   Got: $dbUrl" -ForegroundColor White
-    Write-Host "   Phase 1 baseline requires PostgreSQL." -ForegroundColor Yellow
+    Write-Host "   Defaulting to SQLite mode..." -ForegroundColor Yellow
+    $env:ITAM_ALLOW_SQLITE = "1"
 }
 
-# -- 6. Verify prisma provider is PostgreSQL (Phase 1 baseline) --
-Write-Step "Verifying prisma provider (PostgreSQL baseline)"
+# -- 6. Auto-sync prisma provider with DATABASE_URL --
+Write-Step "Syncing prisma provider"
 node scripts/set-prisma-provider.mjs
 if ($LASTEXITCODE -ne 0) {
-    Write-Err "set-prisma-provider.mjs failed - provider is not PostgreSQL"
+    Write-Err "set-prisma-provider.mjs failed"
     exit 1
 }
 
-# -- 7. (Removed) SQLite db folder - Phase 1 is PostgreSQL-only --
-
-# -- 8. prisma migrate deploy (Phase 1: PostgreSQL migrations) --
-Write-Step "Running prisma migrate deploy"
-bunx prisma migrate deploy
-if ($LASTEXITCODE -ne 0) {
-    Write-Err "prisma migrate deploy failed"
-    exit 1
+# -- 7. Create db folder if using SQLite --
+if ($dbUrl.StartsWith("file:")) {
+    $dbDir = Join-Path $ProjectRoot "db"
+    if (-not (Test-Path $dbDir)) {
+        New-Item -ItemType Directory -Path $dbDir | Out-Null
+        Write-Ok "Created db/ folder (SQLite mode)"
+    }
 }
-Write-Ok "Database schema synced (migrate deploy)"
+
+# -- 8. Database schema setup (SQLite: db push, PostgreSQL: migrate deploy) --
+Write-Step "Running database setup"
+if ($dbUrl.StartsWith("file:")) {
+    bunx prisma db push
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "prisma db push failed"
+        exit 1
+    }
+    Write-Ok "Database schema synced (db push - SQLite dev mode)"
+} else {
+    bunx prisma migrate deploy
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "prisma migrate deploy failed"
+        exit 1
+    }
+    Write-Ok "Database schema synced (migrate deploy - PostgreSQL)"
+}
 
 # -- 9. prisma generate --
 Write-Step "Generating Prisma Client"

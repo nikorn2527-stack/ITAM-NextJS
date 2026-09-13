@@ -84,26 +84,33 @@ if [ -z "${DATABASE_URL:-}" ]; then
   exit 1
 fi
 case "$DATABASE_URL" in
+  file:*)      ok "DATABASE_URL = SQLite (dev mode — no PostgreSQL needed)"
+               export ITAM_ALLOW_SQLITE=1 ;;
   postgres*)   ok "DATABASE_URL = postgresql:... (PostgreSQL baseline ✓)" ;;
-  file:*)      err "DATABASE_URL is SQLite (file:) — Phase 1 baseline requires PostgreSQL."
-               echo "   Set DATABASE_URL to a PostgreSQL connection string in .env"
-               echo "   See .env.example for the format."
-               exit 1 ;;
-  *)           warn "DATABASE_URL doesn't look like PostgreSQL (postgresql://...)"
+  *)           warn "DATABASE_URL doesn't look like SQLite (file:) or PostgreSQL (postgresql:)"
                echo "   Got: $DATABASE_URL"
-               echo "   Phase 1 baseline requires PostgreSQL." ;;
+               echo "   Defaulting to SQLite mode..." ;;
 esac
 
-# ── 6. Verify prisma provider is PostgreSQL ──────────────────────────────
-step "Verifying prisma provider (PostgreSQL baseline)"
+# ── 6. Auto-sync prisma provider with DATABASE_URL ──────────────────────
+step "Syncing prisma provider"
 node scripts/set-prisma-provider.mjs
 
-# ── 7. (Removed) SQLite db folder — Phase 1 is PostgreSQL-only ───────────
+# ── 7. Create db folder if using SQLite ──────────────────────────────────
+if [[ "$DATABASE_URL" == file:* ]]; then
+  mkdir -p db
+  ok "Ensured db/ folder exists (SQLite mode)"
+fi
 
-# ── 8. prisma migrate deploy (Phase 1: PostgreSQL migrations) ─────────────
-step "Running prisma migrate deploy"
-bunx prisma migrate deploy
-ok "Database schema synced (migrate deploy)"
+# ── 8. Database schema setup ──────────────────────────────────────────────
+step "Running database setup"
+if [[ "$DATABASE_URL" == file:* ]]; then
+  bunx prisma db push
+  ok "Database schema synced (db push — SQLite dev mode)"
+else
+  bunx prisma migrate deploy
+  ok "Database schema synced (migrate deploy — PostgreSQL)"
+fi
 
 # ── 9. prisma generate ───────────────────────────────────────────────────
 step "Generating Prisma Client"
