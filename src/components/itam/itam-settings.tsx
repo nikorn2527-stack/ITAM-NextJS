@@ -117,11 +117,6 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
     titleKey: 'settings.group.system',
     items: [
       { value: 'users', labelKey: 'settings.tab.users', icon: Users },
-      // Bug Group G fix: hide "PermissionUser" tab — was a duplicate of
-      // "ManageUser" (rendered <UserManagementSection />) and never
-      // had its own permissions/role view. Commented out until a proper
-      // RolePermission manager is implemented.
-      // { value: 'permissions', label: 'PermissionUser', icon: Shield },
       { value: 'mobile-nav', labelKey: 'settings.tab.mobile_nav', icon: Smartphone },
       { value: 'sync-test', labelKey: 'settings.tab.sync_test', icon: RefreshCw },
       { value: 'google-sheets', labelKey: 'settings.tab.google_sheets', icon: Sheet },
@@ -131,6 +126,10 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'pending', labelKey: 'settings.tab.pending', icon: Users },
       { value: 'demo', labelKey: 'settings.tab.demo', icon: FlaskConical },
       { value: 'modules', labelKey: 'modules.tab_label', icon: Package },
+      { value: 'customize', labelKey: 'settings.tab.customize', icon: Palette },
+      { value: 'oauth', labelKey: 'settings.tab.oauth', icon: KeyRound },
+      { value: 'my-profile', labelKey: 'settings.tab.my_profile', icon: User },
+      { value: 'my-biometrics', labelKey: 'settings.tab.my_biometrics', icon: Fingerprint },
     ],
   },
   {
@@ -139,15 +138,6 @@ const SETTINGS_TAB_GROUPS: SettingsTabGroup[] = [
       { value: 'notifications', labelKey: 'settings.tab.notifications', icon: Bell },
       { value: 'notification-templates', labelKey: 'settings.tab.notification_templates', icon: MessageSquare },
       { value: 'notification-logs', labelKey: 'settings.tab.notification_logs', icon: Activity },
-    ],
-  },
-  {
-    titleKey: 'settings.group.personal',
-    items: [
-      { value: 'customize', labelKey: 'settings.tab.customize', icon: Palette },
-      { value: 'oauth', labelKey: 'settings.tab.oauth', icon: KeyRound },
-      { value: 'my-profile', labelKey: 'settings.tab.my_profile', icon: User },
-      { value: 'my-biometrics', labelKey: 'settings.tab.my_biometrics', icon: Fingerprint },
     ],
   },
 ]
