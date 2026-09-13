@@ -3,18 +3,21 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { getOrgScope } from '@/lib/org-scope'
 import { logAudit } from '@/lib/audit'
+import { createNodeToken } from '@/lib/node-auth'
 import { randomUUID } from 'node:crypto'
 
 /**
  * POST /api/sync/nodes/register
  *
- * Phase 1 → Phase 2 contract stub.
- * Registers a LAN/Offline node so it can push/pull changes.
+ * P0-03 fix: now returns a node token (short-lived, signed) that the
+ * node uses for sync/push, sync/pull, sync/ack — NOT the user JWT.
  *
- * Body: { nodeType: 'LAN' | 'OFFLINE', siteCode? }
- * Returns: { nodeId, status: 'ACTIVE', registeredAt }
+ * P1-04 fix: idempotent — if clientNodeKey is provided and a node with
+ * that key already exists for this org, return the existing node (with
+ * a fresh token) instead of creating a duplicate.
  *
- * Phase 2 will add: node authentication, revoke, heartbeat, lastSyncAt updates.
+ * Body: { nodeType: 'LAN' | 'OFFLINE', siteCode?, clientNodeKey? }
+ * Returns: { nodeId, nodeToken, status: 'ACTIVE', registeredAt }
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
@@ -27,7 +30,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({} as Record<string, unknown>))
-  const { nodeType, siteCode } = body as { nodeType?: string; siteCode?: string }
+  const { nodeType, siteCode, clientNodeKey } = body as {
+    nodeType?: string
+    siteCode?: string
+    clientNodeKey?: string
+  }
 
   if (!nodeType || !['LAN', 'OFFLINE'].includes(nodeType)) {
     return NextResponse.json(
@@ -36,8 +43,36 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Generate a stable node id (caller may reuse on reconnect via idempotency)
-  const nodeId = `node-${randomUUID().slice(0, 12)}`
+  // P1-04: idempotent registration — if clientNodeKey provided, check existing
+  if (clientNodeKey) {
+    const existing = await db.syncNode.findFirst({
+      where: {
+        id: clientNodeKey,
+        organizationId: orgScope.organizationId,
+      },
+    })
+    if (existing) {
+      // Return existing node with fresh token
+      const token = createNodeToken(existing.id)
+      await logAudit(
+        'SYNC_NODE_REREGISTER',
+        'SyncNode',
+        existing.id,
+        `Re-registered ${nodeType} node (idempotent)`,
+        { nodeType, siteCode },
+        auth.row.username ?? auth.user.email,
+      )
+      return NextResponse.json({
+        nodeId: existing.id,
+        nodeToken: token,
+        status: existing.status,
+        registeredAt: existing.createdAt,
+      })
+    }
+  }
+
+  // Generate node id (use clientNodeKey if provided for idempotency)
+  const nodeId = clientNodeKey || `node-${randomUUID().slice(0, 12)}`
 
   const node = await db.syncNode.create({
     data: {
@@ -49,6 +84,9 @@ export async function POST(req: NextRequest) {
     },
   })
 
+  // P0-03: issue node token (separate from user JWT)
+  const nodeToken = createNodeToken(node.id)
+
   await logAudit(
     'SYNC_NODE_REGISTER',
     'SyncNode',
@@ -59,7 +97,7 @@ export async function POST(req: NextRequest) {
   )
 
   return NextResponse.json(
-    { nodeId: node.id, status: node.status, registeredAt: node.createdAt },
+    { nodeId: node.id, nodeToken: nodeToken, status: node.status, registeredAt: node.createdAt },
     { status: 201 },
   )
 }

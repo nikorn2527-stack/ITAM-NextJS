@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
     try {
       await db.user.update({
         where: { id: row.id },
-        data: { lastLoginAt: new Date() },
+        data: { lastLoginAt: new Date().toISOString() },
       })
     } catch (e) {
       // Non-fatal — don't block login if lastLoginAt update fails

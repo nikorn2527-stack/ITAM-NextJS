@@ -111,8 +111,7 @@ function stripInsensitive<T>(node: T): T {
 let _prisma: PrismaClient | undefined
 
 /**
- * Lazily create the PrismaClient on first use (not at module load time).
- *
+ * Lazily create the PrismaClient on first use (not at module load time). *
  * Why: Loading the Prisma engine + generated client for 20+ models (including
  * the multi-org foundation) consumes ~150MB RSS at instantiation. When a route
  * imports `db` AND heavy auth modules (jose, bcrypt, rbac) at the same time,
@@ -180,6 +179,24 @@ function getPrisma(): PrismaClient {
   _prisma = extended as unknown as PrismaClient
   globalForPrisma.prisma = _prisma
   return _prisma
+}
+
+/** Get the underlying PrismaClient (for $transaction etc.). */
+export function getDbClient(): PrismaClient {
+  return getPrisma()
+}
+
+/** Get the BASE PrismaClient without $extends (for $transaction). */
+let _baseClient: PrismaClient | undefined
+export function getBaseClient(): PrismaClient {
+  if (_baseClient) return _baseClient
+  _baseClient = new PrismaClient({
+    ...(datasourceUrl !== process.env.DATABASE_URL
+      ? { datasources: { db: { url: datasourceUrl } } }
+      : {}),
+    log: ['error'],
+  })
+  return _baseClient
 }
 
 /**

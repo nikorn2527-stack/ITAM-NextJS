@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth-middleware'
-import { getOrgScope } from '@/lib/org-scope'
+import { db, getBaseClient } from '@/lib/db'
+import { verifyNodeOrUser } from '@/lib/sync-node-guard'
 import { logAudit } from '@/lib/audit'
 import { detectConflict, type SyncableEntity, type ApplyResult } from '@/lib/sync-conflict-policy'
 
@@ -39,14 +38,14 @@ interface PushResult {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth(req, 'VIEW_DEVICES')
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  // P0-03: verify node token OR user JWT
+  const authResult = await verifyNodeOrUser(req)
+  if (!authResult.ok) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status })
   }
-  const orgScope = getOrgScope(auth.user)
-  if (!orgScope.ok) {
-    return NextResponse.json({ error: orgScope.error }, { status: orgScope.status })
-  }
+  const orgId = authResult.orgId
+  const node = authResult.node
+  const actor = node.id // use nodeId as actor for sync push
 
   const body = await req.json().catch(() => ({} as Record<string, unknown>))
   const { nodeId, changes } = body as { nodeId?: string; changes?: PushChange[] }
@@ -58,14 +57,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'changes must be an array' }, { status: 422 })
   }
 
-  // Verify node belongs to caller's org
-  const node = await db.syncNode.findFirst({
-    where: { id: nodeId, organizationId: orgScope.organizationId },
-  })
-  if (!node) {
+  // Node is already verified by verifyNodeOrUser — just verify nodeId matches
+  if (nodeId !== node.id) {
     return NextResponse.json(
-      { error: 'Node not found in your organization' },
-      { status: 404 },
+      { error: 'nodeId in body does not match authenticated node' },
+      { status: 403 },
     )
   }
 
@@ -92,12 +88,12 @@ export async function POST(req: NextRequest) {
         where: { idempotencyKey: change.idempotencyKey },
         update: {
           status: 'SENT',
-          sentAt: new Date(),
+          sentAt: new Date().toISOString(),
           attempts: { increment: 1 },
         },
         create: {
           nodeId: node.id,
-          organizationId: orgScope.organizationId!,
+          organizationId: orgId!,
           entityType: change.entityType,
           entityId: change.entityId,
           operation: change.operation,
@@ -106,7 +102,7 @@ export async function POST(req: NextRequest) {
           idempotencyKey: change.idempotencyKey,
           payloadJson: JSON.stringify(change.payload),
           status: 'SENT',
-          sentAt: new Date(),
+          sentAt: new Date().toISOString(),
         },
       })
 
@@ -127,7 +123,7 @@ export async function POST(req: NextRequest) {
         // make this a proper generic lookup).
         if (change.entityType === 'Device') {
           const d = await db.device.findFirst({
-            where: { id: change.entityId, organizationId: orgScope.organizationId },
+            where: { id: change.entityId, organizationId: orgId },
           })
           if (d) {
             cloudPayload = d as unknown as Record<string, unknown>
@@ -166,7 +162,7 @@ export async function POST(req: NextRequest) {
         // Create SyncConflict record for manual resolution
         const conflict = await db.syncConflict.create({
           data: {
-            organizationId: orgScope.organizationId!,
+            organizationId: orgId!,
             nodeId: node.id,
             entityType: change.entityType,
             entityId: change.entityId,
@@ -192,13 +188,96 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // ACKED — either no-op (cloud already has the change) or applied.
-      // Phase 2 will actually apply the entity update here for non-noOp cases.
+      // P0-02 fix: actually apply entity changes (CREATE/UPDATE/DELETE)
+      // Previously this only ACK'd the outbox without modifying the entity.
+      // Now we apply the change in a transaction + audit log.
+
+      // Skip apply if noOp (cloud already has the change — e.g. duplicate push)
+      if (!applyResult.noOp) {
+        try {
+          await getBaseClient().$transaction(async (tx) => {
+            const entityType = change.entityType
+            const entityId = change.entityId
+            const operation = change.operation
+            const payload = change.payload
+            const orgId = orgId!
+
+            if (entityType === 'Device') {
+              if (operation === 'CREATE') {
+                // Create new device with org scope
+                await (tx).device.create({
+                  data: {
+                    id: entityId,
+                    organizationId: orgId,
+                    assetCode: (payload.assetCode as string) || `AST-${Date.now()}`,
+                    name: (payload.name as string) || 'Untitled',
+                    brand: (payload.brand as string) || null,
+                    model: (payload.model as string) || null,
+                    serialNumber: (payload.serialNumber as string) || null,
+                    status: (payload.status as string) || 'Active',
+                    site: (payload.site as string) || 'HQ',
+                    type: (payload.type as string) || '',
+                  },
+                })
+              } else if (operation === 'UPDATE') {
+                // Update existing device (only non-metadata fields)
+                const updateData: Record<string, unknown> = {}
+                const skipFields = new Set(['id', 'createdAt', 'updatedAt', 'organizationId', 'deletedAt', 'version'])
+                for (const [key, value] of Object.entries(payload)) {
+                  if (!skipFields.has(key)) {
+                    updateData[key] = value
+                  }
+                }
+                await (tx).device.update({
+                  where: { id: entityId },
+                  data: updateData,
+                })
+              } else if (operation === 'DELETE') {
+                // Soft-delete (tombstone) — L-22: don't hard-delete
+                await (tx).device.update({
+                  where: { id: entityId },
+                  data: { deletedAt: new Date().toISOString() },
+                })
+              }
+            }
+            // Phase 2.1: add WorkOrder, StockTransaction, MasterItem entity apply
+
+            // Audit log
+            await (tx).auditLog.create({
+              data: {
+                action: `SYNC_PUSH_${operation}`,
+                entity: entityType,
+                entityId,
+                summary: `Sync push ${operation} ${entityType} from node ${node.id}`,
+                detail: { nodeId: node.id, idempotencyKey: change.idempotencyKey },
+                actor: actor,
+              },
+            })
+          })
+        } catch (applyErr) {
+          // Entity apply failed — mark outbox as FAILED (not ACKED)
+          console.error('sync push: entity apply failed', applyErr)
+          await db.syncOutbox.update({
+            where: { idempotencyKey: change.idempotencyKey },
+            data: {
+              status: 'FAILED',
+              lastError: applyErr instanceof Error ? applyErr.message : String(applyErr),
+            },
+          })
+          result.failed.push({
+            idempotencyKey: change.idempotencyKey,
+            error: `Entity apply failed: ${applyErr instanceof Error ? applyErr.message : String(applyErr)}`,
+          })
+          continue
+        }
+      }
+
+      // Mark outbox as ACKED (entity was applied or noOp)
       await db.syncOutbox.update({
         where: { idempotencyKey: change.idempotencyKey },
         data: {
           status: 'ACKED',
-          ackedAt: new Date(),
+          ackedAt: new Date().toISOString(),
         },
       })
 
@@ -222,7 +301,7 @@ export async function POST(req: NextRequest) {
     node.id,
     `Pushed ${changes.length} changes from node ${node.id}: ${result.accepted.length} accepted, ${result.conflicts.length} conflicts, ${result.failed.length} failed`,
     { accepted: result.accepted.length, conflicts: result.conflicts.length, failed: result.failed.length },
-    auth.row.username ?? auth.user.email,
+    actor,
   )
 
   return NextResponse.json(result)

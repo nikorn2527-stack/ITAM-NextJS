@@ -251,6 +251,7 @@ model Device {
   // migrate them to set deletedAt = now() and filter reads by deletedAt IS NULL.
   // Kept optional so existing rows are unaffected.
   deletedAt       DateTime?
+  version          Int      @default(1) // L-32: optimistic concurrency for sync
 
   // Relations (other models reference Device via deviceId)
   meterReadings     MeterReading[]

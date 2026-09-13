@@ -92,7 +92,7 @@ export function extractNodeToken(req: Request): string | null {
   if (headerToken?.startsWith(NODE_TOKEN_PREFIX)) return headerToken
 
   const authHeader = req.headers.get('authorization')
-  if (authHeader?.startsWith('Bearer ') && authToken.slice(7).startsWith(NODE_TOKEN_PREFIX)) {
+  if (authHeader?.startsWith('Bearer ') && authHeader.slice(7).startsWith(NODE_TOKEN_PREFIX)) {
     return authHeader.slice(7)
   }
 

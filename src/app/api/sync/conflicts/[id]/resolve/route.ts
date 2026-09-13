@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { getOrgScope } from '@/lib/org-scope'
 import { logAudit } from '@/lib/audit'
@@ -56,8 +56,8 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   // L-17: run the entire resolve in a transaction
   try {
-    const result = await db.$transaction(async (tx) => {
-      const conflict = await (tx as typeof db).syncConflict.findFirst({ where })
+    const result = await getBaseClient().$transaction(async (tx) => {
+      const conflict = await (tx).syncConflict.findFirst({ where })
       if (!conflict) {
         throw new Error('CONFLICT_NOT_FOUND')
       }
@@ -74,13 +74,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
       // If REJECTED, just mark and return (no entity update)
       if (resolution === 'REJECTED') {
-        const updated = await (tx as typeof db).syncConflict.update({
+        const updated = await (tx).syncConflict.update({
           where: { id: conflict.id },
           data: {
             status: 'REJECTED',
             resolution,
             resolvedBy: actor,
-            resolvedAt: new Date(),
+            resolvedAt: new Date().toISOString(),
           },
         })
         return { conflict: updated, entityUpdated: false }
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       // Update the entity (currently only Device is supported)
       if (chosenPayload && conflict.entityType === 'Device') {
         const entityId = conflict.entityId
-        const existingDevice = await (tx as typeof db).device.findFirst({
+        const existingDevice = await (tx).device.findFirst({
           where: { id: entityId, organizationId: conflict.organizationId },
         })
         if (existingDevice) {
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest, { params }: Params) {
           // Bump version
           updateData.version = { increment: 1 }
 
-          await (tx as typeof db).device.update({
+          await (tx).device.update({
             where: { id: entityId },
             data: updateData,
           })
@@ -123,31 +123,31 @@ export async function POST(req: NextRequest, { params }: Params) {
       // Phase 2: add WorkOrder, StockTransaction, MasterItem entity updates
 
       // Mark conflict as resolved
-      const updated = await (tx as typeof db).syncConflict.update({
+      const updated = await (tx).syncConflict.update({
         where: { id: conflict.id },
         data: {
           status: 'RESOLVED',
           resolution,
           resolvedBy: actor,
-          resolvedAt: new Date(),
+          resolvedAt: new Date().toISOString(),
         },
       })
 
       // Mark originating outbox entry as ACKED
       if (conflict.nodeId) {
-        await (tx as typeof db).syncOutbox.updateMany({
+        await (tx).syncOutbox.updateMany({
           where: {
             nodeId: conflict.nodeId,
             entityId: conflict.entityId,
             entityType: conflict.entityType,
             status: 'CONFLICT',
           },
-          data: { status: 'ACKED', ackedAt: new Date() },
+          data: { status: 'ACKED', ackedAt: new Date().toISOString() },
         })
       }
 
       // Audit log
-      await (tx as typeof db).auditLog.create({
+      await (tx).auditLog.create({
         data: {
           action: 'SYNC_CONFLICT_RESOLVE',
           entity: conflict.entityType,
