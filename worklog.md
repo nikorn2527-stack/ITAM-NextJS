@@ -22376,3 +22376,28 @@ Stage Summary:
 - ✅ Stability bugs all fixed
 - ✅ Push ขึ้น GitHub (commit 22cd7b0)
 - 📋 Remaining: I18N-03 (toast/error keys), I18N-08 (enum labels), runtime tests on Windows VM
+
+---
+Task ID: P0-LOCAL-TEST-FIXES
+Agent: orchestrator (acting as dev team)
+Task: แก้ P0-01 ถึง P0-04 + P1-05 จากรายงานตรวจปัญหา Local ล่าสุด
+
+Work Log:
+P0-01: dev.sh portable path
+- แก้ hardcoded 'cd /home/z/my-project' → PROJECT_DIR via BASH_SOURCE
+P0-02: Setup fail-closed for invalid DATABASE_URL
+- setup.sh + setup.ps1: unknown URL scheme → exit 1 + clear error
+- ไม่ default เงียบๆ ไป SQLite อีกต่อไป
+P0-03: TypeScript ignoreBuildErrors scoped to dev only
+- Production builds FAIL on TS errors (was: always ignored)
+- Dev mode still allows errors for iteration
+- CI should run tsc --noEmit separately
+P1-05: Schema auto-patch CI guard
+- set-prisma-provider.mjs: refuses to auto-patch when CI=true
+P2-01: bun.lock already tracked (was false alarm)
+
+Stage Summary:
+- ✅ P0-01 to P0-04 แก้ครบ
+- ✅ P1-05 CI guard
+- ✅ Push ขึ้น GitHub (commit 027569c)
+- 📋 เหลือ: P1-01 (error/toast keys), P1-02 (auth error codes), P1-03 (print token), P2-04 (API error envelope), 754 TS errors fix
