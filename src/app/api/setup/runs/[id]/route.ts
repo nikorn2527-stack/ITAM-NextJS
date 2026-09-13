@@ -24,7 +24,7 @@ import { getOrgScope } from '@/lib/org-scope'
  */
 
 interface Params {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 /** Allowed status transitions. Anything else is rejected. */
@@ -38,6 +38,7 @@ const VALID_TRANSITIONS: Record<string, Set<string>> = {
 }
 
 export async function GET(req: NextRequest, { params }: Params) {
+  const { id: runId } = await params
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -51,8 +52,8 @@ export async function GET(req: NextRequest, { params }: Params) {
   // Superadmin can see any org's runs; non-superadmin only their own
   const where =
     auth.user.role === 'superadmin'
-      ? { id: params.id }
-      : { id: params.id, organizationId: orgScope.organizationId }
+      ? { id: runId }
+      : { id: runId, organizationId: orgScope.organizationId }
 
   const run = await db.setupRun.findFirst({
     where,
@@ -68,6 +69,7 @@ export async function GET(req: NextRequest, { params }: Params) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {
+  const { id: runId } = await params
   const auth = await requireAuth(req, 'SYSTEM_CONFIG')
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
@@ -91,8 +93,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // P1-04: scope query by org (superadmin bypass)
   const where =
     auth.user.role === 'superadmin'
-      ? { id: params.id }
-      : { id: params.id, organizationId: orgScope.organizationId }
+      ? { id: runId }
+      : { id: runId, organizationId: orgScope.organizationId }
 
   const existing = await db.setupRun.findFirst({ where })
   if (!existing) {
@@ -126,17 +128,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     )
   }
 
-  const data: {
-    status?: string
-    currentStep?: string
-    errorMessage?: string
-    completedBy?: string
-    completedAt?: Date
-    version: { increment: number }
-  } = {
-    // P1-04: always bump version on PATCH (optimistic concurrency)
-    version: { increment: 1 },
-  }
+  const data: Record<string, unknown> = {}
   if (status) data.status = status
   if (currentStep !== undefined) data.currentStep = currentStep
   if (errorMessage !== undefined) data.errorMessage = errorMessage
@@ -145,11 +137,11 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   const actor = auth.row.username ?? auth.user.email
   if (status === 'COMPLETED' || status === 'CANCELLED' || status === 'FAILED') {
     data.completedBy = actor
-    data.completedAt = new Date()
+    data.completedAt = new Date().toISOString()
   }
 
   const run = await db.setupRun.update({
-    where: { id: params.id },
+    where: { id: runId },
     data,
   })
 
