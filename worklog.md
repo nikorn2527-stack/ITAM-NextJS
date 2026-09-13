@@ -22451,3 +22451,42 @@ Verification:
 - failure tests: 10/10 passed
 - cross-org tests: 8/8 passed
 - i18n check: all 1172 keys present
+
+---
+Task ID: P0-REVIEW-FIXES
+Agent: orchestrator (acting as dev team)
+Task: แก้ P0-01 ถึง P0-04 จากรายงานตรวจหลัง Dev แก้ไข
+
+Work Log:
+P0-01: test-local-first.sh syntax fixed
+- JS .repeat(50) → printf '%s' '====...'
+- ((pass++)) → pass=$((pass + 1)) (set -e compat)
+- bash -n passes ✓
+
+P0-02: Push applies entity changes
+- CREATE/UPDATE/DELETE Device in $transaction
+- Audit log per entity apply
+- Known issue: $transaction TDZ in production build (lazy Proxy)
+
+P0-03: Node auth wired into routes
+- Register returns nodeToken (nt_...)
+- Pull + Push accept X-Node-Token
+- sync-node-guard.ts: verifyNodeOrUser()
+- node-auth.ts: fixed extractNodeToken bug
+
+P0-04: Device version + pull feed
+- Added version Int @default(1) to Device
+- Pull returns real data with composite cursor + tombstones
+
+P1-04: Register idempotent (clientNodeKey)
+
+Known issue: db.$transaction fails in prod build with lazy Proxy
+('Cannot access g before initialization'). Works in dev mode.
+Needs testing on real machine.
+
+Verification:
+- bash -n: SYNTAX OK ✓
+- sync/pull with node token: HTTP 200, 100 changes ✓
+- register: returns nodeToken ✓
+- failure tests: 8/10 passed
+- cross-org tests: 8/8 passed
