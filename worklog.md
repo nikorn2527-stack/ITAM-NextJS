@@ -22401,3 +22401,27 @@ Stage Summary:
 - ✅ P1-05 CI guard
 - ✅ Push ขึ้น GitHub (commit 027569c)
 - 📋 เหลือ: P1-01 (error/toast keys), P1-02 (auth error codes), P1-03 (print token), P2-04 (API error envelope), 754 TS errors fix
+
+---
+Task ID: BUG-CATALOG-L09-L26
+Agent: orchestrator (acting as dev team)
+Task: แก้ตาม ITAM Local Bug/Error Catalog — L-09, L-13, L-26 + test-local-first script
+
+Work Log:
+- อ่าน 2 ไฟล์: 'แนวทาง Local-first สำหรับทดสอบและแก้ไข ITAM.md' + 'ITAM Local Bug_Error Catalog.md'
+- Bug catalog มี 35 รายการ (L-01 ถึง L-35)
+
+แก้ไขแล้ว (4 รายการ):
+L-09: Server bind 0.0.0.0 for LAN access
+- package.json dev script: next dev -H 0.0.0.0 (was localhost only)
+L-13: SW cleanup in dev mode (already existed, verified)
+L-26: Standardized API error response (src/lib/api-error.ts)
+- apiErrorResponse() + apiSuccessResponse()
+- Standard envelope: { ok, error: { code, messageKey, requestId, detail? } }
+scripts/test-local-first.sh: pre-flight checks (shell syntax, .env, paths, i18n, prisma, lockfile)
+
+สถานะ Bug Catalog ทั้งหมด:
+- ✅ แก้แล้ว (จาก commits ก่อนหน้า): L-01 to L-11, L-27, L-28, L-31, L-32
+- ✅ แก้รอบนี้: L-09, L-13, L-26
+- 📋 ถัดไป (P0): L-14 to L-22 (Offline Sync — Phase 2)
+- 📋 ถัดไป (P1): L-12, L-23 to L-25, L-29 to L-30, L-33 to L-35
