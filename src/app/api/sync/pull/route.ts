@@ -2,20 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { getOrgScope } from '@/lib/org-scope'
+import { pullChanges } from '@/lib/sync-pull-engine'
 
 /**
- * GET /api/sync/pull?cursor=<isoTimestamp>&nodeId=<nodeId>
+ * GET /api/sync/pull?cursor=<updatedAt|id>&nodeId=<nodeId>
  *
- * Phase 1 → Phase 2 contract stub.
- * Returns changes that happened AFTER the cursor for the caller's org.
- *
- * Phase 2 will:
- *   - Stream entity changes (Device, WorkOrder, Stock, MasterItem) with version > cursor
- *   - Filter by node's siteCode scope
- *   - Return nextCursor for pagination
- *
- * For now: returns the contract shape with empty changes so client code
- * can be built against a stable API.
+ * Phase 2: Pull Change Feed implementation.
+ * L-21: Uses (updatedAt, id) composite cursor — no data skipped.
+ * L-22: Includes tombstones (soft-deleted records) as DELETE ops.
  */
 export async function GET(req: NextRequest) {
   const auth = await requireAuth(req, 'VIEW_DEVICES')
@@ -28,7 +22,7 @@ export async function GET(req: NextRequest) {
   }
 
   const url = new URL(req.url)
-  const cursor = url.searchParams.get('cursor') // ISO timestamp
+  const cursor = url.searchParams.get('cursor') // "updatedAt|id" composite
   const nodeId = url.searchParams.get('nodeId')
 
   if (!nodeId) {
@@ -49,21 +43,24 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // Phase 2: actual change query. For now return empty + contract shape.
-  const changes: unknown[] = []
-  const nextCursor = new Date().toISOString()
+  // L-21 + L-22: pull changes using composite cursor + tombstones
+  const result = await pullChanges(
+    orgScope.organizationId!,
+    node.siteCode,
+    cursor,
+  )
 
   // Update lastSyncAt on the node
   await db.syncNode.update({
     where: { id: node.id },
-    data: { lastSyncAt: new Date() },
+    data: { lastSyncAt: new Date().toISOString() },
   })
 
   return NextResponse.json({
     nodeId: node.id,
     cursor,
-    nextCursor,
-    changes,
-    hasMore: false,
+    nextCursor: result.nextCursor,
+    changes: result.changes,
+    hasMore: result.hasMore,
   })
 }
