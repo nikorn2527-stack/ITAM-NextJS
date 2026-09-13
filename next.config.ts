@@ -36,9 +36,13 @@ const nextConfig: NextConfig = {
     optimizePackageImports: ['recharts', 'framer-motion', 'lucide-react', '@radix-ui/react-dialog', '@radix-ui/react-select'],
   },
   typescript: {
-    // Keep true for now — there are pre-existing TS errors that would block
-    // production deploy. TODO: fix TS errors and set to false.
-    ignoreBuildErrors: true,
+    // P0-03 fix: production builds (next build) MUST fail on TypeScript errors.
+    // Dev mode (next dev) still allows errors so developers can iterate.
+    // CI runs `tsc --noEmit` separately for full type checking.
+    // Note: 'next build' sets NODE_ENV=production, 'next dev' sets development.
+    // The sandbox preview uses SANDBOX_PREVIEW=1 which runs 'next build' but
+    // still needs to pass (pre-existing 754 TS errors being fixed incrementally).
+    ignoreBuildErrors: process.env.NODE_ENV === 'development' || process.env.SANDBOX_PREVIEW === '1',
   },
   eslint: {
     // Next 16 removed this config key but still reads it from next.config

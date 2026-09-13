@@ -97,10 +97,12 @@ if ($dbUrl.StartsWith("file:")) {
 } elseif ($dbUrl.StartsWith("postgres")) {
     Write-Ok "DATABASE_URL = postgresql:... (PostgreSQL baseline)"
 } else {
-    Write-Warn "DATABASE_URL does not look like SQLite (file:) or PostgreSQL (postgresql://...)"
+    Write-Err "DATABASE_URL is not a valid SQLite (file:) or PostgreSQL (postgresql:) URL"
     Write-Host "   Got: $dbUrl" -ForegroundColor White
-    Write-Host "   Defaulting to SQLite mode..." -ForegroundColor Yellow
-    $env:ITAM_ALLOW_SQLITE = "1"
+    Write-Host "   Set DATABASE_URL in .env to either:" -ForegroundColor Yellow
+    Write-Host "     file:./db/custom.db          (SQLite for dev)" -ForegroundColor Yellow
+    Write-Host "     postgresql://user:pass@host:5432/db  (PostgreSQL for production)" -ForegroundColor Yellow
+    exit 1
 }
 
 # -- 6. Auto-sync prisma provider with DATABASE_URL --

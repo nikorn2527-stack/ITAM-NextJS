@@ -56,6 +56,16 @@ if (isProduction) {
 
 // ── Development: auto-patch if mismatched ────────────────────────────────
 if (currentProvider !== want) {
+  // P1-05 guard: don't auto-patch if in CI or if git working tree is clean
+  // (CI should always use PostgreSQL — SQLite is dev-only)
+  if (process.env.CI === 'true') {
+    console.error(
+      `[prisma-provider] FATAL: CI detected but provider is "${currentProvider}", expected "${want}"`,
+    )
+    console.error('   CI must use PostgreSQL. Set DATABASE_URL to a postgresql:// URL.')
+    process.exit(1)
+  }
+
   const patched = schema.replace(
     /(datasource db \{\s*provider = ")([^"]+)(")/,
     `$1${want}$3`,

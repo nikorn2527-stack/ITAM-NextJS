@@ -87,9 +87,12 @@ case "$DATABASE_URL" in
   file:*)      ok "DATABASE_URL = SQLite (dev mode — no PostgreSQL needed)"
                export ITAM_ALLOW_SQLITE=1 ;;
   postgres*)   ok "DATABASE_URL = postgresql:... (PostgreSQL baseline ✓)" ;;
-  *)           warn "DATABASE_URL doesn't look like SQLite (file:) or PostgreSQL (postgresql:)"
+  *)           err "DATABASE_URL is not a valid SQLite (file:) or PostgreSQL (postgresql:) URL"
                echo "   Got: $DATABASE_URL"
-               echo "   Defaulting to SQLite mode..." ;;
+               echo "   Set DATABASE_URL in .env to either:"
+               echo "     file:./db/custom.db          (SQLite for dev)"
+               echo "     postgresql://user:pass@host:5432/db  (PostgreSQL for production)"
+               exit 1 ;;
 esac
 
 # ── 6. Auto-sync prisma provider with DATABASE_URL ──────────────────────
