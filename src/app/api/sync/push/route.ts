@@ -200,7 +200,6 @@ export async function POST(req: NextRequest) {
             const entityId = change.entityId
             const operation = change.operation
             const payload = change.payload
-            const orgId = orgId!
 
             if (entityType === 'Device') {
               if (operation === 'CREATE') {
@@ -228,6 +227,8 @@ export async function POST(req: NextRequest) {
                     updateData[key] = value
                   }
                 }
+                // P1-03: increment version for optimistic concurrency
+                updateData.version = { increment: 1 }
                 await (tx).device.update({
                   where: { id: entityId },
                   data: updateData,
@@ -239,8 +240,10 @@ export async function POST(req: NextRequest) {
                   data: { deletedAt: new Date().toISOString() },
                 })
               }
+            } else {
+              // P1-01: reject entity types that don't have an apply adapter
+              throw new Error(`UNSUPPORTED_ENTITY: ${entityType} — apply adapter not implemented yet`)
             }
-            // Phase 2.1: add WorkOrder, StockTransaction, MasterItem entity apply
 
             // Audit log
             await (tx).auditLog.create({

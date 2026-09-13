@@ -71,14 +71,19 @@ else
 fi
 echo ""
 
-# 3. No hardcoded absolute paths
+# 3. No hardcoded absolute paths (ignore comments)
 echo "3. Portable paths (no /home/z/my-project)"
-HARDCODED=$(grep -rl "/home/z/my-project" dev.sh setup.sh scripts/safe-migrate.sh scripts/install.ps1 scripts/backup-db.ts scripts/restore-db.ts 2>/dev/null || true)
+# Only check non-comment lines for hardcoded paths
+HARDCODED=$(grep -nE '^[[:space:]]*[^#].*/home/z/my-project' \
+  dev.sh setup.sh scripts/safe-migrate.sh scripts/install.ps1 \
+  scripts/backup-db.ts scripts/restore-db.ts 2>/dev/null || true)
 if [ -z "$HARDCODED" ]; then
   echo "  No hardcoded paths... PASS"
   pass=$((pass + 1))
 else
-  echo "  Hardcoded paths found in: $HARDCODED... FAIL"
+  echo "  Hardcoded paths found:"
+  echo "$HARDCODED" | head -3
+  echo "  ... FAIL"
   fail=$((fail + 1))
 fi
 echo ""

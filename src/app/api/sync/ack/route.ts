@@ -1,26 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { requireAuth } from '@/lib/auth-middleware'
-import { getOrgScope } from '@/lib/org-scope'
+import { verifyNodeOrUser } from '@/lib/sync-node-guard'
 
 /**
  * POST /api/sync/ack
  *   Acknowledge that a node has received and applied a set of changes.
  *
- * Phase 1 → Phase 2 contract stub.
+ * P0-03 fix: now uses verifyNodeOrUser() (accepts node token OR user JWT).
+ * Previously only accepted user JWT — anyone with VIEW_DEVICES + nodeId
+ * could ACK on behalf of a node.
  *
  * Body: { nodeId, idempotencyKeys: string[] }
  * Returns: { acked: number }
  */
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth(req, 'VIEW_DEVICES')
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status })
+  // P0-03: verify node token OR user JWT
+  const authResult = await verifyNodeOrUser(req)
+  if (!authResult.ok) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status })
   }
-  const orgScope = getOrgScope(auth.user)
-  if (!orgScope.ok) {
-    return NextResponse.json({ error: orgScope.error }, { status: orgScope.status })
-  }
+  const node = authResult.node
 
   const body = await req.json().catch(() => ({} as Record<string, unknown>))
   const { nodeId, idempotencyKeys } = body as {
@@ -35,14 +34,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'idempotencyKeys must be an array' }, { status: 422 })
   }
 
-  // Verify node belongs to caller's org
-  const node = await db.syncNode.findFirst({
-    where: { id: nodeId, organizationId: orgScope.organizationId },
-  })
-  if (!node) {
+  // P0-03: verify nodeId matches the authenticated node
+  if (nodeId !== node.id) {
     return NextResponse.json(
-      { error: 'Node not found in your organization' },
-      { status: 404 },
+      { error: 'nodeId in body does not match authenticated node' },
+      { status: 403 },
     )
   }
 
@@ -51,7 +47,7 @@ export async function POST(req: NextRequest) {
   for (const key of idempotencyKeys) {
     const updated = await db.syncOutbox.updateMany({
       where: { idempotencyKey: key, nodeId: node.id },
-      data: { status: 'ACKED', ackedAt: new Date() },
+      data: { status: 'ACKED', ackedAt: new Date().toISOString() },
     })
     acked += updated.count
   }

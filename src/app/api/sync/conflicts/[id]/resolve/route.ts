@@ -96,31 +96,35 @@ export async function POST(req: NextRequest, { params }: Params) {
         mergedPayload,
       )
 
-      // Update the entity (currently only Device is supported)
-      if (chosenPayload && conflict.entityType === 'Device') {
-        const entityId = conflict.entityId
-        const existingDevice = await (tx).device.findFirst({
-          where: { id: entityId, organizationId: conflict.organizationId },
-        })
-        if (existingDevice) {
-          // Apply chosen payload (only non-metadata fields)
-          const updateData: Record<string, unknown> = {}
-          const skipFields = new Set(['id', 'createdAt', 'updatedAt', 'organizationId', 'deletedAt'])
-          for (const [key, value] of Object.entries(chosenPayload)) {
-            if (!skipFields.has(key)) {
-              updateData[key] = value
-            }
-          }
-          // Bump version
-          updateData.version = { increment: 1 }
-
-          await (tx).device.update({
-            where: { id: entityId },
-            data: updateData,
+      // P1-04: Update entity — only Device has adapter; reject others
+      if (chosenPayload) {
+        if (conflict.entityType === 'Device') {
+          const entityId = conflict.entityId
+          const existingDevice = await (tx).device.findFirst({
+            where: { id: entityId, organizationId: conflict.organizationId },
           })
+          if (existingDevice) {
+            // Apply chosen payload (only non-metadata fields)
+            const updateData: Record<string, unknown> = {}
+            const skipFields = new Set(['id', 'createdAt', 'updatedAt', 'organizationId', 'deletedAt', 'version'])
+            for (const [key, value] of Object.entries(chosenPayload)) {
+              if (!skipFields.has(key)) {
+                updateData[key] = value
+              }
+            }
+            // Bump version
+            updateData.version = { increment: 1 }
+
+            await (tx).device.update({
+              where: { id: entityId },
+              data: updateData,
+            })
+          }
+        } else {
+          // P1-04: reject entity types that don't have a resolve adapter
+          throw new Error(`UNSUPPORTED_ENTITY: ${conflict.entityType} — resolve adapter not implemented`)
         }
       }
-      // Phase 2: add WorkOrder, StockTransaction, MasterItem entity updates
 
       // Mark conflict as resolved
       const updated = await (tx).syncConflict.update({
