@@ -13,7 +13,7 @@
  * Task ID: B4-RETRY-P2034
  */
 
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { Prisma } from '@prisma/client'
 
 export interface RetryOptions {
@@ -86,7 +86,7 @@ export async function withSerializableRetryTracked<T>(
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     attempts++
     try {
-      const result = await db.$transaction(fn, {
+      const result = await getBaseClient().$transaction(fn, {
         isolationLevel: 'Serializable',
       })
       return { result, attempts, p2034Count }

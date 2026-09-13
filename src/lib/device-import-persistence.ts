@@ -21,7 +21,7 @@
 // SYNC_RUN permission added.
 // ============================================================
 
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import type { DeviceImportRow } from '@/lib/device-import-contract'
 
 /**
@@ -203,7 +203,7 @@ export async function persistDevices(
   // ── Per-row update (transaction for atomicity) ──────────────────
   if (toUpdate.length > 0) {
     try {
-      await db.$transaction(
+      await getBaseClient().$transaction(
         toUpdate.map((row) =>
           db.device.updateMany({
             where: {

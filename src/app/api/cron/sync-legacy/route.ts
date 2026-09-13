@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { fetchSheet } from '@/lib/google-sheets-service'
 import {
@@ -27,7 +27,7 @@ import { verifyCronSecret } from '@/lib/cron-auth'
  * only Device / WorkOrder / StockItem). Each entity is fetched via
  * `fetchSheet()` (Sheets API v4 + Service Account), mapped through the
  * shared FIELD_MAPPINGS layer from `csv-field-mapping.ts`, and batch-upserted
- * inside `db.$transaction` (BATCH_SIZE rows per tx — partial failures roll
+ * inside `getBaseClient().$transaction` (BATCH_SIZE rows per tx — partial failures roll
  * back atomically per batch without aborting the rest of the sync).
  *
  * 12 entities synced (per qa-reports/LEGACY-FIELD-MAPPING-REFERENCE-008.md):
@@ -62,7 +62,7 @@ import { verifyCronSecret } from '@/lib/cron-auth'
 
 export const maxDuration = 300
 
-/** Rows per `db.$transaction` batch. Larger = fewer tx roundtrips but bigger
+/** Rows per `getBaseClient().$transaction` batch. Larger = fewer tx roundtrips but bigger
  *  rollback blast radius on failure. 50 is a sane middle ground for PG. */
 const BATCH_SIZE = 50
 
@@ -89,7 +89,7 @@ function clean<T extends Record<string, unknown>>(obj: T): Partial<T> {
 type TxClient = Prisma.TransactionClient
 
 /**
- * Batch upsert helper. Wraps each batch in `db.$transaction` so a partial
+ * Batch upsert helper. Wraps each batch in `getBaseClient().$transaction` so a partial
  * failure rolls back atomically (the failing batch is dropped, earlier
  * committed batches survive — surfaced via the return count).
  *
@@ -113,7 +113,7 @@ async function batchWrite<T>(
     const batch = rows.slice(i, i + BATCH_SIZE)
     try {
       let batchOk = 0
-      await db.$transaction(async (tx) => {
+      await getBaseClient().$transaction(async (tx) => {
         for (const row of batch) {
           await writeFn(row, tx)
           batchOk++

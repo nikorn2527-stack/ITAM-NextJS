@@ -7,7 +7,7 @@
  * All stock-related calculations in the system MUST go through these functions.
  */
 
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 
 /**
  * Get the available (free) stock for a StockItem.
@@ -137,7 +137,7 @@ export async function reserveStockBatchForWorkOrder(params: {
 }): Promise<Array<{ stockItemId: string; quantity: number; availableAfter: number; reserved: boolean }>> {
   const { workOrderId, items, performedBy } = params
 
-  return await db.$transaction(async (tx) => {
+  return await getBaseClient().$transaction(async (tx) => {
     const results: Array<{ stockItemId: string; quantity: number; availableAfter: number; reserved: boolean }> = []
 
     for (const item of items) {

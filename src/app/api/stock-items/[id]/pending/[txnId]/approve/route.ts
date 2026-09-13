@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { notifyPartsApproved } from '@/lib/notifications'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
@@ -42,7 +42,7 @@ export async function POST(
         ? body.note.trim()
         : null
 
-    const result = await db.$transaction(async (tx) => {
+    const result = await getBaseClient().$transaction(async (tx) => {
       const txn = await tx.stockTransaction.findUnique({
         where: { id: txnId },
       })

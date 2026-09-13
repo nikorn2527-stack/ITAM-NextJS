@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { notifyPartsRequested } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
@@ -324,7 +324,7 @@ export async function POST(
 
     // Create all pending transactions in a single transaction.
     // Also update the WO status if needed.
-    const created = await db.$transaction(async (tx) => {
+    const created = await getBaseClient().$transaction(async (tx) => {
       const txns: Array<Awaited<ReturnType<typeof db.stockTransaction.create>>> = []
       for (const v of validated) {
         const txnNumber = await (async () => {

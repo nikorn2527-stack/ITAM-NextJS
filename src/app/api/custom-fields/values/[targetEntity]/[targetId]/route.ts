@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { requireAuth } from '@/lib/auth-middleware'
 
@@ -198,7 +198,7 @@ export async function PUT(req: NextRequest, { params }: Params) {
 
   // ── H-02 fix: ทุกค่าผ่าน validation แล้ว → ใช้ Transaction upsert ทีเดียว ──
   let upserted = 0
-  await db.$transaction(
+  await getBaseClient().$transaction(
     validatedValues.map(vv =>
       db.customFieldValue.upsert({
         where: {

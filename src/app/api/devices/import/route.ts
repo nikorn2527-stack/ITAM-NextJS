@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
@@ -419,7 +419,7 @@ export async function POST(req: NextRequest) {
     let inserted = 0
     let updated = 0
 
-    await db.$transaction(async (tx) => {
+    await getBaseClient().$transaction(async (tx) => {
       if (toInsert.length > 0) {
         const result = await tx.device.createMany({
           data: toInsert as never[],

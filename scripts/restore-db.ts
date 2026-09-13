@@ -26,6 +26,7 @@
 import { db } from '../src/lib/db'
 import { readFileSync } from 'node:fs'
 import { createDecipheriv } from 'node:crypto'
+import { getBaseClient } from '@/lib/db'
 
 interface BackupData {
   meta: {
@@ -139,7 +140,7 @@ async function main() {
   let totalDeleted = 0
 
   try {
-    await db.$transaction(async (tx) => {
+    await getBaseClient().$transaction(async (tx) => {
       for (const table of tableNames) {
         const rows = backup.tables[table]
         const prismaModel = (tx as unknown as Record<string, {

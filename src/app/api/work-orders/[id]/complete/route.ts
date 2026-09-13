@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { notifyWorkOrderCompleted } from '@/lib/notifications'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { getRepairJobReferences } from '@/lib/repair-job-references'
@@ -202,7 +202,7 @@ export async function POST(
     // Create parts transactions (if any were submitted) inside a single tx.
     if (validatedParts.length > 0) {
       const txnDate = new Date().toISOString().slice(0, 10)
-      await db.$transaction(async (tx) => {
+      await getBaseClient().$transaction(async (tx) => {
         for (const v of validatedParts) {
           // Generate SP-YYYYMMDD-NNN (shared counter with /parts route).
           const ymd = txnDate.replace(/-/g, '').slice(0, 8)

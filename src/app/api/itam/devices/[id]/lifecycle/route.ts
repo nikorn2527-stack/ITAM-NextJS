@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { canAccessSite } from '@/lib/auth'
 import { getNextAssetSiteCode, normalizeAssetSiteCodeForCompare } from '@/lib/asset-site-code'
@@ -186,7 +186,7 @@ export async function POST(
     const derivedReadingType = getLifecycleReadingType(device.status, toStatus)
     const reason = asOptionalString(body.reason ?? body.remark)
 
-    const [updatedDevice, historyRow] = await db.$transaction(async (tx) => {
+    const [updatedDevice, historyRow] = await getBaseClient().$transaction(async (tx) => {
       const updatedDevice = await tx.device.update({
         where: { id: device.id },
         data: {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { requireAuth } from '@/lib/auth-middleware'
@@ -193,7 +193,7 @@ export async function POST(req: NextRequest) {
     // ── Build a function that runs the create transaction with a given
     //    poNumber (shared by both user-supplied and auto-generated paths).
     const runTransaction = (poNumber: string) =>
-      db.$transaction(async (tx) => {
+      getBaseClient().$transaction(async (tx) => {
         const po = await tx.purchaseOrder.create({
           data: {
             poNumber,

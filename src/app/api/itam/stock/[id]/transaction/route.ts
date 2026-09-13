@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { canAccessSite } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
@@ -17,7 +17,7 @@ interface Params {
 //   IN     → balance + quantity (reject if quantity ≤ 0)
 //   OUT    → balance - quantity (reject if would go negative)
 //   ADJUST → balance = quantity (sets to absolute value)
-//   Everything is wrapped in db.$transaction for atomicity.
+//   Everything is wrapped in getBaseClient().$transaction for atomicity.
 export async function POST(req: NextRequest, { params }: Params) {
   const unavailable = await moduleUnavailableResponse('stock')
   if (unavailable) return unavailable
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
     const quantity = Math.trunc(qtyRaw)
 
-    const result = await db.$transaction(async (tx) => {
+    const result = await getBaseClient().$transaction(async (tx) => {
       const item = await tx.stockItem.findUnique({ where: { id } })
       if (!item) throw new Error('NOT_FOUND')
       if (!canAccessSite(user, item.site)) throw new Error('FORBIDDEN')

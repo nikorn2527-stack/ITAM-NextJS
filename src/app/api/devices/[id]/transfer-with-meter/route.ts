@@ -17,7 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { canAccessSite } from '@/lib/auth'
 import { getNextAssetSiteCode, normalizeAssetSiteCodeForCompare } from '@/lib/asset-site-code'
@@ -125,7 +125,7 @@ export async function POST(
     const logId = `MV-${nowIso.replace(/[-:.TZ]/g, '').slice(0, 14)}-${Math.floor(Math.random() * 90000) + 10000}`
 
     // ── ATOMIC TRANSACTION ──
-    const result = await db.$transaction(async (tx) => {
+    const result = await getBaseClient().$transaction(async (tx) => {
       let meterReadingId: string | null = null
 
       // 1. Create MeterReading (if meter values provided)

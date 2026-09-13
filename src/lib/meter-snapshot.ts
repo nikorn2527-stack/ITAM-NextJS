@@ -19,7 +19,7 @@
  *   • MeterReportAmendment — audit trail for corrections
  */
 
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import crypto from 'crypto'
 
 const RULE_VERSION = 'v2-initial-baseline'
@@ -194,7 +194,7 @@ export async function createMeterReportSnapshot(
     const snapshotId = generateSnapshotId(cycleMonth, revision)
 
     // Create the snapshot + all frozen rows in a transaction
-    await db.$transaction([
+    await getBaseClient().$transaction([
       db.meterReportSnapshot.create({
         data: {
           snapshotId,

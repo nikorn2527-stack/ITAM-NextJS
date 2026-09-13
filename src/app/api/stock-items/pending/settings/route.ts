@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
 import {
@@ -65,7 +65,7 @@ export async function PUT(req: NextRequest) {
       'stock.autoApproveDelayMinutes': String(delay),
       'stock.autoApproveBatchLimit': String(limit),
     }
-    await db.$transaction(
+    await getBaseClient().$transaction(
       Object.entries(values).map(([key, value]) =>
         db.appSetting.upsert({
           where: { key },

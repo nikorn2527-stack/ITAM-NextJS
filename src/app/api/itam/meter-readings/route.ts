@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { getOrgScope } from '@/lib/org-scope'
 import { siteFilterForUser } from '@/lib/auth'
@@ -402,7 +402,7 @@ export async function POST(req: NextRequest) {
     // readings this matches the existing transfer-with-meter behavior
     // (which sets lastMeter = new reading regardless of prev).
     let saved
-    await db.$transaction(async (tx) => {
+    await getBaseClient().$transaction(async (tx) => {
       if (existing && readingType === 'MONTHLY') {
         // Update existing MONTHLY in-place (Apps Script behavior)
         saved = await tx.meterReading.update({

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { resolveHeaderIndexes } from '@/lib/device-import-contract'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
@@ -318,7 +318,7 @@ async function importDevices(
       // Each batch runs in its own transaction so a single bad row
       // only rolls back its own batch — earlier batches stay put and
       // we surface a clear error to the caller with progress info.
-      const batchCount = await db.$transaction(async (tx) => {
+      const batchCount = await getBaseClient().$transaction(async (tx) => {
         const result = await tx.device.createMany({
           data: batch.map((r) => ({
             assetCode: r.assetCode as string,
@@ -648,7 +648,7 @@ async function importMeterReadings(
   // and `db.device.update` ran in its own implicit transaction, so a failure
   // midway left torn state (some meterReadings committed, some devices'
   // lastMeterBw/lastMeterColor stale). Now we validate every row first, then
-  // wrap all the writes in a single `db.$transaction` so partial failure
+  // wrap all the writes in a single `getBaseClient().$transaction` so partial failure
   // rolls back atomically.
   const readingsToInsert: Array<{
     deviceId: string
@@ -730,7 +730,7 @@ async function importMeterReadings(
   // rolls back — no torn state.
   if (readingsToInsert.length > 0) {
     try {
-      await db.$transaction(async (tx) => {
+      await getBaseClient().$transaction(async (tx) => {
         for (const r of readingsToInsert) {
           await tx.meterReading.create({
             data: {

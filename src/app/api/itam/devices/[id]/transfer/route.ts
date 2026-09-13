@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { getNextAssetSiteCode, normalizeAssetSiteCodeForCompare } from '@/lib/asset-site-code'
@@ -185,7 +185,7 @@ export async function POST(
     // the meter event atomically. The status update happens first, matching the
     // Apps Script lifecycle ordering while guaranteeing all three writes commit
     // or roll back together.
-    const [updatedDevice, historyRow] = await db.$transaction(async (tx) => {
+    const [updatedDevice, historyRow] = await getBaseClient().$transaction(async (tx) => {
       const updatedDevice = await tx.device.update({
         where: { id: device.id },
         data: {

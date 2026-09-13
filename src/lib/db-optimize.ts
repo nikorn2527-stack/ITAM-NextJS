@@ -9,7 +9,7 @@
  *   5. Transaction for writes — reduce round-trips.
  *
  * Usage:
- *   import { warmupConnection, batchCount } from '@/lib/db-optimize'
+ *   import { warmupConnection, batchCount, getBaseClient } from '@/lib/db'-optimize'
  *
  *   // At app init (or first request):
  *   await warmupConnection()
@@ -111,7 +111,7 @@ export async function parallelQueries<T extends readonly (() => Promise<unknown>
 export async function transactionWrite<T>(
   fn: (tx: typeof db) => Promise<T>,
 ): Promise<T> {
-  return db.$transaction(fn)
+  return getBaseClient().$transaction(fn)
 }
 
 /**

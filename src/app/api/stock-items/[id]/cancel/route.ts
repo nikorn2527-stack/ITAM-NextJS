@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
 
@@ -33,7 +33,7 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
-async function nextTxnNumber(tx: Parameters<Parameters<typeof db.$transaction>[0]>[0], txnDate: string): Promise<string> {
+async function nextTxnNumber(tx: Parameters<Parameters<ReturnType<typeof getBaseClient>['$transaction']>[0]>[0], txnDate: string): Promise<string> {
   const ymd = txnDate.replace(/-/g, '').slice(0, 8)
   const prefix = `STX-${ymd}-`
   const existing = await tx.stockTransaction.findMany({
@@ -99,7 +99,7 @@ export async function POST(
         )
       }
 
-      const result = await db.$transaction(async (tx) => {
+      const result = await getBaseClient().$transaction(async (tx) => {
         const item = await tx.stockItem.findUnique({ where: { id: stockItemId } })
         if (!item) throw new Error('NOT_FOUND')
 

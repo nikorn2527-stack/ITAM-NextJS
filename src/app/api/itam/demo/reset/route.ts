@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { isDemoUser } from '@/lib/demo-mode'
 
@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Use a transaction so a failure in the middle rolls everything back.
-    const result = await db.$transaction(async (tx) => {
+    const result = await getBaseClient().$transaction(async (tx) => {
       // 1. StockTransactions (children — references Device + StockItem)
       const stockTxns = await tx.stockTransaction.deleteMany({
         where: { isDemo: true },

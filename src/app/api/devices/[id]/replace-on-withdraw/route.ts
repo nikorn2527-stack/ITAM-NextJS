@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { canAccessSite } from '@/lib/auth'
 import { getNextAssetSiteCode } from '@/lib/asset-site-code'
@@ -193,7 +193,7 @@ export async function POST(
     // ── Atomic transaction: withdraw source + find-or-create replacement + install replacement ──
     // P0-3 fix: increase transaction timeout to 30s (default 5s is too short
     // for Supabase pooler + multiple queries inside the transaction)
-    const result = await db.$transaction(async (tx) => {
+    const result = await getBaseClient().$transaction(async (tx) => {
       // 1) P0-2 FIX: Create the closing MeterReading for the SOURCE device
       //    (if a meter value was provided). The reading is stamped with the
       //    derived readingType (FINAL / SEND_REPAIR / CHECKOUT) so the meter

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { canAccessSite } from '@/lib/auth'
 import { logAudit } from '@/lib/audit'
@@ -167,7 +167,7 @@ export async function POST(
     // ── Atomic transaction ──
     // Increase timeout to 30s (default 5s is too short for the multiple
     // updateMany calls inside the transaction; matches /replace-on-withdraw).
-    const result = await db.$transaction(
+    const result = await getBaseClient().$transaction(
       async (tx) => {
         // ── 1) Update old device: status → "Replaced", replacedById → new, replacedAt → now ──
         // We use "Replaced" (capitalized) for consistency with other Device

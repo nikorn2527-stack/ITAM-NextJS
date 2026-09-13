@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 import { fetchSheet } from '@/lib/google-sheets-service'
 import { mapCsvRow, FIELD_MAPPINGS, STATUS_MAPPINGS, normalizeKey } from '@/lib/csv-field-mapping'
@@ -19,7 +19,7 @@ async function batchWrite<T>(rows: T[], fn: (row: T, tx: Prisma.TransactionClien
   for (let i = 0; i < rows.length; i += 50) {
     const batch = rows.slice(i, i + 50)
     if (dryRun) { updated += batch.length; continue }
-    try { await db.$transaction(async (tx) => { for (const r of batch) await fn(r, tx) }); updated += batch.length }
+    try { await getBaseClient().$transaction(async (tx) => { for (const r of batch) await fn(r, tx) }); updated += batch.length }
     catch (err) { errors += batch.length; error = err instanceof Error ? err.message : String(err) }
   }
   return { updated, errors, error }

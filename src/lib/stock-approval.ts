@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, getBaseClient } from '@/lib/db'
 import { logAudit } from '@/lib/audit'
 
 export type PendingAction = 'approve' | 'reject'
@@ -80,7 +80,7 @@ export async function processPendingBatch(
 
   if (failures.length > 0) throw new PendingBatchError(failures)
 
-  const results = await db.$transaction(async (tx) => {
+  const results = await getBaseClient().$transaction(async (tx) => {
     const txResults: PendingBatchResult[] = []
     const txFailures: PendingBatchFailure[] = []
 
