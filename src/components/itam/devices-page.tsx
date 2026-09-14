@@ -96,6 +96,7 @@ import {
   ChevronsUpDown,
   Check,
   Printer,
+  Zap,
   Layers,
 } from 'lucide-react'
 import {
@@ -111,6 +112,7 @@ import { DeviceDetailSheet } from './device-detail-sheet'
 import { CsvImportDialog } from './csv-import-dialog'
 import { StickerPrintDialog } from './sticker-print-dialog'
 import { QuickAddDeviceDialog } from './quick-add-device-dialog'
+import { printSingleSticker as quickPrintSticker } from './sticker-print-helpers'
 import { PrintTemplateSelectionDialog } from './print-template-selection-dialog'
 import { Combobox } from './combobox'
 import { CustomExportDialog, type ExportColumn, type ExportFormat } from './custom-export-dialog'
@@ -3952,6 +3954,25 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                           >
                             <Printer className="h-3.5 w-3.5" />
                             {t('devices.row.sticker')}
+                          </Button>
+                          {/* SPRINT-3 #4: Quick Print — one-click sticker using active template (no dialog) */}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={async () => {
+                              try {
+                                await quickPrintSticker(d.assetCode)
+                                toast.success(`พิมพ์สติ๊กเกอร์ ${d.assetCode} แล้ว`)
+                              } catch (e) {
+                                toast.error(e instanceof Error ? e.message : 'พิมพ์ไม่สำเร็จ')
+                              }
+                            }}
+                            aria-label="พิมพ์ด่วน (ใช้เทมเพลตเริ่มต้น)"
+                            title="พิมพ์ด่วน — ใช้เทมเพลตเริ่มต้น ไม่ต้องเปิดหน้าต่างแก้ไข"
+                            className="h-7 gap-1 px-2 text-[11px] text-[#f97316] hover:bg-[#f97316]/10 dark:text-[#fb923c]"
+                          >
+                            <Zap className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">ด่วน</span>
                           </Button>
                         </div>
                       </TableCell>

@@ -218,6 +218,46 @@ export function CustomExportDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* SPRINT-3 #5: Export Presets — one-click column selection */}
+        <div className="flex flex-wrap gap-1.5 rounded-md bg-slate-50 p-2 dark:bg-slate-800/50">
+          <span className="self-center text-[11px] font-medium text-slate-500 dark:text-slate-400">Preset:</span>
+          <button
+            type="button"
+            onClick={() => {
+              // IT Report — focus on asset + location + status
+              const itKeys = availableColumns
+                .filter(c => ['assetCode', 'name', 'type', 'brand', 'model', 'site', 'department', 'status', 'location', 'building', 'floor'].includes(c.key))
+                .map(c => c.key)
+              setSelectedKeys(itKeys)
+              localStorage.setItem(storageKey, JSON.stringify(itKeys))
+            }}
+            className="rounded-md border border-[#f97316]/30 bg-white px-2 py-1 text-[11px] font-medium text-[#f97316] transition-colors hover:bg-[#f97316]/10 dark:bg-slate-900 dark:border-[#f97316]/40"
+          >
+            📋 IT Report
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              // Finance Report — focus on cost + depreciation
+              const finKeys = availableColumns
+                .filter(c => ['assetCode', 'name', 'site', 'purchaseDate', 'purchasePrice', 'salvageValue', 'usefulLife', 'warrantyEnd', 'vendor', 'contractNo', 'status'].includes(c.key))
+                .map(c => c.key)
+              setSelectedKeys(finKeys)
+              localStorage.setItem(storageKey, JSON.stringify(finKeys))
+            }}
+            className="rounded-md border border-emerald-300 bg-white px-2 py-1 text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 dark:bg-slate-900 dark:border-emerald-700 dark:text-emerald-300"
+          >
+            💰 Finance
+          </button>
+          <button
+            type="button"
+            onClick={selectAll}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300"
+          >
+            📦 Full Export
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {/* ── LEFT: Available columns ── */}
           <div className="rounded-lg border border-slate-200 dark:border-slate-800">
