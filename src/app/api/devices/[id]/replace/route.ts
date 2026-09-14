@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { canAccessSite } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { logAudit } from '@/lib/audit'
 import { publishRealtimeEvent } from '@/lib/realtime'
 import { demoTag } from '@/lib/demo-mode'
@@ -80,6 +80,8 @@ export async function POST(
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
   const user = auth.row
+  // SPRINT-5-MUTATION-CTX-MIGRATION: use ctx.canAtSite for site-scoped perm checks.
+  const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
   const movedBy = user.username || user.email
 
   try {
@@ -125,13 +127,13 @@ export async function POST(
     }
 
     // ── Site access check ──
-    if (!canAccessSite(user, oldDevice.site)) {
+    if (!ctx.canAtSite(oldDevice.site, 'DEVICE_TRANSFER')) {
       return NextResponse.json(
         { error: 'ไม่มีสิทธิ์จัดการอุปกรณ์เดิมในสาขานี้', code: 'NO_OLD_SITE_ACCESS' },
         { status: 403 },
       )
     }
-    if (!canAccessSite(user, newDevice.site)) {
+    if (!ctx.canAtSite(newDevice.site, 'DEVICE_TRANSFER')) {
       return NextResponse.json(
         { error: 'ไม่มีสิทธิ์จัดการอุปกรณ์ใหม่ในสาขานี้', code: 'NO_NEW_SITE_ACCESS' },
         { status: 403 },

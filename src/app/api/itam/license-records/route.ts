@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { canAccessSite } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 
 // GET /api/itam/license-records?assetNo=
 export async function GET(req: NextRequest) {
@@ -9,6 +9,8 @@ export async function GET(req: NextRequest) {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // SPRINT-5-MUTATION-CTX-MIGRATION: use ctx.canAtSite for site-scoped perm checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { searchParams } = new URL(req.url)
     const assetNo = searchParams.get('assetNo')?.trim() ?? ''
@@ -18,7 +20,7 @@ export async function GET(req: NextRequest) {
     // Site-level filter via device relation when assetNo present
     if (user.role !== 'admin' && user.role !== 'superadmin' && assetNo) {
       const device = await db.device.findUnique({ where: { assetCode: assetNo }, select: { site: true } })
-      if (device && !canAccessSite(user, device.site)) {
+      if (device && !ctx.canAtSite(device.site, 'VIEW_DEVICES')) {
         return NextResponse.json({ error: 'ไม่มีสิทธิ์เข้าถึงลิขสิทธิ์ของอุปกรณ์ในสาขานี้' }, { status: 403 })
       }
     }
@@ -36,6 +38,8 @@ export async function POST(req: NextRequest) {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // SPRINT-5-MUTATION-CTX-MIGRATION: use ctx.canAtSite for site-scoped perm checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const body = await req.json()
     if (!body.software) return NextResponse.json({ error: 'software required' }, { status: 400 })
@@ -43,7 +47,7 @@ export async function POST(req: NextRequest) {
     // If asset-bound, verify site access
     if (body.assetNo) {
       const device = await db.device.findUnique({ where: { assetCode: body.assetNo }, select: { site: true } })
-      if (device && !canAccessSite(user, device.site)) {
+      if (device && !ctx.canAtSite(device.site, 'DEVICE_EDIT')) {
         return NextResponse.json({ error: 'ไม่มีสิทธิ์ผูกลิขสิทธิ์กับอุปกรณ์ในสาขานี้' }, { status: 403 })
       }
     }

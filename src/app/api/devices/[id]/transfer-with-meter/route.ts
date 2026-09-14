@@ -19,7 +19,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { canAccessSite } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { getNextAssetSiteCode, normalizeAssetSiteCodeForCompare } from '@/lib/asset-site-code'
 import { getLifecycleReadingType } from '@/lib/lifecycle-reading-type'
 import { notifyTransfer } from '@/lib/notifications'
@@ -39,6 +39,8 @@ export async function POST(
     const auth = await requireAuth(req, 'DEVICE_TRANSFER')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // SPRINT-5-MUTATION-CTX-MIGRATION: use ctx.canAtSite for site-scoped perm checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { id } = await params
     const body = await req.json()
@@ -50,14 +52,14 @@ export async function POST(
       return NextResponse.json({ error: 'Device not found' }, { status: 404 })
     }
 
-    if (!canAccessSite(user, device.site)) {
+    if (!ctx.canAtSite(device.site, 'DEVICE_TRANSFER')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์ย้ายอุปกรณ์ในสาขานี้' }, { status: 403 })
     }
     const toSite = String(body.toSite ?? '').trim()
     if (!toSite) {
       return NextResponse.json({ error: 'กรุณาระบุสาขาปลายทาง' }, { status: 400 })
     }
-    if (!canAccessSite(user, toSite)) {
+    if (!ctx.canAtSite(toSite, 'DEVICE_TRANSFER')) {
       return NextResponse.json({ error: `ไม่มีสิทธิ์ย้ายอุปกรณ์ไปสาขา: ${toSite}` }, { status: 403 })
     }
 

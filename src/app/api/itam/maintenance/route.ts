@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { siteFilterForUser, canAccessSite } from '@/lib/auth'
+import { siteFilterForUser } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 
 // GET /api/itam/maintenance?assetNo=&status=
 export async function GET(req: NextRequest) {
@@ -45,6 +46,8 @@ export async function POST(req: NextRequest) {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // SPRINT-5-MUTATION-CTX-MIGRATION: use ctx.canAtSite for site-scoped perm checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const body = await req.json()
     if (!body.assetNo || !body.type || !body.startDate) {
@@ -52,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
     const device = await db.device.findUnique({ where: { assetCode: body.assetNo } })
     if (!device) return NextResponse.json({ error: 'Device not found' }, { status: 404 })
-    if (!canAccessSite(user, device.site)) {
+    if (!ctx.canAtSite(device.site, 'DEVICE_EDIT')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์สร้างประวัติซ่อมบำรุงสำหรับอุปกรณ์ในสาขานี้' }, { status: 403 })
     }
 

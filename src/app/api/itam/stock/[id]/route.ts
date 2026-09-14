@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { canAccessSite } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { logAudit } from '@/lib/audit'
 import { toCompatStockItem, toCompatStockTransaction } from '@/lib/stock-compat'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
@@ -26,11 +26,13 @@ export async function GET(req: NextRequest, { params }: Params) {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // SPRINT-5-MUTATION-CTX-MIGRATION: use ctx.canAtSite for site-scoped perm checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { id } = await params
     const item = await db.stockItem.findUnique({ where: { id } })
     if (!item) return NextResponse.json({ error: 'ไม่พบสินค้า' }, { status: 404 })
-    if (!canAccessSite(user, item.site)) {
+    if (!ctx.canAtSite(item.site, 'STOCK_VIEW')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์เข้าถึงสินค้าในสาขานี้' }, { status: 403 })
     }
 
@@ -61,11 +63,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // SPRINT-5-MUTATION-CTX-MIGRATION: use ctx.canAtSite for site-scoped perm checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { id } = await params
     const existing = await db.stockItem.findUnique({ where: { id } })
     if (!existing) return NextResponse.json({ error: 'ไม่พบสินค้า' }, { status: 404 })
-    if (!canAccessSite(user, existing.site)) {
+    // Generic item update (metadata + optional quantity change): allow either
+    // STOCK_IN or STOCK_OUT at this site.
+    if (!ctx.canAtSite(existing.site, 'STOCK_IN') && !ctx.canAtSite(existing.site, 'STOCK_OUT')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์แก้ไขสินค้าในสาขานี้' }, { status: 403 })
     }
 
@@ -151,11 +157,13 @@ export async function DELETE(req: NextRequest, { params }: Params) {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // SPRINT-5-MUTATION-CTX-MIGRATION: use ctx.canAtSite for site-scoped perm checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { id } = await params
     const existing = await db.stockItem.findUnique({ where: { id } })
     if (!existing) return NextResponse.json({ error: 'ไม่พบสินค้า' }, { status: 404 })
-    if (!canAccessSite(user, existing.site)) {
+    if (!ctx.canAtSite(existing.site, 'STOCK_APPROVE')) {
       return NextResponse.json({ error: 'ไม่มีสิทธิ์ลบสินค้าในสาขานี้' }, { status: 403 })
     }
 

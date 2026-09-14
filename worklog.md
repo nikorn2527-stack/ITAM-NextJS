@@ -22952,3 +22952,38 @@ Stage Summary:
 - ✅ 7/8 Sprint 4 items done + pushed
 - ✅ Total across all sprints: 34/36 dev-doable items (94%)
 - 📋 Remaining: FIX-037 (skip), FIX-047/048 (need external tools/device)
+
+---
+Task ID: SPRINT-5-MUTATION-CTX-MIGRATION
+Agent: subagent (dev team)
+Task: Migrate 11 mutation routes from canAccessSite to ctx.canAtSite
+
+Work Log:
+- src/app/api/devices/[id]/replace/route.ts — POST: DEVICE_TRANSFER (2 checks: oldDevice + newDevice site)
+- src/app/api/devices/[id]/transfer-with-meter/route.ts — POST: DEVICE_TRANSFER (2 checks: device.site + toSite)
+- src/app/api/devices/[id]/replace-on-withdraw/route.ts — POST: DEVICE_TRANSFER (source.site)
+- src/app/api/itam/license-records/route.ts — GET: VIEW_DEVICES (asset-bound site check); POST: DEVICE_EDIT (asset-bound site check)
+- src/app/api/itam/assignments/route.ts — POST: WO_ASSIGN (device.site). GET untouched (uses siteFilterForUser — kept as Prisma where clause)
+- src/app/api/itam/assignments/[id]/route.ts — PUT + DELETE: WO_ASSIGN (existing.device?.site)
+- src/app/api/itam/devices/[id]/lifecycle/route.ts — POST: DEVICE_TRANSFER (2 checks: device.site + toSite)
+- src/app/api/itam/maintenance/route.ts — POST: DEVICE_EDIT (device.site). GET untouched (uses siteFilterForUser)
+- src/app/api/itam/maintenance/[id]/route.ts — PUT + DELETE: DEVICE_EDIT (existing.device?.site)
+- src/app/api/itam/stock/[id]/route.ts — GET: STOCK_VIEW; PUT: STOCK_IN OR STOCK_OUT (generic item update, allow either); DELETE: STOCK_APPROVE
+- src/app/api/itam/stock/[id]/transaction/route.ts — POST: txnPerm = (type==='IN' ? STOCK_IN : type==='OUT' ? STOCK_OUT : STOCK_ADJUST). ctx built BEFORE $transaction; check inside tx (preserves throw 'FORBIDDEN' pattern)
+
+Migration notes:
+- All handlers built ctx via buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites) right after requireAuth.
+- All canAccessSite imports removed where it was the only import from @/lib/auth (files 1, 2, 3, 4, 6, 7, 9, 10, 11).
+- canAccessSite import removed from files 5 and 8 but siteFilterForUser import kept (still used for GET Prisma where clauses).
+- Did NOT touch siteFilterForUser in GET handlers — still needed for Prisma where clause.
+- Preserved each file's existing error-handling pattern (return NextResponse vs throw).
+- License-records GET: original requireAuth was VIEW_DEVICES — kept as VIEW_DEVICES for the ctx.canAtSite check (instruction only mapped DEVICE_EDIT for POST/PUT).
+- Stock/[id] PUT: instruction said "STOCK_IN or STOCK_OUT" — used OR check so a user with either permission can update item metadata.
+- Stock/[id]/transaction: ADJUST type uses STOCK_ADJUST (also in allowed permission list).
+
+Verification:
+- grep -E "canAccessSite" across all 11 migrated files: no matches.
+- npx tsc --noEmit: no errors in any of the 11 migrated files (pre-existing scripts/ errors are unrelated).
+
+Stage Summary:
+- ✅ 11 files migrated

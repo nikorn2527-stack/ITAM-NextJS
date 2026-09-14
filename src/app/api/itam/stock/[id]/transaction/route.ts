@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db, getBaseClient } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
-import { canAccessSite } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 import { logAudit } from '@/lib/audit'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
 
@@ -27,6 +27,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     const auth = await requireAuth(req, 'DEVICE_EDIT')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+    // SPRINT-5-MUTATION-CTX-MIGRATION: use ctx.canAtSite for site-scoped perm checks.
+    const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
 
     const { id } = await params
     const body = await req.json().catch(() => ({})) as Record<string, unknown>
@@ -40,10 +42,14 @@ export async function POST(req: NextRequest, { params }: Params) {
     }
     const quantity = Math.trunc(qtyRaw)
 
+    // SPRINT-5-MUTATION-CTX-MIGRATION: pick the site-scoped permission that
+    // matches this transaction type so a viewer (no STOCK_IN/OUT) is denied.
+    const txnPerm = type === 'IN' ? 'STOCK_IN' : type === 'OUT' ? 'STOCK_OUT' : 'STOCK_ADJUST'
+
     const result = await getBaseClient().$transaction(async (tx) => {
       const item = await tx.stockItem.findUnique({ where: { id } })
       if (!item) throw new Error('NOT_FOUND')
-      if (!canAccessSite(user, item.site)) throw new Error('FORBIDDEN')
+      if (!ctx.canAtSite(item.site, txnPerm)) throw new Error('FORBIDDEN')
 
       let newBalance: number
       if (type === 'IN') {
