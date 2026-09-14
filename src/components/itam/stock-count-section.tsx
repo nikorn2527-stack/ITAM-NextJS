@@ -41,6 +41,7 @@ import {
   Plus, Loader2, ClipboardList, CheckCircle2, XCircle, AlertTriangle, ScanLine, X,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth-store'
+import { useLang } from '@/store/i18n-store'
 
 export type StockCountScope = 'STOCK_ITEM' | 'DEVICE'
 

@@ -20,10 +20,10 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, extname } from 'node:path'
 
-const GREEN = '\033[0;32m'
-const YELLOW = '\033[1;33m'
-const RED = '\033[0;31m'
-const NC = '\033[0m'
+const GREEN = '\x1b[32m'
+const YELLOW = '\x1b[33m'
+const RED = '\x1b[31m'
+const NC = '\x1b[0m'
 
 let warnings = 0
 let errors = 0

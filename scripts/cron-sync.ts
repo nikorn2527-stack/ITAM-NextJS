@@ -11,8 +11,9 @@
  * Usage:
  *   bun run scripts/cron-sync.ts
  *
- * Cron (Linux):
- *   */15 * * * * cd /path/to/itam && bun run scripts/cron-sync.ts >> logs/cron.log 2>&1
+ * Cron (Linux) — run every 15 minutes:
+ *   minute 0,15,30,45 of every hour, run:
+ *   cd /path/to/itam && bun run scripts/cron-sync.ts >> logs/cron.log 2>&1
  *
  * Windows Task Scheduler:
  *   Program: bun
