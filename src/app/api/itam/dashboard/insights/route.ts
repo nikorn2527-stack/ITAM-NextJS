@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, getAllowedSites } from '@/lib/auth'
 import { getServerLang, serverFormatNumber, type Lang } from '@/lib/server-i18n'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 
 /**
  * GET /api/itam/dashboard/insights
@@ -26,6 +27,14 @@ export async function GET(req: NextRequest) {
     const auth = await requireAuth(req, 'VIEW_DASHBOARD')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+
+    // SPRINT-2 #5 (AUDIT-API-001 #077): build AuthorizationContext for
+    // permission-aware site scoping (same as dashboard route).
+    const ctx = await buildAuthorizationContext(
+      auth.user,
+      auth.row.id,
+      auth.row.allowedSites,
+    )
 
     const lang: Lang = getServerLang(req)
     const fmt = (n: number) => serverFormatNumber(n, lang)

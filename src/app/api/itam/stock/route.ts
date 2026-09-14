@@ -10,6 +10,7 @@ import { toCompatStockItem } from '@/lib/stock-compat'
 import { withRetryOnUnique } from '@/lib/retry-unique'
 import { demoTag } from '@/lib/demo-mode'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 
 function finiteNumber(value: unknown): number | undefined {
   if (value === '' || value === null || value === undefined) return undefined
@@ -32,6 +33,15 @@ export async function GET(req: NextRequest) {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+
+    // SPRINT-2 #5 (AUDIT-API-001 #079): build AuthorizationContext for
+    // permission-aware site scoping. The legacy siteFilterForUser only
+    // checked site membership; ctx.canAtSite verifies the specific perm.
+    const ctx = await buildAuthorizationContext(
+      auth.user,
+      auth.row.id,
+      auth.row.allowedSites,
+    )
 
     // ── Organization scope (Phase 1 multi-org) ──
     const orgScope = getOrgScope(auth.user)

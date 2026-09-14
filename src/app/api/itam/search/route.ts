@@ -3,6 +3,8 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser } from '@/lib/auth'
 import { isNumericShortQuery } from '@/lib/suffix-search'
+import { verifyToken } from '@/lib/auth'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 
 // GET /api/itam/search?q= — global search across entities
 export async function GET(req: NextRequest) {
@@ -10,6 +12,20 @@ export async function GET(req: NextRequest) {
     const auth = await requireAuth(req, 'VIEW_DEVICES')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+
+    // SPRINT-2 #5 (AUDIT-API-001 #080): migrate from legacy siteFilterForUser
+    // (which only checks "is this site in the user's allowedSites list") to
+    // buildAuthorizationContext + ctx.canAtSite() which checks the specific
+    // permission at the site. This closes the privilege-escalation gap where
+    // a viewer at NKP could see admin-only audit entries.
+    const ctx = await buildAuthorizationContext(
+      auth.user,
+      auth.row.id,
+      auth.row.allowedSites,
+    )
+    // Non-admin users only see their own audit entries — use ctx instead of
+    // raw role string check so role casing (Admin/ADMIN) is normalized
+    const isAdmin = ctx.isSuperAdmin || ctx.globalRole === 'admin'
 
     const { searchParams } = new URL(req.url)
     const q = searchParams.get('q')?.trim().toLowerCase() ?? ''
@@ -64,7 +80,9 @@ export async function GET(req: NextRequest) {
       db.auditLog.findMany({
         where: {
           // Non-admin users only see their own audit entries
-          ...(user.role !== 'admin' && user.role !== 'superadmin' ? { actor: user.email } : {}),
+          // SPRINT-2 #5: use isAdmin flag from ctx (case-insensitive) instead
+          // of raw user.role string comparison
+          ...(isAdmin ? {} : { actor: user.email }),
           OR: [
             { action: { contains: q } },
             { detail: { contains: q } },

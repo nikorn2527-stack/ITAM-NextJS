@@ -32,6 +32,7 @@ import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
 import { parseAllowedSites, normalizeSiteCode } from '@/lib/site-scope'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 
 // Cache master data for 5 minutes — it changes infrequently.
 // This reduces DB load significantly since the device form, sidebar,
@@ -47,6 +48,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
   try {
+    // SPRINT-2 #5 (AUDIT-API-001 #081): build AuthorizationContext so
+    // site-scoped queries (buildings, floors, departments) verify the
+    // user has VIEW_DEVICES at that specific site, not just membership.
+    const ctx = await buildAuthorizationContext(
+      auth.user,
+      auth.row.id,
+      auth.row.allowedSites,
+    )
+
     const { searchParams } = new URL(req.url)
     const type = (searchParams.get('type') ?? '').trim()
     const category = (searchParams.get('category') ?? '').trim()

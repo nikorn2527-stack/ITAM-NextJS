@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { siteFilterForUser, getAllowedSites } from '@/lib/auth'
 import { ACTIVE_STATUS_VARIANTS, bucketizeStatusGroups } from '@/lib/status-utils'
 import { demoFilter } from '@/lib/demo-mode'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
 
 // GET /api/itam/dashboard — optimized dashboard stats from real data
 //
@@ -24,6 +25,17 @@ export async function GET(req: NextRequest) {
     const auth = await requireAuth(req, 'VIEW_DASHBOARD')
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status })
     const user = auth.row
+
+    // SPRINT-2 #5 (AUDIT-API-001 #077): build AuthorizationContext so we can
+    // use ctx.canAtSite() for permission checks. The legacy siteFilterForUser
+    // only checked site membership — it didn't verify the user had a specific
+    // permission at that site. ctx.canAtSite(siteCode, 'VIEW_DASHBOARD')
+    // closes that gap.
+    const ctx = await buildAuthorizationContext(
+      auth.user,
+      auth.row.id,
+      auth.row.allowedSites,
+    )
 
     const { searchParams } = new URL(req.url)
     const includeExtra = searchParams.get('extra') === '1'
