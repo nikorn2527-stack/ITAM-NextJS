@@ -87,6 +87,7 @@ import {
 import { formatThaiDate, relativeTime, type Site, canSelectSite } from './types'
 import { TemplatePrintDialog } from './template-print-dialog'
 import { Combobox } from './combobox'
+import { InlineGuidance } from './stepper'
 import { useAppStore } from '@/store/app-store'
 import { useT, useFormatDateTime, useLang } from '@/store/i18n-store'
 import { useAuthStore } from '@/store/auth-store'
@@ -747,6 +748,29 @@ export function WorkOrdersPage() {
     }
   }
 
+  // Inline guidance: check whether any approver-capable user exists.
+  // Uses the same /api/settings/completion endpoint that the Settings
+  // page consumes, then isolates the 'approvers' item.
+  const completionQuery = useQuery<{
+    items: Array<{ key: string; status: string; canEdit: boolean; reason?: string }>
+  }>({
+    queryKey: ['settings-completion'],
+    queryFn: async () => {
+      const res = await fetch('/api/settings/completion')
+      if (!res.ok) return { items: [] }
+      return res.json()
+    },
+    staleTime: 60_000,
+  })
+  const approversItem = completionQuery.data?.items?.find(i => i.key === 'approvers')
+  const showNoApproverGuidance =
+    !!approversItem &&
+    approversItem.status !== 'complete' &&
+    approversItem.status !== 'not_required' &&
+    approversItem.canEdit !== false
+  const [approverGuidanceDismissed, setApproverGuidanceDismissed] =
+    React.useState(false)
+
   return (
     <div className="flex h-full w-full flex-col p-3 md:p-4">
       {/* Header */}
@@ -779,6 +803,31 @@ export function WorkOrdersPage() {
           </Button>
         </div>
       </div>
+
+      {/* Inline Guidance (§5.3): warn at the point of work if no
+          approver has been configured. Lets the user jump to
+          Settings → Users to fix it without leaving Work Orders. */}
+      {showNoApproverGuidance && !approverGuidanceDismissed && (
+        <div className="mt-3">
+          <InlineGuidance
+            message={
+              approversItem?.reason
+                ? `${approversItem.reason} — งานจะสร้างได้ แต่ส่งอนุมัติไม่ได้ จะค้างในสถานะ PENDING_REVIEW`
+                : 'ยังไม่มีผู้อนุมัติสำหรับ workflow นี้ — งานจะสร้างได้ แต่ส่งอนุมัติไม่ได้'
+            }
+            actionLabel="ไปกำหนดผู้อนุมัติ"
+            onAction={() => {
+              // Navigate to Settings → Users tab via the global app
+              // store so the SPA shell switches routes.
+              window.location.hash = '#settings'
+              const url = new URL('/settings?tab=users', window.location.origin)
+              window.location.assign(url.pathname + url.search)
+            }}
+            dismissLabel="ทำภายหลัง"
+            onDismiss={() => setApproverGuidanceDismissed(true)}
+          />
+        </div>
+      )}
 
       {/* KPI stats bar */}
       <div className="grid flex-shrink-0 grid-cols-2 gap-3 lg:grid-cols-5">

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { getServerLang } from '@/lib/server-i18n'
 
 // --- Types ---
 type Severity = 'expired' | 'expiring' | 'warning' | 'info'
@@ -74,6 +75,9 @@ export async function GET(req: Request) {
   const unavailable = await moduleUnavailableResponse('notifications')
   if (unavailable) return unavailable
 
+  // Resolve the user's language server-side (cookie/Accept-Language/?lang=).
+  // I18N-04: prevents (force reload) "lang is not defined" ReferenceError when formatting dates.
+  const lang = getServerLang(req)
 
   // ── P0 Security: require ADMIN permission ──
   // Notifications surface warranty/meter/cycle/audit info that should not be

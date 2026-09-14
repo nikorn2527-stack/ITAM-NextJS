@@ -24,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList, Activity, BarChart3, User, Camera, Save, Sheet, Rocket, Tag } from 'lucide-react'
+import { Database, Building2, Plus, RefreshCw, Pencil, Trash2, Bell, Send, Palette, BookUser, ListChecks, MessageSquare, Users, Shield, KeyRound, AlertTriangle, Hash, FlaskConical, FileText, Smartphone, Fingerprint, Loader2, Package, ClipboardList, Activity, BarChart3, User, Camera, Save, Sheet, Rocket, Tag, CheckCircle2 } from 'lucide-react'
 import { type MasterItem, MASTER_CATEGORIES } from './types'
 import { SiteAttributesSection } from './site-attributes-section'
 import { ContactDirectorySection } from './contact-directory-section'
@@ -1786,82 +1786,206 @@ function MyBiometricsSection() {
   )
 }
 
-// Fetches completion items from /api/settings/completion and renders
-
 // ── CompletionGuidance ──────────────────────────────────────
-// Shows a small banner with actionable items only when there are
-// incomplete/missing settings. Does NOT duplicate the nav menu —
-// it shows status, reason, impact, and a button to navigate.
-// When everything is complete, shows a simple ✓ message.
-// When dismissed, stays hidden until next page load.
+// Per UX/UI Standards §4 + user clarification:
+// Shows ONLY actionable items (incomplete / not_started / error)
+// that the user can edit. Does NOT duplicate the nav menu —
+// it shows status, reason, impact, and a deep-link button.
+//
+// Layout:
+//   - When no actionable items: small green ✓ banner.
+//   - When actionable items exist: amber banner with:
+//       • Header: progress % + count + dismiss button
+//       • Each item: status icon + label + reason + impact + button
+//   - When dismissed: shows a tiny "ดูคำแนะนำ" link to restore.
+//
+// Items where canEdit=false (permission_limited) are NOT shown as
+// pending work — they are filtered out so the user isn't nagged
+// about things they cannot fix.
+
+interface CompletionApiResponse {
+  items: Array<{
+    key: string
+    label: string
+    description?: string
+    status: string
+    reason?: string
+    impact?: string
+    href?: string
+    section?: string
+    canEdit: boolean
+    requiredFor?: string[]
+  }>
+  percentage?: number
+  total?: number
+  completed?: number
+}
+
 function CompletionGuidance() {
   const [dismissed, setDismissed] = React.useState(false)
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<CompletionApiResponse>({
     queryKey: ['settings-completion'],
     queryFn: async () => {
       const res = await fetch('/api/settings/completion')
       if (!res.ok) return null
-      return res.json() as Promise<{ items: Array<{ key: string; label: string; status: string; reason?: string; href?: string; canEdit: boolean; requiredFor?: string[] }> }>
+      return res.json() as Promise<CompletionApiResponse>
     },
     staleTime: 60_000,
   })
 
-  if (dismissed || isLoading || !data?.items) return null
-
-  // Filter: only show items that need action (not complete, not not_required)
-  const actionable = data.items.filter(i =>
-    i.status === 'incomplete' || i.status === 'not_started' || i.status === 'error'
-  )
-
-  if (actionable.length === 0) {
+  // Restore button shown when previously dismissed
+  if (dismissed) {
     return (
-      <div className="mb-3 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-400">
-        <span>✓</span>
-        <span>การตั้งค่าที่จำเป็นครบแล้ว</span>
+      <div className="mb-3 flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 dark:border-slate-800 dark:bg-slate-800/50">
+        <span className="text-[11px] text-slate-500 dark:text-slate-400">
+          {data?.percentage != null && (
+            <>ความพร้อมใช้งานระบบ {data.percentage}%</>
+          )}
+        </span>
+        <button
+          type="button"
+          onClick={() => setDismissed(false)}
+          className="text-[11px] font-medium text-[#f97316] transition-colors hover:text-[#ea580c] dark:text-[#fb923c]"
+        >
+          ดูคำแนะนำการตั้งค่า
+        </button>
       </div>
     )
   }
 
+  if (isLoading || !data?.items) return null
+
+  // Filter: only show actionable items that the user can edit.
+  // NOT shown: 'complete', 'not_required', 'permission_limited' (canEdit=false)
+  const actionable = data.items.filter(
+    i =>
+      i.canEdit &&
+      (i.status === 'incomplete' ||
+        i.status === 'not_started' ||
+        i.status === 'error'),
+  )
+
+  // All-clear state
+  if (actionable.length === 0) {
+    return (
+      <div className="mb-3 flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-950/30 dark:text-emerald-400">
+        <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+        <span className="font-medium">การตั้งค่าที่จำเป็นครบแล้ว</span>
+        {data.percentage != null && (
+          <span className="ml-auto text-emerald-500 dark:text-emerald-600">
+            พร้อม {data.percentage}%
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  // Actionable state
+  const percentage = data.percentage ?? 0
   return (
     <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-950/30">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
-          ⚠ ยังมี {actionable.length} รายการที่ควรตั้งค่า
-        </span>
+      {/* Header row: progress + count + dismiss */}
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex flex-1 items-center gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 text-amber-500 dark:text-amber-400" />
+          <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+            ยังมี {actionable.length} รายการที่ควรตั้งค่า
+          </span>
+          <div className="ml-2 hidden flex-1 max-w-[160px] sm:block">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-amber-200 dark:bg-amber-900/50">
+              <div
+                className="h-full rounded-full bg-amber-500 transition-all duration-500"
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+          </div>
+          <span className="text-[11px] text-amber-600 dark:text-amber-500">
+            พร้อม {percentage}%
+          </span>
+        </div>
         <button
           type="button"
           onClick={() => setDismissed(true)}
-          className="text-[11px] text-amber-500 transition-colors hover:text-amber-700 dark:text-amber-600 dark:hover:text-amber-400"
+          className="flex-shrink-0 text-[11px] text-amber-500 transition-colors hover:text-amber-700 dark:text-amber-600 dark:hover:text-amber-400"
         >
-          ซ่อนคำแนะนำ
+          ซ่อน
         </button>
       </div>
-      <div className="space-y-1">
-        {actionable.map((item) => (
-          <div key={item.key} className="flex items-center gap-2 text-xs">
-            <span className="text-amber-600 dark:text-amber-500">•</span>
-            <span className="flex-1 text-amber-700 dark:text-amber-400">
-              {item.label}
-              {item.reason && <span className="text-amber-500 dark:text-amber-600"> — {item.reason}</span>}
-            </span>
-            {item.href && item.canEdit && (
-              <button
-                type="button"
-                onClick={() => {
-                  const url = new URL(item.href!, window.location.origin)
-                  const tabName = url.searchParams.get('tab')
-                  if (tabName) {
-                    const btn = document.querySelector(`[data-tab="${tabName}"]`) as HTMLButtonElement
-                    if (btn) btn.click()
-                  }
-                }}
-                className="flex-shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:hover:bg-amber-800/50"
-              >
-                ไปตั้งค่า →
-              </button>
-            )}
-          </div>
-        ))}
+
+      {/* Actionable items */}
+      <div className="space-y-2">
+        {actionable.map((item) => {
+          const isErr = item.status === 'error'
+          const iconColor = isErr
+            ? 'text-red-500 dark:text-red-400'
+            : 'text-amber-500 dark:text-amber-400'
+          const icon = isErr ? '✗' : '⚠'
+          return (
+            <div
+              key={item.key}
+              className="flex flex-col gap-1 rounded-md border border-amber-100 bg-white/60 px-2.5 py-1.5 dark:border-amber-900/40 dark:bg-slate-900/40 sm:flex-row sm:items-center sm:gap-2"
+            >
+              <span className={`flex-shrink-0 text-sm font-bold ${iconColor}`} aria-hidden>
+                {icon}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-x-1.5">
+                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    {item.label}
+                  </span>
+                  {item.reason && (
+                    <span className="text-[11px] text-amber-700 dark:text-amber-400">
+                      — {item.reason}
+                    </span>
+                  )}
+                </div>
+                {item.impact && (
+                  <p className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                    <span className="font-medium text-slate-600 dark:text-slate-300">
+                      ผลกระทบ:{' '}
+                    </span>
+                    {item.impact}
+                  </p>
+                )}
+              </div>
+              {item.href && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Deep-link via URL → tab query + section hash.
+                    // itam-settings reads ?tab= to switch tabs; the hash
+                    // is consumed by the target section to scroll into view.
+                    try {
+                      const url = new URL(item.href!, window.location.origin)
+                      const tabName = url.searchParams.get('tab')
+                      if (tabName) {
+                        const btn = document.querySelector(
+                          `[data-tab="${tabName}"]`,
+                        ) as HTMLButtonElement | null
+                        if (btn) btn.click()
+                      }
+                      // Update hash so the target section can scroll
+                      if (item.section) {
+                        window.history.replaceState(null, '', item.href!)
+                        // Scroll after the tab swap renders
+                        setTimeout(() => {
+                          const el = document.querySelector(item.section!)
+                          el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        }, 250)
+                      }
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className="flex flex-shrink-0 items-center gap-1 rounded-md bg-amber-100 px-2.5 py-1 text-[11px] font-medium text-amber-700 transition-colors hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:hover:bg-amber-800/50"
+                >
+                  ไปตั้งค่า
+                  <span aria-hidden>→</span>
+                </button>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

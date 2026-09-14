@@ -22617,3 +22617,103 @@ Stage Summary:
 - ✅ ข้อ 4-7 ทำครบ
 - ✅ Push ขึ้น GitHub (commit 5111be3)
 - 📋 44 warnings เป็น enhancement ไม่ blocking (empty state components ในหน้าต่างๆ)
+
+---
+Task ID: SETTINGS-COMPLETION-GUIDANCE
+Agent: orchestrator (acting as dev team)
+Task: Redesign Settings "Overview" → Completion Guidance per user clarification
+
+User clarification:
+- ไม่ต้องการ Overview tab ที่คัดลอกเมนู Settings มาแสดงซ้ำ
+- ต้องการ "Completion Guidance" = สถานะ + เหตุผล + ผลกระทบ + ปุ่ม deep-link
+- แสดงเฉพาะรายการที่ต้องดำเนินการ (filter not_required, permission_limited)
+- เพิ่ม inline guidance ในหน้าที่เกี่ยวข้อง (เช่น Work Orders ไม่มี approver)
+
+Work Log:
+
+1. API enhancement: /api/settings/completion (route.ts)
+   - เพิ่ม field `impact` (Thai text อธิบายผลกระทบต่อโมดูล)
+   - เพิ่ม field `section` (hash สำหรับ deep-link เช่น #approvers)
+   - เพิ่ม field `description` (คำอธิบายแบบยาว)
+   - เพิ่ม item ใหม่: `approvers` (ตรวจสอบ user role admin/superadmin)
+   - คำนวณ `percentage`, `total`, `completed` ส่งกลับด้วย
+   - กรอง not_required และ permission_limited ออกจาก percentage
+   - รวม 9 items: organization, sites, users, master-data, notifications,
+     oauth, sync-nodes, number-patterns, approvers
+
+2. CompletionGuidance component redesign (itam-settings.tsx)
+   - แสดง progress bar + percentage ("พร้อม 75%")
+   - แต่ละ actionable item: status icon (⚠/✗) + label + reason + impact + ปุ่ม "ไปตั้งค่า →"
+   - ปุ่มใช้ deep-link: query ?tab=X + hash #section (scroll into view)
+   - Dismiss button → แสดง "ดูคำแนะนำการตั้งค่า" แทน (restore ได้)
+   - All-clear state: "✓ การตั้งค่าที่จำเป็นครบแล้ว พร้อม 100%"
+   - กรอง permission_limited (canEdit=false) ออกจาก actionable list
+   - ไม่ซ้ำกับ nav menu (sidebar ยังเป็นแหล่งเข้าเมนูหลัก)
+
+3. InlineGuidance on Work Orders page (work-orders-page.tsx)
+   - ใช้ InlineGuidance component ที่มีอยู่แล้วจาก stepper.tsx
+   - ตรวจสอบ "approvers" item จาก /api/settings/completion
+   - ถ้าไม่มี approver แสดง warning ในบริบท Work Orders:
+     "ยังไม่มีผู้อนุมัติ — งานจะสร้างได้ แต่ส่งอนุมัติไม่ได้ จะค้างในสถานะ PENDING_REVIEW"
+   - ปุ่ม "ไปกำหนดผู้อนุมัติ" → navigate to /settings?tab=users
+   - ปุ่ม "ทำภายหลัง" → dismiss
+
+4. Bug fix: /api/notifications route.ts
+   - ReferenceError: lang is not defined (line 250)
+   - เพิ่ม `const lang = getServerLang(req)` ที่ต้น GET handler
+   - ใช้ getServerLang จาก src/lib/server-i18n.ts (resolve จาก cookie/query/Accept-Language)
+   - ผล: endpoint คืน 200 พร้อมข้อมูล notifications ครบถ้วน
+
+5. Runtime tests (tests/runtime/completion-guidance.test.ts)
+   - 17 tests ครอบคลุม acceptance criteria ทั้งหมด:
+     a. Auth required (401 without token)
+     b. Authenticated admin gets 200
+     c. Required fields present (key, label, status, canEdit)
+     d. Actionable items have href for deep-linking
+     e. Actionable items have non-empty reason
+     f. Actionable items have impact text
+     g. Percentage excludes not_required + permission_limited
+     h. Permission-limited items excluded from actionable
+     i. 0 actionable when all complete (logic check)
+     j. Actionable list correctly identifies items needing work
+     k. Multiple actionable items have unique keys
+     l. All items have unique keys (no menu duplicates)
+     m. All hrefs follow /settings?tab=X pattern
+     n. "approvers" item present (Work Orders dependency)
+     o. Approver status reflects actual user count
+     p. total/completed fields consistent with percentage
+     q. Every item has non-empty category
+   - ผล: 17/17 ผ่าน
+
+6. Cleanup
+   - ลบ CompletionChecklistSection ที่ไม่ได้ใช้ออกจาก itam-settings.tsx
+   - ลบ 'overview' state/type ที่เหลืออยู่
+   - ไม่สร้าง quick cards ที่คัดลอก SETTINGS_TAB_GROUPS
+   - Settings navigation ยังเป็น 3 กลุ่ม (Data/System/Notify) เหมือนเดิม
+
+Verification:
+- API /api/settings/completion: 200, 9 items, percentage=75 (6/8 complete, oauth=not_required)
+  Baseline DB: organization=3, sites=0, users=23, masterData=443, patterns=3, approvers=10
+- API /api/notifications: 200, ไม่มี "lang is not defined" error อีก
+- API /api/auth/login: 200 ทั้ง admin@itam.local และ admin
+- Runtime tests:
+  - completion-guidance: 17/17 passed
+  - cross-org-isolation: 8/8 passed
+  - failure-scenarios: 8/10 passed (2 pre-existing failures unrelated)
+- Lint: ไม่มี error ใหม่ในไฟล์ที่แก้ (itam-settings.tsx, work-orders-page.tsx,
+  completion/route.ts, notifications/route.ts)
+
+Stage Summary:
+- ✅ Completion Guidance แสดงเฉพาะสถานะ + reason + impact + ปุ่ม deep-link
+- ✅ ไม่ซ้ำซ้อนกับ Settings nav menu (sidebar = single source of menu)
+- ✅ กรอง not_required, permission_limited ออกจาก actionable list
+- ✅ Inline guidance ใน Work Orders page สำหรับ dependency (approvers)
+- ✅ /api/notifications lang error แก้แล้ว
+- ✅ 17 runtime tests ผ่านหมด
+- ⚠️  Dev server (Turbopack) ใช้ memory ~1.4GB; agent-browser's Chrome
+  (~400MB) เวลารันพร้อมกันเกิน 4GB sandbox limit → page compile อาจ
+  fail บางครั้ง. curl-based verification ทำได้ครบถ้วน
+- 📋 เหลือ Sprint 4: UX-04 (search), UX-05 (responsive tests), UX-06 (form states)
+- 📋 เหลือ: deep-link hash scroll-to-section ในแต่ละ settings tab
+- 📋 เหลือ: inline guidance ในหน้าอื่น (devices import, OAuth setup)
+
