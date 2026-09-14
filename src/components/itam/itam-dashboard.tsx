@@ -362,6 +362,86 @@ function CycleProgressWidget({
   )
 }
 
+// SPRINT-3 #6: Role-based task banner — shows different "what to do now"
+// call-to-action based on the logged-in user's role. Meter-only users
+// see pending meter readings; technicians see assigned WOs; admins/managers
+// see the full KPI dashboard (no banner — they want the overview).
+function RoleTaskBanner({
+  pendingMeterCount,
+  pendingWoCount,
+  setActivePage,
+  setPendingMeterAction,
+}: {
+  pendingMeterCount: number
+  pendingWoCount: number
+  setActivePage: (page: string) => void
+  setPendingMeterAction: (action: string | null) => void
+}) {
+  const authUser = useAuthStore((s) => s.user)
+  if (!authUser) return null
+  const role = (authUser.role || '').toLowerCase()
+
+  // Meter-only role: show pending meter readings
+  if (role === 'meter' || role === 'meter_only') {
+    if (pendingMeterCount === 0) return null
+    return (
+      <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-[#f97316]/30 bg-[#f97316]/5 p-3 dark:border-[#f97316]/40 dark:bg-[#f97316]/10">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">📋</span>
+          <div>
+            <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+              คุณมี {pendingMeterCount} เครื่องที่ยังไม่ได้จดมิเตอร์เดือนนี้
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+              กดปุ่มข้างเคียงเพื่อเริ่มจดมิเตอร์
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setActivePage('meter')
+            setPendingMeterAction('open-cycle')
+          }}
+          className="rounded-md bg-[#f97316] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#ea580c]"
+        >
+          ไปจดมิเตอร์ →
+        </button>
+      </div>
+    )
+  }
+
+  // Technician role: show assigned WOs pending review
+  if (role === 'technician' || role === 'editor') {
+    if (pendingWoCount === 0) return null
+    return (
+      <div className="mb-3 flex items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 dark:border-amber-700/50 dark:bg-amber-950/30">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🔧</span>
+          <div>
+            <div className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              คุณมี {pendingWoCount} ใบงานรอตรวจสอบ
+            </div>
+            <div className="text-[11px] text-amber-600 dark:text-amber-400">
+              กดปุ่มข้างเคียงเพื่อดูรายการ
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setActivePage('work-orders')}
+          className="rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-amber-600"
+        >
+          ไปดูใบงาน →
+        </button>
+      </div>
+    )
+  }
+
+  // Admin/manager/superadmin: no banner — they want the KPI overview
+  return null
+}
+
 export function ItamDashboard() {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
@@ -1847,6 +1927,16 @@ ${kpiHtml}
 
   return (
     <div className="flex h-full flex-col p-3 md:p-4">
+      {/* SPRINT-3 #6: Role-based "my tasks" banner for meter/technician roles
+          — shows pending meter readings or assigned WOs at the top so the
+          user sees what to do immediately without scrolling past KPI cards
+          that are more relevant to admins/managers. */}
+      <RoleTaskBanner
+        pendingMeterCount={data?.meterUnread ?? 0}
+        pendingWoCount={data?.workOrderStats?.PENDING_REVIEW ?? 0}
+        setActivePage={setActivePage}
+        setPendingMeterAction={setPendingMeterAction}
+      />
       {/* Page header — FIXED, never scrolls away */}
       <div className="flex-shrink-0">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
