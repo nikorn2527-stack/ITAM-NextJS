@@ -36,7 +36,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
-import { Search, Keyboard, ArrowUp, ArrowDown, CornerDownLeft, CheckCircle2, AlertTriangle, Loader2, RefreshCw, X, Lock } from 'lucide-react'
+import { Search, Keyboard, ArrowUp, ArrowDown, CornerDownLeft, CheckCircle2, AlertTriangle, Loader2, RefreshCw, X, Lock, QrCode } from 'lucide-react'
 import { downloadCsv, dateStamp } from '@/lib/csv'
 import { useAppStore } from '@/store/app-store'
 import { useLang } from '@/store/i18n-store'
@@ -121,11 +121,29 @@ export function ItamMeterKeyboard() {
   // jump straight to meter input — no search needed.
   const pendingDeviceId = useAppStore((s) => s.pendingDeviceId)
   const clearPendingDeviceId = useAppStore((s) => s.clearPendingDeviceId)
+  // SPRINT-3 #2: listen for QR scan results — fill search input + focus
+  const qrScanNonce = useAppStore((s) => s.qrScanNonce)
+  const lastQrScan = useAppStore((s) => s.lastQrScan)
+  const clearLastQrScan = useAppStore((s) => s.clearLastQrScan)
 
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const bwInputRef = React.useRef<HTMLInputElement>(null)
   const colorInputRef = React.useRef<HTMLInputElement>(null)
   const listRef = React.useRef<HTMLDivElement>(null)
+
+  // SPRINT-3 #2: when a QR scan comes in, populate the search box with the
+  // scanned asset code and let the existing debounce + select-first effect
+  // jump to that device automatically.
+  React.useEffect(() => {
+    if (qrScanNonce === 0) return
+    if (!lastQrScan) return
+    setSearchInput(lastQrScan)
+    // Clear the scan value so we don't re-trigger on re-renders
+    clearLastQrScan()
+    // The debounce effect (below) will update `search` and `selectedIndex`
+    // Focus will move to the meter input automatically once the device is
+    // selected (existing pendingDeviceId logic OR the user pressing Enter).
+  }, [qrScanNonce, lastQrScan, clearLastQrScan])
 
   // Debounce the search input → search state (200ms).
   React.useEffect(() => {
@@ -558,8 +576,22 @@ export function ItamMeterKeyboard() {
                 onKeyDown={handleSearchKeyDown}
                 onFocus={() => setFocus('search')}
                 placeholder="พิมพ์ Serial / Asset No. / รุ่น / แผนก แล้วกด Enter"
-                className="h-11 pl-9 text-base font-medium dark:bg-slate-800 dark:border-slate-700"
+                className="h-11 pl-9 pr-12 text-base font-medium dark:bg-slate-800 dark:border-slate-700"
               />
+              {/* SPRINT-3 #2: QR scan button — opens scanner, on scan fills
+                  the search input + jumps to meter input automatically */}
+              <button
+                type="button"
+                onClick={() => {
+                  // Open the global QR scanner (defined in app-store)
+                  useAppStore.getState().setQrScannerOpen(true)
+                }}
+                aria-label="สแกน QR เพื่อค้นอุปกรณ์"
+                title="สแกน QR เพื่อค้นอุปกรณ์"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1.5 text-slate-500 hover:bg-[#f97316]/10 hover:text-[#f97316] dark:text-slate-400 dark:hover:bg-[#f97316]/20"
+              >
+                <QrCode className="h-5 w-5" />
+              </button>
               {searchInput && (
                 <button
                   type="button"
@@ -568,7 +600,7 @@ export function ItamMeterKeyboard() {
                     setSearch('')
                     searchInputRef.current?.focus()
                   }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
+                  className="absolute right-10 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
                   aria-label="ล้างคำค้นหา"
                 >
                   <X className="h-4 w-4" />
@@ -720,11 +752,13 @@ export function ItamMeterKeyboard() {
                     </div>
                   </div>
 
-                  {/* Last reading context */}
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-md border border-slate-200 p-2 dark:border-slate-800">
-                      <div className="text-[10px] uppercase text-slate-400">ค่ามิเตอร์ล่าสุด</div>
-                      <div className="font-mono text-base font-semibold text-slate-700 dark:text-slate-200">
+                  {/* Last reading context — SPRINT-3 #2: make it BIG for sanity check */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-md border-2 border-[#f97316]/30 bg-[#f97316]/5 p-3 dark:border-[#f97316]/40 dark:bg-[#f97316]/10">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-[#f97316]">
+                        ค่ามิเตอร์ล่าสุด (BW)
+                      </div>
+                      <div className="font-mono text-2xl font-bold text-slate-800 dark:text-slate-100 sm:text-3xl">
                         {(selected.lastMeterBw ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
                         {isColorMode && (
                           <span className="ml-1 text-xs text-teal-600 dark:text-teal-300">/ {(selected.lastMeterColor ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</span>

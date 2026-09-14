@@ -244,6 +244,10 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
   const [tReason, setTReason] = React.useState('')
   const [tDate, setTDate] = React.useState(todayISO())
   const [transferring, setTransferring] = React.useState(false)
+  // SPRINT-3 #3: wizard step state (1=จดมิเตอร์, 2=เลือกที่ใหม่, 3=ยืนยัน)
+  const [transferStep, setTransferStep] = React.useState(1)
+  const [tMeterBw, setTMeterBw] = React.useState('')
+  const [tMeterColor, setTMeterColor] = React.useState('')
 
   // Assign dialog state
   const [assignOpen, setAssignOpen] = React.useState(false)
@@ -2308,7 +2312,15 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
       />
 
       {/* Transfer sub-dialog */}
-      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+      <Dialog open={transferOpen} onOpenChange={(open) => {
+        setTransferOpen(open)
+        if (!open) {
+          // Reset wizard state on close
+          setTransferStep(1)
+          setTMeterBw('')
+          setTMeterColor('')
+        }
+      }}>
         <DialogContent className="sm:max-w-md dark:border-slate-800 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-slate-800 dark:text-slate-100">
@@ -2323,69 +2335,140 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
               </span>
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                สาขาปลายทาง *
-              </Label>
-              <Select value={tSite} onValueChange={setTSite}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="เลือกสาขา" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(sites ?? []).map((s) => (
-                    <SelectItem key={s.code} value={s.code}>
-                      {s.name} ({s.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  แผนกใหม่
-                </Label>
-                <Input
-                  value={tDept}
-                  onChange={(e) => setTDept(e.target.value)}
-                  placeholder="เช่น IT"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  รหัสแผนกใหม่
-                </Label>
-                <Input
-                  value={tDeptCode}
-                  onChange={(e) => setTDeptCode(e.target.value)}
-                  placeholder="เช่น IT-001"
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                วันที่ย้าย *
-              </Label>
-              <Input
-                type="date"
-                value={tDate}
-                onChange={(e) => setTDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                เหตุผลการย้าย
-              </Label>
-              <Textarea
-                value={tReason}
-                onChange={(e) => setTReason(e.target.value)}
-                placeholder="เช่น ย้ายไปใช้ที่แผนกใหม่ / เปลี่ยนสาขา"
-                rows={2}
-              />
-            </div>
+          {/* SPRINT-3 #3: wizard step indicator */}
+          <div className="flex items-center justify-between gap-1 rounded-md bg-slate-100 p-2 text-[11px] dark:bg-slate-800">
+            {[
+              { n: 1, label: 'จดมิเตอร์' },
+              { n: 2, label: 'เลือกที่ใหม่' },
+              { n: 3, label: 'ยืนยัน' },
+            ].map((s, i) => (
+              <React.Fragment key={s.n}>
+                {i > 0 && <div className={`h-0.5 flex-1 ${transferStep > s.n - 1 ? 'bg-[#f97316]' : 'bg-slate-300 dark:bg-slate-600'}`} />}
+                <div className="flex items-center gap-1">
+                  <div className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                    transferStep === s.n ? 'bg-[#f97316] text-white ring-2 ring-[#f97316]/30' :
+                    transferStep > s.n ? 'bg-emerald-500 text-white' :
+                    'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'
+                  }`}>
+                    {transferStep > s.n ? '✓' : s.n}
+                  </div>
+                  <span className={transferStep === s.n ? 'font-semibold text-slate-700 dark:text-slate-200' : 'text-slate-400'}>{s.label}</span>
+                </div>
+              </React.Fragment>
+            ))}
           </div>
-          <DialogFooter>
+          <div className="space-y-3">
+            {/* Step 1: จดมิเตอร์ (only show if device is meterable) */}
+            {transferStep === 1 && (
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {deviceIsMeterable
+                    ? 'กรอกค่ามิเตอร์ปัจจุบันก่อนย้าย (บังคับเพื่อรักษาประวัติ)'
+                    : 'อุปกรณ์นี้ไม่ต้องจดมิเตอร์ — กด "ถัดไป" เพื่อข้ามขั้นตอนนี้'}
+                </p>
+                {deviceIsMeterable && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">มิเตอร์ BW *</Label>
+                      <Input
+                        type="number"
+                        value={tMeterBw}
+                        onChange={(e) => setTMeterBw(e.target.value)}
+                        placeholder="เช่น 12345"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">มิเตอร์ Color</Label>
+                      <Input
+                        type="number"
+                        value={tMeterColor}
+                        onChange={(e) => setTMeterColor(e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Step 2: เลือกที่ใหม่ */}
+            {transferStep === 2 && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    สาขาปลายทาง *
+                  </Label>
+                  <Select value={tSite} onValueChange={setTSite}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="เลือกสาขา" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(sites ?? []).map((s) => (
+                        <SelectItem key={s.code} value={s.code}>
+                          {s.name} ({s.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      แผนกใหม่
+                    </Label>
+                    <Input
+                      value={tDept}
+                      onChange={(e) => setTDept(e.target.value)}
+                      placeholder="เช่น IT"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                      รหัสแผนกใหม่
+                    </Label>
+                    <Input
+                      value={tDeptCode}
+                      onChange={(e) => setTDeptCode(e.target.value)}
+                      placeholder="เช่น IT-001"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    วันที่ย้าย *
+                  </Label>
+                  <Input
+                    type="date"
+                    value={tDate}
+                    onChange={(e) => setTDate(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+            {/* Step 3: ยืนยัน */}
+            {transferStep === 3 && (
+              <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs dark:border-slate-800 dark:bg-slate-800/50">
+                <div className="font-semibold text-slate-700 dark:text-slate-200">สรุปการย้าย</div>
+                {deviceIsMeterable && Number(tMeterBw) > 0 && (
+                  <div>มิเตอร์ BW: <span className="font-mono font-medium">{tMeterBw}</span> {tMeterColor && `/ Color: ${tMeterColor}`}</div>
+                )}
+                <div>ไปยัง: <span className="font-medium">{tSite || '—'}</span></div>
+                {tDept && <div>แผนกใหม่: {tDept} {tDeptCode && `(${tDeptCode})`}</div>}
+                <div>วันที่: {tDate}</div>
+                <div className="space-y-1.5 pt-2">
+                  <Label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                    เหตุผลการย้าย
+                  </Label>
+                  <Textarea
+                    value={tReason}
+                    onChange={(e) => setTReason(e.target.value)}
+                    placeholder="เช่น ย้ายไปใช้ที่แผนกใหม่ / เปลี่ยนสาขา"
+                    rows={2}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
             <Button
               variant="outline"
               onClick={() => setTransferOpen(false)}
@@ -2393,20 +2476,39 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
             >
               ยกเลิก
             </Button>
-            <Button
-              onClick={confirmTransfer}
-              disabled={transferring || !tSite}
-              className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
-            >
-              {transferring ? (
-                <>
-                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                  กำลังย้าย...
-                </>
-              ) : (
-                'ยืนยันการย้าย'
-              )}
-            </Button>
+            {transferStep > 1 && (
+              <Button
+                variant="outline"
+                onClick={() => setTransferStep(transferStep - 1)}
+                disabled={transferring}
+              >
+                ย้อนกลับ
+              </Button>
+            )}
+            {transferStep < 3 ? (
+              <Button
+                onClick={() => setTransferStep(transferStep + 1)}
+                disabled={transferStep === 2 && !tSite}
+                className="bg-[#f97316] text-white hover:bg-[#ea580c]"
+              >
+                ถัดไป →
+              </Button>
+            ) : (
+              <Button
+                onClick={confirmTransfer}
+                disabled={transferring}
+                className="bg-[#f97316] text-white hover:bg-[#ea580c] focus-visible:ring-2 focus-visible:ring-[#f97316] focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-950"
+              >
+                {transferring ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    กำลังย้าย...
+                  </>
+                ) : (
+                  'ยืนยันการย้าย'
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
