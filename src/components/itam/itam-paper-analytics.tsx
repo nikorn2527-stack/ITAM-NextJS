@@ -424,6 +424,34 @@ ${kpiHtml}
         </CardContent>
       </Card>
 
+      {/* SPRINT-3 #10: Smart Insight banner — surfaces the most important
+          finding at the top so managers see it without picking a tab.
+          Currently shows total sheets + a hint to drill down. */}
+      {overviewQuery.data && (
+        <div className="flex-shrink-0 rounded-md border border-[#f97316]/30 bg-gradient-to-r from-[#f97316]/5 to-amber-50 p-3 dark:border-[#f97316]/40 dark:from-[#f97316]/10 dark:to-amber-950/20">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">💡</span>
+              <div>
+                <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  เดือนนี้ใช้กระดาษ {(overviewQuery.data.kpi.totalSheets ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} แผ่น
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  ขาวดำ {(overviewQuery.data.kpi.totalBw ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')} · สี {(overviewQuery.data.kpi.totalColor ?? 0).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTab('ranking')}
+              className="rounded-md bg-[#f97316] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#ea580c]"
+            >
+              ดูจัดอันดับ →
+            </button>
+          </div>
+        </div>
+      )}
+
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)} className="flex min-h-0 flex-1 flex-col gap-4">
         <TabsList className="grid w-full flex-shrink-0 grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="overview" className="gap-1" onClick={() => setTab("overview")}><LayoutGrid className="h-3.5 w-3.5" /> ภาพรวม</TabsTrigger>

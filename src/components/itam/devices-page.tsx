@@ -3387,6 +3387,53 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
         />
       </div>
 
+      {/* SPRINT-3 #8: Quick site filter pills — 3 most common filters
+          at the top, advanced filters (warranty/assignee) in KPI cards above */}
+      {(visibleSites ?? []).length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-slate-400">สาขา:</span>
+          <button
+            type="button"
+            onClick={() => setSiteFilter('all')}
+            className={`rounded-full px-2.5 py-0.5 font-medium transition-colors ${
+              siteFilter === 'all'
+                ? 'bg-[#f97316] text-white'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+            }`}
+          >
+            ทั้งหมด
+          </button>
+          {(visibleSites ?? []).slice(0, 5).map((s) => (
+            <button
+              key={s.code}
+              type="button"
+              onClick={() => setSiteFilter(s.code)}
+              className={`rounded-full px-2.5 py-0.5 font-medium transition-colors ${
+                siteFilter === s.code
+                  ? 'bg-[#f97316] text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'
+              }`}
+            >
+              {s.code}
+            </button>
+          ))}
+          {(visibleSites ?? []).length > 5 && (
+            <Select value={siteFilter} onValueChange={setSiteFilter}>
+              <SelectTrigger className="h-6 w-[140px] text-[11px]">
+                <SelectValue placeholder="เพิ่มเติม..." />
+              </SelectTrigger>
+              <SelectContent>
+                {(visibleSites ?? []).slice(5).map((s) => (
+                  <SelectItem key={s.code} value={s.code} className="text-xs">
+                    {s.code} — {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      )}
+
       {/* ── Recently-viewed devices bar ──
           Shows the last 5 device IDs opened in the detail sheet, persisted
           in localStorage so they survive page reloads. Clicking opens the

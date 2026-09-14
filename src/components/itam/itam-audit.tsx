@@ -421,6 +421,19 @@ export function ItamAudit() {
                 onChange={(e) => { setActor(e.target.value); setPage(1) }}
                 className="dark:bg-slate-800 dark:border-slate-700"
               />
+              {/* SPRINT-3 #9: "กิจกรรมของฉัน" quick toggle — filters audit log
+                  to entries where actor matches the logged-in user's email */}
+              <button
+                type="button"
+                onClick={() => {
+                  const me = useAuthStore.getState()?.user?.email ?? ''
+                  setActor(me)
+                  setPage(1)
+                }}
+                className="mt-1 text-[11px] font-medium text-[#f97316] transition-colors hover:text-[#ea580c]"
+              >
+                กิจกรรมของฉัน →
+              </button>
             </div>
             <div className="flex-1">
               <Label className="mb-1 block text-xs text-slate-500">Search (Summary/Details)</Label>
