@@ -22792,3 +22792,82 @@ Stage Summary:
 - ✅ Runtime verification ผ่าน (search auth, DB schema, lint)
 - ✅ Commit a854191 พร้อม push
 - ⚠️ GitHub token หมดอายุ — ผู้ใช้ต้อง push เองหลังต่ออายุ
+
+---
+Task ID: SPRINT-2-P1-STABILITY
+Agent: orchestrator (acting as dev team)
+Task: Sprint 2 P1 stability ตามแผนงาน DEV-HANDOVER + AUDIT-API-001
+
+งานที่ทำรอบนี้ (6 รายการ):
+
+1. DEV-HANDOVER B-02: Refresh token
+   - src/lib/auth.ts: createRefreshToken (typ='refresh', 7-day TTL)
+   - verifyToken ปฏิเสธ refresh tokens (ใช้ API ไม่ได้)
+   - verifyRefreshToken รับเฉพาะ refresh tokens
+   - NEW src/app/api/auth/refresh/route.ts: exchange refresh → access token
+   - /api/itam/auth/login ส่ง refreshToken กลับด้วย
+
+2. DEV-HANDOVER security checklist: Rate limiting บน legacy /api/auth/login
+   - src/app/api/auth/login/route.ts: checkLoginRateLimit + recordLoginFailure
+   - Rate limit key รวม email + IP (defense in depth)
+   - Verified: 5 failed → 6th = 429 ✓
+
+3. Zod validation schemas
+   - ติดตั้ง zod@4.6.5
+   - NEW src/lib/api-schemas.ts: login, register, WO create/update,
+     device create/update, pagination, settings, refresh schemas
+   - woUpdateSchema ไม่มี 'status' field (เชื่อมกับ #6)
+
+4. AUDIT-API-001 #059: WO body.status bypass
+   - src/app/api/work-orders/[id]/route.ts PUT: ปฏิเสธ body.status ด้วย 400
+   - สถานะเปลี่ยนได้ผ่าน /complete, /cancel, /assign endpoints เท่านั้น
+
+5. AUDIT-API-001 #068: Auto-close assignedTo check
+   - src/app/api/work-orders/[id]/parts/[txnId]/approve/route.ts:
+     auto-close ต้องมี wo.assignedTo
+   - ถ้าไม่มี assignee: โพสต์ warning message, ปล่อย WO ค้าง WAITING_PARTS
+   - ส่ง autoCloseSkipped flag กลับให้ frontend แจ้งเตือน
+
+6. AUDIT-API-001 #072: User mgmt audit + password validation
+   - src/app/api/itam/auth/users/route.ts POST:
+     * Password validation (min 8 chars, ตัวอักษร + ตัวเลข)
+     * Audit log ทุกครั้งที่สร้าง user
+   - validatePassword helper export ให้ register route ใช้ซ้ำ
+
+Verification:
+- /api/auth/login rate limit: 5 failures → 6th = 429 ✓
+- /api/itam/auth/users POST with 'weak' password → 400 ✓
+- /api/auth/refresh route compiled + returns 200 ✓
+- Lint: 0 new errors in edited files
+
+DEFERRED (งานที่ต้อง "ข้ามไปก่อน" และแจ้งฝั่งอื่น):
+
+A. Sprint 2 #5: Migrate 5 itam routes จาก legacy canAccessSite → ctx.canAtSite
+   - เหตุผลที่เลื่อน: ต้อง audit ทีละ route อย่างระมัดระวัง — risk สูงที่
+     existing RBAC behavior จะเปลี่ยน + break existing user permissions
+   - ผู้รับผิดชอบต่อ: dev team (เป็นงาน dev แต่ต้อง careful audit)
+   - ข้อจำกัด: ต้อง test กับ production data จริง (sandbox ใช้ SQLite
+     ทำให้ mode: insensitive ไม่ work เหมือน PostgreSQL)
+
+B. Sprint 2 #9: String → DateTime migration (16 date fields × 6 models)
+   - เหตุผลที่เลื่อน: ต้อง backfill ข้อมูลเก่าอย่างระมัดระวัง — migration
+     script ต้องแปลง string dates ที่มี format หลายแบบ (ISO, dd/mm/yyyy,
+     พ.ศ. ฯลฯ) เป็น DateTime ที่ Prisma เข้าใจ
+   - ผู้รับผิดชอบต่อ: dev team + DBA (production migration)
+   - ข้อจำกัด: ต้อง downtime window บน production DB
+
+Deploy Blocker Workaround (Sprint 2 #1):
+- สร้าง git bundle: /home/z/my-project/upload/itam-sprint-bundle.git-bundle (37 MB)
+- ครอบคลุม Sprint 1 + Sprint 2 commits (a854191, 851249f, 307ed32)
+- วิธี import บนเครื่อง Local อยู่ใน upload/DEPLOY-BLOCKER-WORKAROUND.md
+- หลัง import แล้ว push จากเครื่องคุณด้วย token ที่ยังใช้ได้
+
+Commit: 307ed32 (10 files, 434 insertions, 28 deletions)
+
+Stage Summary:
+- ✅ 6/8 P1 stability รายการแก้ครบ
+- ✅ Runtime verification ผ่าน (rate limit, password validation, refresh)
+- ✅ git bundle พร้อมส่ง (37 MB)
+- ⚠️ 2 รายการ deferred (canAtSite migration, DateTime migration) —
+     ต้องแจ้ง dev team + DBA ทำต่ออย่างระมัดระวัง
+- 📋 Sprint 3: UX Simplification (10 features จากที่ปรึกษา)
