@@ -564,7 +564,13 @@ model WorkOrderReview {
   id          String   @id @default(cuid())
   workOrderId String
   isDemo      Boolean  @default(false)
-  rating      Int
+  // SPRINT-4 #2 (AUDIT-DB-RUNTIME S-P1-18): rating constrained 1-5.
+  // SQLite doesn't enforce CHECK constraints via Prisma, so the API
+  // layer (review route) also validates. Adding @db.Int + comment for
+  // documentation. For PostgreSQL, add a CHECK constraint manually:
+  //   ALTER TABLE "WorkOrderReview" ADD CONSTRAINT rating_range
+  //   CHECK (rating >= 1 AND rating <= 5);
+  rating      Int      /// 1-5 stars (enforced in API route + DB CHECK on PostgreSQL)
   comment     String?
   reviewedBy  String?
   createdAt   DateTime @default(now())
@@ -1014,7 +1020,12 @@ model PurchaseOrderItem {
   createdAt        DateTime @default(now())
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  stockItem     StockItem     @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  // SPRINT-4 #6 (FIX-045): changed from Cascade to Restrict — deleting a
+  // StockItem that's referenced by a PO line item would destroy PO history.
+  // With Restrict, the delete is rejected with a foreign-key violation,
+  // forcing the user to remove the PO line item first (or mark the
+  // StockItem as 'Discontinued' instead of deleting).
+  stockItem     StockItem     @relation(fields: [stockItemId], references: [id], onDelete: Restrict)
 
   updatedAt DateTime? @updatedAt
   @@index([purchaseOrderId])

@@ -436,6 +436,34 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // SPRINT-4 #4 (FIX-036): length caps to prevent abuse + DB bloat
+    const subjectStr = String(subject).trim()
+    if (subjectStr.length > 500) {
+      return NextResponse.json(
+        { error: 'ประเภทปัญหายาวเกินไป (สูงสุด 500 ตัวอักษร)' },
+        { status: 400 },
+      )
+    }
+    if (details && String(details).length > 5000) {
+      return NextResponse.json(
+        { error: 'รายละเอียดยาวเกินไป (สูงสุด 5000 ตัวอักษร)' },
+        { status: 400 },
+      )
+    }
+    if (tel && String(tel).length > 20) {
+      return NextResponse.json(
+        { error: 'หมายเลขโทรศัพท์ยาวเกินไป (สูงสุด 20 ตัวอักษร)' },
+        { status: 400 },
+      )
+    }
+    // SPRINT-4 #4: priority enum validation
+    if (priority && !VALID_PRIORITIES.has(String(priority).toUpperCase())) {
+      return NextResponse.json(
+        { error: `priority ต้องเป็นค่าใดค่าหนึ่ง: ${Array.from(VALID_PRIORITIES).join(', ')}` },
+        { status: 400 },
+      )
+    }
+
     // ── Idempotency: check requestId/clientMutationId for replay protection ──
     // If the caller sends a requestId (legacy) or clientMutationId (new),
     // we check if a WO with that idempotency key already exists. If so,

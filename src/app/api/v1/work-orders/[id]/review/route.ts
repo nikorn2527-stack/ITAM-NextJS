@@ -96,6 +96,33 @@ export async function POST(
         ? String(body.comment)
         : null
 
+    // SPRINT-4 #1 (AUDIT-API-001 #055): review-bomb protection.
+    // Guests must prove they're the original reporter by providing the
+    // phone number (tel) that matches the WO's `tel` field. This prevents
+    // a random attacker who guesses/scrapes the WO ID from submitting a
+    // review before the real reporter does.
+    //
+    // Authenticated users (staff) bypass this check — they're already
+    // verified via loadAuthorizedWorkOrderV1.
+    if (!isAuthed) {
+      const guestTel = typeof body.tel === 'string' ? body.tel.trim() : ''
+      const woTel = (order.tel ?? '').trim()
+      if (!guestTel || !woTel) {
+        return badRequest(
+          'ผู้ไม่ได้เข้าสู่ระบบต้องระบุหมายเลขโทรศัพท์ที่ตรงกับใบแจ้งซ่อมเพื่อยืนยันตัวตน',
+          { code: 'GUEST_TEL_REQUIRED', field: 'tel' },
+        )
+      }
+      // Normalize: strip spaces/dashes for comparison
+      const normalizeTel = (s: string) => s.replace(/[\s\-()]/g, '')
+      if (normalizeTel(guestTel) !== normalizeTel(woTel)) {
+        return badRequest(
+          'หมายเลขโทรศัพท์ไม่ตรงกับใบแจ้งซ่อม — ไม่สามารถรีวิวได้',
+          { code: 'TEL_MISMATCH', field: 'tel' },
+        )
+      }
+    }
+
     // Reviewer identity
     let reviewedBy: string | null
     let userEmail: string | null

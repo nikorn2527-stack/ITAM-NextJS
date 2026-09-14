@@ -222,13 +222,18 @@ export async function getActiveWoPattern(): Promise<WoPattern | null> {
  * Set a WoNumberPattern as active (deactivate all others).
  */
 export async function setActiveWoPattern(patternId: string): Promise<void> {
-  await db.woNumberPattern.updateMany({
-    where: { isActive: true },
-    data: { isActive: false },
-  })
-  await db.woNumberPattern.update({
-    where: { id: patternId },
-    data: { isActive: true },
+  // SPRINT-4 #3 (AUDIT-DB-RUNTIME S-P1-17): wrap in transaction to prevent
+  // concurrent activate calls from leaving multiple active patterns.
+  const { getBaseClient } = await import('@/lib/db')
+  await getBaseClient().$transaction(async (tx) => {
+    await tx.woNumberPattern.updateMany({
+      where: { isActive: true },
+      data: { isActive: false },
+    })
+    await tx.woNumberPattern.update({
+      where: { id: patternId },
+      data: { isActive: true },
+    })
   })
 }
 

@@ -132,13 +132,24 @@ export async function getActivePattern(): Promise<AssetNumberPattern | null> {
  * Set a pattern as active (deactivate all others).
  */
 export async function setActivePattern(patternId: string): Promise<void> {
-  await db.assetNumberPattern.updateMany({
-    where: { isActive: true },
-    data: { isActive: false },
-  })
-  await db.assetNumberPattern.update({
-    where: { id: patternId },
-    data: { isActive: true },
+  // SPRINT-4 #3 (AUDIT-DB-RUNTIME S-P1-17): wrap in transaction so
+  // concurrent activate calls can't leave multiple patterns active.
+  // Previously two concurrent POST /activate calls could both pass the
+  // deactivate-many step before either set isActive=true, leaving 2
+  // active patterns — which then caused next-asset-code to return
+  // inconsistent results.
+  const { getBaseClient } = await import('@/lib/db')
+  await getBaseClient().$transaction(async (tx) => {
+    // Deactivate all other patterns first
+    await tx.assetNumberPattern.updateMany({
+      where: { isActive: true },
+      data: { isActive: false },
+    })
+    // Then activate the requested one
+    await tx.assetNumberPattern.update({
+      where: { id: patternId },
+      data: { isActive: true },
+    })
   })
 }
 
