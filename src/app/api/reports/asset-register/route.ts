@@ -171,6 +171,24 @@ export async function GET(req: NextRequest) {
       where.site = siteParam
     }
 
+    // SPRINT-1 #9 (DEV-HANDOVER B-06): cap export at 500 records to avoid
+    // Vercel Hobby 10s timeout (Pro is 60s). If the dataset is larger,
+    // ask the user to filter by site or status to narrow down. Full
+    // export of 2,378+ devices would take ~15s of PDF generation.
+    const MAX_EXPORT_RECORDS = 500
+    const totalCount = await db.device.count({ where })
+    if (totalCount > MAX_EXPORT_RECORDS) {
+      return NextResponse.json(
+        {
+          error: `ข้อมูล ${totalCount} รายการ เกินกว่าขีดจำกัดการ export (${MAX_EXPORT_RECORDS}) กรุณากรองตามสาขาหรือสถานะเพื่อลดจำนวน`,
+          code: 'EXPORT_TOO_LARGE',
+          count: totalCount,
+          max: MAX_EXPORT_RECORDS,
+        },
+        { status: 413 },
+      )
+    }
+
     const devices = await db.device.findMany({
       where,
       select: {

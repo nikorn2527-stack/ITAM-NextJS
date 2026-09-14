@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
 import { loadAuthorizedWorkOrder } from '@/lib/wo-authz'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
+import { uploadImage, getStorageProvider, isStorageConfigured } from '@/lib/storage'
 
 // ============================================================
 // /api/work-orders/[id]/images
@@ -93,17 +94,27 @@ export async function GET(
       orderBy: [{ stage: 'asc' }, { createdAt: 'asc' }],
     })
 
+    // SPRINT-1 #2: normalize the "src" for each image so the frontend
+    // doesn't have to know whether it's stored externally (imageUrl) or
+    // inline (image_data base64). External storage takes priority; if the
+    // upload fell back to base64 (memory mode / upload error), image_data
+    // is the source of truth.
+    const imagesWithSrc = images.map((img) => ({
+      ...img,
+      src: img.imageUrl || img.image_data,
+    }))
+
     // Group by stage for convenience
     const grouped: {
-      before: typeof images
-      onsite: typeof images
-      after: typeof images
+      before: typeof imagesWithSrc
+      onsite: typeof imagesWithSrc
+      after: typeof imagesWithSrc
     } = {
       before: [],
       onsite: [],
       after: [],
     }
-    for (const img of images) {
+    for (const img of imagesWithSrc) {
       if (
         img.stage === 'before' ||
         img.stage === 'onsite' ||
@@ -113,7 +124,7 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({ data: images, grouped })
+    return NextResponse.json({ data: imagesWithSrc, grouped })
   } catch (err) {
     console.error('GET /api/work-orders/[id]/images', err)
     return NextResponse.json(
@@ -198,7 +209,48 @@ export async function POST(
       data: {
         workOrderId: wo.id,
         stage,
-        image_data: imageData,
+        // SPRINT-1 #2: wire storage abstraction. When external storage
+        // (R2/Blob/Supabase) is configured, upload the buffer there and
+        // store only the URL + provider. When storage is not configured
+        // (dev with no creds), fall back to base64 in image_data so the
+        // feature still works end-to-end.
+        ...(await (async () => {
+          if (isStorageConfigured()) {
+            // Decode base64 data URL → buffer
+            // Format: "data:image/jpeg;base64,/9j/4AAQ..."
+            const match = imageData.match(/^data:([^;]+);base64,(.+)$/)
+            if (match) {
+              const contentType = match[1]
+              const ext = contentType.split('/')[1] === 'jpeg' ? 'jpg' : (contentType.split('/')[1] || 'jpg')
+              const buffer = Buffer.from(match[2], 'base64')
+              try {
+                const { url, key, provider } = await uploadImage(buffer, ext, `wo-photos/${wo.id}`)
+                return {
+                  image_data: '', // don't bloat DB — URL is the source of truth
+                  imageUrl: url,
+                  storageProvider: provider,
+                  sizeBytes: buffer.length,
+                }
+              } catch (uploadErr) {
+                console.error('[images] storage upload failed, falling back to base64:', uploadErr)
+                // Fall back to base64 if storage upload fails (don't lose the image)
+                return {
+                  image_data: imageData,
+                  imageUrl: null,
+                  storageProvider: null,
+                  sizeBytes: imageData.length,
+                }
+              }
+            }
+          }
+          // Dev mode (storage='memory' or not configured) — keep base64
+          return {
+            image_data: imageData,
+            imageUrl: null,
+            storageProvider: getStorageProvider(),
+            sizeBytes: imageData.length,
+          }
+        })()),
         fileName,
         uploadedBy,
       },

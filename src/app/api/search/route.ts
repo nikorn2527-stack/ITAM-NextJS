@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { isNumericShortQuery } from '@/lib/suffix-search'
+import { verifyToken } from '@/lib/auth'
 
 /**
  * GET /api/search?q=<query>
@@ -12,7 +13,14 @@ import { isNumericShortQuery } from '@/lib/suffix-search'
  *   - Only searches devices + masters (skips meter/audit/site for speed)
  *   - Results limited to 8 per type
  *
- * Auth: Bearer token required.
+ * Auth (FIX API-BUG-044): Bearer token required AND must be a valid signed JWT.
+ *   Previously this route only checked that the header STARTED with "Bearer "
+ *   — any garbage string after that prefix would pass, allowing unauthenticated
+ *   search across ALL sites (bypassing row-level security).
+ *   Now we call verifyToken() to check signature + expiry before running queries.
+ *   We do NOT call requireAuth() (which also loads the user row from DB) because
+ *   search is on the hot path and we only need to verify identity, not refresh
+ *   permissions on every keystroke.
  */
 
 // Cache for 30 seconds — search results don't change frequently
@@ -55,6 +63,15 @@ export async function GET(req: NextRequest) {
     if (!authHeader?.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    // FIX API-BUG-044: verify the JWT signature + expiry, don't just trust
+    // that the header starts with "Bearer ". A garbage token like
+    // "Bearer foobar" used to pass and let anyone search across all sites.
+    const token = authHeader.slice(7).trim()
+    const payload = await verifyToken(token)
+    if (!payload) {
+      return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 })
+    }
+
     const q = (new URL(req.url).searchParams.get('q') ?? '').trim()
     const searchType = (new URL(req.url).searchParams.get('type') ?? 'all').trim()
     if (q.length < 2) {

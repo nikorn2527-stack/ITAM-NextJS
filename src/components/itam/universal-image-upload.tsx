@@ -39,6 +39,7 @@ import * as React from 'react'
 import { Camera, Image as ImageIcon, X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { compressImageToDataUrl } from '@/lib/client-image-compress'
 
 interface UniversalImageUploadProps {
   value: string | string[]
@@ -102,7 +103,9 @@ export function UniversalImageUpload({
       const imageFiles = files.filter((f) => f.type.startsWith('image/'))
       for (const file of imageFiles) {
         if (multiple && images.length >= maxImages) break
-        const dataUrl = await resizeImage(file, 1280, 0.8)
+        // SPRINT-1 #3: use browser-image-compression (target 50KB) instead
+        // of canvas resize (which produced ~1MB JPEGs). 20× smaller uploads.
+        const dataUrl = await compressImageToDataUrl(file, { maxSizeMB: 0.05 })
         addImage(dataUrl)
       }
     } catch (err) {
@@ -323,40 +326,9 @@ function CameraOverlay({ onCapture, onClose }: CameraOverlayProps) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────
-// resizeImage — downscale a File to max dimension, return data URL
-// ─────────────────────────────────────────────────────────────
-function resizeImage(file: File, maxDim: number, quality: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const img = new Image()
-      img.onload = () => {
-        let { width, height } = img
-        if (width > height && width > maxDim) {
-          height = Math.round((height * maxDim) / width)
-          width = maxDim
-        } else if (height > maxDim) {
-          width = Math.round((width * maxDim) / height)
-          height = maxDim
-        }
-        const canvas = document.createElement('canvas')
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          reject(new Error('Canvas context not available'))
-          return
-        }
-        ctx.drawImage(img, 0, 0, width, height)
-        resolve(canvas.toDataURL('image/jpeg', quality))
-      }
-      img.onerror = () => reject(new Error('Image load failed'))
-      img.src = e.target?.result as string
-    }
-    reader.onerror = () => reject(new Error('FileReader failed'))
-    reader.readAsDataURL(file)
-  })
-}
+// NOTE (SPRINT-1 #3): the old `resizeImage` helper using canvas has been
+// removed. Compression is now handled by `compressImageToDataUrl` from
+// `@/lib/client-image-compress` which uses `browser-image-compression`
+// (target 50KB instead of ~1MB — 20× smaller uploads).
 
 export default UniversalImageUpload

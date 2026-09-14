@@ -105,7 +105,32 @@ export interface FetchSheetResult {
  * Fetch a single sheet (tab) as an array of row objects.
  * Returns { rows, error } — check `error` to distinguish "sheet is empty"
  * from "auth failed / sheet not found / rate limited".
+ *
+ * SPRINT-1 #7 (SYNC-AUDIT-010 #14): adds retry logic for Google Sheets
+ * API rate limit (HTTP 429 / RESOURCE_EXHAUSTED). Previously a 429 was
+ * caught and returned as `{ rows: [], error }` — sync reported "ok" but
+ * synced 0 rows silently. Now we retry up to 3 times with exponential
+ * backoff (1s → 2s → 4s) before giving up.
  */
+const MAX_RETRIES = 3
+const INITIAL_BACKOFF_MS = 1000
+
+function isRateLimitError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const msg = err.message.toLowerCase()
+  // Google Sheets API rate limit signatures
+  return (
+    msg.includes('429') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('rate limit') ||
+    msg.includes('quota')
+  )
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 export async function fetchSheet(
   app: SheetApp,
   sheetName: string,
@@ -118,39 +143,56 @@ export async function fetchSheet(
     return { rows: [], error }
   }
 
-  try {
-    const sheets = getSheetsClient()
-    const fullRange = range ?? `${sheetName}!A:Z`
+  const sheets = getSheetsClient()
+  const fullRange = range ?? `${sheetName}!A:Z`
 
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: fullRange,
-    })
+  // SPRINT-1 #7: retry loop for 429 RESOURCE_EXHAUSTED
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: fullRange,
+      })
 
-    const rows = response.data.values
-    if (!rows || rows.length === 0) return { rows: [] }
+      const rows = response.data.values
+      if (!rows || rows.length === 0) return { rows: [] }
 
-    const headers = rows[0].map((h) => String(h).trim())
-    const result: SheetRow[] = []
+      const headers = rows[0].map((h) => String(h).trim())
+      const result: SheetRow[] = []
 
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i]
-      const obj: SheetRow = {}
-      for (let j = 0; j < headers.length; j++) {
-        const key = headers[j]
-        if (key) {
-          obj[key] = String(row[j] ?? '').trim()
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i]
+        const obj: SheetRow = {}
+        for (let j = 0; j < headers.length; j++) {
+          const key = headers[j]
+          if (key) {
+            obj[key] = String(row[j] ?? '').trim()
+          }
         }
+        result.push(obj)
       }
-      result.push(obj)
-    }
 
-    return { rows: result }
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err)
-    console.error(`[google-sheets-service] fetchSheet(${app}, ${sheetName}) failed:`, error)
-    return { rows: [], error }
+      return { rows: result }
+    } catch (err) {
+      // If this is a rate limit error AND we haven't exhausted retries,
+      // wait and retry instead of returning empty rows.
+      if (isRateLimitError(err) && attempt < MAX_RETRIES) {
+        const backoffMs = INITIAL_BACKOFF_MS * Math.pow(2, attempt)
+        console.warn(
+          `[google-sheets-service] fetchSheet(${app}, ${sheetName}) got 429 on attempt ${attempt + 1}/${MAX_RETRIES + 1}, retrying in ${backoffMs}ms...`,
+        )
+        await sleep(backoffMs)
+        continue
+      }
+
+      const error = err instanceof Error ? err.message : String(err)
+      console.error(`[google-sheets-service] fetchSheet(${app}, ${sheetName}) failed after ${attempt + 1} attempt(s):`, error)
+      return { rows: [], error }
+    }
   }
+
+  // Should not reach here (loop returns), but TS needs a fallback
+  return { rows: [], error: 'Max retries exceeded' }
 }
 
 /**

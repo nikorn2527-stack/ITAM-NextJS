@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { logAudit } from '@/lib/audit'
+import { uploadImage, isStorageConfigured } from '@/lib/storage'
 
 /**
  * GET /api/itam/auth/me/profile
@@ -79,7 +80,30 @@ export async function PUT(req: NextRequest) {
               { status: 413 },
             )
           }
-          data.avatarUrl = url
+          // SPRINT-1 #2: if it's a base64 data URL AND external storage is
+          // configured, upload to R2/Blob/Supabase and store only the URL
+          // (avoids bloating the User table with multi-MB base64 strings).
+          // If storage is NOT configured (dev/memory mode), keep the data
+          // URL as-is so avatars still work in dev.
+          if (url.startsWith('data:image/') && isStorageConfigured()) {
+            const match = url.match(/^data:([^;]+);base64,(.+)$/)
+            if (match) {
+              const contentType = match[1]
+              const ext = contentType.split('/')[1] === 'jpeg' ? 'jpg' : (contentType.split('/')[1] || 'jpg')
+              const buffer = Buffer.from(match[2], 'base64')
+              try {
+                const { url: storedUrl } = await uploadImage(buffer, ext, 'avatars')
+                data.avatarUrl = storedUrl
+              } catch (uploadErr) {
+                console.error('[profile] avatar upload failed, keeping data URL:', uploadErr)
+                data.avatarUrl = url
+              }
+            } else {
+              data.avatarUrl = url
+            }
+          } else {
+            data.avatarUrl = url
+          }
         } else {
           return NextResponse.json({ error: 'avatarUrl ต้องเป็น URL หรือ data:image/...' }, { status: 400 })
         }

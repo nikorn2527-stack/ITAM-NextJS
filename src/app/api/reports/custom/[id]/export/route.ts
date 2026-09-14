@@ -81,6 +81,23 @@ export async function GET(
     )
   }
 
+  // SPRINT-1 #9 (DEV-HANDOVER B-06): cap PDF export at 500 rows to avoid
+  // Vercel Hobby 10s timeout. CSV is allowed beyond the cap because CSV
+  // generation is fast (no per-row PDF rendering).
+  const MAX_PDF_ROWS = 500
+  if (format === 'pdf' && result.rows.length > MAX_PDF_ROWS) {
+    return NextResponse.json(
+      {
+        error: `รายงานมี ${result.rows.length} แถว เกินกว่าขีดจำกัด PDF (${MAX_PDF_ROWS}) กรุณาใช้ CSV แทน หรือกรองข้อมูลให้น้อยลง`,
+        code: 'EXPORT_TOO_LARGE',
+        count: result.rows.length,
+        max: MAX_PDF_ROWS,
+        hint: 'Use ?format=csv for large exports, or narrow the date range / site filter.',
+      },
+      { status: 413 },
+    )
+  }
+
   const safeName = template.name.replace(/[^\p{L}\p{N}\-_ ]/gu, '_').slice(0, 80)
   const stamp = new Date().toISOString().slice(0, 10)
 

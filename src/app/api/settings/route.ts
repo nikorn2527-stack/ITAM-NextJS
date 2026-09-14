@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth-middleware'
 import { db } from '@/lib/db'
+import { encryptSecret } from '@/lib/secret-crypto'
 
 /**
  * Secret-pattern deny-list for the public settings map.
@@ -83,8 +84,11 @@ export async function PUT(req: NextRequest) {
     const ops = Object.entries(body).map(([key, value]) =>
       db.appSetting.upsert({
         where: { key },
-        update: { value: String(value) },
-        create: { key, value: String(value) },
+        // SPRINT-1 #5 (FIX-019): encrypt secret-pattern keys at rest.
+        // Reads decrypt via maybeDecrypt(); legacy plaintext rows still
+        // work because isEncrypted() returns false for them.
+        update: { value: isSecretKey(key) ? encryptSecret(String(value)) : String(value) },
+        create: { key, value: isSecretKey(key) ? encryptSecret(String(value)) : String(value) },
       }),
     )
     await Promise.all(ops)

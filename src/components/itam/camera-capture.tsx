@@ -57,7 +57,7 @@ export function CameraCapture({ onCapture, className, label = 'ถ่ายภ�
     setOpen(false)
   }
 
-  function capture() {
+  async function capture() {
     if (!videoRef.current || !canvasRef.current) return
     const video = videoRef.current
     const canvas = canvasRef.current
@@ -66,21 +66,24 @@ export function CameraCapture({ onCapture, className, label = 'ถ่ายภ�
     const ctx = canvas.getContext('2d')
     if (!ctx) return
     ctx.drawImage(video, 0, 0)
-    // Compress to JPEG, max 1024px wide
-    const maxW = 1024
-    if (canvas.width > maxW) {
-      const scale = maxW / canvas.width
-      const tmp = document.createElement('canvas')
-      tmp.width = maxW
-      tmp.height = Math.max(1, Math.round(canvas.height * scale))
-      const tmpCtx = tmp.getContext('2d')
-      if (tmpCtx) {
-        tmpCtx.drawImage(canvas, 0, 0, tmp.width, tmp.height)
-        onCapture(tmp.toDataURL('image/jpeg', 0.7))
+    // SPRINT-1 #3: instead of canvas.toDataURL('image/jpeg', 0.7) which
+    // produces ~500KB-1MB photos, convert to a File and run through
+    // browser-image-compression (target 50KB). 20× smaller uploads.
+    try {
+      const blob: Blob | null = await new Promise((resolve) =>
+        canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.85),
+      )
+      if (blob) {
+        const file = new File([blob], 'camera-capture.jpg', { type: 'image/jpeg' })
+        const { compressImageToDataUrl } = await import('@/lib/client-image-compress')
+        const dataUrl = await compressImageToDataUrl(file, { maxSizeMB: 0.05 })
+        onCapture(dataUrl)
       } else {
+        // Fallback to direct toDataURL if toBlob fails
         onCapture(canvas.toDataURL('image/jpeg', 0.7))
       }
-    } else {
+    } catch (err) {
+      console.warn('[camera-capture] compression failed, using raw canvas:', err)
       onCapture(canvas.toDataURL('image/jpeg', 0.7))
     }
     stopCamera()

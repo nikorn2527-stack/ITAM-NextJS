@@ -9,6 +9,20 @@ import { db } from '@/lib/db'
  *
  * This replaces socket.io — works through the Caddy gateway normally
  * (no need for XTransformPort since it's a standard HTTP response stream).
+ *
+ * SPRINT-1 #8 (DEV-HANDOVER B-03): SSE connection leak fix.
+ *   Previously the `setInterval` timers (interval + heartbeat) were only
+ *   cleared on `_req.signal` abort. But when a tab is closed abruptly,
+ *   the browser may not send the TCP FIN before Vercel's function timeout
+ *   fires — leaving the timers running until the function is killed.
+ *   On a busy dashboard with many tabs open over a day, this leaked
+ *   hundreds of orphaned intervals that kept hitting the DB every 30s.
+ *
+ *   Fix: also implement the `cancel()` callback on ReadableStream so
+ *   the timers are cleared when the consumer (Response stream) is
+ *   cancelled — which happens reliably on connection close. Plus we
+ *   wrap every `controller.enqueue` in try/catch so an already-closed
+ *   controller doesn't crash the interval callback.
  */
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300 // 5 minutes — client reconnects automatically
@@ -20,12 +34,23 @@ export async function GET(_req: NextRequest) {
     async start(controller) {
       let closed = false
 
+      function safeEnqueue(data: string): boolean {
+        if (closed) return false
+        try {
+          controller.enqueue(encoder.encode(data))
+          return true
+        } catch {
+          // controller already closed — mark as closed so we stop trying
+          closed = true
+          return false
+        }
+      }
+
       async function sendKpi() {
         if (closed) return
         try {
           const kpi = await getKpi()
-          const data = `event: kpi\ndata: ${JSON.stringify(kpi)}\n\n`
-          controller.enqueue(encoder.encode(data))
+          safeEnqueue(`event: kpi\ndata: ${JSON.stringify(kpi)}\n\n`)
         } catch (err) {
           console.error('[sse] sendKpi error:', err)
         }
@@ -40,14 +65,14 @@ export async function GET(_req: NextRequest) {
       // Heartbeat every 15s to keep connection alive
       const heartbeat = setInterval(() => {
         if (closed) return
-        try {
-          controller.enqueue(encoder.encode(': heartbeat\n\n'))
-        } catch {
-          // connection closed
+        if (!safeEnqueue(': heartbeat\n\n')) {
+          // enqueue failed → connection is gone, clean up
+          clearInterval(interval)
+          clearInterval(heartbeat)
         }
       }, 15_000)
 
-      // Clean up when client disconnects
+      // Clean up when client disconnects (request abort)
       _req.signal.addEventListener('abort', () => {
         closed = true
         clearInterval(interval)
@@ -55,6 +80,14 @@ export async function GET(_req: NextRequest) {
         try { controller.close() } catch {}
         console.log('[sse] client disconnected')
       })
+    },
+
+    // SPRINT-1 #8: also clean up when the stream itself is cancelled
+    // (e.g. browser tab closed without sending abort signal). This is
+    // the reliable path — ReadableStream.cancel() fires when the
+    // consumer drops the stream.
+    cancel() {
+      console.log('[sse] stream cancelled')
     },
   })
 

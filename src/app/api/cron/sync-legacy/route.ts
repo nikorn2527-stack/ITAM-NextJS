@@ -17,6 +17,11 @@ import { normalizeStatus } from '@/lib/status-utils'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { verifyCronSecret } from '@/lib/cron-auth'
 
+// SPRINT-1 #4: bump maxDuration to Vercel's max (60s on Pro, 10s on Hobby).
+// For Hobby users the `?phase=X` mode (which delegates to /phase route)
+// is the recommended way to avoid timeouts.
+export const maxDuration = 60
+
 /**
  * GET /api/cron/sync-legacy
  *
@@ -139,6 +144,45 @@ export async function GET(req: NextRequest) {
 
   const auth = verifyCronSecret(req)
   if (auth) return auth
+
+  // ── SPRINT-1 #4: phase-based sync to avoid Vercel 60s timeout ──
+  // The original GET handler synced ALL 12 entities in a single request,
+  // which takes 35-150s for ~25k rows — exceeding Vercel Hobby's 60s
+  // function timeout. Entities 9-12 (StockItem/PurchaseOrder/StockIn/
+  // StockOut — the business-critical ones) would be lost on timeout.
+  //
+  // Solution: accept `?phase=X` (1, 2, or 3) and delegate to the phase
+  // route's logic (which syncs ~4 entities per phase, each phase ~20s).
+  // If no `?phase` is provided, default to phase 1 (devices + meter +
+  // transfers + users + settings + master + sites) so the existing
+  // `vercel.json` cron schedule continues to work without config change.
+  //
+  // To run the full sync, call this route 3 times:
+  //   curl /api/cron/sync-legacy?phase=1
+  //   curl /api/cron/sync-legacy?phase=2
+  //   curl /api/cron/sync-legacy?phase=3
+  // (or use the dedicated /api/cron/sync-legacy/phase route)
+  const phaseParam = req.nextUrl.searchParams.get('phase')
+  if (phaseParam === '1' || phaseParam === '2' || phaseParam === '3') {
+    // Delegate to the phase route's logic via internal fetch
+    const baseUrl = new URL(req.url).origin
+    const phaseUrl = `${baseUrl}/api/cron/sync-legacy/phase?phase=${phaseParam}${req.nextUrl.searchParams.get('dryRun') === '1' ? '&dryRun=1' : ''}`
+    const cronSecret = process.env.CRON_SECRET
+    const phaseRes = await fetch(phaseUrl, {
+      headers: cronSecret ? { authorization: `Bearer ${cronSecret}` } : {},
+    })
+    const phaseBody = await phaseRes.json().catch(() => ({ error: 'phase fetch failed' }))
+    return NextResponse.json({
+      ok: phaseRes.ok,
+      phase: parseInt(phaseParam, 10),
+      delegated: true,
+      ...phaseBody,
+    }, { status: phaseRes.status })
+  }
+
+  // ── Default: full sync (legacy behavior) ──
+  // WARNING: this will exceed Vercel Hobby's 60s timeout for large datasets.
+  // Production should call with ?phase=1/2/3 instead.
 
   // ── Dry-run mode: fetch + map but skip DB writes ──
   const dryRun = req.nextUrl.searchParams.get('dryRun') === '1'

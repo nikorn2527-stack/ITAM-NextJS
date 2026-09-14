@@ -7,7 +7,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -584,6 +584,15 @@ model WorkOrderImage {
   isDemo      Boolean  @default(false)
   stage       String // before | onsite | after
   image_data  String
+  // SPRINT-1 #2: when storage abstraction (R2/Blob/Supabase) is configured,
+  // images are uploaded to external storage and only the URL is stored in
+  // `imageUrl` (with `storageProvider` for audit). `image_data` is kept for
+  // backward-compat with legacy rows + dev mode where storage='memory'
+  // returns a data URL. For new uploads with external storage, `image_data`
+  // is set to '' (empty) to avoid DB bloat.
+  imageUrl          String?
+  storageProvider   String?
+  sizeBytes         Int?
   fileName    String?
   uploadedBy  String?
   createdAt   DateTime @default(now())

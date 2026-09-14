@@ -40,6 +40,7 @@ import {
   markFailed,
   markSkipped,
 } from '@/lib/notification-log'
+import { maybeDecrypt } from '@/lib/secret-crypto'
 
 // ============================================================
 // Types
@@ -140,8 +141,12 @@ interface NotifySettings {
 async function loadSettings(): Promise<NotifySettings> {
   try {
     const rows = await db.appSetting.findMany()
-    const get = (key: string) =>
-      rows.find((r) => r.key === key)?.value || undefined
+    // SPRINT-1 #5 (FIX-019): decrypt secret-pattern values at rest.
+    // Non-secret values pass through maybeDecrypt() unchanged (no `enc:` prefix).
+    const get = (key: string) => {
+      const raw = rows.find((r) => r.key === key)?.value || undefined
+      return raw ? maybeDecrypt(raw) : undefined
+    }
     return {
       lineChannelAccessToken: get('line_channel_access_token'),
       lineChannelSecret: get('line_channel_secret'),
