@@ -822,7 +822,7 @@ export function StickerPrintDialog({
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-2 py-6 text-slate-400 dark:text-slate-500">
-                  <Tag className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+                  <Tag className="h-6 w-6 text-slate-300 dark:text-slate-400" />
                   <span className="text-xs">เลือกอุปกรณ์ด้านล่างเพื่อดูตัวอย่าง</span>
                 </div>
               )}

@@ -44,7 +44,7 @@ export function TopBarClock() {
       >
         <span className="h-1.5 w-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
         <span className="font-mono tabular-nums">--:--:--</span>
-        <span className="text-slate-300 dark:text-slate-600">·</span>
+        <span className="text-slate-300 dark:text-slate-400">·</span>
         <span className="whitespace-nowrap">กำลังโหลด…</span>
       </div>
     )
@@ -70,7 +70,7 @@ export function TopBarClock() {
       <span className="font-mono font-semibold tabular-nums tracking-tight">
         {timeStr}
       </span>
-      <span className="text-slate-300 dark:text-slate-600">·</span>
+      <span className="text-slate-300 dark:text-slate-400">·</span>
       <span className="whitespace-nowrap text-slate-500 dark:text-slate-400">
         {dateStr}
       </span>

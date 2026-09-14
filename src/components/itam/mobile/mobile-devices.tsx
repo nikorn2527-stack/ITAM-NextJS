@@ -119,7 +119,7 @@ export function MobileDevices() {
           </div>
         ) : devices.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Package className="mb-2 h-10 w-10 text-slate-300 dark:text-slate-600" />
+            <Package className="mb-2 h-10 w-10 text-slate-300 dark:text-slate-400" />
             <p className="text-sm text-slate-500 dark:text-slate-400">ไม่พบอุปกรณ์</p>
           </div>
         ) : (
@@ -145,7 +145,7 @@ export function MobileDevices() {
                     {d.type} · {d.site ?? '-'} · S/N: {d.serialNumber ?? '-'}
                   </p>
                 </div>
-                <ChevronRight className="ml-2 h-5 w-5 flex-shrink-0 text-slate-300 dark:text-slate-600" />
+                <ChevronRight className="ml-2 h-5 w-5 flex-shrink-0 text-slate-300 dark:text-slate-400" />
               </button>
             ))}
           </div>

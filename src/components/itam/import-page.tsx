@@ -849,7 +849,7 @@ export function ImportPage() {
               </div>
             ) : !jobs || jobs.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
-                <FileSpreadsheet className="h-10 w-10 text-slate-300 dark:text-slate-600" />
+                <FileSpreadsheet className="h-10 w-10 text-slate-300 dark:text-slate-400" />
                 <p className="text-sm text-slate-400 dark:text-slate-500">
                   {t('import.no_history')}
                 </p>
@@ -926,7 +926,7 @@ export function ImportPage() {
                             ) : job.status === 'completed' ? (
                               <CheckCircle className="mx-auto h-4 w-4 text-emerald-500" />
                             ) : (
-                              <span className="text-slate-300 dark:text-slate-600">
+                              <span className="text-slate-300 dark:text-slate-400">
                                 —
                               </span>
                             )}

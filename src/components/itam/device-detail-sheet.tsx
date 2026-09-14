@@ -110,7 +110,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</dt>
       <dd className="break-words text-sm font-medium text-slate-800 dark:text-slate-100">
         {value === null || value === undefined || value === '' ? (
-          <span className="text-slate-400 dark:text-slate-600">—</span>
+          <span className="text-slate-400 dark:text-slate-400">—</span>
         ) : (
           value
         )}
@@ -1761,7 +1761,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
               <Skeleton className="h-44 w-full" />
             ) : chartData.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 py-8 text-slate-400 dark:border-slate-700 dark:text-slate-500">
-                <Inbox className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                <Inbox className="h-8 w-8 text-slate-300 dark:text-slate-400" />
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">ยังไม่มีประวัติการจดมิเตอร์</span>
                 <span className="text-xs text-slate-400 dark:text-slate-500">เริ่มจดมิเตอร์ได้จากหน้าจดมิเตอร์</span>
               </div>
@@ -1872,7 +1872,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
               <Skeleton className="h-24 w-full" />
             ) : !transfers || transfers.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 py-8 text-slate-400 dark:border-slate-700 dark:text-slate-500">
-                <MapPin className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                <MapPin className="h-8 w-8 text-slate-300 dark:text-slate-400" />
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">ยังไม่มีประวัติการย้าย</span>
                 <span className="text-xs text-slate-400 dark:text-slate-500">กดปุ่ม &quot;ย้ายอุปกรณ์&quot; ด้านล่างเพื่อบันทึกการย้าย</span>
               </div>
@@ -1925,7 +1925,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
               <Skeleton className="h-24 w-full dark:bg-slate-800" />
             ) : !assignments || assignments.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 py-8 text-slate-400 dark:border-slate-700 dark:text-slate-500">
-                <User className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                <User className="h-8 w-8 text-slate-300 dark:text-slate-400" />
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">ยังไม่มีประวัติการมอบหมาย</span>
                 <span className="text-xs text-slate-400 dark:text-slate-500">กดปุ่ม &quot;มอบหมาย&quot; ด้านบนเพื่อบันทึกการมอบหมาย</span>
               </div>
@@ -2065,7 +2065,7 @@ export function DeviceDetailSheet({ deviceId, onClose, onEdit }: Props) {
               <Skeleton className="h-24 w-full dark:bg-slate-800" />
             ) : !licenses || licenses.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-slate-300 py-8 text-slate-400 dark:border-slate-700 dark:text-slate-500">
-                <KeyRound className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                <KeyRound className="h-8 w-8 text-slate-300 dark:text-slate-400" />
                 <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
                   ยังไม่มีลิขสิทธิ์ซอฟต์แวร์
                 </span>

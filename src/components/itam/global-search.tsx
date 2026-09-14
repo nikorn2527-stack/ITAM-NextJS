@@ -165,7 +165,7 @@ export function GlobalSearch() {
               <CommandList className="itam-scroll max-h-[60vh]">
                 {!hasQuery ? (
                   <div className="px-4 py-10 text-center text-sm text-slate-400 dark:text-slate-500">
-                    <Search className="mx-auto mb-2 h-6 w-6 text-slate-300 dark:text-slate-600" />
+                    <Search className="mx-auto mb-2 h-6 w-6 text-slate-300 dark:text-slate-400" />
                     พิมพ์เพื่อค้นหา...
                     <div className="mt-1 text-xs text-slate-400 dark:text-slate-500">
                       ค้นหาในอุปกรณ์ · ข้อมูลมาตรฐาน · การจดมิเตอร์ · ประวัติ · สาขา
@@ -198,7 +198,7 @@ export function GlobalSearch() {
                                 {d.subtitle}
                               </div>
                             </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-600" />
+                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -225,7 +225,7 @@ export function GlobalSearch() {
                                 {m.subtitle}
                               </div>
                             </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-600" />
+                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -252,7 +252,7 @@ export function GlobalSearch() {
                                 {m.subtitle}
                               </div>
                             </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-600" />
+                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -279,7 +279,7 @@ export function GlobalSearch() {
                                 {a.subtitle}
                               </div>
                             </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-600" />
+                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -306,7 +306,7 @@ export function GlobalSearch() {
                                 {s.subtitle}
                               </div>
                             </div>
-                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-600" />
+                            <ArrowRight className="h-3.5 w-3.5 text-slate-400 dark:text-slate-400" />
                           </CommandItem>
                         ))}
                       </CommandGroup>

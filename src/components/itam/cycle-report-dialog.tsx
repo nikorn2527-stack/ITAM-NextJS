@@ -346,7 +346,7 @@ export function CycleReportDialog({
           ) : !data || !hasReadings ? (
             <div className="flex flex-col items-center justify-center gap-3 py-12 text-slate-400 dark:text-slate-500">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-                <Inbox className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+                <Inbox className="h-7 w-7 text-slate-300 dark:text-slate-400" />
               </div>
               <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
                 รอบนี้ยังไม่มีการจดมิเตอร์
@@ -646,7 +646,7 @@ export function CycleReportDialog({
                           <TableRow>
                             <TableCell colSpan={6} className="py-8 text-center text-slate-400 dark:text-slate-500">
                               <div className="flex flex-col items-center gap-2">
-                                <Package className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+                                <Package className="h-6 w-6 text-slate-300 dark:text-slate-400" />
                                 <span>ไม่มีอุปกรณ์ในรอบนี้</span>
                               </div>
                             </TableCell>

@@ -766,7 +766,7 @@ export function LicenseManagementSection() {
                     className="py-12 text-center text-sm text-slate-400 dark:text-slate-500"
                   >
                     <div className="flex flex-col items-center gap-2">
-                      <KeyRound className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+                      <KeyRound className="h-8 w-8 text-slate-300 dark:text-slate-400" />
                       <span className="font-medium text-slate-500 dark:text-slate-400">
                         ไม่พบ License ที่ตรงกับเงื่อนไข
                       </span>

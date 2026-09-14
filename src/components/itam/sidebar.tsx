@@ -463,7 +463,7 @@ export function Sidebar() {
             <div className="mt-1 flex items-center gap-1 text-[10px] font-mono text-slate-400 dark:text-slate-500">
               <span className="inline-block h-1 w-1 animate-pulse rounded-full bg-[#f97316]" />
               <span>{formatThaiTime(clockNow)}</span>
-              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <span className="text-slate-300 dark:text-slate-400">·</span>
               <span className="whitespace-nowrap">{formatThaiDate(clockNow)}</span>
             </div>
           )}

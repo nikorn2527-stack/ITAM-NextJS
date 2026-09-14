@@ -209,7 +209,7 @@ export function DeviceSetChildrenSection({
           <p className="py-4 text-center text-xs text-muted-foreground">กำลังโหลด...</p>
         ) : children.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-slate-200 py-6 text-center dark:border-slate-700">
-            <Box className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+            <Box className="h-8 w-8 text-slate-300 dark:text-slate-400" />
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
               ยังไม่มีอุปกรณ์ในชุด
             </span>

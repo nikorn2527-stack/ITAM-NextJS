@@ -374,7 +374,7 @@ export function LifecycleDashboard() {
           {/* Empty state when no devices */}
           {!isLoading && summary && summary.total === 0 && (
             <div className="mt-4 flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 py-8 text-slate-400 dark:border-slate-700 dark:text-slate-500">
-              <Inbox className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+              <Inbox className="h-8 w-8 text-slate-300 dark:text-slate-400" />
               <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
                 {t('lifecycle.no_devices')}
               </span>

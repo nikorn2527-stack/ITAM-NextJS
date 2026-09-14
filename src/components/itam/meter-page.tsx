@@ -504,7 +504,7 @@ export function MeterPage() {
                     <TableCell colSpan={9} className="py-12">
                       <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
                         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-                          <Gauge className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+                          <Gauge className="h-7 w-7 text-slate-300 dark:text-slate-400" />
                         </div>
                         <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
                           Not foundDeviceatMustReadMeter

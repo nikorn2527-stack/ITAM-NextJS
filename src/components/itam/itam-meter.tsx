@@ -551,7 +551,7 @@ function BulkMeterDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                         </TableCell>
                         <TableCell className="text-right">
                           {!m.changed ? (
-                            <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
+                            <span className="text-xs text-slate-300 dark:text-slate-400">—</span>
                           ) : (
                             <Badge
                               className={

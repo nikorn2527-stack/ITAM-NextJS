@@ -143,7 +143,7 @@ export function MobileAccount() {
             </div>
             {credentials.length === 0 ? (
               <div className="py-6 text-center">
-                <Fingerprint className="mx-auto mb-2 h-10 w-10 text-slate-300 dark:text-slate-600" />
+                <Fingerprint className="mx-auto mb-2 h-10 w-10 text-slate-300 dark:text-slate-400" />
                 <p className="text-sm text-slate-500 dark:text-slate-400">ยังไม่ได้ลงทะเบียน Passkey</p>
               </div>
             ) : (

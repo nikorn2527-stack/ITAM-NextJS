@@ -706,7 +706,7 @@ export function ItamMeterKeyboard() {
                   exit={{ opacity: 0 }}
                   className="flex flex-1 flex-col items-center justify-center text-center text-slate-400"
                 >
-                  <Keyboard className="mb-2 h-10 w-10 text-slate-300 dark:text-slate-600" />
+                  <Keyboard className="mb-2 h-10 w-10 text-slate-300 dark:text-slate-400" />
                   <div className="text-sm">เลือกเครื่องจากรายการด้านซ้าย หรือพิมพ์ค้นหาแล้วกด Enter</div>
                 </motion.div>
               ) : (

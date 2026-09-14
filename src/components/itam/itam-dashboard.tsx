@@ -190,7 +190,7 @@ function EmptyState({
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-12 text-slate-400 dark:text-slate-500">
       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-        {icon ?? <Inbox className="h-6 w-6 text-slate-300 dark:text-slate-600" />}
+        {icon ?? <Inbox className="h-6 w-6 text-slate-300 dark:text-slate-400" />}
       </div>
       <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">{message}</div>
       {subtitle && <div className="text-xs text-slate-400 dark:text-slate-500">{subtitle}</div>}
@@ -1326,7 +1326,7 @@ ${kpiHtml}
               </span>{' '}
               {t('dash.unit.sheet')}
             </span>
-            <span className="text-slate-300 dark:text-slate-600">·</span>
+            <span className="text-slate-300 dark:text-slate-400">·</span>
             <span>
               {t('dash.insights.prev_month')}{' '}
               <span className="font-semibold tabular-nums">
@@ -1334,7 +1334,7 @@ ${kpiHtml}
               </span>{' '}
               {t('dash.unit.sheet')}
             </span>
-            <span className="text-slate-300 dark:text-slate-600">·</span>
+            <span className="text-slate-300 dark:text-slate-400">·</span>
             <span>
               {t('dash.insights.meter_done')}{' '}
               <span className="font-semibold tabular-nums">

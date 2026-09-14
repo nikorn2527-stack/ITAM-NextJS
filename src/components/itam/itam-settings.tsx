@@ -312,7 +312,9 @@ export function ItamSettings() {
   }
 
   async function saveItem() {
+    // SPRINT-5 #2 (UI-BUG-009): validate required fields including code
     if (!form.category || !form.label) { toast.error('PleasePendingCategoryandFee'); return }
+    if (!form.code?.trim()) { toast.error('กรุณาระบุรหัส (Code)'); return }
     try {
       if (editItem) {
         const res = await fetch(`/api/itam/master-items/${editItem.id}`, {
@@ -413,11 +415,11 @@ export function ItamSettings() {
         </nav>
 
         {/* Tab content — scrolls internally (Issue 3: heights fill space) */}
-        <div className="itam-scroll min-h-0 flex-1 overflow-y-auto rounded-md border border-slate-200 bg-white p-3 shadow-sm md:p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="itam-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-md border border-slate-200 bg-white p-3 shadow-sm md:p-4 dark:border-slate-800 dark:bg-slate-900">
           {/* UX-03: Breadcrumb showing current location */}
           <div className="mb-3 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
             <span>{t('settings.title')}</span>
-            <span className="text-slate-300 dark:text-slate-600">/</span>
+            <span className="text-slate-300 dark:text-slate-400">/</span>
             <span className="font-medium text-slate-700 dark:text-slate-200">
               {(() => {
                 const item = SETTINGS_TAB_GROUPS

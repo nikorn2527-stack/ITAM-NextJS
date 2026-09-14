@@ -1114,7 +1114,7 @@ function HistoryTab() {
             </div>
           ) : syncs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
-              <History className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+              <History className="h-8 w-8 text-slate-300 dark:text-slate-400" />
               <p className="mt-2 text-xs text-muted-foreground">
                 {t('google_sheets.history.empty')}
               </p>

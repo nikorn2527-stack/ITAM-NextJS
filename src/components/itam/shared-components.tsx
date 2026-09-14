@@ -56,7 +56,7 @@ export function Breadcrumb({ items }: { items: { label: string; href?: string }[
     <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
       {items.map((item, i) => (
         <React.Fragment key={i}>
-          {i > 0 && <span className="text-slate-300 dark:text-slate-600">/</span>}
+          {i > 0 && <span className="text-slate-300 dark:text-slate-400">/</span>}
           <span className={i === items.length - 1 ? 'font-medium text-slate-700 dark:text-slate-200' : ''}>
             {item.label}
           </span>
@@ -97,7 +97,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="mb-3 text-slate-300 dark:text-slate-600">
+      <div className="mb-3 text-slate-300 dark:text-slate-400">
         {icon || <Inbox className="h-12 w-12" />}
       </div>
       <h3 className="text-sm font-medium text-slate-700 dark:text-slate-300">{title}</h3>

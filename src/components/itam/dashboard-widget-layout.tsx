@@ -338,7 +338,7 @@ export function DashboardWidgetLayout({
                   {checked ? (
                     <Eye className="h-3.5 w-3.5 text-slate-400" />
                   ) : (
-                    <EyeOff className="h-3.5 w-3.5 text-slate-300 dark:text-slate-600" />
+                    <EyeOff className="h-3.5 w-3.5 text-slate-300 dark:text-slate-400" />
                   )}
                 </label>
               )

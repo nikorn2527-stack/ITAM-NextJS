@@ -3794,7 +3794,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                     <TableCell colSpan={12} className="py-12">
                       <div className="flex flex-col items-center justify-center gap-2 text-slate-400 dark:text-slate-500">
                         <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
-                          <PackageOpen className="h-7 w-7 text-slate-300 dark:text-slate-600" />
+                          <PackageOpen className="h-7 w-7 text-slate-300 dark:text-slate-400" />
                         </div>
                         <div className="text-sm font-semibold text-slate-500 dark:text-slate-400">
                           {search || statusFilter !== 'all' || siteFilter !== 'all' || warrantyFilter !== 'all' || assigneeFilter !== 'all'
@@ -3875,7 +3875,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       {/* Site Code */}
                       {isColVisible('assetSiteCode') && (
                       <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
-                        {d.assetSiteCode || <span className="text-slate-300 dark:text-slate-600">—</span>}
+                        {d.assetSiteCode || <span className="text-slate-300 dark:text-slate-400">—</span>}
                       </TableCell>
                       )}
                       {/* t('devices.field.type') */}
@@ -3898,7 +3898,7 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
                       {/* Serial No. */}
                       {isColVisible('serialNumber') && (
                       <TableCell className="font-mono text-xs text-slate-600 dark:text-slate-300">
-                        {d.serialNumber || <span className="text-slate-300 dark:text-slate-600">—</span>}
+                        {d.serialNumber || <span className="text-slate-300 dark:text-slate-400">—</span>}
                       </TableCell>
                       )}
                       {/* t('devices.field.building_floor') */}
