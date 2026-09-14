@@ -1888,7 +1888,9 @@ function CreateWorkOrderDialog({
                               deviceSearch: `${d.assetCode} — ${d.name}`,
                               building: s.building || d.building || '',
                               location: s.location || d.location || '',
-                              department: s.department || d.department || '',
+                              // SPRINT-4 #8 (UI-BUG-002): removed `department` assignment
+                              // because NewFormState doesn't have a `department` field.
+                              // Setting it was a no-op that produced a TS warning.
                             }))
                             setDeviceResultsCache(d)
                             setDeviceResults([])
