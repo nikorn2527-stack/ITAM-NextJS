@@ -169,7 +169,16 @@ interface NotifySettings {
 export function ItamSettings() {
   const t = useT()
   const qc = useQueryClient()
-  const [tab, setTab] = React.useState<SettingsTab>('master')
+  const [tab, setTab] = React.useState<SettingsTab>(() => {
+    if (typeof window === 'undefined') return 'master'
+    const requested = new URLSearchParams(window.location.search).get('tab')
+    const knownTabs = new Set(
+      SETTINGS_TAB_GROUPS.flatMap((group) => group.items.map((item) => item.value)),
+    )
+    return requested && knownTabs.has(requested as SettingsTab)
+      ? (requested as SettingsTab)
+      : 'master'
+  })
   const [category, setCategory] = React.useState('all')
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editItem, setEditItem] = React.useState<MasterItem | null>(null)
@@ -430,8 +439,10 @@ export function ItamSettings() {
             </span>
           </div>
 
-          {/* Completion Guidance — shows only when there are actionable items */}
-          <CompletionGuidance />
+          {/* Completion Guidance is a landing-state summary, not a second menu.
+              Keep it off individual Settings forms so it does not repeat the
+              sidebar while the user is editing a specific section. */}
+          {tab === 'master' && <CompletionGuidance onNavigate={setTab} />}
 
           {tab === 'pending' && <PendingUsersSection />}
 
@@ -1823,7 +1834,7 @@ interface CompletionApiResponse {
   completed?: number
 }
 
-function CompletionGuidance() {
+function CompletionGuidance({ onNavigate }: { onNavigate: (tab: SettingsTab) => void }) {
   const [dismissed, setDismissed] = React.useState(false)
   const { data, isLoading } = useQuery<CompletionApiResponse>({
     queryKey: ['settings-completion'],
@@ -1961,14 +1972,20 @@ function CompletionGuidance() {
                       const url = new URL(item.href!, window.location.origin)
                       const tabName = url.searchParams.get('tab')
                       if (tabName) {
-                        const btn = document.querySelector(
-                          `[data-tab="${tabName}"]`,
-                        ) as HTMLButtonElement | null
-                        if (btn) btn.click()
+                        const knownTabs = new Set(
+                          SETTINGS_TAB_GROUPS.flatMap((group) => group.items.map((entry) => entry.value)),
+                        )
+                        if (knownTabs.has(tabName as SettingsTab)) {
+                          onNavigate(tabName as SettingsTab)
+                        }
                       }
-                      // Update hash so the target section can scroll
+                      // The app uses the root page with client-side page
+                      // switching; /settings is not a standalone route.
                       if (item.section) {
-                        window.history.replaceState(null, '', item.href!)
+                        const nextUrl = new URL(window.location.href)
+                        nextUrl.pathname = '/'
+                        if (tabName) nextUrl.searchParams.set('tab', tabName)
+                        window.history.replaceState(null, '', `${nextUrl.pathname}${nextUrl.search}${item.section}`)
                         // Scroll after the tab swap renders
                         setTimeout(() => {
                           const el = document.querySelector(item.section!)
