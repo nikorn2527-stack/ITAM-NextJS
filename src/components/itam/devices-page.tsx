@@ -1910,6 +1910,15 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
 
   async function applyBulkStatus() {
     if (!bulkStatus || selectedIds.size === 0) return
+    // SPRINT-3 #7: confirmation dialog with diff preview before bulk apply
+    const count = selectedIds.size
+    const label = t(deviceStatusLabelKey(bulkStatus))
+    const confirmed = window.confirm(
+      `ยืนยันการเปลี่ยนสถานะ ${count} อุปกรณ์\n\n` +
+      `เปลี่ยนจากสถานะปัจจุบัน → "${label}"\n\n` +
+      `กด "ตกลง" เพื่อดำเนินการต่อ หรือ "ยกเลิก" เพื่อยกเลิก`
+    )
+    if (!confirmed) return
     setBulkAction(true)
     const ids = Array.from(selectedIds)
     const results = await Promise.allSettled(
@@ -1945,6 +1954,15 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
 
   async function applyBulkTransfer() {
     if (!bulkSite || selectedIds.size === 0) return
+    // SPRINT-3 #7: confirmation dialog before bulk transfer
+    const count = selectedIds.size
+    const siteName = (visibleSites ?? []).find((s) => s.code === bulkSite)?.name ?? bulkSite
+    const confirmed = window.confirm(
+      `ยืนยันการย้าย ${count} อุปกรณ์\n\n` +
+      `ไปยังสาขา: ${siteName} (${bulkSite})\n\n` +
+      `กด "ตกลง" เพื่อดำเนินการต่อ หรือ "ยกเลิก" เพื่อยกเลิก`
+    )
+    if (!confirmed) return
     setBulkAction(true)
     const ids = Array.from(selectedIds)
     const today = new Date().toISOString().slice(0, 10)
