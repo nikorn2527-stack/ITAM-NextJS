@@ -63,6 +63,26 @@ export function getOrgScope(user: AuthUser | null | undefined): OrgScope {
     }
   }
 
+  // SPRINT-FIX: Admin role also bypasses org scope — admin needs to see
+  // all data regardless of org assignment (matches the existing pattern
+  // where admin role has allowedSites='ALL'). This fixes the "ผู้ใช้ไม่ได้ผูกกับองค์กร"
+  // error that blocks the devices page for admin users without orgId.
+  if (user.role === 'admin') {
+    if (user.organizationId) {
+      return {
+        ok: true,
+        organizationId: user.organizationId,
+        where: { organizationId: user.organizationId },
+      }
+    }
+    // Admin ไม่มี org → ดูได้ทั้งหมด (same as superadmin)
+    return {
+      ok: true,
+      organizationId: '*',
+      where: {},
+    }
+  }
+
   // ปกติ: บังคับ organizationId
   if (!user.organizationId) {
     return {
