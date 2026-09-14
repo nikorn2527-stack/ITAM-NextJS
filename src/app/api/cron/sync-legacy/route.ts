@@ -17,11 +17,6 @@ import { normalizeStatus } from '@/lib/status-utils'
 import { moduleUnavailableResponse } from '@/lib/module-gate'
 import { verifyCronSecret } from '@/lib/cron-auth'
 
-// SPRINT-1 #4: bump maxDuration to Vercel's max (60s on Pro, 10s on Hobby).
-// For Hobby users the `?phase=X` mode (which delegates to /phase route)
-// is the recommended way to avoid timeouts.
-export const maxDuration = 60
-
 /**
  * GET /api/cron/sync-legacy
  *

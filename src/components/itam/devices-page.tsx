@@ -1932,13 +1932,13 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     )
     const ok = results.filter((r) => r.status === 'fulfilled').length
     const fail = results.length - ok
-    const label = t(deviceStatusLabelKey(bulkStatus))
+    const statusLabel = t(deviceStatusLabelKey(bulkStatus))
     if (fail === 0) {
-      toast.success(t('devices.toast.bulk_status_ok').replace('{count}', String(ok)).replace('{label}', label))
+      toast.success(t('devices.toast.bulk_status_ok').replace('{count}', String(ok)).replace('{label}', statusLabel))
     } else {
       toast.warning(t('devices.toast.bulk_partial').replace('{ok}', String(ok)).replace('{fail}', String(fail)))
     }
-    await logBulkAction('BULK_UPDATE', `t('devices.action.change_status') ${ok} ${label}`, {
+    await logBulkAction('BULK_UPDATE', `t('devices.action.change_status') ${ok} ${statusLabel}`, {
       status: bulkStatus,
       count: ok,
       failed: fail,
@@ -1977,14 +1977,14 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     )
     const ok = results.filter((r) => r.status === 'fulfilled').length
     const fail = results.length - ok
-    const siteName =
+    const transferSiteName =
       (sites ?? []).find((s) => s.code === bulkSite)?.name ?? bulkSite
     if (fail === 0) {
-      toast.success(t('devices.toast.bulk_transfer_ok').replace('{count}', String(ok)).replace('{site}', siteName))
+      toast.success(t('devices.toast.bulk_transfer_ok').replace('{count}', String(ok)).replace('{site}', transferSiteName))
     } else {
       toast.warning(t('devices.toast.bulk_partial').replace('{ok}', String(ok)).replace('{fail}', String(fail)))
     }
-    await logBulkAction('BULK_TRANSFER', `t('devices.action.transfer') ${ok} to ${siteName}`, {
+    await logBulkAction('BULK_TRANSFER', `t('devices.action.transfer') ${ok} to ${transferSiteName}`, {
       toSite: bulkSite,
       count: ok,
       failed: fail,
