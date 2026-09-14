@@ -7,7 +7,7 @@
  *   - status: 'complete' | 'incomplete' | 'not_started' | 'error' | 'not_required' | 'permission_limited'
  *   - reason: WHY this needs action (Thai)
  *   - impact: WHAT modules/features are affected if not set (Thai)
- *   - href: deep-link to the settings tab (e.g. /settings?tab=master)
+ *   - href: deep-link to the settings tab (e.g. /?tab=master)
  *   - section: optional hash for field-level scroll (e.g. #approvers)
  *   - canEdit: false if user lacks permission (filtered out of actionable list by client)
  *   - requiredFor: machine-readable module keys (e.g. ['devices','work-orders'])
@@ -21,6 +21,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
+import { buildAuthorizationContext } from '@/lib/authorization-context'
+import { getUserPermissions, type Permission } from '@/lib/auth'
 
 export interface CompletionItem {
   key: string
@@ -43,20 +45,33 @@ export async function GET(req: NextRequest) {
   }
 
   const user = auth.row
-  const canEdit = user.role === 'admin' || user.role === 'superadmin'
+  const ctx = await buildAuthorizationContext(auth.user, auth.row.id, auth.row.allowedSites)
+  const organizationId = auth.row.organizationId ?? auth.user.organizationId ?? null
+  const organizationWhere = organizationId
+    ? { organizationId }
+    : { organizationId: null }
+  const organizationOrGlobalWhere = organizationId
+    ? { OR: [{ organizationId }, { organizationId: null }] }
+    : { organizationId: null }
+  const canEdit = ctx.can('SYSTEM_CONFIG') || ctx.can('ADMIN')
+  const canManageUsers = ctx.can('USER_MANAGE') || canEdit
+  const canEditMasterData = ctx.can('MASTER_DATA_EDIT') || canEdit
+  const canManageSync = canEdit
 
   const items: CompletionItem[] = []
 
   // 1. Organization
   try {
-    const orgCount = await db.organization.count()
+    const orgCount = organizationId
+      ? await db.organization.count({ where: { id: organizationId } })
+      : await db.organization.count({ where: { active: true } })
     items.push({
       key: 'organization',
       category: 'ระบบและองค์กร',
       label: 'ข้อมูลหน่วยงาน',
       description: 'องค์กรหลักที่ใช้ในระบบ (สำหรับ multi-org และ sync)',
       status: orgCount > 0 ? 'complete' : 'not_started',
-      href: '/settings?tab=organizations',
+      href: '/?tab=organizations',
       section: '#org-primary',
       canEdit,
       reason: orgCount > 0 ? undefined : 'ยังไม่ได้สร้างองค์กรหลัก',
@@ -72,14 +87,14 @@ export async function GET(req: NextRequest) {
 
   // 2. Sites
   try {
-    const siteCount = await db.siteAttribute.count()
+    const siteCount = await db.siteAttribute.count({ where: organizationWhere })
     items.push({
       key: 'sites',
       category: 'ระบบและองค์กร',
       label: 'ไซต์/สาขา',
       description: 'สาขาที่ติดตั้งอุปกรณ์ (ใช้ในการกรองและรายงาน)',
       status: siteCount > 0 ? 'complete' : 'incomplete',
-      href: '/settings?tab=site-attributes',
+      href: '/?tab=site-attributes',
       section: '#site-list',
       canEdit,
       reason: siteCount > 0 ? undefined : 'ยังไม่มีสาขาในระบบ',
@@ -95,16 +110,16 @@ export async function GET(req: NextRequest) {
 
   // 3. Users
   try {
-    const userCount = await db.user.count({ where: { active: true } })
+    const userCount = await db.user.count({ where: { ...organizationWhere, active: true } })
     items.push({
       key: 'users',
       category: 'ผู้ใช้และความปลอดภัย',
       label: 'ผู้ใช้และสิทธิ์',
       description: 'บัญชีผู้ใช้ที่เข้าสู่ระบบและดำเนินงานได้',
       status: userCount > 0 ? 'complete' : 'not_started',
-      href: '/settings?tab=users',
+      href: '/?tab=users',
       section: '#user-list',
-      canEdit,
+      canEdit: canManageUsers,
       reason: userCount > 0 ? undefined : 'ยังไม่มีผู้ใช้ในระบบ',
       impact: userCount > 0 ? undefined : 'ไม่มีใครเข้าสู่ระบบได้นอกจากบัญชี superadmin',
       requiredFor: ['all'],
@@ -118,16 +133,16 @@ export async function GET(req: NextRequest) {
 
   // 4. Master Data
   try {
-    const masterCount = await db.masterItem.count()
+    const masterCount = await db.masterItem.count({ where: organizationOrGlobalWhere })
     items.push({
       key: 'master-data',
       category: 'ข้อมูลและการดำเนินงาน',
       label: 'Master Data',
       description: 'ข้อมูลมาตรฐาน: ประเภท, ยี่ห้อ, รุ่น, ปัญหา, วิธีแก้',
       status: masterCount > 0 ? 'complete' : 'incomplete',
-      href: '/settings?tab=master',
+      href: '/?tab=master',
       section: '#master-list',
-      canEdit,
+      canEdit: canEditMasterData,
       reason: masterCount > 0 ? undefined : 'ยังไม่มีข้อมูลมาตรฐานในระบบ',
       impact: masterCount > 0 ? undefined : 'การสร้างอุปกรณ์และ Work Order จะกรอกข้อมูลได้ยาก เพราะ dropdown จะว่าง',
       requiredFor: ['devices', 'work-orders'],
@@ -149,7 +164,7 @@ export async function GET(req: NextRequest) {
       label: 'การแจ้งเตือน',
       description: 'ช่องทางแจ้งเตือน (Email / LINE / Telegram)',
       status: hasNotif ? 'complete' : 'not_started',
-      href: '/settings?tab=notifications',
+      href: '/?tab=notifications',
       section: '#channel-config',
       canEdit,
       reason: hasNotif ? undefined : 'ยังไม่ได้ตั้งค่าช่องทางแจ้งเตือน',
@@ -177,16 +192,18 @@ export async function GET(req: NextRequest) {
 
   // 7. Sync (optional — only if user enabled sync module)
   try {
-    const nodeCount = await db.syncNode.count()
+    const nodeCount = organizationId
+      ? await db.syncNode.count({ where: { organizationId } })
+      : 0
     items.push({
       key: 'sync-nodes',
       category: 'การตรวจสอบ',
       label: 'Sync Status',
       description: 'การเชื่อมต่อกับ offline node (สาขาที่ไม่ได้ออนไลน์ตลอด)',
       status: nodeCount > 0 ? 'complete' : 'not_required',
-      href: '/settings?tab=sync-test',
+      href: '/?tab=sync-test',
       section: '#node-list',
-      canEdit,
+      canEdit: canManageSync,
       reason: nodeCount > 0 ? undefined : 'ไม่ได้ใช้ Offline Sync',
       impact: nodeCount > 0 ? undefined : 'ไม่มีผล หากทุกสาขาออนไลน์ตลอดเวลา',
       requiredFor: [],
@@ -200,16 +217,16 @@ export async function GET(req: NextRequest) {
 
   // 8. Number patterns
   try {
-    const patternCount = await db.assetNumberPattern.count()
+    const patternCount = await db.assetNumberPattern.count({ where: organizationOrGlobalWhere })
     items.push({
       key: 'number-patterns',
       category: 'ข้อมูลและการดำเนินงาน',
       label: 'รูปแบบเลขที่ทรัพย์สิน',
       description: 'รูปแบบรหัสอุปกรณ์อัตโนมัติ เช่น SITE-YYYY-NNNN',
       status: patternCount > 0 ? 'complete' : 'incomplete',
-      href: '/settings?tab=number-patterns',
+      href: '/?tab=number-patterns',
       section: '#pattern-list',
-      canEdit,
+      canEdit: canEditMasterData,
       reason: patternCount > 0 ? undefined : 'ยังไม่ได้ตั้งค่ารูปแบบเลขที่ทรัพย์สิน',
       impact: patternCount > 0 ? undefined : 'ระบบจะใช้รหัสอัตโนมัติแบบ default (เลขลำดับ) ทำให้ไม่สามารถแยกสาขา/ปี จากโค้ดได้',
       requiredFor: ['devices'],
@@ -223,22 +240,25 @@ export async function GET(req: NextRequest) {
 
   // 9. Approvers (for Work Order workflow)
   try {
-    // Check if any users have approval permission
-    const approverCount = await db.user.count({
-      where: {
-        active: true,
-        role: { in: ['admin', 'superadmin'] },
-      },
+    // Check effective Work Order completion permission instead of assuming
+    // that every admin role is an approver. Custom role/user permissions and
+    // organization scope must be respected here.
+    const approverCandidates = await db.user.findMany({
+      where: { ...organizationWhere, active: true },
+      select: { role: true, permissions: true },
     })
+    const approverCount = approverCandidates.filter((candidate) =>
+      getUserPermissions(candidate.role, candidate.permissions).includes('WO_COMPLETE' as Permission),
+    ).length
     items.push({
       key: 'approvers',
       category: 'ผู้ใช้และความปลอดภัย',
       label: 'ผู้อนุมัติ Work Order',
       description: 'บัญชีที่มีสิทธิ์อนุมัติ Work Order ก่อนดำเนินการ',
       status: approverCount > 0 ? 'complete' : 'incomplete',
-      href: '/settings?tab=users',
+      href: '/?tab=users',
       section: '#approvers',
-      canEdit,
+      canEdit: canManageUsers,
       reason: approverCount > 0 ? undefined : 'ยังไม่ได้กำหนดผู้อนุมัติ',
       impact: approverCount > 0 ? undefined : 'Work Order จะสร้างได้ แต่ส่งอนุมัติไม่ได้ — งานจะค้างในสถานะ PENDING_REVIEW',
       requiredFor: ['work-orders'],
