@@ -1,0 +1,10 @@
+{
+  "name": "go-sync-service",
+  "version": "1.0.0",
+  "description": "Go sync service — parallel Google Sheets sync using goroutines",
+  "scripts": {
+    "dev": "go run . &",
+    "start": "./go-sync-service",
+    "build": "go build -o go-sync-service ."
+  }
+}
