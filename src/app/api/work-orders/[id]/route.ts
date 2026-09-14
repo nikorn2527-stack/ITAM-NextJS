@@ -163,9 +163,24 @@ export async function PUT(
       data.employeeCode = body.employeeCode
         ? String(body.employeeCode).trim()
         : null
+    // SPRINT-2 #6 (AUDIT-API-001 #059): body.status bypass — callers
+    // could PUT {status: 'COMPLETED'} to mark a WO done without going
+    // through /api/work-orders/[id]/complete (which enforces the
+    // assignedTo check + parts approval flow). Status transitions are
+    // now ONLY available through the dedicated endpoints:
+    //   - /complete  (WO_COMPLETE at site)
+    //   - /cancel    (WO_COMPLETE at site)
+    //   - /assign    (WO_ASSIGN at site)
+    // The PUT route rejects body.status with 400 so callers know to
+    // use the right endpoint.
     if (body.status !== undefined) {
-      const s = String(body.status).trim()
-      if (VALID_STATUSES.has(s)) data.status = s
+      return NextResponse.json(
+        {
+          error: 'ไม่สามารถเปลี่ยนสถานะผ่าน PUT ได้ — ใช้ /complete, /cancel หรือ /assign endpoint แทน',
+          code: 'STATUS_VIA_DEDICATED_ENDPOINT',
+        },
+        { status: 400 },
+      )
     }
     if (body.assignedTo !== undefined)
       data.assignedTo = body.assignedTo ? String(body.assignedTo).trim() : null

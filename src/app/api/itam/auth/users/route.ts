@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireAuth } from '@/lib/auth-middleware'
 import { hashNewPassword, toAuthUser, isAdminRole, ALL_PERMISSION_KEYS } from '@/lib/auth'
+import { logAudit } from '@/lib/audit'
 
 /**
  * /api/itam/auth/users — admin user-management endpoint (requires USER_MANAGE
@@ -12,9 +13,34 @@ import { hashNewPassword, toAuthUser, isAdminRole, ALL_PERMISSION_KEYS } from '@
  *   • email, username, name, role, active, allowedSites, password
  *   • permissions: string[] — list of permission keys to MERGE with the role's
  *     defaults. Stored on User.permissions as a JSON array string.
+ *
+ * SPRINT-2 #8 (AUDIT-API-001 #072): added password validation (min 8 chars)
+ * and audit log on every create/update/delete.
  */
 
 const ROLE_CHOICES = ['superadmin', 'admin', 'editor', 'meter', 'viewer'] as const
+
+// SPRINT-2 #8: password validation — min 8 chars, max 1000 (DoS guard),
+// at least 1 letter + 1 digit (basic complexity — not enterprise-grade
+// but enough to stop "password" / "12345678" which are common)
+const PASSWORD_MIN_LENGTH = 8
+const PASSWORD_MAX_LENGTH = 1000
+
+function validatePassword(pw: string): { ok: true } | { ok: false; error: string } {
+  if (pw.length < PASSWORD_MIN_LENGTH) {
+    return { ok: false, error: `รหัสผ่านต้องมีอย่างน้อย ${PASSWORD_MIN_LENGTH} ตัวอักษร` }
+  }
+  if (pw.length > PASSWORD_MAX_LENGTH) {
+    return { ok: false, error: `รหัสผ่านยาวเกินไป (สูงสุด ${PASSWORD_MAX_LENGTH} ตัวอักษร)` }
+  }
+  if (!/[a-zA-Z]/.test(pw)) {
+    return { ok: false, error: 'รหัสผ่านต้องมีตัวอักษรอย่างน้อย 1 ตัว' }
+  }
+  if (!/\d/.test(pw)) {
+    return { ok: false, error: 'รหัสผ่านต้องมีตัวเลขอย่างน้อย 1 ตัว' }
+  }
+  return { ok: true }
+}
 
 /** Normalize the incoming `permissions` value into a JSON string suitable
  *  for storage on User.permissions. Returns `null` for "no custom grants"
@@ -92,6 +118,11 @@ export async function POST(req: NextRequest) {
   let passwordHash: string | null = null
   let passwordSalt: string | null = null
   if (password) {
+    // SPRINT-2 #8: validate password complexity before hashing
+    const pwCheck = validatePassword(password)
+    if (!pwCheck.ok) {
+      return NextResponse.json({ error: pwCheck.error }, { status: 400 })
+    }
     const { hash, salt } = hashNewPassword(password)
     passwordHash = hash
     passwordSalt = salt
@@ -110,6 +141,19 @@ export async function POST(req: NextRequest) {
       permissions,
     },
   })
+  // SPRINT-2 #8: audit log on user creation
+  try {
+    await logAudit(
+      'CREATE',
+      'User',
+      created.id,
+      `สร้างผู้ใช้ ${email} (role=${role})`,
+      { email, role, active, allowedSites, createdBy: auth.user.email },
+      auth.user.email,
+    )
+  } catch (e) {
+    console.error('[users POST] audit log failed (non-fatal):', e)
+  }
   return NextResponse.json({ user: toAuthUser(created) }, { status: 201 })
 }
 

@@ -122,27 +122,49 @@ export async function POST(
 
       // ── Auto-close: if all parts approved AND WO is WAITING_PARTS → auto-close ──
       // (Aligned with Apps Script syncApprovedStockOutToCompleted)
+      //
+      // SPRINT-2 #7 (AUDIT-API-001 #068): only auto-close if the WO has
+      // an assignee. A WO with no assignedTo means no technician is
+      // taking responsibility — auto-closing it would skip the
+      // completion checklist (parts approval was the only gate).
+      // Now we still mark parts as approved but leave the WO in
+      // WAITING_PARTS + post a message telling the assigner to assign
+      // someone before the WO can be completed.
       let autoClosed = false
+      let autoCloseSkipped = false
       if (remainingPending === 0 && wo.status === 'WAITING_PARTS') {
-        const now = new Date()
-        await tx.workOrder.update({
-          where: { id: wo.id },
-          data: {
-            status: 'COMPLETED',
-            workCompletedAt: now,
-            closedAt: now,
-          },
-        })
-        autoClosed = true
-        // Post system message about auto-close
-        await tx.workOrderMessage.create({
-          data: {
-            workOrderId: wo.id,
-            message: '✅ ระบบปิดงานอัตโนมัติหลังอนุมัติเบิกอะไหล่ครบ',
-            author: 'system-auto',
-            authorRole: 'system',
-          },
-        })
+        if (!wo.assignedTo) {
+          // SPRINT-2 #7: don't auto-close — post a warning instead
+          autoCloseSkipped = true
+          await tx.workOrderMessage.create({
+            data: {
+              workOrderId: wo.id,
+              message: '⚠️ อะไหล่ครบแล้ว แต่ยังไม่มีผู้รับผิดชอบ — กรุณามอบหมายเจ้าหน้าที่ก่อนปิดงาน',
+              author: 'system-auto',
+              authorRole: 'system',
+            },
+          })
+        } else {
+          const now = new Date()
+          await tx.workOrder.update({
+            where: { id: wo.id },
+            data: {
+              status: 'COMPLETED',
+              workCompletedAt: now,
+              closedAt: now,
+            },
+          })
+          autoClosed = true
+          // Post system message about auto-close
+          await tx.workOrderMessage.create({
+            data: {
+              workOrderId: wo.id,
+              message: '✅ ระบบปิดงานอัตโนมัติหลังอนุมัติเบิกอะไหล่ครบ',
+              author: 'system-auto',
+              authorRole: 'system',
+            },
+          })
+        }
       }
 
       return {
@@ -150,6 +172,7 @@ export async function POST(
         txn: updatedTxn,
         remainingPending,
         autoClosed,
+        autoCloseSkipped, // SPRINT-2 #7: true when parts all approved but no assignee
       }
     })
 

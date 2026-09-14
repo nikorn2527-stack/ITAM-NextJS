@@ -13,7 +13,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toAuthUser } from '@/lib/rbac'
 import { logAudit } from '@/lib/audit'
-import { verifyPassword } from '@/lib/auth'
+import { verifyPassword, checkLoginRateLimit, recordLoginFailure, clearLoginRateLimit, RATE_LIMIT_MAX_ATTEMPTS, RATE_LIMIT_LOCKOUT_MS } from '@/lib/auth'
 import {
   AUTH_COOKIE,
   SESSION_TTL_MS,
@@ -46,8 +46,27 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // SPRINT-2 #3: rate limit on legacy /api/auth/login (the main
+    // /api/itam/auth/login already had this; this endpoint was unprotected).
+    // Use the email as the rate-limit key (combined with IP below for
+    // defense in depth — see AuditSecurity note).
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
+    const rlKey = `login:${email}:${ip}`
+    const rl = checkLoginRateLimit(rlKey)
+    if (!rl.allowed) {
+      const retryAfterSec = Math.ceil(rl.retryAfterMs / 1000)
+      return NextResponse.json(
+        {
+          error: `คุณพยายามเข้าสู่ระบบผิดพลาดเกิน ${RATE_LIMIT_MAX_ATTEMPTS} ครั้ง กรุณารอ ${retryAfterSec} วินาทีแล้วลองใหม่`,
+          retryAfter: retryAfterSec,
+        },
+        { status: 429 },
+      )
+    }
+
     const user = await db.user.findUnique({ where: { email } })
     if (!user) {
+      recordLoginFailure(rlKey)
       return NextResponse.json(
         { error: 'ไม่พบผู้ใช้งานนี้ในระบบ' },
         { status: 404 },
@@ -63,11 +82,23 @@ export async function POST(req: NextRequest) {
     // Verify password against stored hash
     const ok = verifyPassword(password, user.passwordHash, user.passwordSalt)
     if (!ok) {
+      const r = recordLoginFailure(rlKey)
+      if (r.locked) {
+        const retryAfterSec = Math.ceil(r.retryAfterMs / 1000)
+        return NextResponse.json(
+          {
+            error: `รหัสผ่านไม่ถูกต้อง — บัญชีถูกล็อก ${retryAfterSec} วินาที เนื่องจากพยายามเกิน ${RATE_LIMIT_MAX_ATTEMPTS} ครั้ง`,
+            retryAfter: retryAfterSec,
+          },
+          { status: 429 },
+        )
+      }
       return NextResponse.json(
         { error: 'รหัสผ่านไม่ถูกต้อง' },
         { status: 401 },
       )
     }
+    clearLoginRateLimit(rlKey)
 
     const now = Date.now()
     const token = await encodeSession({

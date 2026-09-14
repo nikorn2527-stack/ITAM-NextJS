@@ -140,6 +140,13 @@ const JWT_SECRET_RAW = (() => {
 // jose expects a Uint8Array secret for HS256
 const JWT_SECRET = new TextEncoder().encode(JWT_SECRET_RAW)
 export const TOKEN_TTL_SECONDS = 6 * 60 * 60 // 6 hours — matches Apps Script CONFIG.AUTH_TOKEN_TTL
+// SPRINT-2 #2: refresh token support. Access tokens stay at 6h for backward
+// compat (legacy clients expect long TTL), but new logins also issue a
+// refresh token that can be exchanged for a new access token without
+// re-entering password. This is the foundation for eventually shortening
+// the access token TTL to 1h.
+export const REFRESH_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60 // 7 days
+export const REFRESH_TOKEN_TYPE = 'refresh' // tag in JWT `typ` claim
 
 export interface ItamJWTPayload {
   email: string
@@ -147,6 +154,9 @@ export interface ItamJWTPayload {
   name: string | null
   username: string | null
   allowedSites: string | 'ALL'
+  /** 'access' (default) or 'refresh' — refresh tokens can only be used
+   * to mint new access tokens via /api/auth/refresh, never for API calls. */
+  typ?: 'access' | 'refresh'
   [key: string]: unknown
 }
 
@@ -178,7 +188,10 @@ export async function createToken(user: {
   })()
 }
 
-/** Verify a JWT and return its payload, or `null` if invalid/expired/blacklisted. */
+/** Verify a JWT and return its payload, or `null` if invalid/expired/blacklisted.
+ * SPRINT-2 #2: also reject refresh tokens — they should never be used for
+ * regular API calls, only exchanged at /api/auth/refresh for a new access
+ * token. This prevents a refresh token leak from being directly usable. */
 export async function verifyToken(token: string | null | undefined): Promise<ItamJWTPayload | null> {
   if (!token) return null
   try {
@@ -189,10 +202,75 @@ export async function verifyToken(token: string | null | undefined): Promise<Ita
     const { payload } = await jwtVerify(trimmed, JWT_SECRET as any, {
       algorithms: ['HS256'],
     })
-    return payload as ItamJWTPayload
+    const result = payload as ItamJWTPayload
+    // SPRINT-2 #2: refresh tokens can't be used for API calls
+    if (result.typ === REFRESH_TOKEN_TYPE) return null
+    return result
   } catch {
     return null
   }
+}
+
+/**
+ * SPRINT-2 #2: Verify a REFRESH token (only valid at /api/auth/refresh).
+ * Returns the payload only if the token is a refresh token (typ='refresh').
+ * Access tokens are rejected here so they can't be misused as refresh tokens.
+ */
+export async function verifyRefreshToken(token: string | null | undefined): Promise<ItamJWTPayload | null> {
+  if (!token) return null
+  try {
+    const trimmed = token.trim()
+    // Reject blacklist tokens (logout clears refresh tokens too)
+    if (isTokenBlacklisted(trimmed)) return null
+    const { jwtVerify } = await getJose()
+    const { payload } = await jwtVerify(trimmed, JWT_SECRET as any, {
+      algorithms: ['HS256'],
+    })
+    const result = payload as ItamJWTPayload
+    // Only refresh tokens are valid here
+    if (result.typ !== REFRESH_TOKEN_TYPE) return null
+    return result
+  } catch {
+    return null
+  }
+}
+
+/**
+ * SPRINT-2 #2: Issue a refresh token (typ='refresh', 7-day TTL).
+ * The token carries the same identity payload so /api/auth/refresh can
+ * issue a new access token without re-loading the user from DB.
+ *
+ * The refresh token CAN be blacklisted (logout) just like access tokens.
+ * For production with multiple server instances, the blacklist should be
+ * backed by Redis/KV — currently it's in-memory (acceptable for single-
+ * instance Vercel Hobby).
+ */
+export async function createRefreshToken(user: {
+  email: string
+  role: string
+  name: string | null
+  username: string | null
+  allowedSites: string | null
+}): Promise<string> {
+  const { normalizeRole, isSuperAdminRole } = await import('./auth-shared')
+  const role = normalizeRole(user.role)
+  const payload: ItamJWTPayload = {
+    email: user.email.toLowerCase(),
+    role,
+    name: user.name,
+    username: user.username,
+    allowedSites: isSuperAdminRole(role) ? 'ALL' : (user.allowedSites ?? 'ALL'),
+    typ: REFRESH_TOKEN_TYPE,
+  }
+  return (async () => {
+    const { SignJWT } = await getJose()
+    return new SignJWT(payload as any)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject(user.email.toLowerCase())
+      .setIssuedAt()
+      .setExpirationTime(`${REFRESH_TOKEN_TTL_SECONDS}s`)
+      .sign(JWT_SECRET)
+  })()
 }
 
 // ─── Token blacklist (logout) — in-memory Map with per-token expiry ───

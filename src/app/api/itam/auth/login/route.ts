@@ -4,6 +4,7 @@ import { logAudit } from '@/lib/audit'
 import {
   verifyPassword,
   createToken,
+  createRefreshToken,
   toAuthUser,
   checkLoginRateLimit,
   recordLoginFailure,
@@ -109,6 +110,15 @@ export async function POST(req: NextRequest) {
       username: row.username,
       allowedSites: row.allowedSites,
     })
+    // SPRINT-2 #2: also issue a refresh token so the client can get a new
+    // access token without re-entering password (POST /api/auth/refresh).
+    const refreshToken = await createRefreshToken({
+      email: row.email,
+      role: row.role,
+      name: row.name,
+      username: row.username,
+      allowedSites: row.allowedSites,
+    })
     const user = toAuthUser(row)
 
     // Audit log (best-effort) — wrapped in try/catch so login doesn't
@@ -126,7 +136,7 @@ export async function POST(req: NextRequest) {
       console.error('login: audit log failed (non-fatal)', e)
     }
 
-    return NextResponse.json({ token, user })
+    return NextResponse.json({ token, refreshToken, user })
   } catch (err) {
     console.error('POST /api/itam/auth/login', err)
     const isDev = process.env.NODE_ENV !== 'production'
