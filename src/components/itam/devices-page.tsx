@@ -1912,10 +1912,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     if (!bulkStatus || selectedIds.size === 0) return
     // SPRINT-3 #7: confirmation dialog with diff preview before bulk apply
     const count = selectedIds.size
-    const label = t(deviceStatusLabelKey(bulkStatus))
+    const statusLabel = t(deviceStatusLabelKey(bulkStatus))
     const confirmed = window.confirm(
       `ยืนยันการเปลี่ยนสถานะ ${count} อุปกรณ์\n\n` +
-      `เปลี่ยนจากสถานะปัจจุบัน → "${label}"\n\n` +
+      `เปลี่ยนจากสถานะปัจจุบัน → "${statusLabel}"\n\n` +
       `กด "ตกลง" เพื่อดำเนินการต่อ หรือ "ยกเลิก" เพื่อยกเลิก`
     )
     if (!confirmed) return
@@ -1932,7 +1932,6 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     )
     const ok = results.filter((r) => r.status === 'fulfilled').length
     const fail = results.length - ok
-    const statusLabel = t(deviceStatusLabelKey(bulkStatus))
     if (fail === 0) {
       toast.success(t('devices.toast.bulk_status_ok').replace('{count}', String(ok)).replace('{label}', statusLabel))
     } else {
@@ -1956,10 +1955,10 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     if (!bulkSite || selectedIds.size === 0) return
     // SPRINT-3 #7: confirmation dialog before bulk transfer
     const count = selectedIds.size
-    const siteName = (visibleSites ?? []).find((s) => s.code === bulkSite)?.name ?? bulkSite
+    const transferSiteName = (visibleSites ?? []).find((s) => s.code === bulkSite)?.name ?? bulkSite
     const confirmed = window.confirm(
       `ยืนยันการย้าย ${count} อุปกรณ์\n\n` +
-      `ไปยังสาขา: ${siteName} (${bulkSite})\n\n` +
+      `ไปยังสาขา: ${transferSiteName} (${bulkSite})\n\n` +
       `กด "ตกลง" เพื่อดำเนินการต่อ หรือ "ยกเลิก" เพื่อยกเลิก`
     )
     if (!confirmed) return
@@ -1977,8 +1976,6 @@ ${rows.map((r) => `<tr>${headers.map((h) => `<td>${String(r[h.key] ?? '').replac
     )
     const ok = results.filter((r) => r.status === 'fulfilled').length
     const fail = results.length - ok
-    const transferSiteName =
-      (sites ?? []).find((s) => s.code === bulkSite)?.name ?? bulkSite
     if (fail === 0) {
       toast.success(t('devices.toast.bulk_transfer_ok').replace('{count}', String(ok)).replace('{site}', transferSiteName))
     } else {
