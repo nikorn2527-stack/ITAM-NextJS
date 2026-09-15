@@ -29,7 +29,7 @@
  */
 export const DEVICE_LIST_BOUNDS = {
   /** Maximum rows per page. Prevents huge single-page queries. */
-  MAX_LIMIT: 100,
+  MAX_LIMIT: 500,
   /** Default rows per page when caller doesn't specify. */
   DEFAULT_LIMIT: 100,
   /** Minimum rows per page (must be ≥ 1). */
@@ -60,7 +60,6 @@ export const DEVICE_LIST_FIELDS = {
   brand: true,
   model: true,
   type: true,
-  serialNumber: true,
   status: true,
   site: true,
   department: true,
@@ -112,6 +111,7 @@ export const DEVICE_LIST_EXCLUDED_FIELDS = [
   'remoteId',
   'contractNo',
   'vendor',
+  'serialNumber',
   'costCenter',
   'purchasePrice',
   'salvageValue',

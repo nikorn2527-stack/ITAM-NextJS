@@ -15,7 +15,9 @@ describe('Devices transfer persistence boundary', () => {
   })
 
   it('writes DeviceTransfer fields that exist in the current Prisma schema', () => {
-    expect(routeSource).toContain('db.deviceTransfer.create({')
+    // The route writes the history row through the transaction client so the
+    // device update, transfer history, and meter link commit atomically.
+    expect(routeSource).toContain('tx.deviceTransfer.create({')
     expect(routeSource).toContain('deviceId: device.id')
     expect(routeSource).toContain('assetCode: device.assetCode')
     expect(routeSource).toContain('transferDate: moveDate')
