@@ -1006,7 +1006,7 @@ export function DevicesPage() {
   // ── Auto-generate device name from brand + model + location ──
   // Watches brand, model, building, floor, location — auto-fills `name`
   // unless the user has manually typed something.
-  // Example: "BROTHER HL-L5210DN ตึกผู้ป่วยนอก (OPD) t('devices.field.floor') 2"
+  // Example: "BROTHER HL-L5210DN ตึกผู้ป่วยนอก (OPD) ชั้น 2"
   const nameManuallyEditedRef = React.useRef(false)
   React.useEffect(() => {
     // Don't auto-fill if user has manually edited the name
@@ -1015,7 +1015,7 @@ export function DevicesPage() {
       form.brand,
       form.model,
       form.building,
-      form.floor ? `t('devices.field.floor') ${form.floor}` : '',
+      form.floor ? `${t('devices.field.floor')} ${form.floor}` : '',
       form.location,
     ].filter(Boolean)
     const autoName = parts.join(' ')
@@ -1064,69 +1064,84 @@ export function DevicesPage() {
     }
   }, [])
 
-  function openEdit(d: Device) {
+  async function openEdit(d: Device) {
+    // The list query intentionally omits detail-only fields. Load the full
+    // record before populating the edit form so an unchanged save cannot
+    // erase serial, network, or commercial data.
+    let editDevice = d
+    try {
+      const res = await fetch(`/api/devices/${encodeURIComponent(d.id)}`, {
+        headers: authHeaders(),
+      })
+      if (res.ok) {
+        const json = (await res.json()) as { device?: Device }
+        if (json.device) editDevice = json.device
+      }
+    } catch (err) {
+      console.warn('[devices-page] detail load before edit failed', err)
+    }
     nameManuallyEditedRef.current = true
     setForm({
-      id: d.id,
-      assetCode: d.assetCode,
-      assetSiteCode: d.assetSiteCode ?? '',
-      name: d.name,
-      brand: d.brand,
-      model: d.model,
-      type: d.type,
-      serialNumber: d.serialNumber ?? '',
-      status: d.status,
-      site: d.site,
-      department: d.department ?? '',
-      departmentCode: d.departmentCode ?? '',
-      parentRef: d.parentRef ?? '',
-      displayLabel: d.displayLabel ?? '',
-      location: d.location ?? '',
-      building: d.building ?? '',
-      floor: d.floor ?? '',
-      room: d.room ?? '',
-      ip: d.ip ?? '',
-      mac: d.mac ?? '',
-      remoteId: d.remoteId ?? '',
-      purchaseDate: d.purchaseDate ?? '',
-      warrantyMonths: String(d.warrantyMonths ?? 12),
+      id: editDevice.id,
+      assetCode: editDevice.assetCode,
+      assetSiteCode: editDevice.assetSiteCode ?? '',
+      name: editDevice.name,
+      brand: editDevice.brand,
+      model: editDevice.model,
+      type: editDevice.type,
+      serialNumber: editDevice.serialNumber ?? '',
+      status: editDevice.status,
+      site: editDevice.site,
+      department: editDevice.department ?? '',
+      departmentCode: editDevice.departmentCode ?? '',
+      parentRef: editDevice.parentRef ?? '',
+      displayLabel: editDevice.displayLabel ?? '',
+      location: editDevice.location ?? '',
+      building: editDevice.building ?? '',
+      floor: editDevice.floor ?? '',
+      room: editDevice.room ?? '',
+      ip: editDevice.ip ?? '',
+      mac: editDevice.mac ?? '',
+      remoteId: editDevice.remoteId ?? '',
+      purchaseDate: editDevice.purchaseDate ?? '',
+      warrantyMonths: String(editDevice.warrantyMonths ?? 12),
       purchasePrice:
-        d.purchasePrice !== null && d.purchasePrice !== undefined
-          ? String(d.purchasePrice)
+        editDevice.purchasePrice !== null && editDevice.purchasePrice !== undefined
+          ? String(editDevice.purchasePrice)
           : '',
       salvageValue:
-        d.salvageValue !== null && d.salvageValue !== undefined
-          ? String(d.salvageValue)
+        editDevice.salvageValue !== null && editDevice.salvageValue !== undefined
+          ? String(editDevice.salvageValue)
           : '0',
       usefulLife:
-        d.usefulLife !== null && d.usefulLife !== undefined
-          ? String(d.usefulLife)
+        editDevice.usefulLife !== null && editDevice.usefulLife !== undefined
+          ? String(editDevice.usefulLife)
           : '60',
-      warrantyEnd: d.warrantyEnd ?? '',
-      vendor: d.vendor ?? '',
-      contractNo: d.contractNo ?? '',
-      uninstallDate: d.uninstallDate ?? '',
-      meterRequired: Boolean(d.meterRequired),
-      meterMode: d.meterMode ?? 'TOTAL',
-      costCenter: d.costCenter ?? '',
-      deviceGroup: d.deviceGroup ?? '',
-      remark: d.remark ?? '',
+      warrantyEnd: editDevice.warrantyEnd ?? '',
+      vendor: editDevice.vendor ?? '',
+      contractNo: editDevice.contractNo ?? '',
+      uninstallDate: editDevice.uninstallDate ?? '',
+      meterRequired: Boolean(editDevice.meterRequired),
+      meterMode: editDevice.meterMode ?? 'TOTAL',
+      costCenter: editDevice.costCenter ?? '',
+      deviceGroup: editDevice.deviceGroup ?? '',
+      remark: editDevice.remark ?? '',
       // ── Device Set fields (Task ID 9, Phase 2) ──
       // Cast through unknown because the legacy `Device` type doesn't
       // include parentDeviceId/setLabel/setPosition yet (only the DB row does).
-      parentDeviceId: (d as unknown as { parentDeviceId?: string | null }).parentDeviceId ?? '',
-      setLabel: (d as unknown as { setLabel?: string | null }).setLabel ?? '',
-      setPosition: (d as unknown as { setPosition?: number | null }).setPosition != null
-        ? String((d as unknown as { setPosition?: number | null }).setPosition)
+      parentDeviceId: (editDevice as unknown as { parentDeviceId?: string | null }).parentDeviceId ?? '',
+      setLabel: (editDevice as unknown as { setLabel?: string | null }).setLabel ?? '',
+      setPosition: (editDevice as unknown as { setPosition?: number | null }).setPosition != null
+        ? String((editDevice as unknown as { setPosition?: number | null }).setPosition)
         : '',
       licenses: [],
       accessories: [],
     })
     setDialogOpen(true)
     // Load existing licenses for this device (edit mode only)
-    void loadDeviceLicenses(d.id)
+    void loadDeviceLicenses(editDevice.id)
     // Load existing accessories for this device (edit mode only)
-    void loadDeviceAccessories(d.id)
+    void loadDeviceAccessories(editDevice.id)
   }
 
   // SPRINT-3 #1 (UX Simplification Map — Device Form):
